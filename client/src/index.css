@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+/* Matchup design tokens. One hue per fighter, used identically in every panel
+   and every chart, so the colour is learned once and read everywhere: blue is
+   the first fighter, red the second. Colour is never the only thing carrying
+   that — the first fighter is always the left of a pair and the left of a
+   comparison row, the second always the right, and every panel names both in
+   its legend. `deep` is the darker shade a bar fills with to mark the part of
+   a total that was significant. */
+@theme {
+  --color-f1: #3b82f6;
+  --color-f1-ink: #1e40af;
+  --color-f1-soft: #dbeafe;
+  --color-f1-deep: #1e3a8a;
+
+  --color-f2: #ef4444;
+  --color-f2-ink: #991b1b;
+  --color-f2-soft: #fee2e2;
+  --color-f2-deep: #991b1b;
+
+  --color-plot-track: #f4f4f5;
+  --color-plot-axis: #e4e4e7;
+
+  /* Championship bouts. Gold for the undisputed belt, steel for the interim
+     one — both clear 4.5:1 on white (4.9:1 and 7.6:1). The label also spells
+     out "Title" / "Interim … Title", so the hue is reinforcement, never the
+     only thing carrying the meaning. */
+  --color-belt: #a16207;
+  --color-belt-interim: #475569;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Slim, quiet scrollbars for the always-scrolling panes. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(212 212 216) transparent;
+}
+
+/* Chart marks settle in rather than snapping; motion carries the comparison,
+   so it is the only thing animated here. */
+.plot-grow {
+  transition:
+    height 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 160ms ease,
+    filter 160ms ease;
+}
+
+/* Hovering any bar isolates that fighter across the complete statistics
+   section, including both fight totals and every round. */
+.fight-statistics:has(.stat-bar[data-stat-side="f1"]:hover) .stat-bar[data-stat-side="f2"],
+.fight-statistics:has(.stat-bar[data-stat-side="f2"]:hover) .stat-bar[data-stat-side="f1"] {
+  opacity: 0.18 !important;
+  filter: saturate(0.3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plot-grow {
+    transition: none;
+  }
+}

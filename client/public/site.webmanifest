@@ -1,0 +1,16 @@
+{
+  "name": "ufc.sh — UFC Events, Odds & Stats",
+  "short_name": "ufc.sh",
+  "description": "UFC fight cards, matchup odds, results, fighter statistics and rankings.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f4f5",
+  "theme_color": "#18181b",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
