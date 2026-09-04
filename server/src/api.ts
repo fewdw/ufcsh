@@ -5,10 +5,17 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { db, getMeta } from "./db.ts";
 import { log, normName, todayIso } from "./util.ts";
-import { syncEventDetail, syncFightDetail } from "./sync.ts";
+import { syncEventDetail, syncFightDetail, syncFighterBirthDate } from "./sync.ts";
 import type { RankingType } from "./scrape/ufccom.ts";
+import { getStats } from "./stats.ts";
+import { getLabs } from "./labs.ts";
+import { titleNarratives } from "./titles.ts";
+import { fighterRecords, fighterStats } from "./records.ts";
+import { boutsBefore, careerBefore, completeRecordBefore, fightIndex, ageOn, sideOf, type FightRecord } from "./fight-index.ts";
+import { syncCareerRecord } from "./career-records.ts";
 
 const CLIENT_DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "client", "dist");
+const IMAGE_CACHE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data", "images");
 const SITE_URL = "https://ufc.sh";
 
 // ---------------------------------------------------------------------------
@@ -19,6 +26,8 @@ type EventRow = {
 };
 
 const eventDetailRequests = new Map<string, Promise<void>>();
+const fighterBirthDateRequests = new Map<string, Promise<void>>();
+const fighterCareerRequests = new Map<string, Promise<boolean>>();
 
 async function syncEventDetailOnce(id: string): Promise<void> {
   const running = eventDetailRequests.get(id);
@@ -26,6 +35,33 @@ async function syncEventDetailOnce(id: string): Promise<void> {
   const request = syncEventDetail(id).finally(() => eventDetailRequests.delete(id));
   eventDetailRequests.set(id, request);
   return request;
+}
+
+async function syncFighterBirthDateOnce(id: string): Promise<void> {
+  const running = fighterBirthDateRequests.get(id);
+  if (running) return running;
+  const request = syncFighterBirthDate(id).finally(() => fighterBirthDateRequests.delete(id));
+  fighterBirthDateRequests.set(id, request);
+  return request;
+}
+
+async function syncFighterCareerOnce(id: string): Promise<boolean> {
+  const running = fighterCareerRequests.get(id);
+  if (running) return running;
+  const request = syncCareerRecord(id).finally(() => fighterCareerRequests.delete(id));
+  fighterCareerRequests.set(id, request);
+  return request;
+}
+
+function ageOnDate(birthDate: string, date = todayIso()): number | null {
+  const birth = birthDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const today = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!birth || !today) return null;
+  const [, birthYear, birthMonth, birthDay] = birth.map(Number);
+  const [, year, month, day] = today.map(Number);
+  const birthdayPassed = month > birthMonth || month === birthMonth && day >= birthDay;
+  const age = year - birthYear - (birthdayPassed ? 0 : 1);
+  return age >= 0 && age < 130 ? age : null;
 }
 
 function yesterdayIso(): string {
@@ -51,7 +87,23 @@ function nextEventDate(): string | null {
 type FighterSummary = {
   id: string; name: string; nickname: string; record: string;
   photo_url: string | null; ranking: { division: string; rank: string } | null;
+  record_verified?: boolean;
 };
+
+function recordText(record: Pick<FightRecord, "wins" | "losses" | "draws">): string {
+  return `${record.wins}-${record.losses}${record.draws ? `-${record.draws}` : ""}`;
+}
+
+function currentRecord(id: string, fallback: { wins: number; losses: number; draws: number }): { value: FightRecord; verified: boolean } {
+  const indexed = id ? fightIndex().fighters.get(id) : undefined;
+  return indexed?.careerVerified
+    ? { value: indexed.career, verified: true }
+    : { value: { ...fallback, ncs: 0 }, verified: false };
+}
+
+function cachedPhotoUrl(id: string, remoteUrl: string | null | undefined): string | null {
+  return id && remoteUrl ? `/api/images/${id}` : null;
+}
 
 const fighterSummaryStmt = () =>
   db.prepare(`
@@ -60,9 +112,9 @@ const fighterSummaryStmt = () =>
     FROM fighters fr
     LEFT JOIN rankings r ON r.rowid = (
       SELECT rr.rowid FROM rankings rr
-      WHERE rr.fighter_id = fr.id AND rr.division NOT LIKE '%Pound-for-Pound%'
-      ORDER BY CASE rr.ranking_type WHEN 'meta' THEN 0 ELSE 1 END,
-               CASE rr.rank WHEN 'C' THEN 0 WHEN 'IC' THEN 1 ELSE CAST(rr.rank AS INTEGER) + 2 END
+      WHERE rr.fighter_id = fr.id AND rr.ranking_type = ?
+        AND rr.division NOT LIKE '%Pound-for-Pound%'
+      ORDER BY CASE rr.rank WHEN 'C' THEN 0 WHEN 'IC' THEN 1 ELSE CAST(rr.rank AS INTEGER) + 2 END
       LIMIT 1
     )
     WHERE fr.id = ?
@@ -77,17 +129,19 @@ function requestPhoto(id: string): void {
   }
 }
 
-function fighterSummary(id: string, fallbackName: string): FighterSummary {
-  const row = id ? (fighterSummaryStmt().get(id) as any) : null;
+function fighterSummary(id: string, fallbackName: string, rankingType: RankingType = "meta"): FighterSummary {
+  const row = id ? (fighterSummaryStmt().get(rankingType, id) as any) : null;
   if (!row) {
     return { id, name: fallbackName, nickname: "", record: "", photo_url: null, ranking: null };
   }
+  const career = currentRecord(row.id, row);
   return {
     id: row.id,
     name: row.name,
     nickname: row.nickname,
-    record: `${row.wins}-${row.losses}${row.draws ? `-${row.draws}` : ""}`,
-    photo_url: row.photo_url || null,
+    record: recordText(career.value),
+    record_verified: career.verified,
+    photo_url: cachedPhotoUrl(row.id, row.photo_url),
     ranking: row.r_rank ? { division: row.r_division, rank: row.r_rank } : null,
   };
 }
@@ -104,14 +158,197 @@ function fightOdds(fightId: string): unknown {
 
 /** Convert an American line to its implied win probability. Comparing those
  * probabilities avoids relying on the sign or string formatting of the line. */
-function americanImpliedProbability(line: string | null): number | null {
+function americanOddsValue(line: string | null): number | null {
   if (!line) return null;
   const value = Number(line.replace(/[−–]/g, "-").replace(/[^0-9+-.]/g, ""));
-  if (!Number.isFinite(value) || value === 0) return null;
+  return Number.isFinite(value) && value !== 0 ? value : null;
+}
+
+function americanImpliedProbability(line: string | null): number | null {
+  const value = americanOddsValue(line);
+  if (value == null) return null;
   return value > 0 ? 100 / (value + 100) : -value / (-value + 100);
 }
 
-function fightRowToJson(f: any, includeDetail = false): Record<string, unknown> {
+/** What a card row can say about a fighter beyond the name: age on fight
+ * night, the last five UFC results entering the bout, and the streak they
+ * bring in. Everything is "as of the bout", so a past card reads the way it
+ * did on the night rather than with today's record. */
+function sideContext(fighterId: string, date: string, ord: number, fightId: string): Record<string, unknown> {
+  if (!fighterId) return { age: null, form: [], streak: null, ufc_record: null, ufc_bouts: 0, days_since: null, finish_rate: null };
+  const index = fightIndex();
+  const fighter = index.fighters.get(fighterId);
+  const bouts = boutsBefore(index, fighterId, date, ord).filter((bout) => bout.id !== fightId);
+  const outcomes = bouts.map((bout) => sideOf(bout, fighterId).outcome);
+  // A streak counts consecutive identical results, skipping no contests, which
+  // in UFC bookkeeping neither extend nor end a run.
+  const decided = outcomes.filter((outcome) => outcome && outcome !== "nc");
+  const latest = decided.at(-1) ?? null;
+  let count = 0;
+  if (latest) {
+    for (let i = decided.length - 1; i >= 0 && decided[i] === latest; i--) count += 1;
+  }
+  const wins = outcomes.filter((outcome) => outcome === "win").length;
+  const losses = outcomes.filter((outcome) => outcome === "loss").length;
+  const draws = outcomes.filter((outcome) => outcome === "draw").length;
+  const finishes = bouts.filter((bout) => {
+    const side = sideOf(bout, fighterId);
+    return side.outcome === "win" && (bout.method === "KO/TKO" || bout.method === "SUB");
+  }).length;
+  const last = bouts.at(-1);
+  const complete = completeRecordBefore(index, fighterId, date, ord);
+  return {
+    age: fighter?.birthDate ? ageOn(fighter.birthDate, date) : null,
+    form: outcomes.slice(-5),
+    streak: latest && count ? { count, outcome: latest } : null,
+    ufc_record: bouts.length ? `${wins}-${losses}${draws ? `-${draws}` : ""}` : null,
+    ufc_bouts: bouts.length,
+    days_since: last ? Math.round((Date.parse(date) - Date.parse(last.date)) / 86400000) : null,
+    finish_rate: wins > 0 ? Math.round((finishes / wins) * 100) : null,
+    record: complete ? recordText(complete) : "",
+    career_record: complete ? recordText(complete) : null,
+    career_record_verified: Boolean(complete),
+  };
+}
+
+/**
+ * The summary that sits in an event's header. A completed card is judged on
+ * the two things that make one worth watching — how often the underdog got
+ * there, and how often it ended early — plus the bonuses and the standout
+ * result. An announced card is judged on what is at stake and how close the
+ * matchmaking looks, read from the closing lines where they exist.
+ */
+function cardStats(fights: any[], eventDate: string, complete: boolean, rankingType: RankingType): Record<string, unknown> {
+  const index = fightIndex();
+  const completed = fights.filter((fight) => fight.f1_outcome != null || fight.f2_outcome != null);
+  const titleFights = fights.filter((fight) => fight.title_fight).length;
+
+  let pricedFights = 0;
+  let underdogWins = 0;
+  let biggestUpset: { fight_id: string; name: string; line: number } | null = null;
+  for (const fight of completed) {
+    const odds = fightOdds(fight.id) as { f1: { close: string | null }; f2: { close: string | null } } | null;
+    const f1 = americanImpliedProbability(odds?.f1.close ?? null);
+    const f2 = americanImpliedProbability(odds?.f2.close ?? null);
+    const winner = fight.f1_outcome === "win" ? "f1" : fight.f2_outcome === "win" ? "f2" : null;
+    if (f1 == null || f2 == null || f1 === f2 || !winner) continue;
+    pricedFights += 1;
+    const winnerProbability = winner === "f1" ? f1 : f2;
+    const loserProbability = winner === "f1" ? f2 : f1;
+    if (winnerProbability < loserProbability) {
+      underdogWins += 1;
+      const line = americanOddsValue((winner === "f1" ? odds?.f1.close : odds?.f2.close) ?? null);
+      if (line != null && (!biggestUpset || line > biggestUpset.line)) {
+        biggestUpset = { fight_id: fight.id, name: fight[`${winner}_name`], line };
+      }
+    }
+  }
+
+  const knockouts = completed.filter((fight) => fight.method === "KO/TKO").length;
+  const submissions = completed.filter((fight) => fight.method === "SUB").length;
+  const decisions = completed.filter((fight) => fight.method?.endsWith("-DEC")).length;
+  const firstRoundFinishes = completed.filter((fight) => Number(fight.round) === 1 && (fight.method === "KO/TKO" || fight.method === "SUB")).length;
+  const bonuses = fights.reduce((total, fight) => total + (fight.perf_bonus ? 1 : 0) + (fight.fotn_bonus ? 1 : 0), 0);
+
+  let seconds = 0;
+  let timed = 0;
+  let knockdowns = 0;
+  let fastestFinish: { fight_id: string; name: string; seconds: number; method: string } | null = null;
+  for (const fight of completed) {
+    const indexed = index.byId.get(fight.id);
+    if (!indexed) continue;
+    if (indexed.elapsed != null) {
+      seconds += indexed.elapsed;
+      timed += 1;
+    }
+    knockdowns += (indexed.sides[0].kd ?? 0) + (indexed.sides[1].kd ?? 0);
+    const winner = indexed.sides.find((side) => side.outcome === "win");
+    if (winner && indexed.elapsed != null && (indexed.method === "KO/TKO" || indexed.method === "SUB")
+      && (!fastestFinish || indexed.elapsed < fastestFinish.seconds)) {
+      fastestFinish = { fight_id: fight.id, name: winner.name, seconds: indexed.elapsed, method: indexed.method };
+    }
+  }
+
+  // Announced cards: what is on the line, and what the market thinks.
+  let rankedFighters = 0;
+  let champions = 0;
+  let debutants = 0;
+  let undefeatedFighters = 0;
+  let undefeatedRankedFighters = 0;
+  let announcedPriced = 0;
+  let closest: { fight_id: string; f1: string; f2: string; gap: number } | null = null;
+  let biggestFavorite: { fight_id: string; name: string; line: number } | null = null;
+  let longestUnderdog: { fight_id: string; name: string; line: number } | null = null;
+  let longestStreak: { fight_id: string; name: string; count: number } | null = null;
+  if (!complete) {
+    for (const fight of fights) {
+      const odds = fightOdds(fight.id) as { f1: { close: string | null }; f2: { close: string | null } } | null;
+      const probabilities = {
+        f1: americanImpliedProbability(odds?.f1.close ?? null),
+        f2: americanImpliedProbability(odds?.f2.close ?? null),
+      };
+      if (probabilities.f1 != null && probabilities.f2 != null) {
+        announcedPriced += 1;
+        const gap = Math.abs(probabilities.f1 - probabilities.f2);
+        if (!closest || gap < closest.gap) closest = { fight_id: fight.id, f1: fight.f1_name, f2: fight.f2_name, gap: Math.round(gap * 1000) / 10 };
+        for (const side of ["f1", "f2"] as const) {
+          const line = americanOddsValue((side === "f1" ? odds?.f1.close : odds?.f2.close) ?? null);
+          if (line == null) continue;
+          if (line < 0 && (!biggestFavorite || line < biggestFavorite.line)) biggestFavorite = { fight_id: fight.id, name: fight[`${side}_name`], line };
+          if (line > 0 && (!longestUnderdog || line > longestUnderdog.line)) longestUnderdog = { fight_id: fight.id, name: fight[`${side}_name`], line };
+        }
+      }
+      for (const side of ["f1", "f2"] as const) {
+        const id: string = fight[`${side}_id`] ?? "";
+        if (!id) continue;
+        const summary = fighterSummary(id, fight[`${side}_name`], rankingType);
+        if (summary.ranking) rankedFighters += 1;
+        if (summary.ranking?.rank === "C" || summary.ranking?.rank === "IC") champions += 1;
+        const bouts = boutsBefore(index, id, eventDate).filter((bout) => bout.id !== fight.id);
+        const completeRecord = completeRecordBefore(index, id, eventDate, Number(fight.ord) || 0);
+        if (completeRecord && completeRecord.losses === 0 && completeRecord.wins + completeRecord.draws > 0) {
+          undefeatedFighters += 1;
+          if (summary.ranking) undefeatedRankedFighters += 1;
+        }
+        if (bouts.length === 0) debutants += 1;
+        const decidedOutcomes = bouts.map((bout) => sideOf(bout, id).outcome).filter((outcome) => outcome && outcome !== "nc");
+        let run = 0;
+        for (let i = decidedOutcomes.length - 1; i >= 0 && decidedOutcomes[i] === "win"; i--) run += 1;
+        if (run >= 2 && (!longestStreak || run > longestStreak.count)) longestStreak = { fight_id: fight.id, name: fight[`${side}_name`], count: run };
+      }
+    }
+  }
+
+  return {
+    total_fights: fights.length,
+    completed_fights: completed.length,
+    title_fights: titleFights,
+    priced_fights: complete ? pricedFights : announcedPriced,
+    underdog_wins: underdogWins,
+    finishes: knockouts + submissions,
+    knockouts,
+    submissions,
+    decisions,
+    first_round_finishes: firstRoundFinishes,
+    bonuses,
+    knockdowns,
+    avg_seconds: timed ? Math.round(seconds / timed) : null,
+    total_seconds: seconds,
+    biggest_upset: biggestUpset,
+    fastest_finish: fastestFinish,
+    ranked_fighters: rankedFighters,
+    champions,
+    debutants,
+    undefeated_fighters: undefeatedFighters,
+    undefeated_ranked_fighters: undefeatedRankedFighters,
+    closest_matchup: closest,
+    biggest_favorite: biggestFavorite,
+    longest_underdog: longestUnderdog,
+    longest_streak: longestStreak,
+  };
+}
+
+function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingType: RankingType = "meta"): Record<string, unknown> {
   const detail = f.detail_json ? JSON.parse(f.detail_json) : null;
   const base: Record<string, unknown> = {
     id: f.id,
@@ -123,14 +360,16 @@ function fightRowToJson(f: any, includeDetail = false): Record<string, unknown> 
     round: f.round,
     time: f.time,
     f1: {
-      ...fighterSummary(f.f1_id, f.f1_name),
+      ...fighterSummary(f.f1_id, f.f1_name, rankingType),
       outcome: f.f1_outcome,
       stats: { kd: f.f1_kd, str: f.f1_str, td: f.f1_td, sub: f.f1_sub },
+      ...(eventDate ? sideContext(f.f1_id, eventDate, Number(f.ord) || 0, f.id) : {}),
     },
     f2: {
-      ...fighterSummary(f.f2_id, f.f2_name),
+      ...fighterSummary(f.f2_id, f.f2_name, rankingType),
       outcome: f.f2_outcome,
       stats: { kd: f.f2_kd, str: f.f2_str, td: f.f2_td, sub: f.f2_sub },
+      ...(eventDate ? sideContext(f.f2_id, eventDate, Number(f.ord) || 0, f.id) : {}),
     },
     odds: fightOdds(f.id),
     bonuses: {
@@ -164,7 +403,7 @@ function listEvents(): unknown {
   }));
 }
 
-async function getEvent(id: string): Promise<unknown | null> {
+async function getEvent(id: string, rankingType: RankingType): Promise<unknown | null> {
   let e = db.prepare("SELECT * FROM events WHERE id = ?").get(id) as EventRow | undefined;
   if (!e) return null;
   let fights = db
@@ -179,114 +418,15 @@ async function getEvent(id: string): Promise<unknown | null> {
       log("lazy event bonus sync failed:", String(err));
     }
   }
-  const completed = fights.filter((fight) => fight.f1_outcome != null || fight.f2_outcome != null);
-  let pricedFights = 0;
-  let underdogWins = 0;
-  for (const fight of completed) {
-    const odds = fightOdds(fight.id) as { f1: { close: string | null }; f2: { close: string | null } } | null;
-    const f1 = americanImpliedProbability(odds?.f1.close ?? null);
-    const f2 = americanImpliedProbability(odds?.f2.close ?? null);
-    const winner = fight.f1_outcome === "win" ? "f1" : fight.f2_outcome === "win" ? "f2" : null;
-    if (f1 == null || f2 == null || f1 === f2 || !winner) continue;
-    pricedFights += 1;
-    if ((winner === "f1" && f1 < f2) || (winner === "f2" && f2 < f1)) underdogWins += 1;
-  }
-  const knockouts = completed.filter((fight) => fight.method === "KO/TKO").length;
-  const submissions = completed.filter((fight) => fight.method === "SUB").length;
   return {
     id: e.id,
     name: e.name,
     date: e.date,
     location: e.location,
     status: eventStatus(e, nextEventDate()),
-    card_stats: {
-      completed_fights: completed.length,
-      priced_fights: pricedFights,
-      underdog_wins: underdogWins,
-      finishes: knockouts + submissions,
-      knockouts,
-      submissions,
-    },
-    fights: fights.map((f) => fightRowToJson(f)),
+    card_stats: cardStats(fights, e.date, Boolean(e.complete), rankingType),
+    fights: fights.map((f) => fightRowToJson(f, false, e.date, rankingType)),
   };
-}
-
-function ordinal(n: number): string {
-  const mod100 = n % 100;
-  if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
-  return `${n}${({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ?? "th"}`;
-}
-
-type TitleState = {
-  undisputed: boolean;
-  interim: boolean;
-  heldUndisputedBefore: boolean;
-  heldInterimBefore: boolean;
-  undisputedDefenses: number;
-  interimDefenses: number;
-};
-
-function emptyTitleState(): TitleState {
-  return {
-    undisputed: false,
-    interim: false,
-    heldUndisputedBefore: false,
-    heldInterimBefore: false,
-    undisputedDefenses: 0,
-    interimDefenses: 0,
-  };
-}
-
-function outcomeFor(fight: any, fighterId: string): string | null {
-  return fight.f1_id === fighterId ? fight.f1_outcome : fight.f2_outcome;
-}
-
-/** Recognized belt holders immediately before a bout, reconstructed from the
- * complete title sequence in that division rather than one fighter's record. */
-function beltHoldersBefore(division: string, date: string): { undisputed: string | null; interim: string | null } {
-  const rows = db.prepare(`
-    SELECT f.*, e.date AS event_date
-    FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE f.weight_class = ? AND f.title_fight = 1 AND e.date < ?
-    ORDER BY e.date ASC, f.ord ASC
-  `).all(division, date) as any[];
-  let undisputed: string | null = null;
-  let interim: string | null = null;
-  for (const fight of rows) {
-    const winner = fight.f1_outcome === "win" ? fight.f1_id : fight.f2_outcome === "win" ? fight.f2_id : null;
-    if (!winner) continue;
-    if (fight.title_type === "interim") {
-      interim = winner;
-    } else if (fight.title_type === "title") {
-      undisputed = winner;
-      // Any subsequently resolved undisputed-title bout supersedes the older
-      // interim claim, whether it was unified in the cage or stripped first.
-      interim = null;
-    }
-  }
-  return { undisputed, interim };
-}
-
-/** A prior interim winner who has not since lost or won an undisputed-title
- * bout may have been promoted administratively when the old champion vacated. */
-function unresolvedInterimClaimBefore(fighterId: string, division: string, date: string): boolean {
-  const rows = db.prepare(`
-    SELECT f.* FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE (f.f1_id = ? OR f.f2_id = ?) AND f.weight_class = ?
-      AND f.title_fight = 1 AND e.date < ?
-    ORDER BY e.date ASC, f.ord ASC
-  `).all(fighterId, fighterId, division, date) as any[];
-  let claim = false;
-  for (const fight of rows) {
-    const outcome = outcomeFor(fight, fighterId);
-    if (fight.title_type === "interim") {
-      if (outcome === "win") claim = true;
-      else if (outcome === "loss") claim = false;
-    } else if (fight.title_type === "title" && (outcome === "win" || outcome === "loss")) {
-      claim = false;
-    }
-  }
-  return claim;
 }
 
 async function ensureFighterTitleTypes(fighterId: string): Promise<void> {
@@ -345,148 +485,73 @@ async function ensureFighterTitleTypes(fighterId: string): Promise<void> {
  * UFCStats does not tell us which athlete entered as champion, so we infer it
  * from this fighter's earlier completed title bouts in the same division.
  */
-function titleNarratives(rows: any[], fighterId: string): Map<string, string> {
-  const narratives = new Map<string, string>();
-  const divisions = new Map<string, TitleState>();
-
-  for (const fight of rows) {
-    if (!fight.title_fight) continue;
-
-    const division = fight.weight_class || "Unknown division";
-    const state = divisions.get(division) ?? emptyTitleState();
-    const outcome = outcomeFor(fight, fighterId);
-    const opponentId = fight.f1_id === fighterId ? fight.f2_id : fight.f1_id;
-    const holders = beltHoldersBefore(division, fight.event_date);
-    state.undisputed = holders.undisputed === fighterId;
-    state.interim = holders.interim === fighterId;
-    if (!state.undisputed) state.undisputedDefenses = 0;
-    if (!state.interim) state.interimDefenses = 0;
-
-    const participants = new Set([fighterId, opponentId]);
-    const recognizedUnification = fight.title_type === "title"
-      && !!holders.undisputed
-      && !!holders.interim
-      && holders.undisputed !== holders.interim
-      && participants.has(holders.undisputed)
-      && participants.has(holders.interim);
-    const fighterClaim = unresolvedInterimClaimBefore(fighterId, division, fight.event_date);
-    const opponentClaim = unresolvedInterimClaimBefore(opponentId, division, fight.event_date);
-    const inferredPromotedChampion = fight.title_type === "title"
-      && (!holders.undisputed || !participants.has(holders.undisputed))
-      && ((holders.interim === fighterId && opponentClaim) || (holders.interim === opponentId && fighterClaim));
-    const unification = recognizedUnification || inferredPromotedChampion;
-    if (inferredPromotedChampion && holders.interim === opponentId && fighterClaim) {
-      state.undisputed = true;
-      state.heldUndisputedBefore = true;
-    }
-    const promotedInterimChampion = fight.title_type === "title"
-      && state.interim
-      && !unification
-      && (!holders.undisputed || !participants.has(holders.undisputed));
-    if (promotedInterimChampion) {
-      state.interim = false;
-      state.undisputed = true;
-      state.heldUndisputedBefore = true;
-    }
-    let narrative: string;
-
-    if (fight.title_type === "tuf" || fight.title_type === "tournament") {
-      const prefix = fight.title_type === "tuf" ? "TUF tournament" : "Tournament";
-      narrative = outcome === "win" ? `${prefix} winner` : outcome === "loss" ? `${prefix} finalist` : `${prefix} final`;
-    } else if (fight.title_type === "interim") {
-      if (state.interim) {
-        if (outcome === null) {
-          narrative = `${ordinal(state.interimDefenses + 1)} interim title defense`;
-        } else if (outcome === "loss") {
-          narrative = "Interim title lost";
-          state.interim = false;
-          state.interimDefenses = 0;
-        } else if (outcome === "win") {
-          state.interimDefenses += 1;
-          narrative = `${ordinal(state.interimDefenses)} interim title defense`;
-        } else {
-          narrative = "Interim title retained";
-        }
-      } else if (outcome === "win") {
-        narrative = state.heldInterimBefore ? "Interim title regained" : "Interim title won";
-        state.interim = true;
-        state.heldInterimBefore = true;
-        state.interimDefenses = 0;
-      } else if (outcome === "loss") {
-        narrative = "Interim title shot lost";
-      } else {
-        narrative = "Interim title shot";
-      }
-    } else if (fight.title_type === "title" && state.interim) {
-      // This fighter enters as interim champion and is challenging the
-      // undisputed champion (or fighting to resolve both claims).
-      if (outcome === "win") {
-        narrative = "Undisputed title won · Titles unified";
-        state.undisputed = true;
-        state.heldUndisputedBefore = true;
-        state.undisputedDefenses = 0;
-        state.interim = false;
-      } else if (outcome === "loss") {
-        narrative = "Interim champion · Unification lost";
-        state.interim = false;
-        state.interimDefenses = 0;
-      } else if (outcome === null) {
-        narrative = "Interim champion · Unification bout";
-      } else {
-        narrative = "Interim title retained · Unification unresolved";
-      }
-    } else if (fight.title_type === "title" && state.undisputed) {
-      if (outcome === null) {
-        narrative = `${ordinal(state.undisputedDefenses + 1)} title defense${unification ? " · Unification bout" : ""}`;
-      } else if (outcome === "loss") {
-        narrative = `Title lost${unification ? " · Unification bout" : ""}`;
-        state.undisputed = false;
-        state.undisputedDefenses = 0;
-      } else if (outcome === "win") {
-        state.undisputedDefenses += 1;
-        narrative = `${ordinal(state.undisputedDefenses)} title defense${unification ? " · Titles unified" : ""}`;
-      } else {
-        narrative = `Title retained${unification ? " · Unification unresolved" : ""}`;
-      }
-    } else if (fight.title_type === "title") {
-      if (outcome === "win") {
-        narrative = state.heldUndisputedBefore ? "Title regained" : "Won title";
-        state.undisputed = true;
-        state.heldUndisputedBefore = true;
-        state.undisputedDefenses = 0;
-      } else if (outcome === "loss") {
-        narrative = "Title shot lost";
-      } else {
-        narrative = "Title shot";
-      }
-    } else {
-      // Never claim an undisputed belt when the authoritative bout heading was
-      // unavailable. This is intentionally generic until a retry succeeds.
-      narrative = outcome === "win" ? "Title bout won" : outcome === "loss" ? "Title bout lost" : "Title bout";
-    }
-
-    narratives.set(fight.id, narrative);
-    divisions.set(division, state);
-  }
-
-  return narratives;
+function opponentFormBefore(opponentId: string, date: string): unknown[] {
+  if (!opponentId) return [];
+  const rows = db.prepare(`
+    SELECT f.*, e.date AS event_date
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE (f.f1_id = ? OR f.f2_id = ?) AND e.complete = 1 AND e.date < ?
+    ORDER BY e.date DESC, f.ord ASC LIMIT 5
+  `).all(opponentId, opponentId, date) as any[];
+  return rows.reverse().map((fight) => {
+    const isF1 = fight.f1_id === opponentId;
+    return {
+      date: fight.event_date,
+      outcome: isF1 ? fight.f1_outcome : fight.f2_outcome,
+      opponent: {
+        id: isF1 ? fight.f2_id : fight.f1_id,
+        name: isF1 ? fight.f2_name : fight.f1_name,
+      },
+    };
+  });
 }
 
-function fighterHistory(fighterId: string): unknown[] {
+function fighterHistory(fighterId: string, includeOpponentForm = false): unknown[] {
   const rows = db
     .prepare(`
-      SELECT f.*, e.name AS event_name, e.date AS event_date, e.complete AS event_complete
+      SELECT f.*, e.name AS event_name, e.date AS event_date, e.complete AS event_complete,
+             o.f1_close, o.f2_close
       FROM fights f JOIN events e ON e.id = f.event_id
+      LEFT JOIN odds o ON o.fight_id = f.id
       WHERE f.f1_id = ? OR f.f2_id = ?
       ORDER BY e.date ASC, f.ord ASC
     `)
     .all(fighterId, fighterId) as any[];
-  const narratives = titleNarratives(rows, fighterId);
+  const index = fightIndex();
+  const narratives = titleNarratives(rows, fighterId, index);
+  // The UFC record each fighter carried into that bout. Reading it from the
+  // bouts that came before means a fighter who left the promotion and returned
+  // gets the record they actually walked back in with, not a running total.
+  const recordEntering = (id: string, date: string, ord: number, fightId: string) => {
+    if (!id) return null;
+    const indexed = index.byId.get(fightId);
+    const indexedSide = indexed ? sideOf(indexed, id) : null;
+    if (indexed && indexedSide?.id !== id) return null;
+    const prior = indexedSide ? indexedSide.prior : careerBefore(index, id, date, "", ord);
+    return {
+      wins: prior.wins,
+      losses: prior.losses,
+      draws: prior.draws,
+      ncs: prior.ncs,
+      text: `${prior.wins}-${prior.losses}${prior.draws ? `-${prior.draws}` : ""}`,
+      streak: prior.winStreak > 0 ? { count: prior.winStreak, outcome: "win" as const }
+        : prior.lossStreak > 0 ? { count: prior.lossStreak, outcome: "loss" as const }
+          : null,
+    };
+  };
+  const completeRecordEntering = (id: string, date: string, ord: number) => {
+    if (!id) return null;
+    const record = completeRecordBefore(index, id, date, ord);
+    return record ? { ...record, text: recordText(record), verified: true } : null;
+  };
   return rows.reverse().map((f) => {
     const isF1 = f.f1_id === fighterId;
     const opponentId = isF1 ? f.f2_id : f.f1_id;
     const opponentName = isF1 ? f.f2_name : f.f1_name;
+    const fighterClose = isF1 ? f.f1_close : f.f2_close;
+    const opponentClose = isF1 ? f.f2_close : f.f1_close;
     return {
+      promotion: "ufc" as const,
       fight_id: f.id,
       event_id: f.event_id,
       event_name: f.event_name,
@@ -500,12 +565,147 @@ function fighterHistory(fighterId: string): unknown[] {
       round: f.round,
       time: f.time,
       opponent: { id: opponentId, name: opponentName },
+      record_before: recordEntering(fighterId, f.event_date, Number(f.ord) || 0, f.id),
+      opponent_record_before: recordEntering(opponentId, f.event_date, Number(f.ord) || 0, f.id),
+      career_record_before: completeRecordEntering(fighterId, f.event_date, Number(f.ord) || 0),
+      opponent_career_record_before: completeRecordEntering(opponentId, f.event_date, Number(f.ord) || 0),
+      // Completed rows use the final recorded closing line. Upcoming prices can
+      // still move, so never present those as the odds "when the result happened."
+      closing_odds: f.event_complete && (fighterClose || opponentClose)
+        ? { fighter: fighterClose ?? null, opponent: opponentClose ?? null }
+        : null,
+      opponent_form: includeOpponentForm ? opponentFormBefore(opponentId, f.event_date) : undefined,
       upcoming: !f.event_complete && f.event_date >= todayIso(),
     };
   });
 }
 
-async function getFight(id: string): Promise<unknown | null> {
+type SourceCareerRow = {
+  source_bout_key: string;
+  source_order: number;
+  date: string;
+  outcome: "win" | "loss" | "draw" | "nc";
+  opponent_name: string;
+  opponent_url: string | null;
+  opponent_id: string | null;
+  event_name: string;
+  event_url: string | null;
+  method: string;
+  round: string;
+  time: string;
+  is_ufc: number;
+  ufc_fight_id: string | null;
+  profile_url: string | null;
+};
+
+/**
+ * Merge the rich UFCStats rows with every dated bout from the independently
+ * verified professional history. UFC rows retain local stats, odds and links;
+ * outside rows link back to their source event/opponent.
+ */
+function professionalHistory(fighterId: string, ufcHistory: any[]): unknown[] {
+  const rows = db.prepare(`
+    SELECT cb.*, source_profile.source_url AS profile_url, opponent_profile.fighter_id AS opponent_id
+    FROM career_bouts cb
+    JOIN career_profiles source_profile ON source_profile.fighter_id = cb.fighter_id
+    LEFT JOIN career_profiles opponent_profile
+      ON opponent_profile.source_url = cb.opponent_url AND opponent_profile.status = 'verified'
+    WHERE cb.fighter_id = ? AND source_profile.status = 'verified'
+    ORDER BY cb.date ASC, cb.source_order DESC
+  `).all(fighterId) as SourceCareerRow[];
+  if (!rows.length) return ufcHistory.filter((row) => !row.upcoming);
+
+  const index = fightIndex();
+  const running: FightRecord = { wins: 0, losses: 0, draws: 0, ncs: 0 };
+  const completeRecordView = (record: FightRecord) => ({
+    ...record,
+    text: recordText(record),
+    verified: true as const,
+  });
+  const before = new Map<string, ReturnType<typeof completeRecordView>>();
+  for (const row of rows) {
+    before.set(row.source_bout_key, completeRecordView(running));
+    if (row.outcome === "win") running.wins += 1;
+    else if (row.outcome === "loss") running.losses += 1;
+    else if (row.outcome === "draw") running.draws += 1;
+    else if (row.outcome === "nc") running.ncs += 1;
+  }
+
+  const sourceByUfcFight = new Map(rows.filter((row) => row.ufc_fight_id).map((row) => [row.ufc_fight_id!, row]));
+  const merged: any[] = ufcHistory.filter((row) => !row.upcoming).map((row) => {
+    const source = sourceByUfcFight.get(row.fight_id);
+    return {
+      ...row,
+      promotion: "ufc" as const,
+      source_order: source?.source_order ?? Number.MAX_SAFE_INTEGER,
+      source_url: source?.event_url ?? source?.profile_url ?? null,
+      event_url: null,
+      opponent: { ...row.opponent, source_url: source?.opponent_url ?? null },
+      career_record_before: source ? before.get(source.source_bout_key) : row.career_record_before,
+    };
+  });
+
+  for (const row of rows) {
+    // Reconciled UFC rows already have a richer local row above. If UFCStats
+    // lacks an old UFC bout, retain the verified source row instead of making
+    // it disappear from an otherwise complete professional history.
+    if (row.ufc_fight_id) continue;
+    const opponentRecord = row.opponent_id ? completeRecordBefore(index, row.opponent_id, row.date) : null;
+    const fighterUfc = careerBefore(index, fighterId, row.date, "");
+    const opponentUfc = row.opponent_id ? careerBefore(index, row.opponent_id, row.date, "") : null;
+    merged.push({
+      promotion: row.is_ufc ? "ufc" as const : "outside" as const,
+      source_order: row.source_order,
+      fight_id: null,
+      event_id: null,
+      event_name: row.event_name,
+      event_url: row.event_url,
+      source_url: row.event_url ?? row.profile_url,
+      date: row.date,
+      weight_class: "",
+      title_fight: false,
+      title_type: null,
+      title_narrative: null,
+      outcome: row.outcome,
+      method: row.method || null,
+      round: row.round || null,
+      time: row.time || null,
+      opponent: {
+        id: row.opponent_id ?? "",
+        name: row.opponent_name,
+        source_url: row.opponent_url,
+      },
+      record_before: {
+        wins: fighterUfc.wins,
+        losses: fighterUfc.losses,
+        draws: fighterUfc.draws,
+        ncs: fighterUfc.ncs,
+        text: recordText(fighterUfc),
+        streak: fighterUfc.winStreak > 0 ? { count: fighterUfc.winStreak, outcome: "win" as const }
+          : fighterUfc.lossStreak > 0 ? { count: fighterUfc.lossStreak, outcome: "loss" as const }
+            : null,
+      },
+      opponent_record_before: opponentUfc ? {
+        wins: opponentUfc.wins,
+        losses: opponentUfc.losses,
+        draws: opponentUfc.draws,
+        ncs: opponentUfc.ncs,
+        text: recordText(opponentUfc),
+        streak: opponentUfc.winStreak > 0 ? { count: opponentUfc.winStreak, outcome: "win" as const }
+          : opponentUfc.lossStreak > 0 ? { count: opponentUfc.lossStreak, outcome: "loss" as const }
+            : null,
+      } : null,
+      career_record_before: before.get(row.source_bout_key) ?? null,
+      opponent_career_record_before: opponentRecord ? completeRecordView(opponentRecord) : null,
+      closing_odds: null,
+      upcoming: false,
+    });
+  }
+
+  return merged.sort((a, b) => b.date.localeCompare(a.date) || a.source_order - b.source_order);
+}
+
+async function getFight(id: string, rankingType: RankingType): Promise<unknown | null> {
   let f = db
     .prepare(`
       SELECT f.*, e.name AS event_name, e.date AS event_date, e.location AS event_location, e.complete AS event_complete
@@ -531,25 +731,37 @@ async function getFight(id: string): Promise<unknown | null> {
     }
   }
 
-  const fullFighter = (fid: string, fallback: string) => {
+  const index = fightIndex();
+  const fullFighter = (fid: string, fallback: string, opponentId: string) => {
     requestPhoto(fid);
-    const summary = fighterSummary(fid, fallback);
+    const summary = fighterSummary(fid, fallback, rankingType);
     const bio = fid
-      ? (db.prepare("SELECT height, weight, reach, stance FROM fighters WHERE id = ?").get(fid) as any)
+      ? (db.prepare("SELECT height, weight, reach, stance, birth_date FROM fighters WHERE id = ?").get(fid) as any)
       : null;
     const history = fid ? fighterHistory(fid) : [];
+    const birthDate: string = bio?.birth_date ?? "";
+    const completeRecord = fid ? completeRecordBefore(index, fid, f.event_date, Number(f.ord) || 0) : null;
     return {
       ...summary,
+      // A matchup is a historical snapshot. Never show today's fallback total
+      // on an old bout while its dated career source is still pending.
+      record: completeRecord ? recordText(completeRecord) : "",
       height: bio?.height ?? "",
       weight: bio?.weight ?? "",
       reach: bio?.reach ?? "",
       stance: bio?.stance ?? "",
+      birth_date: birthDate || null,
+      age: birthDate ? ageOn(birthDate, f.event_date) : null,
+      // Career numbers as they stood walking into this bout, from our own
+      // fight records: never today's totals projected back onto an old card.
+      career_before: fid ? careerBefore(index, fid, f.event_date, f.weight_class ?? "", Number(f.ord) || 0, opponentId) : null,
+      complete_record_before: completeRecord ? { ...completeRecord, text: recordText(completeRecord), verified: true } : null,
       history,
     };
   };
 
-  const f1 = fullFighter(f.f1_id, f.f1_name);
-  const f2 = fullFighter(f.f2_id, f.f2_name);
+  const f1 = fullFighter(f.f1_id, f.f1_name, f.f2_id);
+  const f2 = fullFighter(f.f2_id, f.f2_name, f.f1_id);
 
   // Common opponents & head-to-head, computed from our own data.
   const oppResults = (history: any[], selfIds: Set<string>) => {
@@ -600,20 +812,47 @@ async function getFight(id: string): Promise<unknown | null> {
   };
 }
 
-async function getFighter(id: string): Promise<unknown | null> {
-  const fr = db.prepare("SELECT * FROM fighters WHERE id = ?").get(id) as any;
+async function getFighter(id: string, rankingType: RankingType): Promise<unknown | null> {
+  let fr = db.prepare("SELECT * FROM fighters WHERE id = ?").get(id) as any;
   if (!fr) return null;
+  if (!fr.birth_fetched_at) {
+    try {
+      await syncFighterBirthDateOnce(id);
+      fr = db.prepare("SELECT * FROM fighters WHERE id = ?").get(id) as any;
+    } catch (err) {
+      log("lazy fighter birth date failed:", String(err));
+    }
+  }
+  const careerState = db.prepare("SELECT status, checked_at FROM career_profiles WHERE fighter_id = ?").get(id) as { status: string; checked_at: number | null } | undefined;
+  const retryAfter = careerState?.status === "error" ? 86_400_000 : 30 * 86_400_000;
+  const shouldFetchCareer = !careerState
+    || careerState.status === "pending"
+    || (careerState.status !== "verified" && Date.now() - (careerState.checked_at ?? 0) >= retryAfter);
+  if (shouldFetchCareer) {
+    try {
+      await syncFighterCareerOnce(id);
+    } catch (err) {
+      // The page still has complete UFCStats data. A temporary third-party
+      // failure must not make the whole fighter profile unavailable.
+      log("lazy professional history failed:", String(err));
+    }
+  }
   await ensureFighterTitleTypes(id);
   requestPhoto(id);
+  const summary = fighterSummary(fr.id, fr.name, rankingType);
+  const indexedFighter = fightIndex().fighters.get(fr.id);
+  const history = fighterHistory(id, true) as any[];
   const ranking = db
     .prepare(`
       SELECT division, rank, rank_change FROM rankings
-      WHERE fighter_id = ? AND division NOT LIKE '%Pound-for-Pound%'
-      ORDER BY CASE ranking_type WHEN 'meta' THEN 0 ELSE 1 END,
-               CASE rank WHEN 'C' THEN 0 WHEN 'IC' THEN 1 ELSE CAST(rank AS INTEGER) + 2 END
+      WHERE fighter_id = ? AND ranking_type = ?
+        AND division NOT LIKE '%Pound-for-Pound%'
+      ORDER BY CASE rank WHEN 'C' THEN 0 WHEN 'IC' THEN 1 ELSE CAST(rank AS INTEGER) + 2 END
       LIMIT 1
     `)
-    .get(id) as any;
+    .get(id, rankingType) as any;
+  const records = fighterRecords(id);
+  const recordKeys = new Set(records.map((entry) => entry.key));
   return {
     id: fr.id,
     name: fr.name,
@@ -622,10 +861,62 @@ async function getFighter(id: string): Promise<unknown | null> {
     weight: fr.weight,
     reach: fr.reach,
     stance: fr.stance,
-    record: `${fr.wins}-${fr.losses}${fr.draws ? `-${fr.draws}` : ""}`,
-    photo_url: fr.photo_url || null,
+    birth_date: fr.birth_date || null,
+    age: ageOnDate(fr.birth_date),
+    record: summary.record,
+    record_verified: summary.record_verified ?? false,
+    ufc_record: indexedFighter ? recordText(indexedFighter.ufc) : "0-0",
+    outside_ufc_record: indexedFighter?.careerVerified ? recordText(indexedFighter.outside) : null,
+    career_source_url: (db.prepare("SELECT source_url FROM career_profiles WHERE fighter_id = ? AND status = 'verified'").get(fr.id) as { source_url: string } | undefined)?.source_url ?? null,
+    photo_url: cachedPhotoUrl(fr.id, fr.photo_url),
     ranking: ranking ?? null,
-    history: fighterHistory(id),
+    // Where this fighter sits at the top of the sport, recomputed from the
+    // same index the leaderboards use, so it moves the moment a result lands.
+    records,
+    stats: fighterStats(id).filter((entry) => !recordKeys.has(entry.key)),
+    history,
+    pro_history: professionalHistory(id, history),
+  };
+}
+
+function getFighterPreview(id: string): unknown | null {
+  const fighter = db.prepare("SELECT id, name, nickname, wins, losses, draws, photo_url FROM fighters WHERE id = ?").get(id) as any;
+  if (!fighter) return null;
+  const rows = db.prepare(`
+    SELECT f.*, e.id AS event_id, e.name AS event_name, e.date AS event_date, e.complete AS event_complete
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE f.f1_id = ? OR f.f2_id = ?
+    ORDER BY e.date DESC, f.ord ASC
+  `).all(id, id) as any[];
+  const mapFight = (fight: any) => {
+    const isF1 = fight.f1_id === id;
+    return {
+      fight_id: fight.id,
+      event_id: fight.event_id,
+      event_name: fight.event_name,
+      date: fight.event_date,
+      weight_class: fight.weight_class,
+      outcome: isF1 ? fight.f1_outcome : fight.f2_outcome,
+      method: fight.method,
+      opponent: { id: isF1 ? fight.f2_id : fight.f1_id, name: isF1 ? fight.f2_name : fight.f1_name },
+      upcoming: !fight.event_complete && fight.event_date >= todayIso(),
+    };
+  };
+  const upcoming = rows
+    .filter((fight) => !fight.event_complete && fight.event_date >= todayIso())
+    .sort((a, b) => a.event_date.localeCompare(b.event_date))
+    .slice(0, 1)
+    .map(mapFight);
+  return {
+    id: fighter.id,
+    name: fighter.name,
+    nickname: fighter.nickname,
+    record: fighterSummary(fighter.id, fighter.name).record,
+    photo_url: cachedPhotoUrl(fighter.id, fighter.photo_url),
+    upcoming,
+    // Five rows total: the nearest booking first, then enough completed bouts
+    // to fill the remaining places. Fighters without a booking get five past bouts.
+    recent: rows.filter((fight) => fight.event_complete).slice(0, 5 - upcoming.length).map(mapFight),
   };
 }
 
@@ -634,6 +925,22 @@ const ACTIVE_WINDOW_DAYS = 45;
 
 function getRankings(rankingType: RankingType): unknown {
   const today = todayIso();
+  const activeInterimChampions = new Map<string, string>();
+  const completedTitleFights = db.prepare(`
+    SELECT f.*, e.date AS event_date
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 1 AND e.date <= ?
+      AND f.title_fight = 1 AND f.title_type IN ('title', 'interim')
+    ORDER BY e.date ASC, f.ord ASC
+  `).all(today) as any[];
+  for (const fight of completedTitleFights) {
+    const winner = fight.f1_outcome === "win" ? fight.f1_id : fight.f2_outcome === "win" ? fight.f2_id : null;
+    if (!winner) continue;
+    if (fight.title_type === "interim") activeInterimChampions.set(fight.weight_class, winner);
+    // A completed undisputed-title result resolves any older interim claim in
+    // that division, including an in-cage unification or a vacant-title bout.
+    else activeInterimChampions.delete(fight.weight_class);
+  }
   const divisions = db
     .prepare(`
       SELECT division, weight_limit, MIN(rowid) AS first_row
@@ -656,6 +963,12 @@ function getRankings(rankingType: RankingType): unknown {
     WHERE (f.f1_id = ? OR f.f2_id = ?) AND e.complete = 0 AND e.date >= ?
     ORDER BY e.date ASC LIMIT 1
   `);
+  const recentResultsStmt = db.prepare(`
+    SELECT f.f1_id, f.f1_outcome, f.f2_outcome
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE (f.f1_id = ? OR f.f2_id = ?) AND e.complete = 1 AND e.date <= ?
+    ORDER BY e.date DESC, f.ord ASC
+  `);
 
   return divisions.map((d) => {
     const entries = db
@@ -675,10 +988,23 @@ function getRankings(rankingType: RankingType): unknown {
         if (e.fighter_id) {
           const last = lastFightStmt.get(e.fighter_id, e.fighter_id, e.fighter_id, today) as any;
           const next = nextFightStmt.get(e.fighter_id, e.fighter_id, e.fighter_id, today) as any;
+          const recentResults = recentResultsStmt.all(e.fighter_id, e.fighter_id, today) as any[];
           const daysSince = last?.date ? Math.round((Date.parse(today) - Date.parse(last.date)) / 86400000) : null;
           let status = "normal";
           if (next) status = "scheduled";
           else if (daysSince != null && daysSince <= ACTIVE_WINDOW_DAYS) status = "active";
+          const latestOutcome = recentResults.length
+            ? (recentResults[0].f1_id === e.fighter_id ? recentResults[0].f1_outcome : recentResults[0].f2_outcome) ?? null
+            : null;
+          let streakCount = 0;
+          if (latestOutcome) {
+            for (const fight of recentResults) {
+              const outcome = fight.f1_id === e.fighter_id ? fight.f1_outcome : fight.f2_outcome;
+              if (outcome !== latestOutcome) break;
+              streakCount += 1;
+            }
+          }
+          const streakSuffix: Record<string, string> = { win: "W", loss: "L", draw: "D", nc: "NC" };
           activity = {
             status,
             last_fight_date: last?.date ?? null,
@@ -688,15 +1014,20 @@ function getRankings(rankingType: RankingType): unknown {
               : null,
             days_since: daysSince,
             next_fight: next ?? null,
+            current_streak: latestOutcome && streakCount
+              ? { count: streakCount, outcome: latestOutcome, label: `${streakCount}${streakSuffix[latestOutcome] ?? ""}` }
+              : null,
           };
         }
         return {
           rank: e.rank,
+          is_interim_champion: e.rank === "IC"
+            || (e.rank !== "C" && activeInterimChampions.get(d.division) === e.fighter_id),
           name: e.fighter_name,
           fighter_id: e.fighter_id || null,
           rank_change: e.rank_change,
-          photo_url: e.photo_url || null,
-          record: e.fighter_id ? `${e.wins}-${e.losses}${e.draws ? `-${e.draws}` : ""}` : "",
+          photo_url: cachedPhotoUrl(e.fighter_id, e.photo_url),
+          record: e.fighter_id ? recordText(currentRecord(e.fighter_id, e).value) : "",
           activity,
         };
       }),
@@ -738,8 +1069,8 @@ function search(q: string): unknown {
       id: f.id,
       name: f.name,
       nickname: f.nickname,
-      record: `${f.wins}-${f.losses}${f.draws ? `-${f.draws}` : ""}`,
-      photo_url: f.photo_url || null,
+      record: recordText(currentRecord(f.id, f).value),
+      photo_url: cachedPhotoUrl(f.id, f.photo_url),
       ufc_fights: f.ufc_fights,
     })),
     events,
@@ -753,12 +1084,19 @@ function status(): unknown {
     events: count("SELECT COUNT(*) AS c FROM events"),
     events_backfilled: count("SELECT COUNT(*) AS c FROM events WHERE detail_fetched_at IS NOT NULL"),
     fights: count("SELECT COUNT(*) AS c FROM fights"),
+    fight_stats: count("SELECT COUNT(*) AS c FROM fights f JOIN events e ON e.id = f.event_id WHERE e.complete = 1 AND f.detail_json IS NOT NULL"),
+    fight_stats_pending: count("SELECT COUNT(*) AS c FROM fights f JOIN events e ON e.id = f.event_id WHERE e.complete = 1 AND (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL) AND f.detail_fetched_at IS NULL"),
     fighters: count("SELECT COUNT(*) AS c FROM fighters"),
     ranked: count("SELECT COUNT(*) AS c FROM rankings WHERE ranking_type = 'meta'"),
     rankings_meta: count("SELECT COUNT(*) AS c FROM rankings WHERE ranking_type = 'meta'"),
     rankings_media: count("SELECT COUNT(*) AS c FROM rankings WHERE ranking_type = 'media'"),
     odds: count("SELECT COUNT(*) AS c FROM odds WHERE f1_close IS NOT NULL"),
     photos: count("SELECT COUNT(*) AS c FROM fighters WHERE photo_url IS NOT NULL AND photo_url != ''"),
+    birth_dates: count("SELECT COUNT(*) AS c FROM fighters WHERE birth_date != ''"),
+    birth_dates_pending: count("SELECT COUNT(*) AS c FROM fighters WHERE birth_fetched_at IS NULL"),
+    career_records_verified: count("SELECT COUNT(*) AS c FROM career_profiles WHERE status = 'verified'"),
+    career_records_pending: count("SELECT COUNT(*) AS c FROM fighters fr WHERE EXISTS (SELECT 1 FROM fights f WHERE f.f1_id = fr.id OR f.f2_id = fr.id) AND NOT EXISTS (SELECT 1 FROM career_profiles cp WHERE cp.fighter_id = fr.id AND cp.status = 'verified')"),
+    outside_ufc_bouts: count("SELECT COUNT(*) AS c FROM career_bouts cb JOIN career_profiles cp ON cp.fighter_id = cb.fighter_id WHERE cp.status = 'verified' AND cb.is_ufc = 0"),
     last_tick_at: getMeta("last_tick_at"),
     last_sync_error: getMeta("last_sync_error"),
   };
@@ -806,8 +1144,8 @@ function pageSeo(pathname: string): PageSeo {
   };
   if (pathname === "/rankings") {
     return {
-      title: "UFC Meta and Media Rankings | ufc.sh",
-      description: "Current UFC Meta and Media rankings by division, including champions, pound-for-pound lists and fighter activity.",
+      title: "UFC Meta Rankings | ufc.sh",
+      description: "Current UFC Meta rankings by division, including champions and fighter activity.",
       canonical: `${SITE_URL}/rankings`,
       type: "website",
     };
@@ -868,7 +1206,7 @@ function pageSeo(pathname: string): PageSeo {
   if (parts[1] === "fighters" && id) {
     const fighter = db.prepare("SELECT id, name, nickname, wins, losses, draws, photo_url FROM fighters WHERE id = ?").get(id) as any;
     if (fighter) {
-      const record = `${fighter.wins}-${fighter.losses}${fighter.draws ? `-${fighter.draws}` : ""}`;
+      const record = recordText(currentRecord(fighter.id, fighter).value);
       return {
         title: `${fighter.name} — Record & Fight History | ufc.sh`,
         description: `${fighter.name} UFC profile: ${record} record, physical statistics, ranking and complete fight history.`,
@@ -927,6 +1265,83 @@ const MIME: Record<string, string> = {
   ".woff2": "font/woff2", ".json": "application/json", ".webmanifest": "application/manifest+json",
   ".txt": "text/plain; charset=utf-8", ".xml": "application/xml; charset=utf-8",
 };
+
+const imageRequests = new Map<string, Promise<{ data: Buffer; contentType: string }>>();
+
+async function loadFighterImage(id: string): Promise<{ data: Buffer; contentType: string } | null> {
+  if (!/^[a-f0-9]+$/i.test(id)) return null;
+  const fighter = db.prepare("SELECT photo_url, photo_checked_at FROM fighters WHERE id = ?").get(id) as
+    | { photo_url: string | null; photo_checked_at: number | null }
+    | undefined;
+  if (!fighter?.photo_url) return null;
+
+  const imagePath = path.join(IMAGE_CACHE, `${id}.img`);
+  const typePath = path.join(IMAGE_CACHE, `${id}.type`);
+  const readCached = async () => {
+    const [data, contentType] = await Promise.all([
+      fs.readFile(imagePath),
+      fs.readFile(typePath, "utf8").catch(() => "image/jpeg"),
+    ]);
+    return { data, contentType: contentType.trim() || "image/jpeg" };
+  };
+
+  try {
+    const stat = await fs.stat(imagePath);
+    if (!fighter.photo_checked_at || stat.mtimeMs >= fighter.photo_checked_at) return await readCached();
+  } catch {
+    // First request downloads the image; later requests are local disk reads.
+  }
+
+  const existing = imageRequests.get(id);
+  if (existing) return existing;
+  const request = (async () => {
+    try {
+      const response = await fetch(fighter.photo_url!, {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; ufc.sh image cache)" },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) throw new Error(`photo HTTP ${response.status}`);
+      const contentType = (response.headers.get("content-type") ?? "image/jpeg").split(";")[0];
+      if (!contentType.startsWith("image/")) throw new Error(`unexpected photo type ${contentType}`);
+      const data = Buffer.from(await response.arrayBuffer());
+      if (!data.length || data.length > 10_000_000) throw new Error("invalid photo size");
+      await fs.mkdir(IMAGE_CACHE, { recursive: true });
+      await Promise.all([fs.writeFile(imagePath, data), fs.writeFile(typePath, contentType)]);
+      return { data, contentType };
+    } catch (error) {
+      try {
+        return await readCached();
+      } catch {
+        throw error;
+      }
+    } finally {
+      imageRequests.delete(id);
+    }
+  })();
+  imageRequests.set(id, request);
+  return request;
+}
+
+async function serveFighterImage(res: http.ServerResponse, id: string): Promise<void> {
+  try {
+    const image = await loadFighterImage(id);
+    if (!image) {
+      res.writeHead(404, { "Cache-Control": "public, max-age=300" });
+      res.end();
+      return;
+    }
+    res.writeHead(200, {
+      "Content-Type": image.contentType,
+      "Content-Length": image.data.length,
+      "Cache-Control": "public, max-age=86400, stale-while-revalidate=2592000",
+    });
+    res.end(image.data);
+  } catch (error) {
+    log(`fighter image ${id} failed:`, String(error));
+    res.writeHead(502, { "Cache-Control": "no-store" });
+    res.end();
+  }
+}
 
 function sendText(
   req: http.IncomingMessage,
@@ -1007,24 +1422,33 @@ export function startApi(port: number): void {
       const url = new URL(req.url ?? "/", "http://localhost");
       const p = url.pathname;
       const part = (i: number) => p.split("/")[i] ?? "";
+      const rankingType: RankingType = url.searchParams.get("ranking") === "media" || url.searchParams.get("type") === "media"
+        ? "media"
+        : "meta";
 
+      if (p.startsWith("/api/images/")) return await serveFighterImage(res, part(3));
       if (p === "/api/events") return sendJson(req, res, listEvents());
       if (p.startsWith("/api/events/")) {
-        const data = await getEvent(part(3));
+        const data = await getEvent(part(3), rankingType);
         return data ? sendJson(req, res, data) : sendJson(req, res, { error: "not found" }, 404);
       }
       if (p.startsWith("/api/fights/")) {
-        const data = await getFight(part(3));
+        const data = await getFight(part(3), rankingType);
         return data ? sendJson(req, res, data) : sendJson(req, res, { error: "not found" }, 404);
       }
       if (p.startsWith("/api/fighters/")) {
-        const data = await getFighter(part(3));
+        const data = await getFighter(part(3), rankingType);
+        return data ? sendJson(req, res, data) : sendJson(req, res, { error: "not found" }, 404);
+      }
+      if (p.startsWith("/api/previews/")) {
+        const data = getFighterPreview(part(3));
         return data ? sendJson(req, res, data) : sendJson(req, res, { error: "not found" }, 404);
       }
       if (p === "/api/rankings") {
-        const rankingType: RankingType = url.searchParams.get("type") === "media" ? "media" : "meta";
         return sendJson(req, res, getRankings(rankingType));
       }
+      if (p === "/api/stats") return sendJson(req, res, getStats(url.searchParams));
+      if (p === "/api/labs") return sendJson(req, res, getLabs(url.searchParams));
       if (p === "/api/search") return sendJson(req, res, search(url.searchParams.get("q") ?? ""));
       if (p === "/api/status") return sendJson(req, res, status());
       if (p.startsWith("/api/")) return sendJson(req, res, { error: "not found" }, 404);

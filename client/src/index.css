@@ -27,6 +27,27 @@
      only thing carrying the meaning. */
   --color-belt: #a16207;
   --color-belt-interim: #475569;
+
+  /* Chart series. Slots are assigned in order and follow the entity, never its
+     rank, so filtering a chart never repaints the bars that remain. Validated
+     as a categorical set on white: every slot clears 3:1 contrast and the
+     worst adjacent pair separates by ΔE 13.8 under simulated colour-blindness
+     (target ≥ 8). Slot 1 is the population under study; slot 2 is the
+     comparison population, which is also always named in a legend. */
+  --color-series-1: #2563eb;
+  --color-series-2: #ea580c;
+  --color-series-3: #0d9488;
+  --color-series-4: #7c3aed;
+
+  /* Result ramps: one hue each, dark → light, for KO/TKO → submission →
+     decision. Ordered because the methods are ordered by how decisive they
+     are, and validated so even the lightest step stays visible on white. */
+  --color-win-1: #064e3b;
+  --color-win-2: #047857;
+  --color-win-3: #10b981;
+  --color-loss-1: #881337;
+  --color-loss-2: #be123c;
+  --color-loss-3: #f43f5e;
 }
 
 html,
@@ -39,6 +60,97 @@ body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
 }
+
+/* The application predates theme tokens and intentionally uses a compact set
+   of Tailwind neutrals. These overrides remap that complete neutral palette in
+   dark mode, including interactive states, so every existing and future panel
+   participates without maintaining two copies of each component class list. */
+.dark {
+  --color-f1-ink: #93c5fd;
+  --color-f1-soft: #172554;
+  --color-f2-ink: #fca5a5;
+  --color-f2-soft: #450a0a;
+  --color-plot-track: #27272a;
+  --color-plot-axis: #3f3f46;
+  --color-belt: #fbbf24;
+  --color-belt-interim: #cbd5e1;
+}
+.dark .bg-white { background-color: #18181b !important; }
+.dark .bg-white\/95 { background-color: rgb(24 24 27 / 0.95) !important; }
+.dark .bg-zinc-50 { background-color: #27272a !important; }
+.dark .bg-zinc-100 { background-color: #09090b !important; }
+.dark .bg-zinc-100\/50 { background-color: rgb(24 24 27 / 0.65) !important; }
+.dark .bg-zinc-200 { background-color: #3f3f46 !important; }
+.dark .bg-zinc-300 { background-color: #52525b !important; }
+.dark .bg-zinc-900 { background-color: #09090b !important; }
+.dark .text-zinc-950,
+.dark .text-zinc-900,
+.dark .text-zinc-800 { color: #f4f4f5 !important; }
+.dark .text-zinc-700,
+.dark .text-zinc-600 { color: #d4d4d8 !important; }
+.dark .text-zinc-500 { color: #a1a1aa !important; }
+.dark .text-zinc-400 { color: #a1a1aa !important; }
+.dark .text-zinc-300 { color: #71717a !important; }
+.dark .border-zinc-100 { border-color: #27272a !important; }
+.dark .border-zinc-200 { border-color: #3f3f46 !important; }
+.dark .border-zinc-300,
+.dark .border-zinc-400 { border-color: #52525b !important; }
+.dark .divide-zinc-50 > :not(:last-child),
+.dark .divide-zinc-100 > :not(:last-child) { border-color: #27272a !important; }
+.dark .ring-zinc-200 { --tw-ring-color: #52525b !important; }
+.dark .bg-emerald-50 { background-color: #052e16 !important; }
+.dark .bg-emerald-100 { background-color: #064e3b !important; }
+.dark .bg-rose-50 { background-color: #4c0519 !important; }
+.dark .bg-rose-100 { background-color: #881337 !important; }
+.dark .bg-amber-50 { background-color: #451a03 !important; }
+.dark .bg-amber-100 { background-color: #78350f !important; }
+.dark .bg-sky-50 { background-color: #082f49 !important; }
+.dark .bg-sky-100 { background-color: #0c4a6e !important; }
+.dark .bg-slate-100 { background-color: #1e293b !important; }
+.dark .bg-violet-100 { background-color: #2e1065 !important; }
+.dark .bg-orange-50,
+.dark .bg-orange-50\/90 { background-color: #431407 !important; }
+.dark .bg-sky-50\/90 { background-color: rgb(8 47 73 / 0.9) !important; }
+.dark .bg-amber-400\/20 { background-color: rgb(251 191 36 / 0.16) !important; }
+.dark .text-emerald-700,
+.dark .text-emerald-800 { color: #6ee7b7 !important; }
+.dark .text-rose-700,
+.dark .text-rose-800 { color: #fda4af !important; }
+.dark .text-amber-700,
+.dark .text-amber-800 { color: #fcd34d !important; }
+.dark .text-sky-600,
+.dark .text-sky-700 { color: #7dd3fc !important; }
+.dark .text-violet-500,
+.dark .text-violet-700 { color: #c4b5fd !important; }
+.dark .border-emerald-200 { border-color: #065f46 !important; }
+.dark .border-rose-200 { border-color: #9f1239 !important; }
+.dark .border-amber-200 { border-color: #92400e !important; }
+.dark .border-sky-200 { border-color: #075985 !important; }
+.dark .border-orange-200 { border-color: #9a3412 !important; }
+.dark .ring-emerald-100,
+.dark .ring-emerald-500 { --tw-ring-color: #047857 !important; }
+.dark .ring-rose-100,
+.dark .ring-rose-500 { --tw-ring-color: #be123c !important; }
+.dark .ring-amber-100,
+.dark .ring-amber-200,
+.dark .ring-amber-500 { --tw-ring-color: #b45309 !important; }
+.dark .ring-slate-200 { --tw-ring-color: #475569 !important; }
+.dark .ring-white { --tw-ring-color: #18181b !important; }
+.dark .hover\:bg-zinc-50:hover,
+.dark .hover\:bg-zinc-50\/80:hover,
+.dark .hover\:bg-zinc-100:hover { background-color: #27272a !important; }
+.dark .hover\:bg-zinc-200:hover,
+.dark .hover\:bg-zinc-200\/60:hover { background-color: #3f3f46 !important; }
+.dark .hover\:bg-white:hover,
+.dark .hover\:bg-white\/70:hover { background-color: #27272a !important; }
+.dark .hover\:bg-emerald-100:hover { background-color: #064e3b !important; }
+.dark .hover\:bg-rose-100:hover { background-color: #881337 !important; }
+.dark .hover\:bg-amber-100:hover { background-color: #78350f !important; }
+.dark .hover\:bg-sky-100:hover { background-color: #0c4a6e !important; }
+.dark .hover\:text-zinc-900:hover,
+.dark .hover\:text-zinc-950:hover { color: #fff !important; }
+.dark select,
+.dark input { color-scheme: dark; }
 
 /* Slim, quiet scrollbars for the always-scrolling panes. */
 * {

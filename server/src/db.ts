@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS fighters (
   weight           TEXT NOT NULL DEFAULT '',
   reach            TEXT NOT NULL DEFAULT '',
   stance           TEXT NOT NULL DEFAULT '',
+  birth_date       TEXT NOT NULL DEFAULT '',
+  birth_fetched_at INTEGER,
   wins             INTEGER NOT NULL DEFAULT 0,
   losses           INTEGER NOT NULL DEFAULT 0,
   draws            INTEGER NOT NULL DEFAULT 0,
@@ -102,7 +104,68 @@ CREATE TABLE IF NOT EXISTS odds (
   final      INTEGER NOT NULL DEFAULT 0,
   fetched_at INTEGER
 );
+
+-- A verified link from our UFCStats identity to a complete professional
+-- record source. A verified status is deliberately required before any of
+-- the rows below are used: common names are never joined by name alone.
+CREATE TABLE IF NOT EXISTS career_profiles (
+  fighter_id       TEXT PRIMARY KEY,
+  source           TEXT NOT NULL DEFAULT 'sherdog',
+  source_url       TEXT,
+  source_name      TEXT,
+  status           TEXT NOT NULL DEFAULT 'pending'
+                   CHECK (status IN ('pending', 'verified', 'not_found', 'ambiguous', 'error')),
+  checked_at       INTEGER,
+  fetched_at       INTEGER,
+  error            TEXT NOT NULL DEFAULT '',
+  source_wins      INTEGER,
+  source_losses    INTEGER,
+  source_draws     INTEGER,
+  source_ncs       INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_career_profiles_refresh
+  ON career_profiles(status, checked_at);
+
+-- All professional rows from the verified source are retained, including the
+-- UFC rows used for reconciliation. Unmatched non-UFC rows are therefore the
+-- exact, dated outside-UFC history; matched UFC rows cannot be double-counted.
+CREATE TABLE IF NOT EXISTS career_bouts (
+  fighter_id        TEXT NOT NULL,
+  source            TEXT NOT NULL DEFAULT 'sherdog',
+  source_bout_key   TEXT NOT NULL,
+  source_order      INTEGER NOT NULL DEFAULT 0,
+  date              TEXT NOT NULL,
+  outcome           TEXT NOT NULL CHECK (outcome IN ('win', 'loss', 'draw', 'nc')),
+  opponent_name     TEXT NOT NULL,
+  opponent_norm     TEXT NOT NULL,
+  opponent_url      TEXT,
+  event_name        TEXT NOT NULL DEFAULT '',
+  event_url         TEXT,
+  method            TEXT NOT NULL DEFAULT '',
+  round             TEXT NOT NULL DEFAULT '',
+  time              TEXT NOT NULL DEFAULT '',
+  is_ufc            INTEGER NOT NULL DEFAULT 0,
+  ufc_fight_id      TEXT,
+  PRIMARY KEY (fighter_id, source, source_bout_key)
+);
+CREATE INDEX IF NOT EXISTS idx_career_bouts_fighter_date
+  ON career_bouts(fighter_id, date, source_order);
+CREATE INDEX IF NOT EXISTS idx_career_bouts_ufc
+  ON career_bouts(ufc_fight_id);
 `);
+
+const careerBoutColumns = db.prepare("PRAGMA table_info(career_bouts)").all() as { name: string }[];
+if (!careerBoutColumns.some((column) => column.name === "is_ufc")) {
+  db.exec("ALTER TABLE career_bouts ADD COLUMN is_ufc INTEGER NOT NULL DEFAULT 0");
+}
+
+const fighterColumns = db.prepare("PRAGMA table_info(fighters)").all() as { name: string }[];
+if (!fighterColumns.some((column) => column.name === "birth_date")) {
+  db.exec("ALTER TABLE fighters ADD COLUMN birth_date TEXT NOT NULL DEFAULT ''");
+}
+if (!fighterColumns.some((column) => column.name === "birth_fetched_at")) {
+  db.exec("ALTER TABLE fighters ADD COLUMN birth_fetched_at INTEGER");
+}
 
 // The event listing only marks that a belt is at stake. The fight-details page
 // supplies the authoritative distinction between undisputed and interim belts.
@@ -118,6 +181,27 @@ db.exec(`
     ELSE title_type
   END
   WHERE title_type = '' AND detail_json IS NOT NULL
+`);
+
+// UFC's first championship was called the Superfight Championship. UFCStats
+// marks these five bouts with a belt but its historical headings do not use the
+// modern "Title Bout" wording. Keep the immutable fight IDs explicit so no
+// ordinary open-weight bout can be promoted by a fuzzy name/date heuristic.
+// UFC 5 was the inaugural (drawn) title bout; UFC 6–9 continued that lineage.
+db.exec(`
+  UPDATE fights
+  SET title_type = 'title',
+      detail_json = CASE
+        WHEN detail_json IS NULL THEN NULL
+        ELSE json_set(detail_json, '$.titleBout', 'title')
+      END
+  WHERE title_fight = 1 AND id IN (
+    'db8df615610f3632',
+    'd62aec55bc142346',
+    '3932f8e9a74f3d11',
+    '16b4a0b06427f1ac',
+    '6a060498e60756af'
+  )
 `);
 
 // Earlier title typing treated tournament/TUF finals as UFC divisional belts.

@@ -198,6 +198,19 @@ export async function scrapeRosterPage(char: string): Promise<ScrapedFighter[]> 
   return fighters;
 }
 
+/** Birth dates live only on the individual UFCStats fighter page, not its roster feed. */
+export async function scrapeFighterBirthDate(id: string): Promise<string> {
+  const html = await fetchHtml(`${BASE}/fighter-details/${encodeURIComponent(id)}`);
+  const $ = cheerio.load(html);
+  let birthDate = "";
+  $("li.b-list__box-list-item").each((_, item) => {
+    const text = cleanText($(item).text());
+    const match = text.match(/^DOB:\s*(.+)$/i);
+    if (match) birthDate = toIsoDate(match[1]);
+  });
+  return birthDate;
+}
+
 export type ComparisonBlock = { labels: string[]; f1: string[]; f2: string[] };
 /** Same columns as the matching ComparisonBlock, one entry per round fought. */
 export type RoundBlock = { labels: string[]; rounds: { f1: string[]; f2: string[] }[] };
@@ -324,10 +337,11 @@ export async function scrapeFightDetail(fightId: string, order?: FightOrder): Pr
     fotn: titleEl.find("img[src*='fight.png']").length > 0,
   };
   // "UFC Interim Heavyweight Title Bout" vs "UFC Flyweight Title Bout" vs
-  // "Lightweight Bout". This is the only place the interim belt is named — the
-  // event page shows the same plain belt icon for both kinds.
+  // "Lightweight Bout". The original UFC 5–9 championship was labelled a
+  // "Superfight" rather than a title bout. This is the only place the interim
+  // belt is named — the event page shows the same plain belt icon for both.
   const titleText = cleanText(titleEl.text());
-  const titleBout: FightDetail["titleBout"] = /title bout/i.test(titleText)
+  const titleBout: FightDetail["titleBout"] = /title bout|\bsuperfight\b/i.test(titleText)
     ? /\btuf\b/i.test(titleText)
       ? "tuf"
       : /\btournament\b/i.test(titleText)

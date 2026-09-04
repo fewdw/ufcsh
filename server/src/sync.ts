@@ -4,11 +4,14 @@ import {
   scrapeEventDetail,
   scrapeEventsList,
   scrapeFightDetail,
+  scrapeFighterBirthDate,
   scrapeRosterPage,
   type ScrapedEventDetail,
 } from "./scrape/ufcstats.ts";
 import { scrapeAthleteDirectoryPage, scrapeFighterImage, scrapeRankings } from "./scrape/ufccom.ts";
 import { scrapeFighterOddsHistory, scrapeOdds } from "./scrape/odds.ts";
+import { validateFightActions } from "./action-stats.ts";
+import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
 
 const HOUR = 3600_000;
 const DAY = 24 * HOUR;
@@ -104,7 +107,10 @@ function storeEventDetail(detail: ScrapedEventDetail): void {
     throw err;
   }
 
-  if (complete) setMeta("roster_stale", "1"); // records changed -> refresh roster soon
+  if (complete) {
+    setMeta("roster_stale", "1"); // records changed -> refresh roster soon
+    staleCareerRecords(detail.fights.flatMap((fight) => [fight.f1.id, fight.f2.id]));
+  }
 }
 
 export async function syncEventDetail(eventId: string): Promise<void> {
@@ -138,6 +144,63 @@ export async function syncRoster(): Promise<void> {
   touchMeta("roster_synced_at");
   setMeta("roster_stale", "0");
   log(`roster synced (${total} fighters)`);
+}
+
+export async function syncFighterBirthDate(fighterId: string): Promise<void> {
+  const birthDate = await scrapeFighterBirthDate(fighterId);
+  db.prepare("UPDATE fighters SET birth_date = ?, birth_fetched_at = ? WHERE id = ?")
+    .run(birthDate, Date.now(), fighterId);
+}
+
+let birthDatesRunning = false;
+
+/**
+ * Birth dates power every age-based view (tale of the tape on past bouts, the
+ * age filters and age curves in Labs, youngest/oldest leaderboards). They live
+ * only on the individual UFCStats fighter page, so they are harvested in the
+ * background: ranked and booked fighters first, then everyone else ordered by
+ * how many UFC bouts they have, so early passes cover the most fights.
+ * A fighter whose page had no DOB is retried after 90 days.
+ */
+export async function syncBirthDates(limit: number): Promise<void> {
+  if (birthDatesRunning) return;
+  birthDatesRunning = true;
+  try {
+    const targets = db.prepare(`
+      SELECT fr.id, fr.name, MIN(p.pri) AS pri, COUNT(*) AS bouts
+      FROM fighters fr
+      JOIN (
+        SELECT fighter_id AS id, 0 AS pri FROM rankings WHERE fighter_id != ''
+        UNION ALL
+        SELECT f.f1_id, 1 FROM fights f JOIN events e ON e.id = f.event_id WHERE e.date >= date('now')
+        UNION ALL
+        SELECT f.f2_id, 1 FROM fights f JOIN events e ON e.id = f.event_id WHERE e.date >= date('now')
+        UNION ALL
+        SELECT f1_id, 2 FROM fights
+        UNION ALL
+        SELECT f2_id, 2 FROM fights
+      ) p ON p.id = fr.id
+      WHERE fr.birth_fetched_at IS NULL
+         OR (fr.birth_date = '' AND fr.birth_fetched_at < ?)
+      GROUP BY fr.id
+      ORDER BY pri ASC, bouts DESC
+      LIMIT ?
+    `).all(Date.now() - 90 * DAY, limit) as { id: string; name: string }[];
+    if (!targets.length) return;
+    let stored = 0;
+    for (const fighter of targets) {
+      try {
+        await syncFighterBirthDate(fighter.id);
+        stored += 1;
+      } catch (err) {
+        log(`birth date for ${fighter.name} failed:`, String(err));
+      }
+    }
+    const remaining = (db.prepare("SELECT COUNT(*) AS c FROM fighters WHERE birth_fetched_at IS NULL").get() as { c: number }).c;
+    log(`birth dates: ${stored}/${targets.length} fetched, ${remaining} fighters still unchecked`);
+  } finally {
+    birthDatesRunning = false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -220,18 +283,64 @@ export async function syncFightDetail(fightId: string): Promise<void> {
   // The detail page has its own fighter order; pass ours so the scraper can map
   // every stat table onto our f1/f2 by identity instead of by column position.
   const row = db
-    .prepare("SELECT f1_id, f2_id, f1_name, f2_name FROM fights WHERE id = ?")
-    .get(fightId) as { f1_id: string; f2_id: string; f1_name: string; f2_name: string } | undefined;
+    .prepare("SELECT f1_id, f2_id, f1_name, f2_name, f1_str, f2_str, f1_td, f2_td, f1_kd, f2_kd, f1_sub, f2_sub FROM fights WHERE id = ?")
+    .get(fightId) as Record<string, string> | undefined;
   const detail = await scrapeFightDetail(
     fightId,
     row ? { f1Id: row.f1_id, f2Id: row.f2_id, f1Name: row.f1_name, f2Name: row.f2_name } : undefined,
   );
+  const detailJson = JSON.stringify(detail);
+  if (detail.type === "past" && row) {
+    const issues = validateFightActions({ ...row, detail_json: detailJson });
+    if (issues.length) throw new Error(`fight detail ${fightId} failed validation: ${issues.join("; ")}`);
+  }
   db.prepare("UPDATE fights SET detail_json = ?, detail_fetched_at = ?, title_type = ? WHERE id = ?").run(
-    JSON.stringify(detail),
+    detailJson,
     Date.now(),
     detail.titleBout ?? "",
     fightId,
   );
+}
+
+let historicalFightDetailsRunning = false;
+
+/**
+ * Fill every immutable completed-fight detail page. This is resume-safe: a
+ * successful page is timestamped in the fight row and never downloaded again.
+ * New events remain higher priority because they share the throttled host queue
+ * with this one-at-a-time historical worker.
+ */
+export async function backfillHistoricalFightDetails(): Promise<void> {
+  if (historicalFightDetailsRunning) return;
+  historicalFightDetailsRunning = true;
+  try {
+    const targets = db.prepare(`
+      SELECT f.id FROM fights f
+      JOIN events e ON e.id = f.event_id
+      WHERE e.complete = 1
+        AND (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)
+        AND f.detail_fetched_at IS NULL
+      ORDER BY e.date DESC, f.ord ASC
+    `).all() as { id: string }[];
+    if (!targets.length) return;
+    let completed = 0;
+    let failed = 0;
+    for (const { id } of targets) {
+      try {
+        await syncFightDetail(id);
+        completed += 1;
+      } catch (err) {
+        failed += 1;
+        log(`historical fight detail ${id} failed:`, String(err));
+      }
+      if ((completed + failed) % 100 === 0) {
+        log(`fight stats backfill: ${completed + failed}/${targets.length} checked, ${failed} failed`);
+      }
+    }
+    log(`fight stats backfill done: ${completed}/${targets.length} stored, ${failed} failed`);
+  } finally {
+    historicalFightDetailsRunning = false;
+  }
 }
 
 let titleTypesRunning = false;
@@ -579,21 +688,26 @@ export async function tick(): Promise<void> {
     // 6. Rankings: every 6h (UFC updates weekly).
     if (metaAgeMs("rankings_synced_at") > 6 * HOUR) await guarded("rankings", syncRankings);
 
-    // 7. Fight-detail pages: upcoming events within 14 days (tale of the tape,
-    //    refreshed every 3 days) and recent past events (stats/judges, fetched once).
+    // 7. Fight-detail pages: upcoming events within 14 days (tale of the tape)
+    //    and recent past events. Recently completed stats are refreshed because
+    //    UFCStats can publish corrections after the first result goes live.
     const detailTargets = db.prepare(`
-      SELECT f.id, f.detail_fetched_at, e.complete FROM fights f
+      SELECT f.id, f.detail_fetched_at, e.complete, e.date FROM fights f
       JOIN events e ON e.id = f.event_id
       WHERE (e.date > date('now') AND e.date <= date('now', '+14 days'))
          OR (e.complete = 1 AND e.date >= date('now', '-30 days'))
       ORDER BY e.date ASC
-    `).all() as { id: string; detail_fetched_at: number | null; complete: number }[];
+    `).all() as { id: string; detail_fetched_at: number | null; complete: number; date: string }[];
     for (const f of detailTargets) {
       const stale = f.complete
-        ? f.detail_fetched_at == null
+        ? f.detail_fetched_at == null || now - f.detail_fetched_at > (daysBetween(f.date, today) <= 2 ? 15 * 60_000 : DAY)
         : f.detail_fetched_at == null || now - f.detail_fetched_at > 3 * DAY;
       if (stale) await guarded(`fight_detail ${f.id}`, () => syncFightDetail(f.id));
     }
+
+    // Resume any failed/interrupted historical stats import without delaying
+    // the live-event and recent-correction work above.
+    if (!historicalFightDetailsRunning) void guarded("fight_stats_backfill", backfillHistoricalFightDetails);
 
     // Persist the interim/undisputed distinction for historical title bouts.
     // This gradually eliminates first-view work on fighter championship trails.
@@ -622,6 +736,14 @@ export async function tick(): Promise<void> {
       void guarded("odds_backfill", async () => { await syncOddsBackfill(200); });
     }
 
+    // 12. Birth dates, in parallel on the ufcstats queue. Live results share
+    //     that queue, but each page is one request so nothing waits long.
+    if (!birthDatesRunning) void guarded("birth_dates", () => syncBirthDates(80));
+
+    // 13. Complete professional records. This has its own politely throttled
+    //     host queue, so it cannot delay UFCStats results or rankings.
+    void guarded("career_records", () => syncCareerRecords(40));
+
     setMeta("last_tick_at", String(Date.now()));
   } finally {
     ticking = false;
@@ -630,5 +752,9 @@ export async function tick(): Promise<void> {
 
 export function startScheduler(): void {
   void tick();
+  // Full historical totals power Actions attempts, accuracy, targets, position,
+  // and control. Run continuously in the background and resume after restarts.
+  void guarded("fight_stats_backfill", backfillHistoricalFightDetails);
+  void guarded("career_records", () => syncCareerRecords(40));
   setInterval(() => void tick(), 60_000);
 }

@@ -24,6 +24,9 @@ const HOST_GAP_MS: Record<string, number> = {
   // One serialized request per second keeps the bulk odds import respectful
   // while allowing a full one-time career backfill to finish in minutes, not hours.
   "www.bestfightodds.com": 1000,
+  // Career pages are a background import; one request at a time keeps it well
+  // below ordinary browsing traffic while remaining fast enough to converge.
+  "www.sherdog.com": 1200,
 };
 const DEFAULT_GAP_MS = 1000;
 

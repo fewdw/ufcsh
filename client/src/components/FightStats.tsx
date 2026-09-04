@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import { Link } from "react-router-dom";
-import type { ComparisonBlock, Matchup, RoundBlock } from "../api";
+import type { CareerBefore, ComparisonBlock, Matchup, RoundBlock } from "../api";
 import { lastName } from "../format";
 
 // ---------------------------------------------------------------------------
@@ -463,8 +463,14 @@ export function TaleOfTape({ fight }: { fight: Matchup }) {
     f2: tape.get(label)?.f2 || fb2,
   });
 
+  // Age comes from the fight page's own tale of the tape when it has one, and
+  // otherwise from the fighter's birth date — so a completed bout can still
+  // say how old each fighter was on the night, not how old they are today.
   const dob = from("DOB");
-  const age = { f1: ageAt(dob.f1, fight.event.date), f2: ageAt(dob.f2, fight.event.date) };
+  const age = {
+    f1: ageAt(dob.f1, fight.event.date) || (fight.f1.age != null ? String(fight.f1.age) : ""),
+    f2: ageAt(dob.f2, fight.event.date) || (fight.f2.age != null ? String(fight.f2.age) : ""),
+  };
   const height = from("Height", fight.f1.height, fight.f2.height);
   const reach = from("Reach", fight.f1.reach, fight.f2.reach);
 
@@ -481,7 +487,7 @@ export function TaleOfTape({ fight }: { fight: Matchup }) {
     const gap = Math.abs(Number(age.f1) - Number(age.f2));
     return {
       side: Number(age.f1) < Number(age.f2) ? "f1" : "f2",
-      badge: `${gap}y younger`,
+      badge: `${gap} yr younger`,
       described: `${gap} years younger`,
     };
   };
@@ -502,6 +508,7 @@ export function TaleOfTape({ fight }: { fight: Matchup }) {
       {rows.map((row) => (
         <dl
           key={row.label}
+          title={row.label === "Age" ? "Age on the date of this fight" : `${row.label} recorded for this matchup`}
           className="grid grid-cols-[minmax(0,1fr)_4rem_minmax(0,1fr)] items-center gap-1 py-0.5"
         >
           {SIDES.map((side) => (
@@ -512,7 +519,9 @@ export function TaleOfTape({ fight }: { fight: Matchup }) {
             >
               <dt className="sr-only">{fight[side].name}</dt>
               <dd className={`flex min-w-0 items-center gap-1 tabular-nums ${side === "f1" ? "flex-row-reverse" : ""}`}>
-                <span className="truncate text-[10px] font-semibold text-zinc-800">{row[side] || "—"}</span>
+                <span className="truncate text-[10px] font-semibold text-zinc-800">
+                  {row[side] ? `${row[side]}${row.label === "Age" ? " y/o" : ""}` : "—"}
+                </span>
                 {row.edge?.side === side ? (
                   <span
                     className="shrink-0 rounded px-1 py-px text-[9px] font-bold leading-3.5"
@@ -1032,230 +1041,204 @@ export function FightStatistics({ fight }: { fight: Matchup }) {
 }
 
 // ---------------------------------------------------------------------------
-// Matchup stats (upcoming fights). Eight unlike career averages are normalized
-// into four 0–100 pillars, while the exact source values remain visible below
-// each gauge so the rating never becomes a context-free magic number.
+// How they fight. One panel, one source: the numbers both fighters carried
+// into this bout, rebuilt from the official per-round totals of their earlier
+// UFC fights. Because it is computed as of fight night rather than read from a
+// career average that keeps moving, an old matchup reads the way it did then,
+// and nothing here can disagree with the form panel above it.
 
-type PillarInput = {
-  source: string;
+type ProfileMetric = {
+  key: string;
   label: string;
+  format: "rate" | "percent" | "share";
+  better: "high" | "low";
+  /** Null whenever the source never recorded the denominator. */
+  value: (career: CareerBefore) => number | null;
 };
 
-type MatchupPillar = {
-  label: string;
-  inputs: PillarInput[];
-  score: (values: number[]) => number;
-};
+const rate = (total: number, seconds: number, per: number) => (seconds > 0 ? (total / (seconds / per)) : null);
+const ratio = (part: number, whole: number) => (whole > 0 ? (part / whole) * 100 : null);
 
-const MATCHUP_PILLARS: MatchupPillar[] = [
-  {
-    label: "Striking offense",
-    inputs: [
-      { source: "Strikes Landed per Min. (SLpM)", label: "Strikes Landed/Minute" },
-      { source: "Striking Accuracy", label: "Striking Accuracy" },
-    ],
-    score: ([slpm, accuracy]) => (slpm / 8) * 50 + (accuracy / 75) * 50,
-  },
-  {
-    label: "Striking defense",
-    inputs: [
-      { source: "Strikes Absorbed per Min. (SApM)", label: "Strikes Absorbed/Minute" },
-      { source: "Defense", label: "Strike Defense" },
-    ],
-    score: ([sapm, defense]) => ((8 - sapm) / 8) * 50 + (defense / 80) * 50,
-  },
-  {
-    label: "Grappling offense",
-    inputs: [
-      { source: "Takedowns Average/15 min.", label: "TD avg" },
-      { source: "Takedown Accuracy", label: "TD accuracy" },
-      { source: "Submission Average/15 min.", label: "Sub Avg/15 minute" },
-    ],
-    score: ([tdAvg, tdAccuracy, subAvg]) =>
-      (tdAvg / 6) * 40 + (tdAccuracy / 80) * 30 + (subAvg / 3) * 30,
-  },
-  {
-    label: "Grappling defense",
-    inputs: [{ source: "Takedown Defense", label: "TD defense" }],
-    score: ([tdDefense]) => tdDefense,
-  },
+const STRIKING_METRICS: ProfileMetric[] = [
+  { key: "slpm", label: "Strikes landed / min", format: "rate", better: "high", value: (c) => rate(c.sigLanded, c.seconds, 60) },
+  { key: "sapm", label: "Strikes absorbed / min", format: "rate", better: "low", value: (c) => rate(c.sigAbsorbed, c.seconds, 60) },
+  { key: "accuracy", label: "Striking accuracy", format: "percent", better: "high", value: (c) => ratio(c.sigAccuracyLanded, c.sigAttempted) },
+  { key: "defense", label: "Strikes avoided", format: "percent", better: "high", value: (c) => (c.sigFacedAttempted > 0 ? 100 - (c.sigDefenseAbsorbed / c.sigFacedAttempted) * 100 : null) },
+  { key: "knockdowns", label: "Knockdowns / 15 min", format: "rate", better: "high", value: (c) => rate(c.knockdowns, c.seconds, 900) },
 ];
 
-function numberOf(value: string): number {
-  const parsed = Number.parseFloat(value.replace(/[^\d.]/g, ""));
-  return Number.isFinite(parsed) ? parsed : 0;
+const GRAPPLING_METRICS: ProfileMetric[] = [
+  { key: "td", label: "Takedowns / 15 min", format: "rate", better: "high", value: (c) => rate(c.takedowns, c.seconds, 900) },
+  { key: "tdacc", label: "Takedown accuracy", format: "percent", better: "high", value: (c) => ratio(c.takedownAccuracyLanded, c.takedownAttempts) },
+  { key: "tddef", label: "Takedowns stopped", format: "percent", better: "high", value: (c) => (c.takedownsFacedAttempts > 0 ? 100 - (c.takedownDefenseConceded / c.takedownsFacedAttempts) * 100 : null) },
+  { key: "subs", label: "Submission attempts / 15 min", format: "rate", better: "high", value: (c) => rate(c.submissionAttempts, c.seconds, 900) },
+  { key: "control", label: "Share of time in control", format: "share", better: "high", value: (c) => (c.controlBouts > 0 ? ratio(c.controlSeconds, c.seconds) : null) },
+];
+
+function profileText(value: number | null, format: ProfileMetric["format"]): string {
+  if (value == null) return "—";
+  if (format === "rate") return (Math.round(value * 100) / 100).toFixed(2).replace(/\.?0+$/, "");
+  return `${Math.round(value)}%`;
 }
 
-function clampRating(value: number): number {
-  return Math.min(100, Math.max(0, value));
-}
-
-function matchupPillarScore(pillar: MatchupPillar, raw: (source: string) => Cell, side: Side): number | null {
-  const inputs = pillar.inputs.map((input) => raw(input.source)[side]);
-  if (inputs.some((value) => !value)) return null;
-  return clampRating(pillar.score(inputs.map(numberOf)));
-}
-
-function sideHasCareerStats(raw: (source: string) => Cell, side: Side): boolean {
-  return MATCHUP_PILLARS.some((pillar) =>
-    pillar.inputs.some((input) => numberOf(raw(input.source)[side]) > 0),
-  );
-}
-
-function PillarComparisonBar({
+/** One measure, both fighters, mirrored around the centre line. */
+function ProfileRow({
   fight,
-  scores,
-  label,
+  metric,
+  careers,
 }: {
   fight: Matchup;
-  scores: Record<Side, number | null>;
-  label: string;
+  metric: ProfileMetric;
+  careers: Record<Side, CareerBefore | null>;
 }) {
-  return (
-    <div
-      className="grid grid-cols-[2rem_minmax(0,1fr)_minmax(0,1fr)_2rem] items-center gap-x-2"
-      role="img"
-      aria-label={`${label}: ${fight.f1.name} ${scores.f1 === null ? "unavailable" : `${Math.round(scores.f1)}`}; ${fight.f2.name} ${scores.f2 === null ? "unavailable" : `${Math.round(scores.f2)}`}`}
-    >
-      <span
-        className={`text-right ${CHART_TEXT} font-semibold tabular-nums`}
-        style={{ color: scores.f1 === null ? "var(--color-zinc-400)" : SIDE.f1.ink }}
-      >
-        {scores.f1 === null ? "—" : Math.round(scores.f1)}
-      </span>
-      <span className="flex h-6 items-center justify-end bg-plot-track">
-        <span
-          className="stat-bar plot-grow block h-full rounded-l-[4px]"
-          data-stat-side="f1"
-          style={{
-            width: scores.f1 === null ? 3 : `max(3px, ${scores.f1}%)`,
-            backgroundColor: scores.f1 === null ? "var(--color-zinc-300)" : SIDE.f1.fill,
-          }}
-        />
-      </span>
-      <span className="flex h-6 items-center border-l border-plot-axis bg-plot-track">
-        <span
-          className="stat-bar plot-grow block h-full rounded-r-[4px]"
-          data-stat-side="f2"
-          style={{
-            width: scores.f2 === null ? 3 : `max(3px, ${scores.f2}%)`,
-            backgroundColor: scores.f2 === null ? "var(--color-zinc-300)" : SIDE.f2.fill,
-          }}
-        />
-      </span>
-      <span
-        className={`text-left ${CHART_TEXT} font-semibold tabular-nums`}
-        style={{ color: scores.f2 === null ? "var(--color-zinc-400)" : SIDE.f2.ink }}
-      >
-        {scores.f2 === null ? "—" : Math.round(scores.f2)}
-      </span>
-    </div>
-  );
-}
-
-function PillarStatsSide({
-  side,
-  pillar,
-  raw,
-  hasCareerStats,
-}: {
-  side: Side;
-  pillar: MatchupPillar;
-  raw: (source: string) => Cell;
-  hasCareerStats: boolean;
-}) {
-  if (!hasCareerStats) {
-    return <p className={`${CHART_TEXT} font-medium leading-4 text-zinc-400`}>No data yet</p>;
-  }
-
-  return (
-    <div className={`min-w-0 space-y-1 ${side === "f1" ? "text-right" : "text-left"}`}>
-      {pillar.inputs.map((input) => {
-        const value = raw(input.source)[side];
-        return (
-          <div key={input.source} className={`truncate ${CHART_TEXT} leading-4`} title={`${value || "—"} ${input.label}`}>
-            <span className="font-semibold tabular-nums" style={{ color: SIDE[side].ink }}>
-              {value || "—"}
-            </span>{" "}
-            <span className="text-zinc-500">{input.label}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function MatchupPillarCard({
-  fight,
-  pillar,
-  raw,
-  careerStats,
-}: {
-  fight: Matchup;
-  pillar: MatchupPillar;
-  raw: (source: string) => Cell;
-  careerStats: Record<Side, boolean>;
-}) {
-  const scores: Record<Side, number | null> = {
-    f1: careerStats.f1 ? matchupPillarScore(pillar, raw, "f1") : null,
-    f2: careerStats.f2 ? matchupPillarScore(pillar, raw, "f2") : null,
+  const values: Record<Side, number | null> = {
+    f1: careers.f1 ? metric.value(careers.f1) : null,
+    f2: careers.f2 ? metric.value(careers.f2) : null,
   };
+  const scale = Math.max(values.f1 ?? 0, values.f2 ?? 0, 0.0001);
+  const both = values.f1 != null && values.f2 != null;
+  const ahead: Side | null = !both || values.f1 === values.f2
+    ? null
+    : metric.better === "high"
+      ? (values.f1! > values.f2! ? "f1" : "f2")
+      : (values.f1! < values.f2! ? "f1" : "f2");
 
   return (
-    <section className="min-w-0 bg-white px-4 py-3">
-      <div>
-        <h3 className={`text-center ${CHART_TEXT} font-semibold uppercase tracking-[0.08em] text-zinc-600`}>
-          {pillar.label}
-        </h3>
-        <div className="mt-2 grid w-full grid-cols-2 items-center gap-x-4 gap-y-2 @[52rem]:grid-cols-[12rem_minmax(0,1fr)_12rem]">
-          <div className="col-start-1 row-start-2 @[52rem]:row-start-1">
-            <PillarStatsSide side="f1" pillar={pillar} raw={raw} hasCareerStats={careerStats.f1} />
-          </div>
-          <div className="col-span-2 col-start-1 row-start-1 @[52rem]:col-span-1 @[52rem]:col-start-2">
-            <PillarComparisonBar fight={fight} scores={scores} label={pillar.label} />
-          </div>
-          <div className="col-start-2 row-start-2 @[52rem]:col-start-3 @[52rem]:row-start-1">
-            <PillarStatsSide side="f2" pillar={pillar} raw={raw} hasCareerStats={careerStats.f2} />
+    <div className="py-1.5">
+      <div className="grid grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)_3rem] items-center gap-x-1.5">
+        {SIDES.map((side) => {
+          const value = values[side];
+          const width = value == null ? 3 : Math.max(3, (value / scale) * 100);
+          const bar = (
+            <span key={`${side}-bar`} className={`flex h-3.5 items-center bg-plot-track ${side === "f1" ? "justify-end" : "border-l border-plot-axis"}`}>
+              <span
+                className={`stat-bar plot-grow block h-full ${side === "f1" ? "rounded-l-[3px]" : "rounded-r-[3px]"}`}
+                data-stat-side={side}
+                style={{
+                  width: value == null ? 3 : `${width}%`,
+                  backgroundColor: value == null ? "var(--color-zinc-300)" : SIDE[side].fill,
+                  opacity: ahead && ahead !== side ? 0.55 : 1,
+                }}
+              />
+            </span>
+          );
+          const figure = (
+            <span
+              key={`${side}-value`}
+              className={`${CHART_TEXT} tabular-nums ${side === "f1" ? "text-right" : "text-left"} ${ahead === side ? "font-bold" : "font-medium"}`}
+              style={{ color: value == null ? "var(--color-zinc-400)" : SIDE[side].ink }}
+              title={ahead === side ? `${fight[side].name} holds the edge here` : undefined}
+            >
+              {profileText(value, metric.format)}
+            </span>
+          );
+          return side === "f1" ? [figure, bar] : [bar, figure];
+        })}
+      </div>
+      <div className={`mt-0.5 text-center ${CHART_TEXT} leading-4 text-zinc-500`}>
+        {metric.label}
+        {metric.better === "low" ? <span className="text-zinc-400"> · less is better</span> : null}
+      </div>
+    </div>
+  );
+}
+
+/** How a fighter's wins, or losses, have been split between the three endings. */
+function MethodBar({ side, counts, total }: { side: Side; counts: { ko: number; sub: number; decision: number }; total: number }) {
+  const segments = [
+    { key: "ko", label: "KO/TKO", value: counts.ko, color: SIDE[side].deep },
+    { key: "sub", label: "Submission", value: counts.sub, color: SIDE[side].fill },
+    { key: "dec", label: "Decision or other", value: counts.decision, color: SIDE[side].soft },
+  ];
+  if (total <= 0) return <p className={`${CHART_TEXT} text-zinc-400`}>None yet</p>;
+  return (
+    <>
+      <span className="flex h-3 w-full gap-[2px] overflow-hidden rounded-[3px]" role="img" aria-label={segments.map((segment) => `${segment.value} by ${segment.label}`).join(", ")}>
+        {segments.filter((segment) => segment.value > 0).map((segment) => (
+          <span key={segment.key} title={`${segment.value} by ${segment.label}`} style={{ width: `${(segment.value / total) * 100}%`, backgroundColor: segment.color }} />
+        ))}
+      </span>
+      <span className={`mt-1 block ${CHART_TEXT} tabular-nums text-zinc-500`}>
+        {counts.ko} KO · {counts.sub} SUB · {counts.decision} DEC
+      </span>
+    </>
+  );
+}
+
+function MethodProfile({ careers }: { careers: Record<Side, CareerBefore | null> }) {
+  const split = (career: CareerBefore | null, kind: "wins" | "losses") => {
+    if (!career) return { ko: 0, sub: 0, decision: 0, total: 0 };
+    const total = kind === "wins" ? career.wins : career.losses;
+    const ko = kind === "wins" ? career.koWins : career.koLosses;
+    const sub = kind === "wins" ? career.subWins : career.subLosses;
+    return { ko, sub, decision: Math.max(0, total - ko - sub), total };
+  };
+  const rows = [
+    { key: "wins", label: "How the wins come" },
+    { key: "losses", label: "How the losses come" },
+  ] as const;
+  return (
+    <div className="grid grid-cols-1 gap-x-6 gap-y-3 border-t border-zinc-100 px-4 py-3 @[36rem]:grid-cols-2">
+      {rows.map((row) => (
+        <div key={row.key}>
+          <div className={`mb-1.5 text-center ${CHART_TEXT} font-semibold uppercase tracking-[0.08em] text-zinc-500`}>{row.label}</div>
+          <div className="grid grid-cols-2 gap-3">
+            {SIDES.map((side) => {
+              const counts = split(careers[side], row.key);
+              return (
+                <div key={side} className={side === "f1" ? "text-right" : "text-left"}>
+                  <MethodBar side={side} counts={counts} total={counts.total} />
+                </div>
+              );
+            })}
           </div>
         </div>
-      </div>
-    </section>
+      ))}
+    </div>
   );
 }
 
-export function MatchupStats({ fight }: { fight: Matchup }) {
-  const tape = new Map(
-    (fight.detail?.type === "future" ? fight.detail.taleOfTape ?? [] : []).map((r) => [r.label, r]),
-  );
-  const raw = (source: string): Cell => ({ f1: tape.get(source)?.f1 ?? "", f2: tape.get(source)?.f2 ?? "" });
-  const hasCareerFields = MATCHUP_PILLARS.some((pillar) =>
-    pillar.inputs.some((input) => raw(input.source).f1 || raw(input.source).f2),
-  );
-  const careerStats: Record<Side, boolean> = {
-    f1: sideHasCareerStats(raw, "f1"),
-    f2: sideHasCareerStats(raw, "f2"),
-  };
-
-  if (!hasCareerFields) {
-    return (
-      <section className={shell}>
-        <PanelHeading title="Matchup stats" />
-        <Empty>Matchup statistics are not available yet.</Empty>
-      </section>
-    );
-  }
+export function CareerProfile({ fight }: { fight: Matchup }) {
+  const careers: Record<Side, CareerBefore | null> = { f1: fight.f1.career_before, f2: fight.f2.career_before };
+  const tracked = (career: CareerBefore | null) => career?.statBouts ?? 0;
+  if (!careers.f1 && !careers.f2) return null;
+  const groups = [
+    { key: "striking", label: "Striking", metrics: STRIKING_METRICS },
+    { key: "grappling", label: "Grappling", metrics: GRAPPLING_METRICS },
+  ];
+  const sample = SIDES
+    .map((side) => `${lastName(fight[side].name)} ${tracked(careers[side])}`)
+    .join(" · ");
+  const anyTracked = tracked(careers.f1) + tracked(careers.f2) > 0;
 
   return (
     <section className={`${shell} @container overflow-hidden`}>
       <PanelHeading
-        title="Matchup stats"
-        aside={<Legend fight={fight} mutedSides={{ f1: !careerStats.f1, f2: !careerStats.f2 }} />}
+        title="How they fight"
+        subtitle={
+          anyTracked
+            ? `Career rates as they stood going into this bout, from the official round-by-round totals of their earlier UFC fights (${sample})`
+            : "Neither fighter has earlier UFC statistics on record."
+        }
+        aside={<Legend fight={fight} />}
       />
-      <div className="divide-y divide-zinc-100">
-        {MATCHUP_PILLARS.map((pillar) => (
-          <MatchupPillarCard key={pillar.label} fight={fight} pillar={pillar} raw={raw} careerStats={careerStats} />
-        ))}
-      </div>
+      {anyTracked ? (
+        <>
+          <div className="grid grid-cols-1 gap-x-8 px-4 pb-1 pt-2 @[40rem]:grid-cols-2">
+            {groups.map((group) => (
+              <div key={group.key} className="min-w-0">
+                <div className={`pb-1 pt-1 text-center ${CHART_TEXT} font-semibold uppercase tracking-[0.1em] text-zinc-400`}>{group.label}</div>
+                {group.metrics.map((metric) => (
+                  <ProfileRow key={metric.key} fight={fight} metric={metric} careers={careers} />
+                ))}
+              </div>
+            ))}
+          </div>
+          <MethodProfile careers={careers} />
+        </>
+      ) : (
+        <Empty>Both fighters are new to the promotion, so there is nothing to compare yet.</Empty>
+      )}
     </section>
   );
 }

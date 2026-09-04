@@ -7,7 +7,7 @@ const SIZES = {
   matchup: "h-14 w-14 text-xs lg:h-16 lg:w-16 lg:text-sm",
 } as const;
 
-const UFC_EMPTY_AVATAR = "https://ufc.com/images/2019-04/SILHOUETTE.png";
+const UFC_EMPTY_AVATAR = "/silhouette.svg";
 
 export default function Avatar({
   src,
@@ -32,11 +32,14 @@ export default function Avatar({
           : outcome === "nc"
             ? "ring-2 ring-zinc-700"
             : "ring-1 ring-zinc-200";
+  const prominent = size === "xl" || size === "lg" || size === "matchup";
   return (
     <img
       src={src || UFC_EMPTY_AVATAR}
       alt={name}
-      loading="lazy"
+      loading={prominent ? "eager" : "lazy"}
+      fetchPriority={prominent ? "high" : "auto"}
+      decoding="async"
       onError={(event) => {
         const image = event.currentTarget;
         if (image.dataset.fallbackApplied) return;

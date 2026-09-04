@@ -2,13 +2,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../api";
 import type { EventDetail, EventFight, EventListItem, FightSide } from "../api";
-import { formatDate, formatDateShort, outcomeClasses, rankLabel } from "../format";
+import { formatDate, formatDateShort, lastName, outcomeClasses, rankLabel } from "../format";
 import Avatar from "../components/Avatar";
 import BonusIcons from "../components/BonusIcons";
 import OddsPair from "../components/OddsPair";
 import FightView from "./FightPage";
 import type { Matchup } from "../api";
 import { useSeo } from "../seo";
+import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
+import { useSettings, withRanking } from "../settings";
 
 const shell = "rounded-2xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
 const METHOD_TAG = "shrink-0 rounded-full px-1.5 py-px text-[9px] font-bold uppercase leading-4 tracking-[0.06em]";
@@ -30,60 +32,14 @@ const MONTHS = [
 // ---------------------------------------------------------------------------
 // sidebar
 
-function ChevronIcon({ direction }: { direction: "left" | "right" }) {
-  return (
-    <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 16 16" fill="none">
-      <path
-        d={direction === "left" ? "M10 3.5 5.5 8l4.5 4.5" : "M6 3.5 10.5 8 6 12.5"}
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-/** Collapsed sidebar: the whole rail is the button back, so the target is big
- *  and always in the same place. Labelled in text, never icon-only. */
-function EventRail({ count, onExpand }: { count: number; onExpand: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onExpand}
-      // No aria-controls: the list is unmounted while collapsed, so there is no
-      // element to point at. aria-expanded alone carries the state.
-      aria-expanded={false}
-      aria-label={`Show events list (${count} events)`}
-      title="Show events ([)"
-      className={`group flex w-11 shrink-0 flex-col items-center gap-3 py-3 text-zinc-400 transition-colors hover:bg-zinc-50 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${shell}`}
-    >
-      <span className="flex h-6 w-6 items-center justify-center">
-        <ChevronIcon direction="right" />
-      </span>
-      <span
-        className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500 group-hover:text-zinc-900"
-        style={{ writingMode: "vertical-rl" }}
-      >
-        Events
-      </span>
-      <span className="mt-auto text-[10px] font-semibold tabular-nums text-zinc-400">{count}</span>
-    </button>
-  );
-}
-
 function EventSidebar({
   events,
   selectedId,
-  collapsed,
-  onToggle,
 }: {
   events: EventListItem[];
   selectedId: string | null;
-  collapsed: boolean;
-  onToggle: () => void;
 }) {
-  const [filter, setFilter] = useState("");
+  const [filter, setFilter] = useHistoryState("events:filter", "");
   const [showTop, setShowTop] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLAnchorElement>(null);
@@ -107,35 +63,20 @@ function EventSidebar({
     return [...byMonth.entries()];
   }, [filtered]);
 
-  // Bring the selected event into view when arriving via a link/search — and
-  // again when the list is re-opened, since it scrolled nowhere while hidden.
+  // Bring the selected event into view when arriving via a link/search.
   useEffect(() => {
-    if (collapsed) return;
     selectedRef.current?.scrollIntoView({ block: "nearest" });
-  }, [selectedId, events.length, collapsed]);
-
-  if (collapsed) return <EventRail count={events.length} onExpand={onToggle} />;
+  }, [selectedId, events.length]);
 
   return (
     <aside id="events-sidebar" className={`flex w-72 shrink-0 flex-col overflow-hidden lg:w-80 ${shell}`}>
-      <div className="flex items-center gap-2 border-b border-zinc-200 p-3">
+      <div className="border-b border-zinc-200 p-3">
         <input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder={`Filter ${events.length} events…`}
-          className="h-11 min-w-0 flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none transition placeholder:text-zinc-400 focus:border-zinc-300 focus:bg-white"
+          className="h-11 w-full min-w-0 rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none transition placeholder:text-zinc-400 focus:border-zinc-300 focus:bg-white"
         />
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded
-          aria-controls="events-sidebar"
-          aria-label="Hide events list"
-          title="Hide events ([)"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
-        >
-          <ChevronIcon direction="left" />
-        </button>
       </div>
 
       <div className="relative min-h-0 flex-1">
@@ -222,6 +163,36 @@ function EventSidebar({
 // ---------------------------------------------------------------------------
 // fight rows
 
+/** The last five UFC results this fighter carried into the bout, oldest first.
+ *  Colour is never alone: the dots have a text label behind them, and the
+ *  streak beside them spells the same run out in words. */
+function FormDots({ side, align }: { side: FightSide; align: "left" | "right" }) {
+  const form = side.form ?? [];
+  if (!form.length) return null;
+  const tone = (outcome: string | null) =>
+    outcome === "win" ? "bg-emerald-500"
+      : outcome === "loss" ? "bg-rose-500"
+        : outcome === "draw" ? "bg-amber-400" : "bg-zinc-300";
+  const word = (outcome: string | null) =>
+    outcome === "win" ? "win" : outcome === "loss" ? "loss" : outcome === "draw" ? "draw" : "no contest";
+  const label = `Last ${form.length} UFC ${form.length === 1 ? "bout" : "bouts"} before this fight: ${form.map(word).join(", ")}`;
+  return (
+    <span className={`flex items-center gap-1 ${align === "right" ? "flex-row-reverse" : ""}`} title={label} aria-label={label}>
+      {form.map((outcome, index) => (
+        <span key={index} className={`h-1.5 w-1.5 rounded-full ${tone(outcome)}`} />
+      ))}
+      {side.streak ? (
+        <span
+          className={`text-[9px] font-bold tabular-nums ${side.streak.outcome === "win" ? "text-emerald-600" : side.streak.outcome === "loss" ? "text-rose-500" : "text-zinc-400"}`}
+          title={`On a ${side.streak.count}-fight ${side.streak.outcome === "win" ? "win" : side.streak.outcome === "loss" ? "losing" : side.streak.outcome} run going in`}
+        >
+          {side.streak.count}{side.streak.outcome === "win" ? "W" : side.streak.outcome === "loss" ? "L" : side.streak.outcome === "draw" ? "D" : "NC"}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 function SideStats({ side, align }: { side: FightSide; align: "left" | "right" }) {
   const stats = side.stats;
   if (stats.str == null && stats.kd == null) return null;
@@ -253,16 +224,29 @@ function FighterBlock({
   const nameBlock = (
     <div className={`min-w-0 ${align === "right" ? "text-right" : ""}`}>
       <div className="flex min-w-0 items-baseline gap-1.5" style={align === "right" ? { justifyContent: "flex-end" } : undefined}>
-        {rank && align === "left" ? <span className="shrink-0 text-[10px] font-bold text-amber-600">{rank}</span> : null}
+        {rank && align === "left" ? <span className="shrink-0 text-[10px] font-bold text-amber-600" title="Current ranking from the source selected in Settings">{rank}</span> : null}
         {align === "right" ? <BonusIcons bonuses={bonuses} outcome={side.outcome} /> : null}
         <span className={`truncate text-sm font-semibold ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>
           {side.name}
         </span>
         {resultTag ? <span className={`${METHOD_TAG} ${outcomeClasses(side.outcome)}`}>{resultTag}</span> : null}
         {align === "left" ? <BonusIcons bonuses={bonuses} outcome={side.outcome} /> : null}
-        {rank && align === "right" ? <span className="shrink-0 text-[10px] font-bold text-amber-600">{rank}</span> : null}
+        {rank && align === "right" ? <span className="shrink-0 text-[10px] font-bold text-amber-600" title="Current ranking from the source selected in Settings">{rank}</span> : null}
       </div>
-      <div className="mt-0.5 text-xs tabular-nums text-zinc-400">{side.record}</div>
+      <div className={`mt-1 flex items-center gap-2 ${align === "right" ? "flex-row-reverse" : ""}`}>
+        <span className={`flex shrink-0 flex-col text-[10px] leading-3.5 tabular-nums text-zinc-400 ${align === "right" ? "items-end" : "items-start"}`}>
+          <span title="Verified complete professional record entering this fight"><strong className="font-semibold text-zinc-500">REC:</strong> {side.record || "—"}</span>
+          {side.ufc_record ? (
+            <span title="UFC-only record entering this fight"><strong className="font-semibold text-zinc-500">UFC:</strong> {side.ufc_record}</span>
+          ) : side.ufc_bouts === 0 ? (
+            <span className="font-medium text-sky-600" title="First bout in the promotion">UFC debut</span>
+          ) : <span><strong className="font-semibold text-zinc-500">UFC:</strong> —</span>}
+        </span>
+        <span className={`flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 ${align === "right" ? "flex-row-reverse" : ""}`}>
+          {side.age != null ? <span className="text-[10px] tabular-nums text-zinc-400" title="Age on the date of this event">{side.age} y/o</span> : null}
+          <FormDots side={side} align={align} />
+        </span>
+      </div>
       <SideStats side={side} align={align} />
     </div>
   );
@@ -308,7 +292,7 @@ function FightRow({ fight, past, eventId }: { fight: EventFight; past: boolean; 
   return (
     <button
       type="button"
-      onClick={() => navigate(`/fights/${fight.id}`, { state: { eventId } })}
+      onClick={() => navigate(`/fights/${fight.id}`, { state: { eventId, eventReturnDepth: 1 } })}
       className="group grid w-full grid-cols-[1fr_auto_1fr] items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
     >
       <FighterBlock side={fight.f1} align="left" past={done} bonuses={fight.bonuses} resultTag={resultTag(fight, fight.f1.outcome)} />
@@ -329,39 +313,174 @@ function FightRow({ fight, past, eventId }: { fight: EventFight; past: boolean; 
 // ---------------------------------------------------------------------------
 // event pane
 
-function CardStats({ stats }: { stats: EventDetail["card_stats"] }) {
+function clockOf(seconds: number): string {
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function signedLine(line: number): string {
+  return `${line > 0 ? "+" : ""}${line}`;
+}
+
+type Tile = { key: string; label: string; value: string; note: string; to?: string };
+
+/**
+ * The line that tells you, before you read a single result, whether this card
+ * was worth watching: how often the underdog got there, how often it ended
+ * early, and what the standout moment was. An announced card is read the same
+ * way from what is at stake and what the closing lines expect.
+ */
+function cardTiles(stats: EventDetail["card_stats"], past: boolean): Tile[] {
+  if (past) {
+    const tiles: Tile[] = [];
+    if (stats.priced_fights > 0) {
+      tiles.push({
+        key: "underdogs",
+        label: "Underdog wins",
+        value: `${stats.underdog_wins}/${stats.priced_fights}`,
+        note: "priced fights",
+      });
+    }
+    tiles.push({
+      key: "finishes",
+      label: "Finishes",
+      value: `${stats.finishes}/${stats.completed_fights}`,
+      note: `${stats.knockouts} KO/TKO · ${stats.submissions} SUB`,
+    });
+    if (stats.first_round_finishes > 0) {
+      tiles.push({
+        key: "early",
+        label: "Ended in round 1",
+        value: String(stats.first_round_finishes),
+        note: stats.fastest_finish ? `fastest ${clockOf(stats.fastest_finish.seconds)}` : "of the finishes",
+        to: stats.fastest_finish ? `/fights/${stats.fastest_finish.fight_id}` : undefined,
+      });
+    }
+    if (stats.avg_seconds != null) {
+      tiles.push({
+        key: "time",
+        label: "Average bout",
+        value: clockOf(stats.avg_seconds),
+        note: `${stats.decisions} went to the judges`,
+      });
+    }
+    if (stats.biggest_upset) {
+      tiles.push({
+        key: "upset",
+        label: "Biggest upset",
+        value: signedLine(stats.biggest_upset.line),
+        note: stats.biggest_upset.name,
+        to: `/fights/${stats.biggest_upset.fight_id}`,
+      });
+    }
+    if (stats.bonuses > 0) {
+      tiles.push({
+        key: "bonuses",
+        label: "Bonuses paid",
+        value: String(stats.bonuses),
+        note: `${stats.knockdowns} knockdowns on the card`,
+      });
+    }
+    return tiles;
+  }
+
+  const tiles: Tile[] = [{
+    key: "card",
+    label: "Bouts announced",
+    value: String(stats.total_fights),
+    note: stats.title_fights ? `${stats.title_fights} for a belt` : "no title bout",
+  }];
+  if (stats.undefeated_fighters > 0) {
+    const ranked = stats.undefeated_ranked_fighters;
+    tiles.push({
+      key: "undefeated",
+      label: ranked > 0 ? "Undefeated ranked" : "Undefeated fighters",
+      value: String(ranked > 0 ? ranked : stats.undefeated_fighters),
+      note: ranked > 0
+        ? `${stats.undefeated_fighters} undefeated fighter${stats.undefeated_fighters === 1 ? "" : "s"} total`
+        : "no verified professional losses",
+    });
+  }
+  if (stats.ranked_fighters > 0) {
+    tiles.push({
+      key: "ranked",
+      label: "Ranked fighters",
+      value: String(stats.ranked_fighters),
+      note: stats.champions ? `${stats.champions} champion${stats.champions > 1 ? "s" : ""} competing` : "in the top 15",
+    });
+  }
+  if (stats.longest_streak) {
+    tiles.push({
+      key: "streak",
+      label: "Longest run",
+      value: `${stats.longest_streak.count}W`,
+      note: stats.longest_streak.name,
+      to: `/fights/${stats.longest_streak.fight_id}`,
+    });
+  }
+  if (stats.closest_matchup) {
+    tiles.push({
+      key: "closest",
+      label: "Closest matchup",
+      value: `${stats.closest_matchup.gap}%`,
+      note: `${lastName(stats.closest_matchup.f1)} vs ${lastName(stats.closest_matchup.f2)}`,
+      to: `/fights/${stats.closest_matchup.fight_id}`,
+    });
+  }
+  if (stats.longest_underdog) {
+    tiles.push({
+      key: "underdog",
+      label: "Longest price",
+      value: signedLine(stats.longest_underdog.line),
+      note: stats.longest_underdog.name,
+      to: `/fights/${stats.longest_underdog.fight_id}`,
+    });
+  }
+  if (stats.debutants > 0) {
+    tiles.push({
+      key: "debut",
+      label: "UFC debuts",
+      value: String(stats.debutants),
+      note: "first time in the promotion",
+    });
+  }
+  return tiles;
+}
+
+function CardStats({ stats, past }: { stats: EventDetail["card_stats"]; past: boolean }) {
+  const tiles = cardTiles(stats, past);
+  if (!tiles.length) return null;
   return (
-    <div className="grid grid-cols-2 divide-x divide-zinc-200 border-t border-zinc-200 pt-3 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
-      {stats.priced_fights > 0 ? (
-        <div className="pr-5">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">Underdog wins</div>
-          <div className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-zinc-900">
-            {stats.underdog_wins}/{stats.priced_fights}
-          </div>
-          <div className="text-[10px] text-zinc-400">priced fights</div>
-        </div>
-      ) : null}
-      <div className={stats.priced_fights > 0 ? "pl-5" : "col-span-2"}>
-        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">Finishes</div>
-        <div className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-zinc-900">
-          {stats.finishes}/{stats.completed_fights}
-        </div>
-        <div className="whitespace-nowrap text-[10px] text-zinc-400">
-          {stats.knockouts} KO/TKO · {stats.submissions} SUB
-        </div>
-      </div>
+    <div className="mt-4 flex flex-wrap gap-px overflow-hidden rounded-xl border border-zinc-200 bg-zinc-200">
+      {tiles.map((tile) => {
+        const body = (
+          <>
+            <div className="truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-400" title={tile.label}>{tile.label}</div>
+            <div className="mt-0.5 truncate text-sm font-semibold tabular-nums text-zinc-900">{tile.value}</div>
+            <div className="line-clamp-2 text-[10px] leading-[1.3] text-zinc-400" title={tile.note}>{tile.note}</div>
+          </>
+        );
+        return tile.to ? (
+          <Link key={tile.key} to={tile.to} title={`${tile.label}: ${tile.value} · ${tile.note}`} className="min-w-[9.5rem] flex-[1_1_11rem] bg-white px-3 py-2 transition-colors hover:bg-zinc-50">
+            {body}
+          </Link>
+        ) : (
+          <div key={tile.key} className="min-w-[9.5rem] flex-[1_1_11rem] bg-white px-3 py-2">{body}</div>
+        );
+      })}
     </div>
   );
 }
 
 function EventPane({ eventId }: { eventId: string }) {
-  const url = `/api/events/${eventId}`;
+  const { settings } = useSettings();
+  const url = withRanking(`/api/events/${eventId}`, settings.rankingSource);
   const { data: first } = useApi<EventDetail>(url);
   // Fight night: results land on the server every ~3 min, so poll while the
   // "next" event's date has arrived but the card isn't complete yet.
   const isLive =
     first != null && first.status === "next" && first.date <= new Date().toISOString().slice(0, 10);
   const { data: event, loading, error } = useApi<EventDetail>(url, isLive ? 60_000 : undefined);
+  const eventScroll = useRouteScrollRestoration<HTMLDivElement>("event:card", Boolean(event));
   const eventDescription = event
     ? `${event.name} fight card with ${event.fights.length} matchups, odds${event.status === "past" ? " and results" : ""}.${event.location ? ` Live from ${event.location}.` : ""}`
     : "Browse UFC event fight cards, matchup odds and results.";
@@ -403,18 +522,18 @@ function EventPane({ eventId }: { eventId: string }) {
   const past = event.status === "past";
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto pr-1">
+    <div ref={eventScroll} className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto pr-1">
       <section className={`${shell} shrink-0 px-6 py-5`}>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight text-zinc-950">{event.name}</h1>
-            <div className="mt-1 text-sm text-zinc-500">
-              {formatDate(event.date)}
-              {event.location ? ` · ${event.location}` : ""}
-            </div>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h1 className="text-xl font-semibold tracking-tight text-zinc-950">{event.name}</h1>
+          <div className="text-sm text-zinc-500">
+            {formatDate(event.date)}
+            {event.location ? ` · ${event.location}` : ""}
           </div>
-          {past && event.card_stats.completed_fights > 0 ? <CardStats stats={event.card_stats} /> : null}
         </div>
+        {(past ? event.card_stats.completed_fights > 0 : event.card_stats.total_fights > 0)
+          ? <CardStats stats={event.card_stats} past={past} />
+          : null}
       </section>
 
       <section className={`${shell} divide-y divide-zinc-100`}>
@@ -434,50 +553,9 @@ function EventPane({ eventId }: { eventId: string }) {
 
 // ---------------------------------------------------------------------------
 
-const COLLAPSE_KEY = "ufc:events-collapsed";
-
-/** Collapse is a workspace preference, not navigation — it lives in storage
- *  rather than the URL so it survives reloads without adding history entries. */
-function useCollapsedEvents(): [boolean, () => void] {
-  const [collapsed, setCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem(COLLAPSE_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
-
-  const toggle = () =>
-    setCollapsed((wasCollapsed) => {
-      const next = !wasCollapsed;
-      try {
-        localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
-      } catch {
-        // private mode / storage disabled — the toggle still works this session
-      }
-      return next;
-    });
-
-  // "[" toggles, matching the ⌘K / Esc shortcuts already in the app. Ignored
-  // while typing so it never swallows a character in the filter or search box.
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== "[" || e.metaKey || e.ctrlKey || e.altKey) return;
-      const el = e.target as HTMLElement | null;
-      if (el?.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el?.tagName ?? "")) return;
-      e.preventDefault();
-      toggle();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, []);
-
-  return [collapsed, toggle];
-}
-
 export default function EventsPage() {
   const { eventId, fightId } = useParams();
-  const [collapsed, toggleCollapsed] = useCollapsedEvents();
+  const { settings } = useSettings();
   const location = useLocation();
   const navigate = useNavigate();
   const { data: events, loading, error } = useApi<EventListItem[]>("/api/events");
@@ -491,7 +569,7 @@ export default function EventsPage() {
       : null;
 
   // When a matchup is open, the sidebar highlights its event.
-  const { data: openFight } = useApi<Matchup>(fightId && !fightEventIdHint ? `/api/fights/${fightId}` : null);
+  const { data: openFight } = useApi<Matchup>(fightId && !fightEventIdHint ? withRanking(`/api/fights/${fightId}`, settings.rankingSource) : null);
   const selectedId = eventId ?? fightEventIdHint ?? openFight?.event.id ?? null;
 
   // Landing on "/" selects the next upcoming event.
@@ -518,8 +596,6 @@ export default function EventsPage() {
       <EventSidebar
         events={events}
         selectedId={selectedId}
-        collapsed={collapsed}
-        onToggle={toggleCollapsed}
       />
       <main className="min-h-0 min-w-0 flex-1">
         {fightId ? (

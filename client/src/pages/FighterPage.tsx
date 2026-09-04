@@ -1,65 +1,397 @@
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../api";
-import type { FighterProfile, HistoryRow } from "../api";
-import { formatDateShort, formatMethod, outcomeClasses, outcomeLabel } from "../format";
+import type { CompleteRecordBefore, FighterProfile, FighterRecord, FighterStat, HistoryRow, ProfessionalHistoryRow } from "../api";
+import { formatDateShortWithYear, formatLine, formatMethod } from "../format";
+import { formatValue } from "../components/chartTokens";
 import Avatar from "../components/Avatar";
 import { useSeo } from "../seo";
+import { useRouteScrollRestoration } from "../navigationState";
+import { outsideFighterUrl, useSettings, withRanking } from "../settings";
 
 const shell = "rounded-2xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
 
-function HistoryRowView({ row }: { row: HistoryRow }) {
+function historyResultLabel(outcome: HistoryRow["outcome"]): string {
+  switch (outcome) {
+    case "win": return "Win";
+    case "loss": return "Loss";
+    case "draw": return "Draw";
+    case "nc": return "No Contest";
+    default: return "RESULT";
+  }
+}
+
+function resultBoxClasses(outcome: HistoryRow["outcome"], upcoming: boolean): string {
+  if (upcoming) return "border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100";
+  switch (outcome) {
+    case "win": return "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100";
+    case "loss": return "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100";
+    case "draw": return "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100";
+    case "nc": return "border-zinc-200 bg-zinc-100 text-zinc-600 hover:bg-zinc-200";
+    default: return "border-zinc-200 bg-zinc-50 text-zinc-500 hover:bg-zinc-100";
+  }
+}
+
+function OpponentForm({ form }: { form: NonNullable<HistoryRow["opponent_form"]> }) {
+  if (!form.length) return null;
+  const label = form.map((fight) => historyResultLabel(fight.outcome)).join(", ");
+  const tone = (outcome: HistoryRow["outcome"]) =>
+    outcome === "win" ? "bg-emerald-500" : outcome === "loss" ? "bg-rose-500" : outcome === "draw" ? "bg-amber-400" : "bg-zinc-400";
   return (
-    <div className="group grid grid-cols-[auto_minmax(0,1.2fr)_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2 transition-colors hover:bg-zinc-50">
-      <Link
-        to={`/fights/${row.fight_id}`}
-        aria-label={`Open ${row.opponent.name} matchup`}
-        className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${
-          row.upcoming ? "bg-sky-100 text-sky-700" : outcomeClasses(row.outcome)
-        }`}
-      >
-        {row.upcoming ? "→" : outcomeLabel(row.outcome) || "•"}
-      </Link>
-      <span className="min-w-0">
-        <Link
-          to={`/fighters/${row.opponent.id}`}
-          className="block truncate rounded-sm text-sm font-medium text-zinc-900 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+    <span className="flex shrink-0 items-center gap-1" title={`Last five UFC bouts entering this fight: ${label}`} aria-label={`Last five UFC bouts entering this fight: ${label}`}>
+      {form.map((fight, index) => <span key={`${fight.date}-${index}`} className={`h-2 w-2 rounded-full ${tone(fight.outcome)}`} />)}
+    </span>
+  );
+}
+
+function ProfileRecordChart({
+  ufcHistory,
+  proHistory,
+  completeRecordVerified,
+}: {
+  ufcHistory: HistoryRow[];
+  proHistory: ProfessionalHistoryRow[];
+  completeRecordVerified: boolean;
+}) {
+  const [scope, setScope] = useState<"ufc" | "all">(completeRecordVerified ? "all" : "ufc");
+  const history: (HistoryRow | ProfessionalHistoryRow)[] = scope === "all" ? proHistory : ufcHistory;
+  const bouts = history.filter((fight) => !fight.upcoming && fight.outcome !== null);
+  const methodGroup = (method: string | null) => {
+    const normalized = method?.trim().toUpperCase() ?? "";
+    if (normalized === "KO/TKO" || /^(?:KO|K\.O\.?|TKO)(?:\s|\(|$)/.test(normalized)) return "KO/TKO";
+    if (normalized === "SUB" || /^(?:TECH(?:NICAL|INAL)\s+)?SUBMISSION(?:\s|$)/.test(normalized)) return "SUB";
+    if (normalized.endsWith("-DEC") || /^(?:TECHNICAL\s+)?DECISION(?:\s|$)/.test(normalized)) return "DEC";
+    return "OTHER";
+  };
+  const winDefinitions = [
+    { key: "win-KO/TKO", label: "KO/TKO", color: "#047857", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "win" && methodGroup(fight.method) === "KO/TKO" },
+    { key: "win-SUB", label: "SUB", color: "#34d399", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "win" && methodGroup(fight.method) === "SUB" },
+    { key: "win-DEC", label: "DEC", color: "#a7f3d0", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "win" && methodGroup(fight.method) === "DEC" },
+  ];
+  const lossDefinitions = [
+    { key: "loss-KO/TKO", label: "KO/TKO", color: "#be123c", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "loss" && methodGroup(fight.method) === "KO/TKO" },
+    { key: "loss-SUB", label: "SUB", color: "#fb7185", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "loss" && methodGroup(fight.method) === "SUB" },
+    { key: "loss-DEC", label: "DEC", color: "#fecdd3", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "loss" && methodGroup(fight.method) === "DEC" },
+  ];
+  const otherDefinitions = [
+    { key: "loss-OTHER", label: "Other", color: "#fda4af", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "loss" && methodGroup(fight.method) === "OTHER" },
+    { key: "win-OTHER", label: "Other", color: "#6ee7b7", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "win" && methodGroup(fight.method) === "OTHER" },
+  ];
+  const extraDefinitions = [
+    { key: "draw", label: "Draws", color: "#f59e0b", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "draw" },
+    { key: "nc", label: "No contests", color: "#71717a", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "nc" },
+  ];
+  const count = <T extends { match: (fight: HistoryRow | ProfessionalHistoryRow) => boolean }>(definitions: T[]) =>
+    definitions.map((definition) => ({ ...definition, count: bouts.filter(definition.match).length }));
+  const wins = count(winDefinitions);
+  const losses = count(lossDefinitions);
+  const [otherLosses, otherWins] = count(otherDefinitions);
+  const extras = count(extraDefinitions);
+  const winRows = otherWins.count ? [...wins, otherWins] : wins;
+  const lossRows = otherLosses.count ? [...losses, otherLosses] : losses;
+  // CSS conic gradients advance clockwise. Losses begin at 12 o'clock and run
+  // clockwise. Wins are placed in reverse at the end, so reading counterclockwise
+  // from 12 gives KO/TKO, SUB, DEC, then Other.
+  const segments = [...lossRows, ...extras, ...[...winRows].reverse()].filter((segment) => segment.count > 0);
+  let position = 0;
+  const gradient = segments.map((segment) => {
+    const start = position;
+    position += bouts.length ? (segment.count / bouts.length) * 100 : 0;
+    return `${segment.color} ${start}% ${position}%`;
+  }).join(", ");
+
+  if (!bouts.length) return null;
+  return (
+    <div className="ml-auto shrink-0 border-t border-zinc-100 pt-4 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
+      <div className="mb-2 flex justify-end">
+        <div className="inline-flex rounded-lg bg-zinc-100 p-0.5" role="group" aria-label="Record breakdown scope">
+          <button
+            type="button"
+            aria-pressed={scope === "all"}
+            disabled={!completeRecordVerified}
+            onClick={() => setScope("all")}
+            title={completeRecordVerified ? "Show complete professional record" : "Complete professional record is still syncing"}
+            className={`rounded-md px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors ${scope === "all" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"}`}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            aria-pressed={scope === "ufc"}
+            onClick={() => setScope("ufc")}
+            className={`rounded-md px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors ${scope === "ufc" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-700"}`}
+          >
+            UFC
+          </button>
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <div
+          className="grid h-20 w-20 shrink-0 place-items-center rounded-full"
+          style={{ background: `conic-gradient(from 0deg, ${gradient})` }}
+          role="img"
+          aria-label={`${bouts.length} ${scope === "ufc" ? "UFC" : "professional"} bouts by result and method`}
         >
-          {row.opponent.name}
-        </Link>
-        <span className="block truncate text-[11px] text-zinc-400">
-          {row.weight_class}
-          {row.title_narrative ? ` · ${row.title_narrative}` : ""}
-        </span>
-      </span>
-      <span className="min-w-0">
-        <Link
-          to={`/fights/${row.fight_id}`}
-          className="block truncate rounded-sm text-xs text-zinc-500 hover:text-zinc-900 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
-        >
-          {row.upcoming ? "Scheduled" : formatMethod(row.method, row.round, row.time) || "—"}
-        </Link>
-        <Link
-          to={`/events/${row.event_id}`}
-          className="block truncate rounded-sm text-[11px] text-zinc-400 hover:text-zinc-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
-        >
-          {row.event_name}
-        </Link>
-      </span>
-      <Link
-        to={`/events/${row.event_id}`}
-        aria-label={`Open ${row.event_name}`}
-        className="rounded-sm text-xs tabular-nums text-zinc-400 hover:text-zinc-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
-      >
-        {formatDateShort(row.date)}
-      </Link>
+          <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-center shadow-[0_0_0_1px_rgba(0,0,0,0.04)]">
+            <span className="text-sm font-semibold tabular-nums text-zinc-900">{bouts.length}<span className="block text-[8px] font-bold uppercase tracking-wider text-zinc-400">{scope === "ufc" ? "UFC" : "All"}</span></span>
+          </div>
+        </div>
+        <div>
+          <div className="grid grid-cols-2 gap-x-4">
+            <div>
+              <div className="mb-1 text-[8px] font-bold uppercase tracking-wider text-emerald-700">
+                Wins ({winRows.reduce((total, segment) => total + segment.count, 0)})
+              </div>
+              {winRows.map((segment) => (
+                <div key={segment.key} className="flex items-center gap-1.5 text-[9px] leading-4 text-zinc-500">
+                  <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: segment.color }} />
+                  <span className="whitespace-nowrap"><strong className="font-semibold text-zinc-700">{segment.count}</strong> {segment.label}</span>
+                </div>
+              ))}
+            </div>
+            <div>
+              <div className="mb-1 text-[8px] font-bold uppercase tracking-wider text-rose-700">
+                Losses ({lossRows.reduce((total, segment) => total + segment.count, 0)})
+              </div>
+              {lossRows.map((segment) => (
+                <div key={segment.key} className="flex items-center gap-1.5 text-[9px] leading-4 text-zinc-500">
+                  <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: segment.color }} />
+                  <span className="whitespace-nowrap"><strong className="font-semibold text-zinc-700">{segment.count}</strong> {segment.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          {extras.some((segment) => segment.count > 0) ? (
+            <div className="mt-1.5 flex gap-3 border-t border-zinc-100 pt-1.5">
+              {extras.filter((segment) => segment.count > 0).map((segment) => (
+                <div key={segment.key} className="flex items-center gap-1.5 text-[9px] text-zinc-500">
+                  <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: segment.color }} />
+                  <span>{segment.count} {segment.label}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
     </div>
+  );
+}
+
+function EnteringRecords({
+  career,
+  ufc,
+  name,
+  className = "",
+}: {
+  career: CompleteRecordBefore | null | undefined;
+  ufc: HistoryRow["record_before"];
+  name: string;
+  className?: string;
+}) {
+  if (!career && !ufc) return null;
+  return (
+    <span
+      className={`flex min-w-0 flex-wrap gap-x-2 tabular-nums ${className}`}
+      title={`${name}'s records entering this fight${career ? " from verified complete professional history" : ""}`}
+    >
+      <span className={career ? "" : "text-zinc-400"}><span className="font-bold text-zinc-400">REC</span> {career?.text ?? "—"}</span>
+      <span className={ufc ? "" : "text-zinc-400"}><span className="font-bold text-zinc-400">UFC</span> {ufc?.text ?? "—"}</span>
+    </span>
+  );
+}
+
+function HistoryRowView({ row }: { row: HistoryRow | ProfessionalHistoryRow }) {
+  const result = row.upcoming ? "Upcoming" : historyResultLabel(row.outcome);
+  const method = row.upcoming ? "Scheduled" : formatMethod(row.method, row.round, row.time);
+  const fighterOdds = formatLine(row.closing_odds?.fighter);
+  const opponentOdds = formatLine(row.closing_odds?.opponent);
+  const outside = row.promotion === "outside";
+  const sourceUrl = "source_url" in row ? row.source_url : null;
+  const eventUrl = "event_url" in row ? row.event_url : null;
+  const opponentSourceUrl = outside && "source_url" in row.opponent
+    ? outsideFighterUrl(row.opponent.name, row.opponent.source_url ?? null)
+    : "source_url" in row.opponent ? row.opponent.source_url : null;
+  const resultClass = `flex min-w-0 flex-col justify-center rounded-xl border px-2.5 py-2 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 sm:px-3 ${resultBoxClasses(row.outcome, row.upcoming)}`;
+  const resultContent = (
+    <>
+      <span className="flex w-full min-w-0 items-baseline gap-1.5 text-[10px] font-bold uppercase leading-4 tracking-[0.1em]">
+        <span className="min-w-0">{result}</span>
+        {fighterOdds ? <span className="ml-auto shrink-0 font-semibold tracking-normal opacity-70" title="Fighter closing odds">{fighterOdds}</span> : null}
+      </span>
+      <span className="block w-full text-[11px] font-semibold leading-4 opacity-75 [overflow-wrap:anywhere]">
+        {method || "Result pending"}
+      </span>
+      <EnteringRecords career={row.career_record_before} ufc={row.record_before} name="Fighter" className="w-full text-[10px] font-medium leading-4 opacity-60" />
+    </>
+  );
+  const opponentContent = (
+    <span className="block min-w-0">
+      <span className="block break-words text-sm font-semibold leading-5 text-zinc-900">{row.opponent.name}</span>
+      <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <EnteringRecords career={row.opponent_career_record_before} ufc={row.opponent_record_before} name={row.opponent.name} className="text-[10px] font-semibold leading-4 text-zinc-600" />
+        {opponentOdds ? <span className="shrink-0 text-[10px] font-semibold tabular-nums text-zinc-400" title="Opponent closing odds">{opponentOdds}</span> : null}
+        {row.opponent_form ? <OpponentForm form={row.opponent_form} /> : null}
+      </span>
+      <span className="mt-0.5 block break-words text-[11px] leading-4 text-zinc-400">
+        {outside ? <span className="font-semibold text-violet-500">Outside UFC</span> : row.weight_class}
+        {row.title_narrative ? (
+          <span className={`font-semibold ${row.title_type === "interim" ? "text-belt-interim" : row.title_type === "title" ? "text-belt" : "text-zinc-500"}`}>
+            {` · ${row.title_narrative}`}
+          </span>
+        ) : null}
+      </span>
+    </span>
+  );
+  const eventContent = (
+    <>
+      <span className="block [overflow-wrap:anywhere] text-xs font-medium leading-4 text-zinc-600">{row.event_name}</span>
+      <span className="block text-[11px] tabular-nums text-zinc-400">{formatDateShortWithYear(row.date)}</span>
+    </>
+  );
+  const opponentClass = "flex min-w-0 items-center rounded-xl px-2.5 py-2 transition-colors hover:bg-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 sm:px-3";
+  const eventClass = "flex min-w-0 flex-col justify-center rounded-xl border-t border-zinc-100 px-3 py-2.5 text-left transition-colors hover:bg-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 sm:border-l sm:border-t-0 sm:text-right";
+  return (
+    <div className="grid grid-cols-1 items-stretch gap-1 px-3 py-1.5 sm:grid-cols-[10.5rem_minmax(12rem,1fr)_minmax(10rem,0.75fr)]">
+      {row.fight_id ? (
+        <Link to={`/fights/${row.fight_id}`} aria-label={`Open ${row.opponent.name} matchup`} className={resultClass}>{resultContent}</Link>
+      ) : sourceUrl ? (
+        <a href={sourceUrl} target="_blank" rel="noreferrer" aria-label={`Open source for ${row.opponent.name}`} className={resultClass}>{resultContent}</a>
+      ) : <div className={resultClass}>{resultContent}</div>}
+      {row.opponent.id ? (
+        <Link to={`/fighters/${row.opponent.id}`} aria-label={`Open ${row.opponent.name} profile`} className={opponentClass}>{opponentContent}</Link>
+      ) : opponentSourceUrl ? (
+        <a href={opponentSourceUrl} target="_blank" rel="noreferrer" aria-label={`Open ${row.opponent.name} source profile`} className={opponentClass}>{opponentContent}</a>
+      ) : <div className={opponentClass}>{opponentContent}</div>}
+      {row.event_id ? (
+        <Link to={`/events/${row.event_id}`} aria-label={`Open ${row.event_name}`} className={eventClass}>{eventContent}</Link>
+      ) : eventUrl ? (
+        <a href={eventUrl} target="_blank" rel="noreferrer" aria-label={`Open source event ${row.event_name}`} className={eventClass}>{eventContent}</a>
+      ) : <div className={eventClass}>{eventContent}</div>}
+    </div>
+  );
+}
+
+/**
+ * Where this fighter stands at the top of the sport. Only places worth calling
+ * a record appear: a top-five finish across the whole promotion, or a top-three
+ * one inside their own division when the division is deep enough for that to
+ * mean something. The list is recomputed from the fight records themselves, so
+ * it moves the night someone passes them.
+ */
+function Records({ records }: { records: FighterRecord[] }) {
+  if (!records.length) return null;
+  const place = (record: FighterRecord) => `${record.tied ? "T" : ""}${record.rank}`;
+  return (
+    <section className={shell}>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-5 pb-2 pt-4">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400">Records</span>
+        <span className="text-[10px] text-zinc-400">Ranked against every fighter on record, live with the results.</span>
+      </div>
+      <div className="divide-y divide-zinc-50 pb-2">
+        {records.map((record) => (
+          <div key={record.key} className="flex items-center gap-3 px-4 py-2">
+            <span
+              className={`grid h-8 w-10 shrink-0 place-items-center rounded-lg text-xs font-bold tabular-nums ${
+                record.rank === 1
+                  ? "bg-amber-100 text-belt ring-1 ring-inset ring-amber-200"
+                  : record.rank <= 3
+                    ? "bg-zinc-900 text-white"
+                    : "bg-zinc-100 text-zinc-600"
+              }`}
+              title={`${place(record)} of ${record.field.toLocaleString("en-US")} fighters who qualify`}
+            >
+              {place(record)}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13px] font-semibold leading-tight text-zinc-900">{record.label}</span>
+              <span className="mt-0.5 block text-[11px] leading-tight text-zinc-400">
+                {record.scope} · {record.detail}
+              </span>
+            </span>
+            <span className="shrink-0 text-right text-base font-semibold tabular-nums text-zinc-950">
+              {formatValue(record.value, record.format)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** Every qualifying top-50 placement, grouped so alternate readings such as
+ * a method's count and percentage stay together instead of repeating panels. */
+function StatisticalRanks({ stats }: { stats: FighterStat[] }) {
+  if (!stats.length) return null;
+  const groups = [...stats.reduce((map, stat) => {
+    const current = map.get(stat.category) ?? { order: stat.category_order, rows: [] as FighterStat[] };
+    current.rows.push(stat);
+    map.set(stat.category, current);
+    return map;
+  }, new Map<string, { order: number; rows: FighterStat[] }>())]
+    .sort((a, b) => a[1].order - b[1].order);
+  const place = (stat: FighterStat) => `${stat.tied ? "T" : ""}${stat.rank}`;
+
+  return (
+    <details className={`${shell} group overflow-hidden`}>
+      <summary
+        className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 [&::-webkit-details-marker]:hidden"
+        title="Expand top-50 statistics"
+      >
+        <span className="min-w-0">
+          <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400">Top-50 statistics</span>
+          <span className="mt-0.5 block text-[10px] text-zinc-400">
+            {stats.length} {stats.length === 1 ? "placement" : "placements"} across {groups.length} {groups.length === 1 ? "category" : "categories"}
+          </span>
+        </span>
+        <svg
+          aria-hidden="true"
+          className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform group-open:rotate-180"
+          fill="none"
+          viewBox="0 0 12 12"
+        >
+          <path d="m2.5 4.5 3.5 3 3.5-3" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </summary>
+      <div className="grid gap-px border-t border-zinc-100 bg-zinc-100 sm:grid-cols-2">
+        {groups.map(([category, group]) => (
+          <section key={category} className="min-w-0 bg-white px-4 py-3">
+            <h3 className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-400">{category}</h3>
+            <div className="divide-y divide-zinc-50">
+              {group.rows.map((stat) => (
+                <div key={stat.key} className="flex min-w-0 items-center gap-2 py-2 first:pt-0 last:pb-0">
+                  <span
+                    className={`grid h-6 w-9 shrink-0 place-items-center rounded-md text-[10px] font-bold tabular-nums ${
+                      stat.rank <= 10 ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600"
+                    }`}
+                    title={`${place(stat)} of ${stat.field.toLocaleString("en-US")} qualifying fighters`}
+                  >
+                    {place(stat)}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[11px] font-semibold leading-4 text-zinc-800">{stat.label}</span>
+                    <span className="block truncate text-[9px] leading-3.5 text-zinc-400" title={`${stat.scope} · ${stat.detail}`}>
+                      {stat.scope} · {stat.detail}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right text-xs font-semibold tabular-nums text-zinc-900">
+                    {formatValue(stat.value, stat.format)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </details>
   );
 }
 
 export default function FighterPage() {
   const { fighterId } = useParams();
+  const { settings } = useSettings();
   const navigate = useNavigate();
-  const { data: fighter, loading, error } = useApi<FighterProfile>(fighterId ? `/api/fighters/${fighterId}` : null);
+  const { data: fighter, loading, error } = useApi<FighterProfile>(fighterId ? withRanking(`/api/fighters/${fighterId}`, settings.rankingSource) : null);
+  const pageScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:page", Boolean(fighter));
   useSeo({
     title: fighter ? `${fighter.name} — Record & Fight History` : "UFC Fighter Profile",
     description: fighter
@@ -73,6 +405,7 @@ export default function FighterPage() {
           "@type": "Person",
           name: fighter.name,
           alternateName: fighter.nickname || undefined,
+          birthDate: fighter.birth_date || undefined,
           url: `https://ufc.sh/fighters/${fighter.id}`,
           ...(fighter.photo_url ? { image: fighter.photo_url } : {}),
         }
@@ -87,7 +420,8 @@ export default function FighterPage() {
   }
 
   const upcoming = fighter.history.filter((h) => h.upcoming);
-  const past = fighter.history.filter((h) => !h.upcoming);
+  const past = fighter.pro_history ?? fighter.history.filter((h) => !h.upcoming);
+  const outsideCount = past.filter((h) => h.promotion === "outside").length;
 
   const bio: [string, string][] = (
     [
@@ -95,12 +429,13 @@ export default function FighterPage() {
       ["Weight", fighter.weight],
       ["Reach", fighter.reach],
       ["Stance", fighter.stance],
+      ["Age", fighter.age == null ? "" : `${fighter.age} y/o`],
     ] as [string, string][]
   ).filter(([, v]) => v);
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto flex max-w-3xl flex-col gap-3 p-3 pb-8">
+    <div ref={pageScroll} className="h-full overflow-y-auto">
+      <div className="mx-auto flex max-w-5xl flex-col gap-3 p-3 pb-8">
         <button
           type="button"
           onClick={() => navigate(-1)}
@@ -110,31 +445,52 @@ export default function FighterPage() {
         </button>
 
         <section className={`${shell} px-6 py-5`}>
-          <div className="flex items-center gap-5">
-            <Avatar src={fighter.photo_url} name={fighter.name} size="xl" />
-            <div className="min-w-0">
-              <h1 className="truncate text-2xl font-semibold tracking-tight text-zinc-950">{fighter.name}</h1>
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+            <div className="flex min-w-0 items-center gap-5">
+              <Avatar src={fighter.photo_url} name={fighter.name} size="xl" />
+              <div className="min-w-0">
+              <h1 className="break-words text-2xl font-semibold tracking-tight text-zinc-950">{fighter.name}</h1>
               {fighter.nickname ? <div className="text-sm text-zinc-400">“{fighter.nickname}”</div> : null}
               <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-                <span className="font-semibold tabular-nums text-zinc-900">{fighter.record}</span>
+                <span className="font-semibold tabular-nums text-zinc-900" title="Current verified complete professional record"><span className="text-[10px] font-bold text-zinc-400">REC</span> {fighter.record}</span>
+                <span className="font-semibold tabular-nums text-zinc-600" title="Current UFC-only record"><span className="text-[10px] font-bold text-zinc-400">UFC</span> {fighter.ufc_record}</span>
                 {fighter.ranking ? (
-                  <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-700">
-                    {fighter.ranking.rank === "C" ? "Champion" : `#${fighter.ranking.rank}`} · {fighter.ranking.division}
+                  <span title="Current ranking from the source selected in Settings" className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${fighter.ranking.rank === "C" ? "bg-amber-100 text-belt" : fighter.ranking.rank === "IC" ? "bg-slate-100 text-belt-interim" : "bg-zinc-100 text-zinc-600"}`}>
+                    {fighter.ranking.rank === "C" ? "Champion" : fighter.ranking.rank === "IC" ? "Interim champion" : `#${fighter.ranking.rank}`} · {fighter.ranking.division}
                   </span>
                 ) : null}
+              </div>
+              <div className="mt-1 flex flex-wrap gap-x-3 text-[10px] tabular-nums text-zinc-400">
+                {fighter.outside_ufc_record ? (
+                  <a href={outsideFighterUrl(fighter.name, fighter.career_source_url)} target="_blank" rel="noreferrer" className="hover:text-zinc-700">
+                    {fighter.outside_ufc_record} Outside UFC ↗
+                  </a>
+                ) : <span>Outside-UFC history syncing</span>}
+                {fighter.career_source_url ? <span>verified via Sherdog</span> : null}
               </div>
               {bio.length ? (
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
                   {bio.map(([label, value]) => (
-                    <span key={label}>
+                    <span key={label} title={label === "Age" ? "Current age today" : undefined}>
                       <span className="text-zinc-400">{label}</span> {value}
                     </span>
                   ))}
                 </div>
               ) : null}
+              </div>
             </div>
+            <ProfileRecordChart
+              key={fighter.id}
+              ufcHistory={fighter.history}
+              proHistory={fighter.pro_history}
+              completeRecordVerified={fighter.record_verified}
+            />
           </div>
         </section>
+
+        <Records records={fighter.records ?? []} />
+
+        <StatisticalRanks stats={fighter.stats ?? []} />
 
         {upcoming.length ? (
           <section className={shell}>
@@ -150,14 +506,21 @@ export default function FighterPage() {
         ) : null}
 
         <section className={shell}>
-          <div className="px-5 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
-            UFC fight history ({past.length})
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-5 pb-1 pt-4">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
+              Professional fight history ({past.length})
+            </span>
+            <span className="text-[10px] text-zinc-400">
+              {fighter.record_verified
+                ? `${outsideCount} outside UFC · verified complete record entering each bout.`
+                : "Outside-UFC history is still syncing; UFC bouts are shown now."}
+            </span>
           </div>
           <div className="divide-y divide-zinc-50 pb-2">
             {past.length ? (
-              past.map((row) => <HistoryRowView key={row.fight_id} row={row} />)
+              past.map((row, index) => <HistoryRowView key={row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`} row={row} />)
             ) : (
-              <div className="px-5 py-6 text-sm text-zinc-400">No UFC fights on record.</div>
+              <div className="px-5 py-6 text-sm text-zinc-400">No professional fights on record.</div>
             )}
           </div>
         </section>
