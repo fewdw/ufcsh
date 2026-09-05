@@ -160,6 +160,12 @@ type Aggregate = {
   totalSeconds: number;
   timedFights: number;
   opponentWins: number;
+  /** The same combined opponent record, over the bouts this fighter won. */
+  beatenWins: number;
+  beatenLosses: number;
+  beatenDraws: number;
+  beatenResults: number;
+  beatenSamples: number;
   opponentLosses: number;
   opponentDraws: number;
   opponentResults: number;
@@ -263,6 +269,7 @@ function emptyAggregate(id: string, name: string, photoUrl: string | null): Aggr
     finishedSeconds: 0, finishedLosses: 0, fastestFinishedSeconds: Number.POSITIVE_INFINITY, fastestFinishedDetail: "",
     totalSeconds: 0, timedFights: 0,
     opponentWins: 0, opponentLosses: 0, opponentDraws: 0, opponentResults: 0, opponentSamples: 0,
+    beatenWins: 0, beatenLosses: 0, beatenDraws: 0, beatenResults: 0, beatenSamples: 0,
     championBouts: 0, championWins: 0, championMethodWins: 0, championLosses: 0, championTitleBouts: 0,
     reigningBouts: 0, reigningWins: 0, reigningMethodWins: 0, reigningLosses: 0, reigningTitleBouts: 0,
     streakBreakers: 0, longestStreakBroken: 0, longestStreakBrokenDetail: "",
@@ -453,6 +460,9 @@ export function getStats(params: URLSearchParams): unknown {
   // The UI explicitly requests complete verified careers by default. Keep the
   // bare endpoint's older UFC-only default for backwards-compatible callers.
   const oppositionSource = mode("oppositionSource", ["ufc", "all"] as const, "ufc");
+  // Beaten by default: "who did you beat" is the question a reader means by
+  // toughest opposition, and facing someone is not the same as handling them.
+  const oppositionScope = mode("oppositionScope", ["beaten", "faced"] as const, "beaten");
   const oppositionWhen = mode("oppositionWhen", ["atTime", "today"] as const, "atTime");
   const rematchMetric = mode("rematchMetric", ["rate", "revenge"] as const, "rate");
   const returnWindow = mode("returnWindow", ["quick", "layoff"] as const, "quick");
@@ -647,6 +657,15 @@ export function getStats(params: URLSearchParams): unknown {
         stats.opponentLosses += opponentRecord!.losses;
         stats.opponentDraws += opponentRecord!.draws;
         stats.opponentResults += opponentBouts;
+        // Beating a good fighter and losing to one are not the same claim, so
+        // the opponents actually beaten are counted separately.
+        if (outcome === "win") {
+          stats.beatenSamples += 1;
+          stats.beatenWins += opponentRecord!.wins;
+          stats.beatenLosses += opponentRecord!.losses;
+          stats.beatenDraws += opponentRecord!.draws;
+          stats.beatenResults += opponentBouts;
+        }
         if (contextChipMode === "opposition") {
           stats.oppositionChips.push({
             chip: {
@@ -1481,7 +1500,9 @@ export function getStats(params: URLSearchParams): unknown {
     ? (oppositionWhen === "today" ? "complete careers today" : "complete careers that night")
     : (oppositionWhen === "today" ? "UFC records today" : "UFC records that night");
   const contextTitles: Record<typeof contextMode, string> = {
-    opposition: oppositionWhen === "today" ? "Opponents who turned out toughest" : "Toughest opposition faced",
+    opposition: oppositionScope === "beaten"
+      ? (oppositionWhen === "today" ? "Beat the opponents who turned out toughest" : "Toughest opposition beaten")
+      : (oppositionWhen === "today" ? "Opponents who turned out toughest" : "Toughest opposition faced"),
     championsFaced: championScope === "current" ? "Most reigning champions faced" : "Most champions faced",
     streakBreakers: "Biggest streak breakers",
     bounceBack: "Best bounce-back rate",
@@ -1493,7 +1514,9 @@ export function getStats(params: URLSearchParams): unknown {
   const returnChances = (f: Aggregate) => (returnWindow === "layoff" ? f.layoffOpportunities : f.quickReturnOpportunities);
   const contextValue = (f: Aggregate): number => {
     switch (contextMode) {
-      case "opposition": return percent(f.opponentWins, f.opponentResults);
+      case "opposition": return oppositionScope === "beaten"
+        ? percent(f.beatenWins, f.beatenResults)
+        : percent(f.opponentWins, f.opponentResults);
       case "championsFaced": return championScope === "current" ? f.reigningBouts : f.championBouts;
       case "streakBreakers": return f.longestStreakBroken;
       case "bounceBack": return percent(f.bounceBackWins, f.bounceBackOpportunities);
@@ -1504,7 +1527,9 @@ export function getStats(params: URLSearchParams): unknown {
   };
   const contextDetail = (f: Aggregate): string => {
     switch (contextMode) {
-      case "opposition": return `${recordText(f.opponentWins, f.opponentLosses, f.opponentDraws)} combined · ${f.opponentSamples} opponents · ${oppositionLabel}`;
+      case "opposition": return oppositionScope === "beaten"
+        ? `${recordText(f.beatenWins, f.beatenLosses, f.beatenDraws)} combined · ${f.beatenSamples} opponents beaten · ${oppositionLabel}`
+        : `${recordText(f.opponentWins, f.opponentLosses, f.opponentDraws)} combined · ${f.opponentSamples} opponents faced · ${oppositionLabel}`;
       case "championsFaced": return championScope === "current"
         ? `${recordText(f.reigningWins, f.reigningLosses)} against them · ${f.reigningTitleBouts} for a belt`
         : `${recordText(f.championWins, f.championLosses)} against them · ${f.reigningBouts} still reigning that night`;
@@ -1522,7 +1547,7 @@ export function getStats(params: URLSearchParams): unknown {
         : "combined complete professional record of every opponent as it stood that night, reconstructed from dated UFC and independently identity-verified outside-UFC bouts")
       : (oppositionWhen === "today"
         ? "combined UFC record of every opponent as it stands today, so a fighter is credited with who their opponents turned out to be"
-        : "combined UFC record of every opponent as it stood the night they were faced")}, ranked by that record's win rate · ${minimumSample}+ opponents and ${minimumSample * 5}+ bouts between them`,
+        : "combined UFC record of every opponent as it stood the night they were faced")}, counting ${oppositionScope === "beaten" ? "only the opponents this fighter beat" : "every opponent faced"} and ranked by that record's win rate · ${minimumSample}+ opponents and ${minimumSample * 5}+ bouts between them`,
     championsFaced: championScope === "current"
       ? "bouts against an opponent holding a UFC undisputed or interim belt that night, in any division · a belt stays with its last winner until someone else wins it"
       : "bouts against an opponent who held, or had already held, a UFC undisputed or interim belt",
@@ -1538,7 +1563,9 @@ export function getStats(params: URLSearchParams): unknown {
   };
   const contextEligible = (f: Aggregate): boolean => {
     switch (contextMode) {
-      case "opposition": return f.opponentSamples >= minimumSample && f.opponentResults >= minimumSample * 5;
+      case "opposition": return oppositionScope === "beaten"
+        ? f.beatenSamples >= minimumSample && f.beatenResults >= minimumSample * 5
+        : f.opponentSamples >= minimumSample && f.opponentResults >= minimumSample * 5;
       case "championsFaced": return (championScope === "current" ? f.reigningBouts : f.championBouts) > 0;
       case "streakBreakers": return f.longestStreakBroken >= 3;
       case "bounceBack": return f.bounceBackOpportunities >= minimumSample;
@@ -1549,7 +1576,7 @@ export function getStats(params: URLSearchParams): unknown {
   };
   const contextTieBreaker = (f: Aggregate): number => {
     switch (contextMode) {
-      case "opposition": return f.opponentResults;
+      case "opposition": return oppositionScope === "beaten" ? f.beatenResults : f.opponentResults;
       case "bounceBack": return f.bounceBackOpportunities;
       case "rematches": return f.rematchOpportunities;
       case "returns": return returnChances(f);

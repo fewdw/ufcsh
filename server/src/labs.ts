@@ -1,4 +1,6 @@
-import { fightIndex, winProfit, type IndexedFight, type IndexedSide } from "./fight-index.ts";
+import { db } from "./db.ts";
+import { ageOn, americanLine, careerBefore, impliedProbability, type FightIndex, type IndexedFight, type IndexedSide, type PriorState, fightIndex, winProfit } from "./fight-index.ts";
+import { normName, todayIso } from "./util.ts";
 
 /**
  * Labs: population analysis over fighter-bout observations. Every completed
@@ -25,8 +27,9 @@ export type LabsFilters = {
   ageMax: number | null;
   oppAgeMin: number | null;
   oppAgeMax: number | null;
-  ageGap: "any" | "younger" | "older" | "same";
+  /** Signed, fighter minus opponent, so a negative gap means A is the younger. */
   ageGapMin: number | null;
+  ageGapMax: number | null;
   winStreakMin: number | null;
   winStreakMax: number | null;
   lossStreakMin: number | null;
@@ -39,6 +42,10 @@ export type LabsFilters = {
   lineMax: number | null;
   probMin: number | null;
   probMax: number | null;
+  oppLineMin: number | null;
+  oppLineMax: number | null;
+  oppProbMin: number | null;
+  oppProbMax: number | null;
   expMin: number | null;
   expMax: number | null;
   oppExpMin: number | null;
@@ -47,9 +54,15 @@ export type LabsFilters = {
   oppStatus: "any" | "champion" | "formerChampion" | "everChampion" | "neverChampion";
   stance: "any" | "Orthodox" | "Southpaw" | "Switch";
   oppStance: "any" | "Orthodox" | "Southpaw" | "Switch";
-  heightAdv: "any" | "taller" | "shorter" | "same";
-  reachAdv: "any" | "longer" | "shorter" | "same";
+  /** ISO country codes; a fighter matches when their nationality is one of
+   *  them. A fighter whose nationality is unknown matches no country. */
+  countries: string[];
+  oppCountries: string[];
+  /** Signed inches, fighter minus opponent. */
   reachGapMin: number | null;
+  reachGapMax: number | null;
+  heightGapMin: number | null;
+  heightGapMax: number | null;
   fighterIds: string[];
   opponentIds: string[];
   method: "any" | "ko" | "sub" | "finish" | "decision";
@@ -58,6 +71,7 @@ export type LabsFilters = {
 export const GROUP_DIMENSIONS = [
   "none", "year", "era", "age", "oppAge", "ageGap", "winStreak", "lossStreak", "layoff", "prob", "line",
   "experience", "division", "rounds", "stance", "stanceMatchup", "prev", "reachGap", "heightGap", "title", "mainEvent", "gender", "month",
+  "country", "countryMatchup",
 ] as const;
 export type GroupDimension = typeof GROUP_DIMENSIONS[number];
 
@@ -85,8 +99,8 @@ export function parseFilters(params: URLSearchParams): LabsFilters {
     ageMax: int(params.get("ageMax")),
     oppAgeMin: int(params.get("oppAgeMin")),
     oppAgeMax: int(params.get("oppAgeMax")),
-    ageGap: choice(params.get("ageGap"), ["any", "younger", "older", "same"] as const, "any"),
     ageGapMin: int(params.get("ageGapMin")),
+    ageGapMax: int(params.get("ageGapMax")),
     winStreakMin: int(params.get("winStreakMin")),
     winStreakMax: int(params.get("winStreakMax")),
     lossStreakMin: int(params.get("lossStreakMin")),
@@ -99,6 +113,10 @@ export function parseFilters(params: URLSearchParams): LabsFilters {
     lineMax: int(params.get("lineMax")),
     probMin: int(params.get("probMin")),
     probMax: int(params.get("probMax")),
+    oppLineMin: int(params.get("oppLineMin")),
+    oppLineMax: int(params.get("oppLineMax")),
+    oppProbMin: int(params.get("oppProbMin")),
+    oppProbMax: int(params.get("oppProbMax")),
     expMin: int(params.get("expMin")),
     expMax: int(params.get("expMax")),
     oppExpMin: int(params.get("oppExpMin")),
@@ -107,9 +125,12 @@ export function parseFilters(params: URLSearchParams): LabsFilters {
     oppStatus: choice(params.get("oppStatus"), ["any", "champion", "formerChampion", "everChampion", "neverChampion"] as const, "any"),
     stance: choice(params.get("stance"), ["any", "Orthodox", "Southpaw", "Switch"] as const, "any"),
     oppStance: choice(params.get("oppStance"), ["any", "Orthodox", "Southpaw", "Switch"] as const, "any"),
-    heightAdv: choice(params.get("heightAdv"), ["any", "taller", "shorter", "same"] as const, "any"),
-    reachAdv: choice(params.get("reachAdv"), ["any", "longer", "shorter", "same"] as const, "any"),
+    countries: list("country").map((code) => code.toUpperCase()).filter((code) => /^[A-Z]{2}$/.test(code)).slice(0, 30),
+    oppCountries: list("oppCountry").map((code) => code.toUpperCase()).filter((code) => /^[A-Z]{2}$/.test(code)).slice(0, 30),
     reachGapMin: int(params.get("reachGapMin")),
+    reachGapMax: int(params.get("reachGapMax")),
+    heightGapMin: int(params.get("heightGapMin")),
+    heightGapMax: int(params.get("heightGapMax")),
     fighterIds: list("fighterIds").filter((id) => /^[a-f0-9]+$/i.test(id)).slice(0, 30),
     opponentIds: list("opponentIds").filter((id) => /^[a-f0-9]+$/i.test(id)).slice(0, 30),
     method: choice(params.get("method"), ["any", "ko", "sub", "finish", "decision"] as const, "any"),
@@ -120,11 +141,16 @@ function statusMatches(side: IndexedSide, status: LabsFilters["status"]): boolea
   const p = side.prior;
   switch (status) {
     case "any": return true;
-    case "champion": return p.champion || p.interimChampion;
-    case "formerChampion": return p.formerChampion && !p.champion && !p.interimChampion;
-    case "everChampion": return p.formerChampion || p.champion || p.interimChampion;
-    case "neverChampion": return !p.formerChampion && !p.champion && !p.interimChampion;
+    case "champion": return p.reigningChampion;
+    case "formerChampion": return p.formerChampion && !p.reigningChampion;
+    case "everChampion": return p.formerChampion || p.reigningChampion;
+    case "neverChampion": return !p.formerChampion && !p.reigningChampion;
   }
+}
+
+/** A signed difference, or null when either side of it is unknown. */
+function gapBetween(mine: number | null, theirs: number | null): number | null {
+  return mine == null || theirs == null ? null : mine - theirs;
 }
 
 function within(value: number | null, min: number | null, max: number | null): boolean {
@@ -182,25 +208,31 @@ export function matches(o: Observation, f: LabsFilters, fighterSet: Set<string>,
   if (!methodMatches(fight.method, f.method)) return false;
   if (!within(side.age, f.ageMin, f.ageMax)) return false;
   if (!within(opponent.age, f.oppAgeMin, f.oppAgeMax)) return false;
-  if (f.ageGap !== "any" || f.ageGapMin != null) {
-    if (side.age == null || opponent.age == null) return false;
-    const gap = side.age - opponent.age;
-    if (f.ageGap === "younger" && gap >= 0) return false;
-    if (f.ageGap === "older" && gap <= 0) return false;
-    if (f.ageGap === "same" && gap !== 0) return false;
-    if (f.ageGapMin != null && Math.abs(gap) < f.ageGapMin) return false;
-  }
+  // Every gap is signed and read the same way round — fighter minus opponent —
+  // so reading the same bout from the other corner flips its sign rather than
+  // leaving a magnitude that looks identical from both sides.
+  if (!within(gapBetween(side.age, opponent.age), f.ageGapMin, f.ageGapMax)) return false;
+  if (!within(gapBetween(side.reachIn, opponent.reachIn), f.reachGapMin, f.reachGapMax)) return false;
+  if (!within(gapBetween(side.heightIn, opponent.heightIn), f.heightGapMin, f.heightGapMax)) return false;
   if (!within(side.prior.winStreak, f.winStreakMin, f.winStreakMax)) return false;
   if (!within(side.prior.lossStreak, f.lossStreakMin, f.lossStreakMax)) return false;
   if (!prevMatches(side, f.prev)) return false;
   if (!within(side.prior.daysSince, f.layoffMin, f.layoffMax)) return false;
-  if (f.odds !== "any" || f.lineMin != null || f.lineMax != null || f.probMin != null || f.probMax != null) {
+  const opponentMarket = f.oppLineMin != null || f.oppLineMax != null || f.oppProbMin != null || f.oppProbMax != null;
+  if (f.odds !== "any" || f.lineMin != null || f.lineMax != null || f.probMin != null || f.probMax != null || opponentMarket) {
     if (side.prob == null || opponent.prob == null || side.close == null) return false;
     if (f.odds === "underdog" && side.prob >= opponent.prob) return false;
     if (f.odds === "favorite" && side.prob <= opponent.prob) return false;
     if (f.odds === "pickem" && Math.abs(side.prob - opponent.prob) > 0.03) return false;
     if (!within(side.close, f.lineMin, f.lineMax)) return false;
-    if (!within(Math.round(side.prob * 100), f.probMin, f.probMax)) return false;
+    if (!within(side.prob * 100, f.probMin, f.probMax)) return false;
+    // Both closing prices carry the vig, so the opponent's side is real extra
+    // information rather than the mirror of the fighter's — worth its own filter.
+    if (opponentMarket) {
+      if (opponent.close == null) return false;
+      if (!within(opponent.close, f.oppLineMin, f.oppLineMax)) return false;
+      if (!within(opponent.prob * 100, f.oppProbMin, f.oppProbMax)) return false;
+    }
   }
   if (!within(side.prior.bouts + side.prior.ncs, f.expMin, f.expMax)) return false;
   if (!within(opponent.prior.bouts + opponent.prior.ncs, f.oppExpMin, f.oppExpMax)) return false;
@@ -208,21 +240,8 @@ export function matches(o: Observation, f: LabsFilters, fighterSet: Set<string>,
   if (!statusMatches(opponent, f.oppStatus)) return false;
   if (!stanceMatches(side.stance, f.stance)) return false;
   if (!stanceMatches(opponent.stance, f.oppStance)) return false;
-  if (f.heightAdv !== "any") {
-    if (side.heightIn == null || opponent.heightIn == null) return false;
-    const gap = side.heightIn - opponent.heightIn;
-    if (f.heightAdv === "taller" && gap <= 0) return false;
-    if (f.heightAdv === "shorter" && gap >= 0) return false;
-    if (f.heightAdv === "same" && gap !== 0) return false;
-  }
-  if (f.reachAdv !== "any" || f.reachGapMin != null) {
-    if (side.reachIn == null || opponent.reachIn == null) return false;
-    const gap = side.reachIn - opponent.reachIn;
-    if (f.reachAdv === "longer" && gap <= 0) return false;
-    if (f.reachAdv === "shorter" && gap >= 0) return false;
-    if (f.reachAdv === "same" && gap !== 0) return false;
-    if (f.reachGapMin != null && Math.abs(gap) < f.reachGapMin) return false;
-  }
+  if (f.countries.length && !f.countries.includes(side.countryCode)) return false;
+  if (f.oppCountries.length && !f.oppCountries.includes(opponent.countryCode)) return false;
   return true;
 }
 
@@ -257,11 +276,17 @@ type Tally = {
   knockdownsTaken: number;
   control: number;
   controlBouts: number;
+  controlSeconds: number;
+  tdSeconds: number;
+  kdSeconds: number;
+  tdBouts: number;
+  kdBouts: number;
   ageSum: number;
   ageCount: number;
   probSum: number;
   priced: number;
   betProbSum: number;
+  betFairSum: number;
   pricedWins: number;
   pricedLosses: number;
   pricedDraws: number;
@@ -277,8 +302,9 @@ function tally(): Tally {
     winKo: 0, winSub: 0, winDec: 0, winOther: 0, lossKo: 0, lossSub: 0, lossDec: 0, lossOther: 0,
     seconds: 0, timed: 0, sigLanded: 0, sigAbsorbed: 0, statSeconds: 0, statBouts: 0,
     takedowns: 0, takedownsTaken: 0, knockdowns: 0, knockdownsTaken: 0, control: 0, controlBouts: 0,
+    controlSeconds: 0, tdSeconds: 0, kdSeconds: 0, tdBouts: 0, kdBouts: 0,
     ageSum: 0, ageCount: 0, probSum: 0, priced: 0, betProbSum: 0,
-    pricedWins: 0, pricedLosses: 0, pricedDraws: 0,
+    pricedWins: 0, pricedLosses: 0, pricedDraws: 0, betFairSum: 0,
     underdogs: 0, profit: 0, bets: 0, r1Finishes: 0,
   };
 }
@@ -316,13 +342,26 @@ function add(t: Tally, o: Observation): void {
     t.sigAbsorbed += sigTaken.scored;
     t.statSeconds += fight.elapsed;
     t.statBouts += 1;
-    t.takedowns += side.actions.takedowns?.scored ?? 0;
-    t.takedownsTaken += opponent.actions.takedowns?.scored ?? 0;
-    t.knockdowns += side.actions.knockdowns?.scored ?? 0;
-    t.knockdownsTaken += opponent.actions.knockdowns?.scored ?? 0;
+  }
+  // Each metric has its own matched sample. Missing data is not a zero,
+  // and strike coverage must not decide the denominator for grappling.
+  if (fight.elapsed != null && fight.elapsed > 0) {
+    if (side.actions.takedowns && opponent.actions.takedowns) {
+      t.takedowns += side.actions.takedowns.scored;
+      t.takedownsTaken += opponent.actions.takedowns.scored;
+      t.tdSeconds += fight.elapsed;
+      t.tdBouts += 1;
+    }
+    if (side.actions.knockdowns && opponent.actions.knockdowns) {
+      t.knockdowns += side.actions.knockdowns.scored;
+      t.knockdownsTaken += opponent.actions.knockdowns.scored;
+      t.kdSeconds += fight.elapsed;
+      t.kdBouts += 1;
+    }
     if (side.actions.control) {
       t.control += side.actions.control.scored;
       t.controlBouts += 1;
+      t.controlSeconds += fight.elapsed;
     }
   }
   if (side.age != null) {
@@ -336,6 +375,7 @@ function add(t: Tally, o: Observation): void {
     if (side.outcome === "win" || side.outcome === "loss" || side.outcome === "draw") {
       t.bets += 1;
       t.betProbSum += side.prob;
+      t.betFairSum += side.prob / (side.prob + opponent.prob);
       if (side.outcome === "win") { t.pricedWins += 1; t.profit += winProfit(side.close); }
       else if (side.outcome === "loss") { t.pricedLosses += 1; t.profit -= 100; }
       else t.pricedDraws += 1;
@@ -370,20 +410,30 @@ function summarize(t: Tally) {
     stoppage_rate: pct(t.winKo + t.winSub + t.lossKo + t.lossSub, decided),
     r1_finish_rate: pct(t.r1Finishes, t.wins),
     avg_seconds: t.timed ? Math.round(t.seconds / t.timed) : null,
+    // Raw denominators, so a reader striking bouts off in the browser can
+    // re-derive every rate above exactly rather than approximating one.
+    timed: t.timed,
+    seconds: t.seconds,
+    r1_finishes: t.r1Finishes,
     sig_per_min: minutes > 0 ? r2(t.sigLanded / minutes) : null,
     sig_absorbed_per_min: minutes > 0 ? r2(t.sigAbsorbed / minutes) : null,
     sig_differential_per_min: minutes > 0 ? r2((t.sigLanded - t.sigAbsorbed) / minutes) : null,
-    td_per_15: minutes > 0 ? r2(t.takedowns / (minutes / 15)) : null,
-    td_taken_per_15: minutes > 0 ? r2(t.takedownsTaken / (minutes / 15)) : null,
-    kd_per_15: minutes > 0 ? r2(t.knockdowns / (minutes / 15)) : null,
-    kd_taken_per_15: minutes > 0 ? r2(t.knockdownsTaken / (minutes / 15)) : null,
-    control_share: t.controlBouts && t.statSeconds ? pct(t.control, t.statSeconds) : null,
+    td_per_15: t.tdSeconds > 0 ? r2(t.takedowns * 900 / t.tdSeconds) : null,
+    td_taken_per_15: t.tdSeconds > 0 ? r2(t.takedownsTaken * 900 / t.tdSeconds) : null,
+    kd_per_15: t.kdSeconds > 0 ? r2(t.knockdowns * 900 / t.kdSeconds) : null,
+    kd_taken_per_15: t.kdSeconds > 0 ? r2(t.knockdownsTaken * 900 / t.kdSeconds) : null,
+    control_share: pct(t.control, t.controlSeconds),
+    control_bouts: t.controlBouts,
+    td_bouts: t.tdBouts,
+    kd_bouts: t.kdBouts,
     avg_age: t.ageCount ? r1(t.ageSum / t.ageCount) : null,
     age_known: t.ageCount,
+    age_sum: t.ageSum,
     priced: t.priced,
     avg_implied: t.priced ? pct(t.probSum, t.priced) : null,
     priced_win_rate: pct(t.pricedWins, t.pricedWins + t.pricedLosses + t.pricedDraws),
     bet_avg_implied: t.bets ? pct(t.betProbSum, t.bets) : null,
+    bet_avg_fair: t.bets ? pct(t.betFairSum, t.bets) : null,
     underdog_share: pct(t.underdogs, t.priced),
     roi: t.bets ? Math.round((t.profit / (t.bets * 100)) * 1000) / 10 : null,
     profit: t.bets ? Math.round(t.profit) : null,
@@ -395,6 +445,13 @@ function summarize(t: Tally) {
       draw: t.draws, nc: t.ncs,
     },
   };
+}
+
+/** Pure population summary, also usable with incomplete source observations. */
+export function summarizeObservations(observations: Iterable<Observation>): TallySummary {
+  const total = tally();
+  for (const observation of observations) add(total, observation);
+  return summarize(total);
 }
 
 // ---------------------------------------------------------------------------
@@ -417,7 +474,7 @@ function bucketOf(o: Observation, dimension: GroupDimension): Bucket | null {
     }
     return { key: String(edges.length), order: edges.length, label: lastLabel ?? `${edges[edges.length - 1]}+${unit}` };
   };
-  const signedRanges = (value: number | null, edges: number[], unit: string): Bucket | null => {
+  const signedRanges = (value: number | null, edges: number[], unit: string, continuous = false): Bucket | null => {
     if (value == null) return null;
     // edges are the positive boundaries; mirrored for the negative side.
     const labels: string[] = [];
@@ -430,7 +487,11 @@ function bucketOf(o: Observation, dimension: GroupDimension): Bucket | null {
       const low = i === 0 ? null : bounds[i - 1];
       const high = i === bounds.length ? null : bounds[i];
       const inside = (low == null || value >= low) && (high == null || value < high);
-      if (low == null) labels.push(`≤ ${high! - 1}${unit}`);
+      if (continuous) {
+        const fmt = (v: number) => `${v > 0 ? "+" : ""}${v}`;
+        labels.push(low == null ? `< ${fmt(high!)}${unit}` : high == null ? `≥ ${fmt(low)}${unit}` : `${fmt(low)} to < ${fmt(high)}${unit}`);
+      }
+      else if (low == null) labels.push(`≤ ${high! - 1}${unit}`);
       else if (high == null) labels.push(`${low}+${unit}`);
       else if (high - low === 1) labels.push(`${low === 0 ? "0" : `${low > 0 ? "+" : ""}${low}`}${unit}`);
       else labels.push(`${low > 0 ? "+" : ""}${low} to ${high - 1 > 0 ? "+" : ""}${high - 1}${unit}`);
@@ -455,7 +516,14 @@ function bucketOf(o: Observation, dimension: GroupDimension): Bucket | null {
     case "layoff": return p.daysSince == null
       ? { key: "debut", label: "UFC debut", order: -1 }
       : ranges(p.daysSince, [60, 120, 180, 270, 365, 730], "d");
-    case "prob": return side.prob == null ? null : ranges(Math.round(side.prob * 100), [20, 30, 40, 50, 60, 70, 80], "%");
+    case "prob": {
+      if (side.prob == null) return null;
+      const value = side.prob * 100;
+      const lower = Math.floor(value / 10) * 10;
+      if (value < 20) return { key: "low", label: "< 20%", order: 0 };
+      if (value >= 80) return { key: "high", label: "≥ 80%", order: 80 };
+      return { key: String(lower), label: `${lower} to < ${lower + 10}%`, order: lower };
+    }
     case "line": {
       if (side.close == null) return null;
       const edges = [-800, -400, -250, -150, -110, 110, 150, 250, 400, 800];
@@ -471,6 +539,12 @@ function bucketOf(o: Observation, dimension: GroupDimension): Bucket | null {
     case "experience": return ranges(p.bouts + p.ncs, [1, 3, 6, 11, 16, 21], "", "21+");
     case "division": return { key: fight.weightClass || "Unknown", label: fight.weightClass || "Unknown", order: 0 };
     case "rounds": return { key: String(fight.scheduledRounds), label: fight.scheduledRounds ? `${fight.scheduledRounds}-round bouts` : "Other formats", order: fight.scheduledRounds };
+    case "country": return side.countryCode ? { key: side.countryCode, label: side.country || side.countryCode, order: 0 } : null;
+    case "countryMatchup": {
+      if (!side.countryCode || !opponent.countryCode) return null;
+      const same = side.countryCode === opponent.countryCode;
+      return { key: same ? "same" : "different", label: same ? "Same country" : "Different countries", order: same ? 0 : 1 };
+    }
     case "stance": return side.stance ? { key: side.stance, label: side.stance, order: 0 } : null;
     case "stanceMatchup": {
       const a = side.stance || "";
@@ -482,14 +556,18 @@ function bucketOf(o: Observation, dimension: GroupDimension): Bucket | null {
     case "prev": {
       if (p.lastOutcome == null) return { key: "debut", label: "UFC debut", order: 0 };
       const finish = p.lastMethod === "KO/TKO" || p.lastMethod === "SUB";
-      if (p.lastOutcome === "win") return finish ? { key: "finishWin", label: "After a finish win", order: 1 } : { key: "win", label: "After a decision win", order: 2 };
+      const decision = Boolean(p.lastMethod?.endsWith("-DEC"));
+      if (p.lastOutcome === "win") return finish ? { key: "finishWin", label: "After a finish win", order: 1 }
+        : decision ? { key: "win", label: "After a decision win", order: 2 }
+          : { key: "otherWin", label: "After another win method", order: 2.5 };
       if (p.lastOutcome === "loss") return p.lastMethod === "KO/TKO" ? { key: "koLoss", label: "After a KO/TKO loss", order: 3 }
         : p.lastMethod === "SUB" ? { key: "subLoss", label: "After a submission loss", order: 4 }
-          : { key: "decLoss", label: "After a decision loss", order: 5 };
+          : decision ? { key: "decLoss", label: "After a decision loss", order: 5 }
+            : { key: "otherLoss", label: "After another loss method", order: 5.5 };
       return { key: "drawNc", label: "After a draw or NC", order: 6 };
     }
-    case "reachGap": return side.reachIn != null && opponent.reachIn != null ? signedRanges(side.reachIn - opponent.reachIn, [1, 3, 5], '"') : null;
-    case "heightGap": return side.heightIn != null && opponent.heightIn != null ? signedRanges(side.heightIn - opponent.heightIn, [1, 3, 5], '"') : null;
+    case "reachGap": return side.reachIn != null && opponent.reachIn != null ? signedRanges(side.reachIn - opponent.reachIn, [1, 3, 5], '"', true) : null;
+    case "heightGap": return side.heightIn != null && opponent.heightIn != null ? signedRanges(side.heightIn - opponent.heightIn, [1, 3, 5], '"', true) : null;
     case "title": {
       const championship = fight.titleFight && (fight.titleType === "title" || fight.titleType === "interim");
       return championship ? { key: "title", label: "Championship bouts", order: 0 } : { key: "regular", label: "Non-title bouts", order: 1 };
@@ -518,6 +596,8 @@ const DIMENSION_LABELS: Record<GroupDimension, string> = {
   experience: "UFC bouts before",
   division: "Division",
   rounds: "Scheduled rounds",
+  country: "Nationality",
+  countryMatchup: "Same or different country",
   stance: "Stance",
   stanceMatchup: "Stance matchup",
   prev: "Previous result",
@@ -531,19 +611,50 @@ const DIMENSION_LABELS: Record<GroupDimension, string> = {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * Observations the reader has struck off by hand in the bout browser, keyed
+ * `fightId:fighterId`. They are a display choice rather than a cohort rule, so
+ * only the dashboard honours them — the bout list keeps showing a struck row
+ * so it can be put back.
+ */
+export function parseExclusions(params: URLSearchParams): Set<string> {
+  return new Set(
+    (params.get("exclude") ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => /^[a-f0-9]+:[a-f0-9]+$/i.test(entry))
+      .slice(0, 500),
+  );
+}
+
+/** The nationalities present in the archive, with how many fighters carry each,
+ *  ordered by how often the reader will want them. */
+function knownCountries(index: FightIndex): { code: string; name: string; fighters: number }[] {
+  const counts = new Map<string, { name: string; fighters: number }>();
+  for (const fighter of index.fighters.values()) {
+    if (!fighter.countryCode || !fighter.fights.length) continue;
+    const entry = counts.get(fighter.countryCode) ?? { name: fighter.country || fighter.countryCode, fighters: 0 };
+    entry.fighters += 1;
+    counts.set(fighter.countryCode, entry);
+  }
+  return [...counts]
+    .map(([code, entry]) => ({ code, name: entry.name, fighters: entry.fighters }))
+    .sort((a, b) => b.fighters - a.fighters || a.name.localeCompare(b.name));
+}
+
 export function getLabs(params: URLSearchParams): unknown {
   const index = fightIndex();
   const filters = parseFilters(params);
   const groupBy = choice(params.get("groupBy"), GROUP_DIMENSIONS, "none");
   const fighterSet = new Set(filters.fighterIds);
   const opponentSet = new Set(filters.opponentIds);
+  const excluded = parseExclusions(params);
 
   const total = tally();
   const byYear = new Map<number, Tally>();
   const byBucket = new Map<string, { bucket: Bucket; tally: Tally }>();
   const byFighter = new Map<string, Tally & { id: string }>();
-  const rounds = Array.from({ length: 5 }, () => ({ reached: 0, sig: 0, sigAttempted: 0, td: 0, kd: 0, ctrl: 0, ctrlKnown: 0, ko: 0, sub: 0, finishesEnded: 0 }));
-  const sample: Observation[] = [];
+  const rounds = Array.from({ length: 5 }, () => ({ reached: 0, sig: 0, sigAccuracyLanded: 0, sigAttempted: 0, td: 0, kd: 0, ctrl: 0, ctrlKnown: 0, ko: 0, sub: 0, finishesEnded: 0 }));
   let ageKnown = 0;
   let statsKnown = 0;
   let oddsKnown = 0;
@@ -553,6 +664,7 @@ export function getLabs(params: URLSearchParams): unknown {
     for (let i = 0; i < 2; i++) {
       const o: Observation = { fight, side: fight.sides[i], opponent: fight.sides[i === 0 ? 1 : 0] };
       if (!matches(o, filters, fighterSet, opponentSet)) continue;
+      if (excluded.size && excluded.has(`${fight.id}:${o.side.id}`)) continue;
       add(total, o);
       if (o.side.age != null) ageKnown += 1;
       if (o.side.actions.significantStrikes?.attempted != null) statsKnown += 1;
@@ -577,7 +689,10 @@ export function getLabs(params: URLSearchParams): unknown {
         const bucketRound = rounds[r];
         bucketRound.reached += 1;
         bucketRound.sig += stat.sig;
-        bucketRound.sigAttempted += stat.sigAttempted ?? 0;
+        if (stat.sigAttempted != null) {
+          bucketRound.sigAccuracyLanded += stat.sig;
+          bucketRound.sigAttempted += stat.sigAttempted;
+        }
         bucketRound.td += stat.td;
         bucketRound.kd += stat.kd;
         if (stat.ctrl != null) { bucketRound.ctrl += stat.ctrl; bucketRound.ctrlKnown += 1; }
@@ -586,7 +701,6 @@ export function getLabs(params: URLSearchParams): unknown {
         if (fight.method === "KO/TKO") rounds[fight.round - 1].ko += 1;
         if (fight.method === "SUB") rounds[fight.round - 1].sub += 1;
       }
-      sample.push(o);
     }
   }
 
@@ -606,34 +720,15 @@ export function getLabs(params: URLSearchParams): unknown {
         n: s.n, wins: s.wins, losses: s.losses, draws: s.draws, win_rate: s.win_rate, finish_rate: s.finish_rate,
       };
     });
-  const recent = sample
-    .sort((a, b) => b.fight.date.localeCompare(a.fight.date) || a.fight.ord - b.fight.ord)
-    .slice(0, 40)
-    .map(({ fight, side, opponent }) => ({
-      fight_id: fight.id,
-      event_id: fight.eventId,
-      event_name: fight.eventName,
-      date: fight.date,
-      division: fight.weightClass,
-      title_fight: fight.titleFight && (fight.titleType === "title" || fight.titleType === "interim"),
-      fighter: { id: side.id, name: side.name, photo_url: index.fighters.get(side.id)?.photoUrl ?? null },
-      opponent: { id: opponent.id, name: opponent.name },
-      outcome: side.outcome,
-      method: fight.method,
-      round: fight.round,
-      time: fight.time,
-      line: side.close,
-      age: side.age,
-      win_streak: side.prior.winStreak,
-      days_since: side.prior.daysSince,
-    }));
-
   return {
-    filters,
     group_by: groupBy,
+    excluded: excluded.size,
     group_label: DIMENSION_LABELS[groupBy],
     years_available: { first: index.firstYear, last: index.lastYear },
     divisions: index.divisions.filter((d) => d !== "Super Heavyweight"),
+    /** Every nationality the archive knows, commonest first, so the filter
+     *  offers what can actually be selected rather than a list of the world. */
+    countries: knownCountries(index),
     coverage: {
       observations: total.n,
       fights: total.fights.size,
@@ -650,7 +745,7 @@ export function getLabs(params: URLSearchParams): unknown {
       round: i + 1,
       reached: r.reached,
       sig_per_fighter: r.reached ? r1(r.sig / r.reached) : null,
-      sig_accuracy: r.sigAttempted ? pct(r.sig, r.sigAttempted) : null,
+      sig_accuracy: r.sigAttempted ? pct(r.sigAccuracyLanded, r.sigAttempted) : null,
       td_per_fighter: r.reached ? r2(r.td / r.reached) : null,
       kd_per_fighter: r.reached ? r2(r.kd / r.reached) : null,
       control_seconds: r.ctrlKnown ? Math.round(r.ctrl / r.ctrlKnown) : null,
@@ -659,6 +754,531 @@ export function getLabs(params: URLSearchParams): unknown {
       finish_share: total.wins ? pct(r.ko + r.sub, total.winKo + total.winSub) : null,
     })),
     leaders,
-    fights: recent,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The bout browser. The dashboard answers "what does this population do";
+// this answers "which fights is that made of". It is a separate endpoint so
+// paging or switching outcome tabs never re-runs the whole aggregation, and
+// so the summary above the list never flickers while the list turns over.
+
+export const BOUT_SORTS = ["recent", "oldest", "win", "loss", "draw", "upset", "chalk", "quick", "long"] as const;
+export type BoutSort = typeof BOUT_SORTS[number];
+
+const OUTCOME_ORDER = ["win", "loss", "draw", "nc"] as const;
+
+/** Ranks outcomes so the chosen one leads, the rest keeping their natural order. */
+function outcomeRanker(first: string): (outcome: string | null) => number {
+  const order = [first, ...OUTCOME_ORDER.filter((entry) => entry !== first)];
+  return (outcome) => (outcome == null ? order.length : order.indexOf(outcome));
+}
+
+/** Ascending by a value that may be missing; missing always sorts last. */
+function byValue(get: (o: Observation) => number | null, direction: 1 | -1) {
+  return (a: Observation, b: Observation) => {
+    const x = get(a);
+    const y = get(b);
+    if (x == null && y == null) return 0;
+    if (x == null) return 1;
+    if (y == null) return -1;
+    return (x - y) * direction;
+  };
+}
+
+const newestFirst = (a: Observation, b: Observation) => b.fight.date.localeCompare(a.fight.date) || a.fight.ord - b.fight.ord;
+const oldestFirst = (a: Observation, b: Observation) => a.fight.date.localeCompare(b.fight.date) || a.fight.ord - b.fight.ord;
+
+function boutComparator(sort: BoutSort): (a: Observation, b: Observation) => number {
+  switch (sort) {
+    case "oldest": return oldestFirst;
+    case "win": case "loss": case "draw": {
+      const rank = outcomeRanker(sort);
+      return (a, b) => rank(a.side.outcome) - rank(b.side.outcome) || newestFirst(a, b);
+    }
+    case "upset": return (a, b) => byValue((o) => o.side.close, -1)(a, b) || newestFirst(a, b);
+    case "chalk": return (a, b) => byValue((o) => o.side.close, 1)(a, b) || newestFirst(a, b);
+    case "quick": return (a, b) => byValue((o) => o.fight.elapsed, 1)(a, b) || newestFirst(a, b);
+    case "long": return (a, b) => byValue((o) => o.fight.elapsed, -1)(a, b) || newestFirst(a, b);
+    default: return newestFirst;
+  }
+}
+
+function boutRow({ fight, side, opponent }: Observation, index: FightIndex) {
+  return {
+    fight_id: fight.id,
+    event_id: fight.eventId,
+    event_name: fight.eventName,
+    date: fight.date,
+    division: fight.weightClass,
+    title_fight: fight.titleFight && (fight.titleType === "title" || fight.titleType === "interim"),
+    main_event: fight.mainEvent,
+    fighter: { id: side.id, name: side.name, photo_url: index.fighters.get(side.id)?.photoUrl ?? null },
+    opponent: { id: opponent.id, name: opponent.name, photo_url: index.fighters.get(opponent.id)?.photoUrl ?? null },
+    outcome: side.outcome,
+    method: fight.method,
+    round: fight.round,
+    time: fight.time,
+    elapsed: fight.elapsed,
+    line: side.close,
+    opp_line: opponent.close,
+    age: side.age,
+    opp_age: opponent.age,
+    win_streak: side.prior.winStreak,
+    loss_streak: side.prior.lossStreak,
+    days_since: side.prior.daysSince,
+  };
+}
+
+export type LabsBout = ReturnType<typeof boutRow>;
+
+export function getLabsBouts(params: URLSearchParams): unknown {
+  const index = fightIndex();
+  const filters = parseFilters(params);
+  const fighterSet = new Set(filters.fighterIds);
+  const opponentSet = new Set(filters.opponentIds);
+  const outcome = choice(params.get("outcome"), ["all", "win", "loss", "draw", "nc"] as const, "all");
+  const sort = choice(params.get("sort"), BOUT_SORTS, "recent");
+  const limit = Math.min(200, Math.max(10, int(params.get("limit")) ?? 60));
+  const offset = Math.max(0, int(params.get("offset")) ?? 0);
+
+  const counts = { all: 0, win: 0, loss: 0, draw: 0, nc: 0 };
+  const matched: Observation[] = [];
+  for (const fight of index.fights) {
+    for (let i = 0; i < 2; i++) {
+      const o: Observation = { fight, side: fight.sides[i], opponent: fight.sides[i === 0 ? 1 : 0] };
+      if (!matches(o, filters, fighterSet, opponentSet)) continue;
+      counts.all += 1;
+      if (o.side.outcome) counts[o.side.outcome] += 1;
+      if (outcome !== "all" && o.side.outcome !== outcome) continue;
+      matched.push(o);
+    }
+  }
+  matched.sort(boutComparator(sort));
+  return {
+    outcome,
+    sort,
+    counts,
+    total: matched.length,
+    offset,
+    limit,
+    rows: matched.slice(offset, offset + limit).map((o) => boutRow(o, index)),
+  };
+}
+
+
+// ---------------------------------------------------------------------------
+// Upcoming matchups. A board is most useful when it can be pointed at a fight
+// that has not happened yet: pick one, and the panel fills with the shape of
+// that matchup so the cohort answers "what usually happens to fighters in
+// this exact position". Every value below is already the filter option it
+// maps to, so the panel does not have to know how the sport is modelled.
+
+function beltStatus(prior: PriorState): "champion" | "formerChampion" | "neverChampion" {
+  if (prior.reigningChampion) return "champion";
+  if (prior.formerChampion) return "formerChampion";
+  return "neverChampion";
+}
+
+function previousResult(prior: PriorState): string {
+  if (prior.lastOutcome == null) return "debut";
+  const finish = prior.lastMethod === "KO/TKO" || prior.lastMethod === "SUB";
+  if (prior.lastOutcome === "win") return finish ? "finishWin" : "win";
+  if (prior.lastOutcome === "loss") {
+    if (prior.lastMethod === "KO/TKO") return "koLoss";
+    if (prior.lastMethod === "SUB") return "subLoss";
+    return prior.lastMethod?.endsWith("-DEC") ? "decisionLoss" : "loss";
+  }
+  return "drawOrNc";
+}
+
+function corner(index: FightIndex, id: string, name: string, date: string, division: string, ord: number, line: number | null) {
+  const prior = id ? careerBefore(index, id, date, division, ord) : null;
+  const fighter = id ? index.fighters.get(id) : undefined;
+  const prob = impliedProbability(line);
+  return {
+    id,
+    name,
+    photo_url: fighter?.photoUrl ?? null,
+    age: fighter?.birthDate ? ageOn(fighter.birthDate, date) : null,
+    ufc_bouts: prior ? prior.bouts + prior.ncs : null,
+    win_streak: prior?.winStreak ?? null,
+    loss_streak: prior?.lossStreak ?? null,
+    layoff_days: prior?.daysSince ?? null,
+    prev: prior ? previousResult(prior) : null,
+    status: prior ? beltStatus(prior) : null,
+    stance: fighter?.stance || null,
+    country: fighter?.country || null,
+    country_code: fighter?.countryCode || null,
+    reach_in: fighter?.reachIn ?? null,
+    height_in: fighter?.heightIn ?? null,
+    line,
+    prob: prob == null ? null : Math.round(prob * 1000) / 10,
+  };
+}
+
+export function getLabsMatchups(params: URLSearchParams): unknown {
+  const index = fightIndex();
+  const q = normName(params.get("q") ?? "");
+  const rows = db
+    .prepare(`
+      SELECT f.id, f.ord, f.weight_class, f.title_fight, f.title_type,
+             f.f1_id, f.f1_name, f.f2_id, f.f2_name,
+             e.id AS event_id, e.name AS event_name, e.date AS event_date,
+             o.f1_close, o.f2_close
+      FROM fights f
+      JOIN events e ON e.id = f.event_id
+      LEFT JOIN odds o ON o.fight_id = f.id
+      WHERE e.complete = 0 AND e.date >= ? AND f.f1_outcome IS NULL AND f.f2_outcome IS NULL AND f.f1_name != '' AND f.f2_name != ''
+      ORDER BY e.date ASC, f.ord ASC
+    `)
+    .all(todayIso()) as any[];
+
+  const matched = rows.filter((row) => {
+    if (!q) return true;
+    const haystack = normName(`${row.f1_name} ${row.f2_name} ${row.event_name}`);
+    return q.split(" ").every((word) => haystack.includes(word));
+  });
+
+  return {
+    matchups: matched.slice(0, 80).map((row) => {
+      const division = row.weight_class || "";
+      const ord = Number(row.ord) || 0;
+      // A tournament or TUF final is not a belt, and is not booked for five.
+      const title = Boolean(row.title_fight) && ["title", "interim"].includes(row.title_type);
+      return {
+        fight_id: row.id,
+        event_id: row.event_id,
+        event_name: row.event_name,
+        date: row.event_date,
+        division,
+        women: division.startsWith("Women's "),
+        title_fight: title,
+        main_event: ord === 0,
+        // An announced bout carries no time format yet; the promotion books
+        // five rounds for a title fight or a main event and three otherwise.
+        scheduled_rounds: title || ord === 0 ? 5 : 3,
+        a: corner(index, row.f1_id, row.f1_name, row.event_date, division, ord, americanLine(row.f1_close)),
+        b: corner(index, row.f2_id, row.f2_name, row.event_date, division, ord, americanLine(row.f2_close)),
+      };
+    }),
+    total: matched.length,
+  };
+}
+
+
+// ---------------------------------------------------------------------------
+// Filling the panel from an announced matchup.
+//
+// The mapping lives here rather than in the panel because choosing what to
+// fill needs to know how many observations each condition would leave, and
+// only this side can count that. Values are keyed by the panel's own filter
+// names, so what comes back is applied verbatim.
+
+/**
+ * How small a population each mode will accept in exchange for one more
+ * condition. Basic holds out for a sample you can read a percentage off;
+ * advanced takes every condition it can get and stops only where there would
+ * be nothing left behind to look at.
+ */
+/**
+ * Three selections over one list of conditions, from the least to the most
+ * demanding. Basic applies only what makes the matchup *this* matchup — its
+ * division, both ages, belts and market role — and leaves the population wide.
+ * Normal adds every condition that still leaves a sample worth reading.
+ * Advanced adds everything the matchup can say that has any precedent at all;
+ * a cohort of two is a fact about the sport, and the reader can switch any
+ * condition back off. No preset ever applies a condition with no precedent.
+ */
+const FILL_PRESETS = {
+  basic: { extras: false, floor: 0 },
+  normal: { extras: true, floor: 40 },
+  advanced: { extras: true, floor: 1 },
+} as const;
+export type FillMode = keyof typeof FILL_PRESETS;
+
+export type FillValues = Record<string, string | string[]>;
+
+/**
+ * One condition a matchup implies, offered as its own switchable unit: what it
+ * is, which filter keys it owns, whether the fill switched it on, and two
+ * counts — the running population once it and everything before it applied,
+ * and the population it holds against the matchup's identity alone. A
+ * condition with no precedent even alone cannot be switched on at all.
+ */
+export type FillCondition = {
+  id: string;
+  label: string;
+  keys: string[];
+  values: FillValues;
+  /** True when the condition is the matchup's own identity, not an extra. */
+  base: boolean;
+  on: boolean;
+  /** Running total after this condition; null when it was not applied. */
+  n: number | null;
+  /** What this condition alone leaves of the matchup's own population. */
+  alone: number;
+};
+
+function countMatching(values: FillValues): number {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(values)) params.set(key, Array.isArray(value) ? value.join(",") : value);
+  const filters = parseFilters(params);
+  const index = fightIndex();
+  const empty = new Set<string>();
+  let n = 0;
+  for (const fight of index.fights) {
+    for (let i = 0; i < 2; i++) {
+      const o: Observation = { fight, side: fight.sides[i], opponent: fight.sides[i === 0 ? 1 : 0] };
+      if (matches(o, filters, empty, empty)) n += 1;
+    }
+  }
+  return n;
+}
+
+type MatchupRow = ReturnType<typeof getLabsMatchups> extends { matchups: (infer T)[] } ? T : never;
+type MatchupCorner = MatchupRow extends { a: infer C } ? C : never;
+
+function matchupById(fightId: string): MatchupRow | null {
+  const all = (getLabsMatchups(new URLSearchParams()) as { matchups: MatchupRow[] }).matchups;
+  return all.find((m) => (m as { fight_id: string }).fight_id === fightId) ?? null;
+}
+
+const band = (value: number | null, spread: number, floor = 0): [string, string] | null =>
+  value == null ? null : [String(Math.max(floor, value - spread)), String(value + spread)];
+
+const stanceOf = (value: string | null) => (value === "Orthodox" || value === "Southpaw" || value === "Switch" ? value : null);
+
+/** How a fighter is named in a condition: the surname alone keeps the list
+ * readable in a narrow panel, and says whose fact a condition is. */
+const surname = (name: string) => name.trim().split(/\s+/).at(-1) ?? name;
+
+/**
+ * The shape of the fight and both corners' headline facts. Everything here is
+ * either what the bout *is* (division, stakes, length) or the one fact that
+ * most changes what to expect of a fighter (their age, a belt, and which side
+ * of the market they are on), so it holds up as a population on its own. These
+ * always apply: without them the population is not this matchup's at all.
+ */
+function baseFill(m: MatchupRow, me: MatchupCorner, them: MatchupCorner): Candidate[] {
+  const list: Candidate[] = [];
+  const add = (id: string, label: string, values: FillValues | null) => { if (values) list.push({ id, label, values }); };
+  const row = m as { division: string; women: boolean; title_fight: boolean; main_event: boolean; scheduled_rounds: number };
+  add("division", row.division ? "the division" : row.women ? "women's divisions" : "men's divisions",
+    row.division ? { division: [row.division] } : { gender: row.women ? "women" : "men" });
+  if (row.title_fight) add("title", "title bouts", { title: "only" });
+  if (row.main_event) add("mainEvent", "main events", { mainEvent: "only" });
+  if (row.scheduled_rounds === 5) add("rounds", "five-round bouts", { rounds: "5" });
+
+  const a = me as { name: string; age: number | null; status: string | null; prob: number | null };
+  const b = them as { name: string; age: number | null; status: string | null; prob: number | null };
+  const mine = surname(a.name);
+  const theirs = surname(b.name);
+  // Five years either side is wide enough to leave a real sample and narrow
+  // enough that a 22- and a 38-year-old never share a cohort.
+  const myAge = band(a.age, 5, 18);
+  if (myAge) add("ageA", `${mine}'s age`, { ageMin: myAge[0], ageMax: myAge[1] });
+  const theirAge = band(b.age, 5, 18);
+  if (theirAge) add("ageB", `${theirs}'s age`, { oppAgeMin: theirAge[0], oppAgeMax: theirAge[1] });
+  // A belt is the whole story of a bout; never having held one is not.
+  if (a.status === "champion" || a.status === "formerChampion") add("beltA", `${mine}'s belt`, { status: a.status });
+  if (b.status === "champion" || b.status === "formerChampion") add("beltB", `${theirs}'s belt`, { oppStatus: b.status });
+  if (a.prob != null && b.prob != null) {
+    const gap = a.prob - b.prob;
+    add("marketRole", `${mine}'s market role`, { odds: Math.abs(gap) <= 3 ? "pickem" : gap > 0 ? "favorite" : "underdog" });
+  }
+  return list;
+}
+
+type Candidate = { id: string; label: string; values: FillValues };
+
+/**
+ * Everything else this matchup implies, in the order it is weighed and grouped
+ * by what it belongs to.
+ *
+ * A group is taken or left whole. Grouping is what keeps the two corners
+ * comparable: a condition asked of both fighters (their stances, their
+ * experience, their prices) is one decision, so reading the fight from the
+ * other side narrows it the same way. What the bout itself is comes first,
+ * then the pairing, and last what belongs to one fighter only — a previous
+ * result, a streak, a layoff. Those four have no opponent-side filter to
+ * mirror them, so they are the one part of a study that really does change
+ * with the corner, and they are named after the fighter they describe.
+ *
+ * Order also decides overwriting: a narrower condition is listed after the
+ * wider one it sharpens, so switching the narrow one off falls back to the
+ * wide one rather than to nothing.
+ */
+function conditionGroups(m: MatchupRow, me: MatchupCorner, them: MatchupCorner): Candidate[][] {
+  const a = me as any;
+  const b = them as any;
+  const mine = surname(a.name);
+  const theirs = surname(b.name);
+  const row = m as { title_fight: boolean; main_event: boolean; scheduled_rounds: number };
+  const groups: Candidate[][] = [];
+  const one = (id: string, label: string, values: FillValues | null) => { if (values) groups.push([{ id, label, values }]); };
+  const pair = (mineOne: Candidate | null, theirsOne: Candidate | null) => {
+    const group = [mineOne, theirsOne].filter((c): c is Candidate => c != null);
+    if (group.length) groups.push(group);
+  };
+  const clamp = (v: number) => String(Math.min(99, Math.max(1, v)));
+
+  // The bout, stated the other way round: not for a belt, not the main event,
+  // three rounds. As true of the matchup as its opposite would be.
+  if (row.scheduled_rounds === 3) one("rounds", "three-round bouts", { rounds: "3" });
+  if (!row.title_fight) one("title", "non-title bouts", { title: "none" });
+  if (!row.main_event) one("mainEvent", "undercard bouts", { mainEvent: "none" });
+
+  // 24 against 30 becomes 22–26 against 28–32: still a band, never a point.
+  const myAge = band(a.age, 2, 18);
+  const theirAge = band(b.age, 2, 18);
+  pair(
+    myAge ? { id: "ageATight", label: `${mine}'s age, within two years`, values: { ageMin: myAge[0], ageMax: myAge[1] } } : null,
+    theirAge ? { id: "ageBTight", label: `${theirs}'s age, within two years`, values: { oppAgeMin: theirAge[0], oppAgeMax: theirAge[1] } } : null,
+  );
+  pair(
+    stanceOf(a.stance) ? { id: "stanceA", label: `${mine}'s stance`, values: { stance: stanceOf(a.stance)! } } : null,
+    stanceOf(b.stance) ? { id: "stanceB", label: `${theirs}'s stance`, values: { oppStance: stanceOf(b.stance)! } } : null,
+  );
+  // Where each of them is from. Only offered when the source knows it, so an
+  // unknown nationality never becomes the condition "from nowhere".
+  pair(
+    a.country_code ? { id: "countryA", label: `${mine}'s nationality`, values: { country: a.country_code } } : null,
+    b.country_code ? { id: "countryB", label: `${theirs}'s nationality`, values: { oppCountry: b.country_code } } : null,
+  );
+
+  // A gap is filled in two steps: first which way it leans, then how far. The
+  // band is clamped to its own side of zero so tightening it can never turn
+  // "longer than his opponent" into "either way by a little". A gap is signed
+  // A minus B, so it mirrors when the corner does.
+  const gapPair = (myValue: number | null, theirValue: number | null, id: string, what: string, minKey: string, maxKey: string, spread: number): [Candidate, Candidate] | null => {
+    if (myValue == null || theirValue == null) return null;
+    const gap = myValue - theirValue;
+    if (gap === 0) {
+      const level = { id, label: `level ${what}`, values: { [minKey]: "0", [maxKey]: "0" } };
+      return [level, level];
+    }
+    const low = gap > 0 ? Math.max(1, gap - spread) : gap - spread;
+    const high = gap > 0 ? gap + spread : Math.min(-1, gap + spread);
+    return [
+      { id, label: `${mine}'s ${what}`, values: gap > 0 ? { [minKey]: "1" } : { [maxKey]: "-1" } },
+      { id: `${id}Size`, label: `size of ${mine}'s ${what}`, values: { [minKey]: String(low), [maxKey]: String(high) } },
+    ];
+  };
+  const reach = gapPair(a.reach_in, b.reach_in, "reachGap", "reach edge", "reachGapMin", "reachGapMax", 2);
+  const height = gapPair(a.height_in, b.height_in, "heightGap", "height edge", "heightGapMin", "heightGapMax", 2);
+  const age = gapPair(a.age, b.age, "ageGap", "age edge", "ageGapMin", "ageGapMax", 2);
+  if (reach) groups.push([reach[0]]);
+
+  const myExp = band(a.ufc_bouts, 10);
+  const theirExp = band(b.ufc_bouts, 10);
+  pair(
+    myExp ? { id: "expA", label: `${mine}'s UFC experience`, values: { expMin: myExp[0], expMax: myExp[1] } } : null,
+    theirExp ? { id: "expB", label: `${theirs}'s UFC experience`, values: { oppExpMin: theirExp[0], oppExpMax: theirExp[1] } } : null,
+  );
+  if (height) groups.push([height[0]]);
+  if (age) groups.push([age[0]]);
+  if (a.prob != null || b.prob != null) {
+    pair(
+      a.prob != null ? { id: "probA", label: `${mine}'s price`, values: { probMin: clamp(Math.round(a.prob) - 15), probMax: clamp(Math.round(a.prob) + 15) } } : null,
+      b.prob != null ? { id: "probB", label: `${theirs}'s price`, values: { oppProbMin: clamp(Math.round(b.prob) - 15), oppProbMax: clamp(Math.round(b.prob) + 15) } } : null,
+    );
+  }
+
+  // The sharpenings, each after the condition it sharpens.
+  const myExpTight = band(a.ufc_bouts, 3);
+  const theirExpTight = band(b.ufc_bouts, 3);
+  pair(
+    myExpTight ? { id: "expATight", label: `${mine}'s UFC experience, within three`, values: { expMin: myExpTight[0], expMax: myExpTight[1] } } : null,
+    theirExpTight ? { id: "expBTight", label: `${theirs}'s UFC experience, within three`, values: { oppExpMin: theirExpTight[0], oppExpMax: theirExpTight[1] } } : null,
+  );
+  if (a.prob != null || b.prob != null) {
+    pair(
+      a.prob != null ? { id: "probATight", label: `${mine}'s price, within five points`, values: { probMin: clamp(Math.round(a.prob) - 5), probMax: clamp(Math.round(a.prob) + 5) } } : null,
+      b.prob != null ? { id: "probBTight", label: `${theirs}'s price, within five points`, values: { oppProbMin: clamp(Math.round(b.prob) - 5), oppProbMax: clamp(Math.round(b.prob) + 5) } } : null,
+    );
+  }
+  if (reach && reach[1] !== reach[0]) groups.push([reach[1]]);
+  if (height && height[1] !== height[0]) groups.push([height[1]]);
+  if (age && age[1] !== age[0]) groups.push([age[1]]);
+
+  // Last: what only the fighter the record is read from brings. There is no
+  // opponent-side filter for any of these, so they are the part of a study
+  // that changes when the corner does.
+  if (a.prev) one("prev", `${mine}'s previous result`, { prev: a.prev });
+  if ((a.win_streak ?? 0) >= 1) one("winStreak", `${mine}'s win streak`, { winStreakMin: String(a.win_streak) });
+  const layoff = band(a.layoff_days, 90);
+  if (layoff) one("layoff", `${mine}'s layoff`, { layoffMin: layoff[0], layoffMax: layoff[1] });
+  if ((a.loss_streak ?? 0) >= 1) one("lossStreak", `${mine}'s losing streak`, { lossStreakMin: String(a.loss_streak) });
+  if ((a.win_streak ?? 0) >= 1) one("winStreakExact", `${mine}'s exact win streak`, { winStreakMin: String(a.win_streak), winStreakMax: String(a.win_streak) });
+  const layoffTight = band(a.layoff_days, 30);
+  if (layoffTight) one("layoffTight", `${mine}'s layoff, within a month`, { layoffMin: layoffTight[0], layoffMax: layoffTight[1] });
+  if ((a.loss_streak ?? 0) >= 1) one("lossStreakExact", `${mine}'s exact losing streak`, { lossStreakMin: String(a.loss_streak), lossStreakMax: String(a.loss_streak) });
+  return groups;
+}
+
+export function getLabsFill(params: URLSearchParams): unknown {
+  const fightId = params.get("fight") ?? "";
+  const pov = choice(params.get("pov"), ["a", "b"] as const, "a");
+  const mode = choice(params.get("mode"), ["basic", "normal", "advanced"] as const, "normal");
+  const matchup = matchupById(fightId);
+  if (!matchup) return { error: "not found" };
+
+  const row = matchup as { a: MatchupCorner; b: MatchupCorner };
+  const me = pov === "a" ? row.a : row.b;
+  const them = pov === "a" ? row.b : row.a;
+  // Conditions are added one at a time, each kept only while enough of the
+  // population survives it. Basic runs the whole list at its own floor;
+  // advanced then picks back up what basic could not afford, so it is always
+  // basic plus more and never reads as the wider population.
+  // Every condition is applied one at a time and reported with the population
+  // it leaves, so the reader can see where a study narrowed and switch that
+  // one condition back off without losing the matchup it came from.
+  const values: FillValues = {};
+  const conditions: FillCondition[] = [];
+  let n = countMatching(values);
+  // `alone` is what the condition holds against the matchup's identity by
+  // itself. An identity condition has no meaning apart from that identity, so
+  // it reports the running total instead of a standalone one.
+  const take = (candidate: Candidate, base: boolean, alone?: number) => {
+    Object.assign(values, candidate.values);
+    n = countMatching(values);
+    conditions.push({ ...candidate, keys: Object.keys(candidate.values), base, on: true, n, alone: alone ?? n });
+  };
+
+  // The bout's own identity always applies: without it the population is no
+  // longer this matchup's, whatever it costs in sample size.
+  for (const condition of baseFill(matchup, me, them)) take(condition, true);
+  const identity = { ...values };
+
+  // One list of conditions, the same in every mode and from either corner. The
+  // mode is only a starting selection over it: basic applies none of the
+  // extras, normal those that keep a readable sample, advanced every one with
+  // any precedent. So switching every condition on by hand *is* advanced, and
+  // switching one off in advanced is an ordinary edit rather than a different
+  // kind of study.
+  const dropped: { id: string; label: string }[] = [];
+  for (const group of conditionGroups(matchup, me, them)) {
+    // A condition no bout on record satisfies cannot be switched on at all:
+    // it would empty any study it joined, whatever else were switched off.
+    const usable = group.map((candidate) => ({ candidate, alone: countMatching({ ...identity, ...candidate.values }) }));
+    for (const { candidate, alone } of usable) if (alone < 1) dropped.push({ id: candidate.id, label: candidate.label });
+    const kept = usable.filter((entry) => entry.alone >= 1);
+    if (!kept.length) continue;
+    const together = Object.assign({}, ...kept.map((entry) => entry.candidate.values)) as FillValues;
+    const preset = FILL_PRESETS[mode];
+    const fits = preset.extras && (mode === "advanced" || countMatching({ ...values, ...together }) >= preset.floor);
+    if (fits) for (const entry of kept) take(entry.candidate, false, entry.alone);
+    else for (const entry of kept) conditions.push({ ...entry.candidate, keys: Object.keys(entry.candidate.values), base: false, on: false, n: null, alone: entry.alone });
+  }
+
+  return {
+    pov,
+    mode,
+    filters: values,
+    n,
+    conditions,
+    dropped,
+    floor: FILL_PRESETS[mode].floor,
   };
 }

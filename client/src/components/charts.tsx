@@ -1,5 +1,7 @@
-import { useId, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { PANEL, SERIES, compact, formatValue, type Format } from "./chartTokens";
+import { Tooltip } from "./Tooltip";
+import { useTooltip } from "../tooltip";
 
 /**
  * The app's chart primitives. Every plot on the Labs and Statistics pages is
@@ -17,19 +19,7 @@ const AXIS_TEXT = "text-[10px] tabular-nums text-zinc-400";
 // Tooltip shared by every mark. Opens on hover, on keyboard focus and on tap;
 // Escape closes it. The trigger is always at least as large as its mark.
 
-function useTip() {
-  const [open, setOpen] = useState(false);
-  const id = useId();
-  const handlers = {
-    onPointerEnter: (event: React.PointerEvent) => event.pointerType === "mouse" && setOpen(true),
-    onPointerLeave: (event: React.PointerEvent) => event.pointerType === "mouse" && setOpen(false),
-    onPointerDown: (event: React.PointerEvent) => event.pointerType !== "mouse" && setOpen((value) => !value),
-    onFocus: () => setOpen(true),
-    onBlur: () => setOpen(false),
-    onKeyDown: (event: React.KeyboardEvent) => event.key === "Escape" && setOpen(false),
-  };
-  return { open, id, handlers };
-}
+const useTip = useTooltip;
 
 export function TipBody({ title, rows }: { title: string; rows: { label: string; value: string; color?: string }[] }) {
   return (
@@ -48,19 +38,7 @@ export function TipBody({ title, rows }: { title: string; rows: { label: string;
   );
 }
 
-function Tip({ id, children, side = "top" }: { id: string; children: React.ReactNode; side?: "top" | "right" }) {
-  return (
-    <span
-      role="tooltip"
-      id={id}
-      className={`pointer-events-none absolute z-40 w-max max-w-64 rounded-lg bg-zinc-900 px-2.5 py-2 text-left text-[11px] leading-snug text-white shadow-lg ${
-        side === "top" ? "bottom-full left-1/2 mb-1.5 -translate-x-1/2" : "left-full top-1/2 ml-2 -translate-y-1/2"
-      }`}
-    >
-      {children}
-    </span>
-  );
-}
+const Tip = Tooltip;
 
 // ---------------------------------------------------------------------------
 // Panel chrome: heading, legend, and the table-view twin every chart carries.
@@ -274,7 +252,7 @@ function BarRow({
   dim: boolean;
   emphasised: boolean;
 }) {
-  const { open, id, handlers } = useTip();
+  const { open, at, id, handlers } = useTip();
   const width = (value: number | null | undefined) => `${Math.max(value ? 0.8 : 0, ((value ?? 0) / scale) * 100)}%`;
   const tipRows = datum.tip ?? [
     { label: names?.[0] ?? "Value", value: formatValue(datum.value, format), color: colors[0] },
@@ -315,7 +293,7 @@ function BarRow({
           {datum.n != null ? <span className="w-10 text-[9px] tabular-nums text-zinc-400">n={compact(datum.n)}</span> : null}
         </span>
       </button>
-      {open ? <Tip id={id}><TipBody title={datum.label} rows={tipRows} /></Tip> : null}
+      {open ? <Tip id={id} at={at}><TipBody title={datum.label} rows={tipRows} /></Tip> : null}
     </div>
   );
 }
@@ -339,7 +317,7 @@ export function StackedBar({ segments, total, height = 14 }: { segments: StackSe
 }
 
 function SegmentBlock({ segment, share }: { segment: StackSegment; share: number }) {
-  const { open, id, handlers } = useTip();
+  const { open, at, id, handlers } = useTip();
   return (
     <span className="relative flex" style={{ width: `${share * 100}%` }}>
       <button
@@ -351,7 +329,7 @@ function SegmentBlock({ segment, share }: { segment: StackSegment; share: number
         style={{ backgroundColor: segment.color }}
       />
       {open ? (
-        <Tip id={id}>
+        <Tip id={id} at={at}>
           <TipBody title={segment.label} rows={[{ label: "bouts", value: segment.value.toLocaleString("en-US"), color: segment.color }, { label: "of population", value: `${Math.round(share * 1000) / 10}%` }]} />
         </Tip>
       ) : null}
@@ -420,7 +398,7 @@ function ColumnMark({
   names?: [string, string];
   comparing: boolean;
 }) {
-  const { open, id, handlers } = useTip();
+  const { open, at, id, handlers } = useTip();
   const barHeight = (value: number | null | undefined) => Math.max(value ? 3 : 1, ((value ?? 0) / scale) * (height - 6));
   const tipRows = datum.tip ?? [
     { label: names?.[0] ?? "Value", value: formatValue(datum.value, format), color: colors[0] },
@@ -447,7 +425,7 @@ function ColumnMark({
           />
         ) : null}
       </button>
-      {open ? <Tip id={id}><TipBody title={datum.label} rows={tipRows} /></Tip> : null}
+      {open ? <Tip id={id} at={at}><TipBody title={datum.label} rows={tipRows} /></Tip> : null}
     </div>
   );
 }
@@ -465,6 +443,7 @@ export function LineChart({
   height = 160,
   yZero = false,
   reference,
+  domain,
 }: {
   labels: string[];
   series: LineSeries[];
@@ -473,16 +452,17 @@ export function LineChart({
   yZero?: boolean;
   /** A horizontal rule with a name, e.g. the 50% break-even line. */
   reference?: { value: number; label: string };
+  domain?: readonly [number, number];
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState<number | null>(null);
   const width = 100;
-  const values = series.flatMap((s) => s.values.filter((v): v is number => v != null));
+  const values = [...series.flatMap((s) => s.values.filter((v): v is number => v != null)), ...(reference ? [reference.value] : [])];
   const rawMin = values.length ? Math.min(...values) : 0;
   const rawMax = values.length ? Math.max(...values) : 1;
   const pad = (rawMax - rawMin) * 0.12 || 1;
-  const min = yZero ? Math.min(0, rawMin) : rawMin - pad;
-  const max = rawMax + pad;
+  const min = domain?.[0] ?? (yZero ? Math.min(0, rawMin) : rawMin - pad);
+  const max = domain?.[1] ?? rawMax + pad;
   const x = (index: number) => (labels.length <= 1 ? width / 2 : (index / (labels.length - 1)) * width);
   const y = (value: number) => height - ((value - min) / (max - min || 1)) * height;
   const ticks = [max, (max + min) / 2, min];
@@ -512,6 +492,16 @@ export function LineChart({
           style={{ height }}
           onPointerMove={move}
           onPointerLeave={() => setActive(null)}
+          tabIndex={0}
+          onFocus={() => setActive(0)}
+          onBlur={() => setActive(null)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") { setActive(null); return; }
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) || !labels.length) return;
+            event.preventDefault();
+            setActive((current) => event.key === "Home" ? 0 : event.key === "End" ? labels.length - 1
+              : Math.max(0, Math.min(labels.length - 1, (current ?? 0) + (event.key === "ArrowRight" ? 1 : -1))));
+          }}
           role="img"
           aria-label={`${series.map((s) => s.name).join(", ")} over ${labels[0]} to ${labels.at(-1)}`}
         >
@@ -531,8 +521,8 @@ export function LineChart({
                 .filter(Boolean)
                 .join(" ");
               return (
+                <g key={line.key}>
                 <path
-                  key={line.key}
                   d={path}
                   fill="none"
                   stroke={line.color}
@@ -541,6 +531,9 @@ export function LineChart({
                   strokeLinejoin="round"
                   vectorEffect="non-scaling-stroke"
                 />
+                {line.values.map((value, index) => value != null && (index === 0 || line.values[index - 1] == null) && (index === line.values.length - 1 || line.values[index + 1] == null)
+                  ? <circle key={index} cx={x(index)} cy={y(value)} r="2" fill={line.color} /> : null)}
+                </g>
               );
             })}
             {active != null

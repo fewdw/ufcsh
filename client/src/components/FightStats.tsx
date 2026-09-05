@@ -1,7 +1,8 @@
-import { useId, useState } from "react";
 import { Link } from "react-router-dom";
 import type { CareerBefore, ComparisonBlock, Matchup, RoundBlock } from "../api";
 import { lastName } from "../format";
+import { Tooltip as TipBubble } from "./Tooltip";
+import { useTooltip } from "../tooltip";
 
 // ---------------------------------------------------------------------------
 // Tokens. Colours are referenced by name (defined in index.css @theme) rather
@@ -176,40 +177,24 @@ function Tooltip({
   children,
   className = "",
   wrapperClassName = "",
-  tipClassName = "",
 }: {
   label: React.ReactNode;
   children: React.ReactNode;
   className?: string;
   wrapperClassName?: string;
-  tipClassName?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const id = useId();
+  const { open, at, id, handlers } = useTooltip();
   return (
     <div className={`relative ${wrapperClassName}`}>
       <button
         type="button"
         aria-describedby={open ? id : undefined}
-        onPointerEnter={(e) => e.pointerType === "mouse" && setOpen(true)}
-        onPointerLeave={(e) => e.pointerType === "mouse" && setOpen(false)}
-        onPointerDown={(e) => e.pointerType !== "mouse" && setOpen((v) => !v)}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
-        onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
+        {...handlers}
         className={`block w-full min-h-11 cursor-default rounded-xl px-1 py-1 text-left transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${className}`}
       >
         {children}
       </button>
-      {open ? (
-        <span
-          role="tooltip"
-          id={id}
-          className={`pointer-events-none absolute bottom-full left-1/2 z-30 mb-1.5 w-max max-w-56 -translate-x-1/2 rounded-lg bg-zinc-900 px-2.5 py-1.5 text-left text-xs font-medium leading-snug text-white shadow-lg ${tipClassName}`}
-        >
-          {label}
-        </span>
-      ) : null}
+      <TipBubble id={id} at={at}>{label}</TipBubble>
     </div>
   );
 }
@@ -228,8 +213,7 @@ function BarTooltip({
   ariaLabel: string;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
-  const id = useId();
+  const { open, at, id, handlers } = useTooltip();
   return (
     <div
       className={`stat-bar relative flex h-full ${BAR} items-end justify-center transition-[opacity,filter] duration-150 ease-out`}
@@ -239,25 +223,12 @@ function BarTooltip({
         type="button"
         aria-label={ariaLabel}
         aria-describedby={open ? id : undefined}
-        onPointerEnter={(e) => e.pointerType === "mouse" && setOpen(true)}
-        onPointerLeave={(e) => e.pointerType === "mouse" && setOpen(false)}
-        onPointerDown={(e) => e.pointerType !== "mouse" && setOpen((value) => !value)}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
-        onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
+        {...handlers}
         className="flex h-full w-full cursor-pointer items-end justify-center rounded-t focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
       >
         {children}
       </button>
-      {open ? (
-        <span
-          role="tooltip"
-          id={id}
-          className="pointer-events-none absolute bottom-full left-1/2 z-40 mb-1.5 w-max max-w-64 -translate-x-1/2 rounded-lg bg-zinc-900 px-2.5 py-2 text-left text-xs font-medium leading-snug text-white shadow-lg"
-        >
-          {label}
-        </span>
-      ) : null}
+      <TipBubble id={id} at={at}>{label}</TipBubble>
     </div>
   );
 }
@@ -498,10 +469,13 @@ export function TaleOfTape({ fight }: { fight: Matchup }) {
     { label: "Reach", ...reach, edge: longer(reach.f1, reach.f2, "reach") },
     { label: "Weight", ...from("Weight", fight.f1.weight, fight.f2.weight) },
     { label: "Stance", ...from("Stance", fight.f1.stance, fight.f2.stance) },
+    // Named rather than flagged: the tape is a column of words, and a flag in
+    // it would be the one thing a reader has to decode.
+    { label: "From", f1: fight.f1.country ?? "", f2: fight.f2.country ?? "", edge: null },
   ].filter((row) => row.f1 || row.f2);
 
   return (
-    <div className="w-64 max-w-full" aria-label="Tale of the tape">
+    <div className="mx-auto w-full max-w-md" aria-label="Tale of the tape">
       <h2 className="mb-1.5 text-center text-[9px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
         Tale of the tape
       </h2>
@@ -509,7 +483,7 @@ export function TaleOfTape({ fight }: { fight: Matchup }) {
         <dl
           key={row.label}
           title={row.label === "Age" ? "Age on the date of this fight" : `${row.label} recorded for this matchup`}
-          className="grid grid-cols-[minmax(0,1fr)_4rem_minmax(0,1fr)] items-center gap-1 py-0.5"
+          className="grid grid-cols-[minmax(0,1fr)_5rem_minmax(0,1fr)] items-center gap-3 py-2 sm:grid-cols-[minmax(0,1fr)_7rem_minmax(0,1fr)]"
         >
           {SIDES.map((side) => (
             <div
@@ -1026,13 +1000,29 @@ export function RoundByRound({ fight, grouped = false }: { fight: Matchup; group
   );
 }
 
-export function FightStatistics({ fight }: { fight: Matchup }) {
+/** `live` while the bout is still being fought: the source publishes round
+ *  totals as they happen, so the panel is complete only once a result is in
+ *  and the reader has to be told which of the two they are looking at. */
+export function FightStatistics({ fight, live = false }: { fight: Matchup; live?: boolean }) {
+  const rounds = fight.detail?.totalsRounds?.rounds.length ?? 0;
   return (
     <section className={`fight-statistics @container ${shell}`}>
       <PanelHeading
         title="Fight statistics"
-        subtitle="Fight totals and round-by-round breakdown"
-        aside={<Legend fight={fight} />}
+        subtitle={live
+          ? `Live${rounds ? ` through round ${rounds}` : ""} — the round being fought is still being added to`
+          : "Fight totals and round-by-round breakdown"}
+        aside={
+          <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
+            {live ? (
+              <span className="flex items-center gap-1.5">
+                <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">Live</span>
+              </span>
+            ) : null}
+            <Legend fight={fight} />
+          </div>
+        }
       />
       <FightTotals fight={fight} grouped />
       <RoundByRound fight={fight} grouped />
@@ -1072,7 +1062,7 @@ const GRAPPLING_METRICS: ProfileMetric[] = [
   { key: "tdacc", label: "Takedown accuracy", format: "percent", better: "high", value: (c) => ratio(c.takedownAccuracyLanded, c.takedownAttempts) },
   { key: "tddef", label: "Takedowns stopped", format: "percent", better: "high", value: (c) => (c.takedownsFacedAttempts > 0 ? 100 - (c.takedownDefenseConceded / c.takedownsFacedAttempts) * 100 : null) },
   { key: "subs", label: "Submission attempts / 15 min", format: "rate", better: "high", value: (c) => rate(c.submissionAttempts, c.seconds, 900) },
-  { key: "control", label: "Share of time in control", format: "share", better: "high", value: (c) => (c.controlBouts > 0 ? ratio(c.controlSeconds, c.seconds) : null) },
+  { key: "control", label: "Share of time in control", format: "share", better: "high", value: (c) => ratio(c.controlSeconds, c.controlTrackedSeconds) },
 ];
 
 function profileText(value: number | null, format: ProfileMetric["format"]): string {

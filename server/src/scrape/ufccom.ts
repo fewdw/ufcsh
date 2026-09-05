@@ -264,3 +264,94 @@ export async function scrapeFighterImage(name: string): Promise<string | null> {
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Event schedules and card segments. UFCStats supplies a date but never a
+// start time, and never says which bouts are on the main card. ufc.com carries
+// both: the events index stamps every card with the absolute start time of
+// each of its three segments, and an event page groups the bouts into them.
+
+export type CardSegment = "main" | "prelims" | "early";
+
+export type ScrapedEventSchedule = {
+  slug: string;
+  headline: string;
+  /** Absolute start of each segment, in epoch ms. Null when not announced. */
+  mainCardAt: number | null;
+  prelimsAt: number | null;
+  earlyPrelimsAt: number | null;
+};
+
+/** The page prints its times in whatever locale it decides to serve us; only
+ *  the timestamp attribute beside them is absolute, so it is the only thing
+ *  read here. */
+function epochMs(value: string | undefined): number | null {
+  const seconds = Number(value);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null;
+}
+
+export function parseEventSchedules(html: string): ScrapedEventSchedule[] {
+  const $ = cheerio.load(html);
+  const schedules: ScrapedEventSchedule[] = [];
+  $(".c-card-event--result__info").each((_, info) => {
+    const link = $(info).find(".c-card-event--result__headline a").first();
+    const slug = (link.attr("href") ?? "").split("/event/")[1]?.split(/[?#]/)[0];
+    if (!slug) return;
+    const date = $(info).find(".c-card-event--result__date").first();
+    schedules.push({
+      slug,
+      headline: cleanText(link.text()),
+      mainCardAt: epochMs(date.attr("data-main-card-timestamp")),
+      prelimsAt: epochMs(date.attr("data-prelims-card-timestamp")),
+      earlyPrelimsAt: epochMs(date.attr("data-early-card-timestamp")),
+    });
+  });
+  return schedules;
+}
+
+/**
+ * One page of the events index. Page 0 carries what is announced and what has
+ * just happened; every page after it walks backwards through the archive,
+ * roughly nine cards at a time, which is how a card from 2016 gets a start
+ * time and a segment list at all.
+ */
+export async function scrapeEventSchedules(page = 0): Promise<ScrapedEventSchedule[]> {
+  const url = page > 0 ? `https://www.ufc.com/events?page=${page}` : "https://www.ufc.com/events";
+  return parseEventSchedules(await fetchHtml(url, { timeoutMs: 40000 }));
+}
+
+export type ScrapedSegmentBout = { segment: CardSegment; f1: string; f2: string };
+
+const NARROWER_SEGMENTS: Record<CardSegment, string> = {
+  main: ".fight-card-prelims, .fight-card-prelims-early",
+  prelims: ".fight-card-prelims-early",
+  early: ":not(*)",
+};
+
+const SEGMENT_SELECTORS: [CardSegment, string][] = [
+  ["main", ".fight-card"],
+  ["prelims", ".fight-card-prelims"],
+  ["early", ".fight-card-prelims-early"],
+];
+
+export function parseEventSegments(html: string): ScrapedSegmentBout[] {
+  const $ = cheerio.load(html);
+  const bouts: ScrapedSegmentBout[] = [];
+  for (const [segment, selector] of SEGMENT_SELECTORS) {
+    $(selector)
+      .first()
+      .find(".c-listing-fight__names-row")
+      // The main-card container wraps the prelim ones, so a row is only this
+      // segment's when no narrower segment claims it first.
+      .filter((_, row) => $(row).closest(NARROWER_SEGMENTS[segment]).length === 0)
+      .each((_, row) => {
+        const names = $(row).find(".c-listing-fight__corner-name").map((_, name) => cleanText($(name).text())).get();
+        if (names.length === 2 && names[0] && names[1]) bouts.push({ segment, f1: names[0], f2: names[1] });
+      });
+  }
+  return bouts;
+}
+
+export async function scrapeEventSegments(slug: string): Promise<ScrapedSegmentBout[]> {
+  return parseEventSegments(await fetchHtml(`https://www.ufc.com/event/${slug}`, { timeoutMs: 40000 }));
+}

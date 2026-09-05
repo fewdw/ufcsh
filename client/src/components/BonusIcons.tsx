@@ -1,21 +1,20 @@
+import { Tooltip } from "./Tooltip";
+import { useTooltip } from "../tooltip";
+
 export type FightBonuses = { perf: boolean; fotn: boolean } | null | undefined;
 
 function BonusIcon({ emoji, label }: { emoji: string; label: string }) {
+  const { at, id, open, handlers } = useTooltip();
   return (
     <span
-      className="group/bonus relative inline-flex shrink-0 cursor-default align-middle"
+      className="inline-flex shrink-0 cursor-default align-middle"
       aria-label={label}
+      aria-describedby={open ? id : undefined}
       tabIndex={0}
+      {...handlers}
     >
-      <span aria-hidden="true" className="text-[0.9em] leading-none">
-        {emoji}
-      </span>
-      <span
-        role="tooltip"
-        className="pointer-events-none absolute bottom-full left-1/2 z-40 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-zinc-900 px-2.5 py-1.5 text-[10px] font-medium leading-snug text-white shadow-lg group-hover/bonus:block group-focus-visible/bonus:block"
-      >
-        {label}
-      </span>
+      <span aria-hidden="true" className="text-[0.9em] leading-none">{emoji}</span>
+      <Tooltip id={id} at={at}>{label}</Tooltip>
     </span>
   );
 }

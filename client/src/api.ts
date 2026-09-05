@@ -1,24 +1,70 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { RequestCache } from "./requestCache";
 
 // ---------------------------------------------------------------------------
 // types (mirror the server's JSON)
+
+export type CardQuality = {
+  score: number;
+  basis: "preview" | "review";
+  coverage: number;
+  version: number;
+  /** Reviews only: the same card scored on its pre-fight evidence alone. */
+  expected?: number;
+  factors: { label: string; value: number; weight: number }[];
+};
 
 export type EventListItem = {
   id: string;
   name: string;
   date: string;
   location: string;
-  status: "past" | "next" | "future";
+  status: "past" | "current" | "next" | "future";
   fight_count: number;
+  quality?: CardQuality;
 };
 
 export type FighterRanking = { division: string; rank: string } | null;
+
+type LiveFighter = {
+  id: string;
+  name: string;
+  nickname: string;
+  record: string;
+  country?: string | null;
+  country_code?: string | null;
+  photo_url: string | null;
+  ranking: FighterRanking;
+  record_verified?: boolean;
+};
+
+/** The bout the promotion is on right now; null on an ordinary day. */
+export type LiveCard = {
+  event: { id: string; name: string; date: string; location: string; status: EventListItem["status"] };
+  schedule: CardSchedule;
+  completed_fights: number;
+  total_fights: number;
+  /** Under way — either its numbers are already out or its start has passed. */
+  live: boolean;
+  starts_at: number | null;
+  fight: {
+    id: string;
+    ord: number;
+    segment: CardSegment | null;
+    weight_class: string;
+    title_fight: boolean;
+    f1: LiveFighter;
+    f2: LiveFighter;
+  };
+};
 
 export type FightSide = {
   id: string;
   name: string;
   nickname: string;
   record: string;
+  country?: string | null;
+  country_code?: string | null;
   photo_url: string | null;
   ranking: FighterRanking;
   outcome: "win" | "loss" | "draw" | "nc" | null;
@@ -26,7 +72,11 @@ export type FightSide = {
   /** State entering this bout, present on event-card rows. */
   age?: number | null;
   form?: ("win" | "loss" | "draw" | "nc" | null)[];
-  streak?: { count: number; outcome: "win" | "loss" | "draw" | "nc" } | null;
+  form_details?: import("./resultDots").FormResult[];
+  run_form?: import("./resultDots").FormResult[];
+  /** `complete` when the run is read from the verified professional history
+   *  rather than UFC bouts alone. */
+  streak?: { count: number; outcome: "win" | "loss" | "draw" | "nc"; complete?: boolean } | null;
   ufc_record?: string | null;
   ufc_bouts?: number;
   days_since?: number | null;
@@ -127,6 +177,7 @@ export type CareerBefore = {
   controlSeconds: number;
   controlledSeconds: number;
   controlBouts: number;
+  controlTrackedSeconds: number;
   meetings: number;
   meetingWins: number;
   meetingLosses: number;
@@ -138,11 +189,25 @@ export type FightOdds = {
   source_url: string | null;
 } | null;
 
+export type CardSegment = "main" | "prelims" | "early";
+
+export type CardSchedule = {
+  main_card_at: number | null;
+  prelims_at: number | null;
+  early_prelims_at: number | null;
+};
+
 export type EventFight = {
   id: string;
   ord: number;
+  /** Which part of the card, once ufc.com has grouped it. */
+  segment: CardSegment | null;
+  /** Estimated start of a bout the card has not reached yet, in epoch ms. */
+  starts_at?: number | null;
   weight_class: string;
   title_fight: boolean;
+  /** A belt, an interim belt, or a tournament/TUF final, which is not one. */
+  title_type: "title" | "interim" | "tuf" | "tournament" | null;
   method: string | null;
   method_details: string | null;
   round: string | null;
@@ -158,8 +223,14 @@ export type EventDetail = {
   name: string;
   date: string;
   location: string;
-  status: "past" | "next" | "future";
+  status: "past" | "current" | "next" | "future";
+  live?: boolean;
+  results_updated_at?: number | null;
+  schedule?: CardSchedule;
   card_stats: CardStats;
+  quality?: CardQuality;
+  /** When this card's prices last reached the local database. */
+  odds_freshness?: { updated_at: number | null; final: boolean; priced: number };
   fights: EventFight[];
 };
 
@@ -184,7 +255,7 @@ export type HistoryRow = {
   career_record_before?: CompleteRecordBefore | null;
   opponent_career_record_before?: CompleteRecordBefore | null;
   closing_odds?: { fighter: string | null; opponent: string | null } | null;
-  opponent_form?: { date: string; outcome: "win" | "loss" | "draw" | "nc" | null; opponent: { id: string; name: string } }[];
+  opponent_form?: { date: string; outcome: "win" | "loss" | "draw" | "nc" | null; method: string | null; opponent: { id: string; name: string } }[];
   upcoming: boolean;
 };
 
@@ -231,8 +302,12 @@ export type Matchup = {
   id: string;
   event: { id: string; name: string; date: string; location: string };
   status: "past" | "upcoming";
+  live?: boolean;
+  stats_updated_at?: number | null;
   weight_class: string;
   title_fight: boolean;
+  /** A belt, an interim belt, or a tournament/TUF final, which is not one. */
+  title_type: "title" | "interim" | "tuf" | "tournament" | null;
   method: string | null;
   method_details: string | null;
   round: string | null;
@@ -256,6 +331,10 @@ export type FighterProfile = {
   stance: string;
   birth_date: string | null;
   age: number | null;
+  /** Nationality from the verified professional history; null when unknown. */
+  country: string | null;
+  country_code: string | null;
+  birthplace: string | null;
   record: string;
   record_verified: boolean;
   ufc_record: string;
@@ -290,7 +369,14 @@ export type RankingEntry = {
   };
 };
 
-export type Division = { division: string; weight_limit: string; entries: RankingEntry[] };
+export type Division = {
+  division: string;
+  weight_limit: string;
+  /** The published view this list came from. Only a pound-for-pound list
+   * borrowed into the meta view differs from the one that was requested. */
+  source: "meta" | "media";
+  entries: RankingEntry[];
+};
 
 export type FighterPreviewFight = {
   fight_id: string;
@@ -339,7 +425,7 @@ export type FighterRecord = {
   key: string;
   label: string;
   value: number;
-  format: "number" | "percent" | "decimal" | "time" | "years" | "odds";
+  format: "number" | "percent" | "decimal" | "time" | "years" | "age" | "odds" | "signed" | "currency";
   rank: number;
   tied: boolean;
   field: number;
@@ -385,6 +471,10 @@ export type LabsSummary = {
   stoppage_rate: number | null;
   r1_finish_rate: number | null;
   avg_seconds: number | null;
+  /** Raw denominators behind the rates above, so struck bouts can be netted out exactly. */
+  timed: number;
+  seconds: number;
+  r1_finishes: number;
   sig_per_min: number | null;
   sig_absorbed_per_min: number | null;
   sig_differential_per_min: number | null;
@@ -393,12 +483,17 @@ export type LabsSummary = {
   kd_per_15: number | null;
   kd_taken_per_15: number | null;
   control_share: number | null;
+  control_bouts: number;
+  td_bouts: number;
+  kd_bouts: number;
   avg_age: number | null;
   age_known: number;
+  age_sum: number;
   priced: number;
   avg_implied: number | null;
   priced_win_rate: number | null;
   bet_avg_implied: number | null;
+  bet_avg_fair: number | null;
   underdog_share: number | null;
   roi: number | null;
   profit: number | null;
@@ -439,30 +534,163 @@ export type LabsLeader = {
   finish_rate: number | null;
 };
 
-export type LabsFight = {
+export type LabsBout = {
   fight_id: string;
   event_id: string;
   event_name: string;
   date: string;
   division: string;
   title_fight: boolean;
+  main_event: boolean;
   fighter: { id: string; name: string; photo_url: string | null };
-  opponent: { id: string; name: string };
+  opponent: { id: string; name: string; photo_url: string | null };
   outcome: "win" | "loss" | "draw" | "nc" | null;
   method: string | null;
   round: number | null;
   time: string | null;
+  elapsed: number | null;
   line: number | null;
+  opp_line: number | null;
   age: number | null;
+  opp_age: number | null;
   win_streak: number;
+  loss_streak: number;
   days_since: number | null;
 };
 
+export type LabsBouts = {
+  outcome: "all" | "win" | "loss" | "draw" | "nc";
+  sort: string;
+  counts: { all: number; win: number; loss: number; draw: number; nc: number };
+  total: number;
+  offset: number;
+  limit: number;
+  rows: LabsBout[];
+};
+
+export type LabsMatchupCorner = {
+  id: string;
+  name: string;
+  photo_url: string | null;
+  age: number | null;
+  ufc_bouts: number | null;
+  win_streak: number | null;
+  loss_streak: number | null;
+  layoff_days: number | null;
+  /** Already the filter option value, e.g. "koLoss" or "debut". */
+  prev: string | null;
+  status: string | null;
+  stance: string | null;
+  reach_in: number | null;
+  height_in: number | null;
+  line: number | null;
+  prob: number | null;
+};
+
+export type LabsMatchup = {
+  fight_id: string;
+  event_id: string;
+  event_name: string;
+  date: string;
+  division: string;
+  women: boolean;
+  title_fight: boolean;
+  main_event: boolean;
+  scheduled_rounds: number;
+  a: LabsMatchupCorner;
+  b: LabsMatchupCorner;
+};
+
+export type LabsMatchups = { matchups: LabsMatchup[]; total: number };
+
+/** One condition a matchup implies, offered as its own switchable unit. */
+export type FillCondition = {
+  id: string;
+  label: string;
+  /** The filter keys this condition owns, in the panel's own names. */
+  keys: string[];
+  values: Record<string, string | string[]>;
+  /** The matchup's own identity, as opposed to an extra condition. */
+  base: boolean;
+  /** Whether the fill switched it on; the reader may switch it either way. */
+  on: boolean;
+  /** Observations left once this and everything before it applied; null off. */
+  n: number | null;
+  /** What this condition alone leaves of the matchup's own population. */
+  alone: number;
+};
+
+export type LabsFill = {
+  pov: "a" | "b";
+  mode: "basic" | "advanced";
+  /** Keyed by the panel's own filter names, applied verbatim. */
+  filters: Record<string, string | string[]>;
+  /** Observations the filled population holds. */
+  n: number;
+  /** Every condition the matchup implies, in the order the fill applied them. */
+  conditions: FillCondition[];
+  /** Conditions this matchup implies that no bout on record satisfies. */
+  dropped: { id: string; label: string }[];
+  floor: number;
+};
+
+/** One outcome group inside an insight: a tally with the app's one win rate. */
+export type InsightGroup = {
+  key: string;
+  label: string;
+  wins: number;
+  losses: number;
+  draws: number;
+  ncs: number;
+  n: number;
+  win_rate: number | null;
+};
+
+/**
+ * The two rooms under a study, as summaries rather than rows: how the study's
+ * decisions were scored, and what its fighters had done before they arrived.
+ */
+export type LabsInsightsResponse = {
+  n: number;
+  bouts: number;
+  judges: {
+    decision_bouts: number;
+    scored_bouts: number;
+    unanimous: number;
+    majority: number;
+    split: number;
+    drawn: number;
+    incomplete: number;
+    decisions: InsightGroup;
+    against_the_numbers: number;
+    against_the_numbers_known: number;
+    scorelines: { key: string; label: string; n: number }[];
+    officials: { key: string; label: string; n: number; dissents: number; dissent_rate: number }[];
+  };
+  road: {
+    verified: number;
+    coverage: number | null;
+    median_outside_bouts: number | null;
+    median_debut_age: number | null;
+    by_experience: InsightGroup[];
+    by_debut_age: InsightGroup[];
+  };
+};
+
+/**
+ * Two readings of the same Lab population. What a fighter arrived with counts
+ * observations (both corners of a bout can qualify); how a bout was scored
+ * counts each bout once, and says so on screen.
+ */
 export type LabsResponse = {
   group_by: string;
+  /** Observations the reader struck off by hand, already left out of the totals. */
+  excluded: number;
   group_label: string;
   years_available: { first: number; last: number };
   divisions: string[];
+  /** Nationalities present in the archive, commonest first. */
+  countries: { code: string; name: string; fighters: number }[];
   coverage: {
     observations: number;
     fights: number;
@@ -477,7 +705,6 @@ export type LabsResponse = {
   breakdown: LabsBucket[];
   rounds: LabsRound[];
   leaders: LabsLeader[];
-  fights: LabsFight[];
 };
 
 export type SearchResults = {
@@ -490,62 +717,28 @@ export type SearchResults = {
 // fetching with an in-memory cache: cached pages render instantly and refresh
 // in the background (stale-while-revalidate).
 
-const cache = new Map<string, unknown>();
-const pending = new Map<string, Promise<void>>();
-const listeners = new Map<string, Set<() => void>>();
+const apiCache = new RequestCache();
+const IDLE = { data: null, loading: false, refreshing: false, error: false };
 
-function notify(url: string) {
-  listeners.get(url)?.forEach((listener) => listener());
+/**
+ * Warm a request the reader is about to make. A matchup opened cold replaces
+ * the page with a loading state; a hover or a press is enough notice to have
+ * the answer in hand by the time the click lands.
+ */
+export function prefetch(url: string | null): void {
+  if (url && apiCache.read(url).data == null) void apiCache.load(url);
 }
 
-function loadApi(url: string): Promise<void> {
-  const existing = pending.get(url);
-  if (existing) return existing;
-
-  const request = fetch(url)
-    .then((r) => {
-      if (!r.ok) throw new Error(String(r.status));
-      return r.json();
-    })
-    .then((data) => {
-      cache.set(url, data);
-    })
-    .catch(() => {
-      if (!cache.has(url)) cache.set(url, ERROR);
-    })
-    .finally(() => {
-      pending.delete(url);
-      notify(url);
-    });
-
-  pending.set(url, request);
-  return request;
-}
-
-export function useApi<T>(url: string | null, pollMs?: number): { data: T | null; loading: boolean; error: boolean } {
-  const cached = url ? (cache.get(url) as T | undefined) : undefined;
-  const [, bump] = useState(0);
-
+export function useApi<T>(url: string | null, pollMs?: number) {
+  const subscribe = useCallback((listener: () => void) => url ? apiCache.subscribe(url, listener) : () => {}, [url]);
+  const snapshot = useCallback(() => url ? apiCache.read(url) : IDLE, [url]);
+  const state = useSyncExternalStore(subscribe, snapshot);
+  const retry = useCallback(() => { if (url) void apiCache.load(url); }, [url]);
   useEffect(() => {
     if (!url) return;
-
-    const listener = () => bump((n) => n + 1);
-    const subscribers = listeners.get(url) ?? new Set<() => void>();
-    subscribers.add(listener);
-    listeners.set(url, subscribers);
-
-    void loadApi(url);
-    const timer = pollMs ? setInterval(() => void loadApi(url), pollMs) : undefined;
-    return () => {
-      subscribers.delete(listener);
-      if (subscribers.size === 0) listeners.delete(url);
-      if (timer) clearInterval(timer);
-    };
+    void apiCache.load(url);
+    const timer = pollMs ? setInterval(() => void apiCache.load(url), pollMs) : undefined;
+    return () => { if (timer) clearInterval(timer); };
   }, [url, pollMs]);
-
-  const value = url ? cache.get(url) : undefined;
-  if (value === ERROR) return { data: null, loading: false, error: true };
-  return { data: (value as T) ?? cached ?? null, loading: url != null && value === undefined, error: false };
+  return { ...state, data: state.data as T | null, retry };
 }
-
-const ERROR = Symbol("fetch-error");

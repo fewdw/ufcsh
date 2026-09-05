@@ -255,17 +255,41 @@ if (!rankingColumns.some((column) => column.name === "ranking_type")) {
 db.exec("CREATE INDEX IF NOT EXISTS idx_rankings_fighter ON rankings(fighter_id, ranking_type)");
 
 // Columns added after the first release; ignore "duplicate column" on re-run.
+// The schedule columns hold what UFCStats has no notion of: when each segment
+// of a card starts, and which segment a bout is on. Both come from ufc.com.
 for (const alter of [
   "ALTER TABLE fighters ADD COLUMN bfo_url TEXT",
   "ALTER TABLE fighters ADD COLUMN bfo_checked_at INTEGER",
   "ALTER TABLE fights ADD COLUMN perf_bonus INTEGER",
   "ALTER TABLE fights ADD COLUMN fotn_bonus INTEGER",
+  "ALTER TABLE events ADD COLUMN ufc_slug TEXT",
+  "ALTER TABLE events ADD COLUMN main_card_at INTEGER",
+  "ALTER TABLE events ADD COLUMN prelims_at INTEGER",
+  "ALTER TABLE events ADD COLUMN early_prelims_at INTEGER",
+  "ALTER TABLE events ADD COLUMN schedule_fetched_at INTEGER",
+  "ALTER TABLE events ADD COLUMN segments_fetched_at INTEGER",
+  "ALTER TABLE fights ADD COLUMN segment TEXT",
+  // Nationality comes from the same verified professional-history page the
+  // career record does, so it costs no extra source and cannot be attached to
+  // a fighter whose identity was never established.
+  "ALTER TABLE fighters ADD COLUMN country TEXT",
+  "ALTER TABLE fighters ADD COLUMN country_code TEXT",
+  "ALTER TABLE fighters ADD COLUMN birthplace TEXT",
 ]) {
   try {
     db.exec(alter);
   } catch {
     // column already exists
   }
+}
+
+// Identity resolution used to reject a source page whose name differed from
+// ours, which lost every fighter UFCStats files under a ring name (Patricio
+// Pitbull is Sherdog's Patricio Freire). Retry the unresolved rows once under
+// the rule that accepts a nickname carried by two reconciled UFC bouts.
+if (getMeta("migration_ring_names") !== "1") {
+  db.exec("UPDATE career_profiles SET checked_at = 0 WHERE status IN ('not_found', 'ambiguous')");
+  setMeta("migration_ring_names", "1");
 }
 
 export function getMeta(key: string): string | null {

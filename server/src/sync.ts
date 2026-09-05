@@ -1,3 +1,4 @@
+import { isFightDay, LIVE_EVENT_INTERVAL, liveDetailDue, fightIsComplete } from "./live-state.ts";
 import { db, getMeta, metaAgeMs, setMeta, touchMeta } from "./db.ts";
 import { daysBetween, firstLastName, log, normName, todayIso } from "./util.ts";
 import {
@@ -8,7 +9,8 @@ import {
   scrapeRosterPage,
   type ScrapedEventDetail,
 } from "./scrape/ufcstats.ts";
-import { scrapeAthleteDirectoryPage, scrapeFighterImage, scrapeRankings } from "./scrape/ufccom.ts";
+import { scrapeAthleteDirectoryPage, scrapeEventSchedules, scrapeEventSegments, scrapeFighterImage, scrapeRankings } from "./scrape/ufccom.ts";
+import { assignSegments, matchEventSchedule } from "./card-schedule.ts";
 import { scrapeFighterOddsHistory, scrapeOdds } from "./scrape/odds.ts";
 import { validateFightActions } from "./action-stats.ts";
 import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
@@ -41,7 +43,8 @@ function upsertFighterStub(id: string, name: string): void {
   ).run(id, name, normName(name));
 }
 
-function storeEventDetail(detail: ScrapedEventDetail): void {
+export function storeEventDetail(detail: ScrapedEventDetail): void {
+  if (!detail.date || !detail.name || !detail.fights.length) throw new Error("Incomplete event page; keeping the last good card");
   const complete =
     detail.fights.length > 0 && detail.fights.every((f) => f.f1.outcome !== null);
 
@@ -54,8 +57,9 @@ function storeEventDetail(detail: ScrapedEventDetail): void {
 
     const currentIds = new Set(detail.fights.map((f) => f.id));
     const existing = db
-      .prepare("SELECT id FROM fights WHERE event_id = ?")
-      .all(detail.id) as { id: string }[];
+      .prepare("SELECT id, f1_id, f2_id, f1_outcome, f2_outcome FROM fights WHERE event_id = ?")
+      .all(detail.id) as { id: string; f1_id: string; f2_id: string; f1_outcome: string | null; f2_outcome: string | null }[];
+    const previous = new Map(existing.map(f => [f.id, f]));
     for (const row of existing) {
       if (!currentIds.has(row.id)) {
         db.prepare("DELETE FROM fights WHERE id = ?").run(row.id);
@@ -84,6 +88,15 @@ function storeEventDetail(detail: ScrapedEventDetail): void {
     `);
 
     for (const f of detail.fights) {
+      const old = previous.get(f.id);
+      // A briefly stale source page must not erase a result already published.
+      if (old && fightIsComplete(old) && f.f1.outcome == null && f.f2.outcome == null) continue;
+      if (old && old.f1_id === f.f2.id && old.f2_id === f.f1.id && old.f1_id !== old.f2_id) {
+        db.prepare("UPDATE fights SET detail_json = NULL, detail_fetched_at = NULL WHERE id = ?").run(f.id);
+        db.prepare(`UPDATE odds SET f1_open = f2_open, f2_open = f1_open,
+          f1_close = f2_close, f2_close = f1_close, f1_history = f2_history, f2_history = f1_history
+          WHERE fight_id = ?`).run(f.id);
+      }
       upsertFighterStub(f.f1.id, f.f1.name);
       upsertFighterStub(f.f2.id, f.f2.name);
       upsert.run(
@@ -101,6 +114,9 @@ function storeEventDetail(detail: ScrapedEventDetail): void {
         ).run(f.id);
       }
     }
+    db.prepare(`UPDATE events SET complete = NOT EXISTS (
+      SELECT 1 FROM fights WHERE event_id = ? AND f1_outcome IS NULL AND f2_outcome IS NULL
+    ) WHERE id = ?`).run(detail.id, detail.id);
     db.exec("COMMIT");
   } catch (err) {
     db.exec("ROLLBACK");
@@ -113,8 +129,86 @@ function storeEventDetail(detail: ScrapedEventDetail): void {
   }
 }
 
+const eventSyncs = new Map<string, Promise<void>>();
 export async function syncEventDetail(eventId: string): Promise<void> {
-  storeEventDetail(await scrapeEventDetail(eventId));
+  const running = eventSyncs.get(eventId);
+  if (running) return running;
+  const date = (db.prepare("SELECT date FROM events WHERE id = ?").get(eventId) as { date: string } | undefined)?.date;
+  const work = scrapeEventDetail(eventId, date && isFightDay(date) ? { timeoutMs: 10_000, retries: 0 } : undefined).then(storeEventDetail).finally(() => eventSyncs.delete(eventId));
+  eventSyncs.set(eventId, work);
+  return work;
+}
+
+// ---------------------------------------------------------------------------
+// card schedule. UFCStats dates a card but never times it, and never says
+// which bouts are on the main card. ufc.com carries both: one index page holds
+// every announced card's segment start times, and an event page groups its
+// bouts into those segments.
+
+/**
+ * Times and slugs for the cards still ahead of us, from the first page of the
+ * index. Cheap enough to run often, which is what a card being fought needs.
+ */
+export async function syncEventSchedules(): Promise<void> {
+  const schedules = await scrapeEventSchedules();
+  if (!schedules.length) throw new Error("ufc.com events index carried no schedules; keeping the last good times");
+  const events = db.prepare("SELECT id, name, date FROM events WHERE complete = 0 AND date >= date('now', '-2 day')")
+    .all() as { id: string; name: string; date: string }[];
+  const timed = storeSchedules(events, schedules);
+  touchMeta("event_schedules_synced_at");
+  log(`event schedules synced (${timed}/${events.length} announced cards timed)`);
+}
+
+function storeSchedules(events: { id: string; name: string; date: string }[], schedules: Awaited<ReturnType<typeof scrapeEventSchedules>>): number {
+  const update = db.prepare(`UPDATE events SET ufc_slug = ?, main_card_at = ?, prelims_at = ?,
+    early_prelims_at = ?, schedule_fetched_at = ? WHERE id = ?`);
+  let timed = 0;
+  for (const event of events) {
+    const schedule = matchEventSchedule(event, schedules);
+    if (!schedule) continue;
+    update.run(schedule.slug, schedule.mainCardAt, schedule.prelimsAt, schedule.earlyPrelimsAt, Date.now(), event.id);
+    timed++;
+  }
+  return timed;
+}
+
+/**
+ * The same, for the archive. A past card's segments never change once it has
+ * been fought, so this walks the index backwards a few pages per tick until
+ * every event we hold has been offered a slug, and then stops asking.
+ */
+const ARCHIVE_PAGES_PER_TICK = 8;
+export async function syncScheduleArchive(): Promise<void> {
+  const remaining = db.prepare(`SELECT COUNT(*) AS c FROM events
+    WHERE ufc_slug IS NULL AND date < date('now') AND date >= '2011-01-01'`).get() as { c: number };
+  if (!remaining.c) { setMeta("schedule_archive_done", "1"); return; }
+  const start = Number(getMeta("schedule_archive_page") ?? "1");
+  const events = db.prepare("SELECT id, name, date FROM events WHERE ufc_slug IS NULL AND date >= '2011-01-01'")
+    .all() as { id: string; name: string; date: string }[];
+  let timed = 0;
+  let page = start;
+  for (; page < start + ARCHIVE_PAGES_PER_TICK; page++) {
+    const schedules = await scrapeEventSchedules(page);
+    // The listing has run out: start again from the front next time, so a
+    // newly added old event still finds its page.
+    if (!schedules.length) { page = 0; break; }
+    timed += storeSchedules(events, schedules);
+  }
+  setMeta("schedule_archive_page", String(page));
+  log(`schedule archive: ${timed} cards timed from pages ${start}-${page}, ${remaining.c - timed} still without one`);
+}
+
+export async function syncEventSegments(eventId: string): Promise<void> {
+  const event = db.prepare("SELECT ufc_slug FROM events WHERE id = ?").get(eventId) as { ufc_slug: string | null } | undefined;
+  if (!event?.ufc_slug) return;
+  const bouts = await scrapeEventSegments(event.ufc_slug);
+  const fights = db.prepare("SELECT id, ord, f1_name, f2_name FROM fights WHERE event_id = ?")
+    .all(eventId) as { id: string; ord: number; f1_name: string; f2_name: string }[];
+  const segments = assignSegments(fights, bouts);
+  const update = db.prepare("UPDATE fights SET segment = ? WHERE id = ?");
+  for (const [id, segment] of segments) update.run(segment, id);
+  db.prepare("UPDATE events SET segments_fetched_at = ? WHERE id = ?").run(Date.now(), eventId);
+  log(`card segments synced for ${event.ufc_slug} (${segments.size}/${fights.length} bouts placed)`);
 }
 
 // ---------------------------------------------------------------------------
@@ -279,18 +373,39 @@ export async function syncRankings(): Promise<void> {
 // ---------------------------------------------------------------------------
 // fight details
 
+const fightSyncs = new Map<string, Promise<void>>();
 export async function syncFightDetail(fightId: string): Promise<void> {
+  const running = fightSyncs.get(fightId);
+  if (running) return running;
+  const work = storeFightDetail(fightId).finally(() => fightSyncs.delete(fightId));
+  fightSyncs.set(fightId, work);
+  return work;
+}
+async function storeFightDetail(fightId: string): Promise<void> {
   // The detail page has its own fighter order; pass ours so the scraper can map
   // every stat table onto our f1/f2 by identity instead of by column position.
   const row = db
-    .prepare("SELECT f1_id, f2_id, f1_name, f2_name, f1_str, f2_str, f1_td, f2_td, f1_kd, f2_kd, f1_sub, f2_sub FROM fights WHERE id = ?")
+    .prepare("SELECT f1_id, f2_id, f1_name, f2_name, f1_str, f2_str, f1_td, f2_td, f1_kd, f2_kd, f1_sub, f2_sub, f1_outcome, f2_outcome FROM fights WHERE id = ?")
     .get(fightId) as Record<string, string> | undefined;
   const detail = await scrapeFightDetail(
     fightId,
     row ? { f1Id: row.f1_id, f2Id: row.f2_id, f1Name: row.f1_name, f2Name: row.f2_name } : undefined,
+    isFightDay((db.prepare("SELECT e.date FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?").get(fightId) as { date: string } | undefined)?.date ?? "") ? { timeoutMs: 10_000, retries: 0 } : undefined,
   );
+  const latest = db.prepare("SELECT f1_id, f2_id FROM fights WHERE id = ?").get(fightId) as { f1_id: string; f2_id: string } | undefined;
+  if (row && latest && (row.f1_id !== latest.f1_id || row.f2_id !== latest.f2_id)) {
+    // A result can reorder the event's corners while this request is in flight.
+    // Leave the invalidated detail missing; the next refresh uses the new order.
+    return;
+  }
   const detailJson = JSON.stringify(detail);
-  if (detail.type === "past" && row) {
+  // The cross-check is between two pages of the same source, and it only holds
+  // once both have stopped moving. While a bout is being fought the event page
+  // still shows the totals from the last time it was written and the fight page
+  // is seconds old, so they disagree by design — validating there would throw
+  // away the only live numbers we have.
+  const settled = row?.f1_outcome != null || row?.f2_outcome != null;
+  if (detail.type === "past" && row && settled) {
     const issues = validateFightActions({ ...row, detail_json: detailJson });
     if (issues.length) throw new Error(`fight detail ${fightId} failed validation: ${issues.join("; ")}`);
   }
@@ -640,6 +755,51 @@ function guarded(name: string, fn: () => Promise<void>): Promise<void> {
   });
 }
 
+const liveRefreshes = new Map<string, Promise<void>>();
+const liveAttempts = new Map<string, number>();
+export async function refreshLiveEvent(eventId: string): Promise<void> {
+  const running = liveRefreshes.get(eventId);
+  if (running) return running;
+  const event = db.prepare("SELECT date, complete, detail_fetched_at FROM events WHERE id = ?").get(eventId) as EventRow | undefined;
+  if (!event || !isFightDay(event.date)) return;
+  const now = Date.now();
+  const interval = event.complete ? 120_000 : LIVE_EVENT_INTERVAL;
+  if (now - Math.max(event.detail_fetched_at ?? 0, liveAttempts.get(eventId) ?? 0) < interval) return;
+  liveAttempts.set(eventId, now);
+  const work = syncEventDetail(eventId).finally(() => liveRefreshes.delete(eventId));
+  liveRefreshes.set(eventId, work);
+  return work;
+}
+
+let liveTicking = false;
+export async function syncLiveEvents(): Promise<void> {
+  if (liveTicking) return;
+  liveTicking = true;
+  try {
+    const events = db.prepare("SELECT id, date FROM events WHERE date >= date('now', '-1 day') AND date <= date('now') ORDER BY date DESC").all() as { id: string; date: string }[];
+    for (const event of events) {
+      await guarded(`live_event ${event.id}`, () => refreshLiveEvent(event.id));
+      // Pick up results during the card, without waiting for the main event.
+      // Missing stats go first; completed stats keep receiving corrections.
+      const fights = db.prepare(`SELECT id, f1_outcome, f2_outcome, detail_json, detail_fetched_at FROM fights
+        WHERE event_id = ? AND (f1_outcome IS NOT NULL OR f2_outcome IS NOT NULL)
+        ORDER BY detail_fetched_at ASC`).all(event.id) as { id: string; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; detail_fetched_at: number | null }[];
+      for (const fight of fights) if (liveDetailDue(fight)) await guarded(`live_stats ${fight.id}`, () => syncFightDetail(fight.id));
+      // The bout being fought now has no result yet, so the query above never
+      // reaches it — and it is the one whose numbers are moving. UFCStats
+      // publishes its round totals as they happen, so keep it warm rather than
+      // waiting for a reader to ask for it. A card fills in from the bottom up,
+      // so that bout is the highest ord still without an outcome.
+      if (fights.length) {
+        const underway = db.prepare(`SELECT id, f1_outcome, f2_outcome, detail_json, detail_fetched_at FROM fights
+          WHERE event_id = ? AND f1_outcome IS NULL AND f2_outcome IS NULL ORDER BY ord DESC LIMIT 1`)
+          .get(event.id) as { id: string; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; detail_fetched_at: number | null } | undefined;
+        if (underway && liveDetailDue(underway)) await guarded(`live_stats ${underway.id}`, () => syncFightDetail(underway.id));
+      }
+    }
+  } finally { liveTicking = false; }
+}
+
 let ticking = false;
 
 export async function tick(): Promise<void> {
@@ -648,8 +808,18 @@ export async function tick(): Promise<void> {
   try {
     const today = todayIso();
 
+    await syncLiveEvents();
+
     // 1. Events list: hourly (cheap; catches newly announced events fast).
     if (metaAgeMs("events_list_synced_at") > HOUR) await guarded("events_list", syncEventsList);
+
+    // 1b. Card schedules: one page for every announced card. Hourly is enough
+    //     for a time that rarely moves, but a card being fought re-checks
+    //     often — a delayed broadcast moves the segments that are left.
+    const liveToday = db.prepare("SELECT COUNT(*) AS c FROM events WHERE complete = 0 AND date >= date('now', '-1 day') AND date <= date('now')").get() as { c: number };
+    if (metaAgeMs("event_schedules_synced_at") > (liveToday.c ? 10 * 60_000 : HOUR)) {
+      await guarded("event_schedules", syncEventSchedules);
+    }
 
     // 2. Roster: daily, or right after an event completes.
     if (metaAgeMs("roster_synced_at") > DAY || getMeta("roster_stale") === "1") {
@@ -659,22 +829,32 @@ export async function tick(): Promise<void> {
     const events = db.prepare("SELECT id, name, date, complete, detail_fetched_at FROM events ORDER BY date DESC").all() as EventRow[];
     const now = Date.now();
 
-    // 3. Live / just-finished events: any incomplete event dated today or earlier
-    //    refreshes every 3 minutes — results land on the site near-live.
-    for (const e of events) {
-      if (!e.complete && e.date <= today && daysBetween(e.date, today) <= 2) {
-        if (!e.detail_fetched_at || now - e.detail_fetched_at > 3 * 60_000) {
-          await guarded(`live_event ${e.name}`, () => syncEventDetail(e.id));
-        }
-      }
-    }
-
     // 4. Upcoming events: hourly for the next event, every 6h for the rest (card changes).
     const upcoming = events.filter((e) => e.date > today).sort((a, b) => a.date.localeCompare(b.date));
     for (const [i, e] of upcoming.entries()) {
       const interval = i === 0 ? HOUR : 6 * HOUR;
       if (!e.detail_fetched_at || now - e.detail_fetched_at > interval) {
         await guarded(`upcoming_event ${e.name}`, () => syncEventDetail(e.id));
+      }
+    }
+
+    // 4b. Which bouts sit on which segment of a card. An announced card is
+    //     reshuffled up to the day itself, so a near one is re-read often and
+    //     a distant one rarely; a card already fought is read once and never
+    //     again, which is what fills the archive in behind us.
+    if (getMeta("schedule_archive_done") !== "1" && metaAgeMs("schedule_archive_at") > 60_000) {
+      await guarded("schedule_archive", syncScheduleArchive);
+      touchMeta("schedule_archive_at");
+    }
+    const segmentTargets = db.prepare(`SELECT id, name, date, complete, segments_fetched_at FROM events
+      WHERE ufc_slug IS NOT NULL AND (segments_fetched_at IS NULL OR complete = 0)
+        AND date <= date('now', '+30 days')
+      ORDER BY complete ASC, date DESC`).all() as { id: string; name: string; date: string; complete: number; segments_fetched_at: number | null }[];
+    for (const e of segmentTargets.slice(0, 25)) {
+      const interval = e.complete ? Infinity
+        : daysBetween(e.date, today) <= 1 ? 30 * 60_000 : daysBetween(e.date, today) <= 7 ? 6 * HOUR : DAY;
+      if (!e.segments_fetched_at || now - e.segments_fetched_at > interval) {
+        await guarded(`card_segments ${e.name}`, () => syncEventSegments(e.id));
       }
     }
 
@@ -751,6 +931,8 @@ export async function tick(): Promise<void> {
 }
 
 export function startScheduler(): void {
+  void syncLiveEvents();
+  setInterval(() => void syncLiveEvents().catch(err => log("live refresh failed:", String(err))), 10_000);
   void tick();
   // Full historical totals power Actions attempts, accuracy, targets, position,
   // and control. Run continuously in the background and resume after restarts.

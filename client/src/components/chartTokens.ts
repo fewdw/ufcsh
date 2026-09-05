@@ -10,7 +10,7 @@ export const SERIES = ["var(--color-series-1)", "var(--color-series-2)", "var(--
 export const WIN_RAMP = ["var(--color-win-1)", "var(--color-win-2)", "var(--color-win-3)"] as const;
 export const LOSS_RAMP = ["var(--color-loss-1)", "var(--color-loss-2)", "var(--color-loss-3)"] as const;
 
-export type Format = "number" | "percent" | "decimal" | "signed" | "time" | "signedTime" | "currency" | "odds" | "years";
+export type Format = "number" | "percent" | "decimal" | "signed" | "time" | "signedTime" | "currency" | "odds" | "years" | "age";
 
 export function formatDuration(value: number): string {
   const total = Math.max(0, Math.round(value));
@@ -28,7 +28,8 @@ export function formatValue(value: number | null | undefined, format: Format = "
     case "percent": return `${Math.round(value * 10) / 10}%`;
     case "decimal": return value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2).replace(/\.0+$/, "");
     case "signed": return `${value > 0 ? "+" : ""}${Math.round(value * 10) / 10}`;
-    case "years": return `${Math.round(value * 10) / 10} y/o`;
+    case "years": return `${Math.round(value * 10) / 10} years`;
+    case "age": return `${Math.round(value * 10) / 10} y/o`;
     case "time": return formatDuration(value);
     case "signedTime": {
       return `${value > 0 ? "+" : value < 0 ? "−" : ""}${formatDuration(Math.abs(value))}`;

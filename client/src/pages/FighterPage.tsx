@@ -5,6 +5,8 @@ import type { CompleteRecordBefore, FighterProfile, FighterRecord, FighterStat, 
 import { formatDateShortWithYear, formatLine, formatMethod } from "../format";
 import { formatValue } from "../components/chartTokens";
 import Avatar from "../components/Avatar";
+import Flag from "../components/Flag";
+import ResultDots from "../components/ResultDots";
 import { useSeo } from "../seo";
 import { useRouteScrollRestoration } from "../navigationState";
 import { outsideFighterUrl, useSettings, withRanking } from "../settings";
@@ -34,14 +36,7 @@ function resultBoxClasses(outcome: HistoryRow["outcome"], upcoming: boolean): st
 
 function OpponentForm({ form }: { form: NonNullable<HistoryRow["opponent_form"]> }) {
   if (!form.length) return null;
-  const label = form.map((fight) => historyResultLabel(fight.outcome)).join(", ");
-  const tone = (outcome: HistoryRow["outcome"]) =>
-    outcome === "win" ? "bg-emerald-500" : outcome === "loss" ? "bg-rose-500" : outcome === "draw" ? "bg-amber-400" : "bg-zinc-400";
-  return (
-    <span className="flex shrink-0 items-center gap-1" title={`Last five UFC bouts entering this fight: ${label}`} aria-label={`Last five UFC bouts entering this fight: ${label}`}>
-      {form.map((fight, index) => <span key={`${fight.date}-${index}`} className={`h-2 w-2 rounded-full ${tone(fight.outcome)}`} />)}
-    </span>
-  );
+  return <ResultDots results={form} label="Last five UFC bouts entering this fight" />;
 }
 
 function ProfileRecordChart({
@@ -103,7 +98,7 @@ function ProfileRecordChart({
   if (!bouts.length) return null;
   return (
     <div className="ml-auto shrink-0 border-t border-zinc-100 pt-4 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
-      <div className="mb-2 flex justify-end">
+      <div className="mb-2 flex justify-center">
         <div className="inline-flex rounded-lg bg-zinc-100 p-0.5" role="group" aria-label="Record breakdown scope">
           <button
             type="button"
@@ -352,9 +347,9 @@ function StatisticalRanks({ stats }: { stats: FighterStat[] }) {
           <path d="m2.5 4.5 3.5 3 3.5-3" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </summary>
-      <div className="grid gap-px border-t border-zinc-100 bg-zinc-100 sm:grid-cols-2">
+      <div className="columns-1 gap-0 border-t border-zinc-100 sm:columns-2" style={{ columnRule: "1px solid var(--color-plot-axis)" }}>
         {groups.map(([category, group]) => (
-          <section key={category} className="min-w-0 bg-white px-4 py-3">
+          <section key={category} className="break-inside-avoid min-w-0 border-b border-zinc-100 bg-white px-4 py-3">
             <h3 className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-400">{category}</h3>
             <div className="divide-y divide-zinc-50">
               {group.rows.map((stat) => (
@@ -430,6 +425,7 @@ export default function FighterPage() {
       ["Reach", fighter.reach],
       ["Stance", fighter.stance],
       ["Age", fighter.age == null ? "" : `${fighter.age} y/o`],
+      ["Born", [fighter.birthplace, fighter.country].filter(Boolean).join(", ")],
     ] as [string, string][]
   ).filter(([, v]) => v);
 
@@ -449,24 +445,21 @@ export default function FighterPage() {
             <div className="flex min-w-0 items-center gap-5">
               <Avatar src={fighter.photo_url} name={fighter.name} size="xl" />
               <div className="min-w-0">
-              <h1 className="break-words text-2xl font-semibold tracking-tight text-zinc-950">{fighter.name}</h1>
+              <h1 className="flex flex-wrap items-center gap-2 break-words text-2xl font-semibold tracking-tight text-zinc-950">
+                <span>{fighter.name}</span>
+                {fighter.country_code || fighter.country ? (
+                  <Flag code={fighter.country_code} name={fighter.country} className="text-xl" />
+                ) : null}
+              </h1>
               {fighter.nickname ? <div className="text-sm text-zinc-400">“{fighter.nickname}”</div> : null}
               <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
                 <span className="font-semibold tabular-nums text-zinc-900" title="Current verified complete professional record"><span className="text-[10px] font-bold text-zinc-400">REC</span> {fighter.record}</span>
                 <span className="font-semibold tabular-nums text-zinc-600" title="Current UFC-only record"><span className="text-[10px] font-bold text-zinc-400">UFC</span> {fighter.ufc_record}</span>
                 {fighter.ranking ? (
-                  <span title="Current ranking from the source selected in Settings" className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${fighter.ranking.rank === "C" ? "bg-amber-100 text-belt" : fighter.ranking.rank === "IC" ? "bg-slate-100 text-belt-interim" : "bg-zinc-100 text-zinc-600"}`}>
+                  <span title="Current ranking from the source chosen on the Rankings page" className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${fighter.ranking.rank === "C" ? "bg-amber-100 text-belt" : fighter.ranking.rank === "IC" ? "bg-slate-100 text-belt-interim" : "bg-zinc-100 text-zinc-600"}`}>
                     {fighter.ranking.rank === "C" ? "Champion" : fighter.ranking.rank === "IC" ? "Interim champion" : `#${fighter.ranking.rank}`} · {fighter.ranking.division}
                   </span>
                 ) : null}
-              </div>
-              <div className="mt-1 flex flex-wrap gap-x-3 text-[10px] tabular-nums text-zinc-400">
-                {fighter.outside_ufc_record ? (
-                  <a href={outsideFighterUrl(fighter.name, fighter.career_source_url)} target="_blank" rel="noreferrer" className="hover:text-zinc-700">
-                    {fighter.outside_ufc_record} Outside UFC ↗
-                  </a>
-                ) : <span>Outside-UFC history syncing</span>}
-                {fighter.career_source_url ? <span>verified via Sherdog</span> : null}
               </div>
               {bio.length ? (
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">

@@ -61,11 +61,37 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+:where(button, a, input, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-series-1);
+  outline-offset: 3px;
+}
+
+/* A text field already says it has focus twice over — the caret sits in it and
+   its own border darkens — so the ring only boxes it in. Everything without a
+   caret (buttons, links, selects, checkboxes) keeps the ring. This has to be
+   unlayered like the rule above it: a Tailwind utility lives in @layer
+   utilities and would lose to that rule whatever its specificity. */
+:where(input):is([type="text"], [type="search"], [type="number"], [type="email"], [type="date"], :not([type])):focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
+
+/* Tailwind v4's reset gives every button the default arrow. Anything that acts
+   on a click should say so under the pointer; anything disabled should not. */
+:where(button, summary, [role="button"], [role="checkbox"], label:has(> input[type="checkbox"], > input[type="radio"])):not(:disabled, [aria-disabled="true"]) {
+  cursor: pointer;
+}
+
 /* The application predates theme tokens and intentionally uses a compact set
    of Tailwind neutrals. These overrides remap that complete neutral palette in
    dark mode, including interactive states, so every existing and future panel
    participates without maintaining two copies of each component class list. */
 .dark {
+  color-scheme: dark;
+  --color-series-1: #60a5fa;
+  --color-series-2: #fb923c;
+  --color-series-3: #2dd4bf;
+  --color-series-4: #a78bfa;
   --color-f1-ink: #93c5fd;
   --color-f1-soft: #172554;
   --color-f2-ink: #fca5a5;
@@ -80,6 +106,9 @@ body {
 .dark .bg-zinc-50 { background-color: #27272a !important; }
 .dark .bg-zinc-100 { background-color: #09090b !important; }
 .dark .bg-zinc-100\/50 { background-color: rgb(24 24 27 / 0.65) !important; }
+.dark .bg-zinc-50\/70,
+.dark .bg-zinc-50\/50 { background-color: rgb(39 39 42 / 0.7) !important; }
+.dark .bg-zinc-100\/90 { background-color: rgb(39 39 42 / 0.9) !important; }
 .dark .bg-zinc-200 { background-color: #3f3f46 !important; }
 .dark .bg-zinc-300 { background-color: #52525b !important; }
 .dark .bg-zinc-900 { background-color: #09090b !important; }
@@ -138,6 +167,7 @@ body {
 .dark .ring-white { --tw-ring-color: #18181b !important; }
 .dark .hover\:bg-zinc-50:hover,
 .dark .hover\:bg-zinc-50\/80:hover,
+.dark .hover\:bg-zinc-50\/70:hover,
 .dark .hover\:bg-zinc-100:hover { background-color: #27272a !important; }
 .dark .hover\:bg-zinc-200:hover,
 .dark .hover\:bg-zinc-200\/60:hover { background-color: #3f3f46 !important; }
@@ -151,6 +181,7 @@ body {
 .dark .hover\:text-zinc-950:hover { color: #fff !important; }
 .dark select,
 .dark input { color-scheme: dark; }
+.dark * { scrollbar-color: #52525b transparent; }
 
 /* Slim, quiet scrollbars for the always-scrolling panes. */
 * {
@@ -176,8 +207,24 @@ body {
   filter: saturate(0.3);
 }
 
+/* The bout on now. A slow breath rather than a blink: it should read as
+   alive at a glance and then stop asking for attention, since it sits beside
+   the row a reader is trying to read. The label beside it carries the meaning,
+   so the animation is decoration and reduced motion simply stills it. */
+.live-dot {
+  animation: live-pulse 3.6s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.82); }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .plot-grow {
-    transition: none;
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
   }
 }

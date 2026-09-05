@@ -1,4 +1,4 @@
-import { fightIndex, type FightIndex } from "./fight-index.ts";
+import { fightIndex, winProfit, type FightIndex } from "./fight-index.ts";
 import { titleNarratives, type TitleRow } from "./titles.ts";
 
 /**
@@ -16,7 +16,7 @@ export type RecordEntry = {
   key: string;
   label: string;
   value: number;
-  format: "number" | "percent" | "decimal" | "time" | "years" | "odds";
+  format: "number" | "percent" | "decimal" | "time" | "years" | "age" | "odds" | "signed" | "currency";
   rank: number;
   tied: boolean;
   /** How many fighters qualified for this statistic at all. */
@@ -62,12 +62,52 @@ type Totals = {
   takedowns: number;
   knockdowns: number;
   controlSeconds: number;
+  controlTrackedSeconds: number;
+  controlBouts: number;
   finishSeconds: number;
   finishWins: number;
   totalSeconds: number;
   timedBouts: number;
   underdogWins: number;
   biggestUpset: number;
+  // The market, read exactly as the leaderboards read it, so a profile and a
+  // board can never disagree about the same career.
+  underdogOpportunities: number;
+  favoriteWins: number;
+  favoriteLosses: number;
+  favoriteOpportunities: number;
+  pricedBouts: number;
+  pricedWins: number;
+  expectedWins: number;
+  lineSum: number;
+  oddsBets: number;
+  oddsProfit: number;
+  // Who they met and when: opposition quality, runs ended, and how they came
+  // back — from a loss, from a rematch, from a lay-off or from a quick turn.
+  opponentWins: number;
+  opponentLosses: number;
+  opponentDraws: number;
+  opponentResults: number;
+  opponentSamples: number;
+  /** The same, over the opponents this fighter actually beat. */
+  beatenWins: number;
+  beatenLosses: number;
+  beatenDraws: number;
+  beatenResults: number;
+  beatenSamples: number;
+  streakBreakers: number;
+  longestStreakBroken: number;
+  longestStreakBrokenDetail: string;
+  bounceBackWins: number;
+  bounceBackOpportunities: number;
+  rematchWins: number;
+  rematchOpportunities: number;
+  layoffWins: number;
+  layoffOpportunities: number;
+  quickReturnWins: number;
+  quickReturnOpportunities: number;
+  finishedSeconds: number;
+  finishedLosses: number;
   championBouts: number;
   championWins: number;
   reigningBouts: number;
@@ -91,9 +131,17 @@ function emptyTotals(id: string): Totals {
     titleFights: 0, titleWins: 0, titleLosses: 0, titleDefenses: 0, longestDefenseRun: 0,
     longestWinStreak: 0, currentWinStreak: 0, currentUnbeaten: 0, longestUnbeaten: 0, longestDurability: 0,
     sigLanded: 0, sigAbsorbed: 0, seconds: 0, statBouts: 0,
-    takedowns: 0, knockdowns: 0, controlSeconds: 0,
+    takedowns: 0, knockdowns: 0, controlSeconds: 0, controlTrackedSeconds: 0, controlBouts: 0,
     finishSeconds: 0, finishWins: 0, totalSeconds: 0, timedBouts: 0,
     underdogWins: 0, biggestUpset: Number.NEGATIVE_INFINITY,
+    underdogOpportunities: 0, favoriteWins: 0, favoriteLosses: 0, favoriteOpportunities: 0,
+    pricedBouts: 0, pricedWins: 0, expectedWins: 0, lineSum: 0, oddsBets: 0, oddsProfit: 0,
+    opponentWins: 0, opponentLosses: 0, opponentDraws: 0, opponentResults: 0, opponentSamples: 0,
+    beatenWins: 0, beatenLosses: 0, beatenDraws: 0, beatenResults: 0, beatenSamples: 0,
+    streakBreakers: 0, longestStreakBroken: 0, longestStreakBrokenDetail: "",
+    bounceBackWins: 0, bounceBackOpportunities: 0, rematchWins: 0, rematchOpportunities: 0,
+    layoffWins: 0, layoffOpportunities: 0, quickReturnWins: 0, quickReturnOpportunities: 0,
+    finishedSeconds: 0, finishedLosses: 0,
     championBouts: 0, championWins: 0, reigningBouts: 0,
     divisionWins: new Set(), opponentsBeaten: new Set(), revengeWins: 0, bonuses: 0,
     youngestWinAge: Number.POSITIVE_INFINITY, youngestWinDetail: "",
@@ -143,7 +191,7 @@ const STATS: StatDef[] = [
   { key: "sigLanded", label: "Most significant strikes landed", format: "number", priority: 16, value: (t) => (t.statBouts >= 5 ? t.sigLanded : null), detail: (t) => `over ${clock(t.seconds)} of fight time` },
   { key: "sigRate", label: "Highest strike rate", format: "decimal", priority: 17, value: (t) => (t.statBouts >= 8 ? perFifteen(t.sigLanded, t.seconds) : null), detail: (t) => `${t.sigLanded} landed per 15 minutes` },
   { key: "takedowns", label: "Most takedowns landed", format: "number", priority: 18, value: (t) => (t.statBouts >= 5 && t.takedowns >= 10 ? t.takedowns : null), detail: (t) => `in ${t.statBouts} tracked bouts` },
-  { key: "control", label: "Most control time", format: "time", priority: 19, value: (t) => (t.statBouts >= 5 && t.controlSeconds > 0 ? t.controlSeconds : null), detail: (t) => `over ${clock(t.seconds)} of fight time` },
+  { key: "control", label: "Most control time", format: "time", priority: 19, value: (t) => (t.controlBouts >= 5 && t.controlSeconds > 0 ? t.controlSeconds : null), detail: (t) => `over ${clock(t.controlTrackedSeconds)} of tracked fight time` },
   { key: "knockdowns", label: "Most knockdowns", format: "number", priority: 20, value: (t) => (t.knockdowns >= 5 ? t.knockdowns : null), detail: (t) => `${t.kos} KO/TKO wins` },
   { key: "fastestFinish", label: "Fastest average finish", format: "time", priority: 21, ascending: true, value: (t) => (t.finishWins >= 4 ? Math.round(t.finishSeconds / t.finishWins) : null), detail: (t) => `across ${t.finishWins} finishes` },
   { key: "cageTime", label: "Most time in the cage", format: "time", priority: 22, value: (t) => (t.timedBouts >= 10 ? t.totalSeconds : null), detail: (t) => `${t.timedBouts} bouts · avg ${clock(t.totalSeconds / Math.max(1, t.timedBouts))}` },
@@ -166,18 +214,71 @@ const PROFILE_EXTRAS: StatDef[] = [
   { key: "decisionWins", label: "Most decision wins", format: "number", priority: 33, value: (t) => (t.decisionWins >= 4 ? t.decisionWins : null), detail: (t) => `${t.decisionWins}/${t.wins} UFC wins by decision` },
   { key: "decisionRate", label: "Highest decision-win rate", format: "percent", priority: 34, value: (t) => (t.wins >= 8 ? Math.round((t.decisionWins / t.wins) * 1000) / 10 : null), detail: (t) => `${t.decisionWins}/${t.wins} UFC wins by decision` },
   { key: "titleWinRate", label: "Best championship win rate", format: "percent", priority: 35, value: (t) => (t.titleFights >= 3 ? Math.round((t.titleWins / t.titleFights) * 1000) / 10 : null), detail: (t) => `${t.titleWins}-${t.titleLosses} in championship bouts` },
-  { key: "championWinRate", label: "Best record against champions", format: "percent", priority: 36, value: (t) => (t.championBouts >= 3 ? Math.round((t.championWins / t.championBouts) * 1000) / 10 : null), detail: (t) => `${t.championWins}/${t.championBouts} bouts against champions won` },
+  { key: "championWinRate", label: "Best record against champions", format: "percent", priority: 36, value: (t) => (t.championBouts >= 1 ? Math.round((t.championWins / t.championBouts) * 1000) / 10 : null), detail: (t) => `${t.championWins}/${t.championBouts} bouts against champions won` },
   { key: "currentWinStreak", label: "Longest current win streak", format: "number", priority: 37, value: (t) => (t.currentWinStreak >= 3 ? t.currentWinStreak : null), detail: (t) => `${t.longestWinStreak} is their longest UFC run` },
   { key: "sigAbsorbedRate", label: "Lowest strike absorption", format: "decimal", priority: 38, ascending: true, value: (t) => (t.statBouts >= 8 ? perFifteen(t.sigAbsorbed, t.seconds) : null), detail: (t) => `${t.sigAbsorbed} absorbed over ${t.statBouts} tracked bouts` },
   { key: "takedownRate", label: "Most takedowns per 15 min", format: "decimal", priority: 39, value: (t) => (t.statBouts >= 8 ? perFifteen(t.takedowns, t.seconds) : null), detail: (t) => `${t.takedowns} landed over ${t.statBouts} tracked bouts` },
   { key: "knockdownRate", label: "Most knockdowns per 15 min", format: "decimal", priority: 40, value: (t) => (t.statBouts >= 8 ? perFifteen(t.knockdowns, t.seconds) : null), detail: (t) => `${t.knockdowns} scored over ${t.statBouts} tracked bouts` },
-  { key: "controlRate", label: "Most control per 15 min", format: "time", priority: 41, value: (t) => (t.statBouts >= 8 && t.controlSeconds > 0 ? Math.round((t.controlSeconds / t.seconds) * 900) : null), detail: (t) => `${clock(t.controlSeconds)} over ${t.statBouts} tracked bouts` },
+  { key: "controlRate", label: "Most control per 15 min", format: "time", priority: 41, value: (t) => (t.controlBouts >= 8 && t.controlTrackedSeconds > 0 ? Math.round((t.controlSeconds / t.controlTrackedSeconds) * 900) : null), detail: (t) => `${clock(t.controlSeconds)} over ${t.controlBouts} tracked bouts` },
   { key: "averageFightTime", label: "Longest average fight time", format: "time", priority: 42, value: (t) => (t.timedBouts >= 5 ? Math.round(t.totalSeconds / t.timedBouts) : null), detail: (t) => `${t.timedBouts} timed bouts · ${clock(t.totalSeconds)} total` },
-  { key: "youngestWin", label: "Youngest age at a UFC win", format: "years", priority: 43, ascending: true, value: (t) => (Number.isFinite(t.youngestWinAge) ? t.youngestWinAge : null), detail: (t) => t.youngestWinDetail },
-  { key: "oldestWin", label: "Oldest age at a UFC win", format: "years", priority: 44, value: (t) => (Number.isFinite(t.oldestWinAge) ? t.oldestWinAge : null), detail: (t) => t.oldestWinDetail },
+  { key: "youngestWin", label: "Youngest age at a UFC win", format: "age", priority: 43, ascending: true, value: (t) => (Number.isFinite(t.youngestWinAge) ? t.youngestWinAge : null), detail: (t) => t.youngestWinDetail },
+  { key: "oldestWin", label: "Oldest age at a UFC win", format: "age", priority: 44, value: (t) => (Number.isFinite(t.oldestWinAge) ? t.oldestWinAge : null), detail: (t) => t.oldestWinDetail },
 ];
 
-const PROFILE_STATS = [...STATS, ...PROFILE_EXTRAS];
+/**
+ * The measures a fighter can place in that are not "records" in the sporting
+ * sense — the market's read of them, the company they kept, and how they came
+ * back from things. Every board the statistics pages rank people on has one of
+ * these behind it, so a fighter who tops a board finds it on their own page.
+ */
+const MARKET_AND_CONTEXT: StatDef[] = [
+  { key: "favoriteRate", label: "Most reliable favorite", format: "percent", priority: 50,
+    value: (t) => (t.favoriteOpportunities >= 3 ? Math.round((t.favoriteWins / t.favoriteOpportunities) * 1000) / 10 : null),
+    detail: (t) => `${t.favoriteWins}-${t.favoriteLosses} in ${t.favoriteOpportunities} bouts as the closing favorite` },
+  { key: "favoriteLosses", label: "Most losses as the favorite", format: "number", priority: 51,
+    value: (t) => (t.favoriteLosses >= 1 ? t.favoriteLosses : null),
+    detail: (t) => `of ${t.favoriteOpportunities} bouts favored by the closing line` },
+  { key: "underdogRate", label: "Best underdog win rate", format: "percent", priority: 52,
+    value: (t) => (t.underdogOpportunities >= 3 ? Math.round((t.underdogWins / t.underdogOpportunities) * 1000) / 10 : null),
+    detail: (t) => `${t.underdogWins} of ${t.underdogOpportunities} bouts as the closing underdog` },
+  { key: "aboveExpectation", label: "Most wins above the market", format: "signed", priority: 53,
+    value: (t) => (t.pricedBouts >= 3 ? Math.round((t.pricedWins - t.expectedWins) * 10) / 10 : null),
+    detail: (t) => `${t.pricedWins} wins · ${Math.round(t.expectedWins * 10) / 10} expected · ${t.pricedBouts} priced bouts` },
+  { key: "oddsProfit", label: "Best hypothetical net profit", format: "currency", priority: 54,
+    value: (t) => (t.oddsBets >= 3 ? Math.round(t.oddsProfit) : null),
+    detail: (t) => `flat $100 a bout across ${t.oddsBets} priced bouts` },
+  { key: "avgLine", label: "Longest average price", format: "odds", priority: 55,
+    value: (t) => (t.pricedBouts >= 3 ? Math.round(t.lineSum / t.pricedBouts) : null),
+    detail: (t) => `across ${t.pricedBouts} priced bouts` },
+  // Beaten, not merely faced: the board defaults to the same reading, because
+  // beating a good fighter and losing to one are not the same claim.
+  { key: "opposition", label: "Toughest opposition beaten", format: "percent", priority: 56,
+    value: (t) => (t.beatenSamples >= 3 && t.beatenResults >= 15 ? Math.round((t.beatenWins / t.beatenResults) * 1000) / 10 : null),
+    detail: (t) => `${t.beatenWins}-${t.beatenLosses}${t.beatenDraws ? `-${t.beatenDraws}` : ""} combined · ${t.beatenSamples} opponents beaten, as they stood that night` },
+  { key: "championsFaced", label: "Most champions faced", format: "number", priority: 57,
+    value: (t) => (t.championBouts >= 3 ? t.championBouts : null),
+    detail: (t) => `${t.reigningBouts} of them holding the belt that night` },
+  { key: "streakBreakers", label: "Biggest streak breaker", format: "number", priority: 58,
+    value: (t) => (t.longestStreakBroken >= 3 ? t.longestStreakBroken : null),
+    detail: (t) => t.longestStreakBrokenDetail || `${t.streakBreakers} runs of 3+ ended` },
+  { key: "bounceBack", label: "Best bounce-back rate", format: "percent", priority: 59,
+    value: (t) => (t.bounceBackOpportunities >= 3 ? Math.round((t.bounceBackWins / t.bounceBackOpportunities) * 1000) / 10 : null),
+    detail: (t) => `${t.bounceBackWins} of ${t.bounceBackOpportunities} bouts after a loss` },
+  { key: "rematchRate", label: "Best rematch record", format: "percent", priority: 60,
+    value: (t) => (t.rematchOpportunities >= 3 ? Math.round((t.rematchWins / t.rematchOpportunities) * 1000) / 10 : null),
+    detail: (t) => `${t.rematchWins} of ${t.rematchOpportunities} bouts against someone met before` },
+  { key: "longLayoff", label: "Best after a long layoff", format: "percent", priority: 61,
+    value: (t) => (t.layoffOpportunities >= 3 ? Math.round((t.layoffWins / t.layoffOpportunities) * 1000) / 10 : null),
+    detail: (t) => `${t.layoffWins} of ${t.layoffOpportunities} returns after 365+ days out` },
+  { key: "quickTurnaround", label: "Best on a quick turnaround", format: "percent", priority: 62,
+    value: (t) => (t.quickReturnOpportunities >= 3 ? Math.round((t.quickReturnWins / t.quickReturnOpportunities) * 1000) / 10 : null),
+    detail: (t) => `${t.quickReturnWins} of ${t.quickReturnOpportunities} bouts inside 120 days` },
+  { key: "averageFinished", label: "Quickest to be finished", format: "time", priority: 63, ascending: true,
+    value: (t) => (t.finishedLosses >= 3 ? Math.round(t.finishedSeconds / t.finishedLosses) : null),
+    detail: (t) => `across ${t.finishedLosses} defeats inside the distance` },
+];
+
+const PROFILE_STATS = [...STATS, ...PROFILE_EXTRAS, ...MARKET_AND_CONTEXT];
 const CATEGORY: Record<string, { label: string; order: number }> = {
   wins: { label: "Career results", order: 1 }, bouts: { label: "Career results", order: 1 }, winRate: { label: "Career results", order: 1 }, span: { label: "Career results", order: 1 }, divisionWins: { label: "Career results", order: 1 }, events: { label: "Career results", order: 1 },
   titleDefenses: { label: "Championships", order: 2 }, defenseRun: { label: "Championships", order: 2 }, titleWins: { label: "Championships", order: 2 }, titleFights: { label: "Championships", order: 2 }, titleWinRate: { label: "Championships", order: 2 },
@@ -236,7 +337,11 @@ function buildTotals(index: FightIndex): Map<string, Totals> {
         t.statBouts += 1;
         t.takedowns += side.actions.takedowns?.scored ?? 0;
         t.knockdowns += side.actions.knockdowns?.scored ?? 0;
-        t.controlSeconds += side.actions.control?.scored ?? 0;
+      }
+      if (side.actions.control && fight.elapsed != null && fight.elapsed > 0) {
+        t.controlSeconds += side.actions.control.scored;
+        t.controlTrackedSeconds += fight.elapsed;
+        t.controlBouts += 1;
       }
 
       const reigning = opponent.prior.reigningChampion;
@@ -244,9 +349,76 @@ function buildTotals(index: FightIndex): Map<string, Totals> {
       if (reigning) t.reigningBouts += 1;
       if (fight.titleFight && fight.titleType !== "tuf" && fight.titleType !== "tournament") t.titleFights += 1;
 
-      if (side.prob != null && opponent.prob != null && side.close != null && side.prob < opponent.prob && side.outcome === "win") {
-        t.underdogWins += 1;
-        if (side.close > t.biggestUpset) t.biggestUpset = side.close;
+      // The market. Read exactly as the leaderboards read it: both implied
+      // probabilities carry the bookmaker's margin, so a pair is normalised
+      // before it is treated as a forecast, and a flat 100 is staked per bout.
+      const decided = side.outcome === "win" || side.outcome === "loss" || side.outcome === "draw";
+      if (side.prob != null && opponent.prob != null && side.close != null) {
+        if (decided) {
+          t.oddsBets += 1;
+          t.pricedBouts += 1;
+          t.lineSum += side.close;
+          t.expectedWins += side.prob / (side.prob + opponent.prob);
+          if (side.outcome === "win") { t.pricedWins += 1; t.oddsProfit += winProfit(side.close); }
+          if (side.outcome === "loss") t.oddsProfit -= 100;
+        }
+        if (side.prob < opponent.prob) {
+          if (side.outcome && side.outcome !== "nc") t.underdogOpportunities += 1;
+          if (side.outcome === "win") {
+            t.underdogWins += 1;
+            if (side.close > t.biggestUpset) t.biggestUpset = side.close;
+          }
+        } else if (side.prob > opponent.prob) {
+          if (side.outcome && side.outcome !== "nc") t.favoriteOpportunities += 1;
+          if (side.outcome === "win") t.favoriteWins += 1;
+          if (side.outcome === "loss") t.favoriteLosses += 1;
+        }
+      }
+
+      // Who they were in with, and what they walked in from.
+      const opponentBouts = opponent.prior.wins + opponent.prior.losses + opponent.prior.draws;
+      if (opponentBouts > 0) {
+        t.opponentSamples += 1;
+        t.opponentWins += opponent.prior.wins;
+        t.opponentLosses += opponent.prior.losses;
+        t.opponentDraws += opponent.prior.draws;
+        t.opponentResults += opponentBouts;
+        if (side.outcome === "win") {
+          t.beatenSamples += 1;
+          t.beatenWins += opponent.prior.wins;
+          t.beatenLosses += opponent.prior.losses;
+          t.beatenDraws += opponent.prior.draws;
+          t.beatenResults += opponentBouts;
+        }
+      }
+      if (side.outcome === "win" && opponent.prior.winStreak >= 3) {
+        t.streakBreakers += 1;
+        if (opponent.prior.winStreak > t.longestStreakBroken) {
+          t.longestStreakBroken = opponent.prior.winStreak;
+          t.longestStreakBrokenDetail = `${opponent.name}’s ${opponent.prior.winStreak}-fight run · ${fight.eventName}`;
+        }
+      }
+      if (side.prior.lastOutcome === "loss") {
+        t.bounceBackOpportunities += 1;
+        if (side.outcome === "win") t.bounceBackWins += 1;
+      }
+      if (side.prior.meetings > 0) {
+        t.rematchOpportunities += 1;
+        if (side.outcome === "win") t.rematchWins += 1;
+      }
+      if (side.prior.daysSince != null) {
+        if (side.prior.daysSince <= 120) {
+          t.quickReturnOpportunities += 1;
+          if (side.outcome === "win") t.quickReturnWins += 1;
+        }
+        if (side.prior.daysSince >= 365) {
+          t.layoffOpportunities += 1;
+          if (side.outcome === "win") t.layoffWins += 1;
+        }
+      }
+      if (side.outcome === "loss" && (fight.method === "KO/TKO" || fight.method === "SUB") && fight.elapsed != null) {
+        t.finishedSeconds += fight.elapsed;
+        t.finishedLosses += 1;
       }
 
       if (side.outcome === "win") {

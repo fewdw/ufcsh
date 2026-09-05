@@ -68,8 +68,8 @@ export type ScrapedEventDetail = {
   fights: ScrapedFight[];
 };
 
-export async function scrapeEventDetail(eventId: string): Promise<ScrapedEventDetail> {
-  const html = await fetchHtml(`${BASE}/event-details/${eventId}`);
+export async function scrapeEventDetail(eventId: string, options?: { timeoutMs?: number; retries?: number }): Promise<ScrapedEventDetail> {
+  const html = await fetchHtml(`${BASE}/event-details/${eventId}`, options);
   const $ = cheerio.load(html);
 
   let date = "";
@@ -326,8 +326,8 @@ function pageOrderIsSwapped($: CheerioAPI, order: FightOrder | undefined): boole
   return false;
 }
 
-export async function scrapeFightDetail(fightId: string, order?: FightOrder): Promise<FightDetail> {
-  const html = await fetchHtml(`${BASE}/fight-details/${fightId}`);
+export async function scrapeFightDetail(fightId: string, order?: FightOrder, options?: { timeoutMs?: number; retries?: number }): Promise<FightDetail> {
+  const html = await fetchHtml(`${BASE}/fight-details/${fightId}`, options);
   const $ = cheerio.load(html);
   const swap = pageOrderIsSwapped($, order);
 
@@ -370,6 +370,7 @@ export async function scrapeFightDetail(fightId: string, order?: FightOrder): Pr
     return { type: "future", bonuses, titleBout, taleOfTape, recentFights };
   }
 
+  if (!$(".b-fight-details__person").length || !$("p.b-fight-details__text").length) throw new Error("Incomplete fight page; keeping the last good detail");
   const detail: FightDetail = { type: "past", bonuses, titleBout };
 
   const textBlocks = $("p.b-fight-details__text");

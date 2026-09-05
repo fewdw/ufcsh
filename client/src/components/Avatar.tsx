@@ -7,7 +7,7 @@ const SIZES = {
   matchup: "h-14 w-14 text-xs lg:h-16 lg:w-16 lg:text-sm",
 } as const;
 
-const UFC_EMPTY_AVATAR = "/silhouette.svg";
+const UFC_EMPTY_AVATAR = "/fighter-placeholder.png";
 
 export default function Avatar({
   src,
@@ -35,7 +35,8 @@ export default function Avatar({
   const prominent = size === "xl" || size === "lg" || size === "matchup";
   return (
     <img
-      src={src || UFC_EMPTY_AVATAR}
+      key={src}
+      src={!src || src.includes("silhouette.svg") || src.includes("no-profile-image") ? UFC_EMPTY_AVATAR : src}
       alt={name}
       loading={prominent ? "eager" : "lazy"}
       fetchPriority={prominent ? "high" : "auto"}

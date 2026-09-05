@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { db } from "./db.ts";
-import { careerBefore, completeRecordBefore, fightIndex, impliedProbability, winProfit } from "./fight-index.ts";
+import { careerBefore, completeRecordBefore, fightIndex, impliedProbability, opponentOf, sideOf, winProfit } from "./fight-index.ts";
+import { getRankings } from "./api.ts";
 import { getStats } from "./stats.ts";
-import { getLabs } from "./labs.ts";
+import { getLabs, getLabsBouts, getLabsFill, getLabsMatchups } from "./labs.ts";
 import { fighterRecords, fighterStats } from "./records.ts";
 
 /**
@@ -31,6 +32,15 @@ const board = (query: string, key: string) => {
   return found;
 };
 const labs = (query: string) => getLabs(new URLSearchParams(query)) as any;
+const bouts = (query: string) => getLabsBouts(new URLSearchParams(query)) as any;
+const matchups = (query = "") => getLabsMatchups(new URLSearchParams(query)) as any;
+const fill = (fightId: string, pov: "a" | "b", mode: "basic" | "normal" | "advanced") =>
+  getLabsFill(new URLSearchParams(`fight=${fightId}&pov=${pov}&mode=${mode}`)) as any;
+const asQuery = (values: Record<string, string | string[]>) => {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(values)) params.set(key, Array.isArray(value) ? value.join(",") : value);
+  return params.toString();
+};
 const one = <T>(sql: string, ...params: unknown[]): T => db.prepare(sql).get(...(params as never[])) as T;
 
 // ---------------------------------------------------------------------------
@@ -39,7 +49,7 @@ const one = <T>(sql: string, ...params: unknown[]): T => db.prepare(sql).get(...
 test("index covers exactly the completed bouts in the database", () => {
   const { c } = one<{ c: number }>(`
     SELECT COUNT(*) AS c FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE e.complete = 1 AND (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)
+    WHERE (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL) AND (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)
   `);
   assert.equal(index.fights.length, c);
   assert.equal(new Set(index.fights.map((fight) => fight.id)).size, c);
@@ -86,7 +96,7 @@ test("most UFC wins matches a direct count", () => {
   const top = board("minimumFights=1", "record").rows[0];
   const { c } = one<{ c: number }>(`
     SELECT COUNT(*) AS c FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE e.complete = 1
+    WHERE (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)
       AND ((f.f1_id = ? AND f.f1_outcome = 'win') OR (f.f2_id = ? AND f.f2_outcome = 'win'))
   `, top.fighter_id, top.fighter_id);
   assert.equal(top.value, c, `${top.name} win count`);
@@ -96,7 +106,7 @@ test("most UFC losses matches a direct count", () => {
   const top = board("minimumFights=1&recordGroup=losses", "record").rows[0];
   const { c } = one<{ c: number }>(`
     SELECT COUNT(*) AS c FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE e.complete = 1
+    WHERE (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)
       AND ((f.f1_id = ? AND f.f1_outcome = 'loss') OR (f.f2_id = ? AND f.f2_outcome = 'loss'))
   `, top.fighter_id, top.fighter_id);
   assert.equal(top.value, c, `${top.name} loss count`);
@@ -106,7 +116,7 @@ test("KO/TKO wins in round 1 match a direct count", () => {
   const top = board("minimumFights=1&roundFinishMethod=ko&roundFinishRound=1", "finishing").rows[0];
   const { c } = one<{ c: number }>(`
     SELECT COUNT(*) AS c FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE e.complete = 1 AND f.method = 'KO/TKO' AND CAST(f.round AS INTEGER) = 1
+    WHERE (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL) AND f.method = 'KO/TKO' AND CAST(f.round AS INTEGER) = 1
       AND ((f.f1_id = ? AND f.f1_outcome = 'win') OR (f.f2_id = ? AND f.f2_outcome = 'win'))
   `, top.fighter_id, top.fighter_id);
   assert.equal(top.value, c, `${top.name} round-1 KO count`);
@@ -117,7 +127,7 @@ test("total significant strikes landed match the summed event totals", () => {
   const { total } = one<{ total: number }>(`
     SELECT COALESCE(SUM(CASE WHEN f.f1_id = ? THEN CAST(f.f1_str AS INTEGER) ELSE CAST(f.f2_str AS INTEGER) END), 0) AS total
     FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE e.complete = 1 AND (f.f1_id = ? OR f.f2_id = ?)
+    WHERE (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL) AND (f.f1_id = ? OR f.f2_id = ?)
       AND f.f1_str IS NOT NULL AND f.f2_str IS NOT NULL
   `, top.fighter_id, top.fighter_id, top.fighter_id);
   assert.equal(top.value, total, `${top.name} significant strikes`);
@@ -137,7 +147,7 @@ test("most UFC bouts matches a direct count, and the career span is consistent",
   const top = board("minimumFights=1&recordGroup=bouts", "record").rows[0];
   const { c } = one<{ c: number }>(`
     SELECT COUNT(*) AS c FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE e.complete = 1 AND (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)
+    WHERE (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL) AND (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)
       AND (f.f1_id = ? OR f.f2_id = ?)
   `, top.fighter_id, top.fighter_id);
   assert.equal(top.value, c, `${top.name} bout count`);
@@ -148,7 +158,7 @@ test("the wins detail reports the distinct opponents actually beaten", () => {
     const { c } = one<{ c: number }>(`
       SELECT COUNT(DISTINCT CASE WHEN f.f1_id = ? THEN f.f2_id ELSE f.f1_id END) AS c
       FROM fights f JOIN events e ON e.id = f.event_id
-      WHERE e.complete = 1
+      WHERE (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)
         AND ((f.f1_id = ? AND f.f1_outcome = 'win') OR (f.f2_id = ? AND f.f2_outcome = 'win'))
     `, row.fighter_id, row.fighter_id, row.fighter_id);
     const reported = Number(row.detail.match(/(\d+) different opponents beaten/)?.[1]);
@@ -162,7 +172,7 @@ test("underdog wins match a recomputation from the stored closing lines", () => 
   const rows = db.prepare(`
     SELECT f.f1_id, f.f1_outcome, f.f2_outcome, o.f1_close, o.f2_close
     FROM fights f JOIN events e ON e.id = f.event_id JOIN odds o ON o.fight_id = f.id
-    WHERE e.complete = 1 AND (f.f1_id = ? OR f.f2_id = ?)
+    WHERE (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL) AND (f.f1_id = ? OR f.f2_id = ?)
   `).all(top.fighter_id, top.fighter_id) as any[];
   const line = (value: string | null) => (value ? Number(String(value).replace(/[−–]/g, "-").replace(/[^0-9+\-.]/g, "")) : null);
   let underdogWins = 0;
@@ -215,7 +225,7 @@ test("a division filter only counts bouts contested in that division", () => {
   const top = board("minimumFights=1&division=Heavyweight", "record").rows[0];
   const { c } = one<{ c: number }>(`
     SELECT COUNT(*) AS c FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE e.complete = 1 AND f.weight_class = 'Heavyweight'
+    WHERE (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL) AND f.weight_class = 'Heavyweight'
       AND ((f.f1_id = ? AND f.f1_outcome = 'win') OR (f.f2_id = ? AND f.f2_outcome = 'win'))
   `, top.fighter_id, top.fighter_id);
   assert.equal(top.value, c, `${top.name} heavyweight wins`);
@@ -225,7 +235,7 @@ test("a since-year filter excludes everything before that year", () => {
   const top = board("minimumFights=1&statsSince=2020", "record").rows[0];
   const { c } = one<{ c: number }>(`
     SELECT COUNT(*) AS c FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE e.complete = 1 AND e.date >= '2020-01-01'
+    WHERE (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL) AND e.date >= '2020-01-01'
       AND ((f.f1_id = ? AND f.f1_outcome = 'win') OR (f.f2_id = ? AND f.f2_outcome = 'win'))
   `, top.fighter_id, top.fighter_id);
   assert.equal(top.value, c, `${top.name} wins since 2020`);
@@ -267,21 +277,46 @@ test("every board returns ranked, ordered rows and a description", () => {
 });
 
 test("the combined record of opponents is the sum of their records that night", () => {
-  const top = board("minimumFights=1&minimumSample=10&contextMode=opposition", "context").rows[0];
-  let wins = 0;
-  let losses = 0;
-  let draws = 0;
-  let opponents = 0;
-  for (const fight of index.fighters.get(top.fighter_id)!.fights) {
-    const opponent = fight.sides[0].id === top.fighter_id ? fight.sides[1] : fight.sides[0];
-    if (opponent.prior.bouts === 0) continue;
-    opponents += 1;
-    wins += opponent.prior.wins;
-    losses += opponent.prior.losses;
-    draws += opponent.prior.draws;
+  // Both readings of the same board: every opponent faced, and only the ones
+  // this fighter beat — which is what it shows unless asked otherwise.
+  for (const [scope, noun] of [["faced", "opponents faced"], ["beaten", "opponents beaten"]] as const) {
+    const top = board(`minimumFights=1&minimumSample=10&contextMode=opposition&oppositionScope=${scope}`, "context").rows[0];
+    let wins = 0;
+    let losses = 0;
+    let draws = 0;
+    let opponents = 0;
+    for (const fight of index.fighters.get(top.fighter_id)!.fights) {
+      const side = fight.sides[0].id === top.fighter_id ? fight.sides[0] : fight.sides[1];
+      const opponent = fight.sides[0].id === top.fighter_id ? fight.sides[1] : fight.sides[0];
+      if (opponent.prior.bouts === 0) continue;
+      if (scope === "beaten" && side.outcome !== "win") continue;
+      opponents += 1;
+      wins += opponent.prior.wins;
+      losses += opponent.prior.losses;
+      draws += opponent.prior.draws;
+    }
+    assert.equal(top.detail, `${wins}-${losses}${draws ? `-${draws}` : ""} combined · ${opponents} ${noun} · UFC records that night`);
+    assert.equal(top.value, Math.round((wins / (wins + losses + draws)) * 1000) / 10);
   }
-  assert.equal(top.detail, `${wins}-${losses}${draws ? `-${draws}` : ""} combined · ${opponents} opponents · UFC records that night`);
-  assert.equal(top.value, Math.round((wins / (wins + losses + draws)) * 1000) / 10);
+});
+
+test("beating a good fighter and losing to one are not the same claim", () => {
+  const beaten = board("minimumFights=5&minimumSample=5&contextMode=opposition", "context");
+  const faced = board("minimumFights=5&minimumSample=5&contextMode=opposition&oppositionScope=faced", "context");
+  assert.match(beaten.title, /beaten/, "the default board says which opponents it counted");
+  assert.match(faced.title, /faced/);
+  assert.notEqual(
+    beaten.rows.map((row) => row.fighter_id).join(","),
+    faced.rows.map((row) => row.fighter_id).join(","),
+    "the two readings should not rank the same field",
+  );
+  // Nobody can have beaten more opponents than they met.
+  const met = new Map(faced.rows.map((row) => [row.fighter_id, Number(row.detail.match(/· (\d+) opponents/)![1])]));
+  for (const row of beaten.rows) {
+    const wonAgainst = Number(row.detail.match(/· (\d+) opponents/)![1]);
+    const total = met.get(row.fighter_id);
+    if (total != null) assert.ok(wonAgainst <= total, `${row.name}: beat ${wonAgainst} of ${total}`);
+  }
 });
 
 test("a leaderboard returns exactly the number of rows asked for", () => {
@@ -370,20 +405,20 @@ test("a breakdown partitions the population, apart from observations it cannot p
 });
 
 test("every filter actually constrains the bouts it returns", () => {
-  const streak = labs("winStreakMin=3");
-  for (const fight of streak.fights) assert.ok(fight.win_streak >= 3, `${fight.fighter.name} entered on ${fight.win_streak}`);
+  const streak = bouts("winStreakMin=3");
+  for (const fight of streak.rows) assert.ok(fight.win_streak >= 3, `${fight.fighter.name} entered on ${fight.win_streak}`);
 
-  const layoff = labs("layoffMin=365");
-  for (const fight of layoff.fights) assert.ok((fight.days_since ?? 0) >= 365, `${fight.fighter.name} ${fight.days_since}d`);
+  const layoff = bouts("layoffMin=365");
+  for (const fight of layoff.rows) assert.ok((fight.days_since ?? 0) >= 365, `${fight.fighter.name} ${fight.days_since}d`);
 
-  const division = labs("division=Heavyweight");
-  for (const fight of division.fights) assert.equal(fight.division, "Heavyweight");
+  const division = bouts("division=Heavyweight");
+  for (const fight of division.rows) assert.equal(fight.division, "Heavyweight");
 
-  const title = labs("title=only");
-  for (const fight of title.fights) assert.equal(fight.title_fight, true);
+  const title = bouts("title=only");
+  for (const fight of title.rows) assert.equal(fight.title_fight, true);
 
-  const ko = labs("method=ko");
-  for (const fight of ko.fights) assert.equal(fight.method, "KO/TKO");
+  const ko = bouts("method=ko");
+  for (const fight of ko.rows) assert.equal(fight.method, "KO/TKO");
 
   const underdog = labs("odds=underdog");
   assert.ok(underdog.summary.underdog_share === 100, `underdog share ${underdog.summary.underdog_share}`);
@@ -437,7 +472,7 @@ test("round output is only averaged over the fighters who reached the round", ()
 function roundsBeyondFive(result: any): number {
   const { c } = one<{ c: number }>(`
     SELECT COUNT(*) AS c FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE e.complete = 1 AND f.method IN ('KO/TKO', 'SUB') AND CAST(f.round AS INTEGER) > 5
+    WHERE (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL) AND f.method IN ('KO/TKO', 'SUB') AND CAST(f.round AS INTEGER) > 5
   `);
   return result.summary.n === index.fights.length * 2 ? c : 0;
 }
@@ -455,7 +490,382 @@ test("an impossible population reports zero rather than failing", () => {
   assert.equal(empty.summary.n, 0);
   assert.equal(empty.summary.win_rate, null);
   assert.equal(empty.breakdown.length, 0);
-  assert.equal(empty.fights.length, 0);
+  assert.equal(bouts("ageMin=60&ageMax=61").total, 0);
+});
+
+test("the bout browser is the dashboard's own population, one page at a time", () => {
+  const query = "division=Lightweight&winStreakMin=2";
+  const summary = labs(query).summary;
+  const all = bouts(query);
+  assert.equal(all.total, summary.n);
+  assert.equal(all.counts.all, summary.n);
+  assert.equal(all.counts.win, summary.wins);
+  assert.equal(all.counts.loss, summary.losses);
+  assert.equal(all.counts.draw, summary.draws);
+  assert.equal(all.counts.nc, summary.ncs);
+  assert.ok(all.rows.length > 0 && all.rows.length <= all.limit);
+
+  // Each outcome tab is the slice of the same population, and they partition it.
+  const wins = bouts(`${query}&outcome=win`);
+  assert.equal(wins.total, summary.wins);
+  for (const row of wins.rows) assert.equal(row.outcome, "win");
+  const losses = bouts(`${query}&outcome=loss`);
+  assert.equal(losses.total, summary.losses);
+  for (const row of losses.rows) assert.equal(row.outcome, "loss");
+  assert.equal(
+    wins.total + losses.total + bouts(`${query}&outcome=draw`).total + bouts(`${query}&outcome=nc`).total,
+    all.total,
+  );
+
+  // Paging walks the same ordering without repeating or skipping a bout.
+  const first = bouts(`${query}&limit=10&offset=0`);
+  const second = bouts(`${query}&limit=10&offset=10`);
+  assert.equal(new Set([...first.rows, ...second.rows].map((row: any) => `${row.fight_id}:${row.fighter.id}`)).size, first.rows.length + second.rows.length);
+  assert.deepEqual(bouts(`${query}&limit=20&offset=0`).rows.map((row: any) => row.fight_id), [...first.rows, ...second.rows].map((row: any) => row.fight_id));
+});
+
+test("every bout ordering is the one it claims to be", () => {
+  const query = "division=Welterweight&limit=200";
+  const dates = (sort: string) => bouts(`${query}&sort=${sort}`).rows.map((row: any) => row.date);
+  assert.deepEqual(dates("recent"), [...dates("recent")].sort().reverse());
+  assert.deepEqual(dates("oldest"), [...dates("oldest")].sort());
+
+  for (const outcome of ["win", "loss", "draw"]) {
+    const rows = bouts(`${query}&sort=${outcome}`).rows;
+    const after = rows.findIndex((row: any) => row.outcome !== outcome);
+    if (after === -1) continue;
+    for (const row of rows.slice(after)) assert.notEqual(row.outcome, outcome, `${outcome}-first put one back after another outcome`);
+  }
+
+  // Price and duration orderings put unknown values last rather than first.
+  const longest = bouts(`${query}&sort=upset`).rows;
+  const lines = longest.map((row: any) => row.line);
+  const priced = lines.filter((line: number | null) => line != null);
+  assert.deepEqual(priced, [...priced].sort((a, b) => b - a));
+  assert.deepEqual(lines.slice(priced.length), lines.slice(priced.length).map(() => null));
+
+  const quickest = bouts(`${query}&sort=quick`).rows.map((row: any) => row.elapsed).filter((value: number | null) => value != null);
+  assert.deepEqual(quickest, [...quickest].sort((a: number, b: number) => a - b));
+});
+
+test("striking a bout off removes it from the record but not from the list", () => {
+  const query = "division=Flyweight&title=only";
+  const before = labs(query).summary;
+  const listed = bouts(query).rows;
+  assert.ok(listed.length >= 3);
+
+  const struck = listed.slice(0, 3);
+  const exclude = struck.map((row: any) => `${row.fight_id}:${row.fighter.id}`).join(",");
+  const after = labs(`${query}&exclude=${exclude}`);
+  assert.equal(after.excluded, 3);
+  assert.equal(after.summary.n, before.n - 3);
+  for (const [outcome, key] of [["win", "wins"], ["loss", "losses"], ["draw", "draws"], ["nc", "ncs"]] as const) {
+    const removed = struck.filter((row: any) => row.outcome === outcome).length;
+    assert.equal(after.summary[key], before[key] - removed, `${key} did not drop by ${removed}`);
+  }
+
+  // The browser still lists them, so a struck bout can be put back.
+  const stillListed = bouts(`${query}&exclude=${exclude}`).rows.map((row: any) => `${row.fight_id}:${row.fighter.id}`);
+  for (const row of struck) assert.ok(stillListed.includes(`${row.fight_id}:${row.fighter.id}`), "a struck bout vanished from the list");
+
+  // A malformed or unknown id is ignored rather than silently dropping rows.
+  assert.equal(labs(`${query}&exclude=nonsense,,deadbeef:deadbeef`).summary.n, before.n);
+});
+
+test("a summary carries the raw denominators its rates were built from", () => {
+  // The browser nets struck bouts out of these locally, so a rate rebuilt from
+  // them must be the identical number the server would return.
+  const s = labs("division=Bantamweight").summary;
+  const decided = s.wins + s.losses + s.draws;
+  assert.equal(s.win_rate, Math.round((s.wins / decided) * 1000) / 10);
+  assert.equal(s.avg_seconds, Math.round(s.seconds / s.timed));
+  assert.equal(s.avg_age, Math.round((s.age_sum / s.age_known) * 10) / 10);
+  assert.equal(s.r1_finish_rate, Math.round((s.r1_finishes / s.wins) * 1000) / 10);
+  assert.equal(s.finish_rate, Math.round(((s.outcomes.win_ko + s.outcomes.win_sub) / s.wins) * 1000) / 10);
+  assert.equal(s.finished_rate, Math.round(((s.outcomes.loss_ko + s.outcomes.loss_sub) / s.losses) * 1000) / 10);
+  assert.equal(s.stoppage_rate, Math.round(((s.outcomes.win_ko + s.outcomes.win_sub + s.outcomes.loss_ko + s.outcomes.loss_sub) / decided) * 1000) / 10);
+});
+
+test("striking bouts off moves every counter by exactly what those bouts held", () => {
+  const query = "division=Bantamweight&title=only";
+  const before = labs(query).summary;
+  const struck = bouts(query).rows.slice(0, 5);
+  const after = labs(`${query}&exclude=${struck.map((row: any) => `${row.fight_id}:${row.fighter.id}`).join(",")}`).summary;
+
+  const sum = (pick: (row: any) => number) => struck.reduce((total: number, row: any) => total + pick(row), 0);
+  assert.equal(after.n, before.n - struck.length);
+  assert.equal(after.timed, before.timed - sum((row) => (row.elapsed != null ? 1 : 0)));
+  assert.equal(after.seconds, before.seconds - sum((row) => row.elapsed ?? 0));
+  assert.equal(after.age_known, before.age_known - sum((row) => (row.age != null ? 1 : 0)));
+  assert.equal(after.age_sum, before.age_sum - sum((row) => row.age ?? 0));
+  assert.equal(
+    after.r1_finishes,
+    before.r1_finishes - sum((row) => (row.outcome === "win" && row.round === 1 && (row.method === "KO/TKO" || row.method === "SUB") ? 1 : 0)),
+  );
+  assert.equal(after.outcomes.win_ko, before.outcomes.win_ko - sum((row) => (row.outcome === "win" && row.method === "KO/TKO" ? 1 : 0)));
+  assert.equal(after.outcomes.loss_dec, before.outcomes.loss_dec - sum((row) => (row.outcome === "loss" && String(row.method).endsWith("-DEC") ? 1 : 0)));
+});
+
+test("an announced matchup carries filter-ready state for both corners", () => {
+  const all = matchups();
+  assert.ok(all.matchups.length > 0, "no announced bout to fill from");
+  const today = new Date().toISOString().slice(0, 10);
+  const beltStatuses = ["champion", "formerChampion", "neverChampion"];
+  const prevResults = ["debut", "win", "finishWin", "loss", "koLoss", "subLoss", "decisionLoss", "drawOrNc"];
+
+  for (const m of all.matchups) {
+    assert.ok(m.date >= today, `${m.event_name} has already happened`);
+    // Nothing announced has been fought, so it must not be in the index.
+    assert.equal(index.byId.has(m.fight_id), false, `${m.fight_id} is already a completed bout`);
+    assert.ok(m.scheduled_rounds === 3 || m.scheduled_rounds === 5);
+    assert.equal(m.scheduled_rounds === 5, m.title_fight || m.main_event);
+    for (const corner of [m.a, m.b]) {
+      assert.ok(corner.name, "a corner is missing a name");
+      // Every categorical value must already be a filter option, because the
+      // panel writes it straight into a filter without translating.
+      if (corner.status != null) assert.ok(beltStatuses.includes(corner.status), `bad status ${corner.status}`);
+      if (corner.prev != null) assert.ok(prevResults.includes(corner.prev), `bad prev ${corner.prev}`);
+      if (corner.prev === "debut") assert.equal(corner.ufc_bouts, 0, `${corner.name} debuts with bouts behind them`);
+      if (corner.ufc_bouts === 0) assert.equal(corner.layoff_days, null);
+      if (corner.prob != null) assert.ok(corner.prob > 0 && corner.prob < 100, `bad implied ${corner.prob}`);
+    }
+  }
+
+  // The search narrows to the same rows rather than reaching past them.
+  const one = all.matchups[0];
+  const found = matchups(`q=${encodeURIComponent(one.a.name)}`);
+  assert.ok(found.matchups.some((m: any) => m.fight_id === one.fight_id), "search lost its own matchup");
+  assert.ok(found.matchups.length <= all.matchups.length);
+  assert.equal(matchups("q=zzzznotafighter").matchups.length, 0);
+});
+
+test("filling from a matchup reads the same fight from either corner", () => {
+  const sample = matchups().matchups.slice(0, 25);
+  assert.ok(sample.length > 0);
+  const invert: Record<string, string> = { favorite: "underdog", underdog: "favorite", pickem: "pickem" };
+
+  for (const m of sample) {
+    for (const mode of ["basic", "normal", "advanced"] as const) {
+      const a = fill(m.fight_id, "a", mode).filters;
+      const b = fill(m.fight_id, "b", mode).filters;
+      // Paired conditions belong to a corner, so they must swap together —
+      // a record built half from one fighter and half from the other is a lie.
+      assert.deepEqual(a.ageMin, b.oppAgeMin, `${m.a.name}: age not mirrored`);
+      assert.deepEqual(a.oppAgeMin, b.ageMin, `${m.a.name}: opponent age not mirrored`);
+      assert.deepEqual(a.status, b.oppStatus, `${m.a.name}: belt not mirrored`);
+      assert.deepEqual(a.oppStatus, b.status, `${m.a.name}: opponent belt not mirrored`);
+      // Conditions asked of both fighters are decided as one, so they swap
+      // together too: stance, experience and price all belong to the pairing.
+      for (const [mine, theirs] of [["stance", "oppStance"], ["expMin", "oppExpMin"], ["expMax", "oppExpMax"], ["probMin", "oppProbMin"], ["probMax", "oppProbMax"]] as const) {
+        assert.deepEqual(a[mine], b[theirs], `${m.a.name}: ${mine} not mirrored`);
+        assert.deepEqual(a[theirs], b[mine], `${m.a.name}: ${theirs} not mirrored`);
+      }
+      // The market role has to flip; both corners cannot be the favourite.
+      if (a.odds) assert.equal(b.odds, invert[a.odds], `${m.a.name}: ${a.odds} did not flip`);
+      // The shape of the bout belongs to neither corner and must not move.
+      for (const key of ["division", "title", "rounds", "mainEvent", "gender"]) {
+        assert.deepEqual(a[key], b[key], `${m.a.name}: ${key} changed with the corner`);
+      }
+      // Filling is deterministic, so the same request twice is the same answer.
+      assert.deepEqual(fill(m.fight_id, "a", mode).filters, a);
+    }
+  }
+});
+
+test("the three modes are three selections over one list of conditions", () => {
+  const sample = matchups().matchups.slice(0, 25);
+  for (const m of sample) {
+    for (const pov of ["a", "b"] as const) {
+      const basic = fill(m.fight_id, pov, "basic");
+      const normal = fill(m.fight_id, pov, "normal");
+      const advanced = fill(m.fight_id, pov, "advanced");
+      const offered = (result: any) => [...result.conditions.map((c: any) => c.id), ...result.dropped.map((c: any) => c.id)].sort();
+      const on = (result: any) => result.conditions.filter((c: any) => c.on);
+      const where = `${m.a.name}/${pov}`;
+
+      // The list is the matchup's, not the mode's: switching mode changes what
+      // is switched on, never what there is to switch. So checking every box
+      // by hand lands on exactly the advanced study.
+      assert.deepEqual(offered(normal), offered(basic), `${where}: the modes offered different conditions`);
+      assert.deepEqual(offered(advanced), offered(basic), `${where}: the modes offered different conditions`);
+      assert.equal(on(advanced).length, advanced.conditions.length, "advanced switches on everything with any precedent");
+
+      // Each step up applies more of the matchup and reads a narrower
+      // population. Basic is the matchup's own identity and nothing else.
+      assert.ok(on(basic).every((c: any) => c.base), `${where}: basic applied an extra condition`);
+      assert.ok(on(basic).length <= on(normal).length, `${where}: basic applied more than normal`);
+      assert.ok(on(normal).length <= on(advanced).length, `${where}: normal applied more than advanced`);
+      assert.ok(basic.n >= normal.n && normal.n >= advanced.n, `${where}: ${basic.n} → ${normal.n} → ${advanced.n} is not narrowing`);
+      for (const condition of on(normal)) {
+        assert.ok(on(advanced).some((c: any) => c.id === condition.id), `${where}: advanced lost ${condition.id}`);
+      }
+
+      // Advanced may narrow all the way to nothing — that is what asking for
+      // every condition at once means, and the reader switches one back off.
+      for (const [wider, narrower] of [[basic, normal], [normal, advanced]] as const) {
+        for (const [key, value] of Object.entries(wider.filters)) {
+          const mine = (narrower.filters as Record<string, unknown>)[key];
+          assert.notEqual(mine, undefined, `${where}: a narrower mode dropped ${key}`);
+          if (key.endsWith("Min")) assert.ok(Number(mine) >= Number(value), `${where}: ${key} loosened ${value} to ${mine}`);
+          else if (key.endsWith("Max")) assert.ok(Number(mine) <= Number(value), `${where}: ${key} loosened ${value} to ${mine}`);
+          else assert.deepEqual(mine, value, `${where}: a narrower mode changed ${key}`);
+        }
+      }
+
+      // Normal holds out for a readable sample while it has anything to add.
+      if (on(normal).some((c: any) => !c.base)) assert.ok(normal.n >= normal.floor, `${where}: normal kept a condition at ${normal.n} observations`);
+      assert.ok(normal.floor > advanced.floor, "normal must hold out for a larger sample than advanced");
+
+      // The reported count must be what the filters actually select.
+      for (const result of [basic, normal, advanced]) assert.equal(labs(asQuery(result.filters)).summary.n, result.n);
+    }
+  }
+});
+
+test("a filled gap keeps the sign of the corner it was read from", () => {
+  // The bug this guards: the reach gap used to be a magnitude, so a fighter
+  // with the shorter reach and one with the longer both filled in as "1".
+  const gaps = [
+    ["reachGapMin", "reachGapMax", "reach_in"],
+    ["heightGapMin", "heightGapMax", "height_in"],
+    ["ageGapMin", "ageGapMax", "age"],
+  ] as const;
+  let checked = 0;
+
+  for (const m of matchups().matchups) {
+    const filled = { a: fill(m.fight_id, "a", "advanced"), b: fill(m.fight_id, "b", "advanced") };
+    for (const [minKey, maxKey, field] of gaps) {
+      for (const pov of ["a", "b"] as const) {
+        const me = pov === "a" ? m.a : m.b;
+        const them = pov === "a" ? m.b : m.a;
+        if (me[field] == null || them[field] == null) continue;
+        const values = filled[pov].filters;
+        if (values[minKey] === undefined && values[maxKey] === undefined) continue;
+        checked += 1;
+        const actual = me[field] - them[field];
+        const min = values[minKey] === undefined ? -Infinity : Number(values[minKey]);
+        const max = values[maxKey] === undefined ? Infinity : Number(values[maxKey]);
+        // A population filled from a bout must be one that bout belongs to.
+        assert.ok(actual >= min && actual <= max, `${m.a.name}/${pov}: ${field} gap ${actual} outside its own ${min}..${max}`);
+        // And the band must stay on the real gap's side of zero, or a fighter
+        // who is shorter reads as one who is longer.
+        if (actual > 0) assert.ok(min >= 1, `${m.a.name}/${pov}: positive ${field} gap allows ${min}`);
+        if (actual < 0) assert.ok(max <= -1, `${m.a.name}/${pov}: negative ${field} gap allows ${max}`);
+        if (actual === 0) assert.ok(min === 0 && max === 0, `${m.a.name}/${pov}: level ${field} allows ${min}..${max}`);
+      }
+      // Whichever way a gap leans, it must lean the other way from the other
+      // corner — the two of them cannot both be the longer-reaching fighter.
+      const lean = (values: Record<string, string | string[]>) =>
+        values[minKey] !== undefined && Number(values[minKey]) >= 1 ? 1
+          : values[maxKey] !== undefined && Number(values[maxKey]) <= -1 ? -1 : 0;
+      const a = lean(filled.a.filters);
+      const b = lean(filled.b.filters);
+      if (a !== 0 && b !== 0) assert.notEqual(a, b, `${m.a.name}: ${minKey} leans the same way from both corners`);
+    }
+  }
+  assert.ok(checked > 50, `only ${checked} gap constraints were exercised`);
+});
+
+test("an unknown or already-fought bout cannot be filled from", () => {
+  assert.deepEqual(fill("deadbeef", "a", "basic"), { error: "not found" });
+  const fought = index.fights.at(-1)!.id;
+  assert.deepEqual(fill(fought, "a", "advanced"), { error: "not found" });
+});
+
+test("every filter constrains exactly what it names, on both sides of the cage", () => {
+  // Each case sets one filter and checks the bouts it returns against the
+  // index itself, not against another endpoint — so a filter that silently
+  // does nothing, or reads the wrong corner, fails here.
+  type Side = ReturnType<typeof sideOf>;
+  const cases: { query: string; holds: (side: Side, opponent: Side, fight: any) => boolean }[] = [
+    { query: "ageMin=35", holds: (s) => (s.age ?? 0) >= 35 },
+    { query: "ageMax=25", holds: (s) => s.age != null && s.age <= 25 },
+    { query: "oppAgeMin=35", holds: (_s, o) => (o.age ?? 0) >= 35 },
+    { query: "oppAgeMax=25", holds: (_s, o) => o.age != null && o.age <= 25 },
+    { query: "expMin=10", holds: (s) => s.prior.bouts + s.prior.ncs >= 10 },
+    { query: "expMax=0", holds: (s) => s.prior.bouts + s.prior.ncs === 0 },
+    { query: "oppExpMin=10", holds: (_s, o) => o.prior.bouts + o.prior.ncs >= 10 },
+    { query: "winStreakMin=3", holds: (s) => s.prior.winStreak >= 3 },
+    { query: "lossStreakMin=2", holds: (s) => s.prior.lossStreak >= 2 },
+    { query: "layoffMin=365", holds: (s) => (s.prior.daysSince ?? -1) >= 365 },
+    { query: "layoffMax=60", holds: (s) => s.prior.daysSince != null && s.prior.daysSince <= 60 },
+    { query: "stance=Southpaw", holds: (s) => s.stance === "Southpaw" },
+    { query: "oppStance=Orthodox", holds: (_s, o) => o.stance === "Orthodox" },
+    { query: "status=champion", holds: (s) => s.prior.reigningChampion },
+    { query: "status=neverChampion", holds: (s) => !s.prior.reigningChampion && !s.prior.formerChampion },
+    { query: "oppStatus=formerChampion", holds: (_s, o) => o.prior.formerChampion && !o.prior.reigningChampion },
+    { query: "prev=debut", holds: (s) => s.prior.lastOutcome == null && s.prior.bouts === 0 && s.prior.ncs === 0 },
+    { query: "prev=koLoss", holds: (s) => s.prior.lastOutcome === "loss" && s.prior.lastMethod === "KO/TKO" },
+    { query: "odds=underdog", holds: (s, o) => s.prob != null && o.prob != null && s.prob < o.prob },
+    { query: "odds=favorite", holds: (s, o) => s.prob != null && o.prob != null && s.prob > o.prob },
+    { query: "lineMin=200", holds: (s) => (s.close ?? -Infinity) >= 200 },
+    { query: "lineMax=-300", holds: (s) => s.close != null && s.close <= -300 },
+    { query: "probMin=70", holds: (s) => s.prob != null && s.prob * 100 >= 70 },
+    { query: "oppProbMax=30", holds: (_s, o) => o.prob != null && o.prob * 100 <= 30 },
+    { query: "oppLineMin=200", holds: (_s, o) => (o.close ?? -Infinity) >= 200 },
+    { query: "gender=women", holds: (_s, _o, f) => f.women },
+    { query: "gender=men", holds: (_s, _o, f) => !f.women },
+    { query: "rounds=5", holds: (_s, _o, f) => f.scheduledRounds === 5 },
+    { query: "mainEvent=only", holds: (_s, _o, f) => f.mainEvent },
+    { query: "mainEvent=none", holds: (_s, _o, f) => !f.mainEvent },
+    { query: "title=none", holds: (_s, _o, f) => !(f.titleFight && (f.titleType === "title" || f.titleType === "interim")) },
+    { query: "method=sub", holds: (_s, _o, f) => f.method === "SUB" },
+    { query: "method=decision", holds: (_s, _o, f) => String(f.method).endsWith("-DEC") },
+    // The signed gaps: negative means A is the smaller/younger of the two.
+    { query: "reachGapMin=1", holds: (s, o) => s.reachIn != null && o.reachIn != null && s.reachIn - o.reachIn >= 1 },
+    { query: "reachGapMax=-1", holds: (s, o) => s.reachIn != null && o.reachIn != null && s.reachIn - o.reachIn <= -1 },
+    { query: "reachGapMin=0&reachGapMax=0", holds: (s, o) => s.reachIn != null && o.reachIn != null && s.reachIn === o.reachIn },
+    { query: "heightGapMin=2", holds: (s, o) => s.heightIn != null && o.heightIn != null && s.heightIn - o.heightIn >= 2 },
+    { query: "heightGapMax=-2", holds: (s, o) => s.heightIn != null && o.heightIn != null && s.heightIn - o.heightIn <= -2 },
+    { query: "ageGapMax=-5", holds: (s, o) => s.age != null && o.age != null && s.age - o.age <= -5 },
+    { query: "ageGapMin=5", holds: (s, o) => s.age != null && o.age != null && s.age - o.age >= 5 },
+  ];
+
+  const unfiltered = labs("").summary.n;
+  for (const testCase of cases) {
+    const result = bouts(`${testCase.query}&limit=200&sort=oldest`);
+    assert.ok(result.total > 0, `${testCase.query} matched nothing at all`);
+    assert.ok(result.total < unfiltered, `${testCase.query} did not narrow the population`);
+    for (const row of result.rows) {
+      const fight = index.byId.get(row.fight_id)!;
+      assert.ok(fight, `${testCase.query} returned a bout that is not in the index`);
+      const side = sideOf(fight, row.fighter.id);
+      const opponent = opponentOf(fight, row.fighter.id);
+      assert.ok(
+        testCase.holds(side, opponent, fight),
+        `${testCase.query} returned ${row.fighter.name} vs ${row.opponent.name} (${row.date}), which does not satisfy it`,
+      );
+    }
+  }
+});
+
+test("a signed gap reads the same bout as mirror images from the two corners", () => {
+  // The bug this guards: a magnitude filter showed the same "1" from both
+  // corners, so a fighter with the shorter reach looked like the longer one.
+  const longer = bouts("reachGapMin=1&limit=200").rows;
+  const shorter = bouts("reachGapMax=-1&limit=200").rows;
+  assert.ok(longer.length > 0 && shorter.length > 0);
+  const key = (row: any) => `${row.fight_id}:${row.fighter.id}`;
+  const shorterKeys = new Set(bouts("reachGapMax=-1&limit=200&sort=oldest").rows.map(key));
+  for (const row of bouts("reachGapMin=1&limit=200&sort=oldest").rows) {
+    assert.equal(shorterKeys.has(key(row)), false, "a bout is on both sides of zero at once");
+  }
+  // The two sides of a reach mismatch must be the same set of fights seen from
+  // opposite corners, and level reach must belong to neither.
+  const totalLonger = bouts("reachGapMin=1").total;
+  const totalShorter = bouts("reachGapMax=-1").total;
+  assert.equal(totalLonger, totalShorter, "a reach edge exists for one corner but not the other");
+  const level = bouts("reachGapMin=0&reachGapMax=0").total;
+  assert.equal(totalLonger + totalShorter + level, bouts("reachGapMin=-99&reachGapMax=99").total);
+});
+
+test("an opponent-side market filter is not the mirror of the fighter's", () => {
+  // Both closing prices carry vig, so "A above 60%" and "B below 40%" are
+  // different populations; the second must be a strict subset of the first.
+  const wide = bouts("probMin=60&limit=200").total;
+  const both = bouts("probMin=60&oppProbMax=40&limit=200").total;
+  assert.ok(both > 0, "no bout has a favourite over 60% against a dog under 40%");
+  assert.ok(both < wide, `opponent-side filter did not constrain: ${both} of ${wide}`);
 });
 
 test("a record entering a bout ignores time away from the promotion", () => {
@@ -607,14 +1017,14 @@ test("the two opposition filters each change what is read", () => {
   ];
   const seen = new Set<string>();
   for (const combination of combinations) {
-    const entry = board(`minimumFights=5&minimumSample=5&contextMode=opposition&${combination}`, "context");
+    const entry = board(`minimumFights=5&minimumSample=5&contextMode=opposition&oppositionScope=faced&${combination}`, "context");
     assert.ok(entry.rows.length > 0, combination);
     assert.match(entry.rows[0].detail, /combined · \d+ opponents/);
     seen.add(entry.rows.map((row) => row.fighter_id).join(","));
   }
   assert.equal(seen.size, 3, "each combination should rank a different field");
 
-  const dated = board("minimumFights=5&minimumSample=5&contextMode=opposition&oppositionSource=all&oppositionWhen=atTime", "context");
+  const dated = board("minimumFights=5&minimumSample=5&contextMode=opposition&oppositionScope=faced&oppositionSource=all&oppositionWhen=atTime", "context");
   assert.ok(dated.rows.length > 0);
   assert.match(dated.description, /verified outside-UFC bouts/);
 });
@@ -622,9 +1032,9 @@ test("the two opposition filters each change what is read", () => {
 test("a complete career read at fight night never exceeds the same career today", () => {
   // The UFC half grows with every bout and the rest is fixed, so the dated
   // reading has to sit at or below the present-day one for every fighter.
-  const atTime = new Map(board("minimumFights=1&minimumSample=1&limit=150&contextMode=opposition&oppositionSource=all&oppositionWhen=atTime", "context")
+  const atTime = new Map(board("minimumFights=1&minimumSample=1&limit=150&contextMode=opposition&oppositionScope=faced&oppositionSource=all&oppositionWhen=atTime", "context")
     .rows.map((row) => [row.fighter_id, row]));
-  const today = board("minimumFights=1&minimumSample=1&limit=150&contextMode=opposition&oppositionSource=all&oppositionWhen=today", "context");
+  const today = board("minimumFights=1&minimumSample=1&limit=150&contextMode=opposition&oppositionScope=faced&oppositionSource=all&oppositionWhen=today", "context");
   const parse = (detail: string) => {
     const match = detail.match(/^(\d+)-(\d+)(?:-(\d+))? combined/);
     assert.ok(match, detail);
@@ -644,7 +1054,7 @@ test("a complete career read at fight night never exceeds the same career today"
 });
 
 test("a complete career at fight night is read from the verified dated pro timeline", () => {
-  const top = board("minimumFights=5&minimumSample=5&contextMode=opposition&oppositionSource=all&oppositionWhen=atTime", "context").rows[0];
+  const top = board("minimumFights=5&minimumSample=5&contextMode=opposition&oppositionScope=faced&oppositionSource=all&oppositionWhen=atTime", "context").rows[0];
   let wins = 0;
   let losses = 0;
   let draws = 0;
@@ -660,7 +1070,7 @@ test("a complete career at fight night is read from the verified dated pro timel
     draws += combined.draws;
   }
   assert.ok(
-    top.detail.startsWith(`${wins}-${losses}${draws ? `-${draws}` : ""} combined · ${opponents} opponents`),
+    top.detail.startsWith(`${wins}-${losses}${draws ? `-${draws}` : ""} combined · ${opponents} opponents faced`),
     `${top.name}: ${top.detail}`,
   );
 });
@@ -729,7 +1139,7 @@ test("every card can name the bouts behind its number", () => {
 
 test("each opposition reading sums the records it names", () => {
   const check = (query: string, pick: (opponentId: string, prior: { wins: number; losses: number; draws: number }) => { wins: number; losses: number; draws: number } | null) => {
-    const top = board(`minimumFights=5&minimumSample=5&contextMode=opposition&${query}`, "context").rows[0];
+    const top = board(`minimumFights=5&minimumSample=5&contextMode=opposition&oppositionScope=faced&${query}`, "context").rows[0];
     let wins = 0;
     let losses = 0;
     let draws = 0;
@@ -746,7 +1156,7 @@ test("each opposition reading sums the records it names", () => {
       draws += chosen.draws;
     }
     assert.ok(
-      top.detail.startsWith(`${wins}-${losses}${draws ? `-${draws}` : ""} combined · ${opponents} opponents`),
+      top.detail.startsWith(`${wins}-${losses}${draws ? `-${draws}` : ""} combined · ${opponents} opponents faced`),
       `${query} · ${top.name}: ${top.detail}`,
     );
   };
@@ -847,4 +1257,82 @@ test("a career profile entering a bout matches that fighter's own earlier bouts"
   assert.equal(side.prior.sigAttempted, attempted, "significant strikes attempted");
   assert.equal(side.prior.seconds, seconds, "fight time");
   assert.equal(side.prior.takedowns, takedowns, "takedowns");
+});
+
+test("career control denominators exclude every bout without paired control data", () => {
+  const totals = new Map<string, { seconds: number; control: number; bouts: number }>();
+  let partialSamples = 0;
+  for (const fight of index.fights) {
+    for (const side of fight.sides) {
+      const expected = totals.get(side.id) ?? { seconds: 0, control: 0, bouts: 0 };
+      assert.equal(side.prior.controlTrackedSeconds, expected.seconds, `${side.name} control denominator`);
+      assert.equal(side.prior.controlSeconds, expected.control);
+      assert.equal(side.prior.controlBouts, expected.bouts);
+      if (expected.seconds > 0 && expected.seconds < side.prior.seconds) partialSamples++;
+      const opponent = opponentOf(fight, side.id);
+      if (fight.elapsed != null && side.actions.significantStrikes && opponent.actions.significantStrikes && side.actions.control && opponent.actions.control) {
+        totals.set(side.id, { seconds: expected.seconds + fight.elapsed, control: expected.control + side.actions.control.scored, bouts: expected.bouts + 1 });
+      }
+    }
+  }
+  assert.ok(partialSamples > 0, "exercised real careers with incomplete control coverage");
+});
+
+test("Labs reigning champion filter includes champions competing in another division", () => {
+  const observations = index.fights.flatMap((fight) => fight.sides);
+  assert.ok(observations.some((side) => side.prior.reigningChampion && !side.prior.champion && !side.prior.interimChampion));
+  assert.equal(labs("status=champion").summary.n, observations.filter((side) => side.prior.reigningChampion).length);
+  assert.equal(labs("status=formerChampion").summary.n, observations.filter((side) => side.prior.formerChampion && !side.prior.reigningChampion).length);
+});
+
+test("Labs probability bounds use the exact price instead of rounded percentages", () => {
+  const expected = index.fights.flatMap((fight) => fight.sides.filter((side) => {
+    const opponent = opponentOf(fight, side.id);
+    return side.prob != null && opponent.prob != null && side.close != null && side.prob * 100 >= 69.7 && side.prob * 100 <= 70.2;
+  }));
+  assert.ok(expected.length > 0);
+  assert.equal(labs("probMin=69.7&probMax=70.2").summary.n, expected.length);
+});
+
+test("Labs round accuracy uses only matched landed and attempted counts", () => {
+  const result = labs("");
+  for (let round = 0; round < 5; round++) {
+    let landed = 0;
+    let attempted = 0;
+    for (const fight of index.fights) for (const side of fight.sides) {
+      const stat = side.rounds[round];
+      if (stat?.sigAttempted != null) { landed += stat.sig; attempted += stat.sigAttempted; }
+    }
+    assert.equal(result.rounds[round].sig_accuracy, attempted ? Math.round(landed / attempted * 1000) / 10 : null);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Rankings
+
+test("the meta view carries the media pound-for-pound lists, labelled", () => {
+  const meta = getRankings("meta") as any[];
+  const media = getRankings("media") as any[];
+  const p4p = (lists: any[]) => lists.filter((d) => d.division.includes("Pound-for-Pound"));
+
+  // The bug this guards: the meta source publishes no P4P list of its own, so
+  // asking for meta used to leave the P4P view with nothing in it.
+  assert.ok(p4p(media).length > 0, "the media view has no pound-for-pound list to borrow");
+  assert.deepEqual(p4p(meta).map((d) => d.division), p4p(media).map((d) => d.division));
+  for (const list of p4p(meta)) {
+    assert.equal(list.source, "media", `${list.division} is not labelled as borrowed`);
+    const from = p4p(media).find((d) => d.division === list.division);
+    assert.deepEqual(list.entries.map((e: any) => e.name), from.entries.map((e: any) => e.name));
+  }
+
+  // Borrowing must not touch the divisions the meta view does publish, nor
+  // duplicate a list, nor lose the order the P4P lists are read in.
+  for (const list of meta.filter((d) => !d.division.includes("Pound-for-Pound"))) {
+    assert.equal(list.source, "meta", `${list.division} came from the wrong view`);
+  }
+  assert.equal(new Set(meta.map((d) => d.division)).size, meta.length, "a division is listed twice");
+  assert.equal(meta[0].division, "Men's Pound-for-Pound");
+  const womensP4P = meta.findIndex((d) => d.division === "Women's Pound-for-Pound");
+  const firstWomens = meta.findIndex((d) => d.division.startsWith("Women's") && !d.division.includes("Pound-for-Pound"));
+  assert.ok(womensP4P >= 0 && womensP4P < firstWomens, "the women's P4P list is not above the women's divisions");
 });

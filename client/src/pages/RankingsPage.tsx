@@ -7,7 +7,9 @@ import Avatar from "../components/Avatar";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { useSeo } from "../seo";
 import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
-import { relativeDate, useSettings, withRanking } from "../settings";
+import { relativeDate, useSettings, withRanking, type DateMode, type DivisionOrder, type RankingSource } from "../settings";
+import { orderDivisions } from "../divisionOrder";
+import Freshness from "../components/Freshness";
 
 const shell = "rounded-2xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
 
@@ -273,14 +275,26 @@ function RankRow({
 function DivisionCard({
   division,
   features,
+  source,
 }: {
   division: Division;
   features: RankingFeatures;
+  /** The view being read, so a list borrowed from the other one can say so. */
+  source: RankingSource;
 }) {
+  const borrowed = division.source !== source;
   return (
     <section className={`${shell} overflow-hidden`}>
-      <div className="flex items-center justify-between border-b border-zinc-200 px-3.5 py-2.5">
+      <div className="flex items-center justify-between gap-2 border-b border-zinc-200 px-3.5 py-2.5">
         <h3 className="truncate text-sm font-semibold text-zinc-900">{division.division}</h3>
+        {borrowed ? (
+          <span
+            className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200"
+            title="The meta view publishes no pound-for-pound list, so this one is the media list."
+          >
+            Media
+          </span>
+        ) : null}
         {division.weight_limit ? (
           <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500">
             {division.weight_limit}
@@ -304,9 +318,17 @@ function DivisionCard({
 function FeaturesMenu({
   features,
   onChange,
+  dateMode,
+  onDateMode,
+  divisionOrder,
+  onDivisionOrder,
 }: {
   features: RankingFeatures;
   onChange: (features: RankingFeatures) => void;
+  dateMode: DateMode;
+  onDateMode: (mode: DateMode) => void;
+  divisionOrder: DivisionOrder;
+  onDivisionOrder: (order: DivisionOrder) => void;
 }) {
   const detailsRef = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
@@ -390,6 +412,36 @@ function FeaturesMenu({
             </label>
           ))}
         </div>
+        <div className="flex items-center gap-4 border-t border-zinc-100 px-4 py-3">
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs font-medium text-zinc-800">Division order</span>
+            <span className="mt-0.5 block text-[10px] leading-4 text-zinc-400">Which end of the scale the list starts from. Men first either way, with pound-for-pound at the light end.</span>
+          </span>
+          <select
+            value={divisionOrder}
+            onChange={(event) => onDivisionOrder(event.target.value as DivisionOrder)}
+            aria-label="Division order"
+            className="h-8 shrink-0 rounded-xl border border-zinc-200 bg-zinc-50 px-2 text-[11px] font-semibold text-zinc-700 outline-none focus:border-zinc-400"
+          >
+            <option value="light">Lightest first</option>
+            <option value="heavy">Heaviest first</option>
+          </select>
+        </div>
+        <div className="flex items-center gap-4 border-t border-zinc-100 px-4 py-3">
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs font-medium text-zinc-800">Fight dates</span>
+            <span className="mt-0.5 block text-[10px] leading-4 text-zinc-400">How the last and next fight are written.</span>
+          </span>
+          <select
+            value={dateMode}
+            onChange={(event) => onDateMode(event.target.value as DateMode)}
+            aria-label="Fight date format"
+            className="h-8 shrink-0 rounded-xl border border-zinc-200 bg-zinc-50 px-2 text-[11px] font-semibold text-zinc-700 outline-none focus:border-zinc-400"
+          >
+            <option value="relative">Relative days</option>
+            <option value="date">Calendar date</option>
+          </select>
+        </div>
         <button
           type="button"
           onClick={() => onChange(DEFAULT_FEATURES)}
@@ -402,6 +454,11 @@ function FeaturesMenu({
   );
 }
 
+const SOURCES: { key: RankingSource; label: string; help: string }[] = [
+  { key: "meta", label: "Meta", help: "The consensus ranking. Used for every rank badge in the app." },
+  { key: "media", label: "Media", help: "The media panel ranking. Used for every rank badge in the app." },
+];
+
 const FILTERS: { key: ViewFilter; label: string }[] = [
   { key: "men", label: "Men" },
   { key: "women", label: "Women" },
@@ -410,7 +467,7 @@ const FILTERS: { key: ViewFilter; label: string }[] = [
 ];
 
 export default function RankingsPage() {
-  const { settings } = useSettings();
+  const { settings, update } = useSettings();
   useSeo({
     title: `UFC ${settings.rankingSource === "meta" ? "Meta" : "Media"} Rankings`,
     description: `Current UFC ${settings.rankingSource === "meta" ? "Meta" : "Media"} rankings by division, including champions and fighter activity.`,
@@ -424,12 +481,9 @@ export default function RankingsPage() {
   });
   const [view, setView] = useHistoryState<ViewFilter>("rankings:view", "men");
   const [features, setFeatures] = useHistoryState<RankingFeatures>("rankings:features", loadFeatures);
-  const { data: divisions, loading, error } = useApi<Division[]>(withRanking("/api/rankings", settings.rankingSource));
+  const { data, loading, error } = useApi<{ updated_at: number | null; divisions: Division[] }>(withRanking("/api/rankings", settings.rankingSource));
+  const divisions = data?.divisions ?? null;
   const pageScroll = useRouteScrollRestoration<HTMLDivElement>("rankings:page", Boolean(divisions?.length));
-
-  useEffect(() => {
-    if (settings.rankingSource === "meta" && view === "p4p") setView("men");
-  }, [settings.rankingSource, view, setView]);
 
   useEffect(() => {
     try {
@@ -441,17 +495,12 @@ export default function RankingsPage() {
 
   const shown = useMemo(() => {
     if (!divisions) return [];
-    switch (view) {
-      case "men":
-        return divisions.filter((d) => !isWomen(d) && !isP4P(d));
-      case "women":
-        return divisions.filter(isWomen);
-      case "p4p":
-        return divisions.filter(isP4P);
-      default:
-        return divisions;
-    }
-  }, [divisions, view]);
+    const filtered = view === "men" ? divisions.filter((d) => !isWomen(d) && !isP4P(d))
+      : view === "women" ? divisions.filter(isWomen)
+        : view === "p4p" ? divisions.filter(isP4P)
+          : divisions;
+    return orderDivisions(filtered, settings.divisionOrder);
+  }, [divisions, view, settings.divisionOrder]);
 
   if (loading) {
     return <div className="flex h-full items-center justify-center text-sm text-zinc-400">Loading rankings…</div>;
@@ -465,18 +514,34 @@ export default function RankingsPage() {
   }
 
   const centerFilteredCards = view === "women" || view === "p4p";
-  const filters = settings.rankingSource === "meta" ? FILTERS.filter((filter) => filter.key !== "p4p") : FILTERS;
 
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
       <div className="mx-auto max-w-7xl p-3 pb-8">
         <div className={`${shell} mb-3 flex flex-wrap items-center justify-between gap-3 px-4 py-2.5`}>
           <div className="flex flex-wrap items-center gap-2">
-            <div className={segmentedGroup}>
-              {filters.map((f) => (
+            <div className={segmentedGroup} role="group" aria-label="Ranking view">
+              {SOURCES.map((source) => (
+                <button
+                  key={source.key}
+                  type="button"
+                  aria-pressed={settings.rankingSource === source.key}
+                  onClick={() => update("rankingSource", source.key)}
+                  title={source.help}
+                  className={`rounded-full px-3.5 py-1 text-xs font-medium transition ${
+                    settings.rankingSource === source.key ? segmentedSelected : segmentedIdle
+                  }`}
+                >
+                  {source.label}
+                </button>
+              ))}
+            </div>
+            <div className={segmentedGroup} role="group" aria-label="Divisions shown">
+              {FILTERS.map((f) => (
                 <button
                   key={f.key}
                   type="button"
+                  aria-pressed={view === f.key}
                   onClick={() => setView(f.key)}
                   className={`rounded-full px-3.5 py-1 text-xs font-medium transition ${
                     view === f.key ? segmentedSelected : segmentedIdle
@@ -489,6 +554,8 @@ export default function RankingsPage() {
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 text-[11px] text-zinc-500">
+            {/* ufc.com is read every six hours; a day without one is worth saying. */}
+            <Freshness label="Rankings updated" at={data?.updated_at} staleAfterHours={24} />
             {features.activityColors ? (
               <>
                 <span className="flex items-center gap-1.5">
@@ -505,7 +572,14 @@ export default function RankingsPage() {
                 </span>
               </>
             ) : null}
-            <FeaturesMenu features={features} onChange={setFeatures} />
+            <FeaturesMenu
+              features={features}
+              onChange={setFeatures}
+              dateMode={settings.dateMode}
+              onDateMode={(mode) => update("dateMode", mode)}
+              divisionOrder={settings.divisionOrder}
+              onDivisionOrder={(order) => update("divisionOrder", order)}
+            />
           </div>
         </div>
 
@@ -522,10 +596,10 @@ export default function RankingsPage() {
                 key={d.division}
                 className="w-full sm:w-[calc(50%_-_0.375rem)] lg:w-[calc(33.333%_-_0.5rem)] xl:w-[calc(25%_-_0.5625rem)]"
               >
-                <DivisionCard division={d} features={features} />
+                <DivisionCard division={d} features={features} source={settings.rankingSource} />
               </div>
             ) : (
-              <DivisionCard key={d.division} division={d} features={features} />
+              <DivisionCard key={d.division} division={d} features={features} source={settings.rankingSource} />
             )
           ))}
         </div>

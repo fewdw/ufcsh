@@ -33,6 +33,12 @@ export type SherdogProfile = {
   name: string;
   nickname: string;
   birthDate: string;
+  /** Nationality as the source names it, e.g. "Brazil". Empty when unstated. */
+  country: string;
+  /** ISO 3166-1 alpha-2, read from the flag beside it, e.g. "BR". */
+  countryCode: string;
+  /** City and region of birth, when the source carries one. */
+  birthplace: string;
   wins: number;
   losses: number;
   draws: number;
@@ -97,6 +103,12 @@ export function parseSherdogProfile(html: string, url: string): SherdogProfile {
   const name = cleanText($(".fighter-title .fn").first().text());
   const nickname = cleanText($(".fighter-title .nickname em").first().text());
   const birthDate = biographyDate($("[itemprop='birthDate']").first().text());
+  const country = cleanText($("[itemprop='nationality']").first().text());
+  // The flag image beside the nationality is the only place the page states a
+  // country code, and a code is what a flag can be drawn from.
+  const countryCode = ($(".fighter-nationality img[src*='/flags/']").first().attr("src") ?? "")
+    .match(/\/flags\/[^/]+\/([a-z]{2})\.[a-z]+$/i)?.[1]?.toUpperCase() ?? "";
+  const birthplace = cleanText($("[itemprop='addressLocality']").first().text());
   const id = url.match(/-(\d+)(?:\?.*)?$/)?.[1] ?? "";
   const history = $(".module.fight_history").first();
   const bouts: SherdogBout[] = [];
@@ -140,6 +152,9 @@ export function parseSherdogProfile(html: string, url: string): SherdogProfile {
     name,
     nickname,
     birthDate,
+    country,
+    countryCode,
+    birthplace,
     wins: count("win"),
     losses: count("loss"),
     draws: count("draw"),

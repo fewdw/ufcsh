@@ -21,7 +21,49 @@ fresh in the background.
   Every statistic is reachable from exactly one menu entry, and a test asserts that no two entries produce the same ranking. Any fighter can be pinned into every card to see where they place.
 
   Turning on **Show more info** makes every row also name the bouts behind its number: the champions faced, the run of opponents in a streak, the belts defended, the fights each knockdown or takedown came from with its own count, the prices taken as an underdog, the two ends of a career. Names are coloured by how the bout went, with the outcome spelled out on hover so colour never carries it alone.
-- **Labs**, a mode of Statistics: build a population of fighter-bouts from any combination of age, streak, layoff, experience, previous result, belt status, stance, reach, division, card position and closing odds, then read its combined record, outcome mix, output per round, trend over time and market return. Two populations can be compared side by side.
+- **Labs**, a mode of Statistics: build a population of fighter-bouts from any combination of age, streak, layoff, experience, previous result, belt status, stance, reach, division, card position and closing odds. The interface focuses on Combined Record and its source bout list. Excluding a bout updates the study; restoring it is available even when all observations have been excluded.
+
+  A study can also be filled from any announced matchup. That matchup implies
+  one list of conditions — both ages narrowed to within two years of each
+  fighter, experience, prices, layoffs and streaks tightened around their
+  actual values, the reach, height and age edges with the size of each, and the
+  bout's own shape stated either way (a three-round non-title undercard bout is
+  as much a condition as a five-round title fight). Every one of them is a
+  switch, named after the fighter whose fact it is, showing the population it
+  leaves once it and everything above it has been applied.
+
+  **Basic, Normal and Advanced are three selections over that one list, not
+  three lists**: Basic applies only what makes the matchup itself — its
+  division, both ages, belts and market role — Normal adds every condition that
+  still leaves a sample worth reading, and Advanced adds every one with any
+  precedent. So switching every box on by hand lands on exactly the Advanced
+  study. Advanced can narrow all the way to no bouts at all; that is what
+  asking for every condition at once means, and the running counts show which
+  condition emptied it, with the list opening itself when that happens.
+  **Switching one off keeps the matchup** and every other condition, and
+  choices made by hand survive a change of corner. Conditions with no
+  precedent are listed struck through and cannot be switched on.
+
+  Conditions asked of both fighters are decided as one, and what belongs to the
+  bout is decided before either corner, so reading the fight from the other
+  side gives the mirror study: the same divisions, ages, stances, experience
+  and prices, swapped. The exceptions are a fighter's previous result, streak
+  and layoff — there is no opponent-side filter for those, so they follow the
+  corner the record is read from, which is why they are named after them.
+
+  Below the board, **two interactive explorers read the same population**.
+  **The judges’ room** lets you filter verdicts and individual judges, compare
+  dissent and eras, click scorelines, and open the actual three-card panels
+  with both fighters’ totals. **The road to the UFC** freezes verified pro
+  histories at debut, compares arrival profiles over debut/first-three/
+  first-five/all matching UFC results, and cross-filters age and experience
+  through a clickable heatmap. Both offer question presets, sample controls,
+  exact tables, source links, and CSV exports. Main study filters and exclusions
+  apply throughout; room filters respond immediately. [Definitions and
+  limitations](docs/labs-categories.md) explain the counting units, coverage,
+  debut cutoff, and result windows.
+- **Card quality** appears only beside event titles as five gold Lucide stars, with quarter-star fills. Hover for the exact 0–100 score, coverage and factor breakdown. Not every bout is the card: the main event carries six times the weight of a prelim, the top two are read again on their own, and the headliner is a factor in its own right, so a dull opener costs almost nothing and a dull main event costs a lot. Completed cards are reviews, led by what the fights delivered — finishes weigh heavily, a knockout above a submission, a decision at zero unless the promotion called it the Fight of the Night — and each review keeps the pre-fight rating beside it, so the tooltip can say what the night added or cost. Reigning champions count as part of what is at stake, and the card's make-up carries a stated editorial preference toward the men's divisions. Announced cards are estimates: under six announced bouts there is no rating and no stars, and between six and eight the estimate is held near the middle of the scale until the card fills out. Ranked fighters count on announced cards only, because the rankings feed has no archive to rate a past card with. [The versioned formula](docs/card-quality.md) explains the evidence and limitations. Scores refresh with synced card and odds changes.
+- **Activity dots** distinguish both outcome and method: solid green/red for wins/losses by KO/TKO or submission, hollow green/red for decisions. Hover text names the result; unknown methods are not presented as finishes.
 
 ## Layout
 
@@ -80,6 +122,14 @@ the app is usable immediately and fills in as it goes. `GET /api/status` shows p
 | Fight detail pages  | ufcstats.com     | upcoming ≤14d + recent past; older pages lazily verified when needed |
 | Odds                | bestfightodds.com| upcoming ≤30d every 6h, frozen after the event   |
 | Fighter photos      | ufc.com          | 30-day cache, small batch per minute — ranked and upcoming-card fighters first; viewing any fighter without a photo queues them for the next batch |
+
+Pages say how old their copy is rather than letting it look current: an event
+header carries "Odds updated 3h ago" (and "Closing odds · frozen" once a card is
+over), and the rankings header carries its own sync age. Past the expected
+cadence — twelve hours for live prices, a day for rankings — the age turns amber
+and says it may be stale, which is what a silently failing background sync looks
+like from the page. The exact timestamp is in the tooltip. An age describes when
+this copy arrived, never that the source has not changed since.
 | Birth dates         | ufcstats.com     | background batch — ranked and booked fighters first, then by number of UFC bouts; a page with no DOB is retried after 90 days |
 
 Every sync step is independently error-guarded: one broken source never takes the
@@ -118,8 +168,8 @@ The rules that decide what a figure means, in one place:
 - **Win rate** is wins over bouts with an official result. A draw sits in the
   denominator; a no contest is left out entirely.
 - **A Labs observation is a fighter-bout**, so one fight contributes up to two.
-  A population with no filters is therefore 50% by construction — the point of
-  Labs is what happens when you constrain it.
+  A population with no filters has equal wins and losses. Its win rate is
+  slightly below 50% when draws are present, because draws stay in the denominator.
 - **Every "entering" figure is as of that night**, reconstructed from earlier
   bouts, never a career total projected backwards. That includes the whole
   matchup profile: there is one source for a fighter's rates, computed here,
@@ -127,6 +177,14 @@ The rules that decide what a figure means, in one place:
 - **Accuracy and defence come from matched pairs.** A bout only contributes to
   a percentage when the source recorded both the landed count and the attempts,
   so the numerator and denominator always describe the same fights.
+- **Missing action data is unknown, never zero.** Labs computes given/taken
+  rates from paired observations for each action, with its own timed sample.
+  Control shares in Labs, matchup profiles and profile records use only the
+  elapsed time of bouts contributing recorded control. Sample sizes are displayed.
+- **Probability filters use unrounded prices.** Rounding is for display only;
+  decimal bounds constrain the underlying implied probability. Market calibration
+  displays margin-free implied probability alongside actual wins from the same
+  priced win/loss/draw sample. Draws return the stake; no contests are excluded.
 - **A title defense** counts only when the athlete entered as the recognized
   undisputed or interim champion of that division and won. The lineage is
   rebuilt from the division's complete belt sequence, so tournament and TUF
@@ -179,6 +237,10 @@ The rules that decide what a figure means, in one place:
 
 `npm test --prefix server` checks these against independent SQL over the same
 rows, including known reign lengths and the calibration of the closing line.
+`npm test --prefix client` checks shared-request deduplication, failure and retry,
+out-of-order responses, and bounded cache retention. Page code is loaded on
+demand, and failed analytics requests display a retry action with retained
+results explicitly labelled as previous results.
 
 ## Notes
 

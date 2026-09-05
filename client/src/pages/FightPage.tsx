@@ -1,7 +1,9 @@
+import { isFightDay, liveFightId } from "../liveEvent";
+import Freshness from "../components/Freshness";
 import { useCallback, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useApi } from "../api";
-import type { CareerBefore, EventDetail, EventFight, FightDetailBlock, FightSide, HistoryRow, Matchup, MatchupSide } from "../api";
+import { prefetch, useApi } from "../api";
+import type { CardQuality, CareerBefore, EventDetail, EventFight, FightDetailBlock, FightSide, HistoryRow, Matchup, MatchupSide } from "../api";
 import {
   formatDate,
   formatDateShortWithYear,
@@ -11,6 +13,8 @@ import {
   rankLabel,
 } from "../format";
 import Avatar from "../components/Avatar";
+import ResultDots from "../components/ResultDots";
+import CardStars from "../components/CardStars";
 import BonusIcons from "../components/BonusIcons";
 import OddsPair from "../components/OddsPair";
 import {
@@ -39,7 +43,7 @@ const RESULT_PILL =
  *  one — the event page shows the same plain belt icon for both — so fall back
  *  to the event flag while the detail is still loading. */
 function beltOf(fight: Matchup): "title" | "interim" | "tuf" | "tournament" | null {
-  return fight.detail?.titleBout ?? (fight.title_fight ? "title" : null);
+  return fight.detail?.titleBout ?? fight.title_type ?? (fight.title_fight ? "title" : null);
 }
 
 const DECISION_LABEL: Record<string, string> = {
@@ -133,10 +137,10 @@ function FighterHero({
   return (
     <Link
       to={`/fighters/${side.id}`}
-      className={`group flex min-w-0 flex-col items-center gap-3 text-center @[58rem]:gap-4 ${
+      className={`group flex min-w-0 flex-col items-center gap-3 text-center @[46rem]:gap-4 ${
         align === "right"
-          ? "@[58rem]:flex-row-reverse @[58rem]:text-right"
-          : "@[58rem]:flex-row @[58rem]:text-left"
+          ? "@[46rem]:flex-row-reverse @[46rem]:text-right"
+          : "@[46rem]:flex-row @[46rem]:text-left"
       }`}
     >
       <div className="flex shrink-0 flex-col items-center gap-1.5">
@@ -153,24 +157,24 @@ function FighterHero({
       <div className="min-w-0">
         <div
           className={`flex items-baseline justify-center gap-2 ${
-            align === "right" ? "@[58rem]:justify-end" : "@[58rem]:justify-start"
+            align === "right" ? "@[46rem]:justify-end" : "@[46rem]:justify-start"
           }`}
         >
           {align === "right" ? <BonusIcons bonuses={bonuses} outcome={side.outcome} /> : null}
           {align === "left" ? <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-f1" /> : null}
-          <span className="truncate text-lg font-semibold tracking-tight text-zinc-950 group-hover:underline lg:text-xl">
+          <span className="min-w-0 text-balance text-lg font-semibold leading-tight tracking-tight text-zinc-950 group-hover:underline lg:text-xl">
             {side.name}
           </span>
           {align === "right" ? <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-f2" /> : null}
           {align === "left" ? <BonusIcons bonuses={bonuses} outcome={side.outcome} /> : null}
         </div>
-        {side.nickname ? <div className="truncate text-xs text-zinc-400">“{side.nickname}”</div> : null}
+        {side.nickname ? <div className="mt-0.5 text-xs text-zinc-400">“{side.nickname}”</div> : null}
         {/* Name, nickname and rank. Records live once in the adjacent Context
             panel, so this hero never repeats them. Alignment is inherited
             from the link, so neither side needs its own justification. */}
         <div className="mt-1 space-y-0.5 text-xs text-zinc-500">
           {rank && side.ranking ? (
-            <div className="truncate" title="Current ranking from the source selected in Settings">
+            <div title="Current ranking from the source chosen on the Rankings page">
               {rank} {side.ranking.division}
             </div>
           ) : null}
@@ -360,12 +364,17 @@ function FormTimeline({ fight, f1, f2 }: { fight: Matchup; f1: HistoryRow[]; f2:
 /** A number both sides carry into the bout, mirrored either side of its name.
  *  Values are computed from our own fight records as they stood on the night,
  *  so an old matchup never shows a fighter's present-day career totals. */
-function EnteringRow({ label, f1, f2, note }: { label: string; f1: string; f2: string; note?: string }) {
+function EnteringRow({ label, f1, f2, note }: { label: string; f1: React.ReactNode; f2: React.ReactNode; note?: string }) {
   if (!f1 && !f2) return null;
+  const value = (content: React.ReactNode) => <span className={compareValue}>
+    {typeof content === "string" && /debut/i.test(content)
+      ? <span className="text-sky-600">{content}</span>
+      : content || "—"}
+  </span>;
   return (
     <CompareRow
-      f1={<span className={compareValue}>{f1 || "—"}</span>}
-      f2={<span className={compareValue}>{f2 || "—"}</span>}
+      f1={value(f1)}
+      f2={value(f2)}
       center={<span className={compareLabel} title={note}>{label}</span>}
     />
   );
@@ -378,11 +387,13 @@ function MatchupContext({ fight }: { fight: Matchup }) {
 
   const record = (career: CareerBefore | null) =>
     career ? `${career.wins}-${career.losses}${career.draws ? `-${career.draws}` : ""}` : "";
-  const run = (career: CareerBefore | null) => {
+  const run = (career: CareerBefore | null, side: MatchupSide, red = false) => {
     if (!career) return "";
-    if (career.winStreak > 0) return `${career.winStreak}W`;
-    if (career.lossStreak > 0) return `${career.lossStreak}L`;
-    return career.bouts === 0 ? "Debut" : "—";
+    if (career.bouts + career.ncs === 0) return "Debut";
+    const results = side.run_form?.length ? side.run_form : [{ outcome: career.lastOutcome, method: career.lastMethod }];
+    const streak = side.streak ?? (career.winStreak ? { count: career.winStreak, outcome: "win" } : career.lossStreak ? { count: career.lossStreak, outcome: "loss" } : { count: results.length, outcome: results.at(-1)?.outcome });
+    const kind = streak.outcome === "win" ? "W" : streak.outcome === "loss" ? "L" : streak.outcome === "draw" ? "D" : "NC";
+    return <span className={`inline-flex items-center justify-center gap-2 ${red ? "flex-row-reverse" : ""}`} title={`${side.name}: ${streak.count} ${streak.outcome ?? "no contest"} ${streak.count === 1 ? "result" : "results"} entering this bout${side.streak?.complete ? ", counting bouts outside the UFC" : ""}`}><ResultDots results={results} reverse={red} label={`${side.name} current run`} className="max-w-24" /><strong className={`shrink-0 tabular-nums ${red ? "text-f2-ink" : "text-f1-ink"}`}>{streak.count}{kind}</strong></span>;
   };
   const layoff = (career: CareerBefore | null) => {
     if (!career) return "";
@@ -404,11 +415,11 @@ function MatchupContext({ fight }: { fight: Matchup }) {
   };
 
   return (
-    <div className="w-72 max-w-full" aria-label="Matchup context entering the fight">
+    <div className="mx-auto w-full max-w-md" aria-label="Matchup context entering the fight">
       <h2 className="mb-1.5 text-center text-[9px] font-semibold uppercase tracking-[0.14em] text-zinc-400">Context</h2>
       <EnteringRow label="REC" f1={fight.f1.complete_record_before?.text ?? ""} f2={fight.f2.complete_record_before?.text ?? ""} note="Complete professional record entering this bout, reconstructed from verified dated history" />
       <EnteringRow label="UFC record" f1={record(f1)} f2={record(f2)} />
-      <EnteringRow label="Current run" f1={run(f1)} f2={run(f2)} note="Consecutive UFC results before this bout" />
+      <EnteringRow label="Current run" f1={run(f1, fight.f1)} f2={run(f2, fight.f2, true)} note="Consecutive results before this bout, across every promotion where the professional history is verified. Circle = UFC, diamond = outside it; solid = finish, hollow = decision. No contests do not extend or break a run." />
       <EnteringRow label="Last time out" f1={lastResult(f1)} f2={lastResult(f2)} note="How their previous UFC bout ended" />
       <EnteringRow label="Time out" f1={layoff(f1)} f2={layoff(f2)} note="Days since their previous UFC bout" />
       <EnteringRow label="Standing" f1={belt(f1)} f2={belt(f2)} note="Where they stood with the belt going into this bout" />
@@ -613,19 +624,55 @@ function FightRailSkeleton() {
   );
 }
 
+/** A matchup opened cold. The panels are drawn empty rather than replaced by a
+ *  centred word, so opening one reads as the page filling in — not as the page
+ *  being thrown away and rebuilt. */
+function MatchupSkeleton() {
+  return (
+    <div className="min-w-0 flex-1 overflow-hidden" role="status" aria-label="Loading matchup">
+      <div className="flex w-full flex-col gap-3">
+        <section className={`overflow-hidden ${shell}`} aria-hidden="true">
+          <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-3.5">
+            <span className="h-4 w-48 rounded bg-zinc-100" />
+            <span className="h-8 w-20 rounded-lg bg-zinc-100" />
+          </div>
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-6 px-5 py-8">
+            {["left", "center", "right"].map((slot) => (
+              <div key={slot} className={`flex flex-col items-center gap-2 ${slot === "center" ? "" : "min-w-0"}`}>
+                {slot === "center" ? null : <Avatar src={null} name="" size="xl" />}
+                <span className={`h-4 rounded bg-zinc-100 ${slot === "center" ? "w-24" : "w-32"}`} />
+                <span className="h-3 w-20 rounded bg-zinc-50" />
+              </div>
+            ))}
+          </div>
+        </section>
+        {[0, 1].map((panel) => (
+          <section key={panel} className={`${shell} px-5 py-6`} aria-hidden="true">
+            <span className="block h-4 w-40 rounded bg-zinc-100" />
+            <span className="mt-4 block h-24 w-full rounded-xl bg-zinc-50" />
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function railMethodTag(fight: EventFight, outcome: FightSide["outcome"]): { label: string; tone: string } | null {
+  if (outcome === "draw") return { label: "Draw", tone: "bg-amber-100 text-amber-700" };
+  if (outcome === "nc") return { label: "NC", tone: "bg-zinc-200 text-zinc-700" };
   if (outcome !== "win" || !fight.method) return null;
-  if (fight.method === "KO/TKO") return { label: "KO", tone: "bg-rose-100 text-rose-700" };
-  if (fight.method === "SUB") return { label: "SUB", tone: "bg-violet-100 text-violet-700" };
-  if (fight.method.endsWith("-DEC")) return { label: "DEC", tone: "bg-amber-100 text-amber-700" };
-  return { label: fight.method, tone: "bg-zinc-200 text-zinc-700" };
+  const label = fight.method === "KO/TKO" ? "KO" : fight.method.endsWith("-DEC") ? "DEC" : fight.method;
+  return { label: fight.round ? `${label} R${fight.round}` : label, tone: "bg-emerald-100 text-emerald-700" };
 }
 
 function FightRail({ eventId, currentId, returnDepth }: { eventId: string; currentId: string; returnDepth: number | null }) {
   const { settings } = useSettings();
-  const { data: event, loading } = useApi<EventDetail>(withRanking(`/api/events/${eventId}`, settings.rankingSource));
+  const railEvent = useRef<EventDetail | null>(null);
+  const { data: event, loading } = useApi<EventDetail>(withRanking(`/api/events/${eventId}`, settings.rankingSource), isFightDay(railEvent.current?.date) ? 10_000 : 60_000);
+  if (event) railEvent.current = event;
   if (loading || !event) return <FightRailSkeleton />;
   if (event.fights.length < 2) return null;
+  const liveId = liveFightId(event);
   return (
     <aside className={`hidden w-40 shrink-0 flex-col overflow-hidden sm:flex lg:w-48 ${shell}`}>
       <div className="border-b border-zinc-200 px-2 py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
@@ -634,6 +681,7 @@ function FightRail({ eventId, currentId, returnDepth }: { eventId: string; curre
       <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto p-1.5">
         {event.fights.map((f) => {
           const isCurrent = f.id === currentId;
+          const isLive = f.id === liveId;
           const f1Method = railMethodTag(f, f.f1.outcome);
           const f2Method = railMethodTag(f, f.f2.outcome);
           return (
@@ -641,14 +689,28 @@ function FightRail({ eventId, currentId, returnDepth }: { eventId: string; curre
               key={f.id}
               to={`/fights/${f.id}`}
               state={{ eventId, ...(returnDepth ? { eventReturnDepth: returnDepth + 1 } : {}) }}
-              title={`${f.f1.name} vs ${f.f2.name}`}
+              title={`${f.f1.name} vs ${f.f2.name}${f.method ? ` · ${formatMethod(f.method, f.round, f.time)}` : ""}${isLive ? " · live now" : ""}`}
+              onPointerEnter={() => prefetch(withRanking(`/api/fights/${f.id}`, settings.rankingSource))}
+              onPointerDown={() => prefetch(withRanking(`/api/fights/${f.id}`, settings.rankingSource))}
+              onFocus={() => prefetch(withRanking(`/api/fights/${f.id}`, settings.rankingSource))}
               className={[
-                "grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-1 rounded-xl border px-1.5 py-2.5 transition-colors",
-                isCurrent
-                  ? "border-zinc-900 bg-zinc-900"
-                  : "border-transparent bg-zinc-50 hover:border-zinc-200 hover:bg-zinc-100",
+                "relative grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-1 rounded-xl border px-1.5 py-2.5 transition-colors",
+                // The bout on now keeps its border whether or not it is also
+                // the matchup being read, so the two markings can coexist.
+                isLive
+                  ? isCurrent ? "border-emerald-400 bg-zinc-900" : "border-emerald-200 bg-zinc-50 hover:bg-zinc-100"
+                  : isCurrent
+                    ? "border-zinc-900 bg-zinc-900"
+                    : "border-transparent bg-zinc-50 hover:border-zinc-200 hover:bg-zinc-100",
               ].join(" ")}
             >
+              {isLive ? (
+                <>
+                  {/* Left, not right: the rail's scrollbar clips the right edge of a tile. */}
+                  <span className="live-dot absolute left-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                  <span className="sr-only">Live now. </span>
+                </>
+              ) : null}
               <span className="flex min-w-0 flex-col items-center gap-1">
                 <Avatar src={f.f1.photo_url} name={f.f1.name} size="matchup" outcome={f.f1.outcome} />
                 <span className="flex max-w-full flex-wrap items-center justify-center gap-0.5">
@@ -679,12 +741,12 @@ function FightRail({ eventId, currentId, returnDepth }: { eventId: string; curre
 // ---------------------------------------------------------------------------
 
 /** Matchup view rendered inside the events layout: card rail + detail + close. */
-export default function FightView({ fightId, eventIdHint }: { fightId: string; eventIdHint?: string | null }) {
+export default function FightView({ fightId, eventIdHint, quality }: { fightId: string; eventIdHint?: string | null; quality?: CardQuality }) {
   const { settings } = useSettings();
   const navigate = useNavigate();
   const location = useLocation();
-  const { data: loadedFight, loading, error } = useApi<Matchup>(withRanking(`/api/fights/${fightId}`, settings.rankingSource));
   const previousFight = useRef<Matchup | null>(null);
+  const { data: loadedFight, loading, error, retry } = useApi<Matchup>(withRanking(`/api/fights/${fightId}`, settings.rankingSource), isFightDay(previousFight.current?.event.date) ? 10_000 : 60_000);
   if (loadedFight) previousFight.current = loadedFight;
   const fight = loadedFight ?? previousFight.current;
   const eventReturnDepth = location.state != null
@@ -751,13 +813,11 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     return (
       <div className="flex h-full min-h-0 gap-3">
         {eventId ? <FightRail eventId={eventId} currentId={fightId} returnDepth={eventReturnDepth} /> : <FightRailSkeleton />}
-        <div className={`flex min-w-0 flex-1 items-center justify-center ${shell}`}>
-          <div className="text-sm text-zinc-400">Loading matchup…</div>
-        </div>
+        <MatchupSkeleton />
       </div>
     );
   }
-  if (error || !fight) {
+  if (!fight) {
     return (
       <div className="flex h-full min-h-0 gap-3">
         {eventId ? <FightRail eventId={eventId} currentId={fightId} returnDepth={eventReturnDepth} /> : null}
@@ -769,29 +829,30 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   }
 
   const detail: FightDetailBlock | null = fight.detail;
+  const hasStats = detail?.type === "past" && Boolean(detail.totals || detail.sigStrikes);
+  // Numbers but no verdict: this bout is happening as the page is read.
+  const statsLive = hasStats && fight.status !== "past";
   const result = fight.status === "past" ? resultSummary(fight) : null;
   const referee = fight.detail?.methodInfo?.["Referee"];
-  const changingMatchup = loading && !loadedFight;
+  const changingMatchup = !loadedFight && fight.id !== fightId;
 
   return (
     <div className="flex h-full min-h-0 gap-3">
-      {changingMatchup
-        ? <FightRailSkeleton />
-        : <FightRail eventId={eventId ?? fight.event.id} currentId={fightId} returnDepth={eventReturnDepth} />}
+      <FightRail eventId={eventId ?? fight.event.id} currentId={fightId} returnDepth={eventReturnDepth} />
 
       <div className="relative min-h-0 min-w-0 flex-1">
         {changingMatchup ? (
           <div className="absolute inset-0 z-30 flex cursor-wait items-start justify-center bg-zinc-100/50 pt-6 backdrop-blur-[1px]">
             <span className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-500 shadow-sm">
-              Loading matchup…
+              {error ? <button type="button" onClick={retry}>Couldn’t load matchup · Retry</button> : "Loading matchup…"}
             </span>
           </div>
         ) : null}
-        <div ref={detailScroll} className="h-full overflow-y-auto">
+        <div ref={detailScroll} inert={changingMatchup} className="h-full overflow-y-auto" aria-busy={changingMatchup}>
           <div className="@container flex w-full flex-col gap-3 pb-8">
             <section className={`@container overflow-hidden ${shell}`}>
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-5 py-3.5">
-                <Link
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"><Link
                   to={`/events/${fight.event.id}`}
                   onClick={(event) => {
                     if (!eventReturnDepth) return;
@@ -802,7 +863,9 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 >
                   {fight.event.name}
                 </Link>
+                <CardStars quality={quality} /></div>
                 <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-zinc-500">
+                  {isFightDay(fight.event.date) ? <span className="flex items-center gap-2"><span className="text-emerald-700">Auto-updating</span><Freshness label="Stats checked" at={fight.stats_updated_at} staleAfterHours={1 / 12} />{error && !changingMatchup ? <span role="status">Connection interrupted; retrying…</span> : null}</span> : null}
                   <span>{formatDate(fight.event.date)}</span>
                   <button
                     type="button"
@@ -825,32 +888,38 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
               </div>
 
               <div className="px-5 py-5">
-                <div className="grid grid-cols-2 items-start gap-4 @[58rem]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] @[58rem]:items-center">
-                <div className="col-start-1 row-start-1 min-w-0">
-                  <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} />
-                </div>
-                <div className="col-span-2 col-start-1 row-start-2 flex w-full max-w-full flex-col items-center text-center @[58rem]:col-span-1 @[58rem]:col-start-2 @[58rem]:row-start-1 @[58rem]:w-[36rem]">
-                  {fight.odds?.f1.close || fight.odds?.f2.close ? (
-                    <div className="mb-3">
-                      <OddsPair
-                        f1={fight.odds?.f1.close}
-                        f2={fight.odds?.f2.close}
-                        f1Open={fight.odds?.f1.open}
-                        f2Open={fight.odds?.f2.open}
-                      />
-                      <LineMovement fight={fight} />
-                    </div>
-                  ) : null}
-                  <WeightClassLabel fight={fight} />
-                  {referee ? <div className="mt-1 text-[10px] text-zinc-400">Ref {referee}</div> : null}
-                  <div className="mt-4 flex w-full flex-wrap items-start justify-center gap-x-8 gap-y-4">
-                    <TaleOfTape fight={fight} />
-                    <MatchupContext fight={fight} />
+                {/* The two heroes and the price sit on one line; the panels that
+                    compare them run underneath at full width. Keeping the
+                    comparisons out of the middle column is what stops a long
+                    name or "Former champion" from being clipped while the
+                    space either side of the card goes unused. */}
+                <div className="grid grid-cols-2 items-start gap-4 @[46rem]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] @[46rem]:items-center @[46rem]:gap-6">
+                  <div className="col-start-1 row-start-1 min-w-0">
+                    <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} />
+                  </div>
+                  <div className="col-span-2 col-start-1 row-start-2 flex w-full flex-col items-center text-center @[46rem]:col-span-1 @[46rem]:col-start-2 @[46rem]:row-start-1 @[46rem]:w-auto @[46rem]:max-w-[19rem]">
+                    {fight.odds?.f1.close || fight.odds?.f2.close ? (
+                      <div className="mb-3">
+                        <OddsPair
+                          f1={fight.odds?.f1.close}
+                          f2={fight.odds?.f2.close}
+                          f1Open={fight.odds?.f1.open}
+                          f2Open={fight.odds?.f2.open}
+                        />
+                        <LineMovement fight={fight} />
+                      </div>
+                    ) : null}
+                    <WeightClassLabel fight={fight} />
+                    {referee ? <div className="mt-1 text-[10px] text-zinc-400">Ref {referee}</div> : null}
+                  </div>
+                  <div className="col-start-2 row-start-1 min-w-0 @[46rem]:col-start-3">
+                    <FighterHero side={fight.f2} align="right" bonuses={fight.bonuses} result={result} />
                   </div>
                 </div>
-                <div className="col-start-2 row-start-1 min-w-0 @[58rem]:col-start-3">
-                  <FighterHero side={fight.f2} align="right" bonuses={fight.bonuses} result={result} />
-                </div>
+
+                <div className="mt-5 grid gap-x-10 gap-y-6 border-t border-zinc-100 pt-5 @[46rem]:grid-cols-2">
+                  <TaleOfTape fight={fight} />
+                  <MatchupContext fight={fight} />
                 </div>
                 {fight.status === "past" ? <MatchupResult fight={fight} /> : null}
               </div>
@@ -858,11 +927,14 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
 
             {/* A finished bout leads with what happened; an announced one leads
                 with the two careers walking in. Everything after that is the
-                same context in the same order either way. */}
-            {fight.status === "past" && detail?.type === "past" && (detail.totals || detail.sigStrikes) ? (
-              <FightStatistics fight={fight} />
-            ) : null}
+                same context in the same order either way.
 
+                The source starts publishing round totals while a bout is still
+                being fought and only adds the verdict at the end, so the panel
+                is shown on the numbers existing, never on a result existing. */}
+            {hasStats ? <FightStatistics fight={fight} live={statsLive} /> : null}
+
+            {fight.status === "past" && !hasStats ? <div className={`${shell} px-5 py-4 text-xs text-zinc-500`} role="status">Result confirmed. Detailed statistics are still being published{isFightDay(fight.event.date) ? " — checking automatically." : "."}</div> : null}
             <RecentForm fight={fight} />
             <CareerProfile fight={fight} />
 

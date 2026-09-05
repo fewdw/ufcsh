@@ -1,17 +1,21 @@
+import { eventStatus, fightIsComplete, fightIsUnderway, isFightDay, liveDetailDue } from "./live-state.ts";
+import { estimatedStart, type SegmentTimes } from "./card-schedule.ts";
 import http from "node:http";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { db, getMeta } from "./db.ts";
-import { log, normName, todayIso } from "./util.ts";
-import { syncEventDetail, syncFightDetail, syncFighterBirthDate } from "./sync.ts";
+import { canonicalMethod, log, normName, todayIso } from "./util.ts";
+import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents } from "./sync.ts";
 import type { RankingType } from "./scrape/ufccom.ts";
 import { getStats } from "./stats.ts";
-import { getLabs } from "./labs.ts";
+import { cardQualities } from "./card-quality.ts";
+import { getLabs, getLabsBouts, getLabsFill, getLabsMatchups } from "./labs.ts";
+import { getLabsInsights } from "./labs-insights.ts";
 import { titleNarratives } from "./titles.ts";
 import { fighterRecords, fighterStats } from "./records.ts";
-import { boutsBefore, careerBefore, completeRecordBefore, fightIndex, ageOn, sideOf, type FightRecord } from "./fight-index.ts";
+import { boutsBefore, careerBefore, completeBoutsBefore, completeRecordBefore, fightIndex, ageOn, sideOf, type FightRecord } from "./fight-index.ts";
 import { syncCareerRecord } from "./career-records.ts";
 
 const CLIENT_DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "client", "dist");
@@ -22,8 +26,29 @@ const SITE_URL = "https://ufc.sh";
 // shared queries
 
 type EventRow = {
-  id: string; name: string; date: string; location: string; complete: number;
+  id: string; name: string; date: string; location: string; complete: number; detail_fetched_at: number | null;
+  ufc_slug?: string | null;
+  main_card_at?: number | null;
+  prelims_at?: number | null;
+  early_prelims_at?: number | null;
 };
+
+/** When each part of a card is announced to start, in epoch ms. */
+function cardSchedule(e: EventRow): { main_card_at: number | null; prelims_at: number | null; early_prelims_at: number | null } {
+  return {
+    main_card_at: e.main_card_at ?? null,
+    prelims_at: e.prelims_at ?? null,
+    early_prelims_at: e.early_prelims_at ?? null,
+  };
+}
+
+type SegmentOf = "main" | "prelims" | "early" | null;
+
+const segmentTimes = (e: EventRow): SegmentTimes => ({
+  main: e.main_card_at ?? null,
+  prelims: e.prelims_at ?? null,
+  early: e.early_prelims_at ?? null,
+});
 
 const eventDetailRequests = new Map<string, Promise<void>>();
 const fighterBirthDateRequests = new Map<string, Promise<void>>();
@@ -64,30 +89,17 @@ function ageOnDate(birthDate: string, date = todayIso()): number | null {
   return age >= 0 && age < 130 ? age : null;
 }
 
-function yesterdayIso(): string {
-  const d = new Date(Date.now() - 86400000);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-// An incomplete event keeps "next" status through fight night (with a one-day
-// grace window so a card spanning midnight never flips status mid-event).
-function eventStatus(e: { date: string; complete: number }, nextDate: string | null): string {
-  if (e.complete) return "past";
-  if (e.date === nextDate) return "next";
-  return e.date < yesterdayIso() ? "past" : "future";
-}
-
 function nextEventDate(): string | null {
-  const row = db
-    .prepare("SELECT MIN(date) AS d FROM events WHERE complete = 0 AND date >= ?")
-    .get(yesterdayIso()) as { d: string | null };
-  return row.d;
+  return (db.prepare("SELECT MIN(date) AS d FROM events WHERE complete = 0 AND date > date('now')").get() as { d: string | null }).d;
 }
 
 type FighterSummary = {
   id: string; name: string; nickname: string; record: string;
   photo_url: string | null; ranking: { division: string; rank: string } | null;
   record_verified?: boolean;
+  /** Nationality, and the code its flag is drawn from. Null when unknown. */
+  country?: string | null;
+  country_code?: string | null;
 };
 
 function recordText(record: Pick<FightRecord, "wins" | "losses" | "draws">): string {
@@ -108,6 +120,7 @@ function cachedPhotoUrl(id: string, remoteUrl: string | null | undefined): strin
 const fighterSummaryStmt = () =>
   db.prepare(`
     SELECT fr.id, fr.name, fr.nickname, fr.wins, fr.losses, fr.draws, fr.photo_url,
+           fr.country, fr.country_code,
            r.division AS r_division, r.rank AS r_rank
     FROM fighters fr
     LEFT JOIN rankings r ON r.rowid = (
@@ -132,7 +145,7 @@ function requestPhoto(id: string): void {
 function fighterSummary(id: string, fallbackName: string, rankingType: RankingType = "meta"): FighterSummary {
   const row = id ? (fighterSummaryStmt().get(rankingType, id) as any) : null;
   if (!row) {
-    return { id, name: fallbackName, nickname: "", record: "", photo_url: null, ranking: null };
+    return { id, name: fallbackName, nickname: "", record: "", photo_url: null, ranking: null, country: null, country_code: null };
   }
   const career = currentRecord(row.id, row);
   return {
@@ -143,6 +156,8 @@ function fighterSummary(id: string, fallbackName: string, rankingType: RankingTy
     record_verified: career.verified,
     photo_url: cachedPhotoUrl(row.id, row.photo_url),
     ranking: row.r_rank ? { division: row.r_division, rank: row.r_rank } : null,
+    country: row.country ?? null,
+    country_code: row.country_code ?? null,
   };
 }
 
@@ -180,13 +195,22 @@ function sideContext(fighterId: string, date: string, ord: number, fightId: stri
   const fighter = index.fighters.get(fighterId);
   const bouts = boutsBefore(index, fighterId, date, ord).filter((bout) => bout.id !== fightId);
   const outcomes = bouts.map((bout) => sideOf(bout, fighterId).outcome);
+  // Form and the run entering a bout are read from the complete professional
+  // history wherever the identity behind it is verified: a fighter's last five
+  // and their current run do not stop at the promotion's door. Each entry says
+  // whether it was a UFC bout, and the dot that draws it says so too. Without a
+  // verified history there is only what we saw ourselves, which is the UFC.
+  const careerBouts = completeBoutsBefore(index, fighterId, date, ord);
+  const history: { outcome: string | null; method: string | null; ufc: boolean }[] = careerBouts.length
+    ? careerBouts.map((bout) => ({ outcome: bout.outcome, method: canonicalMethod(bout.method), ufc: bout.isUfc }))
+    : bouts.map((bout) => ({ outcome: sideOf(bout, fighterId).outcome, method: bout.method, ufc: true }));
   // A streak counts consecutive identical results, skipping no contests, which
-  // in UFC bookkeeping neither extend nor end a run.
-  const decided = outcomes.filter((outcome) => outcome && outcome !== "nc");
-  const latest = decided.at(-1) ?? null;
+  // in the bookkeeping of either source neither extend nor end a run.
+  const decided = history.filter((entry) => entry.outcome && entry.outcome !== "nc");
+  const latest = decided.at(-1)?.outcome ?? null;
   let count = 0;
   if (latest) {
-    for (let i = decided.length - 1; i >= 0 && decided[i] === latest; i--) count += 1;
+    for (let i = decided.length - 1; i >= 0 && decided[i].outcome === latest; i--) count += 1;
   }
   const wins = outcomes.filter((outcome) => outcome === "win").length;
   const losses = outcomes.filter((outcome) => outcome === "loss").length;
@@ -199,8 +223,10 @@ function sideContext(fighterId: string, date: string, ord: number, fightId: stri
   const complete = completeRecordBefore(index, fighterId, date, ord);
   return {
     age: fighter?.birthDate ? ageOn(fighter.birthDate, date) : null,
-    form: outcomes.slice(-5),
-    streak: latest && count ? { count, outcome: latest } : null,
+    form: history.slice(-5).map((entry) => entry.outcome),
+    form_details: history.slice(-5),
+    run_form: count ? decided.slice(-count) : [],
+    streak: latest && count ? { count, outcome: latest, complete: careerBouts.length > 0 } : null,
     ufc_record: bouts.length ? `${wins}-${losses}${draws ? `-${draws}` : ""}` : null,
     ufc_bouts: bouts.length,
     days_since: last ? Math.round((Date.parse(date) - Date.parse(last.date)) / 86400000) : null,
@@ -221,7 +247,7 @@ function sideContext(fighterId: string, date: string, ord: number, fightId: stri
 function cardStats(fights: any[], eventDate: string, complete: boolean, rankingType: RankingType): Record<string, unknown> {
   const index = fightIndex();
   const completed = fights.filter((fight) => fight.f1_outcome != null || fight.f2_outcome != null);
-  const titleFights = fights.filter((fight) => fight.title_fight).length;
+  const titleFights = fights.filter((fight) => fight.title_fight && ["title", "interim"].includes(fight.title_type)).length;
 
   let pricedFights = 0;
   let underdogWins = 0;
@@ -355,6 +381,11 @@ function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingTy
     ord: f.ord,
     weight_class: f.weight_class,
     title_fight: !!f.title_fight,
+    /** Which kind: a belt, an interim belt, or a tournament/TUF final, which
+     * carries the same flag at the source but is not a championship bout. */
+    title_type: f.title_type || null,
+    /** Which part of the card: main card, prelims or early prelims. */
+    segment: f.segment || null,
     method: f.method,
     method_details: f.method_details,
     round: f.round,
@@ -385,6 +416,8 @@ function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingTy
 // endpoints
 
 function listEvents(): unknown {
+  void syncLiveEvents().catch(err => log("live events refresh failed:", String(err)));
+  const qualities = cardQualities();
   const next = nextEventDate();
   const rows = db
     .prepare(`
@@ -400,12 +433,62 @@ function listEvents(): unknown {
     location: e.location,
     status: eventStatus(e, next),
     fight_count: e.fight_count,
+    quality: qualities.get(e.id),
   }));
+}
+
+/**
+ * The bout the promotion is on right now, for whichever card is running.
+ *
+ * Null when nothing is running, so a header that reads this says nothing at
+ * all on an ordinary day. A card is fought bottom-up, so the bout on now is
+ * the lowest one still without a result; before its estimated start it is the
+ * bout walking out next, and the countdown to it is the reader's answer.
+ */
+function liveCard(rankingType: RankingType): unknown | null {
+  void syncLiveEvents().catch(err => log("live card refresh failed:", String(err)));
+  const e = db.prepare(`SELECT * FROM events WHERE complete = 0
+    AND date >= date('now', '-1 day') AND date <= date('now') ORDER BY date DESC LIMIT 1`).get() as EventRow | undefined;
+  if (!e || !isFightDay(e.date)) return null;
+  const fights = db.prepare("SELECT * FROM fights WHERE event_id = ? ORDER BY ord ASC").all(e.id) as any[];
+  const bout = [...fights].reverse().find((f) => !fightIsComplete(f));
+  if (!bout) return null;
+
+  const times = segmentTimes(e);
+  const card = fights.map((f) => ({ ord: Number(f.ord) || 0, segment: (f.segment || null) as SegmentOf }));
+  const starts_at = estimatedStart(card, Number(bout.ord) || 0, times);
+  const completed = fights.filter(fightIsComplete).length;
+  // Numbers already published settle it. Otherwise the announced start does:
+  // once it has passed we assume the bout is under way, and with no time at
+  // all a card that has produced a result is a card being fought.
+  const live = fightIsUnderway(bout) || (starts_at != null ? Date.now() >= starts_at : completed > 0);
+
+  return {
+    event: {
+      id: e.id, name: e.name, date: e.date, location: e.location,
+      status: eventStatus(e, nextEventDate()),
+    },
+    schedule: cardSchedule(e),
+    completed_fights: completed,
+    total_fights: fights.length,
+    live,
+    starts_at,
+    fight: {
+      id: bout.id,
+      ord: bout.ord,
+      segment: bout.segment || null,
+      weight_class: bout.weight_class,
+      title_fight: !!bout.title_fight,
+      f1: fighterSummary(bout.f1_id, bout.f1_name, rankingType),
+      f2: fighterSummary(bout.f2_id, bout.f2_name, rankingType),
+    },
+  };
 }
 
 async function getEvent(id: string, rankingType: RankingType): Promise<unknown | null> {
   let e = db.prepare("SELECT * FROM events WHERE id = ?").get(id) as EventRow | undefined;
   if (!e) return null;
+  void refreshLiveEvent(id).catch(err => log("live event refresh failed:", String(err)));
   let fights = db
     .prepare("SELECT * FROM fights WHERE event_id = ? ORDER BY ord ASC")
     .all(id) as any[];
@@ -418,14 +501,27 @@ async function getEvent(id: string, rankingType: RankingType): Promise<unknown |
       log("lazy event bonus sync failed:", String(err));
     }
   }
+  // Only the start of each segment is announced, so a bout that has not been
+  // reached yet is estimated from its own segment's start and the bouts under
+  // it. A bout that has happened, or is happening, has no estimate to give.
+  const times = segmentTimes(e);
+  const card = fights.map((f) => ({ ord: Number(f.ord) || 0, segment: (f.segment || null) as SegmentOf }));
+  const startsAt = (f: any): number | null =>
+    fightIsComplete(f) || fightIsUnderway(f) ? null : estimatedStart(card, Number(f.ord) || 0, times);
+
   return {
     id: e.id,
     name: e.name,
     date: e.date,
     location: e.location,
     status: eventStatus(e, nextEventDate()),
+    results_updated_at: e.detail_fetched_at,
+    live: isFightDay(e.date),
+    schedule: cardSchedule(e),
     card_stats: cardStats(fights, e.date, Boolean(e.complete), rankingType),
-    fights: fights.map((f) => fightRowToJson(f, false, e.date, rankingType)),
+    odds_freshness: oddsFreshness(e.id),
+    quality: cardQualities().get(e.id),
+    fights: fights.map((f) => ({ ...fightRowToJson(f, false, e.date, rankingType), starts_at: startsAt(f) })),
   };
 }
 
@@ -498,6 +594,7 @@ function opponentFormBefore(opponentId: string, date: string): unknown[] {
     return {
       date: fight.event_date,
       outcome: isF1 ? fight.f1_outcome : fight.f2_outcome,
+      method: fight.method,
       opponent: {
         id: isF1 ? fight.f2_id : fight.f1_id,
         name: isF1 ? fight.f2_name : fight.f1_name,
@@ -571,11 +668,11 @@ function fighterHistory(fighterId: string, includeOpponentForm = false): unknown
       opponent_career_record_before: completeRecordEntering(opponentId, f.event_date, Number(f.ord) || 0),
       // Completed rows use the final recorded closing line. Upcoming prices can
       // still move, so never present those as the odds "when the result happened."
-      closing_odds: f.event_complete && (fighterClose || opponentClose)
+      closing_odds: fightIsComplete(f) && (fighterClose || opponentClose)
         ? { fighter: fighterClose ?? null, opponent: opponentClose ?? null }
         : null,
       opponent_form: includeOpponentForm ? opponentFormBefore(opponentId, f.event_date) : undefined,
-      upcoming: !f.event_complete && f.event_date >= todayIso(),
+      upcoming: !fightIsComplete(f),
     };
   });
 }
@@ -714,10 +811,17 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     .get(id) as any;
   if (!f) return null;
 
+  if (isFightDay(f.event_date)) {
+    try { await refreshLiveEvent(f.event_id); } catch (err) { log("live matchup event refresh failed:", String(err)); }
+    f = db.prepare(`SELECT f.*, e.name AS event_name, e.date AS event_date, e.location AS event_location, e.complete AS event_complete
+      FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?`).get(id) as any;
+    if (!f) return null;
+  }
+
   // Any matchup not covered by the scheduler is fetched lazily exactly once.
   // This gives far-future fights their career comparison data on first view,
   // while old completed fights still pick up totals and strike distributions.
-  if (!f.detail_json && !f.detail_fetched_at) {
+  if ((!f.detail_json && !f.detail_fetched_at) || (isFightDay(f.event_date) && liveDetailDue(f))) {
     try {
       await syncFightDetail(id);
       f = db
@@ -741,6 +845,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     const history = fid ? fighterHistory(fid) : [];
     const birthDate: string = bio?.birth_date ?? "";
     const completeRecord = fid ? completeRecordBefore(index, fid, f.event_date, Number(f.ord) || 0) : null;
+    const context = sideContext(fid, f.event_date, Number(f.ord) || 0, f.id);
     return {
       ...summary,
       // A matchup is a historical snapshot. Never show today's fallback total
@@ -755,6 +860,9 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
       // Career numbers as they stood walking into this bout, from our own
       // fight records: never today's totals projected back onto an old card.
       career_before: fid ? careerBefore(index, fid, f.event_date, f.weight_class ?? "", Number(f.ord) || 0, opponentId) : null,
+      streak: context.streak ?? null,
+      form_details: context.form_details ?? [],
+      run_form: context.run_form ?? [],
       complete_record_before: completeRecord ? { ...completeRecord, text: recordText(completeRecord), verified: true } : null,
       history,
     };
@@ -792,9 +900,14 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
   return {
     id: f.id,
     event: { id: f.event_id, name: f.event_name, date: f.event_date, location: f.event_location },
-    status: f.event_complete ? "past" : "upcoming",
+    status: fightIsComplete(f) ? "past" : "upcoming",
+    live: isFightDay(f.event_date),
+    stats_updated_at: f.detail_fetched_at,
     weight_class: f.weight_class,
     title_fight: !!f.title_fight,
+    /** Which kind: a belt, an interim belt, or a tournament/TUF final, which
+     * carries the same flag at the source but is not a championship bout. */
+    title_type: f.title_type || null,
     method: f.method,
     method_details: f.method_details,
     round: f.round,
@@ -863,6 +976,9 @@ async function getFighter(id: string, rankingType: RankingType): Promise<unknown
     stance: fr.stance,
     birth_date: fr.birth_date || null,
     age: ageOnDate(fr.birth_date),
+    country: fr.country || null,
+    country_code: fr.country_code || null,
+    birthplace: fr.birthplace || null,
     record: summary.record,
     record_verified: summary.record_verified ?? false,
     ufc_record: indexedFighter ? recordText(indexedFighter.ufc) : "0-0",
@@ -923,7 +1039,33 @@ function getFighterPreview(id: string): unknown | null {
 /** A fighter counts as active if they fought within this many days (or have a bout booked). */
 const ACTIVE_WINDOW_DAYS = 45;
 
-function getRankings(rankingType: RankingType): unknown {
+/** When a background sync last finished, in epoch ms, or null if it never has.
+ * This is the moment the data reached this database, not the moment the source
+ * changed: a page can say how old its copy is, never that the copy is right. */
+export function syncedAt(key: string): number | null {
+  const value = Number(getMeta(key));
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/** When this event's prices were last fetched, and whether they are frozen.
+ * Odds stop being refreshed once an event is over, so a completed card reports
+ * final prices rather than an ever-growing age. */
+export function oddsFreshness(eventId: string): { updated_at: number | null; final: boolean; priced: number } {
+  const row = db.prepare(`
+    SELECT MAX(o.fetched_at) AS updated_at,
+           COUNT(o.fight_id) AS priced,
+           SUM(CASE WHEN o.final = 1 THEN 1 ELSE 0 END) AS frozen
+    FROM odds o JOIN fights f ON f.id = o.fight_id
+    WHERE f.event_id = ? AND o.f1_close IS NOT NULL
+  `).get(eventId) as { updated_at: number | null; priced: number; frozen: number | null };
+  return {
+    updated_at: row.updated_at ?? null,
+    final: Boolean(row.priced) && row.frozen === row.priced,
+    priced: row.priced ?? 0,
+  };
+}
+
+export function getRankings(rankingType: RankingType): unknown {
   const today = todayIso();
   const activeInterimChampions = new Map<string, string>();
   const completedTitleFights = db.prepare(`
@@ -941,13 +1083,34 @@ function getRankings(rankingType: RankingType): unknown {
     // that division, including an in-cage unification or a vacant-title bout.
     else activeInterimChampions.delete(fight.weight_class);
   }
-  const divisions = db
-    .prepare(`
-      SELECT division, weight_limit, MIN(rowid) AS first_row
-      FROM rankings WHERE ranking_type = ?
-      GROUP BY division, weight_limit ORDER BY first_row
-    `)
-    .all(rankingType) as { division: string; weight_limit: string }[];
+  const divisionsOf = (type: RankingType) =>
+    db
+      .prepare(`
+        SELECT division, weight_limit, MIN(rowid) AS first_row
+        FROM rankings WHERE ranking_type = ?
+        GROUP BY division, weight_limit ORDER BY first_row
+      `)
+      .all(type) as { division: string; weight_limit: string }[];
+
+  const divisions: { division: string; weight_limit: string; source: RankingType }[] = divisionsOf(rankingType)
+    .map((d) => ({ ...d, source: rankingType }));
+
+  // The meta view publishes no pound-for-pound list. Rather than hide the
+  // question, borrow the media one and label it: a P4P list is a cross-
+  // divisional opinion either way, and readers still want to see it.
+  if (rankingType === "meta") {
+    const borrowed = divisionsOf("media")
+      .filter((d) => d.division.includes("Pound-for-Pound"))
+      .map((d) => ({ ...d, source: "media" as RankingType }));
+    for (const p4p of borrowed) {
+      // Each sits where the media view puts it: the men's list at the top,
+      // the women's immediately before the women's divisions.
+      const at = p4p.division.startsWith("Women's")
+        ? divisions.findIndex((d) => d.division.startsWith("Women's"))
+        : 0;
+      divisions.splice(at === -1 ? divisions.length : at, 0, p4p);
+    }
+  }
 
   const lastFightStmt = db.prepare(`
     SELECT e.date AS date, f.f1_id, f.f1_outcome, f.f2_outcome,
@@ -979,10 +1142,13 @@ function getRankings(rankingType: RankingType): unknown {
         FROM rankings r LEFT JOIN fighters fr ON fr.id = r.fighter_id
         WHERE r.ranking_type = ? AND r.division = ? ORDER BY r.div_pos ASC
       `)
-      .all(rankingType, d.division) as any[];
+      .all(d.source, d.division) as any[];
     return {
       division: d.division,
       weight_limit: d.weight_limit,
+      /** Which published view this list came from; differs from the requested
+       * one only for a pound-for-pound list borrowed into the meta view. */
+      source: d.source,
       entries: entries.map((e) => {
         let activity: Record<string, unknown> = { status: "unknown" };
         if (e.fighter_id) {
@@ -1428,6 +1594,7 @@ export function startApi(port: number): void {
 
       if (p.startsWith("/api/images/")) return await serveFighterImage(res, part(3));
       if (p === "/api/events") return sendJson(req, res, listEvents());
+      if (p === "/api/live") return sendJson(req, res, liveCard(rankingType));
       if (p.startsWith("/api/events/")) {
         const data = await getEvent(part(3), rankingType);
         return data ? sendJson(req, res, data) : sendJson(req, res, { error: "not found" }, 404);
@@ -1445,9 +1612,13 @@ export function startApi(port: number): void {
         return data ? sendJson(req, res, data) : sendJson(req, res, { error: "not found" }, 404);
       }
       if (p === "/api/rankings") {
-        return sendJson(req, res, getRankings(rankingType));
+        return sendJson(req, res, { updated_at: syncedAt("rankings_synced_at"), divisions: getRankings(rankingType) });
       }
       if (p === "/api/stats") return sendJson(req, res, getStats(url.searchParams));
+      if (p === "/api/labs/bouts") return sendJson(req, res, getLabsBouts(url.searchParams));
+      if (p === "/api/labs/matchups") return sendJson(req, res, getLabsMatchups(url.searchParams));
+      if (p === "/api/labs/fill") return sendJson(req, res, getLabsFill(url.searchParams));
+      if (p === "/api/labs/insights") return sendJson(req, res, getLabsInsights(url.searchParams));
       if (p === "/api/labs") return sendJson(req, res, getLabs(url.searchParams));
       if (p === "/api/search") return sendJson(req, res, search(url.searchParams.get("q") ?? ""));
       if (p === "/api/status") return sendJson(req, res, status());

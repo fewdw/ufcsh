@@ -72,6 +72,8 @@ export type PriorState = {
   controlSeconds: number;
   controlledSeconds: number;
   controlBouts: number;
+  /** Elapsed time only from bouts where both control totals were recorded. */
+  controlTrackedSeconds: number;
   /** How many times these two had met before. */
   meetings: number;
   meetingWins: number;
@@ -107,6 +109,9 @@ export type IndexedSide = {
   /** Implied win probability from the closing line (vig included). */
   prob: number | null;
   stance: string;
+  /** Nationality and its ISO code, empty when the source has not said. */
+  country: string;
+  countryCode: string;
   birthDate: string;
   age: number | null;
   heightIn: number | null;
@@ -146,6 +151,8 @@ export type CareerBout = {
   date: string;
   sourceOrder: number;
   outcome: Outcome;
+  /** How it ended, in the source's own words ("KO/TKO", "Decision", …). */
+  method: string;
   opponentName: string;
   eventName: string;
   isUfc: boolean;
@@ -160,6 +167,10 @@ export type IndexedFighter = {
   nickname: string;
   photoUrl: string | null;
   stance: string;
+  /** Nationality from the verified professional history; empty when unknown. */
+  country: string;
+  /** ISO 3166-1 alpha-2 for that country, which is what draws its flag. */
+  countryCode: string;
   birthDate: string;
   heightIn: number | null;
   reachIn: number | null;
@@ -343,7 +354,7 @@ function emptyPrior(): PriorState {
     takedowns: 0, takedownsTaken: 0,
     takedownAccuracyLanded: 0, takedownAttempts: 0, takedownDefenseConceded: 0, takedownsFacedAttempts: 0,
     submissionAttempts: 0, knockdowns: 0, knockdownsTaken: 0,
-    controlSeconds: 0, controlledSeconds: 0, controlBouts: 0,
+    controlSeconds: 0, controlledSeconds: 0, controlBouts: 0, controlTrackedSeconds: 0,
     meetings: 0, meetingWins: 0, meetingLosses: 0,
   };
 }
@@ -422,6 +433,7 @@ function advance(s: MutableState, fight: IndexedFight, side: IndexedSide, oppone
       s.controlSeconds += side.actions.control.scored;
       s.controlledSeconds += opponent.actions.control.scored;
       s.controlBouts += 1;
+      s.controlTrackedSeconds += elapsed;
     }
   }
   const meeting = s.meetingsBy.get(opponent.id) ?? { wins: 0, losses: 0, total: 0 };
@@ -433,18 +445,18 @@ function advance(s: MutableState, fight: IndexedFight, side: IndexedSide, oppone
 
 function fingerprint(): string {
   const fights = db.prepare("SELECT COUNT(*) AS c, MAX(detail_fetched_at) AS d FROM fights").get() as { c: number; d: number | null };
-  const events = db.prepare("SELECT COUNT(*) AS c, MAX(detail_fetched_at) AS d FROM events WHERE complete = 1").get() as { c: number; d: number | null };
+  const events = db.prepare("SELECT COUNT(*) AS c, MAX(detail_fetched_at) AS d FROM events").get() as { c: number; d: number | null };
   const odds = db.prepare("SELECT COUNT(*) AS c, MAX(fetched_at) AS d FROM odds").get() as { c: number; d: number | null };
-  const fighters = db.prepare("SELECT MAX(birth_fetched_at) AS b, MAX(photo_checked_at) AS p, COUNT(*) AS c FROM fighters").get() as { b: number | null; p: number | null; c: number };
+  const fighters = db.prepare("SELECT MAX(birth_fetched_at) AS b, MAX(photo_checked_at) AS p, COUNT(*) AS c, COUNT(country_code) AS n FROM fighters").get() as { b: number | null; p: number | null; c: number; n: number };
   const careers = db.prepare("SELECT COUNT(*) AS c, MAX(fetched_at) AS f FROM career_profiles WHERE status = 'verified'").get() as { c: number; f: number | null };
-  return [fights.c, fights.d, events.c, events.d, odds.c, odds.d, fighters.b, fighters.p, fighters.c, careers.c, careers.f, getMeta("roster_synced_at")].join("|");
+  return [fights.c, fights.d, events.c, events.d, odds.c, odds.d, fighters.b, fighters.p, fighters.c, fighters.n, careers.c, careers.f, getMeta("roster_synced_at")].join("|");
 }
 
 let current: FightIndex | null = null;
 
 function build(version: string): FightIndex {
   const started = Date.now();
-  const fighterRows = db.prepare("SELECT id, name, nickname, photo_url, stance, birth_date, height, reach, wins, losses, draws FROM fighters").all() as any[];
+  const fighterRows = db.prepare("SELECT id, name, nickname, photo_url, stance, birth_date, height, reach, wins, losses, draws, country, country_code FROM fighters").all() as any[];
   const fighters = new Map<string, IndexedFighter>();
   for (const row of fighterRows) {
     fighters.set(row.id, {
@@ -453,6 +465,8 @@ function build(version: string): FightIndex {
       nickname: row.nickname ?? "",
       photoUrl: row.photo_url ? `/api/images/${row.id}` : null,
       stance: row.stance ?? "",
+      country: row.country ?? "",
+      countryCode: row.country_code ?? "",
       birthDate: row.birth_date ?? "",
       heightIn: parseInches(row.height),
       reachIn: parseInches(row.reach),
@@ -470,7 +484,7 @@ function build(version: string): FightIndex {
     SELECT f.*, e.date AS event_date, e.name AS event_name, o.f1_close, o.f2_close, o.f1_open, o.f2_open
     FROM fights f JOIN events e ON e.id = f.event_id
     LEFT JOIN odds o ON o.fight_id = f.id
-    WHERE e.complete = 1 AND (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)
+    WHERE (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)
     ORDER BY e.date ASC, f.ord DESC
   `).all() as any[];
 
@@ -547,6 +561,8 @@ function build(version: string): FightIndex {
         open: americanLine(row[`${side}_open`]),
         prob: impliedProbability(close),
         stance: fighter?.stance ?? "",
+        country: fighter?.country ?? "",
+        countryCode: fighter?.countryCode ?? "",
         birthDate,
         age: birthDate ? ageOn(birthDate, row.event_date) : null,
         heightIn: fighter?.heightIn ?? null,
@@ -677,7 +693,7 @@ function build(version: string): FightIndex {
   }
   const verifiedProfiles = db.prepare("SELECT fighter_id FROM career_profiles WHERE status = 'verified'").all() as { fighter_id: string }[];
   const careerRows = db.prepare(`
-    SELECT cb.fighter_id, cb.date, cb.source_order, cb.outcome, cb.opponent_name,
+    SELECT cb.fighter_id, cb.date, cb.source_order, cb.outcome, cb.method, cb.opponent_name,
            cb.event_name, cb.is_ufc, cb.ufc_fight_id
     FROM career_bouts cb JOIN career_profiles cp ON cp.fighter_id = cb.fighter_id
     WHERE cp.status = 'verified'
@@ -690,6 +706,7 @@ function build(version: string): FightIndex {
       date: row.date,
       sourceOrder: Number(row.source_order) || 0,
       outcome: row.outcome as Outcome,
+      method: row.method ?? "",
       opponentName: row.opponent_name,
       eventName: row.event_name,
       isUfc: Boolean(row.is_ufc),
@@ -771,6 +788,21 @@ function recordFromOutcomes(outcomes: (Outcome | null)[]): FightRecord {
 }
 
 /** Exact complete pro record entering a bout, or null until source identity is verified. */
+/**
+ * Every professional bout — in and out of the UFC — this fighter had walked
+ * into the given bout with, oldest first. Empty unless the identity behind the
+ * source history is verified, so a common name can never borrow a record.
+ */
+export function completeBoutsBefore(index: FightIndex, fighterId: string, date: string, ord?: number): CareerBout[] {
+  const fighter = index.fighters.get(fighterId);
+  if (!fighter?.careerVerified) return [];
+  const localBout = ord == null ? null : fighter.fights.find((fight) => fight.date === date && fight.ord === ord);
+  const sourceBout = localBout ? fighter.careerBouts.find((bout) => bout.ufcFightId === localBout.id) : null;
+  return fighter.careerBouts.filter(
+    (bout) => bout.date < date || (sourceBout != null && bout.date === date && bout.sourceOrder > sourceBout.sourceOrder),
+  );
+}
+
 export function completeRecordBefore(index: FightIndex, fighterId: string, date: string, ord?: number): FightRecord | null {
   const fighter = index.fighters.get(fighterId);
   if (!fighter?.careerVerified) return null;

@@ -72,3 +72,19 @@ export function idFromUrl(url: string | undefined, kind: string): string {
 export function log(...args: unknown[]): void {
   console.log(new Date().toISOString().slice(11, 19), ...args);
 }
+
+/**
+ * One vocabulary for how a bout ended, whichever source described it.
+ * UFCStats writes "KO/TKO", "SUB", "U-DEC"; the professional-history source
+ * writes "Submission (Rear-Naked Choke)" or "Decision (Unanimous)". A form dot
+ * only distinguishes a finish from a decision, so both are reduced to the
+ * words UFCStats already uses; anything else (DQ, overturned) stays unnamed.
+ */
+export function canonicalMethod(method: string | null | undefined): string | null {
+  const text = (method ?? "").toLowerCase();
+  if (!text) return null;
+  if (text.includes("decision") || /(^|[\s(-])dec\b/.test(text)) return "DEC";
+  if (text.includes("submission") || text.startsWith("sub")) return "SUB";
+  if (text.includes("ko") || text.includes("knockout")) return text.includes("no contest") ? null : "KO/TKO";
+  return null;
+}

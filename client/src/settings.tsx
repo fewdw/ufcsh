@@ -5,17 +5,21 @@ import { createContext, useContext, useLayoutEffect, useMemo, useState } from "r
 export type ThemeMode = "light" | "dark";
 export type RankingSource = "meta" | "media";
 export type DateMode = "relative" | "date";
+export type DivisionOrder = "light" | "heavy";
 
 export type AppSettings = {
   theme: ThemeMode;
   rankingSource: RankingSource;
   dateMode: DateMode;
+  /** Which end of the scale the rankings start from. */
+  divisionOrder: DivisionOrder;
 };
 
 const DEFAULTS: AppSettings = {
   theme: "light",
   rankingSource: "meta",
   dateMode: "relative",
+  divisionOrder: "light",
 };
 const STORAGE_KEY = "ufcsh:settings:v1";
 
@@ -26,6 +30,7 @@ function loadSettings(): AppSettings {
       theme: saved?.theme === "dark" ? "dark" : "light",
       rankingSource: saved?.rankingSource === "media" ? "media" : "meta",
       dateMode: saved?.dateMode === "date" ? "date" : "relative",
+      divisionOrder: saved?.divisionOrder === "heavy" ? "heavy" : "light",
     };
   } catch {
     return DEFAULTS;

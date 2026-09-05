@@ -6,12 +6,13 @@ import type { StatChip, StatsDashboard } from "../api";
 import Avatar from "../components/Avatar";
 import FighterSearch, { type PickedFighter } from "../components/FighterSearch";
 import StatsModeSwitch from "../components/StatsModeSwitch";
+import RequestNotice from "../components/RequestNotice";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
-import { formatValue } from "../components/chartTokens";
+import { formatValue, PANEL } from "../components/chartTokens";
 import { useSeo } from "../seo";
 import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
 
-const shell = "rounded-2xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
+const shell = PANEL;
 const selectClass = "max-w-full rounded-full border border-zinc-200 bg-zinc-50 py-1 pl-2.5 pr-7 text-[10px] font-medium text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-400";
 
 type Method = "all" | "ko" | "sub" | "finish" | "decision" | "unanimous" | "majority" | "split" | "dq";
@@ -74,6 +75,7 @@ type StatsSettings = {
   actionMinimumAttempts: "1" | "3" | "5" | "10" | "20" | "50";
   // Context
   contextMode: "opposition" | "championsFaced" | "streakBreakers" | "bounceBack" | "rematches" | "returns" | "durability";
+  oppositionScope: "beaten" | "faced";
   oppositionSource: "ufc" | "all";
   oppositionWhen: "atTime" | "today";
   rematchMetric: "rate" | "revenge";
@@ -136,6 +138,7 @@ const DEFAULT_SETTINGS: StatsSettings = {
   actionBasis: "scored",
   actionMinimumAttempts: "1",
   contextMode: "opposition",
+  oppositionScope: "beaten",
   oppositionSource: "all",
   oppositionWhen: "atTime",
   rematchMetric: "rate",
@@ -608,6 +611,10 @@ function CardControls({ boardKey, settings, update, division }: { boardKey: stri
           </Select>
           {settings.contextMode === "opposition" ? (
             <>
+              <Select label="Which opponents count" value={settings.oppositionScope} onChange={(value) => update("oppositionScope", value as StatsSettings["oppositionScope"])}>
+                <option value="beaten">Opponents beaten</option>
+                <option value="faced">Opponents faced</option>
+              </Select>
               <Select label="Which of an opponent's fights count" value={settings.oppositionSource} onChange={(value) => update("oppositionSource", value as StatsSettings["oppositionSource"])}>
                 <option value="ufc">UFC record</option>
                 <option value="all">Complete career</option>
@@ -1074,7 +1081,7 @@ export default function StatsPage() {
     return params.toString();
   }, [division, includeWomen, includeInactiveFighters, showMoreInfo, keepFullLists, selectedFighters, settings]);
 
-  const { data, loading, error } = useApi<StatsDashboard>(`/api/stats?${query}`, 5 * 60_000);
+  const { data, loading, error, retry } = useApi<StatsDashboard>(`/api/stats?${query}`, 5 * 60_000);
   const [displayed, setDisplayed] = useState<StatsDashboard | null>(null);
   useEffect(() => {
     if (data) setDisplayed(data);
@@ -1117,14 +1124,14 @@ export default function StatsPage() {
   };
 
   if (loading && !dashboard) return <div className="flex h-full items-center justify-center text-sm text-zinc-400">Calculating rankings…</div>;
-  if (!dashboard) return <div className="flex h-full items-center justify-center text-sm text-zinc-400">{error ? "Statistics are not available." : "No statistics yet."}</div>;
+  if (!dashboard) return <div className="flex h-full items-center justify-center p-4 text-sm text-zinc-400">{error ? <RequestNotice onRetry={retry}>Couldn’t load statistics.</RequestNotice> : "No statistics yet."}</div>;
 
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
       <main className="mx-auto max-w-[100rem] p-3 pb-8">
-        <section className={`${shell} relative z-30 mb-3 flex h-14 items-center gap-3 px-4`}>
+        <section className={`${shell} relative z-30 mb-3 flex min-h-14 flex-wrap items-center gap-3 px-4 py-2`}>
           <StatsModeSwitch />
-          <div className="min-w-24 flex-1 sm:max-w-md">
+          <div className="order-3 w-full min-w-24 sm:order-none sm:w-auto sm:flex-1 sm:max-w-md">
             <FighterSearch
               selected={selectedFighters}
               showSelected={false}
@@ -1169,6 +1176,8 @@ export default function StatsPage() {
           </div>
         </section>
 
+        {error ? <div className="mb-3"><RequestNotice onRetry={retry}>Couldn’t update statistics. The last successful results are shown.</RequestNotice></div> : null}
+
         <SelectedFighterStrip fighters={selectedFighters} keepFullLists={keepFullLists} onChange={setSelectedFighters} />
 
         <p className="mb-3 px-1 text-[11px] text-zinc-500">
@@ -1179,7 +1188,7 @@ export default function StatsPage() {
             : `${dashboard.coverage.fighters.toLocaleString("en-US")} fighters across ${dashboard.coverage.fights.toLocaleString("en-US")} bouts match these filters. Each card lists its top ${dashboard.limit}.`}
         </p>
 
-        <div className={`grid grid-cols-1 gap-3 transition-opacity md:grid-cols-4 xl:grid-cols-6 ${loading ? "opacity-70" : ""}`}>
+        <div aria-busy={loading} className={`grid grid-cols-1 gap-3 transition-opacity md:grid-cols-4 xl:grid-cols-6 ${loading || error ? "opacity-70" : ""}`}>
           {orderedBoards.map((board, index) => (
             <Leaderboard
               key={board.key}

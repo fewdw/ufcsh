@@ -29,9 +29,24 @@ function tokens(name: string): string {
   return normName(name).split(" ").filter(Boolean).sort().join(" ");
 }
 
-/** Allows harmless first/last ordering differences, but never fuzzy spelling. */
-export function samePersonName(a: string, b: string): boolean {
-  return normName(a) === normName(b) || tokens(a) === tokens(b);
+/**
+ * The names one person can be filed under. UFCStats often files a fighter by
+ * the name they fight as, where the source keeps the legal surname: "Patricio
+ * Pitbull" is Sherdog's Patricio Freire, nickname "Pitbull". So a candidate
+ * answers to their own name and to that name with the nickname standing in for
+ * either half of it — never to the nickname alone, which is not an identity.
+ */
+export function nameAliases(name: string, nickname = ""): string[] {
+  const parts = normName(name).split(" ").filter(Boolean);
+  const nick = normName(nickname);
+  if (!nick || nick === normName(name) || parts.length < 2) return [name];
+  return [name, `${parts[0]} ${nick}`, `${nick} ${parts[parts.length - 1]}`];
+}
+
+/** Allows harmless first/last ordering differences, but never fuzzy spelling.
+ *  A source nickname, when given, lets the ring name match as well. */
+export function samePersonName(a: string, b: string, bNickname = ""): boolean {
+  return nameAliases(b, bNickname).some((alias) => normName(a) === normName(alias) || tokens(a) === tokens(alias));
 }
 
 function looksLikeUfcEvent(name: string): boolean {
@@ -106,8 +121,15 @@ export function isVerifiedIdentity(
   bouts: ReconciledBout[],
   known: KnownUfcBout[],
 ): boolean {
-  if (!samePersonName(local.name, profile.name)) return false;
   const matched = bouts.filter((bout) => bout.ufcFightId).length;
+  const birthMatches = Boolean(local.birth_date && profile.birthDate && local.birth_date === profile.birthDate);
+  if (!samePersonName(local.name, profile.name)) {
+    // Only the ring name matches. That is a real identity — but a weaker one
+    // than a name, so it has to be carried by something independent: two of
+    // our own UFC bouts reconciling exactly, or the same date of birth.
+    if (!samePersonName(local.name, profile.name, profile.nickname)) return false;
+    if (matched < 2 && !birthMatches) return false;
+  }
   // Two exact UFC date+opponent matches are a stronger identity key than the
   // UFCStats headline record, which may freeze when a fighter leaves and then
   // continues competing elsewhere. With only one shared bout, keep the record
@@ -115,7 +137,6 @@ export function isVerifiedIdentity(
   if (known.length >= 2) return matched >= 2;
   if (known.length === 1) return matched === 1 && totalsMatch(local, profile);
   if (!totalsMatch(local, profile)) return false;
-  const birthMatches = Boolean(local.birth_date && profile.birthDate && local.birth_date === profile.birthDate);
   const nicknameMatches = Boolean(local.nickname && profile.nickname && normName(local.nickname) === normName(profile.nickname));
   // Debutants have no shared UFC bout to use as an identity key. Require the
   // same full record plus either an independent bio match or one unique exact
@@ -127,7 +148,7 @@ async function resolve(local: LocalFighter, knownUrl = ""): Promise<{ state: "ve
   const searched = knownUrl ? [] : await searchSherdogFighters(local.name);
   const candidates = knownUrl
     ? [{ id: knownUrl.match(/-(\d+)$/)?.[1] ?? "", name: local.name, nickname: local.nickname, url: knownUrl, height: "", weight: "" }]
-    : searched.filter((candidate) => samePersonName(local.name, candidate.name)).slice(0, 5);
+    : searched.filter((candidate) => samePersonName(local.name, candidate.name, candidate.nickname)).slice(0, 5);
   if (candidates.length === 0) return { state: "not_found", reason: "no exact-name source candidate" };
   const known = localUfcBouts(local.id);
   const checked: VerifiedCandidate[] = [];
@@ -161,6 +182,10 @@ function storeVerified(fighterId: string, value: VerifiedCandidate): void {
   const now = Date.now();
   db.exec("BEGIN IMMEDIATE");
   try {
+    // Nationality rides along with the verified history: it is the same page,
+    // read once, and it belongs to the identity we just established.
+    db.prepare("UPDATE fighters SET country = ?, country_code = ?, birthplace = ? WHERE id = ?")
+      .run(value.profile.country || null, value.profile.countryCode || null, value.profile.birthplace || null, fighterId);
     db.prepare("DELETE FROM career_bouts WHERE fighter_id = ? AND source = ?").run(fighterId, SOURCE);
     const insert = db.prepare(`
       INSERT INTO career_bouts (
@@ -287,7 +312,7 @@ export async function syncCareerRecords(limit = 40): Promise<void> {
         UNION ALL SELECT f2_id, 2 FROM fights
       ), candidates AS (
         SELECT fr.id, fr.name, MIN(p.pri) AS pri, cp.status, cp.checked_at,
-               MAX(e.date) AS last_fight
+               fr.country_code, MAX(e.date) AS last_fight
         FROM fighters fr JOIN priority p ON p.id = fr.id
         LEFT JOIN career_profiles cp ON cp.fighter_id = fr.id
         LEFT JOIN fights f ON f.f1_id = fr.id OR f.f2_id = fr.id
@@ -296,6 +321,9 @@ export async function syncCareerRecords(limit = 40): Promise<void> {
       )
       SELECT id, name FROM candidates
       WHERE checked_at IS NULL
+         -- A record verified before nationality was read has no country yet;
+         -- it is the same page, so the next refresh simply comes early.
+         OR (status = 'verified' AND country_code IS NULL)
          OR (status = 'verified' AND checked_at < CASE WHEN last_fight >= date('now', '-18 months') THEN ? ELSE ? END)
          OR (status = 'error' AND checked_at < ?)
          OR (status IN ('not_found', 'ambiguous') AND checked_at < ?)
