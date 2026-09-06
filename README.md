@@ -66,6 +66,13 @@ fresh in the background.
   debut cutoff, and result windows.
 - **Card quality** appears only beside event titles as five gold Lucide stars, with quarter-star fills. Hover for the exact 0–100 score, coverage and factor breakdown. Not every bout is the card: the main event carries six times the weight of a prelim, the top two are read again on their own, and the headliner is a factor in its own right, so a dull opener costs almost nothing and a dull main event costs a lot. Completed cards are reviews, led by what the fights delivered — finishes weigh heavily, a knockout above a submission, a decision at zero unless the promotion called it the Fight of the Night — and each review keeps the pre-fight rating beside it, so the tooltip can say what the night added or cost. Reigning champions count as part of what is at stake, and the card's make-up carries a stated editorial preference toward the men's divisions. Announced cards are estimates: under six announced bouts there is no rating and no stars, and between six and eight the estimate is held near the middle of the scale until the card fills out. Ranked fighters count on announced cards only, because the rankings feed has no archive to rate a past card with. [The versioned formula](docs/card-quality.md) explains the evidence and limitations. Scores refresh with synced card and odds changes.
 - **Activity dots** distinguish both outcome and method: solid green/red for wins/losses by KO/TKO or submission, hollow green/red for decisions. Hover text names the result; unknown methods are not presented as finishes.
+- **Search** opens with `⌘K` / `Ctrl+K` or the header button. Before typing,
+  it offers quick navigation to Events, Rankings, Statistics and Labs. Results
+  are grouped into fighters, events and fights, with years on event and fight
+  dates. Search and both analytics pickers share loading, empty and retry
+  states, cancel obsolete requests, and keep the keyboard selection visible.
+  Arrow keys move, Enter selects, and Escape closes; the search dialog contains
+  focus and returns it to its trigger on dismissal.
 
 ## Layout
 
