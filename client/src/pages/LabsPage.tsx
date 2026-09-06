@@ -32,7 +32,7 @@ import {
  * insight cards below. Server summaries keep all denominators synchronized. */
 
 const inputClass = "w-full min-w-0 rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-[11px] tabular-nums text-zinc-800 outline-none transition [appearance:textfield] placeholder:text-zinc-300 focus:border-zinc-500 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
-const selectClass = "w-full rounded-lg border border-zinc-200 bg-white py-1.5 pl-2 pr-6 text-[11px] font-medium text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-500";
+const selectClass = "w-full rounded-lg border border-zinc-200 bg-white py-1.5 pl-2 pr-7 text-[11px] font-medium text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-500";
 const fieldLabel = "mb-1 block text-[10px] font-semibold text-zinc-700";
 const capLabel = "text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-400";
 
@@ -478,7 +478,7 @@ function BoutsTab({ query, state, summary, onState }: {
           value={state.sort}
           onChange={(event) => onState({ sort: event.target.value })}
           aria-label="Order bouts"
-          className="ml-auto rounded-full border border-zinc-200 bg-white py-1 pl-2 pr-6 text-[10px] font-medium text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-500"
+          className="ml-auto rounded-full border border-zinc-200 bg-white py-1 pl-2.5 pr-7 text-[10px] font-medium text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-500"
         >
           {SORTS.map((sort) => <option key={sort.value} value={sort.value}>{sort.label}</option>)}
         </select>

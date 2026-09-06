@@ -76,6 +76,24 @@ textarea:focus-visible {
   outline: none;
 }
 
+/* Tailwind's reset leaves every select drawing the platform's own arrow. On
+   macOS that is a heavy chevron sized for a full-height control, which inside
+   a small pill reads as a smudge — and it stays black in dark mode, where the
+   pill behind it does not. One quiet chevron, drawn at the size the control
+   actually is and in a colour each theme sets, replaces it everywhere. The
+   classes on each select reserve the room it sits in. */
+select:not([multiple]):not([size]) {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%2371717a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.75 6 7.75 9 4.75'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 0.7rem 0.7rem;
+}
+.dark select:not([multiple]):not([size]) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23a1a1aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.75 6 7.75 9 4.75'/%3E%3C/svg%3E");
+}
+
 /* Tailwind v4's reset gives every button the default arrow. Anything that acts
    on a click should say so under the pointer; anything disabled should not. */
 :where(button, summary, [role="button"], [role="checkbox"], label:has(> input[type="checkbox"], > input[type="radio"])):not(:disabled, [aria-disabled="true"]) {

@@ -98,15 +98,24 @@ export type SegmentTimes = { main: number | null; prelims: number | null; early:
 /**
  * When the bout at `ord` is expected to start, for a card that has not reached
  * it yet. Only the segment starts are announced, so a later bout is estimated
- * from its own segment's start plus the bouts before it in that segment. Fights
- * average a little under half an hour end to end once walkouts and replays are
- * counted, and a five-round main event is given its extra rounds.
+ * from its own segment's start plus the bouts before it in that segment.
+ *
+ * A three-round bout takes about half an hour end to end once the walkouts,
+ * the replays and the interview are counted. A bout scheduled for five rounds
+ * — the main event, and any championship bout wherever it sits — has two more
+ * rounds and a longer build, so it is given closer to forty minutes.
  */
-export const BOUT_MINUTES = 27;
-export const MAIN_EVENT_EXTRA_MINUTES = 8;
+export const BOUT_MINUTES = 30;
+export const FIVE_ROUND_BOUT_MINUTES = 40;
+
+/** One bout as the schedule reads it: where it sits, and how long it can run. */
+export type ScheduledBout = { ord: number; segment: CardSegment | null; fiveRound?: boolean };
+
+export const boutMinutes = (bout: ScheduledBout): number =>
+  bout.fiveRound ? FIVE_ROUND_BOUT_MINUTES : BOUT_MINUTES;
 
 export function estimatedStart(
-  fights: { ord: number; segment: CardSegment | null }[],
+  fights: ScheduledBout[],
   ord: number,
   times: SegmentTimes,
 ): number | null {
@@ -116,7 +125,9 @@ export function estimatedStart(
   const segmentStart = segment ? times[segment] : (times.early ?? times.prelims ?? times.main);
   if (segmentStart == null) return null;
   // A card is fought bottom-up, so the bouts before this one in its segment are
-  // the ones with a higher ord.
-  const before = fights.filter((fight) => fight.segment === segment && fight.ord > ord).length;
-  return segmentStart + before * BOUT_MINUTES * 60_000;
+  // the ones with a higher ord, each taking as long as its own length allows.
+  const minutes = fights
+    .filter((fight) => fight.segment === segment && fight.ord > ord)
+    .reduce((total, fight) => total + boutMinutes(fight), 0);
+  return segmentStart + minutes * 60_000;
 }

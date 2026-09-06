@@ -10,7 +10,7 @@ const GROUPS = [
 ] as const;
 const count = (n: number | undefined) => n == null ? "—" : n.toLocaleString("en-US");
 const percent = (n: number | null) => formatValue(n, "percent");
-const selectClass = "max-w-40 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-700";
+const selectClass = "max-w-40 rounded-lg border border-zinc-200 bg-white py-1 pl-2 pr-7 text-[11px] text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-400";
 
 export default function LabsInsights({ data, groupBy, onGroupBy }: {
   data: LabsResponse; groupBy: string; onGroupBy: (value: string) => void;

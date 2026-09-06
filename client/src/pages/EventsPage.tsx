@@ -3,7 +3,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
-import { clockTime, countdown, exactTime, formatDate, formatDateShort, formatMethod, isDecision, lastName, outcomeClasses, rankLabel } from "../format";
+import { clockTime, countdown, exactTime, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankLabel } from "../format";
+import { cardHighlights, type Highlight, type HighlightIcon } from "../cardHighlights";
+import {
+  Activity, Award, CalendarClock, Clock, Coins, Crown, Flame, Gauge, Globe, HandFist, History,
+  Hourglass, Medal, Percent, Repeat, Rocket, Ruler, Scale, ShieldCheck, Sparkles, Split, Star,
+  Swords, Target, Timer, TrendingUp, Trophy, Users, Zap, type LucideIcon,
+} from "lucide-react";
 import { useNow } from "../useNow";
 import Avatar from "../components/Avatar";
 import ResultDots from "../components/ResultDots";
@@ -27,6 +33,7 @@ const TITLE_TAG: Record<string, { label: string; className: string }> = {
   tuf: { label: "TUF final", className: "bg-zinc-100 text-zinc-500" },
 };
 const METHOD_TAG = "shrink-0 rounded-full px-1.5 py-px text-[9px] font-bold uppercase leading-4 tracking-[0.06em]";
+const DAY_MS = 86_400_000;
 const MONTHS = [
   "January",
   "February",
@@ -355,158 +362,83 @@ function FightRow({ fight, past, eventId }: { fight: EventFight; past: boolean; 
 // ---------------------------------------------------------------------------
 // event pane
 
-function clockOf(seconds: number): string {
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-}
-
-function signedLine(line: number): string {
-  return `${line > 0 ? "+" : ""}${line}`;
-}
-
-type Tile = { key: string; label: string; value: string; note: string; to?: string };
-
 /**
  * The line that tells you, before you read a single result, whether this card
- * was worth watching: how often the underdog got there, how often it ended
- * early, and what the standout moment was. An announced card is read the same
- * way from what is at stake and what the closing lines expect.
+ * was worth watching. Every card can be described a couple of dozen ways;
+ * `cardHighlights` scores each of those ways for this card and hands back only
+ * the five worth showing, so a night of first-round knockouts leads with the
+ * finishes and a card carrying two belts leads with the belts.
  */
-function cardTiles(stats: EventDetail["card_stats"], past: boolean): Tile[] {
-  if (past) {
-    const tiles: Tile[] = [];
-    if (stats.priced_fights > 0) {
-      tiles.push({
-        key: "underdogs",
-        label: "Underdog wins",
-        value: `${stats.underdog_wins}/${stats.priced_fights}`,
-        note: "priced fights",
-      });
-    }
-    tiles.push({
-      key: "finishes",
-      label: "Finishes",
-      value: `${stats.finishes}/${stats.completed_fights}`,
-      note: `${stats.knockouts} KO/TKO · ${stats.submissions} SUB`,
-    });
-    if (stats.first_round_finishes > 0) {
-      tiles.push({
-        key: "early",
-        label: "Ended in round 1",
-        value: String(stats.first_round_finishes),
-        note: stats.fastest_finish ? `fastest ${clockOf(stats.fastest_finish.seconds)}` : "of the finishes",
-        to: stats.fastest_finish ? `/fights/${stats.fastest_finish.fight_id}` : undefined,
-      });
-    }
-    if (stats.avg_seconds != null) {
-      tiles.push({
-        key: "time",
-        label: "Average bout",
-        value: clockOf(stats.avg_seconds),
-        note: `${stats.decisions} went to the judges`,
-      });
-    }
-    if (stats.biggest_upset) {
-      tiles.push({
-        key: "upset",
-        label: "Biggest upset",
-        value: signedLine(stats.biggest_upset.line),
-        note: stats.biggest_upset.name,
-        to: `/fights/${stats.biggest_upset.fight_id}`,
-      });
-    }
-    if (stats.bonuses > 0) {
-      tiles.push({
-        key: "bonuses",
-        label: "Bonuses paid",
-        value: String(stats.bonuses),
-        note: `${stats.knockdowns} knockdowns on the card`,
-      });
-    }
-    return tiles;
-  }
+const HIGHLIGHT_ICONS: Record<HighlightIcon, LucideIcon> = {
+  swords: Swords,
+  flame: Flame,
+  trophy: Trophy,
+  timer: Timer,
+  trendingUp: TrendingUp,
+  zap: Zap,
+  users: Users,
+  crown: Crown,
+  target: Target,
+  clock: Clock,
+  gauge: Gauge,
+  award: Award,
+  sparkles: Sparkles,
+  globe: Globe,
+  hourglass: Hourglass,
+  ruler: Ruler,
+  repeat: Repeat,
+  medal: Medal,
+  shieldCheck: ShieldCheck,
+  handFist: HandFist,
+  calendarClock: CalendarClock,
+  activity: Activity,
+  scale: Scale,
+  rocket: Rocket,
+  star: Star,
+  history: History,
+  split: Split,
+  percent: Percent,
+  coins: Coins,
+};
 
-  const tiles: Tile[] = [{
-    key: "card",
-    label: "Bouts announced",
-    value: String(stats.total_fights),
-    note: stats.title_fights ? `${stats.title_fights} for a belt` : "no title bout",
-  }];
-  if (stats.undefeated_fighters > 0) {
-    const ranked = stats.undefeated_ranked_fighters;
-    tiles.push({
-      key: "undefeated",
-      label: ranked > 0 ? "Undefeated ranked" : "Undefeated fighters",
-      value: String(ranked > 0 ? ranked : stats.undefeated_fighters),
-      note: ranked > 0
-        ? `${stats.undefeated_fighters} undefeated fighter${stats.undefeated_fighters === 1 ? "" : "s"} total`
-        : "no verified professional losses",
-    });
-  }
-  if (stats.ranked_fighters > 0) {
-    tiles.push({
-      key: "ranked",
-      label: "Ranked fighters",
-      value: String(stats.ranked_fighters),
-      note: stats.champions ? `${stats.champions} champion${stats.champions > 1 ? "s" : ""} competing` : "in the top 15",
-    });
-  }
-  if (stats.longest_streak) {
-    tiles.push({
-      key: "streak",
-      label: "Longest run",
-      value: `${stats.longest_streak.count}W`,
-      note: stats.longest_streak.name,
-      to: `/fights/${stats.longest_streak.fight_id}`,
-    });
-  }
-  if (stats.closest_matchup) {
-    tiles.push({
-      key: "closest",
-      label: "Closest matchup",
-      value: `${stats.closest_matchup.gap}%`,
-      note: `${lastName(stats.closest_matchup.f1)} vs ${lastName(stats.closest_matchup.f2)}`,
-      to: `/fights/${stats.closest_matchup.fight_id}`,
-    });
-  }
-  if (stats.longest_underdog) {
-    tiles.push({
-      key: "underdog",
-      label: "Longest price",
-      value: signedLine(stats.longest_underdog.line),
-      note: stats.longest_underdog.name,
-      to: `/fights/${stats.longest_underdog.fight_id}`,
-    });
-  }
-  if (stats.debutants > 0) {
-    tiles.push({
-      key: "debut",
-      label: "UFC debuts",
-      value: String(stats.debutants),
-      note: "first time in the promotion",
-    });
-  }
-  return tiles;
-}
+/** Colour is the tile's mood, never its meaning: the label says what it is. */
+const HIGHLIGHT_TONE: Record<Highlight["tone"], string> = {
+  gold: "text-amber-700",
+  fire: "text-rose-700",
+  cool: "text-sky-700",
+  green: "text-emerald-700",
+  plain: "text-zinc-500",
+};
 
 function CardStats({ stats, past }: { stats: EventDetail["card_stats"]; past: boolean }) {
-  const tiles = cardTiles(stats, past);
-  if (!tiles.length) return null;
+  const highlights = cardHighlights(stats, past);
+  if (!highlights.length) return null;
   return (
-    <div className="mt-4 flex flex-wrap gap-px overflow-hidden rounded-xl border border-zinc-200 bg-zinc-200">
-      {tiles.map((tile) => {
+    <div className="mt-4 grid grid-cols-2 gap-2 @xl:grid-cols-3 @4xl:grid-cols-5">
+      {highlights.map((tile) => {
+        const Icon = HIGHLIGHT_ICONS[tile.icon];
         const body = (
           <>
-            <div className="truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-400" title={tile.label}>{tile.label}</div>
-            <div className="mt-0.5 truncate text-sm font-semibold tabular-nums text-zinc-900">{tile.value}</div>
-            <div className="line-clamp-2 text-[10px] leading-[1.3] text-zinc-400" title={tile.note}>{tile.note}</div>
+            <div className={`flex items-center gap-1.5 ${HIGHLIGHT_TONE[tile.tone]}`}>
+              <Icon size={12} strokeWidth={2.25} className="shrink-0" aria-hidden="true" />
+              <span className="truncate text-[9px] font-bold uppercase tracking-[0.11em]" title={tile.label}>{tile.label}</span>
+            </div>
+            <div className="mt-1.5 truncate text-2xl font-semibold leading-none tracking-tight tabular-nums text-zinc-950" title={tile.value}>{tile.value}</div>
+            <div className="mt-1.5 line-clamp-2 text-[10px] leading-[1.35] text-zinc-500" title={tile.note}>{tile.note}</div>
           </>
         );
+        const shape = "flex min-w-0 flex-col rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5";
         return tile.to ? (
-          <Link key={tile.key} to={tile.to} title={`${tile.label}: ${tile.value} · ${tile.note}`} className="min-w-[9.5rem] flex-[1_1_11rem] bg-white px-3 py-2 transition-colors hover:bg-zinc-50">
+          <Link
+            key={tile.key}
+            to={tile.to}
+            title={`${tile.label}: ${tile.value} · ${tile.note}`}
+            className={`${shape} transition hover:border-zinc-400 hover:shadow-[0_1px_3px_rgba(0,0,0,0.06)]`}
+          >
             {body}
           </Link>
         ) : (
-          <div key={tile.key} className="min-w-[9.5rem] flex-[1_1_11rem] bg-white px-3 py-2">{body}</div>
+          <div key={tile.key} className={shape}>{body}</div>
         );
       })}
     </div>
@@ -524,18 +456,34 @@ const segmentStart = (schedule: CardSchedule | undefined, segment: CardSegment):
     : segment === "prelims" ? schedule?.prelims_at ?? null
       : schedule?.early_prelims_at ?? null;
 
+/** The gold of the main card, the plain steel of the prelims: the accent says
+ *  which part of the night this is before the words are read. */
+const SEGMENT_ACCENT: Record<CardSegment, string> = {
+  main: "bg-amber-400",
+  prelims: "bg-zinc-400",
+  early: "bg-zinc-300",
+};
+
 /** The break between the parts of a card. Each one is a broadcast of its own,
  *  starting at its own announced time, which is why the bouts under it are
- *  timed from it rather than from the card. */
-function SegmentBreak({ segment, at, now }: { segment: CardSegment; at: number | null; now: number }) {
-  const away = countdown(at, now);
+ *  timed from it rather than from the card. The heading is the loudest thing
+ *  on the card for a reason: it is what a reader scrolls looking for. The
+ *  clock beside it is the announced start and nothing more — a countdown to a
+ *  card two weeks out is noise, and the header already carries the one that
+ *  matters on the night. */
+function SegmentBreak({ segment, at }: { segment: CardSegment; at: number | null }) {
   const clock = clockTime(at);
   return (
-    <div className="flex items-baseline justify-between gap-3 bg-zinc-50/80 px-4 py-2">
-      <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">{SEGMENT_LABEL[segment]}</span>
+    // The rule above this band is the one the card already draws between rows,
+    // so only the bottom edge is its own.
+    <div className="flex items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-3">
+      <span className="flex min-w-0 items-center gap-2.5">
+        <span className={`h-5 w-1 shrink-0 rounded-full ${SEGMENT_ACCENT[segment]}`} aria-hidden="true" />
+        <span className="truncate text-[15px] font-bold uppercase leading-5 tracking-[0.2em] text-zinc-900">{SEGMENT_LABEL[segment]}</span>
+      </span>
       {clock ? (
-        <span className="shrink-0 text-[10px] font-medium tabular-nums text-zinc-400" title="Announced start, in your time zone">
-          {clock}{away ? <span className="text-zinc-500"> · in {away}</span> : null}
+        <span className="shrink-0 text-xs font-semibold tabular-nums text-zinc-500" title="Announced start, in your time zone">
+          {clock}
         </span>
       ) : null}
     </div>
@@ -630,7 +578,12 @@ function EventPane({ eventId }: { eventId: string }) {
             ) : upcomingSegment ? (
               <span className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
                 <span className="font-medium text-zinc-700">{SEGMENT_LABEL[upcomingSegment.segment]} {clockTime(upcomingSegment.at)}</span>
-                <span className="tabular-nums">in {countdown(upcomingSegment.at, now)}</span>
+                {/* A countdown is worth reading on the day and unreadable
+                    before it — "in 335h 18m" is a number nobody converts —
+                    so past a day out the date above it says everything. */}
+                {upcomingSegment.at != null && upcomingSegment.at - now < DAY_MS
+                  ? <span className="tabular-nums">in {countdown(upcomingSegment.at, now)}</span>
+                  : null}
                 <span className="text-zinc-400">your time zone</span>
               </span>
             ) : null}
@@ -656,7 +609,7 @@ function EventPane({ eventId }: { eventId: string }) {
           event.fights.map((fight, index) => (
             <div key={fight.id}>
               {fight.segment && fight.segment !== event.fights[index - 1]?.segment
-                ? <SegmentBreak segment={fight.segment} at={segmentStart(event.schedule, fight.segment)} now={now} />
+                ? <SegmentBreak segment={fight.segment} at={segmentStart(event.schedule, fight.segment)} />
                 : null}
               {/* The bout on now is boxed off from the rows around it; the dot
                   and the word both say so, so neither colour nor motion is

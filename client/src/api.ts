@@ -86,32 +86,58 @@ export type FightSide = {
   record_verified?: boolean;
 };
 
+/** Everything a card can be summarised by. The header picks the few of these
+ *  that are actually worth reading for the card in front of it; the rest are
+ *  the pool it picks from, so two cards rarely lead with the same line. */
 export type CardStats = {
   total_fights: number;
   completed_fights: number;
   title_fights: number;
+  five_round_bouts: number;
+  main_event: { fight_id: string; f1: string; f2: string; weight_class: string } | null;
   priced_fights: number;
   underdog_wins: number;
   finishes: number;
   knockouts: number;
   submissions: number;
   decisions: number;
+  split_decisions: number;
   first_round_finishes: number;
   bonuses: number;
   knockdowns: number;
+  takedowns: number;
+  submission_attempts: number;
+  strikes: number;
   avg_seconds: number | null;
   total_seconds: number;
   biggest_upset: { fight_id: string; name: string; line: number } | null;
   fastest_finish: { fight_id: string; name: string; seconds: number; method: string } | null;
+  longest_bout: { fight_id: string; f1: string; f2: string; seconds: number } | null;
+  most_strikes: { fight_id: string; name: string; count: number } | null;
+  most_knockdowns: { fight_id: string; name: string; count: number } | null;
+  debut_wins: number;
   ranked_fighters: number;
   champions: number;
+  former_champions: number;
   debutants: number;
   undefeated_fighters: number;
   undefeated_ranked_fighters: number;
+  rematches: number;
+  countries: number;
+  divisions: number;
+  avg_age: number | null;
+  combined_record: { wins: number; losses: number; fighters: number } | null;
+  career_finish_rate: number | null;
   closest_matchup: { fight_id: string; f1: string; f2: string; gap: number } | null;
   biggest_favorite: { fight_id: string; name: string; line: number } | null;
   longest_underdog: { fight_id: string; name: string; line: number } | null;
   longest_streak: { fight_id: string; name: string; count: number } | null;
+  most_experienced: { fight_id: string; name: string; bouts: number } | null;
+  most_finishes: { fight_id: string; name: string; count: number } | null;
+  youngest: { fight_id: string; name: string; age: number } | null;
+  oldest: { fight_id: string; name: string; age: number } | null;
+  longest_layoff: { fight_id: string; name: string; days: number } | null;
+  biggest_reach_gap: { fight_id: string; name: string; inches: number } | null;
 };
 
 /** A fighter's UFC record as it stood entering one bout. */

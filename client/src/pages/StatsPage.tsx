@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pin, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { useApi } from "../api";
 import type { StatChip, StatsDashboard } from "../api";
 import Avatar from "../components/Avatar";
@@ -679,8 +679,6 @@ function Leaderboard({
   board,
   settings,
   update,
-  pinned,
-  onTogglePin,
   fighterSelected,
   pinnedFighterIds,
   division,
@@ -689,8 +687,6 @@ function Leaderboard({
   board: StatsDashboard["leaderboards"][number];
   settings: StatsSettings;
   update: Update;
-  pinned: boolean;
-  onTogglePin: () => void;
   fighterSelected: boolean;
   pinnedFighterIds: ReadonlySet<string>;
   division: string;
@@ -699,8 +695,12 @@ function Leaderboard({
   const rowsScroll = useRouteScrollRestoration<HTMLDivElement>(`stats-board:${board.key}`);
   return (
     <section className={`${shell} flex h-[41rem] min-w-0 flex-col overflow-hidden ${className}`}>
-      <header className="flex min-h-36 shrink-0 flex-col border-b border-zinc-200 px-4 py-3">
-        <div className="flex min-h-7 items-start justify-between gap-2">
+      {/* Every card's header is the same height whatever it holds, so the five
+          lists all start on the same line: a fixed row for the title, two lines
+          for the description however long it runs, and the controls anchored to
+          the bottom of a space sized for the card that needs the most of them. */}
+      <header className="grid shrink-0 grid-rows-[1.75rem_2.25rem_1fr] border-b border-zinc-200 px-4 py-3 md:h-44">
+        <div className="flex items-start justify-between gap-2">
           {board.key === "record" ? (
             <div className={segmentedGroup} aria-label="Bouts, wins or losses">
               {(["bouts", "wins", "losses"] as const).map((group) => (
@@ -716,21 +716,16 @@ function Leaderboard({
               ))}
             </div>
           ) : (
-            <h2 className="pt-1 text-sm font-semibold text-zinc-950">{board.title}</h2>
+            <h2 className="truncate pt-1 text-sm font-semibold text-zinc-950" title={board.title}>{board.title}</h2>
           )}
-          <button
-            type="button"
-            onClick={onTogglePin}
-            aria-label={`${pinned ? "Unpin" : "Pin"} ${board.title}`}
-            aria-pressed={pinned}
-            title={`${pinned ? "Unpin" : "Pin"} ${board.title}`}
-            className={`grid h-7 w-7 shrink-0 place-items-center rounded-full transition ${pinned ? "bg-zinc-900 text-white shadow-sm" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"}`}
-          >
-            <Pin size={14} strokeWidth={2} fill={pinned ? "currentColor" : "none"} />
-          </button>
         </div>
-        <p className="mt-0.5 text-[10px] leading-4 text-zinc-400">{board.description}</p>
-        <div className="mt-auto min-h-6">
+        {/* A definition can run to a paragraph. Two lines of it belong on the
+            card; the whole of it belongs one hover away. */}
+        <p className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-zinc-400" title={board.description}>{board.description}</p>
+        {/* Controls start on the same line on every card — that, and the two
+            fixed rows above them, is what lines all five lists up whether a
+            card takes one qualifier or five. */}
+        <div className="min-h-0 overflow-y-auto">
           <CardControls boardKey={board.key} settings={settings} update={update} division={division} />
         </div>
       </header>
@@ -775,17 +770,6 @@ function Leaderboard({
       </div>
     </section>
   );
-}
-
-const PINNED_BOARDS_KEY = "ufcsh:stats:pinned-boards";
-
-function loadPinnedBoards(): string[] {
-  try {
-    const value = JSON.parse(window.localStorage.getItem(PINNED_BOARDS_KEY) ?? "[]");
-    return Array.isArray(value) ? value.filter((key): key is string => typeof key === "string") : [];
-  } catch {
-    return [];
-  }
 }
 
 const ROW_COUNTS = Array.from({ length: 15 }, (_, index) => String((index + 1) * 10));
@@ -1058,16 +1042,7 @@ export default function StatsPage() {
   const [keepFullLists, setKeepFullLists] = useHistoryState("stats:keep-full-lists", false);
   const [settings, setSettings] = useHistoryState<StatsSettings>("stats:settings", DEFAULT_SETTINGS);
   const [selectedFighters, setSelectedFighters] = useHistoryState<PickedFighter[]>("stats:fighters", []);
-  const [pinnedBoards, setPinnedBoards] = useState<string[]>(loadPinnedBoards);
   const [resetTurns, setResetTurns] = useState(0);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(PINNED_BOARDS_KEY, JSON.stringify(pinnedBoards));
-    } catch {
-      // Pinning still works for this session when storage is unavailable.
-    }
-  }, [pinnedBoards]);
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
@@ -1088,14 +1063,9 @@ export default function StatsPage() {
   }, [data]);
   const dashboard = data ?? displayed;
 
-  const orderedBoards = useMemo(() => {
-    if (!dashboard) return [];
-    const pinned = new Set(pinnedBoards);
-    return dashboard.leaderboards
-      .map((board, index) => ({ board, index }))
-      .sort((a, b) => Number(pinned.has(b.board.key)) - Number(pinned.has(a.board.key)) || a.index - b.index)
-      .map(({ board }) => board);
-  }, [dashboard, pinnedBoards]);
+  // The five cards keep the one order they are defined in: it is what makes
+  // "the third card is Output" true of every visit and every reader.
+  const orderedBoards = dashboard?.leaderboards ?? [];
   const pinnedFighterIds = useMemo(
     () => keepFullLists ? new Set(selectedFighters.map((fighter) => fighter.id)) : new Set<string>(),
     [keepFullLists, selectedFighters],
@@ -1109,9 +1079,6 @@ export default function StatsPage() {
   });
 
   const update: Update = (key, value) => setSettings((current) => ({ ...current, [key]: value }));
-  const togglePinnedBoard = (key: string) => {
-    setPinnedBoards((current) => (current.includes(key) ? current.filter((pinned) => pinned !== key) : [...current, key]));
-  };
   const reset = () => {
     setDivision("all");
     setIncludeWomen(false);
@@ -1196,8 +1163,6 @@ export default function StatsPage() {
               board={board}
               settings={settings}
               update={update}
-              pinned={pinnedBoards.includes(board.key)}
-              onTogglePin={() => togglePinnedBoard(board.key)}
               fighterSelected={selectedFighters.length > 0}
               pinnedFighterIds={pinnedFighterIds}
               division={division}

@@ -421,7 +421,7 @@ function FeaturesMenu({
             value={divisionOrder}
             onChange={(event) => onDivisionOrder(event.target.value as DivisionOrder)}
             aria-label="Division order"
-            className="h-8 shrink-0 rounded-xl border border-zinc-200 bg-zinc-50 px-2 text-[11px] font-semibold text-zinc-700 outline-none focus:border-zinc-400"
+            className="h-8 shrink-0 rounded-xl border border-zinc-200 bg-zinc-50 pl-2.5 pr-7 text-[11px] font-semibold text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-400"
           >
             <option value="light">Lightest first</option>
             <option value="heavy">Heaviest first</option>
@@ -436,7 +436,7 @@ function FeaturesMenu({
             value={dateMode}
             onChange={(event) => onDateMode(event.target.value as DateMode)}
             aria-label="Fight date format"
-            className="h-8 shrink-0 rounded-xl border border-zinc-200 bg-zinc-50 px-2 text-[11px] font-semibold text-zinc-700 outline-none focus:border-zinc-400"
+            className="h-8 shrink-0 rounded-xl border border-zinc-200 bg-zinc-50 pl-2.5 pr-7 text-[11px] font-semibold text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-400"
           >
             <option value="relative">Relative days</option>
             <option value="date">Calendar date</option>

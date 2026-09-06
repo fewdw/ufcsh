@@ -65,7 +65,7 @@ test("segments are left unassigned rather than guessed from a card of a differen
 });
 
 const card = [
-  { ord: 0, segment: "main" as const },
+  { ord: 0, segment: "main" as const, fiveRound: true },
   { ord: 1, segment: "main" as const },
   { ord: 2, segment: "prelims" as const },
   { ord: 3, segment: "prelims" as const },
@@ -74,9 +74,22 @@ const times = { main: Date.parse("2026-09-05T19:00:00Z"), prelims: Date.parse("2
 
 test("a bout is estimated from its own segment's start, not the card's", () => {
   assert.equal(estimatedStart(card, 3, times), times.prelims, "the opening bout starts when its segment does");
-  assert.equal(estimatedStart(card, 2, times), times.prelims + 27 * 60_000);
+  assert.equal(estimatedStart(card, 2, times), times.prelims + 30 * 60_000);
   assert.equal(estimatedStart(card, 1, times), times.main, "the main card restarts the clock");
-  assert.equal(estimatedStart(card, 0, times), times.main + 27 * 60_000);
+  assert.equal(estimatedStart(card, 0, times), times.main + 30 * 60_000);
+});
+
+test("a five-round bout pushes what follows it further out than a three-round one", () => {
+  // Read from the bottom of the main card up: the co-main is a title bout, so
+  // the main event that follows it is given forty minutes rather than thirty.
+  const withTitleCoMain = [
+    { ord: 0, segment: "main" as const, fiveRound: true },
+    { ord: 1, segment: "main" as const, fiveRound: true },
+    { ord: 2, segment: "main" as const },
+  ];
+  assert.equal(estimatedStart(withTitleCoMain, 2, times), times.main);
+  assert.equal(estimatedStart(withTitleCoMain, 1, times), times.main + 30 * 60_000);
+  assert.equal(estimatedStart(withTitleCoMain, 0, times), times.main + 70 * 60_000);
 });
 
 test("no announced time means no estimate rather than a made-up one", () => {

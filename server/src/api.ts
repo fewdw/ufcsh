@@ -44,6 +44,15 @@ function cardSchedule(e: EventRow): { main_card_at: number | null; prelims_at: n
 
 type SegmentOf = "main" | "prelims" | "early" | null;
 
+/** A bout as the running order reads it. Five rounds are what the main event
+ *  and every championship bout are scheduled for, and they take longer, so the
+ *  estimate for the bouts after them has to know it. */
+const scheduledBout = (f: any) => ({
+  ord: Number(f.ord) || 0,
+  segment: (f.segment || null) as SegmentOf,
+  fiveRound: Boolean(f.title_fight) || Number(f.ord) === 0,
+});
+
 const segmentTimes = (e: EventRow): SegmentTimes => ({
   main: e.main_card_at ?? null,
   prelims: e.prelims_at ?? null,
@@ -248,6 +257,9 @@ function cardStats(fights: any[], eventDate: string, complete: boolean, rankingT
   const index = fightIndex();
   const completed = fights.filter((fight) => fight.f1_outcome != null || fight.f2_outcome != null);
   const titleFights = fights.filter((fight) => fight.title_fight && ["title", "interim"].includes(fight.title_type)).length;
+  // The main event and every championship bout are scheduled for five rounds.
+  const fiveRoundBouts = fights.filter((fight) => Number(fight.ord) === 0 || (fight.title_fight && ["title", "interim"].includes(fight.title_type))).length;
+  const mainEvent = fights.find((fight) => Number(fight.ord) === 0) ?? null;
 
   let pricedFights = 0;
   let underdogWins = 0;
@@ -273,21 +285,50 @@ function cardStats(fights: any[], eventDate: string, complete: boolean, rankingT
   const knockouts = completed.filter((fight) => fight.method === "KO/TKO").length;
   const submissions = completed.filter((fight) => fight.method === "SUB").length;
   const decisions = completed.filter((fight) => fight.method?.endsWith("-DEC")).length;
+  // A split or majority card is the one decision worth singling out: the two
+  // corners left the cage without agreeing on who won.
+  const splitDecisions = completed.filter((fight) => fight.method === "S-DEC" || fight.method === "M-DEC").length;
   const firstRoundFinishes = completed.filter((fight) => Number(fight.round) === 1 && (fight.method === "KO/TKO" || fight.method === "SUB")).length;
   const bonuses = fights.reduce((total, fight) => total + (fight.perf_bonus ? 1 : 0) + (fight.fotn_bonus ? 1 : 0), 0);
 
   let seconds = 0;
   let timed = 0;
   let knockdowns = 0;
+  let takedowns = 0;
+  let submissionAttempts = 0;
+  let strikes = 0;
+  let debutWins = 0;
   let fastestFinish: { fight_id: string; name: string; seconds: number; method: string } | null = null;
+  let longestBout: { fight_id: string; f1: string; f2: string; seconds: number } | null = null;
+  let mostStrikes: { fight_id: string; name: string; count: number } | null = null;
+  let mostKnockdowns: { fight_id: string; name: string; count: number } | null = null;
   for (const fight of completed) {
     const indexed = index.byId.get(fight.id);
     if (!indexed) continue;
     if (indexed.elapsed != null) {
       seconds += indexed.elapsed;
       timed += 1;
+      if (!longestBout || indexed.elapsed > longestBout.seconds) {
+        longestBout = { fight_id: fight.id, f1: indexed.sides[0].name, f2: indexed.sides[1].name, seconds: indexed.elapsed };
+      }
     }
-    knockdowns += (indexed.sides[0].kd ?? 0) + (indexed.sides[1].kd ?? 0);
+    for (const side of indexed.sides) {
+      knockdowns += side.kd ?? 0;
+      takedowns += side.td ?? 0;
+      submissionAttempts += side.sub ?? 0;
+      strikes += side.str ?? 0;
+      if (side.str != null && (!mostStrikes || side.str > mostStrikes.count)) {
+        mostStrikes = { fight_id: fight.id, name: side.name, count: side.str };
+      }
+      if (side.kd != null && side.kd > 0 && (!mostKnockdowns || side.kd > mostKnockdowns.count)) {
+        mostKnockdowns = { fight_id: fight.id, name: side.name, count: side.kd };
+      }
+      // A first UFC walk that ends with a hand raised is the card's own story.
+      if (side.outcome === "win" && side.id
+        && boutsBefore(index, side.id, eventDate).filter((bout) => bout.id !== fight.id).length === 0) {
+        debutWins += 1;
+      }
+    }
     const winner = indexed.sides.find((side) => side.outcome === "win");
     if (winner && indexed.elapsed != null && (indexed.method === "KO/TKO" || indexed.method === "SUB")
       && (!fastestFinish || indexed.elapsed < fastestFinish.seconds)) {
@@ -298,16 +339,33 @@ function cardStats(fights: any[], eventDate: string, complete: boolean, rankingT
   // Announced cards: what is on the line, and what the market thinks.
   let rankedFighters = 0;
   let champions = 0;
+  let formerChampions = 0;
   let debutants = 0;
   let undefeatedFighters = 0;
   let undefeatedRankedFighters = 0;
   let announcedPriced = 0;
+  let rematches = 0;
+  let careerWins = 0;
+  let careerLosses = 0;
+  let recordedFighters = 0;
+  let ufcWins = 0;
+  let ufcFinishes = 0;
+  const ages: number[] = [];
+  const countries = new Set<string>();
+  const divisions = new Set<string>();
   let closest: { fight_id: string; f1: string; f2: string; gap: number } | null = null;
   let biggestFavorite: { fight_id: string; name: string; line: number } | null = null;
   let longestUnderdog: { fight_id: string; name: string; line: number } | null = null;
   let longestStreak: { fight_id: string; name: string; count: number } | null = null;
+  let mostExperienced: { fight_id: string; name: string; bouts: number } | null = null;
+  let mostFinishes: { fight_id: string; name: string; count: number } | null = null;
+  let youngest: { fight_id: string; name: string; age: number } | null = null;
+  let oldest: { fight_id: string; name: string; age: number } | null = null;
+  let longestLayoff: { fight_id: string; name: string; days: number } | null = null;
+  let biggestReachGap: { fight_id: string; name: string; inches: number } | null = null;
   if (!complete) {
     for (const fight of fights) {
+      if (fight.weight_class) divisions.add(fight.weight_class);
       const odds = fightOdds(fight.id) as { f1: { close: string | null }; f2: { close: string | null } } | null;
       const probabilities = {
         f1: americanImpliedProbability(odds?.f1.close ?? null),
@@ -324,23 +382,62 @@ function cardStats(fights: any[], eventDate: string, complete: boolean, rankingT
           if (line > 0 && (!longestUnderdog || line > longestUnderdog.line)) longestUnderdog = { fight_id: fight.id, name: fight[`${side}_name`], line };
         }
       }
+      // How much longer one fighter's arms are than the other's, which is the
+      // one physical edge a reader can act on before a bout is fought.
+      const reaches = (["f1", "f2"] as const).map((side) => index.fighters.get(fight[`${side}_id`] ?? "")?.reachIn ?? null);
+      if (reaches[0] != null && reaches[1] != null) {
+        const inches = Math.abs(reaches[0] - reaches[1]);
+        const longer = reaches[0] > reaches[1] ? "f1" : "f2";
+        if (inches >= 3 && (!biggestReachGap || inches > biggestReachGap.inches)) {
+          biggestReachGap = { fight_id: fight.id, name: fight[`${longer}_name`], inches: Math.round(inches) };
+        }
+      }
       for (const side of ["f1", "f2"] as const) {
         const id: string = fight[`${side}_id`] ?? "";
         if (!id) continue;
+        const other: string = fight[side === "f1" ? "f2_id" : "f1_id"] ?? "";
         const summary = fighterSummary(id, fight[`${side}_name`], rankingType);
         if (summary.ranking) rankedFighters += 1;
         if (summary.ranking?.rank === "C" || summary.ranking?.rank === "IC") champions += 1;
-        const bouts = boutsBefore(index, id, eventDate).filter((bout) => bout.id !== fight.id);
-        const completeRecord = completeRecordBefore(index, id, eventDate, Number(fight.ord) || 0);
-        if (completeRecord && completeRecord.losses === 0 && completeRecord.wins + completeRecord.draws > 0) {
-          undefeatedFighters += 1;
-          if (summary.ranking) undefeatedRankedFighters += 1;
+        const prior = careerBefore(index, id, eventDate, fight.weight_class || "", undefined, other);
+        // Counted once per bout rather than once per corner.
+        if (side === "f1" && prior.meetings > 0) rematches += 1;
+        if (prior.formerChampion) formerChampions += 1;
+        ufcWins += prior.wins;
+        ufcFinishes += prior.koWins + prior.subWins;
+        const fighter = index.fighters.get(id);
+        if (fighter?.countryCode) countries.add(fighter.countryCode);
+        const age = fighter?.birthDate ? ageOn(fighter.birthDate, eventDate) : null;
+        if (age != null) {
+          ages.push(age);
+          if (!youngest || age < youngest.age) youngest = { fight_id: fight.id, name: fight[`${side}_name`], age };
+          if (!oldest || age > oldest.age) oldest = { fight_id: fight.id, name: fight[`${side}_name`], age };
         }
-        if (bouts.length === 0) debutants += 1;
-        const decidedOutcomes = bouts.map((bout) => sideOf(bout, id).outcome).filter((outcome) => outcome && outcome !== "nc");
-        let run = 0;
-        for (let i = decidedOutcomes.length - 1; i >= 0 && decidedOutcomes[i] === "win"; i--) run += 1;
-        if (run >= 2 && (!longestStreak || run > longestStreak.count)) longestStreak = { fight_id: fight.id, name: fight[`${side}_name`], count: run };
+        if (prior.bouts > 0 && (!mostExperienced || prior.bouts > mostExperienced.bouts)) {
+          mostExperienced = { fight_id: fight.id, name: fight[`${side}_name`], bouts: prior.bouts };
+        }
+        const finishes = prior.koWins + prior.subWins;
+        if (finishes > 0 && (!mostFinishes || finishes > mostFinishes.count)) {
+          mostFinishes = { fight_id: fight.id, name: fight[`${side}_name`], count: finishes };
+        }
+        // Only a layoff long enough to be a story counts as one.
+        if (prior.daysSince != null && prior.daysSince >= 365 && (!longestLayoff || prior.daysSince > longestLayoff.days)) {
+          longestLayoff = { fight_id: fight.id, name: fight[`${side}_name`], days: prior.daysSince };
+        }
+        const completeRecord = completeRecordBefore(index, id, eventDate, Number(fight.ord) || 0);
+        if (completeRecord) {
+          recordedFighters += 1;
+          careerWins += completeRecord.wins;
+          careerLosses += completeRecord.losses;
+          if (completeRecord.losses === 0 && completeRecord.wins + completeRecord.draws > 0) {
+            undefeatedFighters += 1;
+            if (summary.ranking) undefeatedRankedFighters += 1;
+          }
+        }
+        if (prior.bouts === 0) debutants += 1;
+        if (prior.winStreak >= 2 && (!longestStreak || prior.winStreak > longestStreak.count)) {
+          longestStreak = { fight_id: fight.id, name: fight[`${side}_name`], count: prior.winStreak };
+        }
       }
     }
   }
@@ -349,28 +446,53 @@ function cardStats(fights: any[], eventDate: string, complete: boolean, rankingT
     total_fights: fights.length,
     completed_fights: completed.length,
     title_fights: titleFights,
+    five_round_bouts: fiveRoundBouts,
+    main_event: mainEvent
+      ? { fight_id: mainEvent.id, f1: mainEvent.f1_name, f2: mainEvent.f2_name, weight_class: mainEvent.weight_class || "" }
+      : null,
     priced_fights: complete ? pricedFights : announcedPriced,
     underdog_wins: underdogWins,
     finishes: knockouts + submissions,
     knockouts,
     submissions,
     decisions,
+    split_decisions: splitDecisions,
     first_round_finishes: firstRoundFinishes,
     bonuses,
     knockdowns,
+    takedowns,
+    submission_attempts: submissionAttempts,
+    strikes,
     avg_seconds: timed ? Math.round(seconds / timed) : null,
     total_seconds: seconds,
     biggest_upset: biggestUpset,
     fastest_finish: fastestFinish,
+    longest_bout: longestBout,
+    most_strikes: mostStrikes,
+    most_knockdowns: mostKnockdowns,
+    debut_wins: debutWins,
     ranked_fighters: rankedFighters,
     champions,
+    former_champions: formerChampions,
     debutants,
     undefeated_fighters: undefeatedFighters,
     undefeated_ranked_fighters: undefeatedRankedFighters,
+    rematches,
+    countries: countries.size,
+    divisions: divisions.size,
+    avg_age: ages.length ? Math.round((ages.reduce((total, age) => total + age, 0) / ages.length) * 10) / 10 : null,
+    combined_record: recordedFighters >= 4 ? { wins: careerWins, losses: careerLosses, fighters: recordedFighters } : null,
+    career_finish_rate: ufcWins >= 10 ? Math.round((ufcFinishes / ufcWins) * 100) : null,
     closest_matchup: closest,
     biggest_favorite: biggestFavorite,
     longest_underdog: longestUnderdog,
     longest_streak: longestStreak,
+    most_experienced: mostExperienced,
+    most_finishes: mostFinishes,
+    youngest,
+    oldest,
+    longest_layoff: longestLayoff,
+    biggest_reach_gap: biggestReachGap,
   };
 }
 
@@ -455,7 +577,7 @@ function liveCard(rankingType: RankingType): unknown | null {
   if (!bout) return null;
 
   const times = segmentTimes(e);
-  const card = fights.map((f) => ({ ord: Number(f.ord) || 0, segment: (f.segment || null) as SegmentOf }));
+  const card = fights.map(scheduledBout);
   const starts_at = estimatedStart(card, Number(bout.ord) || 0, times);
   const completed = fights.filter(fightIsComplete).length;
   // Numbers already published settle it. Otherwise the announced start does:
@@ -505,7 +627,7 @@ async function getEvent(id: string, rankingType: RankingType): Promise<unknown |
   // reached yet is estimated from its own segment's start and the bouts under
   // it. A bout that has happened, or is happening, has no estimate to give.
   const times = segmentTimes(e);
-  const card = fights.map((f) => ({ ord: Number(f.ord) || 0, segment: (f.segment || null) as SegmentOf }));
+  const card = fights.map(scheduledBout);
   const startsAt = (f: any): number | null =>
     fightIsComplete(f) || fightIsUnderway(f) ? null : estimatedStart(card, Number(f.ord) || 0, times);
 
