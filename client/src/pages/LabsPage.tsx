@@ -1144,6 +1144,7 @@ export default function LabsPage() {
           loading={insights.loading || insights.refreshing}
           error={insights.error}
           onRetry={insights.retry}
+          studyQuery={`${query}${exclude ? `&exclude=${exclude}` : ""}`}
         />
       </main>
     </div>

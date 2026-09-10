@@ -185,6 +185,14 @@ export type BarDatum = {
   /** Sample size behind the bar, shown beside it and used to gray thin samples. */
   n?: number;
   tip?: { label: string; value: string; color?: string }[];
+  color?: string;
+  compareColor?: string;
+  selected?: boolean;
+  onSelect?: () => void;
+  /** Optional row copy when the displayed text should be more concrete than
+   * the numeric value used to size the mark. */
+  displayValue?: string;
+  displayCompareValue?: string;
 };
 
 export function BarList({
@@ -254,18 +262,22 @@ function BarRow({
 }) {
   const { open, at, id, handlers } = useTip();
   const width = (value: number | null | undefined) => `${Math.max(value ? 0.8 : 0, ((value ?? 0) / scale) * 100)}%`;
+  const primaryColor = datum.color ?? colors[0];
+  const secondaryColor = datum.compareColor ?? colors[1];
   const tipRows = datum.tip ?? [
-    { label: names?.[0] ?? "Value", value: formatValue(datum.value, format), color: colors[0] },
-    ...(datum.compareValue != null ? [{ label: names?.[1] ?? "Comparison", value: formatValue(datum.compareValue, format), color: colors[1] }] : []),
+    { label: names?.[0] ?? "Value", value: formatValue(datum.value, format), color: primaryColor },
+    ...(datum.compareValue != null ? [{ label: names?.[1] ?? "Comparison", value: formatValue(datum.compareValue, format), color: secondaryColor }] : []),
     ...(datum.n != null ? [{ label: "observations", value: datum.n.toLocaleString("en-US") }] : []),
   ];
   return (
     <div className="relative">
       <button
         type="button"
+        aria-pressed={datum.onSelect ? datum.selected : undefined}
         aria-describedby={open ? id : undefined}
         {...handlers}
-        className="grid w-full grid-cols-[minmax(4.5rem,9rem)_minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-1 py-1 text-left transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-zinc-900"
+        onClick={datum.onSelect}
+        className={`grid w-full grid-cols-[minmax(4.5rem,9rem)_minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-1 py-1 text-left transition-colors hover:bg-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-zinc-900 ${datum.selected ? "bg-zinc-100" : ""}`}
       >
         <span className={`truncate text-[11px] font-medium ${dim ? "text-zinc-400" : "text-zinc-700"}`} title={datum.label}>
           {datum.label}
@@ -274,21 +286,22 @@ function BarRow({
           <span className="flex h-3 items-center">
             <span
               className="h-full rounded-r-[4px] transition-[width] duration-300"
-              style={{ width: width(datum.value), backgroundColor: colors[0], opacity: dim ? 0.35 : emphasised ? 1 : 0.28 }}
+              style={{ width: width(datum.value), backgroundColor: primaryColor, opacity: dim ? 0.35 : emphasised ? 1 : 0.28 }}
             />
           </span>
           {comparing ? (
-            <span className="flex h-2 items-center">
+            <span className="flex h-3 items-center">
               <span
-                className="h-full rounded-r-[3px] transition-[width] duration-300"
-                style={{ width: width(datum.compareValue), backgroundColor: colors[1], opacity: dim ? 0.35 : 1 }}
+                className="h-full rounded-r-[4px] transition-[width] duration-300"
+                style={{ width: width(datum.compareValue), backgroundColor: secondaryColor, opacity: dim ? 0.35 : 1 }}
               />
             </span>
           ) : null}
         </span>
-        <span className="flex shrink-0 items-baseline gap-1.5 text-right">
-          <span className={`text-[11px] font-semibold tabular-nums ${dim ? "text-zinc-400" : "text-zinc-900"}`}>
-            {formatValue(datum.value, format)}
+        <span className="flex shrink-0 items-center gap-1.5 text-right">
+          <span className={`flex flex-col text-[10px] font-semibold leading-[13px] tabular-nums ${dim ? "text-zinc-400" : "text-zinc-900"}`}>
+            <span>{datum.displayValue ?? formatValue(datum.value, format)}</span>
+            {datum.compareValue != null ? <span>{datum.displayCompareValue ?? formatValue(datum.compareValue, format)}</span> : null}
           </span>
           {datum.n != null ? <span className="w-10 text-[9px] tabular-nums text-zinc-400">n={compact(datum.n)}</span> : null}
         </span>

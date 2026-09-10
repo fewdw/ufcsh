@@ -4,7 +4,7 @@ import { useApi } from "../api";
 import type { CompleteRecordBefore, FighterProfile, FighterRecord, FighterStat, HistoryRow, ProfessionalHistoryRow } from "../api";
 import { formatDateShortWithYear, formatLine, formatMethod } from "../format";
 import { formatValue } from "../components/chartTokens";
-import Avatar from "../components/Avatar";
+import FighterPortrait from "../components/FighterPortrait";
 import Flag from "../components/Flag";
 import ResultDots from "../components/ResultDots";
 import { useSeo } from "../seo";
@@ -429,6 +429,7 @@ export default function FighterPage() {
     ] as [string, string][]
   ).filter(([, v]) => v);
 
+
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
       <div className="mx-auto flex max-w-5xl flex-col gap-3 p-3 pb-8">
@@ -443,7 +444,9 @@ export default function FighterPage() {
         <section className={`${shell} px-6 py-5`}>
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
             <div className="flex min-w-0 items-center gap-5">
-              <Avatar src={fighter.photo_url} name={fighter.name} size="xl" />
+              <div className="flex shrink-0 flex-col items-center gap-2">
+                <FighterPortrait src={fighter.photo_full_url} headshot={fighter.photo_url} name={fighter.name} size="profile" />
+              </div>
               <div className="min-w-0">
               <h1 className="flex flex-wrap items-center gap-2 break-words text-2xl font-semibold tracking-tight text-zinc-950">
                 <span>{fighter.name}</span>

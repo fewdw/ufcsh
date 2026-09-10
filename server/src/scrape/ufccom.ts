@@ -235,34 +235,119 @@ export async function scrapeAthleteDirectoryPage(page: number): Promise<Director
   return athletes;
 }
 
-/** Fighter headshot from ufc.com. Returns null when not found. */
-export async function scrapeFighterImage(name: string): Promise<string | null> {
-  const slug = name
+/**
+ * The two pictures ufc.com holds for an athlete: the square-ish headshot every
+ * list and avatar uses, and the full-body cut-out its own matchup art is built
+ * from. Either can be missing — long-retired fighters usually have only a
+ * headshot, and some have neither.
+ */
+export type FighterImages = { headshot: string | null; fullBody: string | null };
+
+const NO_IMAGES: FighterImages = { headshot: null, fullBody: null };
+
+/**
+ * ufc.com's stand-ins for an athlete it has no picture of. They cannot be told
+ * apart by where they sit on the page — the shadow figure is served through the
+ * very `athlete_bio_full_body` image style the real cut-outs use — only by
+ * their file names, which the site spells in several cases and shapes:
+ * `SILHOUETTE.png`, `silhouette-headshot-female.png`,
+ * `SHADOW_Fighter_fullLength_RED.png`, `fighter_images/Shadow/UFCWomen_Headshot.png`.
+ * Taking one for real art leaves a fighter standing as a grey outline beside an
+ * empty round avatar, and no later pass ever corrects it: the stand-in keeps
+ * coming back, so the scrape never looks "empty" enough to be retried properly.
+ */
+const PLACEHOLDER_ART = /no-profile-image|silhouette|shadow[_/]/i;
+
+function absoluteUfcUrl(src: string | undefined): string | null {
+  if (!src) return null;
+  const trimmed = src.trim();
+  if (!trimmed || PLACEHOLDER_ART.test(trimmed)) return null;
+  if (trimmed.startsWith("//")) return `https:${trimmed}`;
+  if (trimmed.startsWith("http")) return trimmed;
+  return `https://www.ufc.com${trimmed.startsWith("/") ? "" : "/"}${trimmed}`;
+}
+
+/**
+ * Both pictures off one athlete page. The full body is found by its Drupal
+ * image style rather than by position: the same page also carries headshots of
+ * past opponents, and only the bio hero is ever built at `athlete_bio_full_body`.
+ * Its URL carries a signed token, so the style cannot be swapped in after the
+ * fact — the page is the only place the full-body URL can come from.
+ */
+export function parseAthleteImages(html: string): FighterImages {
+  const $ = cheerio.load(html);
+  const fullBody =
+    absoluteUfcUrl($("img[src*='athlete_bio_full_body']").first().attr("src")) ??
+    // Only ever the hero's own picture: the page also lists every past
+    // opponent's headshot, and picking the first image on the page would
+    // eventually hand back somebody else's face.
+    absoluteUfcUrl($(".hero-profile__image-wrap img, img.hero-profile__image").first().attr("src"));
+  const headshot = absoluteUfcUrl($("meta[property='og:image']").attr("content"));
+  return { headshot, fullBody };
+}
+
+export function athleteSlug(name: string): string {
+  return name
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/['".]/g, "")
     .replace(/\s+/g, "-");
+}
+
+/** The first athlete result on a search page, as a path we can fetch. */
+export function parseSearchAthlete(html: string, name?: string): { href: string | null; img: string | null } {
+  const $ = cheerio.load(html);
+  const cards = $("div.solr-athlete-card");
+  const card = (name ? cards.filter((_, element) => {
+    const title = $(element).find(".field--name-node-title, h2").first().text();
+    const href = $(element).find("a[href*='/athlete/']").first().attr("href") ?? "";
+    return normName(title) === normName(name) || href.split("/athlete/")[1]?.split(/[?#]/)[0] === athleteSlug(name);
+  }) : cards).first();
+  if (name && !card.length) return { href: null, img: null };
+  const href = card.find("a[href*='/athlete/']").first().attr("href")
+    ?? $("a[href*='/athlete/']").first().attr("href");
+  return { href: absoluteUfcUrl(href), img: absoluteUfcUrl(card.find("img").first().attr("src")) };
+}
+
+/**
+ * Fighter pictures from ufc.com. The athlete page is the only source that has
+ * the full body, so when the name does not slug straight onto a page we search
+ * and follow the first athlete hit to its page rather than settling for the
+ * headshot on the search card. Missing pictures are null, never an error: most
+ * of the roster's history predates ufc.com having art for them at all.
+ */
+export async function scrapeFighterImages(name: string, loadHtml = fetchHtml): Promise<FighterImages> {
+  let found: FighterImages = { ...NO_IMAGES };
   try {
-    const html = await fetchHtml(`https://www.ufc.com/athlete/${slug}`, { timeoutMs: 30000, retries: 0 });
-    const $ = cheerio.load(html);
-    const og = $("meta[property='og:image']").attr("content");
-    if (og) return og;
+    const html = await loadHtml(`https://www.ufc.com/athlete/${athleteSlug(name)}`, { timeoutMs: 30000, retries: 0 });
+    const images = parseAthleteImages(html);
+    found = images;
+    if (images.fullBody) return images;
   } catch {
     // fall through to search
   }
   try {
-    const html = await fetchHtml(
+    const html = await loadHtml(
       `https://www.ufc.com/search?query=${encodeURIComponent(name)}`,
       { timeoutMs: 30000, retries: 0 },
     );
-    const $ = cheerio.load(html);
-    const img = $("div.solr-athlete-card img").first().attr("src");
-    if (img) return img.startsWith("http") ? img : `https://www.ufc.com${img}`;
+    const hit = parseSearchAthlete(html, name);
+    if (hit.href) {
+      try {
+        const page = await loadHtml(hit.href, { timeoutMs: 30000, retries: 0 });
+        const images = parseAthleteImages(page);
+        found = { headshot: images.headshot ?? found.headshot, fullBody: images.fullBody };
+        if (found.fullBody) return found;
+      } catch {
+        // the search card's own picture is still better than nothing
+      }
+    }
+    found.headshot ??= hit.img;
   } catch {
     // not found anywhere
   }
-  return null;
+  return found;
 }
 
 // ---------------------------------------------------------------------------

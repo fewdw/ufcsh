@@ -5,14 +5,14 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
-import { db, getMeta } from "./db.ts";
+import { createHash } from "node:crypto";
+import { db, getMeta, setMeta } from "./db.ts";
 import { canonicalMethod, log, normName, todayIso } from "./util.ts";
 import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents } from "./sync.ts";
 import type { RankingType } from "./scrape/ufccom.ts";
 import { getStats } from "./stats.ts";
-import { cardQualities } from "./card-quality.ts";
 import { getLabs, getLabsBouts, getLabsFill, getLabsMatchups } from "./labs.ts";
-import { getLabsInsights } from "./labs-insights.ts";
+import { getLabsInsights, getLabsJudgeBouts, getLabsJudges, getLabsRoadBouts } from "./labs-insights.ts";
 import { titleNarratives } from "./titles.ts";
 import { fighterRecords, fighterStats } from "./records.ts";
 import { boutsBefore, careerBefore, completeBoutsBefore, completeRecordBefore, fightIndex, ageOn, sideOf, type FightRecord } from "./fight-index.ts";
@@ -104,7 +104,10 @@ function nextEventDate(): string | null {
 
 type FighterSummary = {
   id: string; name: string; nickname: string; record: string;
-  photo_url: string | null; ranking: { division: string; rank: string } | null;
+  photo_url: string | null;
+  /** The full-body cut-out, when ufc.com has one. Null falls back to the headshot. */
+  photo_full_url: string | null;
+  ranking: { division: string; rank: string } | null;
   record_verified?: boolean;
   /** Nationality, and the code its flag is drawn from. Null when unknown. */
   country?: string | null;
@@ -122,13 +125,29 @@ function currentRecord(id: string, fallback: { wins: number; losses: number; dra
     : { value: { ...fallback, ncs: 0 }, verified: false };
 }
 
+/**
+ * A short name for the picture itself, not for the fighter. It rides along on
+ * every image URL the interface is handed, so the day ufc.com re-shoots an
+ * athlete the address changes with the photograph: a browser that cached the
+ * old face for a day cannot go on showing it, and nothing has to be purged.
+ */
+function photoVersion(remoteUrl: string): string {
+  return createHash("sha1").update(remoteUrl).digest("hex").slice(0, 12);
+}
+
 function cachedPhotoUrl(id: string, remoteUrl: string | null | undefined): string | null {
-  return id && remoteUrl ? `/api/images/${id}` : null;
+  return id && remoteUrl ? `/api/images/${id}?v=${photoVersion(remoteUrl)}` : null;
+}
+
+/** Only advertised once a full-body picture actually exists for the fighter,
+ *  so the interface never has to probe for a 404 to find out. */
+function cachedFullPhotoUrl(id: string, remoteUrl: string | null | undefined): string | null {
+  return id && remoteUrl ? `/api/images/${id}/full?v=${photoVersion(remoteUrl)}` : null;
 }
 
 const fighterSummaryStmt = () =>
   db.prepare(`
-    SELECT fr.id, fr.name, fr.nickname, fr.wins, fr.losses, fr.draws, fr.photo_url,
+    SELECT fr.id, fr.name, fr.nickname, fr.wins, fr.losses, fr.draws, fr.photo_url, fr.photo_full_url,
            fr.country, fr.country_code,
            r.division AS r_division, r.rank AS r_rank
     FROM fighters fr
@@ -145,8 +164,8 @@ const fighterSummaryStmt = () =>
 /** Viewing a fighter without a photo queues them for the next background photo batch. */
 function requestPhoto(id: string): void {
   if (!id) return;
-  const row = db.prepare("SELECT photo_checked_at FROM fighters WHERE id = ?").get(id) as any;
-  if (row && row.photo_checked_at == null) {
+  const row = db.prepare("SELECT photo_url, photo_full_url, photo_checked_at FROM fighters WHERE id = ?").get(id) as any;
+  if (row && (row.photo_checked_at == null || Date.now() - row.photo_checked_at > ((!row.photo_url || !row.photo_full_url) ? 86_400_000 : 30 * 86_400_000))) {
     db.prepare("INSERT OR IGNORE INTO image_queue (fighter_id, requested_at) VALUES (?, ?)").run(id, Date.now());
   }
 }
@@ -154,7 +173,7 @@ function requestPhoto(id: string): void {
 function fighterSummary(id: string, fallbackName: string, rankingType: RankingType = "meta"): FighterSummary {
   const row = id ? (fighterSummaryStmt().get(rankingType, id) as any) : null;
   if (!row) {
-    return { id, name: fallbackName, nickname: "", record: "", photo_url: null, ranking: null, country: null, country_code: null };
+    return { id, name: fallbackName, nickname: "", record: "", photo_url: null, photo_full_url: null, ranking: null, country: null, country_code: null };
   }
   const career = currentRecord(row.id, row);
   return {
@@ -164,6 +183,7 @@ function fighterSummary(id: string, fallbackName: string, rankingType: RankingTy
     record: recordText(career.value),
     record_verified: career.verified,
     photo_url: cachedPhotoUrl(row.id, row.photo_url),
+    photo_full_url: cachedFullPhotoUrl(row.id, row.photo_full_url),
     ranking: row.r_rank ? { division: row.r_division, rank: row.r_rank } : null,
     country: row.country ?? null,
     country_code: row.country_code ?? null,
@@ -186,12 +206,6 @@ function americanOddsValue(line: string | null): number | null {
   if (!line) return null;
   const value = Number(line.replace(/[−–]/g, "-").replace(/[^0-9+-.]/g, ""));
   return Number.isFinite(value) && value !== 0 ? value : null;
-}
-
-function americanImpliedProbability(line: string | null): number | null {
-  const value = americanOddsValue(line);
-  if (value == null) return null;
-  return value > 0 ? 100 / (value + 100) : -value / (-value + 100);
 }
 
 /** What a card row can say about a fighter beyond the name: age on fight
@@ -247,252 +261,13 @@ function sideContext(fighterId: string, date: string, ord: number, fightId: stri
 }
 
 /**
- * The summary that sits in an event's header. A completed card is judged on
- * the two things that make one worth watching — how often the underdog got
- * there, and how often it ended early — plus the bonuses and the standout
- * result. An announced card is judged on what is at stake and how close the
- * matchmaking looks, read from the closing lines where they exist.
+ * How much of a card has been fought. Only the two counts anything reads: the
+ * header's results line, and which bout the live view treats as the one on now.
  */
-function cardStats(fights: any[], eventDate: string, complete: boolean, rankingType: RankingType): Record<string, unknown> {
-  const index = fightIndex();
-  const completed = fights.filter((fight) => fight.f1_outcome != null || fight.f2_outcome != null);
-  const titleFights = fights.filter((fight) => fight.title_fight && ["title", "interim"].includes(fight.title_type)).length;
-  // The main event and every championship bout are scheduled for five rounds.
-  const fiveRoundBouts = fights.filter((fight) => Number(fight.ord) === 0 || (fight.title_fight && ["title", "interim"].includes(fight.title_type))).length;
-  const mainEvent = fights.find((fight) => Number(fight.ord) === 0) ?? null;
-
-  let pricedFights = 0;
-  let underdogWins = 0;
-  let biggestUpset: { fight_id: string; name: string; line: number } | null = null;
-  for (const fight of completed) {
-    const odds = fightOdds(fight.id) as { f1: { close: string | null }; f2: { close: string | null } } | null;
-    const f1 = americanImpliedProbability(odds?.f1.close ?? null);
-    const f2 = americanImpliedProbability(odds?.f2.close ?? null);
-    const winner = fight.f1_outcome === "win" ? "f1" : fight.f2_outcome === "win" ? "f2" : null;
-    if (f1 == null || f2 == null || f1 === f2 || !winner) continue;
-    pricedFights += 1;
-    const winnerProbability = winner === "f1" ? f1 : f2;
-    const loserProbability = winner === "f1" ? f2 : f1;
-    if (winnerProbability < loserProbability) {
-      underdogWins += 1;
-      const line = americanOddsValue((winner === "f1" ? odds?.f1.close : odds?.f2.close) ?? null);
-      if (line != null && (!biggestUpset || line > biggestUpset.line)) {
-        biggestUpset = { fight_id: fight.id, name: fight[`${winner}_name`], line };
-      }
-    }
-  }
-
-  const knockouts = completed.filter((fight) => fight.method === "KO/TKO").length;
-  const submissions = completed.filter((fight) => fight.method === "SUB").length;
-  const decisions = completed.filter((fight) => fight.method?.endsWith("-DEC")).length;
-  // A split or majority card is the one decision worth singling out: the two
-  // corners left the cage without agreeing on who won.
-  const splitDecisions = completed.filter((fight) => fight.method === "S-DEC" || fight.method === "M-DEC").length;
-  const firstRoundFinishes = completed.filter((fight) => Number(fight.round) === 1 && (fight.method === "KO/TKO" || fight.method === "SUB")).length;
-  const bonuses = fights.reduce((total, fight) => total + (fight.perf_bonus ? 1 : 0) + (fight.fotn_bonus ? 1 : 0), 0);
-
-  let seconds = 0;
-  let timed = 0;
-  let knockdowns = 0;
-  let takedowns = 0;
-  let submissionAttempts = 0;
-  let strikes = 0;
-  let debutWins = 0;
-  let fastestFinish: { fight_id: string; name: string; seconds: number; method: string } | null = null;
-  let longestBout: { fight_id: string; f1: string; f2: string; seconds: number } | null = null;
-  let mostStrikes: { fight_id: string; name: string; count: number } | null = null;
-  let mostKnockdowns: { fight_id: string; name: string; count: number } | null = null;
-  for (const fight of completed) {
-    const indexed = index.byId.get(fight.id);
-    if (!indexed) continue;
-    if (indexed.elapsed != null) {
-      seconds += indexed.elapsed;
-      timed += 1;
-      if (!longestBout || indexed.elapsed > longestBout.seconds) {
-        longestBout = { fight_id: fight.id, f1: indexed.sides[0].name, f2: indexed.sides[1].name, seconds: indexed.elapsed };
-      }
-    }
-    for (const side of indexed.sides) {
-      knockdowns += side.kd ?? 0;
-      takedowns += side.td ?? 0;
-      submissionAttempts += side.sub ?? 0;
-      strikes += side.str ?? 0;
-      if (side.str != null && (!mostStrikes || side.str > mostStrikes.count)) {
-        mostStrikes = { fight_id: fight.id, name: side.name, count: side.str };
-      }
-      if (side.kd != null && side.kd > 0 && (!mostKnockdowns || side.kd > mostKnockdowns.count)) {
-        mostKnockdowns = { fight_id: fight.id, name: side.name, count: side.kd };
-      }
-      // A first UFC walk that ends with a hand raised is the card's own story.
-      if (side.outcome === "win" && side.id
-        && boutsBefore(index, side.id, eventDate).filter((bout) => bout.id !== fight.id).length === 0) {
-        debutWins += 1;
-      }
-    }
-    const winner = indexed.sides.find((side) => side.outcome === "win");
-    if (winner && indexed.elapsed != null && (indexed.method === "KO/TKO" || indexed.method === "SUB")
-      && (!fastestFinish || indexed.elapsed < fastestFinish.seconds)) {
-      fastestFinish = { fight_id: fight.id, name: winner.name, seconds: indexed.elapsed, method: indexed.method };
-    }
-  }
-
-  // Announced cards: what is on the line, and what the market thinks.
-  let rankedFighters = 0;
-  let champions = 0;
-  let formerChampions = 0;
-  let debutants = 0;
-  let undefeatedFighters = 0;
-  let undefeatedRankedFighters = 0;
-  let announcedPriced = 0;
-  let rematches = 0;
-  let careerWins = 0;
-  let careerLosses = 0;
-  let recordedFighters = 0;
-  let ufcWins = 0;
-  let ufcFinishes = 0;
-  const ages: number[] = [];
-  const countries = new Set<string>();
-  const divisions = new Set<string>();
-  let closest: { fight_id: string; f1: string; f2: string; gap: number } | null = null;
-  let biggestFavorite: { fight_id: string; name: string; line: number } | null = null;
-  let longestUnderdog: { fight_id: string; name: string; line: number } | null = null;
-  let longestStreak: { fight_id: string; name: string; count: number } | null = null;
-  let mostExperienced: { fight_id: string; name: string; bouts: number } | null = null;
-  let mostFinishes: { fight_id: string; name: string; count: number } | null = null;
-  let youngest: { fight_id: string; name: string; age: number } | null = null;
-  let oldest: { fight_id: string; name: string; age: number } | null = null;
-  let longestLayoff: { fight_id: string; name: string; days: number } | null = null;
-  let biggestReachGap: { fight_id: string; name: string; inches: number } | null = null;
-  if (!complete) {
-    for (const fight of fights) {
-      if (fight.weight_class) divisions.add(fight.weight_class);
-      const odds = fightOdds(fight.id) as { f1: { close: string | null }; f2: { close: string | null } } | null;
-      const probabilities = {
-        f1: americanImpliedProbability(odds?.f1.close ?? null),
-        f2: americanImpliedProbability(odds?.f2.close ?? null),
-      };
-      if (probabilities.f1 != null && probabilities.f2 != null) {
-        announcedPriced += 1;
-        const gap = Math.abs(probabilities.f1 - probabilities.f2);
-        if (!closest || gap < closest.gap) closest = { fight_id: fight.id, f1: fight.f1_name, f2: fight.f2_name, gap: Math.round(gap * 1000) / 10 };
-        for (const side of ["f1", "f2"] as const) {
-          const line = americanOddsValue((side === "f1" ? odds?.f1.close : odds?.f2.close) ?? null);
-          if (line == null) continue;
-          if (line < 0 && (!biggestFavorite || line < biggestFavorite.line)) biggestFavorite = { fight_id: fight.id, name: fight[`${side}_name`], line };
-          if (line > 0 && (!longestUnderdog || line > longestUnderdog.line)) longestUnderdog = { fight_id: fight.id, name: fight[`${side}_name`], line };
-        }
-      }
-      // How much longer one fighter's arms are than the other's, which is the
-      // one physical edge a reader can act on before a bout is fought.
-      const reaches = (["f1", "f2"] as const).map((side) => index.fighters.get(fight[`${side}_id`] ?? "")?.reachIn ?? null);
-      if (reaches[0] != null && reaches[1] != null) {
-        const inches = Math.abs(reaches[0] - reaches[1]);
-        const longer = reaches[0] > reaches[1] ? "f1" : "f2";
-        if (inches >= 3 && (!biggestReachGap || inches > biggestReachGap.inches)) {
-          biggestReachGap = { fight_id: fight.id, name: fight[`${longer}_name`], inches: Math.round(inches) };
-        }
-      }
-      for (const side of ["f1", "f2"] as const) {
-        const id: string = fight[`${side}_id`] ?? "";
-        if (!id) continue;
-        const other: string = fight[side === "f1" ? "f2_id" : "f1_id"] ?? "";
-        const summary = fighterSummary(id, fight[`${side}_name`], rankingType);
-        if (summary.ranking) rankedFighters += 1;
-        if (summary.ranking?.rank === "C" || summary.ranking?.rank === "IC") champions += 1;
-        const prior = careerBefore(index, id, eventDate, fight.weight_class || "", undefined, other);
-        // Counted once per bout rather than once per corner.
-        if (side === "f1" && prior.meetings > 0) rematches += 1;
-        if (prior.formerChampion) formerChampions += 1;
-        ufcWins += prior.wins;
-        ufcFinishes += prior.koWins + prior.subWins;
-        const fighter = index.fighters.get(id);
-        if (fighter?.countryCode) countries.add(fighter.countryCode);
-        const age = fighter?.birthDate ? ageOn(fighter.birthDate, eventDate) : null;
-        if (age != null) {
-          ages.push(age);
-          if (!youngest || age < youngest.age) youngest = { fight_id: fight.id, name: fight[`${side}_name`], age };
-          if (!oldest || age > oldest.age) oldest = { fight_id: fight.id, name: fight[`${side}_name`], age };
-        }
-        if (prior.bouts > 0 && (!mostExperienced || prior.bouts > mostExperienced.bouts)) {
-          mostExperienced = { fight_id: fight.id, name: fight[`${side}_name`], bouts: prior.bouts };
-        }
-        const finishes = prior.koWins + prior.subWins;
-        if (finishes > 0 && (!mostFinishes || finishes > mostFinishes.count)) {
-          mostFinishes = { fight_id: fight.id, name: fight[`${side}_name`], count: finishes };
-        }
-        // Only a layoff long enough to be a story counts as one.
-        if (prior.daysSince != null && prior.daysSince >= 365 && (!longestLayoff || prior.daysSince > longestLayoff.days)) {
-          longestLayoff = { fight_id: fight.id, name: fight[`${side}_name`], days: prior.daysSince };
-        }
-        const completeRecord = completeRecordBefore(index, id, eventDate, Number(fight.ord) || 0);
-        if (completeRecord) {
-          recordedFighters += 1;
-          careerWins += completeRecord.wins;
-          careerLosses += completeRecord.losses;
-          if (completeRecord.losses === 0 && completeRecord.wins + completeRecord.draws > 0) {
-            undefeatedFighters += 1;
-            if (summary.ranking) undefeatedRankedFighters += 1;
-          }
-        }
-        if (prior.bouts === 0) debutants += 1;
-        if (prior.winStreak >= 2 && (!longestStreak || prior.winStreak > longestStreak.count)) {
-          longestStreak = { fight_id: fight.id, name: fight[`${side}_name`], count: prior.winStreak };
-        }
-      }
-    }
-  }
-
+function cardStats(fights: any[]): { total_fights: number; completed_fights: number } {
   return {
     total_fights: fights.length,
-    completed_fights: completed.length,
-    title_fights: titleFights,
-    five_round_bouts: fiveRoundBouts,
-    main_event: mainEvent
-      ? { fight_id: mainEvent.id, f1: mainEvent.f1_name, f2: mainEvent.f2_name, weight_class: mainEvent.weight_class || "" }
-      : null,
-    priced_fights: complete ? pricedFights : announcedPriced,
-    underdog_wins: underdogWins,
-    finishes: knockouts + submissions,
-    knockouts,
-    submissions,
-    decisions,
-    split_decisions: splitDecisions,
-    first_round_finishes: firstRoundFinishes,
-    bonuses,
-    knockdowns,
-    takedowns,
-    submission_attempts: submissionAttempts,
-    strikes,
-    avg_seconds: timed ? Math.round(seconds / timed) : null,
-    total_seconds: seconds,
-    biggest_upset: biggestUpset,
-    fastest_finish: fastestFinish,
-    longest_bout: longestBout,
-    most_strikes: mostStrikes,
-    most_knockdowns: mostKnockdowns,
-    debut_wins: debutWins,
-    ranked_fighters: rankedFighters,
-    champions,
-    former_champions: formerChampions,
-    debutants,
-    undefeated_fighters: undefeatedFighters,
-    undefeated_ranked_fighters: undefeatedRankedFighters,
-    rematches,
-    countries: countries.size,
-    divisions: divisions.size,
-    avg_age: ages.length ? Math.round((ages.reduce((total, age) => total + age, 0) / ages.length) * 10) / 10 : null,
-    combined_record: recordedFighters >= 4 ? { wins: careerWins, losses: careerLosses, fighters: recordedFighters } : null,
-    career_finish_rate: ufcWins >= 10 ? Math.round((ufcFinishes / ufcWins) * 100) : null,
-    closest_matchup: closest,
-    biggest_favorite: biggestFavorite,
-    longest_underdog: longestUnderdog,
-    longest_streak: longestStreak,
-    most_experienced: mostExperienced,
-    most_finishes: mostFinishes,
-    youngest,
-    oldest,
-    longest_layoff: longestLayoff,
-    biggest_reach_gap: biggestReachGap,
+    completed_fights: fights.filter((fight) => fight.f1_outcome != null || fight.f2_outcome != null).length,
   };
 }
 
@@ -539,7 +314,6 @@ function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingTy
 
 function listEvents(): unknown {
   void syncLiveEvents().catch(err => log("live events refresh failed:", String(err)));
-  const qualities = cardQualities();
   const next = nextEventDate();
   const rows = db
     .prepare(`
@@ -555,7 +329,6 @@ function listEvents(): unknown {
     location: e.location,
     status: eventStatus(e, next),
     fight_count: e.fight_count,
-    quality: qualities.get(e.id),
   }));
 }
 
@@ -640,9 +413,8 @@ async function getEvent(id: string, rankingType: RankingType): Promise<unknown |
     results_updated_at: e.detail_fetched_at,
     live: isFightDay(e.date),
     schedule: cardSchedule(e),
-    card_stats: cardStats(fights, e.date, Boolean(e.complete), rankingType),
+    card_stats: cardStats(fights),
     odds_freshness: oddsFreshness(e.id),
-    quality: cardQualities().get(e.id),
     fights: fights.map((f) => ({ ...fightRowToJson(f, false, e.date, rankingType), starts_at: startsAt(f) })),
   };
 }
@@ -1107,6 +879,7 @@ async function getFighter(id: string, rankingType: RankingType): Promise<unknown
     outside_ufc_record: indexedFighter?.careerVerified ? recordText(indexedFighter.outside) : null,
     career_source_url: (db.prepare("SELECT source_url FROM career_profiles WHERE fighter_id = ? AND status = 'verified'").get(fr.id) as { source_url: string } | undefined)?.source_url ?? null,
     photo_url: cachedPhotoUrl(fr.id, fr.photo_url),
+    photo_full_url: cachedFullPhotoUrl(fr.id, fr.photo_full_url),
     ranking: ranking ?? null,
     // Where this fighter sits at the top of the sport, recomputed from the
     // same index the leaderboards use, so it moves the moment a result lands.
@@ -1380,6 +1153,7 @@ function status(): unknown {
     rankings_media: count("SELECT COUNT(*) AS c FROM rankings WHERE ranking_type = 'media'"),
     odds: count("SELECT COUNT(*) AS c FROM odds WHERE f1_close IS NOT NULL"),
     photos: count("SELECT COUNT(*) AS c FROM fighters WHERE photo_url IS NOT NULL AND photo_url != ''"),
+    photos_full_body: count("SELECT COUNT(*) AS c FROM fighters WHERE photo_full_url IS NOT NULL AND photo_full_url != ''"),
     birth_dates: count("SELECT COUNT(*) AS c FROM fighters WHERE birth_date != ''"),
     birth_dates_pending: count("SELECT COUNT(*) AS c FROM fighters WHERE birth_fetched_at IS NULL"),
     career_records_verified: count("SELECT COUNT(*) AS c FROM career_profiles WHERE status = 'verified'"),
@@ -1556,15 +1330,78 @@ const MIME: Record<string, string> = {
 
 const imageRequests = new Map<string, Promise<{ data: Buffer; contentType: string }>>();
 
-async function loadFighterImage(id: string): Promise<{ data: Buffer; contentType: string } | null> {
-  if (!/^[a-f0-9]+$/i.test(id)) return null;
-  const fighter = db.prepare("SELECT photo_url, photo_checked_at FROM fighters WHERE id = ?").get(id) as
-    | { photo_url: string | null; photo_checked_at: number | null }
-    | undefined;
-  if (!fighter?.photo_url) return null;
+/** Headshot and full body are cached side by side under one fighter id. */
+export type PhotoVariant = "head" | "full";
 
-  const imagePath = path.join(IMAGE_CACHE, `${id}.img`);
-  const typePath = path.join(IMAGE_CACHE, `${id}.type`);
+/**
+ * Copies of a picture ufc.com has since replaced, and the unversioned files
+ * written before pictures were cached by content. Best effort: failing to tidy
+ * up only costs disk, so it must never fail a request that already succeeded.
+ */
+async function discardOldPhotos(id: string, suffix: string, keep: string): Promise<void> {
+  // Anchored so the headshot's own prefix cannot sweep up the full body's files.
+  const belongsHere = new RegExp(`^${id}${suffix.replace(".", "\\.")}\\.(?:([0-9a-f]+)\\.)?(?:img|type)$`);
+  try {
+    for (const name of await fs.readdir(IMAGE_CACHE)) {
+      const match = belongsHere.exec(name);
+      if (!match || match[1] === keep) continue;
+      await fs.rm(path.join(IMAGE_CACHE, name), { force: true });
+    }
+  } catch {
+    // Nothing to tidy, or the cache directory is not readable.
+  }
+}
+
+/**
+ * Pictures cached before they were named after their contents. Each one whose
+ * bytes still match what the database holds is renamed into its new name rather
+ * than fetched from ufc.com a second time, and each one the old freshness stamp
+ * had already retired is dropped. One pass, so changing the scheme costs the
+ * site nothing.
+ */
+async function adoptUnversionedPhotos(): Promise<void> {
+  if (getMeta("image_cache_versioned") === "1") return;
+  const rows = db.prepare(`
+    SELECT id, photo_url, photo_full_url, photo_checked_at FROM fighters
+    WHERE photo_url IS NOT NULL OR photo_full_url IS NOT NULL
+  `).all() as {
+    id: string; photo_url: string | null; photo_full_url: string | null; photo_checked_at: number | null;
+  }[];
+  for (const row of rows) {
+    for (const [suffix, remote] of [["", row.photo_url], [".full", row.photo_full_url]] as const) {
+      if (!remote) continue;
+      for (const ext of ["img", "type"] as const) {
+        const legacy = path.join(IMAGE_CACHE, `${row.id}${suffix}.${ext}`);
+        try {
+          const stat = await fs.stat(legacy);
+          if (row.photo_checked_at && stat.mtimeMs < row.photo_checked_at) await fs.rm(legacy, { force: true });
+          else await fs.rename(legacy, path.join(IMAGE_CACHE, `${row.id}${suffix}.${photoVersion(remote)}.${ext}`));
+        } catch {
+          // Nothing cached under the old name; the next request fetches it.
+        }
+      }
+    }
+  }
+  setMeta("image_cache_versioned", "1");
+}
+
+async function loadFighterImage(id: string, variant: PhotoVariant): Promise<{ data: Buffer; contentType: string } | null> {
+  if (!/^[a-f0-9]+$/i.test(id)) return null;
+  const row = db.prepare("SELECT photo_url, photo_full_url FROM fighters WHERE id = ?").get(id) as
+    | { photo_url: string | null; photo_full_url: string | null }
+    | undefined;
+  if (!row) return null;
+  // A fighter with no full-body art falls back to the headshot rather than
+  // 404ing, so a client that asks for one always gets a picture when a
+  // picture exists at all.
+  const remote = variant === "full" ? row.photo_full_url ?? row.photo_url : row.photo_url;
+  if (!remote) return null;
+  const served: PhotoVariant = variant === "full" && row.photo_full_url ? "full" : "head";
+
+  const suffix = served === "full" ? ".full" : "";
+  const version = photoVersion(remote);
+  const imagePath = path.join(IMAGE_CACHE, `${id}${suffix}.${version}.img`);
+  const typePath = path.join(IMAGE_CACHE, `${id}${suffix}.${version}.type`);
   const readCached = async () => {
     const [data, contentType] = await Promise.all([
       fs.readFile(imagePath),
@@ -1574,17 +1411,20 @@ async function loadFighterImage(id: string): Promise<{ data: Buffer; contentType
   };
 
   try {
-    const stat = await fs.stat(imagePath);
-    if (!fighter.photo_checked_at || stat.mtimeMs >= fighter.photo_checked_at) return await readCached();
+    // The file is named after the picture it holds, so its mere existence means
+    // it is the current one — a re-check that found the same URL cannot make a
+    // cached copy look stale, and new art cannot be mistaken for the old.
+    return await readCached();
   } catch {
     // First request downloads the image; later requests are local disk reads.
   }
 
-  const existing = imageRequests.get(id);
+  const requestKey = `${id}${suffix}.${version}`;
+  const existing = imageRequests.get(requestKey);
   if (existing) return existing;
   const request = (async () => {
     try {
-      const response = await fetch(fighter.photo_url!, {
+      const response = await fetch(remote, {
         headers: { "User-Agent": "Mozilla/5.0 (compatible; ufc.sh image cache)" },
         signal: AbortSignal.timeout(15_000),
       });
@@ -1595,6 +1435,7 @@ async function loadFighterImage(id: string): Promise<{ data: Buffer; contentType
       if (!data.length || data.length > 10_000_000) throw new Error("invalid photo size");
       await fs.mkdir(IMAGE_CACHE, { recursive: true });
       await Promise.all([fs.writeFile(imagePath, data), fs.writeFile(typePath, contentType)]);
+      void discardOldPhotos(id, suffix, version);
       return { data, contentType };
     } catch (error) {
       try {
@@ -1603,16 +1444,16 @@ async function loadFighterImage(id: string): Promise<{ data: Buffer; contentType
         throw error;
       }
     } finally {
-      imageRequests.delete(id);
+      imageRequests.delete(requestKey);
     }
   })();
-  imageRequests.set(id, request);
+  imageRequests.set(requestKey, request);
   return request;
 }
 
-async function serveFighterImage(res: http.ServerResponse, id: string): Promise<void> {
+async function serveFighterImage(res: http.ServerResponse, id: string, variant: PhotoVariant): Promise<void> {
   try {
-    const image = await loadFighterImage(id);
+    const image = await loadFighterImage(id, variant);
     if (!image) {
       res.writeHead(404, { "Cache-Control": "public, max-age=300" });
       res.end();
@@ -1625,7 +1466,7 @@ async function serveFighterImage(res: http.ServerResponse, id: string): Promise<
     });
     res.end(image.data);
   } catch (error) {
-    log(`fighter image ${id} failed:`, String(error));
+    log(`fighter image ${id} (${variant}) failed:`, String(error));
     res.writeHead(502, { "Cache-Control": "no-store" });
     res.end();
   }
@@ -1705,6 +1546,7 @@ async function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, 
 }
 
 export function startApi(port: number): void {
+  void adoptUnversionedPhotos().catch((err) => log("photo cache migration failed:", String(err)));
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", "http://localhost");
@@ -1714,7 +1556,9 @@ export function startApi(port: number): void {
         ? "media"
         : "meta";
 
-      if (p.startsWith("/api/images/")) return await serveFighterImage(res, part(3));
+      if (p.startsWith("/api/images/")) {
+        return await serveFighterImage(res, part(3), part(4) === "full" ? "full" : "head");
+      }
       if (p === "/api/events") return sendJson(req, res, listEvents());
       if (p === "/api/live") return sendJson(req, res, liveCard(rankingType));
       if (p.startsWith("/api/events/")) {
@@ -1741,6 +1585,9 @@ export function startApi(port: number): void {
       if (p === "/api/labs/matchups") return sendJson(req, res, getLabsMatchups(url.searchParams));
       if (p === "/api/labs/fill") return sendJson(req, res, getLabsFill(url.searchParams));
       if (p === "/api/labs/insights") return sendJson(req, res, getLabsInsights(url.searchParams));
+      if (p === "/api/labs/judges") return sendJson(req, res, getLabsJudges(url.searchParams));
+      if (p === "/api/labs/judge-bouts") return sendJson(req, res, getLabsJudgeBouts(url.searchParams));
+      if (p === "/api/labs/road-bouts") return sendJson(req, res, getLabsRoadBouts(url.searchParams));
       if (p === "/api/labs") return sendJson(req, res, getLabs(url.searchParams));
       if (p === "/api/search") return sendJson(req, res, search(url.searchParams.get("q") ?? ""));
       if (p === "/api/status") return sendJson(req, res, status());

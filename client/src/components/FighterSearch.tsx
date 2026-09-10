@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { SearchResults } from "../api";
 import Avatar from "./Avatar";
+import { parseSearch, useSearch } from "../useSearch";
+import { useSearchSelection } from "./searchInteraction";
+import SearchFeedback from "./SearchFeedback";
 
 export type PickedFighter = SearchResults["fighters"][number];
 
@@ -31,12 +34,12 @@ export default function FighterSearch({
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<PickedFighter[]>([]);
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
-  const [searching, setSearching] = useState(false);
+  const expanded = open && Boolean(query.trim()) && selected.length < max;
+  const { data, searching, error, retry } = useSearch(expanded ? `/api/search?q=${encodeURIComponent(query.trim())}` : null, parseSearch);
+  const results = (data?.fighters ?? []).filter((fighter) => !selected.some((current) => current.id === fighter.id));
+  const selection = useSearchSelection(results.map((fighter) => fighter.id), expanded);
 
   useEffect(() => {
     const list = listRef.current;
@@ -51,52 +54,24 @@ export default function FighterSearch({
     return () => document.removeEventListener("pointerdown", onPointerDown, true);
   }, []);
 
-  useEffect(() => {
-    const trimmed = query.trim();
-    if (!open || !trimmed) {
-      setResults([]);
-      setSearching(false);
-      return;
-    }
-    setSearching(true);
-    const timer = window.setTimeout(() => {
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
-      fetch(`/api/search?q=${encodeURIComponent(trimmed)}`, { signal: controller.signal })
-        .then((response) => response.json())
-        .then((data: SearchResults) => {
-          setResults(data.fighters.filter((fighter) => !selected.some((current) => current.id === fighter.id)));
-          setActive(0);
-          setSearching(false);
-        })
-        .catch((error) => {
-          if (error?.name !== "AbortError") setSearching(false);
-        });
-    }, 90);
-    return () => window.clearTimeout(timer);
-  }, [open, query, selected]);
-
   const choose = (fighter: PickedFighter) => {
     if (selected.length >= max || selected.some((current) => current.id === fighter.id)) return;
     onChange([...selected, fighter]);
     setQuery("");
-    setResults([]);
     setOpen(false);
-    window.setTimeout(() => inputRef.current?.focus(), 0);
+    inputRef.current?.focus();
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "ArrowDown") {
+    if (event.nativeEvent.isComposing) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      setActive((index) => Math.min(index + 1, results.length - 1));
-    } else if (event.key === "ArrowUp") {
+      setOpen(true);
+      if (expanded) selection.move(event.key);
+    } else if (event.key === "Enter" && expanded && results[selection.active]) {
       event.preventDefault();
-      setActive((index) => Math.max(index - 1, 0));
-    } else if (event.key === "Enter" && results[active]) {
-      event.preventDefault();
-      choose(results[active]);
-    } else if (event.key === "Escape") {
+      choose(results[selection.active]);
+    } else if (event.key === "Escape" && open) {
       event.stopPropagation();
       setOpen(false);
     } else if (event.key === "Backspace" && !query && selected.length) {
@@ -105,7 +80,9 @@ export default function FighterSearch({
   };
 
   return (
-    <div ref={rootRef} className="relative z-40 w-full">
+    <div ref={rootRef} className="relative z-40 w-full" onBlur={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+    }}>
       <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition focus-within:border-zinc-400">
         {showSelected && selected.length ? (
           <div ref={listRef} className={`space-y-1 overflow-y-auto overscroll-contain border-b border-zinc-100 p-1 pr-2 [scrollbar-gutter:stable] ${compact ? "max-h-24" : "max-h-[4.25rem]"}`}>
@@ -135,8 +112,11 @@ export default function FighterSearch({
             type="text"
             role="combobox"
             aria-label={placeholder}
-            aria-expanded={open && Boolean(query.trim())}
+            aria-expanded={expanded}
             aria-autocomplete="list"
+            aria-controls={expanded ? selection.listId : undefined}
+            aria-activedescendant={selection.activeId}
+            autoComplete="off"
             value={query}
             disabled={selected.length >= max}
             onFocus={() => setOpen(true)}
@@ -146,7 +126,7 @@ export default function FighterSearch({
             }}
             onKeyDown={onKeyDown}
             placeholder={selected.length >= max ? `Maximum ${max} fighters` : selected.length ? "Add fighter" : (emptyPlaceholder ?? placeholder)}
-            className="min-w-20 flex-1 bg-transparent text-xs font-medium text-zinc-800 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed"
+            className="min-w-0 flex-1 bg-transparent text-xs font-medium text-zinc-800 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed"
           />
           {selected.length ? <span className="shrink-0 text-[9px] font-medium tabular-nums text-zinc-400">{selected.length}/{max}</span> : null}
           {selected.length > 1 ? (
@@ -156,7 +136,6 @@ export default function FighterSearch({
               onClick={() => {
                 onChange([]);
                 setQuery("");
-                setResults([]);
                 setOpen(false);
               }}
               className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
@@ -166,20 +145,22 @@ export default function FighterSearch({
           ) : null}
         </div>
       </div>
-      {open && query.trim() ? (
-        <div role="listbox" className="absolute left-0 right-0 z-50 mt-2 max-h-80 overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-2 shadow-xl">
-          {searching ? (
-            <div className="px-3 py-6 text-center text-xs text-zinc-400">Searching fighters…</div>
-          ) : results.length ? (
+      {expanded ? (
+        <div ref={selection.listRef} tabIndex={-1} className="absolute left-0 right-0 z-50 mt-2 max-h-80 overflow-y-auto overscroll-contain rounded-2xl border border-zinc-200 bg-white p-2 shadow-xl">
+          <div id={selection.listId} role="listbox" aria-label="Fighters" aria-busy={searching}>
+          {results.length ? (
             results.map((fighter, index) => (
               <button
                 key={fighter.id}
+                id={selection.optionId(index)}
                 type="button"
                 role="option"
-                aria-selected={index === active}
+                tabIndex={-1}
+                aria-selected={index === selection.active}
+                onMouseDown={(event) => event.preventDefault()}
                 onClick={() => choose(fighter)}
-                onMouseMove={() => setActive(index)}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors ${index === active ? "bg-zinc-100" : "hover:bg-zinc-50"}`}
+                onMouseMove={() => selection.setActive(index)}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors ${index === selection.active ? "bg-zinc-100" : "hover:bg-zinc-50"}`}
               >
                 <Avatar src={fighter.photo_url} name={fighter.name} size="xs" />
                 <span className="min-w-0 flex-1">
@@ -188,9 +169,9 @@ export default function FighterSearch({
                 </span>
               </button>
             ))
-          ) : (
-            <div className="px-3 py-6 text-center text-xs text-zinc-400">No fighters found.</div>
-          )}
+          ) : null}
+          </div>
+          {!results.length && <SearchFeedback searching={searching} error={error} retry={() => { inputRef.current?.focus(); retry(); }} empty={data?.fighters.length ? "All matching fighters are already selected." : "No fighters found. Try another name."} />}
         </div>
       ) : null}
     </div>

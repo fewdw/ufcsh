@@ -11,6 +11,29 @@ export type ScrapedOdds = {
   sourceUrl: string;
 };
 
+type OddsMatchup = { f1_name: string; f2_name: string };
+
+/**
+ * Keep scraped prices attached to fighter identity when UFCStats changes which
+ * corner a fighter occupies. That reorder commonly happens when a live result
+ * puts the winner first, and it can finish while the odds request is in flight.
+ */
+export function alignScrapedOdds(
+  odds: ScrapedOdds,
+  requested: OddsMatchup,
+  current: OddsMatchup,
+): ScrapedOdds {
+  const requestedF1 = normName(requested.f1_name);
+  const requestedF2 = normName(requested.f2_name);
+  const currentF1 = normName(current.f1_name);
+  const currentF2 = normName(current.f2_name);
+  if (requestedF1 === currentF1 && requestedF2 === currentF2) return odds;
+  if (requestedF1 === currentF2 && requestedF2 === currentF1) {
+    return { ...odds, f1: odds.f2, f2: odds.f1 };
+  }
+  throw new Error(`fight changed while odds were loading: ${requested.f1_name} vs ${requested.f2_name}`);
+}
+
 type NameParts = { norm: string; compact: string; tokens: string[]; first: string; last: string };
 
 function nameParts(name: string): NameParts {
@@ -178,18 +201,21 @@ export async function scrapeOdds(
   fighter1: string,
   fighter2: string,
   dateIso: string,
+  cachedPageUrl?: string | null,
 ): Promise<ScrapedOdds | null> {
   const target1 = nameParts(fighter1);
   const target2 = nameParts(fighter2);
   const candidateDates = [dateIso, shiftDate(dateIso, -1), shiftDate(dateIso, 1)];
 
-  const pages: string[] = [];
-  for (const query of [fighter1, fighter2]) {
-    try {
-      const page = await findFighterPage(query);
-      if (page && !pages.includes(page)) pages.push(page);
-    } catch {
-      // search failed for this name; try the other
+  const pages: string[] = cachedPageUrl ? [cachedPageUrl] : [];
+  if (!pages.length) {
+    for (const query of [fighter1, fighter2]) {
+      try {
+        const page = await findFighterPage(query);
+        if (page && !pages.includes(page)) pages.push(page);
+      } catch {
+        // search failed for this name; try the other
+      }
     }
   }
 

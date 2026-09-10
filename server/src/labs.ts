@@ -789,7 +789,7 @@ function byValue(get: (o: Observation) => number | null, direction: 1 | -1) {
 const newestFirst = (a: Observation, b: Observation) => b.fight.date.localeCompare(a.fight.date) || a.fight.ord - b.fight.ord;
 const oldestFirst = (a: Observation, b: Observation) => a.fight.date.localeCompare(b.fight.date) || a.fight.ord - b.fight.ord;
 
-function boutComparator(sort: BoutSort): (a: Observation, b: Observation) => number {
+export function boutComparator(sort: BoutSort): (a: Observation, b: Observation) => number {
   switch (sort) {
     case "oldest": return oldestFirst;
     case "win": case "loss": case "draw": {
@@ -804,7 +804,7 @@ function boutComparator(sort: BoutSort): (a: Observation, b: Observation) => num
   }
 }
 
-function boutRow({ fight, side, opponent }: Observation, index: FightIndex) {
+export function boutRow({ fight, side, opponent }: Observation, index: FightIndex) {
   return {
     fight_id: fight.id,
     event_id: fight.eventId,

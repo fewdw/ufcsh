@@ -45,3 +45,28 @@ test("an exact name still needs the record or the bouts to agree", () => {
   assert.ok(isVerifiedIdentity(local, 1, sameName, reconciled(2), known(2)));
   assert.equal(isVerifiedIdentity(local, 1, profile({ name: "Patricio Pitbull", nickname: "", wins: 12 }), [], []), false);
 });
+
+test("initial punctuation and omitted suffixes match without merging different suffixes", () => {
+  assert.ok(samePersonName("JJ Aldrich", "J.J. Aldrich"));
+  assert.ok(samePersonName("DongHun Choi", "Dong Hun Choi"));
+  assert.ok(samePersonName("SeungGuk Choi", "Seung Guk Choi"));
+  assert.ok(samePersonName("Sean King III", "Sean King"));
+  assert.equal(samePersonName("Sean King III", "Sean King II"), false);
+  assert.equal(samePersonName("Sean King Jr.", "Sean King Sr."), false);
+});
+
+test("a debutant suffix match still needs corroboration when several names match", () => {
+  const debutant = { ...local, name: "Sean King III", nickname: "The King of New Orleans", birth_date: "", wins: 6, losses: 0 };
+  const candidate = profile({ name: "Sean King", nickname: "", birthDate: "", wins: 6, losses: 0 });
+  assert.equal(isVerifiedIdentity(debutant, 3, candidate, [], []), false);
+  assert.ok(isVerifiedIdentity(debutant, 3, { ...candidate, nickname: debutant.nickname }, [], []));
+});
+
+test("a known legal-name profile needs matching birth date, UFC history, and record", () => {
+  const fighter = { ...local, name: "Tommy Gantt", birth_date: "1993-01-09", wins: 12, losses: 0 };
+  const candidate = profile({ name: "Thomas Gantt", nickname: "", birthDate: fighter.birth_date, wins: 12, losses: 0 });
+  assert.ok(isVerifiedIdentity(fighter, 1, candidate, reconciled(1), known(1)));
+  assert.equal(isVerifiedIdentity(fighter, 1, { ...candidate, birthDate: "1990-01-01" }, reconciled(1), known(1)), false);
+  assert.equal(isVerifiedIdentity(fighter, 1, candidate, [], []), false);
+  assert.equal(isVerifiedIdentity(fighter, 1, { ...candidate, wins: 11 }, reconciled(1), known(1)), false);
+});

@@ -275,6 +275,10 @@ for (const alter of [
   "ALTER TABLE fighters ADD COLUMN country TEXT",
   "ALTER TABLE fighters ADD COLUMN country_code TEXT",
   "ALTER TABLE fighters ADD COLUMN birthplace TEXT",
+  // ufc.com's full-body cut-out, kept beside the headshot rather than
+  // replacing it: the two are different crops with different coverage, and the
+  // interface offers both.
+  "ALTER TABLE fighters ADD COLUMN photo_full_url TEXT",
 ]) {
   try {
     db.exec(alter);
@@ -287,6 +291,46 @@ for (const alter of [
 // ours, which lost every fighter UFCStats files under a ring name (Patricio
 // Pitbull is Sherdog's Patricio Freire). Retry the unresolved rows once under
 // the rule that accepts a nickname carried by two reconciled UFC bouts.
+// Full-body pictures arrived after every fighter had already been checked for
+// a headshot, and both come from the same page fetch. Clearing the stamp lets
+// the ordinary background image pass collect the missing half, most-visible
+// fighters first; a failed re-check keeps whatever photo is already stored.
+if (getMeta("migration_full_body_photos") !== "1") {
+  db.exec("UPDATE fighters SET photo_checked_at = NULL WHERE photo_full_url IS NULL");
+  setMeta("migration_full_body_photos", "1");
+}
+
+// Directory imports previously marked headshot-only rows as fully checked.
+// Retry those athlete pages once now that the directory leaves the stamp alone.
+if (getMeta("migration_directory_image_checks") !== "1") {
+  db.exec("UPDATE fighters SET photo_checked_at = NULL WHERE photo_full_url IS NULL OR photo_full_url = ''");
+  setMeta("migration_directory_image_checks", "1");
+}
+
+// ufc.com's silhouette stand-ins were being stored as real pictures, which left
+// a fighter it has no photograph of showing a grey outline where the matchup
+// draws a full body and an empty circle where every list draws a face. The
+// scrape now refuses them, but a stored one would never be replaced — an empty
+// scrape deliberately keeps whatever is already on file — so clear them here
+// and let the ordinary image pass look again.
+if (getMeta("migration_placeholder_photos") !== "1") {
+  db.exec(`
+    UPDATE fighters SET photo_checked_at = NULL,
+      photo_url = CASE WHEN photo_url LIKE '%no-profile-image%' OR photo_url LIKE '%silhouette%'
+                         OR photo_url LIKE '%shadow%' THEN NULL ELSE photo_url END,
+      photo_full_url = CASE WHEN photo_full_url LIKE '%no-profile-image%' OR photo_full_url LIKE '%silhouette%'
+                         OR photo_full_url LIKE '%shadow%' THEN NULL ELSE photo_full_url END
+    WHERE photo_url LIKE '%no-profile-image%' OR photo_url LIKE '%silhouette%' OR photo_url LIKE '%shadow%'
+       OR photo_full_url LIKE '%no-profile-image%' OR photo_full_url LIKE '%silhouette%' OR photo_full_url LIKE '%shadow%'
+  `);
+  setMeta("migration_placeholder_photos", "1");
+}
+
+if (getMeta("migration_career_identity_and_unlinked_bouts") !== "1") {
+  db.exec("UPDATE career_profiles SET checked_at = NULL WHERE status != 'verified'");
+  setMeta("migration_career_identity_and_unlinked_bouts", "1");
+}
+
 if (getMeta("migration_ring_names") !== "1") {
   db.exec("UPDATE career_profiles SET checked_at = 0 WHERE status IN ('not_found', 'ambiguous')");
   setMeta("migration_ring_names", "1");

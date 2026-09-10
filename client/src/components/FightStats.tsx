@@ -425,7 +425,7 @@ function inchesOf(value: string): number {
   return plain ? Number(plain[1]) : 0;
 }
 
-export function TaleOfTape({ fight }: { fight: Matchup }) {
+export function TaleOfTape({ fight, compact = false }: { fight: Matchup; compact?: boolean }) {
   const tape = new Map(
     (fight.detail?.type === "future" ? fight.detail.taleOfTape ?? [] : []).map((r) => [r.label, r]),
   );
@@ -445,20 +445,23 @@ export function TaleOfTape({ fight }: { fight: Matchup }) {
   const height = from("Height", fight.f1.height, fight.f2.height);
   const reach = from("Reach", fight.f1.reach, fight.f2.reach);
 
-  // The edge is stated as the actual gap ("+5\"", "6y younger") rather than a
-  // bare marker — the number is the useful part and costs no extra space.
+  // Editorial display thresholds: highlight substantial gaps without treating
+  // small differences as advantages or implying statistical significance.
   const longer = (a: string, b: string, noun: string): TapeRow["edge"] => {
     const [x, y] = [inchesOf(a), inchesOf(b)];
     if (!x || !y || x === y) return null;
-    const gap = Math.round(Math.abs(x - y));
+    const difference = Math.abs(x - y);
+    if (difference < 3) return null;
+    const gap = Math.round(difference * 10) / 10;
     return { side: x > y ? "f1" : "f2", badge: `+${gap}"`, described: `${gap} inches more ${noun}` };
   };
   const younger = (): TapeRow["edge"] => {
     if (!age.f1 || !age.f2 || age.f1 === age.f2) return null;
     const gap = Math.abs(Number(age.f1) - Number(age.f2));
+    if (gap < 5) return null;
     return {
       side: Number(age.f1) < Number(age.f2) ? "f1" : "f2",
-      badge: `${gap} yr younger`,
+      badge: `−${gap} yr`,
       described: `${gap} years younger`,
     };
   };
@@ -476,9 +479,11 @@ export function TaleOfTape({ fight }: { fight: Matchup }) {
 
   return (
     <div className="mx-auto w-full max-w-md" aria-label="Tale of the tape">
-      <h2 className="mb-1.5 text-center text-[9px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
-        Tale of the tape
-      </h2>
+      {compact ? <h3 className="sr-only">Physical comparison</h3> : (
+        <h2 className="mb-1.5 text-center text-[9px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+          Tale of the tape
+        </h2>
+      )}
       {rows.map((row) => (
         <dl
           key={row.label}
@@ -494,7 +499,7 @@ export function TaleOfTape({ fight }: { fight: Matchup }) {
               <dt className="sr-only">{fight[side].name}</dt>
               <dd className={`flex min-w-0 items-center gap-1 tabular-nums ${side === "f1" ? "flex-row-reverse" : ""}`}>
                 <span className="truncate text-[10px] font-semibold text-zinc-800">
-                  {row[side] ? `${row[side]}${row.label === "Age" ? " y/o" : ""}` : "—"}
+                  {row[side] || "—"}
                 </span>
                 {row.edge?.side === side ? (
                   <span

@@ -96,3 +96,33 @@ test("no announced time means no estimate rather than a made-up one", () => {
   assert.equal(estimatedStart(card, 0, { main: null, prelims: null, early: null }), null);
   assert.equal(estimatedStart(card, 9, times), null);
 });
+
+test("seven Noche prelims fit before the main card with a transition", () => {
+  const prelims = Array.from({ length: 7 }, (_, ord) => ({ ord, segment: "prelims" as const }));
+  const offsets = [...prelims].reverse().map((bout) =>
+    (estimatedStart(prelims, bout.ord, times)! - times.prelims) / 60_000);
+  assert.deepEqual(offsets, [0, 20, 45, 70, 95, 120, 145]);
+  assert.ok(estimatedStart(prelims, 0, times)! < times.main - 30 * 60_000);
+});
+
+test("early prelims respect the next announced segment, even without prelim timing", () => {
+  const early = Array.from({ length: 4 }, (_, ord) => ({ ord, segment: "early" as const }));
+  const schedule = { early: times.prelims, prelims: times.prelims + 90 * 60_000, main: times.main };
+  assert.equal(estimatedStart(early, 0, schedule), times.prelims + 60 * 60_000);
+  assert.equal(estimatedStart(early, 0, { ...schedule, prelims: null, main: schedule.prelims }), times.prelims + 60 * 60_000);
+});
+
+test("crowded segments preserve the extra allowance for five-round bouts", () => {
+  const mixed = [
+    { ord: 0, segment: "prelims" as const },
+    { ord: 1, segment: "prelims" as const, fiveRound: true },
+    { ord: 2, segment: "prelims" as const },
+  ];
+  const schedule = { ...times, main: times.prelims + 90 * 60_000 };
+  assert.equal(estimatedStart(mixed, 1, schedule), times.prelims + 20 * 60_000);
+  assert.equal(estimatedStart(mixed, 0, schedule), times.prelims + 55 * 60_000);
+});
+
+test("conflicting segment times suppress estimates", () => {
+  assert.equal(estimatedStart(card, 2, { ...times, main: times.prelims }), null);
+});
