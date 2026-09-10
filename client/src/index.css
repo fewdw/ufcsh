@@ -99,6 +99,15 @@ select:not([multiple]):not([size]) {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23a1a1aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.75 6 7.75 9 4.75'/%3E%3C/svg%3E");
 }
 
+/* ufc.com crops its full-body art mid-thigh. Fading the last of the picture
+   dissolves that cut, so a fighter standing on a panel ends in air rather than
+   on a hard horizontal line. Masking is the element's own box, which is why
+   the portrait frames carry the art's exact ratio. */
+.portrait-fade {
+  -webkit-mask-image: linear-gradient(to bottom, #000 74%, transparent 99%);
+  mask-image: linear-gradient(to bottom, #000 74%, transparent 99%);
+}
+
 /* Tailwind v4's reset gives every button the default arrow. Anything that acts
    on a click should say so under the pointer; anything disabled should not. */
 :where(button, summary, [role="button"], [role="checkbox"], label:has(> input[type="checkbox"], > input[type="radio"])):not(:disabled, [aria-disabled="true"]) {
@@ -251,3 +260,165 @@ select:not([multiple]):not([size]) {
     scroll-behavior: auto !important;
   }
 }
+
+/* The overview has its own visual rhythm; shared fight charts stay compact. */
+.matchup-overview {
+  --matchup-rule: color-mix(in srgb, currentColor 10%, transparent);
+}
+.matchup-heading { padding: 14px 24px; }
+.matchup-body { padding: 0 24px 24px; }
+.matchup-hero {
+  position: relative;
+  isolation: isolate;
+  padding: 24px 0;
+  gap: 24px;
+}
+.matchup-fighter {
+  flex-direction: column;
+  text-align: center;
+  gap: 12px;
+}
+.matchup-identity { width: 100%; }
+.matchup-identity > div:first-child { justify-content: center; align-items: center; }
+.matchup-name { font-size: clamp(16px, 2cqi, 22px); line-height: 1.25; letter-spacing: -0.025em; }
+.matchup-fighter--left { --profile-ink: var(--color-f1-ink); }
+.matchup-fighter--right { --profile-ink: var(--color-f2-ink); }
+.matchup-fighter:is(:hover, :focus-visible) .matchup-name { color: var(--profile-ink) !important; }
+.matchup-market { gap: 8px; }
+.matchup-market > span { order: -1; font-size: 10px; font-weight: 500; letter-spacing: normal; text-transform: none; }
+.matchup-prices { margin: 0; width: 190px; max-width: 100%; }
+.matchup-comparisons {
+  margin-top: 0;
+  padding-top: 20px;
+  gap: 0 36px;
+}
+.matchup-comparisons > div {
+  max-width: none;
+  min-width: 0;
+  padding: 0;
+}
+.matchup-comparison-heading {
+  grid-column: 1 / -1;
+  margin-bottom: 16px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+}
+.matchup-comparisons dl:first-of-type,
+.matchup-context > div:first-of-type { border-top: 0; }
+.matchup-comparisons dl,
+.matchup-context > div {
+  min-height: 38px;
+  padding: 9px 0;
+  border-top: 1px solid var(--matchup-rule);
+}
+.matchup-comparisons dl,
+.matchup-context > div > div:first-child {
+  grid-template-columns: minmax(0, 1fr) 86px minmax(0, 1fr);
+  gap: 8px;
+}
+.matchup-context > div > div:nth-child(1) > div:nth-child(2) > span {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+.matchup-comparisons dd { flex-wrap: wrap; row-gap: 3px; }
+.matchup-comparisons dl > div:first-child dd { justify-content: flex-start; }
+.matchup-comparisons dd > span:first-child { font-size: 11px; overflow: visible; white-space: normal; }
+.matchup-context > div > div > div > span {
+  font-size: 11px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.matchup-context > div > div:nth-child(1) > div:nth-child(2) > span {
+  white-space: normal;
+  overflow: visible;
+}
+@container (max-width: 45.99rem) {
+  .matchup-heading { padding: 12px 16px; }
+  .matchup-body { padding: 0 16px 16px; }
+  .matchup-hero { padding: 20px 0; gap: 18px 12px; }
+  .matchup-market { padding-top: 16px; border-top: 1px solid var(--matchup-rule); }
+  .matchup-comparisons { gap: 0; padding-top: 16px; }
+  .matchup-context { margin-top: 12px; padding-top: 12px !important; border-top: 1px solid var(--matchup-rule); }
+}
+@container (max-width: 24rem) {
+  .matchup-name { font-size: 16px; }
+  .matchup-comparisons dl,
+  .matchup-context > div > div:first-child { grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr); gap: 5px; }
+}
+
+/* Give the pinned identity and full-body portraits room above the fight data. */
+.matchup-top-card { flex-shrink: 0; }
+.matchup-top-card .matchup-heading { padding: 8px 20px; }
+.matchup-top-card .matchup-body { padding: 0 20px; }
+.matchup-top-card .matchup-hero { padding: 20px 0; gap: 20px; }
+.matchup-top-card .matchup-fighter { gap: 8px; }
+.matchup-top-card .matchup-fighter > div:first-child > img { width: 56px; height: 56px; }
+.matchup-top-card .matchup-fighter > div:first-child > span { width: 74px; height: 112px; }
+.matchup-top-card .matchup-name { font-size: 17px; }
+.matchup-top-card .matchup-market { gap: 5px; }
+@container (min-width: 46rem) {
+  .matchup-top-card .matchup-fighter--left { flex-direction: row; text-align: left; }
+  .matchup-top-card .matchup-fighter--right { flex-direction: row-reverse; text-align: right; }
+  .matchup-top-card .matchup-fighter--left .matchup-identity > div:first-child { justify-content: flex-start; }
+  .matchup-top-card .matchup-fighter--right .matchup-identity > div:first-child { justify-content: flex-end; }
+  .matchup-top-card .matchup-identity > div:first-child { flex-wrap: wrap; gap: 6px; }
+  .matchup-top-card .matchup-hero > div:not(.matchup-market) { align-self: start; }
+  .matchup-top-card .matchup-fighter { align-items: flex-start; }
+}
+@container (max-width: 45.99rem) {
+  .matchup-top-card .matchup-heading { padding: 8px 12px; }
+  .matchup-top-card .matchup-heading > div:first-child { flex: 1; }
+  .matchup-top-card .matchup-heading a { font-size: 12px; }
+  .matchup-top-card .matchup-body { padding: 0 12px; }
+  .matchup-top-card .matchup-hero { padding: 16px 0; gap: 12px; }
+  .matchup-top-card .matchup-name { font-size: 15px; }
+  .matchup-top-card .matchup-fighter > div:first-child > img { width: 44px; height: 44px; }
+  .matchup-top-card .matchup-fighter > div:first-child > span { width: 53px; height: 80px; }
+  .matchup-top-card .matchup-market { padding-top: 8px; }
+  .matchup-top-card .matchup-identity > div:first-child { flex-wrap: wrap; gap: 4px; }
+}
+
+.matchup-header-control {
+  display: inline-flex;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--matchup-rule);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-zinc-500);
+}
+.matchup-header-control:hover { background: var(--color-zinc-100); }
+.matchup-header-control[aria-pressed="true"] { color: var(--color-zinc-900); }
+.dark .matchup-header-control { color: #a1a1aa; }
+.dark .matchup-header-control:hover { background: #27272a; }
+.dark .matchup-header-control[aria-pressed="true"] { color: #f4f4f5; }
+
+.matchup-top-card .matchup-fighter > div:first-child > [data-fighter-portrait="full"] {
+  width: 145px;
+  height: 220px;
+}
+@container (max-width: 45.99rem) {
+  .matchup-top-card .matchup-fighter > div:first-child > [data-fighter-portrait="full"] {
+    width: 112px;
+    height: 170px;
+  }
+}
+
+/* Follow the app's selected theme, independently of the operating system. */
+.odds-pair {
+  color: #18181b;
+  border-color: #e4e4e7;
+  background: linear-gradient(180deg, #fff, #fafafa);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.025);
+}
+.odds-pair-divider { background: #e4e4e7; }
+.dark .odds-pair {
+  color: #f4f4f5;
+  border-color: #3f3f46;
+  background: linear-gradient(180deg, #27272a, #202023);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.025);
+}
+.dark .odds-pair-divider { background: #3f3f46; }

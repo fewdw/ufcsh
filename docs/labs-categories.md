@@ -17,25 +17,29 @@ One observation here is **one distinct bout**, even when both corners qualify
 for the main study. The coverage line compares bouts with recorded scorecards
 to all decision bouts selected by that study.
 
-- Filter by final-panel verdict, scheduled length, judge, fight era, winner’s
-  statistical deficit, scoreline, or fighter/event search.
-- Presets open split decisions, wins with fewer strikes and less control, or
-  five-round decisions. Presets replace room filters but keep the main study.
+- The Scorecards and Judges tabs keep the overview readable without hiding
+  either dataset. Both retain the selected three-, five-, or all-round scope.
 - Divided-panel rate is split plus majority panels divided by complete panels.
   Draws (including a three-way vote) and incomplete panels stay separate. All
   three final votes agreeing on a draw is a drawn panel, never a majority win.
 - Compare divided-panel rates by five-year era or division. Fewer than 25
   complete panels gives a hatched bar.
-- Judge rankings support card volume, dissent rate, or average absolute card
-  margin, with minimum card samples of 1, 10, 25, or 100. The table exposes the
-  exact counts. Dissent is a vote different from two matching votes (including
-  draws); only complete three-card panels enter its denominator. Margin is an
-  absolute difference in final scores, so scheduled length affects it.
-- The scoreline fingerprint shows every scoreline, higher score first. Choosing
-  a judge makes this chart describe that judge’s cards. Combining judge and
-  scoreline requires the selected judge to have written that exact scoreline.
-  Selecting a scoreline narrows bouts; all cards from those bouts remain
-  available in the case file and CSV.
+- Three-round fights lead by default; tabs switch the entire room between
+  three-round, five-round and all scheduled lengths.
+- The scoreline fingerprint includes every final score and its share of all
+  cards. It is searchable, so common championship cards such as 50–45 and rare
+  scores remain available rather than being truncated to a top list.
+- The scrollable judge list includes every recorded official. Its views rank
+  lone-dissent rate, favorite-pick rate on priced decisive cards, draw-card
+  rate, wide-vs-close dissents, and average absolute card margin. Thin samples
+  remain visible but are muted and ranked after judges with ten opportunities.
+- Every verdict, final score, and judge is selectable. Its case list contains
+  each matching fight once, both fighters, the complete panel of written cards,
+  fighter and fight links, search, and ordering by date or card disagreement.
+- Close-decision signals report how often betting favorites and reigning
+  champions won split decisions, plus panels containing wide cards for opposite
+  fighters. These patterns identify cases worth examining; they do not establish
+  bias or corruption.
 - “Won with less” means the recorded winner landed fewer significant strikes
   **and** had less control than the loser. Both totals must be known. Each bout
   enters both numerator and denominator once, regardless of selected corner.

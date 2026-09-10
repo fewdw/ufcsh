@@ -8,7 +8,6 @@ fresh in the background.
 
 - Complete event cards, broken by broadcast — early prelims, prelims and main card each under their own heading and their own announced start time, with every bout after that heading estimated from it at half an hour a bout and forty minutes for anything scheduled for five rounds. Every row carries each fighter's career and UFC record, age, last five results, and the streak they bring in.
 
-  The header answers "was this card worth watching" in **five lines, chosen for this card**. Both a fought card and an announced one can be described a couple of dozen ways — finishes, round-one stoppages, knockdowns, the fastest finish, the biggest upset, bonuses, debut winners, split verdicts; or belts, champions, undefeated records, the closest matchup, the longest price, the longest active run, rematches, layoffs, ages and reach. Each of those is scored for how remarkable its number is on *this* card, and only the best five are shown, at most two from any one theme. So a night of first-round knockouts leads with the finishes, a card the favorites swept says so, and a card carrying two belts leads with the belts.
 - Fighter profiles with a single chronological professional history spanning UFC and verified outside-UFC bouts, career records entering every fight, rankings, and title narratives that distinguish undisputed titles, interim titles, defenses, regains, losses and unifications. UFC rows retain their local stats and matchup links; outside rows link to the verified source event and opponent. A **Records** panel appears when the fighter actually holds a place near the top of the sport, showing their best few.
 - Matchup pages built in one order whether the bout has happened or not: what happened (judges' cards, fight totals, round by round), then where both fighters stood walking in (record, current run, last result, time out, age, belt standing, and their last five bouts), then **how they fight** — strike rate, accuracy, strikes avoided, knockdown rate, takedown rate, takedown accuracy, takedowns stopped, submission rate, control share, and how their wins and losses have been split between knockout, submission and decision. Every one of those is computed from the official round-by-round totals of their earlier UFC fights **as of that night**, so an old matchup reads the way it did then, and the physical tale of the tape, opening and closing prices with the line movement between them, previous meetings and common opponents sit around it.
 - UFC Meta rankings, plus activity and scheduled-fight status. Every rank badge
@@ -64,7 +63,6 @@ fresh in the background.
   apply throughout; room filters respond immediately. [Definitions and
   limitations](docs/labs-categories.md) explain the counting units, coverage,
   debut cutoff, and result windows.
-- **Card quality** appears only beside event titles as five gold Lucide stars, with quarter-star fills. Hover for the exact 0–100 score, coverage and factor breakdown. Not every bout is the card: the main event carries six times the weight of a prelim, the top two are read again on their own, and the headliner is a factor in its own right, so a dull opener costs almost nothing and a dull main event costs a lot. Completed cards are reviews, led by what the fights delivered — finishes weigh heavily, a knockout above a submission, a decision at zero unless the promotion called it the Fight of the Night — and each review keeps the pre-fight rating beside it, so the tooltip can say what the night added or cost. Reigning champions count as part of what is at stake, and the card's make-up carries a stated editorial preference toward the men's divisions. Announced cards are estimates: under six announced bouts there is no rating and no stars, and between six and eight the estimate is held near the middle of the scale until the card fills out. Ranked fighters count on announced cards only, because the rankings feed has no archive to rate a past card with. [The versioned formula](docs/card-quality.md) explains the evidence and limitations. Scores refresh with synced card and odds changes.
 - **Activity dots** distinguish both outcome and method: solid green/red for wins/losses by KO/TKO or submission, hollow green/red for decisions. Hover text names the result; unknown methods are not presented as finishes.
 - **Search** opens with `⌘K` / `Ctrl+K` or the header button. Before typing,
   it offers quick navigation to Events, Rankings, Statistics and Labs. Results
@@ -130,7 +128,7 @@ the app is usable immediately and fills in as it goes. `GET /api/status` shows p
 | Rankings            | ufc.com          | every 6h                                         |
 | Fight detail pages  | ufcstats.com     | upcoming ≤14d + recent past; older pages lazily verified when needed |
 | Odds                | bestfightodds.com| upcoming ≤30d every 6h, frozen after the event   |
-| Fighter photos      | ufc.com          | 30-day cache, small batch per minute — ranked and upcoming-card fighters first; viewing any fighter without a photo queues them for the next batch |
+| Fighter photos      | ufc.com          | Headshot and full-body cut-out; small batch per minute, ranked and upcoming-card fighters first. Re-checked every 3 days for anyone with a bout in hand and every 30 for the rest, daily while a picture is still missing; ufc.com's silhouette stand-ins count as no picture. Viewing a fighter queues them for the next batch |
 
 Pages say how old their copy is rather than letting it look current: an event
 header carries "Odds updated 3h ago" (and "Closing odds · frozen" once a card is
@@ -222,11 +220,16 @@ The rules that decide what a figure means, in one place:
   and whether it is read **at the time of the fight** or **as it stands today**.
   The UFC half of every reading is exact, because every UFC bout is dated.
   Outside-UFC fights are imported as individual dated professional bouts from
-  Sherdog. A source identity is accepted only after an exact name plus two
-  shared UFC bout/date/opponent matches (or, for debutants and one-fight UFC
-  careers, stricter record and biography checks); ambiguous matches are kept
+  Sherdog. Identity checks normalize initial punctuation, omitted suffixes,
+  and joined given names. A source identity needs shared UFC bout/date/opponent
+  matches (with stricter record and biography checks for short UFC careers).
+  Legal-name differences require independent birth-date and UFC-bout evidence;
+  ambiguous matches are kept
   out rather than guessed. Source summary totals must also equal the parsed
-  history rows. UFCStats remains authoritative for UFC-specific statistics,
+  history rows, including dated bouts whose opponents have no profile link.
+  A frozen UFCStats record can be verified against the source's dated total
+  at the last UFC appearance, even when the fighter later competed elsewhere.
+  UFCStats remains authoritative for UFC-specific statistics,
   while the verified full source timeline supplies complete-career totals and
   records at fight time; reconciled rows prevent duplicate display or counting.
   Consequently, a complete career read only includes bouts that had actually
@@ -254,11 +257,19 @@ results explicitly labelled as previous results.
 ## Notes
 
 - `server/data/ufc.db` is the local state; delete it to re-backfill from scratch.
+- Run `cd server && npm run backfill:images -- --parallel` to retry missing
+  full-body images across the roster with four throttled workers, ranked and
+  recently active fighters first. Existing full-body images are skipped.
+  Directory headshots do not mark an athlete's full-body lookup as checked.
 - Complete-career backfill is resume-safe and runs in the background. Verified
   source URLs are refreshed directly; shared UFC bouts seed the opponent's
   source URL, reducing name-search dependence while preserving identity checks.
   Opening an unverified fighter profile also runs that fighter's sync immediately,
   with in-flight requests deduplicated and failures falling back to UFC-only data.
+  Missing histories are prioritized ahead of verified-profile refreshes within
+  each roster tier. Unresolved ranked/booked fighters retry every three days;
+  historical failures retry monthly. Parser/identity fixes reset failed checks
+  once so older cards benefit immediately from the next backfill.
 - ufcstats.com's records start at UFC 2 (Mar 1994) — UFC 1 isn't in their database.
 - ufcstats.com fronts requests with a small proof-of-work interstitial; the fetcher
   in `server/src/http.ts` solves it like a browser would and stays throttled

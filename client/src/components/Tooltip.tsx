@@ -21,7 +21,7 @@ export function Tooltip({ id, at, children }: { id: string; at: TipAnchor | null
       role="tooltip"
       id={id}
       style={{ left: at.x, top: at.y, transform: `translate(-50%, ${at.above ? "-100%" : "0"})` }}
-      className="pointer-events-none fixed z-[100] block w-max max-w-64 rounded-lg bg-zinc-900 px-2.5 py-2 text-left text-[11px] font-medium leading-snug text-white shadow-xl ring-1 ring-white/10"
+      className="pointer-events-none fixed z-[100] block min-w-52 w-max max-w-80 rounded-lg bg-zinc-900 px-3 py-2.5 text-left text-[11px] font-medium leading-snug text-white shadow-xl ring-1 ring-white/10"
     >
       {children}
     </span>,

@@ -23,7 +23,7 @@ export default function BonusIcons({ bonuses, outcome }: { bonuses: FightBonuses
   if (!bonuses?.fotn && !(bonuses?.perf && outcome === "win")) return null;
   return (
     <span className="inline-flex shrink-0 items-center gap-1" aria-label="Fight bonuses">
-      {bonuses.fotn ? <BonusIcon emoji="🏆" label="Fight of the Night" /> : null}
+      {bonuses.fotn ? <BonusIcon emoji="🔥" label="Fight of the Night" /> : null}
       {bonuses.perf && outcome === "win" ? <BonusIcon emoji="💰" label="Performance of the Night" /> : null}
     </span>
   );

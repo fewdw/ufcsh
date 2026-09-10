@@ -27,20 +27,21 @@ const CATEGORIES: { key: CategoryKey; title: string; purpose: string; tip: strin
   {
     key: "road",
     title: "The road to the UFC",
-    purpose: "What these fighters arrived with, and what it was worth.",
-    tip: "Counted only for fighters with an identity-verified professional history, so the coverage line matters: a fighter without one is left out rather than counted as having no bouts.",
+    purpose: "What fighters brought to their UFC debut.",
+    tip: "Fighters without an identity-verified professional history are left out rather than counted as having no prior bouts.",
   },
 ];
 
-export default function LabsCategories({ data, loading, error, onRetry }: {
+export default function LabsCategories({ data, loading, error, onRetry, studyQuery }: {
   data: LabsInsightsResponse | null;
   loading: boolean;
   error: boolean;
   onRetry: () => void;
+  studyQuery: string;
 }) {
   const [closed, setClosed] = useState<CategoryKey[]>([]);
   return (
-    <div className="mt-3 space-y-3">
+    <div className="mt-3 grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
       {CATEGORIES.map((category) => {
         const open = !closed.includes(category.key);
         return (
@@ -70,7 +71,7 @@ export default function LabsCategories({ data, loading, error, onRetry }: {
                   <p role="status" className="py-8 text-center text-[11px] text-zinc-400">{loading ? "Reading the study…" : "No data for this study."}</p>
                 ) : (
                   <div className={loading ? "opacity-60 transition-opacity" : ""}>
-                    {category.key === "judges" ? <JudgesRoom data={data} /> : <RoadToUFC data={data} />}
+                    {category.key === "judges" ? <JudgesRoom studyQuery={studyQuery} /> : <RoadToUFC data={data} studyQuery={studyQuery} />}
                   </div>
                 )}
               </div>

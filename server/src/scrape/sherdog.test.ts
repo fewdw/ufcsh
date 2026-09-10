@@ -36,6 +36,17 @@ test("rejects a partial page when summary totals and history disagree", () => {
   );
 });
 
+test("counts dated bouts with unlinked opponents without inventing profile URLs", () => {
+  for (const replacement of ['Unknown Fighter', '<a href="javascript:void();">Unknown Fighter</a>']) {
+    const html = fixture.replace('<a href="/fighter/Opponent-Four-4">Opponent Four</a>', replacement);
+    const profile = parseSherdogProfile(html, "https://www.sherdog.com/fighter/Test-Fighter-99");
+    assert.equal(profile.wins, 2);
+    assert.equal(profile.bouts.length, 4);
+    assert.equal(profile.bouts[3].opponentName, "Unknown Fighter");
+    assert.equal(profile.bouts[3].opponentUrl, "");
+  }
+});
+
 test("matches UFC rows without double-counting and keeps dated outside rows", () => {
   const source: SherdogBout[] = parseSherdogProfile(fixture, "https://www.sherdog.com/fighter/Test-Fighter-99").bouts;
   const reconciled = reconcileCareerBouts(source, [{ id: "ufc-1", date: "2020-02-03", opponent: "Opponent One" }]);
@@ -69,4 +80,15 @@ test("two matched UFC bouts identify a continued post-UFC career despite a stale
   assert.equal(isVerifiedIdentity(staleLocal, 1, profile, bouts, known), true);
   const oneKnown = known.slice(0, 1);
   assert.equal(isVerifiedIdentity(staleLocal, 1, profile, reconcileCareerBouts(profile.bouts, oneKnown), oneKnown), false);
+});
+
+test("a one-bout UFC career accepts a frozen total only when the dated source reproduces it", () => {
+  const original = parseSherdogProfile(fixture, "https://www.sherdog.com/fighter/Test-Fighter-99");
+  const later = { ...original.bouts[0], key: "later", date: "2022-01-01", eventName: "Regional Event", opponentName: "Later Opponent" };
+  const profile = { ...original, wins: 3, bouts: [later, ...original.bouts] };
+  const known = [{ id: "ufc-1", date: "2020-02-03", opponent: "Opponent One" }];
+  const bouts = reconcileCareerBouts(profile.bouts, known);
+  const local = { id: "local", name: "Test Fighter", nickname: "", birth_date: "", wins: 2, losses: 1, draws: 0 };
+  assert.ok(isVerifiedIdentity(local, 1, profile, bouts, known));
+  assert.equal(isVerifiedIdentity({ ...local, wins: 1 }, 1, profile, bouts, known), false);
 });

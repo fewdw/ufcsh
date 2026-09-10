@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, Route, Routes, useLocation } from "react-router-dom";
 import CmdK from "./components/CmdK";
+import SearchGlyph from "./components/SearchGlyph";
 import LiveMatchup from "./components/LiveMatchup";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "./components/segmented";
 import { Moon, Sun } from "lucide-react";
@@ -66,10 +67,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
             aria-label="Search fighters, events and fights"
             className="flex items-center gap-2 rounded-full border border-zinc-200 bg-white py-1.5 pl-3 pr-3.5 text-sm text-zinc-400 transition-colors hover:border-zinc-300 hover:text-zinc-600"
           >
-            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="9" cy="9" r="6" />
-              <path d="m14 14 3.5 3.5" strokeLinecap="round" />
-            </svg>
+            <SearchGlyph />
             <span className="hidden sm:inline">Search anything</span>
             <kbd className="hidden rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 md:inline">⌘K</kbd>
           </button>

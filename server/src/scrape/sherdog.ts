@@ -47,6 +47,7 @@ export type SherdogProfile = {
 };
 
 function absoluteUrl(value: string): string {
+  if (!value.trim()) return "";
   return value.startsWith("http") ? value : `${BASE}${value.startsWith("/") ? "" : "/"}${value}`;
 }
 
@@ -118,18 +119,21 @@ export function parseSherdogProfile(html: string, url: string): SherdogProfile {
     const outcome = result(cells.eq(0).text());
     const date = sherdogDate(cells.eq(2).find(".sub_line").first().text());
     const opponent = cells.eq(1).find("a[href*='/fighter/']").first();
+    // Some legitimate early bouts list an unlinked or unknown opponent.
+    // Their dated results still count toward the professional record.
+    const opponentName = cleanText(opponent.text()) || cleanText(cells.eq(1).text());
     const event = cells.eq(2).find("a[href*='/events/']").first();
-    if (!outcome || !date || !cleanText(opponent.text())) return;
+    if (!outcome || !date || !opponentName) return;
     const opponentUrl = absoluteUrl(opponent.attr("href") ?? "");
     const eventUrl = absoluteUrl(event.attr("href") ?? "");
-    const opponentId = opponentUrl.match(/-(\d+)$/)?.[1] ?? normName(opponent.text());
+    const opponentId = opponentUrl.match(/-(\d+)$/)?.[1] ?? normName(opponentName);
     const eventId = eventUrl.match(/-(\d+)$/)?.[1] ?? normName(event.text());
     bouts.push({
       key: `${date}:${eventId}:${opponentId}:${sourceOrder}`,
       sourceOrder,
       date,
       outcome,
-      opponentName: cleanText(opponent.text()),
+      opponentName,
       opponentUrl,
       eventName: cleanText(event.text()),
       eventUrl,

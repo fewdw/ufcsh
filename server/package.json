@@ -8,6 +8,7 @@
     "start": "node src/index.ts",
     "audit:stats": "node src/audit-fight-stats.ts",
     "backfill:odds": "node src/backfill-odds.ts",
+    "backfill:images": "node src/backfill-images.ts",
     "test": "node --test src/*.test.ts src/**/*.test.ts"
   },
   "dependencies": {

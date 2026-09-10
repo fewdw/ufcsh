@@ -4,16 +4,6 @@ import { RequestCache } from "./requestCache";
 // ---------------------------------------------------------------------------
 // types (mirror the server's JSON)
 
-export type CardQuality = {
-  score: number;
-  basis: "preview" | "review";
-  coverage: number;
-  version: number;
-  /** Reviews only: the same card scored on its pre-fight evidence alone. */
-  expected?: number;
-  factors: { label: string; value: number; weight: number }[];
-};
-
 export type EventListItem = {
   id: string;
   name: string;
@@ -21,7 +11,6 @@ export type EventListItem = {
   location: string;
   status: "past" | "current" | "next" | "future";
   fight_count: number;
-  quality?: CardQuality;
 };
 
 export type FighterRanking = { division: string; rank: string } | null;
@@ -66,6 +55,8 @@ export type FightSide = {
   country?: string | null;
   country_code?: string | null;
   photo_url: string | null;
+  /** Full-body cut-out. Null when ufc.com has no such picture for the fighter. */
+  photo_full_url?: string | null;
   ranking: FighterRanking;
   outcome: "win" | "loss" | "draw" | "nc" | null;
   stats: { kd: string | null; str: string | null; td: string | null; sub: string | null };
@@ -89,55 +80,11 @@ export type FightSide = {
 /** Everything a card can be summarised by. The header picks the few of these
  *  that are actually worth reading for the card in front of it; the rest are
  *  the pool it picks from, so two cards rarely lead with the same line. */
+/** How much of a card has been fought: what the results line reads, and what
+ *  decides which bout the live view treats as the one on now. */
 export type CardStats = {
   total_fights: number;
   completed_fights: number;
-  title_fights: number;
-  five_round_bouts: number;
-  main_event: { fight_id: string; f1: string; f2: string; weight_class: string } | null;
-  priced_fights: number;
-  underdog_wins: number;
-  finishes: number;
-  knockouts: number;
-  submissions: number;
-  decisions: number;
-  split_decisions: number;
-  first_round_finishes: number;
-  bonuses: number;
-  knockdowns: number;
-  takedowns: number;
-  submission_attempts: number;
-  strikes: number;
-  avg_seconds: number | null;
-  total_seconds: number;
-  biggest_upset: { fight_id: string; name: string; line: number } | null;
-  fastest_finish: { fight_id: string; name: string; seconds: number; method: string } | null;
-  longest_bout: { fight_id: string; f1: string; f2: string; seconds: number } | null;
-  most_strikes: { fight_id: string; name: string; count: number } | null;
-  most_knockdowns: { fight_id: string; name: string; count: number } | null;
-  debut_wins: number;
-  ranked_fighters: number;
-  champions: number;
-  former_champions: number;
-  debutants: number;
-  undefeated_fighters: number;
-  undefeated_ranked_fighters: number;
-  rematches: number;
-  countries: number;
-  divisions: number;
-  avg_age: number | null;
-  combined_record: { wins: number; losses: number; fighters: number } | null;
-  career_finish_rate: number | null;
-  closest_matchup: { fight_id: string; f1: string; f2: string; gap: number } | null;
-  biggest_favorite: { fight_id: string; name: string; line: number } | null;
-  longest_underdog: { fight_id: string; name: string; line: number } | null;
-  longest_streak: { fight_id: string; name: string; count: number } | null;
-  most_experienced: { fight_id: string; name: string; bouts: number } | null;
-  most_finishes: { fight_id: string; name: string; count: number } | null;
-  youngest: { fight_id: string; name: string; age: number } | null;
-  oldest: { fight_id: string; name: string; age: number } | null;
-  longest_layoff: { fight_id: string; name: string; days: number } | null;
-  biggest_reach_gap: { fight_id: string; name: string; inches: number } | null;
 };
 
 /** A fighter's UFC record as it stood entering one bout. */
@@ -254,7 +201,6 @@ export type EventDetail = {
   results_updated_at?: number | null;
   schedule?: CardSchedule;
   card_stats: CardStats;
-  quality?: CardQuality;
   /** When this card's prices last reached the local database. */
   odds_freshness?: { updated_at: number | null; final: boolean; priced: number };
   fights: EventFight[];
@@ -367,6 +313,7 @@ export type FighterProfile = {
   outside_ufc_record: string | null;
   career_source_url: string | null;
   photo_url: string | null;
+  photo_full_url: string | null;
   ranking: { division: string; rank: string; rank_change: string | null } | null;
   records: FighterRecord[];
   stats: FighterStat[];
@@ -672,6 +619,82 @@ export type InsightGroup = {
   win_rate: number | null;
 };
 
+export type RoadArrivalGroup = {
+  key: string;
+  label: string;
+  fighters: number;
+  share: number | null;
+  debut_wins: number;
+  debut_losses: number;
+  debut_draws: number;
+  debut_ncs: number;
+  debut_win_rate: number | null;
+};
+
+export type JudgeExplorerOfficial = {
+  key: string;
+  label: string;
+  cards: number;
+  complete_cards: number;
+  dissents: number;
+  dissent_rate: number | null;
+  close_dissents: number;
+  wide_dissents: number;
+  wide_dissent_rate: number | null;
+  draw_cards: number;
+  draw_rate: number | null;
+  priced_picks: number;
+  favorite_picks: number;
+  favorite_pick_rate: number | null;
+  average_margin: number | null;
+};
+
+export type LabsJudgesResponse = {
+  rounds: "all" | "3" | "5";
+  bouts: number;
+  decision_bouts: number;
+  scored_bouts: number;
+  cards: number;
+  verdicts: { unanimous: number; split: number; majority: number; drawn: number; incomplete: number };
+  against_the_numbers: number;
+  against_the_numbers_known: number;
+  scorelines: { key: string; label: string; n: number; share: number | null }[];
+  officials: JudgeExplorerOfficial[];
+  signals: {
+    split_favorite_known: number;
+    split_favorite_wins: number;
+    split_champion_known: number;
+    split_champion_wins: number;
+    polar_opposites: number;
+  };
+};
+
+export type JudgeEvidenceBout = {
+  fight_id: string;
+  event_id: string;
+  event_name: string;
+  date: string;
+  division: string;
+  scheduled_rounds: number;
+  verdict: "unanimous" | "split" | "majority" | "draw" | "incomplete";
+  method: string | null;
+  f1: { id: string; name: string; outcome: "win" | "loss" | "draw" | "nc" | null };
+  f2: { id: string; name: string; outcome: "win" | "loss" | "draw" | "nc" | null };
+  cards: { judge: string; f1_score: number; f2_score: number }[];
+  disagreement: number;
+};
+
+export type JudgeEvidenceResponse = {
+  rounds: "all" | "3" | "5";
+  kind: "verdict" | "scoreline" | "official";
+  value: string;
+  sort: string;
+  total: number;
+  offset: number;
+  limit: number;
+  rows: JudgeEvidenceBout[];
+};
+
 /**
  * The two rooms under a study, as summaries rather than rows: how the study's
  * decisions were scored, and what its fighters had done before they arrived.
@@ -698,8 +721,20 @@ export type LabsInsightsResponse = {
     coverage: number | null;
     median_outside_bouts: number | null;
     median_debut_age: number | null;
-    by_experience: InsightGroup[];
-    by_debut_age: InsightGroup[];
+    arrival_fighters: number;
+    dimensions: {
+      experience: RoadArrivalGroup[];
+      stance: RoadArrivalGroup[];
+      country: RoadArrivalGroup[];
+      division: RoadArrivalGroup[];
+      era: RoadArrivalGroup[];
+      runway: RoadArrivalGroup[];
+      record: RoadArrivalGroup[];
+      age_bands: RoadArrivalGroup[];
+      exact_age: RoadArrivalGroup[];
+    };
+    /** bouts, fighters, share, debut W/L/D/NC, debut win rate */
+    exact_experience: [number, number, number | null, number, number, number, number, number | null][];
   };
 };
 

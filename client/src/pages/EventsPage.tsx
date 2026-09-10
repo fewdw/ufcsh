@@ -4,16 +4,9 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
 import { clockTime, countdown, exactTime, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankLabel } from "../format";
-import { cardHighlights, type Highlight, type HighlightIcon } from "../cardHighlights";
-import {
-  Activity, Award, CalendarClock, Clock, Coins, Crown, Flame, Gauge, Globe, HandFist, History,
-  Hourglass, Medal, Percent, Repeat, Rocket, Ruler, Scale, ShieldCheck, Sparkles, Split, Star,
-  Swords, Target, Timer, TrendingUp, Trophy, Users, Zap, type LucideIcon,
-} from "lucide-react";
 import { useNow } from "../useNow";
 import Avatar from "../components/Avatar";
 import ResultDots from "../components/ResultDots";
-import CardStars from "../components/CardStars";
 import Freshness from "../components/Freshness";
 import BonusIcons from "../components/BonusIcons";
 import OddsPair from "../components/OddsPair";
@@ -22,6 +15,9 @@ import type { Matchup } from "../api";
 import { useSeo } from "../seo";
 import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
 import { useSettings, withRanking } from "../settings";
+import { eventKind, type EventKind } from "../eventKind";
+import SearchGlyph from "../components/SearchGlyph";
+import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 
 const shell = "rounded-2xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
 /** The source flags a tournament or TUF final the same way it flags a
@@ -52,6 +48,22 @@ const MONTHS = [
 // ---------------------------------------------------------------------------
 // sidebar
 
+/** The tier quick filter. "all" is not a third kind of event — it is the two
+ *  tiers together, which is every event on record. */
+type KindFilter = EventKind | "all";
+
+const KIND_FILTERS: { value: KindFilter; label: string; title: string }[] = [
+  { value: "all", label: "All", title: "Every event" },
+  { value: "ppv", label: "PPV", title: "Numbered pay-per-view cards" },
+  { value: "fight_night", label: "Fight Nights", title: "Fight Night, network and streaming cards" },
+];
+
+const KIND_NOUN: Record<KindFilter, string> = {
+  all: "events",
+  ppv: "pay-per-views",
+  fight_night: "fight nights",
+};
+
 function EventSidebar({
   events,
   selectedId,
@@ -64,17 +76,31 @@ function EventSidebar({
   onSelect: () => void;
 }) {
   const [filter, setFilter] = useHistoryState("events:filter", "");
+  const [kind, setKind] = useHistoryState<KindFilter>("events:kind", "all");
   const [showTop, setShowTop] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLAnchorElement>(null);
 
+  const countByKind = useMemo(() => {
+    const counts: Record<KindFilter, number> = { all: events.length, ppv: 0, fight_night: 0 };
+    for (const event of events) counts[eventKind(event.name)] += 1;
+    return counts;
+  }, [events]);
+
+  // Tier first, then text: the count in the placeholder and the empty state
+  // both describe the tier the reader is actually looking at.
+  const scoped = useMemo(
+    () => (kind === "all" ? events : events.filter((e) => eventKind(e.name) === kind)),
+    [events, kind],
+  );
+
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    if (!q) return events;
-    return events.filter(
+    if (!q) return scoped;
+    return scoped.filter(
       (e) => e.name.toLowerCase().includes(q) || e.location.toLowerCase().includes(q) || e.date.includes(q),
     );
-  }, [events, filter]);
+  }, [scoped, filter]);
 
   const groups = useMemo(() => {
     const byMonth = new Map<string, EventListItem[]>();
@@ -94,24 +120,50 @@ function EventSidebar({
 
   return (
     <aside id="events-sidebar" className={`${mobileOpen ? "flex" : "hidden"} min-h-0 w-full flex-1 flex-col overflow-hidden md:flex md:w-72 md:shrink-0 md:flex-none lg:w-80 ${shell}`}>
-      <div className="border-b border-zinc-200 p-3">
-        <input
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder={`Filter ${events.length} events…`}
-          className="h-11 w-full min-w-0 rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none transition placeholder:text-zinc-400 focus:border-zinc-300 focus:bg-white"
-        />
+      <div className="space-y-2 border-b border-zinc-200 p-3">
+        {/* Built from the same pill, border and glyph as the header's search
+            button, so the two read as one control in two places. */}
+        <label className="relative block">
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
+            <SearchGlyph />
+          </span>
+          <input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            aria-label={`Filter ${KIND_NOUN[kind]}`}
+            placeholder={`Filter ${scoped.length} ${KIND_NOUN[kind]}…`}
+            className="h-9 w-full min-w-0 rounded-full border border-zinc-200 bg-white pl-9 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400"
+          />
+        </label>
+        <div className={segmentedGroup} role="group" aria-label="Event tier">
+          {KIND_FILTERS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={kind === option.value}
+              onClick={() => setKind(option.value)}
+              title={`${option.title} · ${countByKind[option.value]}`}
+              className={`flex-1 rounded-full px-2 py-1 text-[11px] font-medium transition ${
+                kind === option.value ? segmentedSelected : segmentedIdle
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="relative min-h-0 flex-1">
         <div
           ref={listRef}
           onScroll={(e) => setShowTop(e.currentTarget.scrollTop > 320)}
-          className="h-full overflow-y-auto px-2 pb-2"
+          // The list is a track in the same tone as the header nav's group, so
+          // the selected row can sit on it as a raised white card.
+          className="h-full overflow-y-auto bg-zinc-100 px-2 pb-2"
         >
           {groups.map(([yearMonth, list]) => (
             <div key={yearMonth}>
-              <div className="sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-white/95 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-400 backdrop-blur">
+              <div className="sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-zinc-100 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
                 <span>{yearMonth.slice(0, 4)}</span>
                 <span>{MONTHS[Number(yearMonth.slice(5, 7)) - 1]}</span>
               </div>
@@ -127,33 +179,32 @@ function EventSidebar({
                       onClick={onSelect}
                       ref={isSelected ? selectedRef : undefined}
                       className={[
-                        "rounded-xl border px-3 py-2 transition-colors",
-                        isSelected
-                          ? "border-zinc-900 bg-zinc-900 text-white"
-                          : "border-transparent hover:border-zinc-200 hover:bg-zinc-50",
+                        "rounded-xl border border-transparent px-3 py-2 transition-colors",
+                        // Selection borrows the header nav's token outright: a
+                        // clean surface inside a hairline ring with a soft
+                        // shadow, rather than inverting to a solid block.
+                        isSelected ? segmentedSelected : "hover:bg-white/70",
                       ].join(" ")}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div
                           className={[
                             "flex min-w-0 items-center gap-1.5 text-[13px] font-semibold",
-                            isSelected ? "text-white" : isNext ? "text-amber-700" : "text-zinc-900",
+                            isNext ? "text-amber-700" : "text-zinc-900",
                           ].join(" ")}
                         >
                           <span className="truncate" title={event.name}>{event.name}</span>
                         </div>
+                        {/* Only the two states worth interrupting a list of
+                            eight hundred cards for; the rest are told by the
+                            date beneath them. */}
                         {isNext || isCurrent ? (
-                          <span
-                            className={[
-                              "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide",
-                              isSelected ? "bg-amber-400/20 text-amber-300" : "bg-amber-100 text-amber-700",
-                            ].join(" ")}
-                          >
-                            {isCurrent ? "current" : "next"}
+                          <span className={`${TAG_SHAPE} ${STATUS_TAG[isCurrent ? "current" : "next"].className}`}>
+                            {STATUS_TAG[isCurrent ? "current" : "next"].label}
                           </span>
                         ) : null}
                       </div>
-                      <div className={`mt-0.5 text-xs ${isSelected ? "text-white/60" : "text-zinc-400"}`}>
+                      <div className={`mt-0.5 text-xs ${isSelected ? "text-zinc-500" : "text-zinc-400"}`}>
                         {formatDateShort(event.date)}
                         {event.location ? ` · ${event.location.split(",")[0]}` : ""}
                       </div>
@@ -164,14 +215,20 @@ function EventSidebar({
             </div>
           ))}
           {filtered.length === 0 ? (
-            <div className="px-3 py-8 text-center text-sm text-zinc-400">No events match “{filter}”</div>
+            <div className="px-3 py-8 text-center text-sm text-zinc-400">
+              {filter.trim() ? <>No {KIND_NOUN[kind]} match “{filter}”</> : <>No {KIND_NOUN[kind]} on record</>}
+            </div>
           ) : null}
         </div>
 
         {showTop ? (
           <button
             type="button"
-            onClick={() => listRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
+            // Instant, not smooth: the list is eight hundred events deep, and
+            // animating that distance means watching thirty years of cards fly
+            // past before the top arrives. "instant" rather than the default
+            // "auto" so a page-level scroll-behavior can never reintroduce it.
+            onClick={() => listRef.current?.scrollTo({ top: 0, behavior: "instant" })}
             aria-label="Scroll events to top"
             className="absolute right-3 top-3 z-20 inline-flex h-8 items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 text-[11px] font-semibold text-zinc-600 shadow-md transition hover:border-zinc-300 hover:text-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
           >
@@ -213,19 +270,6 @@ function FormDots({ side, align }: { side: FightSide; align: "left" | "right" })
   );
 }
 
-function SideStats({ side, align }: { side: FightSide; align: "left" | "right" }) {
-  const stats = side.stats;
-  if (stats.str == null && stats.kd == null) return null;
-  return (
-    <div className={`mt-1 flex flex-wrap gap-x-2.5 text-[10px] tabular-nums text-zinc-400 ${align === "right" ? "justify-end" : ""}`}>
-      <span>KD {stats.kd ?? "—"}</span>
-      <span>STR {stats.str ?? "—"}</span>
-      <span>TD {stats.td ?? "—"}</span>
-      <span>SUB {stats.sub ?? "—"}</span>
-    </div>
-  );
-}
-
 function FighterBlock({
   side,
   align,
@@ -240,11 +284,12 @@ function FighterBlock({
   resultTag: { label: string; when: string | null } | null;
 }) {
   const dimmed = past && side.outcome === "loss";
-  const rank = rankLabel(side.ranking);
+  const rank = side.ranking?.rank === "IC" || side.ranking?.rank === "I" ? "I" : rankLabel(side.ranking) || "NR";
+  const rankingBadge = <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title="Current ranking from the selected source; NR means unranked">{rank}</span>;
   const nameBlock = (
     <div className={`min-w-0 max-w-full ${align === "right" ? "text-right" : ""}`}>
-      <div className="flex min-w-0 flex-wrap items-baseline gap-1.5 @3xl:flex-nowrap" style={align === "right" ? { justifyContent: "flex-end" } : undefined}>
-        {rank && align === "left" ? <span className="shrink-0 text-[10px] font-bold text-amber-600" title="Current ranking from the source chosen on the Rankings page">{rank}</span> : null}
+      <div className="flex min-w-0 flex-wrap items-center gap-2 @3xl:flex-nowrap" style={align === "right" ? { justifyContent: "flex-end" } : undefined}>
+        {align === "left" ? rankingBadge : null}
         {align === "right" ? <BonusIcons bonuses={bonuses} outcome={side.outcome} /> : null}
         <span className={`text-sm font-semibold @3xl:truncate ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>
           {side.name}
@@ -256,23 +301,17 @@ function FighterBlock({
           </span>
         ) : null}
         {align === "left" ? <BonusIcons bonuses={bonuses} outcome={side.outcome} /> : null}
-        {rank && align === "right" ? <span className="shrink-0 text-[10px] font-bold text-amber-600" title="Current ranking from the source chosen on the Rankings page">{rank}</span> : null}
+        {align === "right" ? rankingBadge : null}
       </div>
-      <div className={`mt-1 flex flex-wrap items-center gap-2 @3xl:flex-nowrap ${align === "right" ? "flex-row-reverse" : ""}`}>
-        <span className={`flex shrink-0 flex-col text-[10px] leading-3.5 tabular-nums text-zinc-400 ${align === "right" ? "items-end" : "items-start"}`}>
-          <span title="Verified complete professional record entering this fight"><strong className="font-semibold text-zinc-500">REC:</strong> {side.record || "—"}</span>
-          {side.ufc_record ? (
-            <span title="UFC-only record entering this fight"><strong className="font-semibold text-zinc-500">UFC:</strong> {side.ufc_record}</span>
-          ) : side.ufc_bouts === 0 ? (
-            <span className="font-medium text-sky-600" title="First bout in the promotion">UFC debut</span>
-          ) : <span><strong className="font-semibold text-zinc-500">UFC:</strong> —</span>}
-        </span>
-        <span className={`flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 ${align === "right" ? "flex-row-reverse" : ""}`}>
-          {side.age != null ? <span className="text-[10px] tabular-nums text-zinc-400" title="Age on the date of this event">{side.age} y/o</span> : null}
-          <FormDots side={side} align={align} />
-        </span>
+      <div className={`mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] tabular-nums text-zinc-500 ${align === "right" ? "flex-row-reverse" : ""}`}>
+        <span className="whitespace-nowrap" title="Professional record entering this fight"><span className="font-medium text-zinc-700">{side.record || "—"}</span> pro</span>
+        <span aria-hidden="true" className="text-zinc-300">·</span>
+        <span className="whitespace-nowrap" title="UFC record entering this fight">{side.ufc_record ? <><span className="font-medium text-zinc-700">{side.ufc_record}</span> UFC</> : side.ufc_bouts === 0 ? "UFC debut" : "— UFC"}</span>
       </div>
-      <SideStats side={side} align={align} />
+      <div className={`mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 ${align === "right" ? "justify-end" : ""}`}>
+        <FormDots side={side} align={align} />
+        {side.age != null ? <span className="whitespace-nowrap text-[10px] tabular-nums text-zinc-400" title="Age on the date of this event">Age {side.age}</span> : null}
+      </div>
     </div>
   );
 
@@ -302,13 +341,13 @@ function CenterBlock({ fight, past }: { fight: EventFight; past: boolean }) {
   const f2Odds = fight.odds?.f2.close ?? null;
   const result = formatMethod(fight.method, fight.round, fight.time);
   // A bout that has not happened yet says when it is expected instead. The
-  // estimate is the card's own announced segment start plus the bouts under
-  // it, so it is approximate and marked as such.
+  // Estimate follows segment timing and available broadcast space.
   const expected = !past ? clockTime(fight.starts_at) : null;
 
   return (
     <div className="flex w-full flex-col items-center">
-      <OddsPair f1={f1Odds} f2={f2Odds} />
+      <OddsPair f1={f1Odds} f2={f2Odds}
+        f1Name={fight.f1.name} f2Name={fight.f2.name} />
       {/* The result wraps rather than truncating: the round and the clock are
           the point of the line, and the centre column is narrow enough that
           "KO/TKO · R1 · 2:54" would lose its tail to an ellipsis. */}
@@ -317,7 +356,7 @@ function CenterBlock({ fight, past }: { fight: EventFight; past: boolean }) {
           {result || "Result"}
         </div>
       ) : expected ? (
-        <div className="mt-1.5 max-w-full truncate text-center text-[10px] font-medium tabular-nums text-zinc-400" title="Estimated start, in your time zone: the segment's announced start plus about half an hour per bout below this one">
+        <div className="mt-1.5 max-w-full truncate text-center text-[10px] font-medium tabular-nums text-zinc-400" title="Approximate start in your time zone. Usually 30 minutes per bout (40 for five-round bouts), adjusted to fit before the next segment with a 10-minute transition. Rounded to 5 minutes; finishes and broadcast delays can change actual starts.">
           ~{expected}
         </div>
       ) : null}
@@ -340,12 +379,12 @@ function FightRow({ fight, past, eventId }: { fight: EventFight; past: boolean; 
       onPointerDown={warm}
       onFocus={warm}
       onClick={() => navigate(`/fights/${fight.id}`, { state: { eventId, eventReturnDepth: 1 } })}
-      className="group grid w-full grid-cols-2 items-start gap-4 px-4 py-3 text-left transition-colors hover:bg-zinc-50 @3xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] @3xl:items-center"
+      className="group grid w-full grid-cols-2 items-start gap-4 px-4 py-1.5 text-left transition-colors hover:bg-zinc-50 @3xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] @3xl:items-center"
     >
       <FighterBlock side={fight.f1} align="left" past={done} bonuses={fight.bonuses} resultTag={resultTag(fight, fight.f1.outcome)} />
-      <div className="order-3 col-span-2 flex w-full flex-col items-center gap-1 @3xl:order-2 @3xl:col-span-1 @3xl:w-40 @5xl:w-52">
+      <div className="order-3 col-span-2 flex w-full flex-col items-center gap-2 @3xl:order-2 @3xl:col-span-1 @3xl:w-40 @5xl:w-52">
         <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">{fight.weight_class}</span>
+          <span className="text-[10px] font-medium text-zinc-500">{fight.weight_class}</span>
           {fight.title_fight ? (
             <span className={`rounded px-1 py-px text-[9px] font-bold uppercase ${(TITLE_TAG[fight.title_type ?? "title"] ?? TITLE_TAG.title).className}`}>
               {(TITLE_TAG[fight.title_type ?? "title"] ?? TITLE_TAG.title).label}
@@ -363,87 +402,16 @@ function FightRow({ fight, past, eventId }: { fight: EventFight; past: boolean; 
 // event pane
 
 /**
- * The line that tells you, before you read a single result, whether this card
- * was worth watching. Every card can be described a couple of dozen ways;
- * `cardHighlights` scores each of those ways for this card and hands back only
- * the five worth showing, so a night of first-round knockouts leads with the
- * finishes and a card carrying two belts leads with the belts.
+ * The two states worth interrupting a list of eight hundred cards for. The
+ * event's own header never carries one: the date and the timing lines beside
+ * the name already say where the card sits in time.
  */
-const HIGHLIGHT_ICONS: Record<HighlightIcon, LucideIcon> = {
-  swords: Swords,
-  flame: Flame,
-  trophy: Trophy,
-  timer: Timer,
-  trendingUp: TrendingUp,
-  zap: Zap,
-  users: Users,
-  crown: Crown,
-  target: Target,
-  clock: Clock,
-  gauge: Gauge,
-  award: Award,
-  sparkles: Sparkles,
-  globe: Globe,
-  hourglass: Hourglass,
-  ruler: Ruler,
-  repeat: Repeat,
-  medal: Medal,
-  shieldCheck: ShieldCheck,
-  handFist: HandFist,
-  calendarClock: CalendarClock,
-  activity: Activity,
-  scale: Scale,
-  rocket: Rocket,
-  star: Star,
-  history: History,
-  split: Split,
-  percent: Percent,
-  coins: Coins,
-};
+const STATUS_TAG = {
+  current: { label: "Live", className: "bg-emerald-100 text-emerald-700" },
+  next: { label: "Next", className: "bg-amber-100 text-amber-700" },
+} as const;
 
-/** Colour is the tile's mood, never its meaning: the label says what it is. */
-const HIGHLIGHT_TONE: Record<Highlight["tone"], string> = {
-  gold: "text-amber-700",
-  fire: "text-rose-700",
-  cool: "text-sky-700",
-  green: "text-emerald-700",
-  plain: "text-zinc-500",
-};
-
-function CardStats({ stats, past }: { stats: EventDetail["card_stats"]; past: boolean }) {
-  const highlights = cardHighlights(stats, past);
-  if (!highlights.length) return null;
-  return (
-    <div className="mt-4 grid grid-cols-2 gap-2 @xl:grid-cols-3 @4xl:grid-cols-5">
-      {highlights.map((tile) => {
-        const Icon = HIGHLIGHT_ICONS[tile.icon];
-        const body = (
-          <>
-            <div className={`flex items-center gap-1.5 ${HIGHLIGHT_TONE[tile.tone]}`}>
-              <Icon size={12} strokeWidth={2.25} className="shrink-0" aria-hidden="true" />
-              <span className="truncate text-[9px] font-bold uppercase tracking-[0.11em]" title={tile.label}>{tile.label}</span>
-            </div>
-            <div className="mt-1.5 truncate text-2xl font-semibold leading-none tracking-tight tabular-nums text-zinc-950" title={tile.value}>{tile.value}</div>
-            <div className="mt-1.5 line-clamp-2 text-[10px] leading-[1.35] text-zinc-500" title={tile.note}>{tile.note}</div>
-          </>
-        );
-        const shape = "flex min-w-0 flex-col rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5";
-        return tile.to ? (
-          <Link
-            key={tile.key}
-            to={tile.to}
-            title={`${tile.label}: ${tile.value} · ${tile.note}`}
-            className={`${shape} transition hover:border-zinc-400 hover:shadow-[0_1px_3px_rgba(0,0,0,0.06)]`}
-          >
-            {body}
-          </Link>
-        ) : (
-          <div key={tile.key} className={shape}>{body}</div>
-        );
-      })}
-    </div>
-  );
-}
+const TAG_SHAPE = "shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em]";
 
 const SEGMENT_LABEL: Record<CardSegment, string> = {
   main: "Main card",
@@ -456,33 +424,15 @@ const segmentStart = (schedule: CardSchedule | undefined, segment: CardSegment):
     : segment === "prelims" ? schedule?.prelims_at ?? null
       : schedule?.early_prelims_at ?? null;
 
-/** The gold of the main card, the plain steel of the prelims: the accent says
- *  which part of the night this is before the words are read. */
-const SEGMENT_ACCENT: Record<CardSegment, string> = {
-  main: "bg-amber-400",
-  prelims: "bg-zinc-400",
-  early: "bg-zinc-300",
-};
-
-/** The break between the parts of a card. Each one is a broadcast of its own,
- *  starting at its own announced time, which is why the bouts under it are
- *  timed from it rather than from the card. The heading is the loudest thing
- *  on the card for a reason: it is what a reader scrolls looking for. The
- *  clock beside it is the announced start and nothing more — a countdown to a
- *  card two weeks out is noise, and the header already carries the one that
- *  matters on the night. */
+/** A quiet section heading paired with its announced local start time. */
 function SegmentBreak({ segment, at }: { segment: CardSegment; at: number | null }) {
   const clock = clockTime(at);
   return (
-    // The rule above this band is the one the card already draws between rows,
-    // so only the bottom edge is its own.
-    <div className="flex items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-3">
-      <span className="flex min-w-0 items-center gap-2.5">
-        <span className={`h-5 w-1 shrink-0 rounded-full ${SEGMENT_ACCENT[segment]}`} aria-hidden="true" />
-        <span className="truncate text-[15px] font-bold uppercase leading-5 tracking-[0.2em] text-zinc-900">{SEGMENT_LABEL[segment]}</span>
-      </span>
+    // The containing row supplies a matching top rule at segment boundaries.
+    <div className="flex items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-2.5 @[34rem]:px-6">
+      <h2 className="min-w-0 text-sm font-semibold leading-5 tracking-tight text-zinc-900">{SEGMENT_LABEL[segment]}</h2>
       {clock ? (
-        <span className="shrink-0 text-xs font-semibold tabular-nums text-zinc-500" title="Announced start, in your time zone">
+        <span className="shrink-0 rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium leading-4 tabular-nums text-zinc-600" title="Announced start, in your time zone">
           {clock}
         </span>
       ) : null}
@@ -558,14 +508,16 @@ function EventPane({ eventId }: { eventId: string }) {
 
   return (
     <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-3 overflow-y-auto pr-1">
-      <section className={`${shell} shrink-0 px-6 py-5`}>
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <h1 className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xl font-semibold tracking-tight text-zinc-950"><span>{event.name}</span>{event.status === "current" ? <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">Current</span> : null}<CardStars quality={event.quality} /></h1>
-          <div className="flex flex-col items-start gap-0.5 @[34rem]:items-end">
-            <div className="text-sm text-zinc-500">
-              {formatDate(event.date)}
-              {event.location ? ` · ${event.location}` : ""}
+      <section className={`${shell} shrink-0 px-4 py-4 @[34rem]:px-6`}>
+        <div className="flex flex-col gap-3 @[48rem]:flex-row @[48rem]:items-center @[48rem]:justify-between @[48rem]:gap-6">
+          <div className="min-w-0">
+            <h1 className="text-balance text-xl font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-2xl">{event.name}</h1>
+            <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs leading-relaxed text-zinc-500">
+              <span className="whitespace-nowrap font-medium text-zinc-600">{formatDate(event.date)}</span>
+              {event.location ? <><span aria-hidden="true" className="text-zinc-300">·</span><span>{event.location}</span></> : null}
             </div>
+          </div>
+          <div className="flex shrink-0 flex-col items-start gap-1 empty:hidden @[48rem]:max-w-[45%] @[48rem]:items-end @[48rem]:text-right">
             {/* Before the first bell a card is a time to be at the screen; once
                 the estimate has passed we take it as under way and the line
                 becomes what is happening instead. */}
@@ -597,17 +549,14 @@ function EventPane({ eventId }: { eventId: string }) {
               : null}
           </div>
         </div>
-        {(past ? event.card_stats.completed_fights > 0 : event.card_stats.total_fights > 0)
-          ? <CardStats stats={event.card_stats} past={past || event.card_stats.completed_fights > 0} />
-          : null}
       </section>
 
-      <section className={`${shell} divide-y divide-zinc-100`}>
+      <section className={shell}>
         {event.fights.length === 0 ? (
           <div className="px-6 py-10 text-center text-sm text-zinc-400">Fight card not announced yet.</div>
         ) : (
           event.fights.map((fight, index) => (
-            <div key={fight.id}>
+            <div key={fight.id} className={index === 0 ? "" : fight.segment && fight.segment !== event.fights[index - 1]?.segment ? "border-t border-zinc-200" : "border-t border-zinc-100"}>
               {fight.segment && fight.segment !== event.fights[index - 1]?.segment
                 ? <SegmentBreak segment={fight.segment} at={segmentStart(event.schedule, fight.segment)} />
                 : null}
@@ -692,7 +641,7 @@ export default function EventsPage() {
       />
       <main className={`${mobileEventsOpen ? "hidden" : "block"} min-h-0 min-w-0 flex-1 md:block`}>
         {fightId ? (
-          <FightView fightId={fightId} eventIdHint={fightEventIdHint ?? openFight?.event.id} quality={events.find((event) => event.id === selectedId)?.quality} />
+          <FightView fightId={fightId} eventIdHint={fightEventIdHint ?? openFight?.event.id} />
         ) : eventId ? (
           <EventPane eventId={eventId} />
         ) : (

@@ -9,9 +9,9 @@ import {
   scrapeRosterPage,
   type ScrapedEventDetail,
 } from "./scrape/ufcstats.ts";
-import { scrapeAthleteDirectoryPage, scrapeEventSchedules, scrapeEventSegments, scrapeFighterImage, scrapeRankings } from "./scrape/ufccom.ts";
+import { scrapeAthleteDirectoryPage, scrapeEventSchedules, scrapeEventSegments, scrapeFighterImages, scrapeRankings } from "./scrape/ufccom.ts";
 import { assignSegments, matchEventSchedule } from "./card-schedule.ts";
-import { scrapeFighterOddsHistory, scrapeOdds } from "./scrape/odds.ts";
+import { alignScrapedOdds, scrapeFighterOddsHistory, scrapeOdds } from "./scrape/odds.ts";
 import { validateFightActions } from "./action-stats.ts";
 import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
 
@@ -478,8 +478,20 @@ async function syncMissingTitleTypes(limit = 12): Promise<void> {
 // ---------------------------------------------------------------------------
 // odds
 
-async function syncOddsForFight(fight: { id: string; f1_name: string; f2_name: string; date: string }): Promise<void> {
-  const result = await scrapeOdds(fight.f1_name, fight.f2_name, fight.date);
+export async function syncOddsForFight(fight: { id: string; f1_name: string; f2_name: string; date: string }): Promise<boolean> {
+  const prior = db.prepare("SELECT source_url FROM odds WHERE fight_id = ?").get(fight.id) as
+    { source_url: string | null } | undefined;
+  const scraped = await scrapeOdds(fight.f1_name, fight.f2_name, fight.date, prior?.source_url);
+  // A missing source row is not a new price and must not make an old value look
+  // freshly verified. Leave both the odds and fetched_at untouched for retry.
+  if (!scraped) return false;
+  // The event page can swap corners while the network request is outstanding.
+  // Resolve the result against the current identities immediately before the
+  // synchronous write, so a line can never follow a transient corner number.
+  const current = db.prepare("SELECT f1_name, f2_name FROM fights WHERE id = ?").get(fight.id) as
+    { f1_name: string; f2_name: string } | undefined;
+  if (!current) return false;
+  const result = alignScrapedOdds(scraped, fight, current);
   db.prepare(`
     INSERT INTO odds (fight_id, f1_open, f1_close, f2_open, f2_close, f1_history, f2_history, source_url, fetched_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -501,6 +513,7 @@ async function syncOddsForFight(fight: { id: string; f1_name: string; f2_name: s
     result?.sourceUrl ?? null,
     Date.now(),
   );
+  return true;
 }
 
 export type UpcomingOddsSyncResult = { selected: number; stored: number; failed: number };
@@ -524,8 +537,7 @@ export async function syncUpcomingOdds(
   let failed = 0;
   for (const fight of targets) {
     try {
-      await syncOddsForFight(fight);
-      stored++;
+      if (await syncOddsForFight(fight)) stored++;
     } catch (err) {
       failed++;
       log(`SYNC ERROR [odds ${fight.f1_name} vs ${fight.f2_name}]:`, String(err));
@@ -658,7 +670,7 @@ async function syncImagesInner(limit: number): Promise<void> {
   // Fighters we actually show, most visible first: ranked (division order),
   // then upcoming cards, then anyone who fought in the last 60 days.
   const rows = db.prepare(`
-    SELECT fr.id, fr.name, fr.photo_url, fr.photo_checked_at, MIN(p.pri) AS pri
+    SELECT fr.id, fr.name, fr.photo_url, fr.photo_full_url, fr.photo_checked_at, MIN(p.pri) AS pri
     FROM fighters fr
     JOIN (
       SELECT fighter_id AS id, -1 AS pri FROM image_queue
@@ -680,18 +692,34 @@ async function syncImagesInner(limit: number): Promise<void> {
     ) p ON p.id = fr.id
     GROUP BY fr.id
     ORDER BY pri ASC
-  `).all() as { id: string; name: string; photo_url: string | null; photo_checked_at: number | null }[];
+  `).all() as {
+    id: string; name: string; photo_url: string | null; photo_full_url: string | null;
+    photo_checked_at: number | null; pri: number;
+  }[];
 
   const due = rows.filter((r) => {
     if (r.photo_checked_at == null) return true;
     const age = now - r.photo_checked_at;
-    return r.photo_url ? age > 30 * DAY : age > 7 * DAY;
+    // A fighter still missing either picture is retried on the shorter cycle:
+    // ufc.com adds full-body art when someone becomes worth photographing.
+    if (!r.photo_url || !r.photo_full_url) return age > DAY;
+    // ufc.com re-shoots an athlete for the card they are on, so anyone ranked,
+    // booked, or freshly off a card is looked at again within days rather than
+    // carrying last year's face into fight week. A month is the right cycle for
+    // the rest of the roster, whose pictures only change when they fight again.
+    return age > (r.pri <= 200 ? 3 * DAY : 30 * DAY);
   });
 
-  const update = db.prepare("UPDATE fighters SET photo_url = ?, photo_checked_at = ? WHERE id = ?");
+  const update = db.prepare("UPDATE fighters SET photo_url = ?, photo_full_url = ?, photo_checked_at = ? WHERE id = ?");
   for (const fighter of due.slice(0, limit)) {
-    const url = await scrapeFighterImage(fighter.name);
-    update.run(url ?? fighter.photo_url, Date.now(), fighter.id);
+    const images = await scrapeFighterImages(fighter.name);
+    // A scrape that comes back empty never erases a picture we already have.
+    update.run(
+      images.headshot ?? fighter.photo_url,
+      images.fullBody ?? fighter.photo_full_url,
+      Date.now(),
+      fighter.id,
+    );
     db.prepare("DELETE FROM image_queue WHERE fighter_id = ?").run(fighter.id);
   }
   if (due.length) log(`images: refreshed ${Math.min(due.length, limit)}, ${Math.max(0, due.length - limit)} still due`);
@@ -716,8 +744,10 @@ async function syncAthleteDirectory(): Promise<void> {
       nameToIds.set(row.norm_name, list);
     }
 
+    // A directory headshot is not a completed athlete-page image check.
+    // Leave photo_checked_at alone so the full-body pass can run immediately.
     const update = db.prepare(
-      "UPDATE fighters SET photo_url = ?, photo_checked_at = ? WHERE id = ? AND photo_checked_at IS NULL",
+      "UPDATE fighters SET photo_url = ? WHERE id = ? AND photo_url IS NULL",
     );
     let page = Number(getMeta("athlete_dir_page") ?? "0");
     let matched = 0;
@@ -728,7 +758,7 @@ async function syncAthleteDirectory(): Promise<void> {
       for (const a of athletes) {
         const ids = nameToIds.get(normName(a.name));
         if (ids?.length === 1) {
-          matched += (update.run(a.img, Date.now(), ids[0]).changes as number) > 0 ? 1 : 0;
+          matched += (update.run(a.img, ids[0]).changes as number) > 0 ? 1 : 0;
         }
       }
       setMeta("athlete_dir_page", String(page + 1));

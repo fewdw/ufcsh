@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getLabsInsights, judgeCards } from "./labs-insights.ts";
+import { getLabsInsights, getLabsJudgeBouts, getLabsJudges, getLabsRoadBouts, judgeCards } from "./labs-insights.ts";
 import { getLabs } from "./labs.ts";
 import { fightIndex } from "./fight-index.ts";
 import { roadArrival } from "./labs-explore.ts";
@@ -62,17 +62,86 @@ test("a split decision is one the judges disagreed on", () => {
   assert.ok(all.judges.split > 0 && all.judges.split <= split);
 });
 
+test("the judges explorer keeps every scoreline and every official", () => {
+  const three = getLabsJudges(new URLSearchParams("judgeRounds=3")) as any;
+  const five = getLabsJudges(new URLSearchParams("judgeRounds=5")) as any;
+  const allRounds = getLabsJudges(new URLSearchParams("judgeRounds=all")) as any;
+  assert.equal(three.rounds, "3");
+  assert.equal(three.verdicts.unanimous + three.verdicts.split + three.verdicts.majority + three.verdicts.drawn + three.verdicts.incomplete, three.scored_bouts);
+  assert.equal(three.scorelines.reduce((sum: number, score: any) => sum + score.n, 0), three.cards);
+  assert.ok(five.scorelines.some((score: any) => score.key === "50–45"), "a common five-round score cannot be truncated away");
+  assert.ok(allRounds.scorelines.length > five.scorelines.length && allRounds.officials.length > 100);
+  assert.ok(three.decision_bouts + five.decision_bouts <= allRounds.decision_bouts);
+  for (const judge of allRounds.officials) {
+    assert.ok(judge.dissents <= judge.complete_cards);
+    assert.ok(judge.wide_dissents + judge.close_dissents === judge.dissents);
+    assert.ok(judge.favorite_picks <= judge.priced_picks);
+  }
+  assert.ok(allRounds.signals.split_favorite_wins <= allRounds.signals.split_favorite_known);
+  assert.ok(allRounds.signals.split_champion_wins <= allRounds.signals.split_champion_known);
+});
+
+test("every scorecard and judge row can open its underlying fights", () => {
+  const judges = getLabsJudges(new URLSearchParams("judgeRounds=3")) as any;
+  const split = getLabsJudgeBouts(new URLSearchParams("judgeRounds=3&judgeKind=verdict&judgeValue=split&limit=10")) as any;
+  assert.equal(split.total, judges.verdicts.split);
+  assert.ok(split.rows.every((row: any) => row.verdict === "split" && row.cards.length > 0));
+
+  const score = judges.scorelines[0];
+  const scored = getLabsJudgeBouts(new URLSearchParams(`judgeRounds=3&judgeKind=scoreline&judgeValue=${encodeURIComponent(score.key)}&limit=10`)) as any;
+  assert.ok(scored.total > 0);
+  assert.ok(scored.rows.every((row: any) => row.cards.some((card: any) => `${Math.max(card.f1_score, card.f2_score)}–${Math.min(card.f1_score, card.f2_score)}` === score.key)));
+
+  const official = judges.officials.sort((a: any, b: any) => b.cards - a.cards)[0];
+  const judged = getLabsJudgeBouts(new URLSearchParams(`judgeRounds=3&judgeKind=official&judgeValue=${encodeURIComponent(official.key)}&limit=10`)) as any;
+  assert.equal(judged.total, official.cards);
+  assert.ok(judged.rows.every((row: any) => row.cards.some((card: any) => card.judge === official.key)));
+  const searched = getLabsJudgeBouts(new URLSearchParams(`judgeRounds=3&judgeKind=official&judgeValue=${encodeURIComponent(official.key)}&q=${encodeURIComponent(judged.rows[0].f1.name)}`)) as any;
+  assert.ok(searched.total > 0);
+});
+
 // --- the road to the UFC ---------------------------------------------------
 
 test("only a verified history is counted, and every band is one of the bands", () => {
   const r = all.road;
   assert.ok(r.verified > 0 && r.verified <= all.n);
   assert.ok(Math.abs((r.coverage ?? 0) - (r.verified / all.n) * 100) < 1e-9);
-  const banded = r.by_experience.reduce((sum: number, band: any) => sum + band.n, 0);
-  assert.equal(banded, r.verified, "a verified fighter belongs to exactly one experience band");
-  const aged = r.by_debut_age.reduce((sum: number, band: any) => sum + band.n, 0);
-  assert.ok(aged <= r.verified, "an age band also needs a birth date");
+  const banded = r.dimensions.experience.reduce((sum: number, band: any) => sum + band.fighters, 0);
+  assert.equal(banded, r.arrival_fighters, "a verified fighter belongs to exactly one experience band");
+  const aged = r.dimensions.age_bands.reduce((sum: number, band: any) => sum + band.fighters, 0);
+  assert.ok(aged <= r.arrival_fighters, "an age band also needs a birth date");
   assert.ok(r.median_debut_age! > 18 && r.median_debut_age! < 40);
+});
+
+test("arrival dimensions count unique fighters and their actual debuts", () => {
+  const r = all.road;
+  assert.equal(r.dimensions.experience.reduce((sum: number, group: any) => sum + group.fighters, 0), r.arrival_fighters);
+  for (const groups of Object.values(r.dimensions) as any[][]) {
+    const share = groups.reduce((sum, group) => sum + group.share, 0);
+    if (groups.length) assert.ok(Math.abs(share - 100) < 1e-9);
+    for (const group of groups) {
+      assert.equal(group.debut_wins + group.debut_losses + group.debut_draws + group.debut_ncs, group.fighters);
+    }
+  }
+});
+
+test("a selected arrival band pages only its matching study fights", () => {
+  const group = all.road.dimensions.experience.find((entry: any) => entry.key === "1-5");
+  assert.ok(group?.fighters > 0);
+  const page = getLabsRoadBouts(new URLSearchParams("roadDimension=experience&roadGroup=1-5&limit=10")) as any;
+  assert.equal(page.rows.length, 10);
+  assert.equal(page.total, group.fighters);
+  assert.ok(page.total >= page.rows.length);
+  assert.ok(page.rows.every((row: any) => row.fighter.id && row.fight_id));
+  assert.ok(page.rows.every((row: any) => fightIndex().fighters.get(row.fighter.id)?.fights[0]?.id === row.fight_id), "only the actual UFC debut is evidence here");
+  const next = getLabsRoadBouts(new URLSearchParams("roadDimension=experience&roadGroup=1-5&limit=10&offset=10")) as any;
+  assert.equal(new Set([...page.rows, ...next.rows].map((row: any) => `${row.fight_id}:${row.fighter.id}`)).size, page.rows.length + next.rows.length);
+  const wins = getLabsRoadBouts(new URLSearchParams("roadDimension=experience&roadGroup=1-5&outcome=win&limit=10")) as any;
+  assert.equal(wins.total, wins.counts.win);
+  assert.ok(wins.rows.every((row: any) => row.outcome === "win"));
+  const searched = getLabsRoadBouts(new URLSearchParams(`roadDimension=experience&roadGroup=1-5&q=${encodeURIComponent(page.rows[0].fighter.name)}`)) as any;
+  assert.ok(searched.total > 0);
+  assert.ok(searched.rows.every((row: any) => `${row.fighter.name} ${row.opponent.name} ${row.event_name}`.toLowerCase().includes(page.rows[0].fighter.name.toLowerCase())));
 });
 
 test("a study with nothing in it reports nothing rather than guessing", () => {

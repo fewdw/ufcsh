@@ -29,6 +29,14 @@ function tokens(name: string): string {
   return normName(name).split(" ").filter(Boolean).sort().join(" ");
 }
 
+function sourceName(name: string): string {
+  return normName(name.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\./g, ""));
+}
+
+function withoutSuffix(name: string): string {
+  return name.replace(/\s+(?:jr|sr|ii|iii|iv)\.?$/i, "").trim();
+}
+
 /**
  * The names one person can be filed under. UFCStats often files a fighter by
  * the name they fight as, where the source keeps the legal surname: "Patricio
@@ -46,7 +54,14 @@ export function nameAliases(name: string, nickname = ""): string[] {
 /** Allows harmless first/last ordering differences, but never fuzzy spelling.
  *  A source nickname, when given, lets the ring name match as well. */
 export function samePersonName(a: string, b: string, bNickname = ""): boolean {
-  return nameAliases(b, bNickname).some((alias) => normName(a) === normName(alias) || tokens(a) === tokens(alias));
+  const left = sourceName(a);
+  return nameAliases(b, bNickname).some((alias) => {
+    const right = sourceName(alias);
+    const leftBase = withoutSuffix(left);
+    const rightBase = withoutSuffix(right);
+    if (leftBase !== left && rightBase !== right && left !== right) return false;
+    return leftBase === rightBase || tokens(leftBase) === tokens(rightBase);
+  });
 }
 
 function looksLikeUfcEvent(name: string): boolean {
@@ -123,19 +138,35 @@ export function isVerifiedIdentity(
 ): boolean {
   const matched = bouts.filter((bout) => bout.ufcFightId).length;
   const birthMatches = Boolean(local.birth_date && profile.birthDate && local.birth_date === profile.birthDate);
+  // UFCStats can freeze a departing fighter's headline record. For a one-bout
+  // UFC career, verify that exact old total against the source timeline at the
+  // last UFC bout instead of requiring it to equal today's expanded career.
+  const lastUfcDate = bouts.filter((bout) => bout.ufcFightId).map((bout) => bout.date).sort().at(-1);
+  const atLastUfc = bouts.filter((bout) => lastUfcDate && bout.date <= lastUfcDate);
+  const frozenTotalsMatch = known.length === 1 && atLastUfc.length > 0
+    && local.wins === atLastUfc.filter((bout) => bout.outcome === "win").length
+    && local.losses === atLastUfc.filter((bout) => bout.outcome === "loss").length
+    && local.draws === atLastUfc.filter((bout) => bout.outcome === "draw").length;
+  const recordMatches = totalsMatch(local, profile) || frozenTotalsMatch;
   if (!samePersonName(local.name, profile.name)) {
+    // A previously discovered profile may use a legal name or a differently
+    // spaced transliteration. A matching birth date plus reconciled UFC history
+    // identifies it independently of spelling; a single bout also needs totals.
+    const corroborated = birthMatches && (matched >= 2 || (matched === 1 && recordMatches));
     // Only the ring name matches. That is a real identity — but a weaker one
     // than a name, so it has to be carried by something independent: two of
     // our own UFC bouts reconciling exactly, or the same date of birth.
-    if (!samePersonName(local.name, profile.name, profile.nickname)) return false;
-    if (matched < 2 && !birthMatches) return false;
+    if (!corroborated) {
+      if (!samePersonName(local.name, profile.name, profile.nickname)) return false;
+      if (matched < 2 && !birthMatches) return false;
+    }
   }
   // Two exact UFC date+opponent matches are a stronger identity key than the
   // UFCStats headline record, which may freeze when a fighter leaves and then
   // continues competing elsewhere. With only one shared bout, keep the record
   // total as an additional independent check.
   if (known.length >= 2) return matched >= 2;
-  if (known.length === 1) return matched === 1 && totalsMatch(local, profile);
+  if (known.length === 1) return matched === 1 && recordMatches;
   if (!totalsMatch(local, profile)) return false;
   const nicknameMatches = Boolean(local.nickname && profile.nickname && normName(local.nickname) === normName(profile.nickname));
   // Debutants have no shared UFC bout to use as an identity key. Require the
@@ -145,11 +176,16 @@ export function isVerifiedIdentity(
 }
 
 async function resolve(local: LocalFighter, knownUrl = ""): Promise<{ state: "verified"; value: VerifiedCandidate } | { state: "not_found" | "ambiguous"; reason: string }> {
-  const searched = knownUrl ? [] : await searchSherdogFighters(local.name);
+  let searched = knownUrl ? [] : await searchSherdogFighters(local.name);
+  const searchName = withoutSuffix(local.name.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\./g, ""));
+  if (!knownUrl && searchName !== local.name && !searched.some((candidate) => samePersonName(local.name, candidate.name, candidate.nickname))) {
+    searched = await searchSherdogFighters(searchName);
+  }
+  const exactCandidates = searched.filter((candidate) => samePersonName(local.name, candidate.name, candidate.nickname));
   const candidates = knownUrl
     ? [{ id: knownUrl.match(/-(\d+)$/)?.[1] ?? "", name: local.name, nickname: local.nickname, url: knownUrl, height: "", weight: "" }]
-    : searched.filter((candidate) => samePersonName(local.name, candidate.name, candidate.nickname)).slice(0, 5);
-  if (candidates.length === 0) return { state: "not_found", reason: "no exact-name source candidate" };
+    : (exactCandidates.length ? exactCandidates : searched).slice(0, 5);
+  if (candidates.length === 0) return { state: "not_found", reason: "no source candidate" };
   const known = localUfcBouts(local.id);
   const checked: VerifiedCandidate[] = [];
   for (const candidate of candidates) {
@@ -321,15 +357,16 @@ export async function syncCareerRecords(limit = 40): Promise<void> {
       )
       SELECT id, name FROM candidates
       WHERE checked_at IS NULL
+         OR status = 'pending'
          -- A record verified before nationality was read has no country yet;
          -- it is the same page, so the next refresh simply comes early.
-         OR (status = 'verified' AND country_code IS NULL)
+         OR (status = 'verified' AND country_code IS NULL AND checked_at < ?)
          OR (status = 'verified' AND checked_at < CASE WHEN last_fight >= date('now', '-18 months') THEN ? ELSE ? END)
          OR (status = 'error' AND checked_at < ?)
-         OR (status IN ('not_found', 'ambiguous') AND checked_at < ?)
-      ORDER BY pri ASC, checked_at ASC NULLS FIRST
+         OR (status IN ('not_found', 'ambiguous') AND checked_at < CASE WHEN pri = 0 THEN ? ELSE ? END)
+      ORDER BY pri ASC, (status = 'verified') ASC, checked_at ASC NULLS FIRST
       LIMIT ?
-    `).all(now - 7 * DAY, now - 90 * DAY, now - DAY, now - 30 * DAY, limit) as { id: string; name: string }[];
+    `).all(now - DAY, now - 7 * DAY, now - 90 * DAY, now - DAY, now - 3 * DAY, now - 30 * DAY, limit) as { id: string; name: string }[];
     let verified = 0;
     for (const fighter of targets) {
       try {

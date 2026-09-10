@@ -99,6 +99,9 @@ export type SegmentTimes = { main: number | null; prelims: number | null; early:
  * When the bout at `ord` is expected to start, for a card that has not reached
  * it yet. Only the segment starts are announced, so a later bout is estimated
  * from its own segment's start plus the bouts before it in that segment.
+ * Crowded segments share the available broadcast window proportionally,
+ * including a slot for the final bout and ten minutes for the transition.
+ * This is a scheduling heuristic, not a prediction of fight duration.
  *
  * A three-round bout takes about half an hour end to end once the walkouts,
  * the replays and the interview are counted. A bout scheduled for five rounds
@@ -126,8 +129,23 @@ export function estimatedStart(
   if (segmentStart == null) return null;
   // A card is fought bottom-up, so the bouts before this one in its segment are
   // the ones with a higher ord, each taking as long as its own length allows.
-  const minutes = fights
-    .filter((fight) => fight.segment === segment && fight.ord > ord)
+  const segmentBouts = fights.filter((fight) => fight.segment === segment);
+  const minutes = segmentBouts
+    .filter((fight) => fight.ord > ord)
     .reduce((total, fight) => total + boutMinutes(fight), 0);
-  return segmentStart + minutes * 60_000;
+  const nextSegments: CardSegment[] = segment === "early" ? ["prelims", "main"]
+    : segment === "prelims" ? ["main"] : [];
+  const nextStart = nextSegments.map((next) => times[next])
+    .find((at) => at != null);
+  let pace = 1;
+  if (nextStart != null) {
+    const available = (nextStart - segmentStart) / 60_000 - 10;
+    // Conflicting announcements cannot support a useful estimate.
+    if (available <= 0) return null;
+    const total = segmentBouts.reduce((sum, fight) => sum + boutMinutes(fight), 0);
+    pace = Math.min(1, available / total);
+  }
+  // Round offsets down so the estimate never consumes the transition buffer.
+  const offset = Math.floor(minutes * pace / 5) * 5;
+  return segmentStart + offset * 60_000;
 }
