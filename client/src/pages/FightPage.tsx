@@ -10,6 +10,7 @@ import {
   formatMethod,
   lastName,
   outcomeClasses,
+  outcomeLabel,
   rankLabel,
 } from "../format";
 import Avatar from "../components/Avatar";
@@ -213,21 +214,6 @@ function MatchupResult({ fight }: { fight: Matchup }) {
 
 const FORM_LIMIT = 5;
 
-function formOutcomeClass(outcome: HistoryRow["outcome"]): string {
-  switch (outcome) {
-    case "win":
-      return "text-emerald-700";
-    case "loss":
-      return "text-rose-700";
-    case "draw":
-      return "text-amber-700";
-    case "nc":
-      return "text-zinc-600";
-    default:
-      return "text-zinc-900";
-  }
-}
-
 function formOutcomeWord(outcome: HistoryRow["outcome"]): string {
   switch (outcome) {
     case "win":
@@ -253,9 +239,10 @@ function OutcomePill({ outcome }: { outcome: HistoryRow["outcome"] }) {
   );
 }
 
-/** One borderless stop in the shared ten-bout form timeline. Result and
- *  method are deliberately separate: W/L/D/NC says what happened to this
- *  fighter; the quieter text beside it says how the bout ended. */
+/** One stop in a fighter's run into this bout. The opponent leads — that is
+ *  what the eye hunts for — with how it ended under it and the date last.
+ *  Colour never carries the result alone: the mark spells it out as W/L/D/NC
+ *  and screen readers are given the whole word. */
 function FormBout({ row }: { row: HistoryRow }) {
   const method = row.method ?? "";
   const opponent = lastName(row.opponent.name);
@@ -263,18 +250,23 @@ function FormBout({ row }: { row: HistoryRow }) {
   return (
     <Link
       to={`/fights/${row.fight_id}`}
-      title={`${result} vs ${row.opponent.name}${method ? ` · ${method}` : ""}`}
-      aria-label={`${result} against ${row.opponent.name}${method ? `. ${method}` : ""}`}
-      className="group flex min-w-0 flex-col items-center justify-center gap-1 px-1 py-2 text-center transition-colors hover:bg-zinc-50/80 focus-visible:rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+      title={`${result} vs ${row.opponent.name}${method ? ` · ${method}` : ""} · ${formatDate(row.date)}`}
+      aria-label={`${result} against ${row.opponent.name}${method ? `. ${method}` : ""}. ${formatDate(row.date)}`}
+      className="group flex h-full min-w-0 flex-col items-center gap-1 rounded-lg px-1.5 py-2 text-center transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-zinc-900"
     >
-      <span
-        className={`flex items-center justify-center px-0.5 text-[10px] font-bold leading-3.5 [overflow-wrap:anywhere] group-hover:underline ${formOutcomeClass(row.outcome)}`}
-      >
+      <span className="min-w-0 text-[11px] font-semibold leading-4 text-zinc-800 [overflow-wrap:anywhere]">
         {opponent}
       </span>
       <span className="flex max-w-full flex-wrap items-center justify-center gap-1">
-        <OutcomePill outcome={row.outcome} />
-        <span className="text-[9px] font-semibold leading-4 text-zinc-600">{method || "—"}</span>
+        <span
+          aria-hidden="true"
+          className={`inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded px-1 text-[9px] font-bold leading-none ${outcomeClasses(row.outcome)}`}
+        >
+          {outcomeLabel(row.outcome) || "?"}
+        </span>
+        <span className="text-[9px] font-semibold uppercase leading-4 tracking-[0.04em] text-zinc-500">
+          {method || "—"}
+        </span>
       </span>
       <span className="block whitespace-nowrap text-[9px] leading-3 text-zinc-400 tabular-nums">
         {formatDateShortWithYear(row.date)}
@@ -283,50 +275,53 @@ function FormBout({ row }: { row: HistoryRow }) {
   );
 }
 
-function FormTimeline({ fight, f1, f2 }: { fight: Matchup; f1: HistoryRow[]; f2: HistoryRow[] }) {
-  // Both histories point toward the middle, putting each fighter's most
-  // recent bout on either side of the center.
-  const leftRows = [...f1].reverse();
-  const left: (HistoryRow | null)[] = [
-    ...Array<null>(FORM_LIMIT - leftRows.length).fill(null),
-    ...leftRows,
+/** One fighter's five stops, captioned by a name that rules off its own half
+ *  of the panel. Rows arrive newest first and the run reads oldest to newest;
+ *  side by side the second fighter's half is mirrored, so both fighters' most
+ *  recent bout — the one that led here — sits against the centre line. Stacked
+ *  on a narrow panel there is no centre to mirror, and both halves read the
+ *  same way. Short runs pad on the outer edge, keeping the recent end aligned. */
+function FormHalf({ name, rows, side }: { name: string; rows: HistoryRow[]; side: "f1" | "f2" }) {
+  const chronological = [...rows].reverse();
+  const cells: (HistoryRow | null)[] = [
+    ...Array<null>(Math.max(0, FORM_LIMIT - chronological.length)).fill(null),
+    ...chronological,
   ];
-  const right: (HistoryRow | null)[] = [...f2, ...Array<null>(FORM_LIMIT - f2.length).fill(null)];
-
+  const ink = side === "f1" ? "text-f1-ink" : "text-f2-ink";
+  const mirror = side === "f2" ? "@[44rem]:flex-row-reverse" : "";
   return (
-    <div className="w-full">
-      <div className="grid grid-cols-2">
-        <div className="flex min-w-0 justify-end px-3 py-0.5">
-          <span className={`flex items-center gap-1.5 ${CHART_TEXT} font-semibold text-f1-ink`}>
-            {lastName(fight.f1.name)}
-          </span>
-        </div>
-        <div className="flex min-w-0 justify-start border-l border-zinc-200 px-3 py-0.5">
-          <span className={`flex items-center gap-1.5 ${CHART_TEXT} font-semibold text-f2-ink`}>
-            {lastName(fight.f2.name)}
-          </span>
-        </div>
+    <div className="min-w-0">
+      <div className={`flex items-center gap-2 px-1.5 pb-1.5 ${mirror}`}>
+        <span className={`${CHART_TEXT} font-semibold ${ink}`}>{name}</span>
+        <span aria-hidden="true" className={`h-px flex-1 bg-current opacity-30 ${ink}`} />
       </div>
-      <div className="grid grid-cols-10">
-        {[...left, ...right].map((row, index) =>
+      <div className={`flex items-stretch ${mirror}`}>
+        {cells.map((row, index) =>
           row ? (
-            <div
-              key={`${index < FORM_LIMIT ? "f1" : "f2"}-${row.fight_id}`}
-              className={`min-w-0 ${index === FORM_LIMIT ? "border-l border-zinc-200" : ""}`}
-            >
+            <div key={row.fight_id} className="min-w-0 flex-1 basis-0">
               <FormBout row={row} />
             </div>
           ) : (
             <div
               key={`empty-${index}`}
               aria-hidden="true"
-              className={`flex items-center justify-center ${CHART_TEXT} text-zinc-300 ${index === FORM_LIMIT ? "border-l border-zinc-200" : ""}`}
+              className={`flex min-w-0 flex-1 basis-0 items-center justify-center ${CHART_TEXT} text-zinc-300`}
             >
               —
             </div>
           ),
         )}
       </div>
+    </div>
+  );
+}
+
+function FormTimeline({ fight, f1, f2 }: { fight: Matchup; f1: HistoryRow[]; f2: HistoryRow[] }) {
+  return (
+    <div className="grid gap-y-5 px-3 py-3 @[44rem]:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] @[44rem]:gap-x-3 @[44rem]:gap-y-0">
+      <FormHalf name={lastName(fight.f1.name)} rows={f1} side="f1" />
+      <div aria-hidden="true" className="hidden bg-zinc-200 @[44rem]:block" />
+      <FormHalf name={lastName(fight.f2.name)} rows={f2} side="f2" />
     </div>
   );
 }
@@ -408,7 +403,7 @@ function RecentForm({ fight }: { fight: Matchup }) {
   const rows = Math.max(f1.length, f2.length);
   return (
     <section className={`${shell} flex flex-col overflow-hidden`}>
-      <h2 className="px-5 pb-1 pt-3 text-sm font-semibold text-zinc-900">Last Five</h2>
+      <PanelHeading title="Last Five" subtitle="The five bouts each fighter took into this one" />
       {rows === 0 ? (
         <PanelEmpty>Neither fighter had a UFC bout before this one.</PanelEmpty>
       ) : (
@@ -668,7 +663,7 @@ function FightRail({ eventId, currentId, returnDepth }: { eventId: string; curre
                 "relative grid w-full grid-cols-2 items-start gap-x-3 gap-y-2 rounded-xl border px-2 py-3 transition-colors",
                 // The bout on now keeps its border whether or not it is also
                 // the matchup being read, so the two markings can coexist.
-                isCurrent ? segmentedSelected : "bg-zinc-50 hover:bg-zinc-100",
+                isCurrent ? segmentedSelected : "hover:bg-zinc-50",
                 isLive ? "border-emerald-200" : "border-transparent",
               ].join(" ")}
             >

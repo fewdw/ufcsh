@@ -157,13 +157,14 @@ function EventSidebar({
         <div
           ref={listRef}
           onScroll={(e) => setShowTop(e.currentTarget.scrollTop > 320)}
-          // The list is a track in the same tone as the header nav's group, so
-          // the selected row can sit on it as a raised white card.
-          className="h-full overflow-y-auto bg-zinc-100 px-2 pb-2"
+          // Every list on the page — this one, the card, the fight rail —
+          // shares the panel's white surface, so a row is told apart by its
+          // ring and shadow rather than by the tone it happens to sit on.
+          className="h-full overflow-y-auto bg-white px-2 pb-2"
         >
           {groups.map(([yearMonth, list]) => (
             <div key={yearMonth}>
-              <div className="sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-zinc-100 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+              <div className="sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-white px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
                 <span>{yearMonth.slice(0, 4)}</span>
                 <span>{MONTHS[Number(yearMonth.slice(5, 7)) - 1]}</span>
               </div>
@@ -183,7 +184,7 @@ function EventSidebar({
                         // Selection borrows the header nav's token outright: a
                         // clean surface inside a hairline ring with a soft
                         // shadow, rather than inverting to a solid block.
-                        isSelected ? segmentedSelected : "hover:bg-white/70",
+                        isSelected ? segmentedSelected : "hover:bg-zinc-50",
                       ].join(" ")}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -429,7 +430,7 @@ function SegmentBreak({ segment, at }: { segment: CardSegment; at: number | null
   const clock = clockTime(at);
   return (
     // The containing row supplies a matching top rule at segment boundaries.
-    <div className="flex items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-2.5 @[34rem]:px-6">
+    <div className="flex items-center justify-between gap-3 border-b border-zinc-200 bg-white px-4 py-2.5 @[34rem]:px-6">
       <h2 className="min-w-0 text-sm font-semibold leading-5 tracking-tight text-zinc-900">{SEGMENT_LABEL[segment]}</h2>
       {clock ? (
         <span className="shrink-0 rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium leading-4 tabular-nums text-zinc-600" title="Announced start, in your time zone">
@@ -551,7 +552,7 @@ function EventPane({ eventId }: { eventId: string }) {
         </div>
       </section>
 
-      <section className={shell}>
+      <section className={`${shell} shrink-0 overflow-hidden`}>
         {event.fights.length === 0 ? (
           <div className="px-6 py-10 text-center text-sm text-zinc-400">Fight card not announced yet.</div>
         ) : (
