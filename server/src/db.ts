@@ -105,6 +105,18 @@ CREATE TABLE IF NOT EXISTS odds (
   fetched_at INTEGER
 );
 
+-- Pre-fight prop prices, kept separately from the two-way moneyline.
+-- markets_json holds every named sportsbook quote (or the source's mean price
+-- where no book column survives) and the fighter ids it was verified against.
+-- final = 1 once read from the completed event's board: closing prices.
+CREATE TABLE IF NOT EXISTS method_odds (
+  fight_id          TEXT PRIMARY KEY,
+  markets_json      TEXT NOT NULL,
+  source_url        TEXT NOT NULL,
+  final             INTEGER NOT NULL DEFAULT 0,
+  fetched_at        INTEGER NOT NULL
+);
+
 -- A verified link from our UFCStats identity to a complete professional
 -- record source. A verified status is deliberately required before any of
 -- the rows below are used: common names are never joined by name alone.
@@ -268,7 +280,17 @@ for (const alter of [
   "ALTER TABLE events ADD COLUMN early_prelims_at INTEGER",
   "ALTER TABLE events ADD COLUMN schedule_fetched_at INTEGER",
   "ALTER TABLE events ADD COLUMN segments_fetched_at INTEGER",
+  "ALTER TABLE events ADD COLUMN bfo_url TEXT",
+  "ALTER TABLE events ADD COLUMN bfo_checked_at INTEGER",
+  "ALTER TABLE events ADD COLUMN bfo_final_at INTEGER",
   "ALTER TABLE fights ADD COLUMN segment TEXT",
+  // Weigh-in misses, from the event's Wikipedia article: the weight in pounds
+  // as text, "" when the article gives none, NULL when the fighter made weight
+  // or the card has not been read (events.wiki_checked_at says which).
+  "ALTER TABLE fights ADD COLUMN f1_weight_miss TEXT",
+  "ALTER TABLE fights ADD COLUMN f2_weight_miss TEXT",
+  "ALTER TABLE events ADD COLUMN wiki_title TEXT",
+  "ALTER TABLE events ADD COLUMN wiki_checked_at INTEGER",
   // Nationality comes from the same verified professional-history page the
   // career record does, so it costs no extra source and cannot be attached to
   // a fighter whose identity was never established.
@@ -380,4 +402,35 @@ if (getMeta("migration_detail_rounds") !== "2") {
 if (getMeta("migration_detail_fighter_order") !== "2") {
   db.exec("UPDATE fights SET detail_json = NULL, detail_fetched_at = NULL WHERE detail_json IS NOT NULL");
   setMeta("migration_detail_fighter_order", "2");
+}
+
+// Props before v4 were either stored without fighter ids or hidden behind a
+// timestamp gate, and older boards were never priced. Re-read every board.
+if (getMeta("migration_method_odds") !== "4") {
+  db.exec("DELETE FROM method_odds");
+  db.exec("UPDATE events SET bfo_checked_at = NULL, bfo_final_at = NULL");
+  setMeta("migration_method_odds", "4");
+}
+
+// Event boards now also fill moneylines the fighter pages missed. Re-read the
+// completed cards that still have a fight without one (props already stored
+// as final are skipped, so this costs a board request, not a re-scrape).
+if (getMeta("migration_board_moneyline") !== "2") {
+  db.exec(`UPDATE events SET bfo_final_at = NULL WHERE complete = 1 AND id IN (
+    SELECT f.event_id FROM fights f LEFT JOIN odds o ON o.fight_id = f.id WHERE o.f1_close IS NULL)`);
+  // Fighter pages now also yield bouts filed under the source's undated
+  // "Future Events" page; rescan fighters who still have a missing line.
+  db.exec(`UPDATE fighters SET bfo_checked_at = NULL WHERE id IN (
+    SELECT f.f1_id FROM fights f JOIN events e ON e.id = f.event_id LEFT JOIN odds o ON o.fight_id = f.id
+    WHERE e.complete = 1 AND o.f1_close IS NULL
+    UNION SELECT f.f2_id FROM fights f JOIN events e ON e.id = f.event_id LEFT JOIN odds o ON o.fight_id = f.id
+    WHERE e.complete = 1 AND o.f1_close IS NULL)`);
+  setMeta("migration_board_moneyline", "2");
+}
+
+// Knockout and Submission of the Night (the pre-2014 performance awards) were
+// not read before. Re-read bonuses for every card from those years.
+if (getMeta("migration_bonus_kinds") !== "1") {
+  db.exec("UPDATE fights SET perf_bonus = NULL WHERE event_id IN (SELECT id FROM events WHERE date < '2014-07-01')");
+  setMeta("migration_bonus_kinds", "1");
 }

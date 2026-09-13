@@ -118,6 +118,16 @@ export function clockTime(timestamp: number | null | undefined): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+/** A start time in the reader's own zone, named: "9 PM EDT", "8:30 PM GMT+1". */
+export function clockTimeWithZone(timestamp: number | null | undefined): string | null {
+  if (timestamp == null || !Number.isFinite(timestamp) || timestamp <= 0) return null;
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return null;
+  const options: Intl.DateTimeFormatOptions = { hour: "numeric", timeZoneName: "short" };
+  if (date.getMinutes() !== 0) options.minute = "2-digit";
+  return date.toLocaleTimeString([], options);
+}
+
 /** How long until something starts: "2h 05m", "12m", "40s". Null once it has.
  *  Deliberately coarse above an hour and exact under a minute — a countdown to
  *  a walkout is watched closely only at the end. */

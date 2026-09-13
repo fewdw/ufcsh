@@ -6,11 +6,15 @@ import LiveMatchup from "./components/LiveMatchup";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "./components/segmented";
 import { Moon, Sun } from "lucide-react";
 import { useSettings } from "./settings";
+import { useFighterPrefetch } from "./useFighterPrefetch";
 
-const EventsPage = lazy(() => import("./pages/EventsPage"));
+const loadEventsPage = () => import("./pages/EventsPage");
+const loadRankingsPage = () => import("./pages/RankingsPage");
+const loadStatsPage = () => import("./pages/StatsPage");
+const EventsPage = lazy(loadEventsPage);
 const FighterPage = lazy(() => import("./pages/FighterPage"));
-const RankingsPage = lazy(() => import("./pages/RankingsPage"));
-const StatsPage = lazy(() => import("./pages/StatsPage"));
+const RankingsPage = lazy(loadRankingsPage);
+const StatsPage = lazy(loadStatsPage);
 const LabsPage = lazy(() => import("./pages/LabsPage"));
 
 function Header({ onSearch }: { onSearch: () => void }) {
@@ -23,9 +27,9 @@ function Header({ onSearch }: { onSearch: () => void }) {
   // Stats pill stays lit while it is open and the switch lives on the page.
   const isLabs = pathname.startsWith("/labs");
   const links = [
-    { href: "/", label: "Events", active: !isRankings && !isStats && !isLabs },
-    { href: "/rankings", label: "Rankings", active: isRankings },
-    { href: "/stats", label: "Stats", active: isStats || isLabs },
+    { href: "/", label: "Events", active: !isRankings && !isStats && !isLabs, load: loadEventsPage },
+    { href: "/rankings", label: "Rankings", active: isRankings, load: loadRankingsPage },
+    { href: "/stats", label: "Stats", active: isStats || isLabs, load: loadStatsPage },
   ];
 
   return (
@@ -49,6 +53,8 @@ function Header({ onSearch }: { onSearch: () => void }) {
               <Link
                 key={link.href}
                 to={link.href}
+                onPointerEnter={() => { void link.load().catch(() => {}); }}
+                onFocus={() => { void link.load().catch(() => {}); }}
                 aria-current={link.active ? "page" : undefined}
                 className={`rounded-full px-2.5 py-1.5 text-xs font-medium transition sm:px-4 sm:text-sm ${
                   link.active ? segmentedSelected : segmentedIdle
@@ -89,6 +95,8 @@ function Header({ onSearch }: { onSearch: () => void }) {
 
 export default function App() {
   const [searchOpen, setSearchOpen] = useState(false);
+  const { settings } = useSettings();
+  useFighterPrefetch(settings.rankingSource);
 
   useEffect(() => {
     const previous = window.history.scrollRestoration;

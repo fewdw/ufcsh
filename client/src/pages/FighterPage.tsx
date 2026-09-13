@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../api";
 import type { CompleteRecordBefore, FighterProfile, FighterRecord, FighterStat, HistoryRow, ProfessionalHistoryRow } from "../api";
-import { formatDateShortWithYear, formatLine, formatMethod } from "../format";
+import { formatDateShortWithYear, formatLine, formatMethod, lastName } from "../format";
 import { formatValue } from "../components/chartTokens";
 import FighterPortrait from "../components/FighterPortrait";
 import Flag from "../components/Flag";
@@ -195,6 +195,35 @@ function EnteringRecords({
   );
 }
 
+const PERF_AWARD = {
+  perf: { short: "Perf. of the Night", full: "Performance of the Night" },
+  ko: { short: "KO of the Night", full: "Knockout of the Night" },
+  sub: { short: "Sub of the Night", full: "Submission of the Night" },
+} as const;
+const TAG = "inline-flex items-center gap-1 rounded px-1.5 py-px text-[10px] font-semibold leading-4";
+
+/** What the bout's result line does not say: awards this fighter took home and
+ * whoever came in over the limit. Each tag spells its meaning out in words. */
+function BoutNotes({ row }: { row: HistoryRow | ProfessionalHistoryRow }) {
+  const perf = row.bonuses?.perf ? PERF_AWARD[row.bonuses.perf] : null;
+  const misses = [
+    { who: "Missed weight", name: "This fighter", pounds: row.weight_miss?.fighter },
+    { who: `${lastName(row.opponent.name)} missed weight`, name: row.opponent.name, pounds: row.weight_miss?.opponent },
+  ].filter((miss) => miss.pounds != null);
+  if (!perf && !row.bonuses?.fotn && !misses.length) return null;
+  return (
+    <span className="mt-1 flex flex-wrap gap-1">
+      {row.bonuses?.fotn ? <span className={`${TAG} bg-orange-50 text-orange-700`} title="Fight of the Night bonus"><span aria-hidden="true">🔥</span>Fight of the Night</span> : null}
+      {perf ? <span className={`${TAG} bg-amber-50 text-amber-800`} title={`${perf.full} bonus`}><span aria-hidden="true">💰</span>{perf.short}</span> : null}
+      {misses.map((miss) => (
+        <span key={miss.who} className={`${TAG} bg-rose-50 text-rose-700`} title={`${miss.name} missed weight${miss.pounds ? ` at ${miss.pounds} lb` : ""}`}>
+          <span aria-hidden="true">⚖️</span>{miss.who}{miss.pounds ? ` · ${miss.pounds} lb` : ""}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function HistoryRowView({ row }: { row: HistoryRow | ProfessionalHistoryRow }) {
   const result = row.upcoming ? "Upcoming" : historyResultLabel(row.outcome);
   const method = row.upcoming ? "Scheduled" : formatMethod(row.method, row.round, row.time);
@@ -235,6 +264,7 @@ function HistoryRowView({ row }: { row: HistoryRow | ProfessionalHistoryRow }) {
           </span>
         ) : null}
       </span>
+      <BoutNotes row={row} />
     </span>
   );
   const eventContent = (
@@ -385,7 +415,8 @@ export default function FighterPage() {
   const { fighterId } = useParams();
   const { settings } = useSettings();
   const navigate = useNavigate();
-  const { data: fighter, loading, error } = useApi<FighterProfile>(fighterId ? withRanking(`/api/fighters/${fighterId}`, settings.rankingSource) : null);
+  const { data: fighter, loading, error } = useApi<FighterProfile>(fighterId ? withRanking(`/api/fighters/${fighterId}`, settings.rankingSource) : null,
+    data => data?.refreshing ? 2_000 : 60_000);
   const pageScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:page", Boolean(fighter));
   useSeo({
     title: fighter ? `${fighter.name} — Record & Fight History` : "UFC Fighter Profile",

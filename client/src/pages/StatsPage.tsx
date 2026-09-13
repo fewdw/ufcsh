@@ -694,42 +694,37 @@ function Leaderboard({
 }) {
   const rowsScroll = useRouteScrollRestoration<HTMLDivElement>(`stats-board:${board.key}`);
   return (
-    <section className={`${shell} flex h-[41rem] min-w-0 flex-col overflow-hidden ${className}`}>
-      {/* Every card's header is the same height whatever it holds, so the five
-          lists all start on the same line: a fixed row for the title, two lines
-          for the description however long it runs, and the controls anchored to
-          the bottom of a space sized for the card that needs the most of them. */}
-      <header className="grid shrink-0 grid-rows-[1.75rem_2.25rem_1fr] border-b border-zinc-200 px-4 py-3 md:h-44">
-        <div className="flex items-start justify-between gap-2">
-          {board.key === "record" ? (
-            <div className={segmentedGroup} aria-label="Bouts, wins or losses">
-              {(["bouts", "wins", "losses"] as const).map((group) => (
-                <button
-                  key={group}
-                  type="button"
-                  aria-pressed={settings.recordGroup === group}
-                  onClick={() => update("recordGroup", group)}
-                  className={`rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize transition ${settings.recordGroup === group ? segmentedSelected : segmentedIdle}`}
-                >
-                  {group}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <h2 className="truncate pt-1 text-sm font-semibold text-zinc-950" title={board.title}>{board.title}</h2>
-          )}
-        </div>
-        {/* A definition can run to a paragraph. Two lines of it belong on the
-            card; the whole of it belongs one hover away. */}
-        <p className="mt-0.5 line-clamp-2 text-[10px] leading-4 text-zinc-400" title={board.description}>{board.description}</p>
-        {/* Controls start on the same line on every card — that, and the two
-            fixed rows above them, is what lines all five lists up whether a
-            card takes one qualifier or five. */}
-        <div className="min-h-0 overflow-y-auto">
-          <CardControls boardKey={board.key} settings={settings} update={update} division={division} />
-        </div>
-      </header>
-      <div ref={rowsScroll} className="min-h-0 flex-1 divide-y divide-zinc-50 overflow-y-auto">
+    // Four rows — title, description, controls, list — shared through subgrid
+    // with every card on the same line of the grid: each header row takes the
+    // height of the tallest card beside it, so titles, definitions, controls
+    // and the first ranked row all line up without reserving empty space.
+    <section className={`${shell} row-span-4 grid min-w-0 grid-rows-subgrid gap-0 overflow-hidden ${className}`}>
+      <div className="flex items-center justify-between gap-2 px-4 pt-3">
+        {board.key === "record" ? (
+          <div className={segmentedGroup} aria-label="Bouts, wins or losses">
+            {(["bouts", "wins", "losses"] as const).map((group) => (
+              <button
+                key={group}
+                type="button"
+                aria-pressed={settings.recordGroup === group}
+                onClick={() => update("recordGroup", group)}
+                className={`rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize transition ${settings.recordGroup === group ? segmentedSelected : segmentedIdle}`}
+              >
+                {group}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <h2 className="truncate py-1 text-sm font-semibold text-zinc-950" title={board.title}>{board.title}</h2>
+        )}
+      </div>
+      {/* A definition can run to a paragraph. Two lines of it belong on the
+          card; the whole of it belongs one hover away. */}
+      <p className="mt-1 line-clamp-2 px-4 text-[11px] leading-4 text-zinc-400" title={board.description}>{board.description}</p>
+      <div className="border-b border-zinc-200 px-4 pb-3">
+        <CardControls boardKey={board.key} settings={settings} update={update} division={division} />
+      </div>
+      <div ref={rowsScroll} className="h-[30rem] min-h-0 divide-y divide-zinc-50 overflow-y-auto">
         {board.rows.length === 0 ? (
           <div className="px-4 py-8 text-center text-xs text-zinc-400">
             {fighterSelected ? "None of the selected fighters qualify for this statistic." : "No fighters match these filters."}
@@ -1155,11 +1150,13 @@ export default function StatsPage() {
             : `${dashboard.coverage.fighters.toLocaleString("en-US")} fighters across ${dashboard.coverage.fights.toLocaleString("en-US")} bouts match these filters. Each card lists its top ${dashboard.limit}.`}
         </p>
 
-        <div aria-busy={loading} className={`grid grid-cols-1 gap-3 transition-opacity md:grid-cols-4 xl:grid-cols-6 ${loading || error ? "opacity-70" : ""}`}>
+        {/* Five cards of one width: three on top, two centred beneath them
+            (on a two-column screen the fifth is centred on its own row). */}
+        <div aria-busy={loading} className={`grid grid-cols-1 gap-x-3 gap-y-3 transition-opacity md:grid-cols-2 xl:grid-cols-6 ${loading || error ? "opacity-70" : ""}`}>
           {orderedBoards.map((board, index) => (
             <Leaderboard
               key={board.key}
-              className={`md:col-span-2 xl:col-span-2 ${index === 3 ? "xl:col-start-2" : ""} ${index === 4 ? "md:col-start-2 xl:col-start-auto" : ""}`}
+              className={`xl:col-span-2 ${index === 3 ? "xl:col-start-2" : ""} ${index === 4 ? "md:col-span-2 md:mx-auto md:w-[calc(50%-0.375rem)] xl:col-span-2 xl:mx-0 xl:w-auto" : ""}`}
               board={board}
               settings={settings}
               update={update}

@@ -59,7 +59,7 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
     ...(data?.fights ?? []).map((fight) => ({
       key: `fight-${fight.id}`, to: `/fights/${fight.id}`, group: "Fights",
       render: () => <>
-        <span className="min-w-0 flex-1"><span className="block truncate font-medium text-zinc-900">{fight.f1_name} <span className="text-zinc-400">vs</span> {fight.f2_name}</span><span className="block truncate text-xs text-zinc-500">{fight.event_name}</span></span>
+        <span className="min-w-0 flex-1"><span className="flex min-w-0 items-center gap-2"><span className="truncate font-medium text-zinc-900">{fight.f1_name} <span className="text-zinc-400">vs</span> {fight.f2_name}</span>{fight.meetings > 1 ? <span className="shrink-0 rounded-full bg-zinc-100 px-1.5 py-px text-[10px] font-semibold tabular-nums text-zinc-600" title={`Meeting ${fight.meeting} of ${fight.meetings}`}>Fight {fight.meeting}</span> : null}</span><span className="block truncate text-xs text-zinc-500">{fight.event_name}</span></span>
         <span className="shrink-0 text-xs tabular-nums text-zinc-500">{formatDateShortWithYear(fight.date)}</span>
       </>,
     })),

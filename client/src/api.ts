@@ -160,7 +160,26 @@ export type FightOdds = {
   f1: { open: string | null; close: string | null };
   f2: { open: string | null; close: string | null };
   source_url: string | null;
+  props?: MethodOdds;
 } | null;
+
+/** bookmaker is "Mean" where the source only kept its average closing price
+ * (older cards whose sportsbooks no longer exist). */
+export type OddsBookPrice = { bookmaker: string; line: string };
+export type OddsQuote = { label: string; prices: OddsBookPrice[] };
+export type MethodOddsSide = {
+  ko?: OddsQuote;
+  submission?: OddsQuote;
+  decision?: OddsQuote;
+};
+export type MethodOdds = {
+  f1: MethodOddsSide;
+  f2: MethodOddsSide;
+  additional: OddsQuote[];
+  source_url: string;
+  fetched_at: number;
+  final: boolean;
+};
 
 export type CardSegment = "main" | "prelims" | "early";
 
@@ -192,6 +211,7 @@ export type EventFight = {
 };
 
 export type EventDetail = {
+  refreshing?: boolean;
   id: string;
   name: string;
   date: string;
@@ -228,6 +248,11 @@ export type HistoryRow = {
   opponent_career_record_before?: CompleteRecordBefore | null;
   closing_odds?: { fighter: string | null; opponent: string | null } | null;
   opponent_form?: { date: string; outcome: "win" | "loss" | "draw" | "nc" | null; method: string | null; opponent: { id: string; name: string } }[];
+  /** perf is set only when this fighter won the award: Performance, or the
+   * pre-2014 Knockout / Submission of the Night. */
+  bonuses?: { perf: "perf" | "ko" | "sub" | null; fotn: boolean } | null;
+  /** Pounds as text, "" when the weight is unknown, null when made or unread. */
+  weight_miss?: { fighter: string | null; opponent: string | null };
   upcoming: boolean;
 };
 
@@ -271,10 +296,13 @@ export type FightDetailBlock = {
 };
 
 export type Matchup = {
+  refreshing?: boolean;
   id: string;
   event: { id: string; name: string; date: string; location: string };
   status: "past" | "upcoming";
   live?: boolean;
+  /** This bout is the one being fought right now. */
+  in_progress?: boolean;
   stats_updated_at?: number | null;
   weight_class: string;
   title_fight: boolean;
@@ -287,13 +315,15 @@ export type Matchup = {
   f1: MatchupSide;
   f2: MatchupSide;
   odds: FightOdds;
-  bonuses: { perf: boolean; fotn: boolean };
+  /** perf_kind names the award: Performance, or the pre-2014 Knockout / Submission of the Night. */
+  bonuses: { perf: boolean; perf_kind?: "perf" | "ko" | "sub"; fotn: boolean };
   detail: FightDetailBlock | null;
   common_opponents: { opponent: { id: string; name: string }; f1_fights: HistoryRow[]; f2_fights: HistoryRow[] }[];
   head_to_head: HistoryRow[];
 };
 
 export type FighterProfile = {
+  refreshing?: boolean;
   id: string;
   name: string;
   nickname: string;
@@ -771,7 +801,8 @@ export type LabsResponse = {
 export type SearchResults = {
   fighters: { id: string; name: string; nickname: string; record: string; photo_url: string | null; ufc_fights: number }[];
   events: { id: string; name: string; date: string }[];
-  fights: { id: string; f1_name: string; f2_name: string; event_name: string; date: string }[];
+  /** meeting is this bout's place among every meeting of the pair (1-based). */
+  fights: { id: string; f1_name: string; f2_name: string; event_name: string; date: string; meeting: number; meetings: number }[];
 };
 
 // ---------------------------------------------------------------------------
@@ -787,19 +818,23 @@ const IDLE = { data: null, loading: false, refreshing: false, error: false };
  * the answer in hand by the time the click lands.
  */
 export function prefetch(url: string | null): void {
-  if (url && apiCache.read(url).data == null) void apiCache.load(url);
+  if (url) void apiCache.load(url, 30_000);
 }
 
-export function useApi<T>(url: string | null, pollMs?: number) {
+export function useApi<T>(url: string | null, pollMs?: number | ((data: T | null) => number)) {
   const subscribe = useCallback((listener: () => void) => url ? apiCache.subscribe(url, listener) : () => {}, [url]);
   const snapshot = useCallback(() => url ? apiCache.read(url) : IDLE, [url]);
   const state = useSyncExternalStore(subscribe, snapshot);
+  const intervalMs = typeof pollMs === "function" ? pollMs(state.data as T | null) : pollMs;
   const retry = useCallback(() => { if (url) void apiCache.load(url); }, [url]);
   useEffect(() => {
     if (!url) return;
-    void apiCache.load(url);
-    const timer = pollMs ? setInterval(() => void apiCache.load(url), pollMs) : undefined;
+    void apiCache.load(url, 5_000);
+  }, [url]);
+  useEffect(() => {
+    if (!url) return;
+    const timer = intervalMs ? setInterval(() => void apiCache.load(url), intervalMs) : undefined;
     return () => { if (timer) clearInterval(timer); };
-  }, [url, pollMs]);
+  }, [url, intervalMs]);
   return { ...state, data: state.data as T | null, retry };
 }

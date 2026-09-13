@@ -11,8 +11,20 @@ import {
 } from "./scrape/ufcstats.ts";
 import { scrapeAthleteDirectoryPage, scrapeEventSchedules, scrapeEventSegments, scrapeFighterImages, scrapeRankings } from "./scrape/ufccom.ts";
 import { assignSegments, matchEventSchedule } from "./card-schedule.ts";
-import { alignScrapedOdds, scrapeFighterOddsHistory, scrapeOdds } from "./scrape/odds.ts";
+import {
+  alignScrapedOdds,
+  findOddsEventPages,
+  methodOddsForFight,
+  fetchMeanMoneyline,
+  resolveMeanPrices,
+  scrapeEventMethodOdds,
+  scrapeFighterOddsHistory,
+  scrapeOdds,
+  type BoardMatchup,
+  type ScrapedMethodOdds,
+} from "./scrape/odds.ts";
 import { validateFightActions } from "./action-stats.ts";
+import { fetchEventArticle, weightMisses } from "./scrape/wikipedia.ts";
 import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
 
 const HOUR = 3600_000;
@@ -43,6 +55,9 @@ function upsertFighterStub(id: string, name: string): void {
   ).run(id, name, normName(name));
 }
 
+/** fights.perf_bonus: 0 none, 1 Performance, 2 Knockout, 3 Submission of the Night. */
+export const PERF_BONUS_CODE = { perf: 1, ko: 2, sub: 3 } as const;
+
 export function storeEventDetail(detail: ScrapedEventDetail): void {
   if (!detail.date || !detail.name || !detail.fights.length) throw new Error("Incomplete event page; keeping the last good card");
   const complete =
@@ -64,6 +79,7 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
       if (!currentIds.has(row.id)) {
         db.prepare("DELETE FROM fights WHERE id = ?").run(row.id);
         db.prepare("DELETE FROM odds WHERE fight_id = ?").run(row.id);
+        db.prepare("DELETE FROM method_odds WHERE fight_id = ?").run(row.id);
       }
     }
 
@@ -91,8 +107,24 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
       const old = previous.get(f.id);
       // A briefly stale source page must not erase a result already published.
       if (old && fightIsComplete(old) && f.f1.outcome == null && f.f2.outcome == null) continue;
+      if (old && (old.f1_id !== f.f1.id || old.f2_id !== f.f2.id)) {
+        const row = db.prepare("SELECT markets_json FROM method_odds WHERE fight_id = ?").get(f.id) as { markets_json: string } | undefined;
+        if (row) {
+          try {
+            const markets = JSON.parse(row.markets_json);
+            if (markets.f1_id !== f.f2.id || markets.f2_id !== f.f1.id) throw new Error("changed identity");
+            db.prepare("UPDATE method_odds SET markets_json = ? WHERE fight_id = ?").run(
+              JSON.stringify({ ...markets, f1: markets.f2, f2: markets.f1, f1_id: f.f1.id, f2_id: f.f2.id }), f.id,
+            );
+          } catch {
+            db.prepare("DELETE FROM method_odds WHERE fight_id = ?").run(f.id);
+          }
+        }
+        db.prepare("UPDATE events SET bfo_checked_at = NULL WHERE id = ?").run(detail.id);
+      }
       if (old && old.f1_id === f.f2.id && old.f2_id === f.f1.id && old.f1_id !== old.f2_id) {
-        db.prepare("UPDATE fights SET detail_json = NULL, detail_fetched_at = NULL WHERE id = ?").run(f.id);
+        db.prepare(`UPDATE fights SET detail_json = NULL, detail_fetched_at = NULL,
+          f1_weight_miss = f2_weight_miss, f2_weight_miss = f1_weight_miss WHERE id = ?`).run(f.id);
         db.prepare(`UPDATE odds SET f1_open = f2_open, f2_open = f1_open,
           f1_close = f2_close, f2_close = f1_close, f1_history = f2_history, f2_history = f1_history
           WHERE fight_id = ?`).run(f.id);
@@ -104,7 +136,7 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
         f.f1.id, f.f2.id, f.f1.name, f.f2.name, f.f1.outcome, f.f2.outcome,
         f.method, f.methodDetails, f.round, f.time,
         f.f1.kd, f.f1.str, f.f1.td, f.f1.sub, f.f2.kd, f.f2.str, f.f2.td, f.f2.sub,
-        f.bonuses.perf ? 1 : 0, f.bonuses.fotn ? 1 : 0,
+        f.bonuses.perf ? PERF_BONUS_CODE[f.bonuses.perfKind ?? "perf"] : 0, f.bonuses.fotn ? 1 : 0,
       );
       // A finished fight's ufcstats page never changes again, but our cached copy
       // may predate the result — drop it so the detail refetch picks up final stats.
@@ -458,6 +490,82 @@ export async function backfillHistoricalFightDetails(): Promise<void> {
   }
 }
 
+let bonusBackfillRunning = false;
+
+/** Bonuses for every completed card, newest first: one source page per card. */
+async function syncMissingBonuses(limit = 30): Promise<void> {
+  if (bonusBackfillRunning) return;
+  bonusBackfillRunning = true;
+  try {
+    const events = db.prepare(`
+      SELECT DISTINCT e.id FROM events e JOIN fights f ON f.event_id = e.id
+      WHERE e.complete = 1 AND f.perf_bonus IS NULL ORDER BY e.date DESC LIMIT ?
+    `).all(limit) as { id: string }[];
+    let failed = 0;
+    for (const { id } of events) {
+      try {
+        await syncEventDetail(id);
+      } catch (err) {
+        failed++;
+        log(`bonus backfill failed [${id}]:`, String(err));
+      }
+    }
+    if (events.length) log(`bonus backfill: ${events.length - failed}/${events.length} cards read`);
+  } finally {
+    bonusBackfillRunning = false;
+  }
+}
+
+let weightMissRunning = false;
+
+/** Weigh-in misses for completed cards, newest first, from each card's
+ * Wikipedia article. A card with no matching article is still marked read. */
+export async function syncWeightMisses(limit = 30): Promise<{ events: number; misses: number; failed: number }> {
+  const total = { events: 0, misses: 0, failed: 0 };
+  if (weightMissRunning) return total;
+  weightMissRunning = true;
+  try {
+    const events = db.prepare(`
+      SELECT id, name, date FROM events WHERE complete = 1 AND wiki_checked_at IS NULL
+      ORDER BY date DESC LIMIT ?
+    `).all(limit) as { id: string; name: string; date: string }[];
+    const fightsOf = db.prepare("SELECT id, f1_name, f2_name FROM fights WHERE event_id = ?");
+    const setMiss = db.prepare("UPDATE fights SET f1_weight_miss = ?, f2_weight_miss = ? WHERE id = ?");
+    const markRead = db.prepare("UPDATE events SET wiki_title = ?, wiki_checked_at = ? WHERE id = ?");
+    for (const event of events) {
+      let article: Awaited<ReturnType<typeof fetchEventArticle>>;
+      try {
+        article = await fetchEventArticle(event.name, event.date);
+      } catch (err) {
+        total.failed++;
+        log(`weight misses failed [${event.name}]:`, String(err));
+        continue;
+      }
+      const fights = fightsOf.all(event.id) as { id: string; f1_name: string; f2_name: string }[];
+      const misses = article ? weightMisses(article.wikitext, fights.flatMap((f) => [f.f1_name, f.f2_name])) : [];
+      const value = (name: string) => {
+        const miss = misses.find((m) => m.name === name);
+        return miss ? (miss.pounds != null ? String(miss.pounds) : "") : null;
+      };
+      db.exec("BEGIN");
+      try {
+        for (const fight of fights) setMiss.run(value(fight.f1_name), value(fight.f2_name), fight.id);
+        markRead.run(article?.title ?? null, Date.now(), event.id);
+        db.exec("COMMIT");
+      } catch (err) {
+        db.exec("ROLLBACK");
+        throw err;
+      }
+      total.events++;
+      total.misses += misses.length;
+    }
+    if (events.length) log(`weight misses: ${total.misses} across ${total.events} cards, ${total.failed} failed`);
+    return total;
+  } finally {
+    weightMissRunning = false;
+  }
+}
+
 let titleTypesRunning = false;
 
 async function syncMissingTitleTypes(limit = 12): Promise<void> {
@@ -517,6 +625,213 @@ export async function syncOddsForFight(fight: { id: string; f1_name: string; f2_
 }
 
 export type UpcomingOddsSyncResult = { selected: number; stored: number; failed: number };
+
+export type MethodOddsSyncResult = { events: number; fights: number; failed: number };
+
+type MethodOddsFight = { id: string; f1_id: string; f2_id: string; f1_name: string; f2_name: string };
+
+/** Stored rows from any other version are discarded on startup (db.ts). */
+export const METHOD_ODDS_VERSION = 4;
+
+// Opened matchups resolve their prices ahead of the historical backfill. Both
+// share one throttled source queue, so the backfill waits between requests.
+let openedFightSyncs = 0;
+async function yieldToOpenedFights(): Promise<void> {
+  while (openedFightSyncs > 0) await new Promise((resolve) => setTimeout(resolve, 500));
+}
+
+/** Read an event's boards and store props for every fight whose exact fighter
+ * pair appears. A board read after the event is complete holds the last
+ * pre-fight price of every bout (the source removes a fight once it starts),
+ * so those rows are marked final and never requested again. */
+export async function syncMethodOddsForEvent(eventId: string, onlyFightId?: string): Promise<MethodOddsSyncResult> {
+  const event = db.prepare("SELECT id, date, complete, bfo_url FROM events WHERE id = ?")
+    .get(eventId) as { id: string; date: string; complete: number; bfo_url: string | null } | undefined;
+  if (!event) return { events: 0, fights: 0, failed: 0 };
+
+  const fights = (db.prepare("SELECT id, f1_id, f2_id, f1_name, f2_name FROM fights WHERE event_id = ?")
+    .all(eventId) as MethodOddsFight[])
+    .filter((fight) => !onlyFightId || fight.id === onlyFightId);
+  let candidates: string[];
+  try {
+    candidates = await findOddsEventPages(event.date, event.bfo_url);
+  } catch (err) {
+    log(`method odds event lookup failed [${eventId}]:`, String(err));
+    return { events: 0, fights: 0, failed: 1 };
+  }
+
+  // Split cards and alternate names put one card on several same-day boards.
+  const found = new Map<string, { fight: MethodOddsFight; odds: BoardMatchup }>();
+  let matchedUrl: string | null = null;
+  let failed = 0;
+  for (const sourceUrl of candidates) {
+    if (found.size === fights.length) break;
+    let board: Awaited<ReturnType<typeof scrapeEventMethodOdds>>;
+    try {
+      board = await scrapeEventMethodOdds(sourceUrl);
+    } catch (err) {
+      log(`method odds scrape failed [${sourceUrl}]:`, String(err));
+      failed++;
+      continue;
+    }
+    for (const fight of fights) {
+      const odds = found.has(fight.id) ? null : methodOddsForFight(board, fight.f1_name, fight.f2_name);
+      if (!odds) continue;
+      found.set(fight.id, { fight, odds });
+      matchedUrl ??= sourceUrl;
+    }
+  }
+
+  const alreadyFinal = db.prepare("SELECT 1 FROM method_odds WHERE fight_id = ? AND final = 1");
+  const current = db.prepare("SELECT f1_id, f2_id FROM fights WHERE id = ? AND event_id = ?");
+  const upsert = db.prepare(`
+    INSERT INTO method_odds (fight_id, markets_json, source_url, final, fetched_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(fight_id) DO UPDATE SET
+      markets_json = excluded.markets_json,
+      source_url = excluded.source_url,
+      final = excluded.final,
+      fetched_at = excluded.fetched_at
+  `);
+  // A completed card's board also fills moneylines the fighter pages never
+  // yielded (usually a name the source spells differently).
+  const missingMoneyline = db.prepare("SELECT 1 FROM fights f LEFT JOIN odds o ON o.fight_id = f.id WHERE f.id = ? AND o.f1_close IS NULL");
+  const fillMoneyline = db.prepare(`
+    INSERT INTO odds (fight_id, f1_open, f1_close, f2_open, f2_close, source_url, final, fetched_at)
+    VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+    ON CONFLICT(fight_id) DO UPDATE SET
+      f1_open = excluded.f1_open, f1_close = excluded.f1_close,
+      f2_open = excluded.f2_open, f2_close = excluded.f2_close,
+      source_url = excluded.source_url, final = 1, fetched_at = excluded.fetched_at
+    WHERE odds.f1_close IS NULL
+  `);
+  let stored = 0;
+  for (const { fight, odds } of found.values()) {
+    if (event.complete && odds.moneylineKeys && missingMoneyline.get(fight.id)) {
+      try {
+        if (!onlyFightId) await yieldToOpenedFights();
+        const prices = await fetchMeanMoneyline(odds.moneylineKeys);
+        const now = current.get(fight.id, eventId) as { f1_id: string; f2_id: string } | undefined;
+        const reversed = now?.f1_id === fight.f2_id && now?.f2_id === fight.f1_id && fight.f1_id !== fight.f2_id;
+        if (prices && now && (reversed || (now.f1_id === fight.f1_id && now.f2_id === fight.f2_id))) {
+          const [a, b] = reversed ? [prices.f2, prices.f1] : [prices.f1, prices.f2];
+          fillMoneyline.run(fight.id, a.open, a.close, b.open, b.close, odds.sourceUrl, Date.now());
+        }
+      } catch (err) {
+        log(`mean moneyline failed [${fight.id}]:`, String(err));
+        failed++;
+      }
+    }
+    if (alreadyFinal.get(fight.id)) continue;
+    let resolved: ScrapedMethodOdds;
+    try {
+      resolved = await resolveMeanPrices(odds, onlyFightId ? undefined : yieldToOpenedFights);
+    } catch (err) {
+      log(`method odds mean prices failed [${fight.id}]:`, String(err));
+      failed++;
+      continue;
+    }
+    if (!Object.keys(resolved.f1).length && !Object.keys(resolved.f2).length && !resolved.additional.length) continue;
+    // UFCStats may reorder corners (or replace a fighter) while prices load.
+    const now = current.get(fight.id, eventId) as { f1_id: string; f2_id: string } | undefined;
+    if (!now) continue;
+    const reversed = now.f1_id === fight.f2_id && now.f2_id === fight.f1_id && fight.f1_id !== fight.f2_id;
+    if (!reversed && (now.f1_id !== fight.f1_id || now.f2_id !== fight.f2_id)) continue;
+    upsert.run(
+      fight.id,
+      JSON.stringify({
+        version: METHOD_ODDS_VERSION,
+        f1_id: now.f1_id,
+        f2_id: now.f2_id,
+        f1: reversed ? resolved.f2 : resolved.f1,
+        f2: reversed ? resolved.f1 : resolved.f2,
+        additional: resolved.additional,
+      }),
+      resolved.sourceUrl,
+      event.complete ? 1 : 0,
+      Date.now(),
+    );
+    stored++;
+  }
+
+  if (!onlyFightId) {
+    db.prepare("UPDATE events SET bfo_url = COALESCE(?, bfo_url), bfo_checked_at = ? WHERE id = ?")
+      .run(matchedUrl, Date.now(), eventId);
+    // Any failure leaves the event eligible for a later retry.
+    if (event.complete && !failed) db.prepare("UPDATE events SET bfo_final_at = ? WHERE id = ?").run(Date.now(), eventId);
+  }
+  return { events: 1, fights: stored, failed: failed ? 1 : 0 };
+}
+
+/** An opened matchup must not wait behind years of historical backfill. */
+export async function ensureFightMethodOdds(fightId: string): Promise<void> {
+  const row = db.prepare(`
+    SELECT f.event_id, e.complete, e.bfo_final_at, e.bfo_checked_at, m.final, m.fetched_at
+    FROM fights f JOIN events e ON e.id = f.event_id LEFT JOIN method_odds m ON m.fight_id = f.id
+    WHERE f.id = ?
+  `).get(fightId) as {
+    event_id: string; complete: number; bfo_final_at: number | null; bfo_checked_at: number | null;
+    final: number | null; fetched_at: number | null;
+  } | undefined;
+  if (!row || row.final) return;
+  // A complete event read in full has nothing more to offer this fight.
+  if (row.complete && row.bfo_final_at != null) return;
+  if (!row.complete && Math.max(row.fetched_at ?? 0, row.bfo_checked_at ?? 0) > Date.now() - 6 * HOUR) return;
+  openedFightSyncs++;
+  try {
+    await syncMethodOddsForEvent(row.event_id, fightId);
+  } finally {
+    openedFightSyncs--;
+  }
+}
+
+let methodOddsBackfillRunning = false;
+
+/** Newest events first. Cards since 2021 cost one request per board; older
+ * cards also cost one chart request per displayed market. */
+export async function syncMethodOddsBackfill(limitEvents = 20): Promise<MethodOddsSyncResult> {
+  const total = { events: 0, fights: 0, failed: 0 };
+  if (methodOddsBackfillRunning) return total;
+  methodOddsBackfillRunning = true;
+  try {
+    const targets = db.prepare(`
+      SELECT id FROM events
+      WHERE complete = 1 AND date >= '2007-01-01' AND bfo_final_at IS NULL
+        AND (bfo_checked_at IS NULL OR bfo_checked_at < ?)
+      ORDER BY date DESC LIMIT ?
+    `).all(Date.now() - HOUR, limitEvents) as { id: string }[];
+    for (const target of targets) {
+      const result = await syncMethodOddsForEvent(target.id);
+      total.events += result.events;
+      total.fights += result.fights;
+      total.failed += result.failed;
+      // Nothing stored and something failed: the source is likely down. Stop
+      // rather than burn through the archive; failed events retry in an hour.
+      if (result.failed && !result.fights) break;
+    }
+    if (targets.length) log(`method odds backfill: ${total.fights} fights across ${total.events} events, ${total.failed} failed`);
+    return total;
+  } finally {
+    methodOddsBackfillRunning = false;
+  }
+}
+
+export async function syncUpcomingMethodOdds(limitEvents = 12): Promise<MethodOddsSyncResult> {
+  const targets = db.prepare(`
+    SELECT id FROM events
+    WHERE complete = 0 AND date >= date('now', '-1 day')
+      AND (bfo_checked_at IS NULL OR bfo_checked_at < ?)
+    ORDER BY date ASC LIMIT ?
+  `).all(Date.now() - 6 * HOUR, limitEvents) as { id: string }[];
+  const total = { events: 0, fights: 0, failed: 0 };
+  for (const target of targets) {
+    const result = await syncMethodOddsForEvent(target.id);
+    total.events += result.events;
+    total.fights += result.fights;
+    total.failed += result.failed;
+  }
+  return total;
+}
 
 /** Refresh every announced upcoming fight for which the source has posted a line. */
 export async function syncUpcomingOdds(
@@ -615,18 +930,31 @@ export async function syncOddsBackfill(limit: number): Promise<OddsBackfillResul
         id: string; f1_id: string; f2_id: string; f1_name: string; f2_name: string; date: string;
       }[];
 
+      const oppOfFight = (f: (typeof ourFights)[number]) => normName(f.f1_id === fighter.id ? f.f2_name : f.f1_name);
       for (const row of history.rows) {
         const oppKey = normName(row.opponent);
+        if (!row.date) {
+          // An undated row identifies a bout only when it is the source's one
+          // listing of this exact pairing and the pair fought exactly once.
+          // Cancelled bookings stay listed too, so anything else is skipped.
+          const listings = history.rows.filter((other) => normName(other.opponent) === oppKey);
+          const bouts = ourFights.filter((f) => oppOfFight(f) === oppKey);
+          if (listings.length !== 1 || bouts.length !== 1 || !row.self.close || !row.opp.close) continue;
+          const [bout] = bouts;
+          const selfIsF1 = bout.f1_id === fighter.id;
+          upsert.run(bout.id, selfIsF1 ? row.self.open : row.opp.open, selfIsF1 ? row.self.close : row.opp.close,
+            selfIsF1 ? row.opp.open : row.self.open, selfIsF1 ? row.opp.close : row.self.close, history.url, Date.now());
+          filled++;
+          continue;
+        }
         const oppShort = firstLastName(row.opponent);
-        const oppOf = (f: (typeof ourFights)[number]) =>
-          normName(f.f1_id === fighter.id ? f.f2_name : f.f1_name);
 
         // Same fighter + same date is already near-unique; the opponent check
         // guards the tournament era, when one fighter fought twice in a night.
         const sameDate = ourFights.filter((f) => Math.abs(daysBetween(f.date, row.date)) <= 2);
         const match =
-          sameDate.find((f) => oppOf(f) === oppKey) ??
-          sameDate.find((f) => firstLastName(oppOf(f)) === oppShort) ??
+          sameDate.find((f) => oppOfFight(f) === oppKey) ??
+          sameDate.find((f) => firstLastName(oppOfFight(f)) === oppShort) ??
           (sameDate.length === 1 ? sameDate[0] : undefined);
         if (!match) continue;
 
@@ -922,10 +1250,13 @@ export async function tick(): Promise<void> {
     // Persist the interim/undisputed distinction for historical title bouts.
     // This gradually eliminates first-view work on fighter championship trails.
     if (!titleTypesRunning) void guarded("title_type_backfill", () => syncMissingTitleTypes());
+    if (!bonusBackfillRunning) void guarded("bonus_backfill", () => syncMissingBonuses());
+    if (!weightMissRunning) void guarded("weight_misses", async () => { await syncWeightMisses(); });
 
     // 8. Odds: all announced upcoming fights. Each fight is refreshed at most
     //    every 6h (fetched_at), so this step self-regulates without a global gate.
     await guarded("upcoming_odds", async () => { await syncUpcomingOdds(); });
+    await guarded("upcoming_method_odds", async () => { await syncUpcomingMethodOdds(); });
     db.prepare(
       "UPDATE odds SET final = 1 WHERE final = 0 AND fight_id IN (SELECT f.id FROM fights f JOIN events e ON e.id = f.event_id WHERE e.complete = 1)",
     ).run();
@@ -944,6 +1275,9 @@ export async function tick(): Promise<void> {
     //     hold up results or rankings.
     if (!oddsBackfillRunning) {
       void guarded("odds_backfill", async () => { await syncOddsBackfill(200); });
+    }
+    if (!methodOddsBackfillRunning) {
+      void guarded("method_odds_backfill", async () => { await syncMethodOddsBackfill(20); });
     }
 
     // 12. Birth dates, in parallel on the ufcstats queue. Live results share

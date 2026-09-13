@@ -85,6 +85,12 @@ const comparePad = "py-2";
 /** The middle column's quiet, uppercase caption. */
 export const compareLabel = `block truncate text-center ${CHART_TEXT} font-semibold uppercase leading-4 tracking-[0.12em] text-zinc-400`;
 
+/** Small uppercase caption for any label inside a panel: chart names, column
+ *  heads, group names. One style so every section reads as the same app. */
+export const sectionLabel = `${CHART_TEXT} font-semibold uppercase tracking-[0.12em] text-zinc-400`;
+/** Dates and other trailing detail under a value. */
+export const metaText = "text-[10px] tabular-nums text-zinc-400";
+
 /** The value either side of it — the thing the eye should land on first. */
 export const compareValue = `truncate ${CHART_TEXT} font-semibold text-zinc-900`;
 /** Supporting detail: same size, stepped back by weight and colour, exactly
@@ -389,7 +395,7 @@ function PairedColumns({
           ))}
         </div>
       </div>
-      {caption ? <div className="mt-1 text-center text-[11px] font-medium uppercase tracking-wide text-zinc-500">{caption}</div> : null}
+      {caption ? <div className={`mt-1 text-center ${sectionLabel}`}>{caption}</div> : null}
       {note ? <div className="text-center text-[11px] tabular-nums text-zinc-400">{note}</div> : null}
     </div>
   );
@@ -470,11 +476,7 @@ export function TaleOfTape({ fight, compact = false }: { fight: Matchup; compact
     ...(age.f1 || age.f2 ? [{ label: "Age", f1: age.f1, f2: age.f2, edge: younger() }] : []),
     { label: "Height", ...height, edge: longer(height.f1, height.f2, "height") },
     { label: "Reach", ...reach, edge: longer(reach.f1, reach.f2, "reach") },
-    { label: "Weight", ...from("Weight", fight.f1.weight, fight.f2.weight) },
     { label: "Stance", ...from("Stance", fight.f1.stance, fight.f2.stance) },
-    // Named rather than flagged: the tape is a column of words, and a flag in
-    // it would be the one thing a reader has to decode.
-    { label: "From", f1: fight.f1.country ?? "", f2: fight.f2.country ?? "", edge: null },
   ].filter((row) => row.f1 || row.f2);
 
   return (
@@ -498,7 +500,7 @@ export function TaleOfTape({ fight, compact = false }: { fight: Matchup; compact
             >
               <dt className="sr-only">{fight[side].name}</dt>
               <dd className={`flex min-w-0 items-center gap-1 tabular-nums ${side === "f1" ? "flex-row-reverse" : ""}`}>
-                <span className="truncate text-[10px] font-semibold text-zinc-800">
+                <span className={compareValue}>
                   {row[side] || "—"}
                 </span>
                 {row.edge?.side === side ? (
@@ -513,7 +515,7 @@ export function TaleOfTape({ fight, compact = false }: { fight: Matchup; compact
               </dd>
             </div>
           ))}
-          <dt className="col-start-2 row-start-1 truncate text-center text-[8px] font-semibold uppercase leading-4 tracking-[0.11em] text-zinc-400">
+          <dt className={`col-start-2 row-start-1 ${compareLabel}`}>
             {row.label}
           </dt>
         </dl>
@@ -637,7 +639,7 @@ function CombinedStrikeColumns({
  *  even when the charts above them differ in height. */
 function ChartTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className={`mt-auto px-3 pb-1 pt-2 text-center ${CHART_TEXT} font-semibold uppercase tracking-[0.08em] text-zinc-600`}>
+    <h3 className={`mt-auto px-3 pb-1 pt-2 text-center ${sectionLabel}`}>
       {children}
     </h3>
   );
@@ -759,7 +761,7 @@ function StrikeSplitColumns({
                 </div>
               ))}
               <div
-                className={`mt-0.5 whitespace-nowrap ${CHART_TEXT} font-medium uppercase tracking-wide text-zinc-400`}
+                className={`mt-0.5 whitespace-nowrap ${sectionLabel}`}
               >
                 {target.label}
               </div>
@@ -1012,23 +1014,13 @@ export function FightStatistics({ fight, live = false }: { fight: Matchup; live?
   const rounds = fight.detail?.totalsRounds?.rounds.length ?? 0;
   return (
     <section className={`fight-statistics @container ${shell}`}>
-      <PanelHeading
-        title="Fight statistics"
-        subtitle={live
-          ? `Live${rounds ? ` through round ${rounds}` : ""} — the round being fought is still being added to`
-          : "Fight totals and round-by-round breakdown"}
-        aside={
-          <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
-            {live ? (
-              <span className="flex items-center gap-1.5">
-                <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">Live</span>
-              </span>
-            ) : null}
-            <Legend fight={fight} />
-          </div>
-        }
-      />
+      {live ? (
+        <div className="flex items-center gap-1.5 border-b border-zinc-100 px-5 py-2 text-[11px] text-zinc-500" role="status">
+          <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+          <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">Live</span>
+          {rounds ? <span>· through round {rounds}, still being added to</span> : null}
+        </div>
+      ) : null}
       <FightTotals fight={fight} grouped />
       <RoundByRound fight={fight} grouped />
     </section>
@@ -1169,14 +1161,14 @@ function MethodProfile({ careers }: { careers: Record<Side, CareerBefore | null>
     return { ko, sub, decision: Math.max(0, total - ko - sub), total };
   };
   const rows = [
-    { key: "wins", label: "How the wins come" },
-    { key: "losses", label: "How the losses come" },
+    { key: "wins", label: "Wins" },
+    { key: "losses", label: "Losses" },
   ] as const;
   return (
     <div className="grid grid-cols-1 gap-x-6 gap-y-3 border-t border-zinc-100 px-4 py-3 @[36rem]:grid-cols-2">
       {rows.map((row) => (
         <div key={row.key}>
-          <div className={`mb-1.5 text-center ${CHART_TEXT} font-semibold uppercase tracking-[0.08em] text-zinc-500`}>{row.label}</div>
+          <div className={`mb-1.5 text-center ${sectionLabel}`}>{row.label}</div>
           <div className="grid grid-cols-2 gap-3">
             {SIDES.map((side) => {
               const counts = split(careers[side], row.key);
@@ -1201,28 +1193,19 @@ export function CareerProfile({ fight }: { fight: Matchup }) {
     { key: "striking", label: "Striking", metrics: STRIKING_METRICS },
     { key: "grappling", label: "Grappling", metrics: GRAPPLING_METRICS },
   ];
-  const sample = SIDES
-    .map((side) => `${lastName(fight[side].name)} ${tracked(careers[side])}`)
-    .join(" · ");
   const anyTracked = tracked(careers.f1) + tracked(careers.f2) > 0;
 
   return (
     <section className={`${shell} @container overflow-hidden`}>
       <PanelHeading
-        title="How they fight"
-        subtitle={
-          anyTracked
-            ? `Career rates as they stood going into this bout, from the official round-by-round totals of their earlier UFC fights (${sample})`
-            : "Neither fighter has earlier UFC statistics on record."
-        }
-        aside={<Legend fight={fight} />}
+        title="Fight stats"
       />
       {anyTracked ? (
         <>
           <div className="grid grid-cols-1 gap-x-8 px-4 pb-1 pt-2 @[40rem]:grid-cols-2">
             {groups.map((group) => (
               <div key={group.key} className="min-w-0">
-                <div className={`pb-1 pt-1 text-center ${CHART_TEXT} font-semibold uppercase tracking-[0.1em] text-zinc-400`}>{group.label}</div>
+                <div className={`pb-1 pt-1 text-center ${sectionLabel}`}>{group.label}</div>
                 {group.metrics.map((metric) => (
                   <ProfileRow key={metric.key} fight={fight} metric={metric} careers={careers} />
                 ))}
@@ -1245,35 +1228,39 @@ export function Scorecards({ fight }: { fight: Matchup }) {
   const judges = fight.detail?.type === "past" ? fight.detail.judges : undefined;
   if (!judges?.length) return null;
   return (
-    <section className="mt-3" aria-labelledby="scorecards-heading">
-      <h2
-        id="scorecards-heading"
-        className="text-center text-[9px] font-semibold uppercase tracking-[0.14em] text-zinc-400"
-      >
-        Scorecards
-      </h2>
-      <div className="mt-2 grid gap-3 sm:grid-cols-3 sm:gap-0 sm:divide-x sm:divide-zinc-100">
+    <section className={`${shell} overflow-hidden`}>
+      <PanelHeading title="Scorecards" />
+      <ul className="grid divide-y divide-zinc-100 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
         {judges.map((j) => {
-          const side: Side | null = j.f1Score > j.f2Score ? "f1" : j.f2Score > j.f1Score ? "f2" : null;
+          const winner: Side | null = j.f1Score > j.f2Score ? "f1" : j.f2Score > j.f1Score ? "f2" : null;
+          const score = (side: Side) => {
+            const value = side === "f1" ? j.f1Score : j.f2Score;
+            const leads = winner === side;
+            return (
+              <span
+                className={`w-10 text-2xl tabular-nums leading-none ${side === "f1" ? "text-right" : "text-left"} ${leads ? "font-semibold" : "font-medium text-zinc-400"}`}
+                style={leads ? { color: SIDE[side].ink } : undefined}
+              >
+                {value}
+              </span>
+            );
+          };
           return (
-            <div key={j.judge} className="min-w-0 px-3 py-1 text-center">
-              <div className="truncate text-xs text-zinc-500">{j.judge}</div>
-              <div className="mt-0.5 flex items-center justify-center gap-1.5">
-                <span className="text-sm font-semibold tabular-nums text-zinc-900">
-                  {Math.max(j.f1Score, j.f2Score)}–{Math.min(j.f1Score, j.f2Score)}
-                </span>
-                {side ? (
-                  <span className="truncate text-xs font-semibold" style={{ color: SIDE[side].ink }}>
-                    {lastName(fight[side].name)}
-                  </span>
-                ) : (
-                  <span className="text-xs font-semibold text-zinc-500">Even</span>
-                )}
-              </div>
-            </div>
+            <li
+              key={j.judge}
+              className="flex min-w-0 flex-col items-center gap-2 px-4 py-4"
+              aria-label={`${j.judge}: ${lastName(fight.f1.name)} ${j.f1Score}, ${lastName(fight.f2.name)} ${j.f2Score}`}
+            >
+              <span className={`max-w-full truncate ${sectionLabel}`}>{j.judge}</span>
+              <span className="flex items-center gap-3" aria-hidden="true">
+                {score("f1")}
+                <span className="h-5 w-px bg-zinc-200" />
+                {score("f2")}
+              </span>
+            </li>
           );
         })}
-      </div>
+      </ul>
     </section>
   );
 }

@@ -1,5 +1,4 @@
 import { isFightDay, liveFightId } from "../liveEvent";
-import Freshness from "../components/Freshness";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { prefetch, useApi } from "../api";
@@ -15,16 +14,14 @@ import {
 } from "../format";
 import Avatar from "../components/Avatar";
 import FighterPortrait from "../components/FighterPortrait";
-import ResultDots from "../components/ResultDots";
-import BonusIcons from "../components/BonusIcons";
-import MatchupOdds from "../components/MatchupOdds";
-import { segmentedSelected } from "../components/segmented";
+import MatchupOdds, { OddsMarkets } from "../components/MatchupOdds";
+import { hasOddsMarkets } from "../oddsLayout";
+import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import {
   CareerProfile,
   CHART_TEXT,
   CompareRow,
   FightStatistics,
-  Legend,
   PANEL_SHELL,
   PanelEmpty,
   PanelHeading,
@@ -32,6 +29,8 @@ import {
   TaleOfTape,
   compareLabel,
   compareValue,
+  metaText,
+  sectionLabel,
 } from "../components/FightStats";
 import { useRouteScrollRestoration } from "../navigationState";
 import { useSeo } from "../seo";
@@ -92,7 +91,7 @@ function WeightClassLabel({ fight }: { fight: Matchup }) {
   const tournament = belt === "tuf" || belt === "tournament";
   return (
     <span
-      className={`text-[10px] uppercase tracking-[0.14em] ${
+      className={`inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-0.5 text-[10px] uppercase tracking-[0.14em] ${
         belt === "interim"
           ? "font-bold text-belt-interim"
           : belt
@@ -123,6 +122,10 @@ const RESULT_PREFIX: Record<string, string> = {
   nc: "No contest, ",
 };
 
+/** Before 2014 the performance award was a Knockout or Submission of the Night. */
+const PERF_AWARD = { perf: "Performance bonus", ko: "Knockout bonus", sub: "Submission bonus" } as const;
+const AWARD_PILL = "inline-flex whitespace-nowrap rounded-full bg-amber-100 px-1.5 py-px text-[10px] font-semibold leading-4 text-amber-800";
+
 function FighterHero({
   side,
   align,
@@ -133,15 +136,17 @@ function FighterHero({
 }: {
   side: MatchupSide;
   align: "left" | "right";
-  bonuses: FightDetailBlock["bonuses"] | undefined;
+  bonuses: Matchup["bonuses"] | undefined;
   result?: string | null;
   /** Both corners fall back together when either portrait is unavailable. */
   portrait: boolean;
   onPortraitError: () => void;
 }) {
   const rank = side.ranking?.rank === "IC" || side.ranking?.rank === "I" ? "I" : rankLabel(side.ranking) || "NR";
-  const rankingBadge = <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title="Current ranking from the selected source; NR means unranked">{rank}</span>;
+  const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title="Current ranking from the selected source; NR means unranked">{rank}</span>;
   const showResult = side.outcome ? RESULT_PREFIX[side.outcome] : undefined;
+  const fotn = !!bonuses?.fotn;
+  const perf = bonuses?.perf && side.outcome === "win" ? bonuses.perf_kind ?? "perf" : null;
   return (
     <Link
       to={`/fighters/${side.id}`}
@@ -160,7 +165,6 @@ function FighterHero({
             name={side.name}
             onUnavailable={onPortraitError}
             size="hero"
-            glow={false}
             corner={align === "left" ? "f1" : "f2"}
             outcome={side.outcome}
           />
@@ -169,40 +173,28 @@ function FighterHero({
         )}
       </div>
       <div className="matchup-identity min-w-0">
-        <div
-          className={`flex items-baseline justify-center gap-2 ${
-            align === "right" ? "@[46rem]:justify-end" : "@[46rem]:justify-start"
-          }`}
-        >
-          {align === "left" ? rankingBadge : null}
-          {align === "right" ? <BonusIcons bonuses={bonuses} outcome={side.outcome} /> : null}
-          <span className={`matchup-name min-w-0 text-balance text-lg font-semibold leading-tight ${side.outcome === "loss" ? "text-zinc-400" : "text-zinc-900"}`}>
-            {side.name}
-          </span>
-          {align === "left" ? <BonusIcons bonuses={bonuses} outcome={side.outcome} /> : null}
-          {align === "right" ? rankingBadge : null}
+        {/* Rank and awards sit on their own line above the name, so a long
+            name never pushes the badge onto a line of its own. */}
+        {rankingBadge ? <div className="mb-1.5 flex items-center justify-center gap-1.5">{rankingBadge}</div> : null}
+        <div className={`matchup-name text-balance font-semibold ${side.outcome === "loss" ? "text-zinc-400" : "text-zinc-900"}`}>
+          {side.name}
         </div>
-        {side.nickname ? <div className="mt-1 text-[10px] text-zinc-400">“{side.nickname}”</div> : null}
-        {result && showResult ? (
-          <span className={`${RESULT_PILL} mt-2 whitespace-nowrap tabular-nums ${outcomeClasses(side.outcome)}`}>
-            <span className="sr-only">{showResult}</span>
-            {result}
-          </span>
+        {side.nickname ? <div className="mt-0.5 text-xs text-zinc-400">“{side.nickname}”</div> : null}
+        {(result && showResult) || fotn || perf ? (
+          <div className={`mt-2.5 flex flex-col items-center gap-1.5 ${align === "right" ? "@[46rem]:items-end" : "@[46rem]:items-start"}`}>
+            {result && showResult ? (
+              <span className={`${RESULT_PILL} whitespace-nowrap tabular-nums ${outcomeClasses(side.outcome)}`}>
+                <span className="sr-only">{showResult}</span>
+                {result}
+              </span>
+            ) : null}
+            {/* Fight of the Night belongs to both corners, a performance award to the winner. */}
+            {perf ? <span className={AWARD_PILL}>{PERF_AWARD[perf]}</span> : null}
+            {fotn ? <span className={AWARD_PILL}>Fight of the Night bonus</span> : null}
+          </div>
         ) : null}
       </div>
     </Link>
-  );
-}
-
-/** All that is left of the result block: the chip under each photo carries the
- *  method, round and time, and the referee sits with the weight class. Without
- *  judges there is nothing to show — and no divider to draw. */
-function MatchupResult({ fight }: { fight: Matchup }) {
-  if (!fight.detail?.judges?.length) return null;
-  return (
-    <div className="mt-5 border-t border-zinc-100">
-      <Scorecards fight={fight} />
-    </div>
   );
 }
 
@@ -268,7 +260,7 @@ function FormBout({ row }: { row: HistoryRow }) {
           {method || "—"}
         </span>
       </span>
-      <span className="block whitespace-nowrap text-[9px] leading-3 text-zinc-400 tabular-nums">
+      <span className={`block whitespace-nowrap leading-3 ${metaText}`}>
         {formatDateShortWithYear(row.date)}
       </span>
     </Link>
@@ -287,14 +279,9 @@ function FormHalf({ name, rows, side }: { name: string; rows: HistoryRow[]; side
     ...Array<null>(Math.max(0, FORM_LIMIT - chronological.length)).fill(null),
     ...chronological,
   ];
-  const ink = side === "f1" ? "text-f1-ink" : "text-f2-ink";
   const mirror = side === "f2" ? "@[44rem]:flex-row-reverse" : "";
   return (
-    <div className="min-w-0">
-      <div className={`flex items-center gap-2 px-1.5 pb-1.5 ${mirror}`}>
-        <span className={`${CHART_TEXT} font-semibold ${ink}`}>{name}</span>
-        <span aria-hidden="true" className={`h-px flex-1 bg-current opacity-30 ${ink}`} />
-      </div>
+    <div className="min-w-0" aria-label={`${name}'s last five`}>
       <div className={`flex items-stretch ${mirror}`}>
         {cells.map((row, index) =>
           row ? (
@@ -352,31 +339,11 @@ function MatchupContext({ fight }: { fight: Matchup }) {
 
   const record = (career: CareerBefore | null) =>
     career ? `${career.wins}-${career.losses}${career.draws ? `-${career.draws}` : ""}` : "";
-  const run = (career: CareerBefore | null, side: MatchupSide, red = false) => {
-    if (!career) return "";
-    if (career.bouts + career.ncs === 0) return "Debut";
-    const results = side.run_form?.length ? side.run_form : [{ outcome: career.lastOutcome, method: career.lastMethod }];
-    const streak = side.streak ?? (career.winStreak ? { count: career.winStreak, outcome: "win" } : career.lossStreak ? { count: career.lossStreak, outcome: "loss" } : { count: results.length, outcome: results.at(-1)?.outcome });
-    const kind = streak.outcome === "win" ? "W" : streak.outcome === "loss" ? "L" : streak.outcome === "draw" ? "D" : "NC";
-    return <span className={`inline-flex items-center justify-center gap-2 ${red ? "flex-row-reverse" : ""}`} title={`${side.name}: ${streak.count} ${streak.outcome ?? "no contest"} ${streak.count === 1 ? "result" : "results"} entering this bout${side.streak?.complete ? ", counting bouts outside the UFC" : ""}`}><ResultDots results={results.slice(-5)} reverse={red} label={`${side.name} current run${results.length > 5 ? ", showing the latest 5 results" : ""}`} className="shrink-0 !flex-nowrap" /><strong className={`shrink-0 tabular-nums ${red ? "text-f2-ink" : "text-f1-ink"}`}>{streak.count}{kind}</strong></span>;
-  };
   const layoff = (career: CareerBefore | null) => {
     if (!career) return "";
     if (career.daysSince == null) return "UFC debut";
     const months = Math.round(career.daysSince / 30.4);
     return career.daysSince < 60 ? `${career.daysSince} days` : `${months} months`;
-  };
-  const lastResult = (career: CareerBefore | null) => {
-    if (!career || career.lastOutcome == null) return career ? "UFC debut" : "";
-    const word = career.lastOutcome === "win" ? "Won" : career.lastOutcome === "loss" ? "Lost" : career.lastOutcome === "draw" ? "Drew" : "No contest";
-    return career.lastMethod ? `${word} · ${career.lastMethod}` : word;
-  };
-  const belt = (career: CareerBefore | null) => {
-    if (!career) return "";
-    if (career.champion) return "Champion";
-    if (career.interimChampion) return "Interim champion";
-    if (career.formerChampion) return "Former champion";
-    return career.titleFights > 0 ? `${career.titleFights} title bouts` : "";
   };
 
   return (
@@ -384,11 +351,19 @@ function MatchupContext({ fight }: { fight: Matchup }) {
       <h3 className="sr-only">Career entering this fight</h3>
       <EnteringRow label="Record" f1={fight.f1.complete_record_before?.text ?? ""} f2={fight.f2.complete_record_before?.text ?? ""} note="Complete professional record entering this bout, reconstructed from verified dated history" />
       <EnteringRow label="UFC record" f1={record(f1)} f2={record(f2)} />
-      <EnteringRow label="Current run" f1={run(f1, fight.f1)} f2={run(f2, fight.f2, true)} note="Consecutive results before this bout, across every promotion where the professional history is verified. Circle = UFC, diamond = outside it; solid = finish, hollow = decision. No contests do not extend or break a run." />
-      <EnteringRow label="Last time out" f1={lastResult(f1)} f2={lastResult(f2)} note="How their previous UFC bout ended" />
       <EnteringRow label="Time out" f1={layoff(f1)} f2={layoff(f2)} note="Days since their previous UFC bout" />
-      <EnteringRow label="Standing" f1={belt(f1)} f2={belt(f2)} note="Where they stood with the belt going into this bout" />
     </div>
+  );
+}
+
+function OddsPanel({ fight }: { fight: Matchup }) {
+  const props = fight.odds?.props;
+  if (!hasOddsMarkets(props, fight.f1.name, fight.f2.name)) return null;
+  return (
+    <section className={`${shell} @container flex flex-col overflow-hidden`}>
+      <PanelHeading title="Odds" />
+      <OddsMarkets odds={props} f1Name={fight.f1.name} f2Name={fight.f2.name} />
+    </section>
   );
 }
 
@@ -403,7 +378,7 @@ function RecentForm({ fight }: { fight: Matchup }) {
   const rows = Math.max(f1.length, f2.length);
   return (
     <section className={`${shell} flex flex-col overflow-hidden`}>
-      <PanelHeading title="Last Five" subtitle="The five bouts each fighter took into this one" />
+      <PanelHeading title="Last Five" />
       {rows === 0 ? (
         <PanelEmpty>Neither fighter had a UFC bout before this one.</PanelEmpty>
       ) : (
@@ -413,11 +388,26 @@ function RecentForm({ fight }: { fight: Matchup }) {
   );
 }
 
-function HeadToHead({ fight, later = false }: { fight: Matchup; later?: boolean }) {
-  const meetings = fight.head_to_head.filter((row) => later ? row.date > fight.event.date : !row.upcoming && row.date <= fight.event.date);
-  if (!meetings.length) return null;
+/** Their other bouts against each other, before this one or (for a past fight)
+ *  after it. Oldest first, so a rivalry reads left to right in order. */
+function meetingsOf(fight: Matchup, later: boolean): HistoryRow[] {
+  return fight.head_to_head
+    .filter((row) => later ? row.date > fight.event.date : !row.upcoming && row.date <= fight.event.date)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
 
-  const hasLaterMeeting = meetings.some((row) => row.date > fight.event.date);
+/** Opponents both had faced before this bout. */
+function sharedOpponents(fight: Matchup) {
+  return fight.common_opponents.map((comparison) => ({
+    ...comparison,
+    f1_fights: comparison.f1_fights.filter((row) => !row.upcoming && row.date <= fight.event.date),
+    f2_fights: comparison.f2_fights.filter((row) => !row.upcoming && row.date <= fight.event.date),
+  })).filter((comparison) => comparison.f1_fights.length && comparison.f2_fights.length);
+}
+
+function HeadToHead({ fight, later = false }: { fight: Matchup; later?: boolean }) {
+  const meetings = meetingsOf(fight, later);
+  if (!meetings.length) return null;
 
   const gridColumns =
     meetings.length === 1
@@ -432,12 +422,6 @@ function HeadToHead({ fight, later = false }: { fight: Matchup; later?: boolean 
     <section className={`${shell} flex flex-col overflow-hidden`}>
       <PanelHeading
         title={later ? "Subsequent meetings" : "Previous meetings"}
-        subtitle={
-          hasLaterMeeting
-            ? undefined
-            : `They have met ${meetings.length} time${meetings.length > 1 ? "s" : ""} before`
-        }
-        aside={<Legend fight={fight} />}
       />
       <div className={`grid gap-px bg-zinc-100 ${gridColumns}`}>
         {meetings.map((row) => {
@@ -461,7 +445,7 @@ function HeadToHead({ fight, later = false }: { fight: Matchup; later?: boolean 
               className="group min-w-0 bg-white px-3 py-4 text-center transition-colors hover:bg-zinc-50/80 focus-visible:relative focus-visible:z-10 focus-visible:rounded-xl focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-zinc-900"
             >
               {isLater ? (
-                <span className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-sky-600">
+                <span className={`mb-1.5 block ${sectionLabel} !text-sky-600`}>
                   After this bout
                 </span>
               ) : null}
@@ -473,7 +457,7 @@ function HeadToHead({ fight, later = false }: { fight: Matchup; later?: boolean 
               <span className={`mt-1.5 block truncate ${CHART_TEXT} font-semibold text-zinc-600`}>
                 {row.method || "Method unavailable"}
               </span>
-              <span className="mt-1 block whitespace-nowrap text-[10px] text-zinc-400 tabular-nums">
+              <span className={`mt-1 block whitespace-nowrap ${metaText}`}>
                 {formatDateShortWithYear(row.date)}
               </span>
             </Link>
@@ -504,7 +488,7 @@ function CommonFight({ row, align }: { row: HistoryRow; align: "left" | "right" 
         </span>
         {align === "right" ? <OutcomePill outcome={row.outcome} /> : null}
       </span>
-      <span className="mt-0.5 block whitespace-nowrap text-[9px] text-zinc-400 tabular-nums">
+      <span className={`mt-0.5 block whitespace-nowrap ${metaText}`}>
         {formatDateShortWithYear(row.date)}
       </span>
     </Link>
@@ -512,32 +496,14 @@ function CommonFight({ row, align }: { row: HistoryRow; align: "left" | "right" 
 }
 
 function CommonOpponents({ fight }: { fight: Matchup }) {
-  const shared = fight.common_opponents.map((comparison) => ({
-    ...comparison,
-    f1_fights: comparison.f1_fights.filter((row) => !row.upcoming && row.date <= fight.event.date),
-    f2_fights: comparison.f2_fights.filter((row) => !row.upcoming && row.date <= fight.event.date),
-  })).filter((comparison) => comparison.f1_fights.length && comparison.f2_fights.length);
+  const shared = sharedOpponents(fight);
   if (!shared.length) return null;
 
   return (
     <section className={`${shell} flex flex-col overflow-hidden`}>
       <PanelHeading
         title="Common opponents"
-        subtitle={`${shared.length} opponent${shared.length > 1 ? "s" : ""} both have faced`}
       />
-      <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_minmax(0,1fr)] items-center border-b border-zinc-100 px-4 py-2 @[36rem]:grid-cols-[minmax(0,1fr)_8rem_minmax(0,1fr)]">
-        <div className={`flex min-w-0 items-center justify-end gap-1.5 pr-3 ${CHART_TEXT} font-semibold text-f1-ink`}>
-          <span className="h-2 w-2 shrink-0 rounded-full bg-f1" />
-          <span className="truncate">{lastName(fight.f1.name)}</span>
-        </div>
-        <div className="text-center text-[9px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
-          Opponent
-        </div>
-        <div className={`flex min-w-0 items-center justify-start gap-1.5 pl-3 ${CHART_TEXT} font-semibold text-f2-ink`}>
-          <span className="h-2 w-2 shrink-0 rounded-full bg-f2" />
-          <span className="truncate">{lastName(fight.f2.name)}</span>
-        </div>
-      </div>
       <div className="divide-y divide-zinc-100">
         {shared.map((comparison) => (
           <div
@@ -632,11 +598,14 @@ function railMethodTag(fight: EventFight, outcome: FightSide["outcome"]): { labe
 
 function FightRail({ eventId, currentId, returnDepth }: { eventId: string; currentId: string; returnDepth: number | null }) {
   const { settings } = useSettings();
+  // Moving along the card keeps the reader on the tab they were reading.
+  const location = useLocation();
   const railEvent = useRef<EventDetail | null>(null);
   const { data: event, loading } = useApi<EventDetail>(withRanking(`/api/events/${eventId}`, settings.rankingSource), isFightDay(railEvent.current?.date) ? 10_000 : 60_000);
   if (event) railEvent.current = event;
   if (loading || !event) return <FightRailSkeleton />;
-  if (event.fights.length < 2) return null;
+  // Shown even for a one-bout card, so every matchup has the same layout.
+  if (!event.fights.length) return null;
   const liveId = liveFightId(event);
   return (
     <aside className={`hidden w-40 shrink-0 flex-col overflow-hidden sm:flex lg:w-48 ${shell}`}>
@@ -652,7 +621,7 @@ function FightRail({ eventId, currentId, returnDepth }: { eventId: string; curre
           return (
             <Link
               key={f.id}
-              to={`/fights/${f.id}`}
+              to={{ pathname: `/fights/${f.id}`, search: location.search }}
               state={{ eventId, ...(returnDepth ? { eventReturnDepth: returnDepth + 1 } : {}) }}
               aria-current={isCurrent ? "page" : undefined}
               title={`${f.f1.name} vs ${f.f2.name}${f.method ? ` · ${formatMethod(f.method, f.round, f.time)}` : ""}${isLive ? " · live now" : ""}`}
@@ -702,6 +671,45 @@ function FightRail({ eventId, currentId, returnDepth }: { eventId: string; curre
 
 // ---------------------------------------------------------------------------
 
+type MatchupTab = "fight" | "matchup" | "odds";
+const TAB_LABEL: Record<MatchupTab, string> = { fight: "Fight", matchup: "Matchup", odds: "Odds" };
+
+/** The matchup's sections, grouped by the question they answer. Arrow keys move
+ *  between tabs the way a native tab control does. */
+function MatchupTabs({ tabs, current, onSelect }: { tabs: MatchupTab[]; current: MatchupTab; onSelect: (tab: MatchupTab) => void }) {
+  const refs = useRef(new Map<MatchupTab, HTMLButtonElement>());
+  const move = (event: React.KeyboardEvent, index: number) => {
+    const next = event.key === "ArrowRight" ? index + 1 : event.key === "ArrowLeft" ? index - 1
+      : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : null;
+    if (next == null) return;
+    event.preventDefault();
+    const tab = tabs[(next + tabs.length) % tabs.length];
+    onSelect(tab);
+    refs.current.get(tab)?.focus();
+  };
+  return (
+    <div role="tablist" aria-label="Matchup sections" className={`${segmentedGroup} w-full`}>
+      {tabs.map((tab, index) => (
+        <button
+          key={tab}
+          ref={(node) => { if (node) refs.current.set(tab, node); else refs.current.delete(tab); }}
+          type="button"
+          role="tab"
+          id={`matchup-tab-${tab}`}
+          aria-selected={tab === current}
+          aria-controls="matchup-tabpanel"
+          tabIndex={tab === current ? 0 : -1}
+          onClick={() => onSelect(tab)}
+          onKeyDown={(event) => move(event, index)}
+          className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${tab === current ? segmentedSelected : segmentedIdle}`}
+        >
+          {TAB_LABEL[tab]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Matchup view rendered inside the events layout: card rail + detail + close. */
 export default function FightView({ fightId, eventIdHint }: { fightId: string; eventIdHint?: string | null }) {
   const { settings } = useSettings();
@@ -709,7 +717,8 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   const location = useLocation();
   const previousFight = useRef<Matchup | null>(null);
   const [failedPortraitPair, setFailedPortraitPair] = useState<string | null>(null);
-  const { data: loadedFight, loading, error, retry } = useApi<Matchup>(withRanking(`/api/fights/${fightId}`, settings.rankingSource), isFightDay(previousFight.current?.event.date) ? 10_000 : 60_000);
+  const { data: loadedFight, loading, error, retry } = useApi<Matchup>(withRanking(`/api/fights/${fightId}`, settings.rankingSource),
+    data => data?.refreshing ? 2_000 : isFightDay(data?.event.date) ? 10_000 : 60_000);
   if (loadedFight) previousFight.current = loadedFight;
   const fight = loadedFight ?? previousFight.current;
   const eventReturnDepth = location.state != null
@@ -802,6 +811,24 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   const referee = fight.detail?.methodInfo?.["Referee"];
   const changingMatchup = !loadedFight && fight.id !== fightId;
 
+  // Only tabs with something in them; a finished or live bout opens on what
+  // happened, an upcoming one on the matchup. The choice lives in the URL.
+  const tabs: MatchupTab[] = [
+    ...(fight.status === "past" || fight.in_progress || hasStats ? ["fight" as const] : []),
+    "matchup",
+    ...(hasOddsMarkets(fight.odds?.props, fight.f1.name, fight.f2.name) ? ["odds" as const] : []),
+  ];
+  const requestedTab = new URLSearchParams(location.search).get("tab");
+  const tab = tabs.find((candidate) => candidate === requestedTab) ?? tabs[0];
+  const selectTab = (next: MatchupTab) => {
+    const scroller = detailScroll.current;
+    const bar = scroller?.querySelector<HTMLElement>("[role=tablist]")?.parentElement;
+    navigate({ search: `?tab=${next}` }, { replace: true, state: location.state });
+    // A shorter tab should not leave the reader below its end: bring the tab
+    // bar back to the top if it had scrolled past it.
+    if (scroller && bar && scroller.scrollTop > bar.offsetTop) scroller.scrollTop = bar.offsetTop;
+  };
+
   return (
     <div className="flex h-full min-h-0 gap-3">
       <FightRail eventId={eventId ?? fight.event.id} currentId={fightId} returnDepth={eventReturnDepth} />
@@ -832,7 +859,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 </Link>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-zinc-500">
-                  {isFightDay(fight.event.date) ? <span className="flex items-center gap-2"><span className="text-emerald-700">Auto-updating</span><Freshness label="Stats checked" at={fight.stats_updated_at} staleAfterHours={1 / 12} />{error && !changingMatchup ? <span role="status">Connection interrupted; retrying…</span> : null}</span> : null}
+                  {isFightDay(fight.event.date) && error && !changingMatchup ? <span role="status">Connection interrupted; retrying…</span> : null}
                   <span>{formatDate(fight.event.date)}</span>
                   <button
                     type="button"
@@ -859,9 +886,10 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                   </div>
                   <div className="matchup-market self-center col-span-2 col-start-1 row-start-2 flex w-full flex-col items-center text-center @[46rem]:col-span-1 @[46rem]:col-start-2 @[46rem]:row-start-1 @[46rem]:w-auto @[46rem]:max-w-[19rem]">
                     <div className="matchup-prices">
-                      <MatchupOdds f1={fight.odds?.f1.close} f2={fight.odds?.f2.close}
+                      <MatchupOdds key={fight.id} f1={fight.odds?.f1.close} f2={fight.odds?.f2.close}
                         f1Open={fight.odds?.f1.open} f2Open={fight.odds?.f2.open}
-                        f1Name={fight.f1.name} f2Name={fight.f2.name} />
+                        f1Name={fight.f1.name} f2Name={fight.f2.name}
+                        props={fight.odds?.props} />
                     </div>
                     <WeightClassLabel fight={fight} />
                     {referee ? <div className="mt-1 text-[10px] text-zinc-400">Ref {referee}</div> : null}
@@ -875,26 +903,46 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
             </section>
             </div>
 
-            {fight.status === "past" ? <>
-              {hasStats ? <FightStatistics fight={fight} live={statsLive} /> : (
-                <div className={`${shell} px-5 py-4 text-xs text-zinc-500`} role="status">
-                  Result confirmed. Detailed statistics are still being published{isFightDay(fight.event.date) ? " — checking automatically." : "."}
+            {tabs.length > 1 ? (
+              <div className="sticky top-0 z-20 -mt-3 bg-zinc-100 pt-3">
+                {/* The same segmented control the sidebar filters use, on the
+                    same white panel it sits on there. */}
+                <div className={`${shell} p-1.5`}>
+                  <MatchupTabs tabs={tabs} current={tab} onSelect={selectTab} />
                 </div>
-              )}
-              {fight.detail?.judges?.length ? <section className={`${shell} px-5 pb-5`}><MatchupResult fight={fight} /></section> : null}
-              <HeadToHead fight={fight} later />
-            </> : null}
-            <section className={`matchup-overview @container px-5 pb-5 ${shell}`}>
-              <div className="matchup-comparisons grid @[46rem]:grid-cols-2">
-                <h2 className="matchup-comparison-heading text-zinc-500">At a glance</h2>
-                <TaleOfTape fight={fight} compact />
-                <MatchupContext fight={fight} />
               </div>
-            </section>
-            <RecentForm fight={fight} />
-            <CareerProfile fight={fight} />
-            <HeadToHead fight={fight} />
-            <CommonOpponents fight={fight} />
+            ) : null}
+
+            <div id="matchup-tabpanel" role={tabs.length > 1 ? "tabpanel" : undefined} aria-labelledby={tabs.length > 1 ? `matchup-tab-${tab}` : undefined} className="flex flex-col gap-3">
+              {tab === "fight" ? <>
+                <Scorecards fight={fight} />
+                {hasStats ? <FightStatistics fight={fight} live={statsLive} /> : fight.in_progress ? (
+                  <div className={`${shell} flex items-center justify-center gap-2 px-5 py-10 text-sm text-zinc-500`} role="status">
+                    <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                    Fight Live, results will appear soon
+                  </div>
+                ) : (
+                  <div className={`${shell} px-5 py-4 text-xs text-zinc-500`} role="status">
+                    Result confirmed. Detailed statistics are still being published{isFightDay(fight.event.date) ? " — checking automatically." : "."}
+                  </div>
+                )}
+              </> : null}
+              {tab === "matchup" ? <>
+                <section className={`matchup-overview @container overflow-hidden ${shell}`}>
+                  <PanelHeading title="Tale of the tape" />
+                  <div className="matchup-comparisons grid px-5 pb-3">
+                    <TaleOfTape fight={fight} compact />
+                    <MatchupContext fight={fight} />
+                  </div>
+                </section>
+                <RecentForm fight={fight} />
+                <CareerProfile fight={fight} />
+                <HeadToHead fight={fight} />
+                <HeadToHead fight={fight} later />
+                <CommonOpponents fight={fight} />
+              </> : null}
+              {tab === "odds" ? <OddsPanel fight={fight} /> : null}
+            </div>
           </div>
         </div>
       </div>

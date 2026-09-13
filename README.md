@@ -19,7 +19,7 @@ fresh in the background.
   - **Context** is who they faced and what they came back from: the combined record of their opponents, champions faced (reigning that night, or anyone who had already held a belt), streaks broken, bounce-back rate, rematches, returns from time off and durability.
   - **Market** reads the closing line from either side, plus wins above a vig-free expectation, flat-stake return and average price.
 
-  Every statistic is reachable from exactly one menu entry, and a test asserts that no two entries produce the same ranking. Any fighter can be pinned into every card to see where they place. The five cards keep one fixed order and one fixed header height — a title, two lines of definition and the controls, whether a card takes one qualifier or five — so all five lists start on the same line.
+  Every statistic is reachable from exactly one menu entry, and a test asserts that no two entries produce the same ranking. Any fighter can be pinned into every card to see where they place. The five cards keep one fixed order and one width — three on top, two centred beneath them. Cards on the same row share their title, definition and control rows, so every list on a row starts on the same line whether a card takes one qualifier or five.
 
   Turning on **Show more info** makes every row also name the bouts behind its number: the champions faced, the run of opponents in a streak, the belts defended, the fights each knockdown or takedown came from with its own count, the prices taken as an underdog, the two ends of a career. Names are coloured by how the bout went, with the outcome spelled out on hover so colour never carries it alone.
 - **Labs**, a mode of Statistics: build a population of fighter-bouts from any combination of age, streak, layoff, experience, previous result, belt status, stance, reach, division, card position and closing odds. The interface focuses on Combined Record and its source bout list. Excluding a bout updates the study; restoring it is available even when all observations have been excluded.
@@ -128,6 +128,7 @@ the app is usable immediately and fills in as it goes. `GET /api/status` shows p
 | Rankings            | ufc.com          | every 6h                                         |
 | Fight detail pages  | ufcstats.com     | upcoming ≤14d + recent past; older pages lazily verified when needed |
 | Odds                | bestfightodds.com| upcoming ≤30d every 6h, frozen after the event   |
+| Method odds         | bestfightodds.com| event boards every 6h; closing boards after each card; archive backfilled newest first |
 | Fighter photos      | ufc.com          | Headshot and full-body cut-out; small batch per minute, ranked and upcoming-card fighters first. Re-checked every 3 days for anyone with a bout in hand and every 30 for the rest, daily while a picture is still missing; ufc.com's silhouette stand-ins count as no picture. Viewing a fighter queues them for the next batch |
 
 Pages say how old their copy is rather than letting it look current: an event
@@ -199,6 +200,12 @@ The rules that decide what a figure means, in one place:
 - **Odds are closing lines** from bestfightodds.com. Implied probabilities
   include the vig, so a bout's two sides sum above 100%. Return on investment
   assumes a flat $100 stake on that fighter in every priced bout.
+- **Method odds are pre-fight prices only.** The matchup view shows KO/TKO,
+  submission and decision first, with distance and round totals behind “More
+  odds.” Every quote retains its named sportsbook and source event page. An
+  event-board matchup is stored only when both normalized full fighter names
+  exactly match the UFCStats bout; ambiguous, malformed and anonymous prices
+  are omitted rather than guessed.
 - **Official fight statistics** come from the ufcstats detail page and are
   validated on ingest: targets and positions must sum to significant strikes,
   totals must not fall below them, and every figure must match the event
@@ -256,11 +263,44 @@ results explicitly labelled as previous results.
 
 ## Notes
 
+- Event and fighter pages also serve cached database state without waiting for
+  source websites. Missing bonuses, biographies, career histories and title
+  metadata refresh in the background; visible pages poll faster while pending.
+  Sidebar hover prefetches the intended event after 120 ms (canceled on leave),
+  and navigation reuses fresh responses instead of immediately requesting them
+  again. Top navigation preloads route code on hover/focus.
 - `server/data/ufc.db` is the local state; delete it to re-backfill from scratch.
 - Run `cd server && npm run backfill:images -- --parallel` to retry missing
   full-body images across the roster with four throttled workers, ranked and
   recently active fighters first. Existing full-body images are skipped.
   Directory headshots do not mark an athlete's full-body lookup as checked.
+- The matchup card shows each fighter's KO/TKO, submission and decision price.
+  A full-width **Odds** panel below adds round totals (over/under),
+  goes-the-distance, and a method-by-round table: each fighter's and either
+  fighter's KO/TKO and submission price per round, plus any round. The best
+  price across sportsbooks is shown; book names stay in stored data.
+- Props come from the event's BestFightOdds board. The source drops a fight from
+  its board once it starts, so a board read after the card is complete holds
+  closing prices; those rows are final and never requested again. Upcoming
+  cards refresh every 6h (books usually post props in fight week).
+- Older cards (roughly pre-2021) no longer show their sportsbooks as columns.
+  For those markets the source's own mean-odds chart supplies the closing
+  average, one request per market (~25 per fight at one request a second), and
+  the card is labelled "Average closing odds".
+- `cd server && npm run backfill:method-odds` reads every card back to 2007 (the
+  source's first UFC boards),
+  newest first; the scheduler does the same in the background. Recent cards
+  take a request or two each; the older archive takes many hours. Opening a
+  matchup returns stored data at once, and a fight with nothing stored jumps
+  the backfill queue while the page polls every two seconds.
+- Moneylines come from each fighter's BestFightOdds page. A bout the source
+  filed under its undated "Future Events" page is used only when it is the one
+  listing of that pairing and the pair fought exactly once. Anything still
+  missing after a card is read is filled from that card's own mean moneyline
+  chart (first point as open, last as close).
+- Props are only shown against the exact fighter pair they were verified for.
+  A board bout matches when both names match exactly, or one does and the other
+  is a spelling variant (Cam/Cameron, a mononym printed twice).
 - Complete-career backfill is resume-safe and runs in the background. Verified
   source URLs are refreshed directly; shared UFC bouts seed the opponent's
   source URL, reducing name-search dependence while preserving identity checks.

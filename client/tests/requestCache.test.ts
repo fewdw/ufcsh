@@ -56,3 +56,33 @@ test("cache is bounded while subscribed pages stay available", async () => {
   assert.equal(cache.read("/latest").data, "/latest");
   unsubscribe();
 });
+
+test("a freshly prefetched page is reused on navigation, but explicit refresh still loads", async () => {
+  let calls = 0;
+  const cache = new RequestCache(2, async () => Response.json({ calls: ++calls }));
+  await cache.load("/event", 30_000);
+  await cache.load("/event", 5_000);
+  assert.equal(calls, 1);
+  await cache.load("/event");
+  assert.equal(calls, 2);
+});
+
+test("failed refreshes remain retryable within the freshness window", async () => {
+  let calls = 0;
+  const cache = new RequestCache(2, async () => ++calls === 2 ? new Response("", { status: 503 }) : Response.json(calls));
+  await cache.load("/event");
+  await cache.load("/event");
+  await cache.load("/event", 30_000);
+  assert.equal(calls, 3);
+  assert.equal(cache.read("/event").data, 3);
+});
+
+test("evicted pages do not keep freshness metadata that suppresses their reload", async () => {
+  let calls = 0;
+  const cache = new RequestCache(1, async () => Response.json(++calls));
+  await cache.load("/old");
+  await cache.load("/new");
+  await cache.load("/old", 30_000);
+  assert.equal(calls, 3);
+  assert.equal(cache.read("/old").data, 3);
+});

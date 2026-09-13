@@ -6,6 +6,7 @@ export class RequestCache {
   private entries = new Map<string, ApiSnapshot>();
   private pending = new Map<string, Promise<void>>();
   private listeners = new Map<string, Set<() => void>>();
+  private fetchedAt = new Map<string, number>();
   private capacity: number;
   private fetcher: typeof fetch;
 
@@ -30,7 +31,10 @@ export class RequestCache {
   private trim() {
     for (const key of this.entries.keys()) {
       if (this.entries.size <= this.capacity) break;
-      if (!this.listeners.has(key) && !this.pending.has(key)) this.entries.delete(key);
+      if (!this.listeners.has(key) && !this.pending.has(key)) {
+        this.entries.delete(key);
+        this.fetchedAt.delete(key);
+      }
     }
   }
 
@@ -40,9 +44,10 @@ export class RequestCache {
     this.listeners.get(url)?.forEach((listener) => listener());
   }
 
-  load(url: string): Promise<void> {
+  load(url: string, maxAgeMs = 0): Promise<void> {
     const existing = this.pending.get(url);
     if (existing) return existing;
+    if (maxAgeMs > 0 && !this.read(url).error && Date.now() - (this.fetchedAt.get(url) ?? 0) < maxAgeMs) return Promise.resolve();
     const data = this.read(url).data;
     const request = Promise.resolve()
       .then(() => this.fetcher(url))
@@ -50,7 +55,10 @@ export class RequestCache {
         if (!response.ok) throw new Error(String(response.status));
         return response.json();
       })
-      .then((result) => this.publish(url, { data: result, loading: false, refreshing: false, error: false }))
+      .then((result) => {
+        this.fetchedAt.set(url, Date.now());
+        this.publish(url, { data: result, loading: false, refreshing: false, error: false });
+      })
       .catch(() => this.publish(url, { data, loading: false, refreshing: false, error: true }))
       .finally(() => {
         this.pending.delete(url);

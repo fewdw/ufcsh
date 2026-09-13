@@ -14,7 +14,8 @@ function userAgent(url: string): string {
     || hostname.endsWith(".ufc.com")
     || hostname === "ufcespanol.com"
     || hostname.endsWith(".ufcespanol.com");
-  return isUfcSite ? UFC_UA : BROWSER_UA;
+  // Wikipedia's API policy asks clients to identify themselves.
+  return isUfcSite || hostname.endsWith("wikipedia.org") ? UFC_UA : BROWSER_UA;
 }
 
 // Minimum gap between requests per host, so we stay a polite, low-volume client.

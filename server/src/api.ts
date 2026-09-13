@@ -8,7 +8,9 @@ import { gzipSync } from "node:zlib";
 import { createHash } from "node:crypto";
 import { db, getMeta, setMeta } from "./db.ts";
 import { canonicalMethod, log, normName, todayIso } from "./util.ts";
-import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents } from "./sync.ts";
+import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds } from "./sync.ts";
+import { BackgroundRefresh } from "./background-refresh.ts";
+import { VersionCache } from "./version-cache.ts";
 import type { RankingType } from "./scrape/ufccom.ts";
 import { getStats } from "./stats.ts";
 import { getLabs, getLabsBouts, getLabsFill, getLabsMatchups } from "./labs.ts";
@@ -190,13 +192,37 @@ function fighterSummary(id: string, fallbackName: string, rankingType: RankingTy
   };
 }
 
-function fightOdds(fightId: string): unknown {
+function fightOdds(fightId: string, includeMethodOdds = false): unknown {
   const o = db.prepare("SELECT * FROM odds WHERE fight_id = ?").get(fightId) as any;
-  if (!o || (!o.f1_close && !o.f2_close)) return null;
+  const method = includeMethodOdds
+    ? db.prepare("SELECT * FROM method_odds WHERE fight_id = ?").get(fightId) as any
+    : null;
+  if ((!o || (!o.f1_close && !o.f2_close)) && !method) return null;
+  let props = null;
+  if (method) {
+    try {
+      const markets = JSON.parse(method.markets_json);
+      const fight = db.prepare("SELECT f1_id, f2_id FROM fights WHERE id = ?").get(fightId) as { f1_id: string; f2_id: string } | undefined;
+      // Prices are only shown against the exact fighter pair they were verified for.
+      if (fight && markets.f1_id === fight.f1_id && markets.f2_id === fight.f2_id) {
+        props = {
+          f1: markets.f1,
+          f2: markets.f2,
+          additional: markets.additional,
+          source_url: method.source_url,
+          fetched_at: method.fetched_at,
+          final: !!method.final,
+        };
+      }
+    } catch {
+      // Never expose a malformed market payload.
+    }
+  }
   return {
-    f1: { open: o.f1_open, close: o.f1_close },
-    f2: { open: o.f2_open, close: o.f2_close },
-    source_url: o.source_url,
+    f1: { open: o?.f1_open ?? null, close: o?.f1_close ?? null },
+    f2: { open: o?.f2_open ?? null, close: o?.f2_close ?? null },
+    source_url: o?.source_url ?? null,
+    ...(props ? { props } : {}),
   };
 }
 
@@ -381,20 +407,16 @@ function liveCard(rankingType: RankingType): unknown | null {
 }
 
 async function getEvent(id: string, rankingType: RankingType): Promise<unknown | null> {
-  let e = db.prepare("SELECT * FROM events WHERE id = ?").get(id) as EventRow | undefined;
+  const e = db.prepare("SELECT * FROM events WHERE id = ?").get(id) as EventRow | undefined;
   if (!e) return null;
-  void refreshLiveEvent(id).catch(err => log("live event refresh failed:", String(err)));
-  let fights = db
+  let refreshing = isFightDay(e.date) && matchupRefresh.request(`event:${id}`, () => refreshLiveEvent(id),
+    err => log("live event refresh failed:", String(err)), 10_000);
+  const fights = db
     .prepare("SELECT * FROM fights WHERE event_id = ? ORDER BY ord ASC")
     .all(id) as any[];
-  if (fights.some((fight) => fight.perf_bonus == null || fight.fotn_bonus == null)) {
-    try {
-      await syncEventDetailOnce(id);
-      e = db.prepare("SELECT * FROM events WHERE id = ?").get(id) as EventRow;
-      fights = db.prepare("SELECT * FROM fights WHERE event_id = ? ORDER BY ord ASC").all(id) as any[];
-    } catch (err) {
-      log("lazy event bonus sync failed:", String(err));
-    }
+  if (!fights.length || fights.some((fight) => fight.perf_bonus == null || fight.fotn_bonus == null)) {
+    refreshing = matchupRefresh.request(`event-detail:${id}`, () => syncEventDetailOnce(id),
+      err => log("lazy event bonus sync failed:", String(err))) || refreshing;
   }
   // Only the start of each segment is announced, so a bout that has not been
   // reached yet is estimated from its own segment's start and the bouts under
@@ -407,6 +429,7 @@ async function getEvent(id: string, rankingType: RankingType): Promise<unknown |
   return {
     id: e.id,
     name: e.name,
+    refreshing,
     date: e.date,
     location: e.location,
     status: eventStatus(e, nextEventDate()),
@@ -566,10 +589,22 @@ function fighterHistory(fighterId: string, includeOpponentForm = false): unknown
         ? { fighter: fighterClose ?? null, opponent: opponentClose ?? null }
         : null,
       opponent_form: includeOpponentForm ? opponentFormBefore(opponentId, f.event_date) : undefined,
+      // A performance award goes to the winner; Fight of the Night to both.
+      bonuses: fightIsComplete(f) ? {
+        perf: f.perf_bonus && (isF1 ? f.f1_outcome : f.f2_outcome) === "win" ? PERF_BONUS_KIND[f.perf_bonus] ?? "perf" : null,
+        fotn: !!f.fotn_bonus,
+      } : null,
+      // Pounds as text, "" when the weight is unknown, null when made or unread.
+      weight_miss: {
+        fighter: isF1 ? f.f1_weight_miss : f.f2_weight_miss,
+        opponent: isF1 ? f.f2_weight_miss : f.f1_weight_miss,
+      },
       upcoming: !fightIsComplete(f),
     };
   });
 }
+
+const PERF_BONUS_KIND: Record<number, "perf" | "ko" | "sub"> = { 1: "perf", 2: "ko", 3: "sub" };
 
 type SourceCareerRow = {
   source_bout_key: string;
@@ -696,8 +731,20 @@ function professionalHistory(fighterId: string, ufcHistory: any[]): unknown[] {
   return merged.sort((a, b) => b.date.localeCompare(a.date) || a.source_order - b.source_order);
 }
 
+const matchupRefresh = new BackgroundRefresh();
+
+/** The bout being fought now: on fight day, once the card has a result in, the
+ * next unfinished bout — the same rule the event card uses to box it as live. */
+function fightInProgress(f: { id: string; event_id: string; event_date: string; f1_outcome: string | null; f2_outcome: string | null }): boolean {
+  if (fightIsComplete(f) || !isFightDay(f.event_date)) return false;
+  const card = db.prepare("SELECT id, f1_outcome, f2_outcome FROM fights WHERE event_id = ? ORDER BY ord ASC")
+    .all(f.event_id) as { id: string; f1_outcome: string | null; f2_outcome: string | null }[];
+  if (!card.some(fightIsComplete)) return false;
+  return card.findLast((bout) => !fightIsComplete(bout))?.id === f.id;
+}
+
 async function getFight(id: string, rankingType: RankingType): Promise<unknown | null> {
-  let f = db
+  const f = db
     .prepare(`
       SELECT f.*, e.name AS event_name, e.date AS event_date, e.location AS event_location, e.complete AS event_complete
       FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?
@@ -705,29 +752,24 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     .get(id) as any;
   if (!f) return null;
 
-  if (isFightDay(f.event_date)) {
-    try { await refreshLiveEvent(f.event_id); } catch (err) { log("live matchup event refresh failed:", String(err)); }
-    f = db.prepare(`SELECT f.*, e.name AS event_name, e.date AS event_date, e.location AS event_location, e.complete AS event_complete
-      FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?`).get(id) as any;
-    if (!f) return null;
-  }
+  let refreshing = false;
+  if (isFightDay(f.event_date)) refreshing = matchupRefresh.request(
+    `event:${f.event_id}`, () => refreshLiveEvent(f.event_id),
+    err => log("live matchup event refresh failed:", String(err)), 10_000,
+  );
 
   // Any matchup not covered by the scheduler is fetched lazily exactly once.
   // This gives far-future fights their career comparison data on first view,
   // while old completed fights still pick up totals and strike distributions.
   if ((!f.detail_json && !f.detail_fetched_at) || (isFightDay(f.event_date) && liveDetailDue(f))) {
-    try {
-      await syncFightDetail(id);
-      f = db
-        .prepare(`
-          SELECT f.*, e.name AS event_name, e.date AS event_date, e.location AS event_location, e.complete AS event_complete
-          FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?
-        `)
-        .get(id) as any;
-    } catch (err) {
-      log("lazy fight detail failed:", String(err));
-    }
+    refreshing = matchupRefresh.request(`detail:${id}`, () => syncFightDetail(id),
+      err => log("lazy fight detail failed:", String(err))) || refreshing;
   }
+
+  // Return stored odds now; recover missing quotes outside the request path.
+  // Do not also scrape the entire event before recovering this one matchup.
+  refreshing = matchupRefresh.request(`odds:${id}`, () => ensureFightMethodOdds(id),
+    err => log("matchup method odds recovery failed:", String(err)), 5 * 60_000) || refreshing;
 
   const index = fightIndex();
   const fullFighter = (fid: string, fallback: string, opponentId: string) => {
@@ -794,8 +836,10 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
   return {
     id: f.id,
     event: { id: f.event_id, name: f.event_name, date: f.event_date, location: f.event_location },
+    refreshing,
     status: fightIsComplete(f) ? "past" : "upcoming",
     live: isFightDay(f.event_date),
+    in_progress: fightInProgress(f),
     stats_updated_at: f.detail_fetched_at,
     weight_class: f.weight_class,
     title_fight: !!f.title_fight,
@@ -808,9 +852,10 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     time: f.time,
     f1: { ...f1, outcome: f.f1_outcome, stats: { kd: f.f1_kd, str: f.f1_str, td: f.f1_td, sub: f.f1_sub } },
     f2: { ...f2, outcome: f.f2_outcome, stats: { kd: f.f2_kd, str: f.f2_str, td: f.f2_td, sub: f.f2_sub } },
-    odds: fightOdds(f.id),
+    odds: fightOdds(f.id, true),
     bonuses: {
       perf: !!f.perf_bonus || !!(f.detail_json && JSON.parse(f.detail_json)?.bonuses?.perf),
+      perf_kind: PERF_BONUS_KIND[f.perf_bonus] ?? (f.detail_json && JSON.parse(f.detail_json)?.bonuses?.perfKind) ?? "perf",
       fotn: !!f.fotn_bonus || !!(f.detail_json && JSON.parse(f.detail_json)?.bonuses?.fotn),
     },
     detail: f.detail_json ? JSON.parse(f.detail_json) : null,
@@ -819,16 +864,17 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
   };
 }
 
+const profileCache = new VersionCache<Record<string, unknown>>();
+const profileLocalVersion = db.prepare("SELECT total_changes() AS n");
+const profileExternalVersion = db.prepare("PRAGMA data_version");
+
 async function getFighter(id: string, rankingType: RankingType): Promise<unknown | null> {
-  let fr = db.prepare("SELECT * FROM fighters WHERE id = ?").get(id) as any;
+  const fr = db.prepare("SELECT * FROM fighters WHERE id = ?").get(id) as any;
   if (!fr) return null;
+  let refreshing = false;
   if (!fr.birth_fetched_at) {
-    try {
-      await syncFighterBirthDateOnce(id);
-      fr = db.prepare("SELECT * FROM fighters WHERE id = ?").get(id) as any;
-    } catch (err) {
-      log("lazy fighter birth date failed:", String(err));
-    }
+    refreshing = matchupRefresh.request(`birth:${id}`, () => syncFighterBirthDateOnce(id),
+      err => log("lazy fighter birth date failed:", String(err)));
   }
   const careerState = db.prepare("SELECT status, checked_at FROM career_profiles WHERE fighter_id = ?").get(id) as { status: string; checked_at: number | null } | undefined;
   const retryAfter = careerState?.status === "error" ? 86_400_000 : 30 * 86_400_000;
@@ -836,16 +882,16 @@ async function getFighter(id: string, rankingType: RankingType): Promise<unknown
     || careerState.status === "pending"
     || (careerState.status !== "verified" && Date.now() - (careerState.checked_at ?? 0) >= retryAfter);
   if (shouldFetchCareer) {
-    try {
-      await syncFighterCareerOnce(id);
-    } catch (err) {
-      // The page still has complete UFCStats data. A temporary third-party
-      // failure must not make the whole fighter profile unavailable.
-      log("lazy professional history failed:", String(err));
-    }
+    refreshing = matchupRefresh.request(`career:${id}`, () => syncFighterCareerOnce(id),
+      err => log("lazy professional history failed:", String(err))) || refreshing;
   }
-  await ensureFighterTitleTypes(id);
+  refreshing = matchupRefresh.request(`titles:${id}`, () => ensureFighterTitleTypes(id),
+    err => log("lazy fighter titles failed:", String(err)), 5 * 60_000) || refreshing;
   requestPhoto(id);
+  const version = `${(profileLocalVersion.get() as { n: number }).n}:${(profileExternalVersion.get() as { data_version: number }).data_version}:${todayIso()}`;
+  const cacheKey = `${id}:${rankingType}`;
+  const cachedProfile = profileCache.get(cacheKey, version);
+  if (cachedProfile) return { ...cachedProfile, refreshing };
   const summary = fighterSummary(fr.id, fr.name, rankingType);
   const indexedFighter = fightIndex().fighters.get(fr.id);
   const history = fighterHistory(id, true) as any[];
@@ -860,9 +906,10 @@ async function getFighter(id: string, rankingType: RankingType): Promise<unknown
     .get(id, rankingType) as any;
   const records = fighterRecords(id);
   const recordKeys = new Set(records.map((entry) => entry.key));
-  return {
+  const profile = {
     id: fr.id,
     name: fr.name,
+    refreshing,
     nickname: fr.nickname,
     height: fr.height,
     weight: fr.weight,
@@ -888,6 +935,8 @@ async function getFighter(id: string, rankingType: RankingType): Promise<unknown
     history,
     pro_history: professionalHistory(id, history),
   };
+  profileCache.set(cacheKey, profile);
+  return profile;
 }
 
 function getFighterPreview(id: string): unknown | null {
@@ -1117,7 +1166,14 @@ function search(q: string): unknown {
 
   const fights = db
     .prepare(`
-      SELECT f.id, f.f1_name, f.f2_name, e.name AS event_name, e.date
+      SELECT f.id, f.f1_name, f.f2_name, e.name AS event_name, e.date,
+        -- Which meeting of this pairing it was, counted over every bout the two
+        -- have had, so a rematch reads as "fight 2" however the search matched.
+        (SELECT COUNT(*) FROM fights g JOIN events ge ON ge.id = g.event_id
+          WHERE ((g.f1_id = f.f1_id AND g.f2_id = f.f2_id) OR (g.f1_id = f.f2_id AND g.f2_id = f.f1_id))
+            AND (ge.date < e.date OR (ge.date = e.date AND g.id <= f.id))) AS meeting,
+        (SELECT COUNT(*) FROM fights g
+          WHERE (g.f1_id = f.f1_id AND g.f2_id = f.f2_id) OR (g.f1_id = f.f2_id AND g.f2_id = f.f1_id)) AS meetings
       FROM fights f JOIN events e ON e.id = f.event_id
       WHERE lower(f.f1_name || ' vs ' || f.f2_name) LIKE ?
          OR lower(f.f2_name || ' vs ' || f.f1_name) LIKE ?
@@ -1152,6 +1208,7 @@ function status(): unknown {
     rankings_meta: count("SELECT COUNT(*) AS c FROM rankings WHERE ranking_type = 'meta'"),
     rankings_media: count("SELECT COUNT(*) AS c FROM rankings WHERE ranking_type = 'media'"),
     odds: count("SELECT COUNT(*) AS c FROM odds WHERE f1_close IS NOT NULL"),
+    method_odds: count("SELECT COUNT(*) AS c FROM method_odds"),
     photos: count("SELECT COUNT(*) AS c FROM fighters WHERE photo_url IS NOT NULL AND photo_url != ''"),
     photos_full_body: count("SELECT COUNT(*) AS c FROM fighters WHERE photo_full_url IS NOT NULL AND photo_full_url != ''"),
     birth_dates: count("SELECT COUNT(*) AS c FROM fighters WHERE birth_date != ''"),

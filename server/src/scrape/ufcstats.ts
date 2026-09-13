@@ -57,7 +57,7 @@ export type ScrapedFight = {
   methodDetails: string | null;
   round: string | null;
   time: string | null;
-  bonuses: { perf: boolean; fotn: boolean };
+  bonuses: FightBonuses;
 };
 
 export type ScrapedEventDetail = {
@@ -136,10 +136,7 @@ export async function scrapeEventDetail(eventId: string, options?: { timeoutMs?:
       methodDetails: isDone ? cleanText(methodDetails) || null : null,
       round: isDone ? roundText || null : null,
       time: isDone ? timeText || null : null,
-      bonuses: {
-        perf: cols.eq(6).find("img[src*='perf.png']").length > 0,
-        fotn: cols.eq(6).find("img[src*='fight.png']").length > 0,
-      },
+      bonuses: bonusesFrom(cols.eq(6)),
     });
   });
 
@@ -215,9 +212,21 @@ export type ComparisonBlock = { labels: string[]; f1: string[]; f2: string[] };
 /** Same columns as the matching ComparisonBlock, one entry per round fought. */
 export type RoundBlock = { labels: string[]; rounds: { f1: string[]; f2: string[] }[] };
 
+/** perfKind names the performance award: before 2014 the promotion gave
+ * Knockout and Submission of the Night in place of Performance of the Night. */
+export type FightBonuses = { perf: boolean; perfKind?: "perf" | "ko" | "sub"; fotn: boolean };
+
+/** Read the award icons the source draws beside a bout. */
+function bonusesFrom(el: cheerio.Cheerio<any>): FightBonuses {
+  const perfKind = el.find("img[src*='perf.png']").length ? "perf"
+    : el.find("img[src*='ko.png']").length ? "ko"
+      : el.find("img[src*='sub.png']").length ? "sub" : undefined;
+  return { perf: perfKind != null, ...(perfKind ? { perfKind } : {}), fotn: el.find("img[src*='fight.png']").length > 0 };
+}
+
 export type FightDetail = {
   type: "past" | "future";
-  bonuses: { perf: boolean; fotn: boolean };
+  bonuses: FightBonuses;
   /** Which belt is on the line, when one is. */
   titleBout?: "title" | "interim" | "tuf" | "tournament";
   // past fights
@@ -332,10 +341,7 @@ export async function scrapeFightDetail(fightId: string, order?: FightOrder, opt
   const swap = pageOrderIsSwapped($, order);
 
   const titleEl = $("i.b-fight-details__fight-title");
-  const bonuses = {
-    perf: titleEl.find("img[src*='perf.png']").length > 0,
-    fotn: titleEl.find("img[src*='fight.png']").length > 0,
-  };
+  const bonuses = bonusesFrom(titleEl);
   // "UFC Interim Heavyweight Title Bout" vs "UFC Flyweight Title Bout" vs
   // "Lightweight Bout". The original UFC 5–9 championship was labelled a
   // "Superfight" rather than a title bout. This is the only place the interim

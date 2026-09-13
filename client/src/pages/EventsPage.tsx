@@ -1,13 +1,12 @@
-import { isFightDay, landingEvent, liveFightId } from "../liveEvent";
+import { isFightDay, landingEvent, liveFightId, taggedEvent } from "../liveEvent";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
-import { clockTime, countdown, exactTime, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankLabel } from "../format";
+import { clockTime, clockTimeWithZone, countdown, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankLabel } from "../format";
 import { useNow } from "../useNow";
 import Avatar from "../components/Avatar";
 import ResultDots from "../components/ResultDots";
-import Freshness from "../components/Freshness";
 import BonusIcons from "../components/BonusIcons";
 import OddsPair from "../components/OddsPair";
 import FightView from "./FightPage";
@@ -78,8 +77,21 @@ function EventSidebar({
   const [filter, setFilter] = useHistoryState("events:filter", "");
   const [kind, setKind] = useHistoryState<KindFilter>("events:kind", "all");
   const [showTop, setShowTop] = useState(false);
+  const { settings } = useSettings();
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelWarm = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = null;
+  };
+  useEffect(() => () => { if (hoverTimer.current) clearTimeout(hoverTimer.current); }, []);
+  const warmEvent = (id: string) => prefetch(withRanking(`/api/events/${id}`, settings.rankingSource));
   const listRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLAnchorElement>(null);
+
+  // Derived from every event, not from the filtered view: the tag says where
+  // the promotion is, so a tier filter that hides the tagged card hides the
+  // tag with it rather than promoting the next row into its place.
+  const tagged = useMemo(() => taggedEvent(events), [events]);
 
   const countByKind = useMemo(() => {
     const counts: Record<KindFilter, number> = { all: events.length, ppv: 0, fight_night: 0 };
@@ -171,12 +183,18 @@ function EventSidebar({
               <div className="flex flex-col gap-1 pb-2">
                 {list.map((event) => {
                   const isSelected = event.id === selectedId;
-                  const isNext = event.status === "next";
-                  const isCurrent = event.status === "current";
+                  const tag = event.id === tagged?.id ? tagged.tag : null;
                   return (
                     <Link
                       key={event.id}
                       to={`/events/${event.id}`}
+                      onPointerEnter={() => {
+                        cancelWarm();
+                        hoverTimer.current = setTimeout(() => warmEvent(event.id), 120);
+                      }}
+                      onPointerLeave={cancelWarm}
+                      onPointerDown={() => { cancelWarm(); warmEvent(event.id); }}
+                      onFocus={() => warmEvent(event.id)}
                       onClick={onSelect}
                       ref={isSelected ? selectedRef : undefined}
                       className={[
@@ -191,17 +209,20 @@ function EventSidebar({
                         <div
                           className={[
                             "flex min-w-0 items-center gap-1.5 text-[13px] font-semibold",
-                            isNext ? "text-amber-700" : "text-zinc-900",
+                            // The name is warmed only for the card being
+                            // pointed at, and only while the point is
+                            // forward-looking: a finished night is told, not
+                            // advertised.
+                            tag === "next" ? "text-amber-700" : "text-zinc-900",
                           ].join(" ")}
                         >
                           <span className="truncate" title={event.name}>{event.name}</span>
                         </div>
-                        {/* Only the two states worth interrupting a list of
-                            eight hundred cards for; the rest are told by the
-                            date beneath them. */}
-                        {isNext || isCurrent ? (
-                          <span className={`${TAG_SHAPE} ${STATUS_TAG[isCurrent ? "current" : "next"].className}`}>
-                            {STATUS_TAG[isCurrent ? "current" : "next"].label}
+                        {/* At most one row on the whole list carries this;
+                            the rest are told by the date beneath them. */}
+                        {tag ? (
+                          <span className={`${TAG_SHAPE} ${STATUS_TAG[tag].className}`}>
+                            {STATUS_TAG[tag].label}
                           </span>
                         ) : null}
                       </div>
@@ -286,7 +307,7 @@ function FighterBlock({
 }) {
   const dimmed = past && side.outcome === "loss";
   const rank = side.ranking?.rank === "IC" || side.ranking?.rank === "I" ? "I" : rankLabel(side.ranking) || "NR";
-  const rankingBadge = <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title="Current ranking from the selected source; NR means unranked">{rank}</span>;
+  const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title="Current ranking from the selected source; NR means unranked">{rank}</span>;
   const nameBlock = (
     <div className={`min-w-0 max-w-full ${align === "right" ? "text-right" : ""}`}>
       <div className="flex min-w-0 flex-wrap items-center gap-2 @3xl:flex-nowrap" style={align === "right" ? { justifyContent: "flex-end" } : undefined}>
@@ -365,7 +386,7 @@ function CenterBlock({ fight, past }: { fight: EventFight; past: boolean }) {
   );
 }
 
-function FightRow({ fight, past, eventId }: { fight: EventFight; past: boolean; eventId: string }) {
+function FightRow({ fight, past, eventId, live = false }: { fight: EventFight; past: boolean; eventId: string; live?: boolean }) {
   const navigate = useNavigate();
   const { settings } = useSettings();
   // During a live event some fights are already finished — show their results.
@@ -380,11 +401,18 @@ function FightRow({ fight, past, eventId }: { fight: EventFight; past: boolean; 
       onPointerDown={warm}
       onFocus={warm}
       onClick={() => navigate(`/fights/${fight.id}`, { state: { eventId, eventReturnDepth: 1 } })}
-      className="group grid w-full grid-cols-2 items-start gap-4 px-4 py-1.5 text-left transition-colors hover:bg-zinc-50 @3xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] @3xl:items-center"
+      className={`group grid w-full grid-cols-2 items-start gap-4 px-4 text-left transition-colors @3xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] @3xl:items-center ${live ? "py-3 hover:bg-emerald-50/60" : "py-1.5 hover:bg-zinc-50"}`}
     >
       <FighterBlock side={fight.f1} align="left" past={done} bonuses={fight.bonuses} resultTag={resultTag(fight, fight.f1.outcome)} />
-      <div className="order-3 col-span-2 flex w-full flex-col items-center gap-2 @3xl:order-2 @3xl:col-span-1 @3xl:w-40 @5xl:w-52">
+      <div className="order-3 col-span-2 flex w-full flex-col items-center justify-center gap-2 self-center @3xl:order-2 @3xl:col-span-1 @3xl:w-40 @5xl:w-52">
         <div className="flex items-center gap-1.5">
+          {/* The dot and the word both say live, so neither colour nor
+              motion carries it alone. */}
+          {live ? <>
+            <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+            <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">Live</span>
+            <span className="text-[10px] text-zinc-300" aria-hidden="true">·</span>
+          </> : null}
           <span className="text-[10px] font-medium text-zinc-500">{fight.weight_class}</span>
           {fight.title_fight ? (
             <span className={`rounded px-1 py-px text-[9px] font-bold uppercase ${(TITLE_TAG[fight.title_type ?? "title"] ?? TITLE_TAG.title).className}`}>
@@ -403,12 +431,18 @@ function FightRow({ fight, past, eventId }: { fight: EventFight; past: boolean; 
 // event pane
 
 /**
- * The two states worth interrupting a list of eight hundred cards for. The
- * event's own header never carries one: the date and the timing lines beside
- * the name already say where the card sits in time.
+ * The three states worth interrupting a list of eight hundred cards for. At
+ * most one row wears one at a time — taggedEvent decides which. The event's
+ * own header never carries one: the date and the timing lines beside the name
+ * already say where the card sits in time.
+ *
+ * Done is the quiet one on purpose. Live and Next both point forward at
+ * something to watch, so they are coloured; Done only closes the night off,
+ * and a night already fought does not need to compete with the card list.
  */
 const STATUS_TAG = {
-  current: { label: "Live", className: "bg-emerald-100 text-emerald-700" },
+  live: { label: "Live", className: "bg-emerald-100 text-emerald-700" },
+  done: { label: "Done", className: "bg-zinc-100 text-zinc-500" },
   next: { label: "Next", className: "bg-amber-100 text-amber-700" },
 } as const;
 
@@ -444,13 +478,13 @@ function SegmentBreak({ segment, at }: { segment: CardSegment; at: number | null
 function EventPane({ eventId }: { eventId: string }) {
   const { settings } = useSettings();
   const url = withRanking(`/api/events/${eventId}`, settings.rankingSource);
-  const { data: first } = useApi<EventDetail>(url);
-  const isLive = isFightDay(first?.date);
-  const { data: event, loading, error } = useApi<EventDetail>(url, isLive ? 10_000 : first?.status !== "past" ? 30_000 : 5 * 60_000);
+  const { data: event, loading, error } = useApi<EventDetail>(url,
+    data => data?.refreshing ? 2_000 : isFightDay(data?.date) ? 10_000 : data?.status !== "past" ? 30_000 : 5 * 60_000);
+  const isLive = isFightDay(event?.date);
   const eventScroll = useRouteScrollRestoration<HTMLDivElement>("event:card", Boolean(event));
   // Any card still ahead of us counts down; a finished one has nothing left
   // to count, so its clock never starts.
-  const now = useNow((event ?? first)?.status !== "past");
+  const now = useNow(event?.status !== "past");
   const eventDescription = event
     ? `${event.name} fight card with ${event.fights.length} matchups, odds${event.status === "past" ? " and results" : ""}.${event.location ? ` Live from ${event.location}.` : ""}`
     : "Browse UFC event fight cards, matchup odds and results.";
@@ -491,21 +525,12 @@ function EventPane({ eventId }: { eventId: string }) {
 
   const past = event.status === "past";
   const liveId = liveFightId(event);
-  // The night begins with the earliest segment that was announced.
-  const firstSegment: CardSegment | null = event.schedule?.early_prelims_at ? "early"
-    : event.schedule?.prelims_at ? "prelims"
-      : event.schedule?.main_card_at ? "main" : null;
-  const cardStart = firstSegment ? segmentStart(event.schedule, firstSegment) : null;
-  const waitingToStart = event.status === "current"
-    && event.card_stats.completed_fights === 0
-    && cardStart != null
-    && cardStart > now;
-  // The next part of the card still to come, for a card that is under way or
-  // still ahead of us. An announced time is worth showing whether the card is
-  // tonight or three weeks out.
-  const upcomingSegment = past ? null : (["early", "prelims", "main"] as CardSegment[])
+  // Every announced part of an upcoming card, main card first; the next one
+  // carries a countdown on the day. A live card shows its results instead.
+  const schedule = past || isLive ? [] : (["main", "prelims", "early"] as CardSegment[])
     .map((segment) => ({ segment, at: segmentStart(event.schedule, segment) }))
-    .find((entry) => entry.at != null && entry.at > now);
+    .filter((entry): entry is { segment: CardSegment; at: number } => entry.at != null);
+  const nextStart = schedule.filter((entry) => entry.at > now).reduce<number | null>((soonest, entry) => soonest == null || entry.at < soonest ? entry.at : soonest, null);
 
   return (
     <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-3 overflow-y-auto pr-1">
@@ -519,35 +544,22 @@ function EventPane({ eventId }: { eventId: string }) {
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-start gap-1 empty:hidden @[48rem]:max-w-[45%] @[48rem]:items-end @[48rem]:text-right">
-            {/* Before the first bell a card is a time to be at the screen; once
-                the estimate has passed we take it as under way and the line
-                becomes what is happening instead. */}
-            {waitingToStart ? (
-              <span className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-                <span className="font-medium text-zinc-700">Starts {clockTime(cardStart)}</span>
-                <span className="tabular-nums">in {countdown(cardStart, now)}</span>
-                <span className="text-zinc-400">{firstSegment ? SEGMENT_LABEL[firstSegment] : "First bout"} · your time zone</span>
-              </span>
-            ) : upcomingSegment ? (
-              <span className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-                <span className="font-medium text-zinc-700">{SEGMENT_LABEL[upcomingSegment.segment]} {clockTime(upcomingSegment.at)}</span>
-                {/* A countdown is worth reading on the day and unreadable
-                    before it — "in 335h 18m" is a number nobody converts —
-                    so past a day out the date above it says everything. */}
-                {upcomingSegment.at != null && upcomingSegment.at - now < DAY_MS
-                  ? <span className="tabular-nums">in {countdown(upcomingSegment.at, now)}</span>
-                  : null}
-                <span className="text-zinc-400">your time zone</span>
-              </span>
+            {schedule.length ? (
+              <dl className="grid grid-cols-[auto_auto] items-baseline gap-x-3 gap-y-0.5 text-[11px]">
+                {schedule.map(({ segment, at }) => (
+                  <div key={segment} className={`contents ${at <= now ? "text-zinc-400" : "text-zinc-500"}`}>
+                    <dt>{SEGMENT_LABEL[segment]}</dt>
+                    <dd className="flex items-baseline justify-end gap-2 tabular-nums">
+                      {/* A countdown is worth reading on the day and unreadable
+                          before it, so past a day out the date says enough. */}
+                      {at === nextStart && at - now < DAY_MS ? <span className="text-zinc-400">in {countdown(at, now)}</span> : null}
+                      <span className={at <= now ? "" : "font-medium text-zinc-700"}>{clockTimeWithZone(at)}</span>
+                    </dd>
+                  </div>
+                ))}
+              </dl>
             ) : null}
-            {isLive ? <span className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500"><span>{event.card_stats.completed_fights}/{event.fights.length} results · auto-updating</span><Freshness label="Checked" at={event.results_updated_at ?? null} staleAfterHours={1 / 12} missing="Waiting for first update" />{error ? <span role="status">Connection interrupted; retrying…</span> : null}</span> : null}
-            {event.odds_freshness?.priced
-              ? event.odds_freshness.final
-                ? <span className="text-[11px] text-zinc-400" title={`Prices stopped being refreshed when the card finished. Last fetched ${exactTime(event.odds_freshness.updated_at)}.`}>Closing odds · frozen</span>
-                // Upcoming prices are refetched every six hours, so half a day
-                // without one is the card's own warning that it may be behind.
-                : <Freshness label="Odds updated" at={event.odds_freshness.updated_at} staleAfterHours={12} missing={null} />
-              : null}
+            {isLive ? <span className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500"><span>{event.card_stats.completed_fights}/{event.fights.length} results</span>{error ? <span role="status">Connection interrupted; retrying…</span> : null}</span> : null}
           </div>
         </div>
       </section>
@@ -561,18 +573,11 @@ function EventPane({ eventId }: { eventId: string }) {
               {fight.segment && fight.segment !== event.fights[index - 1]?.segment
                 ? <SegmentBreak segment={fight.segment} at={segmentStart(event.schedule, fight.segment)} />
                 : null}
-              {/* The bout on now is boxed off from the rows around it; the dot
-                  and the word both say so, so neither colour nor motion is
-                  carrying that alone. Hover belongs to the box rather than the
-                  row inside it, so the shading covers the label too. */}
-              <div className={fight.id === liveId ? "m-1.5 overflow-hidden rounded-xl border border-emerald-200 transition-colors hover:bg-zinc-50" : ""}>
-                {fight.id === liveId ? (
-                  <div className="flex items-center gap-1.5 px-4 pt-2.5">
-                    <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-                    <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">Live</span>
-                  </div>
-                ) : null}
-                <FightRow fight={fight} past={past || fight.f1.outcome != null || fight.f2.outcome != null} eventId={event.id} />
+              {/* The bout on now is boxed off from the rows around it. Its live
+                  marker sits with the weight class in the centre column, so the
+                  box holds one row that centres like every other. */}
+              <div className={fight.id === liveId ? "m-1.5 overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/30" : ""}>
+                <FightRow fight={fight} live={fight.id === liveId} past={past || fight.f1.outcome != null || fight.f2.outcome != null} eventId={event.id} />
               </div>
             </div>
           ))
