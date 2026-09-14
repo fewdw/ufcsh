@@ -222,7 +222,7 @@ function BarTooltip({
   const { open, at, id, handlers } = useTooltip();
   return (
     <div
-      className={`stat-bar relative flex h-full ${BAR} items-end justify-center transition-[opacity,filter] duration-150 ease-out`}
+      className={`stat-bar relative flex h-full ${BAR} items-end justify-center`}
       data-stat-side={side}
     >
       <button
@@ -572,9 +572,9 @@ function CombinedStrikeColumns({
           const columnHeight = Math.max(attempts > 0 ? 4 : 1, (attempts / scale) * height);
           const lines = total[side]
             ? [
-                `${otherLanded} strikes`,
-                `${significantLanded} significant strikes`,
-                `${misses} misses`,
+                ...(otherLanded ? [`${otherLanded} strikes`] : []),
+                ...(significantLanded ? [`${significantLanded} significant strikes`] : []),
+                ...(misses ? [`${misses} misses`] : []),
                 ...(tooltipExtra?.[side] ?? []),
               ]
             : ["Statistics unavailable"];
@@ -827,7 +827,7 @@ export function FightTotals({ fight, grouped = false }: { fight: Matchup; groupe
         // two bars need less room than six bars and their figures. Narrower
         // than that the row breaks into those same pairs, then into one column
         // — a split is never separated from the summary it explains.
-        <div className="grid gap-3 px-4 pb-4 pt-4 @[28rem]:grid-cols-[1fr_1.1fr] @[50rem]:grid-cols-[1fr_1.1fr_0.6fr_1.1fr]">
+        <div className="grid gap-x-3 gap-y-6 px-4 pb-4 pt-4 @[28rem]:grid-cols-[1fr_1.1fr] @[50rem]:grid-cols-[1fr_1.1fr_0.6fr_1.1fr]">
           <section className="flex min-w-0 flex-col">
             <div className="flex flex-1 items-start justify-center px-1 py-3">
               <CombinedStrikeColumns fight={fight} significant={sig} total={tot} extra={knockdowns} />
@@ -977,13 +977,16 @@ function RoundColumn({ fight, index }: { fight: Matchup; index: number }) {
   );
 }
 
-/** Static class names so Tailwind can see them; rounds beyond five wrap. */
+/** Static class names so Tailwind can see them; rounds beyond five wrap. Sized
+ *  by the panel, not the window, so a column never gets narrower than its two
+ *  figures ("25 (25) / 68" twice over, about 150px) — a round that cannot fit
+ *  moves to the next row instead of printing over its neighbour. */
 const ROUND_GRID: Record<number, string> = {
   1: "grid-cols-1",
-  2: "grid-cols-2",
-  3: "grid-cols-2 md:grid-cols-3",
-  4: "grid-cols-2 md:grid-cols-4",
-  5: "grid-cols-2 md:grid-cols-5",
+  2: "grid-cols-1 @[20rem]:grid-cols-2",
+  3: "grid-cols-1 @[20rem]:grid-cols-2 @[34rem]:grid-cols-3",
+  4: "grid-cols-1 @[20rem]:grid-cols-2 @[44rem]:grid-cols-4",
+  5: "grid-cols-1 @[20rem]:grid-cols-2 @[34rem]:grid-cols-3 @[54rem]:grid-cols-5",
 };
 
 export function RoundByRound({ fight, grouped = false }: { fight: Matchup; grouped?: boolean }) {
@@ -995,7 +998,7 @@ export function RoundByRound({ fight, grouped = false }: { fight: Matchup; group
     <section className={grouped ? "border-t border-zinc-200" : shell}>
       <PanelHeading title="Round by round" aside={grouped ? undefined : <Legend fight={fight} />} divider={false} />
       {count ? (
-        <div className={`grid gap-2 px-4 pb-4 pt-4 ${columns}`}>
+        <div className={`grid gap-x-2 gap-y-5 px-4 pb-4 pt-4 ${columns}`}>
           {Array.from({ length: count }, (_, i) => (
             <RoundColumn key={i} fight={fight} index={i} />
           ))}
@@ -1231,7 +1234,9 @@ export function Scorecards({ fight }: { fight: Matchup }) {
     <section className={`${shell} overflow-hidden`}>
       <PanelHeading title="Scorecards" />
       <ul className="grid divide-y divide-zinc-100 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-        {judges.map((j) => {
+        {judges.map((j, judgeIndex) => {
+          // Older cards carry the scores without the judge's name.
+          const judgeName = j.judge || `Judge ${judgeIndex + 1}`;
           const winner: Side | null = j.f1Score > j.f2Score ? "f1" : j.f2Score > j.f1Score ? "f2" : null;
           const score = (side: Side) => {
             const value = side === "f1" ? j.f1Score : j.f2Score;
@@ -1247,11 +1252,11 @@ export function Scorecards({ fight }: { fight: Matchup }) {
           };
           return (
             <li
-              key={j.judge}
+              key={`${judgeIndex}-${j.judge}`}
               className="flex min-w-0 flex-col items-center gap-2 px-4 py-4"
-              aria-label={`${j.judge}: ${lastName(fight.f1.name)} ${j.f1Score}, ${lastName(fight.f2.name)} ${j.f2Score}`}
+              aria-label={`${judgeName}: ${lastName(fight.f1.name)} ${j.f1Score}, ${lastName(fight.f2.name)} ${j.f2Score}`}
             >
-              <span className={`max-w-full truncate ${sectionLabel}`}>{j.judge}</span>
+              <span className={`max-w-full truncate ${sectionLabel}`}>{judgeName}</span>
               <span className="flex items-center gap-3" aria-hidden="true">
                 {score("f1")}
                 <span className="h-5 w-px bg-zinc-200" />

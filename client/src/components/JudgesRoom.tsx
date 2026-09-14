@@ -87,10 +87,10 @@ function EvidenceRow({ bout, selection }: { bout: JudgeEvidenceBout; selection: 
       <span className="ml-auto shrink-0 tabular-nums text-zinc-400">{shortDate(bout.date)}</span>
     </div>
     <div className="ml-9 mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-zinc-500">
-      {bout.cards.map((card) => <span key={card.judge} className={selection.kind === "official" && selection.value === card.judge ? "font-semibold text-orange-600" : ""}>{card.judge} <span className="tabular-nums text-zinc-800">{card.f1_score}–{card.f2_score}</span></span>)}
+      {bout.cards.map((card, i) => <span key={`${i}-${card.judge}`} className={card.judge && selection.kind === "official" && selection.value === card.judge ? "font-semibold text-orange-600" : ""}>{card.judge || `Judge ${i + 1}`} <span className="tabular-nums text-zinc-800">{card.f1_score}–{card.f2_score}</span></span>)}
     </div>
     <div className="ml-9 mt-1 flex min-w-0 items-center gap-1.5 text-[9px] text-zinc-400">
-      <span>{bout.division}</span><span>·</span><span>{bout.scheduled_rounds} rounds</span><span>·</span>
+      <span>{bout.division}</span><span>·</span>{bout.scheduled_rounds > 0 ? <><span>{bout.scheduled_rounds} round{bout.scheduled_rounds === 1 ? "" : "s"}</span><span>·</span></> : null}
       <Link to={`/fights/${bout.fight_id}`} className="truncate hover:text-zinc-900 hover:underline" title={bout.event_name}>{bout.event_name}</Link>
     </div>
   </li>;

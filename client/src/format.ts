@@ -34,6 +34,11 @@ export function isDecision(method: string | null | undefined): boolean {
 }
 
 /** Surname only — how fighters are referred to on charts and in tight labels. */
+/** "3 Rounds" — how long a bout is booked for; empty when that is unknown. */
+export function roundsLabel(rounds: number | null | undefined): string {
+  return rounds ? `${rounds} Round${rounds === 1 ? "" : "s"}` : "";
+}
+
 export function lastName(name: string): string {
   return name.trim().split(/\s+/).at(-1) ?? name;
 }

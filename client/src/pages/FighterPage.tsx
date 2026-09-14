@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../api";
 import type { CompleteRecordBefore, FighterProfile, FighterRecord, FighterStat, HistoryRow, ProfessionalHistoryRow } from "../api";
@@ -7,6 +7,7 @@ import { formatValue } from "../components/chartTokens";
 import FighterPortrait from "../components/FighterPortrait";
 import Flag from "../components/Flag";
 import ResultDots from "../components/ResultDots";
+import RequestNotice from "../components/RequestNotice";
 import { useSeo } from "../seo";
 import { useRouteScrollRestoration } from "../navigationState";
 import { outsideFighterUrl, useSettings, withRanking } from "../settings";
@@ -39,17 +40,9 @@ function OpponentForm({ form }: { form: NonNullable<HistoryRow["opponent_form"]>
   return <ResultDots results={form} label="Last five UFC bouts entering this fight" />;
 }
 
-function ProfileRecordChart({
-  ufcHistory,
-  proHistory,
-  completeRecordVerified,
-}: {
-  ufcHistory: HistoryRow[];
-  proHistory: ProfessionalHistoryRow[];
-  completeRecordVerified: boolean;
-}) {
-  const [scope, setScope] = useState<"ufc" | "all">(completeRecordVerified ? "all" : "ufc");
-  const history: (HistoryRow | ProfessionalHistoryRow)[] = scope === "all" ? proHistory : ufcHistory;
+/** One record as a wheel: wins counterclockwise from 12, losses clockwise, with
+ *  the method split listed beside it. */
+function RecordWheel({ history, scope, record }: { history: (HistoryRow | ProfessionalHistoryRow)[]; scope: "ufc" | "all"; record: string }) {
   const bouts = history.filter((fight) => !fight.upcoming && fight.outcome !== null);
   const methodGroup = (method: string | null) => {
     const normalized = method?.trim().toUpperCase() ?? "";
@@ -95,32 +88,12 @@ function ProfileRecordChart({
     return `${segment.color} ${start}% ${position}%`;
   }).join(", ");
 
-  if (!bouts.length) return null;
   return (
-    <div className="ml-auto shrink-0 border-t border-zinc-100 pt-4 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
-      <div className="mb-2 flex justify-center">
-        <div className="inline-flex rounded-lg bg-zinc-100 p-0.5" role="group" aria-label="Record breakdown scope">
-          <button
-            type="button"
-            aria-pressed={scope === "all"}
-            disabled={!completeRecordVerified}
-            onClick={() => setScope("all")}
-            title={completeRecordVerified ? "Show complete professional record" : "Complete professional record is still syncing"}
-            className={`rounded-md px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors ${scope === "all" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"}`}
-          >
-            All
-          </button>
-          <button
-            type="button"
-            aria-pressed={scope === "ufc"}
-            onClick={() => setScope("ufc")}
-            className={`rounded-md px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors ${scope === "ufc" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-400 hover:text-zinc-700"}`}
-          >
-            UFC
-          </button>
-        </div>
+    <div className="flex min-w-0 flex-col items-center gap-2">
+      <div className="text-sm font-semibold tabular-nums text-zinc-900" title={scope === "ufc" ? "Current UFC-only record" : "Current verified complete professional record"}>
+        <span className="text-[10px] font-bold text-zinc-400">{scope === "ufc" ? "UFC" : "PRO"}</span> {record}
       </div>
-      <div className="flex items-center gap-3">
+      {bouts.length ? <div className="flex items-center gap-3">
         <div
           className="grid h-20 w-20 shrink-0 place-items-center rounded-full"
           style={{ background: `conic-gradient(from 0deg, ${gradient})` }}
@@ -128,7 +101,7 @@ function ProfileRecordChart({
           aria-label={`${bouts.length} ${scope === "ufc" ? "UFC" : "professional"} bouts by result and method`}
         >
           <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-center shadow-[0_0_0_1px_rgba(0,0,0,0.04)]">
-            <span className="text-sm font-semibold tabular-nums text-zinc-900">{bouts.length}<span className="block text-[8px] font-bold uppercase tracking-wider text-zinc-400">{scope === "ufc" ? "UFC" : "All"}</span></span>
+            <span className="text-sm font-semibold tabular-nums text-zinc-900">{bouts.length}<span className="block text-[8px] font-bold uppercase tracking-wider text-zinc-400">{scope === "ufc" ? "UFC" : "PRO"}</span></span>
           </div>
         </div>
         <div>
@@ -167,7 +140,7 @@ function ProfileRecordChart({
             </div>
           ) : null}
         </div>
-      </div>
+      </div> : null}
     </div>
   );
 }
@@ -310,7 +283,6 @@ function Records({ records }: { records: FighterRecord[] }) {
     <section className={shell}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-5 pb-2 pt-4">
         <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400">Records</span>
-        <span className="text-[10px] text-zinc-400">Ranked against every fighter on record, live with the results.</span>
       </div>
       <div className="divide-y divide-zinc-50 pb-2">
         {records.map((record) => (
@@ -346,6 +318,12 @@ function Records({ records }: { records: FighterRecord[] }) {
 /** Every qualifying top-50 placement, grouped so alternate readings such as
  * a method's count and percentage stay together instead of repeating panels. */
 function StatisticalRanks({ stats }: { stats: FighterStat[] }) {
+  // Beside the fight history there is room to read them, so a wide window
+  // opens the list; a phone keeps it folded above the fights.
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    if (detailsRef.current && window.matchMedia("(min-width: 1024px)").matches) detailsRef.current.open = true;
+  }, []);
   if (!stats.length) return null;
   const groups = [...stats.reduce((map, stat) => {
     const current = map.get(stat.category) ?? { order: stat.category_order, rows: [] as FighterStat[] };
@@ -357,7 +335,7 @@ function StatisticalRanks({ stats }: { stats: FighterStat[] }) {
   const place = (stat: FighterStat) => `${stat.tied ? "T" : ""}${stat.rank}`;
 
   return (
-    <details className={`${shell} group overflow-hidden`}>
+    <details ref={detailsRef} className={`${shell} group @container overflow-hidden`}>
       <summary
         className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 [&::-webkit-details-marker]:hidden"
         title="Expand top-50 statistics"
@@ -377,7 +355,7 @@ function StatisticalRanks({ stats }: { stats: FighterStat[] }) {
           <path d="m2.5 4.5 3.5 3 3.5-3" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </summary>
-      <div className="columns-1 gap-0 border-t border-zinc-100 sm:columns-2" style={{ columnRule: "1px solid var(--color-plot-axis)" }}>
+      <div className="columns-1 gap-0 border-t border-zinc-100 @[36rem]:columns-2" style={{ columnRule: "1px solid var(--color-plot-axis)" }}>
         {groups.map(([category, group]) => (
           <section key={category} className="break-inside-avoid min-w-0 border-b border-zinc-100 bg-white px-4 py-3">
             <h3 className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-400">{category}</h3>
@@ -415,7 +393,7 @@ export default function FighterPage() {
   const { fighterId } = useParams();
   const { settings } = useSettings();
   const navigate = useNavigate();
-  const { data: fighter, loading, error } = useApi<FighterProfile>(fighterId ? withRanking(`/api/fighters/${fighterId}`, settings.rankingSource) : null,
+  const { data: fighter, loading, error, retry } = useApi<FighterProfile>(fighterId ? withRanking(`/api/fighters/${fighterId}`, settings.rankingSource) : null,
     data => data?.refreshing ? 2_000 : 60_000);
   const pageScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:page", Boolean(fighter));
   useSeo({
@@ -441,7 +419,10 @@ export default function FighterPage() {
   if (loading) {
     return <div className="flex h-full items-center justify-center text-sm text-zinc-400">Loading fighter…</div>;
   }
-  if (error || !fighter) {
+  if (error && !fighter) {
+    return <div className="p-5"><RequestNotice onRetry={retry}>Couldn’t load this fighter. Please try again.</RequestNotice></div>;
+  }
+  if (!fighter) {
     return <div className="flex h-full items-center justify-center text-sm text-zinc-400">Fighter not found.</div>;
   }
 
@@ -462,8 +443,9 @@ export default function FighterPage() {
 
 
   return (
-    <div ref={pageScroll} className="h-full overflow-y-auto">
-      <div className="mx-auto flex max-w-5xl flex-col gap-3 p-3 pb-8">
+    <div ref={pageScroll} className="h-full overflow-y-auto lg:overflow-hidden">
+      <div className="flex flex-col gap-3 p-3 pb-8 lg:h-full lg:pb-3">
+        {error ? <RequestNotice onRetry={retry}>Couldn’t refresh this profile. Showing the last loaded data.</RequestNotice> : null}
         <button
           type="button"
           onClick={() => navigate(-1)}
@@ -472,8 +454,14 @@ export default function FighterPage() {
           ← Back
         </button>
 
-        <section className={`${shell} px-6 py-5`}>
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+        {/* Wide windows split the profile: who they are and where they rank on
+            the left, held in view, and every fight they've had on the right. */}
+        {/* On a wide window the page itself never scrolls: each column is its
+            own scroller, so reading one leaves the other exactly where it was. */}
+        <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(24rem,5fr)_minmax(0,7fr)] lg:grid-rows-[minmax(0,1fr)]">
+        <div className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-y-auto lg:overscroll-contain">
+        <section className={`${shell} @container px-6 py-5`}>
+          <div className="flex flex-col gap-5">
             <div className="flex min-w-0 items-center gap-5">
               <div className="flex shrink-0 flex-col items-center gap-2">
                 <FighterPortrait src={fighter.photo_full_url} headshot={fighter.photo_url} name={fighter.name} size="profile" />
@@ -487,8 +475,9 @@ export default function FighterPage() {
               </h1>
               {fighter.nickname ? <div className="text-sm text-zinc-400">“{fighter.nickname}”</div> : null}
               <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-                <span className="font-semibold tabular-nums text-zinc-900" title="Current verified complete professional record"><span className="text-[10px] font-bold text-zinc-400">REC</span> {fighter.record}</span>
-                <span className="font-semibold tabular-nums text-zinc-600" title="Current UFC-only record"><span className="text-[10px] font-bold text-zinc-400">UFC</span> {fighter.ufc_record}</span>
+                {/* With a verified history the records head their wheels below;
+                    until then the pro record has no wheel, so it stays here. */}
+                {fighter.record_verified ? null : <span className="font-semibold tabular-nums text-zinc-900" title="Professional record"><span className="text-[10px] font-bold text-zinc-400">PRO</span> {fighter.record}</span>}
                 {fighter.ranking ? (
                   <span title="Current ranking from the source chosen on the Rankings page" className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${fighter.ranking.rank === "C" ? "bg-amber-100 text-belt" : fighter.ranking.rank === "IC" ? "bg-slate-100 text-belt-interim" : "bg-zinc-100 text-zinc-600"}`}>
                     {fighter.ranking.rank === "C" ? "Champion" : fighter.ranking.rank === "IC" ? "Interim champion" : `#${fighter.ranking.rank}`} · {fighter.ranking.division}
@@ -506,18 +495,22 @@ export default function FighterPage() {
               ) : null}
               </div>
             </div>
-            <ProfileRecordChart
-              key={fighter.id}
-              ufcHistory={fighter.history}
-              proHistory={fighter.pro_history}
-              completeRecordVerified={fighter.record_verified}
-            />
+            {/* Both records at once, side by side while the card is wide
+                enough and stacked when it is not. The professional wheel
+                waits until that history is verified. */}
+            <div className="flex flex-wrap items-start justify-center gap-x-10 gap-y-5 border-t border-zinc-100 pt-4 empty:hidden">
+              {fighter.record_verified ? <RecordWheel key={`${fighter.id}-all`} history={fighter.pro_history} scope="all" record={fighter.record} /> : null}
+              <RecordWheel key={`${fighter.id}-ufc`} history={fighter.history} scope="ufc" record={fighter.ufc_record} />
+            </div>
           </div>
         </section>
 
         <Records records={fighter.records ?? []} />
 
         <StatisticalRanks stats={fighter.stats ?? []} />
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-y-auto lg:overscroll-contain">
 
         {upcoming.length ? (
           <section className={shell}>
@@ -551,6 +544,8 @@ export default function FighterPage() {
             )}
           </div>
         </section>
+        </div>
+        </div>
       </div>
     </div>
   );

@@ -8,16 +8,18 @@ import { gzipSync } from "node:zlib";
 import { createHash } from "node:crypto";
 import { db, getMeta, setMeta } from "./db.ts";
 import { canonicalMethod, log, normName, todayIso } from "./util.ts";
+import { bugReport, runBugAction } from "./bugs.ts";
 import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds } from "./sync.ts";
 import { BackgroundRefresh } from "./background-refresh.ts";
 import { VersionCache } from "./version-cache.ts";
+import { fuzzyScore, fuzzyTarget, splitMatchup, type FuzzyTarget } from "./fuzzy.ts";
 import type { RankingType } from "./scrape/ufccom.ts";
 import { getStats } from "./stats.ts";
 import { getLabs, getLabsBouts, getLabsFill, getLabsMatchups } from "./labs.ts";
 import { getLabsInsights, getLabsJudgeBouts, getLabsJudges, getLabsRoadBouts } from "./labs-insights.ts";
 import { titleNarratives } from "./titles.ts";
 import { fighterRecords, fighterStats } from "./records.ts";
-import { boutsBefore, careerBefore, completeBoutsBefore, completeRecordBefore, fightIndex, ageOn, sideOf, type FightRecord } from "./fight-index.ts";
+import { boutsBefore, careerBefore, completeBoutsBefore, completeRecordBefore, fightIndex, ageOn, parseScheduledRounds, sideOf, type FightRecord } from "./fight-index.ts";
 import { syncCareerRecord } from "./career-records.ts";
 
 const CLIENT_DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "client", "dist");
@@ -46,13 +48,14 @@ function cardSchedule(e: EventRow): { main_card_at: number | null; prelims_at: n
 
 type SegmentOf = "main" | "prelims" | "early" | null;
 
-/** A bout as the running order reads it. Five rounds are what the main event
- *  and every championship bout are scheduled for, and they take longer, so the
- *  estimate for the bouts after them has to know it. */
+/** A bout as the running order reads it. A five-round bout takes longer, so
+ *  the estimate for the bouts after it has to know. The booked length is used
+ *  when ufc.com has published it; until then this timing estimate (and only
+ *  it) assumes the usual booking of five for a main event or a belt. */
 const scheduledBout = (f: any) => ({
   ord: Number(f.ord) || 0,
   segment: (f.segment || null) as SegmentOf,
-  fiveRound: Boolean(f.title_fight) || Number(f.ord) === 0,
+  fiveRound: Number(f.scheduled_rounds) > 0 ? Number(f.scheduled_rounds) === 5 : Boolean(f.title_fight) || Number(f.ord) === 0,
 });
 
 const segmentTimes = (e: EventRow): SegmentTimes => ({
@@ -106,6 +109,8 @@ function nextEventDate(): string | null {
 
 type FighterSummary = {
   id: string; name: string; nickname: string; record: string;
+  /** Profiles exist only after the athlete has a recorded UFC result. */
+  profile_eligible: boolean;
   photo_url: string | null;
   /** The full-body cut-out, when ufc.com has one. Null falls back to the headshot. */
   photo_full_url: string | null;
@@ -115,6 +120,21 @@ type FighterSummary = {
   country?: string | null;
   country_code?: string | null;
 };
+
+const completedUfcFightExistsSql = (fighterIdSql: string, fightAlias: string) => `EXISTS (
+  SELECT 1 FROM fights ${fightAlias}
+  WHERE (${fightAlias}.f1_id = ${fighterIdSql} OR ${fightAlias}.f2_id = ${fighterIdSql})
+    AND (${fightAlias}.f1_outcome IS NOT NULL OR ${fightAlias}.f2_outcome IS NOT NULL)
+)`;
+
+const completedUfcFightForFighter = db.prepare(`
+  SELECT ${completedUfcFightExistsSql("?1", "f")} AS eligible
+`);
+
+/** A booking or a stray UFCStats directory entry does not make a UFC fighter. */
+export function hasCompletedUfcFight(id: string): boolean {
+  return Boolean(id && (completedUfcFightForFighter.get(id) as { eligible: number }).eligible);
+}
 
 function recordText(record: Pick<FightRecord, "wins" | "losses" | "draws">): string {
   return `${record.wins}-${record.losses}${record.draws ? `-${record.draws}` : ""}`;
@@ -175,13 +195,14 @@ function requestPhoto(id: string): void {
 function fighterSummary(id: string, fallbackName: string, rankingType: RankingType = "meta"): FighterSummary {
   const row = id ? (fighterSummaryStmt().get(rankingType, id) as any) : null;
   if (!row) {
-    return { id, name: fallbackName, nickname: "", record: "", photo_url: null, photo_full_url: null, ranking: null, country: null, country_code: null };
+    return { id, name: fallbackName, nickname: "", record: "", profile_eligible: false, photo_url: null, photo_full_url: null, ranking: null, country: null, country_code: null };
   }
   const career = currentRecord(row.id, row);
   return {
     id: row.id,
     name: row.name,
     nickname: row.nickname,
+    profile_eligible: hasCompletedUfcFight(row.id),
     record: recordText(career.value),
     record_verified: career.verified,
     photo_url: cachedPhotoUrl(row.id, row.photo_url),
@@ -297,6 +318,23 @@ function cardStats(fights: any[]): { total_fights: number; completed_fights: num
   };
 }
 
+/**
+ * Rounds the bout is booked for, from an official source only: the time format
+ * ufcstats records once a bout has been fought, or the rule set ufc.com
+ * publishes for a bout on an announced card. Null when neither has said — a
+ * bout's position or title status is never taken as its length, because
+ * non-title co-main and contender bouts are regularly booked for five.
+ */
+function scheduledRounds(f: any, detail: any): number | null {
+  const format = detail?.methodInfo?.["Time format"];
+  if (format) {
+    const official = parseScheduledRounds(f, detail);
+    return official > 0 ? official : null;
+  }
+  const booked = Number(f.scheduled_rounds);
+  return Number.isInteger(booked) && booked > 0 ? booked : null;
+}
+
 function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingType: RankingType = "meta"): Record<string, unknown> {
   const detail = f.detail_json ? JSON.parse(f.detail_json) : null;
   const base: Record<string, unknown> = {
@@ -307,6 +345,7 @@ function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingTy
     /** Which kind: a belt, an interim belt, or a tournament/TUF final, which
      * carries the same flag at the source but is not a championship bout. */
     title_type: f.title_type || null,
+    scheduled_rounds: scheduledRounds(f, detail),
     /** Which part of the card: main card, prelims or early prelims. */
     segment: f.segment || null,
     method: f.method,
@@ -846,6 +885,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     /** Which kind: a belt, an interim belt, or a tournament/TUF final, which
      * carries the same flag at the source but is not a championship bout. */
     title_type: f.title_type || null,
+    scheduled_rounds: scheduledRounds(f, f.detail_json ? JSON.parse(f.detail_json) : null),
     method: f.method,
     method_details: f.method_details,
     round: f.round,
@@ -868,9 +908,11 @@ const profileCache = new VersionCache<Record<string, unknown>>();
 const profileLocalVersion = db.prepare("SELECT total_changes() AS n");
 const profileExternalVersion = db.prepare("PRAGMA data_version");
 
-async function getFighter(id: string, rankingType: RankingType): Promise<unknown | null> {
+export async function getFighter(id: string, rankingType: RankingType): Promise<unknown | null> {
   const fr = db.prepare("SELECT * FROM fighters WHERE id = ?").get(id) as any;
-  if (!fr) return null;
+  // UFCStats contains directory-only identities and future debutants. They are
+  // allowed to appear on a scheduled card, but never become browsable profiles.
+  if (!fr || !hasCompletedUfcFight(id)) return null;
   let refreshing = false;
   if (!fr.birth_fetched_at) {
     refreshing = matchupRefresh.request(`birth:${id}`, () => syncFighterBirthDateOnce(id),
@@ -939,9 +981,9 @@ async function getFighter(id: string, rankingType: RankingType): Promise<unknown
   return profile;
 }
 
-function getFighterPreview(id: string): unknown | null {
+export function getFighterPreview(id: string): unknown | null {
   const fighter = db.prepare("SELECT id, name, nickname, wins, losses, draws, photo_url FROM fighters WHERE id = ?").get(id) as any;
-  if (!fighter) return null;
+  if (!fighter || !hasCompletedUfcFight(id)) return null;
   const rows = db.prepare(`
     SELECT f.*, e.id AS event_id, e.name AS event_name, e.date AS event_date, e.complete AS event_complete
     FROM fights f JOIN events e ON e.id = f.event_id
@@ -1082,7 +1124,8 @@ export function getRankings(rankingType: RankingType): unknown {
       .prepare(`
         SELECT r.rank, r.fighter_name,
                r.fighter_id, r.rank_change, fr.photo_url, fr.nickname,
-               fr.wins, fr.losses, fr.draws
+               fr.wins, fr.losses, fr.draws,
+               ${completedUfcFightExistsSql("r.fighter_id", "fought")} AS profile_eligible
         FROM rankings r LEFT JOIN fighters fr ON fr.id = r.fighter_id
         WHERE r.ranking_type = ? AND r.division = ? ORDER BY r.div_pos ASC
       `)
@@ -1134,7 +1177,7 @@ export function getRankings(rankingType: RankingType): unknown {
           is_interim_champion: e.rank === "IC"
             || (e.rank !== "C" && activeInterimChampions.get(d.division) === e.fighter_id),
           name: e.fighter_name,
-          fighter_id: e.fighter_id || null,
+          fighter_id: e.profile_eligible ? e.fighter_id : null,
           rank_change: e.rank_change,
           photo_url: cachedPhotoUrl(e.fighter_id, e.photo_url),
           record: e.fighter_id ? recordText(currentRecord(e.fighter_id, e).value) : "",
@@ -1145,27 +1188,95 @@ export function getRankings(rankingType: RankingType): unknown {
   });
 }
 
-function search(q: string): unknown {
+const SEARCH_LIMIT = 8;
+type SearchIndex = {
+  fighters: { id: string; name: string; nickname: string; wins: number; losses: number; draws: number; photo_url: string | null; ufc_fights: number; target: FuzzyTarget }[];
+  events: { id: string; name: string; date: string; target: FuzzyTarget }[];
+  fights: { id: string; date: string; target: FuzzyTarget }[];
+};
+const searchIndexCache = new VersionCache<SearchIndex>(1);
+
+/** Everything the typo-tolerant fallback scans, rebuilt when the data changes. */
+function searchIndex(): SearchIndex {
+  const version = `${(profileLocalVersion.get() as { n: number }).n}:${(profileExternalVersion.get() as { data_version: number }).data_version}`;
+  const cached = searchIndexCache.get("index", version);
+  if (cached) return cached;
+  const fighters = (db.prepare(`
+    SELECT fr.id, fr.name, fr.nickname, fr.wins, fr.losses, fr.draws, fr.photo_url,
+           (SELECT COUNT(*) FROM fights f
+             WHERE (f.f1_id = fr.id OR f.f2_id = fr.id)
+               AND (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)) AS ufc_fights
+    FROM fighters fr
+    WHERE ${completedUfcFightExistsSql("fr.id", "fought")}
+  `).all() as any[]).map((f) => ({ ...f, target: fuzzyTarget(f.name, f.nickname) }));
+  const events = (db.prepare("SELECT id, name, date FROM events").all() as any[])
+    .map((e) => ({ ...e, target: fuzzyTarget(e.name) }));
+  const fights = (db.prepare(`
+    SELECT f.id, f.f1_name, f.f2_name, e.date FROM fights f JOIN events e ON e.id = f.event_id
+  `).all() as any[]).map((f) => ({ id: f.id, date: f.date, target: fuzzyTarget(`${f.f1_name} ${f.f2_name}`) }));
+  const index = { fighters, events, fights };
+  searchIndexCache.set("index", index);
+  return index;
+}
+
+/**
+ * Rows that the fuzzy matcher accepts, best first. When exact matching already
+ * found something, only reordered-word matches (no edits) are added, so a
+ * working query never gains look-alike noise.
+ */
+function fuzzyMatches<T extends { id: string; target: FuzzyTarget }>(
+  rows: T[], query: string, exclude: Set<string>, exactCount: number, tiebreak: (a: T, b: T) => number,
+): { row: T; score: number }[] {
+  if (exactCount >= SEARCH_LIMIT) return [];
+  const matches: { row: T; score: number }[] = [];
+  const memo = new Map<string, number>();
+  for (const row of rows) {
+    if (exclude.has(row.id)) continue;
+    const score = fuzzyScore(query, row.target, memo);
+    if (score === Infinity || (exactCount && score > 0)) continue;
+    matches.push({ row, score });
+  }
+  return matches
+    .sort((a, b) => a.score - b.score || tiebreak(a.row, b.row))
+    .slice(0, SEARCH_LIMIT - exactCount);
+}
+
+export function search(q: string): unknown {
   const norm = normName(q);
   if (!norm) return { fighters: [], events: [], fights: [] };
   const like = `%${norm.replace(/\s+/g, "%")}%`;
+  const index = searchIndex();
 
-  const fighters = db
+  const exactFighters = db
     .prepare(`
       SELECT fr.id, fr.name, fr.nickname, fr.wins, fr.losses, fr.draws, fr.photo_url,
-             (SELECT COUNT(*) FROM fights f WHERE f.f1_id = fr.id OR f.f2_id = fr.id) AS ufc_fights
+             (SELECT COUNT(*) FROM fights f
+               WHERE (f.f1_id = fr.id OR f.f2_id = fr.id)
+                 AND (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)) AS ufc_fights
       FROM fighters fr
-      WHERE fr.norm_name LIKE ? OR lower(fr.nickname) LIKE ?
-      ORDER BY ufc_fights DESC, fr.wins DESC LIMIT 8
+      WHERE (fr.norm_name LIKE ? OR lower(fr.nickname) LIKE ?)
+        AND ${completedUfcFightExistsSql("fr.id", "fought")}
+      ORDER BY ufc_fights DESC, fr.wins DESC LIMIT ${SEARCH_LIMIT}
     `)
     .all(like, like) as any[];
+  const fighters = [
+    ...exactFighters.map((f) => ({ f, approximate: false })),
+    ...fuzzyMatches(index.fighters, norm, new Set(exactFighters.map((f) => f.id)), exactFighters.length,
+      (a, b) => b.ufc_fights - a.ufc_fights || b.wins - a.wins)
+      .map(({ row, score }) => ({ f: row, approximate: score > 0 })),
+  ];
 
-  const events = db
-    .prepare("SELECT id, name, date FROM events WHERE lower(name) LIKE ? ORDER BY date DESC LIMIT 8")
+  const exactEvents = db
+    .prepare(`SELECT id, name, date FROM events WHERE lower(name) LIKE ? ORDER BY date DESC LIMIT ${SEARCH_LIMIT}`)
     .all(like) as any[];
+  const events = [
+    ...exactEvents,
+    ...fuzzyMatches(index.events, norm, new Set(exactEvents.map((e) => e.id)), exactEvents.length,
+      (a, b) => b.date.localeCompare(a.date))
+      .map(({ row: { id, name, date }, score }) => ({ id, name, date, ...(score > 0 ? { approximate: true } : {}) })),
+  ];
 
-  const fights = db
-    .prepare(`
+  const fightColumns = `
       SELECT f.id, f.f1_name, f.f2_name, e.name AS event_name, e.date,
         -- Which meeting of this pairing it was, counted over every bout the two
         -- have had, so a rematch reads as "fight 2" however the search matched.
@@ -1174,21 +1285,39 @@ function search(q: string): unknown {
             AND (ge.date < e.date OR (ge.date = e.date AND g.id <= f.id))) AS meeting,
         (SELECT COUNT(*) FROM fights g
           WHERE (g.f1_id = f.f1_id AND g.f2_id = f.f2_id) OR (g.f1_id = f.f2_id AND g.f2_id = f.f1_id)) AS meetings
-      FROM fights f JOIN events e ON e.id = f.event_id
+      FROM fights f JOIN events e ON e.id = f.event_id`;
+  const exactFights = db
+    .prepare(`${fightColumns}
       WHERE lower(f.f1_name || ' vs ' || f.f2_name) LIKE ?
          OR lower(f.f2_name || ' vs ' || f.f1_name) LIKE ?
-      ORDER BY e.date DESC LIMIT 8
+      ORDER BY e.date DESC LIMIT ${SEARCH_LIMIT}
     `)
     .all(like, like) as any[];
+  // "a vs b" names both corners; the matcher wants just the names.
+  const sides = splitMatchup(norm);
+  const fightQuery = sides ? sides.join(" ") : norm;
+  const fuzzyFights = fuzzyMatches(index.fights, fightQuery, new Set(exactFights.map((f) => f.id)), exactFights.length,
+    (a, b) => b.date.localeCompare(a.date));
+  const fuzzyFightRows = new Map(fuzzyFights.length
+    ? (db.prepare(`${fightColumns} WHERE f.id IN (${fuzzyFights.map(() => "?").join(",")})`).all(...fuzzyFights.map(({ row }) => row.id)) as any[]).map((f) => [f.id, f])
+    : []);
+  const fights = [
+    ...exactFights,
+    ...fuzzyFights.flatMap(({ row, score }) => {
+      const fight = fuzzyFightRows.get(row.id);
+      return fight ? [{ ...fight, ...(score > 0 ? { approximate: true } : {}) }] : [];
+    }),
+  ];
 
   return {
-    fighters: fighters.map((f) => ({
+    fighters: fighters.map(({ f, approximate }) => ({
       id: f.id,
       name: f.name,
       nickname: f.nickname,
       record: recordText(currentRecord(f.id, f).value),
       photo_url: cachedPhotoUrl(f.id, f.photo_url),
       ufc_fights: f.ufc_fights,
+      ...(approximate ? { approximate: true } : {}),
     })),
     events,
     fights,
@@ -1227,12 +1356,16 @@ function xmlEscape(value: string): string {
   })[char] ?? char);
 }
 
-function sitemap(): string {
+export function sitemap(): string {
   const events = db.prepare("SELECT id FROM events ORDER BY date DESC").all() as { id: string }[];
   const fights = db
     .prepare("SELECT f.id FROM fights f JOIN events e ON e.id = f.event_id ORDER BY e.date DESC")
     .all() as { id: string }[];
-  const fighters = db.prepare("SELECT id FROM fighters ORDER BY id").all() as { id: string }[];
+  const fighters = db.prepare(`
+    SELECT id FROM fighters fr
+    WHERE ${completedUfcFightExistsSql("fr.id", "f")}
+    ORDER BY id
+  `).all() as { id: string }[];
   const entry = (route: string) => `<url><loc>${xmlEscape(`${SITE_URL}${route}`)}</loc></url>`;
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
@@ -1254,7 +1387,7 @@ type PageSeo = {
   structuredData?: Record<string, unknown>;
 };
 
-function pageSeo(pathname: string): PageSeo {
+export function pageSeo(pathname: string): PageSeo {
   const fallback: PageSeo = {
     title: "UFC Events, Odds, Stats & Rankings | ufc.sh",
     description: "Explore UFC fight cards, matchup odds, results, fighter statistics and current rankings in one fast interface.",
@@ -1314,8 +1447,8 @@ function pageSeo(pathname: string): PageSeo {
           eventStatus: fight.complete ? "https://schema.org/EventCompleted" : "https://schema.org/EventScheduled",
           url: `${SITE_URL}/fights/${fight.id}`,
           competitor: [
-            { "@type": "Person", name: fight.f1_name, url: `${SITE_URL}/fighters/${fight.f1_id}` },
-            { "@type": "Person", name: fight.f2_name, url: `${SITE_URL}/fighters/${fight.f2_id}` },
+            { "@type": "Person", name: fight.f1_name, ...(hasCompletedUfcFight(fight.f1_id) ? { url: `${SITE_URL}/fighters/${fight.f1_id}` } : {}) },
+            { "@type": "Person", name: fight.f2_name, ...(hasCompletedUfcFight(fight.f2_id) ? { url: `${SITE_URL}/fighters/${fight.f2_id}` } : {}) },
           ],
           ...(fight.location ? { location: { "@type": "Place", name: fight.location } } : {}),
         },
@@ -1324,7 +1457,7 @@ function pageSeo(pathname: string): PageSeo {
   }
   if (parts[1] === "fighters" && id) {
     const fighter = db.prepare("SELECT id, name, nickname, wins, losses, draws, photo_url FROM fighters WHERE id = ?").get(id) as any;
-    if (fighter) {
+    if (fighter && hasCompletedUfcFight(id)) {
       const record = recordText(currentRecord(fighter.id, fighter).value);
       return {
         title: `${fighter.name} — Record & Fight History | ufc.sh`,
@@ -1358,6 +1491,9 @@ function injectPageSeo(html: string, pathname: string): string {
       new RegExp(`<meta\\s+${attribute}="${key}"\\s+content="[^"]*"\\s*/?>`),
       () => `<meta ${attribute}="${key}" content="${htmlEscape(value)}" />`,
     );
+  if (pathname === "/bugs") {
+    html = html.replace(/<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/, '<meta name="robots" content="noindex, nofollow" />');
+  }
   let result = html.replace(/<title>[^<]*<\/title>/, () => `<title>${htmlEscape(seo.title)}</title>`);
   result = replaceMeta(result, "name", "description", seo.description);
   result = replaceMeta(result, "property", "og:title", seo.title);
@@ -1554,6 +1690,14 @@ function sendText(
   res.end(body);
 }
 
+/** Repairs write to the database and hit the sources, so only a browser on
+ * this machine may trigger them — never one arriving through a proxy. */
+function isLocalRequest(req: http.IncomingMessage): boolean {
+  const address = req.socket.remoteAddress ?? "";
+  const loopback = address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+  return loopback && !req.headers["x-forwarded-for"] && !req.headers["x-real-ip"] && !req.headers["forwarded"];
+}
+
 function sendJson(req: http.IncomingMessage, res: http.ServerResponse, data: unknown, statusCode = 200): void {
   const body = Buffer.from(JSON.stringify(data));
   const headers: Record<string, string | number> = {
@@ -1574,7 +1718,7 @@ function sendJson(req: http.IncomingMessage, res: http.ServerResponse, data: unk
   res.end(body);
 }
 
-async function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, pathname: string): Promise<void> {
+export async function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, pathname: string): Promise<void> {
   let filePath = path.join(CLIENT_DIST, path.normalize(pathname).replace(/^([/\\])+/, ""));
   if (!filePath.startsWith(CLIENT_DIST)) filePath = path.join(CLIENT_DIST, "index.html");
   let data: Buffer;
@@ -1582,6 +1726,13 @@ async function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, 
   try {
     data = await fs.readFile(filePath);
   } catch {
+    // Never send the SPA document for a missing script, stylesheet or image.
+    // In particular, HTML under /assets/ must not be cached as immutable JS.
+    if (pathname.startsWith("/assets/") || path.extname(pathname)) {
+      res.writeHead(404, { "Content-Type": "text/plain", "Cache-Control": "no-store" });
+      res.end("Asset not found");
+      return;
+    }
     try {
       data = await fs.readFile(path.join(CLIENT_DIST, "index.html"));
       filePath = "index.html";
@@ -1648,6 +1799,16 @@ export function startApi(port: number): void {
       if (p === "/api/labs") return sendJson(req, res, getLabs(url.searchParams));
       if (p === "/api/search") return sendJson(req, res, search(url.searchParams.get("q") ?? ""));
       if (p === "/api/status") return sendJson(req, res, status());
+      if (p === "/api/bugs") return sendJson(req, res, { ...bugReport(), can_act: isLocalRequest(req) });
+      if (p === "/api/bugs/action") {
+        if (req.method !== "POST") return sendJson(req, res, { error: "method not allowed" }, 405);
+        if (!isLocalRequest(req)) return sendJson(req, res, { error: "repairs only run from this machine" }, 403);
+        try {
+          return sendJson(req, res, await runBugAction(url.searchParams.get("action") ?? "", url.searchParams.get("target") ?? ""));
+        } catch (err) {
+          return sendJson(req, res, { ok: false, message: String(err) });
+        }
+      }
       if (p.startsWith("/api/")) return sendJson(req, res, { error: "not found" }, 404);
 
       if (p === "/robots.txt") {

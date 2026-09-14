@@ -16,7 +16,10 @@ export function parseMatchups(data: unknown): LabsMatchups {
   return result;
 }
 
-/** Hide previous results immediately, including the render before effect cleanup. */
+/**
+ * Keep the last results on screen while the next query loads, so typing never
+ * blanks the list. Results are dropped only when the search closes or fails.
+ */
 export function useSearch<T>(url: string | null, parse: (data: unknown) => T) {
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<{ url: string; attempt: number; data: T | null; error: boolean } | null>(null);
@@ -28,8 +31,9 @@ export function useSearch<T>(url: string | null, parse: (data: unknown) => T) {
     );
   }, [url, attempt, parse]);
   const current = url && state?.url === url && state.attempt === attempt ? state : null;
+  const shown = url ? current ?? (state?.error ? null : state) : null;
   return {
-    data: current?.data ?? null,
+    data: shown?.data ?? null,
     searching: Boolean(url && !current),
     error: current?.error ?? false,
     retry: () => setAttempt((value) => value + 1),

@@ -18,6 +18,7 @@ export type FighterRanking = { division: string; rank: string } | null;
 type LiveFighter = {
   id: string;
   name: string;
+  profile_eligible: boolean;
   nickname: string;
   record: string;
   country?: string | null;
@@ -50,6 +51,8 @@ export type LiveCard = {
 export type FightSide = {
   id: string;
   name: string;
+  /** False for a booked debutant who does not have a UFC profile yet. */
+  profile_eligible: boolean;
   nickname: string;
   record: string;
   country?: string | null;
@@ -200,6 +203,8 @@ export type EventFight = {
   title_fight: boolean;
   /** A belt, an interim belt, or a tournament/TUF final, which is not one. */
   title_type: "title" | "interim" | "tuf" | "tournament" | null;
+  /** Rounds the bout is booked for; null for a format with no round count. */
+  scheduled_rounds: number | null;
   method: string | null;
   method_details: string | null;
   round: string | null;
@@ -305,6 +310,8 @@ export type Matchup = {
   in_progress?: boolean;
   stats_updated_at?: number | null;
   weight_class: string;
+  /** Rounds the bout is booked for; null for a format with no round count. */
+  scheduled_rounds: number | null;
   title_fight: boolean;
   /** A belt, an interim belt, or a tournament/TUF final, which is not one. */
   title_type: "title" | "interim" | "tuf" | "tournament" | null;
@@ -599,7 +606,8 @@ export type LabsMatchup = {
   women: boolean;
   title_fight: boolean;
   main_event: boolean;
-  scheduled_rounds: number;
+  /** Booked length as ufc.com publishes it; null until it has. */
+  scheduled_rounds: number | null;
   a: LabsMatchupCorner;
   b: LabsMatchupCorner;
 };
@@ -798,18 +806,19 @@ export type LabsResponse = {
   leaders: LabsLeader[];
 };
 
+/** `approximate` marks a close-spelling suggestion rather than a match as typed. */
 export type SearchResults = {
-  fighters: { id: string; name: string; nickname: string; record: string; photo_url: string | null; ufc_fights: number }[];
-  events: { id: string; name: string; date: string }[];
+  fighters: { id: string; name: string; nickname: string; record: string; photo_url: string | null; ufc_fights: number; approximate?: boolean }[];
+  events: { id: string; name: string; date: string; approximate?: boolean }[];
   /** meeting is this bout's place among every meeting of the pair (1-based). */
-  fights: { id: string; f1_name: string; f2_name: string; event_name: string; date: string; meeting: number; meetings: number }[];
+  fights: { id: string; f1_name: string; f2_name: string; event_name: string; date: string; meeting: number; meetings: number; approximate?: boolean }[];
 };
 
 // ---------------------------------------------------------------------------
 // fetching with an in-memory cache: cached pages render instantly and refresh
 // in the background (stale-while-revalidate).
 
-const apiCache = new RequestCache();
+export const apiCache = new RequestCache();
 const IDLE = { data: null, loading: false, refreshing: false, error: false };
 
 /**

@@ -1,0 +1,718 @@
+import { db, getMeta } from "./db.ts";
+import { americanLine, fightIndex, impliedProbability } from "./fight-index.ts";
+import { pageNamesFighter } from "./scrape/odds.ts";
+import { syncCareerRecord } from "./career-records.ts";
+import {
+  fighterNames,
+  syncEventDetail,
+  syncEventSegments,
+  syncFightDetail,
+  syncFighterBirthDate,
+  syncMethodOddsForEvent,
+  syncOddsForFight,
+} from "./sync.ts";
+
+/**
+ * The data-quality board behind /bugs: every place the database is missing
+ * something the interface would show, or holds something that contradicts
+ * itself, listed item by item with the links needed to check it by hand.
+ *
+ * Checks only read. The few repair actions re-run the same sync a background
+ * pass would, for one item, and are refused unless the request is local.
+ */
+
+export type BugLink = { label: string; href: string; internal?: boolean };
+export type BugItem = {
+  key: string;
+  title: string;
+  subtitle?: string;
+  date?: string;
+  facts: [label: string, value: string][];
+  links: BugLink[];
+  actions: { id: BugActionId; label: string; target: string }[];
+};
+export type BugCheck = {
+  id: string;
+  group: "Odds" | "Records" | "Fights & events" | "Fighters";
+  label: string;
+  description: string;
+  severity: "high" | "medium" | "low";
+  total: number;
+  items: BugItem[];
+};
+
+const ITEM_LIMIT = 1000;
+const UFCSTATS = "http://ufcstats.com";
+const BFO = "https://www.bestfightodds.com";
+
+const fightLinks = (id: string): BugLink[] => [
+  { label: "Matchup", href: `/fights/${id}`, internal: true },
+  { label: "UFCStats", href: `${UFCSTATS}/fight-details/${id}` },
+];
+const eventLink = (id: string): BugLink => ({ label: "Event", href: `/events/${id}`, internal: true });
+const fighterLink = (id: string, name: string): BugLink => ({ label: name, href: `/fighters/${id}`, internal: true });
+const bfoSearch = (name: string): BugLink => ({ label: `BFO search: ${name}`, href: `${BFO}/search?query=${encodeURIComponent(name)}` });
+const sherdogSearch = (name: string): BugLink => ({
+  label: "Sherdog search",
+  href: `https://www.sherdog.com/stats/fightfinder?SearchTxt=${encodeURIComponent(name)}`,
+});
+const ago = (ms: number | null | undefined) => {
+  if (!ms) return "never";
+  const hours = (Date.now() - ms) / 3_600_000;
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))}m ago`;
+  if (hours < 48) return `${Math.round(hours)}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+};
+const recordText = (w: number, l: number, d: number) => `${w}-${l}${d ? `-${d}` : ""}`;
+
+function check(meta: Omit<BugCheck, "total" | "items">, items: BugItem[]): BugCheck {
+  return { ...meta, total: items.length, items: items.slice(0, ITEM_LIMIT) };
+}
+
+/** Fighters with a bout since the start of last year or one booked. */
+function activeFighterIds(): Set<string> {
+  const rows = db.prepare(`
+    SELECT f.f1_id AS id FROM fights f JOIN events e ON e.id = f.event_id WHERE e.date >= date('now', 'start of year', '-1 year') OR e.complete = 0
+    UNION SELECT f.f2_id FROM fights f JOIN events e ON e.id = f.event_id WHERE e.date >= date('now', 'start of year', '-1 year') OR e.complete = 0
+  `).all() as { id: string }[];
+  return new Set(rows.map((row) => row.id).filter(Boolean));
+}
+
+type FightRow = {
+  id: string; event_id: string; event_name: string; date: string; complete: number;
+  f1_id: string; f2_id: string; f1_name: string; f2_name: string; weight_class: string;
+};
+const FIGHT_COLUMNS = "f.id, f.event_id, e.name AS event_name, e.date, e.complete, f.f1_id, f.f2_id, f.f1_name, f.f2_name, f.weight_class";
+
+function fightItem(fight: FightRow, extra: Partial<BugItem> = {}): BugItem {
+  return {
+    key: fight.id,
+    title: `${fight.f1_name} vs ${fight.f2_name}`,
+    subtitle: `${fight.event_name}${fight.weight_class ? ` · ${fight.weight_class}` : ""}`,
+    date: fight.date,
+    facts: extra.facts ?? [],
+    links: [...fightLinks(fight.id), eventLink(fight.event_id), ...(extra.links ?? [])],
+    actions: extra.actions ?? [],
+  };
+}
+
+/** Both names each fighter answers to, when the career record adds one. */
+function aliasFact(fight: FightRow): [string, string][] {
+  const facts: [string, string][] = [];
+  for (const [id, name] of [[fight.f1_id, fight.f1_name], [fight.f2_id, fight.f2_name]] as const) {
+    const names = fighterNames(id, name);
+    if (names.length > 1) facts.push([`${name} also known as`, names.slice(1).join(", ")]);
+  }
+  return facts;
+}
+
+function fighterBfoLinks(fight: FightRow): BugLink[] {
+  const rows = db.prepare("SELECT id, name, bfo_url FROM fighters WHERE id IN (?, ?)").all(fight.f1_id, fight.f2_id) as
+    { id: string; name: string; bfo_url: string | null }[];
+  const links: BugLink[] = [];
+  for (const row of rows) {
+    if (row.bfo_url) links.push({ label: `BFO: ${row.name}`, href: row.bfo_url });
+    for (const name of fighterNames(row.id, row.name)) links.push(bfoSearch(name));
+  }
+  return links;
+}
+
+// ---------------------------------------------------------------------------
+// odds
+
+function upcomingMoneyline(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, e.bfo_url, MAX(COALESCE(o.fetched_at, 0), COALESCE(o.checked_at, 0)) AS fetched_at, o.source_url
+    FROM fights f JOIN events e ON e.id = f.event_id LEFT JOIN odds o ON o.fight_id = f.id
+    WHERE e.complete = 0 AND o.f1_close IS NULL
+    ORDER BY e.date ASC, f.ord ASC
+  `).all() as (FightRow & { bfo_url: string | null; fetched_at: number | null; source_url: string | null })[];
+  return check({
+    id: "odds-upcoming-moneyline",
+    group: "Odds",
+    label: "Upcoming bouts without a moneyline",
+    description: "Announced bouts with no price stored. Usually the source hasn't posted a line yet. If the event board or a fighter page already lists the bout, the names don't match. Check the aliases, then add a fix to the name matching.",
+    severity: "high",
+  }, rows.map((fight) => fightItem(fight, {
+    facts: [["Last checked", ago(fight.fetched_at)], ...aliasFact(fight)],
+    links: [
+      ...(fight.bfo_url ? [{ label: "BFO event board", href: fight.bfo_url }] : []),
+      ...fighterBfoLinks(fight),
+    ],
+    actions: [{ id: "odds", label: "Re-fetch odds", target: fight.id }],
+  })));
+}
+
+function upcomingProps(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, e.bfo_url, e.bfo_checked_at, o.f1_close
+    FROM fights f JOIN events e ON e.id = f.event_id
+    LEFT JOIN method_odds m ON m.fight_id = f.id LEFT JOIN odds o ON o.fight_id = f.id
+    WHERE e.complete = 0 AND m.fight_id IS NULL
+    ORDER BY (o.f1_close IS NULL), e.date ASC, f.ord ASC
+  `).all() as (FightRow & { bfo_url: string | null; bfo_checked_at: number | null; f1_close: string | null })[];
+  return check({
+    id: "odds-upcoming-props",
+    group: "Odds",
+    label: "Upcoming bouts without method props",
+    description: "No KO, submission or decision prices. Props go up late, usually fight week. Bouts that already have a moneyline come first, because the board is more likely to have their props.",
+    severity: "medium",
+  }, rows.map((fight) => fightItem(fight, {
+    facts: [["Moneyline", fight.f1_close ? "yes" : "no"], ["Board last read", ago(fight.bfo_checked_at)], ...aliasFact(fight)],
+    links: fight.bfo_url ? [{ label: "BFO event board", href: fight.bfo_url }] : [],
+    actions: [{ id: "props", label: "Re-read board", target: fight.id }],
+  })));
+}
+
+function pastMoneyline(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, e.bfo_url, MAX(COALESCE(o.fetched_at, 0), COALESCE(o.checked_at, 0)) AS fetched_at
+    FROM fights f JOIN events e ON e.id = f.event_id LEFT JOIN odds o ON o.fight_id = f.id
+    WHERE e.complete = 1 AND e.date >= '2008-01-01' AND o.f1_close IS NULL
+    ORDER BY e.date DESC, f.ord ASC
+  `).all() as (FightRow & { bfo_url: string | null; fetched_at: number | null })[];
+  return check({
+    id: "odds-past-moneyline",
+    group: "Odds",
+    label: "Completed bouts without a closing line",
+    description: "Completed UFC bouts since 2008 with no price, which leaves them out of Market stats and the Labs odds filters. Late replacements often never got a line. The rest are usually a name mismatch on the fighter's BFO page.",
+    severity: "medium",
+  }, rows.map((fight) => fightItem(fight, {
+    facts: [["Last checked", ago(fight.fetched_at)], ...aliasFact(fight)],
+    links: [...(fight.bfo_url ? [{ label: "BFO event board", href: fight.bfo_url }] : []), ...fighterBfoLinks(fight)],
+    actions: [{ id: "odds", label: "Re-fetch odds", target: fight.id }],
+  })));
+}
+
+function pastProps(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, e.bfo_url, e.bfo_final_at
+    FROM fights f JOIN events e ON e.id = f.event_id LEFT JOIN method_odds m ON m.fight_id = f.id
+    WHERE e.complete = 1 AND e.date >= '2021-01-01' AND m.fight_id IS NULL
+    ORDER BY e.date DESC, f.ord ASC
+  `).all() as (FightRow & { bfo_url: string | null; bfo_final_at: number | null })[];
+  return check({
+    id: "odds-past-props",
+    group: "Odds",
+    label: "Completed bouts without method props (2021+)",
+    description: "\"Board read in full\" means the event board was read after the card and had no props for this bout, so nothing is missing on our side. If the board wasn't read in full, the backfill hasn't reached the event yet.",
+    severity: "low",
+  }, rows.map((fight) => fightItem(fight, {
+    facts: [["Board read in full", fight.bfo_final_at ? ago(fight.bfo_final_at) : "no"], ...aliasFact(fight)],
+    links: fight.bfo_url ? [{ label: "BFO event board", href: fight.bfo_url }] : [],
+    actions: [{ id: "props", label: "Re-read board", target: fight.id }],
+  })));
+}
+
+function suspiciousOdds(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, o.f1_open, o.f1_close, o.f2_open, o.f2_close, o.source_url
+    FROM odds o JOIN fights f ON f.id = o.fight_id JOIN events e ON e.id = f.event_id
+    WHERE o.f1_close IS NOT NULL OR o.f2_close IS NOT NULL
+    ORDER BY e.date DESC
+  `).all() as (FightRow & { f1_open: string | null; f1_close: string | null; f2_open: string | null; f2_close: string | null; source_url: string | null })[];
+  const items: BugItem[] = [];
+  for (const fight of rows) {
+    const reasons: string[] = [];
+    const lines = [fight.f1_open, fight.f1_close, fight.f2_open, fight.f2_close];
+    if (lines.some((line) => line != null && (americanLine(line) == null || Math.abs(americanLine(line)!) < 100))) {
+      reasons.push("a line isn't a valid American price");
+    }
+    const p1 = impliedProbability(americanLine(fight.f1_close));
+    const p2 = impliedProbability(americanLine(fight.f2_close));
+    if ((p1 == null) !== (p2 == null)) reasons.push("only one corner has a closing line");
+    if (p1 != null && p2 != null) {
+      const book = p1 + p2;
+      // A single book prices both corners at 100–110%. Much less means the two
+      // lines came from different moments or different bouts.
+      if (book < 0.94 || book > 1.12) reasons.push(`both closes add up to ${(book * 100).toFixed(0)}% (normal is 100–110%)`);
+      const o1 = impliedProbability(americanLine(fight.f1_open));
+      if (o1 != null && Math.abs(o1 - p1) >= 0.4) reasons.push(`${fight.f1_name} moved ${fight.f1_open} → ${fight.f1_close}, possibly swapped corners`);
+    }
+    if (!reasons.length) continue;
+    items.push(fightItem(fight, {
+      facts: [
+        ["Why", reasons.join("; ")],
+        [fight.f1_name, `${fight.f1_open ?? "–"} → ${fight.f1_close ?? "–"}`],
+        [fight.f2_name, `${fight.f2_open ?? "–"} → ${fight.f2_close ?? "–"}`],
+      ],
+      links: fight.source_url ? [{ label: "Odds source", href: fight.source_url }] : [],
+      actions: [],
+    }));
+  }
+  return check({
+    id: "odds-suspicious",
+    group: "Odds",
+    label: "Prices that don't add up",
+    description: "Stored lines that contradict themselves: implied probabilities far outside a normal 100–110% book, one corner priced without the other, an unreadable price, or a huge open-to-close swing. Known cause: BestFightOdds shows each side's closing range across sportsbooks, and we store the top of it (the best price). When the books disagree, the two best prices add up to under 100%. Every case checked on 2026-09-13 matched the source exactly, and the midpoints of the ranges added up to 102–107%, so these are not scraping errors.",
+    severity: "high",
+  }, items);
+}
+
+function wrongFighterPages(): BugCheck {
+  const rows = db.prepare(`
+    SELECT fr.id, fr.name, fr.bfo_url, fr.bfo_checked_at,
+      (SELECT COUNT(*) FROM odds o JOIN fights f ON f.id = o.fight_id
+        WHERE o.source_url = fr.bfo_url AND (f.f1_id = fr.id OR f.f2_id = fr.id)) AS lines
+    FROM fighters fr WHERE fr.bfo_url IS NOT NULL AND fr.bfo_url != ''
+  `).all() as { id: string; name: string; bfo_url: string; bfo_checked_at: number | null; lines: number }[];
+  const items = rows
+    .filter((row) => !pageNamesFighter(row.bfo_url, fighterNames(row.id, row.name)))
+    // A wrong page that already supplied prices has put another bout's line on
+    // this fighter's record; one that supplied nothing only costs coverage.
+    .sort((a, b) => b.lines - a.lines || a.name.localeCompare(b.name))
+    .map((row): BugItem => ({
+      key: row.id,
+      title: row.name,
+      subtitle: `Cached page: ${decodeURIComponent(row.bfo_url.split("/").at(-1) ?? "")}`,
+      facts: [
+        ["Lines stored from this page", String(row.lines)],
+        ["Also known as", fighterNames(row.id, row.name).slice(1).join(", ") || "–"],
+        ["Checked", ago(row.bfo_checked_at)],
+      ],
+      links: [fighterLink(row.id, row.name), { label: "Cached BFO page", href: row.bfo_url }, ...fighterNames(row.id, row.name).map(bfoSearch)],
+      actions: [{ id: "clear-bfo", label: "Forget page", target: row.id }],
+    }));
+  return check({
+    id: "odds-wrong-fighter-page",
+    group: "Odds",
+    label: "Odds page cached for the wrong fighter?",
+    description: "The saved BestFightOdds page doesn't match the fighter's name or any alias (like \"Maicon Patricio\" saved for Patricio Pitbull). A wrong page means that fighter's past odds never match, or worse, get lines from another person's bouts. Pages that already supplied lines come first. Open the matchups to check them. Forgetting a page makes the next backfill look it up again.",
+    severity: "high",
+  }, items);
+}
+
+// ---------------------------------------------------------------------------
+// records
+
+function recordMismatch(active: Set<string>): BugCheck {
+  const index = fightIndex();
+  const rows = db.prepare(`
+    SELECT fr.id, fr.name, fr.wins, fr.losses, fr.draws, cp.source_url, cp.source_name
+    FROM fighters fr JOIN career_profiles cp ON cp.fighter_id = fr.id AND cp.status = 'verified'
+  `).all() as { id: string; name: string; wins: number; losses: number; draws: number; source_url: string | null; source_name: string | null }[];
+  // Every W-L-D the verified history passed through, oldest bout first. UFCStats
+  // often stops updating a record once a fighter leaves, so a record equal to
+  // one of these is the same history seen earlier, not a disagreement.
+  const pastRecords = new Map<string, Set<string>>();
+  const running = new Map<string, [number, number, number]>();
+  const bouts = db.prepare(`
+    SELECT cb.fighter_id, cb.outcome
+    FROM career_bouts cb JOIN career_profiles cp ON cp.fighter_id = cb.fighter_id AND cp.status = 'verified'
+    ORDER BY cb.fighter_id, cb.date, cb.source_order DESC
+  `).all() as { fighter_id: string; outcome: string }[];
+  for (const bout of bouts) {
+    const tally = running.get(bout.fighter_id) ?? [0, 0, 0];
+    if (!running.has(bout.fighter_id)) {
+      running.set(bout.fighter_id, tally);
+      pastRecords.set(bout.fighter_id, new Set(["0-0-0"]));
+    }
+    if (bout.outcome === "win") tally[0]++;
+    else if (bout.outcome === "loss") tally[1]++;
+    else if (bout.outcome === "draw") tally[2]++;
+    pastRecords.get(bout.fighter_id)!.add(tally.join("-"));
+  }
+  const items: (BugItem & { weight: number })[] = [];
+  for (const row of rows) {
+    const career = index.fighters.get(row.id)?.career;
+    if (!career) continue;
+    const diff = Math.abs(career.wins - row.wins) + Math.abs(career.losses - row.losses) + Math.abs(career.draws - row.draws);
+    if (!diff) continue;
+    if (pastRecords.get(row.id)?.has(`${row.wins}-${row.losses}-${row.draws}`)) continue;
+    // UFCStats keeps some overturned wins that Sherdog records as no contests.
+    const short = career.wins <= row.wins && career.losses <= row.losses && career.draws <= row.draws;
+    if (short && career.ncs && diff <= career.ncs) continue;
+    const fighter = index.fighters.get(row.id);
+    items.push({
+      key: row.id,
+      title: row.name,
+      subtitle: active.has(row.id) ? "Active" : "Inactive",
+      date: fighter?.fights.at(-1)?.date,
+      facts: [
+        ["Shown (Sherdog history)", `${recordText(career.wins, career.losses, career.draws)}${career.ncs ? ` (${career.ncs} NC)` : ""}`],
+        ["UFCStats", recordText(row.wins, row.losses, row.draws)],
+        ["Off by", `${diff} result${diff === 1 ? "" : "s"}`],
+        ["UFC record here", fighter ? recordText(fighter.ufc.wins, fighter.ufc.losses, fighter.ufc.draws) : "–"],
+      ],
+      links: [
+        fighterLink(row.id, row.name),
+        { label: "UFCStats", href: `${UFCSTATS}/fighter-details/${row.id}` },
+        ...(row.source_url ? [{ label: "Sherdog", href: row.source_url }] : []),
+      ],
+      actions: [{ id: "career", label: "Re-verify record", target: row.id }],
+      weight: (active.has(row.id) ? 1000 : 0) + diff,
+    });
+  }
+  items.sort((a, b) => b.weight - a.weight || (b.date ?? "").localeCompare(a.date ?? ""));
+  return check({
+    id: "record-mismatch",
+    group: "Records",
+    label: "Record differs between sources",
+    description: "The record we show comes from the verified Sherdog history and doesn't match UFCStats. Either side can be wrong: Records where UFCStats simply stopped updating (its record matches the history at an earlier date) and overturned wins that Sherdog counts as no contests are skipped. What's left is usually TUF exhibition bouts UFCStats counts, missing Sherdog rows, or a different person. Active fighters and the biggest gaps come first.",
+    severity: "medium",
+  }, items.map(({ weight: _weight, ...item }) => item));
+}
+
+function unverifiedRecords(active: Set<string>): BugCheck {
+  const rows = db.prepare(`
+    SELECT fr.id, fr.name, fr.nickname, fr.wins, fr.losses, fr.draws, cp.status, cp.error, cp.source_url, cp.checked_at
+    FROM fighters fr LEFT JOIN career_profiles cp ON cp.fighter_id = fr.id
+    WHERE (cp.status IS NULL OR cp.status != 'verified')
+      AND EXISTS (SELECT 1 FROM fights f WHERE f.f1_id = fr.id OR f.f2_id = fr.id)
+  `).all() as { id: string; name: string; nickname: string; wins: number; losses: number; draws: number; status: string | null; error: string | null; source_url: string | null; checked_at: number | null }[];
+  const statusOrder: Record<string, number> = { error: 0, ambiguous: 1, not_found: 2, pending: 3 };
+  const items = rows
+    .filter((row) => active.has(row.id))
+    .sort((a, b) => (statusOrder[a.status ?? "pending"] ?? 4) - (statusOrder[b.status ?? "pending"] ?? 4) || a.name.localeCompare(b.name))
+    .map((row): BugItem => ({
+      key: row.id,
+      title: row.name,
+      subtitle: row.nickname ? `"${row.nickname}"` : undefined,
+      facts: [
+        ["Status", row.status ?? "never checked"],
+        ...(row.error ? [["Reason", row.error] as [string, string]] : []),
+        ["Shown instead (UFCStats)", recordText(row.wins, row.losses, row.draws)],
+        ["Checked", ago(row.checked_at)],
+      ],
+      links: [
+        fighterLink(row.id, row.name),
+        { label: "UFCStats", href: `${UFCSTATS}/fighter-details/${row.id}` },
+        ...(row.source_url ? [{ label: "Sherdog candidate", href: row.source_url }] : []),
+        sherdogSearch(row.name),
+      ],
+      actions: [{ id: "career", label: "Retry verification", target: row.id }],
+    }));
+  return check({
+    id: "record-unverified",
+    group: "Records",
+    label: "Active fighters without a verified history",
+    description: "No Sherdog history could be tied to the fighter, so their profile shows only the UFCStats record: no outside-UFC bouts and no Road to UFC numbers. \"Ambiguous\" means candidates were found but none matched the UFC bouts closely enough.",
+    severity: "high",
+  }, items);
+}
+
+function unlinkedUfcBouts(): BugCheck {
+  const rows = db.prepare(`
+    SELECT b.fighter_id, fr.name, b.date, b.opponent_name, b.event_name, b.event_url, b.outcome, b.method, cp.source_url
+    FROM career_bouts b JOIN fighters fr ON fr.id = b.fighter_id
+    LEFT JOIN career_profiles cp ON cp.fighter_id = b.fighter_id
+    WHERE b.is_ufc = 1 AND b.ufc_fight_id IS NULL
+      AND b.event_name NOT LIKE '%Road to UFC%' AND b.event_name NOT LIKE '%Contender Series%'
+      AND b.event_name NOT LIKE '%Ultimate Fighter%'
+      -- UFCStats starts at UFC 2, so UFC 1 rows can never link.
+      AND b.event_name NOT LIKE 'UFC 1 -%'
+    ORDER BY b.date DESC
+  `).all() as { fighter_id: string; name: string; date: string; opponent_name: string; event_name: string; event_url: string | null; outcome: string; method: string; source_url: string | null }[];
+  const onDate = db.prepare(`
+    SELECT f.id, f.f1_name, f.f2_name FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE (f.f1_id = ? OR f.f2_id = ?) AND abs(julianday(e.date) - julianday(?)) <= 2
+  `);
+  return check({
+    id: "ufc-bout-unlinked",
+    group: "Records",
+    label: "Sherdog UFC bouts with no matching UFCStats fight",
+    description: "Sherdog lists a UFC bout that isn't linked to any of our fights. It might be under a different opponent spelling, a bout UFCStats doesn't have, or a history row given to the wrong fighter. A candidate bout on the same date usually points to a name mismatch.",
+    severity: "medium",
+  }, rows.map((row): BugItem => {
+    const nearby = onDate.all(row.fighter_id, row.fighter_id, row.date) as { id: string; f1_name: string; f2_name: string }[];
+    return {
+      key: `${row.fighter_id}:${row.date}:${row.opponent_name}`,
+      title: `${row.name} vs ${row.opponent_name}`,
+      subtitle: row.event_name,
+      date: row.date,
+      facts: [
+        ["Sherdog result", `${row.outcome}${row.method ? ` · ${row.method}` : ""}`],
+        ["Our bout on that date", nearby.map((f) => `${f.f1_name} vs ${f.f2_name}`).join("; ") || "none"],
+      ],
+      links: [
+        fighterLink(row.fighter_id, row.name),
+        ...nearby.map((f) => ({ label: "Candidate matchup", href: `/fights/${f.id}`, internal: true })),
+        ...(row.source_url ? [{ label: "Sherdog", href: row.source_url }] : []),
+        ...(row.event_url ? [{ label: "Sherdog event", href: row.event_url }] : []),
+      ],
+      actions: [{ id: "career", label: "Re-verify record", target: row.fighter_id }],
+    };
+  }));
+}
+
+function fightsMissingFromHistory(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, side.fighter_id, side.name, cp.source_url
+    FROM fights f JOIN events e ON e.id = f.event_id
+    JOIN (SELECT id, f1_id AS fighter_id, f1_name AS name FROM fights UNION ALL SELECT id, f2_id, f2_name FROM fights) side ON side.id = f.id
+    JOIN career_profiles cp ON cp.fighter_id = side.fighter_id AND cp.status = 'verified'
+    WHERE e.complete = 1 AND (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)
+      AND NOT EXISTS (SELECT 1 FROM career_bouts b WHERE b.ufc_fight_id = f.id AND b.fighter_id = side.fighter_id)
+    ORDER BY e.date DESC
+  `).all() as (FightRow & { fighter_id: string; name: string; source_url: string | null })[];
+  return check({
+    id: "ufc-fight-missing-from-history",
+    group: "Records",
+    label: "UFC fights missing from a verified history",
+    description: "A completed UFC fight is missing from the fighter's verified Sherdog history, so their career record is short by one. Sherdog may not have added a recent result yet, or the reconciliation missed the row.",
+    severity: "medium",
+  }, rows.map((row) => ({
+    ...fightItem(row, {
+      facts: [["Missing from", row.name]],
+      links: [fighterLink(row.fighter_id, row.name), ...(row.source_url ? [{ label: "Sherdog", href: row.source_url }] : [])],
+      actions: [{ id: "career", label: `Re-verify ${row.name}`, target: row.fighter_id }],
+    }),
+    key: `${row.id}:${row.fighter_id}`,
+  })));
+}
+
+function duplicateFighters(): BugCheck {
+  const rows = db.prepare(`
+    SELECT fr.id, fr.name, fr.norm_name, fr.wins, fr.losses, fr.draws, fr.weight,
+           (SELECT MAX(e.date) FROM fights f JOIN events e ON e.id = f.event_id WHERE f.f1_id = fr.id OR f.f2_id = fr.id) AS last_fight
+    FROM fighters fr
+    WHERE fr.norm_name IN (SELECT norm_name FROM fighters GROUP BY norm_name HAVING COUNT(*) > 1)
+    ORDER BY fr.norm_name, last_fight DESC
+  `).all() as { id: string; name: string; norm_name: string; wins: number; losses: number; draws: number; weight: string; last_fight: string | null }[];
+  const groups = new Map<string, typeof rows>();
+  for (const row of rows) groups.set(row.norm_name, [...(groups.get(row.norm_name) ?? []), row]);
+  return check({
+    id: "duplicate-fighter-names",
+    group: "Fighters",
+    label: "Different fighters with the same name",
+    description: "UFCStats has more than one fighter under this name. Usually they really are different people, but name-only matching (odds, rankings, search) can pick the wrong one. Check that each record and weight looks like a separate person.",
+    severity: "low",
+  }, [...groups.values()].map((group): BugItem => ({
+    key: group[0].norm_name,
+    title: group[0].name,
+    subtitle: `${group.length} fighters`,
+    facts: group.map((row) => [row.id, `${recordText(row.wins, row.losses, row.draws)} · ${row.weight || "?"} · last ${row.last_fight ?? "never fought"}`]),
+    links: group.flatMap((row) => [
+      { label: `Profile ${row.id.slice(0, 6)}`, href: `/fighters/${row.id}`, internal: true },
+      { label: `UFCStats ${row.id.slice(0, 6)}`, href: `${UFCSTATS}/fighter-details/${row.id}` },
+    ]),
+    actions: [],
+  })));
+}
+
+// ---------------------------------------------------------------------------
+// fights, events, fighters
+
+function decisionsWithoutJudges(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, f.method, f.detail_fetched_at
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 1 AND f.method LIKE '%DEC' AND (f.detail_json IS NULL OR f.detail_json NOT LIKE '%"judges":[{%')
+      -- UFCStats has no scorecards for 2002 and earlier, so nothing there is fixable.
+      AND e.date >= '2003-01-01'
+    ORDER BY e.date DESC
+  `).all() as (FightRow & { method: string; detail_fetched_at: number | null })[];
+  return check({
+    id: "decision-no-judges",
+    group: "Fights & events",
+    label: "Decisions without judges' scorecards",
+    description: "The bout went to the judges but no scorecards are stored, so it's missing from the judges' room and the scorecard panel. Bouts from 2002 and earlier are skipped, since UFCStats never had their scorecards. For recent bouts, re-fetching usually fixes it.",
+    severity: "low",
+  }, rows.map((fight) => fightItem(fight, {
+    facts: [["Method", fight.method], ["Detail fetched", ago(fight.detail_fetched_at)]],
+    actions: [{ id: "detail", label: "Re-fetch fight detail", target: fight.id }],
+  })));
+}
+
+function upcomingWithoutSegment(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, e.ufc_slug, e.segments_fetched_at
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 0 AND f.segment IS NULL
+      -- ufc.com only splits a card close to the event, so earlier than a week out
+      -- a missing segment is a problem only when the rest of the card is placed.
+      AND (e.date <= date('now', '+7 day')
+        OR EXISTS (SELECT 1 FROM fights o WHERE o.event_id = f.event_id AND o.segment IS NOT NULL))
+    ORDER BY e.date ASC, f.ord ASC
+  `).all() as (FightRow & { ufc_slug: string | null; segments_fetched_at: number | null })[];
+  return check({
+    id: "upcoming-no-segment",
+    group: "Fights & events",
+    label: "Upcoming bouts not placed on a broadcast",
+    description: "The bout isn't placed under early prelims, prelims or main card, so it has no estimated start time. Usually ufc.com hasn't listed it yet (a new booking), or its names differ from UFCStats.",
+    severity: "medium",
+  }, rows.map((fight) => fightItem(fight, {
+    facts: [["ufc.com slug", fight.ufc_slug ?? "none"], ["Segments read", ago(fight.segments_fetched_at)]],
+    links: fight.ufc_slug ? [{ label: "ufc.com event", href: `https://www.ufc.com/event/${fight.ufc_slug}` }] : [],
+    actions: fight.ufc_slug ? [{ id: "segments", label: "Re-read ufc.com card", target: fight.event_id }] : [],
+  })));
+}
+
+function staleEvents(): BugCheck {
+  const rows = db.prepare(`
+    SELECT e.id, e.name, e.date, e.detail_fetched_at,
+      (SELECT COUNT(*) FROM fights f WHERE f.event_id = e.id) AS bouts,
+      (SELECT COUNT(*) FROM fights f WHERE f.event_id = e.id AND f.f1_outcome IS NULL AND f.f2_outcome IS NULL AND f.method IS NULL) AS open
+    FROM events e
+    WHERE (e.complete = 0 AND e.date < date('now', '-2 day'))
+       OR (e.complete = 1 AND EXISTS (SELECT 1 FROM fights f WHERE f.event_id = e.id AND f.f1_outcome IS NULL AND f.f2_outcome IS NULL AND f.method IS NULL))
+       OR NOT EXISTS (SELECT 1 FROM fights f WHERE f.event_id = e.id)
+    ORDER BY e.date DESC
+  `).all() as { id: string; name: string; date: string; detail_fetched_at: number | null; bouts: number; open: number }[];
+  return check({
+    id: "event-stale",
+    group: "Fights & events",
+    label: "Events with missing results or no bouts",
+    description: "Either a past event still isn't marked complete, a completed event has bouts without a result, or an event has no bouts at all.",
+    severity: "high",
+  }, rows.map((event): BugItem => ({
+    key: event.id,
+    title: event.name,
+    date: event.date,
+    facts: [["Bouts", String(event.bouts)], ["Without result", String(event.open)], ["Detail fetched", ago(event.detail_fetched_at)]],
+    links: [eventLink(event.id), { label: "UFCStats", href: `${UFCSTATS}/event-details/${event.id}` }],
+    actions: [{ id: "event", label: "Re-fetch event", target: event.id }],
+  })));
+}
+
+function eventsWithoutWiki(): BugCheck {
+  const rows = db.prepare(`
+    SELECT id, name, date, wiki_checked_at FROM events
+    WHERE complete = 1 AND wiki_title IS NULL AND wiki_checked_at IS NOT NULL
+    ORDER BY date DESC
+  `).all() as { id: string; name: string; date: string; wiki_checked_at: number }[];
+  return check({
+    id: "event-no-wiki",
+    group: "Fights & events",
+    label: "Events with no Wikipedia article found",
+    description: "No Wikipedia article was found, so this event's missed weigh-ins are unknown (not the same as \"everyone made weight\"). Usually a Fight Night whose article has a different title. Re-checking queues it for the next background pass.",
+    severity: "low",
+  }, rows.map((event): BugItem => ({
+    key: event.id,
+    title: event.name,
+    date: event.date,
+    facts: [["Checked", ago(event.wiki_checked_at)]],
+    links: [
+      eventLink(event.id),
+      { label: "Wikipedia search", href: `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(event.name)}` },
+    ],
+    actions: [{ id: "wiki", label: "Queue re-check", target: event.id }],
+  })));
+}
+
+function fighterGaps(active: Set<string>): BugCheck {
+  const rows = db.prepare(`
+    SELECT id, name, photo_url, photo_checked_at, birth_date, birth_fetched_at, country, height, reach, stance
+    FROM fighters ORDER BY name
+  `).all() as { id: string; name: string; photo_url: string | null; photo_checked_at: number | null; birth_date: string; birth_fetched_at: number | null; country: string | null; height: string; reach: string; stance: string }[];
+  const blank = (value: string | null) => !value || value === "--";
+  const items: BugItem[] = [];
+  for (const row of rows) {
+    if (!active.has(row.id)) continue;
+    const missing = [
+      !row.photo_url && "photo",
+      blank(row.birth_date) && "birth date",
+      blank(row.country) && "country",
+      blank(row.height) && "height",
+      blank(row.reach) && "reach",
+      blank(row.stance) && "stance",
+    ].filter((field): field is string => Boolean(field));
+    if (!missing.length) continue;
+    items.push({
+      key: row.id,
+      title: row.name,
+      facts: [["Missing", missing.join(", ")], ["Photo checked", ago(row.photo_checked_at)], ["Birth date checked", ago(row.birth_fetched_at)]],
+      links: [
+        fighterLink(row.id, row.name),
+        { label: "UFCStats", href: `${UFCSTATS}/fighter-details/${row.id}` },
+        { label: "ufc.com search", href: `https://www.ufc.com/athletes/all?search=${encodeURIComponent(row.name)}` },
+      ],
+      actions: blank(row.birth_date) ? [{ id: "birth", label: "Re-fetch birth date", target: row.id }] : [],
+    });
+  }
+  return check({
+    id: "fighter-profile-gaps",
+    group: "Fighters",
+    label: "Active fighters with profile gaps",
+    description: "Fighters with a bout since the start of last year, or one booked, who are missing a photo, birth date (which drives age and Labs age filters), country, height, reach or stance.",
+    severity: "medium",
+  }, items);
+}
+
+// ---------------------------------------------------------------------------
+
+export function bugReport(): { generated_at: number; sync: { last_tick_at: string | null; last_sync_error: string | null }; checks: BugCheck[] } {
+  const active = activeFighterIds();
+  // Most important first within each group: wrong data on screen, then data
+  // that will cause wrong data, then gaps on upcoming cards, then history.
+  const checks = [
+    suspiciousOdds(),
+    wrongFighterPages(),
+    upcomingMoneyline(),
+    pastMoneyline(),
+    upcomingProps(),
+    pastProps(),
+    unverifiedRecords(active),
+    fightsMissingFromHistory(),
+    unlinkedUfcBouts(),
+    recordMismatch(active),
+    staleEvents(),
+    upcomingWithoutSegment(),
+    decisionsWithoutJudges(),
+    eventsWithoutWiki(),
+    fighterGaps(active),
+    duplicateFighters(),
+  ];
+  return {
+    generated_at: Date.now(),
+    sync: { last_tick_at: getMeta("last_tick_at"), last_sync_error: getMeta("last_sync_error") },
+    checks,
+  };
+}
+
+export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki";
+
+/** Runs one repair and says in a sentence what it found. */
+export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
+  const fight = () => db.prepare(`
+    SELECT f.id, f.event_id, f.f1_id, f.f2_id, f.f1_name, f.f2_name, e.date
+    FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?
+  `).get(target) as { id: string; event_id: string; f1_id: string; f2_id: string; f1_name: string; f2_name: string; date: string } | undefined;
+
+  switch (action) {
+    case "odds": {
+      const row = fight();
+      if (!row) return { ok: false, message: "Fight not found." };
+      const stored = await syncOddsForFight(row);
+      const props = await syncMethodOddsForEvent(row.event_id, row.id);
+      const odds = db.prepare("SELECT f1_close, f2_close FROM odds WHERE fight_id = ?").get(row.id) as { f1_close: string | null; f2_close: string | null } | undefined;
+      return {
+        ok: stored,
+        message: stored && odds?.f1_close
+          ? `Stored ${row.f1_name} ${odds.f1_close} / ${row.f2_name} ${odds.f2_close}${props.fights ? ", plus props" : ""}.`
+          : `No line found for this pairing on the source${props.fights ? ", but props were stored" : ""}.`,
+      };
+    }
+    case "props": {
+      const row = fight();
+      if (!row) return { ok: false, message: "Fight not found." };
+      const result = await syncMethodOddsForEvent(row.event_id, row.id);
+      return { ok: result.fights > 0, message: result.fights ? "Props stored." : result.failed ? "The board couldn't be read." : "The board has no props for this bout." };
+    }
+    case "career": {
+      const verified = await syncCareerRecord(target);
+      const row = db.prepare("SELECT status, error FROM career_profiles WHERE fighter_id = ?").get(target) as { status: string; error: string } | undefined;
+      return { ok: verified, message: verified ? "History verified and re-stored." : `Still ${row?.status ?? "unverified"}${row?.error ? `: ${row.error}` : ""}.` };
+    }
+    case "detail":
+      await syncFightDetail(target);
+      return { ok: true, message: "Fight detail re-fetched." };
+    case "segments":
+      await syncEventSegments(target);
+      return { ok: true, message: "ufc.com card re-read." };
+    case "event":
+      await syncEventDetail(target);
+      return { ok: true, message: "Event re-fetched." };
+    case "birth":
+      await syncFighterBirthDate(target);
+      return { ok: true, message: "Birth date re-fetched." };
+    case "clear-bfo":
+      db.prepare("UPDATE fighters SET bfo_url = NULL, bfo_checked_at = NULL WHERE id = ?").run(target);
+      return { ok: true, message: "Forgotten. The next odds backfill looks the page up again." };
+    case "wiki":
+      db.prepare("UPDATE events SET wiki_checked_at = NULL WHERE id = ?").run(target);
+      return { ok: true, message: "Queued for the next weigh-in pass." };
+    default:
+      return { ok: false, message: `Unknown action ${action}.` };
+  }
+}

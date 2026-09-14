@@ -391,7 +391,7 @@ function FeaturesMenu({
           <path d="m3 4.5 3 3 3-3" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </summary>
-      <div className="absolute right-0 mt-2 w-72 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl">
+      <div className="absolute right-0 mt-2 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl">
         <div className="border-b border-zinc-100 px-4 py-3">
           <div className="text-xs font-semibold text-zinc-900">Ranking features</div>
           <div className="mt-0.5 text-[10px] text-zinc-400">Choose how much detail appears in the rankings.</div>
@@ -518,7 +518,9 @@ export default function RankingsPage() {
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
       <div className="mx-auto max-w-7xl p-3 pb-8">
-        <div className={`${shell} mb-3 flex flex-wrap items-center justify-between gap-3 px-4 py-2.5`}>
+        {/* Filters and the Features menu share the first line; the legend takes
+            a line of its own under them until there is room for everything. */}
+        <div className={`${shell} mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5`}>
           <div className="flex flex-wrap items-center gap-2">
             <div className={segmentedGroup} role="group" aria-label="Ranking view">
               {SOURCES.map((source) => (
@@ -553,7 +555,7 @@ export default function RankingsPage() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 text-[11px] text-zinc-500">
+          <div className="order-3 flex basis-full flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-zinc-500 lg:order-2 lg:ml-auto lg:basis-auto lg:justify-end">
             {/* ufc.com is read every six hours; a day without one is worth saying. */}
             <Freshness label="Rankings updated" at={data?.updated_at} staleAfterHours={24} />
             {features.activityColors ? (
@@ -572,6 +574,8 @@ export default function RankingsPage() {
                 </span>
               </>
             ) : null}
+          </div>
+          <div className="order-2 ml-auto lg:order-3 lg:ml-0">
             <FeaturesMenu
               features={features}
               onChange={setFeatures}

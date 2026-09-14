@@ -7,7 +7,7 @@ import Avatar from "./Avatar";
 import SearchFeedback from "./SearchFeedback";
 import { useSearchSelection } from "./searchInteraction";
 
-type Item = { key: string; to: string; group: string; render: () => React.ReactNode };
+type Item = { key: string; to: string; group: string; label?: string; approximate?: boolean; render: () => React.ReactNode };
 const destinations = [
   { to: "/", label: "Events", description: "Browse cards and fight results", icon: CalendarDays },
   { to: "/rankings", label: "Rankings", description: "Explore every division", icon: Trophy },
@@ -41,7 +41,7 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
 
   const items: Item[] = trimmed ? [
     ...(data?.fighters ?? []).map((fighter) => ({
-      key: `fighter-${fighter.id}`, to: `/fighters/${fighter.id}`, group: "Fighters",
+      key: `fighter-${fighter.id}`, to: `/fighters/${fighter.id}`, group: fighter.approximate ? "Fighters · did you mean" : "Fighters", approximate: fighter.approximate, label: fighter.name,
       render: () => <>
         <Avatar src={fighter.photo_url} name={fighter.name} size="xs" />
         <span className="min-w-0 flex-1"><span className="block truncate font-medium text-zinc-900">{fighter.name}</span>{fighter.nickname && <span className="block truncate text-xs text-zinc-500">“{fighter.nickname}”</span>}</span>
@@ -49,7 +49,7 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
       </>,
     })),
     ...(data?.events ?? []).map((event) => ({
-      key: `event-${event.id}`, to: `/events/${event.id}`, group: "Events",
+      key: `event-${event.id}`, to: `/events/${event.id}`, group: event.approximate ? "Events · did you mean" : "Events", approximate: event.approximate, label: event.name,
       render: () => <>
         <CalendarDays className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />
         <span className="min-w-0 flex-1 truncate font-medium text-zinc-900">{event.name}</span>
@@ -57,7 +57,7 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
       </>,
     })),
     ...(data?.fights ?? []).map((fight) => ({
-      key: `fight-${fight.id}`, to: `/fights/${fight.id}`, group: "Fights",
+      key: `fight-${fight.id}`, to: `/fights/${fight.id}`, group: fight.approximate ? "Fights · did you mean" : "Fights", approximate: fight.approximate, label: `${fight.f1_name} vs ${fight.f2_name}`,
       render: () => <>
         <span className="min-w-0 flex-1"><span className="flex min-w-0 items-center gap-2"><span className="truncate font-medium text-zinc-900">{fight.f1_name} <span className="text-zinc-400">vs</span> {fight.f2_name}</span>{fight.meetings > 1 ? <span className="shrink-0 rounded-full bg-zinc-100 px-1.5 py-px text-[10px] font-semibold tabular-nums text-zinc-600" title={`Meeting ${fight.meeting} of ${fight.meetings}`}>Fight {fight.meeting}</span> : null}</span><span className="block truncate text-xs text-zinc-500">{fight.event_name}</span></span>
         <span className="shrink-0 text-xs tabular-nums text-zinc-500">{formatDateShortWithYear(fight.date)}</span>
@@ -116,6 +116,11 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
               if (event.nativeEvent.isComposing) return;
               if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); selection.move(event.key); }
               else if (event.key === "Enter") { event.preventDefault(); go(items[selection.active]); }
+              else if (event.key === "Tab" && !event.shiftKey) {
+                // Autocomplete to the highlighted result; once filled, Tab moves focus as usual.
+                const label = items[selection.active]?.label;
+                if (label && label !== query) { event.preventDefault(); event.stopPropagation(); setQuery(label); }
+              }
             }}
             placeholder="Search fighters, events, matchups…"
             className="min-w-0 flex-1 bg-transparent py-4 text-sm text-zinc-900 outline-none placeholder:text-zinc-400"
@@ -140,8 +145,8 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
           {trimmed && !items.length && <SearchFeedback searching={searching} error={error} retry={() => { inputRef.current?.focus(); retry(); }} empty={`No results for “${trimmed}”. Try a fighter name, event, or “x vs y”.`} />}
         </div>
         <div className="flex shrink-0 items-center justify-between gap-3 border-t border-zinc-100 px-4 py-3 text-[10px] text-zinc-500">
-          <span>{trimmed ? searching ? "Searching the archive" : error ? "Search unavailable" : `${items.length} result${items.length === 1 ? "" : "s"}` : "Fighters, events, and every matchup"}</span>
-          <span className="hidden shrink-0 sm:inline" aria-hidden="true">↑ ↓ navigate <span className="mx-2">↵ open</span> esc close</span>
+          <span>{trimmed ? searching && !data ? "Searching the archive" : error ? "Search unavailable" : items.length && items.every((item) => item.approximate) ? `No exact match · ${items.length} close spelling${items.length === 1 ? "" : "s"}` : `${items.length} result${items.length === 1 ? "" : "s"}` : "Fighters, events, and every matchup"}</span>
+          <span className="hidden shrink-0 sm:inline" aria-hidden="true">↑ ↓ navigate <span className="ml-2">⇥ complete</span><span className="mx-2">↵ open</span> esc close</span>
         </div>
         <span role="status" className="sr-only">{data ? `${items.length} search results` : ""}</span>
       </div>

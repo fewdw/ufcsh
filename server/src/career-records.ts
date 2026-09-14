@@ -65,7 +65,51 @@ export function samePersonName(a: string, b: string, bNickname = ""): boolean {
 }
 
 function looksLikeUfcEvent(name: string): boolean {
+  // Unrelated promotions that happen to abbreviate to UFC.
+  if (/^UFC (?:Venezuela|- Universal Fight Combat)\b/i.test(name.trim())) return false;
   return /^(?:UFC\b|The Ultimate Fighter\b|Dana White(?:'s)? (?:Tuesday Night )?Contender Series\b)/i.test(name.trim());
+}
+
+function oneEditApart(a: string, b: string): boolean {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && a[i] === b[i]) i++;
+  return a.slice(i + 1) === b.slice(i + 1) || a.slice(i + 1) === b.slice(i) || a.slice(i) === b.slice(i + 1);
+}
+
+/**
+ * Looser than samePersonName, and only ever used together with a date: one
+ * name's words all appear in the other ("Maheshate" / "Maheshate Hayisaer",
+ * "Felix Mitchell" / "Felix Lee Mitchell"), or the surname agrees — allowing
+ * one typo in a long one — while the first names agree on their start
+ * ("Josh" / "Joshua", "Costas" / "Constantinos", "Alberta" / "Alberto").
+ */
+export function similarOpponentName(a: string, b: string): boolean {
+  if (samePersonName(a, b)) return true;
+  const left = withoutSuffix(sourceName(a)).split(" ").filter(Boolean);
+  const right = withoutSuffix(sourceName(b)).split(" ").filter(Boolean);
+  if (!left.length || !right.length) return false;
+  const [short, long] = left.length <= right.length ? [left, right] : [right, left];
+  if (short.every((token) => long.includes(token)) && short.join("").length >= 5) return true;
+  if (left.length < 2 || right.length < 2) return false;
+  const lastA = left[left.length - 1];
+  const lastB = right[right.length - 1];
+  const surname = lastA === lastB || (Math.min(lastA.length, lastB.length) >= 5 && oneEditApart(lastA, lastB));
+  return surname && left[0].slice(0, 2) === right[0].slice(0, 2);
+}
+
+/** The same name allowing one letter's difference in a long word
+ *  ("Mehemmedeli" / "Mehemmedali"). Only ever trusted beside a birth date. */
+function closeName(a: string, b: string): boolean {
+  if (samePersonName(a, b)) return true;
+  const left = withoutSuffix(sourceName(a)).split(" ").filter(Boolean);
+  const right = withoutSuffix(sourceName(b)).split(" ").filter(Boolean);
+  let typos = 0;
+  return left.length >= 2 && left.length === right.length && left.every((token, i) => {
+    if (token === right[i]) return true;
+    typos++;
+    return typos === 1 && Math.min(token.length, right[i].length) >= 5 && oneEditApart(token, right[i]);
+  });
 }
 
 function localUfcBouts(fighterId: string): KnownUfcBout[] {
@@ -96,12 +140,24 @@ export function reconcileCareerBouts(source: SherdogBout[], known: KnownUfcBout[
         && Math.abs(daysBetween(candidate.date, bout.date)) <= 1
         && samePersonName(candidate.opponent, bout.opponentName));
     }
-    // Some records use a ring name on only one source. A date identifies the
-    // bout when both sources contain exactly one row for that fighter that day.
+    // The same bout under a shortened or misspelled opponent name ("Felix
+    // Mitchell" for Felix Lee Mitchell, "Leininger" for Leninger). Only a single
+    // such candidate within a day counts, so a tournament night can't mix them.
     if (!match) {
-      const onDate = known.filter((candidate) => unused.has(candidate.id) && candidate.date === bout.date);
-      const sourceOnDate = source.filter((candidate) => candidate.date === bout.date);
-      if (onDate.length === 1 && sourceOnDate.length === 1) match = onDate[0];
+      const similar = known.filter((candidate) => unused.has(candidate.id)
+        && Math.abs(daysBetween(candidate.date, bout.date)) <= 1
+        && similarOpponentName(candidate.opponent, bout.opponentName));
+      if (similar.length === 1) match = similar[0];
+    }
+    // Some records use a ring name on only one source. A date identifies the
+    // bout when both sources contain exactly one row for that fighter within a
+    // day of it — the two sources disagree on the date around midnight.
+    if (!match) {
+      const near = (date: string) => Math.abs(daysBetween(date, bout.date)) <= 1;
+      const onDate = known.filter((candidate) => unused.has(candidate.id) && near(candidate.date));
+      const sourceOnDate = source.filter((candidate) => near(candidate.date));
+      const knownNear = known.filter((candidate) => near(candidate.date));
+      if (onDate.length === 1 && knownNear.length === 1 && sourceOnDate.length === 1) match = onDate[0];
     }
     if (match) unused.delete(match.id);
     return {
@@ -148,6 +204,23 @@ export function isVerifiedIdentity(
     && local.losses === atLastUfc.filter((bout) => bout.outcome === "loss").length
     && local.draws === atLastUfc.filter((bout) => bout.outcome === "draw").length;
   const recordMatches = totalsMatch(local, profile) || frozenTotalsMatch;
+  const allUfcMatched = matched === known.length;
+  // The headline records drift apart by a bout whenever one source is slow to
+  // add a result or counts a bout the other doesn't. Two independent keys
+  // settle identity without them: the same name (to one typo) and the same
+  // date of birth, with every UFC bout we have reconciling exactly. Only for
+  // a single bout of drift: anything wider is a stale total to review by hand.
+  const recordGap = Math.abs(local.wins - profile.wins) + Math.abs(local.losses - profile.losses) + Math.abs(local.draws - profile.draws);
+  if (recordGap <= 1 && birthMatches && allUfcMatched && closeName(local.name, profile.name)) return true;
+  // An exact name that also shares our UFC bouts by date and opponent is the
+  // same person when the records are one bout apart.
+  if (recordGap <= 1 && known.length >= 1 && allUfcMatched && samePersonName(local.name, profile.name)) return true;
+  // A debutant has no shared bout, and a regional record often counts bouts the
+  // other source doesn't. The only result carrying the name (or a short form of
+  // it, "Joe" for Joseph), the same nickname and the same date of birth is the
+  // same person at any record gap.
+  const sameNickname = Boolean(local.nickname && profile.nickname && normName(local.nickname) === normName(profile.nickname));
+  if (known.length === 0 && candidateCount === 1 && birthMatches && sameNickname && similarOpponentName(local.name, profile.name)) return true;
   if (!samePersonName(local.name, profile.name)) {
     // A previously discovered profile may use a legal name or a differently
     // spaced transliteration. A matching birth date plus reconciled UFC history
@@ -168,11 +241,10 @@ export function isVerifiedIdentity(
   if (known.length >= 2) return matched >= 2;
   if (known.length === 1) return matched === 1 && recordMatches;
   if (!totalsMatch(local, profile)) return false;
-  const nicknameMatches = Boolean(local.nickname && profile.nickname && normName(local.nickname) === normName(profile.nickname));
   // Debutants have no shared UFC bout to use as an identity key. Require the
   // same full record plus either an independent bio match or one unique exact
   // name result. Duplicate names with no corroborating field remain ambiguous.
-  return birthMatches || nicknameMatches || candidateCount === 1;
+  return birthMatches || sameNickname || candidateCount === 1;
 }
 
 async function resolve(local: LocalFighter, knownUrl = ""): Promise<{ state: "verified"; value: VerifiedCandidate } | { state: "not_found" | "ambiguous"; reason: string }> {
@@ -180,6 +252,13 @@ async function resolve(local: LocalFighter, knownUrl = ""): Promise<{ state: "ve
   const searchName = withoutSuffix(local.name.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\./g, ""));
   if (!knownUrl && searchName !== local.name && !searched.some((candidate) => samePersonName(local.name, candidate.name, candidate.nickname))) {
     searched = await searchSherdogFighters(searchName);
+  }
+  // The source may spell the name a letter differently, which its search
+  // won't find. The surname alone finds it; only close names are kept, and
+  // those still have to verify on birth date and history.
+  const surname = searchName.split(" ").filter(Boolean).at(-1) ?? "";
+  if (!knownUrl && !searched.length && surname.length >= 4 && surname !== searchName) {
+    searched = (await searchSherdogFighters(surname)).filter((candidate) => closeName(local.name, candidate.name));
   }
   const exactCandidates = searched.filter((candidate) => samePersonName(local.name, candidate.name, candidate.nickname));
   const candidates = knownUrl

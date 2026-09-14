@@ -4,8 +4,14 @@ export function isFightDay(date: string | undefined, now = Date.now()): boolean 
   if (!date) return false;
   return date >= new Date(now - 86_400_000).toISOString().slice(0, 10) && date <= new Date(now).toISOString().slice(0, 10);
 }
-export function landingEvent<T extends { status: string }>(events: T[]): T | undefined {
-  return events.find(e => e.status === "current") ?? events.find(e => e.status === "next") ?? events[0];
+/**
+ * The card "/" opens: whichever one wears the tag, so the page lands where the
+ * list is pointing — the live card, the card that just finished tonight, or
+ * the next one announced.
+ */
+export function landingEvent<T extends { id: string; date: string; status: string }>(events: T[], now = Date.now()): T | undefined {
+  const tagged = taggedEvent(events, now);
+  return (tagged && events.find(e => e.id === tagged.id)) || events[0];
 }
 
 /**

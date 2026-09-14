@@ -1,6 +1,7 @@
 import { db } from "./db.ts";
 import { ageOn, americanLine, careerBefore, impliedProbability, type FightIndex, type IndexedFight, type IndexedSide, type PriorState, fightIndex, winProfit } from "./fight-index.ts";
 import { normName, todayIso } from "./util.ts";
+import { fuzzyScore, fuzzyTarget, splitMatchup } from "./fuzzy.ts";
 
 /**
  * Labs: population analysis over fighter-bout observations. Every completed
@@ -922,7 +923,7 @@ export function getLabsMatchups(params: URLSearchParams): unknown {
   const q = normName(params.get("q") ?? "");
   const rows = db
     .prepare(`
-      SELECT f.id, f.ord, f.weight_class, f.title_fight, f.title_type,
+      SELECT f.id, f.ord, f.weight_class, f.title_fight, f.title_type, f.scheduled_rounds,
              f.f1_id, f.f1_name, f.f2_id, f.f2_name,
              e.id AS event_id, e.name AS event_name, e.date AS event_date,
              o.f1_close, o.f2_close
@@ -934,11 +935,19 @@ export function getLabsMatchups(params: URLSearchParams): unknown {
     `)
     .all(todayIso()) as any[];
 
-  const matched = rows.filter((row) => {
+  const exact = rows.filter((row) => {
     if (!q) return true;
     const haystack = normName(`${row.f1_name} ${row.f2_name} ${row.event_name}`);
     return q.split(" ").every((word) => haystack.includes(word));
   });
+  // Nothing matched as typed: fall back to close spellings ("holowya").
+  const query = splitMatchup(q)?.join(" ") ?? q;
+  const memo = new Map<string, number>();
+  const matched = exact.length || !q ? exact : rows
+    .map((row, position) => ({ row, position, score: fuzzyScore(query, fuzzyTarget(`${row.f1_name} ${row.f2_name}`, row.event_name), memo) }))
+    .filter(({ score }) => score !== Infinity)
+    .sort((a, b) => a.score - b.score || a.position - b.position)
+    .map(({ row }) => row);
 
   return {
     matchups: matched.slice(0, 80).map((row) => {
@@ -955,9 +964,10 @@ export function getLabsMatchups(params: URLSearchParams): unknown {
         women: division.startsWith("Women's "),
         title_fight: title,
         main_event: ord === 0,
-        // An announced bout carries no time format yet; the promotion books
-        // five rounds for a title fight or a main event and three otherwise.
-        scheduled_rounds: title || ord === 0 ? 5 : 3,
+        // An announced bout carries no time format yet. Its length is the one
+        // ufc.com publishes for it, or unknown — never inferred from where it
+        // sits on the card, since non-title bouts are booked for five too.
+        scheduled_rounds: Number(row.scheduled_rounds) > 0 ? Number(row.scheduled_rounds) : null,
         a: corner(index, row.f1_id, row.f1_name, row.event_date, division, ord, americanLine(row.f1_close)),
         b: corner(index, row.f2_id, row.f2_name, row.event_date, division, ord, americanLine(row.f2_close)),
       };

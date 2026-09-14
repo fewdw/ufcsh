@@ -70,3 +70,53 @@ test("a known legal-name profile needs matching birth date, UFC history, and rec
   assert.equal(isVerifiedIdentity(fighter, 1, candidate, [], []), false);
   assert.equal(isVerifiedIdentity(fighter, 1, { ...candidate, wins: 11 }, reconciled(1), known(1)), false);
 });
+
+test("a UFC bout reconciles through a shortened or misspelled opponent name", async () => {
+  const { reconcileCareerBouts, similarOpponentName } = await import("./career-records.ts");
+  assert.ok(similarOpponentName("Felix Lee Mitchell", "Felix Mitchell"));
+  assert.ok(similarOpponentName("Christophe Leninger", "Christophe Leininger"));
+  assert.ok(similarOpponentName("Josh Culibao", "Joshua Culibao"));
+  assert.ok(similarOpponentName("Constantinos Philippou", "Costas Philippou"));
+  assert.ok(similarOpponentName("Maheshate", "Maheshate Hayisaer"));
+  assert.equal(similarOpponentName("Nick Diaz", "Nate Diaz"), false, "brothers are different people");
+  assert.equal(similarOpponentName("Jon Jones", "Jon Fitch"), false);
+
+  const row = (date: string, opponentName: string, eventName = "UFC 3") => ({
+    key: `${date}${opponentName}`, sourceOrder: 0, date, outcome: "win" as const, opponentName, opponentUrl: "",
+    eventName, eventUrl: "", method: "", round: "", time: "",
+  });
+  // Tournament night: two bouts on one date, each found by its own opponent.
+  const night = reconcileCareerBouts(
+    [row("1994-09-09", "Felix Mitchell"), row("1994-09-09", "Christophe Leininger")],
+    [{ id: "a", date: "1994-09-09", opponent: "Felix Lee Mitchell" }, { id: "b", date: "1994-09-09", opponent: "Christophe Leninger" }],
+  );
+  assert.deepEqual(night.map((bout) => bout.ufcFightId), ["a", "b"]);
+  // Different names, a day apart, and the only bout either source has then.
+  const renamed = reconcileCareerBouts([row("2020-02-23", "Konklak Suphisara")], [{ id: "c", date: "2020-02-22", opponent: "Loma Lookboonmee" }]);
+  assert.equal(renamed[0].ufcFightId, "c");
+  assert.equal(reconcileCareerBouts([row("2012-10-20", "Robert Montiel", "UFC Venezuela 4 - National MMA 2")], [])[0].isUfc, false);
+});
+
+test("records a bout apart still verify on name, birth date and every UFC bout", () => {
+  const fighter = { ...local, name: "Farman Hasanov", nickname: "", birth_date: "1995-08-01", wins: 6, losses: 0 };
+  const candidate = profile({ name: "Farman Hasanov", nickname: "", birthDate: "1995-08-01", wins: 5, losses: 0 });
+  assert.ok(isVerifiedIdentity(fighter, 1, candidate, reconciled(1), known(1)), "one UFC bout, record off by one");
+  assert.ok(isVerifiedIdentity(fighter, 1, candidate, [], []), "debutant with a stale record");
+  assert.ok(isVerifiedIdentity(fighter, 1, { ...candidate, birthDate: "" }, reconciled(1), known(1)), "exact name plus the shared UFC bout");
+  assert.equal(isVerifiedIdentity(fighter, 1, { ...candidate, birthDate: "" }, [], []), false, "a debutant name alone is not enough");
+  assert.equal(isVerifiedIdentity(fighter, 1, candidate, [], known(1)), false, "the UFC bout has to reconcile");
+  assert.equal(isVerifiedIdentity(fighter, 1, { ...candidate, wins: 15, losses: 4 }, [], []), false, "a debutant far apart needs review");
+  const nicknamed = { ...fighter, nickname: "Tina Black" };
+  const farApart = { ...candidate, nickname: "Tina Black", wins: 15, losses: 4 };
+  assert.ok(isVerifiedIdentity(nicknamed, 1, farApart, [], []), "the only name, nickname and birth date match settles it");
+  assert.equal(isVerifiedIdentity(nicknamed, 2, farApart, [], []), false, "not when another candidate shares the name");
+  assert.equal(isVerifiedIdentity(nicknamed, 1, { ...farApart, birthDate: "" }, [], []), false, "not without the birth date");
+  const shortName = { ...nicknamed, name: "Joe Kropschot" };
+  assert.ok(isVerifiedIdentity(shortName, 1, { ...farApart, name: "Joseph Kropschot" }, [], []), "a short first name");
+  assert.equal(isVerifiedIdentity(shortName, 1, { ...farApart, name: "Joseph Kropp" }, [], []), false, "not another surname");
+  assert.equal(isVerifiedIdentity(fighter, 1, { ...candidate, wins: 4 }, reconciled(1), known(1)), false, "two bouts apart needs review");
+  const typo = { ...fighter, name: "Mehemmedeli Osmanli" };
+  assert.ok(isVerifiedIdentity(typo, 1, { ...candidate, name: "Mehemmedali Osmanli" }, [], []));
+  assert.equal(isVerifiedIdentity(typo, 1, { ...candidate, name: "Mehemmedali Osmanli", birthDate: "" }, [], []), false);
+  assert.equal(isVerifiedIdentity({ ...fighter, name: "Nick Diaz" }, 1, { ...candidate, name: "Nate Diaz" }, [], []), false);
+});

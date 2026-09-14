@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { athleteSlug, parseAthleteImages, parseRankingsHtml, parseSearchAthlete, scrapeFighterImages } from "./ufccom.ts";
+import { athleteSlug, parseAthleteImages, parseCardRounds, parseFightIds, parseRankingsHtml, parseSearchAthlete, scrapeFighterImages } from "./ufccom.ts";
 
 const MEDIA_LABELS = [
   "Men's Pound-for-Pound",
@@ -233,4 +233,40 @@ test("search ignores unrelated athletes and finds the matching name beyond the f
     '<div class="solr-athlete-card"><a href="/athlete/correct"><h2>José Aldo</h2><img src="/images/ALDO.png"></a></div>';
   assert.equal(parseSearchAthlete(html, "Jose Aldo").href, "https://www.ufc.com/athlete/correct");
   assert.deepEqual(parseSearchAthlete(html, "Missing Fighter"), { href: null, img: null });
+});
+
+test("a search hit under a longer first name is taken only when it is the one such card", () => {
+  const card = (title: string, slug: string) => `<div class="solr-athlete-card"><h2>${title}</h2><a href="/athlete/${slug}"><img src="/images/${slug}.png"></a></div>`;
+  assert.equal(parseSearchAthlete(card("Joseph Kropschot", "joseph-kropschot"), "Joe Kropschot").href, "https://www.ufc.com/athlete/joseph-kropschot");
+  assert.equal(parseSearchAthlete(card("Tim Elliott", "tim-elliott") + card("Oban Elliott", "oban-elliott"), "Ezra Elliott").href, null);
+  assert.equal(parseSearchAthlete(card("Joseph Smith", "joseph-smith") + card("Joel Smith", "joel-smith"), "Joe Smith").href, null);
+});
+
+test("the event page's fight ids are read in card order, once each", () => {
+  const html = `<div class="c-listing-fight" data-fmid="13017"></div><div class="c-listing-fight" data-fmid="13018"></div>
+    <div class="c-listing-fight" data-fmid="13017"></div><div class="c-listing-fight" data-fmid="x"></div>`;
+  assert.deepEqual(parseFightIds(html), [13017, 13018]);
+});
+
+test("a bout's rounds are kept only when the feed states them consistently", () => {
+  const fighter = (first: string, last: string) => ({ Name: { FirstName: first, LastName: last } });
+  const bout = (id: number, order: number, possible: unknown, description: string) => ({
+    FightId: id, FightOrder: order, RuleSet: { PossibleRounds: possible, Description: description },
+    Fighters: [fighter("Arman", "Tsarukyan"), fighter("Mauricio", "Ruffy")],
+  });
+  const feed = { LiveEventDetail: { FightCard: [
+    bout(1, 2, 5, "5 Rnd (5-5-5-5-5)"),
+    bout(2, 3, 3, "3 Rnd (5-5-5)"),
+    bout(3, 4, 5, "3 Rnd (5-5-5)"),
+    bout(4, 5, null, ""),
+    bout(5, 6, 3, "3 Rnd + OT (5-5-5-5)"),
+    bout(99, 1, 5, "5 Rnd (5-5-5-5-5)"),
+  ] } };
+  // Bout 99 is on the feed but not yet on the page: still this card.
+  const rounds = parseCardRounds(feed, [1, 2, 3, 4, 5]);
+  assert.deepEqual(rounds.map((r) => [r.fightId, r.order, r.rounds]), [[1, 2, 5], [2, 3, 3], [99, 1, 5]]);
+  assert.equal(rounds[0].f1, "Arman Tsarukyan");
+  assert.deepEqual(parseCardRounds({}, [1]), []);
+  // A page listing a bout the feed does not carry means the feed is another card.
+  assert.deepEqual(parseCardRounds(feed, [1, 12345]), []);
 });

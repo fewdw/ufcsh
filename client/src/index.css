@@ -235,14 +235,6 @@ select:not([multiple]):not([size]) {
     filter 160ms ease;
 }
 
-/* Hovering any bar isolates that fighter across the complete statistics
-   section, including both fight totals and every round. */
-.fight-statistics:has(.stat-bar[data-stat-side="f1"]:hover) .stat-bar[data-stat-side="f2"],
-.fight-statistics:has(.stat-bar[data-stat-side="f2"]:hover) .stat-bar[data-stat-side="f1"] {
-  opacity: 0.18 !important;
-  filter: saturate(0.3);
-}
-
 /* The bout on now. A slow breath rather than a blink: it should read as
    alive at a glance and then stop asking for attention, since it sits beside
    the row a reader is trying to read. The label beside it carries the meaning,
@@ -324,7 +316,7 @@ select:not([multiple]):not([size]) {
 .matchup-context > div > div:nth-child(1) > div:nth-child(2) > span {
   white-space: nowrap;
 }
-@container (max-width: 45.99rem) {
+@container (max-width: 57.99rem) {
   .matchup-heading { padding: 12px 16px; }
   .matchup-body { padding: 0 16px 16px; }
   .matchup-hero { padding: 20px 0; gap: 18px 12px; }
@@ -335,7 +327,7 @@ select:not([multiple]):not([size]) {
 @container (max-width: 24rem) {
   .matchup-name { font-size: 16px; }
   .matchup-comparisons dl,
-  .matchup-context > div > div:first-child { grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr); gap: 5px; }
+  .matchup-context > div > div:first-child { grid-template-columns: minmax(0, 1fr) 92px minmax(0, 1fr); gap: 5px; }
 }
 
 /* Give the pinned identity and full-body portraits room above the fight data. */
@@ -350,7 +342,7 @@ select:not([multiple]):not([size]) {
 .matchup-top-card .matchup-market { gap: 8px; }
 .matchup-top-card .matchup-prices { width: 216px; }
 .matchup-top-card .matchup-prices .odds-pair { box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px -12px rgb(0 0 0 / 0.12); }
-@container (min-width: 46rem) {
+@container (min-width: 58rem) {
   .matchup-top-card .matchup-fighter--left { flex-direction: row; text-align: left; }
   .matchup-top-card .matchup-fighter--right { flex-direction: row-reverse; text-align: right; }
   .matchup-top-card .matchup-fighter--left .matchup-identity > div:first-child { justify-content: flex-start; }
@@ -362,7 +354,7 @@ select:not([multiple]):not([size]) {
   .matchup-top-card .matchup-fighter { align-items: center; height: 100%; }
   .matchup-top-card .matchup-fighter--right .matchup-identity { text-align: right; }
 }
-@container (max-width: 45.99rem) {
+@container (max-width: 57.99rem) {
   .matchup-top-card .matchup-heading { padding: 8px 12px; }
   .matchup-top-card .matchup-heading > div:first-child { flex: 1; }
   .matchup-top-card .matchup-heading a { font-size: 12px; }
@@ -395,7 +387,7 @@ select:not([multiple]):not([size]) {
   width: 145px;
   height: 220px;
 }
-@container (max-width: 45.99rem) {
+@container (max-width: 57.99rem) {
   .matchup-top-card .matchup-fighter > div:first-child > [data-fighter-portrait="full"] {
     width: 112px;
     height: 170px;

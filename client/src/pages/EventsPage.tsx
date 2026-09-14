@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
-import { clockTime, clockTimeWithZone, countdown, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankLabel } from "../format";
+import { clockTime, clockTimeWithZone, countdown, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankLabel, roundsLabel } from "../format";
 import { useNow } from "../useNow";
 import Avatar from "../components/Avatar";
 import ResultDots from "../components/ResultDots";
@@ -63,16 +63,26 @@ const KIND_NOUN: Record<KindFilter, string> = {
   fight_night: "fight nights",
 };
 
+/** Where the events list docks beside the pane. A matchup needs the card rail
+ *  and its own panels side by side, so with one open the list folds behind the
+ *  "Browse all events" button until the window is wide enough for all three. */
+const DOCK = {
+  card: { sidebar: "md:flex md:w-72 md:shrink-0 md:flex-none lg:w-80", toggle: "md:hidden", main: "md:block", row: "md:flex-row" },
+  matchup: { sidebar: "xl:flex xl:w-80 xl:shrink-0 xl:flex-none", toggle: "xl:hidden", main: "xl:block", row: "xl:flex-row" },
+} as const;
+
 function EventSidebar({
   events,
   selectedId,
   mobileOpen,
   onSelect,
+  dock,
 }: {
   events: EventListItem[];
   selectedId: string | null;
   mobileOpen: boolean;
   onSelect: () => void;
+  dock: (typeof DOCK)[keyof typeof DOCK];
 }) {
   const [filter, setFilter] = useHistoryState("events:filter", "");
   const [kind, setKind] = useHistoryState<KindFilter>("events:kind", "all");
@@ -131,7 +141,7 @@ function EventSidebar({
   }, [selectedId, events.length]);
 
   return (
-    <aside id="events-sidebar" className={`${mobileOpen ? "flex" : "hidden"} min-h-0 w-full flex-1 flex-col overflow-hidden md:flex md:w-72 md:shrink-0 md:flex-none lg:w-80 ${shell}`}>
+    <aside id="events-sidebar" className={`${mobileOpen ? "flex" : "hidden"} min-h-0 w-full flex-1 flex-col overflow-hidden ${dock.sidebar} ${shell}`}>
       <div className="space-y-2 border-b border-zinc-200 p-3">
         {/* Built from the same pill, border and glyph as the header's search
             button, so the two read as one control in two places. */}
@@ -176,7 +186,7 @@ function EventSidebar({
         >
           {groups.map(([yearMonth, list]) => (
             <div key={yearMonth}>
-              <div className="sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-white px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+              <div className="sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-white px-4 py-2 text-[13px] font-bold uppercase tracking-[0.1em] text-zinc-700">
                 <span>{yearMonth.slice(0, 4)}</span>
                 <span>{MONTHS[Number(yearMonth.slice(5, 7)) - 1]}</span>
               </div>
@@ -405,7 +415,7 @@ function FightRow({ fight, past, eventId, live = false }: { fight: EventFight; p
     >
       <FighterBlock side={fight.f1} align="left" past={done} bonuses={fight.bonuses} resultTag={resultTag(fight, fight.f1.outcome)} />
       <div className="order-3 col-span-2 flex w-full flex-col items-center justify-center gap-2 self-center @3xl:order-2 @3xl:col-span-1 @3xl:w-40 @5xl:w-52">
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center justify-center gap-1.5">
           {/* The dot and the word both say live, so neither colour nor
               motion carries it alone. */}
           {live ? <>
@@ -414,6 +424,7 @@ function FightRow({ fight, past, eventId, live = false }: { fight: EventFight; p
             <span className="text-[10px] text-zinc-300" aria-hidden="true">·</span>
           </> : null}
           <span className="text-[10px] font-medium text-zinc-500">{fight.weight_class}</span>
+          {fight.scheduled_rounds ? <span className="text-[10px] font-medium text-zinc-400">{roundsLabel(fight.scheduled_rounds)}</span> : null}
           {fight.title_fight ? (
             <span className={`rounded px-1 py-px text-[9px] font-bold uppercase ${(TITLE_TAG[fight.title_type ?? "title"] ?? TITLE_TAG.title).className}`}>
               {(TITLE_TAG[fight.title_type ?? "title"] ?? TITLE_TAG.title).label}
@@ -609,7 +620,7 @@ export default function EventsPage() {
   const { data: openFight } = useApi<Matchup>(fightId && !fightEventIdHint ? withRanking(`/api/fights/${fightId}`, settings.rankingSource) : null);
   const selectedId = eventId ?? fightEventIdHint ?? openFight?.event.id ?? null;
 
-  // Fight day opens the current card; otherwise open the next announced event.
+  // Open the tagged card: live, finished tonight, or next announced.
   useEffect(() => {
     if (!eventId && !fightId && events && events.length) {
       const next = landingEvent(events)!;
@@ -617,6 +628,7 @@ export default function EventsPage() {
     }
   }, [eventId, fightId, events, navigate]);
 
+  const dock = fightId ? DOCK.matchup : DOCK.card;
   if (error && !events) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-zinc-500">
@@ -629,13 +641,13 @@ export default function EventsPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 p-3 md:flex-row">
+    <div className={`flex h-full min-h-0 flex-col gap-3 p-3 ${dock.row}`}>
       <button
         type="button"
         aria-expanded={mobileEventsOpen}
         aria-controls="events-sidebar"
         onClick={() => setMobileEventsOpen((open) => !open)}
-        className={`${shell} shrink-0 px-4 py-2.5 text-left text-xs font-semibold text-zinc-700 md:hidden`}
+        className={`${shell} shrink-0 px-4 py-2.5 text-left text-xs font-semibold text-zinc-700 ${dock.toggle}`}
       >
         {mobileEventsOpen ? "← Back to card" : "Browse all events"}
       </button>
@@ -644,8 +656,9 @@ export default function EventsPage() {
         selectedId={selectedId}
         mobileOpen={mobileEventsOpen}
         onSelect={() => setMobileEventsOpen(false)}
+        dock={dock}
       />
-      <main className={`${mobileEventsOpen ? "hidden" : "block"} min-h-0 min-w-0 flex-1 md:block`}>
+      <main className={`${mobileEventsOpen ? "hidden" : "block"} min-h-0 min-w-0 flex-1 ${dock.main}`}>
         {fightId ? (
           <FightView fightId={fightId} eventIdHint={fightEventIdHint ?? openFight?.event.id} />
         ) : eventId ? (

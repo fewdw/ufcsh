@@ -93,6 +93,40 @@ export function assignSegments(
   return assigned;
 }
 
+/**
+ * The booked length of each bout. Both fighters' names normally identify it.
+ * The two sources sometimes spell one fighter differently ("Patricio Freire"
+ * and "Patricio Pitbull"), so a bout also matches when it holds the same place
+ * on the card and one of its two fighters is named identically. Nothing looser
+ * than that is accepted: a bout that cannot be identified has no length,
+ * rather than borrowing a neighbour's.
+ */
+export function assignRounds(
+  fights: { id: string; ord: number; f1_name: string; f2_name: string }[],
+  bouts: { order: number; f1: string; f2: string; rounds: number }[],
+): Map<string, number> {
+  const byPair = new Map<string, number | null>();
+  for (const bout of bouts) {
+    const key = pairKey(bout.f1, bout.f2);
+    // The same pairing listed twice with different lengths is not an answer.
+    byPair.set(key, byPair.has(key) && byPair.get(key) !== bout.rounds ? null : bout.rounds);
+  }
+  const assigned = new Map<string, number>();
+  for (const fight of fights) {
+    const paired = byPair.get(pairKey(fight.f1_name, fight.f2_name));
+    if (paired !== undefined) {
+      if (paired) assigned.set(fight.id, paired);
+      continue;
+    }
+    // ufc.com numbers its card from 1 at the main event; ours counts from 0.
+    const names = new Set([firstLastName(fight.f1_name), firstLastName(fight.f2_name)]);
+    const placed = bouts.filter((bout) => bout.order === Number(fight.ord) + 1
+      && (names.has(firstLastName(bout.f1)) || names.has(firstLastName(bout.f2))));
+    if (placed.length === 1) assigned.set(fight.id, placed[0].rounds);
+  }
+  return assigned;
+}
+
 export type SegmentTimes = { main: number | null; prelims: number | null; early: number | null };
 
 /**

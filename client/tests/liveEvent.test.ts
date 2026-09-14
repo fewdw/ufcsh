@@ -3,10 +3,26 @@ import assert from "node:assert/strict";
 import type { EventDetail } from "../src/api.ts";
 import { isFightDay, landingEvent, liveFightId, taggedEvent } from "../src/liveEvent.ts";
 test("homepage prefers the current event regardless of chronological list order", () => {
-  const events = [{ id: "later", status: "future" }, { id: "next", status: "next" }, { id: "live", status: "current" }, { id: "old", status: "past" }];
-  assert.equal(landingEvent(events)?.id, "live");
-  assert.equal(landingEvent(events.filter(e => e.status !== "current"))?.id, "next");
-  assert.equal(landingEvent([]), undefined);
+  const now = Date.parse("2026-09-12T23:00:00Z");
+  const events = [
+    { id: "later", date: "2026-10-03", status: "future" },
+    { id: "next", date: "2026-09-19", status: "next" },
+    { id: "live", date: "2026-09-12", status: "current" },
+    { id: "old", date: "2026-09-05", status: "past" },
+  ];
+  assert.equal(landingEvent(events, now)?.id, "live");
+  assert.equal(landingEvent(events.filter(e => e.status !== "current"), now)?.id, "next");
+  assert.equal(landingEvent([], now), undefined);
+});
+test("homepage lands on a card that finished tonight rather than skipping ahead", () => {
+  const now = Date.parse("2026-09-12T23:00:00Z");
+  const events = [
+    { id: "next", date: "2026-09-19", status: "next" },
+    { id: "tonight", date: "2026-09-12", status: "past" },
+    { id: "old", date: "2026-09-05", status: "past" },
+  ];
+  assert.equal(landingEvent(events, now)?.id, "tonight");
+  assert.equal(landingEvent(events, Date.parse("2026-09-14T12:00:00Z"))?.id, "next", "once the fight day ends, Next takes over");
 });
 test("fight-day polling survives midnight and ends for historical cards", () => {
   const now = Date.parse("2026-09-06T02:00:00Z");

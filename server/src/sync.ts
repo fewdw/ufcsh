@@ -9,10 +9,11 @@ import {
   scrapeRosterPage,
   type ScrapedEventDetail,
 } from "./scrape/ufcstats.ts";
-import { scrapeAthleteDirectoryPage, scrapeEventSchedules, scrapeEventSegments, scrapeFighterImages, scrapeRankings } from "./scrape/ufccom.ts";
-import { assignSegments, matchEventSchedule } from "./card-schedule.ts";
+import { scrapeAthleteDirectoryPage, scrapeEventCard, scrapeEventSchedules, scrapeFighterImages, scrapeRankings } from "./scrape/ufccom.ts";
+import { assignRounds, assignSegments, matchEventSchedule } from "./card-schedule.ts";
 import {
   alignScrapedOdds,
+  closingLine,
   findOddsEventPages,
   methodOddsForFight,
   fetchMeanMoneyline,
@@ -121,6 +122,13 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
           }
         }
         db.prepare("UPDATE events SET bfo_checked_at = NULL WHERE id = ?").run(detail.id);
+        // A new opponent is a new booking, whose length is not yet known: drop
+        // the old one and have ufc.com's card read again. Corners merely
+        // swapped are the same booking.
+        if (!(old.f1_id === f.f2.id && old.f2_id === f.f1.id)) {
+          db.prepare("UPDATE fights SET scheduled_rounds = NULL WHERE id = ?").run(f.id);
+          db.prepare("UPDATE events SET segments_fetched_at = NULL WHERE id = ?").run(detail.id);
+        }
       }
       if (old && old.f1_id === f.f2.id && old.f2_id === f.f1.id && old.f1_id !== old.f2_id) {
         db.prepare(`UPDATE fights SET detail_json = NULL, detail_fetched_at = NULL,
@@ -233,14 +241,23 @@ export async function syncScheduleArchive(): Promise<void> {
 export async function syncEventSegments(eventId: string): Promise<void> {
   const event = db.prepare("SELECT ufc_slug FROM events WHERE id = ?").get(eventId) as { ufc_slug: string | null } | undefined;
   if (!event?.ufc_slug) return;
-  const bouts = await scrapeEventSegments(event.ufc_slug);
+  const card = await scrapeEventCard(event.ufc_slug);
   const fights = db.prepare("SELECT id, ord, f1_name, f2_name FROM fights WHERE event_id = ?")
     .all(eventId) as { id: string; ord: number; f1_name: string; f2_name: string }[];
-  const segments = assignSegments(fights, bouts);
+  const segments = assignSegments(fights, card.segments);
   const update = db.prepare("UPDATE fights SET segment = ? WHERE id = ?");
   for (const [id, segment] of segments) update.run(segment, id);
+  // A bout the feed no longer identifies loses its length: a booking that
+  // changed or a bout that moved must not keep a stale number.
+  let booked = 0;
+  if (card.rounds) {
+    const rounds = assignRounds(fights, card.rounds);
+    const setRounds = db.prepare("UPDATE fights SET scheduled_rounds = ? WHERE id = ?");
+    for (const fight of fights) setRounds.run(rounds.get(fight.id) ?? null, fight.id);
+    booked = rounds.size;
+  }
   db.prepare("UPDATE events SET segments_fetched_at = ? WHERE id = ?").run(Date.now(), eventId);
-  log(`card segments synced for ${event.ufc_slug} (${segments.size}/${fights.length} bouts placed)`);
+  log(`card segments synced for ${event.ufc_slug} (${segments.size}/${fights.length} bouts placed, ${booked} with booked rounds)`);
 }
 
 // ---------------------------------------------------------------------------
@@ -529,19 +546,19 @@ export async function syncWeightMisses(limit = 30): Promise<{ events: number; mi
       SELECT id, name, date FROM events WHERE complete = 1 AND wiki_checked_at IS NULL
       ORDER BY date DESC LIMIT ?
     `).all(limit) as { id: string; name: string; date: string }[];
-    const fightsOf = db.prepare("SELECT id, f1_name, f2_name FROM fights WHERE event_id = ?");
+    const fightsOf = db.prepare("SELECT id, f1_name, f2_name FROM fights WHERE event_id = ? ORDER BY ord");
     const setMiss = db.prepare("UPDATE fights SET f1_weight_miss = ?, f2_weight_miss = ? WHERE id = ?");
     const markRead = db.prepare("UPDATE events SET wiki_title = ?, wiki_checked_at = ? WHERE id = ?");
     for (const event of events) {
+      const fights = fightsOf.all(event.id) as { id: string; f1_name: string; f2_name: string }[];
       let article: Awaited<ReturnType<typeof fetchEventArticle>>;
       try {
-        article = await fetchEventArticle(event.name, event.date);
+        article = await fetchEventArticle(event.name, event.date, fights.flatMap((f) => [f.f1_name, f.f2_name]));
       } catch (err) {
         total.failed++;
         log(`weight misses failed [${event.name}]:`, String(err));
         continue;
       }
-      const fights = fightsOf.all(event.id) as { id: string; f1_name: string; f2_name: string }[];
       const misses = article ? weightMisses(article.wikitext, fights.flatMap((f) => [f.f1_name, f.f2_name])) : [];
       const value = (name: string) => {
         const miss = misses.find((m) => m.name === name);
@@ -586,10 +603,49 @@ async function syncMissingTitleTypes(limit = 12): Promise<void> {
 // ---------------------------------------------------------------------------
 // odds
 
-export async function syncOddsForFight(fight: { id: string; f1_name: string; f2_name: string; date: string }): Promise<boolean> {
+/** A fighter's UFCStats name plus the name their verified career record is
+ * filed under, which is often the one the odds source uses ("Patricio Pitbull"
+ * is "Patricio Freire" there). */
+/** Names a fighter competed under before UFCStats and Sherdog renamed them —
+ * mostly married names — which older odds are still filed under. */
+const FORMER_NAMES: Record<string, string[]> = {
+  "tecia pennington": ["Tecia Torres"],
+  "joanne wood": ["Joanne Calderwood"],
+  "katlyn cerminara": ["Katlyn Chookagian"],
+  "brianna fortino": ["Brianna Van Buren"],
+  "michelle waterson gomez": ["Michelle Waterson"],
+  "livinha souza": ["Livia Renata Souza"],
+  "ariane da silva": ["Ariane Lipski"],
+  "bharat kandare": ["Bharat Khandare"],
+  "viacheslav borshchev": ["Slava Borshchev"],
+  "king green": ["Bobby Green"],
+};
+
+export function fighterNames(id: string | null | undefined, name: string): string[] {
+  const names = [name, ...(FORMER_NAMES[normName(name)] ?? [])];
+  if (id) {
+    const profile = db.prepare("SELECT source_name FROM career_profiles WHERE fighter_id = ? AND status = 'verified'")
+      .get(id) as { source_name: string | null } | undefined;
+    if (profile?.source_name) names.push(profile.source_name);
+  }
+  return names.filter((alias, i) => names.findIndex((other) => normName(other) === normName(alias)) === i);
+}
+
+export async function syncOddsForFight(fight: { id: string; f1_id?: string | null; f2_id?: string | null; f1_name: string; f2_name: string; date: string }): Promise<boolean> {
   const prior = db.prepare("SELECT source_url FROM odds WHERE fight_id = ?").get(fight.id) as
     { source_url: string | null } | undefined;
-  const scraped = await scrapeOdds(fight.f1_name, fight.f2_name, fight.date, prior?.source_url);
+  const scraped = await scrapeOdds(
+    fighterNames(fight.f1_id, fight.f1_name),
+    fighterNames(fight.f2_id, fight.f2_name),
+    fight.date,
+    prior?.source_url,
+  );
+  // Record the look either way. A row with no prices is invisible everywhere
+  // else (every reader requires a closing line), so this only dates the check.
+  db.prepare(`
+    INSERT INTO odds (fight_id, checked_at) VALUES (?, ?)
+    ON CONFLICT(fight_id) DO UPDATE SET checked_at = excluded.checked_at
+  `).run(fight.id, Date.now());
   // A missing source row is not a new price and must not make an old value look
   // freshly verified. Leave both the odds and fetched_at untouched for retry.
   if (!scraped) return false;
@@ -675,7 +731,9 @@ export async function syncMethodOddsForEvent(eventId: string, onlyFightId?: stri
       continue;
     }
     for (const fight of fights) {
-      const odds = found.has(fight.id) ? null : methodOddsForFight(board, fight.f1_name, fight.f2_name);
+      const odds = found.has(fight.id)
+        ? null
+        : methodOddsForFight(board, fighterNames(fight.f1_id, fight.f1_name), fighterNames(fight.f2_id, fight.f2_name));
       if (!odds) continue;
       found.set(fight.id, { fight, odds });
       matchedUrl ??= sourceUrl;
@@ -839,14 +897,14 @@ export async function syncUpcomingOdds(
 ): Promise<UpcomingOddsSyncResult> {
   const now = Date.now();
   const targets = db.prepare(`
-    SELECT f.id, f.f1_name, f.f2_name, e.date FROM fights f
+    SELECT f.id, f.f1_id, f.f2_id, f.f1_name, f.f2_name, e.date FROM fights f
     JOIN events e ON e.id = f.event_id
     LEFT JOIN odds o ON o.fight_id = f.id
     WHERE e.complete = 0 AND e.date >= date('now', '-1 day')
-      AND (? = 1 OR o.fetched_at IS NULL OR o.fetched_at < ?)
+      AND (? = 1 OR ((o.fetched_at IS NULL OR o.fetched_at < ?) AND (o.checked_at IS NULL OR o.checked_at < ?)))
     ORDER BY e.date ASC LIMIT ?
-  `).all(force ? 1 : 0, now - 6 * HOUR, limit) as
-    { id: string; f1_name: string; f2_name: string; date: string }[];
+  `).all(force ? 1 : 0, now - 6 * HOUR, now - 2 * HOUR, limit) as
+    { id: string; f1_id: string | null; f2_id: string | null; f1_name: string; f2_name: string; date: string }[];
 
   let stored = 0;
   let failed = 0;
@@ -859,6 +917,82 @@ export async function syncUpcomingOdds(
     }
   }
   return { selected: targets.length, stored, failed };
+}
+
+export type ClosingRestateResult = { pages: number; recomputed: number; restated: number; unmatched: number; failed: number };
+
+/**
+ * Re-derive every stored fighter-page close as the middle of its closing range
+ * (see closingLine). Closes stored before that rule were the top of the range.
+ * Rows that kept the range are recomputed in place; the rest re-read their
+ * source page once per page. A page row is only accepted for a bout when both
+ * opening prices agree with the stored ones, which identifies the row and the
+ * corners exactly, so nothing is re-attached by name. Anything unmatched keeps
+ * its old value. fetched_at is left alone: the prices are not newer.
+ */
+export async function restateClosingLines(
+  { onPage, pageUrls }: { onPage?: (done: number, total: number) => void; pageUrls?: string[] } = {},
+): Promise<ClosingRestateResult> {
+  const result: ClosingRestateResult = { pages: 0, recomputed: 0, restated: 0, unmatched: 0, failed: 0 };
+  const update = db.prepare(`
+    UPDATE odds SET f1_close = ?, f2_close = ?, f1_history = ?, f2_history = ? WHERE fight_id = ?
+  `);
+
+  const withRange = pageUrls ? [] : db.prepare(`
+    SELECT fight_id, f1_history, f2_history FROM odds
+    WHERE f1_close IS NOT NULL AND source_url LIKE '%/fighters/%'
+      AND f1_history IS NOT NULL AND f1_history != '' AND f1_history != '[]'
+  `).all() as { fight_id: string; f1_history: string; f2_history: string }[];
+  for (const row of withRange) {
+    try {
+      const h1 = JSON.parse(row.f1_history) as string[];
+      const h2 = JSON.parse(row.f2_history) as string[];
+      if (!h1.length || !h2.length) continue;
+      update.run(closingLine(h1), closingLine(h2), row.f1_history, row.f2_history, row.fight_id);
+      result.recomputed++;
+    } catch { /* malformed history keeps its close */ }
+  }
+
+  const rows = db.prepare(`
+    SELECT o.fight_id, o.f1_open, o.f2_open, o.source_url, e.date
+    FROM odds o JOIN fights f ON f.id = o.fight_id JOIN events e ON e.id = f.event_id
+    WHERE o.f1_close IS NOT NULL AND o.source_url LIKE '%/fighters/%'
+      AND (o.f1_history IS NULL OR o.f1_history = '' OR o.f1_history = '[]')
+  `).all() as { fight_id: string; f1_open: string | null; f2_open: string | null; source_url: string; date: string }[];
+  const byPage = new Map<string, typeof rows>();
+  for (const row of rows) byPage.set(row.source_url, [...(byPage.get(row.source_url) ?? []), row]);
+
+  for (const [url, bouts] of byPage) {
+    if (pageUrls && !pageUrls.includes(url)) continue;
+    onPage?.(result.pages, byPage.size);
+    result.pages++;
+    let page: Awaited<ReturnType<typeof scrapeFighterOddsHistory>>;
+    try {
+      page = await scrapeFighterOddsHistory([], url);
+    } catch (err) {
+      result.failed++;
+      log(`closing restate failed [${url}]:`, String(err));
+      continue;
+    }
+    for (const bout of bouts) {
+      const near = (page?.rows ?? []).filter((row) => !row.date || Math.abs(daysBetween(row.date, bout.date)) <= 14);
+      const candidates = near.flatMap((row) => [
+        row.self.open === bout.f1_open && row.opp.open === bout.f2_open ? [{ row, selfIsF1: true }] : [],
+        row.self.open === bout.f2_open && row.opp.open === bout.f1_open ? [{ row, selfIsF1: false }] : [],
+      ].flat());
+      // Two rows with the same opening pair near one date can't be told apart.
+      const dated = candidates.filter((c) => c.row.date);
+      const pick = dated.length === 1 ? dated[0] : dated.length === 0 && candidates.length === 1 ? candidates[0] : null;
+      if (!pick || bout.f1_open == null || bout.f2_open == null) { result.unmatched++; continue; }
+      const f1 = pick.selfIsF1 ? pick.row.self : pick.row.opp;
+      const f2 = pick.selfIsF1 ? pick.row.opp : pick.row.self;
+      if (!f1.close || !f2.close) { result.unmatched++; continue; }
+      update.run(f1.close, f2.close, JSON.stringify(f1.history), JSON.stringify(f2.history), bout.fight_id);
+      result.restated++;
+    }
+  }
+  log(`closing restate: ${result.recomputed} recomputed, ${result.restated} restated from ${result.pages} pages, ${result.unmatched} unmatched, ${result.failed} failed`);
+  return result;
 }
 
 /**
@@ -915,7 +1049,7 @@ export async function syncOddsBackfill(limit: number): Promise<OddsBackfillResul
     for (const fighter of targets) {
       let history: Awaited<ReturnType<typeof scrapeFighterOddsHistory>> = null;
       try {
-        history = await scrapeFighterOddsHistory(fighter.name, fighter.bfo_url);
+        history = await scrapeFighterOddsHistory(fighterNames(fighter.id, fighter.name), fighter.bfo_url);
       } catch (err) {
         // Transient source/network failures must remain immediately retryable.
         failed++;
@@ -1206,7 +1340,6 @@ export async function tick(): Promise<void> {
     }
     const segmentTargets = db.prepare(`SELECT id, name, date, complete, segments_fetched_at FROM events
       WHERE ufc_slug IS NOT NULL AND (segments_fetched_at IS NULL OR complete = 0)
-        AND date <= date('now', '+30 days')
       ORDER BY complete ASC, date DESC`).all() as { id: string; name: string; date: string; complete: number; segments_fetched_at: number | null }[];
     for (const e of segmentTargets.slice(0, 25)) {
       const interval = e.complete ? Infinity

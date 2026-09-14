@@ -617,8 +617,10 @@ test("an announced matchup carries filter-ready state for both corners", () => {
     assert.ok(m.date >= today, `${m.event_name} has already happened`);
     // Nothing announced has been fought, so it must not be in the index.
     assert.equal(index.byId.has(m.fight_id), false, `${m.fight_id} is already a completed bout`);
-    assert.ok(m.scheduled_rounds === 3 || m.scheduled_rounds === 5);
-    assert.equal(m.scheduled_rounds === 5, m.title_fight || m.main_event);
+    // The booked length is whatever ufc.com published, or unknown. It is never
+    // derived from title status or card position: a non-title co-main event
+    // can be booked for five rounds.
+    assert.ok(m.scheduled_rounds === null || (Number.isInteger(m.scheduled_rounds) && m.scheduled_rounds > 0));
     for (const corner of [m.a, m.b]) {
       assert.ok(corner.name, "a corner is missing a name");
       // Every categorical value must already be a filter option, because the

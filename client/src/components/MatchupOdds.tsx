@@ -61,23 +61,50 @@ function MethodMarkets({ odds }: { odds: MethodOdds }) {
   );
 }
 
-type Tone = "f1" | "f2" | "neutral";
-const TONE_COLOR: Record<Tone, string> = { f1: "var(--color-f1)", f2: "var(--color-f2)", neutral: "var(--color-zinc-500)" };
+/** How a completed bout ended, enough to settle every prop on the board. */
+export type FightResult = { winner: 1 | 2 | null; method: string | null; round: string | null; time: string | null };
 
-/** A price on a wash whose strength follows the outcome's implied probability:
- * the eye lands on what the market expects and long shots recede, while every
- * number stays readable. Hover gives the probability itself. */
-function ShadedPrice({ quote, tone }: { quote: OddsQuote | undefined; tone: Tone }) {
+type Settled = {
+  /** Seconds into the fight when it ended; null when the time is unknown. */
+  elapsed: number | null;
+  decision: boolean;
+  finish: "KO/TKO" | "SUB" | "DQ" | null;
+  round: number | null;
+  winner: 1 | 2 | null;
+};
+
+/** Reads a result into the facts props settle on. A no-contest or overturned
+ * bout voids the board, so it settles nothing. */
+function settle(result: FightResult | undefined): Settled | null {
+  if (!result?.method || /^(CNC|Overturned|Other)$/i.test(result.method)) return null;
+  const round = Number(result.round) || null;
+  const clock = /^(\d+):(\d{2})$/.exec(result.time ?? "");
+  const decision = /DEC/i.test(result.method);
+  const finish = result.method === "KO/TKO" || result.method === "SUB" || result.method === "DQ" ? result.method : null;
+  if (!decision && !finish) return null;
+  return {
+    elapsed: round && clock ? (round - 1) * 300 + Number(clock[1]) * 60 + Number(clock[2]) : null,
+    decision,
+    finish,
+    round,
+    winner: result.winner,
+  };
+}
+
+/** A plain price; a winning bet sits on a green wash. Hover gives the implied
+ * probability. */
+function ShadedPrice({ quote, hit }: { quote: OddsQuote | undefined; hit?: boolean }) {
   const price = bestPrice(quote);
   if (!price) return <span className="text-zinc-300 dark:text-zinc-600" aria-label="No price">—</span>;
   const probability = impliedProbability(price.line);
-  // Most props are long shots, so a square root spreads the low end apart.
-  const strength = Math.round(4 + Math.sqrt(probability) * 44);
   return (
     <span
-      className="inline-flex min-w-[3.5rem] justify-center rounded-md px-1.5 py-1 font-semibold tabular-nums text-zinc-900 dark:text-zinc-100"
-      style={{ backgroundColor: `color-mix(in srgb, ${TONE_COLOR[tone]} ${strength}%, transparent)` }}
-      title={`${Math.round(probability * 100)}% implied`}
+      className={`inline-flex min-w-[3.5rem] justify-center rounded-md px-1.5 py-1 font-semibold tabular-nums ${
+        hit
+          ? "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300 dark:bg-emerald-900/50 dark:text-emerald-200 dark:ring-emerald-700"
+          : "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100"
+      }`}
+      title={`${Math.round(probability * 100)}% implied${hit ? " · hit" : ""}`}
     >
       {price.line}
     </span>
@@ -95,22 +122,42 @@ function TableTitle({ children }: { children: string }) {
 
 /** The full prop board under the matchup: totals, distance, and every
  * method-by-round price, laid out as tables that use the panel's width. */
-export function OddsMarkets({ odds, f1Name, f2Name }: { odds: MethodOdds; f1Name: string; f2Name: string }) {
+export function OddsMarkets({ odds, f1Name, f2Name, result }: { odds: MethodOdds; f1Name: string; f2Name: string; result?: FightResult }) {
   const extra = organizeAdditionalOdds(odds.additional, f1Name, f2Name);
   const rounds = [...new Set([...extra.roundMethods, ...extra.roundFinishes].map(row => row.round))].sort();
   const hasDistance = Boolean(extra.goesDecision || extra.noDecision);
+  const settled = settle(result);
+
+  // Over X½ needs the fight to pass the halfway mark of round X+1.
+  const totalHit = (total: string, side: "over" | "under") => {
+    if (!settled) return false;
+    const line = Number.parseFloat(total) * 300;
+    const elapsed = settled.decision ? Infinity : settled.elapsed;
+    if (elapsed === null) return false;
+    return side === "over" ? elapsed > line : elapsed <= line;
+  };
 
   // A decision cannot happen in a round, so its row prices only the whole fight.
-  type MethodRow = readonly [method: string, anyRound: OddsQuote | undefined, byRound: ((round: number) => OddsQuote | undefined) | null];
+  // `who` is the fighter the bet needs to win, or null when either will do.
+  type Method = "KO/TKO" | "SUB" | "DEC";
+  type MethodRow = readonly [method: Method, anyRound: OddsQuote | undefined, byRound: ((round: number) => OddsQuote | undefined) | null];
+  const methodHit = (who: 1 | 2 | null, method: Method, round: number | null) => {
+    if (!settled) return false;
+    if (method === "DEC") return settled.decision && (who === null || settled.winner === who);
+    if (who !== null && settled.winner !== who) return false;
+    // The either-fighter knockout market counts a disqualification too.
+    const matches = settled.finish === method || (who === null && method === "KO/TKO" && settled.finish === "DQ");
+    return matches && (round === null || settled.round === round);
+  };
   const fighterRows = (fighter: 1 | 2, side: MethodOdds["f1"]): MethodRow[] => [
     ["KO/TKO", side.ko, r => extra.roundMethods.find(row => row.fighter === fighter && row.method === "KO/TKO" && row.round === r)?.quote],
     ["SUB", side.submission, r => extra.roundMethods.find(row => row.fighter === fighter && row.method === "SUB" && row.round === r)?.quote],
     ["DEC", side.decision, null],
   ];
-  const groups: { name: string; tone: Tone; ink: string; rows: MethodRow[] }[] = [
-    { name: f1Name, tone: "f1", ink: "text-f1-ink", rows: fighterRows(1, odds.f1) },
-    { name: f2Name, tone: "f2", ink: "text-f2-ink", rows: fighterRows(2, odds.f2) },
-    { name: "Either fighter", tone: "neutral", ink: "text-zinc-500", rows: [
+  const groups: { name: string; who: 1 | 2 | null; rows: MethodRow[] }[] = [
+    { name: f1Name, who: 1, rows: fighterRows(1, odds.f1) },
+    { name: f2Name, who: 2, rows: fighterRows(2, odds.f2) },
+    { name: "Either fighter", who: null, rows: [
       ["KO/TKO", undefined, r => extra.roundFinishes.find(row => row.method === "KO/TKO/DQ" && row.round === r)?.quote],
       ["SUB", undefined, r => extra.roundFinishes.find(row => row.method === "SUB" && row.round === r)?.quote],
       ["DEC", extra.goesDecision, null],
@@ -121,7 +168,7 @@ export function OddsMarkets({ odds, f1Name, f2Name }: { odds: MethodOdds; f1Name
   const mean = quotes.some(quote => bestPrice(quote)?.bookmaker === "Mean");
 
   return (
-    <div className="grid gap-6 px-5 pb-4 pt-3 @[46rem]:grid-cols-[minmax(0,1fr)_minmax(0,2.4fr)] @[46rem]:gap-10">
+    <div className="grid gap-6 px-5 pb-4 pt-3 @[60rem]:grid-cols-[minmax(0,1fr)_minmax(0,2.4fr)] @[60rem]:gap-10">
       <div className="flex flex-col gap-5">
         {extra.totals.length ? <div>
           <TableTitle>Round totals</TableTitle>
@@ -134,8 +181,8 @@ export function OddsMarkets({ odds, f1Name, f2Name }: { odds: MethodOdds; f1Name
             <tbody>
               {extra.totals.map(row => <tr key={row.rounds}>
                 <th scope="row" className={LABEL}>{row.rounds} rounds</th>
-                <td className={CELL}><ShadedPrice quote={row.over} tone="neutral" /></td>
-                <td className={CELL}><ShadedPrice quote={row.under} tone="neutral" /></td>
+                <td className={CELL}><ShadedPrice quote={row.over} hit={totalHit(row.rounds, "over")} /></td>
+                <td className={CELL}><ShadedPrice quote={row.under} hit={totalHit(row.rounds, "under")} /></td>
               </tr>)}
             </tbody>
           </table>
@@ -151,8 +198,8 @@ export function OddsMarkets({ odds, f1Name, f2Name }: { odds: MethodOdds; f1Name
             <tbody>
               <tr>
                 <th scope="row" className={LABEL}>Decision</th>
-                <td className={CELL}><ShadedPrice quote={extra.goesDecision} tone="neutral" /></td>
-                <td className={CELL}><ShadedPrice quote={extra.noDecision} tone="neutral" /></td>
+                <td className={CELL}><ShadedPrice quote={extra.goesDecision} hit={Boolean(settled?.decision)} /></td>
+                <td className={CELL}><ShadedPrice quote={extra.noDecision} hit={Boolean(settled && !settled.decision)} /></td>
               </tr>
             </tbody>
           </table>
@@ -160,7 +207,30 @@ export function OddsMarkets({ odds, f1Name, f2Name }: { odds: MethodOdds; f1Name
       </div>
       {shownGroups.length ? <div className="min-w-0">
         <TableTitle>Method by round</TableTitle>
-        <div className="overflow-x-auto">
+        {/* Narrow panels turn each fighter's board on its side — rounds down,
+            methods across — so every price stays on screen without scrolling. */}
+        <div className="flex flex-col gap-3 @[44rem]:hidden">
+          {shownGroups.map((group) => <table key={group.name} className={TABLE}>
+            <thead>
+              <tr><th scope="colgroup" colSpan={group.rows.length + 1} className={`pb-0.5 text-left ${CHART_TEXT} font-semibold text-zinc-900 dark:text-zinc-100`}>{group.name}</th></tr>
+              <tr>
+                <td />
+                {group.rows.map(([method]) => <th key={method} scope="col" className={HEAD}>{method}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {rounds.map(r => <tr key={r}>
+                <th scope="row" className={LABEL}>R{r}</th>
+                {group.rows.map(([method, , byRound]) => <td key={method} className={CELL}>{byRound ? <ShadedPrice quote={byRound(r)} hit={methodHit(group.who, method, r)} /> : null}</td>)}
+              </tr>)}
+              <tr>
+                <th scope="row" className={`${LABEL} border-t border-zinc-100 pt-1 dark:border-zinc-800`}>Any round</th>
+                {group.rows.map(([method, anyRound]) => <td key={method} className={`${CELL} border-t border-zinc-100 pt-1 dark:border-zinc-800`}><ShadedPrice quote={anyRound} hit={methodHit(group.who, method, null)} /></td>)}
+              </tr>
+            </tbody>
+          </table>)}
+        </div>
+        <div className="hidden overflow-x-auto @[44rem]:block">
           <table className={`${TABLE} min-w-[26rem]`}>
             <thead><tr>
               <td />
@@ -168,17 +238,17 @@ export function OddsMarkets({ odds, f1Name, f2Name }: { odds: MethodOdds; f1Name
               <th scope="col" className={HEAD}>Any round</th>
             </tr></thead>
             {shownGroups.map((group, index) => <tbody key={group.name}>
-              <tr><th scope="rowgroup" colSpan={rounds.length + 2} className={`pb-0.5 text-left ${CHART_TEXT} font-semibold ${index ? "pt-3" : "pt-1"} ${group.ink}`}>{group.name}</th></tr>
+              <tr><th scope="rowgroup" colSpan={rounds.length + 2} className={`pb-0.5 text-left ${CHART_TEXT} font-semibold ${index ? "pt-3" : "pt-1"} text-zinc-900 dark:text-zinc-100`}>{group.name}</th></tr>
               {group.rows.map(([method, anyRound, byRound]) => <tr key={method}>
                 <th scope="row" className={LABEL}>{method}</th>
-                {rounds.map(r => <td key={r} className={CELL}>{byRound ? <ShadedPrice quote={byRound(r)} tone={group.tone} /> : null}</td>)}
-                <td className={`${CELL} border-l border-zinc-100 pl-2 dark:border-zinc-800`}><ShadedPrice quote={anyRound} tone={group.tone} /></td>
+                {rounds.map(r => <td key={r} className={CELL}>{byRound ? <ShadedPrice quote={byRound(r)} hit={methodHit(group.who, method, r)} /> : null}</td>)}
+                <td className={`${CELL} border-l border-zinc-100 pl-2 dark:border-zinc-800`}><ShadedPrice quote={anyRound} hit={methodHit(group.who, method, null)} /></td>
               </tr>)}
             </tbody>)}
           </table>
         </div>
       </div> : null}
-      {mean ? <p className="text-[10px] text-zinc-400 @[46rem]:col-span-2">Average closing odds across sportsbooks.</p> : null}
+      {mean ? <p className="text-[10px] text-zinc-400 @[60rem]:col-span-2">Average closing odds across sportsbooks.</p> : null}
     </div>
   );
 }

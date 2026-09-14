@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   alignScrapedOdds,
+  closingLine,
   methodOddsForFight,
   parseEventMethodOddsHtml,
   type ScrapedOdds,
@@ -81,6 +82,25 @@ test("one exact name plus a spelling variant of the opponent still aligns corner
   assert.equal(methodOddsForFight(mononym, "Alex Pereira", "Sumudaerji")?.f2.ko?.prices[0].line, "+195");
 });
 
+test("a ring name matches through the fighter's career-record alias", () => {
+  // UFCStats: "Patricio Pitbull" vs "Dooho Choi"; the source: "Patricio Freire" vs "Doo Ho Choi".
+  const html = methodHtml
+    .replace("Alex Pereira</a>", "Patricio Freire</a>").replaceAll("Pereira wins", "Freire wins")
+    .replace("Jamahal Hill</a>", "Doo Ho Choi</a>").replaceAll("Hill wins", "Choi wins");
+  const board = parseEventMethodOddsHtml(html, "https://www.bestfightodds.com/events/ufc-331-4302");
+  assert.equal(methodOddsForFight(board, "Patricio Pitbull", "Dooho Choi"), null, "the ring name alone is not an identity");
+  const odds = methodOddsForFight(board, "Dooho Choi", ["Patricio Pitbull", "Patricio Freire"]);
+  assert.equal(odds?.f1.ko?.prices[0].line, "+195");
+  assert.equal(odds?.f2.ko?.prices[0].line, "+115");
+  assert.equal(methodOddsForFight(board, "Dooho Choi", ["Patricio Pitbull", "Maicon Patricio"]), null);
+
+  // UFCStats: "Michael Aswell Jr." vs "JooSang Yoo"; the source drops the suffix and spaces the name.
+  const suffixed = parseEventMethodOddsHtml(methodHtml
+    .replace("Alex Pereira</a>", "Michael Aswell</a>").replaceAll("Pereira wins", "Aswell wins")
+    .replace("Jamahal Hill</a>", "Joo Sang Yoo</a>").replaceAll("Hill wins", "Yoo wins"), "https://www.bestfightodds.com/events/test");
+  assert.equal(methodOddsForFight(suffixed, ["JooSang Yoo", "Joo Sang Yoo"], ["Michael Aswell Jr.", "Michael Aswell"])?.f2.ko?.prices[0].line, "+115");
+});
+
 test("method odds reject cells attached to another matchup and invalid American prices", () => {
   const html = methodHtml.replaceAll("[21,1,42,8,1]", "[21,1,99,8,1]").replaceAll("+110", "+0");
   const board = parseEventMethodOddsHtml(html, "https://www.bestfightodds.com/events/test");
@@ -145,4 +165,40 @@ test("board moneyline chart keys follow the fighter when corners are swapped", (
   // A key for another matchup is never used.
   const other = parseEventMethodOddsHtml(html.replace("[2,42]", "[2,99]"), "https://www.bestfightodds.com/events/test");
   assert.equal(other[0].moneylineKeys, undefined);
+});
+
+test("an exact opponent carries the source's own typo of the other name", () => {
+  const board = (a: string, b: string) => parseEventMethodOddsHtml(methodHtml
+    .replace("Alex Pereira</a>", `${a}</a>`).replaceAll("Pereira wins", `${a.split(" ").at(-1)} wins`)
+    .replace("Jamahal Hill</a>", `${b}</a>`).replaceAll("Hill wins", `${b.split(" ").at(-1)} wins`), "https://www.bestfightodds.com/events/test");
+  assert.ok(methodOddsForFight(board("Bogdan Grad", "Dennis Buzukia"), "Bogdan Grad", "Dennis Buzukja"));
+  assert.ok(methodOddsForFight(board("Dustin Jacoby", "Muhammad Said"), "Muhammad Saidov", "Dustin Jacoby"));
+  assert.ok(methodOddsForFight(board("Damien Anderson", "Erza Elliot"), "Ezra Elliott", "Damien Anderson"));
+  assert.ok(methodOddsForFight(board("Carlos Leal Miranda", "Muslim Salikhov"), "Muslim Salikhov", "Carlos Leal"));
+  assert.ok(methodOddsForFight(board("Dong Hoon Choi", "Kiru Sahota"), "DongHun Choi", "Kiru Sahota"));
+  assert.equal(methodOddsForFight(board("Charles Johnson", "Jose Ochoa"), "Charles Johnson", "Eduardo Chapolin"), null, "a replacement opponent is a different bout");
+  assert.equal(methodOddsForFight(board("Alex Perez", "Michael Johnson"), "Alex Perez", "Charles Johnson"), null);
+});
+
+test("a close variant beside the source's typo of the opponent still matches", () => {
+  const board = (a: string, b: string) => parseEventMethodOddsHtml(methodHtml
+    .replace("Alex Pereira</a>", `${a}</a>`).replaceAll("Pereira wins", `${a.split(" ").at(-1)} wins`)
+    .replace("Jamahal Hill</a>", `${b}</a>`).replaceAll("Hill wins", `${b.split(" ").at(-1)} wins`), "https://www.bestfightodds.com/events/test");
+  assert.ok(methodOddsForFight(board("Hayisaer Maheshate", "Viacheslav Borschev"), ["Viacheslav Borshchev"], ["Maheshate", "Maheshate Hayisaer"]));
+  // A surname or first name alone never pins a corner, however the other matches.
+  assert.equal(methodOddsForFight(board("Alex Volkanovski", "Alexsandre Topuria"), "Ilia Topuria", "Alexander Volkanovski"), null);
+  assert.equal(methodOddsForFight(board("C.J. Vergara", "Daniel da Silva"), "CJ Vergara", "Daniel Lacerda"), null);
+});
+
+test("the closing line is the middle of the closing range, in win probability", () => {
+  // Topuria vs Gaethje: tops of the two ranges add up to 93%, middles to 104%.
+  assert.equal(closingLine(["-500", "-500", "-250"]), "-342");
+  assert.equal(closingLine(["+385", "+210", "+360"]), "+270");
+  assert.equal(closingLine(["+220", "+175", "+220"]), "+196");
+  // A range across even money lands on the favourite's side of it.
+  assert.equal(closingLine(["-110", "-140", "+110"]), "-113");
+  // No range: the one price there is.
+  assert.equal(closingLine(["-150", "-150"]), "-150");
+  assert.equal(closingLine(["+200"]), "+200");
+  assert.equal(closingLine([]), null);
 });

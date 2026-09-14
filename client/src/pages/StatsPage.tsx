@@ -1105,7 +1105,7 @@ export default function StatsPage() {
             />
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <span className={`text-[10px] font-medium text-zinc-400 ${loading ? "visible" : "invisible"}`} role="status" aria-hidden={!loading}>Updating…</span>
+            <span className={`text-[10px] font-medium text-zinc-400 max-sm:sr-only ${loading ? "visible" : "invisible"}`} role="status" aria-hidden={!loading}>Updating…</span>
             <FiltersMenu
               years={dashboard.years}
               divisions={dashboard.divisions}

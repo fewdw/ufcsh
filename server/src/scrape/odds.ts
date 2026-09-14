@@ -38,6 +38,28 @@ export type ScrapedOdds = {
 type OddsMatchup = { f1_name: string; f2_name: string };
 
 /**
+ * The closing line from a fighter page row: [open, range low, range high].
+ * The range spans every sportsbook's closing price, and its top is the best
+ * price one book offered, which for both corners adds up to well under a
+ * fair book. The middle of the range, taken in win probability and turned
+ * back into an American price, is the market's close.
+ */
+export function closingLine(values: string[]): string | null {
+  const prices = values.slice(values.length > 1 ? 1 : 0)
+    .map((value) => Number(value.replace(/[−–]/g, "-").replace(/[^0-9+\-]/g, "")))
+    .filter((line) => Number.isFinite(line) && Math.abs(line) >= 100);
+  if (!prices.length) return values.length ? values[values.length - 1] : null;
+  const probability = (line: number) => (line < 0 ? -line / (-line + 100) : 100 / (line + 100));
+  const probabilities = prices.map(probability);
+  const middle = (Math.min(...probabilities) + Math.max(...probabilities)) / 2;
+  if (middle >= 0.5) {
+    const line = Math.round((middle / (1 - middle)) * 100);
+    return line === 100 ? "+100" : `-${line}`;
+  }
+  return `+${Math.round(((1 - middle) / middle) * 100)}`;
+}
+
+/**
  * Keep scraped prices attached to fighter identity when UFCStats changes which
  * corner a fighter occupies. That reorder commonly happens when a live result
  * puts the winner first, and it can finish while the odds request is in flight.
@@ -56,6 +78,19 @@ export function alignScrapedOdds(
     return { ...odds, f1: odds.f2, f2: odds.f1 };
   }
   throw new Error(`fight changed while odds were loading: ${requested.f1_name} vs ${requested.f2_name}`);
+}
+
+/**
+ * Every name one fighter is known by, primary first. UFCStats files some
+ * fighters by ring name ("Patricio Pitbull") where the odds source keeps the
+ * legal one ("Patricio Freire"), so callers pass the verified career-record
+ * name alongside. Every alias identifies the same person; none is fuzzy.
+ */
+export type FighterNames = string | string[];
+
+function namesOf(names: FighterNames): string[] {
+  const list = Array.isArray(names) ? names : [names];
+  return list.filter((name, i) => name && list.findIndex((other) => normName(other) === normName(name)) === i);
 }
 
 type NameParts = { norm: string; compact: string; tokens: string[]; first: string; last: string };
@@ -169,26 +204,89 @@ export async function findOddsEventPages(dateIso: string, cachedUrl?: string | n
   return [...new Set([cachedUrl, ...indexed].filter((url): url is string => Boolean(url)))];
 }
 
-async function findFighterPage(name: string): Promise<string | null> {
+async function findFighterPage(names: FighterNames): Promise<string | null> {
+  return (await findFighterPages(names))[0] ?? null;
+}
+
+/** Profile pages for a fighter, best first. The source sometimes keeps one
+ * person under several profiles ("Dooho Choi", "Doo Ho Choi"), and a bout is
+ * listed on only one of them, so every alias contributes its own page. */
+async function findFighterPages(names: FighterNames, { similar = false } = {}): Promise<string[]> {
+  const aliases = namesOf(names);
+  const pages: string[] = [];
+  const add = (url: string | null | undefined) => { if (url && !pages.includes(url)) pages.push(url); };
+
   // The official sitemap gives us nearly every profile in one request. This
   // avoids a separate archive-search request for each fighter during backfill.
   try {
-    const indexed = (await fighterIndex()).get(normName(name));
-    if (indexed?.length === 1) return indexed[0];
+    const index = await fighterIndex();
+    for (const name of aliases) {
+      const indexed = index.get(normName(name));
+      // Several profiles under one exact name are only safe to try where rows
+      // are verified afterwards, like the duplicates below.
+      if (indexed?.length === 1 || (similar && indexed)) indexed.forEach(add);
+    }
+    // The source keeps duplicate profiles for one person under near-identical
+    // names ("c-j-vergara", "michar-oleksiejczuk", "elizeu-zaleski"). They are
+    // only worth trying where a page row is then verified against both
+    // fighters and the date, so callers opt in.
+    if (similar) {
+      const targets = aliases.map(nameParts);
+      for (const [key, urls] of index) {
+        if (pages.length >= 6) break;
+        if (targets.some((target) => similarProfileName(nameParts(key), target))) urls.forEach(add);
+      }
+    }
   } catch {
     // Sitemap unavailable: the archive search remains a reliable fallback.
   }
+  if (pages.length) return pages;
 
-  const html = await fetchHtml(`${BASE}/search?query=${encodeURIComponent(name)}`, {
-    retries: 0,
+  for (const name of aliases) {
+    const html = await fetchHtml(`${BASE}/search?query=${encodeURIComponent(name)}`, {
+      retries: 0,
+    });
+    const $ = cheerio.load(html);
+    const links = $("a[href^='/fighters/']").toArray();
+    const target = nameParts(name);
+    const exact = links.find((a) => normName(cleanText($(a).text())) === target.norm);
+    const close = links.find((a) => matchesName(cleanText($(a).text()), target));
+    // An unrelated first result ("Maicon Patricio" for "Patricio Pitbull") is
+    // only trusted when it is the search's sole answer.
+    const href = $(exact ?? close ?? (links.length === 1 ? links[0] : undefined)).attr("href");
+    if (href) add(`${BASE}${href}`);
+    if (exact || close) break;
+  }
+  return pages;
+}
+
+function similarProfileName(page: NameParts, target: NameParts): boolean {
+  if (page.norm === target.norm || page.tokens.length < 2 || target.tokens.length < 2) return page.norm !== target.norm && page.compact === target.compact;
+  if (page.compact === target.compact) return true;
+  const [short, long] = page.tokens.length <= target.tokens.length ? [page.tokens, target.tokens] : [target.tokens, page.tokens];
+  if (short[0] === long[0] && short.every((token) => long.includes(token))) return true;
+  return page.tokens.length === target.tokens.length && page.last === target.last && page.last.length >= 4
+    && page.first !== target.first && oneEditApart(page.first, target.first);
+}
+
+/** A cached profile URL is reused only while its slug still names the fighter. */
+export function pageNamesFighter(url: string, names: FighterNames): boolean {
+  const slug = decodeURIComponent(url.split("/").at(-1) ?? "").replace(/-\d+$/, "").replaceAll("-", " ");
+  return namesOf(names).some((name) => {
+    const target = nameParts(name);
+    if (matchesName(slug, target)) return true;
+    // Transliterations one letter apart ("luis-cane" for Luiz Cane).
+    const page = nameParts(slug);
+    return page.tokens.length === target.tokens.length && page.last === target.last
+      && page.tokens.every((token, i) => token === target.tokens[i] || oneEditApart(token, target.tokens[i]));
   });
-  const $ = cheerio.load(html);
-  const links = $("a[href^='/fighters/']").toArray();
-  const target = nameParts(name);
-  const exact = links.find((a) => normName(cleanText($(a).text())) === target.norm);
-  const close = links.find((a) => matchesName(cleanText($(a).text()), target));
-  const href = $(exact ?? close ?? links[0]).attr("href");
-  return href ? `${BASE}${href}` : null;
+}
+
+function oneEditApart(a: string, b: string): boolean {
+  if (a.length < 4 || b.length < 4 || Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && a[i] === b[i]) i++;
+  return a.slice(i + 1) === b.slice(i + 1) || a.slice(i + 1) === b.slice(i) || a.slice(i) === b.slice(i + 1);
 }
 
 function rowDateMatches(haystack: string, dateIso: string): boolean {
@@ -225,8 +323,8 @@ export type OddsHistoryRow = {
   opponent: string;
   date: string;
   eventUrl: string | null;
-  self: { open: string | null; close: string | null };
-  opp: { open: string | null; close: string | null };
+  self: { open: string | null; close: string | null; history: string[] };
+  opp: { open: string | null; close: string | null; history: string[] };
 };
 
 /**
@@ -234,10 +332,12 @@ export type OddsHistoryRow = {
  * fighter's whole career, which is far cheaper than one lookup per fight.
  */
 export async function scrapeFighterOddsHistory(
-  name: string,
+  names: FighterNames,
   cachedUrl?: string | null,
 ): Promise<{ url: string; rows: OddsHistoryRow[] } | null> {
-  const url = cachedUrl || (await findFighterPage(name));
+  // With no names the caller already knows the page (a stored source URL).
+  const trusted = cachedUrl && (!namesOf(names).length || pageNamesFighter(cachedUrl, names));
+  const url = (trusted ? cachedUrl : null) || (namesOf(names).length ? await findFighterPage(names) : null);
   if (!url) return null;
 
   const $ = cheerio.load(await fetchHtml(url, { retries: 0 }));
@@ -249,7 +349,7 @@ export async function scrapeFighterOddsHistory(
       .map((_: number, s: any) => cleanText($(s).text()))
       .get()
       .filter(Boolean);
-    return { open: values[0] ?? null, close: values[values.length - 1] ?? null };
+    return { open: values[0] ?? null, close: closingLine(values), history: values };
   };
 
   for (const tr of $("tr.main-row").toArray()) {
@@ -425,27 +525,65 @@ function variantSameName(a: string, b: string): boolean {
     && left.first.length >= 3 && right.first.length >= 3 && sameishToken(left.first, right.first);
 }
 
+/**
+ * The source's own typos and name forms, accepted only beside an exact
+ * opponent: the same surname (one typo allowed: "Buzukia", "Stirling"), the
+ * same first name with the surname shortened ("Muhammad Said"), or one name
+ * containing the other ("Carlos Leal Miranda").
+ */
+function looseSameName(a: string, b: string): boolean {
+  if (variantSameName(a, b)) return true;
+  const left = nameParts(a);
+  const right = nameParts(b);
+  if (left.tokens.length < 2 || right.tokens.length < 2) return false;
+  const [short, long] = left.tokens.length <= right.tokens.length ? [left.tokens, right.tokens] : [right.tokens, left.tokens];
+  if (short[0] === long[0] && short.every((token) => long.includes(token))) return true;
+  if (left.compact.length >= 8 && oneEditApart(left.compact, right.compact)) return true;
+  if (left.first === right.first && (left.last.startsWith(right.last) || right.last.startsWith(left.last) || oneEditApart(left.last, right.last))) return true;
+  // A different first name with the same surname is usually a different
+  // person (Michel and Alex Pereira), so the initial has to agree too.
+  const surname = left.last === right.last || (Math.min(left.last.length, right.last.length) >= 4 && oneEditApart(left.last, right.last));
+  return surname && left.first[0] === right.first[0];
+}
+
 export function methodOddsForFight(
   matchups: EventMethodMatchup[],
-  fighter1: string,
-  fighter2: string,
+  fighter1: FighterNames,
+  fighter2: FighterNames,
 ): BoardMatchup | null {
   // Both names exact; failing that, one exact and the other a spelling
-  // variant. A fighter appears once on a card, so the exact name pins the bout.
-  const pair = (a: string, b: string, first: string, second: string) =>
-    (strictSameName(a, first) && variantSameName(b, second)) || (variantSameName(a, first) && strictSameName(b, second));
-  const exact = matchups.filter((m) => strictSameName(m.f1Name, fighter1) && strictSameName(m.f2Name, fighter2)
-    || strictSameName(m.f1Name, fighter2) && strictSameName(m.f2Name, fighter1));
-  const candidates = exact.length ? exact : matchups.filter((m) => pair(m.f1Name, m.f2Name, fighter1, fighter2) || pair(m.f1Name, m.f2Name, fighter2, fighter1));
-  // Duplicate or missing matches are deliberately rejected; choosing one
-  // would make identity assignment probabilistic.
-  if (candidates.length !== 1) return null;
-  const { f1Name, f2Name, ...found } = candidates[0];
-  const aligned = pair(f1Name, f2Name, fighter1, fighter2);
-  if (aligned === pair(f1Name, f2Name, fighter2, fighter1)) return null;
-  if (aligned) return found;
-  const moneylineKeys = found.moneylineKeys && { f1: found.moneylineKeys.f2, f2: found.moneylineKeys.f1 };
-  return { ...found, f1: found.f2, f2: found.f1, moneylineKeys };
+  // variant; failing that, one exact and the other a loose match. A fighter
+  // appears once on a card, so the exact name pins the bout. Each fighter may
+  // carry aliases; any one of them counts as that fighter.
+  const strict = (a: string, names: FighterNames) => namesOf(names).some((name) => strictSameName(a, name));
+  const variant = (a: string, names: FighterNames) => namesOf(names).some((name) => variantSameName(a, name));
+  const loose = (a: string, names: FighterNames) => namesOf(names).some((name) => looseSameName(a, name));
+  const tiers = [
+    (a: string, b: string, first: FighterNames, second: FighterNames) => strict(a, first) && strict(b, second),
+    (a: string, b: string, first: FighterNames, second: FighterNames) =>
+      (strict(a, first) && variant(b, second)) || (variant(a, first) && strict(b, second)),
+    (a: string, b: string, first: FighterNames, second: FighterNames) =>
+      (strict(a, first) && loose(b, second)) || (loose(a, first) && strict(b, second)),
+    // Neither name exact, but one a close variant ("Hayisaer Maheshate" for
+    // Maheshate Hayisaer) beside the source's typo of the other ("Borschev").
+    // A surname or first name alone never counts: Michel and Alex Pereira.
+    (a: string, b: string, first: FighterNames, second: FighterNames) =>
+      (variant(a, first) && loose(b, second)) || (loose(a, first) && variant(b, second)),
+  ];
+  for (const pair of tiers) {
+    const candidates = matchups.filter((m) => pair(m.f1Name, m.f2Name, fighter1, fighter2) || pair(m.f1Name, m.f2Name, fighter2, fighter1));
+    if (!candidates.length) continue;
+    // Duplicate matches are deliberately rejected; choosing one would make
+    // identity assignment probabilistic.
+    if (candidates.length !== 1) return null;
+    const { f1Name, f2Name, ...found } = candidates[0];
+    const aligned = pair(f1Name, f2Name, fighter1, fighter2);
+    if (aligned === pair(f1Name, f2Name, fighter2, fighter1)) return null;
+    if (aligned) return found;
+    const moneylineKeys = found.moneylineKeys && { f1: found.moneylineKeys.f2, f2: found.moneylineKeys.f1 };
+    return { ...found, f1: found.f2, f2: found.f1, moneylineKeys };
+  }
+  return null;
 }
 
 /** Opening and closing mean moneyline for both corners, or null if the
@@ -496,35 +634,64 @@ export async function resolveMeanPrices(
 }
 
 export async function scrapeOdds(
-  fighter1: string,
-  fighter2: string,
+  fighter1: FighterNames,
+  fighter2: FighterNames,
   dateIso: string,
   cachedPageUrl?: string | null,
 ): Promise<ScrapedOdds | null> {
-  const target1 = nameParts(fighter1);
-  const target2 = nameParts(fighter2);
+  const targets1 = namesOf(fighter1).map(nameParts);
+  const targets2 = namesOf(fighter2).map(nameParts);
+  const matchesAny = (name: string, targets: NameParts[]) => targets.some((target) => matchesName(name, target));
+  const matchesAnyLast = (name: string, targets: NameParts[]) => targets.some((target) => matchesLastName(name, target));
   const candidateDates = [dateIso, shiftDate(dateIso, -1), shiftDate(dateIso, 1)];
 
-  const pages: string[] = cachedPageUrl ? [cachedPageUrl] : [];
-  if (!pages.length) {
-    for (const query of [fighter1, fighter2]) {
-      try {
-        const page = await findFighterPage(query);
-        if (page && !pages.includes(page)) pages.push(page);
-      } catch {
-        // search failed for this name; try the other
-      }
+  // The page that last held this bout goes first. If it no longer lists the
+  // bout (a stale or wrong profile), every alias's profile is tried instead.
+  const tried = new Set<string>();
+  const tryPages = async (pages: string[]) => {
+    for (const pageUrl of pages) {
+      if (tried.has(pageUrl)) continue;
+      tried.add(pageUrl);
+      const found = await scrapeOddsPage(pageUrl);
+      if (found) return found;
     }
+    return null;
+  };
+  if (cachedPageUrl) {
+    const found = await tryPages([cachedPageUrl]);
+    if (found) return found;
   }
+  for (const names of [fighter1, fighter2]) {
+    let pages: string[] = [];
+    try {
+      // Duplicate profiles only for bouts already fought: an upcoming bout is
+      // re-checked every few hours, and its line lives on the current profile.
+      pages = await findFighterPages(names, { similar: dateIso < new Date().toISOString().slice(0, 10) });
+    } catch {
+      // search failed for this fighter; try the other
+    }
+    const found = await tryPages(pages);
+    if (found) return found;
+  }
+  return null;
 
-  for (const pageUrl of pages) {
+  async function scrapeOddsPage(pageUrl: string): Promise<ScrapedOdds | null> {
     let $: cheerio.CheerioAPI;
     try {
       $ = cheerio.load(await fetchHtml(pageUrl, { retries: 0 }));
     } catch {
-      continue;
+      return null;
     }
 
+    // A bout moved to a later card stays filed under the event it was first
+    // booked on. Such a row is kept aside and used only when no row matches
+    // the date, both full names match, and it is the page's only such row.
+    const moved: ScrapedOdds[] = [];
+    // A rematch's line sometimes stays on the undated "Future Events" page
+    // beside the dated first meeting. Used only for a bout already fought, when
+    // nothing dated matches and it is the pair's only undated row.
+    const undated: ScrapedOdds[] = [];
+    const fought = dateIso < new Date().toISOString().slice(0, 10);
     for (const tr of $("tr.main-row").toArray()) {
       const row1 = $(tr);
       const row2 = row1.next("tr");
@@ -541,30 +708,38 @@ export async function scrapeOdds(
           .map((_: number, s: any) => cleanText($(s).text()))
           .get()
           .filter(Boolean);
-        return { open: values[0] ?? null, close: values[values.length - 1] ?? null, history: values };
+        return { open: values[0] ?? null, close: closingLine(values), history: values };
       };
 
-      let has1 = matchesName(name1, target1) || matchesName(name2, target1);
-      let has2 = matchesName(name1, target2) || matchesName(name2, target2);
+      let has1 = matchesAny(name1, targets1) || matchesAny(name2, targets1);
+      let has2 = matchesAny(name1, targets2) || matchesAny(name2, targets2);
       if (!has1 || !has2) {
-        has1 = matchesLastName(name1, target1) || matchesLastName(name2, target1);
-        has2 = matchesLastName(name1, target2) || matchesLastName(name2, target2);
+        has1 = has1 || matchesAnyLast(name1, targets1) || matchesAnyLast(name2, targets1);
+        has2 = has2 || matchesAnyLast(name1, targets2) || matchesAnyLast(name2, targets2);
       }
       if (!has1 || !has2) continue;
 
       const rowText = `${row1.text()} ${row2.text()}`;
-      if (!candidateDates.some((d) => rowDateMatches(rowText, d))) continue;
-
       const odds1 = extract(row1);
       const odds2 = extract(row2);
       // Rows are (opponent-name, line) pairs; map each row back to our fighters.
-      const row1IsF1 = matchesName(name1, target1) || matchesLastName(name1, target1);
-      return {
+      // A full-name match decides the corner before a surname-only one does.
+      const row1IsF1 = matchesAny(name1, targets1) || matchesAny(name2, targets2)
+        || (!matchesAny(name1, targets2) && !matchesAny(name2, targets1) && matchesAnyLast(name1, targets1));
+      const found = {
         f1: row1IsF1 ? odds1 : odds2,
         f2: row1IsF1 ? odds2 : odds1,
         sourceUrl: pageUrl,
       };
+      if (candidateDates.some((d) => rowDateMatches(rowText, d))) return found;
+
+      const rowDate = parseRowDate(rowText);
+      const fullPair = (matchesAny(name1, targets1) && matchesAny(name2, targets2))
+        || (matchesAny(name1, targets2) && matchesAny(name2, targets1));
+      if (fullPair && rowDate && Math.abs(Date.parse(rowDate) - Date.parse(dateIso)) <= 14 * 86_400_000) moved.push(found);
+      if (fullPair && !rowDate && fought && row1.find("a[href^='/events/future-events']").length) undated.push(found);
     }
+    if (moved.length === 1) return moved[0];
+    return moved.length === 0 && undated.length === 1 ? undated[0] : null;
   }
-  return null;
 }

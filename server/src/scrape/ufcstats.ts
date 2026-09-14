@@ -408,10 +408,12 @@ export async function scrapeFightDetail(fightId: string, order?: FightOrder, opt
       .each((_, el) => {
         const span = $(el).find("span").first();
         if (!span.length) return;
+        // Cards from about 2008–2018 are printed with an empty name span. The
+        // scores are still the panel's; the judge is simply unknown, kept as "".
         const judge = cleanText(span.text());
         const score = cleanText($(el).text().replace(span.text(), "")).replace(/\.$/, "");
         const pair = score.match(/^(\d+)\s*-\s*(\d+)$/);
-        if (judge && pair) judges.push({ judge, f1Score: Number(pair[2]), f2Score: Number(pair[1]) });
+        if (pair) judges.push({ judge, f1Score: Number(pair[2]), f2Score: Number(pair[1]) });
       });
     if (judges.length) detail.judges = judges;
     else {

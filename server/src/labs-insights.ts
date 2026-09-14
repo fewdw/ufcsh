@@ -186,7 +186,7 @@ export function getLabsInsights(params: URLSearchParams): unknown {
             const mine = Math.sign(entry.a - entry.b);
             const others = card.filter((other) => other !== entry).map((other) => Math.sign(other.a - other.b));
             if (others.length === 2 && others[0] === others[1] && others[0] !== mine) judge.dissents += 1;
-            byJudge.set(entry.judge, judge);
+            if (entry.judge) byJudge.set(entry.judge, judge);
           }
         }
         add(decisionWins, outcome);
@@ -406,7 +406,8 @@ export function getLabsJudges(params: URLSearchParams): unknown {
         official.pricedPicks += 1;
         if (pick === favoritePick) official.favoritePicks += 1;
       }
-      officials.set(card.judge, official);
+      // An unnamed card still counts toward the panel, never toward an official.
+      if (card.judge) officials.set(card.judge, official);
     }
   }
 

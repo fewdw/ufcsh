@@ -286,12 +286,18 @@ function parseSeconds(round: number | null, time: string | null, detail: any): n
   return before + Number(match[1]) * 60 + Number(match[2]);
 }
 
-function parseScheduledRounds(row: any, detail: any): number {
+/** How many rounds a bout was booked for: the official time format once the
+ * detail page has it, otherwise five for a title fight, a modern main event or
+ * any bout that went past three, and three for the rest. Zero for formats with
+ * no round count at all. */
+export function parseScheduledRounds(row: any, detail: any): number {
   const timeFormat = detail?.methodInfo?.["Time format"];
   if (timeFormat) {
     const match = String(timeFormat).match(/^(\d+)\s+Rnd\s*\(/i);
     return match ? Number(match[1]) : 0;
   }
+  const booked = Number(row.scheduled_rounds);
+  if (Number.isInteger(booked) && booked > 0) return booked;
   const wentBeyondThree = Number(row.round) > 3;
   const modernMainEvent = Number(row.ord) === 0 && row.event_date >= "2011-08-14";
   return wentBeyondThree || Boolean(row.title_fight) || modernMainEvent ? 5 : 3;

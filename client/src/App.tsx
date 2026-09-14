@@ -7,6 +7,7 @@ import { segmentedGroup, segmentedIdle, segmentedSelected } from "./components/s
 import { Moon, Sun } from "lucide-react";
 import { useSettings } from "./settings";
 import { useFighterPrefetch } from "./useFighterPrefetch";
+import RouteErrorBoundary from "./components/RouteErrorBoundary";
 
 const loadEventsPage = () => import("./pages/EventsPage");
 const loadRankingsPage = () => import("./pages/RankingsPage");
@@ -16,6 +17,7 @@ const FighterPage = lazy(() => import("./pages/FighterPage"));
 const RankingsPage = lazy(loadRankingsPage);
 const StatsPage = lazy(loadStatsPage);
 const LabsPage = lazy(() => import("./pages/LabsPage"));
+const BugsPage = lazy(() => import("./pages/BugsPage"));
 
 function Header({ onSearch }: { onSearch: () => void }) {
   const { pathname } = useLocation();
@@ -43,8 +45,8 @@ function Header({ onSearch }: { onSearch: () => void }) {
           <LiveMatchup />
         </div>
       </div>
-      <div className="flex w-full items-center justify-between px-3 py-3 sm:px-5">
-        <div className="flex min-w-0 items-center gap-3 sm:gap-6">
+      <div className="flex w-full items-center justify-between gap-2 px-3 py-3 sm:px-5">
+        <div className="flex min-w-0 items-center gap-2 min-[380px]:gap-3 sm:gap-6">
           <Link to="/" className="shrink-0 text-base font-bold tracking-tight text-zinc-900 sm:text-lg">
             ufc<span className="text-zinc-400">.sh</span>
           </Link>
@@ -56,7 +58,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
                 onPointerEnter={() => { void link.load().catch(() => {}); }}
                 onFocus={() => { void link.load().catch(() => {}); }}
                 aria-current={link.active ? "page" : undefined}
-                className={`rounded-full px-2.5 py-1.5 text-xs font-medium transition sm:px-4 sm:text-sm ${
+                className={`rounded-full px-2 py-1.5 text-xs font-medium transition min-[380px]:px-2.5 sm:px-4 sm:text-sm ${
                   link.active ? segmentedSelected : segmentedIdle
                 }`}
               >
@@ -66,12 +68,12 @@ function Header({ onSearch }: { onSearch: () => void }) {
           </nav>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <button
             type="button"
             onClick={onSearch}
             aria-label="Search fighters, events and fights"
-            className="flex items-center gap-2 rounded-full border border-zinc-200 bg-white py-1.5 pl-3 pr-3.5 text-sm text-zinc-400 transition-colors hover:border-zinc-300 hover:text-zinc-600"
+            className="flex h-9 w-9 items-center justify-center gap-2 rounded-full border border-zinc-200 bg-white text-sm sm:w-auto sm:justify-start sm:py-1.5 sm:pl-3 sm:pr-3.5 text-zinc-400 transition-colors hover:border-zinc-300 hover:text-zinc-600"
           >
             <SearchGlyph />
             <span className="hidden sm:inline">Search anything</span>
@@ -94,6 +96,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
 }
 
 export default function App() {
+  const location = useLocation();
   const [searchOpen, setSearchOpen] = useState(false);
   const { settings } = useSettings();
   useFighterPrefetch(settings.rankingSource);
@@ -118,6 +121,7 @@ export default function App() {
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-zinc-100 text-zinc-900">
       <Header onSearch={() => setSearchOpen(true)} />
       <div className="min-h-0 flex-1 overflow-hidden">
+        <RouteErrorBoundary key={location.key}>
         <Suspense fallback={<div role="status" className="flex h-full items-center justify-center text-sm text-zinc-400">Loading…</div>}>
         <Routes>
           <Route path="/" element={<EventsPage />} />
@@ -127,9 +131,11 @@ export default function App() {
           <Route path="/rankings" element={<RankingsPage />} />
           <Route path="/stats" element={<StatsPage />} />
           <Route path="/labs" element={<LabsPage />} />
+          <Route path="/bugs" element={<BugsPage />} />
           <Route path="*" element={<div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-zinc-500"><p>This page couldn’t be found.</p><Link to="/" className="font-semibold text-zinc-900 underline">Back to events</Link></div>} />
         </Routes>
         </Suspense>
+        </RouteErrorBoundary>
       </div>
       <CmdK open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>

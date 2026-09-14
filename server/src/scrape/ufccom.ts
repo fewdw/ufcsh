@@ -229,7 +229,7 @@ export async function scrapeAthleteDirectoryPage(page: number): Promise<Director
   cards.each((_, card) => {
     const name = cleanText($(card).find(".c-listing-athlete__name").first().text());
     const img = $(card).find("img").first().attr("src") ?? "";
-    if (!name || !img || img.includes("no-profile-image")) return;
+    if (!name || !img || PLACEHOLDER_ART.test(img)) return;
     athletes.push({ name, img: img.startsWith("http") ? img : `https://www.ufc.com${img}` });
   });
   return athletes;
@@ -299,11 +299,21 @@ export function athleteSlug(name: string): string {
 export function parseSearchAthlete(html: string, name?: string): { href: string | null; img: string | null } {
   const $ = cheerio.load(html);
   const cards = $("div.solr-athlete-card");
-  const card = (name ? cards.filter((_, element) => {
-    const title = $(element).find(".field--name-node-title, h2").first().text();
+  const titleOf = (element: any) => normName($(element).find(".field--name-node-title, h2").first().text());
+  let card = (name ? cards.filter((_, element) => {
     const href = $(element).find("a[href*='/athlete/']").first().attr("href") ?? "";
-    return normName(title) === normName(name) || href.split("/athlete/")[1]?.split(/[?#]/)[0] === athleteSlug(name);
+    return titleOf(element) === normName(name) || href.split("/athlete/")[1]?.split(/[?#]/)[0] === athleteSlug(name);
   }) : cards).first();
+  if (name && !card.length) {
+    // A short first name ("Joe Kropschot" listed as "Joseph Kropschot"): same
+    // surname, first names sharing their first two letters, and only one such card.
+    const [first, ...rest] = normName(name).split(" ");
+    const loose = cards.filter((_, element) => {
+      const [otherFirst = "", ...otherRest] = titleOf(element).split(" ");
+      return rest.length > 0 && otherRest.join(" ") === rest.join(" ") && first.length >= 2 && otherFirst.slice(0, 2) === first.slice(0, 2);
+    });
+    if (loose.length === 1) card = loose.first();
+  }
   if (name && !card.length) return { href: null, img: null };
   const href = card.find("a[href*='/athlete/']").first().attr("href")
     ?? $("a[href*='/athlete/']").first().attr("href");
@@ -328,11 +338,14 @@ export async function scrapeFighterImages(name: string, loadHtml = fetchHtml): P
     // fall through to search
   }
   try {
-    const html = await loadHtml(
-      `https://www.ufc.com/search?query=${encodeURIComponent(name)}`,
-      { timeoutMs: 30000, retries: 0 },
-    );
-    const hit = parseSearchAthlete(html, name);
+    const search = (query: string) => loadHtml(`https://www.ufc.com/search?query=${encodeURIComponent(query)}`, { timeoutMs: 30000, retries: 0 });
+    const html = await search(name);
+    let hit = parseSearchAthlete(html, name);
+    // The search indexes an athlete under their listed name only, so "Joe
+    // Kropschot" returns news but no athlete; the surname alone finds
+    // "Joseph Kropschot". Only when the full name gave no athlete cards at all.
+    const surname = name.trim().split(/\s+/).slice(1).join(" ");
+    if (!hit.href && surname.length >= 4 && !html.includes("solr-athlete-card")) hit = parseSearchAthlete(await search(surname), name);
     if (hit.href) {
       try {
         const page = await loadHtml(hit.href, { timeoutMs: 30000, retries: 0 });
@@ -439,4 +452,66 @@ export function parseEventSegments(html: string): ScrapedSegmentBout[] {
 
 export async function scrapeEventSegments(slug: string): Promise<ScrapedSegmentBout[]> {
   return parseEventSegments(await fetchHtml(`https://www.ufc.com/event/${slug}`, { timeoutMs: 40000 }));
+}
+
+// Scheduled rounds. The event page lists each bout with the promotion's own
+// fight id, and the promotion's live-card feed carries, for every one of those
+// ids, the rule set the bout is booked under. That is the only place an
+// announced bout's length is published: a co-main event or a contender bout
+// can be booked for five rounds with no belt on the line, so nothing about a
+// bout's position or title status can stand in for it.
+
+const LIVE_CARD_API = "https://d29dxerjsp82wz.cloudfront.net/api/v3";
+
+export type ScrapedBoutRounds = { fightId: number; order: number; f1: string; f2: string; rounds: number };
+
+/** The promotion's fight ids, in card order, as the event page lists them. */
+export function parseFightIds(html: string): number[] {
+  const $ = cheerio.load(html);
+  const ids = $(".c-listing-fight[data-fmid]").map((_, el) => Number($(el).attr("data-fmid"))).get();
+  return [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
+}
+
+/**
+ * Every bout on a live-card feed whose rule set states its length plainly. The
+ * feed gives the length twice — a count and a description such as
+ * "5 Rnd (5-5-5-5-5)" — and a bout is only kept when the two agree, so a
+ * malformed or unusual rule set yields no number rather than a wrong one.
+ */
+export function parseCardRounds(feed: unknown, fightIds: number[]): ScrapedBoutRounds[] {
+  const card = (feed as any)?.LiveEventDetail?.FightCard;
+  if (!Array.isArray(card)) return [];
+  // The feed must be this page's card: every bout the page lists has to be on
+  // it. The feed can hold bouts the page has not rendered yet, and those are
+  // kept — they belong to the same card.
+  const onFeed = new Set(card.map((fight: any) => Number(fight?.FightId)));
+  if (!fightIds.length || !fightIds.every((id) => onFeed.has(id))) return [];
+  const bouts: ScrapedBoutRounds[] = [];
+  for (const fight of card) {
+    const rounds = Number(fight?.RuleSet?.PossibleRounds);
+    const described = /^(\d+)\s+Rnd\s*\(([\d-]+)\)$/i.exec(String(fight?.RuleSet?.Description ?? "").trim());
+    if (!Number.isInteger(rounds) || rounds < 1 || !described) continue;
+    if (Number(described[1]) !== rounds || described[2].split("-").length !== rounds) continue;
+    const names = (fight?.Fighters ?? []).map((fighter: any) =>
+      cleanText(`${fighter?.Name?.FirstName ?? ""} ${fighter?.Name?.LastName ?? ""}`));
+    if (names.length !== 2 || !names[0] || !names[1]) continue;
+    bouts.push({ fightId: Number(fight.FightId), order: Number(fight?.FightOrder) || 0, f1: names[0], f2: names[1], rounds });
+  }
+  return bouts;
+}
+
+async function fetchJson(url: string): Promise<unknown> {
+  return JSON.parse(await fetchHtml(url, { timeoutMs: 30000 }));
+}
+
+/** An event page plus the rule set of every bout on it. */
+export async function scrapeEventCard(slug: string): Promise<{ segments: ScrapedSegmentBout[]; rounds: ScrapedBoutRounds[] | null }> {
+  const html = await fetchHtml(`https://www.ufc.com/event/${slug}`, { timeoutMs: 40000 });
+  const segments = parseEventSegments(html);
+  const fightIds = parseFightIds(html);
+  if (!fightIds.length) return { segments, rounds: null };
+  const fight = await fetchJson(`${LIVE_CARD_API}/fight/live/${fightIds[0]}.json`) as any;
+  const eventId = Number(fight?.LiveFightDetail?.Event?.EventId);
+  if (!Number.isInteger(eventId) || eventId < 1) throw new Error(`ufc.com fight ${fightIds[0]} named no event`);
+  return { segments, rounds: parseCardRounds(await fetchJson(`${LIVE_CARD_API}/event/live/${eventId}.json`), fightIds) };
 }

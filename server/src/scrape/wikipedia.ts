@@ -25,17 +25,31 @@ export function plainText(wikitext: string): string {
 
 /** The event date from the article's infobox, as YYYY-MM-DD. */
 export function infoboxDate(wikitext: string): string | null {
-  const field = wikitext.match(/\|\s*date\s*=\s*([^\n]*)/i)?.[1] ?? "";
-  const template = field.match(/\{\{\s*start date[^|]*\|\s*(\d{4})\s*\|\s*(\d{1,2})\s*\|\s*(\d{1,2})/i);
-  if (template) return `${template[1]}-${template[2].padStart(2, "0")}-${template[3].padStart(2, "0")}`;
-  const parsed = Date.parse(`${field.replace(/\{\{[^}]*\}\}|<[^>]*>|\[\[|\]\]/g, "").trim()} 12:00 UTC`);
-  return Number.isFinite(parsed) ? new Date(parsed).toISOString().slice(0, 10) : null;
+  // Maintenance tags carry their own "date=" ({{Use mdy dates|date=June 2021}})
+  // above the infobox, so read from the infobox on, and only a date that names
+  // a day: "June 2021" is when an editor tagged the page, not the event.
+  // Citations carry dates too, so without an infobox only the first field
+  // counts — a year summary page must never pass for an event's article.
+  const infobox = wikitext.search(/\{\{\s*Infobox/i);
+  const end = infobox >= 0 ? wikitext.indexOf("\n}}", infobox) : -1;
+  const scope = infobox >= 0 ? wikitext.slice(infobox, end > infobox ? end : undefined) : wikitext;
+  const fields = [...scope.matchAll(/\|\s*date\s*=\s*((?:\{\{[^}]*\}\}|[^\n|])*)/gi)];
+  for (const match of infobox >= 0 ? fields : fields.slice(0, 1)) {
+    const field = match[1];
+    const template = field.match(/\{\{\s*start date[^|]*\|\s*(\d{4})\s*\|\s*(\d{1,2})\s*\|\s*(\d{1,2})/i);
+    if (template) return `${template[1]}-${template[2].padStart(2, "0")}-${template[3].padStart(2, "0")}`;
+    const text = field.replace(/\{\{[^}]*\}\}|<[^>]*>|\[\[|\]\]/g, "").trim();
+    if (!/\b\d{1,2}\b/.test(text.replace(/\b\d{4}\b/g, ""))) continue;
+    const parsed = Date.parse(`${text} 12:00 UTC`);
+    if (Number.isFinite(parsed)) return new Date(parsed).toISOString().slice(0, 10);
+  }
+  return null;
 }
 
 // A sentence says someone missed weight only with one of these phrases. The
 // fighter must be named before it: people named after it are recipients of
 // the fine or the opponent ("…half of that money went to Poirier").
-const MISS_CUE = /missed (?:the )?weight|over the [a-z' -]*limit|overweight|failing to make (?:the )?(?:required )?weight|failed to make (?:the )?(?:required )?weight|for missing weight|fined \d+ ?(?:%|percent)/i;
+const MISS_CUE = /missed (?:the )?weight|over the [a-z' -]*limit|overweight|fail(?:ing|ed) to make (?:the )?(?:required )?(?:[a-z']+ )?(?:weight|limit)|for missing weight|fined \d+ ?(?:%|percent)/i;
 // A sentence about some other card (a fighter's history) is never used.
 const OTHER_EVENT = /\b(?:at|from) (?:UFC|WEC|Strikeforce|Bellator|The Ultimate Fighter)\b/i;
 const POUNDS = /(\d{3}(?:\.\d+)?)\s*(?:-\s*)?(?:pounds|pound|lbs?\b)/gi;
@@ -68,6 +82,8 @@ export function weightMisses(wikitext: string, fighters: string[]): WeightMiss[]
     const named = people
       .map((person) => ({ person, at: position(person) }))
       .filter((entry) => entry.at >= 0);
+    // The sentence's subject is whoever it names first, not whoever the card lists first.
+    named.sort((a, b) => a.at - b.at);
     if (!cue || OTHER_EVENT.test(raw)) {
       if (named.length) lastSubject = named[0].person.name;
       continue;
@@ -81,7 +97,7 @@ export function weightMisses(wikitext: string, fighters: string[]): WeightMiss[]
     // Weights in the order they are written pair with the fighters in the
     // order they are named ("Cháirez weighed in at 131 pounds and Lacerda at 127").
     const weights = [...raw.matchAll(POUNDS)]
-      .filter((match) => !/limit of|maximum of|limit is|up to/i.test(raw.slice(Math.max(0, match.index - 14), match.index)))
+      .filter((match) => !/limit of|maximum of|limit is|up to|over the|more than/i.test(raw.slice(Math.max(0, match.index - 14), match.index)))
       .map((match) => Number(match[1]))
       .filter((value) => value >= 110 && value <= 300);
     const ordered = before.length ? before.sort((a, b) => a.at - b.at).map((entry) => entry.person.name) : subjects;
@@ -106,12 +122,57 @@ export function weightMisses(wikitext: string, fighters: string[]): WeightMiss[]
   return [...found.values()];
 }
 
-/** The article for a UFC event: its exact name, then the numbered short form
- * ("UFC 297"), then a search. Every candidate must carry the event's date. */
-export async function fetchEventArticle(name: string, date: string): Promise<{ title: string; wikitext: string } | null> {
+/**
+ * The part of an article about the event on this date. A page for one event
+ * is returned whole; a page covering many ("2012 in UFC", a TUF season) gives
+ * each its own infobox, and only the stretch from that event's infobox to the
+ * next one is returned, so another card's prose is never read for this one.
+ */
+export function eventSection(wikitext: string, date: string): string | null {
+  const within = (found: string | null) => found != null && Math.abs(Date.parse(found) - Date.parse(date)) / 86_400_000 <= 1;
+  const starts = [...wikitext.matchAll(/\{\{\s*Infobox/gi)].map((match) => match.index);
+  if (starts.length <= 1) return within(infoboxDate(wikitext)) ? wikitext : null;
+  for (let i = 0; i < starts.length; i++) {
+    const block = wikitext.slice(starts[i], starts[i + 1]);
+    if (!within(infoboxDate(block))) continue;
+    return i === 0 ? wikitext.slice(0, starts[1]) : block;
+  }
+  return null;
+}
+
+/** Whether the text names at least half the card, by full or last name. A
+ * card two events share a date window with (a TUF finale the night before
+ * UFC 200) is told apart this way. With no card to compare, any text passes. */
+export function namesCard(wikitext: string, fighters: string[]): boolean {
+  const people = [...new Set(fighters.map(normName).filter(Boolean))];
+  if (!people.length) return true;
+  // Raw wikitext: results tables are templates ({{MMAevent bout|…}}), which
+  // plain text drops.
+  const text = ` ${normName(wikitext)} `;
+  const named = people.filter((norm) => {
+    if (text.includes(` ${norm} `)) return true;
+    const last = norm.split(" ").at(-1) ?? "";
+    return last.length >= 3 && text.includes(` ${last} `);
+  });
+  return named.length * 2 >= people.length;
+}
+
+// Search hits worth opening: event and season pages, and old cards titled only
+// by their bout ("Ortiz vs. Shamrock 3"). Fighter biographies are never read.
+const EVENT_TITLE = /\b(?:UFC|Ultimate Fight(?:ing|er)|Ultimate Ultimate)\b|\bvs\b/i;
+
+/**
+ * The article for a UFC event: its exact name, the numbered short form
+ * ("UFC 297"), the TUF season page a finale is written up in, then searches
+ * by name and by main event, then the year summary. Every candidate must
+ * carry the event's date and name the card (`fighters`, main event first).
+ */
+export async function fetchEventArticle(name: string, date: string, fighters: string[] = []): Promise<{ title: string; wikitext: string } | null> {
+  const year = date.slice(0, 4);
   const titles = [name];
   const numbered = name.match(/^(UFC \d+)\b/);
   if (numbered) titles.push(numbered[1]);
+  if (/^The Ultimate Fighter\b.* Finale$/i.test(name)) titles.push(name.replace(/ Finale$/i, ""));
   const tried = new Set<string>();
   const load = async (title: string) => {
     if (tried.has(title)) return null;
@@ -120,19 +181,30 @@ export async function fetchEventArticle(name: string, date: string): Promise<{ t
     const body = JSON.parse(await fetchHtml(url, { retries: 1 }));
     const wikitext: string | undefined = body?.parse?.wikitext?.["*"];
     if (!wikitext) return null;
-    const articleDate = infoboxDate(wikitext);
-    const days = articleDate ? Math.abs(Date.parse(articleDate) - Date.parse(date)) / 86_400_000 : Infinity;
-    return days <= 1 ? { title: body.parse.title as string, wikitext } : null;
+    const section = eventSection(wikitext, date);
+    return section && namesCard(section, fighters) ? { title: body.parse.title as string, wikitext: section } : null;
   };
   for (const title of titles) {
     const article = await load(title);
     if (article) return article;
   }
-  const search = JSON.parse(await fetchHtml(`${API}?action=query&format=json&list=search&srlimit=5&srsearch=${encodeURIComponent(`${name} ${date.slice(0, 4)}`)}`, { retries: 1 }));
-  for (const hit of search?.query?.search ?? []) {
-    if (!/\b(?:UFC|Ultimate Fighting)\b/i.test(hit.title)) continue;
-    const article = await load(hit.title);
-    if (article) return article;
+  const last = (fighter: string | undefined) => fighter?.trim().split(/\s+/).at(-1) ?? "";
+  const queries = [
+    `${name} ${year}`,
+    // Cards UFCStats names by nickname ("Marreta vs. Anders") or under a season
+    // finale's title are found by the main event instead.
+    ...(fighters.length >= 2 ? [`UFC ${last(fighters[0])} vs. ${last(fighters[1])} ${year}`] : []),
+    // The bout alone ("Kim vs Hathaway") reaches the season page a card was
+    // the finale of (The Ultimate Fighter: China).
+    name.replace(/^[^:]*:\s*/, ""),
+  ];
+  for (const query of queries) {
+    const search = JSON.parse(await fetchHtml(`${API}?action=query&format=json&list=search&srlimit=5&srsearch=${encodeURIComponent(query)}`, { retries: 1 }));
+    for (const hit of search?.query?.search ?? []) {
+      if (!EVENT_TITLE.test(hit.title)) continue;
+      const article = await load(hit.title);
+      if (article) return article;
+    }
   }
-  return null;
+  return load(`${year} in UFC`);
 }

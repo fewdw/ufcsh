@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { infoboxDate, plainText, weightMisses } from "./wikipedia.ts";
+import { eventSection, infoboxDate, namesCard, plainText, weightMisses } from "./wikipedia.ts";
 
 const article = (background: string, results = "") =>
   `{{Infobox MMA event\n| date = {{start date|2024|01|20}}\n}}\n==Background==\n${background}\n==Results==\n${results}`;
@@ -8,6 +8,11 @@ const article = (background: string, results = "") =>
 test("infobox dates read both the template and written forms", () => {
   assert.equal(infoboxDate(article("")), "2024-01-20");
   assert.equal(infoboxDate("| date = August 11, 2012\n"), "2012-08-11");
+  // A maintenance tag's month-only date above the infobox is not the event's.
+  assert.equal(infoboxDate("{{Use mdy dates|date=June 2021}}\n{{Infobox MMA event\n| date = {{Start date|2021|9|25}}\n}}"), "2021-09-25");
+  assert.equal(infoboxDate("{{Use mdy dates|date=July 2022}}\n{{Infobox MMA event\n| date = November 2, 2019\n}}"), "2019-11-02");
+  // A year summary with no infobox is not read past its first date field.
+  assert.equal(infoboxDate("Intro\n{{cite web |date=January 28, 2012 |title=x}}\n{{cite web |date=July 21, 2012}}"), "2012-01-28");
 });
 
 test("plain text drops references and templates and keeps link text", () => {
@@ -54,4 +59,28 @@ test("a missing weight falls back to the catchweight the bout went ahead at", ()
 test("misses at other events and fighters who made weight are ignored", () => {
   const text = article("Jeremy Stephens, who missed weight at UFC 189, faced Calvin Kattar. Both fighters made weight on their second attempt.");
   assert.deepEqual(weightMisses(text, ["Jeremy Stephens", "Calvin Kattar"]), []);
+});
+
+test("a page covering many events yields only this event's section", () => {
+  const page = "Intro\n{{Infobox MMA event\n|date=January 28, 2012\n}}\nEvans prose.\n==Results==\n"
+    + "{{Infobox MMA event\n|date=February 15, 2012\n}}\nSanchez missed weight.\n";
+  assert.ok(eventSection(page, "2012-01-28")?.includes("Evans prose"));
+  assert.ok(!eventSection(page, "2012-01-28")?.includes("Sanchez"));
+  assert.ok(eventSection(page, "2012-02-15")?.startsWith("{{Infobox MMA event\n|date=February 15"));
+  assert.equal(eventSection(page, "2012-03-01"), null);
+});
+
+test("an article must name most of the card", () => {
+  const text = "==Results==\n[[Thiago Santos]] def. [[Eryk Anders]]\nAlex Oliveira def. Carlo Pedersoli Jr.";
+  assert.ok(namesCard(text, ["Thiago Santos", "Eryk Anders", "Alex Oliveira", "Carlo Pedersoli Jr."]));
+  assert.ok(!namesCard(text, ["Thiago Santos", "Conor McGregor", "Nate Diaz", "Jose Aldo"]));
+  assert.ok(namesCard(text, []));
+});
+
+test("a follow-up sentence belongs to the fighter named first, not the first on the card", () => {
+  const text = article("At the weigh-ins, [[Charles Oliveira]] failed to make the featherweight limit for his fight with [[Ricardo Lamas]], coming in nine pounds over the 146 lb weight allowance. He was fined 30 percent of his earnings, and Lamas insisted that Oliveira not weigh more than 160 lb the day of the fight. [[Felipe Arantes]] also missed weight for his bout against [[Erik Pérez]], coming in two pounds over the bantamweight weight allowance. He was fined 20 percent of his purse.");
+  assert.deepEqual(weightMisses(text, ["Ricardo Lamas", "Charles Oliveira", "Erik Perez", "Felipe Arantes"]), [
+    { name: "Charles Oliveira", pounds: null },
+    { name: "Felipe Arantes", pounds: null },
+  ]);
 });

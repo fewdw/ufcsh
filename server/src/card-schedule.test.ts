@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assignSegments, estimatedStart, matchEventSchedule } from "./card-schedule.ts";
+import { assignRounds, assignSegments, estimatedStart, matchEventSchedule } from "./card-schedule.ts";
 import type { ScrapedEventSchedule, ScrapedSegmentBout } from "./scrape/ufccom.ts";
 
 const schedule = (slug: string, headline: string, prelims: string, main: string, early?: string): ScrapedEventSchedule => ({
@@ -125,4 +125,41 @@ test("crowded segments preserve the extra allowance for five-round bouts", () =>
 
 test("conflicting segment times suppress estimates", () => {
   assert.equal(estimatedStart(card, 2, { ...times, main: times.prelims }), null);
+});
+
+test("booked rounds come from the fighters' names, never from a bout's place on the card", () => {
+  const fights = [
+    { id: "main", ord: 0, f1_name: "Joshua Van", f2_name: "Alexandre Pantoja" },
+    { id: "co-main", ord: 1, f1_name: "Arman Tsarukyan", f2_name: "Mauricio Ruffy" },
+    { id: "spelled", ord: 2, f1_name: "Patricio Freire", f2_name: "Yoo Joo Sang" },
+    { id: "unknown", ord: 3, f1_name: "Renato Moicano", f2_name: "Brian Ortega" },
+  ];
+  const rounds = assignRounds(fights, [
+    // A non-title co-main event booked for five: position must not decide it.
+    { order: 2, f1: "Mauricio Ruffy", f2: "Arman Tsarukyan", rounds: 5 },
+    { order: 1, f1: "Joshua Van", f2: "Alexandre Pantoja", rounds: 5 },
+    // One fighter spelled differently, same place on the card.
+    { order: 3, f1: "Patricio Pitbull", f2: "Joo Sang Yoo", rounds: 3 },
+    // Right place, but neither fighter matches: not this bout.
+    { order: 4, f1: "Someone Else", f2: "Another Fighter", rounds: 5 },
+  ]);
+  assert.equal(rounds.get("main"), 5);
+  assert.equal(rounds.get("co-main"), 5);
+  assert.equal(rounds.get("unknown"), undefined);
+  assert.equal(rounds.has("spelled"), false, "neither name matches exactly, so the spelling fallback cannot place it");
+});
+
+test("a pairing listed with two different lengths has no length", () => {
+  const rounds = assignRounds([{ id: "a", ord: 0, f1_name: "Jon Jones", f2_name: "Tom Aspinall" }], [
+    { order: 1, f1: "Jon Jones", f2: "Tom Aspinall", rounds: 5 },
+    { order: 1, f1: "Tom Aspinall", f2: "Jon Jones", rounds: 3 },
+  ]);
+  assert.equal(rounds.has("a"), false);
+});
+
+test("one fighter named identically in the same card slot identifies the bout", () => {
+  const rounds = assignRounds([{ id: "a", ord: 2, f1_name: "Patricio Freire", f2_name: "Choi Doo Ho" }], [
+    { order: 3, f1: "Patricio Pitbull", f2: "Choi Doo Ho", rounds: 3 },
+  ]);
+  assert.equal(rounds.get("a"), 3);
 });

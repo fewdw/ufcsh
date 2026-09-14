@@ -124,7 +124,7 @@ export default function MatchupSearch({ onPick, placeholder = "Search upcoming m
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[11px] font-medium text-zinc-900">{matchup.a.name} <span className="text-zinc-300">vs</span> {matchup.b.name}</span>
                         <span className="block truncate text-[9px] text-zinc-400">
-                          {matchup.division || "Catch weight"} · {matchup.scheduled_rounds} rounds
+                          {matchup.division || "Catch weight"}{matchup.scheduled_rounds ? ` · ${matchup.scheduled_rounds} rounds` : ""}
                           {matchup.title_fight ? " · title" : matchup.main_event ? " · main event" : ""}
                           {matchup.a.line != null ? ` · ${matchup.a.line > 0 ? "+" : ""}${matchup.a.line}` : ""}
                         </span>

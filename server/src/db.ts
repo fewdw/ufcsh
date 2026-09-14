@@ -284,6 +284,9 @@ for (const alter of [
   "ALTER TABLE events ADD COLUMN bfo_checked_at INTEGER",
   "ALTER TABLE events ADD COLUMN bfo_final_at INTEGER",
   "ALTER TABLE fights ADD COLUMN segment TEXT",
+  // How many rounds the bout is booked for, from ufc.com's live-card feed.
+  // NULL until that feed has identified the bout; never inferred.
+  "ALTER TABLE fights ADD COLUMN scheduled_rounds INTEGER",
   // Weigh-in misses, from the event's Wikipedia article: the weight in pounds
   // as text, "" when the article gives none, NULL when the fighter made weight
   // or the card has not been read (events.wiki_checked_at says which).
@@ -301,6 +304,10 @@ for (const alter of [
   // replacing it: the two are different crops with different coverage, and the
   // interface offers both.
   "ALTER TABLE fighters ADD COLUMN photo_full_url TEXT",
+  // When a bout's moneyline was last looked for, found or not. fetched_at only
+  // moves when a price is stored, so on its own it can't tell "not posted yet"
+  // from "never tried".
+  "ALTER TABLE odds ADD COLUMN checked_at INTEGER",
 ]) {
   try {
     db.exec(alter);
@@ -334,8 +341,9 @@ if (getMeta("migration_directory_image_checks") !== "1") {
 // draws a full body and an empty circle where every list draws a face. The
 // scrape now refuses them, but a stored one would never be replaced — an empty
 // scrape deliberately keeps whatever is already on file — so clear them here
-// and let the ordinary image pass look again.
-if (getMeta("migration_placeholder_photos") !== "1") {
+// and let the ordinary image pass look again. Run a second time because the
+// athlete directory pass kept writing silhouettes back until it refused them too.
+if (getMeta("migration_placeholder_photos_v2") !== "1") {
   db.exec(`
     UPDATE fighters SET photo_checked_at = NULL,
       photo_url = CASE WHEN photo_url LIKE '%no-profile-image%' OR photo_url LIKE '%silhouette%'
@@ -345,7 +353,7 @@ if (getMeta("migration_placeholder_photos") !== "1") {
     WHERE photo_url LIKE '%no-profile-image%' OR photo_url LIKE '%silhouette%' OR photo_url LIKE '%shadow%'
        OR photo_full_url LIKE '%no-profile-image%' OR photo_full_url LIKE '%silhouette%' OR photo_full_url LIKE '%shadow%'
   `);
-  setMeta("migration_placeholder_photos", "1");
+  setMeta("migration_placeholder_photos_v2", "1");
 }
 
 if (getMeta("migration_career_identity_and_unlinked_bouts") !== "1") {
