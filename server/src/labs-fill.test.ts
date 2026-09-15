@@ -123,18 +123,22 @@ test("switching a condition off widens the study and keeps the rest", () => {
 });
 
 test("a narrower condition sharpens the wider one it overwrites", () => {
-  const result = fill(sample[0].fight_id, "advanced");
-  const byId = new Map(result.conditions.map((c) => [c.id, c]));
   const pairs: [string, string][] = [["ageA", "ageATight"], ["ageB", "ageBTight"], ["expA", "expATight"], ["probA", "probATight"]];
   let checked = 0;
-  for (const [wide, tight] of pairs) {
-    const a = byId.get(wide);
-    const b = byId.get(tight);
-    if (!a || !b) continue;
-    checked += 1;
-    assert.deepEqual(b.keys, a.keys, `${tight} must own the same filters as ${wide} to replace it`);
-    assert.ok(result.conditions.indexOf(b) > result.conditions.indexOf(a), `${tight} must be applied after ${wide}`);
-    if (b.on && a.on) assert.ok(b.alone <= a.alone, `${tight} should not hold more than ${wide}`);
+  // A new debutant or a rare matchup can legitimately drop every sharpening
+  // for lack of precedent. Check the populated sample, not its arbitrary first row.
+  for (const matchup of sample) {
+    const result = fill(matchup.fight_id, "advanced");
+    const byId = new Map(result.conditions.map((c) => [c.id, c]));
+    for (const [wide, tight] of pairs) {
+      const a = byId.get(wide);
+      const b = byId.get(tight);
+      if (!a || !b) continue;
+      checked += 1;
+      assert.deepEqual(b.keys, a.keys, `${tight} must own the same filters as ${wide} to replace it`);
+      assert.ok(result.conditions.indexOf(b) > result.conditions.indexOf(a), `${tight} must be applied after ${wide}`);
+      if (b.on && a.on) assert.ok(b.alone <= a.alone, `${tight} should not hold more than ${wide}`);
+    }
   }
   assert.ok(checked, "the advanced fill should offer narrower versions of its bands");
 });

@@ -81,6 +81,22 @@ client/   Vite + React + TypeScript + Tailwind v4
 
 ## Run
 
+With Node.js 26 and npm installed, launch locally from the project folder:
+
+```bash
+./start
+```
+
+The launcher installs missing or outdated dependencies, builds the frontend, and
+starts the app at http://localhost:8000. Press Ctrl+C to stop. It uses the existing
+local database and runs background syncing. If port 8000 is occupied, stop the
+existing server first. `PORT=8001 ./start` selects another port; use
+`NO_SYNC=1 PORT=8001 ./start` if another instance is already syncing the same database.
+
+For a public deployment, use the [production deployment guide](docs/production.md).
+It includes HTTPS, persistent storage, separate scraping, query workers, backups,
+cache behavior, health checks, and operational limits.
+
 Once dependencies are installed and the client has been built, running the app is only:
 
 ```bash

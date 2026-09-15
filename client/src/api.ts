@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { RequestCache } from "./requestCache";
+import { PollCoordinator } from "./polling";
 
 // ---------------------------------------------------------------------------
 // types (mirror the server's JSON)
@@ -168,7 +169,7 @@ export type FightOdds = {
 
 /** bookmaker is "Mean" where the source only kept its average closing price
  * (older cards whose sportsbooks no longer exist). */
-export type OddsBookPrice = { bookmaker: string; line: string };
+export type OddsBookPrice = { bookmaker: string; line: string; move?: "up" | "down" };
 export type OddsQuote = { label: string; prices: OddsBookPrice[] };
 export type MethodOddsSide = {
   ko?: OddsQuote;
@@ -819,6 +820,10 @@ export type SearchResults = {
 // in the background (stale-while-revalidate).
 
 export const apiCache = new RequestCache();
+const polling = new PollCoordinator(async url => {
+  await apiCache.load(url, 5_000);
+  return !apiCache.read(url).error;
+});
 const IDLE = { data: null, loading: false, refreshing: false, error: false };
 
 /**
@@ -841,9 +846,7 @@ export function useApi<T>(url: string | null, pollMs?: number | ((data: T | null
     void apiCache.load(url, 5_000);
   }, [url]);
   useEffect(() => {
-    if (!url) return;
-    const timer = intervalMs ? setInterval(() => void apiCache.load(url), intervalMs) : undefined;
-    return () => { if (timer) clearInterval(timer); };
+    if (url && intervalMs) return polling.watch(url, intervalMs);
   }, [url, intervalMs]);
   return { ...state, data: state.data as T | null, retry };
 }

@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Resolve paths relative to this file, even when invoked from another directory.
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  echo "Node.js 26 and npm are required. Install them, then run ./start again." >&2
+  exit 1
+fi
+if ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 26 ? 0 : 1)'; then
+  echo "Node.js 26 or newer is required; found $(node --version)." >&2
+  exit 1
+fi
+
+export HOST="${HOST:-127.0.0.1}"
+export PORT="${PORT:-8000}"
+# This launcher always uses local mode. Production has its own supervisor.
+export NODE_ENV=development
+export API_WORKERS=0
+export SYNC_MODE=inline
+unset DB_INIT
+
+# Fail before setup or database initialization if another server owns the port.
+node --input-type=module -e '
+  import net from "node:net";
+  const port = Number(process.env.PORT);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    console.error("PORT must be a number between 1 and 65535.");
+    process.exit(1);
+  }
+  // Probe the wildcard too: on macOS a server on *:PORT does not block 127.0.0.1:PORT,
+  // which would leave two servers answering on the same port.
+  for (const host of new Set([process.env.HOST, undefined])) {
+    await new Promise(resolve => {
+      const probe = net.createServer();
+      probe.once("error", error => {
+        console.error(error.code === "EADDRINUSE"
+          ? `Port ${port} is already in use. Stop the existing server, or run PORT=8001 ./start.`
+          : `Cannot listen on ${host ?? "*"}:${port}: ${error.message}`);
+        process.exit(1);
+      });
+      probe.listen(port, host, () => probe.close(resolve));
+    });
+  }
+'
+
+for project in server client; do
+  installed="$project/node_modules/.package-lock.json"
+  if [[ ! -f "$installed" || "$project/package-lock.json" -nt "$installed" || "$project/package.json" -nt "$installed" ]]; then
+    echo "Installing $project dependencies…"
+    npm ci --include=dev --prefix "$project"
+  fi
+done
+
+# Always build so changed or deleted source files cannot leave a stale frontend.
+echo "Building the app…"
+NODE_ENV=production npm run build --prefix client
+
+echo
+echo "Starting UFC.sh at http://$HOST:$PORT"
+echo "Press Ctrl+C to stop."
+echo
+exec node server/src/index.ts

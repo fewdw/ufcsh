@@ -43,7 +43,7 @@ const methodHtml = `
     <tbody>
       <tr><th><a href="/cnadm/matchups/42">42</a><a href="/fighters/alex-pereira-1">Alex Pereira</a></th></tr>
       <tr><th><a href="/fighters/jamahal-hill-2">Jamahal Hill</a></th></tr>
-      <tr><th>Pereira wins by TKO/KO</th><td data-li="[21,1,42,8,1]"><span>+115</span></td><td data-li="[22,1,42,8,1]"><span>+110</span></td></tr>
+      <tr><th>Pereira wins by TKO/KO</th><td data-li="[21,1,42,8,1]"><span>+115</span><span class="aru arage-1">▲</span></td><td data-li="[22,1,42,8,1]"><span>+110</span><span class="ard arage-2">▼</span></td></tr>
       <tr><th>Hill wins by TKO/KO</th><td data-li="[21,1,42,8,2]"><span>+195</span></td></tr>
       <tr><th>Pereira wins by submission</th><td data-li="[21,1,42,9,1]"><span>+2000</span></td></tr>
       <tr><th>Hill wins by submission</th><td data-li="[21,1,42,9,2]"><span>+1500</span></td></tr>
@@ -63,6 +63,9 @@ test("method prices retain named-book provenance and align to exact UFCStats fig
   assert.equal(odds.f1.ko?.prices[0].line, "+195");
   assert.equal(odds.f2.ko?.prices[0].bookmaker, "FanDuel");
   assert.equal(odds.f2.ko?.prices[1].bookmaker, "DraftKings");
+  assert.equal(odds.f2.ko?.prices[0].move, "up");
+  assert.equal(odds.f2.ko?.prices[1].move, "down");
+  assert.equal(odds.f1.ko?.prices[0].move, undefined);
   assert.equal(odds.f1.decision?.prices[0].line, "+650");
   assert.equal(odds.f2.decision?.prices[0].line, "+800");
   assert.equal(odds.additional[0].label, "Fight goes to decision");
@@ -139,7 +142,7 @@ test("under markets use the negative outcome key without being discarded", () =>
 
 test("rows without a surviving book column keep a verified mean-chart key instead", () => {
   const html = methodHtml
-    .replace('<td data-li="[21,1,42,8,1]"><span>+115</span></td><td data-li="[22,1,42,8,1]"><span>+110</span></td>', '<td></td><td class="button-cell but-sip" data-li="[1,42,8,1]"></td>')
+    .replace('<td data-li="[21,1,42,8,1]"><span>+115</span><span class="aru arage-1">▲</span></td><td data-li="[22,1,42,8,1]"><span>+110</span><span class="ard arage-2">▼</span></td>', '<td></td><td class="button-cell but-sip" data-li="[1,42,8,1]"></td>')
     .replace('<td data-li="[21,1,42,8,2]"><span>+195</span></td>', '<td class="button-cell but-sip" data-li="[1,42,8,1]"></td>')
     .replace('<td data-li="[21,1,42,2,1]"><span>-110</span></td>', '<td class="button-cell but-sip" data-li="[2,42,33,0]"></td>');
   const [matchup] = parseEventMethodOddsHtml(html, "https://www.bestfightodds.com/events/test");

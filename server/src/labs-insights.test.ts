@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { gzipSync } from "node:zlib";
 import { getLabsInsights, getLabsJudgeBouts, getLabsJudges, getLabsRoadBouts, judgeCards } from "./labs-insights.ts";
 import { getLabs } from "./labs.ts";
 import { fightIndex } from "./fight-index.ts";
@@ -170,7 +171,11 @@ test("the rooms report the study, not every row behind it", () => {
   const a = read("");
   assert.equal((a.judges as Record<string, unknown>).entries, undefined);
   assert.equal((a.road as Record<string, unknown>).entries, undefined);
-  assert.ok(JSON.stringify(a).length < 32_000, "a study summary stays small enough to poll");
+  const json = JSON.stringify(a);
+  // The list of named judges grows with the archive. Budget actual bytes and
+  // the compressed representation used by production, while still bounding raw JSON.
+  assert.ok(Buffer.byteLength(json) < 64 * 1024, "summary JSON stays below 64 KiB");
+  assert.ok(gzipSync(json).length < 16 * 1024, "compressed summary stays below 16 KiB");
 });
 
 test("arrival records exclude later outside-UFC bouts in the real archive", () => {

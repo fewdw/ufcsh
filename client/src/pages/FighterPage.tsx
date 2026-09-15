@@ -394,7 +394,7 @@ export default function FighterPage() {
   const { settings } = useSettings();
   const navigate = useNavigate();
   const { data: fighter, loading, error, retry } = useApi<FighterProfile>(fighterId ? withRanking(`/api/fighters/${fighterId}`, settings.rankingSource) : null,
-    data => data?.refreshing ? 2_000 : 60_000);
+    data => data?.refreshing ? 5_000 : 5 * 60_000);
   const pageScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:page", Boolean(fighter));
   useSeo({
     title: fighter ? `${fighter.name} — Record & Fight History` : "UFC Fighter Profile",

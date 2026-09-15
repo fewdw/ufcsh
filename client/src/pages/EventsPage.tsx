@@ -490,7 +490,7 @@ function EventPane({ eventId }: { eventId: string }) {
   const { settings } = useSettings();
   const url = withRanking(`/api/events/${eventId}`, settings.rankingSource);
   const { data: event, loading, error } = useApi<EventDetail>(url,
-    data => data?.refreshing ? 2_000 : isFightDay(data?.date) ? 10_000 : data?.status !== "past" ? 30_000 : 5 * 60_000);
+    data => data?.refreshing ? 5_000 : isFightDay(data?.date) ? 15_000 : data?.status !== "past" ? 5 * 60_000 : 0);
   const isLive = isFightDay(event?.date);
   const eventScroll = useRouteScrollRestoration<HTMLDivElement>("event:card", Boolean(event));
   // Any card still ahead of us counts down; a finished one has nothing left
@@ -606,7 +606,8 @@ export default function EventsPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileEventsOpen, setMobileEventsOpen] = useState(false);
-  const { data: events, loading, error } = useApi<EventListItem[]>("/api/events", 10_000);
+  const { data: events, loading, error } = useApi<EventListItem[]>("/api/events",
+    data => data?.some(event => isFightDay(event.date)) ? 30_000 : 5 * 60_000);
   const fightEventIdHint =
     fightId &&
     location.state != null &&

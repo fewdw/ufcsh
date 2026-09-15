@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "node --watch src/index.ts",
     "start": "node src/index.ts",
+    "start:production": "node src/production.ts",
     "audit:stats": "node src/audit-fight-stats.ts",
     "backfill:odds": "node src/backfill-odds.ts",
     "backfill:method-odds": "node src/backfill-method-odds.ts",
     "backfill:images": "node src/backfill-images.ts",
-    "test": "node --test src/*.test.ts src/**/*.test.ts"
+    "test": "node src/test-runner.ts"
   },
   "dependencies": {
     "cheerio": "^1.0.0"

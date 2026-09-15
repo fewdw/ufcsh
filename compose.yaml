@@ -1,0 +1,48 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 20s
+    environment:
+      NODE_ENV: production
+      DATA_DIR: /data
+      API_WORKERS: ${API_WORKERS:-2}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?Set a private ADMIN_TOKEN in .env}
+      # Caddy has a fixed address and overwrites X-Real-IP below.
+      TRUSTED_PROXY_IPS: 172.30.86.2,::ffff:172.30.86.2
+    volumes:
+      - app-data:/data
+    networks:
+      - web
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?Set the public hostname in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      web:
+        ipv4_address: 172.30.86.2
+
+networks:
+  web:
+    ipam:
+      config:
+        - subnet: 172.30.86.0/24
+
+volumes:
+  app-data:
+  caddy-data:
+  caddy-config:

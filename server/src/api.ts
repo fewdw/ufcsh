@@ -4,9 +4,13 @@ import http from "node:http";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { gzipSync } from "node:zlib";
-import { createHash } from "node:crypto";
-import { db, getMeta, setMeta } from "./db.ts";
+import { createHash, timingSafeEqual } from "node:crypto";
+import { monitorEventLoopDelay, performance } from "node:perf_hooks";
+import { db, getMeta, setMeta, DATA_DIR, dataRevision } from "./db.ts";
+import { enqueueRefresh } from "./refresh-queue.ts";
+import { QueryPool } from "./query-pool.ts";
+import { ResponseCache, representation, acceptsGzip, matchesEtag, OverloadedError, type Representation } from "./response-cache.ts";
+import { publicApi, cachePolicy, canonicalApiKey, clientAddress, RateLimiter } from "./api-policy.ts";
 import { canonicalMethod, log, normName, todayIso } from "./util.ts";
 import { bugReport, runBugAction } from "./bugs.ts";
 import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds } from "./sync.ts";
@@ -23,7 +27,8 @@ import { boutsBefore, careerBefore, completeBoutsBefore, completeRecordBefore, f
 import { syncCareerRecord } from "./career-records.ts";
 
 const CLIENT_DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "client", "dist");
-const IMAGE_CACHE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data", "images");
+const IMAGE_CACHE = path.join(DATA_DIR, "images");
+let queryPool: QueryPool | undefined;
 const SITE_URL = "https://ufc.sh";
 
 // ---------------------------------------------------------------------------
@@ -378,7 +383,7 @@ function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingTy
 // endpoints
 
 function listEvents(): unknown {
-  void syncLiveEvents().catch(err => log("live events refresh failed:", String(err)));
+  if (process.env.SYNC_MODE !== "external" && process.env.NO_SYNC !== "1") void syncLiveEvents().catch(err => log("live events refresh failed:", String(err)));
   const next = nextEventDate();
   const rows = db
     .prepare(`
@@ -406,7 +411,7 @@ function listEvents(): unknown {
  * bout walking out next, and the countdown to it is the reader's answer.
  */
 function liveCard(rankingType: RankingType): unknown | null {
-  void syncLiveEvents().catch(err => log("live card refresh failed:", String(err)));
+  if (process.env.SYNC_MODE !== "external" && process.env.NO_SYNC !== "1") void syncLiveEvents().catch(err => log("live card refresh failed:", String(err)));
   const e = db.prepare(`SELECT * FROM events WHERE complete = 0
     AND date >= date('now', '-1 day') AND date <= date('now') ORDER BY date DESC LIMIT 1`).get() as EventRow | undefined;
   if (!e || !isFightDay(e.date)) return null;
@@ -770,7 +775,23 @@ function professionalHistory(fighterId: string, ufcHistory: any[]): unknown[] {
   return merged.sort((a, b) => b.date.localeCompare(a.date) || a.source_order - b.source_order);
 }
 
-const matchupRefresh = new BackgroundRefresh();
+const matchupRefresh = new BackgroundRefresh(process.env.NO_SYNC === "1" ? () => false : process.env.SYNC_MODE === "external" ? enqueueRefresh : undefined);
+
+/** Fixed job vocabulary; persisted queue entries never contain executable code or URLs. */
+export async function runRefreshJob(key: string): Promise<unknown> {
+  const [kind, id] = key.split(":");
+  if (!/^[a-f0-9]{16}$/i.test(id ?? "")) throw new Error("Invalid refresh target");
+  switch (kind) {
+    case "event": return refreshLiveEvent(id);
+    case "event-detail": return syncEventDetailOnce(id);
+    case "detail": return syncFightDetail(id);
+    case "odds": return ensureFightMethodOdds(id);
+    case "birth": return syncFighterBirthDateOnce(id);
+    case "career": return syncFighterCareerOnce(id);
+    case "titles": return ensureFighterTitleTypes(id);
+    default: throw new Error("Unknown refresh job");
+  }
+}
 
 /** The bout being fought now: on fight day, once the card has a result in, the
  * next unfinished bout — the same rule the event card uses to box it as live. */
@@ -905,8 +926,6 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
 }
 
 const profileCache = new VersionCache<Record<string, unknown>>();
-const profileLocalVersion = db.prepare("SELECT total_changes() AS n");
-const profileExternalVersion = db.prepare("PRAGMA data_version");
 
 export async function getFighter(id: string, rankingType: RankingType): Promise<unknown | null> {
   const fr = db.prepare("SELECT * FROM fighters WHERE id = ?").get(id) as any;
@@ -930,7 +949,7 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
   refreshing = matchupRefresh.request(`titles:${id}`, () => ensureFighterTitleTypes(id),
     err => log("lazy fighter titles failed:", String(err)), 5 * 60_000) || refreshing;
   requestPhoto(id);
-  const version = `${(profileLocalVersion.get() as { n: number }).n}:${(profileExternalVersion.get() as { data_version: number }).data_version}:${todayIso()}`;
+  const version = `${dataRevision("profiles")}:${todayIso()}`;
   const cacheKey = `${id}:${rankingType}`;
   const cachedProfile = profileCache.get(cacheKey, version);
   if (cachedProfile) return { ...cachedProfile, refreshing };
@@ -1198,7 +1217,7 @@ const searchIndexCache = new VersionCache<SearchIndex>(1);
 
 /** Everything the typo-tolerant fallback scans, rebuilt when the data changes. */
 function searchIndex(): SearchIndex {
-  const version = `${(profileLocalVersion.get() as { n: number }).n}:${(profileExternalVersion.get() as { data_version: number }).data_version}`;
+  const version = dataRevision("search");
   const cached = searchIndexCache.get("index", version);
   if (cached) return cached;
   const fighters = (db.prepare(`
@@ -1346,6 +1365,7 @@ function status(): unknown {
     career_records_pending: count("SELECT COUNT(*) AS c FROM fighters fr WHERE EXISTS (SELECT 1 FROM fights f WHERE f.f1_id = fr.id OR f.f2_id = fr.id) AND NOT EXISTS (SELECT 1 FROM career_profiles cp WHERE cp.fighter_id = fr.id AND cp.status = 'verified')"),
     outside_ufc_bouts: count("SELECT COUNT(*) AS c FROM career_bouts cb JOIN career_profiles cp ON cp.fighter_id = cb.fighter_id WHERE cp.status = 'verified' AND cb.is_ufc = 0"),
     last_tick_at: getMeta("last_tick_at"),
+    sync_worker_heartbeat_at: getMeta("sync_worker_heartbeat_at"),
     last_sync_error: getMeta("last_sync_error"),
   };
 }
@@ -1484,8 +1504,7 @@ function htmlEscape(value: string): string {
   })[char] ?? char);
 }
 
-function injectPageSeo(html: string, pathname: string): string {
-  const seo = pageSeo(pathname);
+function injectPageSeo(html: string, pathname: string, seo = pageSeo(pathname)): string {
   const replaceMeta = (source: string, attribute: "name" | "property", key: string, value: string) =>
     source.replace(
       new RegExp(`<meta\\s+${attribute}="${key}"\\s+content="[^"]*"\\s*/?>`),
@@ -1665,29 +1684,14 @@ async function serveFighterImage(res: http.ServerResponse, id: string, variant: 
   }
 }
 
-function sendText(
+async function sendText(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   text: string,
   contentType: string,
   cacheControl = "public, max-age=3600",
-): void {
-  const body = Buffer.from(text);
-  const headers: Record<string, string | number> = {
-    "Content-Type": contentType,
-    "Cache-Control": cacheControl,
-  };
-  if (body.length > 1024 && (req.headers["accept-encoding"] ?? "").includes("gzip")) {
-    const gz = gzipSync(body);
-    headers["Content-Encoding"] = "gzip";
-    headers["Content-Length"] = gz.length;
-    res.writeHead(200, headers);
-    res.end(gz);
-    return;
-  }
-  headers["Content-Length"] = body.length;
-  res.writeHead(200, headers);
-  res.end(body);
+): Promise<void> {
+  sendRepresentation(req, res, await representation({ json: text, status: 200 }), cacheControl, contentType);
 }
 
 /** Repairs write to the database and hit the sources, so only a browser on
@@ -1698,29 +1702,44 @@ function isLocalRequest(req: http.IncomingMessage): boolean {
   return loopback && !req.headers["x-forwarded-for"] && !req.headers["x-real-ip"] && !req.headers["forwarded"];
 }
 
-function sendJson(req: http.IncomingMessage, res: http.ServerResponse, data: unknown, statusCode = 200): void {
-  const body = Buffer.from(JSON.stringify(data));
+function isAdmin(req: http.IncomingMessage): boolean {
+  const token = process.env.ADMIN_TOKEN;
+  if (!token) return process.env.NODE_ENV !== "production" && isLocalRequest(req);
+  const expected = Buffer.from(`Bearer ${token}`);
+  const actual = Buffer.from(req.headers.authorization ?? "");
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+export function sendRepresentation(req: http.IncomingMessage, res: http.ServerResponse, value: Representation,
+  cacheControl: string, contentType = "application/json; charset=utf-8"): void {
+  if (res.destroyed || res.writableEnded) return;
   const headers: Record<string, string | number> = {
-    "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
-    "Cache-Control": "no-cache",
+    "Content-Type": contentType,
+    "Cache-Control": value.status === 200 ? cacheControl : "no-store",
+    "Vary": "Accept-Encoding",
+    "ETag": value.etag,
+    "X-Content-Type-Options": "nosniff",
   };
-  if (body.length > 1024 && (req.headers["accept-encoding"] ?? "").includes("gzip")) {
-    const gz = gzipSync(body);
-    headers["Content-Encoding"] = "gzip";
-    headers["Content-Length"] = gz.length;
-    res.writeHead(statusCode, headers);
-    res.end(gz);
+  if (value.status === 200 && cacheControl !== "no-store" && matchesEtag(req.headers["if-none-match"], value.etag)) {
+    res.writeHead(304, headers);
+    res.end();
     return;
   }
+  const compressed = value.compressed && acceptsGzip(req.headers["accept-encoding"]);
+  const body = compressed ? value.compressed! : value.body;
+  if (compressed) headers["Content-Encoding"] = "gzip";
   headers["Content-Length"] = body.length;
-  res.writeHead(statusCode, headers);
-  res.end(body);
+  res.writeHead(value.status, headers);
+  res.end(req.method === "HEAD" ? undefined : body);
+}
+
+async function sendJson(req: http.IncomingMessage, res: http.ServerResponse, data: unknown, statusCode = 200): Promise<void> {
+  sendRepresentation(req, res, await representation({ json: JSON.stringify(data), status: statusCode }), "no-store");
 }
 
 export async function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, pathname: string): Promise<void> {
   let filePath = path.join(CLIENT_DIST, path.normalize(pathname).replace(/^([/\\])+/, ""));
-  if (!filePath.startsWith(CLIENT_DIST)) filePath = path.join(CLIENT_DIST, "index.html");
+  if (filePath !== CLIENT_DIST && !filePath.startsWith(CLIENT_DIST + path.sep)) filePath = path.join(CLIENT_DIST, "index.html");
   let data: Buffer;
   let spaFallback = false;
   try {
@@ -1744,83 +1763,169 @@ export async function serveStatic(req: http.IncomingMessage, res: http.ServerRes
     }
   }
   const ext = path.extname(filePath);
-  if (spaFallback) data = Buffer.from(injectPageSeo(data.toString(), pathname));
+  if (spaFallback) {
+    const seo = queryPool ? JSON.parse((await queryPool.run(`/_seo?path=${encodeURIComponent(pathname)}`)).json) as PageSeo : pageSeo(pathname);
+    data = Buffer.from(injectPageSeo(data.toString(), pathname, seo));
+  }
   const immutable = pathname.startsWith("/assets/");
   res.writeHead(200, {
     "Content-Type": MIME[ext] ?? "application/octet-stream",
     "Cache-Control": immutable ? "public, max-age=31536000, immutable" : "no-cache",
   });
-  res.end(data);
+  res.end(req.method === "HEAD" ? undefined : data);
 }
 
-export function startApi(port: number): void {
+/** The only public data dispatcher, also used inside isolated query workers. */
+export async function resolvePublicApi(url: URL): Promise<unknown> {
+  const p = url.pathname;
+  const id = p.split("/")[3] ?? "";
+  const rankingType: RankingType = url.searchParams.get("ranking") === "media" || url.searchParams.get("type") === "media" ? "media" : "meta";
+  if (p === "/api/events") return listEvents();
+  if (p === "/api/live") return liveCard(rankingType);
+  if (p.startsWith("/api/events/")) return await getEvent(id, rankingType) ?? undefined;
+  if (p.startsWith("/api/fights/")) return await getFight(id, rankingType) ?? undefined;
+  if (p.startsWith("/api/fighters/")) return await getFighter(id, rankingType) ?? undefined;
+  if (p.startsWith("/api/previews/")) return getFighterPreview(id) ?? undefined;
+  if (p === "/api/rankings") return { updated_at: syncedAt("rankings_synced_at"), divisions: getRankings(rankingType) };
+  if (p === "/api/stats") return getStats(url.searchParams);
+  if (p === "/api/labs/bouts") return getLabsBouts(url.searchParams);
+  if (p === "/api/labs/matchups") return getLabsMatchups(url.searchParams);
+  if (p === "/api/labs/fill") return getLabsFill(url.searchParams);
+  if (p === "/api/labs/insights") return getLabsInsights(url.searchParams);
+  if (p === "/api/labs/judges") return getLabsJudges(url.searchParams);
+  if (p === "/api/labs/judge-bouts") return getLabsJudgeBouts(url.searchParams);
+  if (p === "/api/labs/road-bouts") return getLabsRoadBouts(url.searchParams);
+  if (p === "/api/labs") return getLabs(url.searchParams);
+  if (p === "/api/search") return search(url.searchParams.get("q") ?? "");
+  if (p === "/api/bugs") return bugReport();
+  return undefined;
+}
+
+export function startApi(port: number): http.Server {
+  const workerCount = Number(process.env.API_WORKERS ?? (process.env.NODE_ENV === "production" ? 2 : 0));
+  if (!Number.isInteger(workerCount) || workerCount < 0 || workerCount > 8) throw new Error("API_WORKERS must be an integer from 0 to 8");
+  if (workerCount) queryPool = new QueryPool(workerCount);
+  const cache = new ResponseCache();
+  const limiter = new RateLimiter();
+  const eventLoop = monitorEventLoopDelay({ resolution: 20 });
+  eventLoop.enable();
+  let requests = 0;
+  let failures = 0;
+  const latencies = new Map<string, { count: number; total_ms: number; max_ms: number }>();
+  let stopping = false;
   void adoptUnversionedPhotos().catch((err) => log("photo cache migration failed:", String(err)));
   const server = http.createServer(async (req, res) => {
+    const started = performance.now();
+    requests++;
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.on("finish", () => {
+      if (res.statusCode >= 500) failures++;
+      const pathname = (req.url ?? "/").split("?")[0];
+      const key = publicApi(pathname) ? pathname.replace(/\/[a-f0-9]{16}$/i, "/:id") : "other";
+      const entry = latencies.get(key) ?? { count: 0, total_ms: 0, max_ms: 0 };
+      const duration = performance.now() - started;
+      entry.count++; entry.total_ms += duration; entry.max_ms = Math.max(entry.max_ms, duration);
+      latencies.set(key, entry);
+    });
     try {
+      if ((req.url?.length ?? 0) > 16_384) return await sendJson(req, res, { error: "URL too long" }, 414);
       const url = new URL(req.url ?? "/", "http://localhost");
       const p = url.pathname;
       const part = (i: number) => p.split("/")[i] ?? "";
-      const rankingType: RankingType = url.searchParams.get("ranking") === "media" || url.searchParams.get("type") === "media"
-        ? "media"
-        : "meta";
-
-      if (p.startsWith("/api/images/")) {
+      if (req.method !== "GET" && req.method !== "HEAD" && !(p === "/api/bugs/action" && req.method === "POST")) {
+        res.setHeader("Allow", "GET, HEAD");
+        return await sendJson(req, res, { error: "method not allowed" }, 405);
+      }
+      if (p === "/healthz" || p === "/readyz") {
+        const ready = !stopping && (!queryPool || queryPool.ready);
+        return await sendJson(req, res, { ok: p === "/healthz" || ready }, p === "/readyz" && !ready ? 503 : 200);
+      }
+      if (stopping) return await sendJson(req, res, { error: "server is stopping" }, 503);
+      const address = clientAddress(req);
+      const expensive = p === "/api/search" || p === "/api/stats" || p.startsWith("/api/labs") || p.startsWith("/api/bugs");
+      const imageRequest = p.startsWith("/api/images/");
+      const allowed = limiter.allow(`${address}:${imageRequest ? "image" : "request"}`, imageRequest ? 240 : 120, imageRequest ? 40 : 12);
+      if (!allowed || (expensive && !limiter.allow(`${address}:expensive`, 30, 3))) {
+        res.setHeader("Retry-After", "5");
+        return await sendJson(req, res, { error: "too many requests" }, 429);
+      }
+      if (imageRequest) {
+        if (!/^\/api\/images\/[a-f0-9]{16}(\/full)?$/i.test(p)) return await sendJson(req, res, { error: "not found" }, 404);
         return await serveFighterImage(res, part(3), part(4) === "full" ? "full" : "head");
       }
-      if (p === "/api/events") return sendJson(req, res, listEvents());
-      if (p === "/api/live") return sendJson(req, res, liveCard(rankingType));
-      if (p.startsWith("/api/events/")) {
-        const data = await getEvent(part(3), rankingType);
-        return data ? sendJson(req, res, data) : sendJson(req, res, { error: "not found" }, 404);
+      if ((url.searchParams.get("q")?.length ?? 0) > 120) return await sendJson(req, res, { error: "search query too long" }, 400);
+      if (publicApi(p)) {
+        const policy = cachePolicy(url);
+        const key = canonicalApiKey(url);
+        const value = await cache.get(key, policy.ttl, async () => {
+          if (queryPool) return queryPool.run(key);
+          const data = await resolvePublicApi(url);
+          return { json: JSON.stringify(data === undefined ? { error: "not found" } : data), status: data === undefined ? 404 : 200 };
+        });
+        return sendRepresentation(req, res, value, policy.control);
       }
-      if (p.startsWith("/api/fights/")) {
-        const data = await getFight(part(3), rankingType);
-        return data ? sendJson(req, res, data) : sendJson(req, res, { error: "not found" }, 404);
+      if (p === "/api/status" || p === "/api/bugs" || p === "/api/metrics" || p === "/api/bugs/action" || p === "/bugs") {
+        if (!isAdmin(req)) return await sendJson(req, res, { error: "authentication required" }, 401);
       }
-      if (p.startsWith("/api/fighters/")) {
-        const data = await getFighter(part(3), rankingType);
-        return data ? sendJson(req, res, data) : sendJson(req, res, { error: "not found" }, 404);
+      if (p === "/api/metrics") return await sendJson(req, res, {
+        requests, failures, cache: { hits: cache.hits, misses: cache.misses, entries: cache.size, bytes: cache.byteSize },
+        queries_pending: queryPool?.pending ?? 0, memory: process.memoryUsage(), uptime_seconds: process.uptime(),
+        event_loop_ms: { p95: eventLoop.percentile(95) / 1e6, max: eventLoop.max / 1e6 },
+        routes: Object.fromEntries([...latencies].map(([key, value]) => [key, { count: value.count, mean_ms: value.total_ms / value.count, max_ms: value.max_ms }])),
+      });
+      if (p === "/api/status") return await sendJson(req, res, status());
+      if (p === "/api/bugs") {
+        const report = queryPool ? JSON.parse((await queryPool.run("/api/bugs")).json) : bugReport();
+        return await sendJson(req, res, { ...report, can_act: process.env.NODE_ENV !== "production" });
       }
-      if (p.startsWith("/api/previews/")) {
-        const data = getFighterPreview(part(3));
-        return data ? sendJson(req, res, data) : sendJson(req, res, { error: "not found" }, 404);
-      }
-      if (p === "/api/rankings") {
-        return sendJson(req, res, { updated_at: syncedAt("rankings_synced_at"), divisions: getRankings(rankingType) });
-      }
-      if (p === "/api/stats") return sendJson(req, res, getStats(url.searchParams));
-      if (p === "/api/labs/bouts") return sendJson(req, res, getLabsBouts(url.searchParams));
-      if (p === "/api/labs/matchups") return sendJson(req, res, getLabsMatchups(url.searchParams));
-      if (p === "/api/labs/fill") return sendJson(req, res, getLabsFill(url.searchParams));
-      if (p === "/api/labs/insights") return sendJson(req, res, getLabsInsights(url.searchParams));
-      if (p === "/api/labs/judges") return sendJson(req, res, getLabsJudges(url.searchParams));
-      if (p === "/api/labs/judge-bouts") return sendJson(req, res, getLabsJudgeBouts(url.searchParams));
-      if (p === "/api/labs/road-bouts") return sendJson(req, res, getLabsRoadBouts(url.searchParams));
-      if (p === "/api/labs") return sendJson(req, res, getLabs(url.searchParams));
-      if (p === "/api/search") return sendJson(req, res, search(url.searchParams.get("q") ?? ""));
-      if (p === "/api/status") return sendJson(req, res, status());
-      if (p === "/api/bugs") return sendJson(req, res, { ...bugReport(), can_act: isLocalRequest(req) });
       if (p === "/api/bugs/action") {
-        if (req.method !== "POST") return sendJson(req, res, { error: "method not allowed" }, 405);
-        if (!isLocalRequest(req)) return sendJson(req, res, { error: "repairs only run from this machine" }, 403);
+        if (req.method !== "POST") return await sendJson(req, res, { error: "method not allowed" }, 405);
+        if (process.env.NODE_ENV === "production") return await sendJson(req, res, { error: "interactive repairs are disabled in production" }, 403);
         try {
-          return sendJson(req, res, await runBugAction(url.searchParams.get("action") ?? "", url.searchParams.get("target") ?? ""));
+          return await sendJson(req, res, await runBugAction(url.searchParams.get("action") ?? "", url.searchParams.get("target") ?? ""));
         } catch (err) {
-          return sendJson(req, res, { ok: false, message: String(err) });
+          return await sendJson(req, res, { ok: false, message: String(err) });
         }
       }
-      if (p.startsWith("/api/")) return sendJson(req, res, { error: "not found" }, 404);
+      if (p.startsWith("/api/")) return await sendJson(req, res, { error: "not found" }, 404);
 
       if (p === "/robots.txt") {
-        return sendText(req, res, `User-agent: *\nAllow: /\nSitemap: ${SITE_URL}/sitemap.xml\n`, "text/plain; charset=utf-8");
+        return await sendText(req, res, `User-agent: *\nAllow: /\nDisallow: /bugs\nSitemap: ${SITE_URL}/sitemap.xml\n`, "text/plain; charset=utf-8");
       }
-      if (p === "/sitemap.xml") return sendText(req, res, sitemap(), "application/xml; charset=utf-8");
+      if (p === "/sitemap.xml") {
+        const value = await cache.get("sitemap", 300_000, async () => ({ json: queryPool ? JSON.parse((await queryPool.run("/_sitemap")).json) : sitemap(), status: 200 }));
+        return sendRepresentation(req, res, value, "public, max-age=300", "application/xml; charset=utf-8");
+      }
 
       await serveStatic(req, res, p === "/" ? "/index.html" : p);
     } catch (err) {
       log("API ERROR:", String(err));
-      sendJson(req, res, { error: "internal error" }, 500);
+      if (!res.headersSent && !res.destroyed) {
+        const overloaded = err instanceof OverloadedError;
+        if (overloaded) res.setHeader("Retry-After", "5");
+        await sendJson(req, res, { error: overloaded ? "server busy; retry shortly" : "internal error" }, overloaded ? 503 : 500);
+      } else res.destroy();
     }
   });
-  server.listen(port, () => log(`api listening on http://localhost:${port}`));
+  server.requestTimeout = 30_000;
+  server.headersTimeout = 15_000;
+  server.keepAliveTimeout = 5_000;
+  server.maxRequestsPerSocket = 1000;
+  const shutdown = () => {
+    if (stopping) return;
+    stopping = true;
+    server.close(() => { void queryPool?.close(); });
+    setTimeout(() => { server.closeAllConnections(); void queryPool?.close(); }, 10_000).unref();
+  };
+  process.once("SIGTERM", shutdown);
+  process.once("SIGINT", shutdown);
+  server.on("close", () => {
+    eventLoop.disable();
+    process.removeListener("SIGTERM", shutdown);
+    process.removeListener("SIGINT", shutdown);
+    void queryPool?.close();
+  });
+  server.listen(port, process.env.HOST ?? "0.0.0.0", () => log(`api listening on port ${port}`));
+  return server;
 }

@@ -91,6 +91,12 @@ test("a UFC bout reconciles through a shortened or misspelled opponent name", as
     [{ id: "a", date: "1994-09-09", opponent: "Felix Lee Mitchell" }, { id: "b", date: "1994-09-09", opponent: "Christophe Leninger" }],
   );
   assert.deepEqual(night.map((bout) => bout.ufcFightId), ["a", "b"]);
+  // A rematch the same night: the result tells the two bouts apart.
+  const rematch = reconcileCareerBouts(
+    [row("1997-12-21", "Marcus Silveira"), { ...row("1997-12-21", "Marcus Silveira"), key: "nc", outcome: "nc" as const }],
+    [{ id: "nc", date: "1997-12-21", opponent: "Marcus Silveira", outcome: "nc" }, { id: "win", date: "1997-12-21", opponent: "Marcus Silveira", outcome: "win" }],
+  );
+  assert.deepEqual(rematch.map((bout) => bout.ufcFightId), ["win", "nc"]);
   // Different names, a day apart, and the only bout either source has then.
   const renamed = reconcileCareerBouts([row("2020-02-23", "Konklak Suphisara")], [{ id: "c", date: "2020-02-22", opponent: "Loma Lookboonmee" }]);
   assert.equal(renamed[0].ufcFightId, "c");

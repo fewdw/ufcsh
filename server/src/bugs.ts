@@ -291,37 +291,33 @@ function recordMismatch(active: Set<string>): BugCheck {
     SELECT fr.id, fr.name, fr.wins, fr.losses, fr.draws, cp.source_url, cp.source_name
     FROM fighters fr JOIN career_profiles cp ON cp.fighter_id = fr.id AND cp.status = 'verified'
   `).all() as { id: string; name: string; wins: number; losses: number; draws: number; source_url: string | null; source_name: string | null }[];
-  // Every W-L-D the verified history passed through, oldest bout first. UFCStats
-  // often stops updating a record once a fighter leaves, so a record equal to
-  // one of these is the same history seen earlier, not a disagreement.
-  const pastRecords = new Map<string, Set<string>>();
-  const running = new Map<string, [number, number, number]>();
-  const bouts = db.prepare(`
-    SELECT cb.fighter_id, cb.outcome
-    FROM career_bouts cb JOIN career_profiles cp ON cp.fighter_id = cb.fighter_id AND cp.status = 'verified'
-    ORDER BY cb.fighter_id, cb.date, cb.source_order DESC
-  `).all() as { fighter_id: string; outcome: string }[];
-  for (const bout of bouts) {
-    const tally = running.get(bout.fighter_id) ?? [0, 0, 0];
-    if (!running.has(bout.fighter_id)) {
-      running.set(bout.fighter_id, tally);
-      pastRecords.set(bout.fighter_id, new Set(["0-0-0"]));
-    }
-    if (bout.outcome === "win") tally[0]++;
-    else if (bout.outcome === "loss") tally[1]++;
-    else if (bout.outcome === "draw") tally[2]++;
-    pastRecords.get(bout.fighter_id)!.add(tally.join("-"));
+  // UFC bouts are the only part of a record both sources can see, so they are
+  // the only part that can be checked. A UFCStats total that differs while
+  // every UFC result agrees is a disagreement about regional bouts. Every such
+  // case reviewed (2026-09-14, e.g. Carlos Ulberg 14-1 vs 15-1) was UFCStats
+  // miscounting or not updating, so those are not listed.
+  const disagreements = new Map<string, string[]>();
+  const ufcResults = db.prepare(`
+    SELECT side.fighter_id, e.date, side.outcome AS ours, b.outcome AS sherdog, side.opponent
+    FROM (SELECT id, event_id, f1_id AS fighter_id, f1_outcome AS outcome, f2_name AS opponent FROM fights
+          UNION ALL SELECT id, event_id, f2_id, f2_outcome, f1_name FROM fights) side
+    JOIN events e ON e.id = side.event_id
+    JOIN career_bouts b ON b.ufc_fight_id = side.id AND b.fighter_id = side.fighter_id
+    WHERE e.complete = 1 AND side.outcome IS NOT NULL AND side.outcome != '' AND side.outcome != b.outcome
+    ORDER BY e.date
+  `).all() as { fighter_id: string; date: string; ours: string; sherdog: string; opponent: string }[];
+  for (const result of ufcResults) {
+    disagreements.set(result.fighter_id, [
+      ...(disagreements.get(result.fighter_id) ?? []),
+      `${result.date} vs ${result.opponent}: UFCStats ${result.ours}, Sherdog ${result.sherdog}`,
+    ]);
   }
   const items: (BugItem & { weight: number })[] = [];
   for (const row of rows) {
     const career = index.fighters.get(row.id)?.career;
-    if (!career) continue;
+    const differing = disagreements.get(row.id);
+    if (!career || !differing) continue;
     const diff = Math.abs(career.wins - row.wins) + Math.abs(career.losses - row.losses) + Math.abs(career.draws - row.draws);
-    if (!diff) continue;
-    if (pastRecords.get(row.id)?.has(`${row.wins}-${row.losses}-${row.draws}`)) continue;
-    // UFCStats keeps some overturned wins that Sherdog records as no contests.
-    const short = career.wins <= row.wins && career.losses <= row.losses && career.draws <= row.draws;
-    if (short && career.ncs && diff <= career.ncs) continue;
     const fighter = index.fighters.get(row.id);
     items.push({
       key: row.id,
@@ -329,9 +325,9 @@ function recordMismatch(active: Set<string>): BugCheck {
       subtitle: active.has(row.id) ? "Active" : "Inactive",
       date: fighter?.fights.at(-1)?.date,
       facts: [
+        ["UFC results that differ", differing.join("; ")],
         ["Shown (Sherdog history)", `${recordText(career.wins, career.losses, career.draws)}${career.ncs ? ` (${career.ncs} NC)` : ""}`],
         ["UFCStats", recordText(row.wins, row.losses, row.draws)],
-        ["Off by", `${diff} result${diff === 1 ? "" : "s"}`],
         ["UFC record here", fighter ? recordText(fighter.ufc.wins, fighter.ufc.losses, fighter.ufc.draws) : "–"],
       ],
       links: [
@@ -340,15 +336,15 @@ function recordMismatch(active: Set<string>): BugCheck {
         ...(row.source_url ? [{ label: "Sherdog", href: row.source_url }] : []),
       ],
       actions: [{ id: "career", label: "Re-verify record", target: row.id }],
-      weight: (active.has(row.id) ? 1000 : 0) + diff,
+      weight: (active.has(row.id) ? 1000 : 0) + differing.length * 10 + diff,
     });
   }
   items.sort((a, b) => b.weight - a.weight || (b.date ?? "").localeCompare(a.date ?? ""));
   return check({
     id: "record-mismatch",
     group: "Records",
-    label: "Record differs between sources",
-    description: "The record we show comes from the verified Sherdog history and doesn't match UFCStats. Either side can be wrong: Records where UFCStats simply stopped updating (its record matches the history at an earlier date) and overturned wins that Sherdog counts as no contests are skipped. What's left is usually TUF exhibition bouts UFCStats counts, missing Sherdog rows, or a different person. Active fighters and the biggest gaps come first.",
+    label: "UFC results differ between sources",
+    description: "A UFC bout in the verified Sherdog history has a different result than UFCStats (a win on one side, a no contest or loss on the other), so the record we show disagrees with the fight page. Usually an overturned result one source hasn't updated. Differences in the regional part of a record aren't listed: UFCStats can't see those bouts, and every case checked was UFCStats miscounting. Active fighters come first.",
     severity: "medium",
   }, items.map(({ weight: _weight, ...item }) => item));
 }
@@ -673,7 +669,12 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
     case "odds": {
       const row = fight();
       if (!row) return { ok: false, message: "Fight not found." };
-      const stored = await syncOddsForFight(row);
+      let stored: boolean;
+      try {
+        stored = await syncOddsForFight(row);
+      } catch (err) {
+        return { ok: false, message: `Couldn't reach the odds source (${String(err)}). Nothing was changed.` };
+      }
       const props = await syncMethodOddsForEvent(row.event_id, row.id);
       const odds = db.prepare("SELECT f1_close, f2_close FROM odds WHERE fight_id = ?").get(row.id) as { f1_close: string | null; f2_close: string | null } | undefined;
       return {

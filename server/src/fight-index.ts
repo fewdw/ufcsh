@@ -1,4 +1,4 @@
-import { db, getMeta } from "./db.ts";
+import { db, dataRevision } from "./db.ts";
 import { cachedFightActions, type FightActionSide } from "./action-stats.ts";
 
 /**
@@ -450,12 +450,7 @@ function advance(s: MutableState, fight: IndexedFight, side: IndexedSide, oppone
 }
 
 function fingerprint(): string {
-  const fights = db.prepare("SELECT COUNT(*) AS c, MAX(detail_fetched_at) AS d FROM fights").get() as { c: number; d: number | null };
-  const events = db.prepare("SELECT COUNT(*) AS c, MAX(detail_fetched_at) AS d FROM events").get() as { c: number; d: number | null };
-  const odds = db.prepare("SELECT COUNT(*) AS c, MAX(fetched_at) AS d FROM odds").get() as { c: number; d: number | null };
-  const fighters = db.prepare("SELECT MAX(birth_fetched_at) AS b, MAX(photo_checked_at) AS p, COUNT(*) AS c, COUNT(country_code) AS n FROM fighters").get() as { b: number | null; p: number | null; c: number; n: number };
-  const careers = db.prepare("SELECT COUNT(*) AS c, MAX(fetched_at) AS f FROM career_profiles WHERE status = 'verified'").get() as { c: number; f: number | null };
-  return [fights.c, fights.d, events.c, events.d, odds.c, odds.d, fighters.b, fighters.p, fighters.c, fighters.n, careers.c, careers.f, getMeta("roster_synced_at")].join("|");
+  return dataRevision("analytics");
 }
 
 let current: FightIndex | null = null;
@@ -756,8 +751,7 @@ let lastFingerprint = "";
 
 /** The current index, rebuilt lazily when the underlying tables change. */
 export function fightIndex(): FightIndex {
-  // The fingerprint itself is a handful of aggregate queries; sample it at
-  // most every few seconds so a burst of requests shares one check.
+  // Sample the transactional revision every few seconds so bursts share a check.
   const now = Date.now();
   if (!current || now - lastFingerprintAt > 5000) {
     lastFingerprintAt = now;

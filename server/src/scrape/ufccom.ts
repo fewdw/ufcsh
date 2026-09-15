@@ -295,6 +295,14 @@ export function athleteSlug(name: string): string {
     .replace(/\s+/g, "-");
 }
 
+/** Whether two different strings differ by one inserted, removed or changed letter. */
+function oneEditApart(a: string, b: string): boolean {
+  if (a === b || Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  return a.slice(i + (a.length >= b.length ? 1 : 0)) === b.slice(i + (b.length >= a.length ? 1 : 0));
+}
+
 /** The first athlete result on a search page, as a path we can fetch. */
 export function parseSearchAthlete(html: string, name?: string): { href: string | null; img: string | null } {
   const $ = cheerio.load(html);
@@ -313,6 +321,17 @@ export function parseSearchAthlete(html: string, name?: string): { href: string 
       return rest.length > 0 && otherRest.join(" ") === rest.join(" ") && first.length >= 2 && otherFirst.slice(0, 2) === first.slice(0, 2);
     });
     if (loose.length === 1) card = loose.first();
+  }
+  if (name && !card.length) {
+    // A surname spelled one letter apart ("Ezra Elliott" listed as "Ezra
+    // Elliot"): the same first name, and only one such card.
+    const [first, ...rest] = normName(name).split(" ");
+    const surname = rest.join(" ");
+    const respelled = cards.filter((_, element) => {
+      const [otherFirst = "", ...otherRest] = titleOf(element).split(" ");
+      return surname.length >= 4 && otherFirst === first && oneEditApart(otherRest.join(" "), surname);
+    });
+    if (respelled.length === 1) card = respelled.first();
   }
   if (name && !card.length) return { href: null, img: null };
   const href = card.find("a[href*='/athlete/']").first().attr("href")
@@ -346,6 +365,10 @@ export async function scrapeFighterImages(name: string, loadHtml = fetchHtml): P
     // "Joseph Kropschot". Only when the full name gave no athlete cards at all.
     const surname = name.trim().split(/\s+/).slice(1).join(" ");
     if (!hit.href && surname.length >= 4 && !html.includes("solr-athlete-card")) hit = parseSearchAthlete(await search(surname), name);
+    // A surname ufc.com spells differently finds neither; its first name
+    // alone does, and the hit still has to be one letter from our surname.
+    const first = name.trim().split(/\s+/)[0];
+    if (!hit.href && surname.length >= 4 && first.length >= 3) hit = parseSearchAthlete(await search(first), name);
     if (hit.href) {
       try {
         const page = await loadHtml(hit.href, { timeoutMs: 30000, retries: 0 });

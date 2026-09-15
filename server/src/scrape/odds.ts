@@ -7,7 +7,9 @@ const BASE = "https://www.bestfightodds.com";
 const FIGHTER_SITEMAP = `${BASE}/sitemap-teams.xml`;
 const EVENT_SITEMAP = `${BASE}/sitemap-events.xml`;
 
-export type MethodOddsPrice = { bookmaker: string; line: string };
+/** move is the source's latest line change for that book: "up" when the
+ * number rose (e.g. +150 to +175), "down" when it fell. */
+export type MethodOddsPrice = { bookmaker: string; line: string; move?: "up" | "down" };
 /** meanKey addresses the source's closing mean-odds chart. It is only kept
  * while a quote has no priced book cell (sportsbooks that no longer exist are
  * not shown as columns on older boards) and is resolved before storage. */
@@ -424,7 +426,9 @@ function pricesFromRow(
     const line = cleanText($(cell).find("span").first().text()).replace(/[−–]/g, "-");
     // Reject decimal prices, n/a cells, malformed labels and unnamed columns.
     if (!bookmaker || !/^[+-]\d+$/.test(line) || !Number.isSafeInteger(Number(line)) || Math.abs(Number(line)) < 100) continue;
-    if (!prices.some((price) => price.bookmaker === bookmaker)) prices.push({ bookmaker, line });
+    if (prices.some((price) => price.bookmaker === bookmaker)) continue;
+    const move = $(cell).find("span.aru").length ? "up" : $(cell).find("span.ard").length ? "down" : null;
+    prices.push(move ? { bookmaker, line, move } : { bookmaker, line });
   }
   return prices;
 }
@@ -648,6 +652,11 @@ export async function scrapeOdds(
   // The page that last held this bout goes first. If it no longer lists the
   // bout (a stale or wrong profile), every alias's profile is tried instead.
   const tried = new Set<string>();
+  // A page or search that fails to load is not a page without the bout. When
+  // nothing could be read at all, the source is down and the caller must not
+  // record a completed look.
+  let readPages = 0;
+  let failures = 0;
   const tryPages = async (pages: string[]) => {
     for (const pageUrl of pages) {
       if (tried.has(pageUrl)) continue;
@@ -669,10 +678,12 @@ export async function scrapeOdds(
       pages = await findFighterPages(names, { similar: dateIso < new Date().toISOString().slice(0, 10) });
     } catch {
       // search failed for this fighter; try the other
+      failures++;
     }
     const found = await tryPages(pages);
     if (found) return found;
   }
+  if (!readPages && failures) throw new Error("odds source unreachable");
   return null;
 
   async function scrapeOddsPage(pageUrl: string): Promise<ScrapedOdds | null> {
@@ -680,8 +691,10 @@ export async function scrapeOdds(
     try {
       $ = cheerio.load(await fetchHtml(pageUrl, { retries: 0 }));
     } catch {
+      failures++;
       return null;
     }
+    readPages++;
 
     // A bout moved to a later card stays filed under the event it was first
     // booked on. Such a row is kept aside and used only when no row matches

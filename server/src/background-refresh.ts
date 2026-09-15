@@ -2,8 +2,17 @@
  * retries. The caller only reads cached data; it never waits for this work. */
 export class BackgroundRefresh {
   private jobs = new Map<string, { pending: boolean; startedAt: number }>();
+  private enqueue?: (key: string, cooldownMs: number) => boolean;
+
+  constructor(enqueue?: (key: string, cooldownMs: number) => boolean) {
+    this.enqueue = enqueue;
+  }
 
   request(key: string, work: () => Promise<unknown>, onError: (error: unknown) => void, cooldownMs = 30_000): boolean {
+    if (this.enqueue) {
+      try { return this.enqueue(key, cooldownMs); }
+      catch (error) { onError(error); return false; }
+    }
     const previous = this.jobs.get(key);
     if (previous?.pending) return true;
     if (previous && Date.now() - previous.startedAt < cooldownMs) return false;

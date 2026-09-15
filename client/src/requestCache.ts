@@ -50,7 +50,7 @@ export class RequestCache {
     if (maxAgeMs > 0 && !this.read(url).error && Date.now() - (this.fetchedAt.get(url) ?? 0) < maxAgeMs) return Promise.resolve();
     const data = this.read(url).data;
     const request = Promise.resolve()
-      .then(() => this.fetcher(url))
+      .then(() => this.fetcher(url, { signal: AbortSignal.timeout(20_000) }))
       .then((response) => {
         if (!response.ok) throw new Error(String(response.status));
         return response.json();

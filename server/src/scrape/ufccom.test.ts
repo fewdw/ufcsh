@@ -242,6 +242,15 @@ test("a search hit under a longer first name is taken only when it is the one su
   assert.equal(parseSearchAthlete(card("Joseph Smith", "joseph-smith") + card("Joel Smith", "joel-smith"), "Joe Smith").href, null);
 });
 
+test("a search hit whose surname is spelled one letter apart is taken only for the same first name", () => {
+  const card = (title: string, slug: string) => `<div class="solr-athlete-card"><h2>${title}</h2><a href="/athlete/${slug}"><img src="/images/${slug}.png"></a></div>`;
+  assert.equal(parseSearchAthlete(card("Ezra Elliot", "ezra-elliot"), "Ezra Elliott").href, "https://www.ufc.com/athlete/ezra-elliot");
+  assert.equal(parseSearchAthlete(card("Ezra Miller", "ezra-miller") + card("Ezra Elliot", "ezra-elliot"), "Ezra Elliott").href, "https://www.ufc.com/athlete/ezra-elliot");
+  assert.equal(parseSearchAthlete(card("Ezra Elliotts", "ezra-elliotts") + card("Ezra Elliot", "ezra-elliot"), "Ezra Elliott").href, null);
+  assert.equal(parseSearchAthlete(card("Oban Elliot", "oban-elliot"), "Ezra Elliott").href, null);
+  assert.equal(parseSearchAthlete(card("Ezra Ellison", "ezra-ellison"), "Ezra Elliott").href, null);
+});
+
 test("the event page's fight ids are read in card order, once each", () => {
   const html = `<div class="c-listing-fight" data-fmid="13017"></div><div class="c-listing-fight" data-fmid="13018"></div>
     <div class="c-listing-fight" data-fmid="13017"></div><div class="c-listing-fight" data-fmid="x"></div>`;

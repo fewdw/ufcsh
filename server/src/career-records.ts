@@ -21,7 +21,9 @@ export type LocalFighter = {
   draws: number;
 };
 
-export type KnownUfcBout = { id: string; date: string; opponent: string };
+/** outcome is from this fighter's side; it only separates two bouts with the
+ * same opponent on one night. */
+export type KnownUfcBout = { id: string; date: string; opponent: string; outcome?: string | null };
 
 export type ReconciledBout = SherdogBout & { isUfc: boolean; ufcFightId: string | null };
 
@@ -115,12 +117,13 @@ function closeName(a: string, b: string): boolean {
 function localUfcBouts(fighterId: string): KnownUfcBout[] {
   return db.prepare(`
     SELECT f.id, e.date,
-           CASE WHEN f.f1_id = ? THEN f.f2_name ELSE f.f1_name END AS opponent
+           CASE WHEN f.f1_id = ? THEN f.f2_name ELSE f.f1_name END AS opponent,
+           CASE WHEN f.f1_id = ? THEN f.f1_outcome ELSE f.f2_outcome END AS outcome
     FROM fights f JOIN events e ON e.id = f.event_id
     WHERE (f.f1_id = ? OR f.f2_id = ?) AND e.complete = 1
       AND (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)
     ORDER BY e.date ASC, f.ord DESC
-  `).all(fighterId, fighterId, fighterId) as KnownUfcBout[];
+  `).all(fighterId, fighterId, fighterId, fighterId) as KnownUfcBout[];
 }
 
 /**
@@ -132,13 +135,16 @@ function localUfcBouts(fighterId: string): KnownUfcBout[] {
 export function reconcileCareerBouts(source: SherdogBout[], known: KnownUfcBout[]): ReconciledBout[] {
   const unused = new Set(known.map((bout) => bout.id));
   return source.map((bout) => {
-    let match = known.find((candidate) => unused.has(candidate.id)
+    // A rematch on the same night (UFC Japan 1997: a no contest, then a
+    // submission) gives two candidates; the one with this row's result is it.
+    const first = (candidates: KnownUfcBout[]) => candidates.find((candidate) => candidate.outcome === bout.outcome) ?? candidates[0];
+    let match = first(known.filter((candidate) => unused.has(candidate.id)
       && candidate.date === bout.date
-      && samePersonName(candidate.opponent, bout.opponentName));
+      && samePersonName(candidate.opponent, bout.opponentName)));
     if (!match) {
-      match = known.find((candidate) => unused.has(candidate.id)
+      match = first(known.filter((candidate) => unused.has(candidate.id)
         && Math.abs(daysBetween(candidate.date, bout.date)) <= 1
-        && samePersonName(candidate.opponent, bout.opponentName));
+        && samePersonName(candidate.opponent, bout.opponentName)));
     }
     // The same bout under a shortened or misspelled opponent name ("Felix
     // Mitchell" for Felix Lee Mitchell, "Leininger" for Leninger). Only a single

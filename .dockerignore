@@ -1,0 +1,8 @@
+.git
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+server/data
+.env
+.env.*
+**/*.db*

@@ -1,14 +1,30 @@
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { mkdirSync } from "node:fs";
 
-const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data");
+export const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data"));
+mkdirSync(DATA_DIR, { recursive: true });
 export const db = new DatabaseSync(path.join(DATA_DIR, "ufc.db"));
 
+db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 1000;");
+
+// The supervisor initializes once before starting API workers and the scraper.
+if (process.env.DB_INIT !== "0") {
 db.exec(`
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
-PRAGMA busy_timeout = 10000;
+PRAGMA busy_timeout = 1000;
+
+CREATE TABLE IF NOT EXISTS refresh_jobs (
+  key TEXT PRIMARY KEY,
+  state TEXT NOT NULL DEFAULT 'queued',
+  available_at INTEGER NOT NULL,
+  cooldown_ms INTEGER NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  error TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_refresh_jobs_available ON refresh_jobs(state, available_at);
 
 CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,
@@ -366,6 +382,8 @@ if (getMeta("migration_ring_names") !== "1") {
   setMeta("migration_ring_names", "1");
 }
 
+}
+
 export function getMeta(key: string): string | null {
   const row = db.prepare("SELECT value FROM meta WHERE key = ?").get(key) as
     | { value: string }
@@ -391,6 +409,7 @@ export function touchMeta(key: string): void {
 // Cached fight details predate the per-round tables and the f1/f2-normalised
 // scorecards. Drop the stale copies so they are re-fetched (lazily, on first
 // view) in the current shape.
+if (process.env.DB_INIT !== "0") {
 if (getMeta("migration_detail_rounds") !== "2") {
   db.exec(
     `UPDATE fights SET detail_json = NULL, detail_fetched_at = NULL
@@ -441,4 +460,41 @@ if (getMeta("migration_board_moneyline") !== "2") {
 if (getMeta("migration_bonus_kinds") !== "1") {
   db.exec("UPDATE fights SET perf_bonus = NULL WHERE event_id IN (SELECT id FROM events WHERE date < '2014-07-01')");
   setMeta("migration_bonus_kinds", "1");
+}
+
+// Data revisions survive process boundaries without invalidating analytics on
+// scheduler heartbeats, refresh queues, or unchanged scraper checks.
+db.exec("CREATE TABLE IF NOT EXISTS data_revisions (key TEXT PRIMARY KEY, value INTEGER NOT NULL)");
+for (const key of ["analytics", "profiles", "search"]) {
+  db.prepare("INSERT OR IGNORE INTO data_revisions VALUES (?, 0)").run(key);
+}
+const revisionTables: Record<string, string[]> = {
+  fighters: ["analytics", "profiles", "search"],
+  events: ["analytics", "profiles", "search"],
+  fights: ["analytics", "profiles", "search"],
+  odds: ["analytics", "profiles"],
+  method_odds: ["profiles"],
+  career_profiles: ["analytics", "profiles"],
+  career_bouts: ["analytics", "profiles"],
+  rankings: ["profiles"],
+};
+for (const [table, revisions] of Object.entries(revisionTables)) {
+  const checkTimestamps = new Set(["detail_fetched_at", "birth_fetched_at", "photo_checked_at", "bfo_checked_at", "bfo_final_at",
+    "schedule_fetched_at", "segments_fetched_at", "wiki_checked_at", "fetched_at", "checked_at"]);
+  const columns = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[])
+    .map(row => row.name).filter(name => !checkTimestamps.has(name));
+  const update = `UPDATE data_revisions SET value = value + 1 WHERE key IN (${revisions.map(key => `'${key}'`).join(",")});`;
+  for (const operation of ["INSERT", "UPDATE", "DELETE"]) {
+    const changed = columns.map(name => `OLD.${name} IS NOT NEW.${name}`);
+    if (table === "fights") changed.push("(OLD.detail_fetched_at IS NULL) != (NEW.detail_fetched_at IS NULL)");
+    const condition = operation === "UPDATE" ? `WHEN ${changed.join(" OR ")}` : "";
+    db.exec(`CREATE TRIGGER IF NOT EXISTS revision_${table}_${operation.toLowerCase()} AFTER ${operation} ON ${table}
+      ${condition} BEGIN ${update} END`);
+  }
+}
+}
+
+export function dataRevision(key: "analytics" | "profiles" | "search"): string {
+  const row = db.prepare("SELECT value FROM data_revisions WHERE key = ?").get(key) as { value: number };
+  return String(row.value);
 }

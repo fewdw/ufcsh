@@ -13,7 +13,7 @@ import { useNow } from "../useNow";
  * server anything, and the time beside it is in the reader's own zone.
  */
 export default function LiveMatchup() {
-  const { data } = useApi<LiveCard>("/api/live", 15_000);
+  const { data } = useApi<LiveCard>("/api/live", card => card ? 15_000 : 60_000);
   const startsAt = data?.starts_at ?? null;
   const now = useNow(Boolean(data && !data.live && startsAt != null));
 

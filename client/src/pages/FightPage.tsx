@@ -663,7 +663,7 @@ function FightRail({ eventId, currentId, returnDepth }: { eventId: string; curre
   // Moving along the card keeps the reader on the tab they were reading.
   const location = useLocation();
   const railEvent = useRef<EventDetail | null>(null);
-  const { data: event, loading } = useApi<EventDetail>(withRanking(`/api/events/${eventId}`, settings.rankingSource), isFightDay(railEvent.current?.date) ? 10_000 : 60_000);
+  const { data: event, loading } = useApi<EventDetail>(withRanking(`/api/events/${eventId}`, settings.rankingSource), isFightDay(railEvent.current?.date) ? 15_000 : 5 * 60_000);
   if (event) railEvent.current = event;
   if (loading || !event) return <FightRailSkeleton />;
   // Shown even for a one-bout card, so every matchup has the same layout.
@@ -780,7 +780,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   const previousFight = useRef<Matchup | null>(null);
   const [failedPortraitPair, setFailedPortraitPair] = useState<string | null>(null);
   const { data: loadedFight, loading, error, retry } = useApi<Matchup>(withRanking(`/api/fights/${fightId}`, settings.rankingSource),
-    data => data?.refreshing ? 2_000 : isFightDay(data?.event.date) ? 10_000 : 60_000);
+    data => data?.refreshing ? 5_000 : isFightDay(data?.event.date) ? 15_000 : data?.status === "past" ? 0 : 5 * 60_000);
   if (loadedFight) previousFight.current = loadedFight;
   const fight = loadedFight ?? previousFight.current;
   const eventReturnDepth = location.state != null
