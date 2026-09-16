@@ -1,11 +1,14 @@
 /* oxlint-disable react/only-export-components -- provider, hook and the small
    settings helpers intentionally share one persistent source of truth. */
-import { createContext, useContext, useLayoutEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
 
 export type ThemeMode = "light" | "dark";
 export type RankingSource = "meta" | "media";
 export type DateMode = "relative" | "date";
 export type DivisionOrder = "light" | "heavy";
+/** How a betting price displays: the raw American line, its decimal payout
+ *  multiple, or its implied probability. */
+export type OddsFormat = "american" | "decimal" | "percent";
 
 export type AppSettings = {
   theme: ThemeMode;
@@ -13,13 +16,18 @@ export type AppSettings = {
   dateMode: DateMode;
   /** Which end of the scale the rankings start from. */
   divisionOrder: DivisionOrder;
+  oddsFormat: OddsFormat;
+  /** Whether a fighter profile's "Top-50 statistics" panel starts expanded. */
+  topStatsOpen: boolean;
 };
 
 const DEFAULTS: AppSettings = {
   theme: "light",
-  rankingSource: "meta",
+  rankingSource: "media",
   dateMode: "relative",
   divisionOrder: "light",
+  oddsFormat: "american",
+  topStatsOpen: false,
 };
 const STORAGE_KEY = "ufcsh:settings:v1";
 
@@ -28,9 +36,11 @@ function loadSettings(): AppSettings {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
     return {
       theme: saved?.theme === "dark" ? "dark" : "light",
-      rankingSource: saved?.rankingSource === "media" ? "media" : "meta",
+      rankingSource: saved?.rankingSource === "meta" ? "meta" : "media",
       dateMode: saved?.dateMode === "date" ? "date" : "relative",
       divisionOrder: saved?.divisionOrder === "heavy" ? "heavy" : "light",
+      oddsFormat: saved?.oddsFormat === "decimal" ? "decimal" : saved?.oddsFormat === "percent" ? "percent" : "american",
+      topStatsOpen: saved?.topStatsOpen === true,
     };
   } catch {
     return DEFAULTS;
@@ -55,6 +65,16 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       // Settings still work for this visit when storage is unavailable.
     }
   }, [settings]);
+  // A change saved from another tab lands here too, so every open tab stays
+  // on the same preferences without a reload.
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== STORAGE_KEY || !event.newValue) return;
+      setSettings(loadSettings());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
   const value = useMemo(() => ({
     settings,
     update: (key: keyof AppSettings, next: AppSettings[keyof AppSettings]) =>

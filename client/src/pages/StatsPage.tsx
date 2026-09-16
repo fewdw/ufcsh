@@ -5,7 +5,6 @@ import { useApi } from "../api";
 import type { StatChip, StatsDashboard } from "../api";
 import Avatar from "../components/Avatar";
 import FighterSearch, { type PickedFighter } from "../components/FighterSearch";
-import StatsModeSwitch from "../components/StatsModeSwitch";
 import RequestNotice from "../components/RequestNotice";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { formatValue, PANEL } from "../components/chartTokens";
@@ -994,20 +993,13 @@ function FiltersMenu({
   );
 }
 
-function SelectedFighterStrip({ fighters, keepFullLists, onChange }: {
+function SelectedFighterStrip({ fighters, onChange }: {
   fighters: PickedFighter[];
-  keepFullLists: boolean;
   onChange: (fighters: PickedFighter[]) => void;
 }) {
   if (!fighters.length) return null;
   return (
     <section className={`${shell} mb-3 px-3 py-2.5`} aria-label="Selected fighters">
-      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-1">
-        <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-400">Selected fighters</span>
-        <span className="text-[9px] text-zinc-400">
-          {keepFullLists ? "Pinned in this order above each full leaderboard." : "Only these fighters appear in each leaderboard."}
-        </span>
-      </div>
       <div className="flex flex-wrap gap-1.5">
         {fighters.map((fighter, index) => (
           <span key={fighter.id} className="flex h-8 max-w-full items-center gap-1.5 rounded-xl border border-zinc-200 bg-zinc-50 py-0.5 pl-1 pr-1 text-[10px] font-medium text-zinc-700">
@@ -1091,9 +1083,9 @@ export default function StatsPage() {
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
       <main className="mx-auto max-w-[100rem] p-3 pb-8">
-        <section className={`${shell} relative z-30 mb-3 flex min-h-14 flex-wrap items-center gap-3 px-4 py-2`}>
-          <StatsModeSwitch />
-          <div className="order-3 w-full min-w-24 sm:order-none sm:w-auto sm:flex-1 sm:max-w-md">
+        <section className={`${shell} relative z-30 mb-3 flex flex-col gap-3 px-4 py-2 sm:grid sm:min-h-14 sm:grid-cols-[1fr_auto_1fr] sm:items-center`}>
+          <div className="hidden sm:block" aria-hidden="true" />
+          <div className="w-full min-w-24 sm:w-72">
             <FighterSearch
               selected={selectedFighters}
               showSelected={false}
@@ -1104,7 +1096,7 @@ export default function StatsPage() {
               }}
             />
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="flex items-center gap-2 sm:justify-self-end">
             <span className={`text-[10px] font-medium text-zinc-400 max-sm:sr-only ${loading ? "visible" : "invisible"}`} role="status" aria-hidden={!loading}>Updating…</span>
             <FiltersMenu
               years={dashboard.years}
@@ -1140,15 +1132,13 @@ export default function StatsPage() {
 
         {error ? <div className="mb-3"><RequestNotice onRetry={retry}>Couldn’t update statistics. The last successful results are shown.</RequestNotice></div> : null}
 
-        <SelectedFighterStrip fighters={selectedFighters} keepFullLists={keepFullLists} onChange={setSelectedFighters} />
+        <SelectedFighterStrip fighters={selectedFighters} onChange={setSelectedFighters} />
 
-        <p className="mb-3 px-1 text-[11px] text-zinc-500">
-          {selectedFighters.length
-            ? keepFullLists
-              ? `Pinned ${selectedFighters.length === 1 ? selectedFighters[0].name : `${selectedFighters.length} selected fighters`} above every complete list, with their rank among everyone who qualifies.`
-              : `Showing ${selectedFighters.length === 1 ? selectedFighters[0].name : `${selectedFighters.length} selected fighters`} on every card, each with the rank they hold among everyone who qualifies.`
-            : `${dashboard.coverage.fighters.toLocaleString("en-US")} fighters across ${dashboard.coverage.fights.toLocaleString("en-US")} bouts match these filters. Each card lists its top ${dashboard.limit}.`}
-        </p>
+        {!selectedFighters.length ? (
+          <p className="mb-3 px-1 text-[11px] text-zinc-500">
+            {`${dashboard.coverage.fighters.toLocaleString("en-US")} fighters across ${dashboard.coverage.fights.toLocaleString("en-US")} bouts match these filters. Each card lists its top ${dashboard.limit}.`}
+          </p>
+        ) : null}
 
         {/* Five cards of one width: three on top, two centred beneath them
             (on a two-column screen the fifth is centred on its own row). */}

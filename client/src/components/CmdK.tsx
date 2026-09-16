@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, CalendarDays, ChartNoAxesColumn, FlaskConical, Search, Trophy, X } from "lucide-react";
+import { ArrowRight, CalendarDays, ChartNoAxesColumn, Search, Trophy, X } from "lucide-react";
 import { formatDateShortWithYear } from "../format";
 import { parseSearch, useSearch } from "../useSearch";
 import Avatar from "./Avatar";
@@ -12,7 +12,6 @@ const destinations = [
   { to: "/", label: "Events", description: "Browse cards and fight results", icon: CalendarDays },
   { to: "/rankings", label: "Rankings", description: "Explore every division", icon: Trophy },
   { to: "/stats", label: "Statistics", description: "Find records and compare fighters", icon: ChartNoAxesColumn },
-  { to: "/labs", label: "Labs", description: "Build a study around a matchup", icon: FlaskConical },
 ];
 
 export default function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {

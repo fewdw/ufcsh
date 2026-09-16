@@ -369,7 +369,9 @@ function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingTy
       stats: { kd: f.f2_kd, str: f.f2_str, td: f.f2_td, sub: f.f2_sub },
       ...(eventDate ? sideContext(f.f2_id, eventDate, Number(f.ord) || 0, f.id) : {}),
     },
-    odds: fightOdds(f.id),
+    // Method odds join the card's own listing (not just a single matchup) so
+    // the all-odds view can show every market without a per-fight fetch.
+    odds: fightOdds(f.id, true),
     bonuses: {
       perf: !!f.perf_bonus || !!detail?.bonuses?.perf,
       fotn: !!f.fotn_bonus || !!detail?.bonuses?.fotn,

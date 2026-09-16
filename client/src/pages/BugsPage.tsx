@@ -337,7 +337,12 @@ export default function BugsPage() {
           <nav className="rounded-xl border border-zinc-200 bg-white p-2 md:sticky md:top-0 md:w-72 md:shrink-0" aria-label="Checks">
             {groups.map(([group, groupChecks]) => (
               <div key={group} className="mb-2 last:mb-0">
-                <div className="px-2 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">{group}</div>
+                <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
+                  <span>{group}</span>
+                  <span className="tabular-nums" aria-label={`${group} total`}>
+                    {groupChecks.reduce((sum, check) => sum + openCount(check), 0).toLocaleString()}
+                  </span>
+                </div>
                 <ul>
                   {groupChecks.map((check) => {
                     const count = openCount(check);

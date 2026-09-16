@@ -13,7 +13,7 @@ if ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 26 ? 0
   exit 1
 fi
 
-export HOST="${HOST:-127.0.0.1}"
+export HOST="${HOST:-0.0.0.0}"
 export PORT="${PORT:-8000}"
 # This launcher always uses local mode. Production has its own supervisor.
 export NODE_ENV=development
@@ -21,29 +21,29 @@ export API_WORKERS=0
 export SYNC_MODE=inline
 unset DB_INIT
 
-# Fail before setup or database initialization if another server owns the port.
-node --input-type=module -e '
-  import net from "node:net";
-  const port = Number(process.env.PORT);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    console.error("PORT must be a number between 1 and 65535.");
-    process.exit(1);
-  }
-  // Probe the wildcard too: on macOS a server on *:PORT does not block 127.0.0.1:PORT,
-  // which would leave two servers answering on the same port.
-  for (const host of new Set([process.env.HOST, undefined])) {
-    await new Promise(resolve => {
-      const probe = net.createServer();
-      probe.once("error", error => {
-        console.error(error.code === "EADDRINUSE"
-          ? `Port ${port} is already in use. Stop the existing server, or run PORT=8001 ./start.`
-          : `Cannot listen on ${host ?? "*"}:${port}: ${error.message}`);
-        process.exit(1);
-      });
-      probe.listen(port, host, () => probe.close(resolve));
-    });
-  }
-'
+if ! [[ "$PORT" =~ ^[0-9]+$ ]] || (( PORT < 1 || PORT > 65535 )); then
+  echo "PORT must be a number between 1 and 65535." >&2
+  exit 1
+fi
+
+# Restart cleanly: whatever is already listening on this port — a previous
+# ./start, most likely — gets stopped first instead of making this run fail.
+if command -v lsof >/dev/null 2>&1; then
+  existing="$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
+  if [[ -n "$existing" ]]; then
+    echo "Stopping the server already running on port ${PORT}…"
+    kill $existing 2>/dev/null || true
+    for _ in $(seq 1 40); do
+      [[ -n "$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)" ]] || break
+      sleep 0.25
+    done
+    still="$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
+    if [[ -n "$still" ]]; then
+      kill -9 $still 2>/dev/null || true
+      sleep 0.5
+    fi
+  fi
+fi
 
 for project in server client; do
   installed="$project/node_modules/.package-lock.json"
@@ -58,7 +58,22 @@ echo "Building the app…"
 NODE_ENV=production npm run build --prefix client
 
 echo
-echo "Starting UFC.sh at http://$HOST:$PORT"
+echo "Starting UFC.sh…"
+echo "  http://localhost:$PORT"
+if [[ "$HOST" == "0.0.0.0" || "$HOST" == "::" ]]; then
+  # Bound to every interface: point out the LAN address(es) too, since that's
+  # what a phone or other device on the same network needs to connect to.
+  node -e '
+    const nets = require("node:os").networkInterfaces();
+    for (const addrs of Object.values(nets)) {
+      for (const addr of addrs ?? []) {
+        if (addr.family === "IPv4" && !addr.internal) {
+          console.log(`  http://${addr.address}:${process.env.PORT}  (on your network)`);
+        }
+      }
+    }
+  '
+fi
 echo "Press Ctrl+C to stop."
 echo
 exec node server/src/index.ts

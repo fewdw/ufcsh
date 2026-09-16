@@ -363,7 +363,11 @@ select:not([multiple]):not([size]) {
   .matchup-top-card .matchup-name { font-size: 15px; }
   .matchup-top-card .matchup-fighter > div:first-child > img { width: 44px; height: 44px; }
   .matchup-top-card .matchup-fighter > div:first-child > span { width: 53px; height: 80px; }
-  .matchup-top-card .matchup-market { padding-top: 8px; }
+  .matchup-top-card .matchup-market { gap: 0; padding-top: 0; }
+  /* Shrink to fit the content instead of the 216px desktop price card, so it
+     reads as a small badge sitting in the gap between the two portraits
+     rather than a third block stacked below them. */
+  .matchup-top-card .matchup-prices { width: auto; }
   .matchup-top-card .matchup-identity > div:first-child { flex-wrap: wrap; gap: 4px; }
 }
 

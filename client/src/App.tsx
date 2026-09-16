@@ -8,6 +8,7 @@ import { Moon, Sun } from "lucide-react";
 import { useSettings } from "./settings";
 import { useFighterPrefetch } from "./useFighterPrefetch";
 import RouteErrorBoundary from "./components/RouteErrorBoundary";
+import ParlaySlip from "./components/ParlaySlip";
 
 const loadEventsPage = () => import("./pages/EventsPage");
 const loadRankingsPage = () => import("./pages/RankingsPage");
@@ -50,7 +51,15 @@ function Header({ onSearch }: { onSearch: () => void }) {
           <Link to="/" className="shrink-0 text-base font-bold tracking-tight text-zinc-900 sm:text-lg">
             ufc<span className="text-zinc-400">.sh</span>
           </Link>
-          <nav className={segmentedGroup}>
+          {/* Below `sm` this is pulled out of the flex flow and centred on
+              the header itself (same trick as the live-bout indicator above),
+              so it lands on the page's true midpoint regardless of how wide
+              the logo and the action buttons on the right measure — a
+              justify-between row alone would only centre it within whatever
+              space is left over, which skews toward whichever side is
+              narrower. From `sm` it drops back into normal flow beside the
+              logo. */}
+          <nav className={`${segmentedGroup} absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 sm:static sm:left-auto sm:top-auto sm:translate-x-0 sm:translate-y-0`}>
             {links.map((link) => (
               <Link
                 key={link.href}
@@ -95,6 +104,14 @@ function Header({ onSearch }: { onSearch: () => void }) {
   );
 }
 
+/** The events list, an event's card and a fight opened on top of it are one
+ *  continuous view — opening or closing a fight, or switching between fights
+ *  on the same card, must not reset it. Everything else still remounts (and
+ *  clears a stuck error) on its own pathname. */
+function routeGroup(pathname: string): string {
+  return pathname === "/" || pathname.startsWith("/events/") || pathname.startsWith("/fights/") ? "events" : pathname;
+}
+
 export default function App() {
   const location = useLocation();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -121,7 +138,7 @@ export default function App() {
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-zinc-100 text-zinc-900">
       <Header onSearch={() => setSearchOpen(true)} />
       <div className="min-h-0 flex-1 overflow-hidden">
-        <RouteErrorBoundary key={location.key}>
+        <RouteErrorBoundary key={routeGroup(location.pathname)}>
         <Suspense fallback={<div role="status" className="flex h-full items-center justify-center text-sm text-zinc-400">Loading…</div>}>
         <Routes>
           <Route path="/" element={<EventsPage />} />
@@ -138,6 +155,7 @@ export default function App() {
         </RouteErrorBoundary>
       </div>
       <CmdK open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <ParlaySlip />
     </div>
   );
 }

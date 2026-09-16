@@ -204,6 +204,42 @@ function pastProps(): BugCheck {
   })));
 }
 
+const ROUND_FINISH = /^Fight ends in (TKO\/KO(?:\/DQ)?|submission) in round ([1-5])$/i;
+const ROUND_METHOD = /^(.+) wins by (TKO\/KO|submission) in round ([1-5])$/i;
+
+/** Props exist, but the board never posted a single per-round price, so the
+ * Odds tab's "By round" table has nothing to show — the case the moneyline
+ * and total-props checks above can't see, since a method_odds row is there. */
+function oddsMissingByRound(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, e.bfo_url, m.markets_json, m.final, m.fetched_at
+    FROM fights f JOIN events e ON e.id = f.event_id JOIN method_odds m ON m.fight_id = f.id
+    WHERE (e.complete = 1 AND e.date >= '2021-01-01')
+       -- Round prices are the last thing a book posts, so only flag an
+       -- upcoming bout once it's in fight week; further out, missing them is normal.
+       OR (e.complete = 0 AND e.date <= date('now', '+7 day'))
+    ORDER BY e.date DESC, f.ord ASC
+  `).all() as (FightRow & { bfo_url: string | null; markets_json: string; final: number; fetched_at: number })[];
+  const items: BugItem[] = [];
+  for (const fight of rows) {
+    let additional: { label: string }[];
+    try { additional = JSON.parse(fight.markets_json)?.additional ?? []; } catch { continue; }
+    if (additional.some((q) => ROUND_FINISH.test(q.label) || ROUND_METHOD.test(q.label))) continue;
+    items.push(fightItem(fight, {
+      facts: [["Board read in full", fight.final ? "yes" : "no"], ["Fetched", ago(fight.fetched_at)]],
+      links: fight.bfo_url ? [{ label: "BFO event board", href: fight.bfo_url }] : [],
+      actions: [{ id: "props", label: "Re-read board", target: fight.id }],
+    }));
+  }
+  return check({
+    id: "odds-missing-by-round",
+    group: "Odds",
+    label: "Method props with no round-by-round breakdown",
+    description: "Method props exist for this bout, but the board had no per-round KO/TKO or submission price, so the Odds tab's \"By round\" table is empty. For a bout more than a week out this is normal — round markets are usually the last thing a book posts — but for fight week or a completed bout it's worth a re-read.",
+    severity: "low",
+  }, items);
+}
+
 function suspiciousOdds(): BugCheck {
   const rows = db.prepare(`
     SELECT ${FIGHT_COLUMNS}, o.f1_open, o.f1_close, o.f2_open, o.f2_close, o.source_url
@@ -638,6 +674,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     pastMoneyline(),
     upcomingProps(),
     pastProps(),
+    oddsMissingByRound(),
     unverifiedRecords(active),
     fightsMissingFromHistory(),
     unlinkedUfcBouts(),

@@ -9,11 +9,13 @@ import Avatar from "../components/Avatar";
 import ResultDots from "../components/ResultDots";
 import BonusIcons from "../components/BonusIcons";
 import OddsPair from "../components/OddsPair";
+import { Moneyline, moneylineLeg, OddsFormatTabs, OddsMarkets, type FightResult } from "../components/MatchupOdds";
+import { hasOddsMarkets } from "../oddsLayout";
 import FightView from "./FightPage";
 import type { Matchup } from "../api";
 import { useSeo } from "../seo";
 import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
-import { useSettings, withRanking } from "../settings";
+import { useSettings, withRanking, type OddsFormat } from "../settings";
 import { eventKind, type EventKind } from "../eventKind";
 import SearchGlyph from "../components/SearchGlyph";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
@@ -320,10 +322,14 @@ function FighterBlock({
   const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title="Current ranking from the selected source; NR means unranked">{rank}</span>;
   const nameBlock = (
     <div className={`min-w-0 max-w-full ${align === "right" ? "text-right" : ""}`}>
-      <div className="flex min-w-0 flex-wrap items-center gap-2 @3xl:flex-nowrap" style={align === "right" ? { justifyContent: "flex-end" } : undefined}>
+      {/* Never wraps: the rank badge (or its absence) must not push one
+          fighter's name to its own line while the other's sits a line
+          higher — the two names need to start at the same height. A name
+          too long for the space truncates instead. */}
+      <div className="flex min-w-0 flex-nowrap items-center gap-2" style={align === "right" ? { justifyContent: "flex-end" } : undefined}>
         {align === "left" ? rankingBadge : null}
         {align === "right" ? <BonusIcons bonuses={bonuses} outcome={side.outcome} /> : null}
-        <span className={`text-sm font-semibold @3xl:truncate ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>
+        <span className={`min-w-0 truncate text-sm font-semibold ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>
           {side.name}
         </span>
         {resultTag ? (
@@ -379,7 +385,8 @@ function CenterBlock({ fight, past }: { fight: EventFight; past: boolean }) {
   return (
     <div className="flex w-full flex-col items-center">
       <OddsPair f1={f1Odds} f2={f2Odds}
-        f1Name={fight.f1.name} f2Name={fight.f2.name} />
+        f1Name={fight.f1.name} f2Name={fight.f2.name}
+        fightId={past ? undefined : fight.id} />
       {/* The result wraps rather than truncating: the round and the clock are
           the point of the line, and the centre column is narrow enough that
           "KO/TKO · R1 · 2:54" would lose its tail to an ellipsis. */}
@@ -404,37 +411,179 @@ function FightRow({ fight, past, eventId, live = false }: { fight: EventFight; p
   // A matchup the reader has not opened before is a cold request; hovering or
   // pressing the row is enough notice to have it loaded by the time it opens.
   const warm = () => prefetch(withRanking(`/api/fights/${fight.id}`, settings.rankingSource));
+  const open = () => navigate(`/fights/${fight.id}`, { state: { eventId, eventReturnDepth: 1 } });
+  // Shown twice below: inline beside the price from `@3xl` up, and as its own
+  // centred row under the whole card below that, since the narrow middle
+  // column at that size is sized for the price alone.
+  const weightClassRow = (
+    <div className="flex flex-wrap items-center justify-center gap-1.5">
+      {/* The dot and the word both say live, so neither colour nor
+          motion carries it alone. */}
+      {live ? <>
+        <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+        <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">Live</span>
+        <span className="text-[10px] text-zinc-300" aria-hidden="true">·</span>
+      </> : null}
+      <span className="text-[10px] font-medium text-zinc-500">{fight.weight_class}</span>
+      {fight.scheduled_rounds ? <span className="text-[10px] font-medium text-zinc-400">{roundsLabel(fight.scheduled_rounds)}</span> : null}
+      {fight.title_fight ? (
+        <span className={`rounded px-1 py-px text-[9px] font-bold uppercase ${(TITLE_TAG[fight.title_type ?? "title"] ?? TITLE_TAG.title).className}`}>
+          {(TITLE_TAG[fight.title_type ?? "title"] ?? TITLE_TAG.title).label}
+        </span>
+      ) : null}
+    </div>
+  );
+
   return (
-    <button
-      type="button"
+    // A plain button so the odds pair below can't hold one of its own — the
+    // row still opens the matchup on Enter/Space, same as a real button would.
+    <div
+      role="button"
+      tabIndex={0}
       onPointerEnter={warm}
       onPointerDown={warm}
       onFocus={warm}
-      onClick={() => navigate(`/fights/${fight.id}`, { state: { eventId, eventReturnDepth: 1 } })}
-      className={`group grid w-full grid-cols-2 items-start gap-4 px-4 text-left transition-colors @3xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] @3xl:items-center ${live ? "py-3 hover:bg-emerald-50/60" : "py-1.5 hover:bg-zinc-50"}`}
+      onClick={open}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        open();
+      }}
+      // The price sits between the two fighters at every width — narrowed to
+      // a compact badge below `@3xl` rather than dropping to a row of its
+      // own — so it keeps the gap between the two portraits instead of
+      // pushing the row taller.
+      className={`group grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-2 px-4 text-left transition-colors @3xl:items-center @3xl:gap-4 ${live ? "py-3 hover:bg-emerald-50/60" : "py-1.5 hover:bg-zinc-50"}`}
     >
-      <FighterBlock side={fight.f1} align="left" past={done} bonuses={fight.bonuses} resultTag={resultTag(fight, fight.f1.outcome)} />
-      <div className="order-3 col-span-2 flex w-full flex-col items-center justify-center gap-2 self-center @3xl:order-2 @3xl:col-span-1 @3xl:w-40 @5xl:w-52">
-        <div className="flex flex-wrap items-center justify-center gap-1.5">
-          {/* The dot and the word both say live, so neither colour nor
-              motion carries it alone. */}
-          {live ? <>
-            <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-            <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">Live</span>
-            <span className="text-[10px] text-zinc-300" aria-hidden="true">·</span>
-          </> : null}
-          <span className="text-[10px] font-medium text-zinc-500">{fight.weight_class}</span>
-          {fight.scheduled_rounds ? <span className="text-[10px] font-medium text-zinc-400">{roundsLabel(fight.scheduled_rounds)}</span> : null}
-          {fight.title_fight ? (
-            <span className={`rounded px-1 py-px text-[9px] font-bold uppercase ${(TITLE_TAG[fight.title_type ?? "title"] ?? TITLE_TAG.title).className}`}>
-              {(TITLE_TAG[fight.title_type ?? "title"] ?? TITLE_TAG.title).label}
+      {/* Explicit grid placement rather than the order-1/2/3 trick a 3-item
+          row could get away with — a 4th item (the mobile-only weight class
+          row below) needs an unambiguous spot too. */}
+      <div className="col-start-1 row-start-1 min-w-0">
+        <FighterBlock side={fight.f1} align="left" past={done} bonuses={fight.bonuses} resultTag={resultTag(fight, fight.f1.outcome)} />
+      </div>
+      <div className="col-start-2 row-start-1 mt-1.5 flex w-auto shrink-0 flex-col items-center justify-start gap-1 self-start @3xl:mt-0 @3xl:w-40 @3xl:justify-center @3xl:gap-2 @3xl:self-center @5xl:w-52">
+        <div className="hidden @3xl:block">{weightClassRow}</div>
+        <CenterBlock fight={fight} past={done} />
+      </div>
+      <div className="col-start-3 row-start-1 min-w-0">
+        <FighterBlock side={fight.f2} align="right" past={done} bonuses={fight.bonuses} resultTag={resultTag(fight, fight.f2.outcome)} />
+      </div>
+      <div className="col-start-1 col-span-3 row-start-2 @3xl:hidden">{weightClassRow}</div>
+    </div>
+  );
+}
+
+/** Whether a fight has anything worth showing in the all-odds view — a
+ *  moneyline, or a priced method/distance/total/round market. */
+function hasFightOdds(fight: EventFight): boolean {
+  return Boolean(fight.odds?.f1.close || fight.odds?.f2.close || hasOddsMarkets(fight.odds?.props, fight.f1.name, fight.f2.name));
+}
+
+/** A tight, sportsbook-style moneyline for the all-odds page: two prices
+ *  split by a hairline, no chunky rounding or padding to spare — OddsPair
+ *  reads as a big button at the size a matchup row needs it here. */
+function CardMoneyline({ fightId, f1, f2, f1Name, f2Name }: {
+  fightId: string | undefined;
+  f1: string | null | undefined;
+  f2: string | null | undefined;
+  f1Name: string;
+  f2Name: string;
+}) {
+  if (!f1 && !f2) return null;
+  const fightLabel = `${f1Name} vs ${f2Name}`;
+  return (
+    <div className="grid w-full max-w-[14rem] grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] overflow-hidden rounded-md border border-zinc-200 text-center dark:border-zinc-700">
+      <Moneyline leg={moneylineLeg(fightId, fightLabel, 1, f1Name, f1)} value={f1} name={f1Name} fill="left" className="px-2 py-1 text-[13px] font-semibold tabular-nums" />
+      <span className="self-stretch bg-zinc-200 dark:bg-zinc-700" aria-hidden="true" />
+      <Moneyline leg={moneylineLeg(fightId, fightLabel, 2, f2Name, f2)} value={f2} name={f2Name} fill="right" className="px-2 py-1 text-[13px] font-semibold tabular-nums" />
+    </div>
+  );
+}
+
+/** A quiet section heading for the all-odds page: no box, no rule — the
+ *  cards underneath already carry their own borders. */
+/** One matchup's full board in the all-odds view: who it is, the moneyline,
+ *  and every method/distance/total/round market underneath — the same board
+ *  the matchup's own Odds tab shows, so a parlay can be built leg by leg
+ *  without opening each fight in turn. Its own card, the way a sportsbook
+ *  lists one game at a time, rather than a row in one shared list. */
+function CardOddsRow({ fight, eventId, live, past, format }: { fight: EventFight; eventId: string; live: boolean; past: boolean; format: OddsFormat }) {
+  const navigate = useNavigate();
+  const done = past || fight.method != null || fight.f1.outcome != null;
+  const f1Odds = fight.odds?.f1.close ?? null;
+  const f2Odds = fight.odds?.f2.close ?? null;
+  const props = fight.odds?.props;
+  const hasProps = hasOddsMarkets(props, fight.f1.name, fight.f2.name);
+  const result: FightResult = {
+    winner: fight.f1.outcome === "win" ? 1 : fight.f2.outcome === "win" ? 2 : null,
+    method: fight.method,
+    round: fight.round,
+    time: fight.time,
+  };
+  const open = () => navigate(`/fights/${fight.id}`, { state: { eventId, eventReturnDepth: 1 } });
+  // A bout not yet reached says when it is expected instead — same estimate
+  // the matchup list shows, absent once the fight is underway or done.
+  const expected = !done ? clockTime(fight.starts_at) : null;
+  return (
+    <div className={`@container overflow-hidden rounded-2xl border bg-white dark:bg-zinc-900 ${live ? "border-emerald-300 dark:border-emerald-700" : "border-zinc-200 dark:border-zinc-800"}`}>
+      {/* A plain div, not a link: the moneyline below carries real buttons of
+          its own, and a button can't nest inside an anchor. Its own click
+          still opens the matchup, same as a link would. */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={open}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          open();
+        }}
+        className="grid grid-cols-[minmax(0,1fr)_15rem_minmax(0,1fr)] items-center gap-3 bg-zinc-50 px-4 py-3 transition-colors hover:bg-zinc-100 dark:bg-zinc-800/50 dark:hover:bg-zinc-800 @[34rem]:px-5"
+      >
+        <span className="flex min-w-0 items-center justify-end gap-1.5">
+          <span className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-100">{fight.f1.name}</span>
+          <Avatar src={fight.f1.photo_url} name={fight.f1.name} size="xs" outcome={fight.f1.outcome} />
+        </span>
+        {/* A fixed-width column, not content-sized: every card's grid tracks
+            this width the same regardless of whether a title tag or rounds
+            badge is present, so the odds box lands at the same x on every
+            card instead of drifting row to row. */}
+        <div className="flex w-full flex-col items-center gap-1">
+          {live || fight.scheduled_rounds || fight.title_fight ? (
+            <div className="flex w-full flex-wrap items-center justify-center gap-1.5">
+              {live ? <>
+                <span className="live-dot h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
+                <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">Live</span>
+              </> : null}
+              {fight.scheduled_rounds ? <span className="whitespace-nowrap text-[10px] font-medium text-zinc-400">{roundsLabel(fight.scheduled_rounds)}</span> : null}
+              {fight.title_fight ? (
+                <span className={`shrink-0 rounded px-1 py-px text-[9px] font-bold uppercase ${(TITLE_TAG[fight.title_type ?? "title"] ?? TITLE_TAG.title).className}`}>
+                  {(TITLE_TAG[fight.title_type ?? "title"] ?? TITLE_TAG.title).label}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+          <CardMoneyline fightId={done ? undefined : fight.id} f1={f1Odds} f2={f2Odds} f1Name={fight.f1.name} f2Name={fight.f2.name} />
+          {fight.weight_class || expected ? (
+            <span
+              className="w-full whitespace-nowrap text-center text-[10px] font-medium tabular-nums text-zinc-400"
+              title={expected ? "Approximate start in your time zone. Usually 30 minutes per bout (40 for five-round bouts), adjusted to fit before the next segment with a 10-minute transition. Rounded to 5 minutes; finishes and broadcast delays can change actual starts." : undefined}
+            >
+              {fight.weight_class}
+              {fight.weight_class && expected ? " · " : ""}
+              {expected ? `~${expected}` : ""}
             </span>
           ) : null}
         </div>
-        <CenterBlock fight={fight} past={done} />
+        <span className="flex min-w-0 items-center justify-start gap-1.5">
+          <Avatar src={fight.f2.photo_url} name={fight.f2.name} size="xs" outcome={fight.f2.outcome} />
+          <span className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-100">{fight.f2.name}</span>
+        </span>
       </div>
-      <FighterBlock side={fight.f2} align="right" past={done} bonuses={fight.bonuses} resultTag={resultTag(fight, fight.f2.outcome)} />
-    </button>
+      {hasProps ? (
+        <OddsMarkets odds={props!} fightId={fight.id} f1Name={fight.f1.name} f2Name={fight.f2.name} format={format} result={result} compact />
+      ) : null}
+    </div>
   );
 }
 
@@ -470,7 +619,10 @@ const segmentStart = (schedule: CardSchedule | undefined, segment: CardSegment):
     : segment === "prelims" ? schedule?.prelims_at ?? null
       : schedule?.early_prelims_at ?? null;
 
-/** A quiet section heading paired with its announced local start time. */
+/** A quiet section heading paired with its announced local start time, marking
+ *  where the card view crosses from one segment (main card, prelims, early
+ *  prelims) into the next. The odds view lists every priced fight in one flat
+ *  sportsbook-style table instead, so it never renders this. */
 function SegmentBreak({ segment, at }: { segment: CardSegment; at: number | null }) {
   const clock = clockTime(at);
   return (
@@ -486,13 +638,13 @@ function SegmentBreak({ segment, at }: { segment: CardSegment; at: number | null
   );
 }
 
-function EventPane({ eventId }: { eventId: string }) {
-  const { settings } = useSettings();
+function EventPane({ eventId, oddsMode }: { eventId: string; oddsMode: boolean }) {
+  const { settings, update } = useSettings();
   const url = withRanking(`/api/events/${eventId}`, settings.rankingSource);
   const { data: event, loading, error } = useApi<EventDetail>(url,
     data => data?.refreshing ? 5_000 : isFightDay(data?.date) ? 15_000 : data?.status !== "past" ? 5 * 60_000 : 0);
   const isLive = isFightDay(event?.date);
-  const eventScroll = useRouteScrollRestoration<HTMLDivElement>("event:card", Boolean(event));
+  const eventScroll = useRouteScrollRestoration<HTMLDivElement>("event:card", Boolean(event), eventId);
   // Any card still ahead of us counts down; a finished one has nothing left
   // to count, so its clock never starts.
   const now = useNow(event?.status !== "past");
@@ -536,6 +688,8 @@ function EventPane({ eventId }: { eventId: string }) {
 
   const past = event.status === "past";
   const liveId = liveFightId(event);
+  const oddsFights = event.fights.filter(hasFightOdds);
+  const hasAnyOdds = oddsFights.length > 0;
   // Every announced part of an upcoming card, main card first; the next one
   // carries a countdown on the day. A live card shows its results instead.
   const schedule = past || isLive ? [] : (["main", "prelims", "early"] as CardSegment[])
@@ -545,22 +699,27 @@ function EventPane({ eventId }: { eventId: string }) {
 
   return (
     <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-3 overflow-y-auto pr-1">
-      <section className={`${shell} shrink-0 px-4 py-4 @[34rem]:px-6`}>
-        <div className="flex flex-col gap-3 @[48rem]:flex-row @[48rem]:items-center @[48rem]:justify-between @[48rem]:gap-6">
+      <section className={`${shell} shrink-0 px-4 py-2.5 @[34rem]:px-6 @[48rem]:py-4`}>
+        <div className="flex flex-col gap-1.5 @[48rem]:flex-row @[48rem]:items-center @[48rem]:justify-between @[48rem]:gap-6">
           <div className="min-w-0">
-            <h1 className="text-balance text-xl font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-2xl">{event.name}</h1>
-            <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs leading-relaxed text-zinc-500">
+            <h1 className="text-balance text-base font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-2xl">{event.name}</h1>
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs leading-relaxed text-zinc-500">
               <span className="whitespace-nowrap font-medium text-zinc-600">{formatDate(event.date)}</span>
               {event.location ? <><span aria-hidden="true" className="text-zinc-300">·</span><span>{event.location}</span></> : null}
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-start gap-1 empty:hidden @[48rem]:max-w-[45%] @[48rem]:items-end @[48rem]:text-right">
             {schedule.length ? (
-              <dl className="grid grid-cols-[auto_auto] items-baseline gap-x-3 gap-y-0.5 text-[11px]">
+              // Mobile: every segment wraps as one inline "label time" unit, so
+              // three lines collapse to one or two instead of stacking. From
+              // 48rem the same markup becomes the original label/time grid —
+              // each row's wrapper switches to `contents` and drops out,
+              // leaving its dt/dd as the grid's direct children.
+              <dl className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[11px] @[48rem]:grid @[48rem]:grid-cols-[auto_auto]">
                 {schedule.map(({ segment, at }) => (
-                  <div key={segment} className={`contents ${at <= now ? "text-zinc-400" : "text-zinc-500"}`}>
+                  <div key={segment} className={`flex items-baseline gap-1.5 whitespace-nowrap @[48rem]:contents ${at <= now ? "text-zinc-400" : "text-zinc-500"}`}>
                     <dt>{SEGMENT_LABEL[segment]}</dt>
-                    <dd className="flex items-baseline justify-end gap-2 tabular-nums">
+                    <dd className="flex items-baseline gap-1.5 tabular-nums @[48rem]:justify-end @[48rem]:gap-2">
                       {/* A countdown is worth reading on the day and unreadable
                           before it, so past a day out the date says enough. */}
                       {at === nextStart && at - now < DAY_MS ? <span className="text-zinc-400">in {countdown(at, now)}</span> : null}
@@ -575,25 +734,52 @@ function EventPane({ eventId }: { eventId: string }) {
         </div>
       </section>
 
-      <section className={`${shell} shrink-0 overflow-hidden`}>
-        {event.fights.length === 0 ? (
-          <div className="px-6 py-10 text-center text-sm text-zinc-400">Fight card not announced yet.</div>
-        ) : (
-          event.fights.map((fight, index) => (
-            <div key={fight.id} className={index === 0 ? "" : fight.segment && fight.segment !== event.fights[index - 1]?.segment ? "border-t border-zinc-200" : "border-t border-zinc-100"}>
-              {fight.segment && fight.segment !== event.fights[index - 1]?.segment
-                ? <SegmentBreak segment={fight.segment} at={segmentStart(event.schedule, fight.segment)} />
-                : null}
-              {/* The bout on now is boxed off from the rows around it. Its live
-                  marker sits with the weight class in the centre column, so the
-                  box holds one row that centres like every other. */}
-              <div className={fight.id === liveId ? "m-1.5 overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/30" : ""}>
-                <FightRow fight={fight} live={fight.id === liveId} past={past || fight.f1.outcome != null || fight.f2.outcome != null} eventId={event.id} />
-              </div>
-            </div>
-          ))
-        )}
-      </section>
+      {oddsMode && hasAnyOdds ? (
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+            <Link
+              to={`/events/${event.id}`}
+              className="text-xs font-medium text-zinc-500 underline decoration-zinc-300 underline-offset-2 transition hover:text-zinc-900 dark:text-zinc-400 dark:decoration-zinc-600 dark:hover:text-zinc-100"
+            >
+              ← Back to matchups
+            </Link>
+            <OddsFormatTabs format={settings.oddsFormat} onChange={(oddsFormat) => update("oddsFormat", oddsFormat)} />
+          </div>
+          <div className="flex flex-col gap-2 pb-3">
+            {oddsFights.map((fight) => (
+              <CardOddsRow
+                key={fight.id}
+                fight={fight}
+                eventId={event.id}
+                live={fight.id === liveId}
+                past={past || fight.f1.outcome != null || fight.f2.outcome != null}
+                format={settings.oddsFormat}
+              />
+            ))}
+          </div>
+        </div>
+      ) : (
+        <section className={`${shell} shrink-0 overflow-hidden`}>
+          {event.fights.length === 0 ? (
+            <div className="px-6 py-10 text-center text-sm text-zinc-400">Fight card not announced yet.</div>
+          ) : (
+            event.fights.map((fight, index) => {
+              const newSegment = Boolean(fight.segment) && fight.segment !== event.fights[index - 1]?.segment;
+              return (
+                <div key={fight.id} className={index === 0 ? "" : newSegment ? "border-t border-zinc-200" : "border-t border-zinc-100"}>
+                  {newSegment ? <SegmentBreak segment={fight.segment!} at={segmentStart(event.schedule, fight.segment!)} /> : null}
+                  {/* The bout on now is boxed off from the rows around it. Its live
+                      marker sits with the weight class in the centre column, so the
+                      box holds one row that centres like every other. */}
+                  <div className={fight.id === liveId ? "m-1.5 overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/30" : ""}>
+                    <FightRow fight={fight} live={fight.id === liveId} past={past || fight.f1.outcome != null || fight.f2.outcome != null} eventId={event.id} />
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </section>
+      )}
     </div>
   );
 }
@@ -629,6 +815,7 @@ export default function EventsPage() {
     }
   }, [eventId, fightId, events, navigate]);
 
+  const oddsMode = new URLSearchParams(location.search).get("odds") === "1";
   const dock = fightId ? DOCK.matchup : DOCK.card;
   if (error && !events) {
     return (
@@ -663,7 +850,7 @@ export default function EventsPage() {
         {fightId ? (
           <FightView fightId={fightId} eventIdHint={fightEventIdHint ?? openFight?.event.id} />
         ) : eventId ? (
-          <EventPane eventId={eventId} />
+          <EventPane eventId={eventId} oddsMode={oddsMode} />
         ) : (
           <div className={`flex h-full items-center justify-center ${shell}`}>
             <div className="text-sm text-zinc-400">Select an event.</div>

@@ -15,7 +15,7 @@ import {
 } from "../format";
 import Avatar from "../components/Avatar";
 import FighterPortrait from "../components/FighterPortrait";
-import MatchupOdds, { OddsMarkets } from "../components/MatchupOdds";
+import MatchupOdds, { OddsFormatTabs, OddsMarkets } from "../components/MatchupOdds";
 import { hasOddsMarkets } from "../oddsLayout";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import {
@@ -25,7 +25,6 @@ import {
   FightStatistics,
   PANEL_SHELL,
   PanelEmpty,
-  Legend,
   PanelHeading,
   Scorecards,
   TaleOfTape,
@@ -170,6 +169,7 @@ function FighterHero({
             size="hero"
             corner={align === "left" ? "f1" : "f2"}
             outcome={side.outcome}
+            glow={false}
           />
         ) : (
           <Avatar src={side.photo_url} name={side.name} size="lg" outcome={side.outcome} />
@@ -180,7 +180,7 @@ function FighterHero({
             name never pushes the badge onto a line of its own. */}
         {rankingBadge ? <div className="mb-1.5 flex items-center justify-center gap-1.5">{rankingBadge}</div>
           : reserveRank ? <div aria-hidden="true" className="mb-1.5 h-5 @[58rem]:hidden" /> : null}
-        <div className={`matchup-name text-balance font-semibold ${side.outcome === "loss" ? "text-zinc-400" : "text-zinc-900"}`}>
+        <div className={`matchup-name text-balance font-semibold transition-[filter] ${side.outcome === "loss" ? "text-zinc-400" : align === "left" ? "text-f1 group-hover:brightness-90" : "text-f2 group-hover:brightness-90"}`}>
           {side.name}
         </div>
         {side.nickname ? <div className="mt-0.5 text-xs text-zinc-400">“{side.nickname}”</div> : null}
@@ -407,14 +407,25 @@ function MatchupContext({ fight }: { fight: Matchup }) {
 
 function OddsPanel({ fight }: { fight: Matchup }) {
   const props = fight.odds?.props;
+  const { settings, update } = useSettings();
   if (!hasOddsMarkets(props, fight.f1.name, fight.f2.name)) return null;
   return (
     <section className={`${shell} @container flex flex-col overflow-hidden`}>
-      <PanelHeading title="Odds" />
+      <PanelHeading title="Odds" aside={<OddsFormatTabs format={settings.oddsFormat} onChange={(oddsFormat) => update("oddsFormat", oddsFormat)} />} />
+      <div className="px-5 pt-2.5">
+        <Link
+          to={`/events/${fight.event.id}?odds=1`}
+          className="text-xs font-medium text-zinc-500 underline decoration-zinc-300 underline-offset-2 transition hover:text-zinc-900 dark:text-zinc-400 dark:decoration-zinc-600 dark:hover:text-zinc-100"
+        >
+          View full card odds
+        </Link>
+      </div>
       <OddsMarkets
         odds={props}
+        fightId={fight.id}
         f1Name={fight.f1.name}
         f2Name={fight.f2.name}
+        format={settings.oddsFormat}
         result={{
           winner: fight.f1.outcome === "win" ? 1 : fight.f2.outcome === "win" ? 2 : null,
           method: fight.method,
@@ -560,10 +571,7 @@ function CommonOpponents({ fight }: { fight: Matchup }) {
 
   return (
     <section className={`${shell} flex flex-col overflow-hidden`}>
-      <PanelHeading
-        title="Common opponents"
-        aside={<Legend fight={fight} />}
-      />
+      <PanelHeading title="Common opponents" />
       <div className="divide-y divide-zinc-100">
         {shared.map((comparison) => (
           // Too narrow for three columns, the opponent heads the row and the
@@ -583,7 +591,7 @@ function CommonOpponents({ fight }: { fight: Matchup }) {
                 title={comparison.opponent.name}
                 className={`${CHART_TEXT} block truncate font-semibold text-zinc-900 underline-offset-2 hover:underline`}
               >
-                {lastName(comparison.opponent.name)}
+                {comparison.opponent.name}
               </Link>
             </div>
             <div className="col-start-2 row-start-2 min-w-0 space-y-0.5 @[30rem]:col-start-3 @[30rem]:row-start-1 @[30rem]:pl-3">
@@ -790,7 +798,10 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     && location.state.eventReturnDepth > 0
     ? location.state.eventReturnDepth
     : null;
-  const detailScroll = useRouteScrollRestoration<HTMLDivElement>("fight:detail", Boolean(fight));
+  // Scoped to the fight, not the history entry: switching tabs replaces the
+  // URL's `?tab=` search param, which mints a new location key and would
+  // otherwise read as a brand-new page and reset the scroll to the top.
+  const detailScroll = useRouteScrollRestoration<HTMLDivElement>("fight:detail", Boolean(fight), fightId);
   const eventId = loadedFight?.event.id ?? eventIdHint ?? previousFight.current?.event.id;
   const matchupTitle = loadedFight ? `${loadedFight.f1.name} vs ${loadedFight.f2.name}` : "UFC Matchup";
   const matchupDescription = loadedFight
@@ -883,13 +894,12 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   ];
   const requestedTab = new URLSearchParams(location.search).get("tab");
   const tab = tabs.find((candidate) => candidate === requestedTab) ?? tabs[0];
+  // Only the tab panel below should change; the reader's scroll position is
+  // left alone. (A tab shorter than the current scroll depth still behaves
+  // correctly on its own — the browser clamps scrollTop to the new content's
+  // height, and the tab bar stays put since it's sticky.)
   const selectTab = (next: MatchupTab) => {
-    const scroller = detailScroll.current;
-    const bar = scroller?.querySelector<HTMLElement>("[role=tablist]")?.parentElement;
     navigate({ search: `?tab=${next}` }, { replace: true, state: location.state });
-    // A shorter tab should not leave the reader below its end: bring the tab
-    // bar back to the top if it had scrolled past it.
-    if (scroller && bar && scroller.scrollTop > bar.offsetTop) scroller.scrollTop = bar.offsetTop;
   };
 
   return (
@@ -938,28 +948,44 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
               </div>
 
               <div className="matchup-body px-5 py-5">
-                {/* The two heroes and the price sit on one line; the panels that
-                    compare them run underneath at full width. Keeping the
+                {/* The two heroes and the price sit on one line, the price
+                    between them, at every width — narrow down to a compact
+                    badge rather than dropping to a row of its own, so it
+                    keeps the gap between the two portraits instead of
+                    pushing the card taller. The panels that compare the
+                    fighters run underneath at full width; keeping the
                     comparisons out of the middle column is what stops a long
                     name or "Former champion" from being clipped while the
                     space either side of the card goes unused. */}
-                <div className="matchup-hero grid grid-cols-2 items-start gap-4 @[58rem]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] @[58rem]:gap-6">
+                <div className="matchup-hero grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-1.5 @[58rem]:gap-6">
                   <div className="col-start-1 row-start-1 min-w-0">
                     <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} reserveRank={reserveRank} />
                   </div>
-                  <div className="matchup-market self-center col-span-2 col-start-1 row-start-2 flex w-full flex-col items-center text-center @[58rem]:col-span-1 @[58rem]:col-start-2 @[58rem]:row-start-1 @[58rem]:w-auto @[58rem]:max-w-[19rem]">
+                  <div className="matchup-market self-start col-start-2 row-start-1 flex w-auto flex-col items-center text-center @[58rem]:self-center @[58rem]:max-w-[19rem]">
                     <div className="matchup-prices">
                       <MatchupOdds key={fight.id} f1={fight.odds?.f1.close} f2={fight.odds?.f2.close}
                         f1Open={fight.odds?.f1.open} f2Open={fight.odds?.f2.open}
                         f1Name={fight.f1.name} f2Name={fight.f2.name}
-                        props={fight.odds?.props} />
+                        props={fight.odds?.props}
+                        fightId={fight.status === "upcoming" ? fight.id : undefined} />
                     </div>
-                    <WeightClassLabel fight={fight} />
-                    {referee ? <div className="mt-1 text-[10px] text-zinc-400">Ref {referee}</div> : null}
+                    {/* The weight class, rounds and referee line ride along
+                        beside the price from 58rem up; below that they'd have
+                        to squeeze into the same narrow middle column as the
+                        price itself, so they run as their own centred row
+                        under the whole hero instead. */}
+                    <div className="hidden @[58rem]:flex @[58rem]:flex-col @[58rem]:items-center">
+                      <WeightClassLabel fight={fight} />
+                      {referee ? <div className="mt-1 text-[10px] text-zinc-400">Ref {referee}</div> : null}
+                    </div>
                   </div>
-                  <div className="col-start-2 row-start-1 min-w-0 @[58rem]:col-start-3">
+                  <div className="col-start-3 row-start-1 min-w-0">
                     <FighterHero side={fight.f2} align="right" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} reserveRank={reserveRank} />
                   </div>
+                </div>
+                <div className="mt-2 flex flex-col items-center gap-1 text-center @[58rem]:hidden">
+                  <WeightClassLabel fight={fight} />
+                  {referee ? <div className="text-[10px] text-zinc-400">Ref {referee}</div> : null}
                 </div>
 
               </div>

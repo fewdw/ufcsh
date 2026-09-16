@@ -31,9 +31,14 @@ export function useHistoryState<T>(id: string, initial: T | (() => T)): [T, Disp
 }
 
 /** Restores nested scroll containers, which React Router/browser window scroll
- * restoration cannot see. Positions are isolated by history key and region. */
-export function useRouteScrollRestoration<T extends HTMLElement>(id: string, ready = true): RefObject<T | null> {
-  const { key } = useLocation();
+ * restoration cannot see. Positions are isolated by history key and region,
+ * unless `scopeKey` is given: then the region keeps its scroll under that key
+ * instead, so a region that outlives its own URL — an event's card list,
+ * still showing underneath a fight opened on top of it — isn't reset to the
+ * top just because the fight overlay pushed a new history entry. */
+export function useRouteScrollRestoration<T extends HTMLElement>(id: string, ready = true, scopeKey?: string): RefObject<T | null> {
+  const { key: locationKey } = useLocation();
+  const key = scopeKey ?? locationKey;
   const ref = useRef<T>(null);
 
   useLayoutEffect(() => {

@@ -2,6 +2,7 @@ node_modules/
 dist/
 server/data/*.db*
 server/data/images/
+server/data/odds-repair-*.tar.gz
 *.tsbuildinfo
 .DS_Store
 .env

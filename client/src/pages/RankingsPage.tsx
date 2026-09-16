@@ -455,8 +455,8 @@ function FeaturesMenu({
 }
 
 const SOURCES: { key: RankingSource; label: string; help: string }[] = [
-  { key: "meta", label: "Meta", help: "The consensus ranking. Used for every rank badge in the app." },
   { key: "media", label: "Media", help: "The media panel ranking. Used for every rank badge in the app." },
+  { key: "meta", label: "Meta", help: "The consensus ranking. Used for every rank badge in the app." },
 ];
 
 const FILTERS: { key: ViewFilter; label: string }[] = [
@@ -518,9 +518,13 @@ export default function RankingsPage() {
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
       <div className="mx-auto max-w-7xl p-3 pb-8">
-        {/* Filters and the Features menu share the first line; the legend takes
-            a line of its own under them until there is room for everything. */}
-        <div className={`${shell} mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5`}>
+        {/* Below `lg` this is a simple top-to-bottom stack — filters, then the
+            Features menu, then the legend — each its own full-width row, so
+            nothing is left wrapping onto a line by itself with dead space
+            around it. From `lg` up it becomes the original single row:
+            filters left, legend filling the middle, Features menu at the
+            far right. */}
+        <div className={`${shell} mb-3 flex flex-col gap-2 px-4 py-2.5 lg:flex-row lg:flex-wrap lg:items-center lg:gap-x-4 lg:gap-y-2`}>
           <div className="flex flex-wrap items-center gap-2">
             <div className={segmentedGroup} role="group" aria-label="Ranking view">
               {SOURCES.map((source) => (
@@ -555,7 +559,18 @@ export default function RankingsPage() {
             </div>
           </div>
 
-          <div className="order-3 flex basis-full flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-zinc-500 lg:order-2 lg:ml-auto lg:basis-auto lg:justify-end">
+          <div className="lg:order-3">
+            <FeaturesMenu
+              features={features}
+              onChange={setFeatures}
+              dateMode={settings.dateMode}
+              onDateMode={(mode) => update("dateMode", mode)}
+              divisionOrder={settings.divisionOrder}
+              onDivisionOrder={(order) => update("divisionOrder", order)}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-zinc-500 lg:order-2 lg:ml-auto lg:justify-end">
             {/* ufc.com is read every six hours; a day without one is worth saying. */}
             <Freshness label="Rankings updated" at={data?.updated_at} staleAfterHours={24} />
             {features.activityColors ? (
@@ -574,16 +589,6 @@ export default function RankingsPage() {
                 </span>
               </>
             ) : null}
-          </div>
-          <div className="order-2 ml-auto lg:order-3 lg:ml-0">
-            <FeaturesMenu
-              features={features}
-              onChange={setFeatures}
-              dateMode={settings.dateMode}
-              onDateMode={(mode) => update("dateMode", mode)}
-              divisionOrder={settings.divisionOrder}
-              onDivisionOrder={(order) => update("divisionOrder", order)}
-            />
           </div>
         </div>
 

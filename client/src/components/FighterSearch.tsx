@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { User } from "lucide-react";
 import type { SearchResults } from "../api";
 import Avatar from "./Avatar";
 import { parseSearch, useSearch } from "../useSearch";
@@ -102,11 +103,11 @@ export default function FighterSearch({
             ))}
           </div>
         ) : null}
-        <div className="flex h-9 items-center gap-2 px-3">
-          <svg className="h-3.5 w-3.5 shrink-0 text-zinc-400" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            <circle cx="9" cy="9" r="6" />
-            <path d="m14 14 3.5 3.5" strokeLinecap="round" />
-          </svg>
+        <div className="flex h-9 items-center gap-2 pl-2.5 pr-3">
+          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-zinc-100 text-zinc-500" aria-hidden="true">
+            <User className="h-3.5 w-3.5" />
+          </span>
+          <span className="h-5 w-px shrink-0 bg-zinc-200" aria-hidden="true" />
           <input
             ref={inputRef}
             type="text"
