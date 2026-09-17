@@ -81,6 +81,21 @@ textarea:focus-visible {
   outline: none;
 }
 
+/* Safari on iOS zooms the page in whenever a field it focuses carries text
+   under 16px, and every field here is deliberately smaller than that — so
+   tapping search threw the whole layout out of scale, with no way back but a
+   pinch. Touch pointers get the 16px Safari is asking for; a mouse keeps the
+   compact type the design is drawn at. `maximum-scale` on the viewport would
+   also stop the zoom, at the cost of the reader's own pinch. Selects are
+   exempt: they open a picker rather than a caret, and never trigger it.
+   Unlayered like the rules above, so a Tailwind text size does not win. */
+@media (pointer: coarse) {
+  input:is([type="text"], [type="search"], [type="number"], [type="email"], [type="date"], [type="tel"], [type="url"], [type="password"], :not([type])),
+  textarea {
+    font-size: 16px;
+  }
+}
+
 /* Tailwind's reset leaves every select drawing the platform's own arrow. On
    macOS that is a heavy chevron sized for a full-height control, which inside
    a small pill reads as a smudge — and it stays black in dark mode, where the
@@ -348,7 +363,7 @@ select:not([multiple]):not([size]) {
   .matchup-top-card .matchup-fighter--left .matchup-identity > div:first-child { justify-content: flex-start; }
   .matchup-top-card .matchup-fighter--right .matchup-identity > div:first-child { justify-content: flex-end; }
   .matchup-top-card .matchup-identity > div:first-child { flex-wrap: wrap; gap: 6px; }
-  .matchup-top-card .matchup-hero > div:not(.matchup-market) { align-self: stretch; }
+  .matchup-top-card .matchup-hero > div:not(.matchup-market, .matchup-billing) { align-self: stretch; }
   /* The name block centres on the portrait beside it rather than hanging
      from the top edge with empty space below. */
   .matchup-top-card .matchup-fighter { align-items: center; height: 100%; }
@@ -369,6 +384,15 @@ select:not([multiple]):not([size]) {
      rather than a third block stacked below them. */
   .matchup-top-card .matchup-prices { width: auto; }
   .matchup-top-card .matchup-identity > div:first-child { flex-wrap: wrap; gap: 4px; }
+}
+
+/* The billing line is the hero grid's first row. It wants far less air
+   beneath it than the gap holding the two portraits apart, so the row gap
+   is set on its own after every rule that sets the shorthand. */
+.matchup-hero { row-gap: 14px; }
+.matchup-top-card .matchup-hero { row-gap: 14px; }
+@container (max-width: 57.99rem) {
+  .matchup-top-card .matchup-hero { row-gap: 10px; }
 }
 
 .matchup-header-control {

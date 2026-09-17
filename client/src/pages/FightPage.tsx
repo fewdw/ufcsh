@@ -958,10 +958,20 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     name or "Former champion" from being clipped while the
                     space either side of the card goes unused. */}
                 <div className="matchup-hero grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-1.5 @[58rem]:gap-6">
-                  <div className="col-start-1 row-start-1 min-w-0">
+                  {/* The weight class, rounds and referee line head the hero
+                      at every width. It spans all three columns rather than
+                      riding in the middle one with the price: "Light
+                      Heavyweight Title" is wider than the price card, and an
+                      auto-width middle column sized to the badge would eat
+                      the space the two names need. */}
+                  <div className="matchup-billing col-span-3 col-start-1 row-start-1 flex flex-col items-center text-center">
+                    <WeightClassLabel fight={fight} />
+                    {referee ? <div className="mt-1 text-[10px] text-zinc-400">Ref {referee}</div> : null}
+                  </div>
+                  <div className="col-start-1 row-start-2 min-w-0">
                     <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} reserveRank={reserveRank} />
                   </div>
-                  <div className="matchup-market self-start col-start-2 row-start-1 flex w-auto flex-col items-center text-center @[58rem]:self-center @[58rem]:max-w-[19rem]">
+                  <div className="matchup-market self-start col-start-2 row-start-2 flex w-auto flex-col items-center text-center @[58rem]:self-center @[58rem]:max-w-[19rem]">
                     <div className="matchup-prices">
                       <MatchupOdds key={fight.id} f1={fight.odds?.f1.close} f2={fight.odds?.f2.close}
                         f1Open={fight.odds?.f1.open} f2Open={fight.odds?.f2.open}
@@ -969,23 +979,10 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                         props={fight.odds?.props}
                         fightId={fight.status === "upcoming" ? fight.id : undefined} />
                     </div>
-                    {/* The weight class, rounds and referee line ride along
-                        beside the price from 58rem up; below that they'd have
-                        to squeeze into the same narrow middle column as the
-                        price itself, so they run as their own centred row
-                        under the whole hero instead. */}
-                    <div className="hidden @[58rem]:flex @[58rem]:flex-col @[58rem]:items-center">
-                      <WeightClassLabel fight={fight} />
-                      {referee ? <div className="mt-1 text-[10px] text-zinc-400">Ref {referee}</div> : null}
-                    </div>
                   </div>
-                  <div className="col-start-3 row-start-1 min-w-0">
+                  <div className="col-start-3 row-start-2 min-w-0">
                     <FighterHero side={fight.f2} align="right" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} reserveRank={reserveRank} />
                   </div>
-                </div>
-                <div className="mt-2 flex flex-col items-center gap-1 text-center @[58rem]:hidden">
-                  <WeightClassLabel fight={fight} />
-                  {referee ? <div className="text-[10px] text-zinc-400">Ref {referee}</div> : null}
                 </div>
 
               </div>
