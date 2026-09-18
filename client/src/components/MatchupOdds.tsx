@@ -268,7 +268,7 @@ function OddsTable({ title, columns, groups, wideLabel = true, live, format, com
 /** The full prop board under the matchup. Whole-fight markets stack on the
  * left and the round-by-round grid sits beside them once the panel is wide
  * enough; on a narrow panel everything stacks. */
-export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american", fightId, compact = false }: { odds: MethodOdds; f1Name: string; f2Name: string; result?: FightResult; format?: OddsFormat; fightId: string; /** Denser spacing for a page that lists every matchup's board at once. */ compact?: boolean }) {
+export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american", fightId, moneyline, compact = false }: { odds: MethodOdds; f1Name: string; f2Name: string; result?: FightResult; format?: OddsFormat; fightId: string; /** The fight's own price, opening and closing, when the board carries it. */ moneyline?: { f1: { open: string | null; close: string | null }; f2: { open: string | null; close: string | null } } | null; /** Denser spacing for a page that lists every matchup's board at once. */ compact?: boolean }) {
   const fightLabel = `${f1Name} vs ${f2Name}`;
   const extra = organizeAdditionalOdds(odds.additional, f1Name, f2Name);
   const rounds = [...new Set([...extra.roundMethods, ...extra.roundFinishes].map(row => row.round))].sort();
@@ -317,6 +317,26 @@ export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american",
     }))
     .filter(shown);
 
+  // The fight's own price, on the same board as the ways it can be won. The
+  // scraper keeps it as a bare line rather than a book's quote, so it is worn
+  // as one here and priced, formatted and settled like every other cell.
+  const asQuote = (line: string | null | undefined): OddsQuote | undefined =>
+    line && /^[+-]\d+$/.test(line) ? { label: "Moneyline", prices: [{ bookmaker: "Mean", line }] } : undefined;
+  const openedMoneyline = Boolean(asQuote(moneyline?.f1.open) || asQuote(moneyline?.f2.open));
+  const moneylineRows = (moneyline ? ([[f1Name, 1, moneyline.f1], [f2Name, 2, moneyline.f2]] as const) : [])
+    .map(([label, who, side]): Row => ({
+      label,
+      cells: [
+        ...(openedMoneyline ? [{ quote: asQuote(side.open), hit: false }] : []),
+        {
+          quote: asQuote(side.close),
+          hit: settled?.winner === who,
+          bet: { fightId, fightLabel, market: "Moneyline", selection: `${label} to win`, outcome: { fightId, winner: who } },
+        },
+      ],
+    }))
+    .filter(shown);
+
   const distanceRows = [{
     label: "",
     cells: [
@@ -351,20 +371,19 @@ export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american",
     .map(([name, who]): Group => ({ name, rows: (["KO/TKO", "SUB"] as const).map(method => ({ label: method, cells: byRound(name, who, method) })).filter(shown) }))
     .filter(group => group.rows.length);
 
-  const fightLevel = methodRows.length || distanceRows.length || totalRows.length;
+  const fightLevel = moneylineRows.length || methodRows.length || distanceRows.length || totalRows.length;
 
   return (
     <div className={`grid max-w-[64rem] @[42rem]:grid-cols-2 ${compact ? "gap-x-6 gap-y-3 px-4 pb-3 pt-2" : "gap-x-10 gap-y-6 px-5 pb-4 pt-3"} ${CHART_TEXT}`}>
-      {/* Self-centered rather than stretched: a three-round bout's "By round"
-          table is much shorter than the fight-level stack beside it, and
-          top-aligning both would dump all the leftover height in one ugly
-          block under the shorter side. Centering splits it evenly instead. */}
-      {fightLevel ? <div className={`flex min-w-0 flex-col self-center ${compact ? "gap-3" : "gap-6"}`}>
+      {/* Both stacks start on the same line, so the first section heading on
+          each side and the column headers under it read as one row. */}
+      {fightLevel ? <div className={`flex min-w-0 flex-col self-start ${compact ? "gap-3" : "gap-6"}`}>
+        {moneylineRows.length ? <OddsTable title="Moneyline" columns={openedMoneyline ? ["Open", live ? "Current" : "Close"] : [live ? "Current" : "Close"]} groups={[{ rows: moneylineRows }]} live={live} format={format} compact={compact} /> : null}
         {methodRows.length ? <OddsTable title="Method" columns={[...methods]} groups={[{ rows: methodRows }]} live={live} format={format} compact={compact} /> : null}
         {distanceRows.length ? <OddsTable title="Goes the distance" columns={["Yes", "No"]} groups={[{ rows: distanceRows }]} live={live} format={format} compact={compact} /> : null}
         {totalRows.length ? <OddsTable title="Over/Under" columns={["Over", "Under"]} groups={[{ rows: totalRows }]} live={live} format={format} compact={compact} /> : null}
       </div> : null}
-      {roundGroups.length ? <div className="min-w-0 self-center">
+      {roundGroups.length ? <div className="min-w-0 self-start">
         <OddsTable title="By round" columns={rounds.map(r => `R${r}`)} groups={roundGroups} wideLabel={false} live={live} format={format} compact={compact} />
       </div> : null}
     </div>

@@ -1,10 +1,12 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, Route, Routes, useLocation } from "react-router-dom";
+import AccountButton from "./components/AccountButton";
 import CmdK from "./components/CmdK";
 import SearchGlyph from "./components/SearchGlyph";
 import LiveMatchup from "./components/LiveMatchup";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "./components/segmented";
 import { Moon, Sun } from "lucide-react";
+import { accountsEnabled } from "./auth";
 import { useSettings } from "./settings";
 import { useFighterPrefetch } from "./useFighterPrefetch";
 import RouteErrorBoundary from "./components/RouteErrorBoundary";
@@ -98,6 +100,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
           >
             {dark ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
           </button>
+          {accountsEnabled ? <AccountButton /> : null}
         </div>
       </div>
     </header>

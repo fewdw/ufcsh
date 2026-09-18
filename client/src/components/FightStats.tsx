@@ -1,5 +1,8 @@
-import { Link } from "react-router-dom";
+import { Fragment } from "react";
+import { Link, useLocation } from "react-router-dom";
 import type { CareerBefore, ComparisonBlock, Matchup, RoundBlock } from "../api";
+import { useApi } from "../api";
+import type { ScoreSummary } from "../scoring";
 import { lastName } from "../format";
 import { Tooltip as TipBubble } from "./Tooltip";
 import { useTooltip } from "../tooltip";
@@ -52,7 +55,7 @@ export function PanelHeading({
   divider = true,
 }: {
   title: string;
-  subtitle?: string;
+  subtitle?: React.ReactNode;
   aside?: React.ReactNode;
   divider?: boolean;
 }) {
@@ -1229,11 +1232,16 @@ export function CareerProfile({ fight }: { fight: Matchup }) {
 
 export function Scorecards({ fight }: { fight: Matchup }) {
   const judges = fight.detail?.type === "past" ? fight.detail.judges : undefined;
+  // The fans' card belongs beside the judges', on the same terms: one number
+  // each, the leader in their colour. It opens the tab it was scored on.
+  const { data } = useApi<ScoreSummary>(judges?.length ? `/api/fights/${fight.id}/scores` : null);
+  const location = useLocation();
+  const fans = data && data.totals.avg1 != null && data.totals.avg2 != null ? data.totals : null;
   if (!judges?.length) return null;
   return (
     <section className={`${shell} overflow-hidden`}>
       <PanelHeading title="Scorecards" />
-      <ul className="grid divide-y divide-zinc-100 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+      <ul className={`grid divide-y divide-zinc-100 sm:divide-x sm:divide-y-0 ${fans ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
         {judges.map((j, judgeIndex) => {
           // Older cards carry the scores without the judge's name.
           const judgeName = j.judge || `Judge ${judgeIndex + 1}`;
@@ -1265,6 +1273,42 @@ export function Scorecards({ fight }: { fight: Matchup }) {
             </li>
           );
         })}
+        {fans ? (() => {
+          // A whole average is written like a judge's card; only a fraction in
+          // either total brings decimals out, and then both carry them so the
+          // pair still reads as one score.
+          const places = Number.isInteger(fans.avg1!) && Number.isInteger(fans.avg2!) ? 0 : 2;
+          const card = (side: Side) => (side === "f1" ? fans.avg1! : fans.avg2!).toFixed(places);
+          return (
+            <li className="min-w-0">
+              <Link
+                to={{ search: "?tab=score" }}
+                replace
+                state={location.state}
+                className="flex h-full min-w-0 flex-col items-center gap-2 px-4 py-4 transition hover:bg-zinc-50"
+                aria-label={`${fans.completeCards} fan ${fans.completeCards === 1 ? "scorecard" : "scorecards"}: ${lastName(fight.f1.name)} ${card("f1")}, ${lastName(fight.f2.name)} ${card("f2")}. Open the Score tab.`}
+              >
+                <span className={`max-w-full truncate ${sectionLabel}`}>{fans.completeCards.toLocaleString()} {fans.completeCards === 1 ? "Fan" : "Fans"}</span>
+                <span className="flex items-center gap-3" aria-hidden="true">
+                  {(["f1", "f2"] as Side[]).map((side) => {
+                    const leads = side === "f1" ? fans.avg1! > fans.avg2! : fans.avg2! > fans.avg1!;
+                    return (
+                      <Fragment key={side}>
+                        {side === "f2" ? <span className="h-5 w-px shrink-0 bg-zinc-200" /> : null}
+                        <span
+                          className={`${places ? "w-14 text-xl" : "w-10 text-2xl"} tabular-nums leading-none ${side === "f1" ? "text-right" : "text-left"} ${leads ? "font-semibold" : "font-medium text-zinc-400"}`}
+                          style={leads ? { color: SIDE[side].ink } : undefined}
+                        >
+                          {card(side)}
+                        </span>
+                      </Fragment>
+                    );
+                  })}
+                </span>
+              </Link>
+            </li>
+          );
+        })() : null}
       </ul>
     </section>
   );

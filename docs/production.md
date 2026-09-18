@@ -110,3 +110,10 @@ Before claiming a concurrent-user capacity, load-test the target host with warm
 and cold caches, varied filters, image misses, and scraping enabled. Track tail
 latency, memory, worker restarts, queue depth, 429/503 rates, and cache hits.
 5,000 registered or daily users is not the same workload as 5,000 active tabs.
+
+
+## Fan scoring
+
+Configure production Clerk keys and back up `scoring.db` alongside `ufc.db`.
+See [fan scoring deployment and capacity](scoring.md#deployment-and-capacity) for
+frontend build variables, allowed origins, persistence and concurrency limits.

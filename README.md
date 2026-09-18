@@ -6,6 +6,8 @@ fresh in the background.
 
 ## What it includes
 
+- **Fan scorecards** on completed and fight-day matchups: round-by-round scoring, live partial saves as the feed reports each round, and the decimal community average per round. Browsing stays open; signing in is optional and available from the header on any page. See [setup, scoring rules, security and deployment](docs/scoring.md).
+
 - Complete event cards, broken by broadcast — early prelims, prelims and main card each under their own heading and their own announced start time, with every bout after that heading estimated from it at half an hour a bout and forty minutes for anything scheduled for five rounds. Every row carries each fighter's career and UFC record, age, last five results, and the streak they bring in.
 
 - Fighter profiles with a single chronological professional history spanning UFC and verified outside-UFC bouts, career records entering every fight, rankings, and title narratives that distinguish undisputed titles, interim titles, defenses, regains, losses and unifications. UFC rows retain their local stats and matchup links; outside rows link to the verified source event and opponent. A **Records** panel appears when the fighter actually holds a place near the top of the sport, showing their best few.

@@ -14,6 +14,7 @@
     "test": "node src/test-runner.ts"
   },
   "dependencies": {
+    "@clerk/backend": "^3.18.1",
     "cheerio": "^1.0.0"
   },
   "devDependencies": {

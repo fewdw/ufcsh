@@ -5,4 +5,6 @@
 server/data
 .env
 .env.*
+**/.env
+**/.env.*
 **/*.db*

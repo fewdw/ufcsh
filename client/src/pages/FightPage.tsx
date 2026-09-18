@@ -14,6 +14,7 @@ import {
   roundsLabel,
 } from "../format";
 import Avatar from "../components/Avatar";
+import FightScoring from "../components/FightScoring";
 import FighterPortrait from "../components/FighterPortrait";
 import MatchupOdds, { OddsFormatTabs, OddsMarkets } from "../components/MatchupOdds";
 import { hasOddsMarkets } from "../oddsLayout";
@@ -411,17 +412,21 @@ function OddsPanel({ fight }: { fight: Matchup }) {
   if (!hasOddsMarkets(props, fight.f1.name, fight.f2.name)) return null;
   return (
     <section className={`${shell} @container flex flex-col overflow-hidden`}>
-      <PanelHeading title="Odds" aside={<OddsFormatTabs format={settings.oddsFormat} onChange={(oddsFormat) => update("oddsFormat", oddsFormat)} />} />
-      <div className="px-5 pt-2.5">
-        <Link
-          to={`/events/${fight.event.id}?odds=1`}
-          className="text-xs font-medium text-zinc-500 underline decoration-zinc-300 underline-offset-2 transition hover:text-zinc-900 dark:text-zinc-400 dark:decoration-zinc-600 dark:hover:text-zinc-100"
-        >
-          View full card odds
-        </Link>
-      </div>
+      <PanelHeading
+        title="Odds"
+        subtitle={
+          <Link
+            to={`/events/${fight.event.id}?odds=1`}
+            className="font-medium underline decoration-zinc-300 underline-offset-2 transition hover:text-zinc-900 dark:decoration-zinc-600 dark:hover:text-zinc-100"
+          >
+            Full card odds
+          </Link>
+        }
+        aside={<OddsFormatTabs format={settings.oddsFormat} onChange={(oddsFormat) => update("oddsFormat", oddsFormat)} />}
+      />
       <OddsMarkets
         odds={props}
+        moneyline={fight.odds ? { f1: fight.odds.f1, f2: fight.odds.f2 } : null}
         fightId={fight.id}
         f1Name={fight.f1.name}
         f2Name={fight.f2.name}
@@ -741,8 +746,8 @@ function FightRail({ eventId, currentId, returnDepth }: { eventId: string; curre
 
 // ---------------------------------------------------------------------------
 
-type MatchupTab = "fight" | "matchup" | "odds";
-const TAB_LABEL: Record<MatchupTab, string> = { fight: "Result", matchup: "Matchup", odds: "Odds" };
+type MatchupTab = "fight" | "matchup" | "odds" | "score";
+const TAB_LABEL: Record<MatchupTab, string> = { fight: "Result", matchup: "Matchup", odds: "Odds", score: "Score" };
 
 /** The matchup's sections, grouped by the question they answer. Arrow keys move
  *  between tabs the way a native tab control does. */
@@ -891,6 +896,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     ...(fight.status === "past" || fight.in_progress || hasStats ? ["fight" as const] : []),
     "matchup",
     ...(hasOddsMarkets(fight.odds?.props, fight.f1.name, fight.f2.name) ? ["odds" as const] : []),
+    ...(fight.status === "past" || fight.live || fight.in_progress ? ["score" as const] : []),
   ];
   const requestedTab = new URLSearchParams(location.search).get("tab");
   const tab = tabs.find((candidate) => candidate === requestedTab) ?? tabs[0];
@@ -1028,6 +1034,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 <CommonOpponents fight={fight} />
               </> : null}
               {tab === "odds" ? <OddsPanel fight={fight} /> : null}
+              {tab === "score" ? <FightScoring key={fight.id} fight={fight} /> : null}
             </div>
           </div>
         </div>

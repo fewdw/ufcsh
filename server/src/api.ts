@@ -1,4 +1,6 @@
 import { eventStatus, fightIsComplete, fightIsUnderway, isFightDay, liveDetailDue } from "./live-state.ts";
+import { ScoringStore, type ScoringFight } from "./scoring.ts";
+import { createScoringHandler } from "./scoring-http.ts";
 import { estimatedStart, type SegmentTimes } from "./card-schedule.ts";
 import http from "node:http";
 import { promises as fs } from "node:fs";
@@ -1804,6 +1806,10 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
 }
 
 export function startApi(port: number): http.Server {
+  const scoreStore = new ScoringStore(path.join(DATA_DIR, "scoring.db"), id => db.prepare(
+    "SELECT f.*, e.date AS event_date FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?"
+  ).get(id) as ScoringFight | undefined);
+  const scoring = createScoringHandler(scoreStore);
   const workerCount = Number(process.env.API_WORKERS ?? (process.env.NODE_ENV === "production" ? 2 : 0));
   if (!Number.isInteger(workerCount) || workerCount < 0 || workerCount > 8) throw new Error("API_WORKERS must be an integer from 0 to 8");
   if (workerCount) queryPool = new QueryPool(workerCount);
@@ -1834,6 +1840,7 @@ export function startApi(port: number): http.Server {
       if ((req.url?.length ?? 0) > 16_384) return await sendJson(req, res, { error: "URL too long" }, 414);
       const url = new URL(req.url ?? "/", "http://localhost");
       const p = url.pathname;
+      if (!stopping && await scoring(req, res, url)) return;
       const part = (i: number) => p.split("/")[i] ?? "";
       if (req.method !== "GET" && req.method !== "HEAD" && !(p === "/api/bugs/action" && req.method === "POST")) {
         res.setHeader("Allow", "GET, HEAD");
@@ -1923,6 +1930,7 @@ export function startApi(port: number): http.Server {
   process.once("SIGTERM", shutdown);
   process.once("SIGINT", shutdown);
   server.on("close", () => {
+    scoreStore.db.close();
     eventLoop.disable();
     process.removeListener("SIGTERM", shutdown);
     process.removeListener("SIGINT", shutdown);

@@ -1,3 +1,4 @@
+import "./env.ts";
 import { startApi } from "./api.ts";
 import { startScheduler } from "./sync.ts";
 import { log } from "./util.ts";
