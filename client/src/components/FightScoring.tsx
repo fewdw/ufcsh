@@ -1,8 +1,10 @@
 import { lazy, Suspense } from "react";
+import { Link } from "react-router-dom";
 import type { Matchup } from "../api";
 import { useApi } from "../api";
-import { decimalScore, fightFinish } from "../scoring";
-import type { ScoreSummary } from "../scoring";
+import { lastName } from "../format";
+import { cardWinner, decimalScore, fightFinish } from "../scoring";
+import type { FanCard, ScoreSummary } from "../scoring";
 import { PANEL_SHELL, PanelHeading, sectionLabel } from "./FightStats";
 
 const ScoreEditor = lazy(() => import("./ScoreEditor"));
@@ -79,11 +81,50 @@ export default function FightScoring({ fight }: { fight: Matchup }) {
         </div>
         {eligibility.reason ? <p className="border-t border-zinc-100 px-5 py-3 text-xs text-zinc-500">{eligibility.reason}</p> : null}
       </section>
+      {data.cards.length ? <FanCards fight={fight} cards={data.cards} scorers={totals.scorers} /> : null}
       {eligibility.available > 0 ? (
         <Suspense fallback={<div className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`}>Loading your scorecard…</div>}>
           <ScoreEditor fight={fight} eligibility={eligibility} onSaved={retry} />
         </Suspense>
       ) : null}
     </>
+  );
+}
+
+/** The cards behind the average, newest first. Each one opens its scorer's
+ *  public profile: every other fight they have scored. */
+function FanCards({ fight, cards, scorers }: { fight: Matchup; cards: FanCard[]; scorers: number }) {
+  return (
+    <section className={PANEL_SHELL}>
+      <PanelHeading
+        title="Fan scorecards"
+        subtitle={cards.length < scorers ? `The ${cards.length} most recent of ${scorers.toLocaleString()}` : undefined}
+      />
+      <ul className="divide-y divide-zinc-100">
+        {cards.map(card => {
+          const winner = cardWinner(card);
+          return (
+            <li key={card.scorer.publicId}>
+              <Link to={`/profiles/${card.scorer.handle}?tab=scorecards`} className="flex items-center justify-between gap-3 px-5 py-2.5 transition-colors hover:bg-zinc-50">
+                <span className="flex min-w-0 items-center gap-2">
+                  {card.scorer.imageUrl
+                    ? <img src={card.scorer.imageUrl} alt="" referrerPolicy="no-referrer" className="h-6 w-6 shrink-0 rounded-full bg-zinc-100 object-cover ring-1 ring-zinc-200" />
+                    : <span aria-hidden="true" className="h-6 w-6 shrink-0 rounded-full bg-zinc-100 ring-1 ring-zinc-200" />}
+                  <span className="min-w-0 truncate text-sm font-medium text-zinc-700">{card.scorer.displayName}</span>
+                </span>
+                <span className="flex shrink-0 items-baseline gap-2 text-sm tabular-nums">
+                  <span className={winner === 1 ? "font-semibold text-f1-ink" : "text-zinc-400"}>{card.total1}</span>
+                  <span className="text-zinc-300" aria-hidden="true">–</span>
+                  <span className={winner === 2 ? "font-semibold text-f2-ink" : "text-zinc-400"}>{card.total2}</span>
+                  <span className={`w-20 text-right ${sectionLabel}`}>
+                    {winner === 0 ? "Even" : lastName(winner === 1 ? fight.f1.name : fight.f2.name)}
+                  </span>
+                </span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }

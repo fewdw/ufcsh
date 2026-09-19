@@ -412,18 +412,18 @@ function OddsPanel({ fight }: { fight: Matchup }) {
   if (!hasOddsMarkets(props, fight.f1.name, fight.f2.name)) return null;
   return (
     <section className={`${shell} @container flex flex-col overflow-hidden`}>
-      <PanelHeading
-        title="Odds"
-        subtitle={
+      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+        <div className="flex items-center gap-3">
+          <h2 className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">Odds</h2>
           <Link
             to={`/events/${fight.event.id}?odds=1`}
-            className="font-medium underline decoration-zinc-300 underline-offset-2 transition hover:text-zinc-900 dark:decoration-zinc-600 dark:hover:text-zinc-100"
+            className="text-[10px] text-zinc-500 transition hover:text-zinc-900 dark:hover:text-zinc-100"
           >
-            Full card odds
+            Full card odds <span aria-hidden="true">↗</span>
           </Link>
-        }
-        aside={<OddsFormatTabs format={settings.oddsFormat} onChange={(oddsFormat) => update("oddsFormat", oddsFormat)} />}
-      />
+        </div>
+        <OddsFormatTabs format={settings.oddsFormat} onChange={(oddsFormat) => update("oddsFormat", oddsFormat)} />
+      </header>
       <OddsMarkets
         odds={props}
         moneyline={fight.odds ? { f1: fight.odds.f1, f2: fight.odds.f2 } : null}

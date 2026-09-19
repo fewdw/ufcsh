@@ -21,6 +21,7 @@ const RankingsPage = lazy(loadRankingsPage);
 const StatsPage = lazy(loadStatsPage);
 const LabsPage = lazy(() => import("./pages/LabsPage"));
 const BugsPage = lazy(() => import("./pages/BugsPage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 
 function Header({ onSearch }: { onSearch: () => void }) {
   const { pathname } = useLocation();
@@ -31,8 +32,10 @@ function Header({ onSearch }: { onSearch: () => void }) {
   // Labs is a mode of Statistics rather than a top-level destination, so the
   // Stats pill stays lit while it is open and the switch lives on the page.
   const isLabs = pathname.startsWith("/labs");
+  // A profile belongs to no section of the nav, so none of them is lit.
+  const isProfile = pathname.startsWith("/profiles");
   const links = [
-    { href: "/", label: "Events", active: !isRankings && !isStats && !isLabs, load: loadEventsPage },
+    { href: "/", label: "Events", active: !isRankings && !isStats && !isLabs && !isProfile, load: loadEventsPage },
     { href: "/rankings", label: "Rankings", active: isRankings, load: loadRankingsPage },
     { href: "/stats", label: "Stats", active: isStats || isLabs, load: loadStatsPage },
   ];
@@ -152,6 +155,7 @@ export default function App() {
           <Route path="/stats" element={<StatsPage />} />
           <Route path="/labs" element={<LabsPage />} />
           <Route path="/bugs" element={<BugsPage />} />
+          <Route path="/profiles/:handle" element={<ProfilePage />} />
           <Route path="*" element={<div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-zinc-500"><p>This page couldn’t be found.</p><Link to="/" className="font-semibold text-zinc-900 underline">Back to events</Link></div>} />
         </Routes>
         </Suspense>

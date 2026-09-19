@@ -7,16 +7,16 @@ import http from "node:http";
 import { once } from "node:events";
 import { spawn } from "node:child_process";
 import { generateKeyPairSync, sign } from "node:crypto";
-import { scoringEligibility, ScoringStore, ScoringError, validateSubmission, type ScoringFight } from "./scoring.ts";
+import { normalizeUsername, scoringEligibility, ScoringStore, ScoringError, UsernameError, validateSubmission, type ScoringFight } from "./scoring.ts";
 import { authenticateScorer, createScoringHandler } from "./scoring-http.ts";
 
 const id = "aaaaaaaaaaaaaaaa";
-const fight: ScoringFight = { id, event_date: "2020-01-01", f1_outcome: "win", f2_outcome: "loss", scheduled_rounds: 3, round: "3", time: "5:00", method: "U-DEC", detail_json: JSON.stringify({ type: "past", methodInfo: { "Time format": "3 Rnd (5-5)" } }) };
+const fight: ScoringFight = { id, event_date: "2020-01-01", f1_outcome: "win", f2_outcome: "loss", scheduled_rounds: 3, round: "3", time: "5:00", method: "U-DEC", detail_json: JSON.stringify({ type: "past", methodInfo: { "Time format": "3 Rnd (5-5)" } }), f1_name: "Anna Ant", f2_name: "Bea Bee", event_id: "e1", event_name: "UFC 1", weight_class: "Flyweight", f1_id: "f1", f2_id: "f2", f1_photo: "/api/images/f1", f2_photo: null };
 const rounds = [1, 2, 3].map(round => ({ round, f1: 10, f2: 9, deduct1: 0, deduct2: 0 }));
 function fixture(t: any, initial = fight) {
   const dir = mkdtempSync(path.join(tmpdir(), "ufc-scoring-"));
   let current = initial;
-  const store = new ScoringStore(path.join(dir, "scores.db"), key => key === id ? current : undefined);
+  const store = new ScoringStore(path.join(dir, "scores.db"), ids => ids.filter(key => key === id).map(() => current));
   t.after(() => { store.db.close(); rmSync(dir, { recursive: true, force: true }); });
   return { store, setFight: (value: ScoringFight) => { current = value; } };
 }
@@ -88,6 +88,166 @@ test("live partial cards have separate per-round samples and cannot include futu
   assert.equal(store.mine(id, "bob").rounds.length, 1);
 });
 
+test("public profiles list a scorer's own cards, newest first, and never name the account", t => {
+  const { store, setFight } = fixture(t);
+  const other = "bbbbbbbbbbbbbbbb";
+  store.save(id, "alice", { revision: 0, rounds });
+  store.save(id, "bob", { revision: 0, rounds: rounds.map(r => ({ ...r, f1: 9, f2: 10 })) });
+  const alice = store.mine(id, "alice").scorer!;
+  // Everyone is named the moment they exist: two words and a number, which is
+  // also the address, and nobody is left reading a bare identifier.
+  assert.match(alice.displayName, /^[A-Z][a-z]+[A-Z][a-z]+\d{2,3}$/);
+  assert.equal(alice.username, alice.displayName);
+  assert.equal(alice.handle, alice.displayName.toLowerCase());
+  assert.notEqual(alice.displayName, store.mine(id, "bob").scorer!.displayName);
+  // The reader's own identity is minted on request, before any card exists.
+  const fresh = store.identity("carol");
+  assert.match(fresh.username!, /^[A-Za-z]+\d{2,3}$/);
+  assert.equal(store.identity("carol").publicId, fresh.publicId);
+  assert.equal(store.identity("carol").username, fresh.username);
+  assert.equal(store.profile(fresh.handle).cards.length, 0);
+  assert.equal(store.profile(fresh.handle).scorer.cards, 0);
+  assert.throws(() => store.profile("00000000-0000-4000-8000-000000000000"), /not found/);
+
+  const profile = store.profile(alice.handle);
+  assert.equal(profile.scorer.displayName, alice.displayName);
+  // The public id it was minted with answers just as well.
+  assert.equal(store.profile(alice.publicId).scorer.handle, alice.handle);
+  assert.equal(profile.scorer.cards, 1);
+  assert.equal(profile.cards.length, 1);
+  assert.deepEqual(profile.cards[0].rounds, rounds);
+  assert.equal(profile.cards[0].total1, 30);
+  assert.equal(profile.cards[0].total2, 27);
+  assert.equal(profile.cards[0].revision, 1);
+  assert.equal(profile.cards[0].fight.f1_name, "Anna Ant");
+  assert.equal(profile.cards[0].fight.f1_photo, "/api/images/f1");
+  assert.equal(profile.cards[0].fight.event_name, "UFC 1");
+  assert.ok(!JSON.stringify(profile).includes("alice"));
+  // The individual cards behind a fight's average carry the same identities,
+  // so a reader can open any of them.
+  const summary = store.summary(id) as any;
+  assert.equal(summary.cards.length, 2);
+  assert.deepEqual(summary.cards.map((c: any) => c.scorer.publicId).sort(), [alice.publicId, store.mine(id, "bob").scorer!.publicId].sort());
+  assert.ok(summary.cards.every((c: any) => c.scorer.handle === c.scorer.username.toLowerCase()));
+  assert.ok(!JSON.stringify(summary).includes("alice") && !JSON.stringify(summary).includes("bob"));
+
+  // A removed card leaves a tombstone behind; a profile lists scored fights.
+  store.save(id, "bob", { revision: 1 }, true);
+  assert.equal(store.profile(store.mine(id, "bob").scorer!.handle).cards.length, 0);
+  assert.equal((store.summary(id) as any).cards.length, 1);
+
+  // Rounds that stopped being scorable are dropped on a profile exactly as
+  // they are on the fight page.
+  setFight({ ...fight, method: "KO/TKO", round: "2" });
+  assert.equal(store.profile(alice.publicId).cards[0].rounds.length, 1);
+  // A card whose bout is no longer in the fight database cannot be listed.
+  store.db.prepare("UPDATE scorecards SET fight_id = ? WHERE user_id = ?").run(other, "alice");
+  assert.equal(store.profile(alice.publicId).cards.length, 0);
+});
+
+test("usernames are unique whatever their capitalisation, address the profile, and keep the reader's own", t => {
+  const { store } = fixture(t);
+  for (const bad of [null, 42, "", "ab", "a".repeat(21), "fe wdw", "fe-wdw", "fe.wdw", "fewdw!", "héllo", "admin", "ME", "Profiles"]) {
+    assert.throws(() => normalizeUsername(bad), UsernameError, `expected ${JSON.stringify(bad)} to be refused`);
+  }
+  assert.deepEqual(normalizeUsername(" FeWdW "), { username: "FeWdW", key: "fewdw" });
+
+  assert.ok(store.identity("alice").username, "a scorer is named before they choose one");
+  const claimed = store.setUsername("alice", "FeWdW");
+  assert.equal(claimed.username, "FeWdW");
+  assert.equal(claimed.displayName, "FeWdW");
+  assert.equal(claimed.handle, "fewdw");
+  // Every capitalisation of a taken name is taken.
+  for (const attempt of ["fewdw", "FEWDW", "fEwDw"]) {
+    assert.throws(() => store.setUsername("bob", attempt), /already taken/);
+  }
+  // The owner can recapitalise their own, every way round, and the address
+  // stays the one their links already use.
+  assert.equal(store.setUsername("alice", "FEWDW").username, "FEWDW");
+  assert.equal(store.setUsername("alice", "Fewdw").username, "Fewdw");
+  assert.equal(store.setUsername("alice", "Fewdw").handle, "fewdw");
+  assert.equal(store.setUsername("alice", "FEWDW").username, "FEWDW");
+  assert.equal(store.profile("FeWdW").scorer.username, "FEWDW");
+  assert.equal(store.profile("fewdw").scorer.publicId, claimed.publicId);
+  // The public id still answers, so links made before the name keep working.
+  assert.equal(store.profile(claimed.publicId).scorer.handle, "fewdw");
+  // Renaming frees the old name for someone else.
+  store.setUsername("alice", "Grasso");
+  assert.throws(() => store.profile("fewdw"), /not found/);
+  assert.equal(store.setUsername("bob", "fewdw").handle, "fewdw");
+
+  // Pictures are stored beside the profile, and only Clerk's own hosts.
+  assert.equal(store.identity("alice").imageUrl, null);
+  assert.equal(store.imageSyncedAt("alice"), 0);
+  assert.equal(store.setImage("alice", "https://img.clerk.com/portrait").imageUrl, "https://img.clerk.com/portrait");
+  assert.ok(store.imageSyncedAt("alice") > 0);
+  assert.equal(store.profile("grasso").scorer.imageUrl, "https://img.clerk.com/portrait");
+});
+
+test("a profile counts agreement over every card and lists only the ones a filter asks for", t => {
+  // Four bouts: a decision scored the judges' way, a decision scored against
+  // them, a decision scored even, and a stoppage — which was never judged.
+  const bout = (key: string, over: Partial<ScoringFight>): ScoringFight => ({ ...fight, id: key, ...over });
+  const fights = new Map([
+    ["1111111111111111", bout("1111111111111111", {})],
+    ["2222222222222222", bout("2222222222222222", { f1_outcome: "loss", f2_outcome: "win" })],
+    ["3333333333333333", bout("3333333333333333", {})],
+    ["4444444444444444", bout("4444444444444444", { method: "KO/TKO", round: "2" })],
+  ]);
+  const dir = mkdtempSync(path.join(tmpdir(), "ufc-profile-"));
+  const store = new ScoringStore(path.join(dir, "scores.db"), keys => keys.flatMap(key => {
+    const found = fights.get(key);
+    return found ? [found] : [];
+  }));
+  t.after(() => { store.db.close(); rmSync(dir, { recursive: true, force: true }); });
+
+  store.save("1111111111111111", "alice", { revision: 0, rounds });
+  store.save("2222222222222222", "alice", { revision: 0, rounds });
+  store.save("3333333333333333", "alice", { revision: 0, rounds: rounds.map(r => ({ ...r, f2: 10, f1: r.round === 3 ? 10 : 9 })) });
+  store.save("4444444444444444", "alice", { revision: 0, rounds: rounds.slice(0, 1) });
+  const handle = store.identity("alice").handle;
+
+  const all = store.profile(handle);
+  assert.equal(all.scorer.cards, 4);
+  assert.equal(all.total, 4);
+  // Three judged bouts: one read the same way, two not — an even card on a
+  // decision is a disagreement, since the judges named a winner.
+  assert.deepEqual(all.agreement, { decisions: 3, agreed: 1, disagreed: 2, finishes: 1 });
+  assert.equal(all.cards.filter(card => card.decision).length, 3);
+  // A profile with nothing but judged bouts has no finishes to hide.
+  assert.equal(store.profile(handle, { query: "nothing" }).agreement.finishes, 1);
+  assert.equal(all.cards.find(card => card.fightId === "4444444444444444")!.agreement, null);
+
+  // Hiding finishes leaves the bouts that were actually judged.
+  const decisions = store.profile(handle, { filter: "decisions" });
+  assert.equal(decisions.total, 3);
+  assert.ok(decisions.cards.every(card => card.decision));
+  assert.equal(store.profile(handle, { filter: "agreed" }).total, 1);
+  assert.equal(store.profile(handle, { filter: "agreed" }).cards[0].fightId, "1111111111111111");
+  assert.deepEqual(store.profile(handle, { filter: "disagreed" }).cards.map(c => c.fightId).sort(), ["2222222222222222", "3333333333333333"]);
+  // The tally describes the whole profile whichever slice is being read.
+  assert.deepEqual(store.profile(handle, { filter: "agreed" }).agreement, all.agreement);
+
+  // Searching reads the same line the row shows: either fighter, the event or
+  // the division, in any capitalisation.
+  assert.equal(store.profile(handle, { query: "anna" }).total, 4);
+  assert.equal(store.profile(handle, { query: "BEA BEE" }).total, 4);
+  assert.equal(store.profile(handle, { query: "ufc 1" }).total, 4);
+  assert.equal(store.profile(handle, { query: "flywei" }).total, 4);
+  assert.equal(store.profile(handle, { query: "nobody" }).total, 0);
+  // A search narrows the list, never the tally behind the chart.
+  assert.deepEqual(store.profile(handle, { query: "nobody" }).agreement, all.agreement);
+  // Search and filter apply together.
+  assert.equal(store.profile(handle, { query: "anna", filter: "agreed" }).total, 1);
+
+  // Paging walks the filtered list, and the totals say how far it goes.
+  const page = store.profile(handle, { filter: "decisions", offset: 2 });
+  assert.equal(page.total, 3);
+  assert.equal(page.cards.length, 1);
+  assert.equal(page.offset, 2);
+  assert.equal(store.profile(handle, { offset: 9_000 }).cards.length, 0);
+});
+
 test("Clerk verifies signatures, expiry and authorized parties; cookie-only and forged sessions fail", async () => {
   const previous = { ...process.env };
   const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -126,7 +286,7 @@ test("HTTP isolation, validation, origin protection, throttling and 300 concurre
     const user = req.headers.authorization?.replace("Bearer ", "");
     if (!user) throw new ScoringError(401, "Sign in");
     return user;
-  });
+  }, async () => "https://img.clerk.com/test-portrait");
   const server = http.createServer(async (req, res) => { if (!await handler(req, res, new URL(req.url!, "http://localhost"))) { res.statusCode = 404; res.end(); } });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -173,5 +333,33 @@ test("HTTP isolation, validation, origin protection, throttling and 300 concurre
   assert.equal(((await (await fetch(base)).json()) as any).totals.scorers, before.totals.scorers + 1);
   for (let i = 0; i < 12; i++) await put("abuse", { revision: 0, rounds });
   assert.equal((await put("abuse", { revision: 0, rounds })).status, 429);
+  // Profiles: the reader's own is authenticated and minted on request; reading
+  // anyone's profile is public.
+  const profiles = base.replace(`/fights/${id}/scores`, "/profiles");
+  assert.equal((await fetch(`${profiles}/mine`)).status, 401);
+  const me = await (await fetch(`${profiles}/mine`, { headers: { Authorization: "Bearer x" } })).json() as any;
+  assert.match(me.publicId, /^[0-9a-f-]{36}$/);
+  assert.match(me.displayName, /^[A-Z][a-z]+[A-Z][a-z]+\d{2,3}$/);
+  assert.equal(me.handle, me.displayName.toLowerCase());
+  assert.equal(me.imageUrl, "https://img.clerk.com/test-portrait");
+  assert.equal((await fetch(`${profiles}/mine`, { method: "DELETE", headers: { Authorization: "Bearer x" } })).status, 405);
+  const anyone = await fetch(`${profiles}/${me.publicId}`);
+  assert.match(anyone.headers.get("cache-control")!, /^public/);
+  assert.equal((await anyone.json() as any).scorer.displayName, me.displayName);
+  assert.equal((await fetch(`${profiles}/00000000-0000-4000-8000-000000000000`)).status, 404);
+  assert.equal((await fetch(`${profiles}/${me.publicId}?offset=-1`)).status, 400);
+  assert.equal((await fetch(`${profiles}/${me.publicId}?filter=everything`)).status, 400);
+  assert.equal((await fetch(`${profiles}/${me.publicId}?filter=decisions`)).status, 200);
+  assert.equal((await fetch(`${profiles}/${me.publicId}?q=${"x".repeat(61)}`)).status, 400);
+  assert.equal((await fetch(`${profiles}/${me.publicId}?q=anna%20ant`)).status, 200);
+  assert.equal((await fetch(`${profiles}/nobody`)).status, 404);
+  // Claiming a name: validated, unique, and immediately the profile's address.
+  const claim = (user: string, body: unknown) => fetch(`${profiles}/mine`, { method: "PUT", headers: { Authorization: `Bearer ${user}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  assert.equal((await claim("x", { username: "no spaces" })).status, 400);
+  assert.equal((await claim("x", { username: "admin" })).status, 400);
+  assert.equal((await claim("x", { username: "FeWdW" })).status, 200);
+  assert.equal((await claim("y", { username: "FEWDW" })).status, 409);
+  assert.equal((await (await fetch(`${profiles}/fewdw`)).json() as any).scorer.username, "FeWdW");
+  assert.equal((await fetch(`${profiles}/mine`, { method: "PUT", headers: { Authorization: "Bearer x", "Content-Type": "application/json" }, body: JSON.stringify({ username: "FeWdW" }), })).status, 200);
   t.diagnostic(`300 concurrent scorecard writes + 300 public reads: ${Math.round(performance.now() - started)} ms on local test host (Clerk verification tested separately).`);
 });

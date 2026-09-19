@@ -1,5 +1,6 @@
 import { User } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAccount } from "../auth";
 
 const CONTROL = "grid h-9 w-9 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900";
@@ -38,6 +39,9 @@ export default function AccountButton() {
       {open ? (
         <div role="menu" className="absolute right-0 top-11 z-40 w-52 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg">
           <p className="truncate px-3 py-2 text-[11px] text-zinc-400">{user.primaryEmailAddress?.emailAddress ?? user.username ?? "Signed in"}</p>
+          {/* Every fight this reader has scored, at the same public address any
+              other reader can open. */}
+          <Link to="/profiles/me?tab=scorecards" role="menuitem" className={ITEM} onClick={() => setOpen(false)}>My scorecards</Link>
           <button type="button" role="menuitem" className={ITEM} onClick={() => { setOpen(false); manage(); }}>Manage account</button>
           <button type="button" role="menuitem" className={ITEM} onClick={() => { setOpen(false); signOut(); }}>Sign out</button>
         </div>

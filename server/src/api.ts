@@ -1806,9 +1806,26 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
 }
 
 export function startApi(port: number): http.Server {
-  const scoreStore = new ScoringStore(path.join(DATA_DIR, "scoring.db"), id => db.prepare(
-    "SELECT f.*, e.date AS event_date FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?"
-  ).get(id) as ScoringFight | undefined);
+  // Scoring keeps its own database, so the bouts a scorecard belongs to are
+  // read from this one in a single batch per request.
+  // One compiled statement per batch size: this runs on every scorecard read
+  // and every save, so it is not recompiled each time.
+  const scoringFights = new Map<number, ReturnType<typeof db.prepare>>();
+  const scoringFightsQuery = (count: number) => {
+    let statement = scoringFights.get(count);
+    if (!statement) scoringFights.set(count, statement = db.prepare(`SELECT f.*, e.date AS event_date, e.name AS event_name,
+        a.photo_url AS f1_remote_photo, b.photo_url AS f2_remote_photo
+        FROM fights f JOIN events e ON e.id = f.event_id
+        LEFT JOIN fighters a ON a.id = f.f1_id LEFT JOIN fighters b ON b.id = f.f2_id
+        WHERE f.id IN (${Array.from({ length: count }, () => "?").join(",")})`));
+    return statement;
+  };
+  const scoreStore = new ScoringStore(path.join(DATA_DIR, "scoring.db"), ids => ids.length
+    ? (scoringFightsQuery(ids.length).all(...ids) as any[])
+      .map(fight => ({ ...fight,
+        f1_photo: cachedPhotoUrl(fight.f1_id, fight.f1_remote_photo),
+        f2_photo: cachedPhotoUrl(fight.f2_id, fight.f2_remote_photo) }) as ScoringFight)
+    : []);
   const scoring = createScoringHandler(scoreStore);
   const workerCount = Number(process.env.API_WORKERS ?? (process.env.NODE_ENV === "production" ? 2 : 0));
   if (!Number.isInteger(workerCount) || workerCount < 0 || workerCount > 8) throw new Error("API_WORKERS must be an integer from 0 to 8");

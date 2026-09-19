@@ -190,15 +190,14 @@ function settle(result: FightResult | undefined): Settled | null {
 function OddsCell({ quote, hit, favorite, live, format, bet }: { quote: OddsQuote | undefined; hit?: boolean; favorite?: boolean; live?: boolean; format: OddsFormat; bet?: Bet }) {
   const { toggle, isSelected } = useParlay();
   const price = bestPrice(quote);
-  if (!price) return <span className={`px-1 text-zinc-300 dark:text-zinc-600 ${live ? "mr-2" : ""}`} aria-label="No price">—</span>;
+  if (!price) return <span className="text-zinc-300 dark:text-zinc-600" aria-label="No price">—</span>;
   const probability = impliedProbability(price.line);
   const move = price.move;
   const leg: ParlayLeg | null = live && bet ? { id: outcomeId(bet.outcome), fightId: bet.fightId, fightLabel: bet.fightLabel, market: bet.market, selection: bet.selection, price: price.line, outcome: bet.outcome } : null;
   const selected = leg ? isSelected(leg.id) : false;
 
   // The ring sits on the price itself, not the button around it — a row with
-  // no line movement reserves the triangle's slot for alignment same as one
-  // with it, and the ring would otherwise swallow that empty space too.
+  // no line movement keeps the same spacing as one with movement.
   const content = <>
     <span
       className={`whitespace-nowrap rounded px-0.5 py-0.5 font-semibold tabular-nums tracking-tight @[28rem]:px-1 @[28rem]:tracking-normal ${hit ? "bg-emerald-100 text-emerald-700" : favorite ? "bg-amber-100 text-amber-700" : "text-zinc-900 dark:text-zinc-100"}`}
@@ -208,17 +207,17 @@ function OddsCell({ quote, hit, favorite, live, format, bet }: { quote: OddsQuot
       {formatPrice(price.line, format)}
     </span>
     {/* Every live price keeps the triangle's slot so the numbers stay aligned. */}
-    {live ? <span className={`w-2 shrink-0 text-right text-[7px] leading-none ${move === "up" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`} {...(move ? { role: "img", "aria-label": `Line moving ${move}`, title: `Line moving ${move}` } : { "aria-hidden": true })}>{move === "up" ? "▲" : move === "down" ? "▼" : ""}</span> : null}
+    {live ? <span className={`absolute right-0 top-1/2 w-2 -translate-y-1/2 text-center text-[7px] leading-none ${move === "up" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`} {...(move ? { role: "img", "aria-label": `Line moving ${move}`, title: `Line moving ${move}` } : { "aria-hidden": true })}>{move === "up" ? "▲" : move === "down" ? "▼" : ""}</span> : null}
   </>;
 
-  if (!leg) return <span className="inline-flex items-center justify-end">{content}</span>;
+  if (!leg) return <span className="relative inline-flex items-center justify-center px-2 py-0.5">{content}</span>;
   return (
     <button
       type="button"
       onClick={(event) => { event.stopPropagation(); toggle(leg); }}
       aria-pressed={selected}
       title={`${leg.selection} · ${percent(probability)} implied — click to ${selected ? "remove from" : "add to"} your parlay`}
-      className="inline-flex items-center justify-end gap-1 rounded px-1 py-0.5 transition hover:opacity-70"
+      className="relative inline-flex items-center justify-center rounded px-2 py-0.5 transition hover:opacity-70"
     >
       {content}
     </button>
@@ -234,7 +233,7 @@ type Group = { name?: string; rows: Row[] };
  * takes the spare room and prices sit in narrow columns; otherwise the prices
  * share it. */
 function OddsTable({ title, columns, groups, wideLabel = true, live, format, compact }: { title: string; columns: string[]; groups: Group[]; wideLabel?: boolean; live: boolean; format: OddsFormat; compact?: boolean }) {
-  const rowPad = compact ? "py-0.5" : "py-1.5";
+  const rowPad = compact ? "py-0.5" : "py-1";
   return (
     <table className="w-full table-fixed border-collapse">
       <colgroup>
@@ -243,11 +242,11 @@ function OddsTable({ title, columns, groups, wideLabel = true, live, format, com
       </colgroup>
       <thead>
         <tr>
-          <th scope="col" colSpan={columns.length + 1} className={`truncate text-left text-xs font-semibold text-zinc-900 dark:text-zinc-100 ${compact ? "pb-1" : "pb-2"}`}>{title}</th>
+          <th scope="col" colSpan={columns.length + 1} className={`truncate text-left text-[11px] font-semibold text-zinc-900 dark:text-zinc-100 ${compact ? "pb-1" : "pb-2"}`}>{title}</th>
         </tr>
         <tr>
           <th scope="col" aria-hidden="true" />
-          {columns.map(column => <th key={column} scope="col" className={`whitespace-nowrap pl-1 text-right font-normal text-zinc-400 ${compact ? "pb-0.5" : "pb-1.5"}`}>{column}</th>)}
+          {columns.map(column => <th key={column} scope="col" className={`whitespace-nowrap text-center text-[10px] font-normal text-zinc-400 ${compact ? "pb-0.5" : "pb-1.5"}`}>{column}</th>)}
         </tr>
       </thead>
       {groups.map((group, groupIndex) => <tbody key={group.name ?? groupIndex}>
@@ -255,7 +254,7 @@ function OddsTable({ title, columns, groups, wideLabel = true, live, format, com
         {group.rows.map(row => {
           return <tr key={row.label} className="border-t border-zinc-100 dark:border-zinc-800">
             <th scope="row" className={`truncate pr-2 text-left font-normal text-zinc-500 ${rowPad}`} title={row.label}>{row.label}</th>
-            {row.cells.map((cell, index) => <td key={columns[index]} className={`text-right ${rowPad}`}>
+            {row.cells.map((cell, index) => <td key={columns[index]} className={`text-center ${rowPad}`}>
               <OddsCell quote={cell.quote} hit={cell.hit} favorite={cell.favorite} live={live} format={format} bet={cell.bet} />
             </td>)}
           </tr>;
@@ -374,10 +373,10 @@ export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american",
   const fightLevel = moneylineRows.length || methodRows.length || distanceRows.length || totalRows.length;
 
   return (
-    <div className={`grid max-w-[64rem] @[42rem]:grid-cols-2 ${compact ? "gap-x-6 gap-y-3 px-4 pb-3 pt-2" : "gap-x-10 gap-y-6 px-5 pb-4 pt-3"} ${CHART_TEXT}`}>
+    <div className={`grid w-full @[48rem]:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] ${compact ? "gap-x-6 gap-y-3 px-4 pb-3 pt-2" : "gap-x-8 gap-y-5 px-4 pb-4 pt-3"} ${CHART_TEXT}`}>
       {/* Both stacks start on the same line, so the first section heading on
           each side and the column headers under it read as one row. */}
-      {fightLevel ? <div className={`flex min-w-0 flex-col self-start ${compact ? "gap-3" : "gap-6"}`}>
+      {fightLevel ? <div className={`flex min-w-0 flex-col self-start ${compact ? "gap-3" : "gap-4"}`}>
         {moneylineRows.length ? <OddsTable title="Moneyline" columns={openedMoneyline ? ["Open", live ? "Current" : "Close"] : [live ? "Current" : "Close"]} groups={[{ rows: moneylineRows }]} live={live} format={format} compact={compact} /> : null}
         {methodRows.length ? <OddsTable title="Method" columns={[...methods]} groups={[{ rows: methodRows }]} live={live} format={format} compact={compact} /> : null}
         {distanceRows.length ? <OddsTable title="Goes the distance" columns={["Yes", "No"]} groups={[{ rows: distanceRows }]} live={live} format={format} compact={compact} /> : null}

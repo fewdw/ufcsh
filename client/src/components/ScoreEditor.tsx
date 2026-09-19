@@ -1,5 +1,6 @@
 import { useAuth } from "@clerk/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import type { Matchup } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
 import { lastName } from "../format";
@@ -11,9 +12,16 @@ const primary = "rounded-full bg-zinc-900 px-5 py-2.5 text-xs font-medium text-w
 const quiet = "rounded-full px-3 py-2.5 text-xs font-medium text-zinc-500 hover:text-zinc-900 disabled:opacity-40";
 /** The ten-point must, the first fighter's widest round on the left through to
  *  the second's, so the buttons run the way the fighters do everywhere else and
- *  the draw sits under the round's label. A deduction ends each side. */
+ *  the draw sits in the center. A deduction ends each side. */
 const CHOICES: [number, number][] = [[10, 8], [10, 9], [10, 10], [9, 10], [8, 10]];
-const CELL = "min-w-0 flex-1 max-w-[3.75rem] rounded-xl px-1 py-2.5 text-center tabular-nums transition disabled:opacity-40";
+/** Seven controls have to fit the narrowest phone without a score breaking
+ *  over two lines, so the five scores share what is left after the two
+ *  deductions, which are given a fixed, smaller width of their own. */
+const CELL = "rounded-xl py-2.5 text-center tabular-nums transition disabled:opacity-40";
+// `min-w-fit` is what keeps "10–10" whole: the five share the row evenly, but
+// none of them is ever squeezed narrower than the score printed on it.
+const SCORE_CELL = `${CELL} min-w-fit flex-1 basis-0 whitespace-nowrap px-0.5 text-[11px] min-[380px]:text-xs sm:px-1 sm:text-sm`;
+const DEDUCT_CELL = `${CELL} w-8 shrink-0 px-0.5 min-[380px]:w-9 sm:w-14`;
 type Props = { fight: Matchup; eligibility: ScoreSummary["eligibility"]; onSaved: () => void };
 
 /** The account itself lives in the header; this is the same session, scoped to
@@ -123,7 +131,15 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
   const complete = eligibility.state !== "completed" || scored.length === eligibility.available;
   return (
     <>
-      <PanelHeading title="Your scorecard" />
+      <PanelHeading
+        title="Your scorecard"
+        aside={saved?.scorer ? (
+          // Every other fight this reader has scored, at the address anyone can open.
+          <Link to={`/profiles/${saved.scorer.handle}?tab=scorecards`} className="text-xs font-medium text-zinc-500 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900">
+            All your scorecards
+          </Link>
+        ) : undefined}
+      />
       {loading ? <p className="p-5 text-sm text-zinc-500">Loading…</p> : !saved ? (
         <p role="alert" className="p-5 text-sm text-red-600">
           {error} <button className="underline" onClick={() => void load(undefined, false)}>Retry</button>
@@ -148,15 +164,17 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
                       aria-label={`Point deduction for ${name} in round ${n}: ${value}. Select to deduct a point.`}
                       title={`Point deduction — ${name}`}
                       onClick={() => updateRound(n, side === 1 ? { deduct1: (value + 1) % 3 } : { deduct2: (value + 1) % 3 })}
-                      className={`${CELL} ${value ? `${tone} text-sm font-semibold` : "bg-zinc-100 text-[10px] font-semibold uppercase tracking-tight text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700"}`}>
-                      {value ? `−${value}` : "Deduct"}
+                      className={`${DEDUCT_CELL} ${value ? `${tone} text-sm font-semibold` : "bg-zinc-100 text-[10px] font-semibold uppercase tracking-tight text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700"}`}>
+                      {value ? `−${value}` : <>
+                        <span className="hidden sm:inline">Deduct</span>
+                        <span className="text-xs sm:hidden" aria-hidden="true">−</span>
+                      </>}
                     </button>
                   );
                 };
                 return (
                   <div key={n} className={`py-3 ${open ? "" : "opacity-40"}`} role="group" aria-label={`Round ${n}`}>
-                    <p className="mb-2 text-center text-xs font-semibold uppercase tracking-[0.12em] text-zinc-400">R{n}</p>
-                    <div className="flex justify-center gap-1 sm:gap-1.5">
+                    <div className="flex gap-1 sm:gap-1.5">
                       {deduct(1)}
                       {CHOICES.map(([a, b]) => {
                         const on = r?.f1 === a && r?.f2 === b;
@@ -165,8 +183,8 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
                           <button key={`${a}-${b}`} type="button" aria-pressed={on} disabled={!open}
                             aria-label={`Round ${n}: ${lastName(fight.f1.name)} ${a}, ${lastName(fight.f2.name)} ${b}`}
                             onClick={() => on ? clearRound(n) : updateRound(n, { f1: a, f2: b })}
-                            className={`${CELL} text-sm ${on ? `${tone} font-semibold shadow-sm` : "bg-zinc-100 font-medium text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"}`}>
-                            {a}<span className="mx-0.5 opacity-40">–</span>{b}
+                            className={`${SCORE_CELL} ${on ? `${tone} font-semibold shadow-sm` : "bg-zinc-100 font-medium text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"}`}>
+                            {a}<span className="mx-px opacity-40 sm:mx-0.5">–</span>{b}
                           </button>
                         );
                       })}
@@ -176,8 +194,7 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
                 );
               })}
               {finish ? (
-                <div className="py-3">
-                  <p className="mb-1 text-center text-xs font-semibold uppercase tracking-[0.12em] text-zinc-400">R{finish.round}</p>
+                <div className="py-3" role="group" aria-label={`Round ${finish.round}`}>
                   <p className="text-center text-[13px]">
                     <span className={`font-semibold ${finish.side === 1 ? "text-f1-ink" : "text-f2-ink"}`}>{finish.name}</span>
                     <span className="text-zinc-400"> · {finish.method}{finish.time ? ` · ${finish.time}` : ""}</span>

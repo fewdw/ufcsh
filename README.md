@@ -6,7 +6,7 @@ fresh in the background.
 
 ## What it includes
 
-- **Fan scorecards** on completed and fight-day matchups: round-by-round scoring, live partial saves as the feed reports each round, and the decimal community average per round. Browsing stays open; signing in is optional and available from the header on any page. See [setup, scoring rules, security and deployment](docs/scoring.md).
+- **Fan scorecards** on completed and fight-day matchups: round-by-round scoring, live partial saves as the feed reports each round, and the decimal community average per round. Every scorer has a public profile at `/profiles/:username` — a name (generated on sign-up, changeable), their picture, every fight they have scored with both fighters and the score between them, searchable, and a chart of how often their cards matched the judges. Each entry opens that bout's Score tab to read, change or remove the card. Browsing stays open; signing in is optional and available from the header on any page. See [setup, scoring rules, security and deployment](docs/scoring.md).
 
 - Complete event cards, broken by broadcast — early prelims, prelims and main card each under their own heading and their own announced start time, with every bout after that heading estimated from it at half an hour a bout and forty minutes for anything scheduled for five rounds. Every row carries each fighter's career and UFC record, age, last five results, and the streak they bring in.
 
