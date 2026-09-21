@@ -33,15 +33,19 @@ export function actionPercentage(scored: number, attempted: number, defense = fa
   return ((defense ? attempted - scored : scored) / attempted) * 100;
 }
 
+function parseDetail(fight: any): any {
+  try {
+    return fight.detail_json ? JSON.parse(fight.detail_json) : null;
+  } catch {
+    // Summary stats remain an accurate landed-count fallback.
+    return null;
+  }
+}
+
 /** Convert one official fight-detail record into the normalized Actions vocabulary. */
 export function fightActions(fight: any): { f1: FightActionSide; f2: FightActionSide } {
   const result: { f1: FightActionSide; f2: FightActionSide } = { f1: {}, f2: {} };
-  let detail: any = null;
-  try {
-    detail = fight.detail_json ? JSON.parse(fight.detail_json) : null;
-  } catch {
-    // Summary stats below remain an accurate landed-count fallback.
-  }
+  const detail: any = parseDetail(fight);
   for (const side of ["f1", "f2"] as const) {
     const totals = detail?.totals;
     const significant = detail?.sigStrikes;
@@ -90,11 +94,43 @@ export function fightActions(fight: any): { f1: FightActionSide; f2: FightAction
   return result;
 }
 
+/**
+ * Issues that mean the two UFCStats pages are different ages rather than
+ * wrongly parsed: the card's summary row and the fight page are written
+ * independently, and the card can lag the fight page by hours after a verdict.
+ * Re-reading the card is what settles them, not rejecting the fight page.
+ */
+export function isSummaryAgeDisagreement(issue: string): boolean {
+  return issue.endsWith("disagrees with event summary");
+}
+
+/**
+ * How many rounds a bout's per-round tables must cover. UFCStats publishes
+ * those rows as the rounds happen, so a page read mid-bout carries fewer than
+ * the bout ends up having; the fight page itself names the round it ended in.
+ */
+function roundsFought(fight: any, detail: any): number | null {
+  const round = Number(detail?.methodInfo?.Round ?? fight.round);
+  return Number.isInteger(round) && round > 0 ? round : null;
+}
+
 /** Structural/source invariants that must hold before a completed detail page is trusted. */
 export function validateFightActions(fight: any): string[] {
   const issues: string[] = [];
   const actions = fightActions(fight);
   if (parseActionNumber(fight.f1_str) == null) return issues;
+  // A short round table is a capture taken while the bout was still being
+  // fought: every one of the 8876 archived pages that has round tables has
+  // exactly one row per round fought. Storing a short one drops a round from
+  // the round-by-round panel and nothing downstream would ever notice.
+  const detail = parseDetail(fight);
+  const fought = roundsFought(fight, detail);
+  if (fought != null) {
+    for (const [name, block] of [["totals", detail?.totalsRounds], ["significant strikes", detail?.sigStrikesRounds]] as const) {
+      const rounds = (block as any)?.rounds?.length;
+      if (rounds != null && rounds !== fought) issues.push(`${name} per round cover ${rounds} of ${fought} rounds`);
+    }
+  }
   for (const side of ["f1", "f2"] as const) {
     const summaryChecks = [
       ["str", "significantStrikes"],

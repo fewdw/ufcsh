@@ -280,7 +280,7 @@ function EventSidebar({
 // ---------------------------------------------------------------------------
 // fight rows
 
-/** The last five UFC results this fighter carried into the bout, oldest first.
+/** The last five professional results this fighter carried into the bout, oldest first.
  *  Colour is never alone: the dots have a text label behind them, and the
  *  streak beside them spells the same run out in words. */
 function FormDots({ side, align }: { side: FightSide; align: "left" | "right" }) {
@@ -288,14 +288,14 @@ function FormDots({ side, align }: { side: FightSide; align: "left" | "right" })
   if (!form.length) return null;
   const word = (outcome: string | null) =>
     outcome === "win" ? "win" : outcome === "loss" ? "loss" : outcome === "draw" ? "draw" : "no contest";
-  const label = `Last ${form.length} UFC ${form.length === 1 ? "bout" : "bouts"} before this fight: ${form.map(word).join(", ")}`;
+  const label = `Last ${form.length} professional ${form.length === 1 ? "bout" : "bouts"} before this fight: ${form.map(word).join(", ")}. Circle: UFC. Square: outside UFC. Filled: finish. Empty: decision.`;
   return (
     <span className={`flex items-center gap-1 ${align === "right" ? "flex-row-reverse" : ""}`} title={label} aria-label={label}>
       <ResultDots results={side.form_details ?? form.map((outcome) => ({ outcome, method: null }))} reverse={align === "right"} />
       {side.streak ? (
         <span
           className={`text-[9px] font-bold tabular-nums ${side.streak.outcome === "win" ? "text-emerald-600" : side.streak.outcome === "loss" ? "text-rose-500" : "text-zinc-400"}`}
-          title={`On a ${side.streak.count}-fight ${side.streak.outcome === "win" ? "win" : side.streak.outcome === "loss" ? "losing" : side.streak.outcome} run going in${side.streak.complete ? ", counting bouts outside the UFC" : " (UFC bouts only — no verified history outside it)"}`}
+          title={`On a ${side.streak.count}-fight ${side.streak.outcome === "win" ? "win" : side.streak.outcome === "loss" ? "losing" : side.streak.outcome} run going in${side.streak.complete ? " across all promotions" : " (available UFC history)"}`}
         >
           {side.streak.count}{side.streak.outcome === "win" ? "W" : side.streak.outcome === "loss" ? "L" : side.streak.outcome === "draw" ? "D" : "NC"}
         </span>

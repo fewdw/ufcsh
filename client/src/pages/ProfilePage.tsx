@@ -484,9 +484,8 @@ function ConfirmRemove({ card, busy, onCancel, onConfirm }: {
         className={`${PANEL_SHELL} w-full max-w-sm p-5`}
       >
         <h2 id="remove-card-title" className="text-sm font-semibold text-zinc-900">Remove this scorecard?</h2>
-        <p className="mt-1.5 text-xs leading-relaxed text-zinc-500">
-          Your {card.total1}–{card.total2} card for {card.fight.f1_name} vs {card.fight.f2_name} will be deleted and will
-          stop counting towards the community average. You can score the fight again afterwards.
+        <p className="mt-1 truncate text-xs tabular-nums text-zinc-500">
+          {card.fight.f1_name} vs {card.fight.f2_name} · {card.total1}–{card.total2}
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <button type="button" className={quiet} onClick={onCancel} disabled={busy}>Cancel</button>

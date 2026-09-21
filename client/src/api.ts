@@ -69,8 +69,7 @@ export type FightSide = {
   form?: ("win" | "loss" | "draw" | "nc" | null)[];
   form_details?: import("./resultDots").FormResult[];
   run_form?: import("./resultDots").FormResult[];
-  /** `complete` when the run is read from the verified professional history
-   *  rather than UFC bouts alone. */
+  /** `complete` when the run includes verified professional history across promotions. */
   streak?: { count: number; outcome: "win" | "loss" | "draw" | "nc"; complete?: boolean } | null;
   ufc_record?: string | null;
   ufc_bouts?: number;
@@ -253,7 +252,7 @@ export type HistoryRow = {
   career_record_before?: CompleteRecordBefore | null;
   opponent_career_record_before?: CompleteRecordBefore | null;
   closing_odds?: { fighter: string | null; opponent: string | null } | null;
-  opponent_form?: { date: string; outcome: "win" | "loss" | "draw" | "nc" | null; method: string | null; opponent: { id: string; name: string } }[];
+  opponent_form?: { date: string; outcome: "win" | "loss" | "draw" | "nc" | null; method: string | null; ufc?: boolean; opponent: { id: string; name: string } }[];
   /** perf is set only when this fighter won the award: Performance, or the
    * pre-2014 Knockout / Submission of the Night. */
   bonuses?: { perf: "perf" | "ko" | "sub" | null; fotn: boolean } | null;
@@ -279,8 +278,14 @@ export type MatchupSide = FightSide & {
   birth_date: string | null;
   age: number | null;
   career_before: CareerBefore | null;
+  /** UFC record entering this bout, including verified source-only UFC rows. */
+  ufc_record_before: string | null;
+  /** Days since the previous merged UFC-history bout. */
+  ufc_days_since_before: number | null;
   complete_record_before: CompleteRecordBefore | null;
-  history: HistoryRow[];
+  history: (HistoryRow | ProfessionalHistoryRow)[];
+  /** Last five professional bouts before this matchup, newest first. */
+  recent_history: (HistoryRow | ProfessionalHistoryRow)[];
 };
 
 export type ComparisonBlock = { labels: string[]; f1: string[]; f2: string[] };
@@ -357,8 +362,8 @@ export type FighterProfile = {
   stats: FighterStat[];
   /** Every verified professional bout; UFC rows retain their richer local data. */
   pro_history: ProfessionalHistoryRow[];
-  /** UFC-only history used by UFC-specific charts and matchup analysis. */
-  history: HistoryRow[];
+  /** UFC-only history, including verified source-only UFC rows. */
+  history: (HistoryRow | ProfessionalHistoryRow)[];
 };
 
 export type RankingEntry = {
@@ -390,8 +395,8 @@ export type Division = {
 };
 
 export type FighterPreviewFight = {
-  fight_id: string;
-  event_id: string;
+  fight_id: string | null;
+  event_id: string | null;
   event_name: string;
   date: string;
   weight_class: string;
@@ -399,6 +404,8 @@ export type FighterPreviewFight = {
   method: string | null;
   opponent: { id: string; name: string };
   upcoming: boolean;
+  source_url?: string | null;
+  ufc: boolean;
 };
 
 export type FighterPreview = {

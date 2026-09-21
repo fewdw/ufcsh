@@ -1,4 +1,5 @@
 import { db, getMeta } from "./db.ts";
+import { validateFightActions } from "./action-stats.ts";
 import { americanLine, fightIndex, impliedProbability } from "./fight-index.ts";
 import { pageNamesFighter } from "./scrape/odds.ts";
 import { syncCareerRecord } from "./career-records.ts";
@@ -546,6 +547,31 @@ function decisionsWithoutJudges(): BugCheck {
   })));
 }
 
+function untrustworthyFightStats(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, f.round, f.f1_str, f.f2_str, f.f1_td, f.f2_td, f.f1_kd, f.f2_kd, f.f1_sub, f.f2_sub,
+      f.detail_json, f.detail_fetched_at
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 1 AND f.detail_json IS NOT NULL
+      AND (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)
+    ORDER BY e.date DESC
+  `).all() as (FightRow & { detail_fetched_at: number | null; detail_json: string })[];
+  const items = rows.flatMap((fight) => {
+    const issues = validateFightActions(fight);
+    return issues.length ? [fightItem(fight, {
+      facts: [["Problem", issues.join("; ")], ["Detail fetched", ago(fight.detail_fetched_at)]],
+      actions: [{ id: "event", label: "Re-fetch event", target: fight.event_id }, { id: "detail", label: "Re-fetch fight detail", target: fight.id }],
+    })] : [];
+  });
+  return check({
+    id: "fight-stats-untrustworthy",
+    group: "Fights & events",
+    label: "Stored stats that contradict the source",
+    description: "The stored fight page disagrees with the card's summary row, or its per-round tables stop short of the round the bout ended in — the shape of a page read while the bout was still being fought. Re-fetching the event and then the fight detail settles both.",
+    severity: "high",
+  }, items);
+}
+
 function upcomingWithoutSegment(): BugCheck {
   const rows = db.prepare(`
     SELECT ${FIGHT_COLUMNS}, e.ufc_slug, e.segments_fetched_at
@@ -680,6 +706,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     unlinkedUfcBouts(),
     recordMismatch(active),
     staleEvents(),
+    untrustworthyFightStats(),
     upcomingWithoutSegment(),
     decisionsWithoutJudges(),
     eventsWithoutWiki(),

@@ -7,6 +7,8 @@ import { formatValue } from "../components/chartTokens";
 import FighterPortrait from "../components/FighterPortrait";
 import Flag from "../components/Flag";
 import ResultDots from "../components/ResultDots";
+import WeightJourney, { WeightChangeMarker } from "../components/WeightJourney";
+import { weightJourney } from "../weightJourney";
 import RequestNotice from "../components/RequestNotice";
 import { useSeo } from "../seo";
 import { useRouteScrollRestoration } from "../navigationState";
@@ -51,7 +53,7 @@ function resultBadgeClasses(outcome: HistoryRow["outcome"], upcoming: boolean): 
 
 function OpponentForm({ form }: { form: NonNullable<HistoryRow["opponent_form"]> }) {
   if (!form.length) return null;
-  return <ResultDots results={form} label="Last five UFC bouts entering this fight" />;
+  return <ResultDots results={form} label="Last five professional bouts entering this fight" />;
 }
 
 /** One record as a wheel: wins counterclockwise from 12, losses clockwise, with
@@ -611,6 +613,8 @@ export default function FighterPage() {
   const past = fighter.pro_history ?? fighter.history.filter((h) => !h.upcoming);
   const ufcPast = past.filter((h) => h.promotion !== "outside");
   const outsidePast = past.filter((h) => h.promotion === "outside");
+  const journey = weightJourney(ufcPast);
+  const weightChanges = new Map(journey.milestones.map((milestone) => [milestone.fightId, milestone]));
   const outsideWins = outsidePast.filter((h) => h.outcome === "win").length;
   const outsideLosses = outsidePast.filter((h) => h.outcome === "loss").length;
   const outsideDraws = outsidePast.filter((h) => h.outcome === "draw").length;
@@ -691,6 +695,8 @@ export default function FighterPage() {
           </div>
         </section>
 
+        <WeightJourney base={journey.base} milestones={journey.milestones} />
+
         <Records records={fighter.records ?? []} />
 
         <StatisticalRanks stats={fighter.stats ?? []} />
@@ -712,12 +718,23 @@ export default function FighterPage() {
         ) : null}
 
         <section className={shell}>
+          <h2 className="border-b border-zinc-100 px-5 py-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
+            UFC ({ufcPast.length}) · {fighter.ufc_record}
+          </h2>
           {!fighter.record_verified ? (
             <div className="px-5 pb-1 pt-4 text-[10px] text-zinc-400">Outside-UFC history is still syncing; UFC bouts are shown now.</div>
           ) : null}
-          <div className={`${BOUT_LIST} ${fighter.record_verified ? "pt-2" : ""}`}>
+          <div className={BOUT_LIST}>
             {ufcPast.length ? (
-              ufcPast.map((row, index) => <HistoryRowView key={row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`} row={row} fighterName={fighter.name} />)
+              ufcPast.map((row, index) => {
+                const milestone = row.fight_id ? weightChanges.get(row.fight_id) : undefined;
+                return <div key={row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`}
+                  id={row.fight_id ? `weight-bout-${row.fight_id}` : undefined} tabIndex={milestone ? -1 : undefined}
+                  className="scroll-m-4 overflow-hidden rounded-sm focus:outline-2 focus:outline-sky-300">
+                  {milestone ? <WeightChangeMarker milestone={milestone} /> : null}
+                  <HistoryRowView row={row} fighterName={fighter.name} />
+                </div>;
+              })
             ) : (
               <div className="px-5 py-6 text-sm text-zinc-400">No UFC fights on record.</div>
             )}

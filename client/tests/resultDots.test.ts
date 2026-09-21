@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { resultDot } from "../src/resultDots.ts";
 
 test("KO and submission results are solid dots in the outcome color", () => {
-  for (const method of ["KO/TKO", "SUB"]) for (const outcome of ["win", "loss"] as const) {
+  for (const method of ["KO/TKO", "SUB", "TKO (Punches)", "KO (Knee and Punch)", "Submission (Armbar)"]) for (const outcome of ["win", "loss"] as const) {
     const dot = resultDot({ method, outcome });
     assert.equal(dot.kind, "finish");
     assert.ok(dot.className.includes(outcome === "win" ? "emerald" : "rose"));
@@ -11,7 +11,7 @@ test("KO and submission results are solid dots in the outcome color", () => {
   }
 });
 test("every decision type has a hollow outcome-colored dot", () => {
-  for (const method of ["U-DEC", "S-DEC", "M-DEC"]) for (const outcome of ["win", "loss"] as const) {
+  for (const method of ["U-DEC", "S-DEC", "M-DEC", "Decision (Unanimous)", "Decision (Split)", "Technical Decision"]) for (const outcome of ["win", "loss"] as const) {
     assert.equal(resultDot({ method, outcome }).kind, "decision");
     assert.ok(resultDot({ method, outcome }).className.includes("!bg-transparent"));
   }
@@ -19,7 +19,7 @@ test("every decision type has a hollow outcome-colored dot", () => {
 test("unknown methods and disqualifications are not labelled as finishes", () => {
   for (const method of [null, "DQ"]) assert.equal(resultDot({ method, outcome: "win" }).kind, "other");
 });
-test("a bout fought outside the UFC is a diamond, and says so in words", () => {
+test("a bout fought outside the UFC is a square, and says so in words", () => {
   const outside = resultDot({ method: "SUB", outcome: "win", ufc: false });
   assert.ok(outside.className.includes("rounded-[3px]"), "shape carries the promotion");
   assert.ok(!outside.className.includes("rotate"), "and does it without rotating the mark");

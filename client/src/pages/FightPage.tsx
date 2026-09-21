@@ -2,7 +2,7 @@ import { isFightDay, liveFightId } from "../liveEvent";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { prefetch, useApi } from "../api";
-import type { CareerBefore, EventDetail, EventFight, FightDetailBlock, FightSide, HistoryRow, Matchup, MatchupSide } from "../api";
+import type { EventDetail, EventFight, FightDetailBlock, FightSide, HistoryRow, Matchup, MatchupSide, ProfessionalHistoryRow } from "../api";
 import {
   formatDate,
   formatDateShortWithYear,
@@ -16,6 +16,7 @@ import {
 import Avatar from "../components/Avatar";
 import FightScoring from "../components/FightScoring";
 import FighterPortrait from "../components/FighterPortrait";
+import { resultDot } from "../resultDots";
 import MatchupOdds, { OddsFormatTabs, OddsMarkets } from "../components/MatchupOdds";
 import { hasOddsMarkets } from "../oddsLayout";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
@@ -238,6 +239,27 @@ function OutcomePill({ outcome }: { outcome: HistoryRow["outcome"] }) {
   );
 }
 
+type UfcHistoryRow = HistoryRow | ProfessionalHistoryRow;
+
+function FormMark({ row }: { row: UfcHistoryRow }) {
+  const dot = resultDot({ outcome: row.outcome, method: row.method, ufc: row.promotion !== "outside" });
+  return <span className="inline-flex items-center gap-1" title={dot.label}>
+    <span aria-hidden="true" className={`h-2.5 w-2.5 ${dot.className}`} />
+    <span className="text-[9px] font-bold text-zinc-600">{outcomeLabel(row.outcome) || "?"}</span>
+  </span>;
+}
+
+function FormTarget({ row, className, children }: { row: UfcHistoryRow; className: string; children: React.ReactNode }) {
+  const result = formOutcomeWord(row.outcome);
+  const method = row.method ?? "";
+  const title = `${result} vs ${row.opponent.name}${method ? ` · ${method}` : ""} · ${formatDate(row.date)}`;
+  const label = `${result} against ${row.opponent.name}${method ? `. ${method}` : ""}. ${formatDate(row.date)}`;
+  if (row.fight_id) return <Link to={`/fights/${row.fight_id}`} title={title} aria-label={label} className={className}>{children}</Link>;
+  const href = "source_url" in row ? row.source_url : null;
+  if (href) return <a href={href} target="_blank" rel="noreferrer" title={title} aria-label={label} className={className}>{children}</a>;
+  return <div title={title} className={className}>{children}</div>;
+}
+
 /** First name over everything after it, so "Rafael dos Anjos" keeps its
  *  particle with the surname. A single-word name sits on the surname line. */
 function splitName(name: string): [string, string] {
@@ -250,15 +272,12 @@ function splitName(name: string): [string, string] {
  *  what the eye hunts for — with how it ended under it and the date last.
  *  Colour never carries the result alone: the mark spells it out as W/L/D/NC
  *  and screen readers are given the whole word. */
-function FormBout({ row }: { row: HistoryRow }) {
-  const method = row.method ?? "";
+function FormBout({ row }: { row: UfcHistoryRow }) {
+  const method = resultDot(row).shortMethod ?? "";
   const [given, surname] = splitName(row.opponent.name);
-  const result = formOutcomeWord(row.outcome);
   return (
-    <Link
-      to={`/fights/${row.fight_id}`}
-      title={`${result} vs ${row.opponent.name}${method ? ` · ${method}` : ""} · ${formatDate(row.date)}`}
-      aria-label={`${result} against ${row.opponent.name}${method ? `. ${method}` : ""}. ${formatDate(row.date)}`}
+    <FormTarget
+      row={row}
       className="group flex h-full min-w-0 flex-col items-center gap-1 rounded-lg px-1.5 py-2 text-center transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-zinc-900"
     >
       <span className="flex w-full min-w-0 flex-col text-[11px] leading-4">
@@ -266,12 +285,7 @@ function FormBout({ row }: { row: HistoryRow }) {
         <span className="block truncate font-semibold text-zinc-800">{surname}</span>
       </span>
       <span className="flex max-w-full flex-wrap items-center justify-center gap-1">
-        <span
-          aria-hidden="true"
-          className={`inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded px-1 text-[9px] font-bold leading-none ${outcomeClasses(row.outcome)}`}
-        >
-          {outcomeLabel(row.outcome) || "?"}
-        </span>
+        <FormMark row={row} />
         <span className="text-[9px] font-semibold uppercase leading-4 tracking-[0.04em] text-zinc-500">
           {method || "—"}
         </span>
@@ -279,32 +293,24 @@ function FormBout({ row }: { row: HistoryRow }) {
       <span className={`block whitespace-nowrap leading-3 ${metaText}`}>
         {formatDateShortWithYear(row.date)}
       </span>
-    </Link>
+    </FormTarget>
   );
 }
 
 /** One stop as a line of its own, for a panel too narrow for five columns:
  *  the same result, opponent, method and date, with room for the full name. */
-function FormListBout({ row }: { row: HistoryRow }) {
-  const method = row.method ?? "";
-  const result = formOutcomeWord(row.outcome);
+function FormListBout({ row }: { row: UfcHistoryRow }) {
+  const method = resultDot(row).shortMethod ?? "";
   return (
-    <Link
-      to={`/fights/${row.fight_id}`}
-      title={`${result} vs ${row.opponent.name}${method ? ` · ${method}` : ""} · ${formatDate(row.date)}`}
-      aria-label={`${result} against ${row.opponent.name}${method ? `. ${method}` : ""}. ${formatDate(row.date)}`}
+    <FormTarget
+      row={row}
       className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-zinc-900"
     >
-      <span
-        aria-hidden="true"
-        className={`inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded px-1 text-[9px] font-bold leading-none ${outcomeClasses(row.outcome)}`}
-      >
-        {outcomeLabel(row.outcome) || "?"}
-      </span>
+      <FormMark row={row} />
       <span className={`min-w-0 flex-1 truncate ${CHART_TEXT} font-semibold text-zinc-800`}>{row.opponent.name}</span>
       <span className="shrink-0 text-[9px] font-semibold uppercase leading-4 tracking-[0.04em] text-zinc-500">{method || "—"}</span>
       <span className={`w-[4.5rem] shrink-0 whitespace-nowrap text-right ${metaText}`}>{formatDateShortWithYear(row.date)}</span>
-    </Link>
+    </FormTarget>
   );
 }
 
@@ -315,9 +321,9 @@ function FormListBout({ row }: { row: HistoryRow }) {
  *  its fighter and both read the same way. Short runs pad on the outer edge,
  *  keeping the recent end aligned. Too narrow for five columns, the run becomes
  *  a list, newest first, so a name is never cut to a few letters. */
-function FormHalf({ name, rows, side }: { name: string; rows: HistoryRow[]; side: "f1" | "f2" }) {
+function FormHalf({ name, rows, side }: { name: string; rows: UfcHistoryRow[]; side: "f1" | "f2" }) {
   const chronological = [...rows].reverse();
-  const cells: (HistoryRow | null)[] = [
+  const cells: (UfcHistoryRow | null)[] = [
     ...Array<null>(Math.max(0, FORM_LIMIT - chronological.length)).fill(null),
     ...chronological,
   ];
@@ -329,13 +335,13 @@ function FormHalf({ name, rows, side }: { name: string; rows: HistoryRow[]; side
         <span className="truncate">{name}</span>
       </div>
       <div className="flex flex-col @[34rem]:hidden">
-        {rows.length ? rows.map((row) => <FormListBout key={row.fight_id} row={row} />)
-          : <p className={`px-2 py-1.5 ${CHART_TEXT} text-zinc-400`}>No earlier UFC bouts.</p>}
+        {rows.length ? rows.map((row, index) => <FormListBout key={row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`} row={row} />)
+          : <p className={`px-2 py-1.5 ${CHART_TEXT} text-zinc-400`}>No earlier bouts available.</p>}
       </div>
       <div className={`hidden items-stretch @[34rem]:flex ${mirror}`}>
         {cells.map((row, index) =>
           row ? (
-            <div key={row.fight_id} className="min-w-0 flex-1 basis-0">
+            <div key={row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`} className="min-w-0 flex-1 basis-0">
               <FormBout row={row} />
             </div>
           ) : (
@@ -353,7 +359,7 @@ function FormHalf({ name, rows, side }: { name: string; rows: HistoryRow[]; side
   );
 }
 
-function FormTimeline({ fight, f1, f2 }: { fight: Matchup; f1: HistoryRow[]; f2: HistoryRow[] }) {
+function FormTimeline({ fight, f1, f2 }: { fight: Matchup; f1: UfcHistoryRow[]; f2: UfcHistoryRow[] }) {
   return (
     <div className="grid gap-y-4 px-3 py-3 @[56rem]:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] @[56rem]:gap-x-3 @[56rem]:gap-y-0">
       <FormHalf name={fight.f1.name} rows={f1} side="f1" />
@@ -385,23 +391,35 @@ function EnteringRow({ label, f1, f2, note }: { label: string; f1: React.ReactNo
 function MatchupContext({ fight }: { fight: Matchup }) {
   const f1 = fight.f1.career_before;
   const f2 = fight.f2.career_before;
-  if (!f1 && !f2) return null;
 
-  const record = (career: CareerBefore | null) =>
-    career ? `${career.wins}-${career.losses}${career.draws ? `-${career.draws}` : ""}` : "";
-  const layoff = (career: CareerBefore | null) => {
-    if (!career) return "";
-    if (career.daysSince == null) return "UFC debut";
-    const months = Math.round(career.daysSince / 30.4);
-    return career.daysSince < 60 ? `${career.daysSince} days` : `${months} months`;
+  const layoff = (days: number | null, record: string | null) => {
+    if (days == null) return record ? "—" : "UFC debut";
+    const months = Math.round(days / 30.4);
+    return days < 60 ? `${days} days` : `${months} months`;
   };
+  const f1Last = fight.f1.recent_history?.[0];
+  const f2Last = fight.f2.recent_history?.[0];
+  const lastFight = (row: UfcHistoryRow | undefined) => row ? (
+    <span className="inline-flex min-w-0 items-center gap-1.5">
+      <span
+        className={`inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded px-1 text-[9px] font-bold leading-none ${outcomeClasses(row.outcome)}`}
+        title={formOutcomeWord(row.outcome)}
+      >
+        {outcomeLabel(row.outcome) || "?"}
+      </span>
+      <span className="min-w-0 text-zinc-500" title={row.method ?? undefined}>{resultDot(row).shortMethod || "—"}</span>
+    </span>
+  ) : null;
+
+  if (!f1 && !f2 && !f1Last && !f2Last && !fight.f1.complete_record_before && !fight.f2.complete_record_before) return null;
 
   return (
     <div className="matchup-context mx-auto w-full max-w-md" aria-label="Matchup context entering the fight">
       <h3 className="sr-only">Career entering this fight</h3>
       <EnteringRow label="Record" f1={fight.f1.complete_record_before?.text ?? ""} f2={fight.f2.complete_record_before?.text ?? ""} note="Complete professional record entering this bout, reconstructed from verified dated history" />
-      <EnteringRow label="UFC record" f1={record(f1)} f2={record(f2)} />
-      <EnteringRow label="Time out" f1={layoff(f1)} f2={layoff(f2)} note="Days since their previous UFC bout" />
+      <EnteringRow label="UFC record" f1={fight.f1.ufc_record_before ?? ""} f2={fight.f2.ufc_record_before ?? ""} />
+      <EnteringRow label="Time out" f1={layoff(fight.f1.ufc_days_since_before, fight.f1.ufc_record_before)} f2={layoff(fight.f2.ufc_days_since_before, fight.f2.ufc_record_before)} note="Days since their previous UFC bout" />
+      <EnteringRow label="Last fight" f1={lastFight(f1Last)} f2={lastFight(f2Last)} note="Result and method in each fighter's previous professional bout, in any promotion" />
     </div>
   );
 }
@@ -443,22 +461,20 @@ function OddsPanel({ fight }: { fight: Matchup }) {
 }
 
 function RecentForm({ fight }: { fight: Matchup }) {
-  // Form leading into this fight: completed bouts that happened before it.
-  const before = (rows: HistoryRow[]) =>
-    rows
-      .filter((r) => !r.upcoming && r.fight_id !== fight.id && r.date <= fight.event.date)
-      .slice(0, FORM_LIMIT);
-  const f1 = before(fight.f1.history);
-  const f2 = before(fight.f2.history);
+  const f1 = fight.f1.recent_history ?? [];
+  const f2 = fight.f2.recent_history ?? [];
   const rows = Math.max(f1.length, f2.length);
   return (
     <section className={`${shell} flex flex-col overflow-hidden`}>
       <PanelHeading title="Last Five" />
       {rows === 0 ? (
-        <PanelEmpty>Neither fighter had a UFC bout before this one.</PanelEmpty>
+        <PanelEmpty>No earlier professional bouts are available.</PanelEmpty>
       ) : (
         <FormTimeline key={fight.id} fight={fight} f1={f1} f2={f2} />
       )}
+      {rows > 0 ? <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 border-t border-zinc-100 px-3 py-2 text-[9px] text-zinc-400">
+        <span>● UFC · ■ Outside UFC</span><span>Filled: finish · Empty: decision</span>
+      </div> : null}
     </section>
   );
 }

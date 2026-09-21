@@ -1,5 +1,6 @@
 import { db, dataRevision } from "./db.ts";
 import { cachedFightActions, type FightActionSide } from "./action-stats.ts";
+import { normName } from "./util.ts";
 
 /**
  * One normalized, in-memory view of every completed UFC fight, with the derived
@@ -161,6 +162,32 @@ export type CareerBout = {
 
 export type OutsideBout = CareerBout;
 
+/**
+ * Prefer local UFCStats rows where both sources have a bout, then retain every
+ * verified UFC-branded row the local source does not carry. Date+opponent is a
+ * temporary fallback for newly completed bouts whose source reconciliation has
+ * not yet attached `ufcFightId`; without it those bouts flash as duplicates.
+ */
+export function mergeUfcBouts(local: CareerBout[], source: CareerBout[]): CareerBout[] {
+  const usedSource = new Set<CareerBout>();
+  const mergedLocal = local.map((bout) => {
+    const match = source.find((candidate) => !usedSource.has(candidate) && candidate.ufcFightId === bout.ufcFightId)
+      ?? source.find((candidate) => !usedSource.has(candidate) && !candidate.ufcFightId
+        && Math.abs(daysBetween(candidate.date, bout.date)) <= 1
+        && normName(candidate.opponentName) === normName(bout.opponentName));
+    if (match) usedSource.add(match);
+    return {
+      ...bout,
+      sourceOrder: match?.sourceOrder ?? bout.sourceOrder,
+      method: bout.method || match?.method || "",
+    };
+  });
+  return [
+    ...mergedLocal,
+    ...source.filter((bout) => !usedSource.has(bout)),
+  ].sort((a, b) => a.date.localeCompare(b.date) || b.sourceOrder - a.sourceOrder);
+}
+
 export type IndexedFighter = {
   id: string;
   name: string;
@@ -185,6 +212,12 @@ export type IndexedFighter = {
   outside: FightRecord;
   /** Every dated bout from the identity-verified professional source. */
   careerBouts: CareerBout[];
+  /**
+   * Every UFC-branded bout in chronological order. Rich local UFCStats bouts
+   * are merged with identity-verified source-only rows such as Contender
+   * Series, so the record and recent form cannot disagree with the profile.
+   */
+  ufcBouts: CareerBout[];
   /** Dated, row-level outside-UFC history; present only after identity verification. */
   outsideBouts: OutsideBout[];
   careerVerified: boolean;
@@ -475,6 +508,7 @@ function build(version: string): FightIndex {
       ufc: { wins: 0, losses: 0, draws: 0, ncs: 0 },
       outside: { wins: 0, losses: 0, draws: 0, ncs: 0 },
       careerBouts: [],
+      ufcBouts: [],
       outsideBouts: [],
       careerVerified: false,
       fights: [],
@@ -680,18 +714,6 @@ function build(version: string): FightIndex {
     return result;
   };
 
-  // UFC totals are computed independently from UFCStats. Complete pro and
-  // outside-UFC totals below come from the verified row-level source history.
-  for (const fight of fights) {
-    for (const side of fight.sides) {
-      const fighter = side.id ? fighters.get(side.id) : undefined;
-      if (!fighter) continue;
-      if (side.outcome === "win") fighter.ufc.wins += 1;
-      else if (side.outcome === "loss") fighter.ufc.losses += 1;
-      else if (side.outcome === "draw") fighter.ufc.draws += 1;
-      else if (side.outcome === "nc") fighter.ufc.ncs += 1;
-    }
-  }
   const verifiedProfiles = db.prepare("SELECT fighter_id FROM career_profiles WHERE status = 'verified'").all() as { fighter_id: string }[];
   const careerRows = db.prepare(`
     SELECT cb.fighter_id, cb.date, cb.source_order, cb.outcome, cb.method, cb.opponent_name,
@@ -719,6 +741,24 @@ function build(version: string): FightIndex {
   const verifiedIds = new Set(verifiedProfiles.map((profile) => profile.fighter_id));
   for (const fighter of fighters.values()) {
     fighter.careerVerified = verifiedIds.has(fighter.id);
+    const sourceUfc = fighter.careerVerified ? fighter.careerBouts.filter((bout) => bout.isUfc) : [];
+    const localUfc = fighter.fights.flatMap((fight): CareerBout[] => {
+      const side = sideOf(fight, fighter.id);
+      if (!side.outcome) return [];
+      const opponent = opponentOf(fight, fighter.id);
+      return [{
+        date: fight.date,
+        sourceOrder: fight.ord,
+        outcome: side.outcome,
+        method: fight.method ?? "",
+        opponentName: opponent.name,
+        eventName: fight.eventName,
+        isUfc: true,
+        ufcFightId: fight.id,
+      }];
+    });
+    fighter.ufcBouts = mergeUfcBouts(localUfc, sourceUfc);
+    fighter.ufc = recordFromOutcomes(fighter.ufcBouts.map((bout) => bout.outcome));
     if (fighter.careerVerified) {
       fighter.outside = recordFromOutcomes(fighter.outsideBouts.map((bout) => bout.outcome));
       fighter.career = recordFromOutcomes(fighter.careerBouts.map((bout) => bout.outcome));
@@ -801,6 +841,46 @@ export function completeBoutsBefore(index: FightIndex, fighterId: string, date: 
   return fighter.careerBouts.filter(
     (bout) => bout.date < date || (sourceBout != null && bout.date === date && bout.sourceOrder > sourceBout.sourceOrder),
   );
+}
+
+/**
+ * Every UFC-branded bout before a local fight or source-history row. Unlike
+ * `boutsBefore`, this retains verified Contender Series/TUF/UFC rows that have
+ * no UFCStats fight page while deduplicating rows present in both sources.
+ */
+export function ufcBoutsBefore(
+  index: FightIndex,
+  fighterId: string,
+  date: string,
+  ord?: number,
+  sourceOrder?: number,
+): CareerBout[] {
+  const fighter = index.fighters.get(fighterId);
+  if (!fighter) return [];
+  const localBout = ord == null ? null : fighter.fights.find((fight) => fight.date === date && fight.ord === ord);
+  const target = sourceOrder ?? (localBout
+    ? fighter.ufcBouts.find((bout) => bout.ufcFightId === localBout.id)?.sourceOrder
+    : undefined);
+  return fighter.ufcBouts.filter(
+    (bout) => bout.date < date || (target != null && bout.date === date && bout.sourceOrder > target),
+  );
+}
+
+/** The professional timeline uses fresh local results as well as verified
+ * source history. Keep promotion on every row; form must never filter it out. */
+export function professionalBouts(index: FightIndex, fighterId: string): CareerBout[] {
+  const fighter = index.fighters.get(fighterId);
+  if (!fighter) return [];
+  return [...fighter.ufcBouts, ...(fighter.careerVerified ? fighter.outsideBouts : [])]
+    .sort((a, b) => a.date.localeCompare(b.date) || b.sourceOrder - a.sourceOrder);
+}
+
+export function professionalBoutsBefore(index: FightIndex, fighterId: string, date: string, ord?: number): CareerBout[] {
+  const timeline = professionalBouts(index, fighterId);
+  const local = index.fighters.get(fighterId)?.fights.find((fight) => fight.date === date && fight.ord === ord);
+  const target = local ? timeline.find((bout) => bout.ufcFightId === local.id) : undefined;
+  return timeline.filter((bout) => bout.date < date
+    || (target != null && bout.date === date && bout.sourceOrder > target.sourceOrder));
 }
 
 export function completeRecordBefore(index: FightIndex, fighterId: string, date: string, ord?: number): FightRecord | null {

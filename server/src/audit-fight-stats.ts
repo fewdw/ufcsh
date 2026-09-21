@@ -17,6 +17,7 @@ const issues: Record<string, number> = {
   positionSum: 0,
   totalBelowSignificant: 0,
   roundSum: 0,
+  roundCoverage: 0,
 };
 const samples: string[] = [];
 let cached = 0;
@@ -67,6 +68,11 @@ for (const row of rows) {
 
   const totalsRounds = detail.totalsRounds?.rounds;
   const significantRounds = detail.sigStrikesRounds?.rounds;
+  // One row per round fought: fewer is a page read while the bout was still on.
+  const fought = Number(detail.methodInfo?.Round ?? row.round);
+  if (Number.isInteger(fought) && fought > 0 && Array.isArray(totalsRounds) && totalsRounds.length !== fought) {
+    record("roundCoverage", row.id, "fight", `${totalsRounds.length} of ${fought}`);
+  }
   if (!Array.isArray(totalsRounds) || !Array.isArray(significantRounds) || totalsRounds.length !== significantRounds.length) continue;
   const roundActions = totalsRounds.map((round: any, index: number) => fightActions({
     detail_json: JSON.stringify({

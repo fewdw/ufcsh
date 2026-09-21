@@ -24,7 +24,7 @@ import {
   type BoardMatchup,
   type ScrapedMethodOdds,
 } from "./scrape/odds.ts";
-import { validateFightActions } from "./action-stats.ts";
+import { isSummaryAgeDisagreement, validateFightActions } from "./action-stats.ts";
 import { fetchEventArticle, weightMisses } from "./scrape/wikipedia.ts";
 import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
 
@@ -430,11 +430,40 @@ export async function syncFightDetail(fightId: string): Promise<void> {
   fightSyncs.set(fightId, work);
   return work;
 }
+
+/** A card read this recently is already as current as another read would make it. */
+const SUMMARY_RECHECK_GAP_MS = 60_000;
+
+/**
+ * Re-read the card a bout sits on so its summary row is no older than the fight
+ * page just scraped. Returns the bout's refreshed row, or null when the card
+ * came back with the corners the other way round — the scraped detail was
+ * mapped onto the old order, so it must be dropped rather than stored.
+ */
+async function refreshEventSummary(fightId: string, row: Record<string, string>): Promise<Record<string, string> | null> {
+  const event = db.prepare(`SELECT e.id, e.detail_fetched_at FROM events e JOIN fights f ON f.event_id = e.id WHERE f.id = ?`)
+    .get(fightId) as { id: string; detail_fetched_at: number | null } | undefined;
+  if (!event) return row;
+  if (event.detail_fetched_at && Date.now() - event.detail_fetched_at < SUMMARY_RECHECK_GAP_MS) return row;
+  try {
+    await syncEventDetail(event.id);
+  } catch (err) {
+    // The card is unreadable right now; judge the detail against what we have.
+    log(`event summary recheck for ${fightId} failed:`, String(err));
+    return row;
+  }
+  const refreshed = db
+    .prepare("SELECT f1_id, f2_id, f1_str, f2_str, f1_td, f2_td, f1_kd, f2_kd, f1_sub, f2_sub, f1_outcome, f2_outcome, round FROM fights WHERE id = ?")
+    .get(fightId) as Record<string, string> | undefined;
+  if (!refreshed) return null;
+  return refreshed.f1_id === row.f1_id && refreshed.f2_id === row.f2_id ? refreshed : null;
+}
+
 async function storeFightDetail(fightId: string): Promise<void> {
   // The detail page has its own fighter order; pass ours so the scraper can map
   // every stat table onto our f1/f2 by identity instead of by column position.
   const row = db
-    .prepare("SELECT f1_id, f2_id, f1_name, f2_name, f1_str, f2_str, f1_td, f2_td, f1_kd, f2_kd, f1_sub, f2_sub, f1_outcome, f2_outcome FROM fights WHERE id = ?")
+    .prepare("SELECT f1_id, f2_id, f1_name, f2_name, f1_str, f2_str, f1_td, f2_td, f1_kd, f2_kd, f1_sub, f2_sub, f1_outcome, f2_outcome, round FROM fights WHERE id = ?")
     .get(fightId) as Record<string, string> | undefined;
   const detail = await scrapeFightDetail(
     fightId,
@@ -455,7 +484,18 @@ async function storeFightDetail(fightId: string): Promise<void> {
   // away the only live numbers we have.
   const settled = row?.f1_outcome != null || row?.f2_outcome != null;
   if (detail.type === "past" && row && settled) {
-    const issues = validateFightActions({ ...row, detail_json: detailJson });
+    let issues = validateFightActions({ ...row, detail_json: detailJson });
+    // A summary that disagrees is almost always the older of the two pages:
+    // UFCStats finishes a card's totals well after its last verdict, and our
+    // copy of that row may have been written mid-bout. Re-read the card before
+    // rejecting the fresher page — otherwise the stale row rejects every future
+    // fetch of the final stats, and the bout keeps the numbers it had mid-fight
+    // for good.
+    if (issues.length && issues.every(isSummaryAgeDisagreement)) {
+      const refreshed = await refreshEventSummary(fightId, row);
+      if (!refreshed) return;
+      issues = validateFightActions({ ...refreshed, detail_json: detailJson });
+    }
     if (issues.length) throw new Error(`fight detail ${fightId} failed validation: ${issues.join("; ")}`);
   }
   db.prepare("UPDATE fights SET detail_json = ?, detail_fetched_at = ?, title_type = ? WHERE id = ?").run(
@@ -464,6 +504,52 @@ async function storeFightDetail(fightId: string): Promise<void> {
     detail.titleBout ?? "",
     fightId,
   );
+}
+
+/**
+ * Every completed bout whose stored page contradicts the card it was fought on,
+ * newest first. This is the same check that refuses to store a bad page, run
+ * against what is already stored: a page captured while the bout was still
+ * being fought carries fewer round tables than rounds fought, and a card row
+ * written mid-bout disagrees with the totals the fight page settled on.
+ */
+export function contradictedFightStats(limit: number): string[] {
+  const rows = db.prepare(`
+    SELECT f.id, f.round, f.f1_str, f.f2_str, f.f1_td, f.f2_td, f.f1_kd, f.f2_kd, f.f1_sub, f.f2_sub, f.detail_json
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 1 AND f.detail_json IS NOT NULL
+      AND (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)
+    ORDER BY e.date DESC
+  `).iterate() as Iterable<{ id: string }>;
+  const broken: string[] = [];
+  for (const row of rows) {
+    if (validateFightActions(row).length) broken.push(row.id);
+    if (broken.length >= limit) break;
+  }
+  return broken;
+}
+
+/**
+ * Re-read the pages behind those bouts. The scheduled refresh in step 7 only
+ * reaches 30 days back and the historical backfill only ever visits a bout that
+ * has no page at all, so without this a bout captured mid-fight during a long
+ * outage would keep its half-finished numbers for good. Re-reading a fight page
+ * also re-reads its card, so whichever of the two is stale is the one that moves.
+ */
+export async function repairContradictedFightStats(limit = 20): Promise<void> {
+  const broken = contradictedFightStats(limit);
+  if (!broken.length) return;
+  let repaired = 0;
+  for (const id of broken) {
+    try {
+      await syncFightDetail(id);
+      repaired += 1;
+    } catch (err) {
+      // Genuinely inconsistent at the source: /bugs lists it for a human.
+      log(`stats repair ${id} still contradicts the source:`, String(err));
+    }
+  }
+  log(`stats repair: ${repaired}/${broken.length} contradicted fight pages re-read`);
 }
 
 let historicalFightDetailsRunning = false;
@@ -1356,6 +1442,20 @@ export async function tick(): Promise<void> {
     }
     if (missing.length > 150) log(`backfill: ${missing.length - 150} events remaining`);
 
+    // 5b. Cards that have just finished. UFCStats keeps rewriting a card's
+    //     summary numbers after its last verdict, but the only thing that
+    //     re-reads that page is the fight-day live loop — which stops at
+    //     midnight UTC, and never runs at all for a card fought while this
+    //     process was down. Those numbers are what every fight detail on the
+    //     card is checked against, so a row left mid-bout would reject the
+    //     final stats of its own bout indefinitely.
+    const settling = events.filter((e) => e.complete === 1 && e.date <= today && daysBetween(e.date, today) <= 3);
+    for (const e of settling) {
+      if (!e.detail_fetched_at || now - e.detail_fetched_at > 15 * 60_000) {
+        await guarded(`settled_event ${e.name}`, () => syncEventDetail(e.id));
+      }
+    }
+
     // 6. Rankings: every 6h (UFC updates weekly).
     if (metaAgeMs("rankings_synced_at") > 6 * HOUR) await guarded("rankings", syncRankings);
 
@@ -1374,6 +1474,15 @@ export async function tick(): Promise<void> {
         ? f.detail_fetched_at == null || now - f.detail_fetched_at > (daysBetween(f.date, today) <= 2 ? 15 * 60_000 : DAY)
         : f.detail_fetched_at == null || now - f.detail_fetched_at > 3 * DAY;
       if (stale) await guarded(`fight_detail ${f.id}`, () => syncFightDetail(f.id));
+    }
+
+    // 7b. Stored stats that contradict their card, anywhere in the archive.
+    //     Six-hourly, a handful at a time: this is the backstop for a bout
+    //     whose page was captured mid-fight and then aged out of every window
+    //     above, which is exactly how a round goes missing and stays missing.
+    if (metaAgeMs("stats_repair_at") > 6 * HOUR) {
+      await guarded("stats_repair", () => repairContradictedFightStats());
+      touchMeta("stats_repair_at");
     }
 
     // Resume any failed/interrupted historical stats import without delaying

@@ -10,6 +10,8 @@ import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
 import { relativeDate, useSettings, withRanking, type DateMode, type DivisionOrder, type RankingSource } from "../settings";
 import { orderDivisions } from "../divisionOrder";
 import Freshness from "../components/Freshness";
+import ResultDots from "../components/ResultDots";
+import { resultDot } from "../resultDots";
 
 const shell = "rounded-2xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
 
@@ -145,13 +147,14 @@ function FighterHoverPreview({ fighterId, point }: { fighterId: string; point: {
               <span className="block truncate text-sm font-semibold text-zinc-950">{data.name}</span>
               <span className="block truncate text-[10px] text-zinc-400">{data.nickname ? `“${data.nickname}” · ` : ""}{data.record}</span>
             </span>
-            <span className="text-[9px] font-semibold uppercase tracking-wider text-zinc-400">UFC last 5</span>
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-zinc-400">Last 5 · All promotions</span>
           </div>
           <div className="space-y-1 p-2">
-            {[...data.upcoming, ...data.recent].map((fight) => (
-              <div key={fight.fight_id} className={`flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-[10px] ${previewFightTone(fight)}`}>
+            {[...data.upcoming, ...data.recent].map((fight, index) => (
+              <div key={fight.fight_id ?? `${fight.date}-${fight.opponent.name}-${index}`} className={`flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-[10px] ${previewFightTone(fight)}`}>
+                {!fight.upcoming ? <ResultDots results={[fight]} /> : <span className="w-2" />}
                 <span className="w-14 shrink-0 font-bold uppercase">{previewFightLabel(fight)}</span>
-                <span className="w-14 shrink-0 truncate font-semibold">{fight.upcoming ? "—" : fight.method || "Result"}</span>
+                <span className="w-14 shrink-0 truncate font-semibold" title={fight.method ?? undefined}>{fight.upcoming ? "—" : resultDot(fight).shortMethod || "Result"}</span>
                 <span className="min-w-0 flex-1 truncate font-medium">vs {fight.opponent.name}</span>
                 <span className="max-w-24 shrink-0 truncate opacity-70">{fight.weight_class}</span>
                 <span className="max-w-28 shrink-0 truncate opacity-70" title={`${fight.event_name} · ${formatDateShort(fight.date)}`}>{fight.event_name}</span>
@@ -219,7 +222,7 @@ function RankRow({
         {features.streaks ? (
           <span
             className={`text-right text-[10px] font-bold tabular-nums ${entry.activity.current_streak ? streakTone(entry.activity.current_streak.outcome) : ""}`}
-            title={entry.activity.current_streak ? `Current UFC streak: ${entry.activity.current_streak.label}` : undefined}
+            title={entry.activity.current_streak ? `Current professional streak: ${entry.activity.current_streak.label}` : undefined}
           >
             {entry.activity.current_streak?.label ?? ""}
           </span>
@@ -367,7 +370,7 @@ function FeaturesMenu({
     },
     {
       key: "hoverHistory",
-      label: "Hover: UFC last 5",
+      label: "Hover: last 5 fights",
       description: "Show five total entries, including the nearest scheduled fight.",
     },
     {
