@@ -1232,6 +1232,7 @@ export function CareerProfile({ fight }: { fight: Matchup }) {
 
 export function Scorecards({ fight }: { fight: Matchup }) {
   const judges = fight.detail?.type === "past" ? fight.detail.judges : undefined;
+  const source = fight.detail?.type === "past" ? fight.detail.scorecardSource : undefined;
   // The fans' card belongs beside the judges', on the same terms: one number
   // each, the leader in their colour. It opens the tab it was scored on.
   const { data } = useApi<ScoreSummary>(judges?.length ? `/api/fights/${fight.id}/scores` : null);
@@ -1240,7 +1241,11 @@ export function Scorecards({ fight }: { fight: Matchup }) {
   if (!judges?.length) return null;
   return (
     <section className={`${shell} overflow-hidden`}>
-      <PanelHeading title="Scorecards" />
+      <PanelHeading title="Scorecards" aside={source?.url ? (
+        <a href={source.url} target="_blank" rel="noreferrer" className="text-[10px] font-medium text-zinc-400 hover:text-zinc-700">
+          Rounds: {source.name} ↗
+        </a>
+      ) : undefined} />
       <ul className={`grid divide-y divide-zinc-100 sm:divide-x sm:divide-y-0 ${fans ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
         {judges.map((j, judgeIndex) => {
           // Older cards carry the scores without the judge's name.
@@ -1270,6 +1275,17 @@ export function Scorecards({ fight }: { fight: Matchup }) {
                 <span className="h-5 w-px bg-zinc-200" />
                 {score("f2")}
               </span>
+              {j.rounds?.length ? (
+                <span className="mt-1 grid w-full max-w-40 divide-y divide-zinc-100 border-t border-zinc-100 text-[10px] tabular-nums">
+                  {j.rounds.map(round => (
+                    <span key={round.round} className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-1.5">
+                      <span className={`text-right ${round.f1Score > round.f2Score ? "font-semibold text-f1-ink" : "text-zinc-500"}`}>{round.f1Score}</span>
+                      <span className={sectionLabel}>R{round.round}</span>
+                      <span className={`text-left ${round.f2Score > round.f1Score ? "font-semibold text-f2-ink" : "text-zinc-500"}`}>{round.f2Score}</span>
+                    </span>
+                  ))}
+                </span>
+              ) : null}
             </li>
           );
         })}

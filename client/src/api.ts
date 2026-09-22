@@ -88,6 +88,8 @@ export type FightSide = {
 export type CardStats = {
   total_fights: number;
   completed_fights: number;
+  finishes: number;
+  underdog_wins: number;
 };
 
 /** A fighter's UFC record as it stood entering one bout. */
@@ -296,7 +298,11 @@ export type FightDetailBlock = {
   bonuses: { perf: boolean; fotn: boolean };
   titleBout?: "title" | "interim" | "tuf" | "tournament";
   methodInfo?: Record<string, string>;
-  judges?: { judge: string; f1Score: number; f2Score: number }[];
+  judges?: {
+    judge: string; f1Score: number; f2Score: number;
+    rounds?: { round: number; f1Score: number; f2Score: number }[];
+  }[];
+  scorecardSource?: { name: string; url: string };
   detailsText?: string;
   totals?: ComparisonBlock;
   sigStrikes?: ComparisonBlock;
@@ -315,6 +321,8 @@ export type Matchup = {
   /** This bout is the one being fought right now. */
   in_progress?: boolean;
   stats_updated_at?: number | null;
+  /** Rounds an administrator has released for scoring, ahead of the live feed. */
+  rounds_open?: number | null;
   weight_class: string;
   /** Rounds the bout is booked for; null for a format with no round count. */
   scheduled_rounds: number | null;

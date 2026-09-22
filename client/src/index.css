@@ -48,6 +48,25 @@
   --color-loss-1: #881337;
   --color-loss-2: #be123c;
   --color-loss-3: #f43f5e;
+
+  /* Prediction charts. Method is categorical — three fixed hues, never cycled,
+     validated for colour-vision separation against both surfaces, and held
+     identical in dark mode so a slice keeps its identity across the theme.
+     "Not named" is deliberately grey: it is an absence, not a fourth class. */
+  --color-pick-ko: #2563eb;
+  --color-pick-sub: #ea580c;
+  --color-pick-dec: #0d9488;
+  --color-pick-none: #a1a1aa;
+  /* Right/wrong is a status pair, reserved and never reused as a series. */
+  --color-pick-right: #059669;
+  --color-pick-wrong: #e11d48;
+  /* Finish round is ordered, so it takes one hue light → dark rather than a
+     categorical set. Dark mode reverses the ramp against its own surface. */
+  --color-round-1: #93c5fd;
+  --color-round-2: #60a5fa;
+  --color-round-3: #3b82f6;
+  --color-round-4: #2563eb;
+  --color-round-5: #1d4ed8;
 }
 
 html,
@@ -147,6 +166,13 @@ select:not([multiple]):not([size]) {
   --color-plot-axis: #3f3f46;
   --color-belt: #fbbf24;
   --color-belt-interim: #cbd5e1;
+  /* The ordered round ramp runs the other way on a dark surface so its steps
+     stay separable; the categorical pick hues are unchanged by design. */
+  --color-round-1: #1e40af;
+  --color-round-2: #1d4ed8;
+  --color-round-3: #3b82f6;
+  --color-round-4: #60a5fa;
+  --color-round-5: #93c5fd;
 }
 .dark .bg-white { background-color: #18181b !important; }
 .dark .bg-white\/95 { background-color: rgb(24 24 27 / 0.95) !important; }

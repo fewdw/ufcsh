@@ -21,18 +21,20 @@ export type WeightMilestone = {
   from: string;
   to: string;
   direction: "up" | "down";
-  kind: "move" | "challenge";
+  kind: "move" | "challenge" | "return";
+  titleType?: "title" | "interim" | null;
   opponent: string;
 };
 
 function divisionLimit(division: string): number | undefined {
+  if (/catch/i.test(division)) return undefined;
   return LIMITS[division.replace(/^Women's /, "")];
 }
 
 /** Establish a division with two bouts (ignoring catchweights), or a title
- * fight. Highlight later sustained moves and title excursions. A solitary
- * early appearance never becomes an invented career move, and a return from
- * a title excursion does not create another weight-cut announcement. */
+ * fight. Highlight later sustained moves, title excursions and the first bout
+ * back after an excursion. A solitary early appearance never becomes an
+ * invented career move. */
 export function weightJourney(history: WeightBout[]): { base: string | null; milestones: WeightMilestone[] } {
   const bouts = [...history].reverse()
     .filter((bout) => !bout.upcoming && bout.fight_id && divisionLimit(bout.weight_class) != null)
@@ -60,7 +62,17 @@ export function weightJourney(history: WeightBout[]): { base: string | null; mil
       for (const bout of run.bouts) milestones.push({
         fightId: bout.fight_id!, date: bout.date, from: current, to: run.division,
         direction, kind: "challenge", opponent: bout.opponent.name,
+        titleType: bout.title_type === "interim" ? "interim" : "title",
       });
+      const returning = runs[i + 1];
+      if (returning?.division === current) {
+        const bout = returning.bouts[0];
+        const returnDirection = divisionLimit(current)! > divisionLimit(run.division)! ? "up" : "down";
+        milestones.push({
+          fightId: bout.fight_id!, date: bout.date, from: run.division, to: current,
+          direction: returnDirection, kind: "return", opponent: bout.opponent.name,
+        });
+      }
     } else if (run.bouts.length >= 2) {
       const bout = run.bouts[0];
       milestones.push({
@@ -75,7 +87,10 @@ export function weightJourney(history: WeightBout[]): { base: string | null; mil
 
 export function weightMilestoneLabel(milestone: WeightMilestone): string {
   const direction = milestone.direction === "up" ? "Up" : "Down";
-  return milestone.kind === "challenge"
-    ? `${direction} for ${milestone.to.toLowerCase()} title`
-    : `${direction} to ${milestone.to}`;
+  if (milestone.kind === "challenge") {
+    const title = milestone.titleType === "interim" ? "interim " : "";
+    return `${direction} for ${title}${milestone.to.toLowerCase()} title`;
+  }
+  if (milestone.kind === "return") return `Back ${direction.toLowerCase()} to ${milestone.to}`;
+  return `${direction} to ${milestone.to}`;
 }

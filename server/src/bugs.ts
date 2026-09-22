@@ -3,6 +3,7 @@ import { validateFightActions } from "./action-stats.ts";
 import { americanLine, fightIndex, impliedProbability } from "./fight-index.ts";
 import { pageNamesFighter } from "./scrape/odds.ts";
 import { syncCareerRecord } from "./career-records.ts";
+import { hasCompleteJudgeRounds } from "./judge-scorecards.ts";
 import {
   fighterNames,
   syncEventDetail,
@@ -14,7 +15,7 @@ import {
 } from "./sync.ts";
 
 /**
- * The data-quality board behind /bugs: every place the database is missing
+ * The data-quality board behind /admin?tab=bugs: every place the database is missing
  * something the interface would show, or holds something that contradicts
  * itself, listed item by item with the links needed to check it by hand.
  *
@@ -34,7 +35,7 @@ export type BugItem = {
 };
 export type BugCheck = {
   id: string;
-  group: "Odds" | "Records" | "Fights & events" | "Fighters";
+  group: "Scorecards" | "Odds" | "Records" | "Fights & events" | "Fighters";
   label: string;
   description: string;
   severity: "high" | "medium" | "low";
@@ -547,6 +548,54 @@ function decisionsWithoutJudges(): BugCheck {
   })));
 }
 
+function decisionsWithoutJudgeRounds(): BugCheck {
+  const candidates = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, f.method, f.detail_json, f.judge_rounds_json, f.verdict_checked_at
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 1 AND f.method LIKE '%DEC'
+    ORDER BY e.date DESC
+  `).all() as (FightRow & { method: string; detail_json: string | null; judge_rounds_json: string | null; verdict_checked_at: number | null })[];
+  const rows = candidates.filter(fight => {
+    if (!fight.judge_rounds_json) return true;
+    try {
+      const detail = fight.detail_json ? JSON.parse(fight.detail_json) : null;
+      const imported = JSON.parse(fight.judge_rounds_json);
+      return !hasCompleteJudgeRounds(Array.isArray(detail?.judges) ? detail.judges : [],
+        Array.isArray(imported?.judges) ? imported.judges : []);
+    } catch { return true; }
+  });
+  return check({
+    id: "decision-no-judge-rounds",
+    group: "Scorecards",
+    label: "Official cards missing round scores",
+    description: "Decisions where one or more official cards still lack round scores. The Verdict backfill matches by event date and both fighter names, then verifies each judge's final total before attaching rounds.",
+    severity: "medium",
+  }, rows.map(fight => fightItem(fight, {
+    facts: [["Official totals", fight.detail_json?.includes('"judges"') ? "yes" : "no"], ["Verdict checked", ago(fight.verdict_checked_at)]],
+    links: [{ label: "Verdict events", href: "https://verdictmma.com/events" }],
+  })));
+}
+
+function fightsWithoutCommunityScores(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, f.method, f.round, f.verdict_checked_at
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 1 AND (f.method LIKE '%DEC' OR CAST(f.round AS INTEGER) > 1)
+      AND (f.community_score_json IS NULL OR json_valid(f.community_score_json) = 0)
+    ORDER BY e.date DESC
+  `).all() as (FightRow & { method: string; round: string | null; verdict_checked_at: number | null })[];
+  return check({
+    id: "fight-no-community-scores",
+    group: "Scorecards",
+    label: "Fights missing community scorecards",
+    description: "Completed bouts with at least one scoreable round but no imported community aggregate. Imported counts and averages stay separate from user profiles and are weighted with new ufc.sh cards at read time.",
+    severity: "low",
+  }, rows.map(fight => fightItem(fight, {
+    facts: [["Method", fight.method ?? "unknown"], ["Rounds reached", fight.round ?? "unknown"], ["Verdict checked", ago(fight.verdict_checked_at)]],
+    links: [{ label: "Verdict events", href: "https://verdictmma.com/events" }],
+  })));
+}
+
 function untrustworthyFightStats(): BugCheck {
   const rows = db.prepare(`
     SELECT ${FIGHT_COLUMNS}, f.round, f.f1_str, f.f2_str, f.f1_td, f.f2_td, f.f1_kd, f.f2_kd, f.f1_sub, f.f2_sub,
@@ -694,6 +743,8 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
   // Most important first within each group: wrong data on screen, then data
   // that will cause wrong data, then gaps on upcoming cards, then history.
   const checks = [
+    decisionsWithoutJudgeRounds(),
+    fightsWithoutCommunityScores(),
     suspiciousOdds(),
     wrongFighterPages(),
     upcomingMoneyline(),

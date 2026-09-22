@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { countdown, formatMethod } from "../src/format.ts";
+import { countdown, daysUntil, formatMethod, futureDayLabel } from "../src/format.ts";
 
 const now = Date.parse("2026-09-05T19:00:00Z");
 
@@ -14,6 +14,13 @@ test("a start that has passed has no countdown left to give", () => {
   assert.equal(countdown(now, now), null);
   assert.equal(countdown(now - 60_000, now), null);
   assert.equal(countdown(null, now), null);
+});
+
+test("future event dates count local calendar days", () => {
+  const lateSep21 = new Date(2026, 8, 21, 23, 55).getTime();
+  assert.equal(daysUntil("2026-10-03", lateSep21), 12);
+  assert.equal(futureDayLabel("2026-09-22", lateSep21), "in 1 day");
+  assert.equal(futureDayLabel("2026-09-21", lateSep21), null);
 });
 
 test("a finish is placed on the clock; a decision only needs its round", () => {

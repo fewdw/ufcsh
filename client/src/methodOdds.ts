@@ -9,6 +9,19 @@ export function bestPrice(quote: OddsQuote | undefined): OddsBookPrice | null {
   return valid.reduce((best, price) => Number(price.line) > Number(best.line) ? price : best);
 }
 
+/** Every quoted outcome tied for the highest implied probability. Returning a
+ * set preserves ties instead of arbitrarily choosing whichever quote happened
+ * to appear first on the board. */
+export function mostLikelyQuotes(quotes: (OddsQuote | undefined)[]): Set<OddsQuote> {
+  const priced = quotes.flatMap((quote) => {
+    const price = bestPrice(quote);
+    return quote && price ? [{ quote, probability: impliedProbability(price.line) }] : [];
+  });
+  if (!priced.length) return new Set();
+  const highest = Math.max(...priced.map(({ probability }) => probability));
+  return new Set(priced.filter(({ probability }) => probability === highest).map(({ quote }) => quote));
+}
+
 /** Implied probability of an American price, bookmaker margin included. */
 export function impliedProbability(line: string): number {
   const n = Number(line);

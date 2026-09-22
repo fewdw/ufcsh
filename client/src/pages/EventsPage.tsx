@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
-import { clockTime, clockTimeWithZone, countdown, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankLabel, roundsLabel } from "../format";
+import { clockTime, clockTimeWithZone, countdown, formatDate, formatDateShort, formatMethod, futureDayLabel, isDecision, outcomeClasses, rankLabel, roundsLabel } from "../format";
 import { useNow } from "../useNow";
 import Avatar from "../components/Avatar";
 import ResultDots from "../components/ResultDots";
@@ -696,6 +696,8 @@ function EventPane({ eventId, oddsMode }: { eventId: string; oddsMode: boolean }
     .map((segment) => ({ segment, at: segmentStart(event.schedule, segment) }))
     .filter((entry): entry is { segment: CardSegment; at: number } => entry.at != null);
   const nextStart = schedule.filter((entry) => entry.at > now).reduce<number | null>((soonest, entry) => soonest == null || entry.at < soonest ? entry.at : soonest, null);
+  const dayLabel = futureDayLabel(event.date, now);
+  const hasResultSummary = Number.isFinite(event.card_stats.finishes) && Number.isFinite(event.card_stats.underdog_wins);
 
   return (
     <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-3 overflow-y-auto pr-1">
@@ -704,7 +706,9 @@ function EventPane({ eventId, oddsMode }: { eventId: string; oddsMode: boolean }
           <div className="min-w-0">
             <h1 className="text-balance text-base font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-2xl">{event.name}</h1>
             <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs leading-relaxed text-zinc-500">
-              <span className="whitespace-nowrap font-medium text-zinc-600">{formatDate(event.date)}</span>
+              <span className="whitespace-nowrap font-medium text-zinc-600">
+                {formatDate(event.date)}{dayLabel ? ` (${dayLabel})` : ""}
+              </span>
               {event.location ? <><span aria-hidden="true" className="text-zinc-300">·</span><span>{event.location}</span></> : null}
             </div>
           </div>
@@ -729,7 +733,15 @@ function EventPane({ eventId, oddsMode }: { eventId: string; oddsMode: boolean }
                 ))}
               </dl>
             ) : null}
-            {isLive ? <span className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500"><span>{event.card_stats.completed_fights}/{event.fights.length} results</span>{error ? <span role="status">Connection interrupted; retrying…</span> : null}</span> : null}
+            {event.card_stats.completed_fights && hasResultSummary ? (
+              <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] tabular-nums text-zinc-500">
+                {isLive ? <span>{event.card_stats.completed_fights}/{event.fights.length} results</span> : null}
+                <span><strong className="font-semibold text-zinc-700">{event.card_stats.finishes}</strong> finishes</span>
+                <span aria-hidden="true" className="text-zinc-300">·</span>
+                <span><strong className="font-semibold text-zinc-700">{event.card_stats.underdog_wins}</strong> underdog wins</span>
+                {isLive && error ? <span role="status">Connection interrupted; retrying…</span> : null}
+              </span>
+            ) : null}
           </div>
         </div>
       </section>

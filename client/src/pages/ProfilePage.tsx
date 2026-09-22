@@ -5,8 +5,9 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { apiCache, prefetch, useApi } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
 import Avatar from "../components/Avatar";
-import { PANEL_SHELL, PanelHeading, sectionLabel } from "../components/FightStats";
-import { segmentedGroup, segmentedSelected } from "../components/segmented";
+import { PANEL_SHELL, PanelHeading } from "../components/FightStats";
+import { segmentedGroup, segmentedSelected, segmentedIdle } from "../components/segmented";
+import ProfilePredictions from "../components/ProfilePredictions";
 import { formatDateShortWithYear, formatMethod } from "../format";
 import { useRouteScrollRestoration } from "../navigationState";
 import { useMyProfile } from "../profile";
@@ -18,9 +19,7 @@ const FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed"];
 /** Bouts that went to the judges are the ones a card can be read against, so
  *  the list opens on them and finishes are one checkbox away. */
 const DEFAULT_FILTER: ProfileFilter = "decisions";
-/** Sections of a profile. Scorecards is the only one so far; the tab bar is
- *  here because it is what the next one arrives into. */
-const TABS = [{ id: "scorecards", label: "Scorecards" }] as const;
+const TABS = [{ id: "scorecards", label: "Scorecards" }, { id: "predictions", label: "Predictions" }] as const;
 const quiet = "rounded-full px-3 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
 const primary = "rounded-full bg-zinc-900 px-4 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40";
 const danger = "rounded-full bg-rose-600 px-4 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40";
@@ -47,7 +46,7 @@ function MyProfileRedirect() {
   if (!loading && (!accountsEnabled || !signedIn))
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 px-5 text-center text-sm text-zinc-500">
-        <p>Sign in to see the fights you have scored.</p>
+        <p>Sign in to see your scorecards and predictions.</p>
         {accountsEnabled ? <button type="button" onClick={signIn} className={primary}>Sign in</button> : null}
       </div>
     );
@@ -65,6 +64,7 @@ function Empty({ message }: { message: string }) {
 
 function Profile({ handle }: { handle: string }) {
   const [search, setSearch] = useSearchParams();
+  const section = search.get("tab") === "predictions" ? "predictions" : "scorecards";
   const filter = (FILTERS.find(value => value === search.get("filter")) ?? DEFAULT_FILTER) as ProfileFilter;
   const query = (search.get("q") ?? "").slice(0, 60);
   const pageUrl = useCallback(
@@ -92,7 +92,7 @@ function Profile({ handle }: { handle: string }) {
 
   const name = view?.scorer.displayName;
   useSeo({
-    title: name ? `${name}’s scorecards` : "Scorecards",
+    title: name ? `${name}’s ${section}` : "Fan profile",
     description: name
       ? `Every UFC fight ${name} has scored round by round, and how often their cards matched the judges.`
       : "A fan's UFC scorecards, fight by fight.",
@@ -140,44 +140,42 @@ function Profile({ handle }: { handle: string }) {
         <ProfileHeader scorer={scorer} mine={mine} onRenamed={refresh} />
 
         <div role="tablist" aria-label="Profile sections" className={`${segmentedGroup} w-full`}>
-          {TABS.map(tab => (
+          {TABS.map((tab, index) => (
             <button
               key={tab.id}
               type="button"
               role="tab"
               id={`profile-tab-${tab.id}`}
               aria-controls="profile-tabpanel"
-              aria-selected
-              className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${segmentedSelected}`}
+              aria-selected={section === tab.id}
+              tabIndex={section === tab.id ? 0 : -1}
+              onClick={() => { const params = new URLSearchParams(search); params.set("tab", tab.id); setSearch(params, { replace: true }); }}
+              onKeyDown={event => {
+                const next = event.key === "ArrowRight" ? (index + 1) % TABS.length
+                  : event.key === "ArrowLeft" ? (index + TABS.length - 1) % TABS.length
+                    : event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1 : null;
+                if (next == null) return;
+                event.preventDefault();
+                const params = new URLSearchParams(search); params.set("tab", TABS[next].id); setSearch(params, { replace: true });
+                event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
+              }}
+              className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${section === tab.id ? segmentedSelected : segmentedIdle}`}
             >
               {tab.label}
             </button>
           ))}
         </div>
 
-        <div id="profile-tabpanel" role="tabpanel" aria-labelledby="profile-tab-scorecards" className="flex flex-col gap-3">
-          <AgreementChart agreement={agreement} filter={filter} onFilter={setFilter} />
-
-          <section className={PANEL_SHELL}>
+        <div id="profile-tabpanel" role="tabpanel" aria-labelledby={`profile-tab-${section}`} className="flex flex-col gap-3">
+          {section === "predictions" ? <ProfilePredictions key={handle} handle={handle} mine={mine} /> : <>
+          <section className={`${PANEL_SHELL} overflow-hidden`}>
             <PanelHeading
               title="Scored fights"
               subtitle={`${view.total.toLocaleString()} of ${scorer.cards.toLocaleString()}`}
               aside={
                 <div className="flex flex-wrap items-center gap-2">
+                  <ScorecardFilter value={filter} agreement={agreement} total={scorer.cards} onChange={setFilter} />
                   <SearchBox value={query} onChange={value => setParam("q", value || null)} />
-                  {/* Nothing to hide on a profile that has only scored judged
-                      bouts, so the control is not offered there. */}
-                  {agreement.finishes ? (
-                    <label className="flex cursor-pointer items-center gap-1.5 text-xs text-zinc-500">
-                      <input
-                        type="checkbox"
-                        checked={filter !== "all"}
-                        onChange={event => setFilter(event.target.checked ? "decisions" : "all")}
-                        className="h-3.5 w-3.5 rounded border-zinc-300 accent-zinc-900"
-                      />
-                      Hide finishes
-                    </label>
-                  ) : null}
                 </div>
               }
             />
@@ -202,6 +200,7 @@ function Profile({ handle }: { handle: string }) {
             </div>
             {more ? <div ref={sentinel} className="px-5 py-3 text-center text-xs text-zinc-400">Loading more…</div> : null}
           </section>
+          </>}
         </div>
 
         {removal.error ? <p role="alert" className="text-center text-xs text-red-600">{removal.error}</p> : null}
@@ -246,6 +245,29 @@ function SearchBox({ value, onChange }: { value: string; onChange: (value: strin
   );
 }
 
+/** Agreement is a list filter, so it lives with search instead of taking over
+ * a full card above the results. Counts make each compact option unambiguous. */
+function ScorecardFilter({ value, agreement, total, onChange }: {
+  value: ProfileFilter;
+  agreement: ScorerProfile["agreement"];
+  total: number;
+  onChange: (value: ProfileFilter) => void;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={event => onChange(event.target.value as ProfileFilter)}
+      aria-label="Filter scored fights"
+      className="h-7 rounded-full border border-zinc-200 bg-white pl-2.5 pr-7 text-[10px] font-medium text-zinc-600 outline-none transition-colors hover:border-zinc-300 focus:border-zinc-400"
+    >
+      <option value="all">All · {total.toLocaleString()}</option>
+      <option value="decisions">Judged · {agreement.decisions.toLocaleString()}</option>
+      <option value="agreed">Agreed · {agreement.agreed.toLocaleString()}</option>
+      <option value="disagreed">Disagreed · {agreement.disagreed.toLocaleString()}</option>
+    </select>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // identity
 
@@ -271,7 +293,7 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
             </h1>
             <p className="mt-0.5 truncate text-xs text-zinc-500">
               {scorer.cards.toLocaleString()} {scorer.cards === 1 ? "fight scored" : "fights scored"}
-              {scorer.firstAt ? ` · since ${formatDateShortWithYear(new Date(scorer.firstAt).toISOString().slice(0, 10))}` : ""}
+              {scorer.joinedAt ? ` · Joined ${formatDateShortWithYear(new Date(scorer.joinedAt).toISOString().slice(0, 10))}` : ""}
             </p>
           </>
         )}
@@ -356,84 +378,6 @@ function UsernameEditor({ scorer, onClose, onRenamed }: { scorer: ScorerIdentity
         {error || problem || `ufc.sh/profiles/${value.toLowerCase()}`}
       </p>
     </form>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// agreement
-
-const RADIUS = 44;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
-
-/** How often this scorer read a judged bout the way the judges did. Either
- *  half opens the cards behind it. */
-function AgreementChart({ agreement, filter, onFilter }: {
-  agreement: ScorerProfile["agreement"];
-  filter: ProfileFilter;
-  onFilter: (filter: ProfileFilter) => void;
-}) {
-  const { decisions, agreed, disagreed } = agreement;
-  if (!decisions)
-    return (
-      <section className={`${PANEL_SHELL} px-5 py-4 text-xs text-zinc-500`}>
-        Agreement appears once a bout that went to the judges has been scored to its last round.
-      </section>
-    );
-  const arc = (agreed / decisions) * CIRCUMFERENCE;
-  const toggle = (value: "agreed" | "disagreed") => onFilter(filter === value ? "decisions" : value);
-  const dimmed = (value: "agreed" | "disagreed") =>
-    filter === "agreed" || filter === "disagreed" ? (filter === value ? "" : "opacity-20") : "";
-  return (
-    <section className={`${PANEL_SHELL} flex items-center gap-5 px-5 py-4 sm:gap-8`}>
-      <div className="relative shrink-0">
-        <svg viewBox="0 0 120 120" className="h-24 w-24" role="img"
-          aria-label={`${agreed} of ${decisions} judged bouts scored the same way as the judges`}>
-          <g transform="rotate(-90 60 60)" fill="none" strokeWidth={14}>
-            <circle cx={60} cy={60} r={RADIUS} className="stroke-plot-track" />
-            <circle cx={60} cy={60} r={RADIUS}
-              className={`stroke-rose-500 cursor-pointer transition-opacity ${dimmed("disagreed")}`}
-              strokeDasharray={`${CIRCUMFERENCE - arc} ${CIRCUMFERENCE}`} strokeDashoffset={-arc}
-              onClick={() => toggle("disagreed")} />
-            <circle cx={60} cy={60} r={RADIUS}
-              className={`stroke-emerald-500 cursor-pointer transition-opacity ${dimmed("agreed")}`}
-              strokeDasharray={`${arc} ${CIRCUMFERENCE}`}
-              onClick={() => toggle("agreed")} />
-          </g>
-        </svg>
-        <span className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-lg font-bold tabular-nums text-zinc-900">{Math.round((agreed / decisions) * 100)}%</span>
-          <span className={sectionLabel}>Agree</span>
-        </span>
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className={sectionLabel}>Judged bouts</p>
-        <p className="mt-0.5 text-lg font-bold tabular-nums text-zinc-900">{decisions.toLocaleString()}</p>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          <AgreementButton tone="emerald" label="Agreed" count={agreed} on={filter === "agreed"} onClick={() => toggle("agreed")} />
-          <AgreementButton tone="rose" label="Disagreed" count={disagreed} on={filter === "disagreed"} onClick={() => toggle("disagreed")} />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function AgreementButton({ tone, label, count, on, onClick }: {
-  tone: "emerald" | "rose"; label: string; count: number; on: boolean; onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={on}
-      title={`Show only the cards that ${label.toLowerCase()} with the judges`}
-      className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-        on ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-200 text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50"
-      }`}
-    >
-      <span aria-hidden="true" className={`h-2 w-2 rounded-full ${tone === "emerald" ? "bg-emerald-500" : "bg-rose-500"}`} />
-      {label}
-      <span className="tabular-nums">{count}</span>
-    </button>
   );
 }
 

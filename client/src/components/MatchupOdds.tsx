@@ -6,7 +6,7 @@ import { lastName } from "../format";
 import { useTooltip } from "../tooltip";
 import { Tooltip } from "./Tooltip";
 import type { MethodOdds, OddsQuote } from "../api";
-import { bestPrice, formatPrice, impliedProbability, percent } from "../methodOdds";
+import { bestPrice, formatPrice, impliedProbability, mostLikelyQuotes, percent } from "../methodOdds";
 import { organizeAdditionalOdds } from "../oddsLayout";
 import { CHART_TEXT } from "./FightStats";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "./segmented";
@@ -302,8 +302,7 @@ export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american",
   // either-fighter row overlaps both fighters, so it never counts.
   const methods = ["KO/TKO", "SUB", "DEC"] as const;
   const sides = [odds.f1, odds.f2].map(side => [side.ko, side.submission, side.decision]);
-  const chance = (quote: OddsQuote | undefined) => { const price = bestPrice(quote); return price ? impliedProbability(price.line) : -1; };
-  const favorite = sides.flat().reduce<OddsQuote | undefined>((best, quote) => chance(quote) > chance(best) ? quote : best, undefined);
+  const favorites = mostLikelyQuotes(sides.flat());
   const methodRows = ([[f1Name, 1, sides[0]], [f2Name, 2, sides[1]], ["Either", null, [undefined, undefined, extra.goesDecision]]] as const)
     .map(([label, who, quotes]): Row => ({
       label,
@@ -311,7 +310,7 @@ export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american",
         const method = methods[index];
         const outcome: Outcome = method === "DEC" ? { fightId, winner: who ?? undefined, decision: true } : { fightId, winner: who ?? undefined, decision: false, method };
         const selection = method === "DEC" && who === null ? "Goes to decision" : `${label} by ${method}`;
-        return { quote, hit: methodHit(who, method, null), favorite: live && who !== null && quote !== undefined && quote === favorite, bet: { fightId, fightLabel, market: "Method", selection, outcome } };
+        return { quote, hit: methodHit(who, method, null), favorite: live && who !== null && quote !== undefined && favorites.has(quote), bet: { fightId, fightLabel, market: "Method", selection, outcome } };
       }),
     }))
     .filter(shown);

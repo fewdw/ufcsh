@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { weightJourney } from "../src/weightJourney.ts";
+import { weightJourney, weightMilestoneLabel } from "../src/weightJourney.ts";
 
 function history(divisions: string[], titles: number[] = [], upcoming: number[] = []) {
   return divisions.map((division, i) => ({
@@ -29,7 +29,9 @@ test("Volkanovski's early lightweight/catchweight bouts stay quiet; title challe
   assert.equal(result.base, "Featherweight");
   assert.deepEqual(result.milestones.map(({ fightId, kind, direction }) => ({ fightId, kind, direction })), [
     { fightId: "5", kind: "challenge", direction: "up" },
+    { fightId: "6", kind: "return", direction: "down" },
     { fightId: "7", kind: "challenge", direction: "up" },
+    { fightId: "8", kind: "return", direction: "down" },
   ]);
 });
 
@@ -50,4 +52,12 @@ test("a sustained move up and a later sustained move back both appear", () => {
 test("women's divisions follow the same rules and a single division needs no panel", () => {
   assert.equal(weightJourney(history(["Women's Strawweight", "Women's Strawweight", "Women's Flyweight", "Women's Flyweight"])).milestones[0].direction, "up");
   assert.deepEqual(weightJourney(history(["Lightweight", "Lightweight"])).milestones, []);
+});
+
+test("interim title excursions and their return are named explicitly", () => {
+  const rows = history(["Featherweight", "Featherweight", "Lightweight", "Featherweight", "Featherweight"], [2]);
+  rows.find(row => row.fight_id === "2")!.title_type = "interim";
+  const milestones = weightJourney(rows).milestones;
+  assert.equal(weightMilestoneLabel(milestones[0]), "Up for interim lightweight title");
+  assert.equal(weightMilestoneLabel(milestones[1]), "Back down to Featherweight");
 });

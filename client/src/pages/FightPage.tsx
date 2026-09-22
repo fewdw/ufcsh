@@ -15,6 +15,7 @@ import {
 } from "../format";
 import Avatar from "../components/Avatar";
 import FightScoring from "../components/FightScoring";
+import FightPredictions from "../components/FightPredictions";
 import FighterPortrait from "../components/FighterPortrait";
 import { resultDot } from "../resultDots";
 import MatchupOdds, { OddsFormatTabs, OddsMarkets } from "../components/MatchupOdds";
@@ -38,6 +39,7 @@ import {
 import { useRouteScrollRestoration } from "../navigationState";
 import { useSeo } from "../seo";
 import { useSettings, withRanking } from "../settings";
+import { scoreableRoundCount } from "../scoring";
 
 const shell = PANEL_SHELL;
 const RESULT_PILL =
@@ -241,12 +243,21 @@ function OutcomePill({ outcome }: { outcome: HistoryRow["outcome"] }) {
 
 type UfcHistoryRow = HistoryRow | ProfessionalHistoryRow;
 
+/** The compact W/L badge used both in Tale of the Tape and Last Five. */
+function CompactOutcomePill({ outcome, title }: { outcome: HistoryRow["outcome"]; title?: string }) {
+  return (
+    <span
+      className={`inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded px-1 text-[9px] font-bold leading-none ${outcomeClasses(outcome)}`}
+      title={title ?? formOutcomeWord(outcome)}
+    >
+      {outcomeLabel(outcome) || "?"}
+    </span>
+  );
+}
+
 function FormMark({ row }: { row: UfcHistoryRow }) {
   const dot = resultDot({ outcome: row.outcome, method: row.method, ufc: row.promotion !== "outside" });
-  return <span className="inline-flex items-center gap-1" title={dot.label}>
-    <span aria-hidden="true" className={`h-2.5 w-2.5 ${dot.className}`} />
-    <span className="text-[9px] font-bold text-zinc-600">{outcomeLabel(row.outcome) || "?"}</span>
-  </span>;
+  return <CompactOutcomePill outcome={row.outcome} title={dot.label} />;
 }
 
 function FormTarget({ row, className, children }: { row: UfcHistoryRow; className: string; children: React.ReactNode }) {
@@ -401,12 +412,7 @@ function MatchupContext({ fight }: { fight: Matchup }) {
   const f2Last = fight.f2.recent_history?.[0];
   const lastFight = (row: UfcHistoryRow | undefined) => row ? (
     <span className="inline-flex min-w-0 items-center gap-1.5">
-      <span
-        className={`inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded px-1 text-[9px] font-bold leading-none ${outcomeClasses(row.outcome)}`}
-        title={formOutcomeWord(row.outcome)}
-      >
-        {outcomeLabel(row.outcome) || "?"}
-      </span>
+      <CompactOutcomePill outcome={row.outcome} />
       <span className="min-w-0 text-zinc-500" title={row.method ?? undefined}>{resultDot(row).shortMethod || "—"}</span>
     </span>
   ) : null;
@@ -472,9 +478,6 @@ function RecentForm({ fight }: { fight: Matchup }) {
       ) : (
         <FormTimeline key={fight.id} fight={fight} f1={f1} f2={f2} />
       )}
-      {rows > 0 ? <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 border-t border-zinc-100 px-3 py-2 text-[9px] text-zinc-400">
-        <span>● UFC · ■ Outside UFC</span><span>Filled: finish · Empty: decision</span>
-      </div> : null}
     </section>
   );
 }
@@ -762,8 +765,8 @@ function FightRail({ eventId, currentId, returnDepth }: { eventId: string; curre
 
 // ---------------------------------------------------------------------------
 
-type MatchupTab = "fight" | "matchup" | "odds" | "score";
-const TAB_LABEL: Record<MatchupTab, string> = { fight: "Result", matchup: "Matchup", odds: "Odds", score: "Score" };
+type MatchupTab = "fight" | "matchup" | "odds" | "score" | "predict";
+const TAB_LABEL: Record<MatchupTab, string> = { fight: "Result", matchup: "Matchup", odds: "Odds", score: "Score", predict: "Predict" };
 
 /** The matchup's sections, grouped by the question they answer. Arrow keys move
  *  between tabs the way a native tab control does. */
@@ -792,7 +795,7 @@ function MatchupTabs({ tabs, current, onSelect }: { tabs: MatchupTab[]; current:
           tabIndex={tab === current ? 0 : -1}
           onClick={() => onSelect(tab)}
           onKeyDown={(event) => move(event, index)}
-          className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${tab === current ? segmentedSelected : segmentedIdle}`}
+          className={`min-w-0 flex-1 rounded-full px-2 py-1.5 text-[11px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 sm:px-3 sm:text-xs ${tab === current ? segmentedSelected : segmentedIdle}`}
         >
           {TAB_LABEL[tab]}
         </button>
@@ -908,13 +911,14 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
 
   // Only tabs with something in them; a finished or live bout opens on what
   // happened, an upcoming one on the matchup. The choice lives in the URL.
+  const requestedTab = new URLSearchParams(location.search).get("tab");
   const tabs: MatchupTab[] = [
     ...(fight.status === "past" || fight.in_progress || hasStats ? ["fight" as const] : []),
     "matchup",
     ...(hasOddsMarkets(fight.odds?.props, fight.f1.name, fight.f2.name) ? ["odds" as const] : []),
-    ...(fight.status === "past" || fight.live || fight.in_progress ? ["score" as const] : []),
+    ...(scoreableRoundCount(fight) > 0 ? ["score" as const] : []),
+    ...(fight.status !== "past" || requestedTab === "predict" ? ["predict" as const] : []),
   ];
-  const requestedTab = new URLSearchParams(location.search).get("tab");
   const tab = tabs.find((candidate) => candidate === requestedTab) ?? tabs[0];
   // Only the tab panel below should change; the reader's scroll position is
   // left alone. (A tab shorter than the current scroll depth still behaves
@@ -1051,6 +1055,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
               </> : null}
               {tab === "odds" ? <OddsPanel fight={fight} /> : null}
               {tab === "score" ? <FightScoring key={fight.id} fight={fight} /> : null}
+              {tab === "predict" ? <FightPredictions key={fight.id} fight={fight} /> : null}
             </div>
           </div>
         </div>

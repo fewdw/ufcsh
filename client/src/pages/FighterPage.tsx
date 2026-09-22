@@ -7,7 +7,7 @@ import { formatValue } from "../components/chartTokens";
 import FighterPortrait from "../components/FighterPortrait";
 import Flag from "../components/Flag";
 import ResultDots from "../components/ResultDots";
-import WeightJourney, { WeightChangeMarker } from "../components/WeightJourney";
+import { WeightChangeMarker } from "../components/WeightJourney";
 import { weightJourney } from "../weightJourney";
 import RequestNotice from "../components/RequestNotice";
 import { useSeo } from "../seo";
@@ -612,13 +612,9 @@ export default function FighterPage() {
   const upcoming = fighter.history.filter((h) => h.upcoming);
   const past = fighter.pro_history ?? fighter.history.filter((h) => !h.upcoming);
   const ufcPast = past.filter((h) => h.promotion !== "outside");
-  const outsidePast = past.filter((h) => h.promotion === "outside");
+  const allFights = [...upcoming, ...past].sort((a, b) => b.date.localeCompare(a.date));
   const journey = weightJourney(ufcPast);
   const weightChanges = new Map(journey.milestones.map((milestone) => [milestone.fightId, milestone]));
-  const outsideWins = outsidePast.filter((h) => h.outcome === "win").length;
-  const outsideLosses = outsidePast.filter((h) => h.outcome === "loss").length;
-  const outsideDraws = outsidePast.filter((h) => h.outcome === "draw").length;
-  const outsideRecord = `${outsideWins}-${outsideLosses}${outsideDraws ? `-${outsideDraws}` : ""}`;
 
   const bio: [string, string][] = (
     [
@@ -633,7 +629,7 @@ export default function FighterPage() {
 
 
   return (
-    <div ref={pageScroll} className="h-full overflow-y-auto lg:overflow-hidden">
+    <div ref={pageScroll} className="h-full overflow-y-auto [scrollbar-gutter:stable] lg:overflow-hidden">
       <div className="flex flex-col gap-3 p-3 pb-8 lg:h-full lg:pb-3">
         {error ? <RequestNotice onRetry={retry}>Couldn’t refresh this profile. Showing the last loaded data.</RequestNotice> : null}
         <button
@@ -649,7 +645,7 @@ export default function FighterPage() {
         {/* On a wide window the page itself never scrolls: each column is its
             own scroller, so reading one leaves the other exactly where it was. */}
         <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(24rem,5fr)_minmax(0,7fr)] lg:grid-rows-[minmax(0,1fr)]">
-        <div className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-y-auto lg:overscroll-contain">
+        <div className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
         <section className={`${shell} @container px-6 py-5`}>
           <div className="flex flex-col gap-5">
             <div className="flex min-w-0 items-center gap-5">
@@ -695,77 +691,36 @@ export default function FighterPage() {
           </div>
         </section>
 
-        <WeightJourney base={journey.base} milestones={journey.milestones} />
-
         <Records records={fighter.records ?? []} />
 
         <StatisticalRanks stats={fighter.stats ?? []} />
         </div>
 
-        <div className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-y-auto lg:overscroll-contain">
-
-        {upcoming.length ? (
-          <section className={shell}>
-            <div className="px-5 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
-              Upcoming
-            </div>
-            <div className={BOUT_LIST}>
-              {upcoming.map((row) => (
-                <HistoryRowView key={row.fight_id} row={row} fighterName={fighter.name} />
-              ))}
-            </div>
-          </section>
-        ) : null}
+        <div className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
 
         <section className={shell}>
           <h2 className="border-b border-zinc-100 px-5 py-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
-            UFC ({ufcPast.length}) · {fighter.ufc_record}
+            {allFights.length} {allFights.length === 1 ? "Fight" : "Fights"}
           </h2>
           {!fighter.record_verified ? (
             <div className="px-5 pb-1 pt-4 text-[10px] text-zinc-400">Outside-UFC history is still syncing; UFC bouts are shown now.</div>
           ) : null}
           <div className={BOUT_LIST}>
-            {ufcPast.length ? (
-              ufcPast.map((row, index) => {
+            {allFights.length ? (
+              allFights.map((row, index) => {
                 const milestone = row.fight_id ? weightChanges.get(row.fight_id) : undefined;
                 return <div key={row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`}
                   id={row.fight_id ? `weight-bout-${row.fight_id}` : undefined} tabIndex={milestone ? -1 : undefined}
                   className="scroll-m-4 overflow-hidden rounded-sm focus:outline-2 focus:outline-sky-300">
-                  {milestone ? <WeightChangeMarker milestone={milestone} /> : null}
                   <HistoryRowView row={row} fighterName={fighter.name} />
+                  {milestone ? <WeightChangeMarker milestone={milestone} /> : null}
                 </div>;
               })
             ) : (
-              <div className="px-5 py-6 text-sm text-zinc-400">No UFC fights on record.</div>
+              <div className="px-5 py-6 text-sm text-zinc-400">No fights on record.</div>
             )}
           </div>
         </section>
-
-        {outsidePast.length ? (
-          <details className={`${shell} group overflow-hidden`}>
-            <summary
-              className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 [&::-webkit-details-marker]:hidden"
-              title="Expand pre-UFC and outside-UFC history"
-            >
-              <span className="min-w-0">
-                <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
-                  Outside UFC ({outsidePast.length}) · {outsideRecord}
-                </span>
-              </span>
-              <svg
-                aria-hidden="true"
-                className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform group-open:rotate-180"
-                fill="none"
-                viewBox="0 0 12 12"
-              >
-                <path d="m2.5 4.5 3.5 3 3.5-3" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </summary>
-            <div className={`${BOUT_LIST} border-t border-zinc-100`}>
-              {outsidePast.map((row, index) => <HistoryRowView key={row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`} row={row} fighterName={fighter.name} />)}
-            </div>
-          </details>
-        ) : null}
         </div>
         </div>
       </div>

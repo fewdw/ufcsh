@@ -85,7 +85,10 @@ CREATE TABLE IF NOT EXISTS fights (
   perf_bonus       INTEGER,
   fotn_bonus       INTEGER,
   detail_json       TEXT,
-  detail_fetched_at INTEGER
+  detail_fetched_at INTEGER,
+  judge_rounds_json TEXT,
+  community_score_json TEXT,
+  verdict_checked_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_fights_event ON fights(event_id);
 CREATE INDEX IF NOT EXISTS idx_fights_f1 ON fights(f1_id);
@@ -200,6 +203,18 @@ if (!fighterColumns.some((column) => column.name === "birth_fetched_at")) {
 const fightColumns = db.prepare("PRAGMA table_info(fights)").all() as { name: string }[];
 if (!fightColumns.some((column) => column.name === "title_type")) {
   db.exec("ALTER TABLE fights ADD COLUMN title_type TEXT NOT NULL DEFAULT ''");
+}
+// Verdict MMA publishes two things UFCStats does not: every official judge's
+// round card, and a large community aggregate. They live beside (rather than
+// inside) the UFCStats payload so a normal stats refresh cannot erase them.
+for (const [name, type] of [
+  ["judge_rounds_json", "TEXT"],
+  ["community_score_json", "TEXT"],
+  ["verdict_checked_at", "INTEGER"],
+] as const) {
+  if (!fightColumns.some((column) => column.name === name)) {
+    db.exec(`ALTER TABLE fights ADD COLUMN ${name} ${type}`);
+  }
 }
 db.exec(`
   UPDATE fights

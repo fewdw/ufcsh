@@ -54,7 +54,10 @@ test("atomic edits, duplicates, private ownership, deletion and decimal aggregat
   const second = rounds.map(r => ({ ...r, f1: 9, f2: 10, deduct2: r.round === 1 ? 1 : 0 }));
   store.save(id, "bob", { revision: 0, rounds: second });
   let result = store.summary(id) as any;
-  assert.deepEqual({ ...result.totals }, { scorers: 2, completeCards: 2, avg1: 28.5, avg2: 28, f1: 1, f2: 1, draws: 0 });
+  assert.deepEqual({ ...result.totals }, {
+    scorers: 2, completeCards: 2, avg1: 28.5, avg2: 28, f1: 1, f2: 1, draws: 0,
+    distributionCards: 2, localCards: 2, importedCards: 0, source: null,
+  });
   assert.equal(result.rounds[0].deduct2, 0.5);
   assert.equal(result.rounds[0].scorers, 2);
   const json = JSON.stringify(store.summary(id));
@@ -68,6 +71,33 @@ test("atomic edits, duplicates, private ownership, deletion and decimal aggregat
   assert.equal(store.mine(id, "alice").revision, 3);
   assert.throws(() => store.save(id, "alice", { revision: 0, rounds }), /another tab/);
   assert.throws(() => store.save("bbbbbbbbbbbbbbbb", "alice", { revision: 0, rounds }), /not found/);
+});
+
+test("external community aggregates are weighted with real local cards without inventing profiles", t => {
+  const external = {
+    source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/1/fight/1", cards: 4,
+    avg1: 28.5, avg2: 28.5,
+    rounds: [1, 2, 3].map(round => ({ round, avg1: 9.5, avg2: 9.5 })),
+  };
+  const { store } = fixture(t, { ...fight, community_score_json: JSON.stringify(external) });
+  let result = store.summary(id) as any;
+  assert.equal(result.totals.scorers, 4);
+  assert.equal(result.totals.completeCards, 4);
+  assert.equal(result.totals.avg1, 28.5);
+  assert.equal(result.cards.length, 0, "an aggregate is not expanded into fake users");
+
+  store.save(id, "alice", { revision: 0, rounds });
+  result = store.summary(id) as any;
+  assert.equal(result.totals.scorers, 5);
+  assert.equal(result.totals.localCards, 1);
+  assert.equal(result.totals.importedCards, 4);
+  assert.equal(result.totals.avg1, 28.8);
+  assert.equal(result.totals.avg2, 28.2);
+  assert.equal(result.rounds[0].total1, 9.6);
+  assert.equal(result.rounds[0].total2, 9.4);
+  assert.equal(result.totals.distributionCards, 1);
+  assert.deepEqual([result.totals.f1, result.totals.draws, result.totals.f2], [1, 0, 0]);
+  assert.equal(result.cards.length, 1);
 });
 
 test("live partial cards have separate per-round samples and cannot include future or finishing rounds", t => {
@@ -111,6 +141,8 @@ test("public profiles list a scorer's own cards, newest first, and never name th
 
   const profile = store.profile(alice.handle);
   assert.equal(profile.scorer.displayName, alice.displayName);
+  assert.ok(profile.scorer.joinedAt != null);
+  assert.ok(profile.scorer.joinedAt! > 0 && profile.scorer.joinedAt! <= Date.now());
   // The public id it was minted with answers just as well.
   assert.equal(store.profile(alice.publicId).scorer.handle, alice.handle);
   assert.equal(profile.scorer.cards, 1);
@@ -182,6 +214,8 @@ test("usernames are unique whatever their capitalisation, address the profile, a
   assert.equal(store.setImage("alice", "https://img.clerk.com/portrait").imageUrl, "https://img.clerk.com/portrait");
   assert.ok(store.imageSyncedAt("alice") > 0);
   assert.equal(store.profile("grasso").scorer.imageUrl, "https://img.clerk.com/portrait");
+  store.setImage("alice", "https://img.clerk.com/portrait", 1_700_000_000_000);
+  assert.equal(store.profile("grasso").scorer.joinedAt, 1_700_000_000_000);
 });
 
 test("a profile counts agreement over every card and lists only the ones a filter asks for", t => {
@@ -362,4 +396,45 @@ test("HTTP isolation, validation, origin protection, throttling and 300 concurre
   assert.equal((await (await fetch(`${profiles}/fewdw`)).json() as any).scorer.username, "FeWdW");
   assert.equal((await fetch(`${profiles}/mine`, { method: "PUT", headers: { Authorization: "Bearer x", "Content-Type": "application/json" }, body: JSON.stringify({ username: "FeWdW" }), })).status, 200);
   t.diagnostic(`300 concurrent scorecard writes + 300 public reads: ${Math.round(performance.now() - started)} ms on local test host (Clerk verification tested separately).`);
+});
+
+test("an administrator can open a round the live feed has not published yet", () => {
+  const today = new Date().toISOString().slice(0, 10);
+  // A bout under way with nothing published for it: the feed has not caught up.
+  const waiting: ScoringFight = { ...fight, f1_outcome: null, f2_outcome: null, event_date: today, method: null, round: null, detail_json: '{"type":"future"}' };
+  assert.equal(scoringEligibility(waiting).state, "waiting");
+  assert.equal(scoringEligibility(waiting).available, 0);
+  // Released by hand: scoring opens without waiting for the feed at all.
+  assert.equal(scoringEligibility(waiting, Date.now(), 2).state, "live");
+  assert.equal(scoringEligibility(waiting, Date.now(), 2).available, 2);
+  assert.equal(scoringEligibility(waiting, Date.now(), 2).reason, null);
+  // Whichever source is further ahead wins; the panel never lowers the feed.
+  const feed = { ...waiting, detail_json: JSON.stringify({ type: "past", totalsRounds: { rounds: [{}, {}, {}] } }) };
+  assert.equal(scoringEligibility(feed, Date.now(), 1).available, 3);
+  assert.equal(scoringEligibility(feed, Date.now(), 5).available, 3, "never past the booked length");
+  // The guards around it still hold.
+  assert.equal(scoringEligibility({ ...waiting, event_date: "2099-01-01" }, Date.now(), 3).available, 0, "not on a day the bout is not being fought");
+  assert.equal(scoringEligibility(fight, Date.now(), 3).available, 3, "a finished bout follows its result, not the panel");
+  assert.equal(scoringEligibility(waiting, Date.now(), -2).available, 0);
+  assert.equal(scoringEligibility(waiting, Date.now(), 1.5).available, 0);
+});
+
+test("released rounds are stored per bout and drive what the store will accept", (t) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const { store } = fixture(t, { ...fight, f1_outcome: null, f2_outcome: null, event_date: today, method: null, round: null, detail_json: '{"type":"future"}' });
+  assert.equal(store.openRounds(id), 0);
+  assert.equal(store.eligibility(id).available, 0);
+  assert.equal(store.setOpenRounds(id, 2, "owner@example.com"), 2);
+  assert.equal(store.openRounds(id), 2);
+  assert.equal(store.eligibility(id).available, 2, "the store reads the release back");
+  assert.deepEqual([...store.openRoundsFor([id, "ffffffffffffffff"])], [[id, 2]]);
+  // A card can be saved for exactly those rounds, and no further.
+  const saved = store.save(id, "user_1", { revision: 0, rounds: rounds.slice(0, 2) });
+  assert.equal(saved.rounds.length, 2);
+  assert.throws(() => store.save(id, "user_1", { revision: saved.revision, rounds }), ScoringError);
+  // Taking a round back closes it again.
+  store.setOpenRounds(id, 1, "owner@example.com");
+  assert.equal(store.eligibility(id).available, 1);
+  for (const bad of [-1, 6, 1.5, "2", null]) assert.throws(() => store.setOpenRounds(id, bad, "owner@example.com"), ScoringError, `rejects ${bad}`);
+  assert.throws(() => store.setOpenRounds("ffffffffffffffff", 1, "owner@example.com"), ScoringError, "a bout that is not in the database cannot be opened");
 });

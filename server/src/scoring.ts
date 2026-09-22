@@ -10,6 +10,7 @@ export type ScoringFight = {
   id: string; event_date: string; f1_outcome: string | null; f2_outcome: string | null;
   scheduled_rounds: number | null; round: string | null; time: string | null;
   method: string | null; detail_json: string | null;
+  community_score_json?: string | null;
   /** Naming a bout a card belongs to: a scorer's profile lists fights, not ids.
    *  The two photographs are the ones already cached for the fighter pages. */
   f1_name: string; f2_name: string; event_id: string; event_name: string; weight_class: string | null;
@@ -18,7 +19,13 @@ export type ScoringFight = {
 export type RoundScore = { round: number; f1: number; f2: number; deduct1: number; deduct2: number };
 export type ScoreEligibility = { state: "completed" | "live" | "waiting"; scheduled: number; available: number; reason: string | null };
 
-export function scoringEligibility(fight: ScoringFight, now = Date.now()): ScoreEligibility {
+/**
+ * How much of a bout can be scored right now. `opened` is how many rounds an
+ * administrator has released by hand: the live feed and the panel race, and
+ * whichever reports a round first opens it. The feed alone cannot be waited on
+ * — it can lag the broadcast by minutes, and on some cards it never arrives.
+ */
+export function scoringEligibility(fight: ScoringFight, now = Date.now(), opened = 0): ScoreEligibility {
   let detail: any = null;
   try { detail = fight.detail_json ? JSON.parse(fight.detail_json) : null; } catch { /* unavailable feed */ }
   const format = detail?.methodInfo?.["Time format"] as string | undefined;
@@ -27,7 +34,11 @@ export function scoringEligibility(fight: ScoringFight, now = Date.now()): Score
   const stated = format?.match(/^(\d+) Rnd \(5-5(?:-5)*\)$/)?.[1];
   const scheduled = Number(stated ?? (format && /rnd/i.test(format) ? 0 : fight.scheduled_rounds));
   const complete = fightIsComplete(fight);
-  const live = !complete && isFightDay(fight.event_date, now) && fightIsUnderway(fight);
+  const released = Number.isInteger(opened) ? Math.max(0, Math.min(5, opened)) : 0;
+  // An opened round is itself a statement that the bout is under way, so the
+  // panel can start scoring before the feed has published anything at all.
+  // Fight day still bounds it: nothing opens a bout that is not happening.
+  const live = !complete && isFightDay(fight.event_date, now) && (fightIsUnderway(fight) || released > 0);
   const state = complete ? "completed" : live ? "live" : "waiting";
   if (![3, 5].includes(scheduled)) return { state, scheduled: 0, available: 0, reason: "Round scoring is available for confirmed three- and five-round bouts. This fight’s format is not confirmed or uses a historical ruleset." };
   if (complete) {
@@ -39,7 +50,7 @@ export function scoringEligibility(fight: ScoringFight, now = Date.now()): Score
   }
   const observed = Math.max(detail?.totalsRounds?.rounds?.length ?? 0, detail?.sigStrikesRounds?.rounds?.length ?? 0);
   // The feed may include the current round. Never unlock unobserved future rounds.
-  const available = live ? Math.min(scheduled, observed) : 0;
+  const available = live ? Math.min(scheduled, Math.max(observed, released)) : 0;
   return { state, scheduled, available, reason: available ? null : "Waiting for the live feed to report a round. Scores open automatically; the feed can lag the broadcast." };
 }
 
@@ -75,7 +86,7 @@ function cardVerdict(fight: ScoringFight, eligibility: ScoreEligibility, rounds:
 
 type StoredCard = { id: string; user_id: string; revision: number; updated_at: number; rounds_json: string };
 type StoredScorer = {
-  user_id: string; public_id: string;
+  user_id: string; public_id: string; created_at: number | null;
   username: string | null; username_key: string | null; username_set_at: number | null;
   image_url: string | null; image_synced_at: number | null;
 };
@@ -169,7 +180,9 @@ export class ScoringStore {
     this.db.exec(`
       PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 1000;
       PRAGMA foreign_keys = ON;
-      CREATE TABLE IF NOT EXISTS scorers (user_id TEXT PRIMARY KEY, public_id TEXT NOT NULL UNIQUE);
+      CREATE TABLE IF NOT EXISTS scorers (
+        user_id TEXT PRIMARY KEY, public_id TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS scorecards (
         id TEXT PRIMARY KEY, fight_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES scorers(user_id),
         revision INTEGER NOT NULL CHECK(revision > 0), updated_at INTEGER NOT NULL, rounds_json TEXT NOT NULL,
@@ -186,13 +199,28 @@ export class ScoringStore {
         CHECK(f1 = 10 OR f2 = 10), PRIMARY KEY(card_id, round)
       );
       CREATE INDEX IF NOT EXISTS scores_fight_round ON scores(fight_id, round);
+      -- Rounds released by hand from the admin panel, for when the live feed
+      -- lags the broadcast. Read beside the feed, never instead of it.
+      CREATE TABLE IF NOT EXISTS live_rounds (
+        fight_id TEXT PRIMARY KEY, rounds INTEGER NOT NULL CHECK(rounds BETWEEN 0 AND 5),
+        updated_by TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL
+      );
     `);
     // Scorers gained a chosen name and a picture after the first release; the
     // columns are added in place so an existing database keeps its cards.
     const columns = new Set((this.db.prepare("PRAGMA table_info(scorers)").all() as { name: string }[]).map(column => column.name));
-    for (const [name, type] of [["username", "TEXT"], ["username_key", "TEXT"], ["username_set_at", "INTEGER"], ["image_url", "TEXT"], ["image_synced_at", "INTEGER"]] as const) {
+    for (const [name, type] of [["username", "TEXT"], ["username_key", "TEXT"], ["username_set_at", "INTEGER"], ["image_url", "TEXT"], ["image_synced_at", "INTEGER"], ["created_at", "INTEGER"]] as const) {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE scorers ADD COLUMN ${name} ${type}`);
     }
+    // Older scorers predate the join-time column. Their earliest known site
+    // activity is the closest honest migration; new scorers are exact.
+    this.db.prepare(`UPDATE scorers SET created_at = COALESCE(
+      created_at,
+      (SELECT MIN(updated_at) FROM scorecards WHERE scorecards.user_id = scorers.user_id),
+      username_set_at,
+      image_synced_at,
+      ?
+    ) WHERE created_at IS NULL`).run(Date.now());
     // Two scorers cannot hold the same name in any capitalisation: the key is
     // the lower-case form, and the database — not the application — is what
     // settles a race between two readers claiming it at once.
@@ -214,7 +242,33 @@ export class ScoringStore {
   eligibility(id: string) {
     const fight = this.fight(id);
     if (!fight) throw new ScoringError(404, "Fight not found.");
-    return scoringEligibility(fight);
+    return scoringEligibility(fight, Date.now(), this.openRounds(id));
+  }
+  /** How many rounds the panel has released for this bout, if any. */
+  openRounds(id: string): number {
+    const row = this.stmt("SELECT rounds FROM live_rounds WHERE fight_id = ?").get(id) as { rounds: number } | undefined;
+    return row?.rounds ?? 0;
+  }
+  /** The same, for a page that names many bouts at once. */
+  openRoundsFor(ids: string[]): Map<string, number> {
+    if (!ids.length) return new Map();
+    const rows = this.db
+      .prepare(`SELECT fight_id, rounds FROM live_rounds WHERE fight_id IN (${ids.map(() => "?").join(",")})`)
+      .all(...ids) as { fight_id: string; rounds: number }[];
+    return new Map(rows.map(row => [row.fight_id, row.rounds]));
+  }
+  /** Release rounds 1..n for scoring, or take them back with a lower number.
+   *  The feed's own count is never lowered by this — only this hand-set one. */
+  setOpenRounds(id: string, rounds: unknown, by: string): number {
+    if (!Number.isInteger(rounds) || (rounds as number) < 0 || (rounds as number) > 5) {
+      throw new ScoringError(400, "Open between zero and five rounds.");
+    }
+    if (!this.fight(id)) throw new ScoringError(404, "Fight not found.");
+    this.stmt(`INSERT INTO live_rounds VALUES (?, ?, ?, ?)
+      ON CONFLICT(fight_id) DO UPDATE SET rounds = excluded.rounds,
+        updated_by = excluded.updated_by, updated_at = excluded.updated_at`)
+      .run(id, rounds as number, by, Date.now());
+    return rounds as number;
   }
   mine(id: string, user: string) {
     const eligibility = this.eligibility(id);
@@ -247,19 +301,71 @@ export class ScoringStore {
   summary(id: string) {
     const eligibility = this.eligibility(id);
     const max = eligibility.available;
-    const rounds = this.stmt(`SELECT round, COUNT(*) AS scorers,
+    const localRounds = this.stmt(`SELECT round, COUNT(*) AS scorers,
       AVG(f1) AS avg1, AVG(f2) AS avg2, AVG(deduct1) AS deduct1, AVG(deduct2) AS deduct2,
       AVG(f1 - deduct1) AS total1, AVG(f2 - deduct2) AS total2
-      FROM scores WHERE fight_id = ? AND round <= ? GROUP BY round ORDER BY round`).all(id, max);
-    const totals = this.stmt(`SELECT COUNT(*) AS scorers,
+      FROM scores WHERE fight_id = ? AND round <= ? GROUP BY round ORDER BY round`).all(id, max) as any[];
+    const localTotals = this.stmt(`SELECT COUNT(*) AS scorers,
       COALESCE(SUM(n = ?), 0) AS completeCards,
       AVG(CASE WHEN n = ? THEN a END) AS avg1, AVG(CASE WHEN n = ? THEN b END) AS avg2,
       COALESCE(SUM(n = ? AND a > b), 0) AS f1, COALESCE(SUM(n = ? AND b > a), 0) AS f2,
       COALESCE(SUM(n = ? AND a = b), 0) AS draws
       FROM (SELECT COUNT(*) AS n, SUM(f1 - deduct1) AS a, SUM(f2 - deduct2) AS b
         FROM scores WHERE fight_id = ? AND round <= ? GROUP BY card_id)`)
-      .get(max, max, max, max, max, max, id, max);
+      .get(max, max, max, max, max, max, id, max) as any;
+    const imported = this.community(id, max);
+    const importedCards = imported?.cards ?? 0;
+    const weighted = (localAverage: number | null, localCount: number, externalAverage: number | null, externalCount: number) => {
+      const count = (localAverage == null ? 0 : localCount) + (externalAverage == null ? 0 : externalCount);
+      return count ? ((localAverage ?? 0) * localCount + (externalAverage ?? 0) * externalCount) / count : null;
+    };
+    const byRound = new Map(localRounds.map(row => [Number(row.round), row]));
+    const rounds = Array.from({ length: max }, (_unused, index) => index + 1).flatMap(round => {
+      const local = byRound.get(round);
+      const external = imported?.rounds.find(item => item.round === round);
+      const scorers = Number(local?.scorers ?? 0) + (external ? importedCards : 0);
+      if (!scorers) return [];
+      return [{
+        round, scorers,
+        avg1: weighted(local?.avg1 ?? null, Number(local?.scorers ?? 0), external?.avg1 ?? null, importedCards),
+        avg2: weighted(local?.avg2 ?? null, Number(local?.scorers ?? 0), external?.avg2 ?? null, importedCards),
+        deduct1: local?.deduct1 ?? 0, deduct2: local?.deduct2 ?? 0,
+        total1: weighted(local?.total1 ?? null, Number(local?.scorers ?? 0), external?.avg1 ?? null, importedCards),
+        total2: weighted(local?.total2 ?? null, Number(local?.scorers ?? 0), external?.avg2 ?? null, importedCards),
+      }];
+    });
+    const completeCards = Number(localTotals.completeCards) + importedCards;
+    const totals = {
+      scorers: Number(localTotals.scorers) + importedCards,
+      completeCards,
+      avg1: weighted(localTotals.avg1, Number(localTotals.completeCards), imported?.avg1 ?? null, importedCards),
+      avg2: weighted(localTotals.avg2, Number(localTotals.completeCards), imported?.avg2 ?? null, importedCards),
+      f1: Number(localTotals.f1), f2: Number(localTotals.f2), draws: Number(localTotals.draws),
+      distributionCards: Number(localTotals.completeCards),
+      localCards: Number(localTotals.scorers), importedCards,
+      source: imported ? { name: imported.source, url: imported.sourceUrl } : null,
+    };
     return { eligibility, rounds, totals, cards: this.fightCards(id, max) };
+  }
+  /** A source aggregate is deliberately not expanded into fake profiles. Its
+   * count and averages are weighted with real ufc.sh cards at read time. */
+  private community(id: string, max: number): {
+    source: string; sourceUrl: string; cards: number; avg1: number; avg2: number;
+    rounds: { round: number; avg1: number; avg2: number }[];
+  } | null {
+    if (!max) return null;
+    const raw = this.fight(id)?.community_score_json;
+    if (!raw) return null;
+    try {
+      const value = JSON.parse(raw);
+      const rounds = Array.isArray(value?.rounds) ? value.rounds.filter((round: any) =>
+        Number.isInteger(round?.round) && round.round >= 1 && round.round <= max
+        && Number.isFinite(round?.avg1) && Number.isFinite(round?.avg2)) : [];
+      if (!Number.isSafeInteger(value?.cards) || value.cards <= 0 || !Number.isFinite(value?.avg1)
+        || !Number.isFinite(value?.avg2) || rounds.length !== max) return null;
+      return { source: String(value.source ?? "External"), sourceUrl: String(value.sourceUrl ?? ""),
+        cards: value.cards, avg1: value.avg1, avg2: value.avg2, rounds };
+    } catch { return null; }
   }
   /** The individual cards behind the average, newest first, each one a link to
    *  the scorer's profile. Aliases only: no account ever appears here. */
@@ -282,7 +388,7 @@ export class ScoringStore {
     // A scorer from before names existed is given one the first time they are
     // looked up, so no profile is left addressed by a bare identifier.
     if (existing?.username) return this.identify(existing);
-    if (!existing) this.stmt("INSERT INTO scorers (user_id, public_id) VALUES (?, ?) ON CONFLICT(user_id) DO NOTHING").run(user, randomUUID());
+    if (!existing) this.stmt("INSERT INTO scorers (user_id, public_id, created_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO NOTHING").run(user, randomUUID(), Date.now());
     this.mintUsername(user);
     return this.identify(this.scorer("user_id", user)!);
   }
@@ -319,9 +425,11 @@ export class ScoringStore {
   }
   /** The picture Clerk holds for this account, copied here so a public profile
    *  never needs the account behind it. */
-  setImage(user: string, url: string | null): ScorerIdentity {
+  setImage(user: string, url: string | null, joinedAt?: number | null): ScorerIdentity {
     this.identity(user);
-    this.stmt("UPDATE scorers SET image_url = ?, image_synced_at = ? WHERE user_id = ?").run(url, Date.now(), user);
+    const joined = joinedAt != null && Number.isFinite(joinedAt) && joinedAt > 0 && joinedAt <= Date.now() ? joinedAt : null;
+    this.stmt("UPDATE scorers SET image_url = ?, image_synced_at = ?, created_at = COALESCE(?, created_at) WHERE user_id = ?")
+      .run(url, Date.now(), joined, user);
     return this.identity(user);
   }
   imageSyncedAt(user: string): number {
@@ -340,8 +448,6 @@ export class ScoringStore {
     const filter: ProfileFilter = PROFILE_FILTERS.includes(options.filter!) ? options.filter! : "all";
     const query = (options.query ?? "").trim().toLowerCase().slice(0, 60);
     const scored = "EXISTS (SELECT 1 FROM scores WHERE card_id = c.id)";
-    const dates = this.stmt(`SELECT MIN(c.updated_at) AS firstAt, MAX(c.updated_at) AS lastAt
-      FROM scorecards c WHERE c.user_id = ? AND ${scored}`).get(scorer.user_id) as { firstAt: number | null; lastAt: number | null };
     // The whole list is read, then counted, filtered and paged: the agreement
     // tally describes every card, not the page the reader happens to be on.
     const stored = this.stmt(`SELECT c.fight_id AS fightId, c.updated_at AS updatedAt, c.revision, c.rounds_json AS roundsJson
@@ -349,12 +455,13 @@ export class ScoringStore {
       ORDER BY c.updated_at DESC, c.fight_id LIMIT ?`)
       .all(scorer.user_id, PROFILE_MAX) as { fightId: string; updatedAt: number; revision: number; roundsJson: string }[];
     const fights = new Map(this.fights(stored.map(card => card.fightId)).map(fight => [fight.id, fight]));
+    const released = this.openRoundsFor(stored.map(card => card.fightId));
     const all = stored.flatMap(card => {
       const fight = fights.get(card.fightId);
       // A card whose bout is no longer in the fight database cannot be named or
       // opened, so it is not listed.
       if (!fight) return [];
-      const eligibility = scoringEligibility(fight);
+      const eligibility = scoringEligibility(fight, Date.now(), released.get(card.fightId) ?? 0);
       const rounds = (JSON.parse(card.roundsJson) as RoundScore[]).filter(r => r.round <= eligibility.available);
       const total1 = rounds.reduce((sum, r) => sum + r.f1 - r.deduct1, 0);
       const total2 = rounds.reduce((sum, r) => sum + r.f2 - r.deduct2, 0);
@@ -384,7 +491,7 @@ export class ScoringStore {
       (filter === "all" ? true : filter === "decisions" ? card.decision : card.agreement === filter)
       && (!query || `${card.fight.f1_name} ${card.fight.f2_name} ${card.fight.event_name} ${card.fight.weight_class ?? ""}`.toLowerCase().includes(query)));
     return {
-      scorer: { ...this.identify(scorer), cards: all.length, firstAt: dates.firstAt, lastAt: dates.lastAt },
+      scorer: { ...this.identify(scorer), cards: all.length, joinedAt: scorer.created_at },
       agreement, filter, query, offset, pageSize: PROFILE_PAGE, total: matching.length,
       cards: matching.slice(offset, offset + PROFILE_PAGE),
     };

@@ -12,7 +12,7 @@ let clerk: ReturnType<typeof createClerkClient> | undefined;
 export async function authenticateScorer(req: IncomingMessage): Promise<string> {
   if (!process.env.CLERK_SECRET_KEY || !process.env.CLERK_PUBLISHABLE_KEY || !scoringOrigins().length) throw new ScoringError(503, "Sign-in is not configured yet.");
   const authorization = req.headers.authorization;
-  if (!authorization?.startsWith("Bearer ") || authorization.length > 8192) throw new ScoringError(401, "Sign in to save a scorecard.");
+  if (!authorization?.startsWith("Bearer ") || authorization.length > 8192) throw new ScoringError(401, "Sign in to continue.");
   clerk ??= createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY, publishableKey: process.env.CLERK_PUBLISHABLE_KEY });
   // Only explicit bearer tokens reach Clerk. Cookies and caller-supplied Host / forwarded headers cannot authenticate writes.
   const request = new Request(scoringOrigins()[0] + req.url, { headers: { authorization } });
@@ -33,15 +33,43 @@ function safeAvatar(url: unknown): string | null {
     return parsed.protocol === "https:" && AVATAR_HOSTS.has(parsed.hostname) ? parsed.toString() : null;
   } catch { return null; }
 }
-/** The account picture, read from Clerk at most once a day per scorer and kept
- *  beside the profile. Scorecard saves never make this request. */
+/** Public account metadata, read from Clerk at most once a day per scorer and
+ * kept beside the profile. Scorecard saves never make this request. */
 const AVATAR_TTL = 86_400_000;
-export async function scorerAvatar(userId: string): Promise<string | null> {
+export async function scorerAvatar(userId: string): Promise<{ imageUrl: string | null; joinedAt: number | null } | null> {
   if (!process.env.CLERK_SECRET_KEY || !process.env.CLERK_PUBLISHABLE_KEY) return null;
   clerk ??= createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY, publishableKey: process.env.CLERK_PUBLISHABLE_KEY });
   const user = await clerk.users.getUser(userId);
-  // Only the picture is copied. Names, emails and accounts stay with Clerk.
-  return user.hasImage ? safeAvatar(user.imageUrl) : null;
+  // Only public profile metadata is copied. Names, emails and account details stay with Clerk.
+  return {
+    imageUrl: user.hasImage ? safeAvatar(user.imageUrl) : null,
+    joinedAt: Number.isFinite(user.createdAt) ? user.createdAt : null,
+  };
+}
+
+/**
+ * The verified email on an account, which is what the admin list is keyed by.
+ * Only a *verified* primary address is ever returned: an unverified one can be
+ * typed by anyone at sign-up, so trusting it would hand the panel to whoever
+ * claims the owner's address first.
+ *
+ * Cached briefly, because it is read on every admin request while an address
+ * changes about never. Membership itself is re-read from the database each
+ * time, so removing an administrator takes effect immediately.
+ */
+const EMAIL_TTL = 60_000;
+const emails = new Map<string, { email: string | null; at: number }>();
+export async function scorerEmail(userId: string): Promise<string | null> {
+  const cached = emails.get(userId);
+  if (cached && Date.now() - cached.at < EMAIL_TTL) return cached.email;
+  if (!process.env.CLERK_SECRET_KEY || !process.env.CLERK_PUBLISHABLE_KEY) return null;
+  clerk ??= createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY, publishableKey: process.env.CLERK_PUBLISHABLE_KEY });
+  const user = await clerk.users.getUser(userId);
+  const primary = user.emailAddresses.find(address => address.id === user.primaryEmailAddressId);
+  const email = primary?.verification?.status === "verified" ? primary.emailAddress.trim().toLowerCase() : null;
+  if (emails.size >= 5000) emails.clear();
+  emails.set(userId, { email, at: Date.now() });
+  return email;
 }
 
 async function readBody(req: IncomingMessage): Promise<unknown> {
@@ -58,7 +86,11 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
   catch { throw new ScoringError(400, "Invalid JSON scorecard."); }
 }
 
-export function createScoringHandler(store: ScoringStore, authenticate = authenticateScorer, avatar = scorerAvatar) {
+export function createScoringHandler(
+  store: ScoringStore,
+  authenticate = authenticateScorer,
+  avatar: (userId: string) => Promise<string | null | { imageUrl: string | null; joinedAt: number | null }> = scorerAvatar,
+) {
   const limiter = new RateLimiter();
   const cache = new Map<string, { until: number; data: unknown }>();
   /** A short public cache keyed by resource, shared by fight summaries and
@@ -89,10 +121,12 @@ export function createScoringHandler(store: ScoringStore, authenticate = authent
    *  once a day. Clerk being unreachable leaves the stored one in place. */
   const withAvatar = async (user: string) => {
     if (Date.now() - store.imageSyncedAt(user) < AVATAR_TTL) return store.identity(user);
-    let image: string | null = null;
-    try { image = await avatar(user); }
+    let account: string | null | { imageUrl: string | null; joinedAt: number | null } = null;
+    try { account = await avatar(user); }
     catch { return store.identity(user); }
-    const identity = store.setImage(user, image);
+    const identity = typeof account === "string" || account == null
+      ? store.setImage(user, account)
+      : store.setImage(user, account.imageUrl, account.joinedAt);
     dropProfile(identity.handle, identity.publicId);
     return identity;
   };

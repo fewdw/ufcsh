@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { apiCache, useApi } from "../api";
+import { useAdminRequest, useAdminResource } from "../admin";
 import { formatDateShortWithYear } from "../format";
-import { useSeo } from "../seo";
 
 type BugLink = { label: string; href: string; internal?: boolean };
 type BugAction = { id: string; label: string; target: string };
@@ -110,6 +109,7 @@ function ItemRow({
   onToggle: () => void;
   onNote: (note: string) => void;
 }) {
+  const request = useAdminRequest();
   const [running, setRunning] = useState<string | null>(null);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -119,9 +119,11 @@ function ItemRow({
     setRunning(action.id);
     setResult(null);
     try {
-      const response = await fetch(`/api/bugs/action?action=${encodeURIComponent(action.id)}&target=${encodeURIComponent(action.target)}`, { method: "POST" });
-      const body = await response.json();
-      setResult({ ok: Boolean(body.ok), message: body.message ?? body.error ?? `HTTP ${response.status}` });
+      const body = await request<{ ok?: boolean; message?: string }>(
+        `/api/admin/bugs/action?action=${encodeURIComponent(action.id)}&target=${encodeURIComponent(action.target)}`,
+        { method: "POST" },
+      );
+      setResult({ ok: Boolean(body.ok), message: body.message ?? "Done." });
     } catch (err) {
       setResult({ ok: false, message: String(err) });
     } finally {
@@ -227,9 +229,8 @@ function ItemRow({
   );
 }
 
-export default function BugsPage() {
-  useSeo({ title: "Data bugs", description: "Missing and inconsistent data, for manual review.", path: "/bugs" });
-  const { data, loading, error, retry } = useApi<BugReport>("/api/bugs");
+export default function AdminBugs() {
+  const { data, loading, error, reload } = useAdminResource<BugReport>("/api/admin/bugs");
   const [params, setParams] = useSearchParams();
   const { reviews, toggle, setNote } = useReviews();
   const [shown, setShown] = useState(PAGE);
@@ -268,7 +269,7 @@ export default function BugsPage() {
 
   const refresh = async () => {
     setRefreshing(true);
-    await apiCache.load("/api/bugs");
+    await reload();
     setRefreshing(false);
   };
 
@@ -279,27 +280,26 @@ export default function BugsPage() {
 
   if (error && !data) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-zinc-500">
-        <p>Couldn’t load the report.</p>
-        <button type="button" onClick={retry} className="font-semibold text-zinc-900 underline">Retry</button>
+      <div className="flex flex-col items-center justify-center gap-2 py-16 text-sm text-zinc-500">
+        <p>Couldn’t load the report. {error}</p>
+        <button type="button" onClick={() => void reload()} className="font-semibold text-zinc-900 underline">Retry</button>
       </div>
     );
   }
   if (loading || !data) {
-    return <div role="status" className="flex h-full items-center justify-center text-sm text-zinc-400">Checking the database…</div>;
+    return <div role="status" className="flex items-center justify-center py-16 text-sm text-zinc-400">Checking the database…</div>;
   }
 
   const totalOpen = checks.reduce((sum, check) => sum + openCount(check), 0);
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto flex max-w-6xl flex-col gap-4 px-3 py-4 sm:px-5">
+    <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-lg font-bold text-zinc-900">Data bugs</h1>
+            <h2 className="text-lg font-bold text-zinc-900">Data bugs</h2>
             <p className="text-xs text-zinc-500">
               {totalOpen.toLocaleString()} open across {checks.length} checks · built {ago(data.generated_at)} · last sync tick {ago(data.sync.last_tick_at)}
-              {!data.can_act && " · repairs only run from localhost"}
+              {!data.can_act && " · repairs are disabled in production"}
             </p>
             {data.sync.last_sync_error && (
               <p className="mt-1 text-xs text-red-600">Last sync error: {data.sync.last_sync_error}</p>
@@ -416,7 +416,6 @@ export default function BugsPage() {
             </section>
           )}
         </div>
-      </div>
     </div>
   );
 }

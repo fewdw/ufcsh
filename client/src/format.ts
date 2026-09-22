@@ -18,6 +18,26 @@ export function formatDateShortWithYear(date: string): string {
     .replace(",", "");
 }
 
+/** Calendar-day distance from today to a date-only event. Event dates do not
+ * carry a start time, so comparing local calendar midnights keeps "tomorrow"
+ * at one day even late in the evening. */
+export function daysUntil(date: string, now = Date.now()): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) return null;
+  const target = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const today = new Date(now);
+  const start = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  const days = Math.round((target - start) / 86_400_000);
+  return Number.isFinite(days) ? days : null;
+}
+
+/** "in 12 days" for a future event, with a singular day when appropriate. */
+export function futureDayLabel(date: string, now = Date.now()): string | null {
+  const days = daysUntil(date, now);
+  if (days == null || days <= 0) return null;
+  return `in ${days} day${days === 1 ? "" : "s"}`;
+}
+
 /** How a bout ended: the method, the round, and — for a finish — the clock it
  *  came at. A decision is only ever reached at the end of the final round, so
  *  its time says nothing that the round has not already said. */

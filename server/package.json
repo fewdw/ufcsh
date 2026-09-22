@@ -11,6 +11,7 @@
     "backfill:odds": "node src/backfill-odds.ts",
     "backfill:method-odds": "node src/backfill-method-odds.ts",
     "backfill:images": "node src/backfill-images.ts",
+    "backfill:scorecards": "node src/backfill-verdict-scorecards.ts",
     "test": "node src/test-runner.ts"
   },
   "dependencies": {

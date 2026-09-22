@@ -1,5 +1,5 @@
 import type { Matchup } from "./api";
-import { isDecision } from "./format";
+import { isDecision } from "./format.ts";
 
 export type RoundScore = { round: number; f1: number; f2: number; deduct1: number; deduct2: number };
 /** How a scorer appears anywhere public: a name, a picture and an address.
@@ -14,7 +14,12 @@ export type FanCard = { scorer: ScorerIdentity; updatedAt: number; rounds: numbe
 export type ScoreSummary = {
   eligibility: ScoreEligibility;
   rounds: { round: number; scorers: number; avg1: number; avg2: number; deduct1: number; deduct2: number; total1: number; total2: number }[];
-  totals: { scorers: number; completeCards: number; avg1: number | null; avg2: number | null; f1: number; f2: number; draws: number };
+  totals: {
+    scorers: number; completeCards: number; avg1: number | null; avg2: number | null;
+    f1: number; f2: number; draws: number; distributionCards: number;
+    localCards: number; importedCards: number;
+    source: { name: string; url: string } | null;
+  };
   cards: FanCard[];
 };
 
@@ -38,7 +43,7 @@ export type ScorerCard = {
  *  that ended in a finish; the other two are the halves of the chart. */
 export type ProfileFilter = "all" | "decisions" | "agreed" | "disagreed";
 export type ScorerProfile = {
-  scorer: ScorerIdentity & { cards: number; firstAt: number | null; lastAt: number | null };
+  scorer: ScorerIdentity & { cards: number; joinedAt: number | null };
   /** Over every card on the profile, not just the page being read. */
   agreement: { decisions: number; agreed: number; disagreed: number; finishes: number };
   filter: ProfileFilter; query: string; offset: number; pageSize: number; total: number; cards: ScorerCard[];
@@ -62,6 +67,33 @@ export const officialWinner = (fight: { f1_outcome: string | null; f2_outcome: s
   fight.f1_outcome === "win" ? 1 : fight.f2_outcome === "win" ? 2 : null;
 export const scoreTotal = (rounds: RoundScore[], side: 1 | 2) => rounds.reduce((sum, r) => sum + (side === 1 ? r.f1 - r.deduct1 : r.f2 - r.deduct2), 0);
 export const decimalScore = (value: number | null | undefined) => value == null ? "—" : value.toFixed(2);
+
+/** Number of rounds the Score tab can actually accept. A stoppage's final
+ * round was not judged; a live round opens once the feed has published
+ * completed round data, or once an administrator has released it by hand —
+ * whichever happens first. Kept in step with the server's eligibility rule so
+ * an empty Score tab is never advertised. */
+export function scoreableRoundCount(fight: Matchup): number {
+  const scheduled = Number(fight.scheduled_rounds);
+  if (scheduled !== 3 && scheduled !== 5) return 0;
+  if (fight.status === "past") {
+    const last = Number(fight.round);
+    if (!Number.isInteger(last) || last < 1 || last > scheduled) return 0;
+    return isDecision(fight.method) ? last : Math.max(0, last - 1);
+  }
+  // `live` is fight day, which is exactly what the server's eligibility rule
+  // requires before either source can open a round.
+  if (!fight.live && !fight.in_progress) return 0;
+  const released = Number(fight.rounds_open ?? 0);
+  return Math.min(
+    scheduled,
+    Math.max(
+      fight.detail?.totalsRounds?.rounds.length ?? 0,
+      fight.detail?.sigStrikesRounds?.rounds.length ?? 0,
+      Number.isInteger(released) ? released : 0,
+    ),
+  );
+}
 
 export type Finish = { round: number; side: 1 | 2; name: string; method: string; time: string | null };
 /** A stopped fight's last round was never judged: it is reported rather than

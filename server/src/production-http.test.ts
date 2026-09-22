@@ -44,15 +44,24 @@ test("production HTTP uses workers, shared responses, validators and admin autho
   assert.equal((await request("/api/fighters/ffffffffffffffff")).status, 404);
   assert.equal((await request("/api/events", { method: "POST" })).status, 405);
   assert.equal((await request("/api/search?q=" + "x".repeat(121))).status, 400);
-  for (const path of ["/api/bugs", "/api/status", "/api/metrics", "/bugs"]) {
+  // Machine endpoints keep the shared token; the panel a person opens does not.
+  for (const path of ["/api/status", "/api/metrics"]) {
     const response = await request(path);
     assert.equal(response.status, 401, path);
     assert.equal(response.headers.get("cache-control"), "no-store");
   }
+  // The report moved behind an account, so its old addresses are simply gone
+  // — no token, local address or forgotten link reaches it any more.
+  for (const path of ["/api/bugs", "/api/bugs/action"]) {
+    assert.equal((await request(path)).status, 404, path);
+  }
+  // Admin routes answer only to a signed-in account, never to the token.
+  const rejected = await request("/api/admin/bugs", { headers: { Authorization: "Bearer integration-test-only" } });
+  assert.ok(rejected.status === 401 || rejected.status === 503, `admin bugs rejected the token (${rejected.status})`);
+  assert.equal(rejected.headers.get("cache-control"), "private, no-store");
   const auth = { Authorization: "Bearer integration-test-only" };
   const metrics = await request("/api/metrics", { headers: auth });
   const body = await metrics.json() as { cache: { hits: number } };
   assert.ok(body.cache.hits >= 3);
-  assert.equal((await request("/api/bugs/action", { method: "POST", headers: auth })).status, 403);
   assert.equal((await request("/api/status", { headers: auth })).status, 200);
 });

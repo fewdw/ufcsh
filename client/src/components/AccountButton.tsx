@@ -42,6 +42,7 @@ export default function AccountButton() {
           {/* Every fight this reader has scored, at the same public address any
               other reader can open. */}
           <Link to="/profiles/me?tab=scorecards" role="menuitem" className={ITEM} onClick={() => setOpen(false)}>My scorecards</Link>
+          <Link to="/profiles/me?tab=predictions" role="menuitem" className={ITEM} onClick={() => setOpen(false)}>My predictions</Link>
           <button type="button" role="menuitem" className={ITEM} onClick={() => { setOpen(false); manage(); }}>Manage account</button>
           <button type="button" role="menuitem" className={ITEM} onClick={() => { setOpen(false); signOut(); }}>Sign out</button>
         </div>

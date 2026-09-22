@@ -36,6 +36,10 @@ export default function FightScoring({ fight }: { fight: Matchup }) {
             <span className="flex items-center gap-1.5 text-xs text-emerald-600">
               <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />Live
             </span>
+          ) : totals.source?.url ? (
+            <a href={totals.source.url} target="_blank" rel="noreferrer" className="text-[10px] font-medium text-zinc-400 hover:text-zinc-700">
+              {totals.importedCards.toLocaleString()} from {totals.source.name} ↗
+            </a>
           ) : undefined}
         />
         <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 px-5 pt-5 pb-4 text-center">
@@ -49,8 +53,9 @@ export default function FightScoring({ fight }: { fight: Matchup }) {
             <p className="mt-1 text-3xl font-semibold tabular-nums text-f2-ink">{decimalScore(totals.avg2)}</p>
           </div>
         </div>
-        {verdict ? (
-          <p className="flex items-baseline justify-center gap-2.5 px-5 pb-5 text-lg font-semibold tabular-nums"
+        {verdict && totals.distributionCards > 0 ? (
+          <div className="px-5 pb-5 text-center">
+          <p className="flex items-baseline justify-center gap-2.5 text-lg font-semibold tabular-nums"
             aria-label={`${totals.f1} cards for ${fight.f1.name}, ${totals.draws} even, ${totals.f2} for ${fight.f2.name}`}>
             <span className="text-f1-ink">{totals.f1}</span>
             <span className="text-zinc-300" aria-hidden="true">·</span>
@@ -58,6 +63,8 @@ export default function FightScoring({ fight }: { fight: Matchup }) {
             <span className="text-zinc-300" aria-hidden="true">·</span>
             <span className="text-f2-ink">{totals.f2}</span>
           </p>
+          {totals.distributionCards < totals.completeCards ? <p className="mt-1 text-[9px] text-zinc-400">Outcome split from {totals.distributionCards.toLocaleString()} ufc.sh {totals.distributionCards === 1 ? "card" : "cards"}</p> : null}
+          </div>
         ) : null}
         <div className="divide-y divide-zinc-100 border-t border-zinc-100">
           {Array.from({ length: rows }, (_, index) => {
@@ -81,7 +88,7 @@ export default function FightScoring({ fight }: { fight: Matchup }) {
         </div>
         {eligibility.reason ? <p className="border-t border-zinc-100 px-5 py-3 text-xs text-zinc-500">{eligibility.reason}</p> : null}
       </section>
-      {data.cards.length ? <FanCards fight={fight} cards={data.cards} scorers={totals.scorers} /> : null}
+      {data.cards.length ? <FanCards fight={fight} cards={data.cards} localCards={totals.localCards} totalScorers={totals.scorers} /> : null}
       {eligibility.available > 0 ? (
         <Suspense fallback={<div className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`}>Loading your scorecard…</div>}>
           <ScoreEditor fight={fight} eligibility={eligibility} onSaved={retry} />
@@ -93,12 +100,14 @@ export default function FightScoring({ fight }: { fight: Matchup }) {
 
 /** The cards behind the average, newest first. Each one opens its scorer's
  *  public profile: every other fight they have scored. */
-function FanCards({ fight, cards, scorers }: { fight: Matchup; cards: FanCard[]; scorers: number }) {
+function FanCards({ fight, cards, localCards, totalScorers }: { fight: Matchup; cards: FanCard[]; localCards: number; totalScorers: number }) {
   return (
     <section className={PANEL_SHELL}>
       <PanelHeading
         title="Fan scorecards"
-        subtitle={cards.length < scorers ? `The ${cards.length} most recent of ${scorers.toLocaleString()}` : undefined}
+        subtitle={cards.length < localCards
+          ? `The ${cards.length} most recent ufc.sh cards · ${totalScorers.toLocaleString()} scorers total`
+          : totalScorers > localCards ? `${localCards.toLocaleString()} on ufc.sh · ${totalScorers.toLocaleString()} scorers total` : undefined}
       />
       <ul className="divide-y divide-zinc-100">
         {cards.map(card => {

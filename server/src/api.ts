@@ -1,6 +1,9 @@
 import { eventStatus, fightIsComplete, fightIsUnderway, isFightDay, liveDetailDue } from "./live-state.ts";
 import { ScoringStore, type ScoringFight } from "./scoring.ts";
 import { createScoringHandler } from "./scoring-http.ts";
+import { PredictionStore } from "./predictions.ts";
+import { createPredictionsHandler } from "./predictions-http.ts";
+import { predictionContext, predictionFights } from "./predictions-data.ts";
 import { estimatedStart, type SegmentTimes } from "./card-schedule.ts";
 import http from "node:http";
 import { promises as fs } from "node:fs";
@@ -15,6 +18,9 @@ import { ResponseCache, representation, acceptsGzip, matchesEtag, OverloadedErro
 import { publicApi, cachePolicy, canonicalApiKey, clientAddress, RateLimiter } from "./api-policy.ts";
 import { canonicalMethod, log, normName, todayIso } from "./util.ts";
 import { bugReport, runBugAction } from "./bugs.ts";
+import { AdminStore } from "./admins.ts";
+import { createAdminHandler, type AdminLiveFight } from "./admin-http.ts";
+import { releasedRounds } from "./live-rounds.ts";
 import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds } from "./sync.ts";
 import { BackgroundRefresh } from "./background-refresh.ts";
 import { VersionCache } from "./version-cache.ts";
@@ -27,6 +33,8 @@ import { titleNarratives } from "./titles.ts";
 import { fighterRecords, fighterStats } from "./records.ts";
 import { careerBefore, completeRecordBefore, fightIndex, ageOn, parseScheduledRounds, professionalBouts, professionalBoutsBefore, sideOf, ufcBoutsBefore, type FightRecord } from "./fight-index.ts";
 import { syncCareerRecord } from "./career-records.ts";
+import { summarizeCard } from "./card-stats.ts";
+import { mergeJudgeRounds } from "./judge-scorecards.ts";
 
 const CLIENT_DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "client", "dist");
 const IMAGE_CACHE = path.join(DATA_DIR, "images");
@@ -309,17 +317,6 @@ function sideContext(fighterId: string, date: string, ord: number): Record<strin
 }
 
 /**
- * How much of a card has been fought. Only the two counts anything reads: the
- * header's results line, and which bout the live view treats as the one on now.
- */
-function cardStats(fights: any[]): { total_fights: number; completed_fights: number } {
-  return {
-    total_fights: fights.length,
-    completed_fights: fights.filter((fight) => fight.f1_outcome != null || fight.f2_outcome != null).length,
-  };
-}
-
-/**
  * Rounds the bout is booked for, from an official source only: the time format
  * ufcstats records once a bout has been fought, or the rule set ufc.com
  * publishes for a bout on an announced card. Null when neither has said — a
@@ -336,8 +333,29 @@ function scheduledRounds(f: any, detail: any): number | null {
   return Number.isInteger(booked) && booked > 0 ? booked : null;
 }
 
-function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingType: RankingType = "meta"): Record<string, unknown> {
+/** UFCStats supplies the official final cards; Verdict supplies the rounds
+ * behind them. Keep the independent totals authoritative and only attach a
+ * round card when its judge and final score agree. */
+function fightDetail(f: any): any {
   const detail = f.detail_json ? JSON.parse(f.detail_json) : null;
+  if (!f.judge_rounds_json) return detail;
+  try {
+    const imported = JSON.parse(f.judge_rounds_json);
+    const cards = Array.isArray(imported?.judges) ? imported.judges : [];
+    const base = detail ?? { type: "past", bonuses: { perf: false, fotn: false } };
+    const official = Array.isArray(base.judges) ? base.judges : [];
+    const judges = official.length ? mergeJudgeRounds(official, cards) : cards.map((card: any) => ({
+      judge: String(card.judge ?? ""), f1Score: Number(card.f1Score), f2Score: Number(card.f2Score),
+      rounds: Array.isArray(card.rounds) ? card.rounds : [],
+    })).filter((card: any) => Number.isFinite(card.f1Score) && Number.isFinite(card.f2Score));
+    return { ...base, judges, scorecardSource: { name: imported.source, url: imported.sourceUrl } };
+  } catch {
+    return detail;
+  }
+}
+
+function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingType: RankingType = "meta"): Record<string, unknown> {
+  const detail = fightDetail(f);
   const base: Record<string, unknown> = {
     id: f.id,
     ord: f.ord,
@@ -454,7 +472,9 @@ async function getEvent(id: string, rankingType: RankingType): Promise<unknown |
   let refreshing = isFightDay(e.date) && matchupRefresh.request(`event:${id}`, () => refreshLiveEvent(id),
     err => log("live event refresh failed:", String(err)), 10_000);
   const fights = db
-    .prepare("SELECT * FROM fights WHERE event_id = ? ORDER BY ord ASC")
+    .prepare(`SELECT f.*, o.f1_close AS card_f1_close, o.f2_close AS card_f2_close
+      FROM fights f LEFT JOIN odds o ON o.fight_id = f.id
+      WHERE f.event_id = ? ORDER BY f.ord ASC`)
     .all(id) as any[];
   if (!fights.length || fights.some((fight) => fight.perf_bonus == null || fight.fotn_bonus == null)) {
     refreshing = matchupRefresh.request(`event-detail:${id}`, () => syncEventDetailOnce(id),
@@ -478,7 +498,7 @@ async function getEvent(id: string, rankingType: RankingType): Promise<unknown |
     results_updated_at: e.detail_fetched_at,
     live: isFightDay(e.date),
     schedule: cardSchedule(e),
-    card_stats: cardStats(fights),
+    card_stats: summarizeCard(fights),
     odds_freshness: oddsFreshness(e.id),
     fights: fights.map((f) => ({ ...fightRowToJson(f, false, e.date, rankingType), starts_at: startsAt(f) })),
   };
@@ -911,6 +931,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     (h: any) => h.fight_id && h.opponent.id && h.opponent.id === f.f2_id && h.fight_id !== f.id,
   );
 
+  const detail = fightDetail(f);
   return {
     id: f.id,
     event: { id: f.event_id, name: f.event_name, date: f.event_date, location: f.event_location },
@@ -919,12 +940,15 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     live: isFightDay(f.event_date),
     in_progress: fightInProgress(f),
     stats_updated_at: f.detail_fetched_at,
+    /** Rounds the admin panel has released for scoring, so a reader watching a
+     *  live card sees the Score tab open without reloading the page. */
+    rounds_open: releasedRounds(f.id),
     weight_class: f.weight_class,
     title_fight: !!f.title_fight,
     /** Which kind: a belt, an interim belt, or a tournament/TUF final, which
      * carries the same flag at the source but is not a championship bout. */
     title_type: f.title_type || null,
-    scheduled_rounds: scheduledRounds(f, f.detail_json ? JSON.parse(f.detail_json) : null),
+    scheduled_rounds: scheduledRounds(f, detail),
     method: f.method,
     method_details: f.method_details,
     round: f.round,
@@ -937,7 +961,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
       perf_kind: PERF_BONUS_KIND[f.perf_bonus] ?? (f.detail_json && JSON.parse(f.detail_json)?.bonuses?.perfKind) ?? "perf",
       fotn: !!f.fotn_bonus || !!(f.detail_json && JSON.parse(f.detail_json)?.bonuses?.fotn),
     },
-    detail: f.detail_json ? JSON.parse(f.detail_json) : null,
+    detail,
     common_opponents: common,
     head_to_head: headToHead,
   };
@@ -1514,7 +1538,7 @@ function injectPageSeo(html: string, pathname: string, seo = pageSeo(pathname)):
       new RegExp(`<meta\\s+${attribute}="${key}"\\s+content="[^"]*"\\s*/?>`),
       () => `<meta ${attribute}="${key}" content="${htmlEscape(value)}" />`,
     );
-  if (pathname === "/bugs") {
+  if (pathname.startsWith("/admin")) {
     html = html.replace(/<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/, '<meta name="robots" content="noindex, nofollow" />');
   }
   let result = html.replace(/<title>[^<]*<\/title>/, () => `<title>${htmlEscape(seo.title)}</title>`);
@@ -1827,6 +1851,26 @@ export function startApi(port: number): http.Server {
         f2_photo: cachedPhotoUrl(fight.f2_id, fight.f2_remote_photo) }) as ScoringFight)
     : []);
   const scoring = createScoringHandler(scoreStore);
+  const predictions = createPredictionsHandler(new PredictionStore(scoreStore, predictionContext, predictionFights));
+  const adminStore = new AdminStore(scoreStore.db);
+  const admin = createAdminHandler({
+    admins: adminStore,
+    scores: scoreStore,
+    report: async () => (queryPool ? JSON.parse((await queryPool.run("/api/bugs")).json) : bugReport()),
+    runAction: (action, target) => runBugAction(action, target),
+    // Repairs write to the database and re-read the sources; they stay a
+    // development tool until that path has been made safe to run under load.
+    canAct: () => process.env.NODE_ENV !== "production",
+    liveFights: () => db.prepare(`
+      SELECT f.id, f.ord, f.f1_name, f.f2_name, f.weight_class, f.scheduled_rounds,
+        f.round, f.time, f.method, f.detail_json, f.f1_outcome, f.f2_outcome,
+        f.f1_id, f.f2_id, NULL AS f1_photo, NULL AS f2_photo,
+        e.id AS event_id, e.name AS event_name, e.date AS event_date
+      FROM fights f JOIN events e ON e.id = f.event_id
+      WHERE e.date >= date('now', '-1 day') AND e.date <= date('now')
+      ORDER BY e.date DESC, f.ord DESC
+    `).all() as AdminLiveFight[],
+  });
   const workerCount = Number(process.env.API_WORKERS ?? (process.env.NODE_ENV === "production" ? 2 : 0));
   if (!Number.isInteger(workerCount) || workerCount < 0 || workerCount > 8) throw new Error("API_WORKERS must be an integer from 0 to 8");
   if (workerCount) queryPool = new QueryPool(workerCount);
@@ -1858,8 +1902,10 @@ export function startApi(port: number): http.Server {
       const url = new URL(req.url ?? "/", "http://localhost");
       const p = url.pathname;
       if (!stopping && await scoring(req, res, url)) return;
+      if (!stopping && await predictions(req, res, url)) return;
+      if (!stopping && await admin(req, res, url)) return;
       const part = (i: number) => p.split("/")[i] ?? "";
-      if (req.method !== "GET" && req.method !== "HEAD" && !(p === "/api/bugs/action" && req.method === "POST")) {
+      if (req.method !== "GET" && req.method !== "HEAD") {
         res.setHeader("Allow", "GET, HEAD");
         return await sendJson(req, res, { error: "method not allowed" }, 405);
       }
@@ -1869,7 +1915,7 @@ export function startApi(port: number): http.Server {
       }
       if (stopping) return await sendJson(req, res, { error: "server is stopping" }, 503);
       const address = clientAddress(req);
-      const expensive = p === "/api/search" || p === "/api/stats" || p.startsWith("/api/labs") || p.startsWith("/api/bugs");
+      const expensive = p === "/api/search" || p === "/api/stats" || p.startsWith("/api/labs");
       const imageRequest = p.startsWith("/api/images/");
       const allowed = limiter.allow(`${address}:${imageRequest ? "image" : "request"}`, imageRequest ? 240 : 120, imageRequest ? 40 : 12);
       if (!allowed || (expensive && !limiter.allow(`${address}:expensive`, 30, 3))) {
@@ -1891,7 +1937,7 @@ export function startApi(port: number): http.Server {
         });
         return sendRepresentation(req, res, value, policy.control);
       }
-      if (p === "/api/status" || p === "/api/bugs" || p === "/api/metrics" || p === "/api/bugs/action" || p === "/bugs") {
+      if (p === "/api/status" || p === "/api/metrics") {
         if (!isAdmin(req)) return await sendJson(req, res, { error: "authentication required" }, 401);
       }
       if (p === "/api/metrics") return await sendJson(req, res, {
@@ -1901,23 +1947,10 @@ export function startApi(port: number): http.Server {
         routes: Object.fromEntries([...latencies].map(([key, value]) => [key, { count: value.count, mean_ms: value.total_ms / value.count, max_ms: value.max_ms }])),
       });
       if (p === "/api/status") return await sendJson(req, res, status());
-      if (p === "/api/bugs") {
-        const report = queryPool ? JSON.parse((await queryPool.run("/api/bugs")).json) : bugReport();
-        return await sendJson(req, res, { ...report, can_act: process.env.NODE_ENV !== "production" });
-      }
-      if (p === "/api/bugs/action") {
-        if (req.method !== "POST") return await sendJson(req, res, { error: "method not allowed" }, 405);
-        if (process.env.NODE_ENV === "production") return await sendJson(req, res, { error: "interactive repairs are disabled in production" }, 403);
-        try {
-          return await sendJson(req, res, await runBugAction(url.searchParams.get("action") ?? "", url.searchParams.get("target") ?? ""));
-        } catch (err) {
-          return await sendJson(req, res, { ok: false, message: String(err) });
-        }
-      }
       if (p.startsWith("/api/")) return await sendJson(req, res, { error: "not found" }, 404);
 
       if (p === "/robots.txt") {
-        return await sendText(req, res, `User-agent: *\nAllow: /\nDisallow: /bugs\nSitemap: ${SITE_URL}/sitemap.xml\n`, "text/plain; charset=utf-8");
+        return await sendText(req, res, `User-agent: *\nAllow: /\nDisallow: /admin\nSitemap: ${SITE_URL}/sitemap.xml\n`, "text/plain; charset=utf-8");
       }
       if (p === "/sitemap.xml") {
         const value = await cache.get("sitemap", 300_000, async () => ({ json: queryPool ? JSON.parse((await queryPool.run("/_sitemap")).json) : sitemap(), status: 200 }));
