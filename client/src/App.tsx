@@ -168,6 +168,7 @@ export default function App() {
           <Route path="/stats" element={<StatsPage />} />
           <Route path="/labs" element={<LabsPage />} />
           <Route path="/admin" element={<AdminPage />} />
+          <Route path="/admin/bugs" element={<AdminPage />} />
           <Route path="/profiles/:handle" element={<ProfilePage />} />
           <Route path="*" element={<div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-zinc-500"><p>This page couldn’t be found.</p><Link to="/" className="font-semibold text-zinc-900 underline">Back to events</Link></div>} />
         </Routes>
