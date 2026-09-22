@@ -10,7 +10,7 @@ import ResultDots from "../components/ResultDots";
 import { WeightChangeMarker } from "../components/WeightJourney";
 import { weightJourney } from "../weightJourney";
 import RequestNotice from "../components/RequestNotice";
-import { useSeo } from "../seo";
+import { SITE_URL, useSeo } from "../seo";
 import { useRouteScrollRestoration } from "../navigationState";
 import { outsideFighterUrl, useSettings, withRanking } from "../settings";
 
@@ -581,7 +581,7 @@ export default function FighterPage() {
           name: fighter.name,
           alternateName: fighter.nickname || undefined,
           birthDate: fighter.birth_date || undefined,
-          url: `https://ufc.sh/fighters/${fighter.id}`,
+          url: `${SITE_URL}/fighters/${fighter.id}`,
           ...(fighter.photo_url ? { image: fighter.photo_url } : {}),
         }
       : undefined,

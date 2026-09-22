@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 const SITE_NAME = "ufc.sh";
-const SITE_URL = "https://ufc.sh";
+export const SITE_URL = (import.meta.env.VITE_SITE_ORIGIN || "https://ufc.sh").replace(/\/$/, "");
 const DEFAULT_DESCRIPTION =
   "Explore UFC fight cards, matchup odds, results, fighter statistics and current rankings in one fast interface.";
 
@@ -61,4 +61,3 @@ export function useSeo({
     }
   }, [description, path, structuredData, title, type]);
 }
-

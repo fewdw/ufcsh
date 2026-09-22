@@ -1,31 +1,45 @@
+x-logging: &bounded-logs
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   app:
     build:
       context: .
       args:
         VITE_CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
+        VITE_SITE_ORIGIN: https://${DOMAIN}
     restart: unless-stopped
+    logging: *bounded-logs
     init: true
     stop_grace_period: 20s
     environment:
       NODE_ENV: production
       DATA_DIR: /data
+      SITE_ORIGIN: https://${DOMAIN}
       API_WORKERS: ${API_WORKERS:-2}
+      NO_SYNC: ${NO_SYNC:-0}
+      DISABLE_REPAIRS: ${DISABLE_REPAIRS:-0}
       ADMIN_TOKEN: ${ADMIN_TOKEN:?Set a private ADMIN_TOKEN in .env}
       DEFAULT_ADMIN: ${DEFAULT_ADMIN:?Set the permanent administrator email in .env}
       CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
       CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
       CLERK_AUTHORIZED_PARTIES: https://${DOMAIN}
+      METRICS_PORT: 9091
       # Caddy has a fixed address and overwrites X-Real-IP below.
       TRUSTED_PROXY_IPS: 172.30.86.2,::ffff:172.30.86.2
     volumes:
       - app-data:/data
     networks:
       - web
+      - metrics
 
   proxy:
     image: caddy:2-alpine
     restart: unless-stopped
+    logging: *bounded-logs
     environment:
       DOMAIN: ${DOMAIN:?Set the public hostname in .env}
     ports:
@@ -43,13 +57,65 @@ services:
       web:
         ipv4_address: 172.30.86.2
 
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    profiles: [observability]
+    restart: unless-stopped
+    logging: *bounded-logs
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=14d
+      - --storage.tsdb.retention.size=512MB
+    volumes:
+      - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    networks: [metrics]
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    profiles: [observability]
+    restart: unless-stopped
+    logging: *bounded-logs
+    command:
+      - --path.rootfs=/host
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run/credentials|var/lib/docker/.+)($$|/)
+    volumes:
+      - /:/host:ro
+    networks: [metrics]
+
+  grafana:
+    image: grafana/grafana:13.2.2
+    profiles: [observability]
+    restart: unless-stopped
+    logging: *bounded-logs
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    ports:
+      - "127.0.0.1:3001:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deploy/observability/grafana:/etc/grafana/provisioning:ro
+    networks: [web, metrics]
+    depends_on: [prometheus]
+
 networks:
   web:
     ipam:
       config:
         - subnet: 172.30.86.0/24
+  metrics:
+    internal: true
 
 volumes:
   app-data:
   caddy-data:
   caddy-config:
+  prometheus-data:
+  grafana-data:

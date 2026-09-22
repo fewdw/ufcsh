@@ -86,3 +86,17 @@ test("evicted pages do not keep freshness metadata that suppresses their reload"
   assert.equal(calls, 3);
   assert.equal(cache.read("/old").data, 3);
 });
+
+test("a scorecard save bypasses an edge-held summary and updates its normal poll key", async () => {
+  const requested: string[] = [];
+  const cache = new RequestCache(2, async url => {
+    requested.push(String(url));
+    return Response.json({ version: requested.length });
+  });
+  const url = "/api/fights/0123456789abcdef/scores";
+  await cache.load(url);
+  await cache.loadAfterWrite(url);
+  assert.equal(requested[0], url);
+  assert.match(requested[1], /^\/api\/fights\/0123456789abcdef\/scores\?_after_write=/);
+  assert.deepEqual(cache.read(url).data, { version: 2 });
+});

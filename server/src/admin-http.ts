@@ -15,7 +15,7 @@ export type AdminHandlerOptions = {
   reports: ReportStore;
   /** The data-quality report, which may be computed in a query worker. */
   report: () => Promise<unknown>;
-  runAction: (action: string, target: string) => Promise<unknown>;
+  runAction: (action: string, target: string, actor: string) => Promise<unknown>;
   canAct: () => boolean;
   liveFights: () => AdminLiveFight[];
   authenticate?: (req: IncomingMessage) => Promise<string>;
@@ -104,9 +104,9 @@ export function createAdminHandler(options: AdminHandlerOptions) {
 
       if (route === "bugs") send({ ...(await report() as object), can_act: canAct() });
       else if (route === "bugs/action") {
-        if (!canAct()) throw new ScoringError(403, "Interactive repairs are disabled in production.");
-        try { send(await runAction(url.searchParams.get("action") ?? "", url.searchParams.get("target") ?? "")); }
-        catch (error) { send({ ok: false, message: String(error) }); }
+        if (!canAct()) throw new ScoringError(403, "Interactive repairs are disabled.");
+        if (!limiter.allow(`repair:${email}`, 10, 0.1)) throw new ScoringError(429, "Too many repairs. Try again shortly.");
+        send(await runAction(url.searchParams.get("action") ?? "", url.searchParams.get("target") ?? "", email ?? ""));
       }
       else if (route === "admins") {
         if (req.method === "POST") {

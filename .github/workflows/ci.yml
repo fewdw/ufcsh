@@ -1,0 +1,25 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: |
+            client/package-lock.json
+            server/package-lock.json
+      - run: npm ci --prefix server
+      - run: npm ci --prefix client
+      - run: npm test --prefix server
+      - run: npm test --prefix client
+      - run: server/node_modules/.bin/tsc --noEmit -p server/tsconfig.json
+      - run: npm run build --prefix client
+      - run: DOMAIN=example.test DEFAULT_ADMIN=admin@example.test ADMIN_TOKEN=test GRAFANA_ADMIN_PASSWORD=test docker compose --profile observability config --quiet
+      - run: docker run --rm -e DOMAIN=example.test -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+      - run: docker run --rm --entrypoint /bin/promtool -v "$PWD/deploy/observability:/etc/prometheus:ro" prom/prometheus:v3.14.0 check config /etc/prometheus/prometheus.yml

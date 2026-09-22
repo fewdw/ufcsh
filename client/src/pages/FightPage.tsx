@@ -37,7 +37,7 @@ import {
   sectionLabel,
 } from "../components/FightStats";
 import { useRouteScrollRestoration } from "../navigationState";
-import { useSeo } from "../seo";
+import { SITE_URL, useSeo } from "../seo";
 import { useSettings, withRanking } from "../settings";
 import { scoreableRoundCount } from "../scoring";
 
@@ -842,15 +842,15 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
             loadedFight.status === "past"
               ? "https://schema.org/EventCompleted"
               : "https://schema.org/EventScheduled",
-          url: `https://ufc.sh/fights/${loadedFight.id}`,
+          url: `${SITE_URL}/fights/${loadedFight.id}`,
           competitor: [
-            { "@type": "Person", name: loadedFight.f1.name, ...(loadedFight.f1.profile_eligible ? { url: `https://ufc.sh/fighters/${loadedFight.f1.id}` } : {}) },
-            { "@type": "Person", name: loadedFight.f2.name, ...(loadedFight.f2.profile_eligible ? { url: `https://ufc.sh/fighters/${loadedFight.f2.id}` } : {}) },
+            { "@type": "Person", name: loadedFight.f1.name, ...(loadedFight.f1.profile_eligible ? { url: `${SITE_URL}/fighters/${loadedFight.f1.id}` } : {}) },
+            { "@type": "Person", name: loadedFight.f2.name, ...(loadedFight.f2.profile_eligible ? { url: `${SITE_URL}/fighters/${loadedFight.f2.id}` } : {}) },
           ],
           superEvent: {
             "@type": "SportsEvent",
             name: loadedFight.event.name,
-            url: `https://ufc.sh/events/${loadedFight.event.id}`,
+            url: `${SITE_URL}/events/${loadedFight.event.id}`,
           },
           ...(loadedFight.event.location ? { location: { "@type": "Place", name: loadedFight.event.location } } : {}),
         }

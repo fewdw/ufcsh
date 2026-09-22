@@ -13,7 +13,7 @@ import { Moneyline, moneylineLeg, OddsFormatTabs, OddsMarkets, type FightResult 
 import { hasOddsMarkets } from "../oddsLayout";
 import FightView from "./FightPage";
 import type { Matchup } from "../api";
-import { useSeo } from "../seo";
+import { SITE_URL, useSeo } from "../seo";
 import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
 import { useSettings, withRanking, type OddsFormat } from "../settings";
 import { eventKind, type EventKind } from "../eventKind";
@@ -657,7 +657,7 @@ function EventPane({ eventId, oddsMode }: { eventId: string; oddsMode: boolean }
             event.status === "past"
               ? "https://schema.org/EventCompleted"
               : "https://schema.org/EventScheduled",
-          url: `https://ufc.sh/events/${event.id}`,
+          url: `${SITE_URL}/events/${event.id}`,
           ...(event.location ? { location: { "@type": "Place", name: event.location } } : {}),
         }
       : undefined,

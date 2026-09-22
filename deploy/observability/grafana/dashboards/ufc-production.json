@@ -1,0 +1,24 @@
+{
+  "uid": "ufc-production",
+  "title": "UFC production",
+  "description": "Application traffic, live scoring, scraper health and host capacity.",
+  "tags": ["production", "ufc"],
+  "timezone": "browser",
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "15s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    { "id": 1, "title": "Requests per second by route", "type": "timeseries", "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "sum by (route) (rate(ufc_http_requests_total[1m]))", "legendFormat": "{{route}}" }] },
+    { "id": 2, "title": "Errors and rate limits per second", "type": "timeseries", "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "sum by (code) (rate(ufc_http_requests_total{code=~\"429|5..\"}[1m]))", "legendFormat": "{{code}}" }] },
+    { "id": 3, "title": "p95 response time", "type": "timeseries", "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 }, "fieldConfig": { "defaults": { "unit": "s" } }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "histogram_quantile(0.95, sum by (route, le) (rate(ufc_http_request_duration_seconds_bucket[5m])))", "legendFormat": "{{route}}" }] },
+    { "id": 4, "title": "Origin cache hit ratio", "type": "timeseries", "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 }, "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 } }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "rate(ufc_cache_hits_total[5m]) / clamp_min(rate(ufc_cache_hits_total[5m]) + rate(ufc_cache_misses_total[5m]), 0.001)", "legendFormat": "hit ratio" }] },
+    { "id": 5, "title": "Pending query jobs", "type": "timeseries", "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "ufc_queries_pending", "legendFormat": "queued" }] },
+    { "id": 6, "title": "Event loop delay", "type": "timeseries", "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 }, "fieldConfig": { "defaults": { "unit": "ms" } }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "ufc_event_loop_p95_ms", "legendFormat": "p95" }, { "expr": "ufc_event_loop_max_ms", "legendFormat": "maximum" }] },
+    { "id": 7, "title": "Scraper freshness", "type": "timeseries", "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 }, "fieldConfig": { "defaults": { "unit": "s" } }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "time() - ufc_sync_heartbeat_timestamp_seconds", "legendFormat": "worker heartbeat age" }, { "expr": "time() - ufc_sync_last_tick_timestamp_seconds", "legendFormat": "full refresh age" }] },
+    { "id": 8, "title": "App memory", "type": "timeseries", "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 }, "fieldConfig": { "defaults": { "unit": "bytes" } }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "ufc_process_resident_memory_bytes", "legendFormat": "resident" }, { "expr": "ufc_cache_bytes", "legendFormat": "origin cache" }] },
+    { "id": 9, "title": "Host CPU use", "type": "timeseries", "gridPos": { "x": 0, "y": 32, "w": 12, "h": 8 }, "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 } }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])))", "legendFormat": "CPU" }] },
+    { "id": 10, "title": "Host disk available", "type": "timeseries", "gridPos": { "x": 12, "y": 32, "w": 12, "h": 8 }, "fieldConfig": { "defaults": { "unit": "bytes" } }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "node_filesystem_avail_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"}", "legendFormat": "free" }] },
+    { "id": 11, "title": "Firing alerts", "type": "table", "gridPos": { "x": 0, "y": 40, "w": 24, "h": 6 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "ALERTS{alertstate=\"firing\"}", "instant": true, "format": "table" }] }
+  ]
+}

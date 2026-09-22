@@ -95,9 +95,9 @@ local database and runs background syncing. If port 8000 is occupied, stop the
 existing server first. `PORT=8001 ./start` selects another port; use
 `NO_SYNC=1 PORT=8001 ./start` if another instance is already syncing the same database.
 
-For a public deployment, use the [production deployment guide](docs/production.md).
-It includes HTTPS, persistent storage, separate scraping, query workers, backups,
-cache behavior, health checks, and operational limits.
+For the cheapest practical staging launch, use the [step-by-step launch guide](docs/launch.md).
+The [production details](docs/production.md) cover HTTPS, persistent storage,
+scraping, query workers, backups, cache behavior, and health checks.
 
 Once dependencies are installed and the client has been built, running the app is only:
 

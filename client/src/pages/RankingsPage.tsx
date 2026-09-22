@@ -5,7 +5,7 @@ import type { Division, FighterPreview, FighterPreviewFight, RankingEntry } from
 import { formatDateShort } from "../format";
 import Avatar from "../components/Avatar";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
-import { useSeo } from "../seo";
+import { SITE_URL, useSeo } from "../seo";
 import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
 import { relativeDate, useSettings, withRanking, type DateMode, type DivisionOrder, type RankingSource } from "../settings";
 import { orderDivisions } from "../divisionOrder";
@@ -479,7 +479,7 @@ export default function RankingsPage() {
       "@context": "https://schema.org",
       "@type": "CollectionPage",
       name: "Current UFC Rankings",
-      url: "https://ufc.sh/rankings",
+      url: `${SITE_URL}/rankings`,
     },
   });
   const [view, setView] = useHistoryState<ViewFilter>("rankings:view", "men");

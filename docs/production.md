@@ -1,5 +1,7 @@
 # Production deployment
 
+For the shortest purchase-to-launch path, start with [the launch guide](launch.md).
+
 The supported layout is one host with persistent local storage. The production
 supervisor migrates SQLite once, starts the HTTP process and a single scraper
 process, and exits if either process fails so the container can restart them.
@@ -32,9 +34,10 @@ measurements (allowed range 0–8). Start with two workers and several GB of RAM
 
 The provided network reserves `172.30.86.0/24`. If it conflicts with your host,
 change both the subnet/proxy address and `TRUSTED_PROXY_IPS`. Only explicitly
-trusted peers may supply `X-Real-IP`, and Caddy overwrites that header. When
-adding a CDN, configure verified CDN proxy ranges at Caddy before trusting its
-forwarded client addresses; otherwise visitors share the CDN's rate limit.
+trusted peers may supply `X-Real-IP`, and Caddy overwrites that header. Caddy
+currently trusts Cloudflare's published proxy CIDRs for `CF-Connecting-IP`;
+update them if Cloudflare changes its published list. Direct origin connections
+retain their socket address.
 
 Without Docker, build the client and run `npm run start:production --prefix server`
 with an absolute `DATA_DIR`, `ADMIN_TOKEN`, and a reverse proxy providing HTTPS.
@@ -81,8 +84,17 @@ deployment overlap when using a CDN.
 `GET /api/status`, `/api/metrics`, and `/api/bugs` require
 `Authorization: Bearer <ADMIN_TOKEN>` in production. `/bugs` is also protected.
 The browser UI does not store the token: use an authenticated administrative
-proxy or an API client. Interactive repair actions are disabled in production;
-scheduled repairs and the refresh queue continue normally.
+proxy or an API client. Interactive `/admin/bugs` repairs are enabled for
+verified Clerk administrators in production, with one repair at a time, a
+checked daily SQLite snapshot before the first change, and audit entries in
+the app log. Set `DISABLE_REPAIRS=1` in `.env` to pause them.
+
+The optional `observability` Compose profile runs Prometheus, node-exporter and
+Grafana on the same host. Grafana binds to host loopback port 3001 and is reached
+over SSH. The app's Prometheus endpoint runs on container port 9091 without a
+published host port. Keep the Docker bridge private. The dashboard and alert
+rules are provisioned from `deploy/observability`; notifications require a
+contact point. Logs rotate rather than filling the SQLite disk.
 
 Metrics include cache hits/misses and bytes, queued queries, HTTP failures,
 per-route mean/maximum latency, event-loop delay, process memory, and uptime.

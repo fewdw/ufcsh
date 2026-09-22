@@ -1,7 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
 import type { Matchup } from "../api";
-import { useApi } from "../api";
+import { apiCache, useApi } from "../api";
 import { lastName } from "../format";
 import { cardWinner, decimalScore, fightFinish } from "../scoring";
 import type { FanCard, ScoreSummary } from "../scoring";
@@ -87,7 +87,7 @@ export default function FightScoring({ fight }: { fight: Matchup }) {
       {data.cards.length ? <FanCards fight={fight} cards={data.cards} localCards={totals.localCards} totalScorers={totals.scorers} /> : null}
       {eligibility.available > 0 ? (
         <Suspense fallback={<div className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`}>Loading your scorecard…</div>}>
-          <ScoreEditor fight={fight} eligibility={eligibility} onSaved={retry} />
+          <ScoreEditor fight={fight} eligibility={eligibility} onSaved={() => { void apiCache.loadAfterWrite(`/api/fights/${fight.id}/scores`); }} />
         </Suspense>
       ) : null}
     </>

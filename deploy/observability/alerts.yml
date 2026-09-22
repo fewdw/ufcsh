@@ -1,0 +1,45 @@
+groups:
+  - name: ufc-production
+    rules:
+      - alert: AppUnavailable
+        expr: up{job="ufc-app"} == 0 or ufc_ready == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: The API is unavailable or its query workers are not ready.
+      - alert: SyncWorkerStale
+        expr: time() - ufc_sync_heartbeat_timestamp_seconds > 90
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: The scraper worker heartbeat is stale.
+      - alert: DataRefreshStale
+        expr: time() - ufc_sync_last_tick_timestamp_seconds > 900
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: The full data refresh has not completed in 15 minutes.
+      - alert: SyncSourceError
+        expr: ufc_sync_error == 1
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: The scraper has recorded an upstream sync error.
+      - alert: ElevatedServerErrors
+        expr: sum(rate(ufc_http_requests_total{code=~"5.."}[5m])) > 1
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: More than one server error per second for five minutes.
+      - alert: RequestQueueGrowing
+        expr: ufc_queries_pending > 100
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: Public query workers are falling behind.
+      - alert: DiskNearlyFull
+        expr: (node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"}) < 0.15
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: The host filesystem has less than 15 percent free space.

@@ -299,7 +299,7 @@ export default function AdminBugs() {
             <h2 className="text-lg font-bold text-zinc-900">Data bugs</h2>
             <p className="text-xs text-zinc-500">
               {totalOpen.toLocaleString()} open across {checks.length} checks · built {ago(data.generated_at)} · last sync tick {ago(data.sync.last_tick_at)}
-              {!data.can_act && " · repairs are disabled in production"}
+              {!data.can_act && " · repairs are disabled"}
             </p>
             {data.sync.last_sync_error && (
               <p className="mt-1 text-xs text-red-600">Last sync error: {data.sync.last_sync_error}</p>

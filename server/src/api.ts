@@ -10,13 +10,16 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash, timingSafeEqual } from "node:crypto";
+import { backup, DatabaseSync } from "node:sqlite";
 import { gzip } from "node:zlib";
 import { promisify } from "node:util";
 import { monitorEventLoopDelay, performance } from "node:perf_hooks";
-import { prepared, getMeta, setMeta, DATA_DIR, dataRevision } from "./db.ts";
+import { prepared, getMeta, setMeta, DATA_DIR, dataRevision, db } from "./db.ts";
 import { enqueueRefresh } from "./refresh-queue.ts";
 import { QueryPool } from "./query-pool.ts";
 import { ResponseCache, representation, acceptsGzip, matchesEtag, OverloadedError, type Representation } from "./response-cache.ts";
+import { HttpObservability } from "./observability.ts";
+import { createRepairRunner } from "./repair-guard.ts";
 import { publicApi, cachePolicy, canonicalApiKey, clientAddress, RateLimiter } from "./api-policy.ts";
 import { canonicalMethod, log, normName, todayIso } from "./util.ts";
 import { bugReport, runBugAction } from "./bugs.ts";
@@ -43,7 +46,7 @@ import { mergeJudgeRounds } from "./judge-scorecards.ts";
 const CLIENT_DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "client", "dist");
 const IMAGE_CACHE = path.join(DATA_DIR, "images");
 let queryPool: QueryPool | undefined;
-const SITE_URL = "https://ufc.sh";
+const SITE_URL = (process.env.SITE_ORIGIN || "https://ufc.sh").replace(/\/$/, "");
 
 // ---------------------------------------------------------------------------
 // shared queries
@@ -1829,6 +1832,30 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   return undefined;
 }
 
+async function repairSnapshot(day: string): Promise<void> {
+  const directory = path.join(DATA_DIR, "backups");
+  const destination = path.join(directory, `repair-ufc-${day}.db`);
+  await fs.mkdir(directory, { recursive: true });
+  const exists = await fs.stat(destination).then(() => true, error => {
+    if (error.code === "ENOENT") return false;
+    throw error;
+  });
+  if (!exists) {
+    const temporary = `${destination}.${process.pid}.tmp`;
+    try {
+      await backup(db, temporary);
+      const copy = new DatabaseSync(temporary, { readOnly: true });
+      try {
+        const result = copy.prepare("PRAGMA quick_check").get() as { quick_check: string };
+        if (result.quick_check !== "ok") throw new Error("Repair snapshot failed integrity check.");
+      } finally { copy.close(); }
+      await fs.rename(temporary, destination);
+    } finally { await fs.rm(temporary, { force: true }); }
+  }
+  const files = (await fs.readdir(directory)).filter(name => /^repair-ufc-\d{4}-\d{2}-\d{2}\.db$/.test(name)).sort();
+  for (const old of files.slice(0, -3)) await fs.rm(path.join(directory, old));
+}
+
 export function startApi(port: number): http.Server {
   // Scoring keeps its own database, so a scorecard's bouts are read from this
   // one in a single batch per request.
@@ -1848,15 +1875,18 @@ export function startApi(port: number): http.Server {
   const reportStore = new ReportStore(scoreStore);
   const reports = createReportsHandler(reportStore);
   const adminStore = new AdminStore(scoreStore.db);
+  const productionRepair = createRepairRunner(repairSnapshot, runBugAction, entry =>
+    console.log(JSON.stringify({ timestamp: new Date().toISOString(), ...entry })));
   const admin = createAdminHandler({
     admins: adminStore,
     scores: scoreStore,
     reports: reportStore,
     report: async () => (queryPool ? JSON.parse((await queryPool.run("/api/bugs")).json) : bugReport()),
-    runAction: (action, target) => runBugAction(action, target),
-    // Repairs write to the database and re-read the sources; they stay a
-    // development tool until that path has been made safe to run under load.
-    canAct: () => process.env.NODE_ENV !== "production",
+    runAction: (action, target, actor) => process.env.NODE_ENV === "production"
+      ? productionRepair(action, target, actor)
+      : runBugAction(action, target),
+    // Administrators may pause online repairs without disabling the report.
+    canAct: () => process.env.DISABLE_REPAIRS !== "1",
     liveFights: () => prepared(`
       SELECT f.id, f.ord, f.f1_name, f.f2_name, f.weight_class, f.scheduled_rounds,
         f.round, f.time, f.method, f.detail_json, f.f1_outcome, f.f2_outcome,
@@ -1873,6 +1903,7 @@ export function startApi(port: number): http.Server {
   const cacheMb = Number(process.env.RESPONSE_CACHE_MB ?? 128);
   const cache = new ResponseCache((Number.isFinite(cacheMb) && cacheMb > 0 ? cacheMb : 128) * 1024 * 1024);
   const limiter = new RateLimiter();
+  const observability = new HttpObservability();
   const eventLoop = monitorEventLoopDelay({ resolution: 20 });
   eventLoop.enable();
   let requests = 0;
@@ -1891,6 +1922,7 @@ export function startApi(port: number): http.Server {
       const key = publicApi(pathname) ? pathname.replace(/\/[a-f0-9]{16}$/i, "/:id") : "other";
       const entry = latencies.get(key) ?? { count: 0, total_ms: 0, max_ms: 0 };
       const duration = performance.now() - started;
+      observability.record(req.method ?? "OTHER", pathname, res.statusCode, duration / 1000);
       entry.count++; entry.total_ms += duration; entry.max_ms = Math.max(entry.max_ms, duration);
       latencies.set(key, entry);
     });
@@ -1969,6 +2001,29 @@ export function startApi(port: number): http.Server {
   server.headersTimeout = 15_000;
   server.keepAliveTimeout = 5_000;
   server.maxRequestsPerSocket = 1000;
+  const metricsPort = Number(process.env.METRICS_PORT ?? 0);
+  const metricsServer = Number.isInteger(metricsPort) && metricsPort > 0 && metricsPort < 65536
+    ? http.createServer((req, res) => {
+      if (req.method !== "GET" || req.url !== "/metrics") {
+        res.writeHead(404, { "Cache-Control": "no-store" });
+        res.end();
+        return;
+      }
+      const memory = process.memoryUsage();
+      const output = observability.render({
+        cacheHits: cache.hits, cacheMisses: cache.misses, cacheEntries: cache.size, cacheBytes: cache.byteSize,
+        queriesPending: queryPool?.pending ?? 0, memoryBytes: memory.rss, uptimeSeconds: process.uptime(),
+        eventLoopP95Ms: eventLoop.percentile(95) / 1e6, eventLoopMaxMs: eventLoop.max / 1e6,
+        ready: !stopping && (!queryPool || queryPool.ready),
+        lastTickMs: Number(getMeta("last_tick_at")) || 0,
+        heartbeatMs: Number(getMeta("sync_worker_heartbeat_at")) || 0,
+        syncError: Boolean(getMeta("last_sync_error")),
+      });
+      res.writeHead(200, { "Content-Type": "text/plain; version=0.0.4; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(output);
+    })
+    : undefined;
+  metricsServer?.listen(metricsPort, process.env.METRICS_HOST ?? "0.0.0.0");
   const shutdown = () => {
     if (stopping) return;
     stopping = true;
@@ -1978,6 +2033,7 @@ export function startApi(port: number): http.Server {
   process.once("SIGTERM", shutdown);
   process.once("SIGINT", shutdown);
   server.on("close", () => {
+    metricsServer?.close();
     scoreStore.db.close();
     eventLoop.disable();
     process.removeListener("SIGTERM", shutdown);
