@@ -8,6 +8,7 @@ import { useSeo } from "../seo";
 const AdminBugs = lazy(() => import("../components/AdminBugs"));
 const AdminLive = lazy(() => import("../components/AdminLive"));
 const AdminAdmins = lazy(() => import("../components/AdminAdmins"));
+const AdminFlags = lazy(() => import("../components/AdminFlags"));
 
 const TABS = [
   { id: "bugs", label: "Bugs" },
@@ -76,12 +77,7 @@ function AdminShell({ tab, onTab }: { tab: TabId; onTab: (next: TabId) => void }
             {tab === "bugs" ? <AdminBugs /> : null}
             {tab === "live" ? <AdminLive /> : null}
             {tab === "admin" ? <AdminAdmins email={data.email} /> : null}
-            {tab === "flags" ? (
-              <div className="rounded-xl border border-zinc-200 bg-white px-4 py-10 text-center">
-                <p className="text-sm font-semibold text-zinc-900">Flags</p>
-                <p className="mt-1 text-xs text-zinc-500">Reported profiles and content will be reviewed here.</p>
-              </div>
-            ) : null}
+            {tab === "flags" ? <AdminFlags /> : null}
           </Suspense>
         </div>
       </div>

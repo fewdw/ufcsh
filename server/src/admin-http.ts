@@ -3,6 +3,7 @@ import { RateLimiter, clientAddress } from "./api-policy.ts";
 import { authenticateScorer, scoringOrigins, scorerEmail } from "./scoring-http.ts";
 import { ScoringError, scoringEligibility, type ScoringFight, type ScoringStore } from "./scoring.ts";
 import type { AdminStore } from "./admins.ts";
+import type { ReportStore } from "./reports.ts";
 
 /** A bout the panel can release rounds for: everything on a card being fought
  *  today, whether or not the feed has noticed it has started. */
@@ -11,6 +12,7 @@ export type AdminLiveFight = ScoringFight & { ord: number };
 export type AdminHandlerOptions = {
   admins: AdminStore;
   scores: ScoringStore;
+  reports: ReportStore;
   /** The data-quality report, which may be computed in a query worker. */
   report: () => Promise<unknown>;
   runAction: (action: string, target: string) => Promise<unknown>;
@@ -42,7 +44,7 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
  * whenever a token happens to expire.
  */
 export function createAdminHandler(options: AdminHandlerOptions) {
-  const { admins, scores, report, runAction, canAct, liveFights } = options;
+  const { admins, scores, reports, report, runAction, canAct, liveFights } = options;
   const authenticate = options.authenticate ?? authenticateScorer;
   const emailOf = options.emailOf ?? scorerEmail;
   const now = options.now ?? Date.now;
@@ -71,6 +73,7 @@ export function createAdminHandler(options: AdminHandlerOptions) {
     if (!url.pathname.startsWith("/api/admin/")) return false;
     const route = url.pathname.slice("/api/admin/".length);
     const liveFight = /^live\/([a-f0-9]{16})$/.exec(route);
+    const flag = /^flags\/([0-9a-f-]{36})$/.exec(route);
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -78,6 +81,7 @@ export function createAdminHandler(options: AdminHandlerOptions) {
     try {
       const allowed = route === "admins" ? ["GET", "HEAD", "POST", "DELETE"]
         : liveFight ? ["PUT"]
+        : flag ? ["PUT"]
         : route === "bugs/action" ? ["POST"]
         : ["GET", "HEAD"];
       if (!allowed.includes(req.method ?? "")) {
@@ -114,6 +118,8 @@ export function createAdminHandler(options: AdminHandlerOptions) {
           send({ admins: admins.remove(url.searchParams.get("email")) });
         } else send({ admins: admins.list() });
       }
+      else if (route === "flags") send(reports.list());
+      else if (flag) send(reports.update(flag[1], await readBody(req), email ?? ""));
       else if (route === "live") send({ fights: liveFights().map(describe) });
       else if (liveFight) {
         const body = await readBody(req) as { rounds?: unknown };

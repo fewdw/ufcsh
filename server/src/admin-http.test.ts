@@ -9,6 +9,7 @@ import { DatabaseSync } from "node:sqlite";
 import { AdminStore } from "./admins.ts";
 import { createAdminHandler, type AdminLiveFight } from "./admin-http.ts";
 import { ScoringError, ScoringStore, type ScoringFight } from "./scoring.ts";
+import { ReportStore } from "./reports.ts";
 
 const OWNER = "frederic.alefebvre@gmail.com";
 const FIGHT = "aaaaaaaaaaaaaaaa";
@@ -29,10 +30,11 @@ async function fixture(t: any, options: { user?: string; email?: string | null }
   const dir = mkdtempSync(path.join(tmpdir(), "ufc-admin-"));
   const scores = new ScoringStore(path.join(dir, "scores.db"), ids => ids.filter(key => key === FIGHT).map(() => liveFight() as ScoringFight));
   const admins = new AdminStore(new DatabaseSync(path.join(dir, "admins.db")));
+  const reports = new ReportStore(scores);
   let identity = { user: options.user ?? "user_owner", email: options.email === undefined ? OWNER : options.email };
   const actions: string[] = [];
   const handler = createAdminHandler({
-    admins, scores,
+    admins, scores, reports,
     report: async () => ({ checks: [], generated_at: 1, sync: { last_tick_at: null, last_sync_error: null } }),
     runAction: async (action, target) => { actions.push(`${action}:${target}`); return { ok: true, message: "done" }; },
     canAct: () => true,
@@ -63,7 +65,7 @@ async function fixture(t: any, options: { user?: string; email?: string | null }
       ...init,
       headers: { ...(init.anonymous ? {} : { Authorization: "Bearer token" }), ...(init.headers ?? {}) },
     });
-  return { request, admins, scores, actions, as: (email: string | null) => { identity = { user: "user_other", email }; } };
+  return { request, admins, scores, reports, actions, as: (email: string | null) => { identity = { user: "user_other", email }; } };
 }
 
 test("every admin route is closed to accounts that are not administrators", async (t) => {
@@ -71,6 +73,8 @@ test("every admin route is closed to accounts that are not administrators", asyn
   as("stranger@example.com");
   for (const [route, init] of [
     ["bugs", {}], ["admins", {}], ["live", {}],
+    ["flags", {}],
+    ["flags/00000000-0000-4000-8000-000000000000", { method: "PUT", headers: { "Content-Type": "application/json" }, body: '{"status":"resolved"}' }],
     ["admins", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"email":"x@y.com"}' }],
     ["admins?email=x@y.com", { method: "DELETE" }],
     [`live/${FIGHT}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: '{"rounds":3}' }],
@@ -147,4 +151,20 @@ test("the report and its repairs are reachable only through the panel's own rout
   assert.deepEqual(actions, ["detail:abc"]);
   assert.equal((await request("bugs", { method: "POST" })).status, 405);
   assert.equal((await request("nope")).status, 404);
+});
+
+test("administrators can review, search locally and resolve submitted flags", async t => {
+  const { request, reports } = await fixture(t);
+  const created = reports.create("reader", { title: "Bad data", category: "incorrect", message: "The displayed result is incorrect.", pageUrl: "/fights/aaaaaaaaaaaaaaaa" });
+  const queue = await request("flags");
+  assert.equal(queue.status, 200);
+  const initial = await queue.json() as any;
+  assert.equal(initial.reports.length, 1);
+  assert.equal(initial.reports[0].reporter.handle.length > 0, true);
+  assert.ok(!JSON.stringify(initial).includes("reader"));
+  const fixed = await request(`flags/${created.id}`, { method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "resolved", resolutionNote: "Source corrected." }) });
+  assert.equal(fixed.status, 200);
+  assert.equal((await fixed.json() as any).status, "resolved");
+  assert.equal((await (await request("flags")).json() as any).counts.resolved, 1);
 });

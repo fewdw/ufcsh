@@ -33,6 +33,7 @@ export const PREDICTION_RULES = { version: 2, ...PREDICTION_POINTS } as const;
 /** Everything a single pick can be worth. */
 export const PREDICTION_MAX = PREDICTION_POINTS.entry + PREDICTION_POINTS.fighter
   + PREDICTION_POINTS.method + PREDICTION_POINTS.round;
+const RECENT_PREDICTIONS = 5;
 
 /** `ord=0` is the main event. Card order is reversed for actual fight order;
  * array positions, rather than ord arithmetic, also handle gaps and removals. */
@@ -156,7 +157,29 @@ export class PredictionStore {
   summary(id: string) {
     const { fight, ...status } = this.status(id);
     const distribution = this.distribution(id, fight);
-    return { ...status, total: distribution.total, distribution };
+    return { ...status, total: distribution.total, distribution, recent: this.recent(id) };
+  }
+  /** Five real ufc.sh accounts, newest first. Aggregated external picks are
+   * never expanded into invented people. */
+  private recent(id: string) {
+    const rows = this.db.prepare(`SELECT p.updated_at, p.pick_json,
+      s.public_id, s.username, s.username_key, s.image_url
+      FROM predictions p JOIN scorers s ON s.user_id = p.user_id
+      WHERE p.fight_id = ? AND p.pick_json IS NOT NULL
+      ORDER BY p.updated_at DESC, p.rowid DESC LIMIT ?`).all(id, RECENT_PREDICTIONS) as any[];
+    return rows.flatMap(row => {
+      try {
+        const pick = JSON.parse(row.pick_json) as Pick;
+        return [{
+          updatedAt: Number(row.updated_at), pick,
+          scorer: {
+            publicId: String(row.public_id), username: row.username ?? null,
+            handle: row.username_key ?? row.public_id,
+            displayName: row.username ?? "Anonymous fan", imageUrl: row.image_url ?? null,
+          },
+        }];
+      } catch { return []; }
+    });
   }
   /**
    * How everyone has called this bout: by fighter, by method and by finish

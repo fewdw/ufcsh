@@ -177,6 +177,20 @@ test("public profiles list a scorer's own cards, newest first, and never name th
   assert.equal(store.profile(alice.publicId).cards.length, 0);
 });
 
+test("a fight exposes at most its five newest ufc.sh scorecards", t => {
+  const { store } = fixture(t);
+  const handles: string[] = [];
+  for (let index = 0; index < 6; index++) {
+    const user = `reader${index}`;
+    store.save(id, user, { revision: 0, rounds });
+    store.db.prepare("UPDATE scorecards SET updated_at = ? WHERE fight_id = ? AND user_id = ?").run(1_000 + index, id, user);
+    handles.push(store.identity(user).handle);
+  }
+  const cards = (store.summary(id) as any).cards;
+  assert.equal(cards.length, 5);
+  assert.deepEqual(cards.map((card: any) => card.scorer.handle), handles.slice(1).reverse());
+});
+
 test("usernames are unique whatever their capitalisation, address the profile, and keep the reader's own", t => {
   const { store } = fixture(t);
   for (const bad of [null, 42, "", "ab", "a".repeat(21), "fe wdw", "fe-wdw", "fe.wdw", "fewdw!", "héllo", "admin", "ME", "Profiles"]) {

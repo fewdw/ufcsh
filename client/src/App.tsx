@@ -6,7 +6,8 @@ import SearchGlyph from "./components/SearchGlyph";
 import LiveMatchup from "./components/LiveMatchup";
 import { segmentedIdle, segmentedSelected } from "./components/segmented";
 import { Moon, Sun } from "lucide-react";
-import { accountsEnabled } from "./auth";
+import { accountsEnabled, useAccount } from "./auth";
+import { useAdminResource, type AdminSession } from "./admin";
 import { useSettings } from "./settings";
 import { useFighterPrefetch } from "./useFighterPrefetch";
 import RouteErrorBoundary from "./components/RouteErrorBoundary";
@@ -23,6 +24,16 @@ const LabsPage = lazy(() => import("./pages/LabsPage"));
 const AdminPage = lazy(() => import("./pages/AdminPage"));
 const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 
+function AdminNavItem({ active }: { active: boolean }) {
+  const { isLoaded, user } = useAccount();
+  const { data } = useAdminResource<AdminSession>(isLoaded && user ? "/api/admin/session" : null);
+  if (!data?.admin) return null;
+  return <Link to="/admin" aria-current={active ? "page" : undefined}
+    className={`rounded-full px-1 py-1.5 text-[11px] font-medium transition min-[380px]:px-2.5 min-[380px]:text-xs sm:px-4 sm:text-sm ${active ? segmentedSelected : segmentedIdle}`}>
+    Admin
+  </Link>;
+}
+
 function Header({ onSearch }: { onSearch: () => void }) {
   const { pathname } = useLocation();
   const { settings, update } = useSettings();
@@ -32,10 +43,11 @@ function Header({ onSearch }: { onSearch: () => void }) {
   // Labs is a mode of Statistics rather than a top-level destination, so the
   // Stats pill stays lit while it is open and the switch lives on the page.
   const isLabs = pathname.startsWith("/labs");
+  const isAdmin = pathname.startsWith("/admin");
   // A profile belongs to no section of the nav, so none of them is lit.
   const isProfile = pathname.startsWith("/profiles");
   const links = [
-    { href: "/", label: "Events", active: !isRankings && !isStats && !isLabs && !isProfile, load: loadEventsPage },
+    { href: "/", label: "Events", active: !isRankings && !isStats && !isLabs && !isProfile && !isAdmin, load: loadEventsPage },
     { href: "/rankings", label: "Rankings", active: isRankings, load: loadRankingsPage },
     { href: "/stats", label: "Stats", active: isStats || isLabs, load: loadStatsPage },
   ];
@@ -67,6 +79,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
               {link.label}
             </Link>
           ))}
+          {accountsEnabled ? <AdminNavItem active={isAdmin} /> : null}
         </nav>
 
         {/* The middle of the row from `md` up, and its own line below that —

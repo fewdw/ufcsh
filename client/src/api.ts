@@ -317,6 +317,8 @@ export type Matchup = {
   id: string;
   event: { id: string; name: string; date: string; location: string };
   status: "past" | "upcoming";
+  /** False when an upcoming card is outside the three-event prediction horizon. */
+  prediction_available?: boolean;
   live?: boolean;
   /** This bout is the one being fought right now. */
   in_progress?: boolean;

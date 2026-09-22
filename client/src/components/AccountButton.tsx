@@ -2,6 +2,7 @@ import { User } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAccount } from "../auth";
+import ReportIssueDialog from "./ReportIssueDialog";
 
 const CONTROL = "grid h-8 w-8 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 sm:h-9 sm:w-9";
 const ITEM = "block w-full rounded-lg px-3 py-2 text-left text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900";
@@ -10,6 +11,7 @@ const ITEM = "block w-full rounded-lg px-3 py-2 text-left text-xs font-medium te
 export default function AccountButton() {
   const { isLoaded, user, signIn, signOut, manage } = useAccount();
   const [open, setOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const menu = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -43,10 +45,12 @@ export default function AccountButton() {
               other reader can open. */}
           <Link to="/profiles/me?tab=scorecards" role="menuitem" className={ITEM} onClick={() => setOpen(false)}>My scorecards</Link>
           <Link to="/profiles/me?tab=predictions" role="menuitem" className={ITEM} onClick={() => setOpen(false)}>My predictions</Link>
+          <button type="button" role="menuitem" className={ITEM} onClick={() => { setOpen(false); setReportOpen(true); }}>Report an issue</button>
           <button type="button" role="menuitem" className={ITEM} onClick={() => { setOpen(false); manage(); }}>Manage account</button>
           <button type="button" role="menuitem" className={ITEM} onClick={() => { setOpen(false); signOut(); }}>Sign out</button>
         </div>
       ) : null}
+      <ReportIssueDialog open={reportOpen} onClose={() => setReportOpen(false)} />
     </div>
   );
 }

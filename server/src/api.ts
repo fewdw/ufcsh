@@ -20,6 +20,8 @@ import { canonicalMethod, log, normName, todayIso } from "./util.ts";
 import { bugReport, runBugAction } from "./bugs.ts";
 import { AdminStore } from "./admins.ts";
 import { createAdminHandler, type AdminLiveFight } from "./admin-http.ts";
+import { ReportStore } from "./reports.ts";
+import { createReportsHandler } from "./reports-http.ts";
 import { releasedRounds } from "./live-rounds.ts";
 import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds } from "./sync.ts";
 import { BackgroundRefresh } from "./background-refresh.ts";
@@ -937,6 +939,9 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     event: { id: f.event_id, name: f.event_name, date: f.event_date, location: f.event_location },
     refreshing,
     status: fightIsComplete(f) ? "past" : "upcoming",
+    // Completed picks remain readable from a profile. Upcoming fights only
+    // advertise Predict while their card is inside the server's event horizon.
+    prediction_available: fightIsComplete(f) || predictionContext(f.id)?.eventOpen !== false,
     live: isFightDay(f.event_date),
     in_progress: fightInProgress(f),
     stats_updated_at: f.detail_fetched_at,
@@ -1852,10 +1857,13 @@ export function startApi(port: number): http.Server {
     : []);
   const scoring = createScoringHandler(scoreStore);
   const predictions = createPredictionsHandler(new PredictionStore(scoreStore, predictionContext, predictionFights));
+  const reportStore = new ReportStore(scoreStore);
+  const reports = createReportsHandler(reportStore);
   const adminStore = new AdminStore(scoreStore.db);
   const admin = createAdminHandler({
     admins: adminStore,
     scores: scoreStore,
+    reports: reportStore,
     report: async () => (queryPool ? JSON.parse((await queryPool.run("/api/bugs")).json) : bugReport()),
     runAction: (action, target) => runBugAction(action, target),
     // Repairs write to the database and re-read the sources; they stay a
@@ -1903,6 +1911,7 @@ export function startApi(port: number): http.Server {
       const p = url.pathname;
       if (!stopping && await scoring(req, res, url)) return;
       if (!stopping && await predictions(req, res, url)) return;
+      if (!stopping && await reports(req, res, url)) return;
       if (!stopping && await admin(req, res, url)) return;
       const part = (i: number) => p.split("/")[i] ?? "";
       if (req.method !== "GET" && req.method !== "HEAD") {

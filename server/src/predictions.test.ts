@@ -123,6 +123,24 @@ test("a bout with no odds published is still fully predictable", t => {
   assert.deepEqual(store.summary(bout.id).fighters.map(f => f.fighterId), [bout.f1_id, bout.f2_id]);
 });
 
+test("the public fan prediction strip contains only the five newest real accounts", t => {
+  const { store, scores, bouts, clock } = fixture(t);
+  const bout = bouts[5];
+  const handles: string[] = [];
+  for (let index = 0; index < 6; index++) {
+    const user = `reader${index}`;
+    clock(now + index);
+    store.save(bout.id, user, pick(bout, { method: index % 2 ? "submission" : "ko", round: 1 }));
+    handles.push(scores.identity(user).handle);
+  }
+  const summary = store.summary(bout.id);
+  assert.equal(summary.total, 6);
+  assert.equal(summary.recent.length, 5);
+  assert.deepEqual(summary.recent.map(row => row.scorer.handle), handles.slice(1).reverse());
+  const json = JSON.stringify(summary.recent);
+  assert.ok(!json.includes("reader0") && !json.includes("reader5") && !json.includes("user_id"));
+});
+
 test("picks survive corner swaps and profiles never double-credit", t => {
   const { store, scores, bouts } = fixture(t);
   const bout = bouts[5];

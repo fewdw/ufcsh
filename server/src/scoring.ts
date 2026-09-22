@@ -157,7 +157,7 @@ export type ProfileFilter = "all" | "decisions" | "agreed" | "disagreed";
 export const PROFILE_FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed"];
 /** Individual cards shown under a fight, newest first. The rest are in the
  *  aggregate above them. */
-const FIGHT_CARDS = 25;
+const FIGHT_CARDS = 5;
 
 /** Separate WAL database: fan writes never contend with scrapers or invalidate analytics. */
 export class ScoringStore {
@@ -374,7 +374,7 @@ export class ScoringStore {
       COUNT(v.round) AS rounds, SUM(v.f1 - v.deduct1) AS total1, SUM(v.f2 - v.deduct2) AS total2
       FROM scorecards c JOIN scorers s ON s.user_id = c.user_id
       JOIN scores v ON v.card_id = c.id AND v.round <= ?
-      WHERE c.fight_id = ? GROUP BY c.id ORDER BY c.updated_at DESC, c.id LIMIT ?`)
+      WHERE c.fight_id = ? GROUP BY c.id ORDER BY c.updated_at DESC, c.rowid DESC LIMIT ?`)
       .all(max, id, FIGHT_CARDS)
       .map((row: any) => ({
         scorer: this.identify(row as StoredScorer),

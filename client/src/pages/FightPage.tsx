@@ -917,7 +917,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     "matchup",
     ...(hasOddsMarkets(fight.odds?.props, fight.f1.name, fight.f2.name) ? ["odds" as const] : []),
     ...(scoreableRoundCount(fight) > 0 ? ["score" as const] : []),
-    ...(fight.status !== "past" || requestedTab === "predict" ? ["predict" as const] : []),
+    ...(fight.prediction_available !== false && (fight.status !== "past" || requestedTab === "predict") ? ["predict" as const] : []),
   ];
   const tab = tabs.find((candidate) => candidate === requestedTab) ?? tabs[0];
   // Only the tab panel below should change; the reader's scroll position is

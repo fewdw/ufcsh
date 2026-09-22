@@ -105,29 +105,27 @@ function FanCards({ fight, cards, localCards, totalScorers }: { fight: Matchup; 
     <section className={PANEL_SHELL}>
       <PanelHeading
         title="Fan scorecards"
-        subtitle={cards.length < localCards
-          ? `The ${cards.length} most recent ufc.sh cards · ${totalScorers.toLocaleString()} scorers total`
-          : totalScorers > localCards ? `${localCards.toLocaleString()} on ufc.sh · ${totalScorers.toLocaleString()} scorers total` : undefined}
+        subtitle={`${cards.length < localCards ? `${cards.length} newest of ` : ""}${localCards.toLocaleString()} on ufc.sh${totalScorers > localCards ? ` · ${totalScorers.toLocaleString()} scorers total` : ""}`}
       />
-      <ul className="divide-y divide-zinc-100">
+      <ul className="grid grid-flow-col auto-cols-[minmax(10.5rem,1fr)] overflow-x-auto border-t border-zinc-100 sm:auto-cols-[minmax(12rem,1fr)] xl:grid-cols-5 xl:auto-cols-auto xl:overflow-visible">
         {cards.map(card => {
           const winner = cardWinner(card);
           return (
-            <li key={card.scorer.publicId}>
-              <Link to={`/profiles/${card.scorer.handle}?tab=scorecards`} className="flex items-center justify-between gap-3 px-5 py-2.5 transition-colors hover:bg-zinc-50">
+            <li key={card.scorer.publicId} className="min-w-0 border-r border-zinc-100 last:border-r-0">
+              <Link to={`/profiles/${card.scorer.handle}?tab=scorecards`} className="block min-w-0 px-4 py-3 transition-colors hover:bg-zinc-50">
                 <span className="flex min-w-0 items-center gap-2">
                   {card.scorer.imageUrl
                     ? <img src={card.scorer.imageUrl} alt="" referrerPolicy="no-referrer" className="h-6 w-6 shrink-0 rounded-full bg-zinc-100 object-cover ring-1 ring-zinc-200" />
                     : <span aria-hidden="true" className="h-6 w-6 shrink-0 rounded-full bg-zinc-100 ring-1 ring-zinc-200" />}
                   <span className="min-w-0 truncate text-sm font-medium text-zinc-700">{card.scorer.displayName}</span>
-                </span>
-                <span className="flex shrink-0 items-baseline gap-2 text-sm tabular-nums">
-                  <span className={winner === 1 ? "font-semibold text-f1-ink" : "text-zinc-400"}>{card.total1}</span>
-                  <span className="text-zinc-300" aria-hidden="true">–</span>
-                  <span className={winner === 2 ? "font-semibold text-f2-ink" : "text-zinc-400"}>{card.total2}</span>
-                  <span className={`w-20 text-right ${sectionLabel}`}>
-                    {winner === 0 ? "Even" : lastName(winner === 1 ? fight.f1.name : fight.f2.name)}
+                  <span className="ml-auto flex shrink-0 items-baseline gap-1 text-sm tabular-nums">
+                    <span className={winner === 1 ? "font-semibold text-f1-ink" : "text-zinc-400"}>{card.total1}</span>
+                    <span className="text-zinc-300" aria-hidden="true">–</span>
+                    <span className={winner === 2 ? "font-semibold text-f2-ink" : "text-zinc-400"}>{card.total2}</span>
                   </span>
+                </span>
+                <span className={`mt-2 block truncate ${sectionLabel}`}>
+                  {winner === 0 ? "Even card" : `${lastName(winner === 1 ? fight.f1.name : fight.f2.name)} ahead`}
                 </span>
               </Link>
             </li>

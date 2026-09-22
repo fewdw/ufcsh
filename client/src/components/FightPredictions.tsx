@@ -1,11 +1,11 @@
 import { useAuth } from "@clerk/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { useApi, type Matchup } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
 import { METHOD_LABEL, predictionLabel, predictionPoints, sharePct } from "../predictions";
-import type { MyPrediction, PredictionDistribution, PredictionMethod, PredictionSummary } from "../predictions";
-import { DonutFigure, type Slice } from "./Donut";
+import type { FanPrediction, MyPrediction, PredictionDistribution, PredictionMethod, PredictionSummary } from "../predictions";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
 
 const METHOD_COLOR: Record<string, string> = {
@@ -23,53 +23,84 @@ export default function FightPredictions({ fight }: { fight: Matchup }) {
     {error ? <>{error} <button className="underline" onClick={retry}>Retry</button></> : "Loading predictions…"}
   </section>;
   return <>
+    {data.total ? <CommunityPicks distribution={data.distribution} scheduledRounds={data.scheduledRounds} /> : null}
+    {data.recent.length ? <FanPredictions predictions={data.recent} total={data.total} /> : null}
     {accountsEnabled ? <PredictionGate key={fight.id} fight={fight} status={data} onSaved={retry} />
       : <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`}>Sign-in must be configured to save predictions.</section>}
-    <CommunityPicks distribution={data.distribution} scheduledRounds={data.scheduledRounds} />
   </>;
 }
 
-/** How everyone else has called it. Three questions, three shares. */
+type Share = { key: string; label: string; count: number; color: string };
+function ShareList({ title, entries, total }: { title: string; entries: Share[]; total: number }) {
+  return <div className="min-w-0 px-5 py-4">
+    <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">{title}</h3>
+    <ul className="space-y-3">
+      {entries.map(entry => {
+        const pct = sharePct(entry.count, total);
+        return <li key={entry.key}>
+          <div className="mb-1 flex min-w-0 items-center gap-2 text-xs">
+            <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: entry.color }} aria-hidden="true" />
+            <span className="min-w-0 flex-1 truncate text-zinc-700">{entry.label}</span>
+            <span className="shrink-0 tabular-nums font-medium text-zinc-900">{pct}%</span>
+            <span className="w-6 shrink-0 text-right tabular-nums text-zinc-400">{entry.count}</span>
+          </div>
+          <div className="ml-4 h-1 overflow-hidden rounded-full bg-zinc-100">
+            <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: entry.color }} />
+          </div>
+        </li>;
+      })}
+    </ul>
+  </div>;
+}
+
+/** Compact tables make a small sample honest; one pick no longer becomes a
+ * wall of three oversized 100% rings. */
 function CommunityPicks({ distribution, scheduledRounds }: { distribution: PredictionDistribution; scheduledRounds: number | null }) {
   const total = distribution.total;
-  const fighterSlices: Slice[] = distribution.fighters.map((entry, index) => ({
-    key: entry.fighterId || `f${index}`, label: entry.name, value: entry.count,
+  const fighters: Share[] = distribution.fighters.map((entry, index) => ({
+    key: entry.fighterId || `f${index}`, label: entry.name, count: entry.count,
     color: index === 0 ? "var(--color-f1)" : "var(--color-f2)",
   }));
-  const methodSlices: Slice[] = distribution.methods.map(entry => ({
+  const methods: Share[] = distribution.methods.map(entry => ({
     key: entry.method ?? "none",
     label: entry.method ? METHOD_LABEL[entry.method] : "No method named",
-    value: entry.count, color: METHOD_COLOR[entry.method ?? "none"],
+    count: entry.count, color: METHOD_COLOR[entry.method ?? "none"],
   }));
-  const roundSlices: Slice[] = distribution.rounds.map(entry => ({
+  const rounds: Share[] = distribution.rounds.map(entry => ({
     key: entry.round == null ? "none" : `r${entry.round}`,
     label: entry.round == null ? "No round named" : `Round ${entry.round}`,
-    value: entry.count,
+    count: entry.count,
     color: entry.round == null ? "var(--color-pick-none)" : `var(--color-round-${Math.min(entry.round, 5)})`,
   }));
-  const leader = [...fighterSlices].sort((a, b) => b.value - a.value)[0];
-  const topMethod = [...methodSlices].filter(slice => slice.key !== "none").sort((a, b) => b.value - a.value)[0];
 
   return (
     <section className={PANEL_SHELL}>
-      <PanelHeading title="How the community picked" subtitle={total ? `${total.toLocaleString()} ${total === 1 ? "pick" : "picks"}` : undefined} />
-      {!total ? (
-        <p className="px-5 py-10 text-center text-sm text-zinc-500">No picks yet. Be the first to call this one.</p>
-      ) : (
-        <div className="grid gap-8 px-5 py-6 sm:grid-cols-2 xl:grid-cols-3">
-          <DonutFigure title="Winner" slices={fighterSlices} total={total}
-            centerValue={leader && leader.value ? `${sharePct(leader.value, total)}%` : undefined}
-            centerLabel={leader?.label} />
-          <DonutFigure title="Method" slices={methodSlices} total={total}
-            centerValue={topMethod && topMethod.value ? `${sharePct(topMethod.value, total)}%` : undefined}
-            centerLabel={topMethod?.label} />
-          {scheduledRounds === 3 || scheduledRounds === 5 ? (
-            <DonutFigure title="Finish round" slices={roundSlices} total={total} empty="No round picks yet." />
-          ) : null}
-        </div>
-      )}
+      <PanelHeading title="How the community picked" subtitle={`${total.toLocaleString()} ${total === 1 ? "pick" : "picks"}`} />
+      <div className={`grid divide-y divide-zinc-100 sm:grid-cols-2 sm:divide-x sm:divide-y-0 ${(scheduledRounds === 3 || scheduledRounds === 5) ? "xl:grid-cols-3" : ""}`}>
+        <ShareList title="Winner" entries={fighters} total={total} />
+        <ShareList title="Method" entries={methods} total={total} />
+        {scheduledRounds === 3 || scheduledRounds === 5 ? <ShareList title="Finish round" entries={rounds} total={total} /> : null}
+      </div>
     </section>
   );
+}
+
+function FanPredictions({ predictions, total }: { predictions: FanPrediction[]; total: number }) {
+  return <section className={PANEL_SHELL}>
+    <PanelHeading title="Fan predictions" subtitle={`${predictions.length < total ? `${predictions.length} newest of ` : ""}${total.toLocaleString()} on ufc.sh`} />
+    <div className="grid grid-flow-col auto-cols-[minmax(11rem,1fr)] overflow-x-auto border-t border-zinc-100 sm:auto-cols-[minmax(12rem,1fr)] xl:grid-cols-5 xl:auto-cols-auto xl:overflow-visible">
+      {predictions.map(row => <Link key={row.scorer.publicId} to={`/profiles/${row.scorer.handle}?tab=predictions`}
+        className="min-w-0 border-r border-zinc-100 px-4 py-3 last:border-r-0 hover:bg-zinc-50">
+        <span className="flex min-w-0 items-center gap-2">
+          {row.scorer.imageUrl
+            ? <img src={row.scorer.imageUrl} alt="" referrerPolicy="no-referrer" className="h-6 w-6 shrink-0 rounded-full bg-zinc-100 object-cover ring-1 ring-zinc-200" />
+            : <span className="h-6 w-6 shrink-0 rounded-full bg-zinc-100 ring-1 ring-zinc-200" aria-hidden="true" />}
+          <span className="min-w-0 truncate text-xs font-semibold text-zinc-700">{row.scorer.displayName}</span>
+        </span>
+        <span className="mt-2 block truncate text-xs text-zinc-500">{predictionLabel(row.pick)}</span>
+      </Link>)}
+    </div>
+  </section>;
 }
 
 type EditorProps = { fight: Matchup; status: PredictionSummary; onSaved: () => void };

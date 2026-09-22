@@ -28,7 +28,11 @@ export type PredictionStatus = {
   rules: { version: number; entry: number; fighter: number; method: number; round: number };
   maxPoints: number;
 };
-export type PredictionSummary = PredictionStatus & { total: number; distribution: PredictionDistribution };
+export type FanPrediction = {
+  updatedAt: number; pick: PredictionPick;
+  scorer: { publicId: string; handle: string; username: string | null; displayName: string; imageUrl: string | null };
+};
+export type PredictionSummary = PredictionStatus & { total: number; distribution: PredictionDistribution; recent: FanPrediction[] };
 export type MyPrediction = PredictionStatus & { revision: number; pick: PredictionPick | null; updatedAt: number | null; result: PredictionResult | null };
 /** Right/wrong over the calls a fan actually made. `pct` is null with none. */
 export type PredictionRate = { right: number; wrong: number; total: number; pct: number | null };
