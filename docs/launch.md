@@ -194,8 +194,7 @@ Access Key ID, Secret Access Key, and S3 endpoint. On the VPS, install rclone
 and run its interactive setup:
 
 ```sh
-sudo apt-get install -y rclone cron
-sudo systemctl enable --now cron
+sudo apt-get install -y rclone
 rclone version
 rclone config
 ```
@@ -214,14 +213,17 @@ rclone lsf r2:ufcsh-backups
 The script takes checked SQLite snapshots of both databases and uploads them
 under a timestamp. In R2, set an object lifecycle rule to delete objects after
 30 days to stay within the 10 GB-month Standard free tier at the current roughly
-96 MB database size. Schedule a daily backup with `crontab -e` as the `ubuntu`
-user, adding this one line:
+82 MB database size. Install the daily systemd timer:
 
-```cron
-0 3 * * * cd /home/ubuntu/ufcsh && ./deploy/backup-offsite.sh >> /home/ubuntu/ufcsh/backup.log 2>&1
+```sh
+sudo install -m 644 deploy/systemd/ufcsh-offsite.service /etc/systemd/system/
+sudo install -m 644 deploy/systemd/ufcsh-offsite.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now ufcsh-offsite.timer
+sudo systemctl start ufcsh-offsite.service
 ```
 
-Check `tail -n 30 ~/ufcsh/backup.log` and the bucket after the first scheduled
+Check `journalctl -u ufcsh-offsite.service -n 30 --no-pager` and the bucket after the first scheduled
 run. Restore a snapshot by stopping the app, copying both files into the app
 volume as `node`, then restarting and checking `/readyz` and representative
 scores. Keep the R2 token private and separate from the Git repository.

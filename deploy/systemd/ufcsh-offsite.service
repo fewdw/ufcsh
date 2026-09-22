@@ -1,0 +1,10 @@
+[Unit]
+Description=UFCsh checked offsite SQLite backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/ufcsh
+ExecStart=/home/ubuntu/ufcsh/deploy/backup-offsite.sh
