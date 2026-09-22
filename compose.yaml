@@ -33,8 +33,9 @@ services:
     volumes:
       - app-data:/data
     networks:
-      - web
-      - metrics
+      web:
+        ipv4_address: 172.30.86.3
+      metrics:
 
   proxy:
     image: caddy:2-alpine
@@ -102,7 +103,10 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
       - ./deploy/observability/grafana:/etc/grafana/provisioning:ro
-    networks: [web, metrics]
+    networks:
+      web:
+        ipv4_address: 172.30.86.4
+      metrics:
     depends_on: [prometheus]
 
 networks:
