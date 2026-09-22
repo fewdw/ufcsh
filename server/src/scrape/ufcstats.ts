@@ -302,18 +302,8 @@ function parseRoundTable(
 /** Who the caller calls f1 and f2 — i.e. the order used on the event page. */
 export type FightOrder = { f1Id: string; f2Id: string; f1Name: string; f2Name: string };
 
-/**
- * A fight-details page lists the two fighters in the bout's original order,
- * which is *not* the event page's order — the event page always puts the
- * winner first (verified: 8676/8676 completed fights). Every table on the
- * detail page (totals, per-round, significant strikes, tale of the tape) is in
- * the page's own order, so reading column 1 as "f1" mislabels every stat
- * whenever the two orders disagree — which is roughly half of all fights.
- *
- * The page names the fighters it is describing, so match on that rather than
- * on position: prefer the stable fighter id from the header links, and fall
- * back to the name printed in each table's first column.
- */
+/** Detail-page tables follow the bout's original order, not the event page's
+ * winner-first order, so match fighters by header id, then by table name. */
 function pageOrderIsSwapped($: CheerioAPI, order: FightOrder | undefined): boolean {
   if (!order) return false;
   const ids = $("a.b-fight-details__person-link")
@@ -392,15 +382,9 @@ export async function scrapeFightDetail(fightId: string, order?: FightOrder, opt
   if (Object.keys(methodInfo).length) detail.methodInfo = methodInfo;
 
   if (textBlocks.length > 1) {
-    // Scorecards are the one block on the page that is NOT in the page's own
-    // fighter order, so `swap` must not be applied here. ufcstats prints every
-    // card as "<loser> - <winner>" regardless of which fighter the page lists
-    // first (verified on 102/102 unanimous decisions: the second number wins
-    // every card). The event page always lists the winner first (8676/8676
-    // completed fights), so the second number is always the caller's f1.
-    // Normalise here so nothing downstream can credit a card to the wrong
-    // fighter. Draws and no-contests have no winner to order by; their pages
-    // keep the event's order, which this mapping also preserves.
+    // Scorecards read "<loser> - <winner>" whatever the page order, and the
+    // event page lists the winner first, so the second number is f1. Draws and
+    // no-contests keep the event's order.
     const judges: { judge: string; f1Score: number; f2Score: number }[] = [];
     textBlocks
       .eq(1)

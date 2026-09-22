@@ -245,17 +245,8 @@ export type FighterImages = { headshot: string | null; fullBody: string | null }
 
 const NO_IMAGES: FighterImages = { headshot: null, fullBody: null };
 
-/**
- * ufc.com's stand-ins for an athlete it has no picture of. They cannot be told
- * apart by where they sit on the page — the shadow figure is served through the
- * very `athlete_bio_full_body` image style the real cut-outs use — only by
- * their file names, which the site spells in several cases and shapes:
- * `SILHOUETTE.png`, `silhouette-headshot-female.png`,
- * `SHADOW_Fighter_fullLength_RED.png`, `fighter_images/Shadow/UFCWomen_Headshot.png`.
- * Taking one for real art leaves a fighter standing as a grey outline beside an
- * empty round avatar, and no later pass ever corrects it: the stand-in keeps
- * coming back, so the scrape never looks "empty" enough to be retried properly.
- */
+/** ufc.com placeholder art, only distinguishable by file name
+ * (SILHOUETTE.png, SHADOW_Fighter_fullLength_RED.png, …). */
 const PLACEHOLDER_ART = /no-profile-image|silhouette|shadow[_/]/i;
 
 function absoluteUfcUrl(src: string | undefined): string | null {
@@ -267,13 +258,8 @@ function absoluteUfcUrl(src: string | undefined): string | null {
   return `https://www.ufc.com${trimmed.startsWith("/") ? "" : "/"}${trimmed}`;
 }
 
-/**
- * Both pictures off one athlete page. The full body is found by its Drupal
- * image style rather than by position: the same page also carries headshots of
- * past opponents, and only the bio hero is ever built at `athlete_bio_full_body`.
- * Its URL carries a signed token, so the style cannot be swapped in after the
- * fact — the page is the only place the full-body URL can come from.
- */
+/** Both pictures from one athlete page. The full body is found by its image
+ * style (its URL is signed), not by position. */
 export function parseAthleteImages(html: string): FighterImages {
   const $ = cheerio.load(html);
   const fullBody =
@@ -339,13 +325,8 @@ export function parseSearchAthlete(html: string, name?: string): { href: string 
   return { href: absoluteUfcUrl(href), img: absoluteUfcUrl(card.find("img").first().attr("src")) };
 }
 
-/**
- * Fighter pictures from ufc.com. The athlete page is the only source that has
- * the full body, so when the name does not slug straight onto a page we search
- * and follow the first athlete hit to its page rather than settling for the
- * headshot on the search card. Missing pictures are null, never an error: most
- * of the roster's history predates ufc.com having art for them at all.
- */
+/** Fighter pictures from ufc.com's athlete page, via search when the name
+ * doesn't slug directly. Missing pictures are null, not errors. */
 export async function scrapeFighterImages(name: string, loadHtml = fetchHtml): Promise<FighterImages> {
   let found: FighterImages = { ...NO_IMAGES };
   try {
@@ -471,10 +452,6 @@ export function parseEventSegments(html: string): ScrapedSegmentBout[] {
       });
   }
   return bouts;
-}
-
-export async function scrapeEventSegments(slug: string): Promise<ScrapedSegmentBout[]> {
-  return parseEventSegments(await fetchHtml(`https://www.ufc.com/event/${slug}`, { timeoutMs: 40000 }));
 }
 
 // Scheduled rounds. The event page lists each bout with the promotion's own

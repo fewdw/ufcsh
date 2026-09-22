@@ -39,13 +39,20 @@ export class RateLimiter {
   private buckets = new Map<string, { tokens: number; at: number }>();
   private maxKeys: number;
   private now: () => number;
-  constructor(maxKeys = 20_000, now = Date.now) { this.maxKeys = maxKeys; this.now = now; }
+  private sweptAt = -Infinity;
+  // Each visitor holds up to three keys (pages, images, expensive queries).
+  constructor(maxKeys = 250_000, now = Date.now) { this.maxKeys = maxKeys; this.now = now; }
   allow(key: string, capacity: number, perSecond: number): boolean {
     const now = this.now();
     const previous = this.buckets.get(key);
     if (!previous && this.buckets.size >= this.maxKeys) {
-      // Idle entries age out; fail closed if all tracked clients are active.
-      for (const [id, bucket] of this.buckets) if (now - bucket.at > 60_000) this.buckets.delete(id);
+      // Idle entries age out, at most one full scan every few seconds so a full
+      // table can't turn every new visitor into an O(n) sweep. Fail closed if
+      // every tracked client is still active.
+      if (now - this.sweptAt >= 5_000) {
+        this.sweptAt = now;
+        for (const [id, bucket] of this.buckets) if (now - bucket.at > 60_000) this.buckets.delete(id);
+      }
       if (this.buckets.size >= this.maxKeys) return false;
     }
     const tokens = Math.min(capacity, (previous?.tokens ?? capacity) + (now - (previous?.at ?? now)) * perSecond / 1000);

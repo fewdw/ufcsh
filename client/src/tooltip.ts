@@ -1,13 +1,7 @@
 import { useEffect, useId, useState } from "react";
 
-/**
- * Where a tooltip should sit, and the events that open and close it.
- *
- * Kept apart from the bubble itself because it is ordinary state, not a
- * component: charts live inside panels that clip their overflow and stack
- * against each other, so the bubble is drawn into the document body from the
- * trigger's box in viewport coordinates, and this is what measures it.
- */
+/** Tooltip positioning and open/close events, measured from the trigger in
+ * viewport coordinates so the body-level bubble can't be clipped. */
 
 export type TipAnchor = { x: number; y: number; above: boolean };
 

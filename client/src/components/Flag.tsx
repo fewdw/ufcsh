@@ -1,12 +1,7 @@
 import { flagEmoji } from "../flags";
 
-/**
- * A fighter's nationality: the flag, with the country in its tooltip.
- *
- * The country is never carried by the picture alone — it is the accessible
- * name and the title — and when no flag can be built from the code, the name
- * itself is shown instead of nothing.
- */
+/** A nationality flag; the country name is its accessible label, and the
+ * fallback when no flag can be built. */
 export default function Flag({ code, name, className = "" }: { code: string | null | undefined; name?: string | null; className?: string }) {
   const flag = flagEmoji(code);
   const label = name || (code ?? "").toUpperCase();

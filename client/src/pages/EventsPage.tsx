@@ -590,16 +590,8 @@ function CardOddsRow({ fight, eventId, live, past, format }: { fight: EventFight
 // ---------------------------------------------------------------------------
 // event pane
 
-/**
- * The three states worth interrupting a list of eight hundred cards for. At
- * most one row wears one at a time — taggedEvent decides which. The event's
- * own header never carries one: the date and the timing lines beside the name
- * already say where the card sits in time.
- *
- * Done is the quiet one on purpose. Live and Next both point forward at
- * something to watch, so they are coloured; Done only closes the night off,
- * and a night already fought does not need to compete with the card list.
- */
+/** Row tags (taggedEvent picks at most one). Done is deliberately muted:
+ * only Live and Next point at something to watch. */
 const STATUS_TAG = {
   live: { label: "Live", className: "bg-emerald-100 text-emerald-700" },
   done: { label: "Done", className: "bg-zinc-100 text-zinc-500" },

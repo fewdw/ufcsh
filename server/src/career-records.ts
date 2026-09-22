@@ -39,13 +39,9 @@ function withoutSuffix(name: string): string {
   return name.replace(/\s+(?:jr|sr|ii|iii|iv)\.?$/i, "").trim();
 }
 
-/**
- * The names one person can be filed under. UFCStats often files a fighter by
- * the name they fight as, where the source keeps the legal surname: "Patricio
- * Pitbull" is Sherdog's Patricio Freire, nickname "Pitbull". So a candidate
- * answers to their own name and to that name with the nickname standing in for
- * either half of it — never to the nickname alone, which is not an identity.
- */
+/** Names one person can be filed under: their own, and with the nickname
+ * standing in for either half ("Patricio Pitbull" = Patricio Freire). Never the
+ * nickname alone. */
 export function nameAliases(name: string, nickname = ""): string[] {
   const parts = normName(name).split(" ").filter(Boolean);
   const nick = normName(nickname);
@@ -79,13 +75,9 @@ function oneEditApart(a: string, b: string): boolean {
   return a.slice(i + 1) === b.slice(i + 1) || a.slice(i + 1) === b.slice(i) || a.slice(i) === b.slice(i + 1);
 }
 
-/**
- * Looser than samePersonName, and only ever used together with a date: one
- * name's words all appear in the other ("Maheshate" / "Maheshate Hayisaer",
- * "Felix Mitchell" / "Felix Lee Mitchell"), or the surname agrees — allowing
- * one typo in a long one — while the first names agree on their start
- * ("Josh" / "Joshua", "Costas" / "Constantinos", "Alberta" / "Alberto").
- */
+/** Looser than samePersonName and only used with a matching date: one name
+ * contains the other, or surnames agree (one typo allowed) with first names
+ * sharing a start ("Josh"/"Joshua"). */
 export function similarOpponentName(a: string, b: string): boolean {
   if (samePersonName(a, b)) return true;
   const left = withoutSuffix(sourceName(a)).split(" ").filter(Boolean);

@@ -47,16 +47,8 @@ export async function scorerAvatar(userId: string): Promise<{ imageUrl: string |
   };
 }
 
-/**
- * The verified email on an account, which is what the admin list is keyed by.
- * Only a *verified* primary address is ever returned: an unverified one can be
- * typed by anyone at sign-up, so trusting it would hand the panel to whoever
- * claims the owner's address first.
- *
- * Cached briefly, because it is read on every admin request while an address
- * changes about never. Membership itself is re-read from the database each
- * time, so removing an administrator takes effect immediately.
- */
+/** The verified primary email (unverified ones can be claimed by anyone),
+ * cached a minute; admin membership itself is re-read every request. */
 const EMAIL_TTL = 60_000;
 const emails = new Map<string, { email: string | null; at: number }>();
 export async function scorerEmail(userId: string): Promise<string | null> {
@@ -140,7 +132,6 @@ export function createScoringHandler(
     const [, id, mineRoute] = match ?? [];
     const ownProfile = profile?.[1] === "mine";
     const privateRoute = Boolean(mineRoute) || ownProfile;
-    const writable = Boolean(mineRoute) || ownProfile;
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.setHeader("Cache-Control", privateRoute ? "private, no-store" : "public, max-age=0, s-maxage=3, must-revalidate");
     res.setHeader("X-Content-Type-Options", "nosniff");

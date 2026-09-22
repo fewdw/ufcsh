@@ -29,22 +29,9 @@ export function liveFightId(event: Pick<EventDetail, "status" | "card_stats" | "
   return null;
 }
 
-/**
- * The one card in the list that wears a tag, and which tag it wears.
- *
- * Exactly one at a time, always: a tag is a "look here" mark, and two of them
- * on one list is the list failing to point anywhere. So the three states are
- * ranked rather than shown together — a card being fought outranks the card
- * that was fought earlier on the same fight day, which outranks the card
- * announced next. On an ordinary day only the last of the three exists and
- * the list reads as it always has.
- *
- * Done is deliberately not silence: once the final result of a card lands,
- * the list should say the night is over rather than skip straight to pointing
- * at a card three weeks out. It holds for the rest of the fight day — the
- * same window that made the card current, so the tag never changes hands
- * mid-night when a card runs past midnight — and Next takes over after it.
- */
+/** The single tag in the event list: a card being fought outranks one
+ * finished earlier the same fight day ("done", held for the rest of that day),
+ * which outranks the next announced card. */
 export type EventTag = "live" | "done" | "next";
 
 export function taggedEvent<T extends { id: string; date: string; status: string }>(

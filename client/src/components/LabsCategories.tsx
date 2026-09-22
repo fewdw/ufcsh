@@ -6,15 +6,8 @@ import InfoTip from "./InfoTip";
 import JudgesRoom from "./JudgesRoom";
 import RoadToUFC from "./RoadToUFC";
 
-/**
- * Two readings of the study the filters above already describe, in the same
- * shape as the combined record they sit under: a title, a line saying what the
- * section answers, and the numbers themselves.
- *
- * Both start open — a section that has to be unfolded before it says anything
- * is a section nobody reads — and both fold away, like the record above them,
- * for a reader who wants one of the three at a time.
- */
+/** Two readings of the current study (judges, road to the UFC). Both start
+ * open and fold away individually. */
 type CategoryKey = "judges" | "road";
 
 const CATEGORIES: { key: CategoryKey; title: string; purpose: string; tip: string }[] = [

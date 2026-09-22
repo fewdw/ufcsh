@@ -6,10 +6,6 @@
 
 export const SERIES = ["var(--color-series-1)", "var(--color-series-2)", "var(--color-series-3)", "var(--color-series-4)"] as const;
 
-/** Wins split by method, dark → light. Losses use the mirrored rose ramp. */
-export const WIN_RAMP = ["var(--color-win-1)", "var(--color-win-2)", "var(--color-win-3)"] as const;
-export const LOSS_RAMP = ["var(--color-loss-1)", "var(--color-loss-2)", "var(--color-loss-3)"] as const;
-
 export type Format = "number" | "percent" | "decimal" | "signed" | "time" | "signedTime" | "currency" | "odds" | "years" | "age";
 
 export function formatDuration(value: number): string {

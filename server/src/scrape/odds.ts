@@ -39,13 +39,8 @@ export type ScrapedOdds = {
 
 type OddsMatchup = { f1_name: string; f2_name: string };
 
-/**
- * The closing line from a fighter page row: [open, range low, range high].
- * The range spans every sportsbook's closing price, and its top is the best
- * price one book offered, which for both corners adds up to well under a
- * fair book. The middle of the range, taken in win probability and turned
- * back into an American price, is the market's close.
- */
+/** A fighter-page row is [open, range low, range high]. The close is the
+ * middle of the range in win probability; the top is one book's best price. */
 export function closingLine(values: string[]): string | null {
   const prices = values.slice(values.length > 1 ? 1 : 0)
     .map((value) => Number(value.replace(/[−–]/g, "-").replace(/[^0-9+\-]/g, "")))
@@ -573,6 +568,10 @@ export function methodOddsForFight(
     // A surname or first name alone never counts: Michel and Alex Pereira.
     (a: string, b: string, first: FighterNames, second: FighterNames) =>
       (variant(a, first) && loose(b, second)) || (loose(a, first) && variant(b, second)),
+    // Both names carry one of the source's typos ("Elizeu Zaleski" beside
+    // "Luigi Vandramini"). Each still has to agree on surname and initial, or
+    // contain the other, so two unrelated fighters never pass together.
+    (a: string, b: string, first: FighterNames, second: FighterNames) => loose(a, first) && loose(b, second),
   ];
   for (const pair of tiers) {
     const candidates = matchups.filter((m) => pair(m.f1Name, m.f2Name, fighter1, fighter2) || pair(m.f1Name, m.f2Name, fighter2, fighter1));

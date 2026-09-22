@@ -14,17 +14,30 @@ function american(y: number): string | null {
   return value > 0 ? `+${value}` : String(value);
 }
 
-/** Opening and closing consensus prices from the source's mean-odds chart: its
- * first and last quoted points. The source stops collecting when books pull a
- * market at the start of a fight, which is the same basis as the closing
- * moneyline. */
+/** A market that goes this long without a single book moving was a
+ * hypothetical line, not a booked bout. */
+const DORMANT_MS = 60 * 86_400_000;
+const MISPOST_MS = 3_600_000;
+
+/** Opening and closing prices from the mean-odds chart. A chart that sat
+ * dormant as a "potential fight" (Usman–Chimaev opens in 2021 for a 2023 bout)
+ * opens after its last dormant stretch. */
 export function meanPrices(history: unknown): { open: string; close: string } | null {
   if (!Array.isArray(history) || history.length !== 1 || !Array.isArray(history[0]?.data)) return null;
   const points = (history[0].data as { x: number; y: number | null }[])
     .filter(p => Number.isSafeInteger(p.x) && typeof p.y === "number" && Number.isFinite(p.y) && p.y > 1)
     .sort((a, b) => a.x - b.x);
   if (!points.length) return null;
-  const open = american(points[0].y!);
+  let first = 0;
+  for (let i = 1; i < points.length; i++) if (points[i].x - points[i - 1].x >= DORMANT_MS) first = i;
+  // A first quote reversed within the hour was posted with the corners the
+  // wrong way round (Hunt–Tuchscherer opens at 73% and is 32% six minutes
+  // later); the opening is the first quote that stood.
+  const probability = (index: number) => 1 / points[index].y!;
+  const reversed = (index: number) => points.some((point, j) => j > index && point.x - points[index].x < MISPOST_MS
+    && Math.abs(probability(j) - probability(index)) >= 0.25);
+  while (first < points.length - 1 && reversed(first)) first++;
+  const open = american(points[first].y!);
   const close = american(points.at(-1)!.y!);
   return open && close ? { open, close } : null;
 }

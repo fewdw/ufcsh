@@ -14,14 +14,8 @@ import {
   syncOddsForFight,
 } from "./sync.ts";
 
-/**
- * The data-quality board behind /admin?tab=bugs: every place the database is missing
- * something the interface would show, or holds something that contradicts
- * itself, listed item by item with the links needed to check it by hand.
- *
- * Checks only read. The few repair actions re-run the same sync a background
- * pass would, for one item, and are refused unless the request is local.
- */
+/** The data-quality board behind /admin?tab=bugs. Checks only read; repair
+ * actions re-run one item's sync and are refused unless the request is local. */
 
 export type BugLink = { label: string; href: string; internal?: boolean };
 export type BugItem = {
@@ -792,9 +786,10 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
       }
       const props = await syncMethodOddsForEvent(row.event_id, row.id);
       const odds = db.prepare("SELECT f1_close, f2_close FROM odds WHERE fight_id = ?").get(row.id) as { f1_close: string | null; f2_close: string | null } | undefined;
+      // The event board can fill a line the fighter pages never had.
       return {
-        ok: stored,
-        message: stored && odds?.f1_close
+        ok: stored || Boolean(odds?.f1_close),
+        message: odds?.f1_close
           ? `Stored ${row.f1_name} ${odds.f1_close} / ${row.f2_name} ${odds.f2_close}${props.fights ? ", plus props" : ""}.`
           : `No line found for this pairing on the source${props.fights ? ", but props were stored" : ""}.`,
       };

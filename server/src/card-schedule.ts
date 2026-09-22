@@ -24,14 +24,8 @@ function overlap(a: Set<string>, b: Set<string>): number {
   return shared;
 }
 
-/**
- * The ufc.com schedule for one of our UFCStats events.
- *
- * UFCStats dates a card by the local day it starts; ufc.com timestamps each
- * segment absolutely, which for a US card lands on the next UTC day. So a
- * schedule qualifies on starting within a day of ours, and the headline bout —
- * the only naming the two sources share — settles which one it is.
- */
+/** Finds ufc.com's schedule for one of our events: starting within a day
+ * (ufc.com is UTC), confirmed by the headline bout. */
 export function matchEventSchedule(
   event: { name: string; date: string },
   schedules: ScrapedEventSchedule[],
@@ -93,14 +87,8 @@ export function assignSegments(
   return assigned;
 }
 
-/**
- * The booked length of each bout. Both fighters' names normally identify it.
- * The two sources sometimes spell one fighter differently ("Patricio Freire"
- * and "Patricio Pitbull"), so a bout also matches when it holds the same place
- * on the card and one of its two fighters is named identically. Nothing looser
- * than that is accepted: a bout that cannot be identified has no length,
- * rather than borrowing a neighbour's.
- */
+/** Booked length per bout, matched by both names, or by card position plus
+ * one identical name. An unidentified bout gets no length. */
 export function assignRounds(
   fights: { id: string; ord: number; f1_name: string; f2_name: string }[],
   bouts: { order: number; f1: string; f2: string; rounds: number }[],
@@ -129,19 +117,9 @@ export function assignRounds(
 
 export type SegmentTimes = { main: number | null; prelims: number | null; early: number | null };
 
-/**
- * When the bout at `ord` is expected to start, for a card that has not reached
- * it yet. Only the segment starts are announced, so a later bout is estimated
- * from its own segment's start plus the bouts before it in that segment.
- * Crowded segments share the available broadcast window proportionally,
- * including a slot for the final bout and ten minutes for the transition.
- * This is a scheduling heuristic, not a prediction of fight duration.
- *
- * A three-round bout takes about half an hour end to end once the walkouts,
- * the replays and the interview are counted. A bout scheduled for five rounds
- * — the main event, and any championship bout wherever it sits — has two more
- * rounds and a longer build, so it is given closer to forty minutes.
- */
+/** Estimated start of the bout at `ord`: its segment's announced start plus
+ * the bouts before it, sharing the broadcast window proportionally. A heuristic,
+ * not a prediction of fight duration. Five-round bouts get ~40 minutes. */
 export const BOUT_MINUTES = 30;
 export const FIVE_ROUND_BOUT_MINUTES = 40;
 

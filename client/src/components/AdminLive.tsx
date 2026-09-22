@@ -13,13 +13,8 @@ const stateTone: Record<AdminLiveFight["state"], string> = {
   waiting: "bg-amber-50 text-amber-700",
 };
 
-/**
- * Releasing rounds by hand. The live feed opens rounds on its own as UFCStats
- * publishes them, which can lag the broadcast by minutes — this opens the same
- * rounds immediately, and whichever happens first is what readers get. A round
- * the feed has already published cannot be taken back from here: the panel can
- * only ever open more of a bout than the feed has, never less.
- */
+/** Opens rounds by hand ahead of the live feed. It can only open more of a
+ * bout than the feed has, never take a published round back. */
 export default function AdminLive() {
   const request = useAdminRequest();
   // Two people can be running the card; five seconds keeps them in step.

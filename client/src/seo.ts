@@ -62,4 +62,3 @@ export function useSeo({
   }, [description, path, structuredData, title, type]);
 }
 
-export const seoSite = { name: SITE_NAME, url: SITE_URL };

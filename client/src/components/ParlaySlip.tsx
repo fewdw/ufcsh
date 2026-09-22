@@ -16,13 +16,8 @@ function sanitizeStake(raw: string): string {
   return cleaned.replace(/^0+(?=\d)/, "");
 }
 
-/**
- * The running parlay slip. Rendered once, at the top of the app, into
- * `document.body` — so it sits above every panel's own clipping and stays in
- * view across every navigation, not just the fight page a leg was picked on.
- * Collapses to a small pill once closed rather than disappearing, since the
- * picks are still live and worth a stray tap to bring back.
- */
+/** The parlay slip, portalled to the body so it persists across pages;
+ * closing collapses it to a pill because the picks are still live. */
 export default function ParlaySlip() {
   const { legs, stake, open, conflict, remove, clear, setOpen, setStake, dismissConflict } = useParlay();
   const { settings } = useSettings();

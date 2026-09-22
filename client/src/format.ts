@@ -63,15 +63,6 @@ export function lastName(name: string): string {
   return name.trim().split(/\s+/).at(-1) ?? name;
 }
 
-export function initials(name: string): string {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? "")
-    .join("");
-}
-
 export function outcomeClasses(outcome: string | null | undefined): string {
   switch (outcome) {
     case "win":

@@ -30,3 +30,11 @@ test("incompatible source cards are rejected and incomplete panels stay visible 
   assert.deepEqual(compatibleJudgeCards(official, [wrong, partial]), [partial]);
   assert.equal(hasCompleteJudgeRounds(official, [partial]), false);
 });
+
+test("a judge's surname misspelt by one letter is still the same official", () => {
+  const official: JudgeCard[] = [{ judge: "Henry Guery", f1Score: 29, f2Score: 28 }];
+  const imported: JudgeCard[] = [{ judge: "Henry Gueary", f1Score: 29, f2Score: 28, rounds: rounds([10, 9, 10], [9, 10, 9]) }];
+  assert.equal(compatibleJudgeCards(official, imported).length, 1);
+  assert.equal(hasCompleteJudgeRounds(official, imported), true);
+  assert.equal(compatibleJudgeCards([{ judge: "Henry Guery", f1Score: 29, f2Score: 28 }], [{ ...imported[0], judge: "Henry Grant" }]).length, 0);
+});

@@ -62,9 +62,6 @@ export const usernameProblem = (value: string): string | null =>
 export const cardWinner = (card: { total1: number; total2: number; rounds: RoundScore[] | number }): 1 | 2 | 0 | null =>
   !(typeof card.rounds === "number" ? card.rounds : card.rounds.length) ? null
     : card.total1 > card.total2 ? 1 : card.total2 > card.total1 ? 2 : 0;
-/** The side the judges gave it to, for a card to be read against. */
-export const officialWinner = (fight: { f1_outcome: string | null; f2_outcome: string | null }): 1 | 2 | null =>
-  fight.f1_outcome === "win" ? 1 : fight.f2_outcome === "win" ? 2 : null;
 export const scoreTotal = (rounds: RoundScore[], side: 1 | 2) => rounds.reduce((sum, r) => sum + (side === 1 ? r.f1 - r.deduct1 : r.f2 - r.deduct2), 0);
 export const decimalScore = (value: number | null | undefined) => value == null ? "—" : value.toFixed(2);
 

@@ -2,16 +2,8 @@ import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { DATA_DIR } from "./db.ts";
 
-/**
- * Rounds the admin panel has released for a bout, as the public fight payload
- * needs them: the Score tab appears from that payload, so a reader watching a
- * live card sees it open without touching the page.
- *
- * The scoring database belongs to the API process that writes it; the query
- * workers only read. Each opens its own read-only connection rather than
- * reaching for a store it does not own. A missing file or table is simply
- * "nothing released yet" — the scoring endpoints remain the authority.
- */
+/** Rounds the admin panel released for a bout, read through a read-only
+ * connection to the scoring database. Missing file or table = none. */
 let reader: DatabaseSync | undefined;
 let retryAt = 0;
 const RETRY_MS = 5_000;

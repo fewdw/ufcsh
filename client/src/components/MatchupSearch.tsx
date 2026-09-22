@@ -7,13 +7,8 @@ import { formatDateShortWithYear } from "../format";
 
 const EMPTY_MATCHUPS: LabsMatchup[] = [];
 
-/**
- * Picks one announced, not-yet-fought bout. It behaves like the fighter
- * picker and the command palette — results on every keystroke, arrow keys and
- * Enter to choose — except that focusing it with an empty box lists every
- * upcoming matchup, because browsing the next few cards is the normal way to
- * find the fight you meant.
- */
+/** Picks an announced, unfought bout. An empty focused box lists every
+ * upcoming matchup, since browsing is the usual way to find one. */
 export default function MatchupSearch({ onPick, placeholder = "Search upcoming matchups" }: {
   onPick: (matchup: LabsMatchup) => void;
   placeholder?: string;

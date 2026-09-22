@@ -4,14 +4,8 @@ import type { LiveCard } from "../api";
 import { clockTime, countdown, lastName } from "../format";
 import { useNow } from "../useNow";
 
-/**
- * The bout being fought, in the middle of the header, for as long as a card is
- * running — and nothing at all otherwise, which is most days.
- *
- * The server sends the estimated start as an absolute instant, so the
- * countdown is local arithmetic: it ticks every second without asking the
- * server anything, and the time beside it is in the reader's own zone.
- */
+/** The bout on now while a card runs, nothing otherwise. The countdown is
+ * computed locally from the server's absolute start time. */
 export default function LiveMatchup() {
   const { data } = useApi<LiveCard>("/api/live", card => card ? 15_000 : 60_000);
   const startsAt = data?.starts_at ?? null;

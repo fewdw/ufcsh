@@ -4,19 +4,9 @@ import { fightIndex, type IndexedFight, type IndexedFighter } from "./fight-inde
 import { BOUT_SORTS, boutComparator, boutRow, matches, parseExclusions, parseFilters, type BoutSort, type Observation } from "./labs.ts";
 import { normName } from "./util.ts";
 
-/**
- * Two readings of the same Lab population, each answering one question the
- * combined record cannot: how the judges saw these fights, and what the
- * fighters in them arrived in the UFC with. Both are computed in a single pass
- * over the bouts the study's filters already selected, so what is on screen
- * always describes the same population.
- *
- * Two units of count run through this file, and they are never mixed:
- *  - an **observation** is one fighter in one bout, so both corners of a bout
- *    can qualify. What a fighter arrived in the UFC with is counted this way.
- *  - a **bout** is counted once however many of its corners qualified. How the
- *    judges scored a fight is counted this way, and says so on screen.
- */
+/** Judges' and road-to-UFC readings of a Lab population, in one pass over
+ * the selected bouts. Arrival profiles count observations (fighter-bouts);
+ * judging counts bouts once. */
 
 type Tally = { wins: number; losses: number; draws: number; ncs: number };
 const tally = (): Tally => ({ wins: 0, losses: 0, draws: 0, ncs: 0 });

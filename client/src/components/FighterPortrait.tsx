@@ -28,18 +28,8 @@ const BASE: Record<string, string> = {
 
 const AVATAR_SIZE = { hero: "lg", profile: "xl" } as const;
 
-/**
- * A fighter's full-body cut-out from ufc.com, standing free on the panel.
- *
- * The art is transparent and cropped mid-thigh, so it is never framed or
- * filled behind — a box would put a visible edge around a picture drawn to
- * have none. It stands on the floor line instead, and `portrait-fade` dissolves
- * ufc.com's crop so the fighter does not end on a hard horizontal cut.
- *
- * Anything that goes wrong — no such picture, a dead URL, a fighter ufc.com
- * has never photographed — falls back to the round headshot every other list
- * in the application already shows.
- */
+/** The ufc.com full-body cut-out, unframed on the floor line with its crop
+ * faded out. Any failure falls back to the round headshot. */
 export default function FighterPortrait({
   src,
   headshot,

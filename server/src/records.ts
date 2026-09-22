@@ -1,16 +1,8 @@
 import { fightIndex, winProfit, type FightIndex } from "./fight-index.ts";
 import { titleNarratives, type TitleRow } from "./titles.ts";
 
-/**
- * "Records" in the sporting sense: the places where a fighter sits at or near
- * the top of the sport. Every statistic here is ranked over the whole roster
- * and again inside each division, so a profile can say "most UFC wins" for the
- * one holder and "third-most wins at Flyweight" for someone who leads only
- * their own weight class.
- *
- * The whole table is rebuilt whenever the fight index changes, so a record can
- * never go stale: the moment a result lands, the standings move with it.
- */
+/** Sporting records: each statistic ranked across the roster and within each
+ * division, rebuilt whenever the fight index changes. */
 
 export type RecordEntry = {
   key: string;

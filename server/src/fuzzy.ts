@@ -1,12 +1,7 @@
 import { normName } from "./util.ts";
 
-/**
- * Typo-tolerant text matching for search fallbacks. Every query word must
- * match a different word of the target, either as a prefix ("volk" ->
- * "volkanovski") or within a few edits of one ("vilk" -> "volk…"). Words
- * containing digits ("300", "ufc 229") must match exactly so event numbers
- * never drift to a neighbour.
- */
+/** Typo-tolerant search matching: each query word must match a distinct
+ * target word by prefix or a few edits. Words with digits match exactly. */
 
 /** Edits a query word of this length may carry and still count as a match. */
 export function allowedEdits(length: number): number {

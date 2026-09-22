@@ -7,7 +7,7 @@ import { fightIndex } from "./fight-index.ts";
 import { roadArrival } from "./labs-explore.ts";
 import { db } from "./db.ts";
 
-type Insights = ReturnType<typeof getLabsInsights> extends infer T ? any : never;
+type Insights = any;
 const read = (query = ""): Insights => getLabsInsights(new URLSearchParams(query)) as Insights;
 const labs = (query = ""): any => getLabs(new URLSearchParams(query));
 const all = read();

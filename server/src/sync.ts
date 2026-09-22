@@ -13,7 +13,6 @@ import { scrapeAthleteDirectoryPage, scrapeEventCard, scrapeEventSchedules, scra
 import { assignRounds, assignSegments, matchEventSchedule } from "./card-schedule.ts";
 import {
   alignScrapedOdds,
-  closingLine,
   findOddsEventPages,
   methodOddsForFight,
   fetchMeanMoneyline,
@@ -27,6 +26,8 @@ import {
 import { isSummaryAgeDisagreement, validateFightActions } from "./action-stats.ts";
 import { fetchEventArticle, weightMisses } from "./scrape/wikipedia.ts";
 import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
+import { syncVerdictScorecards } from "./verdict-import.ts";
+import { americanLine, impliedProbability } from "./fight-index.ts";
 
 const HOUR = 3600_000;
 const DAY = 24 * HOUR;
@@ -297,14 +298,9 @@ export async function syncFighterBirthDate(fighterId: string): Promise<void> {
 
 let birthDatesRunning = false;
 
-/**
- * Birth dates power every age-based view (tale of the tape on past bouts, the
- * age filters and age curves in Labs, youngest/oldest leaderboards). They live
- * only on the individual UFCStats fighter page, so they are harvested in the
- * background: ranked and booked fighters first, then everyone else ordered by
- * how many UFC bouts they have, so early passes cover the most fights.
- * A fighter whose page had no DOB is retried after 90 days.
- */
+/** Birth dates, harvested in the background from UFCStats fighter pages:
+ * ranked and booked fighters first, then by UFC bout count. A page with no DOB
+ * is retried after 90 days. */
 export async function syncBirthDates(limit: number): Promise<void> {
   if (birthDatesRunning) return;
   birthDatesRunning = true;
@@ -506,13 +502,8 @@ async function storeFightDetail(fightId: string): Promise<void> {
   );
 }
 
-/**
- * Every completed bout whose stored page contradicts the card it was fought on,
- * newest first. This is the same check that refuses to store a bad page, run
- * against what is already stored: a page captured while the bout was still
- * being fought carries fewer round tables than rounds fought, and a card row
- * written mid-bout disagrees with the totals the fight page settled on.
- */
+/** Completed bouts whose stored page contradicts its card (captured
+ * mid-fight), newest first. */
 export function contradictedFightStats(limit: number): string[] {
   const rows = db.prepare(`
     SELECT f.id, f.round, f.f1_str, f.f2_str, f.f1_td, f.f2_td, f.f1_kd, f.f2_kd, f.f1_sub, f.f2_sub, f.detail_json
@@ -529,13 +520,8 @@ export function contradictedFightStats(limit: number): string[] {
   return broken;
 }
 
-/**
- * Re-read the pages behind those bouts. The scheduled refresh in step 7 only
- * reaches 30 days back and the historical backfill only ever visits a bout that
- * has no page at all, so without this a bout captured mid-fight during a long
- * outage would keep its half-finished numbers for good. Re-reading a fight page
- * also re-reads its card, so whichever of the two is stale is the one that moves.
- */
+/** Re-reads those bouts, which neither the 30-day refresh nor the backfill
+ * would revisit. */
 export async function repairContradictedFightStats(limit = 20): Promise<void> {
   const broken = contradictedFightStats(limit);
   if (!broken.length) return;
@@ -707,6 +693,15 @@ const FORMER_NAMES: Record<string, string[]> = {
   "king green": ["Bobby Green"],
 };
 
+/** Names the odds source files a fighter's bouts under that are not the
+ * fighter's own. BestFightOdds put Ilia Topuria's UFC 298 title win on a
+ * profile for his brother, spelled "Alexsandre Topuria", whose only other row
+ * is a regional bout Ilia never had; every other source agrees who fought
+ * Volkanovski that night. */
+const ODDS_SOURCE_NAMES: Record<string, string[]> = {
+  "ilia topuria": ["Alexsandre Topuria"],
+};
+
 export function fighterNames(id: string | null | undefined, name: string): string[] {
   const names = [name, ...(FORMER_NAMES[normName(name)] ?? [])];
   if (id) {
@@ -717,12 +712,25 @@ export function fighterNames(id: string | null | undefined, name: string): strin
   return names.filter((alias, i) => names.findIndex((other) => normName(other) === normName(alias)) === i);
 }
 
+/** fighterNames plus the odds source's own misfilings, for odds matching only. */
+function oddsNames(id: string | null | undefined, name: string): string[] {
+  return [...fighterNames(id, name), ...(ODDS_SOURCE_NAMES[normName(name)] ?? [])];
+}
+
+/** An open on the far side of its own close: usually the source's first quote
+ * posted with the corners reversed (see meanPrices). */
+function flippedOpen(open: string | null | undefined, close: string | null | undefined): boolean {
+  const from = impliedProbability(americanLine(open));
+  const to = impliedProbability(americanLine(close));
+  return from != null && to != null && Math.abs(from - to) >= 0.4;
+}
+
 export async function syncOddsForFight(fight: { id: string; f1_id?: string | null; f2_id?: string | null; f1_name: string; f2_name: string; date: string }): Promise<boolean> {
   const prior = db.prepare("SELECT source_url FROM odds WHERE fight_id = ?").get(fight.id) as
     { source_url: string | null } | undefined;
   const scraped = await scrapeOdds(
-    fighterNames(fight.f1_id, fight.f1_name),
-    fighterNames(fight.f2_id, fight.f2_name),
+    oddsNames(fight.f1_id, fight.f1_name),
+    oddsNames(fight.f2_id, fight.f2_name),
     fight.date,
     prior?.source_url,
   );
@@ -742,6 +750,11 @@ export async function syncOddsForFight(fight: { id: string; f1_id?: string | nul
     { f1_name: string; f2_name: string } | undefined;
   if (!current) return false;
   const result = alignScrapedOdds(scraped, fight, current);
+  // An open the board chart already corrected is not put back by a fighter
+  // page still carrying the reversed first quote.
+  const stored = db.prepare("SELECT f1_open FROM odds WHERE fight_id = ?").get(fight.id) as { f1_open: string | null } | undefined;
+  const keepOpen = Boolean(result && stored?.f1_open && flippedOpen(result.f1.open, result.f1.close)
+    && !flippedOpen(stored.f1_open, result.f1.close));
   db.prepare(`
     INSERT INTO odds (fight_id, f1_open, f1_close, f2_open, f2_close, f1_history, f2_history, source_url, fetched_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -756,8 +769,8 @@ export async function syncOddsForFight(fight: { id: string; f1_id?: string | nul
       fetched_at = excluded.fetched_at
   `).run(
     fight.id,
-    result?.f1.open ?? null, result?.f1.close ?? null,
-    result?.f2.open ?? null, result?.f2.close ?? null,
+    keepOpen ? null : result?.f1.open ?? null, result?.f1.close ?? null,
+    keepOpen ? null : result?.f2.open ?? null, result?.f2.close ?? null,
     result ? JSON.stringify(result.f1.history) : null,
     result ? JSON.stringify(result.f2.history) : null,
     result?.sourceUrl ?? null,
@@ -819,7 +832,7 @@ export async function syncMethodOddsForEvent(eventId: string, onlyFightId?: stri
     for (const fight of fights) {
       const odds = found.has(fight.id)
         ? null
-        : methodOddsForFight(board, fighterNames(fight.f1_id, fight.f1_name), fighterNames(fight.f2_id, fight.f2_name));
+        : methodOddsForFight(board, oddsNames(fight.f1_id, fight.f1_name), oddsNames(fight.f2_id, fight.f2_name));
       if (!odds) continue;
       found.set(fight.id, { fight, odds });
       matchedUrl ??= sourceUrl;
@@ -849,8 +862,30 @@ export async function syncMethodOddsForEvent(eventId: string, onlyFightId?: stri
       source_url = excluded.source_url, final = 1, fetched_at = excluded.fetched_at
     WHERE odds.f1_close IS NULL
   `);
+  // The board chart skips a reversed first quote (meanPrices), so its open
+  // replaces a stored one that looks flipped.
+  const storedLine = db.prepare("SELECT f1_open, f1_close FROM odds WHERE fight_id = ?");
+  const replaceOpen = db.prepare("UPDATE odds SET f1_open = ?, f2_open = ? WHERE fight_id = ?");
+  const storedOpenFlipped = (fightId: string) => {
+    const row = storedLine.get(fightId) as { f1_open: string | null; f1_close: string | null } | undefined;
+    return flippedOpen(row?.f1_open, row?.f1_close);
+  };
   let stored = 0;
   for (const { fight, odds } of found.values()) {
+    if (odds.moneylineKeys && !missingMoneyline.get(fight.id) && storedOpenFlipped(fight.id)) {
+      try {
+        const prices = await fetchMeanMoneyline(odds.moneylineKeys);
+        const now = current.get(fight.id, eventId) as { f1_id: string; f2_id: string } | undefined;
+        const reversed = now?.f1_id === fight.f2_id && now?.f2_id === fight.f1_id && fight.f1_id !== fight.f2_id;
+        if (prices && now && (reversed || (now.f1_id === fight.f1_id && now.f2_id === fight.f2_id))) {
+          const [a, b] = reversed ? [prices.f2, prices.f1] : [prices.f1, prices.f2];
+          replaceOpen.run(a.open, b.open, fight.id);
+        }
+      } catch (err) {
+        log(`mean opening line failed [${fight.id}]:`, String(err));
+        failed++;
+      }
+    }
     if (event.complete && odds.moneylineKeys && missingMoneyline.get(fight.id)) {
       try {
         if (!onlyFightId) await yieldToOpenedFights();
@@ -1005,82 +1040,6 @@ export async function syncUpcomingOdds(
   return { selected: targets.length, stored, failed };
 }
 
-export type ClosingRestateResult = { pages: number; recomputed: number; restated: number; unmatched: number; failed: number };
-
-/**
- * Re-derive every stored fighter-page close as the middle of its closing range
- * (see closingLine). Closes stored before that rule were the top of the range.
- * Rows that kept the range are recomputed in place; the rest re-read their
- * source page once per page. A page row is only accepted for a bout when both
- * opening prices agree with the stored ones, which identifies the row and the
- * corners exactly, so nothing is re-attached by name. Anything unmatched keeps
- * its old value. fetched_at is left alone: the prices are not newer.
- */
-export async function restateClosingLines(
-  { onPage, pageUrls }: { onPage?: (done: number, total: number) => void; pageUrls?: string[] } = {},
-): Promise<ClosingRestateResult> {
-  const result: ClosingRestateResult = { pages: 0, recomputed: 0, restated: 0, unmatched: 0, failed: 0 };
-  const update = db.prepare(`
-    UPDATE odds SET f1_close = ?, f2_close = ?, f1_history = ?, f2_history = ? WHERE fight_id = ?
-  `);
-
-  const withRange = pageUrls ? [] : db.prepare(`
-    SELECT fight_id, f1_history, f2_history FROM odds
-    WHERE f1_close IS NOT NULL AND source_url LIKE '%/fighters/%'
-      AND f1_history IS NOT NULL AND f1_history != '' AND f1_history != '[]'
-  `).all() as { fight_id: string; f1_history: string; f2_history: string }[];
-  for (const row of withRange) {
-    try {
-      const h1 = JSON.parse(row.f1_history) as string[];
-      const h2 = JSON.parse(row.f2_history) as string[];
-      if (!h1.length || !h2.length) continue;
-      update.run(closingLine(h1), closingLine(h2), row.f1_history, row.f2_history, row.fight_id);
-      result.recomputed++;
-    } catch { /* malformed history keeps its close */ }
-  }
-
-  const rows = db.prepare(`
-    SELECT o.fight_id, o.f1_open, o.f2_open, o.source_url, e.date
-    FROM odds o JOIN fights f ON f.id = o.fight_id JOIN events e ON e.id = f.event_id
-    WHERE o.f1_close IS NOT NULL AND o.source_url LIKE '%/fighters/%'
-      AND (o.f1_history IS NULL OR o.f1_history = '' OR o.f1_history = '[]')
-  `).all() as { fight_id: string; f1_open: string | null; f2_open: string | null; source_url: string; date: string }[];
-  const byPage = new Map<string, typeof rows>();
-  for (const row of rows) byPage.set(row.source_url, [...(byPage.get(row.source_url) ?? []), row]);
-
-  for (const [url, bouts] of byPage) {
-    if (pageUrls && !pageUrls.includes(url)) continue;
-    onPage?.(result.pages, byPage.size);
-    result.pages++;
-    let page: Awaited<ReturnType<typeof scrapeFighterOddsHistory>>;
-    try {
-      page = await scrapeFighterOddsHistory([], url);
-    } catch (err) {
-      result.failed++;
-      log(`closing restate failed [${url}]:`, String(err));
-      continue;
-    }
-    for (const bout of bouts) {
-      const near = (page?.rows ?? []).filter((row) => !row.date || Math.abs(daysBetween(row.date, bout.date)) <= 14);
-      const candidates = near.flatMap((row) => [
-        row.self.open === bout.f1_open && row.opp.open === bout.f2_open ? [{ row, selfIsF1: true }] : [],
-        row.self.open === bout.f2_open && row.opp.open === bout.f1_open ? [{ row, selfIsF1: false }] : [],
-      ].flat());
-      // Two rows with the same opening pair near one date can't be told apart.
-      const dated = candidates.filter((c) => c.row.date);
-      const pick = dated.length === 1 ? dated[0] : dated.length === 0 && candidates.length === 1 ? candidates[0] : null;
-      if (!pick || bout.f1_open == null || bout.f2_open == null) { result.unmatched++; continue; }
-      const f1 = pick.selfIsF1 ? pick.row.self : pick.row.opp;
-      const f2 = pick.selfIsF1 ? pick.row.opp : pick.row.self;
-      if (!f1.close || !f2.close) { result.unmatched++; continue; }
-      update.run(f1.close, f2.close, JSON.stringify(f1.history), JSON.stringify(f2.history), bout.fight_id);
-      result.restated++;
-    }
-  }
-  log(`closing restate: ${result.recomputed} recomputed, ${result.restated} restated from ${result.pages} pages, ${result.unmatched} unmatched, ${result.failed} failed`);
-  return result;
-}
-
 /**
  * Odds backfill. BestFightOdds keeps a fighter's whole career on one page, so
  * we harvest per fighter (2 requests) instead of per fight (3+), and match each
@@ -1135,7 +1094,7 @@ export async function syncOddsBackfill(limit: number): Promise<OddsBackfillResul
     for (const fighter of targets) {
       let history: Awaited<ReturnType<typeof scrapeFighterOddsHistory>> = null;
       try {
-        history = await scrapeFighterOddsHistory(fighterNames(fighter.id, fighter.name), fighter.bfo_url);
+        history = await scrapeFighterOddsHistory(oddsNames(fighter.id, fighter.name), fighter.bfo_url);
       } catch (err) {
         // Transient source/network failures must remain immediately retryable.
         failed++;
@@ -1442,13 +1401,8 @@ export async function tick(): Promise<void> {
     }
     if (missing.length > 150) log(`backfill: ${missing.length - 150} events remaining`);
 
-    // 5b. Cards that have just finished. UFCStats keeps rewriting a card's
-    //     summary numbers after its last verdict, but the only thing that
-    //     re-reads that page is the fight-day live loop — which stops at
-    //     midnight UTC, and never runs at all for a card fought while this
-    //     process was down. Those numbers are what every fight detail on the
-    //     card is checked against, so a row left mid-bout would reject the
-    //     final stats of its own bout indefinitely.
+    // 5b. Just-finished cards: UFCStats keeps rewriting summary numbers after
+    //     the last result, and fight details are checked against them.
     const settling = events.filter((e) => e.complete === 1 && e.date <= today && daysBetween(e.date, today) <= 3);
     for (const e of settling) {
       if (!e.detail_fetched_at || now - e.detail_fetched_at > 15 * 60_000) {
@@ -1520,6 +1474,14 @@ export async function tick(): Promise<void> {
     }
     if (!methodOddsBackfillRunning) {
       void guarded("method_odds_backfill", async () => { await syncMethodOddsBackfill(20); });
+    }
+
+    // 11b. Verdict MMA judges' round cards and community scorecards: newly
+    //     completed cards, and the last three weeks re-read as their community
+    //     totals grow and official cards get posted. Six-hourly, in parallel.
+    if (metaAgeMs("verdict_scorecards_at") > 6 * HOUR) {
+      touchMeta("verdict_scorecards_at");
+      void guarded("verdict_scorecards", async () => { await syncVerdictScorecards(); });
     }
 
     // 12. Birth dates, in parallel on the ufcstats queue. Live results share

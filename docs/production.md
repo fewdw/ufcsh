@@ -46,8 +46,11 @@ it between hosts.
 
 ## Cache and load behavior
 
-- Public JSON responses share a 64 MiB / 512-entry origin cache. Identical misses
+- Public JSON responses and SEO-filled HTML pages share one origin cache,
+  128 MiB by default (`RESPONSE_CACHE_MB`). Larger bodies are kept only as gzip,
+  so it holds roughly every matchup, fighter and card at once. Identical misses
   share one calculation, including serialization and asynchronous compression.
+  Build files are held in memory with their gzip bytes.
 - Live/event/matchup/profile responses are fresh for 5 seconds and may serve the
   previous copy for another 5 seconds during refresh. Other public responses use
   60 + 60 seconds. Sitemap responses use 300 + 300 seconds. Time-based expiry is
@@ -56,7 +59,7 @@ it between hosts.
   for rankings. Filtered analytics require HTTP revalidation. Errors and admin
   responses use `no-store`; public JSON supports ETags and `Vary: Accept-Encoding`.
 - Cache bounds also limit arbitrary query combinations. The worker queue is
-  capped at 64 waiting jobs; jobs have a 15-second deadline. Overload returns 503
+  capped at 512 waiting jobs (a few hundred milliseconds of work); jobs have a 15-second deadline. Overload returns 503
   with `Retry-After`; per-client request limits return 429.
 - Database revisions update transactionally when content changes. Heartbeats,
   queue writes, and unchanged scrape timestamps do not invalidate analytics.
@@ -110,6 +113,25 @@ Before claiming a concurrent-user capacity, load-test the target host with warm
 and cold caches, varied filters, image misses, and scraping enabled. Track tail
 latency, memory, worker restarts, queue depth, 429/503 rates, and cache hits.
 5,000 registered or daily users is not the same workload as 5,000 active tabs.
+
+`npm run load:test` replays a weighted page mix (cards, matchups, fighter
+pages, previews, images, search, rankings, HTML deep links) from 10,000
+simulated visitors. Start the server under test with loopback trusted as its
+proxy so each visitor is rate-limited separately:
+
+```sh
+TRUSTED_PROXY_IPS=127.0.0.1,::ffff:127.0.0.1,::1 NO_SYNC=1 PORT=8001 API_WORKERS=2 npm start --prefix server
+npm run load:test --prefix server -- --url=http://localhost:8001 --rate=4000 --seconds=30 --cold
+```
+
+`--rate` is open-loop arrivals per second (10,000 visitors viewing a page every
+~20 s at ~8 requests a view is about 4,000/s); omit it for closed-loop maximum
+throughput at `--concurrency`. `--cold` spreads requests over ~2,000 distinct
+pages of each kind. Reference results on a 10-core laptop with two workers:
+4,000/s cold held p50 0.6 ms / p95 2.8 ms, and 8,000/s held p95 2.8 ms / p99
+42 ms, with ~0.1% 503s confined to the first second after a restart; warm
+closed-loop throughput was ~38,000 requests/s. The whole working set cached in
+about 25 MB. Adding workers did not help at these rates and costs ~400 MB each.
 
 
 ## Fan scoring

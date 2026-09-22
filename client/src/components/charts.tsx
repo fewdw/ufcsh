@@ -3,15 +3,8 @@ import { PANEL, SERIES, compact, formatValue, type Format } from "./chartTokens"
 import { Tooltip } from "./Tooltip";
 import { useTooltip } from "../tooltip";
 
-/**
- * The app's chart primitives. Every plot on the Labs and Statistics pages is
- * built from these, so one set of decisions — bar thickness, the 2px surface
- * gap that separates touching marks, hairline axes, hover and keyboard
- * tooltips, and a table twin for every chart — holds everywhere.
- *
- * Colour roles live in index.css as tokens. Marks carry the series colour;
- * text never does, so every label stays legible against the surface.
- */
+/** Chart primitives for Labs and Statistics: one set of bar, gap, axis,
+ * tooltip and table-twin decisions. Marks carry series colour, text never. */
 
 const AXIS_TEXT = "text-[10px] tabular-nums text-zinc-400";
 
@@ -312,45 +305,6 @@ function BarRow({
 }
 
 // ---------------------------------------------------------------------------
-// Stacked bar: part-to-whole in one row, with a 2px surface gap between
-// segments and labels only where they fit.
-
-export type StackSegment = { key: string; label: string; value: number; color: string };
-
-export function StackedBar({ segments, total, height = 14 }: { segments: StackSegment[]; total?: number; height?: number }) {
-  const sum = total ?? segments.reduce((acc, segment) => acc + segment.value, 0);
-  const visible = segments.filter((segment) => segment.value > 0);
-  return (
-    <div className="flex w-full gap-[2px] overflow-hidden rounded-[4px] bg-zinc-100" style={{ height }} role="img" aria-label={visible.map((s) => `${s.label} ${s.value}`).join(", ")}>
-      {visible.map((segment) => (
-        <SegmentBlock key={segment.key} segment={segment} share={sum > 0 ? segment.value / sum : 0} />
-      ))}
-    </div>
-  );
-}
-
-function SegmentBlock({ segment, share }: { segment: StackSegment; share: number }) {
-  const { open, at, id, handlers } = useTip();
-  return (
-    <span className="relative flex" style={{ width: `${share * 100}%` }}>
-      <button
-        type="button"
-        aria-describedby={open ? id : undefined}
-        aria-label={`${segment.label}: ${segment.value}`}
-        {...handlers}
-        className="h-full w-full focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-zinc-900"
-        style={{ backgroundColor: segment.color }}
-      />
-      {open ? (
-        <Tip id={id} at={at}>
-          <TipBody title={segment.label} rows={[{ label: "bouts", value: segment.value.toLocaleString("en-US"), color: segment.color }, { label: "of population", value: `${Math.round(share * 1000) / 10}%` }]} />
-        </Tip>
-      ) : null}
-    </span>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Column chart: one column per ordered slot (rounds, years). Values ride the
 // cap only when the chart is short enough for them to read.
 
@@ -591,87 +545,3 @@ export function LineChart({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Scatter: one dot per category, positioned by two measures. Every dot carries
-// a 24px hit area and a 2px surface ring so overlapping points stay readable.
-
-export type ScatterPoint = { key: string; label: string; x: number; y: number; n?: number; color?: string };
-
-export function ScatterPlot({
-  points,
-  xLabel,
-  yLabel,
-  xFormat = "number",
-  yFormat = "number",
-  height = 220,
-}: {
-  points: ScatterPoint[];
-  xLabel: string;
-  yLabel: string;
-  xFormat?: Format;
-  yFormat?: Format;
-  height?: number;
-}) {
-  const [active, setActive] = useState<string | null>(null);
-  if (!points.length) return <p className="py-10 text-center text-[11px] text-zinc-400">Not enough data to plot.</p>;
-  const xs = points.map((p) => p.x);
-  const ys = points.map((p) => p.y);
-  const xMin = Math.min(...xs);
-  const xMax = Math.max(...xs);
-  const yMin = Math.min(...ys);
-  const yMax = Math.max(...ys);
-  const px = (value: number) => ((value - xMin) / (xMax - xMin || 1)) * 96 + 2;
-  const py = (value: number) => 96 - ((value - yMin) / (yMax - yMin || 1)) * 92;
-  const activePoint = points.find((point) => point.key === active);
-  return (
-    <div className="px-4 pb-3 pt-2">
-      <div className="flex gap-2">
-        <div className="flex w-9 shrink-0 flex-col justify-between py-[2px] text-right" style={{ height }}>
-          <span className={AXIS_TEXT}>{formatValue(yMax, yFormat)}</span>
-          <span className={AXIS_TEXT}>{formatValue(yMin, yFormat)}</span>
-        </div>
-        <div className="relative min-w-0 flex-1" style={{ height }}>
-          <div className="absolute inset-0 border-b border-l border-zinc-200" />
-          {points.map((point) => (
-            <button
-              key={point.key}
-              type="button"
-              onPointerEnter={() => setActive(point.key)}
-              onPointerLeave={() => setActive((current) => (current === point.key ? null : current))}
-              onFocus={() => setActive(point.key)}
-              onBlur={() => setActive((current) => (current === point.key ? null : current))}
-              aria-label={`${point.label}: ${formatValue(point.x, xFormat)} ${xLabel}, ${formatValue(point.y, yFormat)} ${yLabel}`}
-              className="absolute grid h-6 w-6 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-zinc-900"
-              style={{ left: `${px(point.x)}%`, top: `${py(point.y)}%` }}
-            >
-              <span
-                className="block h-2.5 w-2.5 rounded-full ring-2 ring-white transition-transform"
-                style={{ backgroundColor: point.color ?? SERIES[0], transform: active === point.key ? "scale(1.5)" : undefined }}
-              />
-            </button>
-          ))}
-          {activePoint ? (
-            <span
-              className="pointer-events-none absolute z-30 w-max max-w-56 -translate-x-1/2 -translate-y-full rounded-lg bg-zinc-900 px-2.5 py-2 text-left text-[11px] leading-snug text-white shadow-lg"
-              style={{ left: `${Math.min(80, Math.max(20, px(activePoint.x)))}%`, top: `${Math.max(12, py(activePoint.y) - 6)}%` }}
-            >
-              <TipBody
-                title={activePoint.label}
-                rows={[
-                  { label: xLabel, value: formatValue(activePoint.x, xFormat) },
-                  { label: yLabel, value: formatValue(activePoint.y, yFormat) },
-                  ...(activePoint.n != null ? [{ label: "observations", value: activePoint.n.toLocaleString("en-US") }] : []),
-                ]}
-              />
-            </span>
-          ) : null}
-        </div>
-      </div>
-      <div className="ml-11 mt-1 flex justify-between">
-        <span className={AXIS_TEXT}>{formatValue(xMin, xFormat)}</span>
-        <span className="text-[9px] font-medium uppercase tracking-wider text-zinc-400">{xLabel}</span>
-        <span className={AXIS_TEXT}>{formatValue(xMax, xFormat)}</span>
-      </div>
-    </div>
-  );
-}

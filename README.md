@@ -147,6 +147,7 @@ the app is usable immediately and fills in as it goes. `GET /api/status` shows p
 | Fight detail pages  | ufcstats.com     | upcoming ≤14d + recent past; older pages lazily verified when needed |
 | Odds                | bestfightodds.com| upcoming ≤30d every 6h, frozen after the event   |
 | Method odds         | bestfightodds.com| event boards every 6h; closing boards after each card; archive backfilled newest first |
+| Judges' round cards and community scorecards | verdictmma.com | new cards found every 6h; the last three weeks re-read every 6h while community totals grow and official round cards are posted; archive via `npm run backfill:scorecards` |
 | Fighter photos      | ufc.com          | Headshot and full-body cut-out; small batch per minute, ranked and upcoming-card fighters first. Re-checked every 3 days for anyone with a bout in hand and every 30 for the rest, daily while a picture is still missing; ufc.com's silhouette stand-ins count as no picture. Viewing a fighter queues them for the next batch |
 
 Pages say how old their copy is rather than letting it look current: an event

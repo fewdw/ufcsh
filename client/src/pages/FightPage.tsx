@@ -325,13 +325,9 @@ function FormListBout({ row }: { row: UfcHistoryRow }) {
   );
 }
 
-/** One fighter's five stops. Rows arrive newest first and the run reads oldest
- *  to newest; side by side the second fighter's half is mirrored, so both
- *  fighters' most recent bout — the one that led here — sits against the centre
- *  line. Stacked there is no centre to mirror, so each half is captioned with
- *  its fighter and both read the same way. Short runs pad on the outer edge,
- *  keeping the recent end aligned. Too narrow for five columns, the run becomes
- *  a list, newest first, so a name is never cut to a few letters. */
+/** One fighter's last five, oldest to newest. Side by side the second half
+ *  is mirrored so both latest bouts meet at the centre; too narrow, it
+ *  becomes a newest-first list. */
 function FormHalf({ name, rows, side }: { name: string; rows: UfcHistoryRow[]; side: "f1" | "f2" }) {
   const chronological = [...rows].reverse();
   const cells: (UfcHistoryRow | null)[] = [

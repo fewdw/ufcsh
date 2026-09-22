@@ -10,8 +10,10 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash, timingSafeEqual } from "node:crypto";
+import { gzip } from "node:zlib";
+import { promisify } from "node:util";
 import { monitorEventLoopDelay, performance } from "node:perf_hooks";
-import { db, getMeta, setMeta, DATA_DIR, dataRevision } from "./db.ts";
+import { prepared, getMeta, setMeta, DATA_DIR, dataRevision } from "./db.ts";
 import { enqueueRefresh } from "./refresh-queue.ts";
 import { QueryPool } from "./query-pool.ts";
 import { ResponseCache, representation, acceptsGzip, matchesEtag, OverloadedError, type Representation } from "./response-cache.ts";
@@ -121,7 +123,7 @@ function ageOnDate(birthDate: string, date = todayIso()): number | null {
 }
 
 function nextEventDate(): string | null {
-  return (db.prepare("SELECT MIN(date) AS d FROM events WHERE complete = 0 AND date > date('now')").get() as { d: string | null }).d;
+  return (prepared("SELECT MIN(date) AS d FROM events WHERE complete = 0 AND date > date('now')").get() as { d: string | null }).d;
 }
 
 type FighterSummary = {
@@ -144,7 +146,7 @@ const completedUfcFightExistsSql = (fighterIdSql: string, fightAlias: string) =>
     AND (${fightAlias}.f1_outcome IS NOT NULL OR ${fightAlias}.f2_outcome IS NOT NULL)
 )`;
 
-const completedUfcFightForFighter = db.prepare(`
+const completedUfcFightForFighter = prepared(`
   SELECT ${completedUfcFightExistsSql("?1", "f")} AS eligible
 `);
 
@@ -185,7 +187,7 @@ function cachedFullPhotoUrl(id: string, remoteUrl: string | null | undefined): s
 }
 
 const fighterSummaryStmt = () =>
-  db.prepare(`
+  prepared(`
     SELECT fr.id, fr.name, fr.nickname, fr.wins, fr.losses, fr.draws, fr.photo_url, fr.photo_full_url,
            fr.country, fr.country_code,
            r.division AS r_division, r.rank AS r_rank
@@ -203,9 +205,9 @@ const fighterSummaryStmt = () =>
 /** Viewing a fighter without a photo queues them for the next background photo batch. */
 function requestPhoto(id: string): void {
   if (!id) return;
-  const row = db.prepare("SELECT photo_url, photo_full_url, photo_checked_at FROM fighters WHERE id = ?").get(id) as any;
+  const row = prepared("SELECT photo_url, photo_full_url, photo_checked_at FROM fighters WHERE id = ?").get(id) as any;
   if (row && (row.photo_checked_at == null || Date.now() - row.photo_checked_at > ((!row.photo_url || !row.photo_full_url) ? 86_400_000 : 30 * 86_400_000))) {
-    db.prepare("INSERT OR IGNORE INTO image_queue (fighter_id, requested_at) VALUES (?, ?)").run(id, Date.now());
+    prepared("INSERT OR IGNORE INTO image_queue (fighter_id, requested_at) VALUES (?, ?)").run(id, Date.now());
   }
 }
 
@@ -231,16 +233,16 @@ function fighterSummary(id: string, fallbackName: string, rankingType: RankingTy
 }
 
 function fightOdds(fightId: string, includeMethodOdds = false): unknown {
-  const o = db.prepare("SELECT * FROM odds WHERE fight_id = ?").get(fightId) as any;
+  const o = prepared("SELECT * FROM odds WHERE fight_id = ?").get(fightId) as any;
   const method = includeMethodOdds
-    ? db.prepare("SELECT * FROM method_odds WHERE fight_id = ?").get(fightId) as any
+    ? prepared("SELECT * FROM method_odds WHERE fight_id = ?").get(fightId) as any
     : null;
   if ((!o || (!o.f1_close && !o.f2_close)) && !method) return null;
   let props = null;
   if (method) {
     try {
       const markets = JSON.parse(method.markets_json);
-      const fight = db.prepare("SELECT f1_id, f2_id FROM fights WHERE id = ?").get(fightId) as { f1_id: string; f2_id: string } | undefined;
+      const fight = prepared("SELECT f1_id, f2_id FROM fights WHERE id = ?").get(fightId) as { f1_id: string; f2_id: string } | undefined;
       // Prices are only shown against the exact fighter pair they were verified for.
       if (fight && markets.f1_id === fight.f1_id && markets.f2_id === fight.f2_id) {
         props = {
@@ -262,14 +264,6 @@ function fightOdds(fightId: string, includeMethodOdds = false): unknown {
     source_url: o?.source_url ?? null,
     ...(props ? { props } : {}),
   };
-}
-
-/** Convert an American line to its implied win probability. Comparing those
- * probabilities avoids relying on the sign or string formatting of the line. */
-function americanOddsValue(line: string | null): number | null {
-  if (!line) return null;
-  const value = Number(line.replace(/[−–]/g, "-").replace(/[^0-9+-.]/g, ""));
-  return Number.isFinite(value) && value !== 0 ? value : null;
 }
 
 /** What a card row can say about a fighter beyond the name: age on fight
@@ -318,13 +312,8 @@ function sideContext(fighterId: string, date: string, ord: number): Record<strin
   };
 }
 
-/**
- * Rounds the bout is booked for, from an official source only: the time format
- * ufcstats records once a bout has been fought, or the rule set ufc.com
- * publishes for a bout on an announced card. Null when neither has said — a
- * bout's position or title status is never taken as its length, because
- * non-title co-main and contender bouts are regularly booked for five.
- */
+/** Booked rounds from an official source only (UFCStats time format, or
+ * ufc.com's rules for an announced bout); never inferred from card position. */
 function scheduledRounds(f: any, detail: any): number | null {
   const format = detail?.methodInfo?.["Time format"];
   if (format) {
@@ -403,8 +392,7 @@ function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingTy
 function listEvents(): unknown {
   if (process.env.SYNC_MODE !== "external" && process.env.NO_SYNC !== "1") void syncLiveEvents().catch(err => log("live events refresh failed:", String(err)));
   const next = nextEventDate();
-  const rows = db
-    .prepare(`
+  const rows = prepared(`
       SELECT e.id, e.name, e.date, e.location, e.complete, COUNT(f.id) AS fight_count
       FROM events e LEFT JOIN fights f ON f.event_id = e.id
       GROUP BY e.id ORDER BY e.date DESC
@@ -420,20 +408,14 @@ function listEvents(): unknown {
   }));
 }
 
-/**
- * The bout the promotion is on right now, for whichever card is running.
- *
- * Null when nothing is running, so a header that reads this says nothing at
- * all on an ordinary day. A card is fought bottom-up, so the bout on now is
- * the lowest one still without a result; before its estimated start it is the
- * bout walking out next, and the countdown to it is the reader's answer.
- */
+/** The bout on now for a running card (fought bottom-up, so the lowest one
+ * without a result), or null when nothing is running. */
 function liveCard(rankingType: RankingType): unknown | null {
   if (process.env.SYNC_MODE !== "external" && process.env.NO_SYNC !== "1") void syncLiveEvents().catch(err => log("live card refresh failed:", String(err)));
-  const e = db.prepare(`SELECT * FROM events WHERE complete = 0
+  const e = prepared(`SELECT * FROM events WHERE complete = 0
     AND date >= date('now', '-1 day') AND date <= date('now') ORDER BY date DESC LIMIT 1`).get() as EventRow | undefined;
   if (!e || !isFightDay(e.date)) return null;
-  const fights = db.prepare("SELECT * FROM fights WHERE event_id = ? ORDER BY ord ASC").all(e.id) as any[];
+  const fights = prepared("SELECT * FROM fights WHERE event_id = ? ORDER BY ord ASC").all(e.id) as any[];
   const bout = [...fights].reverse().find((f) => !fightIsComplete(f));
   if (!bout) return null;
 
@@ -469,12 +451,11 @@ function liveCard(rankingType: RankingType): unknown | null {
 }
 
 async function getEvent(id: string, rankingType: RankingType): Promise<unknown | null> {
-  const e = db.prepare("SELECT * FROM events WHERE id = ?").get(id) as EventRow | undefined;
+  const e = prepared("SELECT * FROM events WHERE id = ?").get(id) as EventRow | undefined;
   if (!e) return null;
   let refreshing = isFightDay(e.date) && matchupRefresh.request(`event:${id}`, () => refreshLiveEvent(id),
     err => log("live event refresh failed:", String(err)), 10_000);
-  const fights = db
-    .prepare(`SELECT f.*, o.f1_close AS card_f1_close, o.f2_close AS card_f2_close
+  const fights = prepared(`SELECT f.*, o.f1_close AS card_f1_close, o.f2_close AS card_f2_close
       FROM fights f LEFT JOIN odds o ON o.fight_id = f.id
       WHERE f.event_id = ? ORDER BY f.ord ASC`)
     .all(id) as any[];
@@ -509,7 +490,7 @@ async function getEvent(id: string, rankingType: RankingType): Promise<unknown |
 async function ensureFighterTitleTypes(fighterId: string): Promise<void> {
   // Include earlier title bouts belonging to this fighter's title opponents;
   // those establish whether a later undisputed bout was a unification bout.
-  const missing = db.prepare(`
+  const missing = prepared(`
     WITH direct AS (
       SELECT f.id, f.f1_id, f.f2_id, f.weight_class, e.date
       FROM fights f JOIN events e ON e.id = f.event_id
@@ -574,8 +555,7 @@ function opponentFormBefore(opponentId: string, date: string, ord?: number): unk
 }
 
 function fighterHistory(fighterId: string, includeOpponentForm = false): unknown[] {
-  const rows = db
-    .prepare(`
+  const rows = prepared(`
       SELECT f.*, e.name AS event_name, e.date AS event_date, e.complete AS event_complete,
              o.f1_close, o.f2_close
       FROM fights f JOIN events e ON e.id = f.event_id
@@ -683,7 +663,7 @@ type SourceCareerRow = {
  * outside rows link back to their source event/opponent.
  */
 function professionalHistory(fighterId: string, ufcHistory: any[]): any[] {
-  const rows = db.prepare(`
+  const rows = prepared(`
     SELECT cb.*, source_profile.source_url AS profile_url, opponent_profile.fighter_id AS opponent_id
     FROM career_bouts cb
     JOIN career_profiles source_profile ON source_profile.fighter_id = cb.fighter_id
@@ -825,15 +805,14 @@ export async function runRefreshJob(key: string): Promise<unknown> {
  * next unfinished bout — the same rule the event card uses to box it as live. */
 function fightInProgress(f: { id: string; event_id: string; event_date: string; f1_outcome: string | null; f2_outcome: string | null }): boolean {
   if (fightIsComplete(f) || !isFightDay(f.event_date)) return false;
-  const card = db.prepare("SELECT id, f1_outcome, f2_outcome FROM fights WHERE event_id = ? ORDER BY ord ASC")
+  const card = prepared("SELECT id, f1_outcome, f2_outcome FROM fights WHERE event_id = ? ORDER BY ord ASC")
     .all(f.event_id) as { id: string; f1_outcome: string | null; f2_outcome: string | null }[];
   if (!card.some(fightIsComplete)) return false;
   return card.findLast((bout) => !fightIsComplete(bout))?.id === f.id;
 }
 
 async function getFight(id: string, rankingType: RankingType): Promise<unknown | null> {
-  const f = db
-    .prepare(`
+  const f = prepared(`
       SELECT f.*, e.name AS event_name, e.date AS event_date, e.location AS event_location, e.complete AS event_complete
       FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?
     `)
@@ -864,7 +843,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     requestPhoto(fid);
     const summary = fighterSummary(fid, fallback, rankingType);
     const bio = fid
-      ? (db.prepare("SELECT height, weight, reach, stance, birth_date FROM fighters WHERE id = ?").get(fid) as any)
+      ? (prepared("SELECT height, weight, reach, stance, birth_date FROM fighters WHERE id = ?").get(fid) as any)
       : null;
     const history = fid ? fighterHistory(fid) : [];
     const proHistory = fid ? professionalHistory(fid, history) : [];
@@ -975,7 +954,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
 const profileCache = new VersionCache<Record<string, unknown>>();
 
 export async function getFighter(id: string, rankingType: RankingType): Promise<unknown | null> {
-  const fr = db.prepare("SELECT * FROM fighters WHERE id = ?").get(id) as any;
+  const fr = prepared("SELECT * FROM fighters WHERE id = ?").get(id) as any;
   // UFCStats contains directory-only identities and future debutants. They are
   // allowed to appear on a scheduled card, but never become browsable profiles.
   if (!fr || !hasCompletedUfcFight(id)) return null;
@@ -984,7 +963,7 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     refreshing = matchupRefresh.request(`birth:${id}`, () => syncFighterBirthDateOnce(id),
       err => log("lazy fighter birth date failed:", String(err)));
   }
-  const careerState = db.prepare("SELECT status, checked_at FROM career_profiles WHERE fighter_id = ?").get(id) as { status: string; checked_at: number | null } | undefined;
+  const careerState = prepared("SELECT status, checked_at FROM career_profiles WHERE fighter_id = ?").get(id) as { status: string; checked_at: number | null } | undefined;
   const retryAfter = careerState?.status === "error" ? 86_400_000 : 30 * 86_400_000;
   const shouldFetchCareer = !careerState
     || careerState.status === "pending"
@@ -1008,8 +987,7 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     ...history.filter((row) => row.upcoming),
     ...proHistory.filter((row) => row.promotion === "ufc"),
   ];
-  const ranking = db
-    .prepare(`
+  const ranking = prepared(`
       SELECT division, rank, rank_change FROM rankings
       WHERE fighter_id = ? AND ranking_type = ?
         AND division NOT LIKE '%Pound-for-Pound%'
@@ -1037,7 +1015,7 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     record_verified: summary.record_verified ?? false,
     ufc_record: indexedFighter ? recordText(indexedFighter.ufc) : "0-0",
     outside_ufc_record: indexedFighter?.careerVerified ? recordText(indexedFighter.outside) : null,
-    career_source_url: (db.prepare("SELECT source_url FROM career_profiles WHERE fighter_id = ? AND status = 'verified'").get(fr.id) as { source_url: string } | undefined)?.source_url ?? null,
+    career_source_url: (prepared("SELECT source_url FROM career_profiles WHERE fighter_id = ? AND status = 'verified'").get(fr.id) as { source_url: string } | undefined)?.source_url ?? null,
     photo_url: cachedPhotoUrl(fr.id, fr.photo_url),
     photo_full_url: cachedFullPhotoUrl(fr.id, fr.photo_full_url),
     ranking: ranking ?? null,
@@ -1053,7 +1031,7 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
 }
 
 export function getFighterPreview(id: string): unknown | null {
-  const fighter = db.prepare("SELECT id, name, nickname, wins, losses, draws, photo_url FROM fighters WHERE id = ?").get(id) as any;
+  const fighter = prepared("SELECT id, name, nickname, wins, losses, draws, photo_url FROM fighters WHERE id = ?").get(id) as any;
   const indexed = fightIndex().fighters.get(id);
   if (!fighter || !indexed?.ufcBouts.length) return null;
   const localHistory = fighterHistory(id) as any[];
@@ -1104,7 +1082,7 @@ export function syncedAt(key: string): number | null {
  * Odds stop being refreshed once an event is over, so a completed card reports
  * final prices rather than an ever-growing age. */
 export function oddsFreshness(eventId: string): { updated_at: number | null; final: boolean; priced: number } {
-  const row = db.prepare(`
+  const row = prepared(`
     SELECT MAX(o.fetched_at) AS updated_at,
            COUNT(o.fight_id) AS priced,
            SUM(CASE WHEN o.final = 1 THEN 1 ELSE 0 END) AS frozen
@@ -1122,7 +1100,7 @@ export function getRankings(rankingType: RankingType): unknown {
   const today = todayIso();
   const index = fightIndex();
   const activeInterimChampions = new Map<string, string>();
-  const completedTitleFights = db.prepare(`
+  const completedTitleFights = prepared(`
     SELECT f.*, e.date AS event_date
     FROM fights f JOIN events e ON e.id = f.event_id
     WHERE e.complete = 1 AND e.date <= ?
@@ -1138,8 +1116,7 @@ export function getRankings(rankingType: RankingType): unknown {
     else activeInterimChampions.delete(fight.weight_class);
   }
   const divisionsOf = (type: RankingType) =>
-    db
-      .prepare(`
+    prepared(`
         SELECT division, weight_limit, MIN(rowid) AS first_row
         FROM rankings WHERE ranking_type = ?
         GROUP BY division, weight_limit ORDER BY first_row
@@ -1166,7 +1143,7 @@ export function getRankings(rankingType: RankingType): unknown {
     }
   }
 
-  const nextFightStmt = db.prepare(`
+  const nextFightStmt = prepared(`
     SELECT e.date AS date, e.name AS event_name, e.id AS event_id, f.id AS fight_id,
            CASE WHEN f.f1_id = ? THEN f.f2_name ELSE f.f1_name END AS opponent
     FROM fights f JOIN events e ON e.id = f.event_id
@@ -1174,8 +1151,7 @@ export function getRankings(rankingType: RankingType): unknown {
     ORDER BY e.date ASC LIMIT 1
   `);
   return divisions.map((d) => {
-    const entries = db
-      .prepare(`
+    const entries = prepared(`
         SELECT r.rank, r.fighter_name,
                r.fighter_id, r.rank_change, fr.photo_url, fr.nickname,
                fr.wins, fr.losses, fr.draws,
@@ -1242,9 +1218,10 @@ export function getRankings(rankingType: RankingType): unknown {
 
 const SEARCH_LIMIT = 8;
 type SearchIndex = {
-  fighters: { id: string; name: string; nickname: string; wins: number; losses: number; draws: number; photo_url: string | null; ufc_fights: number; target: FuzzyTarget }[];
+  fighters: { id: string; name: string; nickname: string; wins: number; losses: number; draws: number; photo_url: string | null; ufc_fights: number; names: string; target: FuzzyTarget }[];
   events: { id: string; name: string; date: string; target: FuzzyTarget }[];
-  fights: { id: string; date: string; target: FuzzyTarget }[];
+  // `names` is "a vs b" and "b vs a" lowercased, one per line, for the exact match.
+  fights: { id: string; date: string; names: string; target: FuzzyTarget }[];
 };
 const searchIndexCache = new VersionCache<SearchIndex>(1);
 
@@ -1253,19 +1230,24 @@ function searchIndex(): SearchIndex {
   const version = dataRevision("search");
   const cached = searchIndexCache.get("index", version);
   if (cached) return cached;
-  const fighters = (db.prepare(`
-    SELECT fr.id, fr.name, fr.nickname, fr.wins, fr.losses, fr.draws, fr.photo_url,
+  const fighters = (prepared(`
+    SELECT fr.id, fr.name, fr.nickname, fr.norm_name, fr.wins, fr.losses, fr.draws, fr.photo_url,
            (SELECT COUNT(*) FROM fights f
              WHERE (f.f1_id = fr.id OR f.f2_id = fr.id)
                AND (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)) AS ufc_fights
     FROM fighters fr
     WHERE ${completedUfcFightExistsSql("fr.id", "fought")}
-  `).all() as any[]).map((f) => ({ ...f, target: fuzzyTarget(f.name, f.nickname) }));
-  const events = (db.prepare("SELECT id, name, date FROM events").all() as any[])
+  `).all() as any[]).map(({ norm_name, ...f }) => ({
+    ...f, target: fuzzyTarget(f.name, f.nickname), names: `${norm_name}\n${(f.nickname ?? "").toLowerCase()}`,
+  }));
+  const events = (prepared("SELECT id, name, date FROM events").all() as any[])
     .map((e) => ({ ...e, target: fuzzyTarget(e.name) }));
-  const fights = (db.prepare(`
+  const fights = (prepared(`
     SELECT f.id, f.f1_name, f.f2_name, e.date FROM fights f JOIN events e ON e.id = f.event_id
-  `).all() as any[]).map((f) => ({ id: f.id, date: f.date, target: fuzzyTarget(`${f.f1_name} ${f.f2_name}`) }));
+  `).all() as any[]).map((f) => ({
+    id: f.id, date: f.date, target: fuzzyTarget(`${f.f1_name} ${f.f2_name}`),
+    names: `${f.f1_name} vs ${f.f2_name}\n${f.f2_name} vs ${f.f1_name}`.toLowerCase(),
+  }));
   const index = { fighters, events, fights };
   searchIndexCache.set("index", index);
   return index;
@@ -1298,19 +1280,13 @@ export function search(q: string): unknown {
   if (!norm) return { fighters: [], events: [], fights: [] };
   const like = `%${norm.replace(/\s+/g, "%")}%`;
   const index = searchIndex();
+  // The query's words in order within one line of a row's `names`, as SQL LIKE
+  // '%a%b%' would match, over the in-memory index.
+  const words = new RegExp(norm.split(/\s+/).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*"));
 
-  const exactFighters = db
-    .prepare(`
-      SELECT fr.id, fr.name, fr.nickname, fr.wins, fr.losses, fr.draws, fr.photo_url,
-             (SELECT COUNT(*) FROM fights f
-               WHERE (f.f1_id = fr.id OR f.f2_id = fr.id)
-                 AND (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)) AS ufc_fights
-      FROM fighters fr
-      WHERE (fr.norm_name LIKE ? OR lower(fr.nickname) LIKE ?)
-        AND ${completedUfcFightExistsSql("fr.id", "fought")}
-      ORDER BY ufc_fights DESC, fr.wins DESC LIMIT ${SEARCH_LIMIT}
-    `)
-    .all(like, like) as any[];
+  const exactFighters = index.fighters.filter((fighter) => words.test(fighter.names))
+    .sort((a, b) => b.ufc_fights - a.ufc_fights || b.wins - a.wins)
+    .slice(0, SEARCH_LIMIT);
   const fighters = [
     ...exactFighters.map((f) => ({ f, approximate: false })),
     ...fuzzyMatches(index.fighters, norm, new Set(exactFighters.map((f) => f.id)), exactFighters.length,
@@ -1318,8 +1294,7 @@ export function search(q: string): unknown {
       .map(({ row, score }) => ({ f: row, approximate: score > 0 })),
   ];
 
-  const exactEvents = db
-    .prepare(`SELECT id, name, date FROM events WHERE lower(name) LIKE ? ORDER BY date DESC LIMIT ${SEARCH_LIMIT}`)
+  const exactEvents = prepared(`SELECT id, name, date FROM events WHERE lower(name) LIKE ? ORDER BY date DESC LIMIT ${SEARCH_LIMIT}`)
     .all(like) as any[];
   const events = [
     ...exactEvents,
@@ -1338,28 +1313,23 @@ export function search(q: string): unknown {
         (SELECT COUNT(*) FROM fights g
           WHERE (g.f1_id = f.f1_id AND g.f2_id = f.f2_id) OR (g.f1_id = f.f2_id AND g.f2_id = f.f1_id)) AS meetings
       FROM fights f JOIN events e ON e.id = f.event_id`;
-  const exactFights = db
-    .prepare(`${fightColumns}
-      WHERE lower(f.f1_name || ' vs ' || f.f2_name) LIKE ?
-         OR lower(f.f2_name || ' vs ' || f.f1_name) LIKE ?
-      ORDER BY e.date DESC LIMIT ${SEARCH_LIMIT}
-    `)
-    .all(like, like) as any[];
+  // Full rows, with their meeting counts, are read only for the fights returned.
+  const exactFights = index.fights.filter((fight) => words.test(fight.names))
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, SEARCH_LIMIT);
   // "a vs b" names both corners; the matcher wants just the names.
   const sides = splitMatchup(norm);
   const fightQuery = sides ? sides.join(" ") : norm;
   const fuzzyFights = fuzzyMatches(index.fights, fightQuery, new Set(exactFights.map((f) => f.id)), exactFights.length,
     (a, b) => b.date.localeCompare(a.date));
-  const fuzzyFightRows = new Map(fuzzyFights.length
-    ? (db.prepare(`${fightColumns} WHERE f.id IN (${fuzzyFights.map(() => "?").join(",")})`).all(...fuzzyFights.map(({ row }) => row.id)) as any[]).map((f) => [f.id, f])
+  const found = [...exactFights.map((row) => ({ row, score: 0 })), ...fuzzyFights];
+  const fightRows = new Map(found.length
+    ? (prepared(`${fightColumns} WHERE f.id IN (${found.map(() => "?").join(",")})`).all(...found.map(({ row }) => row.id)) as any[]).map((f) => [f.id, f])
     : []);
-  const fights = [
-    ...exactFights,
-    ...fuzzyFights.flatMap(({ row, score }) => {
-      const fight = fuzzyFightRows.get(row.id);
-      return fight ? [{ ...fight, ...(score > 0 ? { approximate: true } : {}) }] : [];
-    }),
-  ];
+  const fights = found.flatMap(({ row, score }) => {
+    const fight = fightRows.get(row.id);
+    return fight ? [{ ...fight, ...(score > 0 ? { approximate: true } : {}) }] : [];
+  });
 
   return {
     fighters: fighters.map(({ f, approximate }) => ({
@@ -1377,7 +1347,7 @@ export function search(q: string): unknown {
 }
 
 function status(): unknown {
-  const count = (sql: string) => (db.prepare(sql).get() as any).c as number;
+  const count = (sql: string) => (prepared(sql).get() as any).c as number;
   return {
     events: count("SELECT COUNT(*) AS c FROM events"),
     events_backfilled: count("SELECT COUNT(*) AS c FROM events WHERE detail_fetched_at IS NOT NULL"),
@@ -1403,18 +1373,16 @@ function status(): unknown {
   };
 }
 
+const XML_ENTITIES: Record<string, string> = { "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" };
 function xmlEscape(value: string): string {
-  return value.replace(/[<>&'\"]/g, (char) => ({
-    "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '\"': "&quot;",
-  })[char] ?? char);
+  return value.replace(/[<>&'"]/g, (char) => XML_ENTITIES[char]);
 }
 
 export function sitemap(): string {
-  const events = db.prepare("SELECT id FROM events ORDER BY date DESC").all() as { id: string }[];
-  const fights = db
-    .prepare("SELECT f.id FROM fights f JOIN events e ON e.id = f.event_id ORDER BY e.date DESC")
+  const events = prepared("SELECT id FROM events ORDER BY date DESC").all() as { id: string }[];
+  const fights = prepared("SELECT f.id FROM fights f JOIN events e ON e.id = f.event_id ORDER BY e.date DESC")
     .all() as { id: string }[];
-  const fighters = db.prepare(`
+  const fighters = prepared(`
     SELECT id FROM fighters fr
     WHERE ${completedUfcFightExistsSql("fr.id", "f")}
     ORDER BY id
@@ -1458,9 +1426,9 @@ export function pageSeo(pathname: string): PageSeo {
   const parts = pathname.split("/");
   const id = parts[2] ?? "";
   if (parts[1] === "events" && id) {
-    const event = db.prepare("SELECT id, name, date, location, complete FROM events WHERE id = ?").get(id) as EventRow | undefined;
+    const event = prepared("SELECT id, name, date, location, complete FROM events WHERE id = ?").get(id) as EventRow | undefined;
     if (event) {
-      const count = (db.prepare("SELECT COUNT(*) AS c FROM fights WHERE event_id = ?").get(id) as { c: number }).c;
+      const count = (prepared("SELECT COUNT(*) AS c FROM fights WHERE event_id = ?").get(id) as { c: number }).c;
       return {
         title: `${event.name} | ufc.sh`,
         description: `${event.name} fight card with ${count} matchups, odds${event.complete ? " and results" : ""}.${event.location ? ` Live from ${event.location}.` : ""}`,
@@ -1479,7 +1447,7 @@ export function pageSeo(pathname: string): PageSeo {
     }
   }
   if (parts[1] === "fights" && id) {
-    const fight = db.prepare(`
+    const fight = prepared(`
       SELECT f.id, f.f1_id, f.f2_id, f.f1_name, f.f2_name, f.weight_class,
              e.id AS event_id, e.name AS event_name, e.date, e.location, e.complete
       FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?
@@ -1509,7 +1477,7 @@ export function pageSeo(pathname: string): PageSeo {
     }
   }
   if (parts[1] === "fighters" && id) {
-    const fighter = db.prepare("SELECT id, name, nickname, wins, losses, draws, photo_url FROM fighters WHERE id = ?").get(id) as any;
+    const fighter = prepared("SELECT id, name, nickname, wins, losses, draws, photo_url FROM fighters WHERE id = ?").get(id) as any;
     if (fighter && hasCompletedUfcFight(id)) {
       const record = recordText(currentRecord(fighter.id, fighter).value);
       return {
@@ -1531,10 +1499,9 @@ export function pageSeo(pathname: string): PageSeo {
   return fallback;
 }
 
+const HTML_ENTITIES: Record<string, string> = { "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&#39;", '"': "&quot;" };
 function htmlEscape(value: string): string {
-  return value.replace(/[<>&'\"]/g, (char) => ({
-    "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&#39;", '\"': "&quot;",
-  })[char] ?? char);
+  return value.replace(/[<>&'"]/g, (char) => HTML_ENTITIES[char]);
 }
 
 function injectPageSeo(html: string, pathname: string, seo = pageSeo(pathname)): string {
@@ -1597,16 +1564,11 @@ async function discardOldPhotos(id: string, suffix: string, keep: string): Promi
   }
 }
 
-/**
- * Pictures cached before they were named after their contents. Each one whose
- * bytes still match what the database holds is renamed into its new name rather
- * than fetched from ufc.com a second time, and each one the old freshness stamp
- * had already retired is dropped. One pass, so changing the scheme costs the
- * site nothing.
- */
+/** One-time migration of photos cached before content-addressed names:
+ * matching files are renamed, retired ones dropped. */
 async function adoptUnversionedPhotos(): Promise<void> {
   if (getMeta("image_cache_versioned") === "1") return;
-  const rows = db.prepare(`
+  const rows = prepared(`
     SELECT id, photo_url, photo_full_url, photo_checked_at FROM fighters
     WHERE photo_url IS NOT NULL OR photo_full_url IS NOT NULL
   `).all() as {
@@ -1632,7 +1594,7 @@ async function adoptUnversionedPhotos(): Promise<void> {
 
 async function loadFighterImage(id: string, variant: PhotoVariant): Promise<{ data: Buffer; contentType: string } | null> {
   if (!/^[a-f0-9]+$/i.test(id)) return null;
-  const row = db.prepare("SELECT photo_url, photo_full_url FROM fighters WHERE id = ?").get(id) as
+  const row = prepared("SELECT photo_url, photo_full_url FROM fighters WHERE id = ?").get(id) as
     | { photo_url: string | null; photo_full_url: string | null }
     | undefined;
   if (!row) return null;
@@ -1758,9 +1720,9 @@ export function sendRepresentation(req: http.IncomingMessage, res: http.ServerRe
     res.end();
     return;
   }
-  const compressed = value.compressed && acceptsGzip(req.headers["accept-encoding"]);
-  const body = compressed ? value.compressed! : value.body;
-  if (compressed) headers["Content-Encoding"] = "gzip";
+  const gzipped = Boolean(value.compressed) && acceptsGzip(req.headers["accept-encoding"]);
+  const body = gzipped ? value.compressed! : value.body;
+  if (gzipped) headers["Content-Encoding"] = "gzip";
   headers["Content-Length"] = body.length;
   res.writeHead(value.status, headers);
   res.end(req.method === "HEAD" ? undefined : body);
@@ -1770,42 +1732,75 @@ async function sendJson(req: http.IncomingMessage, res: http.ServerResponse, dat
   sendRepresentation(req, res, await representation({ json: JSON.stringify(data), status: statusCode }), "no-store");
 }
 
-export async function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, pathname: string): Promise<void> {
+type StaticFile = { data: Buffer; gzip?: Buffer; etag: string; mtimeMs: number; checkedAt: number };
+const staticFiles = new Map<string, StaticFile>();
+const COMPRESSIBLE = new Set([".html", ".js", ".css", ".svg", ".json", ".webmanifest", ".txt", ".xml"]);
+const gzipAsync = promisify(gzip);
+
+/** A build file held in memory with its gzip bytes; a rebuild is noticed
+ * within two seconds because the file's mtime is re-checked that often. */
+async function readStatic(filePath: string): Promise<StaticFile | null> {
+  const now = Date.now();
+  const cached = staticFiles.get(filePath);
+  if (cached && now - cached.checkedAt < 2_000) return cached;
+  const stat = await fs.stat(filePath).catch(() => null);
+  if (!stat?.isFile()) { staticFiles.delete(filePath); return null; }
+  if (cached && cached.mtimeMs === stat.mtimeMs) { cached.checkedAt = now; return cached; }
+  const data = await fs.readFile(filePath);
+  const file: StaticFile = {
+    data, mtimeMs: stat.mtimeMs, checkedAt: now,
+    gzip: COMPRESSIBLE.has(path.extname(filePath)) && data.length > 1024 ? await gzipAsync(data) : undefined,
+    etag: `W/"${createHash("sha256").update(data).digest("base64url")}"`,
+  };
+  staticFiles.set(filePath, file);
+  return file;
+}
+
+/** `pages` caches the SEO-filled document per route; without it each is built on request. */
+export async function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, pathname: string, pages?: ResponseCache): Promise<void> {
   let filePath = path.join(CLIENT_DIST, path.normalize(pathname).replace(/^([/\\])+/, ""));
   if (filePath !== CLIENT_DIST && !filePath.startsWith(CLIENT_DIST + path.sep)) filePath = path.join(CLIENT_DIST, "index.html");
-  let data: Buffer;
-  let spaFallback = false;
-  try {
-    data = await fs.readFile(filePath);
-  } catch {
-    // Never send the SPA document for a missing script, stylesheet or image.
-    // In particular, HTML under /assets/ must not be cached as immutable JS.
-    if (pathname.startsWith("/assets/") || path.extname(pathname)) {
-      res.writeHead(404, { "Content-Type": "text/plain", "Cache-Control": "no-store" });
-      res.end("Asset not found");
+  const file = await readStatic(filePath);
+  if (file) {
+    const immutable = pathname.startsWith("/assets/");
+    const headers: Record<string, string | number> = {
+      "Content-Type": MIME[path.extname(filePath)] ?? "application/octet-stream",
+      "Cache-Control": immutable ? "public, max-age=31536000, immutable" : "no-cache",
+      "ETag": file.etag,
+    };
+    if (file.gzip) headers["Vary"] = "Accept-Encoding";
+    if (matchesEtag(req.headers?.["if-none-match"], file.etag)) {
+      res.writeHead(304, headers);
+      res.end();
       return;
     }
-    try {
-      data = await fs.readFile(path.join(CLIENT_DIST, "index.html"));
-      filePath = "index.html";
-      spaFallback = true;
-    } catch {
-      res.writeHead(404);
-      res.end("client not built - run `npm run build` in client/");
-      return;
-    }
+    const gzipped = Boolean(file.gzip) && acceptsGzip(req.headers?.["accept-encoding"]);
+    if (gzipped) headers["Content-Encoding"] = "gzip";
+    const body = gzipped ? file.gzip! : file.data;
+    headers["Content-Length"] = body.length;
+    res.writeHead(200, headers);
+    res.end(req.method === "HEAD" ? undefined : body);
+    return;
   }
-  const ext = path.extname(filePath);
-  if (spaFallback) {
+  // Never send the SPA document for a missing script, stylesheet or image.
+  // In particular, HTML under /assets/ must not be cached as immutable JS.
+  if (pathname.startsWith("/assets/") || path.extname(pathname)) {
+    res.writeHead(404, { "Content-Type": "text/plain", "Cache-Control": "no-store" });
+    res.end("Asset not found");
+    return;
+  }
+  const index = await readStatic(path.join(CLIENT_DIST, "index.html"));
+  if (!index) {
+    res.writeHead(404);
+    res.end("client not built - run `npm run build` in client/");
+    return;
+  }
+  const build = async () => {
     const seo = queryPool ? JSON.parse((await queryPool.run(`/_seo?path=${encodeURIComponent(pathname)}`)).json) as PageSeo : pageSeo(pathname);
-    data = Buffer.from(injectPageSeo(data.toString(), pathname, seo));
-  }
-  const immutable = pathname.startsWith("/assets/");
-  res.writeHead(200, {
-    "Content-Type": MIME[ext] ?? "application/octet-stream",
-    "Cache-Control": immutable ? "public, max-age=31536000, immutable" : "no-cache",
-  });
-  res.end(req.method === "HEAD" ? undefined : data);
+    return { json: injectPageSeo(index.data.toString(), pathname, seo), status: 200 };
+  };
+  const page = pages ? await pages.get(`page:${index.etag}:${pathname}`, 60_000, build) : await representation(await build());
+  sendRepresentation(req, res, page, "no-cache", "text/html");
 }
 
 /** The only public data dispatcher, also used inside isolated query workers. */
@@ -1835,20 +1830,13 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
 }
 
 export function startApi(port: number): http.Server {
-  // Scoring keeps its own database, so the bouts a scorecard belongs to are
-  // read from this one in a single batch per request.
-  // One compiled statement per batch size: this runs on every scorecard read
-  // and every save, so it is not recompiled each time.
-  const scoringFights = new Map<number, ReturnType<typeof db.prepare>>();
-  const scoringFightsQuery = (count: number) => {
-    let statement = scoringFights.get(count);
-    if (!statement) scoringFights.set(count, statement = db.prepare(`SELECT f.*, e.date AS event_date, e.name AS event_name,
+  // Scoring keeps its own database, so a scorecard's bouts are read from this
+  // one in a single batch per request.
+  const scoringFightsQuery = (count: number) => prepared(`SELECT f.*, e.date AS event_date, e.name AS event_name,
         a.photo_url AS f1_remote_photo, b.photo_url AS f2_remote_photo
         FROM fights f JOIN events e ON e.id = f.event_id
         LEFT JOIN fighters a ON a.id = f.f1_id LEFT JOIN fighters b ON b.id = f.f2_id
-        WHERE f.id IN (${Array.from({ length: count }, () => "?").join(",")})`));
-    return statement;
-  };
+        WHERE f.id IN (${Array.from({ length: count }, () => "?").join(",")})`);
   const scoreStore = new ScoringStore(path.join(DATA_DIR, "scoring.db"), ids => ids.length
     ? (scoringFightsQuery(ids.length).all(...ids) as any[])
       .map(fight => ({ ...fight,
@@ -1869,7 +1857,7 @@ export function startApi(port: number): http.Server {
     // Repairs write to the database and re-read the sources; they stay a
     // development tool until that path has been made safe to run under load.
     canAct: () => process.env.NODE_ENV !== "production",
-    liveFights: () => db.prepare(`
+    liveFights: () => prepared(`
       SELECT f.id, f.ord, f.f1_name, f.f2_name, f.weight_class, f.scheduled_rounds,
         f.round, f.time, f.method, f.detail_json, f.f1_outcome, f.f2_outcome,
         f.f1_id, f.f2_id, NULL AS f1_photo, NULL AS f2_photo,
@@ -1882,7 +1870,8 @@ export function startApi(port: number): http.Server {
   const workerCount = Number(process.env.API_WORKERS ?? (process.env.NODE_ENV === "production" ? 2 : 0));
   if (!Number.isInteger(workerCount) || workerCount < 0 || workerCount > 8) throw new Error("API_WORKERS must be an integer from 0 to 8");
   if (workerCount) queryPool = new QueryPool(workerCount);
-  const cache = new ResponseCache();
+  const cacheMb = Number(process.env.RESPONSE_CACHE_MB ?? 128);
+  const cache = new ResponseCache((Number.isFinite(cacheMb) && cacheMb > 0 ? cacheMb : 128) * 1024 * 1024);
   const limiter = new RateLimiter();
   const eventLoop = monitorEventLoopDelay({ resolution: 20 });
   eventLoop.enable();
@@ -1966,7 +1955,7 @@ export function startApi(port: number): http.Server {
         return sendRepresentation(req, res, value, "public, max-age=300", "application/xml; charset=utf-8");
       }
 
-      await serveStatic(req, res, p === "/" ? "/index.html" : p);
+      await serveStatic(req, res, p === "/" ? "/index.html" : p, cache);
     } catch (err) {
       log("API ERROR:", String(err));
       if (!res.headersSent && !res.destroyed) {

@@ -96,15 +96,6 @@ export const metaText = "text-[10px] tabular-nums text-zinc-400";
 
 /** The value either side of it — the thing the eye should land on first. */
 export const compareValue = `truncate ${CHART_TEXT} font-semibold text-zinc-900`;
-/** Supporting detail: same size, stepped back by weight and colour, exactly
- *  as the round columns separate "1" from "KD". */
-export const compareMuted = `truncate ${CHART_TEXT} font-medium text-zinc-400`;
-
-/** Every panel body: same padding as a Fight totals chart row, no hairlines —
- *  the middle column already gives the rows their rhythm. */
-export function PanelBody({ children }: { children: React.ReactNode }) {
-  return <div className="px-4 pb-4 pt-2">{children}</div>;
-}
 
 export function PanelEmpty({ children }: { children: React.ReactNode }) {
   return <p className={`py-6 text-center ${CHART_TEXT} text-zinc-400`}>{children}</p>;
@@ -823,13 +814,8 @@ export function FightTotals({ fight, grouped = false }: { fight: Matchup; groupe
     <section className={grouped ? "" : `@container ${shell}`}>
       <PanelHeading title="Fight totals" aside={grouped ? undefined : <Legend fight={fight} />} divider={false} />
       {totals ? (
-        // Four charts in one row, ordered as two pairs: a two-bar summary
-        // followed by the six-bar split that explains it — strikes with where
-        // they landed, control with the position it was won from. A split
-        // takes the wider share, control time the narrower, since a clock and
-        // two bars need less room than six bars and their figures. Narrower
-        // than that the row breaks into those same pairs, then into one column
-        // — a split is never separated from the summary it explains.
+        // Two pairs, each a summary then the split explaining it; narrower
+        // widths wrap by pair, then to one column.
         <div className="grid gap-x-3 gap-y-6 px-4 pb-4 pt-4 @[28rem]:grid-cols-[1fr_1.1fr] @[50rem]:grid-cols-[1fr_1.1fr_0.6fr_1.1fr]">
           <section className="flex min-w-0 flex-col">
             <div className="flex flex-1 items-start justify-center px-1 py-3">
@@ -899,15 +885,8 @@ export function FightTotals({ fight, grouped = false }: { fight: Matchup; groupe
 // Round by round — one column per round, laid out horizontally and built from
 // the same chart as Fight totals so the two panels read as one system.
 
-/** KD / TD / SUB / control for one fighter in one round, sitting under that
- *  side's strike figures so every number in the column belongs to one man.
- *  One stat per line, value first, so the numbers form a column you can read
- *  straight down and compare against the other fighter's.
- *
- *  Only what actually happened is listed: a round of pure striking prints
- *  nothing here rather than four zeroes. A takedown line survives on attempts
- *  alone ("0/5" is five failed shots, which is worth knowing).
- */
+/** KD / TD / SUB / control for one fighter in one round, one per line.
+ *  Only what happened is listed; a takedown line shows on attempts alone. */
 function RoundExtras({ kd, td, sub, ctrl }: { kd: string; td: string; sub: string; ctrl: string }) {
   const takedown = attemptOf(td);
   const knockdowns = intOf(kd);

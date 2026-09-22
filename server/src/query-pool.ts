@@ -13,15 +13,18 @@ export class QueryPool {
   private workerUrl: URL;
   private timeoutMs: number;
   private size: number;
-  constructor(size = 2, workerUrl = new URL("./query-worker.ts", import.meta.url), timeoutMs = 15_000) {
-    this.workerUrl = workerUrl; this.timeoutMs = timeoutMs; this.size = size;
+  private maxQueue: number;
+  // An uncached page costs about a millisecond, so 512 waiting jobs is a few
+  // hundred milliseconds of work: bursts wait briefly instead of failing.
+  constructor(size = 2, workerUrl = new URL("./query-worker.ts", import.meta.url), timeoutMs = 15_000, maxQueue = 512) {
+    this.workerUrl = workerUrl; this.timeoutMs = timeoutMs; this.size = size; this.maxQueue = maxQueue;
     for (let i = 0; i < size; i++) this.spawn();
   }
   get ready() { return this.slots.length === this.size && this.slots.every(slot => slot.ready); }
   get pending() { return this.queue.length + this.slots.filter(slot => slot.job).length; }
 
   run(url: string): Promise<ApiResult> {
-    if (this.closed || this.queue.length >= 64) return Promise.reject(new OverloadedError("Query queue is full"));
+    if (this.closed || this.queue.length >= this.maxQueue) return Promise.reject(new OverloadedError("Query queue is full"));
     return new Promise((resolve, reject) => {
       const job: Job = { id: ++this.nextId, url, resolve, reject };
       job.timer = setTimeout(() => {

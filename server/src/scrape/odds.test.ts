@@ -85,6 +85,15 @@ test("one exact name plus a spelling variant of the opponent still aligns corner
   assert.equal(methodOddsForFight(mononym, "Alex Pereira", "Sumudaerji")?.f2.ko?.prices[0].line, "+195");
 });
 
+test("a typo in each name still matches when both agree on surname and initial", () => {
+  const html = methodHtml
+    .replace("Alex Pereira</a>", "Elizeu Zaleski</a>").replaceAll("Pereira wins", "Zaleski wins")
+    .replace("Jamahal Hill</a>", "Luigi Vandramini</a>").replaceAll("Hill wins", "Vandramini wins");
+  const board = parseEventMethodOddsHtml(html, "https://www.bestfightodds.com/events/ufc-fight-night-137-1544");
+  assert.equal(methodOddsForFight(board, "Luigi Vendramini", "Elizeu Zaleski dos Santos")?.f1.ko?.prices[0].line, "+195");
+  assert.equal(methodOddsForFight(board, "Luigi Vendramini", "Edson Barboza"), null);
+});
+
 test("a ring name matches through the fighter's career-record alias", () => {
   // UFCStats: "Patricio Pitbull" vs "Dooho Choi"; the source: "Patricio Freire" vs "Doo Ho Choi".
   const html = methodHtml

@@ -19,9 +19,18 @@ const sameJudge = (left: string, right: string): boolean => {
   if (!a.length || !b.length) return false;
   if (a.join(" ") === b.join(" ")) return true;
   // Sources alternate between forms such as Mike/Michael Bell and
-  // Sal/Salvatore D'Amato. Initial + surname is strict enough for one panel.
-  return a[0][0] === b[0][0] && a.at(-1) === b.at(-1);
+  // Sal/Salvatore D'Amato, and misspell a surname by a letter (Henry
+  // Guery/Gueary). Initial + surname is strict enough for one panel.
+  return a[0][0] === b[0][0] && surnameMatches(a.at(-1)!, b.at(-1)!);
 };
+
+function surnameMatches(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (a.length < 4 || b.length < 4 || Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && a[i] === b[i]) i++;
+  return a.slice(i + 1) === b.slice(i + 1) || a.slice(i + 1) === b.slice(i) || a.slice(i) === b.slice(i + 1);
+}
 
 const sameTotal = (left: JudgeCard, right: JudgeCard): boolean =>
   Number(left.f1Score) === Number(right.f1Score) && Number(left.f2Score) === Number(right.f2Score);

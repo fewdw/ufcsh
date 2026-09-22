@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { accountsEnabled, useAccount } from "../auth";
 import { useAdminResource, type AdminSession } from "../admin";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
@@ -32,10 +32,11 @@ function AdminShell({ tab, onTab }: { tab: TabId; onTab: (next: TabId) => void }
   const { data, error, loading } = useAdminResource<AdminSession>("/api/admin/session");
 
   if (loading && !data) return <div role="status" className="flex h-full items-center justify-center text-sm text-zinc-400">Checking access…</div>;
+  // The server said no: there is nothing here for this reader, so send them home.
+  if (data && !data.admin) return <Navigate to="/" replace />;
   if (!data?.admin) {
     return (
-      <Notice title="This account is not an administrator.">
-        {data?.email ? <p>Signed in as {data.email}.</p> : null}
+      <Notice title="Couldn't check access.">
         {error ? <p className="mt-1 text-xs text-zinc-400">{error}</p> : null}
       </Notice>
     );
@@ -88,7 +89,7 @@ function AdminShell({ tab, onTab }: { tab: TabId; onTab: (next: TabId) => void }
 export default function AdminPage() {
   useSeo({ title: "Admin", description: "Site administration.", path: "/admin" });
   const [params, setParams] = useSearchParams();
-  const { isLoaded, user, signIn } = useAccount();
+  const { isLoaded, user } = useAccount();
   const requested = params.get("tab");
   const tab = (TABS.find(item => item.id === requested)?.id ?? "bugs") as TabId;
   const onTab = (next: TabId) => {
@@ -97,16 +98,9 @@ export default function AdminPage() {
     setParams(search, { replace: true });
   };
 
-  if (!accountsEnabled) return <Notice title="Accounts are not configured." >Set a Clerk publishable key to use the admin panel.</Notice>;
+  // Without an account there is no way to be an administrator.
+  if (!accountsEnabled) return <Navigate to="/" replace />;
   if (!isLoaded) return <div role="status" className="flex h-full items-center justify-center text-sm text-zinc-400">Loading…</div>;
-  if (!user) {
-    return (
-      <Notice title="Sign in to continue.">
-        <button type="button" onClick={signIn} className="mt-2 rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-700">
-          Sign in
-        </button>
-      </Notice>
-    );
-  }
+  if (!user) return <Navigate to="/" replace />;
   return <AdminShell tab={tab} onTab={onTab} />;
 }

@@ -7,15 +7,26 @@ export const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(path.dirn
 mkdirSync(DATA_DIR, { recursive: true });
 export const db = new DatabaseSync(path.join(DATA_DIR, "ufc.db"));
 
-db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 1000;");
+/** A compiled statement reused across requests: compiling costs ~30µs, far
+ * more than running a typical indexed query. Bounded for dynamic SQL. */
+const statements = new Map<string, ReturnType<typeof db.prepare>>();
+export function prepared(sql: string): ReturnType<typeof db.prepare> {
+  let statement = statements.get(sql);
+  if (!statement) {
+    if (statements.size >= 1000) statements.clear();
+    statements.set(sql, statement = db.prepare(sql));
+  }
+  return statement;
+}
+
+// Reads dominate: memory-map the file (shared page cache across the API,
+// workers and scraper) and keep sort/temp b-trees in memory.
+db.exec(`PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 1000;
+  PRAGMA mmap_size = 268435456; PRAGMA temp_store = MEMORY;`);
 
 // The supervisor initializes once before starting API workers and the scraper.
 if (process.env.DB_INIT !== "0") {
 db.exec(`
-PRAGMA journal_mode = WAL;
-PRAGMA synchronous = NORMAL;
-PRAGMA busy_timeout = 1000;
-
 CREATE TABLE IF NOT EXISTS refresh_jobs (
   key TEXT PRIMARY KEY,
   state TEXT NOT NULL DEFAULT 'queued',
@@ -156,6 +167,9 @@ CREATE TABLE IF NOT EXISTS career_profiles (
 );
 CREATE INDEX IF NOT EXISTS idx_career_profiles_refresh
   ON career_profiles(status, checked_at);
+-- Opponents in a history are linked to their own profile by source URL.
+CREATE INDEX IF NOT EXISTS idx_career_profiles_source_url
+  ON career_profiles(source_url);
 
 -- All professional rows from the verified source are retained, including the
 -- UFC rows used for reconciliation. Unmatched non-UFC rows are therefore the
@@ -347,14 +361,8 @@ for (const alter of [
   }
 }
 
-// Identity resolution used to reject a source page whose name differed from
-// ours, which lost every fighter UFCStats files under a ring name (Patricio
-// Pitbull is Sherdog's Patricio Freire). Retry the unresolved rows once under
-// the rule that accepts a nickname carried by two reconciled UFC bouts.
-// Full-body pictures arrived after every fighter had already been checked for
-// a headshot, and both come from the same page fetch. Clearing the stamp lets
-// the ordinary background image pass collect the missing half, most-visible
-// fighters first; a failed re-check keeps whatever photo is already stored.
+// Full-body pictures arrived after every fighter's headshot was checked;
+// clearing the stamp lets the image pass collect them, most-visible first.
 if (getMeta("migration_full_body_photos") !== "1") {
   db.exec("UPDATE fighters SET photo_checked_at = NULL WHERE photo_full_url IS NULL");
   setMeta("migration_full_body_photos", "1");
@@ -367,13 +375,9 @@ if (getMeta("migration_directory_image_checks") !== "1") {
   setMeta("migration_directory_image_checks", "1");
 }
 
-// ufc.com's silhouette stand-ins were being stored as real pictures, which left
-// a fighter it has no photograph of showing a grey outline where the matchup
-// draws a full body and an empty circle where every list draws a face. The
-// scrape now refuses them, but a stored one would never be replaced — an empty
-// scrape deliberately keeps whatever is already on file — so clear them here
-// and let the ordinary image pass look again. Run a second time because the
-// athlete directory pass kept writing silhouettes back until it refused them too.
+// ufc.com silhouettes were once stored as real pictures and would never be
+// replaced, so clear them for the image pass to retry (v2: the directory pass
+// also wrote them back).
 if (getMeta("migration_placeholder_photos_v2") !== "1") {
   db.exec(`
     UPDATE fighters SET photo_checked_at = NULL,

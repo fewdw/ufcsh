@@ -29,14 +29,8 @@ const PPV_PATTERNS = [
   /^ufc\s+[a-z']+\s+\d+\b/,
 ];
 
-/**
- * The tier of a card, from its name.
- *
- * Fight Night is the default rather than a third "unknown" bucket: the
- * promotion runs several of them for every pay-per-view, and a new
- * pay-per-view is numbered on announcement, so an unrecognised name is far
- * likelier to be a Fight Night than a card this function has never seen.
- */
+/** The tier of a card from its name. Unrecognised names default to Fight
+ * Night, the far likelier case. */
 export function eventKind(name: string): EventKind {
   const value = name.trim().toLowerCase();
   if (FIGHT_NIGHT_SERIES.some((pattern) => pattern.test(value))) return "fight_night";

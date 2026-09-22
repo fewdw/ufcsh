@@ -1,15 +1,10 @@
 import { db, dataRevision } from "./db.ts";
 import { cachedFightActions, type FightActionSide } from "./action-stats.ts";
-import { normName } from "./util.ts";
+import { log, normName } from "./util.ts";
 
-/**
- * One normalized, in-memory view of every completed UFC fight, with the derived
- * facts the analytics endpoints need (elapsed time, scheduled rounds, closing
- * odds as numbers, each fighter's age and career state *entering* the bout,
- * and the title lineage per division). Built once and reused until the
- * database changes, so a stats or labs request never re-parses 9k JSON blobs
- * or re-runs per-fight SQL.
- */
+/** In-memory view of every completed UFC fight with derived facts (elapsed
+ * time, rounds, numeric odds, each fighter's state entering the bout, title
+ * lineage). Rebuilt only when the database changes. */
 
 export type Outcome = "win" | "loss" | "draw" | "nc";
 
@@ -780,8 +775,7 @@ function build(version: string): FightIndex {
     reigningBefore,
   };
   if (process.env.NODE_ENV !== "test") {
-    // eslint-disable-next-line no-console
-    console.log(`${new Date().toTimeString().slice(0, 8)} fight index built: ${fights.length} fights in ${Date.now() - started}ms`);
+    log(`fight index built: ${fights.length} fights in ${Date.now() - started}ms`);
   }
   return index;
 }
@@ -828,20 +822,6 @@ function recordFromOutcomes(outcomes: (Outcome | null)[]): FightRecord {
 }
 
 /** Exact complete pro record entering a bout, or null until source identity is verified. */
-/**
- * Every professional bout — in and out of the UFC — this fighter had walked
- * into the given bout with, oldest first. Empty unless the identity behind the
- * source history is verified, so a common name can never borrow a record.
- */
-export function completeBoutsBefore(index: FightIndex, fighterId: string, date: string, ord?: number): CareerBout[] {
-  const fighter = index.fighters.get(fighterId);
-  if (!fighter?.careerVerified) return [];
-  const localBout = ord == null ? null : fighter.fights.find((fight) => fight.date === date && fight.ord === ord);
-  const sourceBout = localBout ? fighter.careerBouts.find((bout) => bout.ufcFightId === localBout.id) : null;
-  return fighter.careerBouts.filter(
-    (bout) => bout.date < date || (sourceBout != null && bout.date === date && bout.sourceOrder > sourceBout.sourceOrder),
-  );
-}
 
 /**
  * Every UFC-branded bout before a local fight or source-history row. Unlike

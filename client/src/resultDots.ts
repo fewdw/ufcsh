@@ -5,18 +5,9 @@ export type FormResult = {
   ufc?: boolean;
 };
 
-/**
- * One bout as a single mark, carrying three things on three separate channels
- * so none of them has to be guessed from another:
- *
- *   colour — the result: won, lost, drew, no contest.
- *   fill   — how it ended: solid for a finish, hollow for a decision, and
- *            faded when the source never said.
- *   shape  — the promotion: a circle in the UFC, a rounded square outside it.
- *
- * Every dot also says all three in words, in its own title and in the label of
- * the row it belongs to, so nothing here depends on seeing the difference.
- */
+/** One bout as a dot: colour is the result, fill how it ended (solid finish,
+ * hollow decision, faded unknown), shape the promotion (circle UFC, square
+ * outside). Each dot also states all three in text. */
 export function resultDot(result: FormResult) {
   const method = result.method?.trim().toUpperCase() ?? "";
   const finish = /^(?:KO\/TKO|KO|K\.O\.?|TKO|SUB|(?:TECH(?:NICAL|INAL)\s+)?SUBMISSION)(?:\s|\(|$)/.test(method);

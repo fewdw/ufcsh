@@ -1,15 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import { ScoringError } from "./scoring.ts";
 
-/**
- * Who may open the admin panel. One address is named in the environment and
- * cannot be removed from anywhere in the interface: losing the table, or a
- * mistaken removal, must never lock the site's owner out of their own panel.
- * Everyone else is a row, added and removed by an administrator.
- *
- * Identity is the verified email on the account, never a shared token — a
- * moderation queue has to record which person actioned a report.
- */
+/** Admin membership. The owner's address comes from the environment and
+ * can't be removed; identity is the verified account email so moderation
+ * actions are attributable. */
 export function defaultAdminEmail(): string | null {
   return normalizeEmail(process.env.DEFAULT_ADMIN ?? "");
 }

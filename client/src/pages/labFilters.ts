@@ -1,12 +1,5 @@
-/**
- * A Lab population is a set of filters over fighter-bout observations. Both
- * the filter panel and the query string are generated from one declarative
- * schema, so a new filter is added in exactly one place and can never drift
- * between the two.
- *
- * Sections are listed most-used first, because the panel renders them in this
- * order and only the first few are open when the board loads.
- */
+/** One declarative schema generates both the filter panel and the query
+ * string. Sections are ordered most-used first. */
 
 export type LabFilters = {
   from: string;
@@ -331,16 +324,9 @@ export function filtersFrom(values: Record<string, string | string[]>): LabFilte
 // ---------------------------------------------------------------------------
 // Conditions from an announced matchup
 
-/**
- * A matchup fill arrives as an ordered list of conditions, each switchable on
- * its own. The study is whatever the switched-on ones say, rebuilt from that
- * list every time one is switched, so turning a condition off leaves the
- * matchup and every other condition exactly where they were.
- *
- * Order carries meaning: a narrower condition is applied after the wider one
- * it sharpens and overwrites it, so switching the narrow one off falls back to
- * the wide one rather than to no condition at all.
- */
+/** Rebuilds the study from a matchup's switched-on conditions. Narrower
+ * conditions follow and overwrite wider ones, so switching one off falls back
+ * to the wider condition. */
 export function filtersFromConditions(
   conditions: { id: string; values: Record<string, string | string[]>; on: boolean }[],
   choice: Record<string, boolean>,

@@ -4,20 +4,8 @@ import { ACTION_TYPES, actionPercentage, type ActionType } from "./action-stats.
 import { completeRecordBefore, divisionSort, fightIndex, winProfit, type IndexedSide } from "./fight-index.ts";
 import { titleNarratives, type TitleRow } from "./titles.ts";
 
-/**
- * Leaderboards, grouped into five cards. Each card leads with one select that
- * names the statistic it ranks, so the first control always answers "what am I
- * looking at"; every qualifier after it belongs to that statistic alone.
- *
- *   Record     what they won and lost, and the belts
- *   Finishing  how bouts end, in both directions, and how long they last
- *   Output     what they do inside the cage, per bout, round or minute
- *   Context    who they faced, what they came back from, how long they lasted
- *   Market     what the closing line expected of them
- *
- * All of it reads the shared fight index, so a request is one pass over the
- * completed fights plus a sort.
- */
+/** Leaderboards in five cards (Record, Finishing, Output, Context, Market),
+ * each a single pass over the shared fight index plus a sort. */
 
 type Method = "all" | "ko" | "sub" | "finish" | "decision" | "unanimous" | "majority" | "split" | "dq";
 const METHODS: readonly Method[] = ["all", "ko", "sub", "finish", "decision", "unanimous", "majority", "split", "dq"];
@@ -451,14 +439,9 @@ export function getStats(params: URLSearchParams): unknown {
 
   // -- Context ---------------------------------------------------------------
   const contextMode = mode("contextMode", ["opposition", "championsFaced", "streakBreakers", "bounceBack", "rematches", "returns", "durability"] as const, "opposition");
-  // Two independent questions about an opponent's record: which fights count,
-  // and when it is read. The UFC half of every reading is exact, because every
-  // UFC bout is dated. Fights outside the UFC are not dated by the source — it
-  // records only a career total — so a complete career read at fight night
-  // counts all of them as having happened before that fighter's UFC debut,
-  // which is true of the great majority and is stated on the board itself.
-  // The UI explicitly requests complete verified careers by default. Keep the
-  // bare endpoint's older UFC-only default for backwards-compatible callers.
+  // Outside-UFC bouts are undated, so a complete career read at fight night
+  // counts them all before the UFC debut. The UI asks for complete careers;
+  // the bare endpoint keeps the UFC-only default.
   const oppositionSource = mode("oppositionSource", ["ufc", "all"] as const, "ufc");
   // Beaten by default: "who did you beat" is the question a reader means by
   // toughest opposition, and facing someone is not the same as handling them.

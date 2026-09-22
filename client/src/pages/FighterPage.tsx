@@ -281,15 +281,8 @@ function boutFields(row: HistoryRow | ProfessionalHistoryRow) {
 
 const HIT = "transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900";
 
-/**
- * A bout at reading width: three lines beside the result badge — who, how it
- * went, and where. The four columns of the table below carry the same facts
- * spread across 46rem, which is more width than a phone has; stacking those
- * columns instead gave a bout the height of half a screen, so this packs them
- * into runs separated by middots, the way every other compact row in the app
- * reads. The records each fighter carried in stay behind the table, the one
- * place there is room for them.
- */
+/** A bout packed into three lines (who, how, where) for narrow screens,
+ * where the full table would not fit. */
 function BoutCard({ row, fighterName }: { row: HistoryRow | ProfessionalHistoryRow; fighterName: string }) {
   const bout = boutFields(row);
   return (
@@ -452,13 +445,8 @@ function HistoryRowView({ row, fighterName }: { row: HistoryRow | ProfessionalHi
   );
 }
 
-/**
- * Where this fighter stands at the top of the sport. Only places worth calling
- * a record appear: a top-five finish across the whole promotion, or a top-three
- * one inside their own division when the division is deep enough for that to
- * mean something. The list is recomputed from the fight records themselves, so
- * it moves the night someone passes them.
- */
+/** Top-five promotion-wide or top-three divisional placings, recomputed
+ * from the fight records so they update the night someone is passed. */
 function Records({ records }: { records: FighterRecord[] }) {
   if (!records.length) return null;
   const place = (record: FighterRecord) => `${record.tied ? "T" : ""}${record.rank}`;

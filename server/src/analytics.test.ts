@@ -953,7 +953,7 @@ test("a reigning champion counts even when fighting outside their division", () 
   // Champions moving weight keep the belt, so the opponent still faced a champion.
   let crossDivision = 0;
   for (const fight of index.fights) {
-    for (const [i, side] of fight.sides.entries()) {
+    for (let i = 0; i < fight.sides.length; i++) {
       const opponent = fight.sides[i === 0 ? 1 : 0];
       if (opponent.prior.reigningChampion && !opponent.prior.champion && !opponent.prior.interimChampion) crossDivision += 1;
     }

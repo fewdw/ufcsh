@@ -3,16 +3,9 @@ import { ageOn, americanLine, careerBefore, impliedProbability, type FightIndex,
 import { normName, todayIso } from "./util.ts";
 import { fuzzyScore, fuzzyTarget, splitMatchup } from "./fuzzy.ts";
 
-/**
- * Labs: population analysis over fighter-bout observations. Every completed
- * fight yields two observations (one per fighter), each carrying the
- * fighter's state *entering* the bout — age, streak, layoff, odds, experience,
- * belt status, stance and physical edges — so the population can be sliced by
- * any combination of those and summarised as a combined record, an outcome
- * mix, an output profile per round, a trend over the years, and a breakdown
- * by one chosen dimension. All numbers derive from the same fight index the
- * matchup and stats pages use, so they always agree with the rest of the site.
- */
+/** Labs: population analysis over fighter-bout observations, each with the
+ * fighter's state entering the bout. Reads the shared fight index, so numbers
+ * agree with the rest of the site. */
 
 export type Observation = { fight: IndexedFight; side: IndexedSide; opponent: IndexedSide };
 
@@ -978,12 +971,8 @@ export function getLabsMatchups(params: URLSearchParams): unknown {
 
 
 // ---------------------------------------------------------------------------
-// Filling the panel from an announced matchup.
-//
-// The mapping lives here rather than in the panel because choosing what to
-// fill needs to know how many observations each condition would leave, and
-// only this side can count that. Values are keyed by the panel's own filter
-// names, so what comes back is applied verbatim.
+// Filling the panel from an announced matchup. Lives server-side because it
+// needs population counts; values use the panel's own filter keys.
 
 /**
  * How small a population each mode will accept in exchange for one more
@@ -991,15 +980,8 @@ export function getLabsMatchups(params: URLSearchParams): unknown {
  * advanced takes every condition it can get and stops only where there would
  * be nothing left behind to look at.
  */
-/**
- * Three selections over one list of conditions, from the least to the most
- * demanding. Basic applies only what makes the matchup *this* matchup — its
- * division, both ages, belts and market role — and leaves the population wide.
- * Normal adds every condition that still leaves a sample worth reading.
- * Advanced adds everything the matchup can say that has any precedent at all;
- * a cohort of two is a fact about the sport, and the reader can switch any
- * condition back off. No preset ever applies a condition with no precedent.
- */
+/** Basic: only what defines the matchup. Normal: every condition that still
+ * leaves a readable sample. Advanced: everything with any precedent. */
 const FILL_PRESETS = {
   basic: { extras: false, floor: 0 },
   normal: { extras: true, floor: 40 },
@@ -1009,13 +991,8 @@ export type FillMode = keyof typeof FILL_PRESETS;
 
 export type FillValues = Record<string, string | string[]>;
 
-/**
- * One condition a matchup implies, offered as its own switchable unit: what it
- * is, which filter keys it owns, whether the fill switched it on, and two
- * counts — the running population once it and everything before it applied,
- * and the population it holds against the matchup's identity alone. A
- * condition with no precedent even alone cannot be switched on at all.
- */
+/** One switchable condition a matchup implies, with its running population
+ * and its population against the matchup alone. */
 export type FillCondition = {
   id: string;
   label: string;
@@ -1063,13 +1040,8 @@ const stanceOf = (value: string | null) => (value === "Orthodox" || value === "S
  * readable in a narrow panel, and says whose fact a condition is. */
 const surname = (name: string) => name.trim().split(/\s+/).at(-1) ?? name;
 
-/**
- * The shape of the fight and both corners' headline facts. Everything here is
- * either what the bout *is* (division, stakes, length) or the one fact that
- * most changes what to expect of a fighter (their age, a belt, and which side
- * of the market they are on), so it holds up as a population on its own. These
- * always apply: without them the population is not this matchup's at all.
- */
+/** The bout's shape and each corner's headline facts (age, belt, market
+ * side). Always applied. */
 function baseFill(m: MatchupRow, me: MatchupCorner, them: MatchupCorner): Candidate[] {
   const list: Candidate[] = [];
   const add = (id: string, label: string, values: FillValues | null) => { if (values) list.push({ id, label, values }); };
@@ -1102,23 +1074,10 @@ function baseFill(m: MatchupRow, me: MatchupCorner, them: MatchupCorner): Candid
 
 type Candidate = { id: string; label: string; values: FillValues };
 
-/**
- * Everything else this matchup implies, in the order it is weighed and grouped
- * by what it belongs to.
- *
- * A group is taken or left whole. Grouping is what keeps the two corners
- * comparable: a condition asked of both fighters (their stances, their
- * experience, their prices) is one decision, so reading the fight from the
- * other side narrows it the same way. What the bout itself is comes first,
- * then the pairing, and last what belongs to one fighter only — a previous
- * result, a streak, a layoff. Those four have no opponent-side filter to
- * mirror them, so they are the one part of a study that really does change
- * with the corner, and they are named after the fighter they describe.
- *
- * Order also decides overwriting: a narrower condition is listed after the
- * wider one it sharpens, so switching the narrow one off falls back to the
- * wide one rather than to nothing.
- */
+/** Remaining conditions, grouped and ordered: the bout, then the pairing,
+ * then one fighter's own (previous result, streak, layoff). A group is taken
+ * or left whole so both corners narrow alike; narrower conditions follow the
+ * wider ones they overwrite. */
 function conditionGroups(m: MatchupRow, me: MatchupCorner, them: MatchupCorner): Candidate[][] {
   const a = me as any;
   const b = them as any;
@@ -1237,13 +1196,8 @@ export function getLabsFill(params: URLSearchParams): unknown {
   const row = matchup as { a: MatchupCorner; b: MatchupCorner };
   const me = pov === "a" ? row.a : row.b;
   const them = pov === "a" ? row.b : row.a;
-  // Conditions are added one at a time, each kept only while enough of the
-  // population survives it. Basic runs the whole list at its own floor;
-  // advanced then picks back up what basic could not afford, so it is always
-  // basic plus more and never reads as the wider population.
-  // Every condition is applied one at a time and reported with the population
-  // it leaves, so the reader can see where a study narrowed and switch that
-  // one condition back off without losing the matchup it came from.
+  // Conditions are applied one at a time, each kept only while enough of
+  // the population survives; advanced resumes where basic stopped.
   const values: FillValues = {};
   const conditions: FillCondition[] = [];
   let n = countMatching(values);

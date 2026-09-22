@@ -1,20 +1,24 @@
 import { createHash } from "node:crypto";
-import { gzip } from "node:zlib";
+import { gunzipSync, gzip } from "node:zlib";
 import { promisify } from "node:util";
 
 const compress = promisify(gzip);
 export type ApiResult = { json: string; status: number };
+/** Larger bodies keep only their gzip bytes (JSON compresses ~9x, and every
+ * browser accepts gzip); `body` inflates them for the rare client that doesn't. */
 export type Representation = {
-  body: Buffer; compressed?: Buffer; etag: string; status: number; createdAt: number;
+  readonly body: Buffer; compressed?: Buffer; etag: string; status: number; createdAt: number; bytes: number;
 };
 export class OverloadedError extends Error {}
 
 export async function representation(result: ApiResult): Promise<Representation> {
-  const body = Buffer.from(result.json);
+  const raw = Buffer.from(result.json);
+  const compressed = raw.length > 1024 ? await compress(raw) : undefined;
   return {
-    body, status: result.status, createdAt: Date.now(),
-    etag: `W/"${createHash("sha256").update(body).digest("base64url")}"`,
-    compressed: body.length > 1024 ? await compress(body) : undefined,
+    status: result.status, createdAt: Date.now(), compressed,
+    etag: `W/"${createHash("sha256").update(raw).digest("base64url")}"`,
+    bytes: compressed?.length ?? raw.length,
+    get body() { return compressed ? gunzipSync(compressed) : raw; },
   };
 }
 
@@ -28,7 +32,7 @@ export class ResponseCache {
   private maxBytes: number;
   private maxEntries: number;
   private now: () => number;
-  constructor(maxBytes = 64 * 1024 * 1024, maxEntries = 512, now = Date.now) {
+  constructor(maxBytes = 64 * 1024 * 1024, maxEntries = 20_000, now = Date.now) {
     this.maxBytes = maxBytes; this.maxEntries = maxEntries; this.now = now;
   }
 
@@ -58,11 +62,11 @@ export class ResponseCache {
   private fill(key: string, ttlMs: number, load: () => Promise<ApiResult>): Promise<Representation> {
     const running = this.pending.get(key);
     if (running) return running;
-    if (this.pending.size >= 128) return Promise.reject(new OverloadedError("Too many pending requests"));
+    if (this.pending.size >= 1024) return Promise.reject(new OverloadedError("Too many pending requests"));
     const request = Promise.resolve().then(load).then(representation).then(value => {
       // Do not cache errors or missing records that may be arriving from a sync.
       if (value.status === 200) {
-        const bytes = value.body.length + (value.compressed?.length ?? 0) + Buffer.byteLength(key);
+        const bytes = value.bytes + Buffer.byteLength(key);
         this.remove(key);
         if (bytes <= this.maxBytes) {
           while (this.entries.size && (this.entries.size >= this.maxEntries || this.bytes + bytes > this.maxBytes)) {

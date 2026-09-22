@@ -4,16 +4,8 @@ import { Info } from "lucide-react";
 
 type At = { x: number; y: number; above: boolean };
 
-/**
- * A small "i" beside a label, carrying the sentence a first-time reader needs
- * and a long-term one does not.
- *
- * The bubble is rendered into the document body rather than beside the icon:
- * these sit inside scrolling columns, where a positioned tooltip would be
- * clipped by the very panel it explains. It appears on the first pointer
- * event, with no delay, and follows nothing — a scroll dismisses it rather
- * than letting it drift away from what it points at.
- */
+/** A small "i" with a one-sentence explanation. The bubble is portalled to
+ * the body so scrolling panels can't clip it; scrolling dismisses it. */
 export default function InfoTip({ children, className = "" }: { children: string; className?: string }) {
   const [at, setAt] = useState<At | null>(null);
 
