@@ -12,6 +12,7 @@
     "backfill:method-odds": "node src/backfill-method-odds.ts",
     "backfill:images": "node src/backfill-images.ts",
     "backfill:scorecards": "node src/backfill-verdict-scorecards.ts",
+    "backfill:official-scorecards": "node src/backfill-mmadecisions-scorecards.ts",
     "load:test": "node src/load-test.ts",
     "test": "node src/test-runner.ts"
   },

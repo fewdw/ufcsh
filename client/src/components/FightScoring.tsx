@@ -36,10 +36,6 @@ export default function FightScoring({ fight }: { fight: Matchup }) {
             <span className="flex items-center gap-1.5 text-xs text-emerald-600">
               <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />Live
             </span>
-          ) : totals.source?.url ? (
-            <a href={totals.source.url} target="_blank" rel="noreferrer" className="text-[10px] font-medium text-zinc-400 hover:text-zinc-700">
-              {totals.importedCards.toLocaleString()} from {totals.source.name} ↗
-            </a>
           ) : undefined}
         />
         <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 px-5 pt-5 pb-4 text-center">

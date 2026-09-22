@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type { CareerBefore, ComparisonBlock, Matchup, RoundBlock } from "../api";
 import { useApi } from "../api";
-import type { ScoreSummary } from "../scoring";
+import { decimalScore, type ScoreSummary } from "../scoring";
 import { lastName } from "../format";
 import { Tooltip as TipBubble } from "./Tooltip";
 import { useTooltip } from "../tooltip";
@@ -1211,20 +1211,14 @@ export function CareerProfile({ fight }: { fight: Matchup }) {
 
 export function Scorecards({ fight }: { fight: Matchup }) {
   const judges = fight.detail?.type === "past" ? fight.detail.judges : undefined;
-  const source = fight.detail?.type === "past" ? fight.detail.scorecardSource : undefined;
-  // The fans' card belongs beside the judges', on the same terms: one number
-  // each, the leader in their colour. It opens the tab it was scored on.
+  // The fans' card belongs beside the judges', including its round scores.
   const { data } = useApi<ScoreSummary>(judges?.length ? `/api/fights/${fight.id}/scores` : null);
   const location = useLocation();
   const fans = data && data.totals.avg1 != null && data.totals.avg2 != null ? data.totals : null;
   if (!judges?.length) return null;
   return (
     <section className={`${shell} overflow-hidden`}>
-      <PanelHeading title="Scorecards" aside={source?.url ? (
-        <a href={source.url} target="_blank" rel="noreferrer" className="text-[10px] font-medium text-zinc-400 hover:text-zinc-700">
-          Rounds: {source.name} ↗
-        </a>
-      ) : undefined} />
+      <PanelHeading title="Scorecards" />
       <ul className={`grid divide-y divide-zinc-100 sm:divide-x sm:divide-y-0 ${fans ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
         {judges.map((j, judgeIndex) => {
           // Older cards carry the scores without the judge's name.
@@ -1274,6 +1268,7 @@ export function Scorecards({ fight }: { fight: Matchup }) {
           // pair still reads as one score.
           const places = Number.isInteger(fans.avg1!) && Number.isInteger(fans.avg2!) ? 0 : 2;
           const card = (side: Side) => (side === "f1" ? fans.avg1! : fans.avg2!).toFixed(places);
+          const rounds = data?.rounds ?? [];
           return (
             <li className="min-w-0">
               <Link
@@ -1281,7 +1276,7 @@ export function Scorecards({ fight }: { fight: Matchup }) {
                 replace
                 state={location.state}
                 className="flex h-full min-w-0 flex-col items-center gap-2 px-4 py-4 transition hover:bg-zinc-50"
-                aria-label={`${fans.completeCards} fan ${fans.completeCards === 1 ? "scorecard" : "scorecards"}: ${lastName(fight.f1.name)} ${card("f1")}, ${lastName(fight.f2.name)} ${card("f2")}. Open the Score tab.`}
+                aria-label={`${fans.completeCards} fan ${fans.completeCards === 1 ? "scorecard" : "scorecards"}: ${lastName(fight.f1.name)} ${card("f1")}, ${lastName(fight.f2.name)} ${card("f2")}. ${rounds.map(round => `Round ${round.round}: ${lastName(fight.f1.name)} ${decimalScore(round.total1)}, ${lastName(fight.f2.name)} ${decimalScore(round.total2)}.`).join(" ")} Open the Score tab.`}
               >
                 <span className={`max-w-full truncate ${sectionLabel}`}>{fans.completeCards.toLocaleString()} {fans.completeCards === 1 ? "Fan" : "Fans"}</span>
                 <span className="flex items-center gap-3" aria-hidden="true">
@@ -1300,6 +1295,17 @@ export function Scorecards({ fight }: { fight: Matchup }) {
                     );
                   })}
                 </span>
+                {rounds.length ? (
+                  <span className="mt-1 grid w-full max-w-40 divide-y divide-zinc-100 border-t border-zinc-100 text-[10px] tabular-nums" aria-hidden="true">
+                    {rounds.map(round => (
+                      <span key={round.round} className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-1.5">
+                        <span className={`text-right ${round.total1 > round.total2 ? "font-semibold text-f1-ink" : "text-zinc-500"}`}>{decimalScore(round.total1)}</span>
+                        <span className={sectionLabel}>R{round.round}</span>
+                        <span className={`text-left ${round.total2 > round.total1 ? "font-semibold text-f2-ink" : "text-zinc-500"}`}>{decimalScore(round.total2)}</span>
+                      </span>
+                    ))}
+                  </span>
+                ) : null}
               </Link>
             </li>
           );
