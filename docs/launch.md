@@ -92,6 +92,23 @@ Prometheus evaluates local alert rules; inspect `ALERTS` in Grafana Explore.
 Configure a contact point or an external uptime service for notifications.
 Docker logs rotate at 10 MB × 5 files per service.
 
+Install the checked daily SQLite backup timer once on the VPS:
+
+```sh
+cd ~/ufcsh
+sudo install -m 644 deploy/systemd/ufcsh-backup.service /etc/systemd/system/
+sudo install -m 644 deploy/systemd/ufcsh-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now ufcsh-backup.timer
+sudo systemctl start ufcsh-backup.service
+sudo systemctl status ufcsh-backup.timer --no-pager
+```
+
+It saves and verifies both databases daily and keeps seven of each in the app
+volume. `journalctl -u ufcsh-backup.service -n 30 --no-pager` shows each result.
+Set up the off-host R2 copy below before treating these local copies as disaster
+recovery.
+
 `/admin/bugs` is available to the permanent Clerk administrator in production.
 The first repair of each UTC day takes and checks a SQLite snapshot before it
 changes data; three daily repair snapshots remain on the host. Repairs run one
