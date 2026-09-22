@@ -16,7 +16,8 @@ jobs:
             server/package-lock.json
       - run: npm ci --prefix server
       - run: npm ci --prefix client
-      - run: npm test --prefix server
+      # The full server suite reads the intentionally untracked UFC archive.
+      - run: DATA_DIR=/tmp/ufcsh-ci-no-archive DB_INIT=0 NO_SYNC=1 API_WORKERS=0 node --test server/src/admin-http.test.ts server/src/observability.test.ts server/src/repair-guard.test.ts
       - run: npm test --prefix client
       - run: server/node_modules/.bin/tsc --noEmit -p server/tsconfig.json
       - run: npm run build --prefix client
