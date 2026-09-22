@@ -14,7 +14,19 @@
     Strict-Transport-Security "max-age=31536000"
     -Server
   }
-  reverse_proxy app:8000 {
-    header_up X-Real-IP {client_ip}
+  # Clerk's Frontend API through this host, so production sign-in works on a
+  # hostname where its CNAME records cannot be created.
+  handle_path /__clerk/* {
+    reverse_proxy https://frontend-api.clerk.dev {
+      header_up Host frontend-api.clerk.dev
+      header_up Clerk-Proxy-Url https://{$DOMAIN}/__clerk
+      header_up Clerk-Secret-Key {$CLERK_SECRET_KEY}
+      header_up X-Forwarded-For {client_ip}
+    }
+  }
+  handle {
+    reverse_proxy app:8000 {
+      header_up X-Real-IP {client_ip}
+    }
   }
 }

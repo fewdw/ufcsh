@@ -80,7 +80,11 @@ export type ParlayLeg = {
   outcome: Outcome;
 };
 
-type ParlayState = { legs: ParlayLeg[]; stake: number; open: boolean; conflict: string | null };
+type ParlayState = { legs: ParlayLeg[]; stake: number; open: boolean; conflict: string | null; placed: boolean };
+
+/** A bet saved to a profile can never stake more than this. */
+export const MAX_STAKE = 20;
+export const MIN_STAKE = 1;
 
 const STORAGE_KEY = "ufcsh:parlay:v1";
 
@@ -89,7 +93,7 @@ function loadSaved(): { legs: ParlayLeg[]; stake: number } {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
     return {
       legs: Array.isArray(saved?.legs) ? saved.legs : [],
-      stake: typeof saved?.stake === "number" && saved.stake >= 0 ? saved.stake : 10,
+      stake: typeof saved?.stake === "number" && saved.stake >= 0 ? Math.min(saved.stake, MAX_STAKE) : 10,
     };
   } catch {
     return { legs: [], stake: 10 };
@@ -101,6 +105,7 @@ const ParlayContext = createContext<{
   stake: number;
   open: boolean;
   conflict: string | null;
+  placed: boolean;
   isSelected: (id: string) => boolean;
   toggle: (leg: ParlayLeg) => void;
   remove: (id: string) => void;
@@ -108,11 +113,14 @@ const ParlayContext = createContext<{
   setOpen: (open: boolean) => void;
   setStake: (stake: number) => void;
   dismissConflict: () => void;
+  reprice: (changes: { key: string; price: string }[]) => void;
+  markPlaced: (placed: boolean) => void;
 }>({
   legs: [],
   stake: 10,
   open: false,
   conflict: null,
+  placed: false,
   isSelected: () => false,
   toggle: () => undefined,
   remove: () => undefined,
@@ -120,10 +128,12 @@ const ParlayContext = createContext<{
   setOpen: () => undefined,
   setStake: () => undefined,
   dismissConflict: () => undefined,
+  reprice: () => undefined,
+  markPlaced: () => undefined,
 });
 
 export function ParlayProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<ParlayState>(() => ({ ...loadSaved(), open: false, conflict: null }));
+  const [state, setState] = useState<ParlayState>(() => ({ ...loadSaved(), open: false, conflict: null, placed: false }));
 
   // Survives navigation for free (this provider sits above the router), and a
   // reload too, so a pending slip is never lost to an accidental refresh.
@@ -140,6 +150,7 @@ export function ParlayProvider({ children }: { children: React.ReactNode }) {
     stake: state.stake,
     open: state.open,
     conflict: state.conflict,
+    placed: state.placed,
     isSelected: (id: string) => state.legs.some((leg) => leg.id === id),
     toggle: (leg: ParlayLeg) => setState((current) => {
       if (current.legs.some((existing) => existing.id === leg.id)) {
@@ -149,13 +160,19 @@ export function ParlayProvider({ children }: { children: React.ReactNode }) {
       if (clash) {
         return { ...current, conflict: `"${leg.selection}" can't join the slip — it and "${clash.selection}" can't both happen in ${leg.fightLabel}.` };
       }
-      return { ...current, legs: [...current.legs, leg], open: true, conflict: null };
+      return { ...current, legs: [...current.legs, leg], open: true, conflict: null, placed: false };
     }),
     remove: (id: string) => setState((current) => ({ ...current, legs: current.legs.filter((leg) => leg.id !== id) })),
     clear: () => setState((current) => ({ ...current, legs: [], conflict: null })),
     setOpen: (open: boolean) => setState((current) => ({ ...current, open })),
-    setStake: (stake: number) => setState((current) => ({ ...current, stake: Number.isFinite(stake) && stake >= 0 ? stake : current.stake })),
+    setStake: (stake: number) => setState((current) => ({ ...current, stake: Number.isFinite(stake) && stake >= 0 ? Math.min(stake, MAX_STAKE) : current.stake })),
     dismissConflict: () => setState((current) => ({ ...current, conflict: null })),
+    // The server prices every bet itself; a moved line is shown before the bet is placed.
+    reprice: (changes: { key: string; price: string }[]) => setState((current) => ({
+      ...current,
+      legs: current.legs.map((leg) => ({ ...leg, price: changes.find((change) => change.key === leg.id)?.price ?? leg.price })),
+    })),
+    markPlaced: (placed: boolean) => setState((current) => ({ ...current, placed, ...(placed ? { legs: [], conflict: null } : {}) })),
   }), [state]);
 
   return <ParlayContext.Provider value={value}>{children}</ParlayContext.Provider>;

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import ProgressiveImage from "./ProgressiveImage";
 
 const SIZES = {
   xs: "h-7 w-7 text-[9px]",
@@ -54,7 +55,7 @@ export default function Avatar({
             : "ring-1 ring-zinc-200";
   const prominent = size === "xl" || size === "lg" || size === "matchup";
   return (
-    <img
+    <ProgressiveImage
       key={`${src}:${attempt}`}
       src={imageSrc}
       alt={name}

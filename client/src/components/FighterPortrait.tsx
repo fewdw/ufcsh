@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Avatar from "./Avatar";
+import ProgressiveImage from "./ProgressiveImage";
 
 /** ufc.com cuts every full body to 460×700, so these boxes carry that exact
  *  ratio: the picture fills them edge to edge with nothing letterboxed and
@@ -65,7 +66,7 @@ export default function FighterPortrait({
         aria-hidden="true"
         className={`absolute bottom-1 h-1.5 w-3/5 rounded-[50%] blur-[3px] ${outcome ? BASE[outcome] : "bg-zinc-500/25"}`}
       /> : null}
-      <img
+      <ProgressiveImage
         key={src}
         src={src}
         alt={name}

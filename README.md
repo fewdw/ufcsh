@@ -290,6 +290,10 @@ results explicitly labelled as previous results.
   and navigation reuses fresh responses instead of immediately requesting them
   again. Top navigation preloads route code on hover/focus.
 - `server/data/ufc.db` is the local state; delete it to re-backfill from scratch.
+- Every fighter photo is also served as a ~0.4 KB placeholder and a ~5 KB small
+  copy (`/api/images/:id?size=tiny|small`); the client paints the placeholder,
+  then swaps in the sharpest copy the rendered size needs. `npm run
+  backfill:image-variants` pre-generates them.
 - Run `cd server && npm run backfill:images -- --parallel` to retry missing
   full-body images across the roster with four throttled workers, ranked and
   recently active fighters first. Existing full-body images are skipped.

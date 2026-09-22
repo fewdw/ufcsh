@@ -1,4 +1,5 @@
 import { User } from "lucide-react";
+import ProgressiveImage from "./ProgressiveImage";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAccount } from "../auth";
@@ -35,7 +36,7 @@ export default function AccountButton() {
         aria-label="Account" title={user.primaryEmailAddress?.emailAddress ?? "Account"}
         className={`${CONTROL} overflow-hidden`}>
         {user.imageUrl
-          ? <img src={user.imageUrl} alt="" className="h-full w-full object-cover" />
+          ? <ProgressiveImage src={user.imageUrl} alt="" className="h-full w-full object-cover" />
           : <User className="h-4 w-4" aria-hidden="true" />}
       </button>
       {open ? (

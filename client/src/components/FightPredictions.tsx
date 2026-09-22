@@ -7,6 +7,7 @@ import { accountsEnabled, useAccount } from "../auth";
 import { METHOD_LABEL, predictionLabel, predictionPoints, sharePct } from "../predictions";
 import type { FanPrediction, MyPrediction, PredictionDistribution, PredictionMethod, PredictionSummary } from "../predictions";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
+import ProgressiveImage from "./ProgressiveImage";
 
 const METHOD_COLOR: Record<string, string> = {
   ko: "var(--color-pick-ko)", submission: "var(--color-pick-sub)",
@@ -93,7 +94,7 @@ function FanPredictions({ predictions, total }: { predictions: FanPrediction[]; 
         className="min-w-0 border-r border-zinc-100 px-4 py-3 last:border-r-0 hover:bg-zinc-50">
         <span className="flex min-w-0 items-center gap-2">
           {row.scorer.imageUrl
-            ? <img src={row.scorer.imageUrl} alt="" referrerPolicy="no-referrer" className="h-6 w-6 shrink-0 rounded-full bg-zinc-100 object-cover ring-1 ring-zinc-200" />
+            ? <ProgressiveImage src={row.scorer.imageUrl} alt="" referrerPolicy="no-referrer" className="h-6 w-6 shrink-0 rounded-full bg-zinc-100 object-cover ring-1 ring-zinc-200" />
             : <span className="h-6 w-6 shrink-0 rounded-full bg-zinc-100 ring-1 ring-zinc-200" aria-hidden="true" />}
           <span className="min-w-0 truncate text-xs font-semibold text-zinc-700">{row.scorer.displayName}</span>
         </span>

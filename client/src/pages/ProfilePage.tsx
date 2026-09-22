@@ -5,9 +5,12 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { apiCache, prefetch, useApi } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
 import Avatar from "../components/Avatar";
+import ProgressiveImage from "../components/ProgressiveImage";
 import { PANEL_SHELL, PanelHeading } from "../components/FightStats";
 import { segmentedGroup, segmentedSelected, segmentedIdle } from "../components/segmented";
 import ProfilePredictions from "../components/ProfilePredictions";
+import ProfileBets from "../components/ProfileBets";
+import Leaderboards from "../components/Leaderboards";
 import { formatDateShortWithYear, formatMethod } from "../format";
 import { useRouteScrollRestoration } from "../navigationState";
 import { useMyProfile } from "../profile";
@@ -19,7 +22,11 @@ const FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed"];
 /** Bouts that went to the judges are the ones a card can be read against, so
  *  the list opens on them and finishes are one checkbox away. */
 const DEFAULT_FILTER: ProfileFilter = "decisions";
-const TABS = [{ id: "scorecards", label: "Scorecards" }, { id: "predictions", label: "Predictions" }] as const;
+const TABS = [
+  { id: "scorecards", label: "Scorecards" }, { id: "predictions", label: "Predictions" },
+  { id: "bets", label: "Bets" }, { id: "leaderboards", label: "Leaderboards" },
+] as const;
+type Section = (typeof TABS)[number]["id"];
 const quiet = "rounded-full px-3 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
 const primary = "rounded-full bg-zinc-900 px-4 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40";
 const danger = "rounded-full bg-rose-600 px-4 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40";
@@ -64,7 +71,7 @@ function Empty({ message }: { message: string }) {
 
 function Profile({ handle }: { handle: string }) {
   const [search, setSearch] = useSearchParams();
-  const section = search.get("tab") === "predictions" ? "predictions" : "scorecards";
+  const section: Section = TABS.find(tab => tab.id === search.get("tab"))?.id ?? "scorecards";
   const filter = (FILTERS.find(value => value === search.get("filter")) ?? DEFAULT_FILTER) as ProfileFilter;
   const query = (search.get("q") ?? "").slice(0, 60);
   const pageUrl = useCallback(
@@ -167,7 +174,9 @@ function Profile({ handle }: { handle: string }) {
         </div>
 
         <div id="profile-tabpanel" role="tabpanel" aria-labelledby={`profile-tab-${section}`} className="flex flex-col gap-3">
-          {section === "predictions" ? <ProfilePredictions key={handle} handle={handle} mine={mine} /> : <>
+          {section === "predictions" ? <ProfilePredictions key={handle} handle={handle} mine={mine} />
+            : section === "bets" ? <ProfileBets key={handle} handle={handle} mine={mine} />
+            : section === "leaderboards" ? <Leaderboards handle={handle} /> : <>
           <section className={`${PANEL_SHELL} overflow-hidden`}>
             <PanelHeading
               title="Scored fights"
@@ -312,7 +321,7 @@ function ScorerPortrait({ scorer }: { scorer: ScorerIdentity }) {
       </span>
     );
   return (
-    <img
+    <ProgressiveImage
       src={scorer.imageUrl}
       alt=""
       referrerPolicy="no-referrer"

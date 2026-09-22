@@ -5,6 +5,8 @@ import { useCallback, type ReactNode } from "react";
 import { useSettings } from "./settings";
 
 const KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
+/** Set when Clerk's Frontend API is reached through this site's own /__clerk. */
+const PROXY_URL = (import.meta.env.VITE_CLERK_PROXY_URL as string | undefined) || undefined;
 /** Without a key the application runs exactly as before: everything public,
  *  no account control, no Clerk request. */
 export const accountsEnabled = Boolean(KEY);
@@ -23,7 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { settings } = useSettings();
   if (!KEY) return <>{children}</>;
   return (
-    <ClerkProvider publishableKey={KEY} appearance={{ variables: settings.theme === "dark" ? DARK : {} }}>
+    <ClerkProvider publishableKey={KEY} proxyUrl={PROXY_URL} appearance={{ variables: settings.theme === "dark" ? DARK : {} }}>
       {children}
     </ClerkProvider>
   );

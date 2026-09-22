@@ -6,6 +6,7 @@ import { lastName } from "../format";
 import { cardWinner, decimalScore, fightFinish } from "../scoring";
 import type { FanCard, ScoreSummary } from "../scoring";
 import { PANEL_SHELL, PanelHeading, sectionLabel } from "./FightStats";
+import ProgressiveImage from "./ProgressiveImage";
 
 const ScoreEditor = lazy(() => import("./ScoreEditor"));
 
@@ -111,7 +112,7 @@ function FanCards({ fight, cards, localCards, totalScorers }: { fight: Matchup; 
               <Link to={`/profiles/${card.scorer.handle}?tab=scorecards`} className="block min-w-0 px-4 py-3 transition-colors hover:bg-zinc-50">
                 <span className="flex min-w-0 items-center gap-2">
                   {card.scorer.imageUrl
-                    ? <img src={card.scorer.imageUrl} alt="" referrerPolicy="no-referrer" className="h-6 w-6 shrink-0 rounded-full bg-zinc-100 object-cover ring-1 ring-zinc-200" />
+                    ? <ProgressiveImage src={card.scorer.imageUrl} alt="" referrerPolicy="no-referrer" className="h-6 w-6 shrink-0 rounded-full bg-zinc-100 object-cover ring-1 ring-zinc-200" />
                     : <span aria-hidden="true" className="h-6 w-6 shrink-0 rounded-full bg-zinc-100 ring-1 ring-zinc-200" />}
                   <span className="min-w-0 truncate text-sm font-medium text-zinc-700">{card.scorer.displayName}</span>
                   <span className="ml-auto flex shrink-0 items-baseline gap-1 text-sm tabular-nums">

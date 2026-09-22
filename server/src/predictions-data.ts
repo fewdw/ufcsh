@@ -1,6 +1,7 @@
 import { prepared } from "./db.ts";
 import { parseScheduledRounds } from "./fight-index.ts";
 import type { PredictionContext, PredictionFight } from "./predictions.ts";
+import type { BetContext, BetMarkets } from "./bets.ts";
 
 const columns = `SELECT f.*, e.name AS event_name, e.date AS event_date, e.complete AS event_complete,
   e.early_prelims_at, e.prelims_at, e.main_card_at, o.f1_close AS f1_line, o.f2_close AS f2_line
@@ -37,4 +38,23 @@ export function predictionContext(id: string): PredictionContext | undefined {
 export function predictionFights(ids: string[]): PredictionFight[] {
   if (!ids.length) return [];
   return prepared(`${columns} WHERE f.id IN (${ids.map(() => "?").join(",")})`).all(...ids).map(read);
+}
+
+const moneyline = prepared("SELECT f1_close, f2_close, final FROM odds WHERE fight_id = ?");
+const props = prepared("SELECT markets_json, final FROM method_odds WHERE fight_id = ?");
+/** A bout with the prices a bet is placed at: the moneyline and, when they
+ *  were verified against this exact pair, the prop markets. */
+export function betContext(id: string): BetContext | undefined {
+  const context = predictionContext(id);
+  if (!context) return undefined;
+  const line = moneyline.get(id) as { f1_close: string | null; f2_close: string | null; final: number } | undefined;
+  const method = props.get(id) as { markets_json: string; final: number } | undefined;
+  let markets: BetMarkets | null = null;
+  try {
+    const parsed = method ? JSON.parse(method.markets_json) : null;
+    if (parsed && parsed.f1_id === context.fight.f1_id && parsed.f2_id === context.fight.f2_id) {
+      markets = { f1: parsed.f1 ?? {}, f2: parsed.f2 ?? {}, additional: Array.isArray(parsed.additional) ? parsed.additional : [], final: !!method!.final };
+    }
+  } catch { /* A malformed payload offers no props. */ }
+  return { ...context, moneyline: line ? { f1: line.f1_close, f2: line.f2_close, final: !!line.final } : null, markets };
 }

@@ -239,6 +239,12 @@ export class ScoringStore {
       imageUrl: row.image_url ?? null,
     };
   }
+  /** A public identity by handle or account, never minting one. */
+  lookup(column: "user_id" | "handle", value: string): (ScorerIdentity & { userId: string }) | null {
+    const row = column === "user_id" ? this.scorer("user_id", value)
+      : this.scorer("username_key", value.toLowerCase()) ?? this.scorer("public_id", value);
+    return row ? { userId: row.user_id, ...this.identify(row) } : null;
+  }
   eligibility(id: string) {
     const fight = this.fight(id);
     if (!fight) throw new ScoringError(404, "Fight not found.");

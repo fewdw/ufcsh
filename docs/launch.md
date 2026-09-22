@@ -137,6 +137,26 @@ It builds while the old app is still serving, backs up both databases, then
 replaces containers. A brief interruption remains possible while query workers
 warm up. Check `https://YOUR_HOST/readyz` and the Grafana dashboard afterward.
 
+## Production Clerk on the sslip.io address
+
+Clerk production instances expect CNAME records (`clerk.`, `accounts.`, mail),
+which sslip.io cannot serve. Caddy therefore proxies Clerk's Frontend API at
+`/__clerk`. In the private `.env` set the production `CLERK_PUBLISHABLE_KEY` and
+`CLERK_SECRET_KEY`, plus `CLERK_PROXY_URL=https://$DOMAIN/__clerk`, run
+`./deploy/update.sh`, then register that URL as the domain's proxy (Clerk
+dashboard → Domains → Frontend API, or `PATCH /v1/domains/{id}` with
+`proxy_url`). Social sign-in on a production instance needs your own OAuth
+credentials in the Clerk dashboard. Remove `CLERK_PROXY_URL` once a real domain
+has its DNS records.
+
+After a deploy that adds new photos, generate the tiny and small copies every
+picture is served in (`?size=tiny|small`); missing ones are also made on first
+request:
+
+```sh
+docker compose exec -T app node src/backfill-image-variants.ts
+```
+
 ## Public launch when you choose a domain
 
 1. Buy an available domain through Cloudflare Registrar, checking the renewal

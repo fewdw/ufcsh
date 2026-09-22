@@ -10,6 +10,7 @@ services:
       context: .
       args:
         VITE_CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
+        VITE_CLERK_PROXY_URL: ${CLERK_PROXY_URL:-}
         VITE_SITE_ORIGIN: https://${DOMAIN}
     restart: unless-stopped
     logging: *bounded-logs
@@ -26,6 +27,7 @@ services:
       DEFAULT_ADMIN: ${DEFAULT_ADMIN:?Set the permanent administrator email in .env}
       CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
       CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
+      CLERK_PROXY_URL: ${CLERK_PROXY_URL:-}
       CLERK_AUTHORIZED_PARTIES: https://${DOMAIN}
       METRICS_PORT: 9091
       # Caddy has a fixed address and overwrites X-Real-IP below.
@@ -43,6 +45,7 @@ services:
     logging: *bounded-logs
     environment:
       DOMAIN: ${DOMAIN:?Set the public hostname in .env}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
     ports:
       - "80:80"
       - "443:443"

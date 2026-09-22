@@ -3,7 +3,10 @@ import { ScoringStore, type ScoringFight } from "./scoring.ts";
 import { createScoringHandler } from "./scoring-http.ts";
 import { PredictionStore } from "./predictions.ts";
 import { createPredictionsHandler } from "./predictions-http.ts";
-import { predictionContext, predictionFights } from "./predictions-data.ts";
+import { betContext, predictionContext, predictionFights } from "./predictions-data.ts";
+import { BetStore } from "./bets.ts";
+import { createBetsHandler } from "./bets-http.ts";
+import { createLeaderboards } from "./leaderboards.ts";
 import { estimatedStart, type SegmentTimes } from "./card-schedule.ts";
 import http from "node:http";
 import { promises as fs } from "node:fs";
@@ -28,6 +31,7 @@ import { createAdminHandler, type AdminLiveFight } from "./admin-http.ts";
 import { ReportStore } from "./reports.ts";
 import { createReportsHandler } from "./reports-http.ts";
 import { releasedRounds } from "./live-rounds.ts";
+import { ensureImageVariant, variantPath, type ImageSize } from "./image-variants.ts";
 import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds } from "./sync.ts";
 import { BackgroundRefresh } from "./background-refresh.ts";
 import { VersionCache } from "./version-cache.ts";
@@ -1543,7 +1547,8 @@ const MIME: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8", ".xml": "application/xml; charset=utf-8",
 };
 
-const imageRequests = new Map<string, Promise<{ data: Buffer; contentType: string }>>();
+type CachedImage = { data: Buffer; contentType: string; imagePath: string };
+const imageRequests = new Map<string, Promise<CachedImage>>();
 
 /** Headshot and full body are cached side by side under one fighter id. */
 export type PhotoVariant = "head" | "full";
@@ -1555,7 +1560,7 @@ export type PhotoVariant = "head" | "full";
  */
 async function discardOldPhotos(id: string, suffix: string, keep: string): Promise<void> {
   // Anchored so the headshot's own prefix cannot sweep up the full body's files.
-  const belongsHere = new RegExp(`^${id}${suffix.replace(".", "\\.")}\\.(?:([0-9a-f]+)\\.)?(?:img|type)$`);
+  const belongsHere = new RegExp(`^${id}${suffix.replace(".", "\\.")}\\.(?:([0-9a-f]+)\\.)?(?:img|type|tiny\\.webp|small\\.webp)$`);
   try {
     for (const name of await fs.readdir(IMAGE_CACHE)) {
       const match = belongsHere.exec(name);
@@ -1595,7 +1600,8 @@ async function adoptUnversionedPhotos(): Promise<void> {
   setMeta("image_cache_versioned", "1");
 }
 
-async function loadFighterImage(id: string, variant: PhotoVariant): Promise<{ data: Buffer; contentType: string } | null> {
+/** Where a fighter's current picture is cached, named after the remote URL. */
+function fighterImageFile(id: string, variant: PhotoVariant) {
   if (!/^[a-f0-9]+$/i.test(id)) return null;
   const row = prepared("SELECT photo_url, photo_full_url FROM fighters WHERE id = ?").get(id) as
     | { photo_url: string | null; photo_full_url: string | null }
@@ -1606,18 +1612,25 @@ async function loadFighterImage(id: string, variant: PhotoVariant): Promise<{ da
   // picture exists at all.
   const remote = variant === "full" ? row.photo_full_url ?? row.photo_url : row.photo_url;
   if (!remote) return null;
-  const served: PhotoVariant = variant === "full" && row.photo_full_url ? "full" : "head";
-
-  const suffix = served === "full" ? ".full" : "";
+  const suffix = variant === "full" && row.photo_full_url ? ".full" : "";
   const version = photoVersion(remote);
-  const imagePath = path.join(IMAGE_CACHE, `${id}${suffix}.${version}.img`);
-  const typePath = path.join(IMAGE_CACHE, `${id}${suffix}.${version}.type`);
+  return {
+    remote, suffix, version,
+    imagePath: path.join(IMAGE_CACHE, `${id}${suffix}.${version}.img`),
+    typePath: path.join(IMAGE_CACHE, `${id}${suffix}.${version}.type`),
+  };
+}
+
+async function loadFighterImage(id: string, variant: PhotoVariant): Promise<CachedImage | null> {
+  const file = fighterImageFile(id, variant);
+  if (!file) return null;
+  const { remote, suffix, version, imagePath, typePath } = file;
   const readCached = async () => {
     const [data, contentType] = await Promise.all([
       fs.readFile(imagePath),
       fs.readFile(typePath, "utf8").catch(() => "image/jpeg"),
     ]);
-    return { data, contentType: contentType.trim() || "image/jpeg" };
+    return { data, contentType: contentType.trim() || "image/jpeg", imagePath };
   };
 
   try {
@@ -1646,7 +1659,7 @@ async function loadFighterImage(id: string, variant: PhotoVariant): Promise<{ da
       await fs.mkdir(IMAGE_CACHE, { recursive: true });
       await Promise.all([fs.writeFile(imagePath, data), fs.writeFile(typePath, contentType)]);
       void discardOldPhotos(id, suffix, version);
-      return { data, contentType };
+      return { data, contentType, imagePath };
     } catch (error) {
       try {
         return await readCached();
@@ -1661,20 +1674,46 @@ async function loadFighterImage(id: string, variant: PhotoVariant): Promise<{ da
   return request;
 }
 
-async function serveFighterImage(res: http.ServerResponse, id: string, variant: PhotoVariant): Promise<void> {
+/** Placeholders are a few hundred bytes and small copies a few KB, so every
+ *  fighter's pair fits in memory and never touches the disk twice. */
+const variantMemory = new Map<string, Buffer>();
+async function fighterImageVariant(id: string, variant: PhotoVariant, size: ImageSize): Promise<Buffer | null> {
+  const file = fighterImageFile(id, variant);
+  if (!file) return null;
+  const target = variantPath(file.imagePath, size);
+  const remembered = variantMemory.get(target);
+  if (remembered) return remembered;
+  let data: Buffer;
   try {
+    data = await fs.readFile(target);
+  } catch {
     const image = await loadFighterImage(id, variant);
-    if (!image) {
+    if (!image) return null;
+    data = await ensureImageVariant(image.imagePath, size, image.data);
+  }
+  variantMemory.set(target, data);
+  if (variantMemory.size > 10_000) variantMemory.delete(variantMemory.keys().next().value!);
+  return data;
+}
+
+async function serveFighterImage(res: http.ServerResponse, id: string, variant: PhotoVariant, size: ImageSize | null, versioned: boolean): Promise<void> {
+  try {
+    const image = size ? null : await loadFighterImage(id, variant);
+    const data = size ? await fighterImageVariant(id, variant, size) : image?.data;
+    if (!data) {
       res.writeHead(404, { "Cache-Control": "public, max-age=300" });
       res.end();
       return;
     }
     res.writeHead(200, {
-      "Content-Type": image.contentType,
-      "Content-Length": image.data.length,
-      "Cache-Control": "public, max-age=86400, stale-while-revalidate=2592000",
+      "Content-Type": size ? "image/webp" : image!.contentType,
+      "Content-Length": data.length,
+      // A ?v= address names one exact picture, so it never needs revalidating.
+      "Cache-Control": versioned
+        ? "public, max-age=31536000, immutable"
+        : "public, max-age=86400, stale-while-revalidate=2592000",
     });
-    res.end(image.data);
+    res.end(data);
   } catch (error) {
     log(`fighter image ${id} (${variant}) failed:`, String(error));
     res.writeHead(502, { "Cache-Control": "no-store" });
@@ -1871,7 +1910,10 @@ export function startApi(port: number): http.Server {
         f2_photo: cachedPhotoUrl(fight.f2_id, fight.f2_remote_photo) }) as ScoringFight)
     : []);
   const scoring = createScoringHandler(scoreStore);
-  const predictions = createPredictionsHandler(new PredictionStore(scoreStore, predictionContext, predictionFights));
+  const predictionStore = new PredictionStore(scoreStore, predictionContext, predictionFights);
+  const predictions = createPredictionsHandler(predictionStore);
+  const betStore = new BetStore(scoreStore, betContext, predictionFights);
+  const bets = createBetsHandler(betStore, createLeaderboards(scoreStore, predictionStore, betStore));
   const reportStore = new ReportStore(scoreStore);
   const reports = createReportsHandler(reportStore);
   const adminStore = new AdminStore(scoreStore.db);
@@ -1932,6 +1974,7 @@ export function startApi(port: number): http.Server {
       const p = url.pathname;
       if (!stopping && await scoring(req, res, url)) return;
       if (!stopping && await predictions(req, res, url)) return;
+      if (!stopping && await bets(req, res, url)) return;
       if (!stopping && await reports(req, res, url)) return;
       if (!stopping && await admin(req, res, url)) return;
       const part = (i: number) => p.split("/")[i] ?? "";
@@ -1947,14 +1990,17 @@ export function startApi(port: number): http.Server {
       const address = clientAddress(req);
       const expensive = p === "/api/search" || p === "/api/stats" || p.startsWith("/api/labs");
       const imageRequest = p.startsWith("/api/images/");
-      const allowed = limiter.allow(`${address}:${imageRequest ? "image" : "request"}`, imageRequest ? 240 : 120, imageRequest ? 40 : 12);
+      const allowed = limiter.allow(`${address}:${imageRequest ? "image" : "request"}`, imageRequest ? 600 : 120, imageRequest ? 100 : 12);
       if (!allowed || (expensive && !limiter.allow(`${address}:expensive`, 30, 3))) {
         res.setHeader("Retry-After", "5");
         return await sendJson(req, res, { error: "too many requests" }, 429);
       }
       if (imageRequest) {
         if (!/^\/api\/images\/[a-f0-9]{16}(\/full)?$/i.test(p)) return await sendJson(req, res, { error: "not found" }, 404);
-        return await serveFighterImage(res, part(3), part(4) === "full" ? "full" : "head");
+        const size = url.searchParams.get("size");
+        if (size !== null && size !== "tiny" && size !== "small") return await sendJson(req, res, { error: "invalid image size" }, 400);
+        return await serveFighterImage(res, part(3), part(4) === "full" ? "full" : "head", size,
+          /^[a-f0-9]{12}$/.test(url.searchParams.get("v") ?? ""));
       }
       if ((url.searchParams.get("q")?.length ?? 0) > 120) return await sendJson(req, res, { error: "search query too long" }, 400);
       if (publicApi(p)) {

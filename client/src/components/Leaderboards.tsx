@@ -1,0 +1,67 @@
+import { User } from "lucide-react";
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { useApi } from "../api";
+import { signedMoney, type LeaderboardEntry, type Leaderboards as BoardsData } from "../bets";
+import { PANEL_SHELL, PanelHeading } from "./FightStats";
+import ProgressiveImage from "./ProgressiveImage";
+
+function Portrait({ entry }: { entry: LeaderboardEntry }) {
+  const [failed, setFailed] = useState(false);
+  if (!entry.scorer.imageUrl || failed) return (
+    <span aria-hidden="true" className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-zinc-100 text-zinc-400 ring-1 ring-zinc-200">
+      <User className="h-3 w-3" />
+    </span>
+  );
+  return <ProgressiveImage src={entry.scorer.imageUrl} alt="" referrerPolicy="no-referrer" onError={() => setFailed(true)}
+    className="h-6 w-6 shrink-0 rounded-full bg-zinc-100 object-cover ring-1 ring-zinc-200" />;
+}
+
+function Board({ title, subtitle, entries, format, tab, current }: {
+  title: string; subtitle: string; entries: LeaderboardEntry[];
+  format: (entry: LeaderboardEntry) => { text: string; tone?: string }; tab: string; current: string;
+}) {
+  return (
+    <section className={`${PANEL_SHELL} overflow-hidden`}>
+      <PanelHeading title={title} subtitle={subtitle} />
+      {entries.length ? <ol className="divide-y divide-zinc-100">
+        {entries.map((entry, index) => {
+          const value = format(entry);
+          const self = entry.scorer.handle === current.toLowerCase() || entry.scorer.publicId === current;
+          return <li key={entry.scorer.publicId}>
+            <Link to={`/profiles/${entry.scorer.handle}?tab=${tab}`}
+              className={`flex items-center gap-2.5 px-4 py-2 transition-colors hover:bg-zinc-50 sm:px-5 ${self ? "bg-zinc-50" : ""}`}>
+              <span className={`w-5 shrink-0 text-right text-xs font-semibold tabular-nums ${index < 3 ? "text-zinc-900" : "text-zinc-400"}`}>{index + 1}</span>
+              <Portrait entry={entry} />
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-800">{entry.scorer.displayName}</span>
+              <span className="shrink-0 text-right">
+                <span className={`block text-sm font-semibold tabular-nums ${value.tone ?? "text-zinc-900"}`}>{value.text}</span>
+                <span className="block text-[10px] tabular-nums text-zinc-400">{entry.detail}</span>
+              </span>
+            </Link>
+          </li>;
+        })}
+      </ol> : <p className="px-5 py-8 text-center text-sm text-zinc-500">No one qualifies yet.</p>}
+    </section>
+  );
+}
+
+/** The top ten fans on every measure: prediction points, how often they name
+ *  the winner and the method, and profit from their bets. */
+export default function Leaderboards({ handle }: { handle: string }) {
+  const { data, error, retry } = useApi<BoardsData>("/api/leaderboards", 60_000);
+  if (!data) return <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
+    {error ? <>{error} <button className="underline" onClick={retry}>Retry</button></> : "Loading leaderboards…"}
+  </section>;
+  const pct = (entry: LeaderboardEntry) => ({ text: `${Math.round(entry.value)}%` });
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      <Board title="Top predictors" subtitle="Total prediction points" entries={data.points} tab="predictions" current={handle}
+        format={entry => ({ text: `${entry.value.toLocaleString()} pts` })} />
+      <Board title="Winner accuracy" subtitle={`Right winner · at least ${data.minimums.winner} settled picks`} entries={data.winner} tab="predictions" current={handle} format={pct} />
+      <Board title="Method accuracy" subtitle={`Right method · at least ${data.minimums.method} method calls`} entries={data.method} tab="predictions" current={handle} format={pct} />
+      <Board title="Top bettors" subtitle="Profit on settled bets" entries={data.bets} tab="bets" current={handle}
+        format={entry => ({ text: signedMoney(entry.value), tone: entry.value > 0 ? "text-emerald-600" : entry.value < 0 ? "text-rose-600" : undefined })} />
+    </div>
+  );
+}

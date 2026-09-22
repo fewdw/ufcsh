@@ -278,7 +278,7 @@ export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american",
   // Over X½ needs the fight to pass the halfway mark of round X+1.
   const totalHit = (total: string, side: "over" | "under") => {
     if (!settled) return false;
-    const line = Number.parseFloat(total) * 300;
+    const line = (Number.parseFloat(total) + 0.5) * 300;
     const elapsed = settled.decision ? Infinity : settled.elapsed;
     if (elapsed === null) return false;
     return side === "over" ? elapsed > line : elapsed <= line;

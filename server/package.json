@@ -11,6 +11,7 @@
     "backfill:odds": "node src/backfill-odds.ts",
     "backfill:method-odds": "node src/backfill-method-odds.ts",
     "backfill:images": "node src/backfill-images.ts",
+    "backfill:image-variants": "node src/backfill-image-variants.ts",
     "backfill:scorecards": "node src/backfill-verdict-scorecards.ts",
     "backfill:official-scorecards": "node src/backfill-mmadecisions-scorecards.ts",
     "load:test": "node src/load-test.ts",
@@ -18,7 +19,8 @@
   },
   "dependencies": {
     "@clerk/backend": "^3.18.1",
-    "cheerio": "^1.0.0"
+    "cheerio": "^1.0.0",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",
