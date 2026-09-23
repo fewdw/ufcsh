@@ -17,11 +17,15 @@ const sameJudge = (left: string, right: string): boolean => {
   // MMA Decisions sometimes prefixes the judge's title, for example
   // "Dr. Greg Jackson" where UFCStats records "Greg Jackson".
   const tokens = (name: string) => normName(name).split(" ").filter(Boolean)
-    .filter((token, index) => index > 0 || (token !== "dr" && token !== "doctor"));
+    .filter((token, index) => index > 0 || (token !== "dr" && token !== "doctor"))
+    .filter((token, index, all) => index < all.length - 1 || !["jr", "junior", "sr", "senior"].includes(token));
   const a = tokens(left);
   const b = tokens(right);
   if (!a.length || !b.length) return false;
   if (a.join(" ") === b.join(" ")) return true;
+  // A surname particle is sometimes joined in one source (Danny De Alejandro
+  // / Danny Dealejandro). The complete name must match after joining.
+  if (a.join("") === b.join("")) return true;
   // Sources alternate between forms such as Mike/Michael Bell and
   // Sal/Salvatore D'Amato, and misspell a surname by a letter (Henry
   // Guery/Gueary). Initial + surname is strict enough for one panel.

@@ -562,7 +562,7 @@ function decisionsWithoutJudgeRounds(): BugCheck {
     id: "decision-no-judge-rounds",
     group: "Scorecards",
     label: "Official cards missing round scores",
-    description: "Decisions where one or more official cards still lack round scores. The Verdict backfill matches by event date and both fighter names, then verifies each judge's final total before attaching rounds.",
+    description: "Decisions since 2003 where one or more official cards still lack round scores. The Verdict and MMA Decisions imports match the event date and both fighter names, then verify each judge's final total before attaching rounds.",
     severity: "medium",
   }, rows.map(fight => fightItem(fight, {
     facts: [["Official totals", fight.detail_json?.includes('"judges"') ? "yes" : "no"], ["Verdict checked", ago(fight.verdict_checked_at)]],

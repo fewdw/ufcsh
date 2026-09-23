@@ -44,3 +44,15 @@ test("a judge's title does not hide matching round scores", () => {
   const imported: JudgeCard[] = [{ judge: "Dr. Greg Jackson", f1Score: 29, f2Score: 28, rounds: rounds([9, 10, 10], [10, 9, 9]) }];
   assert.equal(hasCompleteJudgeRounds(official, imported), true);
 });
+
+test("joined surname particles match the same judge", () => {
+  const official: JudgeCard[] = [{ judge: "Danny De Alejandro", f1Score: 29, f2Score: 28 }];
+  const imported: JudgeCard[] = [{ judge: "Danny Dealejandro", f1Score: 29, f2Score: 28, rounds: rounds([10, 9, 10], [9, 10, 9]) }];
+  assert.equal(hasCompleteJudgeRounds(official, imported), true);
+});
+
+test("a judge's name suffix does not prevent matching rounds", () => {
+  const official: JudgeCard[] = [{ judge: "Michael Depasquale", f1Score: 28, f2Score: 29 }];
+  const imported: JudgeCard[] = [{ judge: "Michael Depasquale Jr.", f1Score: 28, f2Score: 29, rounds: rounds([9, 9, 10], [10, 10, 9]) }];
+  assert.equal(hasCompleteJudgeRounds(official, imported), true);
+});
