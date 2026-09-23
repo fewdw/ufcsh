@@ -1,6 +1,6 @@
 # Private dev environment
 
-`https://dev.ufc.sh` runs from this checkout in a separate app container and
+`https://dev.ufc.sh` runs from a separate Git worktree in a separate app container and
 database volume. A Cloudflare Tunnel connects to that container over a private
 Docker network. The dev app publishes no host port and is not routed through
 the production Caddy server. Cloudflare Access allows only the people you list.
@@ -10,7 +10,7 @@ the production Caddy server. Cloudflare Access allows only the people you list.
 Cloudflare Tunnel plus Access gives the requested HTTPS hostname without
 opening a new origin port. The tunnel can also validate the Access token before
 forwarding requests to dev. Production keeps its existing Caddy route and
-deployment command.
+deploys automatically after a successful CI run on `main`.
 
 Tailscale is useful if every device can join your tailnet, but its normal HTTPS
 hostname is under `*.ts.net`; using `dev.ufc.sh` would need extra DNS and client
@@ -62,23 +62,34 @@ it was shared in the conversation.
 
 ## Daily workflow
 
-Edit code in this checkout, then run `./dev.sh` to rebuild and restart the dev
-container. The browser updates after the build finishes. Follow startup with:
+The production checkout is `/home/ubuntu/ufcsh` and stays on `main`. The dev
+worktree is `/home/ubuntu/ufcsh-dev`. To choose a pushed branch for dev, run
+`./deploy/select-dev-branch.sh BRANCH` from the production checkout. Or in
+GitHub, open **Actions → Choose dev branch → Run workflow**, leave the workflow
+ref on `main`, and type the branch name. This fetches the branch, switches the
+dev worktree, rebuilds the app, and updates `dev.ufc.sh`. The worktree must be
+clean before switching branches; commit or stash unfinished changes first.
+
+Edit code in the dev worktree and run `/home/ubuntu/ufcsh/dev.sh` to rebuild
+and restart dev from those changes. The browser updates after the build
+finishes. Follow startup with:
 
 ```sh
-docker compose --env-file .env --env-file .env.dev \
-  -f compose.yaml -f compose.dev.yaml logs -f app-dev dev-tunnel
+cd /home/ubuntu/ufcsh
+docker compose -p ufcsh --env-file .env.dev -f compose.dev.yaml logs -f app-dev dev-tunnel
 ```
 
-When satisfied, commit and push your branch or open a PR. After the change
-reaches `main`, run `./deploy/update.sh` to deploy production to `ufc.sh`.
-The production update does not rebuild the dev container.
+When satisfied, commit and push your branch and open a PR. The CI checks run
+on that branch. Once the PR reaches `main` and CI succeeds there, GitHub
+Actions deploys production to `ufc.sh` automatically. Switching dev branches
+never deploys production. `/home/ubuntu/ufcsh/deploy/update.sh` remains
+available for manual recovery.
 
 To stop dev while retaining its database, run:
 
 ```sh
-docker compose --env-file .env --env-file .env.dev \
-  -f compose.yaml -f compose.dev.yaml stop dev-tunnel app-dev
+cd /home/ubuntu/ufcsh
+docker compose -p ufcsh --env-file .env.dev -f compose.dev.yaml stop dev-tunnel app-dev
 ```
 
 Avoid `docker compose down -v` on this shared host: it can delete production

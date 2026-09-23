@@ -2,10 +2,6 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-if [[ ! -f .env ]]; then
-  echo 'Missing .env; production compose settings are required on this server.' >&2
-  exit 2
-fi
 if [[ ! -f .env.dev ]]; then
   echo 'Missing .env.dev. Copy .env.dev.example and fill in your private Clerk development keys.' >&2
   exit 2
@@ -28,7 +24,10 @@ if grep -Eq '^DEV_TUNNEL_TOKEN=replace-with-cloudflare-tunnel-token$' .env.dev; 
   echo 'Replace the DEV_TUNNEL_TOKEN placeholder in .env.dev.' >&2
   exit 2
 fi
-docker compose --env-file .env --env-file .env.dev -f compose.yaml -f compose.dev.yaml up -d --no-deps --build app-dev
-docker compose --env-file .env --env-file .env.dev -f compose.yaml -f compose.dev.yaml up -d --no-deps dev-tunnel
-docker compose --env-file .env --env-file .env.dev -f compose.yaml -f compose.dev.yaml ps app-dev dev-tunnel
-echo 'Dev is deploying. Follow startup with: docker compose --env-file .env --env-file .env.dev -f compose.yaml -f compose.dev.yaml logs -f app-dev dev-tunnel'
+if [[ -z "${DEV_BUILD_CONTEXT:-}" && -e ../ufcsh-dev/.git ]]; then
+  DEV_BUILD_CONTEXT="$(realpath ../ufcsh-dev)"
+fi
+export DEV_BUILD_CONTEXT="${DEV_BUILD_CONTEXT:-.}"
+docker compose -p ufcsh --env-file .env.dev -f compose.dev.yaml up -d --build app-dev dev-tunnel
+docker compose -p ufcsh --env-file .env.dev -f compose.dev.yaml ps app-dev dev-tunnel
+echo 'Dev is deploying. Follow startup with: docker compose -p ufcsh --env-file .env.dev -f compose.dev.yaml logs -f app-dev dev-tunnel'

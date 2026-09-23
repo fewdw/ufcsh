@@ -116,7 +116,10 @@ record counts, representative pages, and sync freshness before switching over.
 Keep a backup before schema upgrades; rolling the application image back alone
 does not roll the database schema back.
 
-For updates, build first, take a backup, then run `docker compose up -d`.
+GitHub Actions runs CI on pull requests and pushes. After a successful CI run
+on `main`, it connects through a restricted SSH key and runs
+`deploy/update.sh` automatically. That script builds first, takes a backup,
+then runs `docker compose up -d --wait`.
 Shutdown stops accepting requests and gives active HTTP requests 10 seconds to
 drain. The supervisor terminates child processes after 12 seconds if needed.
 This single-container layout can have a brief interruption during deployment.
