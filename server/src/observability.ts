@@ -1,15 +1,35 @@
+/** Browser page views use fixed route patterns, never a visitor's username or a fight ID. */
+export function pageRouteGroup(pathname: string): string | null {
+  if (pathname === "/") return "page_home";
+  if (/^\/events\/[^/]+$/.test(pathname)) return "page_event";
+  if (/^\/fights\/[^/]+$/.test(pathname)) return "page_fight";
+  if (/^\/fighters\/[^/]+$/.test(pathname)) return "page_fighter";
+  if (/^\/profiles\/[^/]+$/.test(pathname)) return "page_profile";
+  if (pathname === "/rankings") return "page_rankings";
+  if (pathname === "/stats") return "page_stats";
+  if (pathname === "/labs") return "page_labs";
+  if (pathname === "/admin" || pathname === "/admin/bugs") return "page_admin";
+  if (pathname === "/sign-in" || pathname.startsWith("/sign-in/")) return "page_sign_in";
+  if (pathname === "/sign-up" || pathname.startsWith("/sign-up/")) return "page_sign_up";
+  return null;
+}
+
 /** Bounded, anonymous labels keep metrics useful even when URLs contain IDs or usernames. */
 export function routeGroup(pathname: string): string {
   if (/^\/api\/fights\/[a-f0-9]{16}\/scores\/mine$/i.test(pathname)) return "scores_mine";
   if (/^\/api\/fights\/[a-f0-9]{16}\/scores$/i.test(pathname)) return "scores_public";
   if (/^\/api\/fights\/[a-f0-9]{16}\/predictions(\/mine)?$/i.test(pathname)) return "predictions";
-  if (/^\/api\/fights\/[a-f0-9]{16}\/comments$/i.test(pathname) || pathname.startsWith("/api/comments/")) return "comments";
+  if (/^\/api\/fights\/[a-f0-9]{16}\/comments$/i.test(pathname)) return "comments_list";
+  if (pathname === "/api/comments/blocks" || pathname.startsWith("/api/comments/blocks/")) return "comments_blocks";
+  if (/^\/api\/comments\/[0-9a-f-]{36}\/thread$/i.test(pathname)) return "comments_thread";
+  if (pathname.startsWith("/api/comments/")) return "comments_actions";
   if (pathname === "/api/bets" || pathname.startsWith("/api/bets/")) return "bets";
   if (pathname === "/api/leaderboards") return "leaderboards";
   if (pathname === "/api/reports") return "issue_reports";
   if (pathname.startsWith("/api/admin/")) return "admin";
   if (pathname.startsWith("/api/images/")) return "images";
   if (pathname.startsWith("/api/profiles/")) return "profiles";
+  if (pathname === "/api/pageview") return "pageview_beacon";
   if (pathname.startsWith("/api/previews/")) return "previews";
   if (pathname === "/api/stats") return "stats";
   if (/^\/api\/fights\/[a-f0-9]{16}$/i.test(pathname)) return "fight_detail";
@@ -24,7 +44,7 @@ export function routeGroup(pathname: string): string {
   if (pathname === "/api/status" || pathname === "/api/metrics") return "monitoring";
   if (pathname.startsWith("/api/")) return "api_other";
   if (pathname.startsWith("/assets/")) return "assets";
-  return "page";
+  return pageRouteGroup(pathname) ?? "page_other";
 }
 
 const BUCKETS = [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5];
@@ -38,11 +58,11 @@ export type MetricValues = {
 
 /** Finer latency steps, in milliseconds, for the admin dashboard's estimates. */
 const MS_STEPS = [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10_000, 30_000];
-type Latency = { count: number; errors: number; throttled: number; sumMs: number; maxMs: number; steps: number[] };
-const emptyLatency = (): Latency => ({ count: 0, errors: 0, throttled: 0, sumMs: 0, maxMs: 0, steps: MS_STEPS.map(() => 0) });
+type Latency = { count: number; errors: number; clientErrors: number; notFound: number; throttled: number; slow: number; sumMs: number; maxMs: number; steps: number[] };
+const emptyLatency = (): Latency => ({ count: 0, errors: 0, clientErrors: 0, notFound: 0, throttled: 0, slow: 0, sumMs: 0, maxMs: 0, steps: MS_STEPS.map(() => 0) });
 /** Process health sampled once a minute beside that minute's traffic. */
 export type MinuteGauges = { eventLoopP95Ms: number; cpuPercent: number; memoryBytes: number };
-type Minute = { at: number; traffic: Latency; visitors: Set<string>; gauges?: MinuteGauges };
+type Minute = { at: number; traffic: Latency; routes: Map<string, Latency>; views: Map<string, number>; visitors: Set<string>; gauges?: MinuteGauges };
 /** An hour of per-minute history is kept in memory; Grafana keeps the rest. */
 const TIMELINE_MINUTES = 60;
 /** Distinct visitors are counted per minute up to this many, then capped. */
@@ -51,11 +71,21 @@ const VISITORS_PER_MINUTE = 100_000;
 function addLatency(entry: Latency, status: number, ms: number) {
   entry.count++;
   if (status >= 500) entry.errors++;
+  if (status >= 400 && status < 500) entry.clientErrors++;
+  if (status === 404) entry.notFound++;
   if (status === 429) entry.throttled++;
+  if (ms >= 1000) entry.slow++;
   entry.sumMs += ms;
   entry.maxMs = Math.max(entry.maxMs, ms);
   const step = MS_STEPS.findIndex(upper => ms <= upper);
   if (step >= 0) entry.steps[step]++;
+}
+
+function mergeLatency(target: Latency, source: Latency) {
+  target.count += source.count; target.errors += source.errors; target.clientErrors += source.clientErrors;
+  target.notFound += source.notFound; target.throttled += source.throttled; target.slow += source.slow;
+  target.sumMs += source.sumMs; target.maxMs = Math.max(target.maxMs, source.maxMs);
+  source.steps.forEach((count, index) => { target.steps[index] += count; });
 }
 
 /** A percentile estimated from the step counts, interpolated inside the step
@@ -76,7 +106,8 @@ export function estimatePercentile(entry: Latency, percentile: number): number {
 }
 
 const summarise = (entry: Latency) => ({
-  requests: entry.count, errors: entry.errors, throttled: entry.throttled,
+  requests: entry.count, errors: entry.errors, clientErrors: entry.clientErrors,
+  notFound: entry.notFound, throttled: entry.throttled, slow: entry.slow,
   meanMs: entry.count ? entry.sumMs / entry.count : 0,
   p50Ms: estimatePercentile(entry, 0.5), p95Ms: estimatePercentile(entry, 0.95), p99Ms: estimatePercentile(entry, 0.99),
   maxMs: entry.maxMs,
@@ -86,6 +117,7 @@ export class HttpObservability {
   private readonly requests = new Map<string, number>();
   private readonly durations = new Map<string, Duration>();
   private readonly routes = new Map<string, Latency>();
+  private readonly pageViews = new Map<string, number>();
   private readonly minutes: Minute[] = [];
   private readonly now: () => number;
   readonly startedAt: number;
@@ -95,7 +127,7 @@ export class HttpObservability {
     const at = Math.floor(this.now() / 60_000) * 60_000;
     const last = this.minutes.at(-1);
     if (last?.at === at) return last;
-    const next: Minute = { at, traffic: emptyLatency(), visitors: new Set() };
+    const next: Minute = { at, traffic: emptyLatency(), routes: new Map(), views: new Map(), visitors: new Set() };
     this.minutes.push(next);
     while (this.minutes.length > TIMELINE_MINUTES) this.minutes.shift();
     return next;
@@ -104,6 +136,15 @@ export class HttpObservability {
   /** Process gauges for the minute in progress, from the server's sampler. */
   sample(gauges: MinuteGauges): void {
     this.minute().gauges = gauges;
+  }
+
+  recordPageView(pathname: string): boolean {
+    const route = pageRouteGroup(pathname);
+    if (!route) return false;
+    this.pageViews.set(route, (this.pageViews.get(route) ?? 0) + 1);
+    const views = this.minute().views;
+    views.set(route, (views.get(route) ?? 0) + 1);
+    return true;
   }
 
   /** `visitor` is the client address. It is only counted, never reported, and
@@ -116,6 +157,9 @@ export class HttpObservability {
     this.routes.set(route, perRoute);
     const minute = this.minute();
     addLatency(minute.traffic, status, ms);
+    const minuteRoute = minute.routes.get(route) ?? emptyLatency();
+    addLatency(minuteRoute, status, ms);
+    minute.routes.set(route, minuteRoute);
     if (visitor && route !== "health" && route !== "monitoring" && minute.visitors.size < VISITORS_PER_MINUTE) minute.visitors.add(visitor);
     const verb = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(method) ? method : "OTHER";
     const code = Number.isInteger(status) && status >= 100 && status <= 599 ? String(status) : "0";
@@ -140,6 +184,7 @@ export class HttpObservability {
       const traffic = minute?.traffic ?? emptyLatency();
       return {
         at, requests: traffic.count, errors: traffic.errors, throttled: traffic.throttled,
+        pageViews: minute ? [...minute.views.values()].reduce((sum, count) => sum + count, 0) : 0,
         p95Ms: estimatePercentile(traffic, 0.95), visitors: minute?.visitors.size ?? 0,
         ...(minute?.gauges ?? { eventLoopP95Ms: null, cpuPercent: null, memoryBytes: null }),
       };
@@ -150,25 +195,51 @@ export class HttpObservability {
       const traffic = emptyLatency();
       const visitors = new Set<string>();
       for (const minute of window) {
-        traffic.count += minute.traffic.count; traffic.errors += minute.traffic.errors; traffic.throttled += minute.traffic.throttled;
-        traffic.sumMs += minute.traffic.sumMs; traffic.maxMs = Math.max(traffic.maxMs, minute.traffic.maxMs);
-        minute.traffic.steps.forEach((count, index) => { traffic.steps[index] += count; });
+        mergeLatency(traffic, minute.traffic);
         for (const visitor of minute.visitors) visitors.add(visitor);
       }
       return { ...summarise(traffic), visitors: visitors.size };
     };
     const total = emptyLatency();
-    for (const entry of this.routes.values()) {
-      total.count += entry.count; total.errors += entry.errors; total.throttled += entry.throttled;
-      total.sumMs += entry.sumMs; total.maxMs = Math.max(total.maxMs, entry.maxMs);
-      entry.steps.forEach((count, index) => { total.steps[index] += count; });
-    }
+    for (const entry of this.routes.values()) mergeLatency(total, entry);
+    const lastFiveMinutes = this.minutes.filter(minute => minute.at >= current - 4 * 60_000);
+    const lastHourMinutes = this.minutes.filter(minute => minute.at >= current - 59 * 60_000);
+    const windowRoutes = (window: Minute[]) => {
+      const routes = new Map<string, Latency>();
+      for (const minute of window) for (const [route, entry] of minute.routes) {
+        const combined = routes.get(route) ?? emptyLatency();
+        mergeLatency(combined, entry);
+        routes.set(route, combined);
+      }
+      return routes;
+    };
+    const fiveRoutes = windowRoutes(lastFiveMinutes);
+    const hourRoutes = windowRoutes(lastHourMinutes);
+    const views = (window: Minute[]) => {
+      const routes = new Map<string, number>();
+      for (const minute of window) for (const [route, count] of minute.views) routes.set(route, (routes.get(route) ?? 0) + count);
+      return routes;
+    };
+    const fiveViews = views(lastFiveMinutes);
+    const hourViews = views(lastHourMinutes);
     return {
       startedAt: this.startedAt,
       sinceStart: summarise(total),
       lastFiveMinutes: recent(5),
       lastHour: recent(TIMELINE_MINUTES),
-      routes: [...this.routes].map(([route, entry]) => ({ route, ...summarise(entry) })).sort((a, b) => b.requests - a.requests),
+      routes: [...this.routes].map(([route, entry]) => ({
+        route, ...summarise(entry),
+        lastFiveMinutes: summarise(fiveRoutes.get(route) ?? emptyLatency()),
+        lastHour: summarise(hourRoutes.get(route) ?? emptyLatency()),
+      })).sort((a, b) => b.lastHour.requests - a.lastHour.requests || b.requests - a.requests),
+      pageViews: {
+        total: [...this.pageViews.values()].reduce((sum, count) => sum + count, 0),
+        lastFiveMinutes: [...fiveViews.values()].reduce((sum, count) => sum + count, 0),
+        lastHour: [...hourViews.values()].reduce((sum, count) => sum + count, 0),
+        routes: [...this.pageViews].map(([route, total]) => ({
+          route, total, lastFiveMinutes: fiveViews.get(route) ?? 0, lastHour: hourViews.get(route) ?? 0,
+        })).sort((a, b) => b.lastHour - a.lastHour || b.total - a.total),
+      },
       timeline,
     };
   }
@@ -182,6 +253,9 @@ export class HttpObservability {
       const [route, method, code] = key.split("|");
       metric("ufc_http_requests_total", count, `{route="${route}",method="${method}",code="${code}"}`);
     }
+    lines.push("# HELP ufc_page_views_total Browser page navigations by bounded route pattern.");
+    lines.push("# TYPE ufc_page_views_total counter");
+    for (const [route, count] of this.pageViews) metric("ufc_page_views_total", count, `{route="${route}"}`);
     const visitors = this.snapshot().lastFiveMinutes.visitors;
     lines.push("# HELP ufc_http_request_duration_seconds Request duration measured until the response finished.");
     lines.push("# TYPE ufc_http_request_duration_seconds histogram");

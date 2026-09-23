@@ -5,7 +5,7 @@
   "tags": ["production", "ufc"],
   "timezone": "browser",
   "schemaVersion": 41,
-  "version": 1,
+  "version": 2,
   "refresh": "15s",
   "time": { "from": "now-6h", "to": "now" },
   "panels": [
@@ -19,6 +19,8 @@
     { "id": 8, "title": "App memory", "type": "timeseries", "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 }, "fieldConfig": { "defaults": { "unit": "bytes" } }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "ufc_process_resident_memory_bytes", "legendFormat": "resident" }, { "expr": "ufc_cache_bytes", "legendFormat": "origin cache" }] },
     { "id": 9, "title": "Host CPU use", "type": "timeseries", "gridPos": { "x": 0, "y": 32, "w": 12, "h": 8 }, "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 } }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])))", "legendFormat": "CPU" }] },
     { "id": 10, "title": "Host disk available", "type": "timeseries", "gridPos": { "x": 12, "y": 32, "w": 12, "h": 8 }, "fieldConfig": { "defaults": { "unit": "bytes" } }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "node_filesystem_avail_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"}", "legendFormat": "free" }] },
-    { "id": 11, "title": "Firing alerts", "type": "table", "gridPos": { "x": 0, "y": 40, "w": 24, "h": 6 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "ALERTS{alertstate=\"firing\"}", "instant": true, "format": "table" }] }
+    { "id": 12, "title": "Page views per second by route", "type": "timeseries", "gridPos": { "x": 0, "y": 40, "w": 12, "h": 8 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "sum by (route) (rate(ufc_page_views_total[5m]))", "legendFormat": "{{route}}" }] },
+    { "id": 13, "title": "404 responses per second by route", "type": "timeseries", "gridPos": { "x": 12, "y": 40, "w": 12, "h": 8 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "sum by (route) (rate(ufc_http_requests_total{code=\"404\"}[5m]))", "legendFormat": "{{route}}" }] },
+    { "id": 11, "title": "Firing alerts", "type": "table", "gridPos": { "x": 0, "y": 48, "w": 24, "h": 6 }, "datasource": { "type": "prometheus", "uid": "prometheus" }, "targets": [{ "expr": "ALERTS{alertstate=\"firing\"}", "instant": true, "format": "table" }] }
   ]
 }

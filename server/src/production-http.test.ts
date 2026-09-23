@@ -44,6 +44,13 @@ test("production HTTP uses workers, shared responses, validators and admin autho
   assert.equal((await request("/api/fighters/ffffffffffffffff")).status, 404);
   assert.equal((await request("/api/events", { method: "POST" })).status, 405);
   assert.equal((await request("/api/search?q=" + "x".repeat(121))).status, 400);
+  assert.equal((await request("/api/pageview")).status, 405);
+  assert.equal((await request("/api/pageview", { method: "POST", headers: { "Content-Type": "text/plain", "Sec-Fetch-Site": "cross-site" }, body: "/profiles/fewdw" })).status, 403);
+  assert.equal((await request("/api/pageview", { method: "POST", headers: { "Content-Type": "text/plain", Origin: "https://attacker.example" }, body: "/profiles/fewdw" })).status, 403);
+  assert.equal((await request("/api/pageview", { method: "POST", headers: { "Content-Type": "text/plain" }, body: "/not-a-page" })).status, 400);
+  const pageView = await request("/api/pageview", { method: "POST", headers: { "Content-Type": "text/plain" }, body: "/profiles/fewdw" });
+  assert.equal(pageView.status, 204);
+  assert.equal(pageView.headers.get("cache-control"), "no-store");
   // Machine endpoints keep the shared token; the panel a person opens does not.
   for (const path of ["/api/status", "/api/metrics"]) {
     const response = await request(path);

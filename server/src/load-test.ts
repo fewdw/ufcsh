@@ -42,7 +42,7 @@ db.close();
 const pick = <T,>(list: T[]) => list[Math.floor(Math.random() * list.length)];
 const searches = ["jon", "silva", "ufc 300", "mcgregor", "pereira", "holloway", "khab"];
 // Weighted roughly like real traffic: cards and matchups dominate.
-const routes: [weight: number, name: string, make: () => string][] = [
+const routes: [weight: number, name: string, make: () => string, method?: "POST"][] = [
   [14, "html", () => pick([`/events/${pick(events)}`, `/fights/${pick(fights)}`, `/fighters/${pick(fighters)}`, "/rankings"])],
   [12, "/api/events/:id", () => `/api/events/${pick(events)}`],
   [8, "/api/live", () => "/api/live"],
@@ -55,6 +55,7 @@ const routes: [weight: number, name: string, make: () => string][] = [
   [4, "/api/search", () => `/api/search?q=${encodeURIComponent(pick(searches))}`],
   [3, "/api/stats", () => "/api/stats"],
   [12, "/api/images/:id", () => `/api/images/${pick(fighters)}`],
+  [8, "/api/pageview", () => pick(["/", "/rankings", "/stats", "/profiles/fan", `/events/${pick(events)}`, `/fights/${pick(fights)}`]), "POST"],
 ];
 const totalWeight = routes.reduce((sum, [weight]) => sum + weight, 0);
 const chooseRoute = () => {
@@ -71,11 +72,12 @@ const visitorIp = () => {
   return `10.${(n >> 16) & 255}.${(n >> 8) & 255}.${n & 255}`;
 };
 
-function request(pathname: string): Promise<number> {
+function request(pathname: string, method: "GET" | "POST" = "GET"): Promise<number> {
   return new Promise(resolve => {
-    const req = http.get(new URL(pathname, base), {
+    const req = http.request(new URL(method === "POST" ? "/api/pageview" : pathname, base), {
       agent,
-      headers: { "accept-encoding": "gzip", "x-real-ip": visitorIp() },
+      method,
+      headers: { "accept-encoding": "gzip", "x-real-ip": visitorIp(), ...(method === "POST" ? { "content-type": "text/plain" } : {}) },
       timeout: 30_000,
     }, res => { res.resume(); res.on("end", () => resolve(res.statusCode ?? 0)); });
     req.on("timeout", () => req.destroy());
@@ -84,15 +86,16 @@ function request(pathname: string): Promise<number> {
       networkErrors.set(key, (networkErrors.get(key) ?? 0) + 1);
       resolve(0);
     });
+    req.end(method === "POST" ? pathname : undefined);
   });
 }
 
 const deadline = Date.now() + seconds * 1000;
 const started = performance.now();
 async function one(): Promise<void> {
-  const [, name, make] = chooseRoute();
+  const [, name, make, method] = chooseRoute();
   const t = performance.now();
-  const status = await request(make());
+  const status = await request(make(), method);
   const entry = results.get(name) ?? { latencies: [] as number[], statuses: new Map<number, number>() };
   entry.latencies.push(performance.now() - t);
   entry.statuses.set(status, (entry.statuses.get(status) ?? 0) + 1);

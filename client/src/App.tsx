@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, Route, Routes, useLocation } from "react-router-dom";
 import AccountButton from "./components/AccountButton";
 import CmdK from "./components/CmdK";
@@ -134,9 +134,22 @@ function routeGroup(pathname: string): string {
 
 export default function App() {
   const location = useLocation();
+  const trackedPath = useRef<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const { settings } = useSettings();
   useFighterPrefetch(settings.rankingSource);
+
+  useEffect(() => {
+    // React changes pages without a new document request. Count those views by
+    // route on the server; it discards usernames and fight IDs immediately.
+    const path = location.pathname;
+    if (path === "/profiles/me" || trackedPath.current === path) return;
+    trackedPath.current = path;
+    void fetch("/api/pageview", {
+      method: "POST", headers: { "Content-Type": "text/plain" }, body: path,
+      credentials: "omit", keepalive: true,
+    }).catch(() => {});
+  }, [location.pathname]);
 
   useEffect(() => {
     const previous = window.history.scrollRestoration;

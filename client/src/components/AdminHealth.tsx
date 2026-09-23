@@ -3,11 +3,11 @@ import { useAdminResource } from "../admin";
 import { relativeAge } from "../format";
 
 type Summary = {
-  requests: number; errors: number; throttled: number;
+  requests: number; errors: number; clientErrors: number; notFound: number; throttled: number; slow: number;
   meanMs: number; p50Ms: number; p95Ms: number; p99Ms: number; maxMs: number;
 };
 type Minute = {
-  at: number; requests: number; errors: number; throttled: number; p95Ms: number; visitors: number;
+  at: number; requests: number; errors: number; throttled: number; p95Ms: number; visitors: number; pageViews: number;
   eventLoopP95Ms: number | null; cpuPercent: number | null; memoryBytes: number | null;
 };
 type Metrics = {
@@ -23,7 +23,11 @@ type Metrics = {
     sinceStart: Summary;
     lastFiveMinutes: Summary & { visitors: number };
     lastHour: Summary & { visitors: number };
-    routes: (Summary & { route: string })[];
+    routes: (Summary & { route: string; lastFiveMinutes: Summary; lastHour: Summary })[];
+    pageViews: {
+      total: number; lastFiveMinutes: number; lastHour: number;
+      routes: { route: string; total: number; lastFiveMinutes: number; lastHour: number }[];
+    };
     timeline: Minute[];
   };
   cache: { hits: number; misses: number; entries: number; bytes: number };
@@ -134,13 +138,47 @@ function MinuteChart({ title, points, format, kind = "bar", tone = "text-series-
   );
 }
 
-const ROUTE_LABEL: Record<string, string> = {
-  page: "Pages (HTML)", assets: "Scripts & styles", images: "Fighter images", events_list: "Events list", event_detail: "Event page",
-  fight_detail: "Fight page", fighter_detail: "Fighter page", rankings: "Rankings", search: "Search", live: "Live scores",
-  labs: "Labs", stats: "Stats", previews: "Fighter previews", comments: "Discussions", profiles: "Profiles",
-  predictions: "Predictions", scores_mine: "Scorecards (own)", scores_public: "Scorecards (public)", bets: "Bets",
-  leaderboards: "Leaderboards", issue_reports: "Issue reports", admin: "Admin", health: "Health checks",
-  monitoring: "Monitoring", api_other: "Other API",
+const ROUTE_INFO: Record<string, { name: string; path: string }> = {
+  page_home: { name: "Events home", path: "/" },
+  page_event: { name: "Event pages", path: "/events/:eventId" },
+  page_fight: { name: "Fight pages", path: "/fights/:fightId" },
+  page_fighter: { name: "Fighter pages", path: "/fighters/:fighterId" },
+  page_profile: { name: "Fan profiles", path: "/profiles/:username" },
+  page_rankings: { name: "Rankings page", path: "/rankings" },
+  page_stats: { name: "Stats page", path: "/stats" },
+  page_labs: { name: "Labs page", path: "/labs" },
+  page_admin: { name: "Admin page", path: "/admin" },
+  page_sign_in: { name: "Sign in", path: "/sign-in/*" },
+  page_sign_up: { name: "Sign up", path: "/sign-up/*" },
+  page_other: { name: "Other pages and probes", path: "other page paths" },
+  assets: { name: "Scripts & styles", path: "/assets/*" },
+  images: { name: "Fighter images", path: "/api/images/:id" },
+  events_list: { name: "Events data", path: "/api/events" },
+  event_detail: { name: "Event data", path: "/api/events/:id" },
+  fight_detail: { name: "Fight data", path: "/api/fights/:id" },
+  fighter_detail: { name: "Fighter data", path: "/api/fighters/:id" },
+  rankings: { name: "Rankings data", path: "/api/rankings" },
+  search: { name: "Search", path: "/api/search" },
+  live: { name: "Live scores", path: "/api/live" },
+  labs: { name: "Labs data", path: "/api/labs/*" },
+  stats: { name: "Stats data", path: "/api/stats" },
+  previews: { name: "Fighter previews", path: "/api/previews/:id" },
+  comments_list: { name: "Fight discussions", path: "/api/fights/:id/comments" },
+  comments_thread: { name: "Comment threads", path: "/api/comments/:id/thread" },
+  comments_actions: { name: "Comment actions", path: "/api/comments/:id/*" },
+  comments_blocks: { name: "Comment blocks", path: "/api/comments/blocks/*" },
+  profiles: { name: "Profile data", path: "/api/profiles/:username…" },
+  predictions: { name: "Predictions", path: "/api/fights/:id/predictions/*" },
+  scores_mine: { name: "Own scorecard", path: "/api/fights/:id/scores/mine" },
+  scores_public: { name: "Public scorecards", path: "/api/fights/:id/scores" },
+  bets: { name: "Bets", path: "/api/bets/*" },
+  leaderboards: { name: "Leaderboards", path: "/api/leaderboards" },
+  issue_reports: { name: "Issue reports", path: "/api/reports" },
+  admin: { name: "Admin API", path: "/api/admin/*" },
+  health: { name: "Health checks", path: "/healthz · /readyz" },
+  monitoring: { name: "Monitoring API", path: "/api/metrics · /api/status" },
+  pageview_beacon: { name: "Page view signals", path: "/api/pageview" },
+  api_other: { name: "Other API", path: "/api/*" },
 };
 
 /** Live health for whoever runs the site: is it up, is it fast, is it
@@ -148,6 +186,8 @@ const ROUTE_LABEL: Record<string, string> = {
 export default function AdminHealth() {
   const { data, error, loading, reload } = useAdminResource<Metrics>("/api/admin/metrics", 10_000);
   const [now, setNow] = useState(() => Date.now());
+  const [routeWindow, setRouteWindow] = useState<"lastFiveMinutes" | "lastHour">("lastFiveMinutes");
+  const [routeSearch, setRouteSearch] = useState("");
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
@@ -170,6 +210,10 @@ export default function AdminHealth() {
   const lastFull = minutes.at(-2) ?? minutes.at(-1);
   const cacheTotal = data.cache.hits + data.cache.misses;
   const series = (pick: (minute: Minute) => number | null) => minutes.map(minute => ({ at: minute.at, value: pick(minute) }));
+  const windowTotal = data.http[routeWindow].requests;
+  const routeRows = data.http.routes
+    .filter(route => `${ROUTE_INFO[route.route]?.name ?? route.route} ${ROUTE_INFO[route.route]?.path ?? route.route}`.toLowerCase().includes(routeSearch.toLowerCase()))
+    .sort((a, b) => b[routeWindow].requests - a[routeWindow].requests || b.requests - a.requests);
 
   return (
     <div className="flex flex-col gap-4">
@@ -212,6 +256,7 @@ export default function AdminHealth() {
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <MinuteChart title="Page views per minute" points={series(minute => minute.pageViews)} format={whole} tone="text-series-3" />
         <MinuteChart title="Requests per minute" points={series(minute => minute.requests)} format={whole} />
         <MinuteChart title="Visitor IPs per minute" points={series(minute => minute.visitors)} format={whole} tone="text-series-3" />
         <MinuteChart title="Response time (p95)" points={series(minute => minute.requests ? minute.p95Ms : null)} format={ms} kind="line" tone="text-series-4" />
@@ -223,36 +268,81 @@ export default function AdminHealth() {
       </div>
 
       <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
-        <div className="border-b border-zinc-100 px-4 py-2.5">
-          <h3 className="text-sm font-semibold text-zinc-900">Routes</h3>
-          <p className="text-[11px] text-zinc-500">Every request since the server started, by what it asked for. Slow or failing rows are tinted.</p>
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-zinc-100 px-4 py-3">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-900">Page views</h3>
+            <p className="text-[11px] text-zinc-500">Counts page navigation in the app, including clicks that do not reload the browser. Routes are grouped; usernames and IDs are not stored.</p>
+          </div>
+          <div className="flex gap-4 text-right text-xs tabular-nums">
+            <div><b className="block text-base text-zinc-900">{whole(data.http.pageViews.lastFiveMinutes)}</b><span className="text-zinc-500">last 5 min</span></div>
+            <div><b className="block text-base text-zinc-900">{whole(data.http.pageViews.lastHour)}</b><span className="text-zinc-500">last hour</span></div>
+          </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-xs">
+          <table className="w-full min-w-[540px] text-xs">
+            <thead className="bg-zinc-50 text-left text-[11px] uppercase tracking-wide text-zinc-500">
+              <tr><th className="px-4 py-2 font-semibold">Page</th><th className="px-3 py-2 text-right font-semibold">5 min</th><th className="px-3 py-2 text-right font-semibold">1 hour</th><th className="px-3 py-2 text-right font-semibold">Share of hour</th><th className="px-4 py-2 text-right font-semibold">Since restart</th></tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100 tabular-nums">
+              {data.http.pageViews.routes.map(row => (
+                <tr key={row.route}>
+                  <td className="px-4 py-2"><b className="block font-medium text-zinc-900">{ROUTE_INFO[row.route]?.name ?? row.route}</b><code className="text-[11px] text-zinc-500">{ROUTE_INFO[row.route]?.path ?? row.route}</code></td>
+                  <td className="px-3 py-2 text-right text-zinc-700">{whole(row.lastFiveMinutes)}</td>
+                  <td className="px-3 py-2 text-right font-semibold text-zinc-900">{whole(row.lastHour)}</td>
+                  <td className="px-3 py-2 text-right text-zinc-600">{percent(row.lastHour, data.http.pageViews.lastHour)}</td>
+                  <td className="px-4 py-2 text-right text-zinc-500">{whole(row.total)}</td>
+                </tr>
+              ))}
+              {!data.http.pageViews.routes.length ? <tr><td colSpan={5} className="px-4 py-6 text-center text-zinc-400">No page views since this server started.</td></tr> : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+        <div className="flex flex-wrap items-end justify-between gap-2 border-b border-zinc-100 px-4 py-3">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-900">Requests by route</h3>
+            <p className="text-[11px] text-zinc-500">Includes page loads, APIs and assets. 5xx means a server error; 404 means a missing route or item. Recent results include the current minute.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input value={routeSearch} onChange={event => setRouteSearch(event.target.value)} placeholder="Find a route" aria-label="Find a route" className="w-36 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs text-zinc-900 placeholder:text-zinc-400" />
+            <div className="flex rounded-lg border border-zinc-200 p-0.5 text-xs" aria-label="Request time range">
+              {([ ["lastFiveMinutes", "5 min"], ["lastHour", "1 hour"] ] as const).map(([key, label]) => (
+                <button key={key} type="button" onClick={() => setRouteWindow(key)} aria-pressed={routeWindow === key} className={`rounded-md px-2.5 py-1 font-medium ${routeWindow === key ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-50"}`}>{label}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[790px] text-xs">
             <thead className="bg-zinc-50 text-left text-[11px] uppercase tracking-wide text-zinc-500">
               <tr>
-                <th className="px-4 py-2 font-semibold">Route</th>
-                {["Requests", "Errors", "Limited", "Median", "p95", "p99", "Slowest"].map(label => <th key={label} className="px-3 py-2 text-right font-semibold">{label}</th>)}
+                <th className="px-4 py-2 font-semibold">Route pattern</th>
+                {["Requests", "Share", "p95", "4xx", "404", "429", "5xx", "≥1s", "Since restart"].map(label => <th key={label} className="px-3 py-2 text-right font-semibold">{label}</th>)}
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 tabular-nums">
-              {data.http.routes.map(route => {
-                const failing = route.requests && route.errors / route.requests > 0.01;
-                const slow = route.p95Ms > 500;
+              {routeRows.map(route => {
+                const recentRoute = route[routeWindow];
+                const failing = recentRoute.requests && recentRoute.errors / recentRoute.requests > 0.01;
+                const slow = recentRoute.p95Ms > 500;
                 return (
                   <tr key={route.route} className={failing ? "bg-rose-50" : slow ? "bg-amber-50" : ""}>
-                    <td className="px-4 py-1.5 text-zinc-800">{ROUTE_LABEL[route.route] ?? route.route} <span className="text-zinc-400">{route.route}</span></td>
-                    <td className="px-3 py-1.5 text-right text-zinc-800">{whole(route.requests)}</td>
-                    <td className="px-3 py-1.5 text-right text-zinc-600">{route.errors ? whole(route.errors) : "—"}</td>
-                    <td className="px-3 py-1.5 text-right text-zinc-600">{route.throttled ? whole(route.throttled) : "—"}</td>
-                    <td className="px-3 py-1.5 text-right text-zinc-600">{ms(route.p50Ms)}</td>
-                    <td className="px-3 py-1.5 text-right text-zinc-800">{ms(route.p95Ms)}</td>
-                    <td className="px-3 py-1.5 text-right text-zinc-600">{ms(route.p99Ms)}</td>
-                    <td className="px-3 py-1.5 text-right text-zinc-600">{ms(route.maxMs)}</td>
+                    <td className="px-4 py-2"><b className="block font-medium text-zinc-900">{ROUTE_INFO[route.route]?.name ?? route.route}</b><code className="text-[11px] text-zinc-500">{ROUTE_INFO[route.route]?.path ?? route.route}</code></td>
+                    <td className="px-3 py-2 text-right font-semibold text-zinc-900">{whole(recentRoute.requests)}</td>
+                    <td className="px-3 py-2 text-right text-zinc-600">{percent(recentRoute.requests, windowTotal)}</td>
+                    <td className="px-3 py-2 text-right text-zinc-800">{recentRoute.requests ? ms(recentRoute.p95Ms) : "—"}</td>
+                    <td className="px-3 py-2 text-right text-zinc-600">{recentRoute.clientErrors || "—"}</td>
+                    <td className="px-3 py-2 text-right text-zinc-600">{recentRoute.notFound || "—"}</td>
+                    <td className="px-3 py-2 text-right text-zinc-600">{recentRoute.throttled || "—"}</td>
+                    <td className="px-3 py-2 text-right text-zinc-600">{recentRoute.errors || "—"}</td>
+                    <td className="px-3 py-2 text-right text-zinc-600">{recentRoute.slow || "—"}</td>
+                    <td className="px-3 py-2 text-right text-zinc-500">{whole(route.requests)}</td>
                   </tr>
                 );
               })}
-              {!data.http.routes.length ? <tr><td colSpan={8} className="px-4 py-6 text-center text-zinc-400">No requests yet.</td></tr> : null}
+              {!routeRows.length ? <tr><td colSpan={10} className="px-4 py-6 text-center text-zinc-400">No routes match.</td></tr> : null}
             </tbody>
           </table>
         </div>

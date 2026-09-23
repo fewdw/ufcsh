@@ -1,6 +1,6 @@
 import { eventStatus, fightIsComplete, fightIsUnderway, isFightDay, liveDetailDue } from "./live-state.ts";
 import { ScoringStore, type ScoringFight } from "./scoring.ts";
-import { createScoringHandler } from "./scoring-http.ts";
+import { createScoringHandler, scoringOrigins } from "./scoring-http.ts";
 import { PredictionStore } from "./predictions.ts";
 import { createPredictionsHandler } from "./predictions-http.ts";
 import { betContext, predictionContext, predictionFights } from "./predictions-data.ts";
@@ -2035,6 +2035,35 @@ export function startApi(port: number): http.Server {
       if ((req.url?.length ?? 0) > 16_384) return await sendJson(req, res, { error: "URL too long" }, 414);
       const url = new URL(req.url ?? "/", "http://localhost");
       const p = url.pathname;
+      if (p === "/api/pageview") {
+        res.setHeader("Cache-Control", "no-store");
+        if (req.method !== "POST") {
+          res.setHeader("Allow", "POST");
+          return await sendJson(req, res, { error: "method not allowed" }, 405);
+        }
+        if (stopping) return await sendJson(req, res, { error: "server is stopping" }, 503);
+        const origin = req.headers.origin;
+        const localDevelopmentOrigin = process.env.NODE_ENV !== "production" &&
+          /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin ?? "");
+        if (req.headers["sec-fetch-site"] === "cross-site" ||
+            (origin && !scoringOrigins().includes(origin) && !localDevelopmentOrigin)) {
+          return await sendJson(req, res, { error: "request origin is not allowed" }, 403);
+        }
+        if (!limiter.allow(`pageview:${clientAddress(req)}`, 30, 1)) return await sendJson(req, res, { error: "too many page views" }, 429);
+        if (!req.headers["content-type"]?.startsWith("text/plain")) return await sendJson(req, res, { error: "send a page path" }, 415);
+        if (Number(req.headers["content-length"]) > 200) { req.resume(); return await sendJson(req, res, { error: "path too long" }, 413); }
+        const chunks: Buffer[] = [];
+        let size = 0;
+        for await (const chunk of req) {
+          size += chunk.length;
+          if (size > 200) return await sendJson(req, res, { error: "path too long" }, 413);
+          chunks.push(chunk);
+        }
+        if (!observability.recordPageView(Buffer.concat(chunks).toString("utf8"))) return await sendJson(req, res, { error: "unknown page" }, 400);
+        res.writeHead(204);
+        res.end();
+        return;
+      }
       if (!stopping && await scoring(req, res, url)) return;
       if (!stopping && await predictions(req, res, url)) return;
       if (!stopping && await bets(req, res, url)) return;
