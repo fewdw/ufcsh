@@ -10,7 +10,8 @@ const PROXY_URL = (import.meta.env.VITE_CLERK_PROXY_URL as string | undefined) |
 /** Without a key the application runs exactly as before: everything public,
  *  no account control, no Clerk request. */
 export const accountsEnabled = Boolean(KEY);
-/** Signing in or out returns to the page being read, never the home page. */
+/** Signing in returns to the page being read; signing out goes home, since the
+ *  page being read may be the account's own profile. */
 const here = () => window.location.pathname + window.location.search;
 
 /** Clerk's own windows follow the reader's theme: the app's zinc palette, so a
@@ -31,13 +32,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** The one account: read anywhere, opened and closed with the current page as
- *  the destination, since Clerk's own defaults would send a reader home. */
+/** The one account: read anywhere, signed into from the current page. */
 export function useAccount() {
   const clerk = useClerk();
   const { isLoaded, user } = useUser();
   const signIn = useCallback(() => { void clerk.openSignIn({ fallbackRedirectUrl: here(), signUpFallbackRedirectUrl: here() }); }, [clerk]);
-  const signOut = useCallback(() => { void clerk.signOut({ redirectUrl: here() }); }, [clerk]);
+  const signOut = useCallback(() => { void clerk.signOut({ redirectUrl: "/" }); }, [clerk]);
   const manage = useCallback(() => { void clerk.openUserProfile(); }, [clerk]);
   return { isLoaded, user, signIn, signOut, manage };
 }

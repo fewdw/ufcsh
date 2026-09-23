@@ -37,14 +37,14 @@ function imageLevels(src: string): Level[] {
   return [{ url: src, covers: Infinity }];
 }
 
-/** A copy the browser already holds in memory can be shown straight away. */
+/** Every copy this page has already decoded. Remembering them, rather than
+ *  probing with `new Image()`, matters: a probe is a real request, so probing
+ *  each level would download the original of every avatar on the page. */
+const decoded = new Set<string>();
+
+/** A copy already decoded on this page can be shown straight away. */
 function firstLevel(levels: Level[]): number {
-  if (typeof Image === "undefined") return 0;
-  for (let index = levels.length - 1; index > 0; index--) {
-    const probe = new Image();
-    probe.src = levels[index].url;
-    if (probe.complete && probe.naturalWidth) return index;
-  }
+  for (let index = levels.length - 1; index > 0; index--) if (decoded.has(levels[index].url)) return index;
   return 0;
 }
 
@@ -61,9 +61,10 @@ function ImageForSource({ src, onLoad, onError, ...props }: Props) {
     const next = level + 1;
     const image = new Image();
     image.src = levels[next].url;
-    image.decode()
-      .catch(() => (next < levels.length - 1 ? undefined : Promise.reject(new Error("unavailable"))))
-      .then(() => { if (!cancelled) setLevel(next); }, () => undefined);
+    image.decode().then(
+      () => { decoded.add(levels[next].url); if (!cancelled) setLevel(next); },
+      () => { if (!cancelled && next < levels.length - 1) setLevel(next); },
+    );
     return () => { cancelled = true; };
   }, [level, levels, needed]);
 
@@ -71,6 +72,7 @@ function ImageForSource({ src, onLoad, onError, ...props }: Props) {
     {...props}
     src={levels[level].url}
     onLoad={event => {
+      decoded.add(levels[level].url);
       const box = event.currentTarget;
       setNeeded(Math.ceil(Math.max(box.clientHeight, box.clientWidth * 0.625) * (window.devicePixelRatio || 1)));
       onLoad?.(event);

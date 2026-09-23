@@ -2103,7 +2103,7 @@ export function startApi(port: number): http.Server {
           if (queryPool) return queryPool.run(key);
           const data = await resolvePublicApi(url);
           return { json: JSON.stringify(data === undefined ? { error: "not found" } : data), status: data === undefined ? 404 : 200 };
-        });
+        }, policy.stale);
         return sendRepresentation(req, res, value, policy.control);
       }
       if (p === "/api/status" || p === "/api/metrics") {

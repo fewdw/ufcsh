@@ -10,13 +10,24 @@ export function publicApi(path: string): boolean {
   return listRoutes.has(path) || /^\/api\/(events|fights|fighters|previews)\/[a-f0-9]{16}$/i.test(path);
 }
 
-export function cachePolicy(url: URL): { ttl: number; control: string } {
+/** Lists that change a few times a day at most: a reader is always answered
+ *  from memory, and the first one past expiry triggers the rebuild. */
+const slowRoutes = new Set(["/api/rankings", "/api/stats"]);
+
+export function cachePolicy(url: URL): { ttl: number; stale: number; control: string } {
   // Personalized filter URLs remain browser-revalidated; the bounded origin cache
   // still shares identical studies. Keep CDN freshness inside the origin lifetime.
   const dynamic = url.pathname === "/api/live" || /^\/api\/(events|fights|fighters)(\/|$)/.test(url.pathname);
   const ttl = dynamic ? 5_000 : 60_000;
-  const shared = url.pathname === "/api/rankings" ? 30 : dynamic ? 2 : 0;
-  return { ttl, control: shared
+  const slow = slowRoutes.has(url.pathname);
+  const stale = slow ? 6 * 60 * 60_000 : ttl;
+  if (url.pathname === "/api/rankings") {
+    // The browser keeps its copy for a minute and may show it for a day while
+    // it revalidates, so a return visit paints the lists immediately.
+    return { ttl, stale, control: "public, max-age=60, s-maxage=30, stale-while-revalidate=86400" };
+  }
+  const shared = dynamic ? 2 : 0;
+  return { ttl, stale, control: shared
     ? `public, max-age=0, s-maxage=${shared}, must-revalidate`
     : "public, no-cache" };
 }

@@ -746,7 +746,7 @@ function Leaderboard({
             <span className="shrink-0 self-start"><Avatar src={fighter.photo_url} name={fighter.name} size="xs" /></span>
             <span className="min-w-0 flex-1">
               <span className="flex min-w-0 items-center gap-1.5">
-                <span className="min-w-0 truncate text-sm font-medium text-zinc-900" title={fighter.name}>{fighter.name}</span>
+                <span className="min-w-0 text-sm font-medium leading-5 text-zinc-900">{fighter.name}</span>
                 {fighterPinned ? <span className="shrink-0 rounded bg-zinc-200 px-1 py-px text-[7px] font-bold uppercase tracking-wider text-zinc-500">Pinned</span> : null}
               </span>
               <span className="block text-[10px] leading-[1.3] text-zinc-400" title={`${fighter.division} · ${fighter.detail}`}>
@@ -1005,7 +1005,7 @@ function SelectedFighterStrip({ fighters, onChange }: {
           <span key={fighter.id} className="flex h-8 max-w-full items-center gap-1.5 rounded-xl border border-zinc-200 bg-zinc-50 py-0.5 pl-1 pr-1 text-[10px] font-medium text-zinc-700">
             <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-zinc-200 text-[8px] font-bold tabular-nums text-zinc-500">{index + 1}</span>
             <Avatar src={fighter.photo_url} name={fighter.name} size="xs" />
-            <span className="max-w-44 truncate" title={fighter.name}>{fighter.name}</span>
+            <span className="whitespace-nowrap">{fighter.name}</span>
             <button
               type="button"
               aria-label={`Remove ${fighter.name}`}
@@ -1082,14 +1082,14 @@ export default function StatsPage() {
 
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
-      <main className="mx-auto max-w-[100rem] p-3 pb-8">
+      <main className="mx-auto max-w-[100rem] p-2 pb-8 sm:p-3">
         <section className={`${shell} relative z-30 mb-3 flex flex-col gap-3 px-4 py-2 sm:grid sm:min-h-14 sm:grid-cols-[1fr_auto_1fr] sm:items-center`}>
           <div className="hidden sm:block" aria-hidden="true" />
           <div className="w-full min-w-24 sm:w-72">
             <FighterSearch
               selected={selectedFighters}
               showSelected={false}
-              emptyPlaceholder="Search fighters to compare across every card"
+              emptyPlaceholder="Compare fighters…"
               onChange={(fighters) => {
                 setSelectedFighters(fighters);
                 if (fighters.length) setDivision("all");

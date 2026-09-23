@@ -12,6 +12,7 @@ import { orderDivisions } from "../divisionOrder";
 import Freshness from "../components/Freshness";
 import ResultDots from "../components/ResultDots";
 import { resultDot } from "../resultDots";
+import { SlidersHorizontal } from "lucide-react";
 
 const shell = "rounded-2xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
 
@@ -24,15 +25,18 @@ type RankingFeatures = {
 };
 
 const DEFAULT_FEATURES: RankingFeatures = {
-  opponents: false,
+  opponents: true,
   hoverHistory: true,
   streaks: true,
   activityColors: true,
 };
 
+/** v2 started opponent details on; a v1 choice is not carried over. */
+const FEATURES_KEY = "rankings-features-v2";
+
 function loadFeatures(): RankingFeatures {
   try {
-    const saved = JSON.parse(localStorage.getItem("rankings-features-v1") ?? "null");
+    const saved = JSON.parse(localStorage.getItem(FEATURES_KEY) ?? "null");
     if (!saved || typeof saved !== "object") return DEFAULT_FEATURES;
     return {
       opponents: typeof saved.opponents === "boolean" ? saved.opponents : DEFAULT_FEATURES.opponents,
@@ -67,7 +71,7 @@ function activityMeta(entry: RankingEntry, dateMode: "relative" | "date"): { row
       };
     case "active":
       return {
-        row: "bg-orange-50/90",
+        row: "bg-violet-50/90",
         hint: lastFightHint || "active",
         showsLastFight: Boolean(lastFightHint),
       };
@@ -202,10 +206,11 @@ function RankRow({
       </span>
       <Avatar src={entry.photo_url} name={entry.name} size="xs" />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-medium text-zinc-900">{entry.name}</span>
+        <span className="block text-[13px] font-medium leading-4 text-zinc-900">{entry.name}</span>
         {features.opponents && meta.hint ? (
           <span
-            className={`block whitespace-normal text-[10px] leading-3.5 [overflow-wrap:anywhere] ${
+            title={meta.hint}
+            className={`block whitespace-normal text-[10px] leading-3.5 [overflow-wrap:anywhere] xl:truncate xl:whitespace-nowrap ${
               meta.showsLastFight
                 ? lastFightTone(entry.activity.last_fight_outcome)
                 : "text-zinc-400"
@@ -318,6 +323,25 @@ function DivisionCard({
   );
 }
 
+const FEATURE_OPTIONS: { key: keyof RankingFeatures; label: string; hint: string }[] = [
+  { key: "opponents", label: "Opponents", hint: "Next opponent or last result under each name" },
+  { key: "hoverHistory", label: "Last 5 on hover", hint: "Recent and booked fights beside the pointer" },
+  { key: "streaks", label: "Streaks", hint: "4W, 2L, 1D, 1NC" },
+  { key: "activityColors", label: "Activity colours", hint: "Booked and recently active fighters" },
+];
+
+function Switch({ on }: { on: boolean }) {
+  return (
+    <span aria-hidden="true" className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${on ? "bg-sky-500" : "bg-zinc-300"}`}>
+      <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${on ? "translate-x-4" : "translate-x-0.5"}`} />
+    </span>
+  );
+}
+
+const MENU_SELECT = "h-8 shrink-0 rounded-lg border border-zinc-200 bg-zinc-50 pl-2.5 pr-7 text-xs font-medium text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-400";
+
+/** Display options. A popover under the button on a wide screen; on a phone
+ *  a sheet from the bottom edge, where a thumb can reach every switch. */
 function FeaturesMenu({
   features,
   onChange,
@@ -333,22 +357,19 @@ function FeaturesMenu({
   divisionOrder: DivisionOrder;
   onDivisionOrder: (order: DivisionOrder) => void;
 }) {
-  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    const close = (returnFocus = false) => {
-      const details = detailsRef.current;
-      if (!details?.open) return;
-      details.open = false;
-      if (returnFocus) details.querySelector<HTMLElement>("summary")?.focus();
-    };
+    if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
-      const details = detailsRef.current;
-      if (details?.open && !details.contains(event.target as Node)) close();
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !detailsRef.current?.open) return;
+      if (event.key !== "Escape") return;
       event.preventDefault();
-      close(true);
+      setOpen(false);
+      buttonRef.current?.focus();
     };
     document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("keydown", onKeyDown);
@@ -356,104 +377,76 @@ function FeaturesMenu({
       document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, []);
+  }, [open]);
 
-  const toggle = (key: keyof RankingFeatures) => {
-    onChange({ ...features, [key]: !features[key] });
-  };
   const enabledCount = Object.values(features).filter(Boolean).length;
-  const options: { key: keyof RankingFeatures; label: string; description: string }[] = [
-    {
-      key: "opponents",
-      label: "Opponent details",
-      description: "Show the next opponent or latest result below each name.",
-    },
-    {
-      key: "hoverHistory",
-      label: "Hover: last 5 fights",
-      description: "Show five total entries, including the nearest scheduled fight.",
-    },
-    {
-      key: "streaks",
-      label: "Current streak",
-      description: "Show consecutive UFC results as 4W, 2L, 1D or 1NC.",
-    },
-    {
-      key: "activityColors",
-      label: "Activity colors",
-      description: "Highlight scheduled and recently active fighters.",
-    },
-  ];
 
   return (
-    <details ref={detailsRef} className="relative z-40">
-      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 [&::-webkit-details-marker]:hidden">
-        Features
-        <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[9px] tabular-nums text-zinc-500">{enabledCount}/4</span>
-        <svg className="h-3 w-3 text-zinc-400" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-          <path d="m3 4.5 3 3 3-3" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </summary>
-      <div className="absolute right-0 mt-2 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl">
-        <div className="border-b border-zinc-100 px-4 py-3">
-          <div className="text-xs font-semibold text-zinc-900">Ranking features</div>
-          <div className="mt-0.5 text-[10px] text-zinc-400">Choose how much detail appears in the rankings.</div>
-        </div>
-        <div className="divide-y divide-zinc-100">
-          {options.map((option) => (
-            <label key={option.key} className="flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors hover:bg-zinc-50">
-              <input
-                type="checkbox"
-                checked={features[option.key]}
-                onChange={() => toggle(option.key)}
-                className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-zinc-900"
-              />
-              <span className="min-w-0">
-                <span className="block text-xs font-medium text-zinc-800">{option.label}</span>
-                <span className="mt-0.5 block text-[10px] leading-4 text-zinc-400">{option.description}</span>
-              </span>
-            </label>
-          ))}
-        </div>
-        <div className="flex items-center gap-4 border-t border-zinc-100 px-4 py-3">
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs font-medium text-zinc-800">Division order</span>
-            <span className="mt-0.5 block text-[10px] leading-4 text-zinc-400">Which end of the scale the list starts from. Men first either way, with pound-for-pound at the light end.</span>
-          </span>
-          <select
-            value={divisionOrder}
-            onChange={(event) => onDivisionOrder(event.target.value as DivisionOrder)}
-            aria-label="Division order"
-            className="h-8 shrink-0 rounded-xl border border-zinc-200 bg-zinc-50 pl-2.5 pr-7 text-[11px] font-semibold text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-400"
+    <div ref={rootRef} className="relative z-40">
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => setOpen((value) => !value)}
+        className="flex h-8 items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50"
+      >
+        <SlidersHorizontal className="h-3.5 w-3.5 text-zinc-500" aria-hidden="true" />
+        Display
+        <span className="text-[10px] tabular-nums text-zinc-400">{enabledCount}/4</span>
+      </button>
+      {open ? (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/30 sm:hidden" aria-hidden="true" />
+          <div
+            role="dialog"
+            aria-label="Ranking display"
+            className="fixed inset-x-0 bottom-0 z-50 max-h-[80vh] overflow-y-auto rounded-t-2xl border-t border-zinc-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:mt-2 sm:w-80 sm:rounded-2xl sm:border sm:pb-0 sm:shadow-xl"
           >
-            <option value="light">Lightest first</option>
-            <option value="heavy">Heaviest first</option>
-          </select>
-        </div>
-        <div className="flex items-center gap-4 border-t border-zinc-100 px-4 py-3">
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs font-medium text-zinc-800">Fight dates</span>
-            <span className="mt-0.5 block text-[10px] leading-4 text-zinc-400">How the last and next fight are written.</span>
-          </span>
-          <select
-            value={dateMode}
-            onChange={(event) => onDateMode(event.target.value as DateMode)}
-            aria-label="Fight date format"
-            className="h-8 shrink-0 rounded-xl border border-zinc-200 bg-zinc-50 pl-2.5 pr-7 text-[11px] font-semibold text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-400"
-          >
-            <option value="relative">Relative days</option>
-            <option value="date">Calendar date</option>
-          </select>
-        </div>
-        <button
-          type="button"
-          onClick={() => onChange(DEFAULT_FEATURES)}
-          className="w-full border-t border-zinc-100 px-4 py-2.5 text-left text-[10px] font-medium text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
-        >
-          Restore recommended defaults
-        </button>
-      </div>
-    </details>
+            <div className="flex items-center justify-between px-4 pb-1 pt-3">
+              <span className="text-sm font-semibold text-zinc-900">Display</span>
+              <button type="button" onClick={() => onChange(DEFAULT_FEATURES)} className="rounded-full px-2 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900">
+                Reset
+              </button>
+            </div>
+            <div className="px-1.5">
+              {FEATURE_OPTIONS.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  role="switch"
+                  aria-checked={features[option.key]}
+                  onClick={() => onChange({ ...features, [option.key]: !features[option.key] })}
+                  className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-zinc-50"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-medium text-zinc-800">{option.label}</span>
+                    <span className="block text-[11px] leading-4 text-zinc-400">{option.hint}</span>
+                  </span>
+                  <Switch on={features[option.key]} />
+                </button>
+              ))}
+            </div>
+            <div className="mt-1 grid grid-cols-2 gap-2 border-t border-zinc-100 px-4 py-3">
+              <label className="flex flex-col gap-1 text-[11px] font-medium text-zinc-500">
+                Division order
+                <select value={divisionOrder} onChange={(event) => onDivisionOrder(event.target.value as DivisionOrder)} className={MENU_SELECT}>
+                  <option value="light">Lightest first</option>
+                  <option value="heavy">Heaviest first</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-[11px] font-medium text-zinc-500">
+                Fight dates
+                <select value={dateMode} onChange={(event) => onDateMode(event.target.value as DateMode)} className={MENU_SELECT}>
+                  <option value="relative">Relative</option>
+                  <option value="date">Calendar</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </>
+      ) : null}
+    </div>
   );
 }
 
@@ -490,7 +483,7 @@ export default function RankingsPage() {
 
   useEffect(() => {
     try {
-      localStorage.setItem("rankings-features-v1", JSON.stringify(features));
+      localStorage.setItem(FEATURES_KEY, JSON.stringify(features));
     } catch {
       // Preferences remain available for the current visit when storage is disabled.
     }
@@ -520,16 +513,10 @@ export default function RankingsPage() {
 
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-7xl p-3 pb-8">
-        {/* Below `lg` this is a simple top-to-bottom stack — filters, then the
-            Features menu, then the legend — each its own full-width row, so
-            nothing is left wrapping onto a line by itself with dead space
-            around it. From `lg` up it becomes the original single row:
-            filters left, legend filling the middle, Features menu at the
-            far right. */}
-        <div className={`${shell} mb-3 flex flex-col gap-2 px-4 py-2.5 lg:flex-row lg:flex-wrap lg:items-center lg:gap-x-4 lg:gap-y-2`}>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className={segmentedGroup} role="group" aria-label="Ranking view">
+      <div className="p-2 pb-8 sm:p-3">
+        <div className={`${shell} mb-2 flex flex-col gap-2 px-2.5 py-2 sm:mb-3 sm:px-3 lg:flex-row lg:items-center lg:gap-3`}>
+          <div className="flex items-center gap-1.5 overflow-x-auto sm:gap-2">
+            <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Ranking view">
               {SOURCES.map((source) => (
                 <button
                   key={source.key}
@@ -537,7 +524,7 @@ export default function RankingsPage() {
                   aria-pressed={settings.rankingSource === source.key}
                   onClick={() => update("rankingSource", source.key)}
                   title={source.help}
-                  className={`rounded-full px-3.5 py-1 text-xs font-medium transition ${
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition sm:px-3.5 ${
                     settings.rankingSource === source.key ? segmentedSelected : segmentedIdle
                   }`}
                 >
@@ -545,14 +532,14 @@ export default function RankingsPage() {
                 </button>
               ))}
             </div>
-            <div className={segmentedGroup} role="group" aria-label="Divisions shown">
+            <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Divisions shown">
               {FILTERS.map((f) => (
                 <button
                   key={f.key}
                   type="button"
                   aria-pressed={view === f.key}
                   onClick={() => setView(f.key)}
-                  className={`rounded-full px-3.5 py-1 text-xs font-medium transition ${
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition sm:px-3.5 ${
                     view === f.key ? segmentedSelected : segmentedIdle
                   }`}
                 >
@@ -562,7 +549,23 @@ export default function RankingsPage() {
             </div>
           </div>
 
-          <div className="lg:order-3">
+          <div className="flex items-center gap-3 lg:ml-auto">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-zinc-500 lg:justify-end">
+              {features.activityColors ? (
+                <>
+                  <span className="flex items-center gap-1.5" title="Has a fight booked">
+                    <span className="h-2.5 w-2.5 rounded-sm border border-sky-200 bg-sky-50" />
+                    Booked
+                  </span>
+                  <span className="flex items-center gap-1.5" title="Fought in the last 45 days">
+                    <span className="h-2.5 w-2.5 rounded-sm border border-violet-200 bg-violet-50" />
+                    Fought ≤45d
+                  </span>
+                </>
+              ) : null}
+              {/* ufc.com is read every six hours; a day without one is worth saying. */}
+              <Freshness label="Updated" at={data?.updated_at} staleAfterHours={24} />
+            </div>
             <FeaturesMenu
               features={features}
               onChange={setFeatures}
@@ -572,34 +575,13 @@ export default function RankingsPage() {
               onDivisionOrder={(order) => update("divisionOrder", order)}
             />
           </div>
-
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-zinc-500 lg:order-2 lg:ml-auto lg:justify-end">
-            {/* ufc.com is read every six hours; a day without one is worth saying. */}
-            <Freshness label="Rankings updated" at={data?.updated_at} staleAfterHours={24} />
-            {features.activityColors ? (
-              <>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-sm border border-sky-200 bg-sky-50" />
-                  Scheduled
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-sm border border-orange-200 bg-orange-50" />
-                  Fought in the last 45 days
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-sm border border-zinc-200 bg-white" />
-                  Free
-                </span>
-              </>
-            ) : null}
-          </div>
         </div>
 
         <div
           className={
             centerFilteredCards
-              ? "flex flex-wrap justify-center gap-3"
-              : "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+              ? "flex flex-wrap justify-center gap-2 sm:gap-3"
+              : "grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-4"
           }
         >
           {shown.map((d) => (
