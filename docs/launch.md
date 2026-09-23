@@ -127,7 +127,8 @@ persistent volume, and restarts the app even if the command fails. Check the
 actual script filename before running it. Keep off-host copies of user data;
 the VPS and its local backups are one failure domain.
 
-For a routine code update after pushing `main` to GitHub:
+Routine code updates deploy automatically after a successful CI run for a push
+or merge to `main`. Use the command below only for manual recovery:
 
 ```sh
 ssh ubuntu@"$SERVER_IP" 'cd ~/ufcsh && ./deploy/update.sh'

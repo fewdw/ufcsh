@@ -1,7 +1,7 @@
 services:
   app-dev:
     build:
-      context: .
+      context: ${DEV_BUILD_CONTEXT:-.}
       args:
         VITE_CLERK_PUBLISHABLE_KEY: ${DEV_CLERK_PUBLISHABLE_KEY:?Set a separate Clerk development publishable key in .env.dev}
         VITE_CLERK_PROXY_URL: ""

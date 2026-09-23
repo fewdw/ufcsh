@@ -2,13 +2,13 @@
 
 ## Feature work
 
-When asked to implement or “code up” a feature, create/use a feature branch; never commit or push feature work directly to `main`. Make the code change and then run `./dev.sh` from the repository root. This builds and updates the development app at `https://dev.ufc.sh`. Confirm that the dev app is healthy before reporting the work complete, and tell the user to reload the dev site to review it.
+When asked to implement or “code up” a feature, create/use a feature branch in the sibling worktree `/home/ubuntu/ufcsh-dev`; never commit or push feature work directly to `main`. Keep `/home/ubuntu/ufcsh` on a clean `main` because automated production deployments pull there. Make the code change in the dev worktree, then run `/home/ubuntu/ufcsh/dev.sh`. This builds that worktree and updates `https://dev.ufc.sh`. Confirm that the dev app is healthy before reporting the work complete, and tell the user to reload the dev site to review it.
 
 The dev environment uses its own Docker Compose service, data volume, Clerk keys, and Cloudflare Tunnel. Keep feature work and verification on dev; do not deploy production as part of an ordinary feature request.
 
 ## Production releases
 
-Production is `https://ufc.sh`. Deploy to it only when the user explicitly requests a production release. The production deployment command is `./deploy/update.sh`; follow the repository’s release process and make sure the intended changes are on `main` before using it.
+Production is `https://ufc.sh`. Every successful CI run for a push or merge to `main` automatically deploys the new main branch to production. Therefore, merging or pushing to `main` is a production release: do it only when the user explicitly asks. For a manual recovery deployment, run `./deploy/update.sh` from the clean production checkout on `main`.
 
 ## Secrets and data
 
@@ -19,4 +19,4 @@ Production is `https://ufc.sh`. Deploy to it only when the user explicitly reque
 
 ## Rebuild behavior
 
-The dev app runs from a Docker image; code changes are not live through host-based hot reload. Run `./dev.sh` after making changes so the dev image is rebuilt and the running dev app is updated.
+The dev app runs from a Docker image; code changes are not live through host-based hot reload. Run `/home/ubuntu/ufcsh/dev.sh` after making changes so the dev image is rebuilt from the active dev worktree. To switch the branch shown at `dev.ufc.sh`, use `./deploy/select-dev-branch.sh BRANCH` from the production checkout or the **Choose dev branch** GitHub Action; commit or stash changes in the dev worktree before switching.
