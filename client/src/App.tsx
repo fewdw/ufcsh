@@ -24,6 +24,7 @@ const LabsPage = lazy(() => import("./pages/LabsPage"));
 const AdminPage = lazy(() => import("./pages/AdminPage"));
 const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const AuthPage = lazy(() => import("./pages/AuthPage"));
+const isDevSite = import.meta.env.VITE_SITE_ORIGIN === "https://dev.ufc.sh";
 
 function AdminNavItem({ active }: { active: boolean }) {
   const { isLoaded, user } = useAccount();
@@ -60,8 +61,9 @@ function Header({ onSearch }: { onSearch: () => void }) {
           between them. Nothing is positioned over anything else, so no width
           can make two of them collide. */}
       <div className="flex w-full items-center gap-1 px-2 py-2.5 min-[380px]:gap-2 min-[380px]:px-2.5 sm:gap-3 sm:px-5 sm:py-3">
-        <Link to="/" className="shrink-0 text-sm font-bold tracking-tight text-zinc-900 min-[380px]:text-base sm:text-lg">
+        <Link to="/" className="relative shrink-0 text-sm font-bold tracking-tight text-zinc-900 min-[380px]:text-base sm:text-lg">
           ufc<span className="text-zinc-400">.sh</span>
+          {isDevSite ? <span aria-hidden="true" className="absolute -top-2 right-0 rounded bg-amber-100 px-1 text-[8px] font-extrabold leading-3 tracking-wide text-amber-900 ring-1 ring-amber-300">DEV</span> : null}
         </Link>
         {/* The shared pill group, tightened below 380px so the row still fits a
             320px screen with nothing clipped and nothing dropped. */}
