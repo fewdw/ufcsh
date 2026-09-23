@@ -240,6 +240,23 @@ export class BetStore {
     if (!window.open && !locked) this.db.prepare("INSERT OR IGNORE INTO prediction_locks VALUES (?, ?)").run(context.fight.id, this.now());
     return window.open && !locked ? null : fightIsComplete(context.fight) ? "has finished" : "is closed for betting";
   }
+  /** A bet can be taken back only while every matchup on it still accepts bets. */
+  private removable(legs: StoredLeg[]): boolean {
+    return legs.every(leg => {
+      const context = this.context(leg.fightId);
+      if (!context) return false;
+      const window = predictionWindow({ ...context, eventOpen: undefined }, this.now());
+      const locked = this.db.prepare("SELECT 1 FROM prediction_locks WHERE fight_id = ?").get(leg.fightId);
+      return window.open && !locked;
+    });
+  }
+  remove(user: string, id: string): void {
+    const row = this.db.prepare("SELECT * FROM bets WHERE id = ? AND user_id = ?").get(id, user) as StoredBet | undefined;
+    if (!row) throw new ScoringError(404, "Bet not found.");
+    if (!this.removable(JSON.parse(row.legs_json) as StoredLeg[]))
+      throw new ScoringError(409, "A matchup on this bet has closed. This bet stays on your record.");
+    this.db.prepare("DELETE FROM bets WHERE id = ? AND user_id = ?").run(id, user);
+  }
   place(user: string, body: unknown) {
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new ScoringError(400, "Invalid bet.");
     const input = body as Record<string, unknown>;
@@ -297,7 +314,7 @@ export class BetStore {
     }
     return fights;
   }
-  /** Every bet a scorer has made is public and permanent, like their picks. */
+  /** A scorer's current bets and record are public; open bets can be removed. */
   profile(handle: string, offset = 0) {
     const scorer = this.scores.lookup("handle", handle);
     if (!scorer) throw new ScoringError(404, "Profile not found.");
@@ -312,7 +329,7 @@ export class BetStore {
         atRisk: cents(bets.filter(bet => bet.state === "pending").map(bet => bet.stake)),
         won: count("won"), lost: count("lost"), pending: count("pending"), void: count("void") },
       maxStake: MAX_STAKE_CENTS / 100,
-      bets: bets.slice(offset, offset + PAGE_SIZE) };
+      bets: bets.slice(offset, offset + PAGE_SIZE).map(bet => ({ ...bet, removable: this.removable(bet.legs) })) };
   }
   /** Net result per scorer over settled bets, for the leaderboard. */
   standings() {

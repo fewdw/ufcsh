@@ -1,5 +1,5 @@
 import { useAuth } from "@clerk/react";
-import { Check, Pencil, User, X } from "lucide-react";
+import { Check, Flag, LogOut, Pencil, Settings, User, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiCache, prefetch, useApi } from "../api";
@@ -10,6 +10,7 @@ import { PANEL_SHELL, PanelHeading } from "../components/FightStats";
 import { segmentedGroup, segmentedSelected, segmentedIdle } from "../components/segmented";
 import ProfilePredictions from "../components/ProfilePredictions";
 import ProfileBets from "../components/ProfileBets";
+import ReportIssueDialog from "../components/ReportIssueDialog";
 import Leaderboards from "../components/Leaderboards";
 import { formatDateShortWithYear, formatMethod } from "../format";
 import { useRouteScrollRestoration } from "../navigationState";
@@ -282,31 +283,52 @@ function ScorecardFilter({ value, agreement, total, onChange }: {
 
 function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["scorer"]; mine: boolean; onRenamed: () => void }) {
   const [editing, setEditing] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const { user, manage, signOut } = useAccount();
   return (
-    <header className={`${PANEL_SHELL} flex items-center gap-3 px-4 py-3 sm:gap-4 sm:px-5`}>
-      <ScorerPortrait scorer={scorer} />
-      <div className="min-w-0 flex-1">
-        {editing ? (
-          <UsernameEditor scorer={scorer} onClose={() => setEditing(false)} onRenamed={onRenamed} />
-        ) : (
-          <>
-            <h1 className="flex min-w-0 items-center gap-1.5 text-base font-bold text-zinc-900 sm:text-lg">
-              <span className="truncate">{scorer.displayName}</span>
-              {mine ? (
-                <button type="button" onClick={() => setEditing(true)} title="Change username"
-                  aria-label="Change username"
-                  className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-900">
-                  <Pencil className="h-3 w-3" aria-hidden="true" />
-                </button>
+    <header className={`${PANEL_SHELL} px-4 py-3 sm:px-5`}>
+      <div className="flex items-center gap-3 sm:gap-4">
+        <ScorerPortrait scorer={scorer} />
+        <div className="min-w-0 flex-1">
+          {editing ? (
+            <UsernameEditor scorer={scorer} onClose={() => setEditing(false)} onRenamed={onRenamed} />
+          ) : (
+            <>
+              <h1 className="flex min-w-0 items-center gap-1.5 text-base font-bold text-zinc-900 sm:text-lg">
+                <span className="truncate">{scorer.displayName}</span>
+                {mine ? (
+                  <button type="button" onClick={() => setEditing(true)} title="Change username"
+                    aria-label="Change username"
+                    className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-900">
+                    <Pencil className="h-3 w-3" aria-hidden="true" />
+                  </button>
+                ) : null}
+              </h1>
+              <p className="mt-0.5 truncate text-xs text-zinc-500">
+                {scorer.cards.toLocaleString()} {scorer.cards === 1 ? "fight scored" : "fights scored"}
+                {scorer.joinedAt ? ` · Joined ${formatDateShortWithYear(new Date(scorer.joinedAt).toISOString().slice(0, 10))}` : ""}
+              </p>
+              {mine && user?.primaryEmailAddress?.emailAddress ? (
+                <p className="mt-1 truncate text-xs text-zinc-500" title={user.primaryEmailAddress.emailAddress}>{user.primaryEmailAddress.emailAddress}</p>
               ) : null}
-            </h1>
-            <p className="mt-0.5 truncate text-xs text-zinc-500">
-              {scorer.cards.toLocaleString()} {scorer.cards === 1 ? "fight scored" : "fights scored"}
-              {scorer.joinedAt ? ` · Joined ${formatDateShortWithYear(new Date(scorer.joinedAt).toISOString().slice(0, 10))}` : ""}
-            </p>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
+      {mine && user ? (
+        <div className="mt-3 flex flex-wrap gap-1.5 border-t border-zinc-100 pt-3">
+          <button type="button" onClick={() => setReportOpen(true)} className={quiet}>
+            <Flag className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />Report an issue
+          </button>
+          <button type="button" onClick={manage} className={quiet}>
+            <Settings className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />Manage account
+          </button>
+          <button type="button" onClick={signOut} className={quiet}>
+            <LogOut className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />Sign out
+          </button>
+          <ReportIssueDialog open={reportOpen} onClose={() => setReportOpen(false)} />
+        </div>
+      ) : null}
     </header>
   );
 }

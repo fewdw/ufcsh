@@ -102,7 +102,7 @@ test("a parlay loses on any leg and drops void legs", () => {
   assert.deepEqual([lost.state, lost.net], ["lost", -1000]);
 });
 
-test("places bets at the server's price, caps the stake and keeps them for good", t => {
+test("places bets at the server's price and caps the stake", t => {
   const { bouts, store, clock } = fixture(t);
   const user = "user_1";
   const error = (fn: () => unknown) => { try { fn(); } catch (e) { return e as ScoringError & { changed?: unknown }; } assert.fail("expected an error"); };
@@ -130,6 +130,36 @@ test("places bets at the server's price, caps the stake and keeps them for good"
   bouts[2].detail_json = '{"type":"past"}';
   clock(now + 7 * 3_600_000);
   assert.match(error(() => store.place(user, { stake: 5, legs: [leg(bouts[1].id, { winner: 1 }, "-200")] })).message, /closed for betting/);
+});
+
+test("only the owner can remove a bet, and only while every matchup is open", t => {
+  const { bouts, scores, store } = fixture(t);
+  const user = "user_1";
+  const handle = scores.identity(user).handle;
+  const single = store.place(user, { stake: 10, legs: [leg(bouts[4].id, { winner: 1 }, "-200")] });
+  const parlay = store.place(user, { stake: 5, legs: [leg(bouts[4].id, { winner: 1 }, "-200"), leg(bouts[5].id, { winner: 2 }, "+170")] });
+  assert.equal(store.profile(handle).bets.every(bet => bet.removable), true);
+  assert.throws(() => store.remove("user_2", single.id), (error: unknown) => error instanceof ScoringError && error.status === 404);
+  store.remove(user, single.id);
+  assert.equal(store.profile(handle).total, 1);
+  assert.throws(() => store.remove(user, single.id), (error: unknown) => error instanceof ScoringError && error.status === 404);
+
+  // One closed leg freezes the whole parlay, even if another leg is still open.
+  bouts[5].f1_outcome = "win"; bouts[5].f2_outcome = "loss";
+  assert.equal(store.profile(handle).bets[0].removable, false);
+  assert.throws(() => store.remove(user, parlay.id), (error: unknown) => error instanceof ScoringError && error.status === 409);
+  assert.equal(store.profile(handle).total, 1);
+});
+
+test("bet removal closes at the betting cutoff before a result exists", t => {
+  const { bouts, scores, store, clock } = fixture(t);
+  const user = "user_1";
+  const bet = store.place(user, { stake: 10, legs: [leg(bouts[0].id, { winner: 1 }, "-200")] });
+  const handle = scores.identity(user).handle;
+  assert.equal(store.profile(handle).bets[0].removable, true);
+  clock(now + 5 * 3_600_000 + 46 * 60_000);
+  assert.equal(store.profile(handle).bets[0].removable, false);
+  assert.throws(() => store.remove(user, bet.id), (error: unknown) => error instanceof ScoringError && error.status === 409);
 });
 
 test("leaderboards rank fans by points, accuracy and betting profit", t => {

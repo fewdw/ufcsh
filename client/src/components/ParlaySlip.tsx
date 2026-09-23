@@ -20,8 +20,8 @@ function sanitizeStake(raw: string): string {
   return cleaned.replace(/^0+(?=\d)/, "");
 }
 
-/** Saves the slip to the reader's profile, where it stays for good and is
- *  settled against the real result. The server prices it from its own board. */
+/** Saves the slip to the reader's profile and settles it against the real
+ *  result. The server prices it from its own board. */
 function AddToProfile() {
   const { legs, stake, reprice, markPlaced } = useParlay();
   const { getToken } = useAuth();
@@ -49,7 +49,7 @@ function AddToProfile() {
         {busy ? "Adding…" : user ? "Add to profile" : "Sign in to add to profile"}
       </button>
       {error ? <p role="alert" className="text-[11px] leading-snug text-rose-600">{error}</p>
-        : <p className="text-[10px] leading-snug text-zinc-400">{tooSmall ? `Minimum stake $${MIN_STAKE}.` : "Bets on your profile are permanent and settle on the official result."}</p>}
+        : <p className="text-[10px] leading-snug text-zinc-400">{tooSmall ? `Minimum stake $${MIN_STAKE}.` : "You can remove a bet until a matchup on it closes."}</p>}
     </div>
   );
 }

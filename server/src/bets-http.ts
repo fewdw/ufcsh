@@ -11,14 +11,15 @@ export function createBetsHandler(store: BetStore, leaderboards: () => Leaderboa
   const limiter = new RateLimiter();
   return async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> => {
     const place = url.pathname === "/api/bets";
+    const removal = /^\/api\/bets\/([0-9a-f-]{36})$/.exec(url.pathname);
     const board = url.pathname === "/api/leaderboards";
     const profile = /^\/api\/profiles\/([0-9a-f-]{36}|[a-z0-9]{3,20})\/bets$/.exec(url.pathname);
-    if (!place && !board && !profile) return false;
+    if (!place && !removal && !board && !profile) return false;
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.setHeader("Cache-Control", board ? "public, max-age=30" : "private, no-store");
     const send = (data: unknown, status = 200) => { res.statusCode = status; res.end(req.method === "HEAD" ? undefined : JSON.stringify(data)); };
     try {
-      const allowed = place ? ["POST"] : ["GET", "HEAD"];
+      const allowed = place ? ["POST"] : removal ? ["DELETE"] : ["GET", "HEAD"];
       if (!allowed.includes(req.method ?? "")) {
         res.setHeader("Allow", allowed.join(", "));
         throw new ScoringError(405, "Method not allowed.");
@@ -32,7 +33,8 @@ export function createBetsHandler(store: BetStore, leaderboards: () => Leaderboa
       }
       if ((req.headers.origin && !scoringOrigins().includes(req.headers.origin)) || req.headers["sec-fetch-site"] === "cross-site") throw new ScoringError(403, "Request origin is not allowed.");
       const user = await authenticate(req);
-      if (!limiter.allow(`write:${user}`, 10, 0.2)) throw new ScoringError(429, "Please wait a moment before placing another bet.");
+      if (!limiter.allow(`write:${user}`, 10, 0.2)) throw new ScoringError(429, "Please wait a moment before changing another bet.");
+      if (removal) { store.remove(user, removal[1]); return send({ removed: true }), true; }
       if (req.headers["content-type"]?.split(";")[0].trim() !== "application/json") throw new ScoringError(415, "Send a JSON bet.");
       if (Number(req.headers["content-length"]) > MAX_BODY) { req.resume(); throw new ScoringError(413, "Bet is too large."); }
       const chunks: Buffer[] = [];
@@ -52,7 +54,7 @@ export function createBetsHandler(store: BetStore, leaderboards: () => Leaderboa
       if (status === 429 || status === 503) res.setHeader("Retry-After", "5");
       if (status >= 400) res.setHeader("Cache-Control", "no-store");
       const changed = (error as { changed?: unknown }).changed;
-      send({ error: error instanceof ScoringError ? error.message : "Unable to load or place bets. Please retry.", ...(changed ? { changed } : {}) }, status);
+      send({ error: error instanceof ScoringError ? error.message : "Unable to change bets. Please retry.", ...(changed ? { changed } : {}) }, status);
     }
     return true;
   };

@@ -1,7 +1,9 @@
+import { useAuth } from "@clerk/react";
+import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useApi } from "../api";
-import { signedMoney, type Bet, type BetState, type ProfileBets as BetsData } from "../bets";
+import { apiCache, useApi } from "../api";
+import { removeBet, signedMoney, type Bet, type BetState, type ProfileBets as BetsData } from "../bets";
 import { formatDateShortWithYear } from "../format";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
 
@@ -20,7 +22,10 @@ function Stat({ label, value, tone = "text-zinc-900" }: { label: string; value: 
 
 const money = (value: number) => `$${value.toFixed(2)}`;
 
-function BetRow({ bet }: { bet: Bet }) {
+function BetRow({ bet, mine, confirming, busy, onConfirm, onCancel, onRemove }: {
+  bet: Bet; mine: boolean; confirming: boolean; busy: boolean;
+  onConfirm: () => void; onCancel: () => void; onRemove: () => void;
+}) {
   const parlay = bet.legs.length > 1;
   const result = bet.state === "pending" ? "Pending" : bet.state === "void" ? "Void" : signedMoney(bet.net);
   return (
@@ -32,7 +37,15 @@ function BetRow({ bet }: { bet: Bet }) {
             {money(bet.stake)} at {bet.price} · pays {money(bet.payout)} · {formatDateShortWithYear(new Date(bet.placedAt).toISOString().slice(0, 10))}
           </p>
         </div>
-        <span className={`shrink-0 text-sm font-semibold tabular-nums ${STATE_TEXT[bet.state]}`}>{result}</span>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className={`text-sm font-semibold tabular-nums ${STATE_TEXT[bet.state]}`}>{result}</span>
+          {mine && bet.removable && !confirming ? (
+            <button type="button" onClick={onConfirm} aria-label="Remove bet" title="Remove bet"
+              className="grid h-7 w-7 place-items-center rounded-full text-zinc-400 hover:bg-zinc-100 hover:text-rose-600">
+              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          ) : null}
+        </div>
       </div>
       <ul className={`mt-2 flex flex-col gap-1.5 ${parlay ? "border-l border-zinc-100 pl-3" : ""}`}>
         {bet.legs.map((leg, index) => (
@@ -49,6 +62,13 @@ function BetRow({ bet }: { bet: Bet }) {
           </li>
         ))}
       </ul>
+      {confirming ? <div className="mt-3 flex items-center justify-end gap-2 text-xs">
+        <span className="mr-auto text-zinc-500">Remove this bet?</span>
+        <button type="button" onClick={onCancel} disabled={busy} className="rounded-full px-3 py-1.5 text-zinc-500 hover:bg-zinc-100 disabled:opacity-40">Cancel</button>
+        <button type="button" onClick={onRemove} disabled={busy} className="rounded-full bg-rose-600 px-3 py-1.5 font-medium text-white hover:bg-rose-700 disabled:opacity-40">
+          {busy ? "Removing…" : "Remove"}
+        </button>
+      </div> : null}
     </li>
   );
 }
@@ -57,7 +77,33 @@ function BetRow({ bet }: { bet: Bet }) {
  *  result, with the running profit or loss of a flat $1–$20 stake per bet. */
 export default function ProfileBets({ handle, mine }: { handle: string; mine: boolean }) {
   const [offset, setOffset] = useState(0);
-  const { data, error, retry } = useApi<BetsData>(`/api/profiles/${encodeURIComponent(handle)}/bets?offset=${offset}`, 30_000);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [removeError, setRemoveError] = useState("");
+  const { getToken } = useAuth();
+  const pageUrl = (page: number) => `/api/profiles/${encodeURIComponent(handle)}/bets?offset=${page}`;
+  const url = pageUrl(offset);
+  const { data, error, retry } = useApi<BetsData>(url, 30_000);
+  const goTo = (page: number) => {
+    setOffset(page);
+    void apiCache.loadAfterWrite(pageUrl(page));
+  };
+  const remove = async (id: string) => {
+    if (busy) return;
+    setBusy(true); setRemoveError("");
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Your session expired. Sign in again.");
+      await removeBet(token, id);
+      setConfirming(null);
+      if (data?.bets.length === 1 && offset > 0) goTo(Math.max(0, offset - data.pageSize));
+      else await apiCache.loadAfterWrite(url);
+    } catch (problem) {
+      setConfirming(null);
+      setRemoveError(problem instanceof Error ? problem.message : "That bet could not be removed.");
+      void apiCache.loadAfterWrite(url);
+    } finally { setBusy(false); }
+  };
   if (!data) return <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
     {error ? <>{error} <button className="underline" onClick={retry}>Retry</button></> : "Loading bets…"}
   </section>;
@@ -82,13 +128,16 @@ export default function ProfileBets({ handle, mine }: { handle: string; mine: bo
 
     <section className={`${PANEL_SHELL} overflow-hidden`}>
       <PanelHeading title="All bets" subtitle={data.total ? `${offset + 1}–${Math.min(offset + data.pageSize, data.total)} of ${data.total.toLocaleString()}` : undefined} />
+      {removeError ? <p role="alert" className="px-5 pt-3 text-xs text-rose-600">{removeError}</p> : null}
       {!data.total ? <p className="px-5 py-10 text-center text-sm text-zinc-500">
         {mine ? "You haven’t placed a bet yet. Click any price on an upcoming fight’s odds, then use Add to profile on your slip."
           : "This fan hasn’t placed any bets yet."}
-      </p> : <ul className="divide-y divide-zinc-100">{data.bets.map(bet => <BetRow key={bet.id} bet={bet} />)}</ul>}
+      </p> : <ul className="divide-y divide-zinc-100">{data.bets.map(bet => <BetRow key={bet.id} bet={bet} mine={mine}
+        confirming={confirming === bet.id} busy={busy} onConfirm={() => { setConfirming(bet.id); setRemoveError(""); }}
+        onCancel={() => setConfirming(null)} onRemove={() => void remove(bet.id)} />)}</ul>}
       {data.total > data.pageSize ? <div className="flex justify-between border-t border-zinc-100 px-5 py-3 text-xs text-zinc-600">
-        <button disabled={offset === 0} onClick={() => setOffset(value => Math.max(0, value - data.pageSize))} className="rounded-full px-3 py-2 hover:bg-zinc-100 disabled:opacity-40">Newer</button>
-        <button disabled={offset + data.pageSize >= data.total} onClick={() => setOffset(value => value + data.pageSize)} className="rounded-full px-3 py-2 hover:bg-zinc-100 disabled:opacity-40">Older</button>
+        <button disabled={offset === 0} onClick={() => goTo(Math.max(0, offset - data.pageSize))} className="rounded-full px-3 py-2 hover:bg-zinc-100 disabled:opacity-40">Newer</button>
+        <button disabled={offset + data.pageSize >= data.total} onClick={() => goTo(offset + data.pageSize)} className="rounded-full px-3 py-2 hover:bg-zinc-100 disabled:opacity-40">Older</button>
       </div> : null}
     </section>
   </>;

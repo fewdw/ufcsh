@@ -50,7 +50,7 @@ export function useMyProfile() {
       .then(identity => publish({ identity, loading: false, error: "" }))
       .catch(error => publish({ loading: false, error: error instanceof Error ? error.message : "Your profile could not be opened." }))
       .finally(() => { inflight = null; });
-  }, [getToken, isLoaded, user]);
+  }, [getToken, isLoaded, user, snapshot]);
 
   /** Claiming a name. The server decides — capitalisation is kept, uniqueness
    *  is settled there — so the answer it gives back is what is displayed. */
@@ -61,7 +61,8 @@ export function useMyProfile() {
   }, [getToken]);
 
   return {
-    identity: snapshot.identity,
+    // Never expose a previous account's identity during a Clerk user switch.
+    identity: user?.id === snapshot.userId ? snapshot.identity : null,
     loading: !isLoaded || snapshot.loading,
     error: snapshot.error,
     signedIn: Boolean(user),
