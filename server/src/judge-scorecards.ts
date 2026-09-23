@@ -14,8 +14,12 @@ const validRounds = (card: JudgeCard): JudgeRound[] => Array.isArray(card.rounds
   : [];
 
 const sameJudge = (left: string, right: string): boolean => {
-  const a = normName(left).split(" ").filter(Boolean);
-  const b = normName(right).split(" ").filter(Boolean);
+  // MMA Decisions sometimes prefixes the judge's title, for example
+  // "Dr. Greg Jackson" where UFCStats records "Greg Jackson".
+  const tokens = (name: string) => normName(name).split(" ").filter(Boolean)
+    .filter((token, index) => index > 0 || (token !== "dr" && token !== "doctor"));
+  const a = tokens(left);
+  const b = tokens(right);
   if (!a.length || !b.length) return false;
   if (a.join(" ") === b.join(" ")) return true;
   // Sources alternate between forms such as Mike/Michael Bell and

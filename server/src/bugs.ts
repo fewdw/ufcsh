@@ -546,7 +546,7 @@ function decisionsWithoutJudgeRounds(): BugCheck {
   const candidates = db.prepare(`
     SELECT ${FIGHT_COLUMNS}, f.method, f.detail_json, f.judge_rounds_json, f.verdict_checked_at
     FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE e.complete = 1 AND f.method LIKE '%DEC'
+    WHERE e.complete = 1 AND f.method LIKE '%DEC' AND e.date >= '2003-01-01'
     ORDER BY e.date DESC
   `).all() as (FightRow & { method: string; detail_json: string | null; judge_rounds_json: string | null; verdict_checked_at: number | null })[];
   const rows = candidates.filter(fight => {

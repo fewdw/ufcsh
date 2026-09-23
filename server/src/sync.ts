@@ -24,6 +24,7 @@ import {
   type ScrapedMethodOdds,
 } from "./scrape/odds.ts";
 import { isSummaryAgeDisagreement, validateFightActions } from "./action-stats.ts";
+import { correctOfficialJudges } from "./verified-scorecard-corrections.ts";
 import { fetchEventArticle, weightMisses } from "./scrape/wikipedia.ts";
 import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
 import { syncVerdictScorecards } from "./verdict-import.ts";
@@ -472,7 +473,7 @@ async function storeFightDetail(fightId: string): Promise<void> {
     // Leave the invalidated detail missing; the next refresh uses the new order.
     return;
   }
-  const detailJson = JSON.stringify(detail);
+  const detailJson = JSON.stringify(correctOfficialJudges(fightId, detail));
   // The cross-check is between two pages of the same source, and it only holds
   // once both have stopped moving. While a bout is being fought the event page
   // still shows the totals from the last time it was written and the fight page

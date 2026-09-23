@@ -38,3 +38,9 @@ test("a judge's surname misspelt by one letter is still the same official", () =
   assert.equal(hasCompleteJudgeRounds(official, imported), true);
   assert.equal(compatibleJudgeCards([{ judge: "Henry Guery", f1Score: 29, f2Score: 28 }], [{ ...imported[0], judge: "Henry Grant" }]).length, 0);
 });
+
+test("a judge's title does not hide matching round scores", () => {
+  const official: JudgeCard[] = [{ judge: "Greg Jackson", f1Score: 29, f2Score: 28 }];
+  const imported: JudgeCard[] = [{ judge: "Dr. Greg Jackson", f1Score: 29, f2Score: 28, rounds: rounds([9, 10, 10], [10, 9, 9]) }];
+  assert.equal(hasCompleteJudgeRounds(official, imported), true);
+});
