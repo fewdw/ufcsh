@@ -1,0 +1,59 @@
+services:
+  app-dev:
+    build:
+      context: .
+      args:
+        VITE_CLERK_PUBLISHABLE_KEY: ${DEV_CLERK_PUBLISHABLE_KEY:?Set a separate Clerk development publishable key in .env.dev}
+        VITE_CLERK_PROXY_URL: ""
+        VITE_SITE_ORIGIN: https://dev.ufc.sh
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    init: true
+    stop_grace_period: 20s
+    environment:
+      NODE_ENV: production
+      DATA_DIR: /data
+      SITE_ORIGIN: https://dev.ufc.sh
+      API_WORKERS: ${DEV_API_WORKERS:-1}
+      NO_SYNC: ${DEV_NO_SYNC:-0}
+      DISABLE_REPAIRS: "1"
+      ADMIN_TOKEN: ${DEV_ADMIN_TOKEN:?Set a separate DEV_ADMIN_TOKEN in .env.dev}
+      DEFAULT_ADMIN: ${DEV_DEFAULT_ADMIN:?Set your Clerk email in DEV_DEFAULT_ADMIN}
+      CLERK_PUBLISHABLE_KEY: ${DEV_CLERK_PUBLISHABLE_KEY:?Set a separate Clerk development publishable key in .env.dev}
+      CLERK_SECRET_KEY: ${DEV_CLERK_SECRET_KEY:?Set a separate Clerk development secret key in .env.dev}
+      CLERK_PROXY_URL: ""
+      CLERK_AUTHORIZED_PARTIES: https://dev.ufc.sh
+      METRICS_PORT: 9091
+      # The tunnel does not overwrite X-Real-IP; do not trust client-supplied values.
+      TRUSTED_PROXY_IPS: ""
+    volumes:
+      - app-dev-data:/data
+    networks:
+      dev:
+
+  dev-tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${DEV_TUNNEL_TOKEN:?Set the Cloudflare Tunnel token in .env.dev}
+    depends_on:
+      app-dev:
+        condition: service_healthy
+    networks:
+      - dev
+
+networks:
+  dev:
+
+volumes:
+  app-dev-data:

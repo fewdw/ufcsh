@@ -131,6 +131,8 @@ npm start
 For frontend hot reload during development, run `npm run dev` from `client/`; it
 proxies API requests to the server on port 8000.
 
+For a private HTTPS dev site on this server, see [the dev environment guide](docs/dev-environment.md).
+
 On first start the server backfills every UFC event ever (~790 events, ~8k fights,
 ~4.6k fighters) from ufcstats.com. That takes ~30–45 minutes at a polite request rate;
 the app is usable immediately and fills in as it goes. `GET /api/status` shows progress.

@@ -8,3 +8,4 @@ server/data/odds-repair-*.tar.gz
 .env
 .env.*
 !.env.example
+!.env.dev.example
