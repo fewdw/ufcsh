@@ -33,3 +33,9 @@
     }
   }
 }
+
+# Keep the new domain usable over HTTPS while Clerk and Google sign-in are
+# migrated from the existing production hostname.
+ufc.sh {
+  redir https://148-113-251-169.sslip.io{uri} 302
+}
