@@ -30,7 +30,7 @@ const TABS = [
 ] as const;
 type Section = (typeof TABS)[number]["id"];
 const quiet = "rounded-full px-3 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
-/** The account's own actions: short enough that all four sit on one line. */
+/** The account's own actions: short enough that all three sit on one line. */
 const action = "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
 const primary = "rounded-full bg-zinc-900 px-4 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40";
 const danger = "rounded-full bg-rose-600 px-4 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40";
@@ -182,7 +182,8 @@ function Profile({ handle }: { handle: string }) {
         <div id="profile-tabpanel" role="tabpanel" aria-labelledby={`profile-tab-${section}`} className="flex flex-col gap-3">
           {section === "predictions" ? <ProfilePredictions key={handle} handle={handle} mine={mine} />
             : section === "bets" ? <ProfileBets key={handle} handle={handle} mine={mine} />
-            : section === "comments" ? <ProfileComments key={handle} handle={handle} mine={mine} visible={scorer.commentsPublic} />
+            : section === "comments" ? <ProfileComments key={handle} handle={handle} mine={mine} visible={scorer.commentsPublic}
+                visibilityControl={mine ? <CommentsVisibility visible={scorer.commentsPublic} onChanged={refresh} /> : null} />
             : section === "leaderboards" ? <Leaderboards handle={handle} /> : <>
           <section className={`${PANEL_SHELL} overflow-hidden`}>
             <PanelHeading
@@ -322,14 +323,13 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
         </div>
       </div>
       {mine && user ? (
-        <div className="mt-3 flex flex-wrap items-center justify-center gap-0.5 border-t border-zinc-100 pt-2 sm:justify-start sm:gap-1.5">
+        <div className="mt-3 flex items-center justify-center gap-1 border-t border-zinc-100 pt-2 sm:justify-start sm:gap-1.5">
           <button type="button" onClick={() => setReportOpen(true)} className={action} title="Report an issue">
             <Flag className="h-3.5 w-3.5" aria-hidden="true" />Report
           </button>
           <button type="button" onClick={manage} className={action} title="Manage account">
             <Settings className="h-3.5 w-3.5" aria-hidden="true" />Account
           </button>
-          <CommentsVisibility visible={scorer.commentsPublic} onChanged={onRenamed} />
           <button type="button" onClick={signOut} className={action}>
             <LogOut className="h-3.5 w-3.5" aria-hidden="true" />Sign out
           </button>
@@ -369,7 +369,7 @@ function CommentsVisibility({ visible, onChanged }: { visible: boolean; onChange
   return (
     <label className={`${action} cursor-pointer`} title={error || "Hide the Comments tab from your profile. Your comments stay on each fight either way."}>
       <input type="checkbox" checked={hidden} disabled={busy} onChange={event => void change(event.target.checked)} className="h-3.5 w-3.5 accent-zinc-900" />
-      Hide comments
+      Hide from my profile
       {error ? <span role="alert" className="text-red-600">· {error}</span> : null}
     </label>
   );

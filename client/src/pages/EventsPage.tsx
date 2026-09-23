@@ -516,26 +516,31 @@ function CompactSide({ side, fight, done, other }: { side: FightSide; fight: Eve
  *  sportsbook lists a game: half the height of the face-off layout, and each
  *  name gets the whole width. */
 function CompactFightRow({ fight, done, live }: { fight: EventFight; done: boolean; live: boolean }) {
-  const title = fight.title_fight ? TITLE_TAG[fight.title_type ?? "title"] ?? TITLE_TAG.title : null;
+  // Only a belt earns a tag here; a tournament or TUF final reads as noise at
+  // this size.
+  const title = fight.title_fight && (fight.title_type === "title" || fight.title_type === "interim" || !fight.title_type)
+    ? TITLE_TAG[fight.title_type ?? "title"] ?? TITLE_TAG.title : null;
   const expected = !done ? clockTime(fight.starts_at) : null;
   // The winner's badge already says how it ended; only a result with no
   // winner's badge to carry it is written out here.
   const tagged = resultTag(fight, fight.f1.outcome) || resultTag(fight, fight.f2.outcome);
   const result = done && !tagged ? formatMethod(fight.method, fight.round, fight.time) : "";
   return (
-    <div className="flex flex-col gap-1.5">
-      <CompactSide side={fight.f1} other={fight.f2} fight={fight} done={done} />
-      <CompactSide side={fight.f2} other={fight.f1} fight={fight} done={done} />
-      <div className="flex items-center gap-1.5 pl-[2.875rem] text-[10px] leading-4 text-zinc-400">
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1.5 text-[10px] leading-4 text-zinc-400">
         {live ? <>
           <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
           <span className="font-bold uppercase tracking-[0.14em] text-emerald-700">Live</span>
         </> : null}
         <span className="font-medium text-zinc-500">{fight.weight_class}</span>
         {fight.scheduled_rounds ? <span>{roundsLabel(fight.scheduled_rounds)}</span> : null}
-        {title ? <span className={`rounded px-1 py-px text-[9px] font-bold uppercase ${title.className}`}>{title.label}</span> : null}
+        {title ? <span className={`rounded px-1 py-px text-[9px] font-bold uppercase leading-3 ${title.className}`}>{title.label}</span> : null}
         {result ? <span className="ml-auto text-right" title={fight.method_details ?? result}>{result}</span> : null}
         {expected ? <span className="ml-auto tabular-nums" title="Approximate start in your time zone.">~{expected}</span> : null}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <CompactSide side={fight.f1} other={fight.f2} fight={fight} done={done} />
+        <CompactSide side={fight.f2} other={fight.f1} fight={fight} done={done} />
       </div>
     </div>
   );
@@ -674,6 +679,12 @@ const SEGMENT_LABEL: Record<CardSegment, string> = {
   early: "Early prelims",
 };
 
+const SEGMENT_SHORT: Record<CardSegment, string> = {
+  main: "Main",
+  prelims: "Prelims",
+  early: "Early",
+};
+
 const segmentStart = (schedule: CardSchedule | undefined, segment: CardSegment): number | null =>
   segment === "main" ? schedule?.main_card_at ?? null
     : segment === "prelims" ? schedule?.prelims_at ?? null
@@ -801,12 +812,16 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
           </button>
           <StepLink event={nav.next} direction="next" />
         </div>
-        <div className="flex flex-col gap-1 px-4 py-2.5 @[34rem]:px-6 @[48rem]:flex-row @[48rem]:items-center @[48rem]:justify-between @[48rem]:gap-6 @[48rem]:py-4">
-          <div className="min-w-0">
-            <h1 className="text-balance text-[15px] font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-2xl">{event.name}</h1>
-            <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs leading-relaxed text-zinc-500 @[48rem]:mt-1">
+        {/* Narrow: the name on one row and everything else on the next, in
+            small type — the title block dissolves (`contents`) so its date
+            line and the schedule share one wrapping row. */}
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-3 py-2 @[34rem]:px-6 @[48rem]:flex-row @[48rem]:flex-nowrap @[48rem]:items-center @[48rem]:justify-between @[48rem]:gap-6 @[48rem]:py-4">
+          <div className="contents @[48rem]:block @[48rem]:min-w-0">
+            <h1 className="w-full text-balance text-sm font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-2xl">{event.name}</h1>
+            <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[48rem]:mt-1 @[48rem]:gap-x-2 @[48rem]:text-xs @[48rem]:leading-relaxed">
               <span className="whitespace-nowrap font-medium text-zinc-600">
-                {formatDate(event.date)}{dayLabel ? ` (${dayLabel})` : ""}
+                <span className="@[48rem]:hidden">{formatDateShort(event.date)}{dayLabel ? `, ${dayLabel}` : ""}</span>
+                <span className="hidden @[48rem]:inline">{formatDate(event.date)}{dayLabel ? ` (${dayLabel})` : ""}</span>
               </span>
               {event.location ? <><span aria-hidden="true" className="text-zinc-300">·</span><span>{event.location}</span></> : null}
             </div>
@@ -818,22 +833,23 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
               // 48rem the same markup becomes the original label/time grid —
               // each row's wrapper switches to `contents` and drops out,
               // leaving its dt/dd as the grid's direct children.
-              <dl className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[11px] @[48rem]:grid @[48rem]:grid-cols-[auto_auto]">
+              <dl className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11px] leading-4 @[48rem]:grid @[48rem]:grid-cols-[auto_auto] @[48rem]:gap-x-3">
+                <div aria-hidden="true" className="text-zinc-300 @[48rem]:hidden">·</div>
                 {schedule.map(({ segment, at }) => (
-                  <div key={segment} className={`flex items-baseline gap-1.5 whitespace-nowrap @[48rem]:contents ${at <= now ? "text-zinc-400" : "text-zinc-500"}`}>
-                    <dt>{SEGMENT_LABEL[segment]}</dt>
+                  <div key={segment} className={`flex items-baseline gap-1 whitespace-nowrap @[48rem]:contents ${at <= now ? "text-zinc-400" : "text-zinc-500"}`} title={clockTimeWithZone(at) ?? undefined}>
+                    <dt><span className="@[48rem]:hidden">{SEGMENT_SHORT[segment]}</span><span className="hidden @[48rem]:inline">{SEGMENT_LABEL[segment]}</span></dt>
                     <dd className="flex items-baseline gap-1.5 tabular-nums @[48rem]:justify-end @[48rem]:gap-2">
                       {/* A countdown is worth reading on the day and unreadable
                           before it, so past a day out the date says enough. */}
                       {at === nextStart && at - now < DAY_MS ? <span className="text-zinc-400">in {countdown(at, now)}</span> : null}
-                      <span className={at <= now ? "" : "font-medium text-zinc-700"}>{clockTimeWithZone(at)}</span>
+                      <span className={at <= now ? "" : "font-medium text-zinc-700"}><span className="@[48rem]:hidden">{clockTime(at)?.replace(":00 ", " ")}</span><span className="hidden @[48rem]:inline">{clockTimeWithZone(at)}</span></span>
                     </dd>
                   </div>
                 ))}
               </dl>
             ) : null}
             {event.card_stats.completed_fights && hasResultSummary ? (
-              <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] tabular-nums text-zinc-500">
+              <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] leading-4 tabular-nums text-zinc-500 @[48rem]:gap-x-2">
                 {isLive ? <span>{event.card_stats.completed_fights}/{event.fights.length} results</span> : null}
                 <span><strong className="font-semibold text-zinc-700">{event.card_stats.finishes}</strong> finishes</span>
                 <span aria-hidden="true" className="text-zinc-300">·</span>
@@ -841,11 +857,6 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
                 {isLive && error ? <span role="status">Connection interrupted; retrying…</span> : null}
               </span>
             ) : null}
-          </div>
-          <div className="hidden shrink-0 items-center self-start rounded-full border border-zinc-200 p-0.5 md:flex @[48rem]:self-auto">
-            <StepLink event={nav.prev} direction="prev" />
-            <span className="h-4 w-px bg-zinc-200" aria-hidden="true" />
-            <StepLink event={nav.next} direction="next" />
           </div>
         </div>
       </section>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api";
 import type { Division, FighterPreview, FighterPreviewFight, RankingEntry } from "../api";
@@ -12,7 +12,7 @@ import { orderDivisions } from "../divisionOrder";
 import Freshness from "../components/Freshness";
 import ResultDots from "../components/ResultDots";
 import { resultDot } from "../resultDots";
-import { SlidersHorizontal } from "lucide-react";
+import OptionsSheet, { SHEET_SELECT, SheetField, SwitchRow } from "../components/OptionsSheet";
 
 const shell = "rounded-2xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
 
@@ -58,7 +58,9 @@ function isP4P(d: Division): boolean {
 
 function activityMeta(entry: RankingEntry, dateMode: "relative" | "date"): { row: string; hint: string; showsLastFight: boolean } {
   const a = entry.activity;
-  const when = (date: string) => dateMode === "date" ? formatDateShort(date) : relativeDate(date);
+  // "4d ago", not "4 days ago": the whole line has to fit beside the name.
+  const when = (date: string) => dateMode === "date" ? formatDateShort(date)
+    : relativeDate(date).replace(/(\d+) days?\b/, "$1d");
   const lastFightHint = a.last_fight_date
     ? `${a.last_fight_opponent ? `vs ${a.last_fight_opponent} · ` : ""}${when(a.last_fight_date)}`
     : "";
@@ -220,7 +222,7 @@ function RankRow({
           </span>
         ) : null}
       </span>
-      <span className={`ml-auto grid shrink-0 items-center ${features.streaks ? "grid-cols-[2.25rem_2.75rem]" : "grid-cols-[2.75rem]"}`}>
+      <span className={`ml-auto grid shrink-0 items-center ${features.streaks ? "grid-cols-[1.75rem_2.25rem]" : "grid-cols-[2.25rem]"}`}>
         <span className={`text-center text-[11px] font-semibold tabular-nums ${mv?.cls ?? ""}`}>
           {mv?.label ?? ""}
         </span>
@@ -236,7 +238,7 @@ function RankRow({
     </>
   );
 
-  const className = `flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors ${features.activityColors ? meta.row : ""} ${
+  const className = `flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors ${features.activityColors ? meta.row : ""} ${
     entry.fighter_id ? "hover:bg-zinc-100" : ""
   }`;
 
@@ -330,18 +332,7 @@ const FEATURE_OPTIONS: { key: keyof RankingFeatures; label: string; hint: string
   { key: "activityColors", label: "Activity colours", hint: "Booked and recently active fighters" },
 ];
 
-function Switch({ on }: { on: boolean }) {
-  return (
-    <span aria-hidden="true" className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${on ? "bg-sky-500" : "bg-zinc-300"}`}>
-      <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${on ? "translate-x-4" : "translate-x-0.5"}`} />
-    </span>
-  );
-}
-
-const MENU_SELECT = "h-8 shrink-0 rounded-lg border border-zinc-200 bg-zinc-50 pl-2.5 pr-7 text-xs font-medium text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-400";
-
-/** Display options. A popover under the button on a wide screen; on a phone
- *  a sheet from the bottom edge, where a thumb can reach every switch. */
+/** Display options for the lists. */
 function FeaturesMenu({
   features,
   onChange,
@@ -357,96 +348,30 @@ function FeaturesMenu({
   divisionOrder: DivisionOrder;
   onDivisionOrder: (order: DivisionOrder) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      setOpen(false);
-      buttonRef.current?.focus();
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
-
   const enabledCount = Object.values(features).filter(Boolean).length;
-
   return (
-    <div ref={rootRef} className="relative z-40">
-      <button
-        ref={buttonRef}
-        type="button"
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        onClick={() => setOpen((value) => !value)}
-        className="flex h-8 items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50"
-      >
-        <SlidersHorizontal className="h-3.5 w-3.5 text-zinc-500" aria-hidden="true" />
-        Display
-        <span className="text-[10px] tabular-nums text-zinc-400">{enabledCount}/4</span>
-      </button>
-      {open ? (
-        <>
-          <div className="fixed inset-0 z-40 bg-black/30 sm:hidden" aria-hidden="true" />
-          <div
-            role="dialog"
-            aria-label="Ranking display"
-            className="fixed inset-x-0 bottom-0 z-50 max-h-[80vh] overflow-y-auto rounded-t-2xl border-t border-zinc-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:mt-2 sm:w-80 sm:rounded-2xl sm:border sm:pb-0 sm:shadow-xl"
-          >
-            <div className="flex items-center justify-between px-4 pb-1 pt-3">
-              <span className="text-sm font-semibold text-zinc-900">Display</span>
-              <button type="button" onClick={() => onChange(DEFAULT_FEATURES)} className="rounded-full px-2 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900">
-                Reset
-              </button>
-            </div>
-            <div className="px-1.5">
-              {FEATURE_OPTIONS.map((option) => (
-                <button
-                  key={option.key}
-                  type="button"
-                  role="switch"
-                  aria-checked={features[option.key]}
-                  onClick={() => onChange({ ...features, [option.key]: !features[option.key] })}
-                  className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-zinc-50"
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[13px] font-medium text-zinc-800">{option.label}</span>
-                    <span className="block text-[11px] leading-4 text-zinc-400">{option.hint}</span>
-                  </span>
-                  <Switch on={features[option.key]} />
-                </button>
-              ))}
-            </div>
-            <div className="mt-1 grid grid-cols-2 gap-2 border-t border-zinc-100 px-4 py-3">
-              <label className="flex flex-col gap-1 text-[11px] font-medium text-zinc-500">
-                Division order
-                <select value={divisionOrder} onChange={(event) => onDivisionOrder(event.target.value as DivisionOrder)} className={MENU_SELECT}>
-                  <option value="light">Lightest first</option>
-                  <option value="heavy">Heaviest first</option>
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-[11px] font-medium text-zinc-500">
-                Fight dates
-                <select value={dateMode} onChange={(event) => onDateMode(event.target.value as DateMode)} className={MENU_SELECT}>
-                  <option value="relative">Relative</option>
-                  <option value="date">Calendar</option>
-                </select>
-              </label>
-            </div>
-          </div>
-        </>
-      ) : null}
-    </div>
+    <OptionsSheet label="Display" count={`${enabledCount}/4`} onReset={() => onChange(DEFAULT_FEATURES)} iconOnlyOnPhone>
+      <div className="px-1.5">
+        {FEATURE_OPTIONS.map((option) => (
+          <SwitchRow key={option.key} label={option.label} hint={option.hint} on={features[option.key]}
+            onChange={(on) => onChange({ ...features, [option.key]: on })} />
+        ))}
+      </div>
+      <div className="mt-1 grid grid-cols-2 gap-2 border-t border-zinc-100 px-4 py-3">
+        <SheetField label="Division order">
+          <select value={divisionOrder} onChange={(event) => onDivisionOrder(event.target.value as DivisionOrder)} className={SHEET_SELECT}>
+            <option value="light">Lightest first</option>
+            <option value="heavy">Heaviest first</option>
+          </select>
+        </SheetField>
+        <SheetField label="Fight dates">
+          <select value={dateMode} onChange={(event) => onDateMode(event.target.value as DateMode)} className={SHEET_SELECT}>
+            <option value="relative">Relative</option>
+            <option value="date">Calendar</option>
+          </select>
+        </SheetField>
+      </div>
+    </OptionsSheet>
   );
 }
 
@@ -514,8 +439,10 @@ export default function RankingsPage() {
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
       <div className="p-2 pb-8 sm:p-3">
-        <div className={`${shell} mb-2 flex flex-col gap-2 px-2.5 py-2 sm:mb-3 sm:px-3 lg:flex-row lg:items-center lg:gap-3`}>
-          <div className="flex items-center gap-1.5 overflow-x-auto sm:gap-2">
+        <div className={`${shell} mb-2 flex flex-col gap-1.5 px-2.5 py-2 sm:mb-3 sm:px-3 lg:flex-row lg:items-center lg:gap-3`}>
+          {/* One row on a phone: both switches and the Display button. From
+              `lg` the row dissolves so the legend can sit between them. */}
+          <div className="flex items-center gap-1.5 sm:gap-2 lg:contents">
             <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Ranking view">
               {SOURCES.map((source) => (
                 <button
@@ -547,9 +474,18 @@ export default function RankingsPage() {
                 </button>
               ))}
             </div>
+            <div className="ml-auto lg:order-last lg:ml-0">
+              <FeaturesMenu
+              features={features}
+              onChange={setFeatures}
+              dateMode={settings.dateMode}
+              onDateMode={(mode) => update("dateMode", mode)}
+              divisionOrder={settings.divisionOrder}
+              onDivisionOrder={(order) => update("divisionOrder", order)}
+            />
+            </div>
           </div>
-
-          <div className="flex items-center gap-3 lg:ml-auto">
+          <div className="flex items-center gap-3 px-1 lg:ml-auto lg:px-0">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-zinc-500 lg:justify-end">
               {features.activityColors ? (
                 <>
@@ -566,14 +502,6 @@ export default function RankingsPage() {
               {/* ufc.com is read every six hours; a day without one is worth saying. */}
               <Freshness label="Updated" at={data?.updated_at} staleAfterHours={24} />
             </div>
-            <FeaturesMenu
-              features={features}
-              onChange={setFeatures}
-              dateMode={settings.dateMode}
-              onDateMode={(mode) => update("dateMode", mode)}
-              divisionOrder={settings.divisionOrder}
-              onDivisionOrder={(order) => update("divisionOrder", order)}
-            />
           </div>
         </div>
 
