@@ -25,7 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { settings } = useSettings();
   if (!KEY) return <>{children}</>;
   return (
-    <ClerkProvider publishableKey={KEY} proxyUrl={PROXY_URL} appearance={{ variables: settings.theme === "dark" ? DARK : {} }}>
+    <ClerkProvider publishableKey={KEY} proxyUrl={PROXY_URL} signInUrl="/sign-in" signUpUrl="/sign-up" appearance={{ variables: settings.theme === "dark" ? DARK : {} }}>
       {children}
     </ClerkProvider>
   );

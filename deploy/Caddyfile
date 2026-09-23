@@ -22,6 +22,9 @@
       header_up Clerk-Proxy-Url https://{$DOMAIN}/__clerk
       header_up Clerk-Secret-Key {$CLERK_SECRET_KEY}
       header_up X-Forwarded-For {client_ip}
+      # Clerk answers some requests with a redirect to its own root-relative
+      # path, which only exists under this prefix.
+      header_down Location "^/v1/" "/__clerk/v1/"
     }
   }
   handle {
