@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { RotateCcw } from "lucide-react";
+import OptionsSheet, { SHEET_SELECT, SheetField, SwitchRow } from "../components/OptionsSheet";
 import { useApi } from "../api";
 import type { StatChip, StatsDashboard } from "../api";
 import Avatar from "../components/Avatar";
@@ -746,7 +747,7 @@ function Leaderboard({
             <span className="shrink-0 self-start"><Avatar src={fighter.photo_url} name={fighter.name} size="xs" /></span>
             <span className="min-w-0 flex-1">
               <span className="flex min-w-0 items-center gap-1.5">
-                <span className="min-w-0 truncate text-sm font-medium text-zinc-900" title={fighter.name}>{fighter.name}</span>
+                <span className="min-w-0 text-sm font-medium leading-5 text-zinc-900">{fighter.name}</span>
                 {fighterPinned ? <span className="shrink-0 rounded bg-zinc-200 px-1 py-px text-[7px] font-bold uppercase tracking-wider text-zinc-500">Pinned</span> : null}
               </span>
               <span className="block text-[10px] leading-[1.3] text-zinc-400" title={`${fighter.division} · ${fighter.detail}`}>
@@ -768,18 +769,6 @@ function Leaderboard({
 
 const ROW_COUNTS = Array.from({ length: 15 }, (_, index) => String((index + 1) * 10));
 
-function FilterRow({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <label className="flex items-start justify-between gap-4 px-4 py-2.5 text-zinc-700">
-      <span className="min-w-0">
-        <span className="block text-xs font-medium">{label}</span>
-        {hint ? <span className="mt-0.5 block text-[10px] leading-4 text-zinc-400">{hint}</span> : null}
-      </span>
-      <span className="shrink-0">{children}</span>
-    </label>
-  );
-}
-
 function FiltersMenu({
   years,
   divisions,
@@ -795,6 +784,7 @@ function FiltersMenu({
   setKeepFullLists,
   division,
   setDivision,
+  onReset,
 }: {
   years: number[];
   divisions: string[];
@@ -810,32 +800,8 @@ function FiltersMenu({
   setKeepFullLists: (value: boolean) => void;
   division: string;
   setDivision: (value: string) => void;
+  onReset: () => void;
 }) {
-  const detailsRef = useRef<HTMLDetailsElement>(null);
-  useEffect(() => {
-    const close = (returnFocus = false) => {
-      const details = detailsRef.current;
-      if (!details?.open) return;
-      details.open = false;
-      if (returnFocus) details.querySelector<HTMLElement>("summary")?.focus();
-    };
-    const onPointerDown = (event: PointerEvent) => {
-      const details = detailsRef.current;
-      if (details?.open && !details.contains(event.target as Node)) close();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !detailsRef.current?.open) return;
-      event.preventDefault();
-      close(true);
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, []);
-
   const active = [
     settings.statsSince !== "all",
     settings.statsUntil !== "all",
@@ -850,146 +816,84 @@ function FiltersMenu({
   ].filter(Boolean).length;
 
   return (
-    <details ref={detailsRef} className="relative z-40">
-      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 [&::-webkit-details-marker]:hidden">
-        Filters
-        {active ? <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[9px] tabular-nums text-zinc-500">{active}</span> : null}
-        <svg className="h-3 w-3 text-zinc-400" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-          <path d="m3 4.5 3 3 3-3" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </summary>
-      <div className="absolute right-0 mt-2 max-h-[32rem] w-[22rem] overflow-y-auto rounded-2xl border border-zinc-200 bg-white shadow-xl">
-        <div className="border-b border-zinc-100 px-4 py-3">
-          <div className="text-xs font-semibold text-zinc-900">Shared filters</div>
-          <div className="mt-0.5 text-[10px] text-zinc-400">These scope all five cards at once.</div>
-        </div>
-        <div className="divide-y divide-zinc-100">
-          <FilterRow label="From" hint="Only bouts on or after this year.">
-            <Select label="Starting year" value={settings.statsSince} onChange={(value) => update("statsSince", value)}>
-              <option value="all">First event</option>
-              {years.map((yearValue) => <option key={yearValue} value={yearValue}>{yearValue}</option>)}
-            </Select>
-          </FilterRow>
-          <FilterRow label="To" hint="Only bouts on or before this year.">
-            <Select label="Ending year" value={settings.statsUntil} onChange={(value) => update("statsUntil", value)}>
-              <option value="all">Latest event</option>
-              {years.map((yearValue) => <option key={yearValue} value={yearValue}>{yearValue}</option>)}
-            </Select>
-          </FilterRow>
-          <FilterRow label="Bout type">
-            <Select label="Bout type" value={settings.boutType} onChange={(value) => update("boutType", value as StatsSettings["boutType"])}>
-              <option value="all">All bouts</option>
-              <option value="title">Championship only</option>
-              <option value="nonTitle">Exclude championship</option>
-            </Select>
-          </FilterRow>
-          <FilterRow label="Card position">
-            <Select label="Card position" value={settings.cardPosition} onChange={(value) => update("cardPosition", value as StatsSettings["cardPosition"])}>
-              <option value="all">Whole card</option>
-              <option value="main">Main events</option>
-              <option value="undercard">Undercard</option>
-            </Select>
-          </FilterRow>
-          <FilterRow label="Scheduled length">
-            <Select label="Scheduled length" value={settings.scheduledRounds} onChange={(value) => update("scheduledRounds", value as StatsSettings["scheduledRounds"])}>
-              <option value="all">Any length</option>
-              <option value="3">3-round bouts</option>
-              <option value="5">5-round bouts</option>
-            </Select>
-          </FilterRow>
-          <FilterRow label="Division">
-            <select
-              aria-label="Division"
-              value={division}
-              onChange={(event) => {
-                const next = event.target.value;
-                setDivision(next);
-                if (next !== "all" && settings.winsMode === "divisions") update("winsMode", "total");
-                if (next !== "all" && settings.lossesMode === "divisions") update("lossesMode", "total");
-                if (next !== "all" && settings.boutsMode === "divisions") update("boutsMode", "total");
-              }}
-              className={`${selectClass} w-40`}
-            >
-              <option value="all">All divisions</option>
-              {divisions.map((name) => <option key={name} value={name}>{name}</option>)}
-            </select>
-          </FilterRow>
-          <FilterRow label="Minimum bouts" hint="Career UFC bouts a fighter needs to appear at all.">
-            <Select label="Minimum UFC bouts" value={settings.minimumFights} onChange={(value) => update("minimumFights", value as StatsSettings["minimumFights"])}>
-              <option value="1">1+</option>
-              <option value="3">3+</option>
-              <option value="5">5+</option>
-              <option value="10">10+</option>
-              <option value="15">15+</option>
-              <option value="20">20+</option>
-            </Select>
-          </FilterRow>
-          <FilterRow label="Minimum sample" hint="Qualifying attempts a rate needs before it is ranked, so a one-for-one record cannot top a percentage board.">
-            <Select label="Minimum sample for rate statistics" value={settings.minimumSample} onChange={(value) => update("minimumSample", value as StatsSettings["minimumSample"])}>
-              <option value="1">1+</option>
-              <option value="3">3+</option>
-              <option value="5">5+</option>
-              <option value="10">10+</option>
-              <option value="15">15+</option>
-            </Select>
-          </FilterRow>
-          <FilterRow label="Fighters per chart" hint="How many rows each card lists.">
-            <Select label="Fighters per chart" value={settings.limit} onChange={(value) => update("limit", value)}>
-              {ROW_COUNTS.map((count) => <option key={count} value={count}>{count}</option>)}
-            </Select>
-          </FilterRow>
-          <label className="flex cursor-pointer items-start justify-between gap-4 px-4 py-2.5 text-zinc-700 transition-colors hover:bg-zinc-50">
-            <span>
-              <span className="block text-xs font-medium">Show more info</span>
-              <span className="mt-0.5 block text-[10px] font-normal leading-4 text-zinc-400">Name the bouts behind every number: the opponents, champions, divisions and prices a row is made of.</span>
-            </span>
-            <input
-              type="checkbox"
-              checked={showMoreInfo}
-              onChange={(event) => setShowMoreInfo(event.target.checked)}
-              className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-zinc-300 accent-zinc-900"
-            />
-          </label>
-          <label className="flex cursor-pointer items-start justify-between gap-4 px-4 py-2.5 text-zinc-700 transition-colors hover:bg-zinc-50">
-            <span>
-              <span className="block text-xs font-medium">Keep full lists</span>
-              <span className="mt-0.5 block text-[10px] font-normal leading-4 text-zinc-400">Keep each complete leaderboard visible and pin selected fighters above it in the order they were added.</span>
-            </span>
-            <input
-              type="checkbox"
-              checked={keepFullLists}
-              onChange={(event) => setKeepFullLists(event.target.checked)}
-              className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-zinc-300 accent-zinc-900"
-            />
-          </label>
-          <label className="flex cursor-pointer items-center justify-between gap-4 px-4 py-2.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50">
-            Include women
-            <input
-              type="checkbox"
-              checked={includeWomen}
-              onChange={(event) => {
-                const checked = event.target.checked;
-                setIncludeWomen(checked);
-                if (!checked && division.startsWith("Women's ")) setDivision("all");
-              }}
-              className="h-3.5 w-3.5 rounded border-zinc-300 accent-zinc-900"
-            />
-          </label>
-          <label className="flex cursor-pointer items-start justify-between gap-4 px-4 py-2.5 text-zinc-700 transition-colors hover:bg-zinc-50">
-            <span>
-              <span className="block text-xs font-medium">Include inactive fighters</span>
-              <span className="mt-0.5 block text-[10px] font-normal leading-4 text-zinc-400">Turn off to show only fighters who competed in the past 2 years or have a bout booked.</span>
-            </span>
-            <input
-              type="checkbox"
-              checked={includeInactiveFighters}
-              onChange={(event) => setIncludeInactiveFighters(event.target.checked)}
-              className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-zinc-300 accent-zinc-900"
-            />
-          </label>
-        </div>
+    <OptionsSheet label="Filters" count={active || null} onReset={onReset}>
+      <p className="px-4 pb-2 text-[11px] text-zinc-400">Applies to all five cards.</p>
+      <div className="grid grid-cols-2 gap-x-2 gap-y-2.5 border-b border-zinc-100 px-4 pb-3">
+        <SheetField label="From">
+          <select aria-label="Starting year" value={settings.statsSince} onChange={(event) => update("statsSince", event.target.value)} className={SHEET_SELECT}>
+            <option value="all">First event</option>
+            {years.map((yearValue) => <option key={yearValue} value={yearValue}>{yearValue}</option>)}
+          </select>
+        </SheetField>
+        <SheetField label="To">
+          <select aria-label="Ending year" value={settings.statsUntil} onChange={(event) => update("statsUntil", event.target.value)} className={SHEET_SELECT}>
+            <option value="all">Latest event</option>
+            {years.map((yearValue) => <option key={yearValue} value={yearValue}>{yearValue}</option>)}
+          </select>
+        </SheetField>
+        <SheetField label="Bout type">
+          <select value={settings.boutType} onChange={(event) => update("boutType", event.target.value as StatsSettings["boutType"])} className={SHEET_SELECT}>
+            <option value="all">All bouts</option>
+            <option value="title">Championship only</option>
+            <option value="nonTitle">Exclude championship</option>
+          </select>
+        </SheetField>
+        <SheetField label="Card position">
+          <select value={settings.cardPosition} onChange={(event) => update("cardPosition", event.target.value as StatsSettings["cardPosition"])} className={SHEET_SELECT}>
+            <option value="all">Whole card</option>
+            <option value="main">Main events</option>
+            <option value="undercard">Undercard</option>
+          </select>
+        </SheetField>
+        <SheetField label="Scheduled length">
+          <select value={settings.scheduledRounds} onChange={(event) => update("scheduledRounds", event.target.value as StatsSettings["scheduledRounds"])} className={SHEET_SELECT}>
+            <option value="all">Any length</option>
+            <option value="3">3-round bouts</option>
+            <option value="5">5-round bouts</option>
+          </select>
+        </SheetField>
+        <SheetField label="Division">
+          <select
+            value={division}
+            onChange={(event) => {
+              const next = event.target.value;
+              setDivision(next);
+              if (next !== "all" && settings.winsMode === "divisions") update("winsMode", "total");
+              if (next !== "all" && settings.lossesMode === "divisions") update("lossesMode", "total");
+              if (next !== "all" && settings.boutsMode === "divisions") update("boutsMode", "total");
+            }}
+            className={SHEET_SELECT}
+          >
+            <option value="all">All divisions</option>
+            {divisions.map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </SheetField>
+        <SheetField label="Minimum UFC bouts">
+          <select title="Career UFC bouts a fighter needs to appear at all" value={settings.minimumFights} onChange={(event) => update("minimumFights", event.target.value as StatsSettings["minimumFights"])} className={SHEET_SELECT}>
+            {["1", "3", "5", "10", "15", "20"].map((count) => <option key={count} value={count}>{count}+</option>)}
+          </select>
+        </SheetField>
+        <SheetField label="Minimum sample">
+          <select title="Qualifying attempts a rate needs before it is ranked, so a one-for-one record cannot top a percentage board" value={settings.minimumSample} onChange={(event) => update("minimumSample", event.target.value as StatsSettings["minimumSample"])} className={SHEET_SELECT}>
+            {["1", "3", "5", "10", "15"].map((count) => <option key={count} value={count}>{count}+</option>)}
+          </select>
+        </SheetField>
+        <SheetField label="Fighters per chart">
+          <select value={settings.limit} onChange={(event) => update("limit", event.target.value)} className={SHEET_SELECT}>
+            {ROW_COUNTS.map((count) => <option key={count} value={count}>{count}</option>)}
+          </select>
+        </SheetField>
       </div>
-    </details>
+      <div className="px-1.5 py-1">
+        <SwitchRow label="Show more info" hint="Name the bouts behind every number" on={showMoreInfo} onChange={setShowMoreInfo} />
+        <SwitchRow label="Keep full lists" hint="Pin selected fighters above each full list" on={keepFullLists} onChange={setKeepFullLists} />
+        <SwitchRow label="Include women" on={includeWomen} onChange={(on) => {
+          setIncludeWomen(on);
+          if (!on && division.startsWith("Women's ")) setDivision("all");
+        }} />
+        <SwitchRow label="Include inactive fighters" hint="Off: only fought in 2 years or booked" on={includeInactiveFighters} onChange={setIncludeInactiveFighters} />
+      </div>
+    </OptionsSheet>
   );
 }
 
@@ -1005,7 +909,7 @@ function SelectedFighterStrip({ fighters, onChange }: {
           <span key={fighter.id} className="flex h-8 max-w-full items-center gap-1.5 rounded-xl border border-zinc-200 bg-zinc-50 py-0.5 pl-1 pr-1 text-[10px] font-medium text-zinc-700">
             <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-zinc-200 text-[8px] font-bold tabular-nums text-zinc-500">{index + 1}</span>
             <Avatar src={fighter.photo_url} name={fighter.name} size="xs" />
-            <span className="max-w-44 truncate" title={fighter.name}>{fighter.name}</span>
+            <span className="whitespace-nowrap">{fighter.name}</span>
             <button
               type="button"
               aria-label={`Remove ${fighter.name}`}
@@ -1082,22 +986,21 @@ export default function StatsPage() {
 
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
-      <main className="mx-auto max-w-[100rem] p-3 pb-8">
-        <section className={`${shell} relative z-30 mb-3 flex flex-col gap-3 px-4 py-2 sm:grid sm:min-h-14 sm:grid-cols-[1fr_auto_1fr] sm:items-center`}>
-          <div className="hidden sm:block" aria-hidden="true" />
-          <div className="w-full min-w-24 sm:w-72">
+      <main className="mx-auto max-w-[100rem] p-2 pb-8 sm:p-3">
+        <section className={`${shell} relative z-30 mb-2 flex items-center gap-2 px-2.5 py-2 sm:mb-3 sm:justify-center sm:px-4`}>
+          <div className="min-w-0 flex-1 sm:w-80 sm:flex-none">
             <FighterSearch
               selected={selectedFighters}
               showSelected={false}
-              emptyPlaceholder="Search fighters to compare across every card"
+              emptyPlaceholder="Compare fighters…"
               onChange={(fighters) => {
                 setSelectedFighters(fighters);
                 if (fighters.length) setDivision("all");
               }}
             />
           </div>
-          <div className="flex items-center gap-2 sm:justify-self-end">
-            <span className={`text-[10px] font-medium text-zinc-400 max-sm:sr-only ${loading ? "visible" : "invisible"}`} role="status" aria-hidden={!loading}>Updating…</span>
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <span className={`text-[10px] font-medium text-zinc-400 max-sm:sr-only sm:absolute sm:right-4 ${loading ? "visible" : "invisible"}`} role="status" aria-hidden={!loading}>Updating…</span>
             <FiltersMenu
               years={dashboard.years}
               divisions={dashboard.divisions}
@@ -1113,13 +1016,14 @@ export default function StatsPage() {
               setKeepFullLists={setKeepFullLists}
               division={division}
               setDivision={setDivision}
+              onReset={reset}
             />
             <button
               type="button"
               onClick={reset}
               aria-label="Reset all statistics filters"
               title="Reset all filters"
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
             >
               <RotateCcw
                 className="h-3.5 w-3.5 transition-transform duration-500 ease-out"

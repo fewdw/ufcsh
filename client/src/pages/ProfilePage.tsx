@@ -30,6 +30,8 @@ const TABS = [
 ] as const;
 type Section = (typeof TABS)[number]["id"];
 const quiet = "rounded-full px-3 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
+/** The account's own actions: short enough that all three sit on one line. */
+const action = "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
 const primary = "rounded-full bg-zinc-900 px-4 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40";
 const danger = "rounded-full bg-rose-600 px-4 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40";
 
@@ -146,11 +148,11 @@ function Profile({ handle }: { handle: string }) {
   const { scorer, agreement } = view;
 
   return (
-    <div ref={scroll} className="h-full overflow-y-auto">
-      <div className="mx-auto flex max-w-3xl flex-col gap-3 px-3 py-4 sm:px-5">
+    <div ref={scroll} className="h-full overflow-y-auto overflow-x-hidden">
+      <div className="mx-auto flex min-w-0 max-w-3xl flex-col gap-2 px-2 py-2 sm:gap-3 sm:px-5 sm:py-4">
         <ProfileHeader scorer={scorer} mine={mine} onRenamed={refresh} />
 
-        <div role="tablist" aria-label="Profile sections" className={`${segmentedGroup} w-full`}>
+        <div role="tablist" aria-label="Profile sections" className={`${segmentedGroup} w-full gap-0.5 p-0.5 sm:gap-1 sm:p-1`}>
           {tabs.map((tab, index) => (
             <button
               key={tab.id}
@@ -170,7 +172,7 @@ function Profile({ handle }: { handle: string }) {
                 const params = new URLSearchParams(search); params.set("tab", tabs[next].id); setSearch(params, { replace: true });
                 event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
               }}
-              className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${section === tab.id ? segmentedSelected : segmentedIdle}`}
+              className={`flex-auto whitespace-nowrap rounded-full px-1.5 py-1.5 text-xs font-medium transition min-[400px]:px-2 sm:px-3 ${section === tab.id ? segmentedSelected : segmentedIdle}`}
             >
               {tab.label}
             </button>
@@ -180,14 +182,15 @@ function Profile({ handle }: { handle: string }) {
         <div id="profile-tabpanel" role="tabpanel" aria-labelledby={`profile-tab-${section}`} className="flex flex-col gap-3">
           {section === "predictions" ? <ProfilePredictions key={handle} handle={handle} mine={mine} />
             : section === "bets" ? <ProfileBets key={handle} handle={handle} mine={mine} />
-            : section === "comments" ? <ProfileComments key={handle} handle={handle} mine={mine} visible={scorer.commentsPublic} />
+            : section === "comments" ? <ProfileComments key={handle} handle={handle} mine={mine} visible={scorer.commentsPublic}
+                visibilityControl={mine ? <CommentsVisibility visible={scorer.commentsPublic} onChanged={refresh} /> : null} />
             : section === "leaderboards" ? <Leaderboards handle={handle} /> : <>
           <section className={`${PANEL_SHELL} overflow-hidden`}>
             <PanelHeading
               title="Scored fights"
               subtitle={`${view.total.toLocaleString()} of ${scorer.cards.toLocaleString()}`}
               aside={
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex w-full items-center gap-2 sm:w-auto">
                   <ScorecardFilter value={filter} agreement={agreement} total={scorer.cards} onChange={setFilter} />
                   <SearchBox value={query} onChange={value => setParam("q", value || null)} />
                 </div>
@@ -254,7 +257,7 @@ function SearchBox({ value, onChange }: { value: string; onChange: (value: strin
       onChange={event => setTyped(event.target.value.slice(0, 60))}
       placeholder="Search fighters or events…"
       aria-label="Search scored fights"
-      className="w-40 rounded-md border border-zinc-200 bg-white px-2.5 py-1 text-xs outline-none focus:border-zinc-400 sm:w-52"
+      className="min-w-0 flex-1 rounded-md border border-zinc-200 bg-white px-2.5 py-1 text-xs outline-none focus:border-zinc-400 sm:w-52 sm:flex-none"
     />
   );
 }
@@ -299,7 +302,7 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
           ) : (
             <>
               <h1 className="flex min-w-0 items-center gap-1.5 text-base font-bold text-zinc-900 sm:text-lg">
-                <span className="truncate">{scorer.displayName}</span>
+                <span className="min-w-0 [overflow-wrap:anywhere]">{scorer.displayName}</span>
                 {mine ? (
                   <button type="button" onClick={() => setEditing(true)} title="Change username"
                     aria-label="Change username"
@@ -313,23 +316,22 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
                 {scorer.joinedAt ? ` · Joined ${formatDateShortWithYear(new Date(scorer.joinedAt).toISOString().slice(0, 10))}` : ""}
               </p>
               {mine && user?.primaryEmailAddress?.emailAddress ? (
-                <p className="mt-1 truncate text-xs text-zinc-500" title={user.primaryEmailAddress.emailAddress}>{user.primaryEmailAddress.emailAddress}</p>
+                <p className="mt-1 text-xs text-zinc-500 [overflow-wrap:anywhere]">{user.primaryEmailAddress.emailAddress}</p>
               ) : null}
             </>
           )}
         </div>
       </div>
       {mine && user ? (
-        <div className="mt-3 flex flex-wrap gap-1.5 border-t border-zinc-100 pt-3">
-          <button type="button" onClick={() => setReportOpen(true)} className={quiet}>
-            <Flag className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />Report an issue
+        <div className="mt-3 flex items-center justify-center gap-1 border-t border-zinc-100 pt-2 sm:justify-start sm:gap-1.5">
+          <button type="button" onClick={() => setReportOpen(true)} className={action} title="Report an issue">
+            <Flag className="h-3.5 w-3.5" aria-hidden="true" />Report
           </button>
-          <button type="button" onClick={manage} className={quiet}>
-            <Settings className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />Manage account
+          <button type="button" onClick={manage} className={action} title="Manage account">
+            <Settings className="h-3.5 w-3.5" aria-hidden="true" />Account
           </button>
-          <CommentsVisibility visible={scorer.commentsPublic} onChanged={onRenamed} />
-          <button type="button" onClick={signOut} className={quiet}>
-            <LogOut className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />Sign out
+          <button type="button" onClick={signOut} className={action}>
+            <LogOut className="h-3.5 w-3.5" aria-hidden="true" />Sign out
           </button>
           <ReportIssueDialog open={reportOpen} onClose={() => setReportOpen(false)} />
         </div>
@@ -365,9 +367,9 @@ function CommentsVisibility({ visible, onChanged }: { visible: boolean; onChange
     } finally { setBusy(false); }
   };
   return (
-    <label className={`${quiet} inline-flex cursor-pointer items-center gap-1.5`} title={error || "Your comments stay on each fight either way. This only controls the Comments tab on your profile."}>
+    <label className={`${action} cursor-pointer`} title={error || "Hide the Comments tab from your profile. Your comments stay on each fight either way."}>
       <input type="checkbox" checked={hidden} disabled={busy} onChange={event => void change(event.target.checked)} className="h-3.5 w-3.5 accent-zinc-900" />
-      Hide comments from my profile
+      Hide from my profile
       {error ? <span role="alert" className="text-red-600">· {error}</span> : null}
     </label>
   );

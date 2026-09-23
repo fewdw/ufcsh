@@ -5,10 +5,11 @@ import CmdK from "./components/CmdK";
 import SearchGlyph from "./components/SearchGlyph";
 import LiveMatchup from "./components/LiveMatchup";
 import { segmentedIdle, segmentedSelected } from "./components/segmented";
-import { Moon, Sun } from "lucide-react";
+import { Moon, ShieldCheck, Sun } from "lucide-react";
 import { accountsEnabled, useAccount } from "./auth";
 import { useAdminResource, type AdminSession } from "./admin";
-import { useSettings } from "./settings";
+import { useSettings, withRanking } from "./settings";
+import { prefetch } from "./api";
 import { useFighterPrefetch } from "./useFighterPrefetch";
 import RouteErrorBoundary from "./components/RouteErrorBoundary";
 import ParlaySlip from "./components/ParlaySlip";
@@ -26,13 +27,18 @@ const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const AuthPage = lazy(() => import("./pages/AuthPage"));
 const isDevSite = import.meta.env.VITE_SITE_ORIGIN === "https://dev.ufc.sh";
 
+const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
+
+/** Admin is a fourth pill only for the few who have it. On a phone it is the
+ *  shield alone, so the row still fits beside the account picture. */
 function AdminNavItem({ active }: { active: boolean }) {
   const { isLoaded, user } = useAccount();
   const { data } = useAdminResource<AdminSession>(isLoaded && user ? "/api/admin/session" : null);
   if (!data?.admin) return null;
-  return <Link to="/admin" aria-current={active ? "page" : undefined}
-    className={`rounded-full px-1 py-1.5 text-[11px] font-medium transition min-[380px]:px-2.5 min-[380px]:text-xs sm:px-4 sm:text-sm ${active ? segmentedSelected : segmentedIdle}`}>
-    Admin
+  return <Link to="/admin" aria-current={active ? "page" : undefined} aria-label="Admin" title="Admin"
+    className={`${NAV_ITEM} flex items-center ${active ? segmentedSelected : segmentedIdle}`}>
+    <ShieldCheck className="h-4 w-4 sm:hidden" aria-hidden="true" />
+    <span className="hidden sm:inline">Admin</span>
   </Link>;
 }
 
@@ -50,7 +56,8 @@ function Header({ onSearch }: { onSearch: () => void }) {
   const isProfile = pathname.startsWith("/profiles");
   const links = [
     { href: "/", label: "Events", active: !isRankings && !isStats && !isLabs && !isProfile && !isAdmin, load: loadEventsPage },
-    { href: "/rankings", label: "Rankings", active: isRankings, load: loadRankingsPage },
+    // Pointing at Rankings starts the list too, so a tap lands on it loaded.
+    { href: "/rankings", label: "Rankings", active: isRankings, load: () => { prefetch(withRanking("/api/rankings", settings.rankingSource)); return loadRankingsPage(); } },
     { href: "/stats", label: "Stats", active: isStats || isLabs, load: loadStatsPage },
   ];
 
@@ -60,23 +67,22 @@ function Header({ onSearch }: { onSearch: () => void }) {
           the actions on the right, and the bout on now taking whatever is
           between them. Nothing is positioned over anything else, so no width
           can make two of them collide. */}
-      <div className="flex w-full items-center gap-1 px-2 py-2.5 min-[380px]:gap-2 min-[380px]:px-2.5 sm:gap-3 sm:px-5 sm:py-3">
-        <Link to="/" className={`shrink-0 text-sm font-bold tracking-tight min-[380px]:text-base sm:text-lg ${isDevSite ? "text-sky-500" : "text-zinc-900"}`}>
-          ufc<span className={isDevSite ? "" : "text-zinc-400"}>.sh</span>
+      <div className="flex w-full items-center gap-1 px-2 py-2 min-[380px]:gap-1.5 min-[380px]:px-2.5 min-[420px]:gap-2 sm:gap-3 sm:px-5 sm:py-3">
+        <Link to="/" aria-label="UFC.sh home" className={`shrink-0 text-sm font-extrabold tracking-tight min-[380px]:text-[15px] min-[420px]:text-base sm:text-lg ${isDevSite ? "text-sky-500" : "text-zinc-900"}`}>
+          UFC<span className={isDevSite ? "font-bold" : "font-bold text-zinc-400"}>.sh</span>
         </Link>
-        {/* The shared pill group, tightened below 380px so the row still fits a
+        {/* The shared pill group, tightened on a phone so the row still fits a
             320px screen with nothing clipped and nothing dropped. */}
-        <nav className="flex shrink-0 items-center gap-0.5 rounded-full bg-zinc-100 p-0.5 min-[380px]:gap-1 min-[380px]:p-1">
+        <nav className="flex shrink-0 items-center gap-0.5 rounded-full bg-zinc-100 p-0.5 sm:gap-1 sm:p-1">
           {links.map((link) => (
             <Link
               key={link.href}
               to={link.href}
               onPointerEnter={() => { void link.load().catch(() => {}); }}
               onFocus={() => { void link.load().catch(() => {}); }}
+              onTouchStart={() => { void link.load().catch(() => {}); }}
               aria-current={link.active ? "page" : undefined}
-              className={`rounded-full px-1 py-1.5 text-[11px] font-medium transition min-[380px]:px-2.5 min-[380px]:text-xs sm:px-4 sm:text-sm ${
-                link.active ? segmentedSelected : segmentedIdle
-              }`}
+              className={`${NAV_ITEM} ${link.active ? segmentedSelected : segmentedIdle}`}
             >
               {link.label}
             </Link>
@@ -91,7 +97,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
           <LiveMatchup />
         </div>
 
-        <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2 md:ml-0">
+        <div className="ml-auto flex shrink-0 items-center gap-0.5 min-[380px]:gap-1 sm:gap-2 md:ml-0">
           <button
             type="button"
             onClick={onSearch}

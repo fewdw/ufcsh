@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api";
 import type { Division, FighterPreview, FighterPreviewFight, RankingEntry } from "../api";
@@ -12,6 +12,7 @@ import { orderDivisions } from "../divisionOrder";
 import Freshness from "../components/Freshness";
 import ResultDots from "../components/ResultDots";
 import { resultDot } from "../resultDots";
+import OptionsSheet, { SHEET_SELECT, SheetField, SwitchRow } from "../components/OptionsSheet";
 
 const shell = "rounded-2xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
 
@@ -24,15 +25,18 @@ type RankingFeatures = {
 };
 
 const DEFAULT_FEATURES: RankingFeatures = {
-  opponents: false,
+  opponents: true,
   hoverHistory: true,
   streaks: true,
   activityColors: true,
 };
 
+/** v2 started opponent details on; a v1 choice is not carried over. */
+const FEATURES_KEY = "rankings-features-v2";
+
 function loadFeatures(): RankingFeatures {
   try {
-    const saved = JSON.parse(localStorage.getItem("rankings-features-v1") ?? "null");
+    const saved = JSON.parse(localStorage.getItem(FEATURES_KEY) ?? "null");
     if (!saved || typeof saved !== "object") return DEFAULT_FEATURES;
     return {
       opponents: typeof saved.opponents === "boolean" ? saved.opponents : DEFAULT_FEATURES.opponents,
@@ -54,7 +58,9 @@ function isP4P(d: Division): boolean {
 
 function activityMeta(entry: RankingEntry, dateMode: "relative" | "date"): { row: string; hint: string; showsLastFight: boolean } {
   const a = entry.activity;
-  const when = (date: string) => dateMode === "date" ? formatDateShort(date) : relativeDate(date);
+  // "4d ago", not "4 days ago": the whole line has to fit beside the name.
+  const when = (date: string) => dateMode === "date" ? formatDateShort(date)
+    : relativeDate(date).replace(/(\d+) days?\b/, "$1d");
   const lastFightHint = a.last_fight_date
     ? `${a.last_fight_opponent ? `vs ${a.last_fight_opponent} · ` : ""}${when(a.last_fight_date)}`
     : "";
@@ -67,7 +73,7 @@ function activityMeta(entry: RankingEntry, dateMode: "relative" | "date"): { row
       };
     case "active":
       return {
-        row: "bg-orange-50/90",
+        row: "bg-violet-50/90",
         hint: lastFightHint || "active",
         showsLastFight: Boolean(lastFightHint),
       };
@@ -202,10 +208,11 @@ function RankRow({
       </span>
       <Avatar src={entry.photo_url} name={entry.name} size="xs" />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-medium text-zinc-900">{entry.name}</span>
+        <span className="block text-[13px] font-medium leading-4 text-zinc-900">{entry.name}</span>
         {features.opponents && meta.hint ? (
           <span
-            className={`block whitespace-normal text-[10px] leading-3.5 [overflow-wrap:anywhere] ${
+            title={meta.hint}
+            className={`block whitespace-normal text-[10px] leading-3.5 [overflow-wrap:anywhere] xl:truncate xl:whitespace-nowrap ${
               meta.showsLastFight
                 ? lastFightTone(entry.activity.last_fight_outcome)
                 : "text-zinc-400"
@@ -215,7 +222,7 @@ function RankRow({
           </span>
         ) : null}
       </span>
-      <span className={`ml-auto grid shrink-0 items-center ${features.streaks ? "grid-cols-[2.25rem_2.75rem]" : "grid-cols-[2.75rem]"}`}>
+      <span className={`ml-auto grid shrink-0 items-center ${features.streaks ? "grid-cols-[1.75rem_2.25rem]" : "grid-cols-[2.25rem]"}`}>
         <span className={`text-center text-[11px] font-semibold tabular-nums ${mv?.cls ?? ""}`}>
           {mv?.label ?? ""}
         </span>
@@ -231,7 +238,7 @@ function RankRow({
     </>
   );
 
-  const className = `flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors ${features.activityColors ? meta.row : ""} ${
+  const className = `flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors ${features.activityColors ? meta.row : ""} ${
     entry.fighter_id ? "hover:bg-zinc-100" : ""
   }`;
 
@@ -318,6 +325,14 @@ function DivisionCard({
   );
 }
 
+const FEATURE_OPTIONS: { key: keyof RankingFeatures; label: string; hint: string }[] = [
+  { key: "opponents", label: "Opponents", hint: "Next opponent or last result under each name" },
+  { key: "hoverHistory", label: "Last 5 on hover", hint: "Recent and booked fights beside the pointer" },
+  { key: "streaks", label: "Streaks", hint: "4W, 2L, 1D, 1NC" },
+  { key: "activityColors", label: "Activity colours", hint: "Booked and recently active fighters" },
+];
+
+/** Display options for the lists. */
 function FeaturesMenu({
   features,
   onChange,
@@ -333,127 +348,30 @@ function FeaturesMenu({
   divisionOrder: DivisionOrder;
   onDivisionOrder: (order: DivisionOrder) => void;
 }) {
-  const detailsRef = useRef<HTMLDetailsElement>(null);
-  useEffect(() => {
-    const close = (returnFocus = false) => {
-      const details = detailsRef.current;
-      if (!details?.open) return;
-      details.open = false;
-      if (returnFocus) details.querySelector<HTMLElement>("summary")?.focus();
-    };
-    const onPointerDown = (event: PointerEvent) => {
-      const details = detailsRef.current;
-      if (details?.open && !details.contains(event.target as Node)) close();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !detailsRef.current?.open) return;
-      event.preventDefault();
-      close(true);
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, []);
-
-  const toggle = (key: keyof RankingFeatures) => {
-    onChange({ ...features, [key]: !features[key] });
-  };
   const enabledCount = Object.values(features).filter(Boolean).length;
-  const options: { key: keyof RankingFeatures; label: string; description: string }[] = [
-    {
-      key: "opponents",
-      label: "Opponent details",
-      description: "Show the next opponent or latest result below each name.",
-    },
-    {
-      key: "hoverHistory",
-      label: "Hover: last 5 fights",
-      description: "Show five total entries, including the nearest scheduled fight.",
-    },
-    {
-      key: "streaks",
-      label: "Current streak",
-      description: "Show consecutive UFC results as 4W, 2L, 1D or 1NC.",
-    },
-    {
-      key: "activityColors",
-      label: "Activity colors",
-      description: "Highlight scheduled and recently active fighters.",
-    },
-  ];
-
   return (
-    <details ref={detailsRef} className="relative z-40">
-      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 [&::-webkit-details-marker]:hidden">
-        Features
-        <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[9px] tabular-nums text-zinc-500">{enabledCount}/4</span>
-        <svg className="h-3 w-3 text-zinc-400" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-          <path d="m3 4.5 3 3 3-3" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </summary>
-      <div className="absolute right-0 mt-2 w-72 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl">
-        <div className="border-b border-zinc-100 px-4 py-3">
-          <div className="text-xs font-semibold text-zinc-900">Ranking features</div>
-          <div className="mt-0.5 text-[10px] text-zinc-400">Choose how much detail appears in the rankings.</div>
-        </div>
-        <div className="divide-y divide-zinc-100">
-          {options.map((option) => (
-            <label key={option.key} className="flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors hover:bg-zinc-50">
-              <input
-                type="checkbox"
-                checked={features[option.key]}
-                onChange={() => toggle(option.key)}
-                className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-zinc-900"
-              />
-              <span className="min-w-0">
-                <span className="block text-xs font-medium text-zinc-800">{option.label}</span>
-                <span className="mt-0.5 block text-[10px] leading-4 text-zinc-400">{option.description}</span>
-              </span>
-            </label>
-          ))}
-        </div>
-        <div className="flex items-center gap-4 border-t border-zinc-100 px-4 py-3">
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs font-medium text-zinc-800">Division order</span>
-            <span className="mt-0.5 block text-[10px] leading-4 text-zinc-400">Which end of the scale the list starts from. Men first either way, with pound-for-pound at the light end.</span>
-          </span>
-          <select
-            value={divisionOrder}
-            onChange={(event) => onDivisionOrder(event.target.value as DivisionOrder)}
-            aria-label="Division order"
-            className="h-8 shrink-0 rounded-xl border border-zinc-200 bg-zinc-50 pl-2.5 pr-7 text-[11px] font-semibold text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-400"
-          >
+    <OptionsSheet label="Display" count={`${enabledCount}/4`} onReset={() => onChange(DEFAULT_FEATURES)} iconOnlyOnPhone>
+      <div className="px-1.5">
+        {FEATURE_OPTIONS.map((option) => (
+          <SwitchRow key={option.key} label={option.label} hint={option.hint} on={features[option.key]}
+            onChange={(on) => onChange({ ...features, [option.key]: on })} />
+        ))}
+      </div>
+      <div className="mt-1 grid grid-cols-2 gap-2 border-t border-zinc-100 px-4 py-3">
+        <SheetField label="Division order">
+          <select value={divisionOrder} onChange={(event) => onDivisionOrder(event.target.value as DivisionOrder)} className={SHEET_SELECT}>
             <option value="light">Lightest first</option>
             <option value="heavy">Heaviest first</option>
           </select>
-        </div>
-        <div className="flex items-center gap-4 border-t border-zinc-100 px-4 py-3">
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs font-medium text-zinc-800">Fight dates</span>
-            <span className="mt-0.5 block text-[10px] leading-4 text-zinc-400">How the last and next fight are written.</span>
-          </span>
-          <select
-            value={dateMode}
-            onChange={(event) => onDateMode(event.target.value as DateMode)}
-            aria-label="Fight date format"
-            className="h-8 shrink-0 rounded-xl border border-zinc-200 bg-zinc-50 pl-2.5 pr-7 text-[11px] font-semibold text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-400"
-          >
-            <option value="relative">Relative days</option>
-            <option value="date">Calendar date</option>
+        </SheetField>
+        <SheetField label="Fight dates">
+          <select value={dateMode} onChange={(event) => onDateMode(event.target.value as DateMode)} className={SHEET_SELECT}>
+            <option value="relative">Relative</option>
+            <option value="date">Calendar</option>
           </select>
-        </div>
-        <button
-          type="button"
-          onClick={() => onChange(DEFAULT_FEATURES)}
-          className="w-full border-t border-zinc-100 px-4 py-2.5 text-left text-[10px] font-medium text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
-        >
-          Restore recommended defaults
-        </button>
+        </SheetField>
       </div>
-    </details>
+    </OptionsSheet>
   );
 }
 
@@ -490,7 +408,7 @@ export default function RankingsPage() {
 
   useEffect(() => {
     try {
-      localStorage.setItem("rankings-features-v1", JSON.stringify(features));
+      localStorage.setItem(FEATURES_KEY, JSON.stringify(features));
     } catch {
       // Preferences remain available for the current visit when storage is disabled.
     }
@@ -520,16 +438,12 @@ export default function RankingsPage() {
 
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-7xl p-3 pb-8">
-        {/* Below `lg` this is a simple top-to-bottom stack — filters, then the
-            Features menu, then the legend — each its own full-width row, so
-            nothing is left wrapping onto a line by itself with dead space
-            around it. From `lg` up it becomes the original single row:
-            filters left, legend filling the middle, Features menu at the
-            far right. */}
-        <div className={`${shell} mb-3 flex flex-col gap-2 px-4 py-2.5 lg:flex-row lg:flex-wrap lg:items-center lg:gap-x-4 lg:gap-y-2`}>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className={segmentedGroup} role="group" aria-label="Ranking view">
+      <div className="p-2 pb-8 sm:p-3">
+        <div className={`${shell} mb-2 flex flex-col gap-1.5 px-2.5 py-2 sm:mb-3 sm:px-3 lg:flex-row lg:items-center lg:gap-3`}>
+          {/* One row on a phone: both switches and the Display button. From
+              `lg` the row dissolves so the legend can sit between them. */}
+          <div className="flex items-center gap-1.5 sm:gap-2 lg:contents">
+            <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Ranking view">
               {SOURCES.map((source) => (
                 <button
                   key={source.key}
@@ -537,7 +451,7 @@ export default function RankingsPage() {
                   aria-pressed={settings.rankingSource === source.key}
                   onClick={() => update("rankingSource", source.key)}
                   title={source.help}
-                  className={`rounded-full px-3.5 py-1 text-xs font-medium transition ${
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition sm:px-3.5 ${
                     settings.rankingSource === source.key ? segmentedSelected : segmentedIdle
                   }`}
                 >
@@ -545,14 +459,14 @@ export default function RankingsPage() {
                 </button>
               ))}
             </div>
-            <div className={segmentedGroup} role="group" aria-label="Divisions shown">
+            <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Divisions shown">
               {FILTERS.map((f) => (
                 <button
                   key={f.key}
                   type="button"
                   aria-pressed={view === f.key}
                   onClick={() => setView(f.key)}
-                  className={`rounded-full px-3.5 py-1 text-xs font-medium transition ${
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition sm:px-3.5 ${
                     view === f.key ? segmentedSelected : segmentedIdle
                   }`}
                 >
@@ -560,10 +474,8 @@ export default function RankingsPage() {
                 </button>
               ))}
             </div>
-          </div>
-
-          <div className="lg:order-3">
-            <FeaturesMenu
+            <div className="ml-auto lg:order-last lg:ml-0">
+              <FeaturesMenu
               features={features}
               onChange={setFeatures}
               dateMode={settings.dateMode}
@@ -571,35 +483,33 @@ export default function RankingsPage() {
               divisionOrder={settings.divisionOrder}
               onDivisionOrder={(order) => update("divisionOrder", order)}
             />
+            </div>
           </div>
-
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-zinc-500 lg:order-2 lg:ml-auto lg:justify-end">
-            {/* ufc.com is read every six hours; a day without one is worth saying. */}
-            <Freshness label="Rankings updated" at={data?.updated_at} staleAfterHours={24} />
-            {features.activityColors ? (
-              <>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-sm border border-sky-200 bg-sky-50" />
-                  Scheduled
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-sm border border-orange-200 bg-orange-50" />
-                  Fought in the last 45 days
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-sm border border-zinc-200 bg-white" />
-                  Free
-                </span>
-              </>
-            ) : null}
+          <div className="flex items-center gap-3 px-1 lg:ml-auto lg:px-0">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-zinc-500 lg:justify-end">
+              {features.activityColors ? (
+                <>
+                  <span className="flex items-center gap-1.5" title="Has a fight booked">
+                    <span className="h-2.5 w-2.5 rounded-sm border border-sky-200 bg-sky-50" />
+                    Booked
+                  </span>
+                  <span className="flex items-center gap-1.5" title="Fought in the last 45 days">
+                    <span className="h-2.5 w-2.5 rounded-sm border border-violet-200 bg-violet-50" />
+                    Fought ≤45d
+                  </span>
+                </>
+              ) : null}
+              {/* ufc.com is read every six hours; a day without one is worth saying. */}
+              <Freshness label="Updated" at={data?.updated_at} staleAfterHours={24} />
+            </div>
           </div>
         </div>
 
         <div
           className={
             centerFilteredCards
-              ? "flex flex-wrap justify-center gap-3"
-              : "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+              ? "flex flex-wrap justify-center gap-2 sm:gap-3"
+              : "grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-4"
           }
         >
           {shown.map((d) => (

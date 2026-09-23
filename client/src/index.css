@@ -213,9 +213,14 @@ select:not([multiple]):not([size]) {
 .dark .bg-sky-100 { background-color: #0c4a6e !important; }
 .dark .bg-slate-100 { background-color: #1e293b !important; }
 .dark .bg-violet-100 { background-color: #2e1065 !important; }
+/* Recently active rankings rows. Violet rather than a warm hue: on a dark
+   surface orange darkens into the red that means a loss everywhere else. */
+.dark .bg-violet-50,
+.dark .bg-violet-50\/90 { background-color: rgb(76 29 149 / 0.28) !important; }
+.dark .bg-sky-50\/90 { background-color: rgb(12 74 110 / 0.45) !important; }
+.dark .border-violet-200 { border-color: #5b21b6 !important; }
 .dark .bg-orange-50,
 .dark .bg-orange-50\/90 { background-color: #431407 !important; }
-.dark .bg-sky-50\/90 { background-color: rgb(8 47 73 / 0.9) !important; }
 .dark .bg-amber-400\/20 { background-color: rgb(251 191 36 / 0.16) !important; }
 .dark .text-emerald-700,
 .dark .text-emerald-800 { color: #6ee7b7 !important; }

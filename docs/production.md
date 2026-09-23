@@ -55,11 +55,14 @@ it between hosts.
   share one calculation, including serialization and asynchronous compression.
   Build files are held in memory with their gzip bytes.
 - Live/event/matchup/profile responses are fresh for 5 seconds and may serve the
-  previous copy for another 5 seconds during refresh. Other public responses use
-  60 + 60 seconds. Sitemap responses use 300 + 300 seconds. Time-based expiry is
+  previous copy for another 5 seconds during refresh. Rankings and statistics
+  are fresh for 60 seconds and may serve the previous copy for up to 6 hours
+  while one refresh runs behind it, so no reader waits on a cold rebuild.
+  Other public responses use 60 + 60 seconds. Sitemap responses use 300 + 300 seconds. Time-based expiry is
   deliberate: scraper writes cannot cause every visitor to miss simultaneously.
 - Shared-cache headers allow another 2 seconds for live/detail data and 30 seconds
-  for rankings. Filtered analytics require HTTP revalidation. Errors and admin
+  for rankings; browsers keep rankings for 60 seconds and may show them for a
+  day while revalidating. Filtered analytics require HTTP revalidation. Errors and admin
   responses use `no-store`; public JSON supports ETags and `Vary: Accept-Encoding`.
 - Cache bounds also limit arbitrary query combinations. The worker queue is
   capped at 512 waiting jobs (a few hundred milliseconds of work); jobs have a 15-second deadline. Overload returns 503

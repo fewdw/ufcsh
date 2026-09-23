@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import { isFightDay, liveFightId } from "../liveEvent";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -968,9 +969,11 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     aria-label="Close matchup and return to event"
                     title="Close matchup (Esc)"
                     aria-keyshortcuts="Escape"
-                    className="matchup-header-control ml-2 px-2 font-mono text-[11px]"
+                    className="matchup-header-control ml-2 w-7 px-0 font-mono text-[11px] [@media(pointer:fine)]:w-auto [@media(pointer:fine)]:px-2"
                   >
-                    Esc
+                    {/* A key name means nothing on a touch screen. */}
+                    <X className="h-3.5 w-3.5 [@media(pointer:fine)]:hidden" aria-hidden="true" />
+                    <span className="hidden [@media(pointer:fine)]:inline">Esc</span>
                   </button>
                 </div>
               </div>

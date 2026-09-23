@@ -30,6 +30,19 @@ test("stale responses stay available during one refresh, then expire", async () 
   assert.equal((await fresh).body.toString(), "new");
 });
 
+test("a longer stale window answers from memory long after expiry", async () => {
+  let now = 0;
+  const cache = new ResponseCache(1024, 10, () => now);
+  await cache.get("key", 100, async () => ({ json: "old", status: 200 }), 10_000);
+  now = 5_000;
+  let calls = 0;
+  const load = async () => { calls++; return { json: "new", status: 200 }; };
+  assert.equal((await cache.get("key", 100, load, 10_000)).body.toString(), "old");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls, 1);
+  assert.equal((await cache.get("key", 100, load, 10_000)).body.toString(), "new");
+});
+
 test("errors are not cached and limits bound retained response bytes", async () => {
   const cache = new ResponseCache(100, 2);
   await assert.rejects(cache.get("bad", 1000, async () => { throw new Error("failed"); }));

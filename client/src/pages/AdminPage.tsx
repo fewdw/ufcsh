@@ -47,13 +47,13 @@ function AdminShell({ tab, onTab }: { tab: TabId; onTab: (next: TabId) => void }
   }
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto flex max-w-6xl flex-col gap-4 px-3 py-4 sm:px-5">
+    <div className="h-full overflow-y-auto overflow-x-hidden">
+      <div className="mx-auto flex min-w-0 max-w-6xl flex-col gap-3 px-2 py-3 sm:gap-4 sm:px-5 sm:py-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-lg font-bold text-zinc-900">Admin</h1>
           <p className="text-xs text-zinc-500">{data.email}</p>
         </div>
-        <div role="tablist" aria-label="Admin sections" className={`${segmentedGroup} w-full`}>
+        <div role="tablist" aria-label="Admin sections" className={`${segmentedGroup} w-full gap-0.5 overflow-x-auto p-0.5 sm:gap-1 sm:p-1`}>
           {TABS.map((item, index) => (
             <button
               key={item.id}
@@ -71,7 +71,7 @@ function AdminShell({ tab, onTab }: { tab: TabId; onTab: (next: TabId) => void }
                 onTab(TABS[next].id);
                 event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
               }}
-              className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${tab === item.id ? segmentedSelected : segmentedIdle}`}
+              className={`flex-auto whitespace-nowrap rounded-full px-1.5 py-1.5 text-xs font-medium transition min-[400px]:px-2 sm:px-3 ${tab === item.id ? segmentedSelected : segmentedIdle}`}
             >
               {item.label}
             </button>

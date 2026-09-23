@@ -9,7 +9,11 @@ import { PANEL_SHELL, PanelHeading } from "./FightStats";
 
 /** Everything a fan has said in fight discussions, newest first. Listed to
  *  others only once they have chosen to show it; always to themselves. */
-export default function ProfileComments({ handle, mine, visible }: { handle: string; mine: boolean; visible: boolean }) {
+export default function ProfileComments({ handle, mine, visible, visibilityControl }: {
+  handle: string; mine: boolean; visible: boolean;
+  /** The owner's switch for showing this list to others. */
+  visibilityControl?: React.ReactNode;
+}) {
   const { getToken } = useAuth();
   const [offset, setOffset] = useState(0);
   const [data, setData] = useState<CommentsData | null>(null);
@@ -42,7 +46,7 @@ export default function ProfileComments({ handle, mine, visible }: { handle: str
       <PanelHeading
         title="Comments"
         subtitle={data.total ? `${offset + 1}–${Math.min(offset + data.pageSize, data.total)} of ${data.total.toLocaleString()}` : undefined}
-        aside={mine ? (
+        aside={mine ? visibilityControl ?? (
           <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${visible ? "bg-emerald-50 text-emerald-700" : "bg-zinc-100 text-zinc-500"}`}>
             {visible ? "Visible on your profile" : "Only you can see this list"}
           </span>

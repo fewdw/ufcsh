@@ -39,18 +39,20 @@ export class ResponseCache {
   get size() { return this.entries.size; }
   get byteSize() { return this.bytes; }
 
-  async get(key: string, ttlMs: number, load: () => Promise<ApiResult>): Promise<Representation> {
+  /** `staleMs` is how long past expiry a copy may still be served while a
+   *  fresh one is built behind it; by default as long again as `ttlMs`. */
+  async get(key: string, ttlMs: number, load: () => Promise<ApiResult>, staleMs = ttlMs): Promise<Representation> {
     const old = this.entries.get(key);
     if (old && this.now() < old.staleUntil) {
       this.hits++;
       this.entries.delete(key);
       this.entries.set(key, old);
-      if (this.now() >= old.expires) void this.fill(key, ttlMs, load).catch(() => {});
+      if (this.now() >= old.expires) void this.fill(key, ttlMs, load, staleMs).catch(() => {});
       return old.value;
     }
     if (old) this.remove(key);
     this.misses++;
-    return this.fill(key, ttlMs, load);
+    return this.fill(key, ttlMs, load, staleMs);
   }
 
   private remove(key: string) {
@@ -59,7 +61,7 @@ export class ResponseCache {
     this.entries.delete(key);
   }
 
-  private fill(key: string, ttlMs: number, load: () => Promise<ApiResult>): Promise<Representation> {
+  private fill(key: string, ttlMs: number, load: () => Promise<ApiResult>, staleMs: number): Promise<Representation> {
     const running = this.pending.get(key);
     if (running) return running;
     if (this.pending.size >= 1024) return Promise.reject(new OverloadedError("Too many pending requests"));
@@ -72,7 +74,7 @@ export class ResponseCache {
           while (this.entries.size && (this.entries.size >= this.maxEntries || this.bytes + bytes > this.maxBytes)) {
             this.remove(this.entries.keys().next().value!);
           }
-          this.entries.set(key, { value, bytes, expires: this.now() + ttlMs, staleUntil: this.now() + ttlMs * 2 });
+          this.entries.set(key, { value, bytes, expires: this.now() + ttlMs, staleUntil: this.now() + ttlMs + staleMs });
           this.bytes += bytes;
         }
       }
