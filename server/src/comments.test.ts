@@ -271,3 +271,25 @@ test("the discussion endpoint reads openly and writes only with a same-site toke
   assert.match((await bad.json() as { error: string }).error, /hurt themselves/);
   assert.equal((await fetch(`${base}/api/comments/${id}`, { method: "DELETE", headers: { Authorization: "Bearer valid" } })).status, 200);
 });
+
+test("each comment carries its author's prediction for the bout", t => {
+  const { scores, comments, established } = fixture(t);
+  established("u1", "u2", "u3");
+  const plain = comments.post("u1", FIGHT, { body: "Before anyone picked." });
+  assert.equal(plain.pick, null);
+  scores.db.exec(`CREATE TABLE IF NOT EXISTS predictions (fight_id TEXT NOT NULL, user_id TEXT NOT NULL,
+    revision INTEGER NOT NULL, updated_at INTEGER NOT NULL, pick_json TEXT, PRIMARY KEY (fight_id, user_id))`);
+  const pick = (user: string, value: object | null) => scores.db.prepare("INSERT INTO predictions VALUES (?, ?, 1, 0, ?)")
+    .run(FIGHT, user, value ? JSON.stringify(value) : null);
+  pick("u1", { fighterId: "f2", method: "ko", round: 2 });
+  pick("u2", { fighterId: "f1", method: null, round: null });
+  // A pick for a matchup that has since changed is not shown.
+  pick("u3", { fighterId: "someone-else", method: "decision", round: null });
+  comments.post("u2", FIGHT, { body: "Pereira all day." });
+  comments.post("u3", FIGHT, { body: "Who knows." });
+  const byAuthor = new Map(comments.list(FIGHT, { sort: "old" }).comments.map(node => [node.author!.handle, node.pick]));
+  const handle = (user: string) => scores.identity(user).handle;
+  assert.deepEqual(byAuthor.get(handle("u1")), { corner: 2, fighter: "Israel Adesanya", method: "ko", round: 2 });
+  assert.deepEqual(byAuthor.get(handle("u2")), { corner: 1, fighter: "Alex Pereira", method: null, round: null });
+  assert.equal(byAuthor.get(handle("u3")), null);
+});

@@ -1,4 +1,5 @@
 import type { MethodOdds, OddsQuote } from "./api";
+import { lastName } from "./format.ts";
 
 export type RoundTotal = { rounds: string; over?: OddsQuote; under?: OddsQuote };
 export type RoundMethod = { fighter: 1 | 2; method: "KO/TKO" | "SUB"; round: number; quote: OddsQuote };
@@ -30,7 +31,7 @@ export function organizeAdditionalOdds(quotes: OddsQuote[], f1Name: string, f2Na
     const prefix = method[1].toLowerCase();
     const side = [f1Name, f2Name].findIndex(name => {
       const full = name.toLowerCase();
-      return full === prefix || full.endsWith(` ${prefix}`) || full.split(/\s+/).at(-1) === prefix;
+      return full === prefix || full.endsWith(` ${prefix}`) || lastName(name).toLowerCase() === prefix;
     });
     if (side < 0) continue;
     roundMethods.push({ fighter: (side + 1) as 1 | 2, method: /^tko/i.test(method[2]) ? "KO/TKO" : "SUB", round: Number(method[3]), quote });

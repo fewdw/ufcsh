@@ -1,18 +1,16 @@
 import { useAuth } from "@clerk/react";
-import { ArrowBigDown, ArrowBigUp, Ellipsis, Flag, Link2, Minus, Pencil, Plus, Trash2, UserX, X } from "lucide-react";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { ArrowBigDown, ArrowBigUp, ChevronDown, Ellipsis, Flag, Link2, Minus, Pencil, Plus, Trash2, UserX, X } from "lucide-react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { accountsEnabled, useAccount } from "../auth";
 import {
-  COLLAPSE_SCORE, COMMENT_MAX, REPORT_REASONS, commentLink, commentSegments, deleteNode, insertReply, maskStrongLanguage,
+  COLLAPSE_SCORE, COMMENT_MAX, REPORT_REASONS, commentLink, commentSegments, deleteNode, insertReply, pickLabel,
   replyTarget, updateEvery, updateNode,
-  type CommentNode, type CommentSort, type DiscussionPage, type DiscussionThread, type ReportReason, type Viewer,
+  type CommentNode, type CommentPick, type CommentSort, type DiscussionPage, type DiscussionThread, type ReportReason, type Viewer,
 } from "../discussion";
 import { exactTime, relativeAge } from "../format";
-import { useSettings } from "../settings";
-import { PANEL_SHELL, PanelHeading } from "./FightStats";
+import { PANEL_SHELL } from "./FightStats";
 import ProgressiveImage from "./ProgressiveImage";
-import { segmentedGroup, segmentedIdle, segmentedSelected } from "./segmented";
 
 type GetToken = () => Promise<string | null>;
 type RequestInit = { method?: string; body?: unknown; optional?: boolean };
@@ -21,6 +19,8 @@ type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
 const primary = "rounded-full bg-zinc-900 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-zinc-700 disabled:opacity-40";
 const quiet = "rounded-full px-3 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
 const action = "inline-flex h-7 items-center gap-1 rounded-full px-2 text-[11px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
+/** The writing box, and its signed-out and muted stand-ins. */
+const box = "min-w-0 rounded-2xl border border-zinc-200 bg-white transition-colors focus-within:border-zinc-400";
 const SORTS: { id: CommentSort; label: string }[] = [{ id: "top", label: "Top" }, { id: "new", label: "New" }, { id: "old", label: "Old" }];
 const message = (problem: unknown) => problem instanceof Error ? problem.message : "Something went wrong. Please retry.";
 const noToken: GetToken = async () => null;
@@ -45,7 +45,6 @@ type Discussion = {
   signedIn: boolean;
   signIn: () => void;
   viewer: Viewer | null;
-  mask: boolean;
   focus: string | null;
   replying: string | null;
   setReplying: (id: string | null) => void;
@@ -83,7 +82,6 @@ function DiscussionPanel({ fightId, getToken, signedIn, signIn }: {
   const location = useLocation();
   const navigate = useNavigate();
   const focus = new URLSearchParams(location.search).get("comment");
-  const { settings, update } = useSettings();
   const [sort, setSort] = useState<CommentSort>("top");
   const [comments, setComments] = useState<CommentNode[] | null>(null);
   const [meta, setMeta] = useState<Meta | null>(null);
@@ -102,6 +100,12 @@ function DiscussionPanel({ fightId, getToken, signedIn, signIn }: {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
+  const showAll = useCallback(() => {
+    const search = new URLSearchParams(location.search);
+    search.delete("comment");
+    navigate({ search: `?${search}` }, { replace: true, state: location.state });
+  }, [location.search, location.state, navigate]);
+
   const load = useCallback(async () => {
     const mine = ++generation.current;
     setLoading(true); setError("");
@@ -109,7 +113,8 @@ function DiscussionPanel({ fightId, getToken, signedIn, signIn }: {
       if (focus) {
         const data = await request<DiscussionThread>(`/api/comments/${encodeURIComponent(focus)}/thread?sort=${sort}`, { optional: true });
         if (mine !== generation.current) return;
-        if (data.fightId !== fightId) throw new Error("That comment belongs to another fight.");
+        // A link to another bout's comment: show this bout's discussion instead.
+        if (data.fightId !== fightId) { showAll(); return; }
         setComments([data.comment]);
         setMeta({ total: data.comment.replyCount + 1, threads: 1, next: 1, viewer: data.viewer });
       } else {
@@ -123,7 +128,7 @@ function DiscussionPanel({ fightId, getToken, signedIn, signIn }: {
     } finally {
       if (mine === generation.current) setLoading(false);
     }
-  }, [fightId, focus, request, sort]);
+  }, [fightId, focus, request, showAll, sort]);
   useEffect(() => { void load(); }, [load]);
 
   // A permalink opens scrolled to its comment, once.
@@ -153,7 +158,6 @@ function DiscussionPanel({ fightId, getToken, signedIn, signIn }: {
     fightId, signedIn, focus, replying, setReplying,
     signIn: () => signIn?.(),
     viewer: meta?.viewer ?? null,
-    mask: settings.maskLanguage,
     notify: setNotice,
     post: async (body, parentId) => {
       const created = await request<CommentNode>(`/api/fights/${fightId}/comments`, { method: "POST", body: { body, parentId } });
@@ -196,69 +200,44 @@ function DiscussionPanel({ fightId, getToken, signedIn, signIn }: {
       } catch (problem) { setNotice(message(problem)); }
     },
     report: node => { if (!signedIn) signIn?.(); else setReporting(node); },
-  }), [fightId, focus, meta?.viewer, replying, request, settings.maskLanguage, signIn, signedIn, sort]);
+  }), [fightId, focus, meta?.viewer, replying, request, signIn, signedIn, sort]);
 
   const viewer = meta?.viewer;
   const muted = viewer?.mutedUntil ?? null;
-  const showAll = () => {
-    const search = new URLSearchParams(location.search);
-    search.delete("comment");
-    navigate({ search: `?${search}` }, { replace: true, state: location.state });
-  };
-
   return (
     <DiscussionContext.Provider value={discussion}>
-      <section className={PANEL_SHELL}>
-        <PanelHeading
-          title="Discussion"
-          subtitle={meta ? `${meta.total.toLocaleString()} ${meta.total === 1 ? "comment" : "comments"}` : "Loading…"}
-          aside={
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-zinc-500">
-                <input type="checkbox" checked={settings.maskLanguage} onChange={event => update("maskLanguage", event.target.checked)}
-                  className="h-3.5 w-3.5 accent-zinc-900" />
-                Mask swearing
-              </label>
-              <div role="radiogroup" aria-label="Sort comments" className={segmentedGroup}>
-                {SORTS.map(option => (
-                  <button key={option.id} type="button" role="radio" aria-checked={sort === option.id} onClick={() => setSort(option.id)}
-                    className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition ${sort === option.id ? segmentedSelected : segmentedIdle}`}>
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          }
-        />
-        <div className="px-5 py-4">
-          {!accountsEnabled ? <p className="text-sm text-zinc-500">Sign-in must be configured to join the discussion.</p>
-            : !signedIn ? (
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-zinc-500">Sign in to comment, reply and vote.</p>
-                <button type="button" className={primary} onClick={() => signIn?.()}>Sign in to comment</button>
-              </div>
-            ) : muted ? (
-              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800" role="status">
-                A moderator has paused your commenting {muted >= Number.MAX_SAFE_INTEGER ? "permanently" : `until ${new Date(muted).toLocaleString()}`}. You can still read and report.
-              </p>
-            ) : (
-              <Composer placeholder="What did you make of this fight?" submitLabel="Comment" onSubmit={body => discussion.post(body, null)} />
-            )}
-          <p className="mt-3 text-[11px] leading-4 text-zinc-400">
-            Keep it about the fight. Strong language is fine; harassment, spam, threats and personal information aren’t. Report anything that crosses the line.
-            {viewer?.newAccount && !muted ? " New accounts can post a few comments an hour and can’t share links on their first day." : ""}
+      {!accountsEnabled ? (
+        <div className={box}>
+          <p className="px-4 py-3 text-sm leading-6 text-zinc-500">Sign-in must be configured to join the discussion.</p>
+        </div>
+      ) : !signedIn ? (
+        <div className={box}>
+          <button type="button" onClick={() => signIn?.()} className="block w-full px-4 pb-1 pt-3 text-left text-sm leading-6 text-zinc-400">Talk about the fight</button>
+          <div className="flex justify-end px-2 pb-2">
+            <button type="button" className={primary} onClick={() => signIn?.()}>Sign in to comment</button>
+          </div>
+        </div>
+      ) : muted ? (
+        <div className={box}>
+          <p className="px-4 py-3 text-sm leading-6 text-amber-800" role="status">
+            A moderator has paused your commenting {muted >= Number.MAX_SAFE_INTEGER ? "permanently" : `until ${new Date(muted).toLocaleString()}`}. You can still read and report.
           </p>
         </div>
-      </section>
+      ) : (
+        <Composer placeholder="Talk about the fight" submitLabel="Comment" onSubmit={body => discussion.post(body, null)} />
+      )}
 
-      {focus ? (
-        <div className={`${PANEL_SHELL} flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-xs text-zinc-500`}>
-          <span>Showing a single thread.</span>
-          <button type="button" onClick={showAll} className="font-semibold text-zinc-900 underline underline-offset-2">View all comments</button>
+      <section className={PANEL_SHELL} aria-busy={loading}>
+        <div className="flex items-center justify-end gap-2 border-b border-zinc-100 px-3 py-2 sm:px-4">
+          {/* A permalink shows one thread; this goes back to the rest. */}
+          {focus ? (
+            <button type="button" onClick={showAll}
+              className="rounded-full px-2.5 py-1 text-xs font-semibold text-zinc-800 transition-colors hover:bg-zinc-100">
+              Show all threads
+            </button>
+          ) : null}
+          <SortMenu sort={sort} onChange={setSort} />
         </div>
-      ) : null}
-
-      <section className={`${PANEL_SHELL} overflow-hidden`} aria-busy={loading}>
         {error && !comments ? (
           <p className="px-5 py-10 text-center text-sm text-rose-600">{error} <button type="button" className="underline" onClick={() => void load()}>Retry</button></p>
         ) : !comments ? (
@@ -292,6 +271,19 @@ function DiscussionPanel({ fightId, getToken, signedIn, signIn }: {
 // ---------------------------------------------------------------------------
 // writing
 
+function SortMenu({ sort, onChange }: { sort: CommentSort; onChange: (sort: CommentSort) => void }) {
+  return (
+    <label className="relative inline-flex shrink-0 items-center gap-1 text-xs text-zinc-500">
+      Sort by:
+      <select value={sort} onChange={event => onChange(event.target.value as CommentSort)}
+        className="cursor-pointer appearance-none rounded-full bg-transparent py-1 pl-1.5 pr-6 text-xs font-semibold text-zinc-800 outline-none transition-colors hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-zinc-300">
+        {SORTS.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-1.5 h-3.5 w-3.5 text-zinc-500" aria-hidden="true" />
+    </label>
+  );
+}
+
 function Composer({ initial = "", placeholder, submitLabel, autoFocus = false, onSubmit, onCancel }: {
   initial?: string; placeholder: string; submitLabel: string; autoFocus?: boolean;
   onSubmit: (body: string) => Promise<void>; onCancel?: () => void;
@@ -306,6 +298,18 @@ function Composer({ initial = "", placeholder, submitLabel, autoFocus = false, o
     node.focus();
     node.setSelectionRange(node.value.length, node.value.length);
   }, [autoFocus]);
+  // The box grows with what is written, up to half the screen, then scrolls.
+  const fit = useCallback(() => {
+    const node = field.current;
+    if (!node) return;
+    node.style.height = "auto";
+    node.style.height = `${node.scrollHeight}px`;
+  }, []);
+  useLayoutEffect(fit, [fit, text]);
+  useEffect(() => {
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [fit]);
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     if (busy) return;
@@ -316,7 +320,7 @@ function Composer({ initial = "", placeholder, submitLabel, autoFocus = false, o
     finally { setBusy(false); }
   };
   return (
-    <form onSubmit={event => void submit(event)} className="min-w-0">
+    <form onSubmit={event => void submit(event)} className={box}>
       <textarea
         ref={field}
         value={text}
@@ -327,13 +331,13 @@ function Composer({ initial = "", placeholder, submitLabel, autoFocus = false, o
           if (event.key === "Escape") { event.stopPropagation(); onCancel?.(); }
         }}
         maxLength={COMMENT_MAX}
-        rows={autoFocus || initial ? 3 : 2}
+        rows={autoFocus || initial ? 2 : 1}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="block w-full resize-y rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm leading-6 text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-zinc-400"
+        className="block max-h-[50vh] w-full resize-none overflow-y-auto bg-transparent px-4 pb-1 pt-3 text-sm leading-6 text-zinc-900 outline-none placeholder:text-zinc-400"
       />
-      <div className="mt-2 flex items-center justify-between gap-3">
-        <p className="min-w-0 text-[11px]" aria-live="polite">
+      <div className="flex items-center gap-3 px-2 pb-2 pl-3">
+        <p className="min-w-0 flex-1 text-[11px]" aria-live="polite">
           {error ? <span role="alert" className="text-rose-600">{error}</span>
             : text.length > COMMENT_MAX - 300 ? <span className="tabular-nums text-zinc-400">{text.length}/{COMMENT_MAX}</span> : null}
         </p>
@@ -361,14 +365,25 @@ function ScorerAvatar({ src, name }: { src: string | null; name: string }) {
 
 /** Plain text and @mentions. Nothing in a comment is ever rendered as markup. */
 function Body({ text }: { text: string }) {
-  const { mask } = useDiscussion();
-  const shown = mask ? maskStrongLanguage(text) : text;
   return (
     <p className="whitespace-pre-wrap text-sm leading-6 text-zinc-800 [overflow-wrap:anywhere]">
-      {commentSegments(shown).map((segment, index) => "mention" in segment
+      {commentSegments(text).map((segment, index) => "mention" in segment
         ? <Link key={index} to={`/profiles/${segment.mention.toLowerCase()}`} className="font-medium text-sky-700 hover:underline">@{segment.mention}</Link>
         : <span key={index}>{segment.text}</span>)}
     </p>
+  );
+}
+
+const PICK_METHOD_WORDS = { ko: "KO/TKO", submission: "submission", decision: "decision" } as const;
+
+/** What the author predicted, in their pick's corner colour. */
+function PickTag({ pick }: { pick: CommentPick }) {
+  const said = `Predicted ${pick.fighter}${pick.method ? ` by ${PICK_METHOD_WORDS[pick.method]}` : ""}${pick.round ? ` in round ${pick.round}` : ""}`;
+  return (
+    <span title={said} aria-label={said}
+      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2 py-px text-[10px] font-semibold leading-4 tracking-wide ring-1 ring-inset ${pick.corner === 1 ? "bg-f1-soft text-f1-ink ring-f1/25" : "bg-f2-soft text-f2-ink ring-f2/25"}`}>
+      {pickLabel(pick)}
+    </span>
   );
 }
 
@@ -398,10 +413,11 @@ function Votes({ node }: { node: CommentNode }) {
 function Menu({ node, onEdit, onDelete }: { node: CommentNode; onEdit: () => void; onDelete: () => void }) {
   const discussion = useDiscussion();
   const [open, setOpen] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
+  const [above, setAbove] = useState(false);
+  const anchor = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
-    const outside = (event: PointerEvent) => { if (!box.current?.contains(event.target as Node)) setOpen(false); };
+    const outside = (event: PointerEvent) => { if (!anchor.current?.contains(event.target as Node)) setOpen(false); };
     // Captured so Escape closes the menu without also closing the matchup.
     const key = (event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); setOpen(false); } };
     document.addEventListener("pointerdown", outside);
@@ -416,12 +432,17 @@ function Menu({ node, onEdit, onDelete }: { node: CommentNode; onEdit: () => voi
     navigator.clipboard?.writeText(url).then(() => discussion.notify("Link copied."), () => discussion.notify(url));
   };
   return (
-    <div ref={box} className="relative">
-      <button type="button" aria-label="More actions" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(value => !value)} className={action}>
+    <div ref={anchor} className="relative">
+      <button type="button" aria-label="More actions" aria-haspopup="menu" aria-expanded={open} onClick={() => {
+        // Opens upward when there isn't room for it below.
+        const rect = anchor.current?.getBoundingClientRect();
+        setAbove(Boolean(rect && window.innerHeight - rect.bottom < 240 && rect.top > 240));
+        setOpen(value => !value);
+      }} className={action}>
         <Ellipsis className="h-4 w-4" aria-hidden="true" />
       </button>
       {open ? (
-        <div role="menu" className="absolute left-0 top-8 z-30 w-48 overflow-hidden rounded-xl border border-zinc-200 bg-white py-1 shadow-lg">
+        <div role="menu" className={`absolute left-0 z-30 w-48 ${above ? "bottom-8" : "top-8"} overflow-hidden rounded-xl border border-zinc-200 bg-white py-1 shadow-lg`}>
           <button type="button" role="menuitem" className={item} onClick={choose(copy)}><Link2 className="h-3.5 w-3.5" aria-hidden="true" />Copy link</button>
           {node.editable ? <button type="button" role="menuitem" className={item} onClick={choose(onEdit)}><Pencil className="h-3.5 w-3.5" aria-hidden="true" />Edit</button> : null}
           {node.mine ? <button type="button" role="menuitem" className={`${item} text-rose-600`} onClick={choose(onDelete)}><Trash2 className="h-3.5 w-3.5" aria-hidden="true" />Delete</button> : null}
@@ -479,9 +500,10 @@ function Thread({ node, rootId }: { node: CommentNode; rootId: string }) {
               <span className="truncate">{node.author.displayName}</span>
             </Link>
           ) : <span className="font-medium italic text-zinc-400">{node.state === "removed" ? "Removed" : "Deleted"}</span>}
+          {node.pick ? <PickTag pick={node.pick} /> : null}
           {node.mine ? <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-500">You</span> : null}
           {node.blocked ? <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-500">Blocked</span> : null}
-          <Link to={commentLink(discussion.fightId, node.id)} title={exactTime(node.createdAt) ?? undefined} className="shrink-0 text-zinc-400 hover:underline">{age}</Link>
+          <span title={exactTime(node.createdAt) ?? undefined} className="shrink-0 text-zinc-400">{age}</span>
           {node.editedAt ? <span className="shrink-0 text-zinc-400" title={`Edited ${exactTime(node.editedAt) ?? ""}`}>· edited</span> : null}
           {collapsed ? (
             <span className="shrink-0 text-zinc-400">

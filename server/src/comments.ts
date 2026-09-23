@@ -40,12 +40,16 @@ type Row = {
   seq: number;
 };
 export type CommentState = "visible" | "held" | "deleted" | "removed";
+/** What the author predicted for this bout, shown beside their name. The
+ *  corner is 1 for the first-listed fighter and 2 for the second. */
+export type CommentPick = { corner: 1 | 2; fighter: string; method: "ko" | "submission" | "decision" | null; round: number | null };
 export type CommentNode = {
   id: string; parentId: string | null; depth: number; createdAt: number; editedAt: number | null;
   state: CommentState;
   /** Null once deleted or removed, and while held for anyone but its author. */
   body: string | null;
   author: ScorerIdentity | null;
+  pick: CommentPick | null;
   score: number;
   /** Every live reply beneath this one, at any depth. */
   replyCount: number;
@@ -185,12 +189,38 @@ export class CommentStore {
           || oldest(a, b);
   }
 
+  /** Every commenter's prediction for the bout, keyed by account. A pick for a
+   *  matchup that has since changed names a fighter no longer in it and is
+   *  left out. */
+  private picks(fightId: string): Map<string, CommentPick> {
+    const picks = new Map<string, CommentPick>();
+    const fight = this.fights([fightId])[0];
+    if (!fight) return picks;
+    let rows: { user_id: string; pick_json: string }[];
+    try {
+      rows = this.db.prepare(`SELECT p.user_id, p.pick_json FROM predictions p
+        WHERE p.fight_id = ? AND p.pick_json IS NOT NULL
+          AND p.user_id IN (SELECT DISTINCT user_id FROM comments WHERE fight_id = ?)`).all(fightId, fightId) as typeof rows;
+    } catch {
+      // The prediction store owns that table; without it nobody has picked.
+      return picks;
+    }
+    for (const row of rows) {
+      const pick = JSON.parse(row.pick_json) as { fighterId?: string; method?: CommentPick["method"]; round?: number | null };
+      const corner = pick.fighterId === fight.f1_id ? 1 : pick.fighterId === fight.f2_id ? 2 : null;
+      if (!corner) continue;
+      picks.set(row.user_id, { corner, fighter: corner === 1 ? fight.f1_name : fight.f2_name, method: pick.method ?? null, round: pick.round ?? null });
+    }
+    return picks;
+  }
+
   private personal(user: string | null, fightId: string) {
-    if (!user) return { votes: new Map<string, number>(), blocked: new Set<string>() };
+    const picks = this.picks(fightId);
+    if (!user) return { votes: new Map<string, number>(), blocked: new Set<string>(), picks };
     const votes = this.db.prepare(`SELECT v.comment_id, v.value FROM comment_votes v JOIN comments c ON c.id = v.comment_id
       WHERE v.user_id = ? AND c.fight_id = ?`).all(user, fightId) as { comment_id: string; value: number }[];
     const blocked = this.db.prepare("SELECT blocked_id FROM comment_blocks WHERE user_id = ?").all(user) as { blocked_id: string }[];
-    return { votes: new Map(votes.map(vote => [vote.comment_id, vote.value])), blocked: new Set(blocked.map(row => row.blocked_id)) };
+    return { votes: new Map(votes.map(vote => [vote.comment_id, vote.value])), blocked: new Set(blocked.map(row => row.blocked_id)), picks };
   }
 
   private present(node: Tree, sort: CommentSort, user: string | null, personal: ReturnType<CommentStore["personal"]>, limit: number): CommentNode {
@@ -205,6 +235,7 @@ export class CommentStore {
       state,
       body: gone || (state === "held" && !mine) ? null : row.body,
       author: gone ? null : identifyScorer(row),
+      pick: gone ? null : personal.picks.get(row.user_id) ?? null,
       score: row.ups - row.downs,
       replyCount: node.descendants,
       replies: shown.map(child => this.present(child, sort, user, personal, limit)),

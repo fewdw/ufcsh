@@ -19,9 +19,6 @@ export type AppSettings = {
   oddsFormat: OddsFormat;
   /** Whether a fighter profile's "Top-50 statistics" panel starts expanded. */
   topStatsOpen: boolean;
-  /** Whether strong language in fight discussions is shown as f***. The words
-   *  are allowed; this only changes how this reader sees them. */
-  maskLanguage: boolean;
 };
 
 const DEFAULTS: AppSettings = {
@@ -31,7 +28,6 @@ const DEFAULTS: AppSettings = {
   divisionOrder: "light",
   oddsFormat: "american",
   topStatsOpen: false,
-  maskLanguage: false,
 };
 const STORAGE_KEY = "ufcsh:settings:v1";
 
@@ -45,7 +41,6 @@ function loadSettings(): AppSettings {
       divisionOrder: saved?.divisionOrder === "heavy" ? "heavy" : "light",
       oddsFormat: saved?.oddsFormat === "decimal" ? "decimal" : saved?.oddsFormat === "percent" ? "percent" : "american",
       topStatsOpen: saved?.topStatsOpen === true,
-      maskLanguage: saved?.maskLanguage === true,
     };
   } catch {
     return DEFAULTS;

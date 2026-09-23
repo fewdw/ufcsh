@@ -53,14 +53,27 @@ export function isDecision(method: string | null | undefined): boolean {
   return /dec$/i.test((method ?? "").trim());
 }
 
-/** Surname only — how fighters are referred to on charts and in tight labels. */
 /** "3 Rounds" — how long a bout is booked for; empty when that is unknown. */
 export function roundsLabel(rounds: number | null | undefined): string {
   return rounds ? `${rounds} Round${rounds === 1 ? "" : "s"}` : "";
 }
 
+/** Generational suffixes are not the surname: "Raul Rosas Jr." is Rosas. */
+const NAME_SUFFIX = /^(?:jr|sr)\.?$|^(?:ii|iii|iv)$/i;
+/** Words that belong to the surname after them: "dos Anjos", "Della
+ *  Maddalena", "de la Rosa", "Van der Merckt", "Saint Denis". Never the first
+ *  word, so Joshua Van is still Van and a lone "Van" stays a first name. */
+const SURNAME_PARTICLES = new Set(["da", "das", "de", "del", "della", "der", "di", "dos", "du", "la", "le", "st", "st.", "saint", "van", "von"]);
+
+/** Surname only — how fighters are referred to on charts and in tight labels,
+ *  and the one rule every such label uses. */
 export function lastName(name: string): string {
-  return name.trim().split(/\s+/).at(-1) ?? name;
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  while (words.length > 2 && NAME_SUFFIX.test(words.at(-1)!)) words.pop();
+  if (words.length < 2) return words[0] ?? name;
+  let start = words.length - 1;
+  while (start > 1 && SURNAME_PARTICLES.has(words[start - 1].toLowerCase())) start -= 1;
+  return words.slice(start).join(" ");
 }
 
 export function outcomeClasses(outcome: string | null | undefined): string {

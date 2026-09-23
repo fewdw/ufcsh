@@ -2,17 +2,15 @@ import { useAuth } from "@clerk/react";
 import { ArrowBigUp } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { commentLink, maskStrongLanguage, type ProfileComments as CommentsData } from "../discussion";
+import { commentLink, type ProfileComments as CommentsData } from "../discussion";
 import type { ScorerIdentity } from "../scoring";
 import { exactTime, relativeAge } from "../format";
-import { useSettings } from "../settings";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
 
 /** Everything a fan has said in fight discussions, newest first. Listed to
  *  others only once they have chosen to show it; always to themselves. */
 export default function ProfileComments({ handle, mine, visible }: { handle: string; mine: boolean; visible: boolean }) {
   const { getToken } = useAuth();
-  const { settings } = useSettings();
   const [offset, setOffset] = useState(0);
   const [data, setData] = useState<CommentsData | null>(null);
   const [error, setError] = useState("");
@@ -71,7 +69,7 @@ export default function ProfileComments({ handle, mine, visible }: { handle: str
                   </span>
                 </p>
                 <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-sm leading-6 text-zinc-800 [overflow-wrap:anywhere]">
-                  {settings.maskLanguage ? maskStrongLanguage(comment.body) : comment.body}
+                  {comment.body}
                 </p>
                 {comment.held ? <p className="mt-1 text-[11px] text-amber-700">Hidden from others while a moderator reviews it.</p> : null}
               </Link>

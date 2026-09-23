@@ -1,3 +1,4 @@
+import { lastName } from "./format.ts";
 import type { ScorerIdentity } from "./scoring";
 
 /** A comment (1), a reply to it (2), and a reply to that (3). The server
@@ -10,11 +11,15 @@ export const COLLAPSE_SCORE = -5;
 
 export type CommentSort = "top" | "new" | "old";
 export type CommentState = "visible" | "held" | "deleted" | "removed";
+/** The author's prediction for the bout. Corner 1 is the first-listed
+ *  fighter (blue), corner 2 the second (red). */
+export type CommentPick = { corner: 1 | 2; fighter: string; method: "ko" | "submission" | "decision" | null; round: number | null };
 export type CommentNode = {
   id: string; parentId: string | null; depth: number; createdAt: number; editedAt: number | null;
   state: CommentState;
   body: string | null;
   author: ScorerIdentity | null;
+  pick: CommentPick | null;
   score: number;
   replyCount: number;
   replies: CommentNode[];
@@ -47,11 +52,11 @@ export const REPORT_REASONS = [
 ] as const;
 export type ReportReason = (typeof REPORT_REASONS)[number][0];
 
-/** Strong language, shown as its first letter and asterisks for a reader who
- *  asks for it. Nothing is removed from the comment itself. */
-const STRONG = /\b(?:mother)?f+u+c*k+\w*|\bsh+i+t+\w*|\bbullshit\b|\bcunts?\b|\bbitch\w*|\bdicks?\b|\bdickhead\w*|\bcocks?\b|\bcocksucker\w*|\bpuss(?:y|ies)\b|\btwats?\b|\bass(?:hole\w*|es)?\b|\bbastards?\b|\bwhores?\b|\bsluts?\b|\bnigg\w*|\bnig(?:a|as|ah)\b|\bfags?\b|\bfagg\w*|\bretard\w*|\bkikes?\b|\bspics?\b|\bchinks?\b|\bgooks?\b|\btrann(?:y|ies)\b|\bwetbacks?\b|\bbeaners?\b|\bdykes?\b/gi;
-export function maskStrongLanguage(text: string): string {
-  return text.replace(STRONG, word => word[0] + "*".repeat(Math.max(1, word.length - 1)));
+const PICK_METHOD = { ko: "KO/TKO", submission: "SUB", decision: "DEC" } as const;
+/** "Rosas", "Rosas DEC" or "Rosas KO/TKO R1": the surname, then whatever else
+ *  the pick named. */
+export function pickLabel(pick: CommentPick): string {
+  return [lastName(pick.fighter), pick.method ? PICK_METHOD[pick.method] : "", pick.round ? `R${pick.round}` : ""].filter(Boolean).join(" ");
 }
 
 /** A comment body as plain text and @mentions. Nothing in a comment is ever
@@ -116,7 +121,7 @@ export function deleteNode(nodes: CommentNode[], id: string): [CommentNode[], bo
     if (found) { next.push(node); continue; }
     if (node.id === id) {
       found = true;
-      if (node.replies.length || node.more) next.push({ ...node, state: "deleted", body: null, author: null, mine: false, editable: false });
+      if (node.replies.length || node.more) next.push({ ...node, state: "deleted", body: null, author: null, pick: null, mine: false, editable: false });
       continue;
     }
     const [replies, inside] = deleteNode(node.replies, id);

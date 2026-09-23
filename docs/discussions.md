@@ -13,6 +13,9 @@ comment, reply, vote, report and block.
   replies inline per comment; "N more replies" loads the whole thread.
 - Every comment has a permalink, `/fights/:id?tab=discussion&comment=:commentId`,
   which opens its thread with that comment highlighted.
+- Beside each name is the author's prediction for the bout, if they made one:
+  a pill in their fighter's corner colour (blue for the first-listed fighter,
+  red for the second) reading `Rosas`, `Rosas DEC` or `Rosas KO/TKO R1`.
 - Comments are plain text. Nothing is rendered as HTML or Markdown and links are
   not clickable, which removes most of the reason to spam them.
 - Authors can edit for one hour (marked "edited") and delete at any time. A
@@ -37,9 +40,6 @@ gets refused is the *shape* of abuse, with a message saying why
 | Gibberish | any "word" longer than 60 characters |
 | Invisible text | zero-width and bidi-override characters stripped; stacked diacritics trimmed |
 | Floods | runs of one character shortened to six ("GOOOOOOOO" → "GOOOOOO") |
-
-Readers who prefer it can tick **Mask swearing**, which shows strong language as
-`f***` on their screen only. The setting is stored with their other preferences.
 
 ## Spam and rate limits
 

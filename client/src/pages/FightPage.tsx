@@ -698,6 +698,10 @@ function FightRail({ eventId, currentId, returnDepth }: { eventId: string; curre
   // Shown even for a one-bout card, so every matchup has the same layout.
   if (!event.fights.length) return null;
   const liveId = liveFightId(event);
+  // A comment permalink belongs to this bout only; the tab carries over.
+  const railSearch = new URLSearchParams(location.search);
+  railSearch.delete("comment");
+  const search = railSearch.size ? `?${railSearch}` : "";
   return (
     <aside className={`hidden w-40 shrink-0 flex-col overflow-hidden sm:flex lg:w-48 ${shell}`}>
       <div className="border-b border-zinc-200 px-2 py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
@@ -712,7 +716,7 @@ function FightRail({ eventId, currentId, returnDepth }: { eventId: string; curre
           return (
             <Link
               key={f.id}
-              to={{ pathname: `/fights/${f.id}`, search: location.search }}
+              to={{ pathname: `/fights/${f.id}`, search }}
               state={{ eventId, ...(returnDepth ? { eventReturnDepth: returnDepth + 1 } : {}) }}
               aria-current={isCurrent ? "page" : undefined}
               title={`${f.f1.name} vs ${f.f2.name}${f.method ? ` · ${formatMethod(f.method, f.round, f.time)}` : ""}${isLive ? " · live now" : ""}`}

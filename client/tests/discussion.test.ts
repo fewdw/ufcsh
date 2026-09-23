@@ -1,18 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { commentSegments, deleteNode, insertReply, maskStrongLanguage, replyTarget, type CommentNode } from "../src/discussion.ts";
+import { commentSegments, deleteNode, insertReply, pickLabel, replyTarget, type CommentNode } from "../src/discussion.ts";
 
 const node = (id: string, depth: number, replies: CommentNode[] = [], parentId: string | null = null): CommentNode => ({
   id, parentId, depth, createdAt: 0, editedAt: null, state: "visible", body: id,
-  author: { publicId: `p-${id}`, handle: id, username: id, displayName: id, imageUrl: null },
+  author: { publicId: `p-${id}`, handle: id, username: id, displayName: id, imageUrl: null }, pick: null,
   score: 0, replyCount: replies.reduce((sum, reply) => sum + 1 + reply.replyCount, 0), replies, more: 0,
   mine: false, myVote: 0, blocked: false, editable: false,
 });
 
-test("masking hides strong language without touching names that contain it", () => {
-  assert.equal(maskStrongLanguage("What the fuck, that was bullshit"), "What the f***, that was b*******");
-  assert.equal(maskStrongLanguage("Assuncao and Dickson in the class of 2015"), "Assuncao and Dickson in the class of 2015");
-  assert.equal(maskStrongLanguage("my nigga"), "my n****");
+test("a pick reads as surname, then method and round when named", () => {
+  assert.equal(pickLabel({ corner: 1, fighter: "Raul Rosas Jr.", method: null, round: null }), "Rosas");
+  assert.equal(pickLabel({ corner: 2, fighter: "Rafael dos Anjos", method: "decision", round: null }), "dos Anjos DEC");
+  assert.equal(pickLabel({ corner: 2, fighter: "Raul Rosas", method: "decision", round: null }), "Rosas DEC");
+  assert.equal(pickLabel({ corner: 1, fighter: "Raul Rosas", method: "ko", round: 1 }), "Rosas KO/TKO R1");
+  assert.equal(pickLabel({ corner: 2, fighter: "Raul Rosas", method: "submission", round: 3 }), "Rosas SUB R3");
 });
 
 test("mentions are split out of plain text, emails are not", () => {
