@@ -39,6 +39,7 @@ async function fixture(t: any, options: { user?: string; email?: string | null }
     runAction: async (action, target) => { actions.push(`${action}:${target}`); return { ok: true, message: "done" }; },
     canAct: () => true,
     liveFights: () => [liveFight()],
+    metrics: () => ({ ready: true, http: { routes: [] } }),
   // The signed-in account, resolved the way Clerk would.
     authenticate: async req => {
       if (!req.headers.authorization?.startsWith("Bearer ")) throw new ScoringError(401, "Sign in to continue.");
@@ -73,7 +74,7 @@ test("every admin route is closed to accounts that are not administrators", asyn
   as("stranger@example.com");
   for (const [route, init] of [
     ["bugs", {}], ["admins", {}], ["live", {}],
-    ["flags", {}],
+    ["flags", {}], ["metrics", {}],
     ["flags/00000000-0000-4000-8000-000000000000", { method: "PUT", headers: { "Content-Type": "application/json" }, body: '{"status":"resolved"}' }],
     ["admins", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"email":"x@y.com"}' }],
     ["admins?email=x@y.com", { method: "DELETE" }],
@@ -167,4 +168,13 @@ test("administrators can review, search locally and resolve submitted flags", as
   assert.equal(fixed.status, 200);
   assert.equal((await fixed.json() as any).status, "resolved");
   assert.equal((await (await request("flags")).json() as any).counts.resolved, 1);
+});
+
+test("administrators can read live server metrics, uncached", async t => {
+  const { request } = await fixture(t);
+  const response = await request("metrics");
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "private, no-store");
+  assert.deepEqual(await response.json(), { ready: true, http: { routes: [] } });
+  assert.equal((await request("metrics", { method: "POST" })).status, 405);
 });

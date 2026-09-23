@@ -5,6 +5,12 @@ import { ScoringError } from "./scoring.ts";
 import { COMMENT_SORTS, type CommentSort, type CommentStore } from "./comments.ts";
 
 const MAX_BODY = 16_384;
+/** Signed-out readers of a discussion all get the same page, so it is built
+ *  once and shared. A new vote or comment shows within `GUEST_FRESH_MS`; with
+ *  nothing new, a page is reused for up to `GUEST_MAX_MS`. */
+const GUEST_FRESH_MS = 2_000;
+const GUEST_MAX_MS = 30_000;
+const GUEST_PAGES = 2_000;
 
 async function readBody(req: IncomingMessage): Promise<unknown> {
   if (req.headers["content-type"]?.split(";")[0].trim() !== "application/json") throw new ScoringError(415, "Send JSON.");
@@ -38,8 +44,21 @@ const offsetParam = (url: URL): number => {
  * from this site's own pages, and is rationed per account and per address on
  * top of the history-based limits the store applies.
  */
-export function createCommentsHandler(store: CommentStore, authenticate = authenticateScorer) {
+export function createCommentsHandler(store: CommentStore, authenticate = authenticateScorer, now = Date.now) {
   const limiter = new RateLimiter();
+  const guestPages = new Map<string, { json: string; version: number; at: number }>();
+  const guestPage = (fightId: string, sort: CommentSort, offset: number): string => {
+    const key = `${fightId}|${sort}|${offset}`;
+    const version = store.version(fightId);
+    const at = now();
+    const hit = guestPages.get(key);
+    if (hit && (at - hit.at < GUEST_FRESH_MS || (hit.version === version && at - hit.at < GUEST_MAX_MS))) return hit.json;
+    const json = JSON.stringify(store.list(fightId, { sort, offset, user: null }));
+    guestPages.delete(key);
+    guestPages.set(key, { json, version, at });
+    while (guestPages.size > GUEST_PAGES) guestPages.delete(guestPages.keys().next().value!);
+    return json;
+  };
   return async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> => {
     const path = url.pathname;
     const fight = /^\/api\/fights\/([a-f0-9]{16})\/comments$/.exec(path);
@@ -74,6 +93,12 @@ export function createCommentsHandler(store: CommentStore, authenticate = authen
       if (reading && !blocks) {
         // A token that no longer verifies reads the page as a guest rather
         // than failing it: nothing here needs the account to be read.
+        if (fight && !signed) {
+          const json = guestPage(fight[1], sortParam(url), offsetParam(url));
+          res.statusCode = 200;
+          res.end(req.method === "HEAD" ? undefined : json);
+          return true;
+        }
         let user: string | null = null;
         if (signed) { try { user = await authenticate(req); } catch { user = null; } }
         if (fight) send(store.list(fight[1], { sort: sortParam(url), offset: offsetParam(url), user }));

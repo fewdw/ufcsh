@@ -48,6 +48,7 @@ const routes: [weight: number, name: string, make: () => string][] = [
   [8, "/api/live", () => "/api/live"],
   [6, "/api/events", () => "/api/events"],
   [14, "/api/fights/:id", () => `/api/fights/${pick(fights)}`],
+  [8, "/api/fights/:id/comments", () => `/api/fights/${pick(fights)}/comments`],
   [12, "/api/fighters/:id", () => `/api/fighters/${pick(fighters)}`],
   [10, "/api/previews/:id", () => `/api/previews/${pick(fighters)}`],
   [5, "/api/rankings", () => "/api/rankings"],
@@ -64,6 +65,7 @@ const chooseRoute = () => {
 
 const agent = new http.Agent({ keepAlive: true, maxSockets: rate > 0 ? Infinity : concurrency });
 const results = new Map<string, { latencies: number[]; statuses: Map<number, number> }>();
+const networkErrors = new Map<string, number>();
 const visitorIp = () => {
   const n = Math.floor(Math.random() * users);
   return `10.${(n >> 16) & 255}.${(n >> 8) & 255}.${n & 255}`;
@@ -77,7 +79,11 @@ function request(pathname: string): Promise<number> {
       timeout: 30_000,
     }, res => { res.resume(); res.on("end", () => resolve(res.statusCode ?? 0)); });
     req.on("timeout", () => req.destroy());
-    req.on("error", () => resolve(0));
+    req.on("error", (error: NodeJS.ErrnoException) => {
+      const key = error.code ?? "unknown";
+      networkErrors.set(key, (networkErrors.get(key) ?? 0) + 1);
+      resolve(0);
+    });
   });
 }
 
@@ -124,3 +130,4 @@ const rows = [...results].sort(([a], [b]) => a.localeCompare(b)).map(([name, { l
 all.sort((a, b) => a - b);
 console.table(rows);
 console.log(`${all.length} requests in ${elapsed.toFixed(1)}s = ${(all.length / elapsed).toFixed(0)} req/s ${rate > 0 ? `offered at ${rate}/s` : `at concurrency ${concurrency}`}; p50 ${percentile(all, 0.5).toFixed(1)} ms, p95 ${percentile(all, 0.95).toFixed(1)} ms, p99 ${percentile(all, 0.99).toFixed(1)} ms`);
+if (networkErrors.size) console.log("Client network errors:", Object.fromEntries(networkErrors));

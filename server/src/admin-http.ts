@@ -19,6 +19,8 @@ export type AdminHandlerOptions = {
   /** The data-quality report, which may be computed in a query worker. */
   report: () => Promise<unknown>;
   runAction: (action: string, target: string, actor: string) => Promise<unknown>;
+  /** Live server health and traffic for the dashboard. */
+  metrics?: () => unknown;
   canAct: () => boolean;
   liveFights: () => AdminLiveFight[];
   authenticate?: (req: IncomingMessage) => Promise<string>;
@@ -47,7 +49,7 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
  * whenever a token happens to expire.
  */
 export function createAdminHandler(options: AdminHandlerOptions) {
-  const { admins, scores, reports, comments, report, runAction, canAct, liveFights } = options;
+  const { admins, scores, reports, comments, report, runAction, canAct, liveFights, metrics } = options;
   const authenticate = options.authenticate ?? authenticateScorer;
   const emailOf = options.emailOf ?? scorerEmail;
   const now = options.now ?? Date.now;
@@ -132,6 +134,10 @@ export function createAdminHandler(options: AdminHandlerOptions) {
         else if (route === "commenters") send(comments.sanctions());
         else if (moderated) send(comments.moderate(moderated[1], await readBody(req), email ?? ""));
         else send(comments.sanction(commenter![1], await readBody(req), email ?? ""));
+      }
+      else if (route === "metrics") {
+        if (!metrics) throw new ScoringError(404, "Not found.");
+        send(metrics());
       }
       else if (route === "live") send({ fights: liveFights().map(describe) });
       else if (liveFight) {

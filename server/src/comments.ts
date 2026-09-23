@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync, StatementSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { bodyKey, checkComment, cleanCommentBody, keyLength } from "./moderation.ts";
 import { ScoringError, identifyScorer, type ScorerIdentity, type ScoringFight, type ScoringStore } from "./scoring.ts";
@@ -30,6 +30,16 @@ const MAX_BLOCKS = 500;
 const FIGHT_MAX = 5000;
 const PROFILE_PAGE = 25;
 const HOUR = 60 * 60_000;
+/** A fight's discussion is read from memory and rebuilt when it changes. Things
+ *  written elsewhere (a renamed account, a new prediction) show within this. */
+const SNAPSHOT_TTL_MS = 60_000;
+/** Votes update the counts at once; the Top order is recomputed at most this
+ *  often, so a flurry of votes costs one sort, not one per vote. */
+const TOP_RESORT_MS = 1_000;
+/** Discussions kept in memory, least recently read dropped first. */
+const SNAPSHOT_LIMIT = 200;
+/** Also bound the retained comment rows when many large fights are read. */
+const SNAPSHOT_NODE_LIMIT = 50_000;
 
 type Row = {
   id: string; fight_id: string; user_id: string; parent_id: string | null; root_id: string; depth: number;
@@ -61,6 +71,12 @@ export type CommentNode = {
 export type Viewer = { signedIn: boolean; mutedUntil: number | null; newAccount: boolean };
 
 type Tree = { row: Row; children: Tree[]; alive: boolean; descendants: number };
+/** One fight's discussion as it is served: built once, shared by every reader,
+ *  and personalised per request only by the reader's own votes and blocks. */
+type Snapshot = {
+  roots: Tree[]; byId: Map<string, Tree>; picks: Map<string, CommentPick>; total: number; builtAt: number;
+  sorted: Map<CommentSort, { roots: Tree[]; at: number; stale: boolean }>;
+};
 
 /** Lower bound of the Wilson interval: a comment with 40 of 50 votes up ranks
  *  above one with its single vote up, and a new comment is not buried. */
@@ -78,6 +94,9 @@ export class CommentStore {
   private scores: ScoringStore;
   private fights: (ids: string[]) => ScoringFight[];
   private now: () => number;
+  private statements = new Map<string, StatementSync>();
+  private snapshots = new Map<string, Snapshot>();
+  private versions = new Map<string, number>();
   constructor(scores: ScoringStore, fights: (ids: string[]) => ScoringFight[], now = Date.now) {
     this.db = scores.db;
     this.scores = scores;
@@ -98,6 +117,8 @@ export class CommentStore {
       CREATE INDEX IF NOT EXISTS comments_user ON comments(user_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS comments_key ON comments(body_key, created_at);
       CREATE INDEX IF NOT EXISTS comments_removed ON comments(removed_at) WHERE removed_at IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS comments_created ON comments(created_at);
+      CREATE INDEX IF NOT EXISTS comments_held ON comments(held) WHERE held = 1;
       CREATE TABLE IF NOT EXISTS comment_votes (
         comment_id TEXT NOT NULL REFERENCES comments(id), user_id TEXT NOT NULL,
         value INTEGER NOT NULL CHECK(value IN (-1, 1)), created_at INTEGER NOT NULL,
@@ -125,11 +146,28 @@ export class CommentStore {
     `);
   }
 
+  /** Prepared once and reused: compiling SQL costs more than running it. */
+  private stmt(sql: string): StatementSync {
+    let statement = this.statements.get(sql);
+    if (!statement) { statement = this.db.prepare(sql); this.statements.set(sql, statement); }
+    return statement;
+  }
+
+  /** Changes whenever anything a reader of this discussion would see changes. */
+  version(fightId: string): number {
+    return this.versions.get(fightId) ?? 0;
+  }
+  /** Something structural changed: the next reader rebuilds the discussion. */
+  private changed(fightId: string) {
+    this.snapshots.delete(fightId);
+    this.versions.set(fightId, this.version(fightId) + 1);
+  }
+
   // -------------------------------------------------------------------------
   // who is asking
 
   private mutedUntil(user: string): number | null {
-    const row = this.db.prepare("SELECT muted_until FROM commenter_sanctions WHERE user_id = ?").get(user) as { muted_until: number } | undefined;
+    const row = this.stmt("SELECT muted_until FROM commenter_sanctions WHERE user_id = ?").get(user) as { muted_until: number } | undefined;
     return row && row.muted_until > this.now() ? row.muted_until : null;
   }
   private assertCanWrite(user: string) {
@@ -152,7 +190,7 @@ export class CommentStore {
   // reading
 
   private rows(where: string, ...params: (string | number)[]): Row[] {
-    return this.db.prepare(`SELECT c.*, c.rowid AS seq, s.public_id, s.username, s.username_key, s.image_url
+    return this.stmt(`SELECT c.*, c.rowid AS seq, s.public_id, s.username, s.username_key, s.image_url
       FROM comments c JOIN scorers s ON s.user_id = c.user_id WHERE ${where}`).all(...params) as Row[];
   }
 
@@ -180,6 +218,48 @@ export class CommentStore {
     return roots.filter(settle);
   }
 
+  private snapshot(fightId: string): Snapshot {
+    const cached = this.snapshots.get(fightId);
+    const now = this.now();
+    if (cached && now - cached.builtAt < SNAPSHOT_TTL_MS) {
+      // Least recently read goes first when the cache is full.
+      this.snapshots.delete(fightId);
+      this.snapshots.set(fightId, cached);
+      return cached;
+    }
+    const roots = this.forest(fightId);
+    const byId = new Map<string, Tree>();
+    const index = (node: Tree) => { byId.set(node.row.id, node); node.children.forEach(index); };
+    roots.forEach(index);
+    const total = roots.reduce((sum, root) => sum + (root.row.deleted_at == null && root.row.removed_at == null ? 1 : 0) + root.descendants, 0);
+    const snapshot: Snapshot = { roots, byId, picks: this.picks(fightId), total, builtAt: now, sorted: new Map() };
+    this.snapshots.delete(fightId);
+    this.snapshots.set(fightId, snapshot);
+    let nodes = 0;
+    for (const entry of this.snapshots.values()) nodes += entry.byId.size;
+    while (this.snapshots.size > SNAPSHOT_LIMIT || (nodes > SNAPSHOT_NODE_LIMIT && this.snapshots.size > 1)) {
+      const oldest = this.snapshots.keys().next().value!;
+      nodes -= this.snapshots.get(oldest)!.byId.size;
+      this.snapshots.delete(oldest);
+    }
+    return snapshot;
+  }
+
+  /** The top-level threads in order. Top is re-sorted after votes, at most
+   *  once a second; New and Old only change when the discussion does. */
+  private sortedRoots(snapshot: Snapshot, sort: CommentSort): Tree[] {
+    const now = this.now();
+    const cached = snapshot.sorted.get(sort);
+    if (cached && !(cached.stale && now - cached.at >= TOP_RESORT_MS)) return cached.roots;
+    const roots = sort === "top"
+      // Scored once per root rather than once per comparison.
+      ? snapshot.roots.map(root => ({ root, key: wilson(root.row.ups, root.row.downs) }))
+        .sort((a, b) => b.key - a.key || this.order(sort)(a.root, b.root)).map(entry => entry.root)
+      : [...snapshot.roots].sort(this.order(sort));
+    snapshot.sorted.set(sort, { roots, at: now, stale: false });
+    return roots;
+  }
+
   private order(sort: CommentSort) {
     const oldest = (a: Tree, b: Tree) => a.row.created_at - b.row.created_at || a.row.seq - b.row.seq;
     return (a: Tree, b: Tree) => sort === "new" ? oldest(b, a)
@@ -192,15 +272,17 @@ export class CommentStore {
   /** Every commenter's prediction for the bout, keyed by account. A pick for a
    *  matchup that has since changed names a fighter no longer in it and is
    *  left out. */
-  private picks(fightId: string): Map<string, CommentPick> {
+  private picks(fightId: string, onlyUser?: string): Map<string, CommentPick> {
     const picks = new Map<string, CommentPick>();
     const fight = this.fights([fightId])[0];
     if (!fight) return picks;
     let rows: { user_id: string; pick_json: string }[];
     try {
-      rows = this.db.prepare(`SELECT p.user_id, p.pick_json FROM predictions p
-        WHERE p.fight_id = ? AND p.pick_json IS NOT NULL
-          AND p.user_id IN (SELECT DISTINCT user_id FROM comments WHERE fight_id = ?)`).all(fightId, fightId) as typeof rows;
+      rows = (onlyUser
+        ? this.stmt("SELECT user_id, pick_json FROM predictions WHERE fight_id = ? AND user_id = ? AND pick_json IS NOT NULL").all(fightId, onlyUser)
+        : this.stmt(`SELECT p.user_id, p.pick_json FROM predictions p
+          WHERE p.fight_id = ? AND p.pick_json IS NOT NULL
+            AND p.user_id IN (SELECT DISTINCT user_id FROM comments WHERE fight_id = ?)`).all(fightId, fightId)) as typeof rows;
     } catch {
       // The prediction store owns that table; without it nobody has picked.
       return picks;
@@ -214,12 +296,11 @@ export class CommentStore {
     return picks;
   }
 
-  private personal(user: string | null, fightId: string) {
-    const picks = this.picks(fightId);
+  private personal(user: string | null, fightId: string, picks = this.snapshot(fightId).picks) {
     if (!user) return { votes: new Map<string, number>(), blocked: new Set<string>(), picks };
-    const votes = this.db.prepare(`SELECT v.comment_id, v.value FROM comment_votes v JOIN comments c ON c.id = v.comment_id
+    const votes = this.stmt(`SELECT v.comment_id, v.value FROM comment_votes v JOIN comments c ON c.id = v.comment_id
       WHERE v.user_id = ? AND c.fight_id = ?`).all(user, fightId) as { comment_id: string; value: number }[];
-    const blocked = this.db.prepare("SELECT blocked_id FROM comment_blocks WHERE user_id = ?").all(user) as { blocked_id: string }[];
+    const blocked = this.stmt("SELECT blocked_id FROM comment_blocks WHERE user_id = ?").all(user) as { blocked_id: string }[];
     return { votes: new Map(votes.map(vote => [vote.comment_id, vote.value])), blocked: new Set(blocked.map(row => row.blocked_id)), picks };
   }
 
@@ -253,11 +334,11 @@ export class CommentStore {
     const sort: CommentSort = COMMENT_SORTS.includes(options.sort!) ? options.sort! : "top";
     const offset = Math.max(0, options.offset ?? 0);
     const user = options.user ?? null;
-    const roots = this.forest(fightId).sort(this.order(sort));
-    const personal = this.personal(user, fightId);
-    const total = roots.reduce((sum, root) => sum + (root.row.deleted_at == null && root.row.removed_at == null ? 1 : 0) + root.descendants, 0);
+    const snapshot = this.snapshot(fightId);
+    const roots = this.sortedRoots(snapshot, sort);
+    const personal = this.personal(user, fightId, snapshot.picks);
     return {
-      fightId, sort, offset, pageSize: COMMENT_PAGE, threads: roots.length, total,
+      fightId, sort, offset, pageSize: COMMENT_PAGE, threads: roots.length, total: snapshot.total,
       comments: roots.slice(offset, offset + COMMENT_PAGE).map(root => this.present(root, sort, user, personal, INLINE_REPLIES)),
       viewer: this.viewer(user),
     };
@@ -267,13 +348,14 @@ export class CommentStore {
    *  replies". */
   thread(id: string, options: { sort?: CommentSort; user?: string | null } = {}) {
     if (!isId(id)) throw new ScoringError(404, "Comment not found.");
-    const found = this.db.prepare("SELECT fight_id, root_id FROM comments WHERE id = ?").get(id) as { fight_id: string; root_id: string } | undefined;
+    const found = this.stmt("SELECT fight_id, root_id FROM comments WHERE id = ?").get(id) as { fight_id: string; root_id: string } | undefined;
     if (!found) throw new ScoringError(404, "Comment not found.");
     const sort: CommentSort = COMMENT_SORTS.includes(options.sort!) ? options.sort! : "top";
     const user = options.user ?? null;
-    const root = this.forest(found.fight_id).find(tree => tree.row.id === found.root_id);
-    if (!root) throw new ScoringError(404, "This comment was deleted.");
-    return { fightId: found.fight_id, focus: id, comment: this.present(root, sort, user, this.personal(user, found.fight_id), Infinity), viewer: this.viewer(user) };
+    const snapshot = this.snapshot(found.fight_id);
+    const root = snapshot.byId.get(found.root_id);
+    if (!root || root.row.depth !== 1) throw new ScoringError(404, "This comment was deleted.");
+    return { fightId: found.fight_id, focus: id, comment: this.present(root, sort, user, this.personal(user, found.fight_id, snapshot.picks), Infinity), viewer: this.viewer(user) };
   }
 
   // -------------------------------------------------------------------------
@@ -290,7 +372,7 @@ export class CommentStore {
    *  lately, and whether this exact text has been posted before. */
   private assertNotFlooding(user: string, fightId: string, key: string, length: number, newAccount: boolean) {
     const now = this.now();
-    const count = (sql: string, ...params: (string | number)[]) => Number((this.db.prepare(sql).get(...params) as { n: number }).n);
+    const count = (sql: string, ...params: (string | number)[]) => Number((this.stmt(sql).get(...params) as { n: number }).n);
     if (count("SELECT COUNT(*) AS n FROM comments WHERE user_id = ? AND created_at > ?", user, now - HOUR) >= (newAccount ? NEW_ACCOUNT_HOURLY_LIMIT : HOURLY_LIMIT)) {
       throw new ScoringError(429, newAccount
         ? "New accounts can post a few comments an hour. Try again a little later."
@@ -331,7 +413,7 @@ export class CommentStore {
       if (parent.deleted_at != null || parent.removed_at != null) throw new ScoringError(409, "That comment is no longer available to reply to.");
       if (parent.held) throw new ScoringError(409, "That comment is being reviewed and can’t be replied to right now.");
       if (parent.depth >= COMMENT_MAX_DEPTH) throw new ScoringError(400, "Replies go at most three levels deep.");
-      if (this.db.prepare("SELECT 1 FROM comment_blocks WHERE user_id = ? AND blocked_id = ?").get(parent.user_id, user)) {
+      if (this.stmt("SELECT 1 FROM comment_blocks WHERE user_id = ? AND blocked_id = ?").get(parent.user_id, user)) {
         throw new ScoringError(403, "You can’t reply to this person.");
       }
       depth = parent.depth + 1;
@@ -341,14 +423,38 @@ export class CommentStore {
     const key = bodyKey(body);
     this.assertNotFlooding(user, fightId, key, keyLength(body), newAccount);
     const id = randomUUID();
-    this.db.prepare(`INSERT INTO comments (id, fight_id, user_id, parent_id, root_id, depth, body, body_key, created_at)
+    this.stmt(`INSERT INTO comments (id, fight_id, user_id, parent_id, root_id, depth, body, body_key, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, fightId, user, parentId, rootId ?? id, depth, body, key, this.now());
-    return this.single(id, user);
+    const row = this.get(id);
+    const picks = this.picks(fightId, user);
+    this.added(row, picks.get(user));
+    return this.single(row, user, picks);
   }
 
-  private single(id: string, user: string): CommentNode {
-    const row = this.get(id);
-    return this.present({ row, children: [], alive: true, descendants: 0 }, "top", user, this.personal(user, row.fight_id), 0);
+  /** A new comment joins the discussion in memory rather than rebuilding it:
+   *  on a busy night that is the difference between one insert and re-reading
+   *  thousands of comments after every post. */
+  private added(row: Row, pick: CommentPick | undefined) {
+    const snapshot = this.snapshots.get(row.fight_id);
+    this.versions.set(row.fight_id, this.version(row.fight_id) + 1);
+    if (!snapshot) return;
+    const node: Tree = { row, children: [], alive: true, descendants: 0 };
+    if (row.parent_id) {
+      const parent = snapshot.byId.get(row.parent_id);
+      if (!parent) { this.changed(row.fight_id); return; }
+      parent.children.push(node);
+      for (let above: Tree | undefined = parent; above; above = above.row.parent_id ? snapshot.byId.get(above.row.parent_id) : undefined) above.descendants++;
+    } else {
+      snapshot.roots.push(node);
+      snapshot.sorted.clear();
+    }
+    snapshot.byId.set(row.id, node);
+    snapshot.total++;
+    if (pick) snapshot.picks.set(row.user_id, pick);
+  }
+
+  private single(row: Row, user: string, picks = this.picks(row.fight_id, row.user_id)): CommentNode {
+    return this.present({ row, children: [], alive: true, descendants: 0 }, "top", user, this.personal(user, row.fight_id, picks), 0);
   }
 
   edit(user: string, id: string, value: unknown): CommentNode {
@@ -360,9 +466,10 @@ export class CommentStore {
     const body = cleanCommentBody((value as Record<string, unknown> | null)?.body);
     checkComment(body, { newAccount: this.isNew(user) });
     if (body !== row.body) {
-      this.db.prepare("UPDATE comments SET body = ?, body_key = ?, edited_at = ? WHERE id = ?").run(body, bodyKey(body), this.now(), id);
+      this.stmt("UPDATE comments SET body = ?, body_key = ?, edited_at = ? WHERE id = ?").run(body, bodyKey(body), this.now(), id);
+      this.changed(row.fight_id);
     }
-    return this.single(id, user);
+    return this.single(this.get(id), user);
   }
 
   /** The author's own deletion erases the text; a report already made keeps
@@ -370,7 +477,8 @@ export class CommentStore {
   remove(user: string, id: string): void {
     const row = this.get(id);
     if (row.user_id !== user || row.deleted_at != null) throw new ScoringError(404, "Comment not found.");
-    this.db.prepare("UPDATE comments SET deleted_at = ?, body = '' WHERE id = ?").run(this.now(), id);
+    this.stmt("UPDATE comments SET deleted_at = ?, body = '' WHERE id = ?").run(this.now(), id);
+    this.changed(row.fight_id);
   }
 
   vote(user: string, id: string, value: unknown): { score: number; myVote: -1 | 0 | 1 } {
@@ -381,17 +489,32 @@ export class CommentStore {
     this.assertCanWrite(user);
     this.db.exec("BEGIN IMMEDIATE");
     try {
-      if (value === 0) this.db.prepare("DELETE FROM comment_votes WHERE comment_id = ? AND user_id = ?").run(id, user);
-      else this.db.prepare(`INSERT INTO comment_votes VALUES (?, ?, ?, ?)
+      if (value === 0) this.stmt("DELETE FROM comment_votes WHERE comment_id = ? AND user_id = ?").run(id, user);
+      else this.stmt(`INSERT INTO comment_votes VALUES (?, ?, ?, ?)
         ON CONFLICT(comment_id, user_id) DO UPDATE SET value = excluded.value`).run(id, user, value, this.now());
-      this.db.prepare(`UPDATE comments SET
+      this.stmt(`UPDATE comments SET
         ups = (SELECT COUNT(*) FROM comment_votes WHERE comment_id = ?1 AND value = 1),
         downs = (SELECT COUNT(*) FROM comment_votes WHERE comment_id = ?1 AND value = -1)
         WHERE id = ?1`).run(id);
       this.db.exec("COMMIT");
     } catch (error) { this.db.exec("ROLLBACK"); throw error; }
-    const after = this.db.prepare("SELECT ups - downs AS score FROM comments WHERE id = ?").get(id) as { score: number };
-    return { score: after.score, myVote: value };
+    const after = this.stmt("SELECT ups, downs FROM comments WHERE id = ?").get(id) as { ups: number; downs: number };
+    this.voted(row.fight_id, id, after.ups, after.downs);
+    return { score: after.ups - after.downs, myVote: value };
+  }
+
+  /** A vote changes two counts, not the shape of the discussion: they are
+   *  updated in place and the Top order is marked for re-sorting. */
+  private voted(fightId: string, id: string, ups: number, downs: number) {
+    const snapshot = this.snapshots.get(fightId);
+    const node = snapshot?.byId.get(id);
+    if (node) {
+      node.row.ups = ups;
+      node.row.downs = downs;
+      const top = snapshot!.sorted.get("top");
+      if (top) top.stale = true;
+    }
+    this.versions.set(fightId, this.version(fightId) + 1);
   }
 
   /** One report per reader per comment. Enough of them, from accounts that
@@ -404,20 +527,20 @@ export class CommentStore {
     if (row.deleted_at != null || row.removed_at != null) throw new ScoringError(409, "This comment is already gone.");
     if (row.user_id === user) throw new ScoringError(400, "You can’t report your own comment.");
     this.scores.identity(user);
-    const recent = this.db.prepare("SELECT COUNT(*) AS n FROM comment_reports WHERE user_id = ? AND created_at > ?").get(user, this.now() - 24 * HOUR) as { n: number };
+    const recent = this.stmt("SELECT COUNT(*) AS n FROM comment_reports WHERE user_id = ? AND created_at > ?").get(user, this.now() - 24 * HOUR) as { n: number };
     if (recent.n >= 50) throw new ScoringError(429, "You’ve sent a lot of reports today. An administrator will get to them.");
     try {
-      this.db.prepare(`INSERT INTO comment_reports (id, comment_id, user_id, reason, note, snapshot, created_at)
+      this.stmt(`INSERT INTO comment_reports (id, comment_id, user_id, reason, note, snapshot, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)`).run(randomUUID(), id, user, input.reason, note, row.body, this.now());
     } catch (error) {
       if (/UNIQUE|constraint failed/i.test(String(error))) throw new ScoringError(409, "You’ve already reported this comment.");
       throw error;
     }
-    const established = this.db.prepare(`SELECT COUNT(DISTINCT r.user_id) AS n FROM comment_reports r JOIN scorers s ON s.user_id = r.user_id
+    const established = this.stmt(`SELECT COUNT(DISTINCT r.user_id) AS n FROM comment_reports r JOIN scorers s ON s.user_id = r.user_id
       WHERE r.comment_id = ? AND r.status = 'open' AND s.created_at IS NOT NULL AND s.created_at <= ?`)
       .get(id, this.now() - NEW_ACCOUNT_MS) as { n: number };
     const held = established.n >= HOLD_AFTER_REPORTS;
-    if (held && !row.held) this.db.prepare("UPDATE comments SET held = 1 WHERE id = ?").run(id);
+    if (held && !row.held) { this.stmt("UPDATE comments SET held = 1 WHERE id = ?").run(id); this.changed(row.fight_id); }
     return { reported: true, held };
   }
 
@@ -429,18 +552,18 @@ export class CommentStore {
     if (!target) throw new ScoringError(404, "Profile not found.");
     if (target.userId === user) throw new ScoringError(400, "You can’t block yourself.");
     this.scores.identity(user);
-    const count = this.db.prepare("SELECT COUNT(*) AS n FROM comment_blocks WHERE user_id = ?").get(user) as { n: number };
+    const count = this.stmt("SELECT COUNT(*) AS n FROM comment_blocks WHERE user_id = ?").get(user) as { n: number };
     if (count.n >= MAX_BLOCKS) throw new ScoringError(409, `You can block at most ${MAX_BLOCKS} people.`);
-    this.db.prepare("INSERT OR IGNORE INTO comment_blocks VALUES (?, ?, ?)").run(user, target.userId, this.now());
+    this.stmt("INSERT OR IGNORE INTO comment_blocks VALUES (?, ?, ?)").run(user, target.userId, this.now());
     return { blocked: this.blocks(user) };
   }
   unblock(user: string, handle: string): { blocked: ScorerIdentity[] } {
     const target = this.scores.lookup("handle", handle);
-    if (target) this.db.prepare("DELETE FROM comment_blocks WHERE user_id = ? AND blocked_id = ?").run(user, target.userId);
+    if (target) this.stmt("DELETE FROM comment_blocks WHERE user_id = ? AND blocked_id = ?").run(user, target.userId);
     return { blocked: this.blocks(user) };
   }
   blocks(user: string): ScorerIdentity[] {
-    return (this.db.prepare(`SELECT s.public_id, s.username, s.username_key, s.image_url FROM comment_blocks b
+    return (this.stmt(`SELECT s.public_id, s.username, s.username_key, s.image_url FROM comment_blocks b
       JOIN scorers s ON s.user_id = b.blocked_id WHERE b.user_id = ? ORDER BY b.created_at DESC`).all(user) as Row[]).map(identifyScorer);
   }
 
@@ -464,10 +587,10 @@ export class CommentStore {
     const scorer = this.scores.lookup("handle", handle);
     if (!scorer) throw new ScoringError(404, "Profile not found.");
     const owner = viewer === scorer.userId;
-    const visible = Boolean((this.db.prepare("SELECT comments_public FROM scorers WHERE user_id = ?").get(scorer.userId) as { comments_public: number }).comments_public);
+    const visible = Boolean((this.stmt("SELECT comments_public FROM scorers WHERE user_id = ?").get(scorer.userId) as { comments_public: number }).comments_public);
     if (!visible && !owner) throw new ScoringError(403, "This fan keeps their comments private.");
     const where = `c.user_id = ? AND c.deleted_at IS NULL AND c.removed_at IS NULL${owner ? "" : " AND c.held = 0"}`;
-    const total = (this.db.prepare(`SELECT COUNT(*) AS n FROM comments c WHERE ${where}`).get(scorer.userId) as { n: number }).n;
+    const total = (this.stmt(`SELECT COUNT(*) AS n FROM comments c WHERE ${where}`).get(scorer.userId) as { n: number }).n;
     const rows = this.rows(`${where} ORDER BY c.created_at DESC, c.rowid DESC LIMIT ? OFFSET ?`, scorer.userId, PROFILE_PAGE, Math.max(0, offset));
     const fights = this.fightLabels(rows.map(row => row.fight_id));
     return {
@@ -494,7 +617,7 @@ export class CommentStore {
     const fights = this.fightLabels(rows.map(row => row.fight_id));
     const reports = new Map<string, { reason: string; note: string; createdAt: number; status: string; snapshot: string; reporter: ScorerIdentity }[]>();
     if (rows.length) {
-      const found = this.db.prepare(`SELECT r.comment_id, r.reason, r.note, r.created_at, r.status, r.snapshot,
+      const found = this.stmt(`SELECT r.comment_id, r.reason, r.note, r.created_at, r.status, r.snapshot,
           s.public_id, s.username, s.username_key, s.image_url
         FROM comment_reports r JOIN scorers s ON s.user_id = r.user_id
         WHERE r.comment_id IN (${rows.map(() => "?").join(",")}) ORDER BY r.created_at DESC`)
@@ -507,11 +630,21 @@ export class CommentStore {
     }
     const authors = [...new Set(rows.map(row => row.user_id))];
     const history = new Map<string, { comments: number; removed: number; mutedUntil: number | null }>();
-    for (const author of authors) {
-      const counts = this.db.prepare("SELECT COUNT(*) AS comments, COALESCE(SUM(removed_at IS NOT NULL), 0) AS removed FROM comments WHERE user_id = ?").get(author) as { comments: number; removed: number };
-      history.set(author, { comments: counts.comments, removed: counts.removed, mutedUntil: this.mutedUntil(author) });
+    if (authors.length) {
+      const placeholders = authors.map(() => "?").join(",");
+      const counts = this.stmt(`SELECT user_id, COUNT(*) AS comments,
+        COALESCE(SUM(removed_at IS NOT NULL), 0) AS removed
+        FROM comments WHERE user_id IN (${placeholders}) GROUP BY user_id`).all(...authors) as
+        { user_id: string; comments: number; removed: number }[];
+      const sanctions = this.stmt(`SELECT user_id, muted_until FROM commenter_sanctions
+        WHERE user_id IN (${placeholders}) AND muted_until > ?`).all(...authors, this.now()) as
+        { user_id: string; muted_until: number }[];
+      const muted = new Map(sanctions.map(row => [row.user_id, row.muted_until]));
+      for (const row of counts) history.set(row.user_id, {
+        comments: row.comments, removed: row.removed, mutedUntil: muted.get(row.user_id) ?? null,
+      });
     }
-    const counts = this.db.prepare(`SELECT
+    const counts = this.stmt(`SELECT
         (SELECT COUNT(DISTINCT comment_id) FROM comment_reports WHERE status = 'open') AS reported,
         (SELECT COUNT(*) FROM comments WHERE held = 1 AND removed_at IS NULL AND deleted_at IS NULL) AS held`).get() as { reported: number; held: number };
     return {
@@ -543,17 +676,18 @@ export class CommentStore {
     this.db.exec("BEGIN IMMEDIATE");
     try {
       if (input.action === "dismiss") {
-        this.db.prepare("UPDATE comments SET held = 0, reviewed_at = ? WHERE id = ?").run(now, id);
-        this.db.prepare("UPDATE comment_reports SET status = 'dismissed', handled_by = ?, handled_at = ? WHERE comment_id = ? AND status = 'open'").run(admin, now, id);
+        this.stmt("UPDATE comments SET held = 0, reviewed_at = ? WHERE id = ?").run(now, id);
+        this.stmt("UPDATE comment_reports SET status = 'dismissed', handled_by = ?, handled_at = ? WHERE comment_id = ? AND status = 'open'").run(admin, now, id);
       } else if (input.action === "remove") {
-        this.db.prepare("UPDATE comments SET removed_at = ?, removed_by = ?, removal_reason = ?, held = 0, reviewed_at = ? WHERE id = ?").run(now, admin, reason, now, id);
-        this.db.prepare("UPDATE comment_reports SET status = 'actioned', handled_by = ?, handled_at = ? WHERE comment_id = ? AND status = 'open'").run(admin, now, id);
+        this.stmt("UPDATE comments SET removed_at = ?, removed_by = ?, removal_reason = ?, held = 0, reviewed_at = ? WHERE id = ?").run(now, admin, reason, now, id);
+        this.stmt("UPDATE comment_reports SET status = 'actioned', handled_by = ?, handled_at = ? WHERE comment_id = ? AND status = 'open'").run(admin, now, id);
       } else if (input.action === "restore") {
         if (row.removed_at == null) throw new ScoringError(409, "That comment has not been removed.");
-        this.db.prepare("UPDATE comments SET removed_at = NULL, removed_by = ?, removal_reason = '', held = 0, reviewed_at = ? WHERE id = ?").run(admin, now, id);
+        this.stmt("UPDATE comments SET removed_at = NULL, removed_by = ?, removal_reason = '', held = 0, reviewed_at = ? WHERE id = ?").run(admin, now, id);
       } else throw new ScoringError(400, "Choose dismiss, remove or restore.");
       this.db.exec("COMMIT");
     } catch (error) { this.db.exec("ROLLBACK"); throw error; }
+    this.changed(row.fight_id);
     return { id, action: input.action };
   }
 
@@ -567,22 +701,39 @@ export class CommentStore {
     if (typeof hours !== "number" || !Number.isInteger(hours) || hours < -1 || hours > 24 * 365) throw new ScoringError(400, "Choose how long to mute for.");
     const reason = typeof input.reason === "string" ? input.reason.trim().slice(0, 300) : "";
     const now = this.now();
-    if (hours === 0) this.db.prepare("DELETE FROM commenter_sanctions WHERE user_id = ?").run(target.userId);
-    else this.db.prepare(`INSERT INTO commenter_sanctions VALUES (?, ?, ?, ?, ?)
+    if (hours === 0) this.stmt("DELETE FROM commenter_sanctions WHERE user_id = ?").run(target.userId);
+    else this.stmt(`INSERT INTO commenter_sanctions VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(user_id) DO UPDATE SET muted_until = excluded.muted_until, reason = excluded.reason, by = excluded.by, at = excluded.at`)
       .run(target.userId, hours === -1 ? PERMANENT : now + hours * HOUR, reason, admin, now);
     let purged = 0;
     if (input.purge === true) {
-      purged = Number(this.db.prepare(`UPDATE comments SET removed_at = ?, removed_by = ?, removal_reason = ?, held = 0
+      purged = Number(this.stmt(`UPDATE comments SET removed_at = ?, removed_by = ?, removal_reason = ?, held = 0
         WHERE user_id = ? AND removed_at IS NULL AND deleted_at IS NULL`).run(now, admin, reason || "Removed with the account’s other comments", target.userId).changes);
-      this.db.prepare(`UPDATE comment_reports SET status = 'actioned', handled_by = ?, handled_at = ?
+      this.stmt(`UPDATE comment_reports SET status = 'actioned', handled_by = ?, handled_at = ?
         WHERE status = 'open' AND comment_id IN (SELECT id FROM comments WHERE user_id = ?)`).run(admin, now, target.userId);
+      // Every discussion they took part in changes.
+      for (const row of this.stmt("SELECT DISTINCT fight_id FROM comments WHERE user_id = ?").all(target.userId) as { fight_id: string }[]) this.changed(row.fight_id);
     }
     return { mutedUntil: this.mutedUntil(target.userId), purged };
   }
 
+  /** Discussion activity for the admin dashboard. Every count is indexed. */
+  stats() {
+    const now = this.now();
+    const count = (sql: string, ...params: number[]) => Number((this.stmt(sql).get(...params) as { n: number }).n);
+    return {
+      commentsLastHour: count("SELECT COUNT(*) AS n FROM comments WHERE created_at > ?", now - HOUR),
+      commentsLastDay: count("SELECT COUNT(*) AS n FROM comments WHERE created_at > ?", now - 24 * HOUR),
+      commentersLastDay: count("SELECT COUNT(DISTINCT user_id) AS n FROM comments WHERE created_at > ?", now - 24 * HOUR),
+      openReports: count("SELECT COUNT(DISTINCT comment_id) AS n FROM comment_reports WHERE status = 'open'"),
+      heldComments: count("SELECT COUNT(*) AS n FROM comments WHERE held = 1"),
+      mutedAccounts: count("SELECT COUNT(*) AS n FROM commenter_sanctions WHERE muted_until > ?", now),
+      discussionsInMemory: this.snapshots.size,
+    };
+  }
+
   sanctions() {
-    const rows = this.db.prepare(`SELECT m.muted_until, m.reason, m.by, m.at, s.public_id, s.username, s.username_key, s.image_url
+    const rows = this.stmt(`SELECT m.muted_until, m.reason, m.by, m.at, s.public_id, s.username, s.username_key, s.image_url
       FROM commenter_sanctions m JOIN scorers s ON s.user_id = m.user_id
       WHERE m.muted_until > ? ORDER BY m.at DESC LIMIT 500`).all(this.now()) as (Row & { muted_until: number; reason: string; by: string; at: number })[];
     return {

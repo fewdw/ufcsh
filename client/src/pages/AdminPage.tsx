@@ -5,6 +5,7 @@ import { useAdminResource, type AdminSession } from "../admin";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { useSeo } from "../seo";
 
+const AdminHealth = lazy(() => import("../components/AdminHealth"));
 const AdminBugs = lazy(() => import("../components/AdminBugs"));
 const AdminLive = lazy(() => import("../components/AdminLive"));
 const AdminAdmins = lazy(() => import("../components/AdminAdmins"));
@@ -12,6 +13,7 @@ const AdminFlags = lazy(() => import("../components/AdminFlags"));
 const AdminComments = lazy(() => import("../components/AdminComments"));
 
 const TABS = [
+  { id: "health", label: "Health" },
   { id: "bugs", label: "Bugs" },
   { id: "live", label: "Live rounds" },
   { id: "admin", label: "Admins" },
@@ -77,6 +79,7 @@ function AdminShell({ tab, onTab }: { tab: TabId; onTab: (next: TabId) => void }
         </div>
         <div id="admin-tabpanel" role="tabpanel" aria-labelledby={`admin-tab-${tab}`}>
           <Suspense fallback={<div role="status" className="py-16 text-center text-sm text-zinc-400">Loading…</div>}>
+            {tab === "health" ? <AdminHealth /> : null}
             {tab === "bugs" ? <AdminBugs /> : null}
             {tab === "live" ? <AdminLive /> : null}
             {tab === "admin" ? <AdminAdmins email={data.email} /> : null}
@@ -94,7 +97,7 @@ export default function AdminPage() {
   const [params, setParams] = useSearchParams();
   const { isLoaded, user } = useAccount();
   const requested = params.get("tab");
-  const tab = (TABS.find(item => item.id === requested)?.id ?? "bugs") as TabId;
+  const tab = (TABS.find(item => item.id === requested)?.id ?? "health") as TabId;
   const onTab = (next: TabId) => {
     const search = new URLSearchParams(params);
     search.set("tab", next);

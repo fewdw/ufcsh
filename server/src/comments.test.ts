@@ -293,3 +293,63 @@ test("each comment carries its author's prediction for the bout", t => {
   assert.deepEqual(byAuthor.get(handle("u2")), { corner: 1, fighter: "Alex Pereira", method: null, round: null });
   assert.equal(byAuthor.get(handle("u3")), null);
 });
+
+test("the in-memory discussion matches a fresh read after every kind of change", t => {
+  const { scores, comments, established, tick } = fixture(t);
+  established("u1", "u2", "u3", "u4", "u5");
+  const fresh = () => new CommentStore(scores, ids => ids.filter(id => id === FIGHT || id === OTHER).map(fight), () => Date.now() + 10 * 86_400_000);
+  const same = (label: string) => {
+    for (const sort of ["top", "new", "old"] as const) {
+      const cached = comments.list(FIGHT, { sort, user: "u1" });
+      const read = fresh().list(FIGHT, { sort, user: "u1" });
+      const strip = (page: typeof cached) => JSON.stringify(page.comments.map(function clean(node): unknown {
+        return { id: node.id, score: node.score, state: node.state, replyCount: node.replyCount, more: node.more, body: node.body, replies: node.replies.map(clean) };
+      }));
+      assert.equal(strip(cached), strip(read), `${label} (${sort})`);
+      assert.equal(cached.total, read.total, `${label} total`);
+    }
+  };
+  const a = comments.post("u1", FIGHT, { body: "First take on the fight." });
+  comments.list(FIGHT, { sort: "top" }); // warm the cache before anything changes
+  tick(5);
+  const b = comments.post("u2", FIGHT, { body: "Second, different take." });
+  const reply = comments.post("u3", FIGHT, { body: "Replying to the first one.", parentId: a.id });
+  tick(5);
+  const deep = comments.post("u4", FIGHT, { body: "And a reply to the reply.", parentId: reply.id });
+  same("after posts");
+  comments.vote("u1", b.id, 1); comments.vote("u3", b.id, 1); comments.vote("u4", a.id, -1);
+  tick(1_500); // past the Top re-sort interval
+  same("after votes");
+  comments.edit("u4", deep.id, { body: "An edited reply to the reply." });
+  same("after an edit");
+  comments.remove("u3", reply.id);
+  same("after a deletion with a live reply beneath it");
+  comments.moderate(b.id, { action: "remove" }, "admin@example.com");
+  same("after a moderator removal");
+  comments.moderate(b.id, { action: "restore" }, "admin@example.com");
+  same("after a restore");
+  comments.sanction(scores.identity("u4").handle, { hours: 1, purge: true }, "admin@example.com");
+  same("after a purge");
+});
+
+test("signed-out readers share one page until the discussion changes", async t => {
+  const { comments, established } = fixture(t);
+  established("u1", "u2");
+  let clock = Date.now();
+  const handler = createCommentsHandler(comments, async () => { throw new ScoringError(401, "no"); }, () => clock);
+  const server = http.createServer((req, res) => { void handler(req, res, new URL(req.url!, "http://localhost")); });
+  server.listen(0);
+  await once(server, "listening");
+  t.after(() => server.close());
+  const base = `http://localhost:${(server.address() as { port: number }).port}/api/fights/${FIGHT}/comments`;
+  const read = async () => (await (await fetch(base)).json()) as { total: number };
+  assert.equal((await read()).total, 0);
+  comments.post("u1", FIGHT, { body: "Posted while the page was cached." });
+  // Within the freshness window the shared page is reused...
+  assert.equal((await read()).total, 0);
+  clock += 2_500;
+  // ...and after it a changed discussion is read again.
+  assert.equal((await read()).total, 1);
+  clock += 20_000;
+  assert.equal((await read()).total, 1);
+});

@@ -1929,6 +1929,7 @@ export function startApi(port: number): http.Server {
     scores: scoreStore,
     reports: reportStore,
     comments: commentStore,
+    metrics: () => adminMetrics(),
     report: async () => (queryPool ? JSON.parse((await queryPool.run("/api/bugs")).json) : bugReport()),
     runAction: (action, target, actor) => process.env.NODE_ENV === "production"
       ? productionRepair(action, target, actor)
@@ -1954,6 +1955,62 @@ export function startApi(port: number): http.Server {
   const observability = new HttpObservability();
   const eventLoop = monitorEventLoopDelay({ resolution: 20 });
   eventLoop.enable();
+  // The dashboard's process gauges: event-loop delay, CPU and memory, sampled
+  // every fifteen seconds into the minute they belong to.
+  const recentLoop = monitorEventLoopDelay({ resolution: 20 });
+  recentLoop.enable();
+  let lastCpu = process.cpuUsage();
+  let lastSampleAt = performance.now();
+  let latestGauges = { eventLoopP50Ms: 0, eventLoopP95Ms: 0, eventLoopMaxMs: 0, cpuPercent: 0 };
+  const sampler = setInterval(() => {
+    const cpu = process.cpuUsage(lastCpu);
+    const elapsedMs = performance.now() - lastSampleAt;
+    lastCpu = process.cpuUsage();
+    lastSampleAt = performance.now();
+    latestGauges = {
+      eventLoopP50Ms: recentLoop.percentile(50) / 1e6, eventLoopP95Ms: recentLoop.percentile(95) / 1e6,
+      eventLoopMaxMs: recentLoop.max / 1e6, cpuPercent: elapsedMs > 0 ? (cpu.user + cpu.system) / 1000 / elapsedMs * 100 : 0,
+    };
+    recentLoop.reset();
+    observability.sample({ eventLoopP95Ms: latestGauges.eventLoopP95Ms, cpuPercent: latestGauges.cpuPercent, memoryBytes: process.memoryUsage().rss });
+  }, 15_000);
+  sampler.unref();
+  // Counts from the databases change slowly and cost queries, so the dashboard
+  // reads them at most every fifteen seconds.
+  let communityCache: { at: number; value: unknown } | null = null;
+  const community = () => {
+    if (communityCache && Date.now() - communityCache.at < 15_000) return communityCache.value;
+    const count = (sql: string, ...params: number[]) => {
+      try { return Number((scoreStore.db.prepare(sql).get(...params) as { n: number }).n); } catch { return null; }
+    };
+    const value = {
+      ...commentStore.stats(),
+      accounts: count("SELECT COUNT(*) AS n FROM scorers"),
+      accountsLastDay: count("SELECT COUNT(*) AS n FROM scorers WHERE created_at > ?", Date.now() - 86_400_000),
+      predictionsLastDay: count("SELECT COUNT(*) AS n FROM predictions WHERE updated_at > ?", Date.now() - 86_400_000),
+    };
+    communityCache = { at: Date.now(), value };
+    return value;
+  };
+  const adminMetrics = () => {
+    const memory = process.memoryUsage();
+    const timestamp = (key: string) => Number(getMeta(key)) || null;
+    return {
+      generatedAt: Date.now(),
+      ready: !stopping && (!queryPool || queryPool.ready),
+      node: process.version,
+      process: {
+        uptimeSeconds: process.uptime(), rssBytes: memory.rss, heapUsedBytes: memory.heapUsed, heapTotalBytes: memory.heapTotal,
+        ...latestGauges,
+      },
+      http: observability.snapshot(),
+      cache: { hits: cache.hits, misses: cache.misses, entries: cache.size, bytes: cache.byteSize },
+      queries: { pending: queryPool?.pending ?? 0, workers: workerCount },
+      sync: { lastTickAt: timestamp("last_tick_at"), heartbeatAt: timestamp("sync_worker_heartbeat_at"), lastError: getMeta("last_sync_error") || null },
+      community: community(),
+      grafanaUrl: process.env.GRAFANA_URL || null,
+    };
+  };
   let requests = 0;
   let failures = 0;
   const latencies = new Map<string, { count: number; total_ms: number; max_ms: number }>();
@@ -1970,7 +2027,7 @@ export function startApi(port: number): http.Server {
       const key = publicApi(pathname) ? pathname.replace(/\/[a-f0-9]{16}$/i, "/:id") : "other";
       const entry = latencies.get(key) ?? { count: 0, total_ms: 0, max_ms: 0 };
       const duration = performance.now() - started;
-      observability.record(req.method ?? "OTHER", pathname, res.statusCode, duration / 1000);
+      observability.record(req.method ?? "OTHER", pathname, res.statusCode, duration / 1000, clientAddress(req));
       entry.count++; entry.total_ms += duration; entry.max_ms = Math.max(entry.max_ms, duration);
       latencies.set(key, entry);
     });
@@ -2089,6 +2146,8 @@ export function startApi(port: number): http.Server {
     metricsServer?.close();
     scoreStore.db.close();
     eventLoop.disable();
+    recentLoop.disable();
+    clearInterval(sampler);
     process.removeListener("SIGTERM", shutdown);
     process.removeListener("SIGINT", shutdown);
     void queryPool?.close();
