@@ -61,9 +61,8 @@ function Header({ onSearch }: { onSearch: () => void }) {
           between them. Nothing is positioned over anything else, so no width
           can make two of them collide. */}
       <div className="flex w-full items-center gap-1 px-2 py-2.5 min-[380px]:gap-2 min-[380px]:px-2.5 sm:gap-3 sm:px-5 sm:py-3">
-        <Link to="/" className="relative shrink-0 text-sm font-bold tracking-tight text-zinc-900 min-[380px]:text-base sm:text-lg">
-          ufc<span className="text-zinc-400">.sh</span>
-          {isDevSite ? <span aria-hidden="true" className="absolute right-0 top-0 rounded-[3px] bg-amber-300 px-0.5 text-[7px] font-extrabold leading-[10px] text-amber-950">DEV</span> : null}
+        <Link to="/" className={`shrink-0 text-sm font-bold tracking-tight min-[380px]:text-base sm:text-lg ${isDevSite ? "text-sky-500" : "text-zinc-900"}`}>
+          ufc<span className={isDevSite ? "" : "text-zinc-400"}>.sh</span>
         </Link>
         {/* The shared pill group, tightened below 380px so the row still fits a
             320px screen with nothing clipped and nothing dropped. */}
