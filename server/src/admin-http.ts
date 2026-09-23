@@ -4,6 +4,7 @@ import { authenticateScorer, scoringOrigins, scorerEmail } from "./scoring-http.
 import { ScoringError, scoringEligibility, type ScoringFight, type ScoringStore } from "./scoring.ts";
 import type { AdminStore } from "./admins.ts";
 import type { ReportStore } from "./reports.ts";
+import type { CommentStore } from "./comments.ts";
 
 /** A bout the panel can release rounds for: everything on a card being fought
  *  today, whether or not the feed has noticed it has started. */
@@ -13,6 +14,8 @@ export type AdminHandlerOptions = {
   admins: AdminStore;
   scores: ScoringStore;
   reports: ReportStore;
+  /** Fight discussions: the reported-comment queue and account mutes. */
+  comments?: CommentStore;
   /** The data-quality report, which may be computed in a query worker. */
   report: () => Promise<unknown>;
   runAction: (action: string, target: string, actor: string) => Promise<unknown>;
@@ -44,7 +47,7 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
  * whenever a token happens to expire.
  */
 export function createAdminHandler(options: AdminHandlerOptions) {
-  const { admins, scores, reports, report, runAction, canAct, liveFights } = options;
+  const { admins, scores, reports, comments, report, runAction, canAct, liveFights } = options;
   const authenticate = options.authenticate ?? authenticateScorer;
   const emailOf = options.emailOf ?? scorerEmail;
   const now = options.now ?? Date.now;
@@ -74,6 +77,8 @@ export function createAdminHandler(options: AdminHandlerOptions) {
     const route = url.pathname.slice("/api/admin/".length);
     const liveFight = /^live\/([a-f0-9]{16})$/.exec(route);
     const flag = /^flags\/([0-9a-f-]{36})$/.exec(route);
+    const moderated = /^comments\/([0-9a-f-]{36})$/.exec(route);
+    const commenter = /^commenters\/([0-9a-f-]{36}|[a-z0-9]{3,20})$/.exec(route);
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -81,7 +86,7 @@ export function createAdminHandler(options: AdminHandlerOptions) {
     try {
       const allowed = route === "admins" ? ["GET", "HEAD", "POST", "DELETE"]
         : liveFight ? ["PUT"]
-        : flag ? ["PUT"]
+        : flag || moderated || commenter ? ["PUT"]
         : route === "bugs/action" ? ["POST"]
         : ["GET", "HEAD"];
       if (!allowed.includes(req.method ?? "")) {
@@ -120,6 +125,14 @@ export function createAdminHandler(options: AdminHandlerOptions) {
       }
       else if (route === "flags") send(reports.list());
       else if (flag) send(reports.update(flag[1], await readBody(req), email ?? ""));
+      else if (route === "comments" || route === "commenters" || moderated || commenter) {
+        if (!comments) throw new ScoringError(404, "Not found.");
+        if (req.method === "PUT" && !limiter.allow(`moderate:${email}`, 60, 1)) throw new ScoringError(429, "Too many changes. Try again shortly.");
+        if (route === "comments") send(comments.queue(url.searchParams.get("view")));
+        else if (route === "commenters") send(comments.sanctions());
+        else if (moderated) send(comments.moderate(moderated[1], await readBody(req), email ?? ""));
+        else send(comments.sanction(commenter![1], await readBody(req), email ?? ""));
+      }
       else if (route === "live") send({ fights: liveFights().map(describe) });
       else if (liveFight) {
         const body = await readBody(req) as { rounds?: unknown };

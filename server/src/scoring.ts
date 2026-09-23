@@ -89,6 +89,7 @@ type StoredScorer = {
   user_id: string; public_id: string; created_at: number | null;
   username: string | null; username_key: string | null; username_set_at: number | null;
   image_url: string | null; image_synced_at: number | null;
+  comments_public: number | null;
 };
 /** How a scorer appears anywhere public: a name, a picture and an address. */
 export type ScorerIdentity = { publicId: string; handle: string; username: string | null; displayName: string; imageUrl: string | null };
@@ -96,6 +97,16 @@ export type ScorerIdentity = { publicId: string; handle: string; username: strin
 /** Until a scorer chooses a username they are named by their random public id,
  *  never by their account. */
 export const scorerAlias = (publicId: string) => `Fan ${publicId.slice(0, 8)}`;
+
+/** The public face of a stored scorer row, wherever it was joined from. */
+export function identifyScorer(row: { public_id: string; username: string | null; username_key: string | null; image_url: string | null }): ScorerIdentity {
+  return {
+    publicId: row.public_id, username: row.username ?? null,
+    handle: row.username_key ?? row.public_id,
+    displayName: row.username ?? scorerAlias(row.public_id),
+    imageUrl: row.image_url ?? null,
+  };
+}
 
 /** Letters and digits only, three to twenty of them. No punctuation, so a
  *  username cannot imitate a path, a public id, or another name through
@@ -209,7 +220,9 @@ export class ScoringStore {
     // Scorers gained a chosen name and a picture after the first release; the
     // columns are added in place so an existing database keeps its cards.
     const columns = new Set((this.db.prepare("PRAGMA table_info(scorers)").all() as { name: string }[]).map(column => column.name));
-    for (const [name, type] of [["username", "TEXT"], ["username_key", "TEXT"], ["username_set_at", "INTEGER"], ["image_url", "TEXT"], ["image_synced_at", "INTEGER"], ["created_at", "INTEGER"]] as const) {
+    // Whether a scorer's comments are listed on their profile. Hidden until
+    // they choose otherwise.
+    for (const [name, type] of [["username", "TEXT"], ["username_key", "TEXT"], ["username_set_at", "INTEGER"], ["image_url", "TEXT"], ["image_synced_at", "INTEGER"], ["created_at", "INTEGER"], ["comments_public", "INTEGER NOT NULL DEFAULT 0"]] as const) {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE scorers ADD COLUMN ${name} ${type}`);
     }
     // Older scorers predate the join-time column. Their earliest known site
@@ -232,12 +245,7 @@ export class ScoringStore {
   /** What a profile is named and addressed by. A scorer who has not chosen a
    *  username is still reachable, at their public id. */
   private identify(row: StoredScorer): ScorerIdentity {
-    return {
-      publicId: row.public_id, username: row.username ?? null,
-      handle: row.username_key ?? row.public_id,
-      displayName: row.username ?? scorerAlias(row.public_id),
-      imageUrl: row.image_url ?? null,
-    };
+    return identifyScorer(row);
   }
   /** A public identity by handle or account, never minting one. */
   lookup(column: "user_id" | "handle", value: string): (ScorerIdentity & { userId: string }) | null {
@@ -438,6 +446,17 @@ export class ScoringStore {
       .run(url, Date.now(), joined, user);
     return this.identity(user);
   }
+  /** Whether this scorer lists their comments on their public profile. */
+  setCommentsPublic(user: string, value: unknown): ScorerIdentity & { commentsPublic: boolean } {
+    if (typeof value !== "boolean") throw new ScoringError(400, "Choose whether your comments are shown.");
+    this.identity(user);
+    this.stmt("UPDATE scorers SET comments_public = ? WHERE user_id = ?").run(value ? 1 : 0, user);
+    return { ...this.identity(user), commentsPublic: value };
+  }
+  /** When the account behind a scorer was created, as far as is known. */
+  joinedAt(user: string): number | null {
+    return this.scorer("user_id", user)?.created_at ?? null;
+  }
   imageSyncedAt(user: string): number {
     return this.scorer("user_id", user)?.image_synced_at ?? 0;
   }
@@ -497,7 +516,7 @@ export class ScoringStore {
       (filter === "all" ? true : filter === "decisions" ? card.decision : card.agreement === filter)
       && (!query || `${card.fight.f1_name} ${card.fight.f2_name} ${card.fight.event_name} ${card.fight.weight_class ?? ""}`.toLowerCase().includes(query)));
     return {
-      scorer: { ...this.identify(scorer), cards: all.length, joinedAt: scorer.created_at },
+      scorer: { ...this.identify(scorer), cards: all.length, joinedAt: scorer.created_at, commentsPublic: Boolean(scorer.comments_public) },
       agreement, filter, query, offset, pageSize: PROFILE_PAGE, total: matching.length,
       cards: matching.slice(offset, offset + PROFILE_PAGE),
     };

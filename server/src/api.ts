@@ -30,6 +30,8 @@ import { AdminStore } from "./admins.ts";
 import { createAdminHandler, type AdminLiveFight } from "./admin-http.ts";
 import { ReportStore } from "./reports.ts";
 import { createReportsHandler } from "./reports-http.ts";
+import { CommentStore } from "./comments.ts";
+import { createCommentsHandler } from "./comments-http.ts";
 import { releasedRounds } from "./live-rounds.ts";
 import { ensureImageVariant, variantPath, type ImageSize } from "./image-variants.ts";
 import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds } from "./sync.ts";
@@ -1903,12 +1905,13 @@ export function startApi(port: number): http.Server {
         FROM fights f JOIN events e ON e.id = f.event_id
         LEFT JOIN fighters a ON a.id = f.f1_id LEFT JOIN fighters b ON b.id = f.f2_id
         WHERE f.id IN (${Array.from({ length: count }, () => "?").join(",")})`);
-  const scoreStore = new ScoringStore(path.join(DATA_DIR, "scoring.db"), ids => ids.length
+  const scoringFights = (ids: string[]) => ids.length
     ? (scoringFightsQuery(ids.length).all(...ids) as any[])
       .map(fight => ({ ...fight,
         f1_photo: cachedPhotoUrl(fight.f1_id, fight.f1_remote_photo),
         f2_photo: cachedPhotoUrl(fight.f2_id, fight.f2_remote_photo) }) as ScoringFight)
-    : []);
+    : [];
+  const scoreStore = new ScoringStore(path.join(DATA_DIR, "scoring.db"), scoringFights);
   const scoring = createScoringHandler(scoreStore);
   const predictionStore = new PredictionStore(scoreStore, predictionContext, predictionFights);
   const predictions = createPredictionsHandler(predictionStore);
@@ -1916,6 +1919,8 @@ export function startApi(port: number): http.Server {
   const bets = createBetsHandler(betStore, createLeaderboards(scoreStore, predictionStore, betStore));
   const reportStore = new ReportStore(scoreStore);
   const reports = createReportsHandler(reportStore);
+  const commentStore = new CommentStore(scoreStore, scoringFights);
+  const comments = createCommentsHandler(commentStore);
   const adminStore = new AdminStore(scoreStore.db);
   const productionRepair = createRepairRunner(repairSnapshot, runBugAction, entry =>
     console.log(JSON.stringify({ timestamp: new Date().toISOString(), ...entry })));
@@ -1923,6 +1928,7 @@ export function startApi(port: number): http.Server {
     admins: adminStore,
     scores: scoreStore,
     reports: reportStore,
+    comments: commentStore,
     report: async () => (queryPool ? JSON.parse((await queryPool.run("/api/bugs")).json) : bugReport()),
     runAction: (action, target, actor) => process.env.NODE_ENV === "production"
       ? productionRepair(action, target, actor)
@@ -1976,6 +1982,7 @@ export function startApi(port: number): http.Server {
       if (!stopping && await predictions(req, res, url)) return;
       if (!stopping && await bets(req, res, url)) return;
       if (!stopping && await reports(req, res, url)) return;
+      if (!stopping && await comments(req, res, url)) return;
       if (!stopping && await admin(req, res, url)) return;
       const part = (i: number) => p.split("/")[i] ?? "";
       if (req.method !== "GET" && req.method !== "HEAD") {

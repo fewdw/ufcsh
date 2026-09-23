@@ -9,12 +9,14 @@ const AdminBugs = lazy(() => import("../components/AdminBugs"));
 const AdminLive = lazy(() => import("../components/AdminLive"));
 const AdminAdmins = lazy(() => import("../components/AdminAdmins"));
 const AdminFlags = lazy(() => import("../components/AdminFlags"));
+const AdminComments = lazy(() => import("../components/AdminComments"));
 
 const TABS = [
   { id: "bugs", label: "Bugs" },
   { id: "live", label: "Live rounds" },
   { id: "admin", label: "Admins" },
   { id: "flags", label: "Flags" },
+  { id: "comments", label: "Comments" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -79,6 +81,7 @@ function AdminShell({ tab, onTab }: { tab: TabId; onTab: (next: TabId) => void }
             {tab === "live" ? <AdminLive /> : null}
             {tab === "admin" ? <AdminAdmins email={data.email} /> : null}
             {tab === "flags" ? <AdminFlags /> : null}
+            {tab === "comments" ? <AdminComments /> : null}
           </Suspense>
         </div>
       </div>

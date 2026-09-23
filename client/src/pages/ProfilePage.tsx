@@ -10,6 +10,7 @@ import { PANEL_SHELL, PanelHeading } from "../components/FightStats";
 import { segmentedGroup, segmentedSelected, segmentedIdle } from "../components/segmented";
 import ProfilePredictions from "../components/ProfilePredictions";
 import ProfileBets from "../components/ProfileBets";
+import ProfileComments from "../components/ProfileComments";
 import ReportIssueDialog from "../components/ReportIssueDialog";
 import Leaderboards from "../components/Leaderboards";
 import { formatDateShortWithYear, formatMethod } from "../format";
@@ -25,7 +26,7 @@ const FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed"];
 const DEFAULT_FILTER: ProfileFilter = "decisions";
 const TABS = [
   { id: "scorecards", label: "Scorecards" }, { id: "predictions", label: "Predictions" },
-  { id: "bets", label: "Bets" }, { id: "leaderboards", label: "Leaderboards" },
+  { id: "bets", label: "Bets" }, { id: "comments", label: "Comments" }, { id: "leaderboards", label: "Leaderboards" },
 ] as const;
 type Section = (typeof TABS)[number]["id"];
 const quiet = "rounded-full px-3 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
@@ -72,7 +73,6 @@ function Empty({ message }: { message: string }) {
 
 function Profile({ handle }: { handle: string }) {
   const [search, setSearch] = useSearchParams();
-  const section: Section = TABS.find(tab => tab.id === search.get("tab"))?.id ?? "scorecards";
   const filter = (FILTERS.find(value => value === search.get("filter")) ?? DEFAULT_FILTER) as ProfileFilter;
   const query = (search.get("q") ?? "").slice(0, 60);
   const pageUrl = useCallback(
@@ -95,6 +95,9 @@ function Profile({ handle }: { handle: string }) {
   const [confirming, setConfirming] = useState<ScorerCard | null>(null);
   const { identity } = useMyProfile();
   const mine = Boolean(identity && view && identity.publicId === view.scorer.publicId);
+  // A fan's comments are a tab for others only once they have chosen to show them.
+  const tabs = TABS.filter(tab => tab.id !== "comments" || mine || view?.scorer.commentsPublic);
+  const section: Section = tabs.find(tab => tab.id === search.get("tab"))?.id ?? "scorecards";
   const scroll = useRouteScrollRestoration<HTMLDivElement>("profile", Boolean(view));
   const sentinel = useRef<HTMLDivElement>(null);
 
@@ -148,7 +151,7 @@ function Profile({ handle }: { handle: string }) {
         <ProfileHeader scorer={scorer} mine={mine} onRenamed={refresh} />
 
         <div role="tablist" aria-label="Profile sections" className={`${segmentedGroup} w-full`}>
-          {TABS.map((tab, index) => (
+          {tabs.map((tab, index) => (
             <button
               key={tab.id}
               type="button"
@@ -159,12 +162,12 @@ function Profile({ handle }: { handle: string }) {
               tabIndex={section === tab.id ? 0 : -1}
               onClick={() => { const params = new URLSearchParams(search); params.set("tab", tab.id); setSearch(params, { replace: true }); }}
               onKeyDown={event => {
-                const next = event.key === "ArrowRight" ? (index + 1) % TABS.length
-                  : event.key === "ArrowLeft" ? (index + TABS.length - 1) % TABS.length
-                    : event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1 : null;
+                const next = event.key === "ArrowRight" ? (index + 1) % tabs.length
+                  : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length
+                    : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : null;
                 if (next == null) return;
                 event.preventDefault();
-                const params = new URLSearchParams(search); params.set("tab", TABS[next].id); setSearch(params, { replace: true });
+                const params = new URLSearchParams(search); params.set("tab", tabs[next].id); setSearch(params, { replace: true });
                 event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
               }}
               className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${section === tab.id ? segmentedSelected : segmentedIdle}`}
@@ -177,6 +180,7 @@ function Profile({ handle }: { handle: string }) {
         <div id="profile-tabpanel" role="tabpanel" aria-labelledby={`profile-tab-${section}`} className="flex flex-col gap-3">
           {section === "predictions" ? <ProfilePredictions key={handle} handle={handle} mine={mine} />
             : section === "bets" ? <ProfileBets key={handle} handle={handle} mine={mine} />
+            : section === "comments" ? <ProfileComments key={handle} handle={handle} mine={mine} visible={scorer.commentsPublic} />
             : section === "leaderboards" ? <Leaderboards handle={handle} /> : <>
           <section className={`${PANEL_SHELL} overflow-hidden`}>
             <PanelHeading
@@ -323,6 +327,7 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
           <button type="button" onClick={manage} className={quiet}>
             <Settings className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />Manage account
           </button>
+          <CommentsVisibility visible={scorer.commentsPublic} onChanged={onRenamed} />
           <button type="button" onClick={signOut} className={quiet}>
             <LogOut className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />Sign out
           </button>
@@ -330,6 +335,41 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
         </div>
       ) : null}
     </header>
+  );
+}
+
+/** Whether the Comments tab is shown to other people. Hidden until the owner
+ *  unticks it; the list itself is always there for them. */
+function CommentsVisibility({ visible, onChanged }: { visible: boolean; onChanged: () => void }) {
+  const { getToken } = useAuth();
+  const [hidden, setHidden] = useState(!visible);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => { setHidden(!visible); }, [visible]);
+  const change = async (next: boolean) => {
+    setHidden(next); setBusy(true); setError("");
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Your session expired. Sign in again.");
+      const response = await fetch("/api/profiles/mine", {
+        method: "PUT", cache: "no-store", signal: AbortSignal.timeout(20_000),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ commentsPublic: !next }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error ?? "That setting could not be saved.");
+      onChanged();
+    } catch (problem) {
+      setHidden(!next);
+      setError(problem instanceof Error ? problem.message : "That setting could not be saved.");
+    } finally { setBusy(false); }
+  };
+  return (
+    <label className={`${quiet} inline-flex cursor-pointer items-center gap-1.5`} title={error || "Your comments stay on each fight either way. This only controls the Comments tab on your profile."}>
+      <input type="checkbox" checked={hidden} disabled={busy} onChange={event => void change(event.target.checked)} className="h-3.5 w-3.5 accent-zinc-900" />
+      Hide comments from my profile
+      {error ? <span role="alert" className="text-red-600">· {error}</span> : null}
+    </label>
   );
 }
 

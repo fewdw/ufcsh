@@ -152,10 +152,19 @@ export function createScoringHandler(
         const user = await authenticate(req);
         if (profile) {
           if (req.method === "PUT") {
+            const body = await readBody(req);
+            // The profile's comment list is shown or hidden from the same
+            // address, so the cached profile is dropped in the same place.
+            if (body && typeof body === "object" && "commentsPublic" in body) {
+              if (!limiter.allow(`profile-settings:${user}`, 20, 0.1)) throw new ScoringError(429, "Please wait a moment before changing that again.");
+              const after = store.setCommentsPublic(user, (body as { commentsPublic?: unknown }).commentsPublic);
+              dropProfile(after.handle, after.publicId);
+              send(after);
+              return true;
+            }
             // Names are cheap to try and expensive to churn, so claiming one is
             // rationed per account rather than per address.
             if (!limiter.allow(`username:${user}`, 6, 0.02)) throw new ScoringError(429, "Too many username changes. Try again in a few minutes.");
-            const body = await readBody(req);
             const before = store.identity(user);
             const after = store.setUsername(user, (body as { username?: unknown })?.username);
             // The name it used to answer to is now free for someone else.

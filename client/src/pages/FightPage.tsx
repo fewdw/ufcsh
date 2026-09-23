@@ -1,5 +1,5 @@
 import { isFightDay, liveFightId } from "../liveEvent";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { EventDetail, EventFight, FightDetailBlock, FightSide, HistoryRow, Matchup, MatchupSide, ProfessionalHistoryRow } from "../api";
@@ -16,6 +16,7 @@ import {
 import Avatar from "../components/Avatar";
 import FightScoring from "../components/FightScoring";
 import FightPredictions from "../components/FightPredictions";
+const FightDiscussion = lazy(() => import("../components/FightDiscussion"));
 import FighterPortrait from "../components/FighterPortrait";
 import { resultDot } from "../resultDots";
 import MatchupOdds, { OddsFormatTabs, OddsMarkets } from "../components/MatchupOdds";
@@ -761,8 +762,8 @@ function FightRail({ eventId, currentId, returnDepth }: { eventId: string; curre
 
 // ---------------------------------------------------------------------------
 
-type MatchupTab = "fight" | "matchup" | "odds" | "score" | "predict";
-const TAB_LABEL: Record<MatchupTab, string> = { fight: "Result", matchup: "Matchup", odds: "Odds", score: "Score", predict: "Predict" };
+type MatchupTab = "fight" | "matchup" | "odds" | "score" | "predict" | "discussion";
+const TAB_LABEL: Record<MatchupTab, string> = { fight: "Result", matchup: "Matchup", odds: "Odds", score: "Score", predict: "Predict", discussion: "Discussion" };
 
 /** The matchup's sections, grouped by the question they answer. Arrow keys move
  *  between tabs the way a native tab control does. */
@@ -914,6 +915,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     ...(hasOddsMarkets(fight.odds?.props, fight.f1.name, fight.f2.name) ? ["odds" as const] : []),
     ...(scoreableRoundCount(fight) > 0 ? ["score" as const] : []),
     ...(fight.prediction_available !== false && (fight.status !== "past" || requestedTab === "predict") ? ["predict" as const] : []),
+    "discussion",
   ];
   const tab = tabs.find((candidate) => candidate === requestedTab) ?? tabs[0];
   // Only the tab panel below should change; the reader's scroll position is
@@ -1052,6 +1054,11 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
               {tab === "odds" ? <OddsPanel fight={fight} /> : null}
               {tab === "score" ? <FightScoring key={fight.id} fight={fight} /> : null}
               {tab === "predict" ? <FightPredictions key={fight.id} fight={fight} /> : null}
+              {tab === "discussion" ? (
+                <Suspense fallback={<div className={`${shell} p-5 text-sm text-zinc-500`} role="status">Loading discussion…</div>}>
+                  <FightDiscussion key={fight.id} fightId={fight.id} />
+                </Suspense>
+              ) : null}
             </div>
           </div>
         </div>

@@ -43,7 +43,9 @@ export type ScorerCard = {
  *  that ended in a finish; the other two are the halves of the chart. */
 export type ProfileFilter = "all" | "decisions" | "agreed" | "disagreed";
 export type ScorerProfile = {
-  scorer: ScorerIdentity & { cards: number; joinedAt: number | null };
+  scorer: ScorerIdentity & { cards: number; joinedAt: number | null;
+    /** Whether their discussion comments are listed on the profile. */
+    commentsPublic: boolean };
   /** Over every card on the profile, not just the page being read. */
   agreement: { decisions: number; agreed: number; disagreed: number; finishes: number };
   filter: ProfileFilter; query: string; offset: number; pageSize: number; total: number; cards: ScorerCard[];
