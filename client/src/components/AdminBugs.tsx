@@ -67,7 +67,7 @@ function useReviews() {
 }
 
 const severityDot: Record<Severity, string> = {
-  high: "bg-red-500",
+  high: "bg-rose-500",
   medium: "bg-amber-400",
   low: "bg-zinc-300",
 };
@@ -188,11 +188,11 @@ function ItemRow({
               onBlur={(e) => { if (e.target.value !== (review?.note ?? "")) onNote(e.target.value); }}
               placeholder="Note (saved in this browser)"
               rows={2}
-              className="mt-2 w-full rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 outline-none focus:border-zinc-400"
+              className="mt-2 w-full rounded-lg border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 outline-none focus:border-zinc-400"
             />
           )}
           {result && (
-            <div className={`mt-2 text-xs ${result.ok ? "text-emerald-700" : "text-red-600"}`}>{result.message}</div>
+            <div className={`mt-2 text-xs ${result.ok ? "text-emerald-700" : "text-rose-600"}`}>{result.message}</div>
           )}
         </div>
 
@@ -296,13 +296,13 @@ export default function AdminBugs() {
     <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-zinc-900">Data bugs</h2>
+            <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Data bugs</h2>
             <p className="text-xs text-zinc-500">
               {totalOpen.toLocaleString()} open across {checks.length} checks · built {ago(data.generated_at)} · last sync tick {ago(data.sync.last_tick_at)}
               {!data.can_act && " · repairs are disabled"}
             </p>
             {data.sync.last_sync_error && (
-              <p className="mt-1 text-xs text-red-600">Last sync error: {data.sync.last_sync_error}</p>
+              <p className="mt-1 text-xs text-rose-600">Last sync error: {data.sync.last_sync_error}</p>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -311,7 +311,7 @@ export default function AdminBugs() {
               value={query}
               onChange={(e) => setParam("q", e.target.value || null)}
               placeholder="Filter by name, event, date…"
-              className="w-56 rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-zinc-400"
+              className="w-56 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-zinc-400"
             />
             <label className="flex items-center gap-1.5 text-xs text-zinc-600">
               <input
@@ -326,7 +326,7 @@ export default function AdminBugs() {
               type="button"
               onClick={() => void refresh()}
               disabled={refreshing}
-              className="rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+              className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
             >
               {refreshing ? "Refreshing…" : "Re-run checks"}
             </button>

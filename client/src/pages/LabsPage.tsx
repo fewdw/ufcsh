@@ -12,6 +12,7 @@ import { PANEL, compact, formatValue } from "../components/chartTokens";
 import { flagEmoji } from "../flags";
 import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
 import { useSeo } from "../seo";
+import { formatMethod } from "../format";
 import {
   FILTER_SECTIONS,
   activeCount,
@@ -31,8 +32,8 @@ import {
 /** Combined record, its source bouts and filters share a population with the
  * insight cards below. Server summaries keep all denominators synchronized. */
 
-const inputClass = "w-full min-w-0 rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-[11px] tabular-nums text-zinc-800 outline-none transition [appearance:textfield] placeholder:text-zinc-300 focus:border-zinc-500 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
-const selectClass = "w-full rounded-lg border border-zinc-200 bg-white py-1.5 pl-2 pr-7 text-[11px] font-medium text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-500";
+const inputClass = "w-full min-w-0 rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-[11px] tabular-nums text-zinc-800 outline-none transition [appearance:textfield] placeholder:text-zinc-300 focus:border-zinc-400 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
+const selectClass = "w-full rounded-lg border border-zinc-200 bg-white py-1.5 pl-2 pr-7 text-[11px] font-medium text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-400";
 const fieldLabel = "mb-1 block text-[10px] font-semibold text-zinc-700";
 const capLabel = "text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-400";
 
@@ -293,16 +294,6 @@ function Empty({ children }: { children: React.ReactNode }) {
 // ---------------------------------------------------------------------------
 // the bout feed
 
-const METHOD_LABEL: Record<string, string> = {
-  "KO/TKO": "KO/TKO",
-  SUB: "Submission",
-  "U-DEC": "Unanimous",
-  "S-DEC": "Split",
-  "M-DEC": "Majority",
-  DQ: "DQ",
-  Overturned: "Overturned",
-  CNC: "No contest",
-};
 
 const OUTCOME_STYLE: Record<string, string> = {
   win: "bg-emerald-50 text-emerald-700 ring-emerald-200",
@@ -392,7 +383,7 @@ function BoutItem({ bout, struck, disabled, onToggle }: { bout: LabsBout; struck
         <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 text-[10px] text-zinc-500">
           <span className="tabular-nums">{shortDate(bout.date)}</span>
           <span className="text-zinc-200">·</span>
-          <span>{bout.method ? METHOD_LABEL[bout.method] ?? bout.method : "—"}{bout.round ? ` R${bout.round} ${bout.time}` : ""}</span>
+          <span>{formatMethod(bout.method, bout.round == null ? null : String(bout.round), bout.time) || "—"}</span>
           {bout.line != null ? <><span className="text-zinc-200">·</span><span className={`tabular-nums ${bout.line > 0 ? "text-violet-600" : ""}`}>{formatValue(bout.line, "odds")}</span></> : null}
           {bout.age != null ? <><span className="text-zinc-200">·</span><span className="tabular-nums">age {bout.age}</span></> : null}
           {bout.title_fight ? <><span className="text-zinc-200">·</span><span className="text-amber-500">title</span></> : null}
@@ -478,7 +469,7 @@ function BoutsTab({ query, state, summary, onState }: {
           value={state.sort}
           onChange={(event) => onState({ sort: event.target.value })}
           aria-label="Order bouts"
-          className="ml-auto rounded-full border border-zinc-200 bg-white py-1 pl-2.5 pr-7 text-[10px] font-medium text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-500"
+          className="ml-auto rounded-full border border-zinc-200 bg-white py-1 pl-2.5 pr-7 text-[10px] font-medium text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-400"
         >
           {SORTS.map((sort) => <option key={sort.value} value={sort.value}>{sort.label}</option>)}
         </select>
@@ -492,7 +483,7 @@ function BoutsTab({ query, state, summary, onState }: {
             <BoutItem key={boutKey(bout)} bout={bout} struck={Boolean(state.struck[boutKey(bout)])} disabled={!state.struck[boutKey(bout)] && struckCount >= MAX_EXCLUSIONS} onToggle={() => toggle(bout)} />
           ))}
         </ul>
-        <div ref={sentinel} className="py-3 text-center text-[10px] text-zinc-300">
+        <div ref={sentinel} className="py-3 text-center text-xs text-zinc-400">
           {loading ? "Loading…" : more ? `${compact(feed.total - rows.length)} more` : rows.length ? "End of the list" : ""}
         </div>
       </div>
@@ -873,10 +864,10 @@ export default function LabsPage() {
           >
             <span className="min-w-0">
               <span className="flex items-center gap-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">Combined record</span>
+                <span className="text-sm font-semibold text-zinc-900">Combined record</span>
                 <InfoTip>Every fighter-bout the filters select, added up: one observation is one fighter in one bout, so both corners of a bout can qualify. Win rate counts draws and leaves out no contests, and a bout struck off the list below is already out of these totals.</InfoTip>
               </span>
-              <span className="mt-0.5 block truncate text-[11px] text-zinc-400">What happened to fighters entering matchups like these.</span>
+              <span className="mt-0.5 block truncate text-xs text-zinc-500">What happened to fighters entering matchups like these.</span>
             </span>
             <ChevronDown className={`ml-auto h-4 w-4 shrink-0 text-zinc-400 transition-transform ${state.open ? "" : "-rotate-90"}`} aria-hidden="true" />
           </button>

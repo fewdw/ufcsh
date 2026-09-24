@@ -20,7 +20,7 @@ export default function StatsModeSwitch() {
           key={link.to}
           to={link.to}
           aria-current={link.active ? "page" : undefined}
-          className={`rounded-full px-3.5 py-1 text-xs font-semibold transition ${link.active ? segmentedSelected : segmentedIdle}`}
+          className={`rounded-full px-3.5 py-1 text-xs font-medium transition ${link.active ? segmentedSelected : segmentedIdle}`}
         >
           {link.label}
         </Link>

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAdminRequest, useAdminResource } from "../admin";
+import { BUTTON_PRIMARY } from "../ui";
 
 type Status = "open" | "reviewing" | "resolved" | "dismissed";
 type Category = "problem" | "incorrect" | "missing" | "improvement" | "user" | "other";
@@ -64,7 +65,7 @@ function FlagRow({ report, onChanged }: { report: Flag; onChanged: (report: Flag
       <input value={note} onChange={event => setNote(event.target.value)} maxLength={2000} placeholder="Admin note or what was fixed"
         className="min-w-0 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-700 outline-none focus:border-zinc-400" />
       <button type="button" onClick={() => void save()} disabled={busy || !changed}
-        className="rounded-lg bg-zinc-900 px-4 py-2 text-xs font-semibold text-white hover:bg-zinc-700 disabled:opacity-40">
+        className={BUTTON_PRIMARY}>
         {busy ? "Saving…" : "Save"}
       </button>
     </div>

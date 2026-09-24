@@ -47,10 +47,10 @@ export default function LabsCategories({ data, loading, error, onRetry, studyQue
             >
               <span className="min-w-0">
                 <span className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">{category.title}</span>
+                  <span className="text-sm font-semibold text-zinc-900">{category.title}</span>
                   <InfoTip>{category.tip}</InfoTip>
                 </span>
-                <span className="mt-0.5 block text-[11px] text-zinc-400">{category.purpose}</span>
+                <span className="mt-0.5 block text-xs text-zinc-500">{category.purpose}</span>
               </span>
               <ChevronDown className={`ml-auto h-4 w-4 shrink-0 text-zinc-400 transition-transform ${open ? "" : "-rotate-90"}`} aria-hidden="true" />
             </button>

@@ -2,8 +2,9 @@ import { lazy, Suspense } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { accountsEnabled, useAccount } from "../auth";
 import { useAdminResource, type AdminSession } from "../admin";
-import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
+import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedTab } from "../components/segmented";
 import { useSeo } from "../seo";
+import { PANEL_SHELL } from "../components/FightStats";
 
 const AdminHealth = lazy(() => import("../components/AdminHealth"));
 const AdminBugs = lazy(() => import("../components/AdminBugs"));
@@ -50,10 +51,11 @@ function AdminShell({ tab, onTab }: { tab: TabId; onTab: (next: TabId) => void }
     <div className="h-full overflow-y-auto overflow-x-hidden">
       <div className="mx-auto flex min-w-0 max-w-6xl flex-col gap-3 px-2 py-3 sm:gap-4 sm:px-5 sm:py-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-lg font-bold text-zinc-900">Admin</h1>
+          <h1 className="text-lg font-semibold tracking-tight text-zinc-900">Admin</h1>
           <p className="text-xs text-zinc-500">{data.email}</p>
         </div>
-        <div role="tablist" aria-label="Admin sections" className={`${segmentedGroup} w-full gap-0.5 overflow-x-auto p-0.5 sm:gap-1 sm:p-1`}>
+        <div className={`${PANEL_SHELL} p-1.5`}>
+        <div role="tablist" aria-label="Admin sections" className={`${segmentedGroup} w-full overflow-x-auto`}>
           {TABS.map((item, index) => (
             <button
               key={item.id}
@@ -71,11 +73,12 @@ function AdminShell({ tab, onTab }: { tab: TabId; onTab: (next: TabId) => void }
                 onTab(TABS[next].id);
                 event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
               }}
-              className={`flex-auto whitespace-nowrap rounded-full px-1.5 py-1.5 text-xs font-medium transition min-[400px]:px-2 sm:px-3 ${tab === item.id ? segmentedSelected : segmentedIdle}`}
+              className={`${segmentedTab} ${tab === item.id ? segmentedSelected : segmentedIdle}`}
             >
               {item.label}
             </button>
           ))}
+        </div>
         </div>
         <div id="admin-tabpanel" role="tabpanel" aria-labelledby={`admin-tab-${tab}`}>
           <Suspense fallback={<div role="status" className="py-16 text-center text-sm text-zinc-400">Loading…</div>}>

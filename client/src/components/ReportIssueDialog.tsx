@@ -1,6 +1,7 @@
 import { useAuth } from "@clerk/react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
+import { BUTTON_PRIMARY, BUTTON_QUIET, CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
 
 const CATEGORIES = [
   ["problem", "Something is broken"],
@@ -58,18 +59,17 @@ export default function ReportIssueDialog({ open, onClose }: { open: boolean; on
     className="search-dialog fixed inset-0 m-auto w-[min(32rem,calc(100%-2rem))] max-w-none rounded-2xl border border-zinc-200 bg-white p-0 text-zinc-900 shadow-2xl">
     <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4">
       <div>
-        <h2 className="text-base font-semibold">Report an issue</h2>
+        <h2 className={DIALOG_TITLE}>Report an issue</h2>
         <p className="mt-0.5 text-xs text-zinc-500">Tell us what needs attention on this page.</p>
       </div>
-      <button type="button" onClick={close} disabled={busy} aria-label="Close report form"
-        className="grid h-8 w-8 place-items-center rounded-full text-zinc-400 hover:bg-zinc-50 hover:text-zinc-700 disabled:opacity-40">
-        <X className="h-4 w-4" aria-hidden="true" />
+      <button type="button" onClick={close} disabled={busy} aria-label="Close report form" className={`-mr-2 ${CLOSE_BUTTON}`}>
+        <X className={CLOSE_ICON} aria-hidden="true" />
       </button>
     </div>
     {sent ? <div className="px-5 py-8 text-center">
       <p className="text-sm font-semibold text-zinc-900">Report sent</p>
       <p className="mt-1 text-sm text-zinc-500">An administrator can now review it.</p>
-      <button type="button" onClick={close} className="mt-5 rounded-lg bg-zinc-900 px-4 py-2 text-xs font-semibold text-white hover:bg-zinc-700">Close</button>
+      <button type="button" onClick={close} className={`mt-5 ${BUTTON_PRIMARY}`}>Close</button>
     </div> : <form onSubmit={event => void submit(event)} className="space-y-4 px-5 py-5">
       <label className="block">
         <span className="mb-1.5 block text-xs font-medium text-zinc-700">Title</span>
@@ -92,8 +92,8 @@ export default function ReportIssueDialog({ open, onClose }: { open: boolean; on
       </label>
       {error ? <p role="alert" className="text-xs text-rose-600">{error}</p> : null}
       <div className="flex items-center justify-end gap-2 border-t border-zinc-100 pt-4">
-        <button type="button" onClick={close} disabled={busy} className="rounded-lg px-3 py-2 text-xs font-medium text-zinc-500 hover:bg-zinc-50 disabled:opacity-40">Cancel</button>
-        <button type="submit" disabled={busy} className="rounded-lg bg-zinc-900 px-4 py-2 text-xs font-semibold text-white hover:bg-zinc-700 disabled:opacity-40">
+        <button type="button" onClick={close} disabled={busy} className={BUTTON_QUIET}>Cancel</button>
+        <button type="submit" disabled={busy} className={BUTTON_PRIMARY}>
           {busy ? "Sending…" : "Send report"}
         </button>
       </div>

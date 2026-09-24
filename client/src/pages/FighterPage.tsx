@@ -3,18 +3,20 @@ import { Link, useParams } from "react-router-dom";
 import { useApi } from "../api";
 import type { CompleteRecordBefore, FighterProfile, FighterRecord, FighterStat, HistoryRow, ProfessionalHistoryRow } from "../api";
 import { formatDateShortWithYear, formatLine, formatMethod, lastName } from "../format";
-import { formatValue } from "../components/chartTokens";
+import { formatValue, PANEL } from "../components/chartTokens";
 import FighterPortrait from "../components/FighterPortrait";
 import Flag from "../components/Flag";
 import ResultDots from "../components/ResultDots";
 import { WeightChangeMarker } from "../components/WeightJourney";
 import { weightJourney } from "../weightJourney";
 import RequestNotice from "../components/RequestNotice";
+import { PanelHeading } from "../components/FightStats";
+import { EYEBROW } from "../ui";
 import { SITE_URL, useSeo } from "../seo";
 import { useRouteScrollRestoration } from "../navigationState";
 import { outsideFighterUrl, useSettings, withRanking } from "../settings";
 
-const shell = "rounded-2xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
+const shell = PANEL;
 
 function historyResultLabel(outcome: HistoryRow["outcome"]): string {
   switch (outcome) {
@@ -452,10 +454,8 @@ function Records({ records }: { records: FighterRecord[] }) {
   const place = (record: FighterRecord) => `${record.tied ? "T" : ""}${record.rank}`;
   return (
     <section className={shell}>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-5 pb-2 pt-4">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400">Records</span>
-      </div>
-      <div className="divide-y divide-zinc-50 pb-2">
+      <PanelHeading title="Records" />
+      <div className="divide-y divide-zinc-50 py-1">
         {records.map((record) => (
           <div key={`${record.key}:${record.scope}`} className="flex items-center gap-3 px-4 py-2">
             <span
@@ -509,12 +509,12 @@ function StatisticalRanks({ stats }: { stats: FighterStat[] }) {
       className={`${shell} group @container overflow-hidden`}
     >
       <summary
-        className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 [&::-webkit-details-marker]:hidden"
+        className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-2.5 sm:px-5 sm:py-3 [&::-webkit-details-marker]:hidden"
         title="Expand top-50 statistics"
       >
         <span className="min-w-0">
-          <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400">Top-50 statistics</span>
-          <span className="mt-0.5 block text-[10px] text-zinc-400">
+          <span className="block text-sm font-semibold text-zinc-900">Top-50 statistics</span>
+          <span className="mt-0.5 block text-xs text-zinc-500">
             {stats.length} {stats.length === 1 ? "placement" : "placements"} across {groups.length} {groups.length === 1 ? "category" : "categories"}
           </span>
         </span>
@@ -530,7 +530,7 @@ function StatisticalRanks({ stats }: { stats: FighterStat[] }) {
       <div className="columns-1 gap-0 border-t border-zinc-100 @[36rem]:columns-2" style={{ columnRule: "1px solid var(--color-plot-axis)" }}>
         {groups.map(([category, group]) => (
           <section key={category} className="break-inside-avoid min-w-0 border-b border-zinc-100 bg-white px-4 py-3">
-            <h3 className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-400">{category}</h3>
+            <h3 className={`mb-1.5 ${EYEBROW}`}>{category}</h3>
             <div className="divide-y divide-zinc-50">
               {group.rows.map((stat) => (
                 <div key={`${stat.key}:${stat.scope}`} className="flex min-w-0 items-center gap-2 py-2 first:pt-0 last:pb-0">
@@ -679,11 +679,9 @@ export default function FighterPage() {
         <div className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
 
         <section className={shell}>
-          <h2 className="border-b border-zinc-100 px-5 py-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
-            {allFights.length} {allFights.length === 1 ? "Fight" : "Fights"}
-          </h2>
+          <PanelHeading title="Fights" subtitle={allFights.length.toLocaleString()} />
           {!fighter.record_verified ? (
-            <div className="px-5 pb-1 pt-4 text-[10px] text-zinc-400">Outside-UFC history is still syncing; UFC bouts are shown now.</div>
+            <div className="px-4 pb-1 pt-3 text-xs text-zinc-500 sm:px-5">Outside-UFC history is still syncing; UFC bouts are shown now.</div>
           ) : null}
           <div className={BOUT_LIST}>
             {allFights.length ? (

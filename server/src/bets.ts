@@ -335,13 +335,16 @@ export class BetStore {
   standings() {
     const rows = this.db.prepare("SELECT * FROM bets").all() as StoredBet[];
     const fights = this.fightsFor(rows);
-    const byUser = new Map<string, { net: number; won: number; settled: number }>();
+    const byUser = new Map<string, { net: number; won: number; settled: number; legs: number }>();
     for (const row of rows) {
-      const result = betResult(JSON.parse(row.legs_json) as StoredLeg[], row.stake_cents, fights);
+      const legs = JSON.parse(row.legs_json) as StoredLeg[];
+      const result = betResult(legs, row.stake_cents, fights);
       if (result.state !== "won" && result.state !== "lost") continue;
-      const entry = byUser.get(row.user_id) ?? { net: 0, won: 0, settled: 0 };
+      const entry = byUser.get(row.user_id) ?? { net: 0, won: 0, settled: 0, legs: 0 };
       entry.net += result.net;
       entry.settled++;
+      // A parlay counts once per leg toward the leaderboard minimum.
+      entry.legs += legs.length;
       if (result.state === "won") entry.won++;
       byUser.set(row.user_id, entry);
     }

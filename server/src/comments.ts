@@ -6,6 +6,9 @@ import { ScoringError, identifyScorer, type ScorerIdentity, type ScoringFight, t
 /** A comment (1), a reply to it (2), and a reply to that (3). No deeper. */
 export const COMMENT_MAX_DEPTH = 3;
 export const COMMENT_SORTS = ["top", "new", "old"] as const;
+/** A profile lists a fan's comments newest first, or by their net score. */
+export const PROFILE_COMMENT_SORTS = ["new", "top"] as const;
+export type ProfileCommentSort = (typeof PROFILE_COMMENT_SORTS)[number];
 export type CommentSort = (typeof COMMENT_SORTS)[number];
 export const REPORT_REASONS = ["spam", "harassment", "hate", "violence", "sexual", "personal", "trolling", "other"] as const;
 export type CommentReportReason = (typeof REPORT_REASONS)[number];
@@ -581,9 +584,9 @@ export class CommentStore {
     return labels;
   }
 
-  /** A scorer's comments, newest first. Listed publicly only if they have
-   *  chosen to; always to themselves. */
-  profile(handle: string, viewer: string | null, offset = 0) {
+  /** A scorer's comments, newest first or most upvoted first. Listed publicly
+   *  only if they have chosen to; always to themselves. */
+  profile(handle: string, viewer: string | null, offset = 0, sort: ProfileCommentSort = "new") {
     const scorer = this.scores.lookup("handle", handle);
     if (!scorer) throw new ScoringError(404, "Profile not found.");
     const owner = viewer === scorer.userId;
@@ -591,10 +594,11 @@ export class CommentStore {
     if (!visible && !owner) throw new ScoringError(403, "This fan keeps their comments private.");
     const where = `c.user_id = ? AND c.deleted_at IS NULL AND c.removed_at IS NULL${owner ? "" : " AND c.held = 0"}`;
     const total = (this.stmt(`SELECT COUNT(*) AS n FROM comments c WHERE ${where}`).get(scorer.userId) as { n: number }).n;
-    const rows = this.rows(`${where} ORDER BY c.created_at DESC, c.rowid DESC LIMIT ? OFFSET ?`, scorer.userId, PROFILE_PAGE, Math.max(0, offset));
+    const order = sort === "top" ? "c.ups - c.downs DESC, c.created_at DESC, c.rowid DESC" : "c.created_at DESC, c.rowid DESC";
+    const rows = this.rows(`${where} ORDER BY ${order} LIMIT ? OFFSET ?`, scorer.userId, PROFILE_PAGE, Math.max(0, offset));
     const fights = this.fightLabels(rows.map(row => row.fight_id));
     return {
-      public: visible, mine: owner, total, offset, pageSize: PROFILE_PAGE,
+      public: visible, mine: owner, total, offset, sort, pageSize: PROFILE_PAGE,
       comments: rows.map(row => ({
         id: row.id, fightId: row.fight_id, depth: row.depth, body: row.body, createdAt: row.created_at, editedAt: row.edited_at,
         score: row.ups - row.downs, held: Boolean(row.held), fight: fights.get(row.fight_id) ?? null,

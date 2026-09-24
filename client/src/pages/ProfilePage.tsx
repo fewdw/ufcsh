@@ -1,14 +1,14 @@
 import { useAuth } from "@clerk/react";
-import { Check, Flag, LogOut, Pencil, Settings, User, X } from "lucide-react";
+import { Check, ChevronDown, Flag, LogOut, Pencil, Search, Settings, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiCache, prefetch, useApi } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
 import { ConfirmRemove, RemoveX } from "../components/ConfirmRemove";
 import Avatar from "../components/Avatar";
-import ProgressiveImage from "../components/ProgressiveImage";
 import { PANEL_SHELL, PanelHeading } from "../components/FightStats";
-import { segmentedGroup, segmentedSelected, segmentedIdle } from "../components/segmented";
+import { LIST_META, LIST_ROW } from "../components/InfiniteList";
+import { segmentedGroup, segmentedSelected, segmentedIdle, segmentedTab } from "../components/segmented";
 import ProfilePredictions from "../components/ProfilePredictions";
 import ProfileBets from "../components/ProfileBets";
 import ProfileComments from "../components/ProfileComments";
@@ -20,20 +20,24 @@ import { useMyProfile } from "../profile";
 import { cardWinner, usernameProblem } from "../scoring";
 import type { ProfileFilter, ScorerCard, ScorerIdentity, ScorerProfile } from "../scoring";
 import { useSeo } from "../seo";
+import { BUTTON_PRIMARY, BUTTON_QUIET } from "../ui";
+import FanAvatar from "../components/FanAvatar";
 
 const FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed"];
 /** Bouts that went to the judges are the ones a card can be read against, so
  *  the list opens on them and finishes are one checkbox away. */
 const DEFAULT_FILTER: ProfileFilter = "decisions";
+/** `short` is what a phone shows, so all five fit on one line without scrolling. */
 const TABS = [
-  { id: "scorecards", label: "Scorecards" }, { id: "predictions", label: "Predictions" },
-  { id: "bets", label: "Bets" }, { id: "comments", label: "Comments" }, { id: "leaderboards", label: "Leaderboards" },
+  { id: "scorecards", label: "Scorecards", short: "Scores" }, { id: "predictions", label: "Predictions", short: "Picks" },
+  { id: "bets", label: "Bets", short: "Bets" }, { id: "comments", label: "Comments", short: "Comments" },
+  { id: "leaderboards", label: "Leaderboards", short: "Leaderboards" },
 ] as const;
 type Section = (typeof TABS)[number]["id"];
-const quiet = "rounded-full px-3 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
+const quiet = BUTTON_QUIET;
 /** The account's own actions: short enough that all three sit on one line. */
 const action = "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
-const primary = "rounded-full bg-zinc-900 px-4 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40";
+const primary = BUTTON_PRIMARY;
 
 /** A public profile. Anyone can open anyone's: the scorer is named by the
  *  username they chose, or by the one minted for them when they signed up. */
@@ -152,7 +156,9 @@ function Profile({ handle }: { handle: string }) {
       <div className="mx-auto flex min-w-0 max-w-3xl flex-col gap-2 px-2 py-2 sm:gap-3 sm:px-5 sm:py-4">
         <ProfileHeader scorer={scorer} mine={mine} onRenamed={refresh} />
 
-        <div role="tablist" aria-label="Profile sections" className={`${segmentedGroup} w-full gap-0.5 p-0.5 sm:gap-1 sm:p-1`}>
+        {/* The same white card the matchup's tabs sit on. */}
+        <div className={`${PANEL_SHELL} p-1.5`}>
+        <div role="tablist" aria-label="Profile sections" className={`${segmentedGroup} w-full`}>
           {tabs.map((tab, index) => (
             <button
               key={tab.id}
@@ -172,11 +178,13 @@ function Profile({ handle }: { handle: string }) {
                 const params = new URLSearchParams(search); params.set("tab", tabs[next].id); setSearch(params, { replace: true });
                 event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
               }}
-              className={`flex-auto whitespace-nowrap rounded-full px-1.5 py-1.5 text-xs font-medium transition min-[400px]:px-2 sm:px-3 ${section === tab.id ? segmentedSelected : segmentedIdle}`}
+              className={`${segmentedTab} ${section === tab.id ? segmentedSelected : segmentedIdle}`}
             >
-              {tab.label}
+              <span className="sm:hidden">{tab.short}</span>
+              <span className="hidden sm:inline">{tab.label}</span>
             </button>
           ))}
+        </div>
         </div>
 
         <div id="profile-tabpanel" role="tabpanel" aria-labelledby={`profile-tab-${section}`} className="flex flex-col gap-3">
@@ -191,8 +199,8 @@ function Profile({ handle }: { handle: string }) {
               subtitle={`${view.total.toLocaleString()} of ${scorer.cards.toLocaleString()}`}
               controls={
                 <div className="flex w-full items-center gap-2">
-                  <ScorecardFilter value={filter} agreement={agreement} total={scorer.cards} onChange={setFilter} />
                   <SearchBox value={query} onChange={value => setParam("q", value || null)} />
+                  <ScorecardFilter value={filter} agreement={agreement} total={scorer.cards} onChange={setFilter} />
                 </div>
               }
             />
@@ -215,14 +223,14 @@ function Profile({ handle }: { handle: string }) {
                 </ul>
               )}
             </div>
-            {more ? <div ref={sentinel} className="px-5 py-3 text-center text-xs text-zinc-400">Loading more…</div> : null}
+            {more ? <div ref={sentinel} role="status" className="border-t border-zinc-100 px-5 py-4 text-center text-sm text-zinc-400">Loading more…</div> : null}
           </section>
           </>}
         </div>
 
-        {removal.error ? <p role="alert" className="text-center text-xs text-red-600">{removal.error}</p> : null}
+        {removal.error ? <p role="alert" className="text-center text-xs text-rose-600">{removal.error}</p> : null}
         {error ? (
-          <p role="alert" className="text-center text-xs text-red-600">
+          <p role="alert" className="text-center text-xs text-rose-600">
             Couldn’t refresh. <button className="underline" onClick={retry}>Retry</button>
           </p>
         ) : null}
@@ -252,14 +260,23 @@ function SearchBox({ value, onChange }: { value: string; onChange: (value: strin
     return () => window.clearTimeout(timer);
   }, [typed, onChange]);
   return (
-    <input
-      type="search"
-      value={typed}
-      onChange={event => setTyped(event.target.value.slice(0, 60))}
-      placeholder="Search fighters or events…"
-      aria-label="Search scored fights"
-      className="min-w-0 flex-1 rounded-md border border-zinc-200 bg-white px-2.5 py-1 text-xs outline-none focus:border-zinc-400 sm:w-52 sm:flex-none"
-    />
+    <label className="relative min-w-0 flex-1 sm:max-w-64">
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
+      <input
+        type="search"
+        value={typed}
+        onChange={event => setTyped(event.target.value.slice(0, 60))}
+        placeholder="Search fights…"
+        aria-label="Search scored fights"
+        // Names are not words: no autocorrect, capitals or suggestions.
+        autoCorrect="off"
+        autoCapitalize="off"
+        autoComplete="off"
+        spellCheck={false}
+        enterKeyHint="search"
+        className="h-9 w-full rounded-full border border-zinc-200 bg-zinc-50 pl-8 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-8 sm:text-[13px]"
+      />
+    </label>
   );
 }
 
@@ -271,18 +288,28 @@ function ScorecardFilter({ value, agreement, total, onChange }: {
   total: number;
   onChange: (value: ProfileFilter) => void;
 }) {
+  const options: { value: ProfileFilter; label: string; count: number }[] = [
+    { value: "all", label: "All", count: total },
+    { value: "decisions", label: "Judged", count: agreement.decisions },
+    { value: "agreed", label: "Agreed", count: agreement.agreed },
+    { value: "disagreed", label: "Disagreed", count: agreement.disagreed },
+  ];
+  const current = options.find(option => option.value === value) ?? options[0];
+  // A native select is as wide as its longest option. The chip shows only the
+  // current one, with the select laid invisibly over it to open the picker.
   return (
-    <select
-      value={value}
-      onChange={event => onChange(event.target.value as ProfileFilter)}
-      aria-label="Filter scored fights"
-      className="h-7 rounded-full border border-zinc-200 bg-white pl-2.5 pr-7 text-[10px] font-medium text-zinc-600 outline-none transition-colors hover:border-zinc-300 focus:border-zinc-400"
-    >
-      <option value="all">All · {total.toLocaleString()}</option>
-      <option value="decisions">Judged · {agreement.decisions.toLocaleString()}</option>
-      <option value="agreed">Agreed · {agreement.agreed.toLocaleString()}</option>
-      <option value="disagreed">Disagreed · {agreement.disagreed.toLocaleString()}</option>
-    </select>
+    <label className="relative flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 pl-3.5 pr-3 text-[13px] font-medium text-zinc-700 transition-colors focus-within:border-zinc-400 hover:border-zinc-300 sm:h-8 sm:text-xs">
+      <span className="whitespace-nowrap">{current.label} <span className="tabular-nums text-zinc-400">{current.count.toLocaleString()}</span></span>
+      <ChevronDown className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
+      <select
+        value={value}
+        onChange={event => onChange(event.target.value as ProfileFilter)}
+        aria-label="Filter scored fights"
+        className="absolute inset-0 cursor-pointer opacity-0"
+      >
+        {options.map(option => <option key={option.value} value={option.value}>{option.label} · {option.count.toLocaleString()}</option>)}
+      </select>
+    </label>
   );
 }
 
@@ -296,13 +323,13 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
   return (
     <header className={`${PANEL_SHELL} px-4 py-3 sm:px-5`}>
       <div className="flex items-center gap-3 sm:gap-4">
-        <ScorerPortrait scorer={scorer} />
+        <FanAvatar src={scorer.imageUrl} name={scorer.displayName} size="lg" />
         <div className="min-w-0 flex-1">
           {editing ? (
             <UsernameEditor scorer={scorer} onClose={() => setEditing(false)} onRenamed={onRenamed} />
           ) : (
             <>
-              <h1 className="flex min-w-0 items-center gap-1.5 text-base font-bold text-zinc-900 sm:text-lg">
+              <h1 className="flex min-w-0 items-center gap-1.5 text-base font-semibold tracking-tight text-zinc-900 sm:text-lg">
                 <span className="min-w-0 [overflow-wrap:anywhere]">{scorer.displayName}</span>
                 {mine ? (
                   <button type="button" onClick={() => setEditing(true)} title="Change username"
@@ -371,30 +398,11 @@ function CommentsVisibility({ visible, onChanged }: { visible: boolean; onChange
     <label className={`${action} cursor-pointer`} title={error || "Hide the Comments tab from your profile. Your comments stay on each fight either way."}>
       <input type="checkbox" checked={hidden} disabled={busy} onChange={event => void change(event.target.checked)} className="h-3.5 w-3.5 accent-zinc-900" />
       Hide from my profile
-      {error ? <span role="alert" className="text-red-600">· {error}</span> : null}
+      {error ? <span role="alert" className="text-rose-600">· {error}</span> : null}
     </label>
   );
 }
 
-function ScorerPortrait({ scorer }: { scorer: ScorerIdentity }) {
-  const [failed, setFailed] = useState(false);
-  const letter = scorer.displayName.slice(0, 1).toUpperCase();
-  if (!scorer.imageUrl || failed)
-    return (
-      <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-zinc-100 text-base font-semibold text-zinc-400 ring-1 ring-zinc-200">
-        {/^[A-Z0-9]$/.test(letter) ? letter : <User className="h-5 w-5" />}
-      </span>
-    );
-  return (
-    <ProgressiveImage
-      src={scorer.imageUrl}
-      alt=""
-      referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
-      className="h-12 w-12 shrink-0 rounded-full bg-zinc-100 object-cover ring-1 ring-zinc-200"
-    />
-  );
-}
 
 /** Claiming a name. The field refuses what the server would refuse, and the
  *  address bar follows the answer, so a renamed profile is never left on a URL
@@ -448,7 +456,7 @@ function UsernameEditor({ scorer, onClose, onRenamed }: { scorer: ScorerIdentity
           <X className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
       </div>
-      <p className={`mt-1 truncate text-[11px] ${error ? "text-red-600" : "text-zinc-400"}`} role={error ? "alert" : undefined}>
+      <p className={`mt-1 truncate text-[11px] ${error ? "text-rose-600" : "text-zinc-400"}`} role={error ? "alert" : undefined}>
         {error || problem || `ufc.sh/profiles/${value.toLowerCase()}`}
       </p>
     </form>
@@ -489,7 +497,7 @@ function CardPage({ url, mine, onRemove, onReady }: {
   useEffect(() => { if (data) onReady(); }, [data, onReady]);
   if (error && !data)
     return (
-      <li className="px-5 py-4 text-center text-sm text-red-600">
+      <li className="px-5 py-4 text-center text-sm text-rose-600">
         Couldn’t load more. <button className="underline" onClick={retry}>Retry</button>
       </li>
     );
@@ -517,20 +525,20 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
         to={`/fights/${card.fightId}?tab=score`}
         onPointerEnter={warm}
         onFocus={warm}
-        className={`block py-2.5 pl-3 transition-colors hover:bg-zinc-50 sm:pl-4 ${mine ? "pr-7 sm:pr-8" : "pr-3 sm:pr-4"}`}
+        className={`block ${LIST_ROW} transition-colors hover:bg-zinc-50 ${mine ? "pr-9 sm:pr-10" : ""}`}
       >
         <div className="flex items-center gap-2">
           <Avatar src={fight.f1_photo} name={fight.f1_name} size="sm" outcome={fight.f1_outcome as "win" | "loss" | null} />
-          <p className="min-w-0 flex-1 truncate text-right text-xs font-semibold text-f1-ink">{fight.f1_name}</p>
-          <p className="shrink-0 text-sm font-bold tabular-nums">
+          <p className="min-w-0 flex-1 truncate text-right text-sm font-semibold text-f1-ink">{fight.f1_name}</p>
+          <p className="shrink-0 text-base font-bold tabular-nums">
             <span className={winner === 1 ? "text-f1-ink" : "text-zinc-400"}>{scored ? card.total1 : "—"}</span>
             <span className="mx-1 text-zinc-300">–</span>
             <span className={winner === 2 ? "text-f2-ink" : "text-zinc-400"}>{scored ? card.total2 : "—"}</span>
           </p>
-          <p className="min-w-0 flex-1 truncate text-xs font-semibold text-f2-ink">{fight.f2_name}</p>
+          <p className="min-w-0 flex-1 truncate text-sm font-semibold text-f2-ink">{fight.f2_name}</p>
           <Avatar src={fight.f2_photo} name={fight.f2_name} size="sm" outcome={fight.f2_outcome as "win" | "loss" | null} />
         </div>
-        <p className="mt-1 truncate text-center text-[10px] text-zinc-400">
+        <p className={`mt-1 truncate text-center ${LIST_META}`}>
           {fight.event_name} · {formatDateShortWithYear(fight.date)}
           {fight.weight_class ? ` · ${fight.weight_class}` : ""}
           {card.agreement ? (
@@ -541,7 +549,7 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
           {fight.method ? ` · ${formatMethod(fight.method, fight.round, fight.time)}` : ""}
         </p>
       </Link>
-      {mine ? <RemoveX label={`Remove your scorecard for ${fight.f1_name} vs ${fight.f2_name}`} onClick={() => onRemove(card)} /> : null}
+      {mine ? <RemoveX large label={`Remove your scorecard for ${fight.f1_name} vs ${fight.f2_name}`} onClick={() => onRemove(card)} /> : null}
     </li>
   );
 }

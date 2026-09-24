@@ -233,6 +233,19 @@ test("profile comments are hidden until the author shows them", t => {
   assert.throws(() => scores.setCommentsPublic("alice", "yes"), /Choose/);
 });
 
+test("a profile lists comments newest first or most upvoted first", t => {
+  const { comments, established, scores, tick } = fixture(t);
+  established("alice", "bob", "carol");
+  const alice = scores.identity("alice");
+  const early = comments.post("alice", FIGHT, { body: "Early take that aged well." });
+  tick(120_000);
+  const late = comments.post("alice", OTHER, { body: "Later take." });
+  comments.vote("bob", early.id, 1);
+  comments.vote("carol", early.id, 1);
+  assert.deepEqual(comments.profile(alice.handle, "alice").comments.map(row => row.id), [late.id, early.id]);
+  assert.deepEqual(comments.profile(alice.handle, "alice", 0, "top").comments.map(row => row.id), [early.id, late.id]);
+});
+
 test("the discussion endpoint reads openly and writes only with a same-site token", async t => {
   const { comments, established } = fixture(t);
   established("alice");

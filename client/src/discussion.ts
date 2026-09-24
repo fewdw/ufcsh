@@ -38,7 +38,8 @@ export type ProfileComment = {
   score: number; held: boolean;
   fight: { id: string; f1_name: string; f2_name: string; event_name: string; date: string } | null;
 };
-export type ProfileComments = { public: boolean; mine: boolean; total: number; offset: number; pageSize: number; comments: ProfileComment[] };
+export type ProfileCommentSort = "new" | "top";
+export type ProfileComments = { public: boolean; mine: boolean; total: number; offset: number; sort: ProfileCommentSort; pageSize: number; comments: ProfileComment[] };
 
 export const REPORT_REASONS = [
   ["spam", "Spam or advertising"],

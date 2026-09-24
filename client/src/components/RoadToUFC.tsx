@@ -7,7 +7,7 @@ import { SERIES, compact, formatValue } from "./chartTokens";
 import RequestNotice from "./RequestNotice";
 
 const percent = (value: number | null) => formatValue(value, "percent");
-const selectClass = "rounded-lg border border-zinc-200 bg-white py-1 pl-2 pr-7 text-[10px] font-semibold text-zinc-700 outline-none hover:border-zinc-300 focus:border-zinc-500";
+const selectClass = "rounded-lg border border-zinc-200 bg-white py-1 pl-2 pr-7 text-[10px] font-semibold text-zinc-700 outline-none hover:border-zinc-300 focus:border-zinc-400";
 type DimensionKey = keyof LabsInsightsResponse["road"]["dimensions"];
 type RoadDimension = Exclude<DimensionKey, "age_bands">;
 type PrimaryDimension = RoadDimension;
@@ -149,7 +149,7 @@ function FightList({ studyQuery, selection, onClear }: { studyQuery: string; sel
             </select>
             <label className="relative ml-auto min-w-36 flex-1 sm:max-w-56">
               <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
-              <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search fights" aria-label="Search selected fights" className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 pl-7 pr-2 text-[10px] text-zinc-700 outline-none placeholder:text-zinc-400 focus:border-zinc-500" />
+              <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search fights" aria-label="Search selected fights" className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 pl-7 pr-2 text-xs text-zinc-700 outline-none placeholder:text-zinc-400 focus:border-zinc-400" />
             </label>
           </div>
         ) : null}
@@ -159,7 +159,7 @@ function FightList({ studyQuery, selection, onClear }: { studyQuery: string; sel
         {error ? <div className="p-3"><RequestNotice onRetry={loadMore}>Couldn’t load these fights.</RequestNotice></div> : null}
         {selection && !loading && !error && rows.length === 0 ? <p className="grid h-full place-items-center text-[11px] text-zinc-400">No matching fights.</p> : null}
         <ul>{rows.map((bout) => <FightRow key={`${bout.fight_id}:${bout.fighter.id}`} bout={bout} />)}</ul>
-        <div ref={sentinel} className="py-3 text-center text-[10px] text-zinc-300">{loading ? "Loading…" : more ? `${compact(total - rows.length)} more` : rows.length ? "End of the list" : ""}</div>
+        <div ref={sentinel} className="py-3 text-center text-xs text-zinc-400">{loading ? "Loading…" : more ? `${compact(total - rows.length)} more` : rows.length ? "End of the list" : ""}</div>
       </div>
     </section>
   );
@@ -213,7 +213,7 @@ export default function RoadToUFC({ data, studyQuery }: { data: LabsInsightsResp
         <div className="border-b border-zinc-100 px-3 py-2">
           <label className="relative block">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
-            <input type="search" value={categorySearch} onChange={(event) => setCategorySearch(event.target.value)} placeholder={`Search ${DIMENSIONS.find((option) => option.key === dimension)?.label.toLocaleLowerCase() ?? "categories"}`} aria-label="Search arrival categories" className="w-full rounded-lg border border-zinc-200 bg-white py-2 pl-8 pr-3 text-[11px] text-zinc-700 outline-none placeholder:text-zinc-400 focus:border-zinc-500" />
+            <input type="search" value={categorySearch} onChange={(event) => setCategorySearch(event.target.value)} placeholder={`Search ${DIMENSIONS.find((option) => option.key === dimension)?.label.toLocaleLowerCase() ?? "categories"}`} aria-label="Search arrival categories" className="w-full rounded-lg border border-zinc-200 bg-white py-2 pl-8 pr-3 text-xs text-zinc-700 outline-none placeholder:text-zinc-400 focus:border-zinc-400" />
           </label>
         </div>
         <BarList format="percent" max={100} data={bars} names={["Share of arrivals", "Won UFC debut"]} height={320} />

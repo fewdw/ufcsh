@@ -1,13 +1,13 @@
 import { useAuth } from "@clerk/react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { apiCache, useApi } from "../api";
 import { formatDateShortWithYear } from "../format";
 import { predictionLabel, predictionPoints } from "../predictions";
 import type { PredictionRate, ProfilePredictions as PredictionsData } from "../predictions";
 import { ConfirmRemove, RemoveX } from "./ConfirmRemove";
 import { Donut, type Slice } from "./Donut";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
+import { fetchPage, LIST_META, CLEAR_REMOVE, LIST_ROW, LIST_TITLE, LIST_VALUE, LoadMore, useInfiniteList } from "./InfiniteList";
 
 const RIGHT = "var(--color-pick-right)";
 const WRONG = "var(--color-pick-wrong)";
@@ -23,14 +23,14 @@ function Accuracy({ title, rate, empty }: { title: string; rate: PredictionRate;
   ];
   return (
     <figure className="flex min-w-0 flex-col items-center text-center">
-      <figcaption className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">{title}</figcaption>
+      <figcaption className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">{title}</figcaption>
       {rate.total ? <>
         <Donut slices={slices} total={rate.total} size={72} thickness={8}
           centerValue={rate.pct == null ? undefined : `${Math.round(rate.pct)}%`} />
-        <p className="mt-1.5 text-[11px] leading-4 tabular-nums text-zinc-500">
+        <p className="mt-1.5 text-xs leading-4 tabular-nums text-zinc-500">
           <span className="font-semibold text-emerald-700 dark:text-emerald-400">{rate.right}</span> of {rate.total}
         </p>
-      </> : <p className="flex h-[72px] items-center text-[11px] text-zinc-400">{empty}</p>}
+      </> : <p className="flex h-[72px] items-center text-xs text-zinc-400">{empty}</p>}
     </figure>
   );
 }
@@ -38,17 +38,21 @@ function Accuracy({ title, rate, empty }: { title: string; rate: PredictionRate;
 /** Which parts of a settled call landed: W(inner), M(ethod), R(ound). */
 function Mark({ label, right }: { label: string; right: boolean }) {
   return <span aria-hidden="true" title={`${{ W: "Winner", M: "Method", R: "Round" }[label]} ${right ? "right" : "wrong"}`}
-    className={`inline-flex h-4 min-w-4 items-center justify-center rounded px-0.5 text-[9px] font-bold ${right ? "bg-emerald-100 text-emerald-700" : "bg-rose-50 text-rose-600"}`}>
+    className={`inline-flex h-5 min-w-5 items-center justify-center rounded px-1 text-[10px] font-bold ${right ? "bg-emerald-100 text-emerald-700" : "bg-rose-50 text-rose-600"}`}>
     {label}{right ? "✓" : "✗"}
   </span>;
 }
 
 export default function ProfilePredictions({ handle, mine }: { handle: string; mine: boolean }) {
-  const [offset, setOffset] = useState(0);
-  const url = `/api/profiles/${encodeURIComponent(handle)}/predictions?offset=${offset}`;
-  const { data, error, retry } = useApi<PredictionsData>(url, 15_000);
   const { getToken } = useAuth();
   type Row = PredictionsData["predictions"][number];
+  const list = useInfiniteList({
+    resetKey: handle,
+    load: offset => fetchPage<PredictionsData>(`/api/profiles/${encodeURIComponent(handle)}/predictions?offset=${offset}`, {}, "Predictions could not be loaded."),
+    items: page => page.predictions,
+    itemKey: row => row.fightId,
+    refreshMs: 15_000,
+  });
   const [confirming, setConfirming] = useState<Row | null>(null);
   const [busy, setBusy] = useState(false);
   const [removeError, setRemoveError] = useState("");
@@ -65,13 +69,16 @@ export default function ProfilePredictions({ handle, mine }: { handle: string; m
       });
       if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? "That prediction could not be removed.");
       setConfirming(null);
-      await apiCache.loadAfterWrite(url);
     } catch (problem) {
       setRemoveError(problem instanceof Error ? problem.message : "That prediction could not be removed.");
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+      void list.reload();
+    }
   };
+  const data = list.first;
   if (!data) return <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
-    {error ? <>{error} <button className="underline" onClick={retry}>Retry</button></> : "Loading predictions…"}
+    {list.error ? <>{list.error} <button className="underline" onClick={() => void list.retry()}>Retry</button></> : "Loading predictions…"}
   </section>;
   const { accuracy, totals } = data;
   return <>
@@ -96,23 +103,23 @@ export default function ProfilePredictions({ handle, mine }: { handle: string; m
     </section>
 
     <section className={`${PANEL_SHELL} overflow-hidden`}>
-      <PanelHeading title="All predictions" subtitle={data.total ? `${offset + 1}–${Math.min(offset + data.pageSize, data.total)} of ${data.total.toLocaleString()}` : undefined} />
+      <PanelHeading title="All predictions" subtitle={data.total ? data.total.toLocaleString() : undefined} />
       {!data.total ? <p className="px-5 py-10 text-center text-sm text-zinc-500">{mine ? "You haven’t made a prediction yet. Open an upcoming fight and use its Predict tab." : "This fan hasn’t made any predictions yet."}</p> : <ul className="divide-y divide-zinc-100">
-        {data.predictions.map(row => {
+        {list.items.map(row => {
           // A pick can be taken back until the fight has a result.
           const removable = mine && row.result.state === "pending";
           return <li key={row.fightId} className="relative">
-          <Link to={`/fights/${row.fightId}?tab=predict`} className={`block py-2.5 pl-4 transition-colors hover:bg-zinc-50 sm:pl-5 ${removable ? "pr-8" : "pr-4 sm:pr-5"}`}>
-            <div className="flex items-baseline justify-between gap-3">
-              <p className="min-w-0 text-[13px] font-semibold text-zinc-900">{predictionLabel(row.pick)}</p>
+          <Link to={`/fights/${row.fightId}?tab=predict`} className={`block ${LIST_ROW} transition-colors hover:bg-zinc-50`}>
+            <div className={`flex items-baseline justify-between gap-3 ${CLEAR_REMOVE(removable)}`}>
+              <p className={`min-w-0 ${LIST_TITLE}`}>{predictionLabel(row.pick)}</p>
               {row.result.points == null ? null : (
-                <span className={`shrink-0 text-[13px] font-semibold tabular-nums ${row.result.state === "won" ? "text-emerald-600" : row.result.state === "lost" ? "text-zinc-400" : "text-zinc-500"}`}>
+                <span className={`${LIST_VALUE} ${row.result.state === "won" ? "text-emerald-600" : row.result.state === "lost" ? "text-zinc-400" : "text-zinc-500"}`}>
                   {row.result.state === "void" ? "Void" : `${predictionPoints(row.result.points)} pts`}
                 </span>
               )}
             </div>
-            <div className="mt-0.5 flex items-baseline justify-between gap-3 text-[11px] leading-4 text-zinc-400">
-              <p className="min-w-0 truncate" title={`${row.pick.f1Name} vs ${row.pick.f2Name} · ${row.pick.eventName}`}><span className="text-zinc-500">{row.pick.f1Name} vs {row.pick.f2Name}</span> · {row.pick.eventName} · {formatDateShortWithYear(row.pick.eventDate)}</p>
+            <div className={`mt-0.5 flex items-center justify-between gap-3 ${LIST_META}`}>
+              <p className="min-w-0 truncate" title={`${row.pick.f1Name} vs ${row.pick.f2Name} · ${row.pick.eventName}`}><span className="text-zinc-700">{row.pick.f1Name} vs {row.pick.f2Name}</span> · {row.pick.eventName} · {formatDateShortWithYear(row.pick.eventDate)}</p>
               {row.result.state === "won" || row.result.state === "lost" ? (
                 <p className="flex shrink-0 gap-1.5 tabular-nums" aria-label={[`Winner ${row.result.fighter ? "right" : "wrong"}`, row.pick.method ? `Method ${row.result.method ? "right" : "wrong"}` : "", row.pick.round ? `Round ${row.result.round ? "right" : "wrong"}` : ""].filter(Boolean).join(", ")}>
                   <Mark label="W" right={Boolean(row.result.fighter)} />
@@ -121,16 +128,13 @@ export default function ProfilePredictions({ handle, mine }: { handle: string; m
                 </p>
               ) : null}
             </div>
-            {row.result.reason ? <p className="mt-0.5 text-[11px] text-zinc-500">{row.result.reason}</p> : null}
+            {row.result.reason ? <p className={`mt-0.5 ${LIST_META}`}>{row.result.reason}</p> : null}
           </Link>
-          {removable ? <RemoveX label={`Remove your prediction for ${row.pick.f1Name} vs ${row.pick.f2Name}`} onClick={() => { setConfirming(row); setRemoveError(""); }} /> : null}
+          {removable ? <RemoveX large label={`Remove your prediction for ${row.pick.f1Name} vs ${row.pick.f2Name}`} onClick={() => { setConfirming(row); setRemoveError(""); }} /> : null}
         </li>;
         })}
       </ul>}
-      {data.total > data.pageSize ? <div className="flex justify-between border-t border-zinc-100 px-5 py-3 text-xs text-zinc-600">
-        <button disabled={offset === 0} onClick={() => setOffset(value => Math.max(0, value - data.pageSize))} className="rounded-full px-3 py-2 hover:bg-zinc-100 disabled:opacity-40">Newer</button>
-        <button disabled={offset + data.pageSize >= data.total} onClick={() => setOffset(value => value + data.pageSize)} className="rounded-full px-3 py-2 hover:bg-zinc-100 disabled:opacity-40">Older</button>
-      </div> : null}
+      <LoadMore list={list} />
     </section>
     {confirming ? <ConfirmRemove
       title="Remove this prediction?"

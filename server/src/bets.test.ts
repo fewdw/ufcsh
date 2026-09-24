@@ -172,7 +172,10 @@ test("leaderboards rank fans by points, accuracy and betting profit", t => {
   }
   store.place("user_b", { stake: 20, legs: [leg(bouts[5].id, { winner: 2 }, "+170")] });
   for (const bout of bouts) Object.assign(bout, { f1_outcome: "win", f2_outcome: "loss", method: "U-DEC", round: "3" });
-  const board = createLeaderboards(scores, predictions, store, () => now)();
+  // Nobody here reaches the real minimums of 20, so every board is empty.
+  const strict = createLeaderboards(scores, predictions, store, () => now)();
+  assert.deepEqual([strict.points, strict.winner, strict.method, strict.bets].map(entries => entries.length), [0, 0, 0, 0]);
+  const board = createLeaderboards(scores, predictions, store, () => now, { points: 1, winner: 5, method: 3, bets: 1 })();
   assert.equal(board.points[0].scorer.handle, scores.identity("user_a").handle);
   assert.equal(board.winner[0].detail, "6 of 6");
   assert.equal(board.winner.length, 2);

@@ -4,6 +4,7 @@ import { useAdminRequest, useAdminResource } from "../admin";
 import { commentLink, REPORT_REASONS, type CommentState } from "../discussion";
 import type { ScorerIdentity } from "../scoring";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "./segmented";
+import { BUTTON_DANGER, BUTTON_SECONDARY } from "../ui";
 
 type View = "reported" | "recent" | "removed" | "muted";
 type Report = { reason: string; note: string; createdAt: number; status: "open" | "actioned" | "dismissed"; snapshot: string; reporter: ScorerIdentity };
@@ -25,7 +26,7 @@ const STATE_TONE: Record<CommentState, string> = {
 };
 const STATE_LABEL: Record<CommentState, string> = { visible: "Visible", held: "Held for review", deleted: "Deleted by author", removed: "Removed" };
 const MUTES = [[1, "1 hour"], [24, "24 hours"], [168, "7 days"], [720, "30 days"], [-1, "Permanently"]] as const;
-const button = "rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-40";
+const button = BUTTON_SECONDARY;
 const until = (at: number | null, permanent = false) => permanent || (at != null && at >= Number.MAX_SAFE_INTEGER) ? "permanently" : at ? `until ${new Date(at).toLocaleString()}` : "";
 
 function Row({ item, onDone }: { item: Moderated; onDone: () => void }) {
@@ -97,7 +98,7 @@ function Row({ item, onDone }: { item: Moderated; onDone: () => void }) {
             <input value={reason} onChange={event => setReason(event.target.value)} maxLength={300} placeholder="Reason (optional)"
               className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs outline-none focus:border-zinc-400 sm:max-w-56" />
             <button type="button" disabled={busy} onClick={() => void run(`/api/admin/comments/${item.id}`, { action: "remove", reason })}
-              className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-40">Remove</button>
+              className={BUTTON_DANGER}>Remove</button>
           </>
         )}
         <span className="mx-1 hidden h-5 w-px bg-zinc-200 sm:block" aria-hidden="true" />

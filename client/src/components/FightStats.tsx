@@ -1,3 +1,4 @@
+import { PANEL } from "./chartTokens";
 import { Fragment } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type { CareerBefore, ComparisonBlock, FightDetailBlock, Matchup, RoundBlock } from "../api";
@@ -48,8 +49,7 @@ const BAR = "w-6 shrink-0 @[36rem]:w-9";
  *  The largest that still fits the tightest cell (a five-round column). */
 export const CHART_TEXT = "text-[11px]";
 
-export const PANEL_SHELL =
-  "rounded-2xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
+export const PANEL_SHELL = PANEL;
 const shell = PANEL_SHELL;
 
 /** One line: the panel's name on the left, its count or headline figure on

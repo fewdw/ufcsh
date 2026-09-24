@@ -1,21 +1,9 @@
-import { User } from "lucide-react";
-import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api";
 import { signedMoney, type LeaderboardEntry, type Leaderboards as BoardsData } from "../bets";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
-import ProgressiveImage from "./ProgressiveImage";
+import FanAvatar from "./FanAvatar";
 
-function Portrait({ entry }: { entry: LeaderboardEntry }) {
-  const [failed, setFailed] = useState(false);
-  if (!entry.scorer.imageUrl || failed) return (
-    <span aria-hidden="true" className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-zinc-100 text-zinc-400 ring-1 ring-zinc-200">
-      <User className="h-3 w-3" />
-    </span>
-  );
-  return <ProgressiveImage src={entry.scorer.imageUrl} alt="" referrerPolicy="no-referrer" onError={() => setFailed(true)}
-    className="h-5 w-5 shrink-0 rounded-full bg-zinc-100 object-cover ring-1 ring-zinc-200" />;
-}
 
 function Board({ title, subtitle, entries, format, tab, current }: {
   title: string; subtitle: string; entries: LeaderboardEntry[];
@@ -30,13 +18,13 @@ function Board({ title, subtitle, entries, format, tab, current }: {
           const self = entry.scorer.handle === current.toLowerCase() || entry.scorer.publicId === current;
           return <li key={entry.scorer.publicId}>
             <Link to={`/profiles/${entry.scorer.handle}?tab=${tab}`}
-              className={`flex items-center gap-2 px-4 py-1.5 transition-colors hover:bg-zinc-50 sm:px-5 ${self ? "bg-sky-50/90" : ""}`}>
-              <span className={`w-4 shrink-0 text-right text-[11px] font-semibold tabular-nums ${index < 3 ? "text-zinc-900" : "text-zinc-400"}`}>{index + 1}</span>
-              <Portrait entry={entry} />
-              <span className={`min-w-0 flex-1 truncate text-[13px] ${self ? "font-semibold text-zinc-900" : "font-medium text-zinc-800"}`}>{entry.scorer.displayName}</span>
+              className={`flex items-center gap-2.5 px-4 py-2.5 transition-colors hover:bg-zinc-50 sm:px-5 ${self ? "bg-sky-50/90" : ""}`}>
+              <span className={`w-5 shrink-0 text-right text-xs font-semibold tabular-nums ${index < 3 ? "text-zinc-900" : "text-zinc-400"}`}>{index + 1}</span>
+              <FanAvatar src={entry.scorer.imageUrl} name={entry.scorer.displayName} size="md" />
+              <span className={`min-w-0 flex-1 truncate text-sm ${self ? "font-semibold text-zinc-900" : "font-medium text-zinc-800"}`}>{entry.scorer.displayName}</span>
               {/* The count behind the figure, beside it rather than under it. */}
-              <span className="shrink-0 text-[10px] tabular-nums text-zinc-400">{entry.detail}</span>
-              <span className={`w-[4.5rem] shrink-0 text-right text-[13px] font-semibold tabular-nums ${value.tone ?? "text-zinc-900"}`}>{value.text}</span>
+              <span className="shrink-0 text-xs tabular-nums text-zinc-400">{entry.detail}</span>
+              <span className={`w-[4.75rem] shrink-0 text-right text-sm font-semibold tabular-nums ${value.tone ?? "text-zinc-900"}`}>{value.text}</span>
             </Link>
           </li>;
         })}
@@ -55,11 +43,11 @@ export default function Leaderboards({ handle }: { handle: string }) {
   const pct = (entry: LeaderboardEntry) => ({ text: `${Math.round(entry.value)}%` });
   return (
     <div className="grid gap-3 md:grid-cols-2">
-      <Board title="Top predictors" subtitle="Total prediction points" entries={data.points} tab="predictions" current={handle}
+      <Board title="Top predictors" subtitle={`Points · ${data.minimums.points}+ settled picks`} entries={data.points} tab="predictions" current={handle}
         format={entry => ({ text: `${entry.value.toLocaleString()} pts` })} />
-      <Board title="Winner accuracy" subtitle={`Right winner · at least ${data.minimums.winner} settled picks`} entries={data.winner} tab="predictions" current={handle} format={pct} />
-      <Board title="Method accuracy" subtitle={`Right method · at least ${data.minimums.method} method calls`} entries={data.method} tab="predictions" current={handle} format={pct} />
-      <Board title="Top bettors" subtitle="Profit on settled bets" entries={data.bets} tab="bets" current={handle}
+      <Board title="Winner accuracy" subtitle={`Right winner · ${data.minimums.winner}+ settled picks`} entries={data.winner} tab="predictions" current={handle} format={pct} />
+      <Board title="Method accuracy" subtitle={`Right method · ${data.minimums.method}+ method calls`} entries={data.method} tab="predictions" current={handle} format={pct} />
+      <Board title="Top bettors" subtitle={`Profit · ${data.minimums.bets}+ settled bets (per leg)`} entries={data.bets} tab="bets" current={handle}
         format={entry => ({ text: signedMoney(entry.value), tone: entry.value > 0 ? "text-emerald-600" : entry.value < 0 ? "text-rose-600" : undefined })} />
     </div>
   );

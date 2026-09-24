@@ -8,6 +8,7 @@ import { METHOD_LABEL, predictionLabel, predictionPoints, sharePct } from "../pr
 import type { FanPrediction, MyPrediction, PredictionDistribution, PredictionMethod, PredictionSummary } from "../predictions";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
 import ProgressiveImage from "./ProgressiveImage";
+import { BUTTON_PRIMARY_LARGE } from "../ui";
 
 const METHOD_COLOR: Record<string, string> = {
   ko: "var(--color-pick-ko)", submission: "var(--color-pick-sub)",
@@ -20,7 +21,7 @@ const option = "rounded-xl border px-2 py-2 text-center text-xs font-semibold tr
 const optionIdle = "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50";
 /** Defined in index.css: ink on paper, inverted in the dark theme. */
 const optionOn = "pick-option-on";
-const primary = "rounded-full bg-zinc-900 px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-zinc-700 disabled:opacity-40";
+const primary = BUTTON_PRIMARY_LARGE;
 
 export default function FightPredictions({ fight }: { fight: Matchup }) {
   const { data, error, retry } = useApi<PredictionSummary>(`/api/fights/${fight.id}/predictions`, 3_000);
@@ -101,7 +102,7 @@ function CommunityPicks({ distribution, scheduledRounds }: { distribution: Predi
 
   return (
     <section className={PANEL_SHELL}>
-      <PanelHeading title="Community Picks" aside={<span className="text-xs tabular-nums text-zinc-500">{total.toLocaleString()} {total === 1 ? "pick" : "picks"}</span>} />
+      <PanelHeading title="Community picks" aside={<span className="text-xs tabular-nums text-zinc-500">{total.toLocaleString()} {total === 1 ? "pick" : "picks"}</span>} />
       <div className={`grid divide-y divide-zinc-100 sm:divide-x sm:divide-y-0 ${roundsKnown ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
         <WinnerSplit fighters={fighters} total={total} />
         <ShareBar title="Method" entries={methods} total={total} />

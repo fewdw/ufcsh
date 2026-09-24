@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { RateLimiter, clientAddress } from "./api-policy.ts";
 import { authenticateScorer, scoringOrigins } from "./scoring-http.ts";
 import { ScoringError } from "./scoring.ts";
-import { COMMENT_SORTS, type CommentSort, type CommentStore } from "./comments.ts";
+import { COMMENT_SORTS, PROFILE_COMMENT_SORTS, type CommentSort, type CommentStore, type ProfileCommentSort } from "./comments.ts";
 
 const MAX_BODY = 16_384;
 /** Signed-out readers of a discussion all get the same page, so it is built
@@ -30,6 +30,11 @@ const sortParam = (url: URL): CommentSort => {
   const sort = url.searchParams.get("sort") ?? "top";
   if (!COMMENT_SORTS.includes(sort as CommentSort)) throw new ScoringError(400, "Unknown sort.");
   return sort as CommentSort;
+};
+const profileSortParam = (url: URL): ProfileCommentSort => {
+  const sort = url.searchParams.get("sort") ?? "new";
+  if (!PROFILE_COMMENT_SORTS.includes(sort as ProfileCommentSort)) throw new ScoringError(400, "Unknown sort.");
+  return sort as ProfileCommentSort;
 };
 const offsetParam = (url: URL): number => {
   const raw = url.searchParams.get("offset") ?? "0";
@@ -102,7 +107,7 @@ export function createCommentsHandler(store: CommentStore, authenticate = authen
         let user: string | null = null;
         if (signed) { try { user = await authenticate(req); } catch { user = null; } }
         if (fight) send(store.list(fight[1], { sort: sortParam(url), offset: offsetParam(url), user }));
-        else if (profile) send(store.profile(profile[1], user, offsetParam(url)));
+        else if (profile) send(store.profile(profile[1], user, offsetParam(url), profileSortParam(url)));
         else send(store.thread(comment![1], { sort: sortParam(url), user }));
         return true;
       }
