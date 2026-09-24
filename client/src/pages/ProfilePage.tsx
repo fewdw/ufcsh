@@ -1,5 +1,5 @@
 import { useAuth } from "@clerk/react";
-import { Check, Flag, LogOut, Pencil, Search, Settings, User, X } from "lucide-react";
+import { Check, ChevronDown, Flag, LogOut, Pencil, Search, Settings, User, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiCache, prefetch, useApi } from "../api";
@@ -286,18 +286,28 @@ function ScorecardFilter({ value, agreement, total, onChange }: {
   total: number;
   onChange: (value: ProfileFilter) => void;
 }) {
+  const options: { value: ProfileFilter; label: string; count: number }[] = [
+    { value: "all", label: "All", count: total },
+    { value: "decisions", label: "Judged", count: agreement.decisions },
+    { value: "agreed", label: "Agreed", count: agreement.agreed },
+    { value: "disagreed", label: "Disagreed", count: agreement.disagreed },
+  ];
+  const current = options.find(option => option.value === value) ?? options[0];
+  // A native select is as wide as its longest option. The chip shows only the
+  // current one, with the select laid invisibly over it to open the picker.
   return (
-    <select
-      value={value}
-      onChange={event => onChange(event.target.value as ProfileFilter)}
-      aria-label="Filter scored fights"
-      className="h-9 shrink-0 rounded-full border border-zinc-200 bg-zinc-50 pl-3.5 pr-7 text-[13px] font-medium text-zinc-700 sm:h-8 sm:text-xs outline-none transition-colors hover:border-zinc-300 focus:border-zinc-400"
-    >
-      <option value="all">All · {total.toLocaleString()}</option>
-      <option value="decisions">Judged · {agreement.decisions.toLocaleString()}</option>
-      <option value="agreed">Agreed · {agreement.agreed.toLocaleString()}</option>
-      <option value="disagreed">Disagreed · {agreement.disagreed.toLocaleString()}</option>
-    </select>
+    <label className="relative flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 pl-3.5 pr-3 text-[13px] font-medium text-zinc-700 transition-colors focus-within:border-zinc-400 hover:border-zinc-300 sm:h-8 sm:text-xs">
+      <span className="whitespace-nowrap">{current.label} <span className="tabular-nums text-zinc-400">{current.count.toLocaleString()}</span></span>
+      <ChevronDown className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
+      <select
+        value={value}
+        onChange={event => onChange(event.target.value as ProfileFilter)}
+        aria-label="Filter scored fights"
+        className="absolute inset-0 cursor-pointer opacity-0"
+      >
+        {options.map(option => <option key={option.value} value={option.value}>{option.label} · {option.count.toLocaleString()}</option>)}
+      </select>
+    </label>
   );
 }
 
