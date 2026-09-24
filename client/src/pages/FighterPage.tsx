@@ -616,7 +616,7 @@ export default function FighterPage() {
 
 
   return (
-    <div ref={pageScroll} className="h-full overflow-y-auto [scrollbar-gutter:stable] lg:overflow-hidden">
+    <div ref={pageScroll} className="h-full overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable] lg:overflow-hidden">
       <div className="flex flex-col gap-3 p-3 pb-8 lg:h-full lg:pb-3">
         {error ? <RequestNotice onRetry={retry}>Couldn’t refresh this profile. Showing the last loaded data.</RequestNotice> : null}
         {/* Wide windows split the profile: who they are and where they rank on
@@ -624,7 +624,7 @@ export default function FighterPage() {
         {/* On a wide window the page itself never scrolls: each column is its
             own scroller, so reading one leaves the other exactly where it was. */}
         <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(24rem,5fr)_minmax(0,7fr)] lg:grid-rows-[minmax(0,1fr)]">
-        <div className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
+        <div className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
         <section className={`${shell} @container px-6 py-5`}>
           <div className="flex flex-col gap-5">
             <div className="flex min-w-0 items-center gap-5">
@@ -675,7 +675,7 @@ export default function FighterPage() {
         <StatisticalRanks stats={fighter.stats ?? []} />
         </div>
 
-        <div className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
+        <div className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
 
         <section className={shell}>
           <h2 className="border-b border-zinc-100 px-5 py-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
