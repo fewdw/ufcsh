@@ -334,7 +334,7 @@ function FormDots({ side, align }: { side: FightSide; align: "left" | "right" })
 function WeightMissBadge({ side }: { side: FightSide }) {
   if (!side.weight_miss) return null;
   const label = `${side.name} missed weight at ${side.weight_miss} lb`;
-  return <span className={`${METHOD_TAG} bg-rose-100 text-rose-700 tabular-nums`} title={label} aria-label={label}>{side.weight_miss}</span>;
+  return <span className={`${METHOD_TAG} bg-rose-100 text-rose-700 tabular-nums`} title={label} aria-label={label}>{side.weight_miss}lbs</span>;
 }
 
 function FighterBlock({
