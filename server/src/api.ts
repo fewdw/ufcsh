@@ -1005,7 +1005,7 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     `)
     .get(id, rankingType) as any;
   const records = fighterRecords(id);
-  const recordKeys = new Set(records.map((entry) => entry.key));
+  const recordKeys = new Set(records.map((entry) => `${entry.key}:${entry.scope}`));
   const profile = {
     id: fr.id,
     name: fr.name,
@@ -1031,7 +1031,7 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     // Where this fighter sits at the top of the sport, recomputed from the
     // same index the leaderboards use, so it moves the moment a result lands.
     records,
-    stats: fighterStats(id).filter((entry) => !recordKeys.has(entry.key)),
+    stats: fighterStats(id).filter((entry) => !recordKeys.has(`${entry.key}:${entry.scope}`)),
     history: mergedUfcHistory,
     pro_history: proHistory,
   };

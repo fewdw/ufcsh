@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { fighterRecords, fighterStats } from "./records.ts";
 import { fightIndex } from "./fight-index.ts";
+import { getStats, type Leaderboard } from "./stats.ts";
 
 /**
  * Every board the statistics pages rank people on must have a counterpart on
@@ -45,5 +46,27 @@ test("a placement says where it stands and what it is made of", () => {
     const records = fighterRecords(id, 5);
     for (let i = 1; i < records.length; i++) assert.ok(records[i].rank >= records[i - 1].rank);
     break;
+  }
+});
+
+test("top Output placements appear on the fighter profile with the same value and scope", () => {
+  const combinations = [
+    { actionType: "significantStrikes", actionBasis: "scored", actionDirection: "given", actionMode: "perFight", division: "all" },
+    { actionType: "significantStrikes", actionBasis: "scored", actionDirection: "given", actionMode: "perFight", division: "Featherweight" },
+    { actionType: "totalStrikes", actionBasis: "attempted", actionDirection: "given", actionMode: "single", division: "all" },
+    { actionType: "headStrikes", actionBasis: "percent", actionDirection: "given", actionMode: "single", division: "all" },
+    { actionType: "control", actionBasis: "differential", actionDirection: "given", actionMode: "per15", division: "all" },
+  ];
+  for (const selection of combinations) {
+    const board = (getStats(new URLSearchParams(selection)) as { leaderboards: Leaderboard[] })
+      .leaderboards.find((leaderboard) => leaderboard.key === "output")!;
+    const leader = board.rows[0];
+    assert.ok(leader, `${JSON.stringify(selection)} has a leader`);
+    const key = `action:${selection.actionType}:${selection.actionBasis}:${selection.actionDirection}:${selection.actionMode}`;
+    const scope = selection.division === "all" ? "UFC history" : selection.division;
+    const placement = fighterStats(leader.fighter_id).find((entry) => entry.key === key && entry.scope === scope);
+    assert.ok(placement, `${leader.name} has ${key} in ${scope} on their profile`);
+    assert.equal(placement.value, leader.value);
+    assert.equal(placement.rank, 1);
   }
 });

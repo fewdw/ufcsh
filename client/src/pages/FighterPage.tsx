@@ -457,7 +457,7 @@ function Records({ records }: { records: FighterRecord[] }) {
       </div>
       <div className="divide-y divide-zinc-50 pb-2">
         {records.map((record) => (
-          <div key={record.key} className="flex items-center gap-3 px-4 py-2">
+          <div key={`${record.key}:${record.scope}`} className="flex items-center gap-3 px-4 py-2">
             <span
               className={`grid h-8 w-10 shrink-0 place-items-center rounded-lg text-xs font-bold tabular-nums ${
                 record.rank === 1
@@ -498,7 +498,8 @@ function StatisticalRanks({ stats }: { stats: FighterStat[] }) {
     map.set(stat.category, current);
     return map;
   }, new Map<string, { order: number; rows: FighterStat[] }>())]
-    .sort((a, b) => a[1].order - b[1].order);
+    .sort((a, b) => Math.min(...a[1].rows.map((row) => row.rank))
+      - Math.min(...b[1].rows.map((row) => row.rank)) || a[1].order - b[1].order);
   const place = (stat: FighterStat) => `${stat.tied ? "T" : ""}${stat.rank}`;
 
   return (
@@ -532,7 +533,7 @@ function StatisticalRanks({ stats }: { stats: FighterStat[] }) {
             <h3 className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-zinc-400">{category}</h3>
             <div className="divide-y divide-zinc-50">
               {group.rows.map((stat) => (
-                <div key={stat.key} className="flex min-w-0 items-center gap-2 py-2 first:pt-0 last:pb-0">
+                <div key={`${stat.key}:${stat.scope}`} className="flex min-w-0 items-center gap-2 py-2 first:pt-0 last:pb-0">
                   <span
                     className={`grid h-6 w-9 shrink-0 place-items-center rounded-md text-[10px] font-bold tabular-nums ${
                       stat.rank <= 10 ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600"
