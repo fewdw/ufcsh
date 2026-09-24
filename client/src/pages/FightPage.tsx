@@ -47,11 +47,10 @@ const shell = PANEL_SHELL;
 const RESULT_PILL =
   "inline-flex shrink-0 rounded-full px-1.5 py-px text-[9px] font-bold uppercase leading-4 tracking-[0.06em]";
 
-/** Which belt is on the line. Only the fight-details page names the interim
- *  one — the event page shows the same plain belt icon for both — so fall back
- *  to the event flag while the detail is still loading. */
+/** Only a confirmed title type earns a belt label. The event flag alone can
+ *  be set on ordinary bouts, including the debut fights on this card. */
 function beltOf(fight: Matchup): "title" | "interim" | "tuf" | "tournament" | null {
-  return fight.detail?.titleBout ?? fight.title_type ?? (fight.title_fight ? "title" : null);
+  return fight.detail?.titleBout ?? fight.title_type ?? null;
 }
 
 const DECISION_LABEL: Record<string, string> = {
@@ -914,7 +913,8 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   const statsLive = hasStats && fight.status !== "past";
   const result = fight.status === "past" ? resultSummary(fight) : null;
   const portraitPair = JSON.stringify([fight.id, fight.f1.photo_full_url, fight.f2.photo_full_url]);
-  const portraits = Boolean(fight.f1.photo_full_url && fight.f2.photo_full_url) && failedPortraitPair !== portraitPair;
+  const portraits = [fight.f1, fight.f2].every(side => side.photo_full_url || !side.photo_url)
+    && failedPortraitPair !== portraitPair;
   const portraitUnavailable = () => setFailedPortraitPair(portraitPair);
   const referee = fight.detail?.methodInfo?.["Referee"];
   const reserveRank = Boolean(fight.f1.ranking || fight.f2.ranking);

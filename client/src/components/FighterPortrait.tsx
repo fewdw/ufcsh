@@ -51,11 +51,12 @@ export default function FighterPortrait({
   outcome?: "win" | "loss" | "draw" | "nc" | null;
 }) {
   const [failed, setFailed] = useState(false);
+  const displaySrc = src ?? (!headshot ? "/fighter-shadow.png" : null);
   // A different fighter (or a switch back to full body) deserves its own
   // attempt; without this the first broken picture would sink every later one.
-  useEffect(() => setFailed(false), [src]);
+  useEffect(() => setFailed(false), [displaySrc]);
 
-  if (!src || failed) return <Avatar src={headshot} name={name} size={AVATAR_SIZE[size]} outcome={outcome} />;
+  if (!displaySrc || failed) return <Avatar src={headshot} name={name} size={AVATAR_SIZE[size]} outcome={outcome} />;
 
   return (
     <span data-fighter-portrait="full" className={`relative flex ${FRAME[size]} shrink-0 items-end justify-center`}>
@@ -67,8 +68,8 @@ export default function FighterPortrait({
         className={`absolute bottom-1 h-1.5 w-3/5 rounded-[50%] blur-[3px] ${outcome ? BASE[outcome] : "bg-zinc-500/25"}`}
       /> : null}
       <ProgressiveImage
-        key={src}
-        src={src}
+        key={displaySrc}
+        src={displaySrc}
         alt={name}
         loading="eager"
         fetchPriority="high"

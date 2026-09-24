@@ -10,7 +10,7 @@ const SIZES = {
   matchup: "h-13 w-13 text-xs lg:h-15 lg:w-15 lg:text-sm",
 } as const;
 
-const UFC_EMPTY_AVATAR = "/fighter-placeholder.png";
+const UFC_EMPTY_AVATAR = "/fighter-shadow.png";
 
 export default function Avatar({
   src,

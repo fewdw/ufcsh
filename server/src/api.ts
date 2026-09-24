@@ -83,7 +83,7 @@ type SegmentOf = "main" | "prelims" | "early" | null;
 const scheduledBout = (f: any) => ({
   ord: Number(f.ord) || 0,
   segment: (f.segment || null) as SegmentOf,
-  fiveRound: Number(f.scheduled_rounds) > 0 ? Number(f.scheduled_rounds) === 5 : Boolean(f.title_fight) || Number(f.ord) === 0,
+  fiveRound: Number(f.scheduled_rounds) > 0 ? Number(f.scheduled_rounds) === 5 : ["title", "interim"].includes(f.title_type) || Number(f.ord) === 0,
 });
 
 const segmentTimes = (e: EventRow): SegmentTimes => ({

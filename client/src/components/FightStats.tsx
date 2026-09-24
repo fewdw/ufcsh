@@ -634,20 +634,14 @@ function CombinedStrikeColumns({
 /** The split charts name each pair under its figures. */
 const PAIR_LABEL = `whitespace-nowrap text-center text-[9px] font-semibold uppercase leading-4 tracking-[0.08em] text-zinc-400 @[36rem]:text-[10px]`;
 
-/** A chart and its name. The plots all start at the top, so every baseline
- *  in a row is one line; a Fight totals caption is pinned to the bottom so
- *  the captions form a row of their own, while a round is named over it. */
-function ChartBlock({ title, children, titleAbove = false }: { title: string; children: React.ReactNode; titleAbove?: boolean }) {
-  const heading = (
-    <h3 className={`px-1 text-center text-[10px] font-semibold uppercase tracking-[0.1em] text-zinc-400 @[36rem]:text-[11px] ${titleAbove ? "mb-1.5" : "mt-auto pt-2"}`}>
-      {title}
-    </h3>
-  );
+/** A chart and its name. Captions follow the figures for totals and rounds. */
+function ChartBlock({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="flex min-w-0 flex-col items-center">
-      {titleAbove ? heading : null}
       {children}
-      {titleAbove ? null : heading}
+      <h3 className="mt-auto px-1 pt-2 text-center text-[10px] font-semibold uppercase tracking-[0.1em] text-zinc-400 @[36rem]:text-[11px]">
+        {title}
+      </h3>
     </section>
   );
 }
@@ -842,8 +836,7 @@ function roundTooltipLines(kd: string, td: string, sub: string, ctrl: string): s
   return lines;
 }
 
-/** One round, built exactly like a Fight totals column: the round named over
- *  the same strike chart on the same baseline, its figures below. */
+/** One round, built exactly like a Fight totals column. */
 function RoundColumn({ fight, index }: { fight: Matchup; index: number }) {
   const rounds = fight.detail?.type === "past" ? fight.detail.totalsRounds : undefined;
   const at = (label: string) => roundCell(rounds, index, label);
@@ -855,7 +848,7 @@ function RoundColumn({ fight, index }: { fight: Matchup; index: number }) {
   const ctrl = at("Ctrl");
 
   return (
-    <ChartBlock title={`Round ${index + 1}`} titleAbove>
+    <ChartBlock title={`Round ${index + 1}`}>
       <CombinedStrikeColumns
         fight={fight}
         significant={significant}
@@ -1098,29 +1091,22 @@ export function CareerProfile({ fight }: { fight: Matchup }) {
     { key: "grappling", label: "Grappling", metrics: GRAPPLING_METRICS },
   ];
   const anyTracked = tracked(careers.f1) + tracked(careers.f2) > 0;
+  if (!anyTracked) return null;
 
   return (
     <section className={`${shell} @container overflow-hidden`}>
-      <PanelHeading
-        title="Fight stats"
-      />
-      {anyTracked ? (
-        <>
-          <div className="grid grid-cols-2 gap-x-4 px-3 pb-1 pt-1.5 @[40rem]:gap-x-8 @[40rem]:px-4 @[40rem]:pt-2">
-            {groups.map((group) => (
-              <div key={group.key} className="min-w-0">
-                <div className={`pb-0.5 pt-1 text-center ${sectionLabel}`}>{group.label}</div>
-                {group.metrics.map((metric) => (
-                  <ProfileRow key={metric.key} fight={fight} metric={metric} careers={careers} />
-                ))}
-              </div>
+      <PanelHeading title="Fight stats" />
+      <div className="grid grid-cols-2 gap-x-4 px-3 pb-1 pt-1.5 @[40rem]:gap-x-8 @[40rem]:px-4 @[40rem]:pt-2">
+        {groups.map((group) => (
+          <div key={group.key} className="min-w-0">
+            <div className={`pb-0.5 pt-1 text-center ${sectionLabel}`}>{group.label}</div>
+            {group.metrics.map((metric) => (
+              <ProfileRow key={metric.key} fight={fight} metric={metric} careers={careers} />
             ))}
           </div>
-          <MethodProfile careers={careers} />
-        </>
-      ) : (
-        <Empty>Both fighters are new to the promotion, so there is nothing to compare yet.</Empty>
-      )}
+        ))}
+      </div>
+      <MethodProfile careers={careers} />
     </section>
   );
 }
