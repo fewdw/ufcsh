@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { isFightDay, liveFightId } from "../liveEvent";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -8,6 +8,7 @@ import {
   formatDate,
   formatDateShortWithYear,
   formatMethod,
+  futureDayLabel,
   lastName,
   outcomeClasses,
   outcomeLabel,
@@ -15,6 +16,7 @@ import {
   roundsLabel,
 } from "../format";
 import Avatar from "../components/Avatar";
+import { CardEventTitle, CardNavigation, CARD_STEP } from "../components/CardHeader";
 import FightScoring from "../components/FightScoring";
 import FightPredictions from "../components/FightPredictions";
 const FightDiscussion = lazy(() => import("../components/FightDiscussion"));
@@ -42,6 +44,8 @@ import { useRouteScrollRestoration } from "../navigationState";
 import { SITE_URL, useSeo } from "../seo";
 import { useSettings, withRanking } from "../settings";
 import { scoreableRoundCount } from "../scoring";
+import { useNow } from "../useNow";
+import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 
 const shell = PANEL_SHELL;
 const RESULT_PILL =
@@ -696,6 +700,39 @@ function railMethodTag(fight: EventFight, outcome: FightSide["outcome"]): { labe
   return { label: fight.round ? `${label} R${fight.round}` : label, tone: "bg-emerald-100 text-emerald-700" };
 }
 
+/** A comment permalink belongs to one fight; the selected tab carries over. */
+function cardFightSearch(search: string): string {
+  const params = new URLSearchParams(search);
+  params.delete("comment");
+  return params.size ? `?${params}` : "";
+}
+
+function FightStepLink({ fight, direction, eventId, returnDepth, search }: {
+  fight: EventFight | null;
+  direction: "prev" | "next";
+  eventId: string;
+  returnDepth: number | null;
+  search: string;
+}) {
+  const { settings } = useSettings();
+  const label = direction === "prev" ? "Prev" : "Next";
+  const glyph = direction === "prev" ? <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />;
+  if (!fight) return <span className={`${CARD_STEP} text-zinc-300`} aria-disabled="true">{direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}</span>;
+  return (
+    <Link
+      to={{ pathname: `/fights/${fight.id}`, search }}
+      state={{ eventId, ...(returnDepth ? { eventReturnDepth: returnDepth + 1 } : {}) }}
+      aria-label={`${label} fight: ${fight.f1.name} vs ${fight.f2.name}`}
+      title={`${fight.f1.name} vs ${fight.f2.name}`}
+      onPointerEnter={() => prefetch(withRanking(`/api/fights/${fight.id}`, settings.rankingSource))}
+      onFocus={() => prefetch(withRanking(`/api/fights/${fight.id}`, settings.rankingSource))}
+      className={`${CARD_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}
+    >
+      {direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}
+    </Link>
+  );
+}
+
 function FightRail({ eventId, currentId, returnDepth }: { eventId: string; currentId: string; returnDepth: number | null }) {
   const { settings } = useSettings();
   // Moving along the card keeps the reader on the tab they were reading.
@@ -708,9 +745,7 @@ function FightRail({ eventId, currentId, returnDepth }: { eventId: string; curre
   if (!event.fights.length) return null;
   const liveId = liveFightId(event);
   // A comment permalink belongs to this bout only; the tab carries over.
-  const railSearch = new URLSearchParams(location.search);
-  railSearch.delete("comment");
-  const search = railSearch.size ? `?${railSearch}` : "";
+  const search = cardFightSearch(location.search);
   return (
     <aside className={`hidden w-40 shrink-0 flex-col overflow-hidden sm:flex lg:w-48 ${shell}`}>
       <div className="border-b border-zinc-200 px-2 py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
@@ -837,6 +872,9 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   // otherwise read as a brand-new page and reset the scroll to the top.
   const detailScroll = useRouteScrollRestoration<HTMLDivElement>("fight:detail", Boolean(fight), fightId);
   const eventId = loadedFight?.event.id ?? eventIdHint ?? previousFight.current?.event.id;
+  const { data: cardEvent } = useApi<EventDetail>(eventId ? withRanking(`/api/events/${eventId}`, settings.rankingSource) : null,
+    data => data?.refreshing ? 5_000 : isFightDay(data?.date) ? 15_000 : data?.status === "past" ? 0 : 5 * 60_000);
+  const now = useNow(fight?.status !== "past");
   const matchupTitle = loadedFight ? `${loadedFight.f1.name} vs ${loadedFight.f2.name}` : "UFC Matchup";
   const matchupDescription = loadedFight
     ? `${loadedFight.f1.name} vs ${loadedFight.f2.name} at ${loadedFight.event.name}: ${loadedFight.weight_class} odds, tale of the tape, fighter statistics${loadedFight.status === "past" ? " and result" : ""}.`
@@ -919,6 +957,13 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   const referee = fight.detail?.methodInfo?.["Referee"];
   const reserveRank = Boolean(fight.f1.ranking || fight.f2.ranking);
   const changingMatchup = !loadedFight && fight.id !== fightId;
+  const orderedFights = cardEvent?.id === fight.event.id ? cardEvent.fights : [];
+  const fightIndex = orderedFights.findIndex((entry) => entry.id === fightId);
+  // Card rows run main event first. Next moves up that list toward the main
+  // event; Prev moves down toward the opening bout.
+  const previous = fightIndex >= 0 ? orderedFights[fightIndex + 1] ?? null : null;
+  const next = fightIndex > 0 ? orderedFights[fightIndex - 1] : null;
+  const navSearch = cardFightSearch(location.search);
 
   // Only tabs with something in them; a finished or live bout opens on what
   // happened, an upcoming one on the matchup. The choice lives in the URL.
@@ -954,38 +999,31 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
         ) : null}
         <div ref={detailScroll} inert={changingMatchup} className="h-full overflow-y-auto" aria-busy={changingMatchup}>
           <div className="@container flex w-full flex-col gap-3 pb-8">
-            <div className="shrink-0">
-            <section data-photo-view={portraits ? "full" : "face"} className={`matchup-top-card matchup-overview @container overflow-hidden ${shell}`}>
-              <div className="matchup-heading flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-5 py-3.5">
-                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"><Link
-                  to={`/events/${fight.event.id}`}
-                  onClick={(event) => {
-                    if (!eventReturnDepth) return;
-                    event.preventDefault();
-                    closeFight();
-                  }}
-                  className="text-sm font-semibold text-zinc-900 underline-offset-2 hover:underline"
-                >
-                  {fight.event.name}
-                </Link>
-                </div>
-                <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-zinc-500">
-                  {isFightDay(fight.event.date) && error && !changingMatchup ? <span role="status">Connection interrupted; retrying…</span> : null}
-                  <span>{formatDate(fight.event.date)}</span>
-                  <button
-                    type="button"
-                    onClick={closeFight}
-                    aria-label="Close matchup and return to event"
-                    title="Close matchup (Esc)"
-                    aria-keyshortcuts="Escape"
-                    className="matchup-header-control ml-2 w-7 px-0 font-mono text-[11px] [@media(pointer:fine)]:w-auto [@media(pointer:fine)]:px-2"
-                  >
-                    {/* A key name means nothing on a touch screen. */}
-                    <X className="h-3.5 w-3.5 [@media(pointer:fine)]:hidden" aria-hidden="true" />
-                    <span className="hidden [@media(pointer:fine)]:inline">Esc</span>
-                  </button>
-                </div>
-              </div>
+            <div className="flex shrink-0 flex-col gap-3">
+            <section className={`overflow-hidden ${shell}`}>
+              <CardNavigation
+                previous={<FightStepLink fight={previous} direction="prev" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} />}
+                center={<button type="button" onClick={closeFight} aria-keyshortcuts="Escape"
+                  className={`${CARD_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+                  <List className="h-3.5 w-3.5" aria-hidden="true" />Card
+                </button>}
+                next={<FightStepLink fight={next} direction="next" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} />}
+              />
+              <CardEventTitle
+                name={fight.event.name}
+                date={fight.event.date}
+                location={fight.event.location}
+                dayLabel={fight.status === "past" ? null : futureDayLabel(fight.event.date, now)}
+              >
+                {isFightDay(fight.event.date) && error && !changingMatchup ? <span role="status" className="text-xs text-zinc-500">Connection interrupted; retrying…</span> : null}
+              </CardEventTitle>
+            </section>
+
+            <section data-photo-view={portraits ? "full" : "face"} className={`matchup-top-card matchup-overview @container relative overflow-hidden ${shell}`}>
+              <button type="button" onClick={closeFight} aria-label="Close matchup and return to card" title="Close matchup (Esc)" aria-keyshortcuts="Escape"
+                className={`absolute right-2 top-2 z-10 ${CLOSE_BUTTON}`}>
+                <X className={CLOSE_ICON} aria-hidden="true" />
+              </button>
 
               <div className="matchup-body px-5 py-5">
                 {/* The two heroes and the price sit on one line, the price
