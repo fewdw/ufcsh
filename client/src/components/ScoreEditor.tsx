@@ -36,10 +36,15 @@ function Gate(props: Props) {
   const { isLoaded, user, signIn } = useAccount();
   if (!isLoaded || !user)
     return (
-      <section className={`${PANEL_SHELL} grid min-h-40 place-items-center p-6`}>
-        {isLoaded
-          ? <button type="button" className={primary} onClick={signIn}>Sign in to score</button>
-          : <span className="text-sm text-zinc-500">Loading…</span>}
+      // Laid out like the Predict tab's signed-out panel: its heading, then
+      // the one thing to do.
+      <section className={PANEL_SHELL}>
+        <PanelHeading title="Your scorecard" />
+        <div className="px-4 py-4 text-center">
+          {isLoaded
+            ? <button type="button" className={primary} onClick={signIn}>Sign in to score</button>
+            : <span className="text-sm text-zinc-400">Loading…</span>}
+        </div>
       </section>
     );
   return (

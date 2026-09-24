@@ -1,21 +1,9 @@
-import { User } from "lucide-react";
-import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api";
 import { signedMoney, type LeaderboardEntry, type Leaderboards as BoardsData } from "../bets";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
-import ProgressiveImage from "./ProgressiveImage";
+import FanAvatar from "./FanAvatar";
 
-function Portrait({ entry }: { entry: LeaderboardEntry }) {
-  const [failed, setFailed] = useState(false);
-  if (!entry.scorer.imageUrl || failed) return (
-    <span aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-zinc-100 text-zinc-400 ring-1 ring-zinc-200">
-      <User className="h-3.5 w-3.5" />
-    </span>
-  );
-  return <ProgressiveImage src={entry.scorer.imageUrl} alt="" referrerPolicy="no-referrer" onError={() => setFailed(true)}
-    className="h-7 w-7 shrink-0 rounded-full bg-zinc-100 object-cover ring-1 ring-zinc-200" />;
-}
 
 function Board({ title, subtitle, entries, format, tab, current }: {
   title: string; subtitle: string; entries: LeaderboardEntry[];
@@ -32,7 +20,7 @@ function Board({ title, subtitle, entries, format, tab, current }: {
             <Link to={`/profiles/${entry.scorer.handle}?tab=${tab}`}
               className={`flex items-center gap-2.5 px-4 py-2.5 transition-colors hover:bg-zinc-50 sm:px-5 ${self ? "bg-sky-50/90" : ""}`}>
               <span className={`w-5 shrink-0 text-right text-xs font-semibold tabular-nums ${index < 3 ? "text-zinc-900" : "text-zinc-400"}`}>{index + 1}</span>
-              <Portrait entry={entry} />
+              <FanAvatar src={entry.scorer.imageUrl} name={entry.scorer.displayName} size="md" />
               <span className={`min-w-0 flex-1 truncate text-sm ${self ? "font-semibold text-zinc-900" : "font-medium text-zinc-800"}`}>{entry.scorer.displayName}</span>
               {/* The count behind the figure, beside it rather than under it. */}
               <span className="shrink-0 text-xs tabular-nums text-zinc-400">{entry.detail}</span>

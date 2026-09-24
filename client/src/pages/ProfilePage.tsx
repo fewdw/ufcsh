@@ -1,12 +1,11 @@
 import { useAuth } from "@clerk/react";
-import { Check, ChevronDown, Flag, LogOut, Pencil, Search, Settings, User, X } from "lucide-react";
+import { Check, ChevronDown, Flag, LogOut, Pencil, Search, Settings, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiCache, prefetch, useApi } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
 import { ConfirmRemove, RemoveX } from "../components/ConfirmRemove";
 import Avatar from "../components/Avatar";
-import ProgressiveImage from "../components/ProgressiveImage";
 import { PANEL_SHELL, PanelHeading } from "../components/FightStats";
 import { LIST_META, LIST_ROW } from "../components/InfiniteList";
 import { segmentedGroup, segmentedSelected, segmentedIdle, segmentedTab } from "../components/segmented";
@@ -22,6 +21,7 @@ import { cardWinner, usernameProblem } from "../scoring";
 import type { ProfileFilter, ScorerCard, ScorerIdentity, ScorerProfile } from "../scoring";
 import { useSeo } from "../seo";
 import { BUTTON_PRIMARY, BUTTON_QUIET } from "../ui";
+import FanAvatar from "../components/FanAvatar";
 
 const FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed"];
 /** Bouts that went to the judges are the ones a card can be read against, so
@@ -323,7 +323,7 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
   return (
     <header className={`${PANEL_SHELL} px-4 py-3 sm:px-5`}>
       <div className="flex items-center gap-3 sm:gap-4">
-        <ScorerPortrait scorer={scorer} />
+        <FanAvatar src={scorer.imageUrl} name={scorer.displayName} size="lg" />
         <div className="min-w-0 flex-1">
           {editing ? (
             <UsernameEditor scorer={scorer} onClose={() => setEditing(false)} onRenamed={onRenamed} />
@@ -403,25 +403,6 @@ function CommentsVisibility({ visible, onChanged }: { visible: boolean; onChange
   );
 }
 
-function ScorerPortrait({ scorer }: { scorer: ScorerIdentity }) {
-  const [failed, setFailed] = useState(false);
-  const letter = scorer.displayName.slice(0, 1).toUpperCase();
-  if (!scorer.imageUrl || failed)
-    return (
-      <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-zinc-100 text-base font-semibold text-zinc-400 ring-1 ring-zinc-200">
-        {/^[A-Z0-9]$/.test(letter) ? letter : <User className="h-5 w-5" />}
-      </span>
-    );
-  return (
-    <ProgressiveImage
-      src={scorer.imageUrl}
-      alt=""
-      referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
-      className="h-12 w-12 shrink-0 rounded-full bg-zinc-100 object-cover ring-1 ring-zinc-200"
-    />
-  );
-}
 
 /** Claiming a name. The field refuses what the server would refuse, and the
  *  address bar follows the answer, so a renamed profile is never left on a URL

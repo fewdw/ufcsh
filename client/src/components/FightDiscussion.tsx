@@ -10,8 +10,8 @@ import {
 } from "../discussion";
 import { exactTime, relativeAge } from "../format";
 import { PANEL_SHELL } from "./FightStats";
-import ProgressiveImage from "./ProgressiveImage";
 import { BUTTON_DANGER, BUTTON_PRIMARY, BUTTON_QUIET, CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
+import FanAvatar from "./FanAvatar";
 
 type GetToken = () => Promise<string | null>;
 type RequestInit = { method?: string; body?: unknown; optional?: boolean };
@@ -354,15 +354,6 @@ function Composer({ initial = "", placeholder, submitLabel, autoFocus = false, o
 // ---------------------------------------------------------------------------
 // reading
 
-function ScorerAvatar({ src, name }: { src: string | null; name: string }) {
-  const [failed, setFailed] = useState(false);
-  if (!src || failed) {
-    const letter = name.slice(0, 1).toUpperCase();
-    return <span aria-hidden="true" className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-zinc-100 text-[10px] font-semibold text-zinc-500 ring-1 ring-zinc-200">{/^[A-Z0-9]$/.test(letter) ? letter : "?"}</span>;
-  }
-  return <ProgressiveImage src={src} alt="" referrerPolicy="no-referrer" onError={() => setFailed(true)}
-    className="h-6 w-6 shrink-0 rounded-full bg-zinc-100 object-cover ring-1 ring-zinc-200" />;
-}
 
 /** Plain text and @mentions. Nothing in a comment is ever rendered as markup. */
 function Body({ text }: { text: string }) {
@@ -497,7 +488,7 @@ function Thread({ node, rootId }: { node: CommentNode; rootId: string }) {
           </button>
           {node.author ? (
             <Link to={`/profiles/${node.author.handle}`} className="flex min-w-0 items-center gap-1.5 font-semibold text-zinc-800 hover:underline">
-              <ScorerAvatar src={node.author.imageUrl} name={node.author.displayName} />
+              <FanAvatar src={node.author.imageUrl} name={node.author.displayName} />
               <span className="truncate">{node.author.displayName}</span>
             </Link>
           ) : <span className="font-medium italic text-zinc-400">{node.state === "removed" ? "Removed" : "Deleted"}</span>}
