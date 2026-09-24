@@ -201,12 +201,17 @@ function FighterHero({
           {side.name}
         </div>
         {side.nickname ? <div className="mt-0.5 text-xs text-zinc-400">“{side.nickname}”</div> : null}
-        {(result && showResult) || fotn || perf ? (
+        {(result && showResult) || fotn || perf || side.weight_miss != null ? (
           <div className={`mt-2 flex flex-wrap items-center justify-center gap-1 ${align === "right" ? "@[58rem]:justify-end" : "@[58rem]:justify-start"}`}>
             {result && showResult ? (
               <span className={`${RESULT_PILL} max-w-full justify-center text-balance tabular-nums ${outcomeClasses(side.outcome)}`}>
                 <span className="sr-only">{showResult}</span>
                 {result}
+              </span>
+            ) : null}
+            {side.weight_miss != null ? (
+              <span className="inline-flex max-w-full flex-wrap justify-center rounded bg-rose-50 px-1.5 py-px text-[10px] font-semibold leading-4 text-rose-700">
+                Missed weight{side.weight_miss ? ` · ${side.weight_miss} lb` : ""}
               </span>
             ) : null}
             {/* Fight of the Night belongs to both corners, a performance award to the winner. */}

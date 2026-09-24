@@ -279,6 +279,8 @@ export type ProfessionalHistoryRow = Omit<HistoryRow, "promotion" | "fight_id" |
 };
 
 export type MatchupSide = FightSide & {
+  /** Pounds as text, empty when unknown, null when made or unread. */
+  weight_miss?: string | null;
   height: string;
   weight: string;
   reach: string;

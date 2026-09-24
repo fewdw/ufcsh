@@ -699,10 +699,8 @@ function Leaderboard({
     // height of the tallest card beside it, so titles, definitions, controls
     // and the first ranked row all line up without reserving empty space.
     <section className={`${shell} row-span-3 grid min-w-0 grid-rows-subgrid gap-0 overflow-hidden ${className}`}>
-      {/* The name and its definition read as one line, the definition in
-          smaller type; a long one wraps to a second line and the whole of it
-          is one hover away. */}
-      <div className="line-clamp-2 px-4 pb-1.5 pt-3 leading-5" title={board.description}>
+      {/* Keep the full definition readable as it wraps on narrow screens. */}
+      <div className="px-4 pb-1.5 pt-3 leading-5" title={board.description}>
         {board.key === "record" ? (
           <div className={`${segmentedGroup} mr-2 inline-flex align-middle`} aria-label="Bouts, wins or losses">
             {(["bouts", "wins", "losses"] as const).map((group) => (

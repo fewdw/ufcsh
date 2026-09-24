@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Follow the app setting, including inside browsers with a dark device theme. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Matchup design tokens. One hue per fighter, used identically in every panel
    and every chart, so the colour is learned once and read everywhere: blue is
    the first fighter, red the second. Colour is never the only thing carrying
