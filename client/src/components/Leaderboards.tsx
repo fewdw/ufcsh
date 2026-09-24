@@ -55,11 +55,11 @@ export default function Leaderboards({ handle }: { handle: string }) {
   const pct = (entry: LeaderboardEntry) => ({ text: `${Math.round(entry.value)}%` });
   return (
     <div className="grid gap-3 md:grid-cols-2">
-      <Board title="Top predictors" subtitle="Total prediction points" entries={data.points} tab="predictions" current={handle}
+      <Board title="Top predictors" subtitle={`Points · ${data.minimums.points}+ settled picks`} entries={data.points} tab="predictions" current={handle}
         format={entry => ({ text: `${entry.value.toLocaleString()} pts` })} />
-      <Board title="Winner accuracy" subtitle={`Right winner · at least ${data.minimums.winner} settled picks`} entries={data.winner} tab="predictions" current={handle} format={pct} />
-      <Board title="Method accuracy" subtitle={`Right method · at least ${data.minimums.method} method calls`} entries={data.method} tab="predictions" current={handle} format={pct} />
-      <Board title="Top bettors" subtitle="Profit on settled bets" entries={data.bets} tab="bets" current={handle}
+      <Board title="Winner accuracy" subtitle={`Right winner · ${data.minimums.winner}+ settled picks`} entries={data.winner} tab="predictions" current={handle} format={pct} />
+      <Board title="Method accuracy" subtitle={`Right method · ${data.minimums.method}+ method calls`} entries={data.method} tab="predictions" current={handle} format={pct} />
+      <Board title="Top bettors" subtitle={`Profit · ${data.minimums.bets}+ settled bets (per leg)`} entries={data.bets} tab="bets" current={handle}
         format={entry => ({ text: signedMoney(entry.value), tone: entry.value > 0 ? "text-emerald-600" : entry.value < 0 ? "text-rose-600" : undefined })} />
     </div>
   );

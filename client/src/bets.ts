@@ -18,7 +18,7 @@ export type LeaderboardEntry = {
 };
 export type Leaderboards = {
   points: LeaderboardEntry[]; winner: LeaderboardEntry[]; method: LeaderboardEntry[]; bets: LeaderboardEntry[];
-  minimums: { winner: number; method: number }; updatedAt: number;
+  minimums: { points: number; winner: number; method: number; bets: number }; updatedAt: number;
 };
 
 /** Always signed, and never "-$0.00". */

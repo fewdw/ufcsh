@@ -2,18 +2,21 @@ import type { BetStore } from "./bets.ts";
 import type { PredictionStore } from "./predictions.ts";
 import type { ScorerIdentity, ScoringStore } from "./scoring.ts";
 
-/** Accuracy only ranks a fan with enough settled calls to mean something. */
-export const MIN_SETTLED = { winner: 5, method: 3 } as const;
+/** A board only ranks a fan with enough settled calls to mean something, so
+ *  it is not led by one lucky pick at 100%. Bets count per leg: a three-leg
+ *  parlay is three toward the minimum. */
+export const MINIMUMS = { points: 20, winner: 20, method: 20, bets: 20 };
+type Minimums = typeof MINIMUMS;
 const TOP = 10;
 const TTL = 60_000;
 
 type Entry = { scorer: ScorerIdentity; value: number; detail: string };
-export type Leaderboards = { points: Entry[]; winner: Entry[]; method: Entry[]; bets: Entry[]; minimums: typeof MIN_SETTLED; updatedAt: number };
+export type Leaderboards = { points: Entry[]; winner: Entry[]; method: Entry[]; bets: Entry[]; minimums: Minimums; updatedAt: number };
 
 const pct = (right: number, of: number) => (right / of) * 100;
 
 /** Every board is recomputed at most once a minute, whatever the traffic. */
-export function createLeaderboards(scores: ScoringStore, predictions: PredictionStore, bets: BetStore, now = Date.now) {
+export function createLeaderboards(scores: ScoringStore, predictions: PredictionStore, bets: BetStore, now = Date.now, minimums: Minimums = MINIMUMS) {
   let cached: Leaderboards | null = null;
   return (): Leaderboards => {
     if (cached && now() - cached.updatedAt < TTL) return cached;
@@ -33,11 +36,11 @@ export function createLeaderboards(scores: ScoringStore, predictions: Prediction
         .flatMap(([user, row]) => { const scorer = identity(user); return scorer ? [{ scorer, value: value(row), detail: detail(row) }] : []; })
         .slice(0, TOP);
     cached = {
-      points: board(picks, row => row.points > 0, row => row.points, row => row.settled, row => `${row.settled} settled ${row.settled === 1 ? "pick" : "picks"}`),
-      winner: board(picks, row => row.settled >= MIN_SETTLED.winner, row => pct(row.winners, row.settled), row => row.settled, row => `${row.winners} of ${row.settled}`),
-      method: board(picks, row => row.methodCalls >= MIN_SETTLED.method, row => pct(row.methods, row.methodCalls), row => row.methodCalls, row => `${row.methods} of ${row.methodCalls}`),
-      bets: board(wagers, row => row.settled > 0, row => row.net / 100, row => row.settled, row => `${row.won}–${row.settled - row.won}`),
-      minimums: MIN_SETTLED,
+      points: board(picks, row => row.points > 0 && row.settled >= minimums.points, row => row.points, row => row.settled, row => `${row.settled} settled ${row.settled === 1 ? "pick" : "picks"}`),
+      winner: board(picks, row => row.settled >= minimums.winner, row => pct(row.winners, row.settled), row => row.settled, row => `${row.winners} of ${row.settled}`),
+      method: board(picks, row => row.methodCalls >= minimums.method, row => pct(row.methods, row.methodCalls), row => row.methodCalls, row => `${row.methods} of ${row.methodCalls}`),
+      bets: board(wagers, row => row.legs >= minimums.bets, row => row.net / 100, row => row.settled, row => `${row.won}–${row.settled - row.won}`),
+      minimums,
       updatedAt: now(),
     };
     return cached;
