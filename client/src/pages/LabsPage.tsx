@@ -12,6 +12,7 @@ import { PANEL, compact, formatValue } from "../components/chartTokens";
 import { flagEmoji } from "../flags";
 import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
 import { useSeo } from "../seo";
+import { formatMethod } from "../format";
 import {
   FILTER_SECTIONS,
   activeCount,
@@ -293,16 +294,6 @@ function Empty({ children }: { children: React.ReactNode }) {
 // ---------------------------------------------------------------------------
 // the bout feed
 
-const METHOD_LABEL: Record<string, string> = {
-  "KO/TKO": "KO/TKO",
-  SUB: "Submission",
-  "U-DEC": "Unanimous",
-  "S-DEC": "Split",
-  "M-DEC": "Majority",
-  DQ: "DQ",
-  Overturned: "Overturned",
-  CNC: "No contest",
-};
 
 const OUTCOME_STYLE: Record<string, string> = {
   win: "bg-emerald-50 text-emerald-700 ring-emerald-200",
@@ -392,7 +383,7 @@ function BoutItem({ bout, struck, disabled, onToggle }: { bout: LabsBout; struck
         <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 text-[10px] text-zinc-500">
           <span className="tabular-nums">{shortDate(bout.date)}</span>
           <span className="text-zinc-200">·</span>
-          <span>{bout.method ? METHOD_LABEL[bout.method] ?? bout.method : "—"}{bout.round ? ` R${bout.round} ${bout.time}` : ""}</span>
+          <span>{formatMethod(bout.method, bout.round == null ? null : String(bout.round), bout.time) || "—"}</span>
           {bout.line != null ? <><span className="text-zinc-200">·</span><span className={`tabular-nums ${bout.line > 0 ? "text-violet-600" : ""}`}>{formatValue(bout.line, "odds")}</span></> : null}
           {bout.age != null ? <><span className="text-zinc-200">·</span><span className="tabular-nums">age {bout.age}</span></> : null}
           {bout.title_fight ? <><span className="text-zinc-200">·</span><span className="text-amber-500">title</span></> : null}
@@ -873,10 +864,10 @@ export default function LabsPage() {
           >
             <span className="min-w-0">
               <span className="flex items-center gap-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">Combined record</span>
+                <span className="text-sm font-semibold text-zinc-900">Combined record</span>
                 <InfoTip>Every fighter-bout the filters select, added up: one observation is one fighter in one bout, so both corners of a bout can qualify. Win rate counts draws and leaves out no contests, and a bout struck off the list below is already out of these totals.</InfoTip>
               </span>
-              <span className="mt-0.5 block truncate text-[11px] text-zinc-400">What happened to fighters entering matchups like these.</span>
+              <span className="mt-0.5 block truncate text-xs text-zinc-500">What happened to fighters entering matchups like these.</span>
             </span>
             <ChevronDown className={`ml-auto h-4 w-4 shrink-0 text-zinc-400 transition-transform ${state.open ? "" : "-rotate-90"}`} aria-hidden="true" />
           </button>

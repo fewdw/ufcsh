@@ -296,7 +296,7 @@ export default function AdminBugs() {
     <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-zinc-900">Data bugs</h2>
+            <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Data bugs</h2>
             <p className="text-xs text-zinc-500">
               {totalOpen.toLocaleString()} open across {checks.length} checks · built {ago(data.generated_at)} · last sync tick {ago(data.sync.last_tick_at)}
               {!data.can_act && " · repairs are disabled"}

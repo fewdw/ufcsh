@@ -36,7 +36,7 @@ export default function AdminAdmins({ email }: { email: string | null }) {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h2 className="text-lg font-bold text-zinc-900">Administrators</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Administrators</h2>
         <p className="text-xs text-zinc-500">
           Access is by the verified email on a Clerk account. Someone added here must sign in with that exact address.
         </p>

@@ -220,7 +220,7 @@ export default function AdminHealth() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="text-lg font-bold text-zinc-900">Health</h2>
+          <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Health</h2>
           <p className="text-xs text-zinc-500">
             Live from this server since it started {relativeAge(data.http.startedAt, now)} · Node {data.node.replace(/^v/, "")}
           </p>

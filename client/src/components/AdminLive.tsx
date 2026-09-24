@@ -50,7 +50,7 @@ export default function AdminLive() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h2 className="text-lg font-bold text-zinc-900">Live rounds</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Live rounds</h2>
         <p className="text-xs text-zinc-500">
           Scoring opens on whichever comes first: the live feed publishing a round, or you releasing it here.
           Rounds the feed has already published stay open.

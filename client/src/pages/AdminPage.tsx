@@ -51,7 +51,7 @@ function AdminShell({ tab, onTab }: { tab: TabId; onTab: (next: TabId) => void }
     <div className="h-full overflow-y-auto overflow-x-hidden">
       <div className="mx-auto flex min-w-0 max-w-6xl flex-col gap-3 px-2 py-3 sm:gap-4 sm:px-5 sm:py-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-lg font-bold text-zinc-900">Admin</h1>
+          <h1 className="text-lg font-semibold tracking-tight text-zinc-900">Admin</h1>
           <p className="text-xs text-zinc-500">{data.email}</p>
         </div>
         <div className={`${PANEL_SHELL} p-1.5`}>

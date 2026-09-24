@@ -329,7 +329,7 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
             <UsernameEditor scorer={scorer} onClose={() => setEditing(false)} onRenamed={onRenamed} />
           ) : (
             <>
-              <h1 className="flex min-w-0 items-center gap-1.5 text-base font-bold text-zinc-900 sm:text-lg">
+              <h1 className="flex min-w-0 items-center gap-1.5 text-base font-semibold tracking-tight text-zinc-900 sm:text-lg">
                 <span className="min-w-0 [overflow-wrap:anywhere]">{scorer.displayName}</span>
                 {mine ? (
                   <button type="button" onClick={() => setEditing(true)} title="Change username"
