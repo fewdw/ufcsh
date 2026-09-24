@@ -6,6 +6,55 @@ type Correction = { from: JudgeTotal; to: JudgeTotal };
 // Guard each correction with the exact UFCStats value we verified. If the
 // source fixes a card later, a refresh will retain its new value.
 const corrections: Record<string, Correction[]> = {
+  // https://mmadecisions.com/decision/9304/Andrew-Sanchez-vs-Markus-Perez
+  "5e3779f7c1c39679": [{ from: { judge: "Glenn Hamada", f1Score: 29, f2Score: 28 }, to: { judge: "Glenn Trowbridge", f1Score: 29, f2Score: 28 } }],
+  // https://mmadecisions.com/decision/8849/Max-Griffin-vs-Mike-Perry
+  "424a20da52b4f956": [
+    { from: { judge: "Eric Colon", f1Score: 29, f2Score: 27 }, to: { judge: "Eric Colon", f1Score: 30, f2Score: 27 } },
+    { from: { judge: "Chris Lee", f1Score: 30, f2Score: 27 }, to: { judge: "Chris Lee", f1Score: 29, f2Score: 27 } },
+  ],
+  // https://mmadecisions.com/decision/10657/Roosevelt-Roberts-vs-Alexander-Yakovlev
+  "a7807ab56cb49cad": [{ from: { judge: "Lukasz Porebski", f1Score: 29, f2Score: 28 }, to: { judge: "Lukasz Bosacki", f1Score: 29, f2Score: 28 } }],
+  // https://mmadecisions.com/decision/10655/Davey-Grant-vs-Grigorii-Popov
+  "f0418c2c989a5cde": [{ from: { judge: "Lukasz Porebski", f1Score: 29, f2Score: 28 }, to: { judge: "Lukasz Bosacki", f1Score: 29, f2Score: 28 } }],
+  // https://mmadecisions.com/decision/10528/Dhiego-Lima-vs-Luke-Jumeau
+  "fd0fd9a2d6ef8c4f": [
+    { from: { judge: "Garth Harriman", f1Score: 29, f2Score: 28 }, to: { judge: "Garth Harriman", f1Score: 28, f2Score: 29 } },
+    { from: { judge: "Christopher Shen", f1Score: 28, f2Score: 29 }, to: { judge: "Christopher Shen", f1Score: 29, f2Score: 28 } },
+  ],
+  // https://mmadecisions.com/decision/10437/Tristan-Connelly-vs-Michel-Pereira
+  "dadaee9624256e07": [
+    { from: { judge: "Derek Cleary", f1Score: 29, f2Score: 28 }, to: { judge: "Derek Cleary", f1Score: 29, f2Score: 27 } },
+    { from: { judge: "Dave Hagen", f1Score: 29, f2Score: 27 }, to: { judge: "Dave Hagen", f1Score: 29, f2Score: 28 } },
+  ],
+  // https://mmadecisions.com/decision/10567/Sean-Woodson-vs-Kyle-Bochniak
+  "9c3fb95a1558b38d": [{ from: { judge: "Marcelo Vilhena", f1Score: 30, f2Score: 26 }, to: { judge: "Marcel Varela", f1Score: 30, f2Score: 26 } }],
+  // https://mmadecisions.com/decision/10395/Zubaira-Tukhugov-vs-Lerone-Murphy
+  "bef4df43d6052a02": [
+    { from: { judge: "David Lethaby", f1Score: 29, f2Score: 28 }, to: { judge: "David Lethaby", f1Score: 28, f2Score: 28 } },
+    { from: { judge: "Clemens Werner", f1Score: 28, f2Score: 28 }, to: { judge: "Clemens Werner", f1Score: 29, f2Score: 28 } },
+  ],
+  // https://mmadecisions.com/decision/10436/Uriah-Hall-vs-Antonio-Carlos-Junior
+  "ece3a7a9e930ef9d": [
+    { from: { judge: "Mike Bell", f1Score: 28, f2Score: 29 }, to: { judge: "Mike Bell", f1Score: 29, f2Score: 28 } },
+    { from: { judge: "Sal D'amato", f1Score: 29, f2Score: 28 }, to: { judge: "Sal D'amato", f1Score: 28, f2Score: 29 } },
+  ],
+  // https://mmadecisions.com/decision/10390/Omari-Akhmedov-vs-Zak-Cummings
+  "9a46f95c1c1e57f0": [{ from: { judge: "Pawel Harasim", f1Score: 29, f2Score: 28 }, to: { judge: "Pawel Harasim", f1Score: 30, f2Score: 27 } }],
+  // https://mmadecisions.com/decision/10272/Felipe-Colares-vs-Domingo-Pilarte
+  "c5259566abc552b1": [{ from: { judge: "Marcelo Vilhena", f1Score: 29, f2Score: 28 }, to: { judge: "Marcos Rosales", f1Score: 29, f2Score: 28 } }],
+  // https://mmadecisions.com/decision/9924/Curtis-Blaydes-vs-Justin-Willis
+  "9532ebf4d9405e65": [
+    { from: { judge: "Brian Puccillo", f1Score: 30, f2Score: 27 }, to: { judge: "Brian Puccillo", f1Score: 30, f2Score: 26 } },
+    { from: { judge: "Rick Winter", f1Score: 30, f2Score: 26 }, to: { judge: "Rick Winter", f1Score: 30, f2Score: 27 } },
+  ],
+  // https://mmadecisions.com/decision/9889/Dominick-Reyes-vs-Volkan-Oezdemir
+  "826fb989c0e6208e": [{ from: { judge: "Mark Collett", f1Score: 29, f2Score: 28 }, to: { judge: "Junichiro Kamijo", f1Score: 29, f2Score: 28 } }],
+  // https://mmadecisions.com/decision/9815/Petr-Yan-vs-John-Dodson
+  "244aa8f002274344": [{ from: { judge: "Zdenek Ledvina", f1Score: 30, f2Score: 27 }, to: { judge: "Mark Collett", f1Score: 30, f2Score: 27 } }],
+  // https://www.ufc.com/news/fight-island-kattar-vs-ige-results and
+  // https://mmadecisions.com/decision/11135/Taila-Santos-vs-Molly-McCann
+  "15def71ff1679e06": [{ from: { judge: "Lukasz Bosacki", f1Score: 30, f2Score: 26 }, to: { judge: "Lukasz Bosacki", f1Score: 30, f2Score: 27 } }],
   // https://mmadecisions.com/decision/16210/Jean-Paul-Lebosnoyani-vs-Seok-Hyeon-Ko
   "f2eb569176e46edf": [{ from: { judge: "Paul Sutherland", f1Score: 29, f2Score: 28 }, to: { judge: "David Sutherland", f1Score: 29, f2Score: 28 } }],
   // https://mmadecisions.com/decision/15974/Mario-Pinto-vs-Felipe-Franco

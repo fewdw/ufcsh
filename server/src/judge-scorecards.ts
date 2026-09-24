@@ -23,6 +23,10 @@ const sameJudge = (left: string, right: string): boolean => {
   const b = tokens(right);
   if (!a.length || !b.length) return false;
   if (a.join(" ") === b.join(" ")) return true;
+  // New Jersey records this judge as Munah Holland Querido. Sources use
+  // either surname on the same cards.
+  const munahAliases = new Set(["munah holland", "munah querido", "munah holland querido"]);
+  if (munahAliases.has(a.join(" ")) && munahAliases.has(b.join(" "))) return true;
   // A surname particle is sometimes joined in one source (Danny De Alejandro
   // / Danny Dealejandro). The complete name must match after joining.
   if (a.join("") === b.join("")) return true;
