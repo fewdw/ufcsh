@@ -27,6 +27,17 @@ const fights = db.prepare(`SELECT f.id, e.date, f.f1_name, f.f2_name,
   WHERE e.complete = 1 AND f.method LIKE '%DEC' AND e.date BETWEEN ? AND ?`).all(
     `${from}-01-01`, `${to}-12-31`) as Fight[];
 const byDate = new Map<string, Fight[]>();
+// MMA Decisions files some international cards under the following UTC day.
+// Keep the window narrow; both fighter names and the official totals still
+// have to match before any round card is stored.
+function nearbyFights(date: string): Fight[] {
+  const day = new Date(`${date}T12:00:00Z`);
+  return [-1, 0, 1].flatMap(offset => {
+    const shifted = new Date(day);
+    shifted.setUTCDate(day.getUTCDate() + offset);
+    return byDate.get(shifted.toISOString().slice(0, 10)) ?? [];
+  });
+}
 const official = (fight: Fight): JudgeCard[] => {
   try { const cards = JSON.parse(fight.detail_json ?? "null")?.judges; return Array.isArray(cards) ? cards : []; }
   catch { return []; }
@@ -51,12 +62,14 @@ async function pool<T>(items: T[], run: (item: T) => Promise<void>): Promise<voi
   }));
 }
 
-const years = Array.from({ length: to - from + 1 }, (_v, i) => from + i);
+// A card on December 31 may appear in the following year's archive.
+const years = Array.from({ length: to - from + 3 }, (_v, i) => from - 1 + i);
 const events: { date: string; path: string }[] = [];
-await pool(years.filter(year => [...byDate.keys()].some(date => date.startsWith(String(year)))), async year => {
+await pool(years.filter(year => [...byDate.keys()].some(date =>
+  Math.abs(Number(date.slice(0, 4)) - year) <= 1)), async year => {
   try {
     const found = parseMmaEvents(await fetchMmaDecisions(`decisions-by-event/${year}/`));
-    events.push(...found.filter(event => byDate.has(event.date) && event.path.includes(eventFilter)));
+    events.push(...found.filter(event => nearbyFights(event.date).length && event.path.includes(eventFilter)));
     stats.years++;
   } catch (error) { stats.failed++; console.error(`MMA Decisions year ${year}: ${String(error)}`); }
 });
@@ -66,7 +79,7 @@ const paths: { date: string; path: string }[] = [];
 function relevantPath(date: string, path: string): boolean {
   const slug = normName(decodeURIComponent(path.split("/").at(-1) ?? ""));
   const words = new Set(slug.split(" ").filter(word => word.length >= 4));
-  return (byDate.get(date) ?? []).some(fight => [fight.f1_name, fight.f2_name, fight.f1_alias, fight.f2_alias]
+  return nearbyFights(date).some(fight => [fight.f1_name, fight.f2_name, fight.f1_alias, fight.f2_alias]
     .some(name => name && normName(name).split(" ").some(word => words.has(word))));
 }
 await pool(events, async event => {
@@ -86,7 +99,7 @@ await pool(paths, async ({ date, path }) => {
     const page = parseMmaDecision(await fetchMmaDecisions(path));
     stats.decisions++;
     if (!page || !page.judges.length) return;
-    const matches = (byDate.get(date) ?? []).flatMap(fight => {
+    const matches = nearbyFights(date).flatMap(fight => {
       const sides: [string[], string[]] = [
         [fight.f1_name, ...(fight.f1_alias ? [fight.f1_alias] : [])],
         [fight.f2_name, ...(fight.f2_alias ? [fight.f2_alias] : [])],
