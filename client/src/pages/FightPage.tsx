@@ -210,7 +210,7 @@ function FighterHero({
               </span>
             ) : null}
             {side.weight_miss != null ? (
-              <span className="inline-flex max-w-full flex-wrap justify-center rounded bg-rose-50 px-1.5 py-px text-[10px] font-semibold leading-4 text-rose-700">
+              <span className={`${RESULT_PILL} max-w-full justify-center text-balance tabular-nums bg-rose-100 text-rose-700`}>
                 Missed weight{side.weight_miss ? ` · ${side.weight_miss} lb` : ""}
               </span>
             ) : null}

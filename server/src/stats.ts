@@ -1524,13 +1524,7 @@ export function getStats(params: URLSearchParams): unknown {
     }
   };
   const contextDescriptions: Record<typeof contextMode, string> = {
-    opposition: `${oppositionSource === "all"
-      ? (oppositionWhen === "today"
-        ? "combined complete professional record of every opponent, everywhere they have fought, as it stands today"
-        : "combined complete professional record of every opponent as it stood that night, reconstructed from dated UFC and independently identity-verified outside-UFC bouts")
-      : (oppositionWhen === "today"
-        ? "combined UFC record of every opponent as it stands today, so a fighter is credited with who their opponents turned out to be"
-        : "combined UFC record of every opponent as it stood the night they were faced")}, counting ${oppositionScope === "beaten" ? "only the opponents this fighter beat" : "every opponent faced"} and ranked by that record's win rate · ${minimumSample}+ opponents and ${minimumSample * 5}+ bouts between them`,
+    opposition: `Combined ${oppositionSource === "all" ? "pro" : "UFC"} win rate of opponents ${oppositionScope === "beaten" ? "beaten" : "faced"}, ${oppositionWhen === "today" ? "today" : "entering each bout"} · ${minimumSample}+ opponents, ${minimumSample * 5}+ combined bouts`,
     championsFaced: championScope === "current"
       ? "bouts against an opponent holding a UFC undisputed or interim belt that night, in any division · a belt stays with its last winner until someone else wins it"
       : "bouts against an opponent who held, or had already held, a UFC undisputed or interim belt",
