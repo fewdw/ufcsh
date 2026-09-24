@@ -15,9 +15,11 @@ const METHOD_COLOR: Record<string, string> = {
 };
 /** Spelled out in full so Tailwind keeps the theme variables it would otherwise drop. */
 const ROUND_COLOR = ["var(--color-round-1)", "var(--color-round-2)", "var(--color-round-3)", "var(--color-round-4)", "var(--color-round-5)"];
-const chip = "rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 disabled:cursor-not-allowed disabled:opacity-40";
-const chipIdle = "bg-zinc-50 text-zinc-600 hover:bg-zinc-100";
-const chipOn = "bg-zinc-900 text-white";
+/** A method or round choice: a full-width cell in an even grid. */
+const option = "rounded-xl border px-2 py-2 text-center text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 disabled:cursor-not-allowed disabled:opacity-40 sm:text-[13px]";
+const optionIdle = "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50";
+/** Defined in index.css: ink on paper, inverted in the dark theme. */
+const optionOn = "pick-option-on";
 const primary = "rounded-full bg-zinc-900 px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-zinc-700 disabled:opacity-40";
 
 export default function FightPredictions({ fight }: { fight: Matchup }) {
@@ -237,7 +239,7 @@ function PredictionEditor({ fight, status, onSaved }: EditorProps) {
                   return (
                     <button key={item.fighterId} type="button" aria-pressed={picked}
                       onClick={() => { setFighter(item.fighterId); setMessage(""); }}
-                      className={`rounded-xl border px-3 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${
+                      className={`min-w-0 rounded-xl border px-3 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${
                         picked
                           ? index === 0 ? "border-f1 bg-f1-soft text-f1-ink" : "border-f2 bg-f2-soft text-f2-ink"
                           : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50"
@@ -252,41 +254,47 @@ function PredictionEditor({ fight, status, onSaved }: EditorProps) {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-              <div className="min-w-0">
-                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
-                  Method <span className="font-medium normal-case tracking-normal text-zinc-300">optional · +{rules.method}</span>
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {([null, "ko", "submission", "decision"] as const).map(value => (
-                    <button key={value ?? "any"} type="button" aria-pressed={method === value}
-                      onClick={() => { setMethod(value); if (value == null || value === "decision") setRound(null); setMessage(""); }}
-                      className={`${chip} ${method === value ? chipOn : chipIdle}`}>
-                      {value ? METHOD_LABEL[value] : "Any"}
+            {/* Three ways it can end, a row of equal buttons under the two
+                fighters. Optional: pressing the chosen one again clears it. */}
+            <div>
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
+                Method <span className="font-medium normal-case tracking-normal text-zinc-400">optional · +{rules.method}</span>
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                {(["ko", "submission", "decision"] as const).map(value => {
+                  const picked = method === value;
+                  return (
+                    <button key={value} type="button" aria-pressed={picked}
+                      onClick={() => { const next = picked ? null : value; setMethod(next); if (next == null || next === "decision") setRound(null); setMessage(""); }}
+                      className={`${option} ${picked ? optionOn : optionIdle}`}>
+                      {METHOD_LABEL[value]}
                     </button>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
-
-              {method === "ko" || method === "submission" ? (
-                <div className="min-w-0">
-                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
-                    Round <span className="font-medium normal-case tracking-normal text-zinc-300">optional · +{rules.round}</span>
-                  </p>
-                  {roundsKnown ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {[null, ...Array.from({ length: status.scheduledRounds! }, (_unused, index) => index + 1)].map(value => (
-                        <button key={value ?? "any"} type="button" aria-pressed={round === value}
-                          onClick={() => { setRound(value); setMessage(""); }}
-                          className={`${chip} min-w-[2.75rem] text-center ${round === value ? chipOn : chipIdle}`}>
-                          {value ? `R${value}` : "Any"}
-                        </button>
-                      ))}
-                    </div>
-                  ) : <p className="text-xs text-zinc-500">Opens when the bout length is confirmed.</p>}
-                </div>
-              ) : null}
             </div>
+
+            {method === "ko" || method === "submission" ? (
+              <div>
+                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
+                  Round <span className="font-medium normal-case tracking-normal text-zinc-400">optional · +{rules.round}</span>
+                </p>
+                {roundsKnown ? (
+                  <div className={`grid gap-2 ${status.scheduledRounds === 5 ? "grid-cols-5" : "grid-cols-3"}`}>
+                    {Array.from({ length: status.scheduledRounds! }, (_unused, index) => index + 1).map(value => {
+                      const picked = round === value;
+                      return (
+                        <button key={value} type="button" aria-pressed={picked}
+                          onClick={() => { setRound(picked ? null : value); setMessage(""); }}
+                          className={`${option} ${picked ? optionOn : optionIdle}`}>
+                          R{value}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : <p className="text-xs text-zinc-500">Opens when the bout length is confirmed.</p>}
+              </div>
+            ) : null}
           </fieldset>
 
           <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-zinc-100 pt-3">

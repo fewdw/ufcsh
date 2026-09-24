@@ -481,3 +481,8 @@ select:not([multiple]):not([size]) {
 .dark .activity-recent { background-color: rgb(56 189 248 / 0.12); }
 .dark .activity-swatch.activity-booked { border-color: rgb(245 158 11 / 0.6); }
 .dark .activity-swatch.activity-recent { border-color: rgb(56 189 248 / 0.55); }
+
+/* A chosen method or round in the prediction form: the one solid cell in
+   its row, dark on the light theme and light on the dark one. */
+.pick-option-on { background-color: #18181b; border-color: #18181b; color: #fff; }
+.dark .pick-option-on { background-color: #f4f4f5; border-color: #f4f4f5; color: #18181b; }
