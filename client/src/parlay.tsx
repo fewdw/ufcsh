@@ -1,7 +1,7 @@
 /* oxlint-disable react/only-export-components -- provider, hook and the pure
    outcome-conflict helpers intentionally share one persistent source of truth. */
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { decimalOdds, americanFromDecimal, percent } from "./methodOdds";
+import { decimalOdds, americanFromDecimal } from "./methodOdds";
 import type { OddsFormat } from "./settings";
 
 /** What a leg actually requires happening in its fight, stripped of which
@@ -197,6 +197,5 @@ export function parlayPayout(legs: ParlayLeg[], stake: number) {
  *  combined decimal multiple rather than round-tripping through American. */
 export function formatCombinedPrice(combinedDecimal: number, format: OddsFormat): string {
   if (format === "decimal") return combinedDecimal > 1 ? combinedDecimal.toFixed(2) : "—";
-  if (format === "percent") return combinedDecimal > 1 ? percent(1 / combinedDecimal) : "—";
   return americanFromDecimal(combinedDecimal);
 }

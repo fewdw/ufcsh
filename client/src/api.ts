@@ -453,7 +453,7 @@ export type FighterRecord = {
   key: string;
   label: string;
   value: number;
-  format: "number" | "percent" | "decimal" | "time" | "years" | "age" | "odds" | "signed" | "currency";
+  format: "number" | "percent" | "decimal" | "time" | "signedTime" | "years" | "age" | "odds" | "signed" | "currency";
   rank: number;
   tied: boolean;
   field: number;

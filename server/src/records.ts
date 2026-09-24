@@ -1,4 +1,5 @@
 import { fightIndex, winProfit, type FightIndex } from "./fight-index.ts";
+import { ACTION_TYPES, actionPercentage, type ActionType } from "./action-stats.ts";
 import { titleNarratives, type TitleRow } from "./titles.ts";
 
 /** Sporting records: each statistic ranked across the roster and within each
@@ -8,7 +9,7 @@ export type RecordEntry = {
   key: string;
   label: string;
   value: number;
-  format: "number" | "percent" | "decimal" | "time" | "years" | "age" | "odds" | "signed" | "currency";
+  format: "number" | "percent" | "decimal" | "time" | "signedTime" | "years" | "age" | "odds" | "signed" | "currency";
   rank: number;
   tied: boolean;
   /** How many fighters qualified for this statistic at all. */
@@ -21,6 +22,37 @@ export type RecordEntry = {
 export type ProfileStatEntry = RecordEntry & {
   category: string;
   category_order: number;
+};
+
+// A 1/1 accuracy bout must not outrank sustained output on a profile.
+const MIN_STRIKES_LANDED = 30;
+const MIN_TAKEDOWN_ACCURACY_SAMPLE = 5;
+
+type ActionTotals = {
+  bouts: number;
+  seconds: number;
+  attemptBouts: number;
+  attemptSeconds: number;
+  given: number;
+  taken: number;
+  givenAttempts: number;
+  takenAttempts: number;
+  givenAccuracyScored: number;
+  takenAccuracyScored: number;
+  maxGiven: number;
+  maxTaken: number;
+  maxGivenDetail: string;
+  maxTakenDetail: string;
+  maxGivenAttempts: number;
+  maxGivenAttemptsDetail: string;
+  maxTakenAttempts: number;
+  maxTakenAttemptsDetail: string;
+  maxGivenDifferential: number;
+  maxGivenDifferentialDetail: string;
+  maxGivenPercentage: number;
+  maxGivenPercentageDetail: string;
+  maxTakenPercentage: number;
+  maxTakenPercentageDetail: string;
 };
 
 type Totals = {
@@ -104,6 +136,7 @@ type Totals = {
   championWins: number;
   reigningBouts: number;
   divisionWins: Set<string>;
+  actions: Partial<Record<ActionType, ActionTotals>>;
   opponentsBeaten: Set<string>;
   revengeWins: number;
   bonuses: number;
@@ -135,7 +168,7 @@ function emptyTotals(id: string): Totals {
     layoffWins: 0, layoffOpportunities: 0, quickReturnWins: 0, quickReturnOpportunities: 0,
     finishedSeconds: 0, finishedLosses: 0,
     championBouts: 0, championWins: 0, reigningBouts: 0,
-    divisionWins: new Set(), opponentsBeaten: new Set(), revengeWins: 0, bonuses: 0,
+    divisionWins: new Set(), actions: {}, opponentsBeaten: new Set(), revengeWins: 0, bonuses: 0,
     youngestWinAge: Number.POSITIVE_INFINITY, youngestWinDetail: "",
     oldestWinAge: Number.NEGATIVE_INFINITY, oldestWinDetail: "",
     firstDate: "", lastDate: "",
@@ -151,6 +184,8 @@ type StatDef = {
   ascending?: boolean;
   value: (t: Totals) => number | null;
   detail: (t: Totals) => string;
+  category?: { label: string; order: number };
+  headline?: boolean;
 };
 
 const years = (t: Totals) => (t.firstDate ? `${t.firstDate.slice(0, 4)}–${t.lastDate.slice(0, 4)}` : "");
@@ -180,7 +215,7 @@ const STATS: StatDef[] = [
   { key: "span", label: "Longest UFC career", format: "years", priority: 13, value: (t) => (t.bouts >= 8 && t.firstDate ? Math.round(((Date.parse(t.lastDate) - Date.parse(t.firstDate)) / (365.25 * 86400000)) * 10) / 10 : null), detail: (t) => `${t.bouts} bouts · ${years(t)}` },
   { key: "titleFights", label: "Most championship bouts", format: "number", priority: 14, value: (t) => (t.titleFights >= 3 ? t.titleFights : null), detail: (t) => `${t.titleWins}-${t.titleLosses} in them` },
   { key: "reigningFaced", label: "Most reigning champions faced", format: "number", priority: 15, value: (t) => (t.reigningBouts >= 3 ? t.reigningBouts : null), detail: (t) => `${t.championBouts} bouts against champions in all` },
-  { key: "sigLanded", label: "Most significant strikes landed", format: "number", priority: 16, value: (t) => (t.statBouts >= 5 ? t.sigLanded : null), detail: (t) => `over ${clock(t.seconds)} of fight time` },
+  { key: "sigLanded", label: "Most significant strikes landed", format: "number", priority: 16, value: (t) => (t.statBouts >= 5 && t.sigLanded >= MIN_STRIKES_LANDED ? t.sigLanded : null), detail: (t) => `over ${clock(t.seconds)} of fight time` },
   { key: "sigRate", label: "Highest strike rate", format: "decimal", priority: 17, value: (t) => (t.statBouts >= 8 ? perFifteen(t.sigLanded, t.seconds) : null), detail: (t) => `${t.sigLanded} landed per 15 minutes` },
   { key: "takedowns", label: "Most takedowns landed", format: "number", priority: 18, value: (t) => (t.statBouts >= 5 && t.takedowns >= 10 ? t.takedowns : null), detail: (t) => `in ${t.statBouts} tracked bouts` },
   { key: "control", label: "Most control time", format: "time", priority: 19, value: (t) => (t.controlBouts >= 5 && t.controlSeconds > 0 ? t.controlSeconds : null), detail: (t) => `over ${clock(t.controlTrackedSeconds)} of tracked fight time` },
@@ -270,7 +305,135 @@ const MARKET_AND_CONTEXT: StatDef[] = [
     detail: (t) => `across ${t.finishedLosses} defeats inside the distance` },
 ];
 
-const PROFILE_STATS = [...STATS, ...PROFILE_EXTRAS, ...MARKET_AND_CONTEXT];
+const ACTION_NAMES: Record<ActionType, string> = {
+  significantStrikes: "significant strikes", totalStrikes: "all strikes",
+  headStrikes: "head strikes", bodyStrikes: "body strikes", legStrikes: "leg strikes",
+  distanceStrikes: "distance strikes", clinchStrikes: "clinch strikes",
+  groundStrikes: "ground strikes", takedowns: "takedowns",
+  knockdowns: "knockdowns", submissions: "submission attempts", control: "control time",
+};
+
+type ActionBasis = "scored" | "attempted" | "differential" | "percent";
+type ActionMode = "total" | "perFight" | "per15" | "single";
+type ActionDirection = "given" | "taken";
+
+/** The distinct Output-board readings. Per-round and per-minute are scaled
+ * versions of per-15, so a profile need only show the latter. Date/sample
+ * filters are deliberately not permanent claims about an entire career. */
+const PROFILE_ACTIONS: StatDef[] = [];
+for (const type of ACTION_TYPES) {
+  const name = ACTION_NAMES[type];
+  const isStrike = type.endsWith("Strikes");
+  const minAccuracyCount = isStrike ? MIN_STRIKES_LANDED : MIN_TAKEDOWN_ACCURACY_SAMPLE;
+  const category = ["takedowns", "submissions", "control"].includes(type)
+    ? { label: "Grappling", order: 6 } : { label: "Striking", order: 5 };
+  const supportsAttempts = !["knockdowns", "submissions", "control"].includes(type);
+  const combinations: { basis: ActionBasis; mode: ActionMode; direction: ActionDirection }[] = [];
+  for (const direction of ["given", "taken"] as const) {
+    for (const mode of ["total", "perFight", "per15", "single"] as const) {
+      combinations.push({ basis: "scored", mode, direction });
+    }
+    if (supportsAttempts) {
+      for (const mode of ["total", "perFight", "per15", "single"] as const) {
+        combinations.push({ basis: "attempted", mode, direction });
+      }
+      combinations.push({ basis: "percent", mode: "total", direction });
+      combinations.push({ basis: "percent", mode: "single", direction });
+    }
+  }
+  for (const mode of ["total", "perFight", "per15", "single"] as const) {
+    combinations.push({ basis: "differential", mode, direction: "given" });
+  }
+  for (const { basis, mode, direction } of combinations) {
+    // These already have established names in the historical profile list.
+    const duplicate = (
+      type === "significantStrikes" && basis === "scored" && (
+        (direction === "given" && (mode === "total" || mode === "per15"))
+        || (direction === "taken" && mode === "per15")
+      )
+    ) || (
+      type === "takedowns" && basis === "scored" && direction === "given"
+      && (mode === "total" || mode === "per15")
+    ) || (
+      type === "knockdowns" && basis === "scored" && direction === "given"
+      && (mode === "total" || mode === "per15")
+    ) || (
+      type === "control" && basis === "scored" && direction === "given"
+      && (mode === "total" || mode === "per15")
+    );
+    if (duplicate) continue;
+    const modeLabel = mode === "total" ? "" : mode === "perFight" ? " per bout"
+      : mode === "per15" ? " per 15 min" : " in one bout";
+    const scoredVerb = type === "control" ? (direction === "given" ? "earned" : "conceded")
+      : type === "submissions" ? (direction === "given" ? "made" : "faced")
+        : type === "knockdowns" ? (direction === "given" ? "scored" : "absorbed")
+          : direction === "given" ? "landed" : "absorbed";
+    const label = basis === "percent"
+      ? `${direction === "given" ? "Highest" : "Best"} ${name} ${direction === "given" ? "accuracy" : "defense"}${mode === "single" ? " in one bout" : ""}`
+      : basis === "differential" ? `Best ${name} differential${modeLabel}`
+        : `Most ${name} ${basis === "attempted" ? (direction === "given" ? "attempted" : "attempts faced") : scoredVerb}${modeLabel}`;
+    const key = `action:${type}:${basis}:${direction}:${mode}`;
+    const raw = (a: ActionTotals) => basis === "differential" ? a.given - a.taken
+      : basis === "attempted" ? (direction === "given" ? a.givenAttempts : a.takenAttempts)
+        : direction === "given" ? a.given : a.taken;
+    const count = (a: ActionTotals) => basis === "attempted" || basis === "percent" ? a.attemptBouts : a.bouts;
+    const seconds = (a: ActionTotals) => basis === "attempted" ? a.attemptSeconds : a.seconds;
+    const value = (t: Totals) => {
+      const a = t.actions[type];
+      if (!a || t.bouts < 3 || count(a) < 3) return null;
+      if (basis === "percent") {
+        if (mode === "single") {
+          const best = direction === "given" ? a.maxGivenPercentage : a.maxTakenPercentage;
+          return Number.isFinite(best) ? Math.round(best * 10) / 10 : null;
+        }
+        const attempts = direction === "given" ? a.givenAttempts : a.takenAttempts;
+        const scored = direction === "given" ? a.givenAccuracyScored : a.takenAccuracyScored;
+        if ((direction === "given" ? scored : attempts) < minAccuracyCount) return null;
+        if (attempts < 1) return null;
+        const percentage = actionPercentage(scored, attempts, direction === "taken");
+        return percentage == null ? null : Math.round(percentage * 10) / 10;
+      }
+      if (isStrike && (basis === "scored" || basis === "differential")) {
+        const landed = mode === "single" && basis === "scored"
+          ? (direction === "given" ? a.maxGiven : a.maxTaken)
+          : direction === "given" ? a.given : a.taken;
+        if (landed < MIN_STRIKES_LANDED) return null;
+      }
+      const amount = mode === "single" ? basis === "differential" ? a.maxGivenDifferential
+        : basis === "attempted" ? (direction === "given" ? a.maxGivenAttempts : a.maxTakenAttempts)
+          : (direction === "given" ? a.maxGiven : a.maxTaken)
+        : mode === "perFight" ? raw(a) / count(a)
+          : mode === "per15" ? raw(a) / (seconds(a) / 900) : raw(a);
+      if (!Number.isFinite(amount) || (basis !== "differential" && amount <= 0)) return null;
+      return mode === "total" || mode === "single" ? amount : Math.round(amount * 10) / 10;
+    };
+    PROFILE_ACTIONS.push({
+      key, label, category, priority: 100 + PROFILE_ACTIONS.length,
+      format: basis === "percent" ? "percent"
+        : type === "control" ? (basis === "differential" ? "signedTime" : "time")
+          : basis === "differential" ? "signed"
+            : mode === "total" || mode === "single" ? "number" : "decimal",
+      headline: direction === "given" && (basis === "scored" || basis === "differential" || basis === "percent"),
+      value,
+      detail: (t) => {
+        const a = t.actions[type]!;
+        if (basis === "percent" && mode === "single") return direction === "given" ? a.maxGivenPercentageDetail : a.maxTakenPercentageDetail;
+        if (basis === "percent") return direction === "given"
+          ? `${a.givenAccuracyScored}/${a.givenAttempts} landed · ${a.attemptBouts} paired bouts`
+          : `${a.takenAttempts - a.takenAccuracyScored}/${a.takenAttempts} stopped · ${a.attemptBouts} paired bouts`;
+        if (mode === "single") return basis === "differential" ? a.maxGivenDifferentialDetail
+          : basis === "attempted" ? (direction === "given" ? a.maxGivenAttemptsDetail : a.maxTakenAttemptsDetail)
+            : direction === "given" ? a.maxGivenDetail : a.maxTakenDetail;
+        const given = basis === "attempted" ? a.givenAttempts : a.given;
+        const taken = basis === "attempted" ? a.takenAttempts : a.taken;
+        return `${type === "control" ? clock(given) : given} given · ${type === "control" ? clock(taken) : taken} taken · ${count(a)} bouts${mode === "per15" ? ` · ${clock(seconds(a))} fight time` : ""}`;
+      },
+    });
+  }
+}
+
+const HEADLINE_STATS = [...STATS, ...PROFILE_ACTIONS.filter((stat) => stat.headline)];
+const PROFILE_STATS = [...STATS, ...PROFILE_EXTRAS, ...MARKET_AND_CONTEXT, ...PROFILE_ACTIONS];
 const CATEGORY: Record<string, { label: string; order: number }> = {
   wins: { label: "Career results", order: 1 }, bouts: { label: "Career results", order: 1 }, winRate: { label: "Career results", order: 1 }, span: { label: "Career results", order: 1 }, divisionWins: { label: "Career results", order: 1 }, events: { label: "Career results", order: 1 },
   titleDefenses: { label: "Championships", order: 2 }, defenseRun: { label: "Championships", order: 2 }, titleWins: { label: "Championships", order: 2 }, titleFights: { label: "Championships", order: 2 }, titleWinRate: { label: "Championships", order: 2 },
@@ -290,7 +453,7 @@ const GLOBAL_TOP = 5;
 const DIVISION_TOP = 3;
 const MIN_DIVISION_FIELD = 15;
 
-function buildTotals(index: FightIndex): Map<string, Totals> {
+function buildTotals(index: FightIndex, division?: string): Map<string, Totals> {
   const table = new Map<string, Totals>();
   const get = (id: string) => {
     let totals = table.get(id);
@@ -302,6 +465,7 @@ function buildTotals(index: FightIndex): Map<string, Totals> {
   };
 
   for (const fight of index.fights) {
+    if (division && fight.weightClass !== division) continue;
     const decision = Boolean(fight.method?.endsWith("-DEC"));
     for (const [i, side] of fight.sides.entries()) {
       if (!side.id) continue;
@@ -335,11 +499,79 @@ function buildTotals(index: FightIndex): Map<string, Totals> {
         t.controlTrackedSeconds += fight.elapsed;
         t.controlBouts += 1;
       }
+      // Match the Output leaderboard's denominator: a bout counts only when
+      // both corners have this action. Attempts use the smaller paired sample.
+      for (const type of ACTION_TYPES) {
+        const isStrike = type.endsWith("Strikes");
+        const minAccuracyCount = isStrike ? MIN_STRIKES_LANDED : MIN_TAKEDOWN_ACCURACY_SAMPLE;
+        const own = side.actions[type];
+        const theirs = opponent.actions[type];
+        if (!own || !theirs) continue;
+        const action = t.actions[type] ?? {
+          bouts: 0, seconds: 0, attemptBouts: 0, attemptSeconds: 0,
+          given: 0, taken: 0, givenAttempts: 0, takenAttempts: 0,
+          givenAccuracyScored: 0, takenAccuracyScored: 0, maxGiven: 0, maxTaken: 0,
+          maxGivenDetail: "", maxTakenDetail: "",
+          maxGivenAttempts: 0, maxGivenAttemptsDetail: "", maxTakenAttempts: 0, maxTakenAttemptsDetail: "",
+          maxGivenDifferential: Number.NEGATIVE_INFINITY, maxGivenDifferentialDetail: "",
+          maxGivenPercentage: Number.NEGATIVE_INFINITY, maxGivenPercentageDetail: "",
+          maxTakenPercentage: Number.NEGATIVE_INFINITY, maxTakenPercentageDetail: "",
+        };
+        action.bouts += 1;
+        action.given += own.scored;
+        action.taken += theirs.scored;
+        if (own.scored > action.maxGiven) {
+          action.maxGiven = own.scored;
+          action.maxGivenDetail = `vs ${opponent.name} · ${fight.eventName}`;
+        }
+        if (theirs.scored > action.maxTaken) {
+          action.maxTaken = theirs.scored;
+          action.maxTakenDetail = `vs ${opponent.name} · ${fight.eventName}`;
+        }
+        const differential = own.scored - theirs.scored;
+        if ((!isStrike || own.scored >= MIN_STRIKES_LANDED) && differential > action.maxGivenDifferential) {
+          action.maxGivenDifferential = differential;
+          action.maxGivenDifferentialDetail = `${own.scored} given − ${theirs.scored} taken · vs ${opponent.name} · ${fight.eventName}`;
+        }
+        if (fight.elapsed != null) action.seconds += fight.elapsed;
+        if (own.attempted != null && theirs.attempted != null) {
+          action.attemptBouts += 1;
+          action.givenAttempts += own.attempted;
+          action.takenAttempts += theirs.attempted;
+          action.givenAccuracyScored += own.scored;
+          action.takenAccuracyScored += theirs.scored;
+          if (own.attempted > action.maxGivenAttempts) {
+            action.maxGivenAttempts = own.attempted;
+            action.maxGivenAttemptsDetail = `vs ${opponent.name} · ${fight.eventName}`;
+          }
+          if (theirs.attempted > action.maxTakenAttempts) {
+            action.maxTakenAttempts = theirs.attempted;
+            action.maxTakenAttemptsDetail = `vs ${opponent.name} · ${fight.eventName}`;
+          }
+          const givenPercentage = actionPercentage(own.scored, own.attempted);
+          if (givenPercentage != null && own.attempted > 0
+            && own.scored >= minAccuracyCount
+            && givenPercentage > action.maxGivenPercentage) {
+            action.maxGivenPercentage = givenPercentage;
+            action.maxGivenPercentageDetail = `${own.scored}/${own.attempted} landed · vs ${opponent.name} · ${fight.eventName}`;
+          }
+          const takenPercentage = actionPercentage(theirs.scored, theirs.attempted, true);
+          if (takenPercentage != null && theirs.attempted > 0
+            && theirs.attempted >= minAccuracyCount
+            && takenPercentage > action.maxTakenPercentage) {
+            action.maxTakenPercentage = takenPercentage;
+            action.maxTakenPercentageDetail = `${theirs.attempted - theirs.scored}/${theirs.attempted} stopped · vs ${opponent.name} · ${fight.eventName}`;
+          }
+          if (fight.elapsed != null) action.attemptSeconds += fight.elapsed;
+        }
+        t.actions[type] = action;
+      }
 
       const reigning = opponent.prior.reigningChampion;
       if (reigning || opponent.prior.formerChampion) t.championBouts += 1;
       if (reigning) t.reigningBouts += 1;
-      if (fight.titleFight && fight.titleType !== "tuf" && fight.titleType !== "tournament") t.titleFights += 1;
+      const titleBout = fight.titleFight && (fight.titleType === "title" || fight.titleType === "interim");
+      if (titleBout) t.titleFights += 1;
 
       // The market. Read exactly as the leaderboards read it: both implied
       // probabilities carry the bookmaker's margin, so a pair is normalised
@@ -430,7 +662,7 @@ function buildTotals(index: FightIndex): Map<string, Totals> {
         }
         if (fight.weightClass && fight.weightClass !== "Catch Weight" && fight.weightClass !== "Super Heavyweight") t.divisionWins.add(fight.weightClass);
         if (reigning || opponent.prior.formerChampion) t.championWins += 1;
-        if (fight.titleFight && fight.titleType !== "tuf" && fight.titleType !== "tournament") t.titleWins += 1;
+        if (titleBout) t.titleWins += 1;
         if (side.age != null && side.age < t.youngestWinAge) {
           t.youngestWinAge = side.age;
           t.youngestWinDetail = `vs ${opponent.name} · ${fight.eventName} · ${fight.date}`;
@@ -443,7 +675,7 @@ function buildTotals(index: FightIndex): Map<string, Totals> {
         t.losses += 1;
         t.currentWinStreak = 0;
         t.currentUnbeaten = 0;
-        if (fight.titleFight && fight.titleType !== "tuf" && fight.titleType !== "tournament") t.titleLosses += 1;
+        if (titleBout) t.titleLosses += 1;
       } else if (side.outcome === "draw") {
         t.draws += 1;
         t.currentWinStreak = 0;
@@ -459,6 +691,7 @@ function buildTotals(index: FightIndex): Map<string, Totals> {
   // Title defenses use the same belt-lineage reading as profiles and boards.
   const titleRows = new Map<string, TitleRow[]>();
   for (const fight of index.fights) {
+    if (division && fight.weightClass !== division) continue;
     if (!fight.titleFight) continue;
     const row: TitleRow = {
       id: fight.id, title_fight: 1, title_type: fight.titleType, weight_class: fight.weightClass,
@@ -505,10 +738,12 @@ function build(index: FightIndex): { records: RankTable; stats: RankTable<Profil
   const totals = buildTotals(index);
   const everyone = [...totals.values()];
   const byDivision = new Map<string, Totals[]>();
-  for (const fighter of everyone) {
-    const list = byDivision.get(fighter.division) ?? [];
-    list.push(fighter);
-    byDivision.set(fighter.division, list);
+  // A division board counts only bouts fought at that weight. A fighter can
+  // place in every class they competed in, not just their most common one.
+  for (const division of index.divisions) {
+    if (division === "Catch Weight" || division === "Super Heavyweight") continue;
+    const pool = [...buildTotals(index, division).values()];
+    if (pool.length >= MIN_DIVISION_FIELD) byDivision.set(division, pool);
   }
 
   const records: RankTable = new Map();
@@ -538,82 +773,74 @@ function build(index: FightIndex): { records: RankTable; stats: RankTable<Profil
     return { ranks, scored };
   };
 
-  for (const stat of STATS) {
-    const global = rankWithin(everyone, stat);
-    const divisionRanks = new Map<string, ReturnType<typeof rankWithin>>();
-    for (const [division, pool] of byDivision) divisionRanks.set(division, rankWithin(pool, stat));
-
-    for (const entry of global.scored) {
-      const globalRank = global.ranks.get(entry.fighter.id)!;
-      const division = entry.fighter.division;
-      const local = divisionRanks.get(division);
-      const localRank = local?.ranks.get(entry.fighter.id);
-      const localField = local?.scored.length ?? 0;
-      const useGlobal = globalRank.rank <= GLOBAL_TOP;
-      const useDivision = !useGlobal && localRank != null && localRank.rank <= DIVISION_TOP && localField >= MIN_DIVISION_FIELD;
-      if (!useGlobal && !useDivision) continue;
-      const chosen = useGlobal ? globalRank : localRank!;
-      push(records, entry.fighter.id, {
-        key: stat.key,
-        label: stat.label,
-        value: entry.value,
-        format: stat.format,
-        rank: chosen.rank,
-        tied: chosen.tied,
-        field: useGlobal ? global.scored.length : localField,
-        scope: useGlobal ? "UFC history" : division,
-        detail: stat.detail(entry.fighter),
-      });
-    }
-  }
-
-  // Profile statistics are broader than sporting "records": every qualifying
-  // top-50 global placement is useful context. If a fighter misses the global
-  // top 50, a top-50 placement in their primary division is used instead.
-  // Totals and rate variants remain separate rows but share a category in the
-  // interface, which makes the relationship clear without duplicating panels.
+  const headlineKeys = new Set(HEADLINE_STATS.map((stat) => stat.key));
+  const priority = new Map(PROFILE_STATS.map((stat) => [stat.key, stat.priority]));
+  // Each distinct leaderboard reading is ranked globally and in every real
+  // weight class. Keep both placements; the headline card later picks the
+  // best scope for each metric, while the full list shows all top-50 claims.
   for (const stat of PROFILE_STATS) {
-    const global = rankWithin(everyone, stat);
-    const divisionRanks = new Map<string, ReturnType<typeof rankWithin>>();
-    for (const [division, pool] of byDivision) divisionRanks.set(division, rankWithin(pool, stat));
-    const category = CATEGORY[stat.key] ?? { label: "Other", order: 99 };
-
-    for (const entry of global.scored) {
-      const globalRank = global.ranks.get(entry.fighter.id)!;
-      const division = entry.fighter.division;
-      const local = divisionRanks.get(division);
-      const localRank = local?.ranks.get(entry.fighter.id);
-      const localField = local?.scored.length ?? 0;
-      const useGlobal = globalRank.rank <= 50;
-      const useDivision = !useGlobal && localRank != null && localRank.rank <= 50 && localField >= MIN_DIVISION_FIELD;
-      if (!useGlobal && !useDivision) continue;
-      const chosen = useGlobal ? globalRank : localRank!;
-      push(stats, entry.fighter.id, {
-        key: stat.key,
-        category: category.label,
-        category_order: category.order,
-        label: stat.label,
-        value: entry.value,
-        format: stat.format,
-        rank: chosen.rank,
-        tied: chosen.tied,
-        field: useGlobal ? global.scored.length : localField,
-        scope: useGlobal ? "UFC history" : division,
-        detail: stat.detail(entry.fighter),
-      });
+    const category = stat.category ?? CATEGORY[stat.key] ?? { label: "Other", order: 99 };
+    const scopes = [
+      { name: "UFC history", pool: everyone },
+      ...(stat.key === "divisionWins" ? [] : [...byDivision].map(([name, pool]) => ({ name, pool }))),
+    ];
+    for (const scope of scopes) {
+      const ranked = rankWithin(scope.pool, stat);
+      const field = ranked.scored.length;
+      if (scope.name !== "UFC history" && field < MIN_DIVISION_FIELD) continue;
+      for (const entry of ranked.scored) {
+        const place = ranked.ranks.get(entry.fighter.id)!;
+        if (place.rank > 50) continue;
+        const base = {
+          key: stat.key, label: stat.label, value: entry.value, format: stat.format,
+          rank: place.rank, tied: place.tied, field, scope: scope.name,
+          detail: stat.detail(entry.fighter),
+        };
+        push(stats, entry.fighter.id, { ...base, category: category.label, category_order: category.order });
+        if (headlineKeys.has(stat.key) && place.rank <= (scope.name === "UFC history" ? GLOBAL_TOP : DIVISION_TOP)) {
+          push(records, entry.fighter.id, base);
+        }
+      }
     }
   }
 
-  // Best places first, and among equals the more prestigious statistic.
-  for (const list of records.values()) {
+  // The visible Records card has room for five distinct feats. A stronger
+  // division place outranks a weaker global one; a tie favors UFC history.
+  for (const [id, list] of records) {
     list.sort((a, b) => a.rank - b.rank
       || Number(a.scope !== "UFC history") - Number(b.scope !== "UFC history")
-      || STATS.findIndex((stat) => stat.key === a.key) - STATS.findIndex((stat) => stat.key === b.key));
+      || (priority.get(a.key) ?? 999) - (priority.get(b.key) ?? 999));
+    const seen = new Set<string>();
+    const distinct = list.filter((entry) => {
+      if (seen.has(entry.key)) return false;
+      seen.add(entry.key);
+      return true;
+    });
+    // Within one rank, show different actions before another way of saying
+    // "significant strikes". Never let a worse rank jump ahead of a better one.
+    const ordered: RecordEntry[] = [];
+    const usedActions = new Set<string>();
+    for (const rank of new Set(distinct.map((entry) => entry.rank))) {
+      const group = distinct.filter((entry) => entry.rank === rank);
+      const fresh: RecordEntry[] = [];
+      const repeat: RecordEntry[] = [];
+      for (const entry of group) {
+        const action = /^action:([^:]+):/.exec(entry.key)?.[1];
+        if (action && usedActions.has(action)) repeat.push(entry);
+        else {
+          fresh.push(entry);
+          if (action) usedActions.add(action);
+        }
+      }
+      ordered.push(...fresh, ...repeat);
+    }
+    records.set(id, ordered);
   }
   for (const list of stats.values()) {
-    list.sort((a, b) => a.category_order - b.category_order
-      || a.rank - b.rank
-      || PROFILE_STATS.findIndex((stat) => stat.key === a.key) - PROFILE_STATS.findIndex((stat) => stat.key === b.key));
+    list.sort((a, b) => a.rank - b.rank
+      || Number(a.scope !== "UFC history") - Number(b.scope !== "UFC history")
+      || a.category_order - b.category_order
+      || (priority.get(a.key) ?? 999) - (priority.get(b.key) ?? 999));
   }
   return { records, stats };
 }

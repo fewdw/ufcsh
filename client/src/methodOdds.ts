@@ -49,6 +49,5 @@ export function percent(probability: number): string {
 /** An American price in whichever format the odds toggle is set to. */
 export function formatPrice(line: string, format: OddsFormat): string {
   if (format === "decimal") return decimalOdds(line).toFixed(2);
-  if (format === "percent") return percent(impliedProbability(line));
   return line;
 }

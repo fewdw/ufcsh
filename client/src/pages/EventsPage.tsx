@@ -34,7 +34,7 @@ const TITLE_TAG: Record<string, { label: string; className: string }> = {
 function beltTag(fight: EventFight) {
   if (!fight.title_fight) return null;
   return fight.title_type === "interim" ? TITLE_TAG.interim
-    : fight.title_type === "title" || !fight.title_type ? TITLE_TAG.title : null;
+    : fight.title_type === "title" ? TITLE_TAG.title : null;
 }
 const METHOD_TAG = "shrink-0 rounded-full px-1.5 py-px text-[9px] font-bold uppercase leading-4 tracking-[0.06em]";
 const DAY_MS = 86_400_000;

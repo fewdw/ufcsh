@@ -6,9 +6,8 @@ export type ThemeMode = "light" | "dark";
 export type RankingSource = "meta" | "media";
 export type DateMode = "relative" | "date";
 export type DivisionOrder = "light" | "heavy";
-/** How a betting price displays: the raw American line, its decimal payout
- *  multiple, or its implied probability. */
-export type OddsFormat = "american" | "decimal" | "percent";
+/** How a betting price displays: the American line or decimal payout. */
+export type OddsFormat = "american" | "decimal";
 
 export type AppSettings = {
   theme: ThemeMode;
@@ -39,7 +38,7 @@ function loadSettings(): AppSettings {
       rankingSource: saved?.rankingSource === "meta" ? "meta" : "media",
       dateMode: saved?.dateMode === "date" ? "date" : "relative",
       divisionOrder: saved?.divisionOrder === "heavy" ? "heavy" : "light",
-      oddsFormat: saved?.oddsFormat === "decimal" ? "decimal" : saved?.oddsFormat === "percent" ? "percent" : "american",
+      oddsFormat: saved?.oddsFormat === "decimal" ? "decimal" : "american",
       topStatsOpen: saved?.topStatsOpen === true,
     };
   } catch {

@@ -26,21 +26,22 @@ type RankingFeatures = {
 
 const DEFAULT_FEATURES: RankingFeatures = {
   opponents: true,
-  hoverHistory: true,
+  hoverHistory: false,
   streaks: true,
   activityColors: true,
 };
 
-/** v2 started opponent details on; a v1 choice is not carried over. */
-const FEATURES_KEY = "rankings-features-v2";
+/** v3 switches hover previews off while keeping the other v2 choices. */
+const FEATURES_KEY = "rankings-features-v3";
 
 function loadFeatures(): RankingFeatures {
   try {
-    const saved = JSON.parse(localStorage.getItem(FEATURES_KEY) ?? "null");
+    const current = JSON.parse(localStorage.getItem(FEATURES_KEY) ?? "null");
+    const saved = current ?? JSON.parse(localStorage.getItem("rankings-features-v2") ?? "null");
     if (!saved || typeof saved !== "object") return DEFAULT_FEATURES;
     return {
       opponents: typeof saved.opponents === "boolean" ? saved.opponents : DEFAULT_FEATURES.opponents,
-      hoverHistory: typeof saved.hoverHistory === "boolean" ? saved.hoverHistory : DEFAULT_FEATURES.hoverHistory,
+      hoverHistory: current && typeof current.hoverHistory === "boolean" ? current.hoverHistory : DEFAULT_FEATURES.hoverHistory,
       streaks: typeof saved.streaks === "boolean" ? saved.streaks : DEFAULT_FEATURES.streaks,
       activityColors: typeof saved.activityColors === "boolean" ? saved.activityColors : DEFAULT_FEATURES.activityColors,
     };

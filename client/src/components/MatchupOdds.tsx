@@ -16,11 +16,9 @@ import { outcomeId, useParlay, type Outcome, type ParlayLeg } from "../parlay";
 const ODDS_FORMATS: { id: OddsFormat; label: string }[] = [
   { id: "american", label: "American" },
   { id: "decimal", label: "Decimal" },
-  { id: "percent", label: "%" },
 ];
 
-/** Switches every price on the board between American, decimal and implied
- *  probability. Lives in the panel header, beside the "Odds" title. */
+/** Switches every price on the board between American and decimal. */
 export function OddsFormatTabs({ format, onChange }: { format: OddsFormat; onChange: (format: OddsFormat) => void }) {
   return (
     <div className={segmentedGroup} role="group" aria-label="Odds format">
