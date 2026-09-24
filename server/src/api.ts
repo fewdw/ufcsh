@@ -376,12 +376,14 @@ function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingTy
     time: f.time,
     f1: {
       ...fighterSummary(f.f1_id, f.f1_name, rankingType),
+      weight_miss: f.f1_weight_miss,
       outcome: f.f1_outcome,
       stats: { kd: f.f1_kd, str: f.f1_str, td: f.f1_td, sub: f.f1_sub },
       ...(eventDate ? sideContext(f.f1_id, eventDate, Number(f.ord) || 0) : {}),
     },
     f2: {
       ...fighterSummary(f.f2_id, f.f2_name, rankingType),
+      weight_miss: f.f2_weight_miss,
       outcome: f.f2_outcome,
       stats: { kd: f.f2_kd, str: f.f2_str, td: f.f2_td, sub: f.f2_sub },
       ...(eventDate ? sideContext(f.f2_id, eventDate, Number(f.ord) || 0) : {}),

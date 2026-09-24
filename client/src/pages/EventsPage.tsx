@@ -331,6 +331,12 @@ function FormDots({ side, align }: { side: FightSide; align: "left" | "right" })
   );
 }
 
+function WeightMissBadge({ side }: { side: FightSide }) {
+  if (!side.weight_miss) return null;
+  const label = `${side.name} missed weight at ${side.weight_miss} lb`;
+  return <span className={`${METHOD_TAG} bg-rose-100 text-rose-700 tabular-nums`} title={label} aria-label={label}>{side.weight_miss}</span>;
+}
+
 function FighterBlock({
   side,
   align,
@@ -364,6 +370,7 @@ function FighterBlock({
             {resultTag.when ? <span className="ml-1 font-semibold tabular-nums opacity-70">{resultTag.when}</span> : null}
           </span>
         ) : null}
+        <WeightMissBadge side={side} />
         {align === "left" ? <BonusIcons bonuses={bonuses} outcome={side.outcome} /> : null}
         {align === "right" ? rankingBadge : null}
       </div>
@@ -517,6 +524,7 @@ function CompactSide({ side, fight, done, other }: { side: FightSide; fight: Eve
               {tag.when ? <span className="ml-1 font-semibold tabular-nums opacity-70">{tag.when}</span> : null}
             </span>
           ) : null}
+          <WeightMissBadge side={side} />
           <BonusIcons bonuses={fight.bonuses} outcome={side.outcome} />
         </div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] leading-4 tabular-nums text-zinc-500">
