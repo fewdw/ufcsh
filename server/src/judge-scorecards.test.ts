@@ -56,3 +56,10 @@ test("a judge's name suffix does not prevent matching rounds", () => {
   const imported: JudgeCard[] = [{ judge: "Michael Depasquale Jr.", f1Score: 28, f2Score: 29, rounds: rounds([9, 9, 10], [10, 10, 9]) }];
   assert.equal(hasCompleteJudgeRounds(official, imported), true);
 });
+
+test("Munah Holland and Munah Querido are the same judge", () => {
+  const official: JudgeCard[] = [{ judge: "Munah Holland", f1Score: 30, f2Score: 27 }];
+  const imported: JudgeCard[] = [{ judge: "Munah Querido", f1Score: 30, f2Score: 27, rounds: rounds([10, 10, 10], [9, 9, 9]) }];
+  assert.equal(hasCompleteJudgeRounds(official, imported), true);
+  assert.equal(hasCompleteJudgeRounds([{ ...official[0], judge: "Another Holland" }], imported), false);
+});
