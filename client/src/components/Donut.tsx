@@ -71,7 +71,7 @@ export function Donut({
       </svg>
       {centerValue ? (
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-          <span className="text-xl font-semibold tabular-nums text-zinc-900">{centerValue}</span>
+          <span className={`${size < 100 ? "text-sm" : "text-xl"} font-semibold tabular-nums text-zinc-900`}>{centerValue}</span>
           {centerLabel ? <span className="mt-0.5 max-w-[80%] truncate text-[10px] font-medium uppercase tracking-wide text-zinc-400">{centerLabel}</span> : null}
         </div>
       ) : null}

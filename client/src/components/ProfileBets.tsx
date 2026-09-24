@@ -14,8 +14,8 @@ const LEG_LABEL: Record<BetState, string> = { won: "Won", lost: "Lost", pending:
 function Stat({ label, value, tone = "text-zinc-900" }: { label: string; value: string; tone?: string }) {
   return (
     <div className="min-w-0">
-      <p className={`truncate text-sm font-semibold tabular-nums ${tone}`}>{value}</p>
-      <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">{label}</p>
+      <p className={`truncate text-[13px] font-semibold tabular-nums ${tone}`}>{value}</p>
+      <p className="truncate text-[9px] font-medium uppercase tracking-wide text-zinc-400">{label}</p>
     </div>
   );
 }
@@ -29,16 +29,16 @@ function BetRow({ bet, mine, confirming, busy, onConfirm, onCancel, onRemove }: 
   const parlay = bet.legs.length > 1;
   const result = bet.state === "pending" ? "Pending" : bet.state === "void" ? "Void" : signedMoney(bet.net);
   return (
-    <li className="px-4 py-3.5 sm:px-5">
+    <li className="px-4 py-2.5 sm:px-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-zinc-900">{parlay ? `Parlay · ${bet.legs.length} legs` : bet.legs[0].selection}</p>
-          <p className="mt-0.5 text-xs tabular-nums text-zinc-500">
+          <p className="truncate text-[13px] font-semibold text-zinc-900">{parlay ? `Parlay · ${bet.legs.length} legs` : bet.legs[0].selection}</p>
+          <p className="text-[11px] tabular-nums text-zinc-500">
             {money(bet.stake)} at {bet.price} · pays {money(bet.payout)} · {formatDateShortWithYear(new Date(bet.placedAt).toISOString().slice(0, 10))}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <span className={`text-sm font-semibold tabular-nums ${STATE_TEXT[bet.state]}`}>{result}</span>
+          <span className={`text-[13px] font-semibold tabular-nums ${STATE_TEXT[bet.state]}`}>{result}</span>
           {mine && bet.removable && !confirming ? (
             <button type="button" onClick={onConfirm} aria-label="Remove bet" title="Remove bet"
               className="grid h-7 w-7 place-items-center rounded-full text-zinc-400 hover:bg-zinc-100 hover:text-rose-600">
@@ -47,10 +47,10 @@ function BetRow({ bet, mine, confirming, busy, onConfirm, onCancel, onRemove }: 
           ) : null}
         </div>
       </div>
-      <ul className={`mt-2 flex flex-col gap-1.5 ${parlay ? "border-l border-zinc-100 pl-3" : ""}`}>
+      <ul className={`mt-1 flex flex-col gap-0.5 ${parlay ? "border-l border-zinc-100 pl-3" : ""}`}>
         {bet.legs.map((leg, index) => (
           <li key={index}>
-            <Link to={`/fights/${leg.fightId}`} className="group flex items-center gap-2 text-xs">
+            <Link to={`/fights/${leg.fightId}`} className="group flex items-center gap-2 text-[11px] leading-4">
               <span aria-label={LEG_LABEL[leg.state]} title={LEG_LABEL[leg.state]} className={`h-1.5 w-1.5 shrink-0 rounded-full ${LEG_DOT[leg.state]}`} />
               <span className="min-w-0 flex-1 truncate text-zinc-600 group-hover:text-zinc-900">
                 {parlay ? <span className="font-medium text-zinc-800">{leg.selection} · </span> : null}
@@ -117,7 +117,7 @@ export default function ProfileBets({ handle, mine }: { handle: string; mine: bo
           <span className={`block text-lg font-semibold tabular-nums ${tone}`}>{signedMoney(totals.net)}</span>
           <span className="block text-[10px] font-medium uppercase tracking-wide text-zinc-400">profit / loss</span>
         </span>} />
-      <div className="grid grid-cols-3 gap-4 px-5 py-4 sm:grid-cols-5">
+      <div className="grid grid-cols-5 gap-2 px-4 py-2.5 sm:gap-4 sm:px-5 sm:py-3">
         <Stat label="Won" value={totals.won.toLocaleString()} tone="text-emerald-600" />
         <Stat label="Lost" value={totals.lost.toLocaleString()} tone="text-rose-600" />
         <Stat label="Pending" value={totals.pending.toLocaleString()} />

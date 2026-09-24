@@ -109,14 +109,14 @@ function RecordWheel({ history, scope, record }: { history: (HistoryRow | Profes
       <div className="text-sm font-semibold tabular-nums text-zinc-900" title={scope === "ufc" ? "Current UFC-only record" : "Current verified complete professional record"}>
         <span className="text-[10px] font-bold text-zinc-400">{scope === "ufc" ? "UFC" : "PRO"}</span> {record}
       </div>
-      {bouts.length ? <div className="flex items-center gap-3">
+      {bouts.length ? <div className="flex flex-col items-center gap-2 sm:flex-row sm:gap-3">
         <div
-          className="grid h-20 w-20 shrink-0 place-items-center rounded-full"
+          className="grid h-16 w-16 shrink-0 place-items-center rounded-full sm:h-20 sm:w-20"
           style={{ background: `conic-gradient(from 0deg, ${gradient})` }}
           role="img"
           aria-label={`${bouts.length} ${scope === "ufc" ? "UFC" : "professional"} bouts by result and method`}
         >
-          <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-center shadow-[0_0_0_1px_rgba(0,0,0,0.04)]">
+          <div className="grid h-10 w-10 place-items-center rounded-full bg-white text-center shadow-[0_0_0_1px_rgba(0,0,0,0.04)] sm:h-12 sm:w-12">
             <span className="text-sm font-semibold tabular-nums text-zinc-900">{bouts.length}<span className="block text-[8px] font-bold uppercase tracking-wider text-zinc-400">{scope === "ufc" ? "UFC" : "PRO"}</span></span>
           </div>
         </div>
@@ -185,9 +185,9 @@ function EnteringRecords({
 }
 
 const PERF_AWARD = {
-  perf: { short: "Perf. of the Night", full: "Performance of the Night" },
-  ko: { short: "KO of the Night", full: "Knockout of the Night" },
-  sub: { short: "Sub of the Night", full: "Submission of the Night" },
+  perf: { short: "POTN", full: "Performance of the Night" },
+  ko: { short: "KOTN", full: "Knockout of the Night" },
+  sub: { short: "SOTN", full: "Submission of the Night" },
 } as const;
 const TAG = "inline-flex items-center gap-1 rounded px-1.5 py-px text-[10px] font-semibold leading-4";
 
@@ -208,7 +208,7 @@ function BoutNotes({ row, className = "mt-1" }: { row: HistoryRow | Professional
   if (!perf && !row.bonuses?.fotn && !misses.length) return null;
   return (
     <span className={`flex flex-wrap gap-1 ${className}`}>
-      {row.bonuses?.fotn ? <span className={`${TAG} bg-orange-50 text-orange-700`} title="Fight of the Night bonus"><span aria-hidden="true">🔥</span>Fight of the Night</span> : null}
+      {row.bonuses?.fotn ? <span className={`${TAG} bg-orange-50 text-orange-700`} title="Fight of the Night bonus"><span aria-hidden="true">🔥</span>FOTN</span> : null}
       {perf ? <span className={`${TAG} bg-amber-50 text-amber-800`} title={`${perf.full} bonus`}><span aria-hidden="true">💰</span>{perf.short}</span> : null}
       {misses.map((miss) => (
         <span key={miss.who} className={`${TAG} bg-rose-50 text-rose-700`} title={`${miss.name} missed weight${miss.pounds ? ` at ${miss.pounds} lb` : ""}`}>
@@ -672,7 +672,7 @@ export default function FighterPage() {
             {/* Both records at once, side by side while the card is wide
                 enough and stacked when it is not. The professional wheel
                 waits until that history is verified. */}
-            <div className="flex flex-wrap items-start justify-center gap-x-10 gap-y-5 border-t border-zinc-100 pt-4 empty:hidden">
+            <div className="flex items-start justify-center gap-x-6 gap-y-5 border-t border-zinc-100 pt-3 empty:hidden sm:flex-wrap sm:gap-x-10 sm:pt-4">
               {fighter.record_verified ? <RecordWheel key={`${fighter.id}-all`} history={fighter.pro_history} scope="all" record={fighter.record} /> : null}
               <RecordWheel key={`${fighter.id}-ufc`} history={fighter.history} scope="ufc" record={fighter.ufc_record} />
             </div>

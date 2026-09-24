@@ -367,7 +367,9 @@ select:not([multiple]):not([size]) {
   .matchup-body { padding: 0 16px 16px; }
   .matchup-hero { padding: 20px 0; gap: 18px 12px; }
   .matchup-market { padding-top: 16px; border-top: 1px solid var(--matchup-rule); }
-  .matchup-comparisons { gap: 0; padding-top: 16px; }
+  .matchup-comparisons { gap: 0; padding: 2px 16px 8px; }
+  .matchup-comparisons dl,
+  .matchup-context > div { min-height: 30px; padding: 5px 0; }
 }
 @container (max-width: 24rem) {
   .matchup-name { font-size: 16px; }

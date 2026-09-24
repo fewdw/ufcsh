@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import { Link, useLocation } from "react-router-dom";
-import type { CareerBefore, ComparisonBlock, Matchup, RoundBlock } from "../api";
+import type { CareerBefore, ComparisonBlock, FightDetailBlock, Matchup, RoundBlock } from "../api";
 import { useApi } from "../api";
 import { decimalScore, type ScoreSummary } from "../scoring";
 import { lastName } from "../format";
@@ -32,8 +32,13 @@ const SIDES: Side[] = ["f1", "f2"];
 
 /** Plot height shared by every chart in the Fight totals panel. Together with
  *  top-aligning the three blocks, this is what puts their baselines — the rule
- *  each bar stands on — on one continuous line across the panel. */
-const PLOT_HEIGHT = 104;
+ *  each bar stands on — on one continuous line across the panel. Short on a
+ *  phone, so two charts share a row and the panel fits on a screen; bars are
+ *  sized in percent of it. */
+const PLOT_HEIGHT = "h-16 @[36rem]:h-[104px]";
+
+/** A bar `share` (0–1) of its plot tall, but never shorter than `floor` px. */
+const barHeight = (share: number, floor: number) => `max(${floor}px, ${Math.min(1, share) * 100}%)`;
 
 /** Every bar in Fight totals and Round by round is this wide. `max-w-full`
  *  lets one shrink rather than overflow when a column genuinely cannot hold
@@ -61,7 +66,7 @@ export function PanelHeading({
 }) {
   return (
     <div
-      className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-5 py-3.5 ${
+      className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2.5 sm:px-5 sm:py-3.5 ${
         divider ? "border-b border-zinc-100" : ""
       }`}
     >
@@ -345,7 +350,7 @@ function PairedColumns({
   max,
   caption,
   note,
-  height = 84,
+  height = PLOT_HEIGHT,
 }: {
   values: Record<Side, number>;
   labels: Record<Side, string>;
@@ -355,7 +360,8 @@ function PairedColumns({
   max: number;
   caption?: string;
   note?: string;
-  height?: number;
+  /** Tailwind height classes for the plot. */
+  height?: string;
 }) {
   const scale = max > 0 ? max : 1;
   return (
@@ -365,14 +371,14 @@ function PairedColumns({
       {/* Same frame as the strike chart, so a two-bar plot is laid out the same
           way wherever it appears in these panels. */}
       <div className="mx-auto w-full max-w-56">
-        <div className="grid grid-cols-2 items-end gap-2 border-b border-plot-axis" style={{ height }}>
+        <div className={`grid grid-cols-2 gap-2 border-b border-plot-axis ${height}`}>
           {SIDES.map((side) => (
-            <div key={side} className="flex justify-center">
+            <div key={side} className="flex items-end justify-center">
               <div
                 className={`stat-bar plot-grow ${BAR} rounded-t-[4px]`}
                 data-stat-side={side}
                 style={{
-                  height: Math.max(values[side] > 0 ? 3 : 1, (values[side] / scale) * height),
+                  height: barHeight(values[side] / scale, values[side] > 0 ? 3 : 1),
                   backgroundColor: colors?.[side] ?? SIDE[side].fill,
                   opacity: values[side] > 0 ? 1 : 0.25,
                 }}
@@ -380,7 +386,7 @@ function PairedColumns({
             </div>
           ))}
         </div>
-        <div className="mt-2 grid grid-cols-2 gap-2">
+        <div className="mt-1 grid grid-cols-2 gap-2 @[36rem]:mt-2">
           {SIDES.map((side) => (
             <span key={side} className="text-center" style={{ color: colors?.[side] ?? SIDE[side].ink }}>
               <span className={`block ${CHART_TEXT} font-semibold tabular-nums`}>{labels[side]}</span>
@@ -543,7 +549,6 @@ function CombinedStrikeColumns({
   /** Round-specific grappling and damage facts added to each side's tooltip. */
   tooltipExtra?: Record<Side, string[]>;
 }) {
-  const height = PLOT_HEIGHT;
   const scale = Math.max(1, ...SIDES.map((side) => total[side]?.attempted ?? 0));
   // Bars and figures share one frame, so a figure is always centred under the
   // bar it describes however wide the column gets. The frame is sized by the
@@ -556,14 +561,14 @@ function CombinedStrikeColumns({
 
   return (
     <div className="flex w-full flex-col items-center">
-      <div className={`grid w-full ${frame} grid-cols-2 items-end border-b border-plot-axis`} style={{ height }}>
+      <div className={`grid w-full ${frame} grid-cols-2 border-b border-plot-axis ${PLOT_HEIGHT}`}>
         {SIDES.map((side) => {
           const attempts = total[side]?.attempted ?? 0;
           const landed = total[side]?.landed ?? 0;
           const significantLanded = sigLanded(side);
           const otherLanded = Math.max(0, landed - significantLanded);
           const misses = Math.max(0, attempts - landed);
-          const columnHeight = Math.max(attempts > 0 ? 4 : 1, (attempts / scale) * height);
+          const columnHeight = barHeight(attempts / scale, attempts > 0 ? 4 : 1);
           const lines = total[side]
             ? [
                 ...(otherLanded ? [`${otherLanded} strikes`] : []),
@@ -609,17 +614,21 @@ function CombinedStrikeColumns({
           );
         })}
       </div>
-      <div className={`mt-2 grid w-full ${frame} grid-cols-2`}>
+      <div className={`mt-1 grid w-full ${frame} grid-cols-2 @[36rem]:mt-2`}>
         {SIDES.map((side) => (
           <div key={side} className="min-w-0 text-center tabular-nums">
+            {/* Landed of thrown, then how many of them were significant. */}
             <div
-              className={`${CHART_TEXT} font-bold whitespace-nowrap`}
+              className={`${CHART_TEXT} font-bold leading-4 whitespace-nowrap`}
               style={{ color: SIDE[side].ink }}
             >
-              {total[side]
-                ? `${total[side].landed}${significant[side] ? ` (${sigLanded(side)})` : ""} / ${total[side].attempted}`
-                : "—"}
+              {total[side] ? `${total[side].landed}/${total[side].attempted}` : "—"}
             </div>
+            {total[side] && significant[side] ? (
+              <div className="whitespace-nowrap text-[10px] leading-3 text-zinc-500">
+                <span className="font-semibold">{sigLanded(side)}</span> sig.
+              </div>
+            ) : null}
             {extra?.[side]}
           </div>
         ))}
@@ -633,7 +642,7 @@ function CombinedStrikeColumns({
  *  even when the charts above them differ in height. */
 function ChartTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className={`mt-auto px-3 pb-1 pt-2 text-center ${sectionLabel}`}>
+    <h3 className={`mt-auto px-1 pt-1 text-center ${sectionLabel} @[36rem]:px-3 @[36rem]:pb-1 @[36rem]:pt-2`}>
       {children}
     </h3>
   );
@@ -680,24 +689,22 @@ function StrikeSplitColumns({
     1,
     ...targets.flatMap((target) => SIDES.map((side) => target[side]?.attempted ?? 0)),
   );
-  const height = PLOT_HEIGHT;
-
   // Grouped by category, not by fighter: the two bars being compared stand
   // together under one caption instead of being read across the chart, and
   // each caption is printed once instead of twice. The pair's figures stack —
   // in the fighters' own colours, in legend order — because side by side they
   // are the widest thing in the panel ("100/300" twice over is 96px against a
   // 58px caption), and that width is what stopped four charts sharing a row.
-  const groups = "grid grid-cols-3 gap-3";
+  const groups = "grid grid-cols-3 gap-1 @[36rem]:gap-3";
 
   return (
     <section className="flex min-w-0 flex-col">
       {/* No per-fighter heading here: the panel legend names both, and each
           bar carries their colour. */}
-      <div className="flex-1 px-1 py-3">
+      <div className="flex-1 py-1 @[36rem]:px-1 @[36rem]:py-3">
         {/* The axis is one rule under the whole chart rather than one per
             group, so it stays the continuous line the other plots stand on. */}
-        <div className={`${groups} border-b border-plot-axis`} style={{ height }}>
+        <div className={`${groups} border-b border-plot-axis ${PLOT_HEIGHT}`}>
           {targets.map((target) => (
             // The pair stays a couple at any width: they sit against each
             // other in the middle of the group rather than drifting apart to
@@ -708,7 +715,7 @@ function StrikeSplitColumns({
                 const attempts = value?.attempted ?? 0;
                 const landed = value?.landed ?? 0;
                 const misses = Math.max(0, attempts - landed);
-                const columnHeight = Math.max(attempts > 0 ? 4 : 1, (attempts / scale) * height);
+                const columnHeight = barHeight(attempts / scale, attempts > 0 ? 4 : 1);
                 const lines = value
                   ? [
                       `${landed} significant strikes landed ${target.described}`,
@@ -742,7 +749,7 @@ function StrikeSplitColumns({
           ))}
         </div>
         {/* Same grid again, so a group's figures sit under its own pair. */}
-        <div className={`mt-2 ${groups}`}>
+        <div className={`mt-1 ${groups} @[36rem]:mt-2`}>
           {targets.map((target) => (
             <div key={target.source} className="min-w-0 text-center">
               {SIDES.map((side) => (
@@ -773,7 +780,7 @@ function StrikeSplitColumns({
  *  way: the number carries the weight, the label stays quiet. */
 function TotalNote({ value, label }: { value: string; label: string }) {
   return (
-    <span className={`mt-1.5 block whitespace-nowrap ${CHART_TEXT} leading-4 text-zinc-400`}>
+    <span className={`mt-0.5 block whitespace-nowrap text-[10px] leading-4 text-zinc-400 @[36rem]:mt-1.5 @[36rem]:text-[11px]`}>
       <span className="font-semibold tabular-nums text-zinc-500">{value}</span> {label}
     </span>
   );
@@ -816,9 +823,9 @@ export function FightTotals({ fight, grouped = false }: { fight: Matchup; groupe
       {totals ? (
         // Two pairs, each a summary then the split explaining it; narrower
         // widths wrap by pair, then to one column.
-        <div className="grid gap-x-3 gap-y-6 px-4 pb-4 pt-4 @[28rem]:grid-cols-[1fr_1.1fr] @[50rem]:grid-cols-[1fr_1.1fr_0.6fr_1.1fr]">
+        <div className="grid grid-cols-[1fr_1.1fr] gap-x-2 gap-y-3 px-2 pb-3 pt-1 @[36rem]:gap-x-3 @[36rem]:gap-y-6 @[36rem]:px-4 @[36rem]:pb-4 @[36rem]:pt-4 @[50rem]:grid-cols-[1fr_1.1fr_0.6fr_1.1fr]">
           <section className="flex min-w-0 flex-col">
-            <div className="flex flex-1 items-start justify-center px-1 py-3">
+            <div className="flex flex-1 items-start justify-center py-1 @[36rem]:px-1 @[36rem]:py-3">
               <CombinedStrikeColumns fight={fight} significant={sig} total={tot} extra={knockdowns} />
             </div>
             <ChartTitle>Strikes</ChartTitle>
@@ -829,7 +836,7 @@ export function FightTotals({ fight, grouped = false }: { fight: Matchup; groupe
               fight={fight}
               block={strikeDistribution}
               split={STRIKE_TARGETS}
-              title="Significant strike distribution"
+              title="Landed by target"
             />
           ) : (
             <section className="flex min-h-52 items-center justify-center text-xs text-zinc-400">
@@ -838,7 +845,7 @@ export function FightTotals({ fight, grouped = false }: { fight: Matchup; groupe
           )}
 
           <section className="flex min-w-0 flex-col">
-            <div className="flex flex-1 items-start justify-center px-1 py-3">
+            <div className="flex flex-1 items-start justify-center py-1 @[36rem]:px-1 @[36rem]:py-3">
               <Tooltip
                 label={
                   <TipLines
@@ -854,7 +861,6 @@ export function FightTotals({ fight, grouped = false }: { fight: Matchup; groupe
                   subs={takedowns}
                   colors={{ f1: SIDE.f1.fill, f2: SIDE.f2.fill }}
                   max={Math.max(ctrl.f1 ?? 0, ctrl.f2 ?? 0)}
-                  height={PLOT_HEIGHT}
                 />
               </Tooltip>
             </div>
@@ -899,10 +905,11 @@ function RoundExtras({ kd, td, sub, ctrl }: { kd: string; td: string; sub: strin
   if (!rows.length) return null;
 
   return (
-    <div className={`mt-1.5 whitespace-nowrap ${CHART_TEXT} leading-4 text-zinc-400`}>
+    <div className="mt-0.5 whitespace-nowrap text-[10px] leading-4 text-zinc-400 @[36rem]:mt-1.5 @[36rem]:text-[11px]">
       {rows.map(([value, label]) => (
         <div key={label}>
-          <span className="font-semibold text-zinc-500">{value}</span> {label}
+          <span className="font-semibold text-zinc-500">{value}</span>{" "}
+          {label === "Control" ? <><span className="@[36rem]:hidden">ctrl</span><span className="hidden @[36rem]:inline">Control</span></> : label}
         </div>
       ))}
     </div>
@@ -937,7 +944,7 @@ function RoundColumn({ fight, index }: { fight: Matchup; index: number }) {
 
   return (
     <section className="flex min-w-0 flex-col">
-      <div className="flex flex-1 items-start justify-center py-3">
+      <div className="flex flex-1 items-start justify-center py-1 @[36rem]:py-3">
         <CombinedStrikeColumns
           fight={fight}
           significant={significant}
@@ -965,10 +972,10 @@ function RoundColumn({ fight, index }: { fight: Matchup; index: number }) {
  *  moves to the next row instead of printing over its neighbour. */
 const ROUND_GRID: Record<number, string> = {
   1: "grid-cols-1",
-  2: "grid-cols-1 @[20rem]:grid-cols-2",
-  3: "grid-cols-1 @[20rem]:grid-cols-2 @[34rem]:grid-cols-3",
-  4: "grid-cols-1 @[20rem]:grid-cols-2 @[44rem]:grid-cols-4",
-  5: "grid-cols-1 @[20rem]:grid-cols-2 @[34rem]:grid-cols-3 @[54rem]:grid-cols-5",
+  2: "grid-cols-2",
+  3: "grid-cols-2 @[21rem]:grid-cols-3",
+  4: "grid-cols-2 @[44rem]:grid-cols-4",
+  5: "grid-cols-2 @[21rem]:grid-cols-3 @[54rem]:grid-cols-5",
 };
 
 export function RoundByRound({ fight, grouped = false }: { fight: Matchup; grouped?: boolean }) {
@@ -980,7 +987,7 @@ export function RoundByRound({ fight, grouped = false }: { fight: Matchup; group
     <section className={grouped ? "border-t border-zinc-200" : shell}>
       <PanelHeading title="Round by round" aside={grouped ? undefined : <Legend fight={fight} />} divider={false} />
       {count ? (
-        <div className={`grid gap-x-2 gap-y-5 px-4 pb-4 pt-4 ${columns}`}>
+        <div className={`grid gap-x-1 gap-y-3 px-2 pb-3 pt-1 @[36rem]:gap-x-2 @[36rem]:gap-y-5 @[36rem]:px-4 @[36rem]:pb-4 @[36rem]:pt-4 ${columns}`}>
           {Array.from({ length: count }, (_, i) => (
             <RoundColumn key={i} fight={fight} index={i} />
           ))}
@@ -1022,6 +1029,8 @@ export function FightStatistics({ fight, live = false }: { fight: Matchup; live?
 type ProfileMetric = {
   key: string;
   label: string;
+  /** What the row is called where half a phone is all it has. */
+  short: string;
   format: "rate" | "percent" | "share";
   better: "high" | "low";
   /** Null whenever the source never recorded the denominator. */
@@ -1032,19 +1041,19 @@ const rate = (total: number, seconds: number, per: number) => (seconds > 0 ? (to
 const ratio = (part: number, whole: number) => (whole > 0 ? (part / whole) * 100 : null);
 
 const STRIKING_METRICS: ProfileMetric[] = [
-  { key: "slpm", label: "Strikes landed / min", format: "rate", better: "high", value: (c) => rate(c.sigLanded, c.seconds, 60) },
-  { key: "sapm", label: "Strikes absorbed / min", format: "rate", better: "low", value: (c) => rate(c.sigAbsorbed, c.seconds, 60) },
-  { key: "accuracy", label: "Striking accuracy", format: "percent", better: "high", value: (c) => ratio(c.sigAccuracyLanded, c.sigAttempted) },
-  { key: "defense", label: "Strikes avoided", format: "percent", better: "high", value: (c) => (c.sigFacedAttempted > 0 ? 100 - (c.sigDefenseAbsorbed / c.sigFacedAttempted) * 100 : null) },
-  { key: "knockdowns", label: "Knockdowns / 15 min", format: "rate", better: "high", value: (c) => rate(c.knockdowns, c.seconds, 900) },
+  { key: "slpm", label: "Strikes landed / min", short: "Landed / min", format: "rate", better: "high", value: (c) => rate(c.sigLanded, c.seconds, 60) },
+  { key: "sapm", label: "Strikes absorbed / min", short: "Absorbed / min", format: "rate", better: "low", value: (c) => rate(c.sigAbsorbed, c.seconds, 60) },
+  { key: "accuracy", label: "Striking accuracy", short: "Accuracy", format: "percent", better: "high", value: (c) => ratio(c.sigAccuracyLanded, c.sigAttempted) },
+  { key: "defense", label: "Strikes avoided", short: "Avoided", format: "percent", better: "high", value: (c) => (c.sigFacedAttempted > 0 ? 100 - (c.sigDefenseAbsorbed / c.sigFacedAttempted) * 100 : null) },
+  { key: "knockdowns", label: "Knockdowns / 15 min", short: "KD / 15 min", format: "rate", better: "high", value: (c) => rate(c.knockdowns, c.seconds, 900) },
 ];
 
 const GRAPPLING_METRICS: ProfileMetric[] = [
-  { key: "td", label: "Takedowns / 15 min", format: "rate", better: "high", value: (c) => rate(c.takedowns, c.seconds, 900) },
-  { key: "tdacc", label: "Takedown accuracy", format: "percent", better: "high", value: (c) => ratio(c.takedownAccuracyLanded, c.takedownAttempts) },
-  { key: "tddef", label: "Takedowns stopped", format: "percent", better: "high", value: (c) => (c.takedownsFacedAttempts > 0 ? 100 - (c.takedownDefenseConceded / c.takedownsFacedAttempts) * 100 : null) },
-  { key: "subs", label: "Submission attempts / 15 min", format: "rate", better: "high", value: (c) => rate(c.submissionAttempts, c.seconds, 900) },
-  { key: "control", label: "Share of time in control", format: "share", better: "high", value: (c) => ratio(c.controlSeconds, c.controlTrackedSeconds) },
+  { key: "td", label: "Takedowns / 15 min", short: "TD / 15 min", format: "rate", better: "high", value: (c) => rate(c.takedowns, c.seconds, 900) },
+  { key: "tdacc", label: "Takedown accuracy", short: "TD accuracy", format: "percent", better: "high", value: (c) => ratio(c.takedownAccuracyLanded, c.takedownAttempts) },
+  { key: "tddef", label: "Takedowns stopped", short: "TD stopped", format: "percent", better: "high", value: (c) => (c.takedownsFacedAttempts > 0 ? 100 - (c.takedownDefenseConceded / c.takedownsFacedAttempts) * 100 : null) },
+  { key: "subs", label: "Submission attempts / 15 min", short: "Sub att. / 15 min", format: "rate", better: "high", value: (c) => rate(c.submissionAttempts, c.seconds, 900) },
+  { key: "control", label: "Share of time in control", short: "Control time", format: "share", better: "high", value: (c) => ratio(c.controlSeconds, c.controlTrackedSeconds) },
 ];
 
 function profileText(value: number | null, format: ProfileMetric["format"]): string {
@@ -1053,7 +1062,8 @@ function profileText(value: number | null, format: ProfileMetric["format"]): str
   return `${Math.round(value)}%`;
 }
 
-/** One measure, both fighters, mirrored around the centre line. */
+/** One measure, both fighters, mirrored around the centre line: the name
+ *  over the pair of bars, each figure at its own end. */
 function ProfileRow({
   fight,
   metric,
@@ -1076,13 +1086,18 @@ function ProfileRow({
       : (values.f1! < values.f2! ? "f1" : "f2");
 
   return (
-    <div className="py-1.5">
-      <div className="grid grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)_3rem] items-center gap-x-1.5">
+    <div className="py-1" title={`${metric.label}${metric.better === "low" ? " — less is better" : ""}`}>
+      <div className={`text-center text-[10px] leading-4 text-zinc-500 @[40rem]:text-[11px]`}>
+        <span className="@[40rem]:hidden">{metric.short}</span>
+        <span className="hidden @[40rem]:inline">{metric.label}</span>
+        {metric.better === "low" ? <span className="text-zinc-400"> ↓</span> : null}
+      </div>
+      <div className="grid grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,1fr)_2.25rem] items-center gap-x-1 @[40rem]:grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)_3rem] @[40rem]:gap-x-1.5">
         {SIDES.map((side) => {
           const value = values[side];
           const width = value == null ? 3 : Math.max(3, (value / scale) * 100);
           const bar = (
-            <span key={`${side}-bar`} className={`flex h-3.5 items-center bg-plot-track ${side === "f1" ? "justify-end" : "border-l border-plot-axis"}`}>
+            <span key={`${side}-bar`} className={`flex h-2 items-center bg-plot-track @[40rem]:h-3 ${side === "f1" ? "justify-end" : "border-l border-plot-axis"}`}>
               <span
                 className={`stat-bar plot-grow block h-full ${side === "f1" ? "rounded-l-[3px]" : "rounded-r-[3px]"}`}
                 data-stat-side={side}
@@ -1107,10 +1122,6 @@ function ProfileRow({
           return side === "f1" ? [figure, bar] : [bar, figure];
         })}
       </div>
-      <div className={`mt-0.5 text-center ${CHART_TEXT} leading-4 text-zinc-500`}>
-        {metric.label}
-        {metric.better === "low" ? <span className="text-zinc-400"> · less is better</span> : null}
-      </div>
     </div>
   );
 }
@@ -1122,21 +1133,23 @@ function MethodBar({ side, counts, total }: { side: Side; counts: { ko: number; 
     { key: "sub", label: "Submission", value: counts.sub, color: SIDE[side].fill },
     { key: "dec", label: "Decision or other", value: counts.decision, color: SIDE[side].soft },
   ];
-  if (total <= 0) return <p className={`${CHART_TEXT} text-zinc-400`}>None yet</p>;
+  if (total <= 0) return <p className="text-[10px] leading-4 text-zinc-400 @[36rem]:text-[11px]">None yet</p>;
   return (
     <>
-      <span className="flex h-3 w-full gap-[2px] overflow-hidden rounded-[3px]" role="img" aria-label={segments.map((segment) => `${segment.value} by ${segment.label}`).join(", ")}>
+      <span className="flex h-2 w-full gap-[2px] overflow-hidden rounded-[3px] @[36rem]:h-3" role="img" aria-label={segments.map((segment) => `${segment.value} by ${segment.label}`).join(", ")}>
         {segments.filter((segment) => segment.value > 0).map((segment) => (
           <span key={segment.key} title={`${segment.value} by ${segment.label}`} style={{ width: `${(segment.value / total) * 100}%`, backgroundColor: segment.color }} />
         ))}
       </span>
-      <span className={`mt-1 block ${CHART_TEXT} tabular-nums text-zinc-500`}>
+      <span className="mt-0.5 block whitespace-nowrap text-[10px] leading-4 tabular-nums text-zinc-500 @[36rem]:mt-1 @[36rem]:text-[11px]">
         {counts.ko} KO · {counts.sub} SUB · {counts.decision} DEC
       </span>
     </>
   );
 }
 
+/** Wins beside losses. Wide, each is a mirrored pair like the rows above;
+ *  on a phone each half stacks its two fighters, first over second. */
 function MethodProfile({ careers }: { careers: Record<Side, CareerBefore | null> }) {
   const split = (career: CareerBefore | null, kind: "wins" | "losses") => {
     if (!career) return { ko: 0, sub: 0, decision: 0, total: 0 };
@@ -1150,15 +1163,15 @@ function MethodProfile({ careers }: { careers: Record<Side, CareerBefore | null>
     { key: "losses", label: "Losses" },
   ] as const;
   return (
-    <div className="grid grid-cols-1 gap-x-6 gap-y-3 border-t border-zinc-100 px-4 py-3 @[36rem]:grid-cols-2">
+    <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-zinc-100 px-3 py-2.5 @[36rem]:gap-x-6 @[36rem]:px-4 @[36rem]:py-3">
       {rows.map((row) => (
-        <div key={row.key}>
-          <div className={`mb-1.5 text-center ${sectionLabel}`}>{row.label}</div>
-          <div className="grid grid-cols-2 gap-3">
+        <div key={row.key} className="min-w-0">
+          <div className={`mb-1 text-center ${sectionLabel}`}>{row.label}</div>
+          <div className="grid gap-1.5 @[36rem]:grid-cols-2 @[36rem]:gap-3">
             {SIDES.map((side) => {
               const counts = split(careers[side], row.key);
               return (
-                <div key={side} className={side === "f1" ? "text-right" : "text-left"}>
+                <div key={side} className={`min-w-0 ${side === "f1" ? "@[36rem]:text-right" : "@[36rem]:text-left"}`}>
                   <MethodBar side={side} counts={counts} total={counts.total} />
                 </div>
               );
@@ -1187,10 +1200,10 @@ export function CareerProfile({ fight }: { fight: Matchup }) {
       />
       {anyTracked ? (
         <>
-          <div className="grid grid-cols-1 gap-x-8 px-4 pb-1 pt-2 @[40rem]:grid-cols-2">
+          <div className="grid grid-cols-2 gap-x-4 px-3 pb-1 pt-1.5 @[40rem]:gap-x-8 @[40rem]:px-4 @[40rem]:pt-2">
             {groups.map((group) => (
               <div key={group.key} className="min-w-0">
-                <div className={`pb-1 pt-1 text-center ${sectionLabel}`}>{group.label}</div>
+                <div className={`pb-0.5 pt-1 text-center ${sectionLabel}`}>{group.label}</div>
                 {group.metrics.map((metric) => (
                   <ProfileRow key={metric.key} fight={fight} metric={metric} careers={careers} />
                 ))}
@@ -1219,7 +1232,8 @@ export function Scorecards({ fight }: { fight: Matchup }) {
   return (
     <section className={`${shell} overflow-hidden`}>
       <PanelHeading title="Scorecards" />
-      <ul className={`grid divide-y divide-zinc-100 sm:divide-x sm:divide-y-0 ${fans ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
+      <ScorecardTable fight={fight} judges={judges} fans={fans} rounds={data?.rounds ?? []} />
+      <ul className={`hidden divide-x divide-zinc-100 sm:grid ${fans ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
         {judges.map((j, judgeIndex) => {
           // Older cards carry the scores without the judge's name.
           const judgeName = j.judge || `Judge ${judgeIndex + 1}`;
@@ -1312,5 +1326,84 @@ export function Scorecards({ fight }: { fight: Matchup }) {
         })() : null}
       </ul>
     </section>
+  );
+}
+
+type Judge = NonNullable<FightDetailBlock["judges"]>[number];
+
+/** A pair of scores, the winner's in their colour and the other's muted. */
+function ScorePair({ f1, f2, text, size }: { f1: number; f2: number; text: (value: number) => string; size: string }) {
+  const lead: Side | null = f1 > f2 ? "f1" : f2 > f1 ? "f2" : null;
+  const tone = (side: Side) => lead === side ? "font-semibold" : "font-medium text-zinc-400";
+  return (
+    <span className={`inline-grid grid-cols-[1fr_auto_1fr] items-center gap-1 tabular-nums leading-tight ${size}`}>
+      <span className={`text-right ${tone("f1")}`} style={lead === "f1" ? { color: SIDE.f1.ink } : undefined}>{text(f1)}</span>
+      <span className="h-3 w-px bg-zinc-200" aria-hidden="true" />
+      <span className={`text-left ${tone("f2")}`} style={lead === "f2" ? { color: SIDE.f2.ink } : undefined}>{text(f2)}</span>
+    </span>
+  );
+}
+
+/** Every card on a phone, as one table: judges (and the fans) across, the
+ *  total first and each round under it, so the round names are printed once. */
+function ScorecardTable({ fight, judges, fans, rounds }: {
+  fight: Matchup;
+  judges: Judge[];
+  fans: ScoreSummary["totals"] | null;
+  rounds: ScoreSummary["rounds"];
+}) {
+  const location = useLocation();
+  const roundCount = Math.max(0, ...judges.map((judge) => judge.rounds?.length ?? 0), fans ? rounds.length : 0);
+  const places = fans && !(Number.isInteger(fans.avg1!) && Number.isInteger(fans.avg2!)) ? 2 : 0;
+  const columns = judges.length + (fans ? 1 : 0);
+  const cell = "flex min-w-0 items-center justify-center px-0.5";
+  return (
+    <div
+      className="grid px-2 pb-2.5 pt-1.5 text-center sm:hidden"
+      style={{ gridTemplateColumns: `1.5rem repeat(${columns}, minmax(0, 1fr))` }}
+    >
+      <span />
+      {judges.map((judge, index) => (
+        <span key={`name-${index}`} className="line-clamp-2 break-words px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] text-zinc-400" title={judge.judge || undefined}>
+          {judge.judge ? lastName(judge.judge) : `Judge ${index + 1}`}
+        </span>
+      ))}
+      {fans ? (
+        <Link to={{ search: "?tab=score" }} replace state={location.state} className="line-clamp-2 px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] text-sky-600 underline-offset-2 hover:underline">
+          {fans.completeCards.toLocaleString()} {fans.completeCards === 1 ? "fan" : "fans"}
+        </Link>
+      ) : null}
+
+      <span className={`${sectionLabel} !text-[9px] !tracking-normal flex items-center`}>Total</span>
+      {judges.map((judge, index) => (
+        <span key={`total-${index}`} className={`${cell} py-1.5`} aria-label={`${judge.judge || `Judge ${index + 1}`}: ${lastName(fight.f1.name)} ${judge.f1Score}, ${lastName(fight.f2.name)} ${judge.f2Score}`}>
+          <ScorePair f1={judge.f1Score} f2={judge.f2Score} text={String} size="text-lg" />
+        </span>
+      ))}
+      {fans ? (
+        <span className={`${cell} py-1.5`} aria-label={`Fans: ${lastName(fight.f1.name)} ${fans.avg1!.toFixed(places)}, ${lastName(fight.f2.name)} ${fans.avg2!.toFixed(places)}`}>
+          <ScorePair f1={fans.avg1!} f2={fans.avg2!} text={(value) => value.toFixed(places)} size={places ? "text-[13px]" : "text-lg"} />
+        </span>
+      ) : null}
+
+      {Array.from({ length: roundCount }, (_, index) => (
+        <Fragment key={`round-${index}`}>
+          <span className={`flex items-center border-t border-zinc-100 py-1 ${sectionLabel} !text-[9px] !tracking-normal`}>R{index + 1}</span>
+          {judges.map((judge, judgeIndex) => {
+            const round = judge.rounds?.[index];
+            return (
+              <span key={judgeIndex} className={`${cell} border-t border-zinc-100 py-1`}>
+                {round ? <ScorePair f1={round.f1Score} f2={round.f2Score} text={String} size="text-[11px]" /> : <span className="text-[11px] text-zinc-300">—</span>}
+              </span>
+            );
+          })}
+          {fans ? (
+            <span className={`${cell} border-t border-zinc-100 py-1`}>
+              {rounds[index] ? <ScorePair f1={rounds[index].total1} f2={rounds[index].total2} text={decimalScore} size="text-[11px]" /> : <span className="text-[11px] text-zinc-300">—</span>}
+            </span>
+          ) : null}
+        </Fragment>
+      ))}
+    </div>
   );
 }
