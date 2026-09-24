@@ -1,5 +1,4 @@
-import type { MouseEvent, ReactNode } from "react";
-import { Link } from "react-router-dom";
+import type { ReactNode } from "react";
 import { formatDate, formatDateShort } from "../format";
 
 export const CARD_STEP = "inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
@@ -18,23 +17,17 @@ export function CardNavigation({ previous, center, next }: {
   );
 }
 
-export function CardEventTitle({ name, date, location, dayLabel, href, onTitleClick, children }: {
+export function CardEventTitle({ name, date, location, dayLabel, children }: {
   name: string;
   date: string;
   location: string | null | undefined;
   dayLabel?: string | null;
-  href?: string;
-  onTitleClick?: (event: MouseEvent<HTMLAnchorElement>) => void;
   children?: ReactNode;
 }) {
-  const title = href ? (
-    <Link to={href} onClick={onTitleClick} className="underline-offset-2 hover:underline">{name}</Link>
-  ) : name;
-
   return (
     <div className="flex items-start justify-between gap-3 px-3 py-2 @[34rem]:px-6 @[48rem]:items-center @[48rem]:gap-6 @[48rem]:py-4">
       <div className="min-w-0">
-        <h1 className="text-balance text-sm font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-2xl">{title}</h1>
+        <h1 className="text-balance text-sm font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-2xl">{name}</h1>
         <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[48rem]:mt-1 @[48rem]:gap-x-2 @[48rem]:text-xs @[48rem]:leading-relaxed">
           <span className="whitespace-nowrap font-medium text-zinc-600">
             <span className="@[48rem]:hidden">{formatDateShort(date)}{dayLabel ? `, ${dayLabel}` : ""}</span>

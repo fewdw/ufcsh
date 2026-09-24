@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, List } from "lucide-react";
+import { ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { isFightDay, liveFightId } from "../liveEvent";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -45,6 +45,7 @@ import { SITE_URL, useSeo } from "../seo";
 import { useSettings, withRanking } from "../settings";
 import { scoreableRoundCount } from "../scoring";
 import { useNow } from "../useNow";
+import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 
 const shell = PANEL_SHELL;
 const RESULT_PILL =
@@ -849,7 +850,7 @@ function MatchupTabs({ tabs, current, onSelect }: { tabs: MatchupTab[]; current:
 }
 
 /** Matchup view rendered inside the events layout: card rail + detail + close. */
-export default function FightView({ fightId, eventIdHint, onBrowse }: { fightId: string; eventIdHint?: string | null; onBrowse: () => void }) {
+export default function FightView({ fightId, eventIdHint }: { fightId: string; eventIdHint?: string | null }) {
   const { settings } = useSettings();
   const navigate = useNavigate();
   const location = useLocation();
@@ -958,8 +959,10 @@ export default function FightView({ fightId, eventIdHint, onBrowse }: { fightId:
   const changingMatchup = !loadedFight && fight.id !== fightId;
   const orderedFights = cardEvent?.id === fight.event.id ? cardEvent.fights : [];
   const fightIndex = orderedFights.findIndex((entry) => entry.id === fightId);
-  const previous = fightIndex > 0 ? orderedFights[fightIndex - 1] : null;
-  const next = fightIndex >= 0 ? orderedFights[fightIndex + 1] ?? null : null;
+  // Card rows run main event first. Next moves up that list toward the main
+  // event; Prev moves down toward the opening bout.
+  const previous = fightIndex >= 0 ? orderedFights[fightIndex + 1] ?? null : null;
+  const next = fightIndex > 0 ? orderedFights[fightIndex - 1] : null;
   const navSearch = cardFightSearch(location.search);
 
   // Only tabs with something in them; a finished or live bout opens on what
@@ -996,24 +999,14 @@ export default function FightView({ fightId, eventIdHint, onBrowse }: { fightId:
         ) : null}
         <div ref={detailScroll} inert={changingMatchup} className="h-full overflow-y-auto" aria-busy={changingMatchup}>
           <div className="@container flex w-full flex-col gap-3 pb-8">
-            <div className="shrink-0">
-            <section data-photo-view={portraits ? "full" : "face"} className={`matchup-top-card matchup-overview @container overflow-hidden ${shell}`}>
+            <div className="flex shrink-0 flex-col gap-3">
+            <section className={`overflow-hidden ${shell}`}>
               <CardNavigation
                 previous={<FightStepLink fight={previous} direction="prev" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} />}
-                center={<>
-                  <span className="xl:hidden">
-                    <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={onBrowse}
-                      className={`${CARD_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
-                      <List className="h-3.5 w-3.5" aria-hidden="true" />All events
-                    </button>
-                  </span>
-                  <span className="hidden xl:block">
-                    <button type="button" onClick={closeFight} aria-keyshortcuts="Escape"
-                      className={`${CARD_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
-                      <List className="h-3.5 w-3.5" aria-hidden="true" />Event card
-                    </button>
-                  </span>
-                </>}
+                center={<button type="button" onClick={closeFight} aria-keyshortcuts="Escape"
+                  className={`${CARD_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+                  <List className="h-3.5 w-3.5" aria-hidden="true" />Card
+                </button>}
                 next={<FightStepLink fight={next} direction="next" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} />}
               />
               <CardEventTitle
@@ -1021,11 +1014,16 @@ export default function FightView({ fightId, eventIdHint, onBrowse }: { fightId:
                 date={fight.event.date}
                 location={fight.event.location}
                 dayLabel={fight.status === "past" ? null : futureDayLabel(fight.event.date, now)}
-                href={`/events/${fight.event.id}`}
-                onTitleClick={(event) => { event.preventDefault(); closeFight(); }}
               >
                 {isFightDay(fight.event.date) && error && !changingMatchup ? <span role="status" className="text-xs text-zinc-500">Connection interrupted; retrying…</span> : null}
               </CardEventTitle>
+            </section>
+
+            <section data-photo-view={portraits ? "full" : "face"} className={`matchup-top-card matchup-overview @container relative overflow-hidden ${shell}`}>
+              <button type="button" onClick={closeFight} aria-label="Close matchup and return to card" title="Close matchup (Esc)" aria-keyshortcuts="Escape"
+                className={`absolute right-2 top-2 z-10 ${CLOSE_BUTTON}`}>
+                <X className={CLOSE_ICON} aria-hidden="true" />
+              </button>
 
               <div className="matchup-body px-5 py-5">
                 {/* The two heroes and the price sit on one line, the price
