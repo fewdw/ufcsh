@@ -73,7 +73,9 @@ export function useInfiniteList<P extends Page, T>({ resetKey, load, items, item
   useEffect(() => {
     generation.current++;
     busy.current = false;
-    commit([]);
+    // Start counting from the first page again, but leave the rows on screen
+    // until it arrives, so switching a sort does not flash an empty panel.
+    shown.current = [];
     setError("");
     void loadNext();
   }, [resetKey, loadNext]);

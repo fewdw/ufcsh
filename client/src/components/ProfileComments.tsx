@@ -2,11 +2,12 @@ import { useAuth } from "@clerk/react";
 import { ArrowBigUp } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { commentLink, type ProfileComment, type ProfileComments as CommentsData } from "../discussion";
+import { commentLink, type ProfileComment, type ProfileCommentSort, type ProfileComments as CommentsData } from "../discussion";
 import type { ScorerIdentity } from "../scoring";
 import { exactTime, relativeAge } from "../format";
 import { ConfirmRemove, RemoveX } from "./ConfirmRemove";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
+import { segmentedGroup, segmentedIdle, segmentedSelected } from "./segmented";
 import { fetchPage, LIST_META, CLEAR_REMOVE, LIST_ROW, LoadMore, useInfiniteList } from "./InfiniteList";
 
 /** Everything a fan has said in fight discussions, newest first. Listed to
@@ -17,12 +18,13 @@ export default function ProfileComments({ handle, mine, visible, visibilityContr
   visibilityControl?: React.ReactNode;
 }) {
   const { getToken } = useAuth();
+  const [sort, setSort] = useState<ProfileCommentSort>("new");
   const list = useInfiniteList({
-    resetKey: `${handle}:${mine}:${visible}`,
+    resetKey: `${handle}:${mine}:${visible}:${sort}`,
     load: async offset => {
       // The owner's token is what lets them read a list they keep private.
       const token = mine ? await getToken().catch(() => null) : null;
-      return fetchPage<CommentsData>(`/api/profiles/${encodeURIComponent(handle)}/comments?offset=${offset}`,
+      return fetchPage<CommentsData>(`/api/profiles/${encodeURIComponent(handle)}/comments?sort=${sort}&offset=${offset}`,
         { headers: token ? { Authorization: `Bearer ${token}` } : {} }, "Comments could not be loaded.");
     },
     items: page => page.comments,
@@ -66,6 +68,7 @@ export default function ProfileComments({ handle, mine, visible, visibilityContr
             {visible ? "Visible on your profile" : "Only you can see this list"}
           </span>
         ) : null}
+        controls={data.total > 1 ? <SortToggle sort={sort} onChange={setSort} /> : null}
       />
       {!data.total ? (
         <p className="px-5 py-10 text-center text-sm text-zinc-500">
@@ -107,6 +110,21 @@ export default function ProfileComments({ handle, mine, visible, visibilityContr
       onCancel={() => { setConfirming(null); setRemoveError(""); }}
       onConfirm={() => void remove(confirming)} /> : null}
   </>;
+}
+
+const SORTS: { id: ProfileCommentSort; label: string }[] = [{ id: "new", label: "Recent" }, { id: "top", label: "Popular" }];
+
+function SortToggle({ sort, onChange }: { sort: ProfileCommentSort; onChange: (sort: ProfileCommentSort) => void }) {
+  return (
+    <div role="radiogroup" aria-label="Sort comments" className={`${segmentedGroup} w-fit`}>
+      {SORTS.map(option => (
+        <button key={option.id} type="button" role="radio" aria-checked={sort === option.id} onClick={() => onChange(option.id)}
+          className={`min-h-8 rounded-full px-3.5 text-[13px] font-medium transition sm:min-h-7 sm:text-xs ${sort === option.id ? segmentedSelected : segmentedIdle}`}>
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 /** Everyone the reader has blocked in discussions, and the way back. */
