@@ -7,9 +7,10 @@ import { lastName } from "../format";
 import type { MyScorecard, RoundScore, ScoreSummary } from "../scoring";
 import { fightFinish, scoreTotal } from "../scoring";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
+import { BUTTON_PRIMARY_LARGE, BUTTON_QUIET } from "../ui";
 
-const primary = "rounded-full bg-zinc-900 px-5 py-2.5 text-xs font-medium text-white hover:opacity-80 disabled:opacity-40";
-const quiet = "rounded-full px-3 py-2.5 text-xs font-medium text-zinc-500 hover:text-zinc-900 disabled:opacity-40";
+const primary = BUTTON_PRIMARY_LARGE;
+const quiet = BUTTON_QUIET;
 /** The ten-point must, the first fighter's widest round on the left through to
  *  the second's, so the buttons run the way the fighters do everywhere else and
  *  the draw sits in the center. A deduction ends each side. */
@@ -141,7 +142,7 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
         ) : undefined}
       />
       {loading ? <p className="p-5 text-sm text-zinc-500">Loading…</p> : !saved ? (
-        <p role="alert" className="p-5 text-sm text-red-600">
+        <p role="alert" className="p-5 text-sm text-rose-600">
           {error} <button className="underline" onClick={() => void load(undefined, false)}>Retry</button>
         </p>
       ) : (
@@ -228,7 +229,7 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
           </div>
           {eligibility.state === "live" && eligibility.available < eligibility.scheduled ? <p className="mt-2 text-[11px] text-zinc-400">Rounds open as the feed reports them.</p> : null}
           {error ? (
-            <p role="alert" className="mt-2 text-right text-[11px] text-red-600">
+            <p role="alert" className="mt-2 text-right text-[11px] text-rose-600">
               {error} {conflict ? <button className="underline" disabled={busy} onClick={() => void load(undefined, false)}>Reload</button> : null}
             </p>
           ) : null}

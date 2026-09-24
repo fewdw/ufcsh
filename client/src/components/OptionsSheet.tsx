@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { SlidersHorizontal, X } from "lucide-react";
+import { CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
 
 /** A page's options. A popover under its button on a wide screen; on a phone
  *  a sheet from the bottom edge, where a thumb can reach every control. A
@@ -149,7 +150,7 @@ export default function OptionsSheet({
       {open ? (() => {
         const sheet = <>
           <div
-            className="fixed inset-0 z-[60] bg-black/30 sm:hidden"
+            className="fixed inset-0 z-[60] bg-zinc-950/40 backdrop-blur-[3px] sm:hidden"
             style={phone && dragY ? { opacity: Math.max(0, 1 - dragY / (sheetRef.current?.offsetHeight || 400)), transition: drag.current ? "none" : "opacity 200ms ease-out" } : undefined}
             aria-hidden="true"
             onClick={(event) => { event.preventDefault(); event.stopPropagation(); closedAt.current = Date.now(); close(); }}
@@ -172,13 +173,13 @@ export default function OptionsSheet({
                 <span className="h-1 w-9 rounded-full bg-zinc-300" />
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-zinc-900">{label}</span>
+                <span className={DIALOG_TITLE}>{label}</span>
                 <div className="flex items-center gap-1">
                   <button type="button" onClick={onReset} className="rounded-full px-2 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900">
                     Reset
                   </button>
-                  <button type="button" onClick={() => close(true)} aria-label={`Close ${label.toLowerCase()}`} className="matchup-header-control w-7">
-                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  <button type="button" onClick={() => close(true)} aria-label={`Close ${label.toLowerCase()}`} className={`-mr-2 ${CLOSE_BUTTON}`}>
+                    <X className={CLOSE_ICON} aria-hidden="true" />
                   </button>
                 </div>
               </div>

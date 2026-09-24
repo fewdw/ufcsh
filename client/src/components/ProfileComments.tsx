@@ -7,7 +7,7 @@ import type { ScorerIdentity } from "../scoring";
 import { exactTime, relativeAge } from "../format";
 import { ConfirmRemove, RemoveX } from "./ConfirmRemove";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
-import { segmentedGroup, segmentedIdle, segmentedSelected } from "./segmented";
+import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedOption } from "./segmented";
 import { fetchPage, LIST_META, CLEAR_REMOVE, LIST_ROW, LoadMore, useInfiniteList } from "./InfiniteList";
 
 /** Everything a fan has said in fight discussions, newest first. Listed to
@@ -119,7 +119,7 @@ function SortToggle({ sort, onChange }: { sort: ProfileCommentSort; onChange: (s
     <div role="radiogroup" aria-label="Sort comments" className={`${segmentedGroup} w-fit`}>
       {SORTS.map(option => (
         <button key={option.id} type="button" role="radio" aria-checked={sort === option.id} onClick={() => onChange(option.id)}
-          className={`min-h-8 rounded-full px-3.5 text-[13px] font-medium transition sm:min-h-7 sm:text-xs ${sort === option.id ? segmentedSelected : segmentedIdle}`}>
+          className={`${segmentedOption} ${sort === option.id ? segmentedSelected : segmentedIdle}`}>
           {option.label}
         </button>
       ))}
@@ -148,7 +148,7 @@ function BlockedPeople() {
     <section className={`${PANEL_SHELL} overflow-hidden`}>
       <PanelHeading title="Blocked people" subtitle={`${(blocked ?? []).length}`} />
       <p className="border-b border-zinc-100 px-5 py-2 text-xs text-zinc-500">Their comments are collapsed for you, and they can’t reply to yours.</p>
-      {error ? <p role="alert" className="px-5 py-3 text-xs text-red-600">{error}</p> : null}
+      {error ? <p role="alert" className="px-5 py-3 text-xs text-rose-600">{error}</p> : null}
       <ul className="divide-y divide-zinc-100">
         {(blocked ?? []).map(person => (
           <li key={person.publicId} className="flex items-center justify-between gap-3 px-5 py-2.5 text-sm">

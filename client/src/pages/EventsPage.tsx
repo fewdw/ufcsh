@@ -1,3 +1,4 @@
+import { PANEL } from "../components/chartTokens";
 import { isFightDay, landingEvent, liveFightId, taggedEvent } from "../liveEvent";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -20,8 +21,9 @@ import { eventKind, type EventKind } from "../eventKind";
 import SearchGlyph from "../components/SearchGlyph";
 import { ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
+import { CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
 
-const shell = "rounded-2xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
+const shell = PANEL;
 /** The source flags a tournament or TUF final the same way it flags a
  * championship bout. Only a belt gets the gold tag; a final says what it is. */
 const TITLE_TAG: Record<string, { label: string; className: string }> = {
@@ -160,11 +162,11 @@ function EventSidebar({
             header the filter sheets use. Docked beside the card it needs none. */}
         <div className={`flex items-center justify-between gap-3 pl-1 ${dock.toggle}`}>
           <div className="min-w-0">
-            <h2 className="text-base font-semibold leading-tight text-zinc-950">All events</h2>
+            <h2 className={`${DIALOG_TITLE} leading-tight`}>All events</h2>
             <p className="text-xs tabular-nums text-zinc-500">{scoped.length.toLocaleString()} {KIND_NOUN[kind]}</p>
           </div>
-          <button type="button" onClick={onBack} aria-label="Close all events" title="Back to card" className="-mr-1.5 grid h-9 w-9 shrink-0 place-items-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900">
-            <X className="h-5 w-5" aria-hidden="true" />
+          <button type="button" onClick={onBack} aria-label="Close all events" title="Back to card" className={`-mr-1.5 ${CLOSE_BUTTON}`}>
+            <X className={CLOSE_ICON} aria-hidden="true" />
           </button>
         </div>
         {/* Built from the same pill, border and glyph as the header's search

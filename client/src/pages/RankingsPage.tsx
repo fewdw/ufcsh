@@ -1,3 +1,4 @@
+import { PANEL } from "../components/chartTokens";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api";
@@ -14,7 +15,7 @@ import ResultDots from "../components/ResultDots";
 import { resultDot } from "../resultDots";
 import OptionsSheet, { SHEET_SELECT, SheetField, SwitchRow } from "../components/OptionsSheet";
 
-const shell = "rounded-2xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
+const shell = PANEL;
 
 type ViewFilter = "men" | "women" | "p4p" | "all";
 type RankingFeatures = {

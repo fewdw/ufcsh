@@ -28,7 +28,7 @@ export function OddsFormatTabs({ format, onChange }: { format: OddsFormat; onCha
           type="button"
           aria-pressed={format === option.id}
           onClick={() => onChange(option.id)}
-          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold transition ${format === option.id ? segmentedSelected : segmentedIdle}`}
+          className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition ${format === option.id ? segmentedSelected : segmentedIdle}`}
         >
           {option.label}
         </button>
@@ -205,7 +205,7 @@ function OddsCell({ quote, hit, favorite, live, format, bet, dense }: { quote: O
       {formatPrice(price.line, format)}
     </span>
     {/* Every live price keeps the triangle's slot so the numbers stay aligned. */}
-    {live ? <span className={`absolute right-0 top-1/2 w-2 -translate-y-1/2 text-center text-[7px] leading-none ${move === "up" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`} {...(move ? { role: "img", "aria-label": `Line moving ${move}`, title: `Line moving ${move}` } : { "aria-hidden": true })}>{move === "up" ? "▲" : move === "down" ? "▼" : ""}</span> : null}
+    {live ? <span className={`absolute right-0 top-1/2 w-2 -translate-y-1/2 text-center text-[7px] leading-none ${move === "up" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`} {...(move ? { role: "img", "aria-label": `Line moving ${move}`, title: `Line moving ${move}` } : { "aria-hidden": true })}>{move === "up" ? "▲" : move === "down" ? "▼" : ""}</span> : null}
   </>;
 
   if (!leg) return <span className={`relative inline-flex items-center justify-center px-2 ${dense ? "" : "py-0.5"}`}>{content}</span>;

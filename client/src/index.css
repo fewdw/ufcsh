@@ -263,6 +263,11 @@ select:not([multiple]):not([size]) {
 .dark .hover\:text-zinc-950:hover { color: #fff !important; }
 .dark select,
 .dark input { color-scheme: dark; }
+/* A black button on a near-black panel disappears; on the dark theme the
+   primary action inverts to a light pill instead (see ui.ts). */
+.dark .ui-primary { background-color: #f4f4f5 !important; color: #18181b !important; }
+.dark .ui-primary:hover { background-color: #d4d4d8 !important; }
+.dark .ui-danger:hover { background-color: #e11d48 !important; }
 .dark * { scrollbar-color: #52525b transparent; }
 
 /* Slim, quiet scrollbars for the always-scrolling panes. */
@@ -427,17 +432,21 @@ select:not([multiple]):not([size]) {
   .matchup-top-card .matchup-hero { row-gap: 10px; }
 }
 
+/* A panel's own close button: a bare glyph with a round hover, like every
+   other ✕ in the app, rather than a boxed key. */
 .matchup-header-control {
   display: inline-flex;
-  height: 24px;
+  height: 28px;
+  min-width: 28px;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--matchup-rule);
-  border-radius: 6px;
+  border-radius: 9999px;
   background: transparent;
   color: var(--color-zinc-500);
+  transition: background-color 150ms, color 150ms;
 }
-.matchup-header-control:hover { background: var(--color-zinc-100); }
+.matchup-header-control:hover { background: var(--color-zinc-100); color: var(--color-zinc-900); }
+.dark .matchup-header-control:hover { background: #27272a; color: #fff; }
 .matchup-header-control[aria-pressed="true"] { color: var(--color-zinc-900); }
 .dark .matchup-header-control { color: #a1a1aa; }
 .dark .matchup-header-control:hover { background: #27272a; }

@@ -22,7 +22,7 @@ import FighterPortrait from "../components/FighterPortrait";
 import { resultDot } from "../resultDots";
 import MatchupOdds, { OddsFormatTabs, OddsMarkets } from "../components/MatchupOdds";
 import { hasOddsMarkets } from "../oddsLayout";
-import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
+import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedTab } from "../components/segmented";
 import {
   CareerProfile,
   CHART_TEXT,
@@ -478,7 +478,7 @@ function RecentForm({ fight }: { fight: Matchup }) {
   const rows = Math.max(f1.length, f2.length);
   return (
     <section className={`${shell} flex flex-col overflow-hidden`}>
-      <PanelHeading title="Last Five" />
+      <PanelHeading title="Last five" />
       {rows === 0 ? (
         <PanelEmpty>No earlier professional bouts are available.</PanelEmpty>
       ) : (
@@ -805,7 +805,7 @@ function MatchupTabs({ tabs, current, onSelect }: { tabs: MatchupTab[]; current:
           tabIndex={tab === current ? 0 : -1}
           onClick={() => onSelect(tab)}
           onKeyDown={(event) => move(event, index)}
-          className={`min-w-0 flex-1 rounded-full px-2 py-1.5 text-[11px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 sm:px-3 sm:text-xs ${tab === current ? segmentedSelected : segmentedIdle}`}
+          className={`${segmentedTab} ${tab === current ? segmentedSelected : segmentedIdle}`}
         >
           {TAB_LABEL[tab]}
         </button>

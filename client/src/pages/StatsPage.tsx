@@ -711,7 +711,7 @@ function Leaderboard({
                 type="button"
                 aria-pressed={settings.recordGroup === group}
                 onClick={() => update("recordGroup", group)}
-                className={`rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize transition ${settings.recordGroup === group ? segmentedSelected : segmentedIdle}`}
+                className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize transition ${settings.recordGroup === group ? segmentedSelected : segmentedIdle}`}
               >
                 {group}
               </button>

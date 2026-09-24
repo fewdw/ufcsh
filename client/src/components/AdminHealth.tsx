@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAdminResource } from "../admin";
 import { relativeAge } from "../format";
+import { BUTTON_PRIMARY } from "../ui";
 
 type Summary = {
   requests: number; errors: number; clientErrors: number; notFound: number; throttled: number; slow: number;
@@ -396,7 +397,7 @@ export default function AdminHealth() {
           This page is live and covers the last hour; it starts over when the server restarts. Fourteen days of history,
           CPU and disk for the whole machine, and alerts live in Grafana.
         </p>
-        <a href={data.grafanaUrl ?? "http://localhost:3001"} target="_blank" rel="noreferrer" className="mt-2 inline-block rounded-lg bg-zinc-900 px-3 py-1.5 font-semibold text-white hover:bg-zinc-700">
+        <a href={data.grafanaUrl ?? "http://localhost:3001"} target="_blank" rel="noreferrer" className={`mt-2 ${BUTTON_PRIMARY}`}>
           Open Grafana
         </a>
         {!data.grafanaUrl ? (

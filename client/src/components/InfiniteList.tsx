@@ -126,7 +126,7 @@ export const LIST_VALUE = "shrink-0 text-sm font-semibold tabular-nums";
 /** The foot of a scrolling list: where the next page is asked for. */
 export function LoadMore({ list }: { list: Pick<ReturnType<typeof useInfiniteList>, "more" | "error" | "retry" | "sentinel"> }) {
   if (list.error && list.more) return (
-    <p className="border-t border-zinc-100 px-5 py-4 text-center text-sm text-red-600">
+    <p className="border-t border-zinc-100 px-5 py-4 text-center text-sm text-rose-600">
       Couldn’t load more. <button type="button" className="underline" onClick={() => void list.retry()}>Retry</button>
     </p>
   );

@@ -56,7 +56,7 @@ export default function AdminLive() {
           Rounds the feed has already published stay open.
         </p>
       </div>
-      {failed ? <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{failed}</p> : null}
+      {failed ? <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">{failed}</p> : null}
       {!fights.length ? (
         <p className="rounded-xl border border-zinc-200 bg-white px-4 py-10 text-center text-sm text-zinc-500">
           No card is being fought today. Bouts appear here on fight day.

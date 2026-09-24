@@ -41,8 +41,18 @@ export function futureDayLabel(date: string, now = Date.now()): string | null {
 /** How a bout ended: the method, the round, and — for a finish — the clock it
  *  came at. A decision is only ever reached at the end of the final round, so
  *  its time says nothing that the round has not already said. */
+/** Outside records spell decisions out ("Decision (Unanimous)"); UFC rows
+ *  already say U-DEC. One spelling keeps a fighter's list reading as one. */
+const DECISIONS: Record<string, string> = { unanimous: "U-DEC", split: "S-DEC", majority: "M-DEC" };
+function shortDecision(method: string): string {
+  const match = /^decision(?:\s*\((unanimous|split|majority)\))?$/i.exec(method.trim());
+  if (!match) return method;
+  return match[1] ? DECISIONS[match[1].toLowerCase()] : "DEC";
+}
+
 export function formatMethod(method: string | null, round: string | null, time: string | null): string {
   if (!method) return "";
+  method = shortDecision(method);
   const parts = [method];
   if (round) parts.push(`R${round}`);
   if (time && !isDecision(method)) parts.push(time);

@@ -11,13 +11,14 @@ import {
 import { exactTime, relativeAge } from "../format";
 import { PANEL_SHELL } from "./FightStats";
 import ProgressiveImage from "./ProgressiveImage";
+import { BUTTON_DANGER, BUTTON_PRIMARY, BUTTON_QUIET, CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
 
 type GetToken = () => Promise<string | null>;
 type RequestInit = { method?: string; body?: unknown; optional?: boolean };
 type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
 
-const primary = "rounded-full bg-zinc-900 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-zinc-700 disabled:opacity-40";
-const quiet = "rounded-full px-3 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
+const primary = BUTTON_PRIMARY;
+const quiet = BUTTON_QUIET;
 const action = "inline-flex h-7 items-center gap-1 rounded-full px-2 text-[11px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
 /** The writing box, and its signed-out and muted stand-ins. */
 const box = "min-w-0 rounded-2xl border border-zinc-200 bg-white transition-colors focus-within:border-zinc-400";
@@ -536,7 +537,7 @@ function Thread({ node, rootId }: { node: CommentNode; rootId: string }) {
               <div className="mt-2 flex flex-wrap items-center justify-end gap-2 rounded-lg bg-zinc-50 px-3 py-2 text-xs">
                 <span className="mr-auto text-zinc-600">Delete this comment? This can’t be undone.</span>
                 <button type="button" onClick={() => setConfirming(false)} disabled={busy} className={quiet}>Cancel</button>
-                <button type="button" onClick={() => void remove()} disabled={busy} className="rounded-full bg-rose-600 px-3 py-1.5 font-medium text-white hover:bg-rose-700 disabled:opacity-40">
+                <button type="button" onClick={() => void remove()} disabled={busy} className={BUTTON_DANGER}>
                   {busy ? "Deleting…" : "Delete"}
                 </button>
               </div>
@@ -609,12 +610,11 @@ function ReportDialog({ node, onClose, request, onBlock }: {
       className="search-dialog fixed inset-0 m-auto w-[min(28rem,calc(100%-2rem))] max-w-none rounded-2xl border border-zinc-200 bg-white p-0 text-zinc-900 shadow-2xl">
       <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold">Report comment</h2>
+          <h2 className={DIALOG_TITLE}>Report comment</h2>
           {author ? <p className="mt-0.5 truncate text-xs text-zinc-500">by {author.displayName}</p> : null}
         </div>
-        <button type="button" onClick={close} disabled={busy} aria-label="Close"
-          className="grid h-8 w-8 place-items-center rounded-full text-zinc-400 hover:bg-zinc-50 hover:text-zinc-700 disabled:opacity-40">
-          <X className="h-4 w-4" aria-hidden="true" />
+        <button type="button" onClick={close} disabled={busy} aria-label="Close" className={`-mr-2 ${CLOSE_BUTTON}`}>
+          <X className={CLOSE_ICON} aria-hidden="true" />
         </button>
       </div>
       {sent ? (

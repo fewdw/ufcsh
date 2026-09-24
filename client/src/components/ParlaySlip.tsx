@@ -8,6 +8,7 @@ import { formatPrice } from "../methodOdds";
 import { accountsEnabled, useAccount } from "../auth";
 import { BetError, placeBet } from "../bets";
 import { useSettings } from "../settings";
+import { BUTTON_PRIMARY } from "../ui";
 
 /** Digits and at most one decimal point, with redundant leading zeros
  *  collapsed as they're typed — "0001" never sits in the field, only "1". A
@@ -45,7 +46,7 @@ function AddToProfile() {
   return (
     <div className="flex flex-col gap-1.5 pt-1">
       <button type="button" onClick={() => void submit()} disabled={busy || tooSmall}
-        className="w-full rounded-full bg-zinc-900 px-4 py-2 text-xs font-semibold text-white transition-opacity hover:opacity-80 disabled:opacity-40">
+        className={`${BUTTON_PRIMARY} w-full`}>
         {busy ? "Adding…" : user ? "Add to profile" : "Sign in to add to profile"}
       </button>
       {error ? <p role="alert" className="text-[11px] leading-snug text-rose-600">{error}</p>

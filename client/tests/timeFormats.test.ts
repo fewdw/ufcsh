@@ -26,6 +26,11 @@ test("future event dates count local calendar days", () => {
 test("a finish is placed on the clock; a decision only needs its round", () => {
   assert.equal(formatMethod("KO/TKO", "1", "2:29"), "KO/TKO · R1 · 2:29");
   assert.equal(formatMethod("SUB", "2", "4:11"), "SUB · R2 · 4:11");
+  // Outside records' spelled-out decisions read like the UFC's own.
+  assert.equal(formatMethod("Decision (Unanimous)", "3", "5:00"), "U-DEC · R3");
+  assert.equal(formatMethod("Decision (Split)", "3", "5:00"), "S-DEC · R3");
+  assert.equal(formatMethod("Decision", "3", "5:00"), "DEC · R3");
+  assert.equal(formatMethod("Submission (Armbar)", "1", "2:10"), "Submission (Armbar) · R1 · 2:10");
   assert.equal(formatMethod("U-DEC", "3", "5:00"), "U-DEC · R3");
   assert.equal(formatMethod("S-DEC", "5", "5:00"), "S-DEC · R5");
   assert.equal(formatMethod(null, "3", "5:00"), "");

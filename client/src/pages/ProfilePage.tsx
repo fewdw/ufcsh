@@ -9,7 +9,7 @@ import Avatar from "../components/Avatar";
 import ProgressiveImage from "../components/ProgressiveImage";
 import { PANEL_SHELL, PanelHeading } from "../components/FightStats";
 import { LIST_META, LIST_ROW } from "../components/InfiniteList";
-import { segmentedGroup, segmentedSelected, segmentedIdle } from "../components/segmented";
+import { segmentedGroup, segmentedSelected, segmentedIdle, segmentedTab } from "../components/segmented";
 import ProfilePredictions from "../components/ProfilePredictions";
 import ProfileBets from "../components/ProfileBets";
 import ProfileComments from "../components/ProfileComments";
@@ -21,6 +21,7 @@ import { useMyProfile } from "../profile";
 import { cardWinner, usernameProblem } from "../scoring";
 import type { ProfileFilter, ScorerCard, ScorerIdentity, ScorerProfile } from "../scoring";
 import { useSeo } from "../seo";
+import { BUTTON_PRIMARY, BUTTON_QUIET } from "../ui";
 
 const FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed"];
 /** Bouts that went to the judges are the ones a card can be read against, so
@@ -33,10 +34,10 @@ const TABS = [
   { id: "leaderboards", label: "Leaderboards", short: "Leaderboards" },
 ] as const;
 type Section = (typeof TABS)[number]["id"];
-const quiet = "rounded-full px-3 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
+const quiet = BUTTON_QUIET;
 /** The account's own actions: short enough that all three sit on one line. */
 const action = "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
-const primary = "rounded-full bg-zinc-900 px-4 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40";
+const primary = BUTTON_PRIMARY;
 
 /** A public profile. Anyone can open anyone's: the scorer is named by the
  *  username they chose, or by the one minted for them when they signed up. */
@@ -175,7 +176,7 @@ function Profile({ handle }: { handle: string }) {
                 const params = new URLSearchParams(search); params.set("tab", tabs[next].id); setSearch(params, { replace: true });
                 event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
               }}
-              className={`min-h-9 flex-auto whitespace-nowrap rounded-full px-1 py-2 text-xs font-medium transition min-[375px]:px-1.5 min-[375px]:text-[13px] sm:px-3 sm:text-sm ${section === tab.id ? segmentedSelected : segmentedIdle}`}
+              className={`${segmentedTab} ${section === tab.id ? segmentedSelected : segmentedIdle}`}
             >
               <span className="sm:hidden">{tab.short}</span>
               <span className="hidden sm:inline">{tab.label}</span>
@@ -224,9 +225,9 @@ function Profile({ handle }: { handle: string }) {
           </>}
         </div>
 
-        {removal.error ? <p role="alert" className="text-center text-xs text-red-600">{removal.error}</p> : null}
+        {removal.error ? <p role="alert" className="text-center text-xs text-rose-600">{removal.error}</p> : null}
         {error ? (
-          <p role="alert" className="text-center text-xs text-red-600">
+          <p role="alert" className="text-center text-xs text-rose-600">
             Couldn’t refresh. <button className="underline" onClick={retry}>Retry</button>
           </p>
         ) : null}
@@ -394,7 +395,7 @@ function CommentsVisibility({ visible, onChanged }: { visible: boolean; onChange
     <label className={`${action} cursor-pointer`} title={error || "Hide the Comments tab from your profile. Your comments stay on each fight either way."}>
       <input type="checkbox" checked={hidden} disabled={busy} onChange={event => void change(event.target.checked)} className="h-3.5 w-3.5 accent-zinc-900" />
       Hide from my profile
-      {error ? <span role="alert" className="text-red-600">· {error}</span> : null}
+      {error ? <span role="alert" className="text-rose-600">· {error}</span> : null}
     </label>
   );
 }
@@ -471,7 +472,7 @@ function UsernameEditor({ scorer, onClose, onRenamed }: { scorer: ScorerIdentity
           <X className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
       </div>
-      <p className={`mt-1 truncate text-[11px] ${error ? "text-red-600" : "text-zinc-400"}`} role={error ? "alert" : undefined}>
+      <p className={`mt-1 truncate text-[11px] ${error ? "text-rose-600" : "text-zinc-400"}`} role={error ? "alert" : undefined}>
         {error || problem || `ufc.sh/profiles/${value.toLowerCase()}`}
       </p>
     </form>
@@ -512,7 +513,7 @@ function CardPage({ url, mine, onRemove, onReady }: {
   useEffect(() => { if (data) onReady(); }, [data, onReady]);
   if (error && !data)
     return (
-      <li className="px-5 py-4 text-center text-sm text-red-600">
+      <li className="px-5 py-4 text-center text-sm text-rose-600">
         Couldn’t load more. <button className="underline" onClick={retry}>Retry</button>
       </li>
     );
