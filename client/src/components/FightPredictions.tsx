@@ -42,7 +42,7 @@ type Share = { key: string; label: string; short?: string; count: number; color:
 function ShareBar({ title, entries, total }: { title: string; entries: Share[]; total: number }) {
   const shown = entries.filter(entry => entry.count > 0);
   return <div className="min-w-0 px-4 py-2.5">
-    <h3 className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">{title}</h3>
+    <h3 className="sr-only">{title}</h3>
     <div className="flex h-2 gap-px overflow-hidden rounded-full bg-zinc-100" role="img"
       aria-label={entries.map(entry => `${entry.label} ${sharePct(entry.count, total)}%`).join(", ")}>
       {shown.map(entry => <span key={entry.key} className="h-full" style={{ width: `${(entry.count / total) * 100}%`, backgroundColor: entry.color }} title={`${entry.label} · ${entry.count}`} />)}
@@ -63,18 +63,15 @@ function WinnerSplit({ fighters, total }: { fighters: Share[]; total: number }) 
   const [f1, f2] = fighters;
   if (!f1 || !f2) return <ShareBar title="Winner" entries={fighters} total={total} />;
   return <div className="min-w-0 px-4 py-2.5">
-    <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">Winner</h3>
+    <h3 className="sr-only">Winner</h3>
     <div className="flex items-baseline justify-between gap-3 text-xs leading-4">
-      <span className="min-w-0"><span className="font-semibold tabular-nums text-f1-ink">{sharePct(f1.count, total)}%</span> <span className="text-zinc-600">{f1.label}</span></span>
-      <span className="min-w-0 text-right"><span className="text-zinc-600">{f2.label}</span> <span className="font-semibold tabular-nums text-f2-ink">{sharePct(f2.count, total)}%</span></span>
+      <span className="flex min-w-0 items-baseline gap-1 whitespace-nowrap"><span className="shrink-0 font-semibold tabular-nums text-f1-ink">{sharePct(f1.count, total)}% ({f1.count})</span><span className="truncate text-zinc-600">{f1.label}</span></span>
+      <span className="flex min-w-0 items-baseline gap-1 whitespace-nowrap text-right"><span className="shrink-0 font-semibold tabular-nums text-f2-ink">{sharePct(f2.count, total)}% ({f2.count})</span><span className="truncate text-zinc-600">{f2.label}</span></span>
     </div>
     <div className="mt-1 flex h-2 gap-px overflow-hidden rounded-full bg-zinc-100" role="img"
       aria-label={`${f1.label} ${f1.count}, ${f2.label} ${f2.count}`}>
       <span style={{ width: `${(f1.count / total) * 100}%`, backgroundColor: f1.color }} />
       <span style={{ width: `${(f2.count / total) * 100}%`, backgroundColor: f2.color }} />
-    </div>
-    <div className="mt-0.5 flex justify-between text-[10px] tabular-nums text-zinc-400">
-      <span>{f1.count} {f1.count === 1 ? "pick" : "picks"}</span><span>{f2.count} {f2.count === 1 ? "pick" : "picks"}</span>
     </div>
   </div>;
 }
@@ -104,7 +101,7 @@ function CommunityPicks({ distribution, scheduledRounds }: { distribution: Predi
 
   return (
     <section className={PANEL_SHELL}>
-      <PanelHeading title="How the community picked" aside={<span className="text-xs tabular-nums text-zinc-500">{total.toLocaleString()} {total === 1 ? "pick" : "picks"}</span>} />
+      <PanelHeading title="Community Picks" aside={<span className="text-xs tabular-nums text-zinc-500">{total.toLocaleString()} {total === 1 ? "pick" : "picks"}</span>} />
       <div className={`grid divide-y divide-zinc-100 sm:divide-x sm:divide-y-0 ${roundsKnown ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
         <WinnerSplit fighters={fighters} total={total} />
         <ShareBar title="Method" entries={methods} total={total} />

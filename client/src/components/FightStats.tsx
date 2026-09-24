@@ -635,9 +635,9 @@ function CombinedStrikeColumns({
 const PAIR_LABEL = `whitespace-nowrap text-center text-[9px] font-semibold uppercase leading-4 tracking-[0.08em] text-zinc-400 @[36rem]:text-[10px]`;
 
 /** A chart and its name. Captions follow the figures for totals and rounds. */
-function ChartBlock({ title, children }: { title: string; children: React.ReactNode }) {
+function ChartBlock({ title, children, fill = false }: { title: string; children: React.ReactNode; fill?: boolean }) {
   return (
-    <section className="flex min-w-0 flex-col items-center">
+    <section className={`flex min-w-0 flex-col items-center ${fill ? "flex-1" : ""}`}>
       {children}
       <h3 className="mt-auto px-1 pt-2 text-center text-[10px] font-semibold uppercase tracking-[0.1em] text-zinc-400 @[36rem]:text-[11px]">
         {title}
@@ -848,7 +848,7 @@ function RoundColumn({ fight, index }: { fight: Matchup; index: number }) {
   const ctrl = at("Ctrl");
 
   return (
-    <ChartBlock title={`Round ${index + 1}`}>
+    <ChartBlock title={`Round ${index + 1}`} fill>
       <CombinedStrikeColumns
         fight={fight}
         significant={significant}
@@ -886,7 +886,7 @@ export function RoundByRound({ fight, grouped = false }: { fight: Matchup; group
       {count ? (
         <div className="flex flex-wrap justify-center gap-y-4 px-2 pb-3 pt-1 @[36rem]:gap-y-6 @[36rem]:px-4 @[36rem]:pb-4 @[36rem]:pt-3">
           {Array.from({ length: count }, (_, i) => (
-            <div key={i} className={`min-w-0 px-0.5 ${width}`}>
+            <div key={i} className={`flex min-w-0 flex-col px-0.5 ${width}`}>
               <RoundColumn fight={fight} index={i} />
             </div>
           ))}
