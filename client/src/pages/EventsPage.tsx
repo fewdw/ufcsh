@@ -18,7 +18,7 @@ import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
 import { useSettings, withRanking, type OddsFormat } from "../settings";
 import { eventKind, type EventKind } from "../eventKind";
 import SearchGlyph from "../components/SearchGlyph";
-import { ChevronLeft, ChevronRight, List } from "lucide-react";
+import { ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 
 const shell = "rounded-2xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
@@ -154,17 +154,22 @@ function EventSidebar({
 
   return (
     <aside id="events-sidebar" className={`${mobileOpen ? "flex" : "hidden"} min-h-0 w-full flex-1 flex-col overflow-hidden ${dock.sidebar} ${shell}`}>
-      <div className="space-y-1.5 border-b border-zinc-200 p-2 sm:space-y-2 sm:p-3">
-        {/* On a phone the way back to the card rides beside the filter, so
-            the list gets the screen instead of three stacked controls. */}
-        <div className="flex items-center gap-1.5">
-        <button type="button" onClick={onBack} aria-label="Back to card" title="Back to card"
-          className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-950 ${dock.toggle}`}>
-          <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-        </button>
+      <div className="space-y-2 border-b border-zinc-200 p-3">
+        {/* On a phone the list opens over the card like a sheet: a title and
+            its count, with the ✕ that closes it back to the card — the same
+            header the filter sheets use. Docked beside the card it needs none. */}
+        <div className={`flex items-center justify-between gap-3 pl-1 ${dock.toggle}`}>
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold leading-tight text-zinc-950">All events</h2>
+            <p className="text-xs tabular-nums text-zinc-500">{scoped.length.toLocaleString()} {KIND_NOUN[kind]}</p>
+          </div>
+          <button type="button" onClick={onBack} aria-label="Close all events" title="Back to card" className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-zinc-200 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900">
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
         {/* Built from the same pill, border and glyph as the header's search
             button, so the two read as one control in two places. */}
-        <label className="relative block min-w-0 flex-1">
+        <label className="relative block min-w-0">
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
             <SearchGlyph />
           </span>
@@ -173,10 +178,9 @@ function EventSidebar({
             onChange={(e) => setFilter(e.target.value)}
             aria-label={`Filter ${KIND_NOUN[kind]}`}
             placeholder={`Filter ${scoped.length} ${KIND_NOUN[kind]}…`}
-            className="h-8 w-full min-w-0 rounded-full border border-zinc-200 bg-white pl-9 pr-3 text-[13px] text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-9 sm:text-sm"
+            className="h-10 w-full min-w-0 rounded-full border border-zinc-200 bg-white pl-9 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-9 sm:text-sm"
           />
         </label>
-        </div>
         <div className={segmentedGroup} role="group" aria-label="Event tier">
           {KIND_FILTERS.map((option) => (
             <button
@@ -185,7 +189,7 @@ function EventSidebar({
               aria-pressed={kind === option.value}
               onClick={() => setKind(option.value)}
               title={`${option.title} · ${countByKind[option.value]}`}
-              className={`flex-1 rounded-full px-2 py-1 text-[11px] font-medium transition ${
+              className={`min-h-8 flex-1 rounded-full px-2 py-1.5 text-[13px] font-medium transition sm:min-h-0 sm:py-1 sm:text-xs ${
                 kind === option.value ? segmentedSelected : segmentedIdle
               }`}
             >
