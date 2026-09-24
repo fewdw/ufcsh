@@ -5,7 +5,7 @@ import { removeBet, signedMoney, type Bet, type BetState, type ProfileBets as Be
 import { formatDateShortWithYear } from "../format";
 import { ConfirmRemove, RemoveX } from "./ConfirmRemove";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
-import { fetchPage, LIST_META, LIST_ROW, LIST_ROW_END, LIST_TITLE, LIST_VALUE, LoadMore, useInfiniteList } from "./InfiniteList";
+import { fetchPage, LIST_META, CLEAR_REMOVE, LIST_ROW, LIST_TITLE, LIST_VALUE, LoadMore, useInfiniteList } from "./InfiniteList";
 
 const STATE_TEXT: Record<BetState, string> = { won: "text-emerald-600", lost: "text-rose-600", pending: "text-zinc-500", void: "text-zinc-400" };
 const LEG_DOT: Record<BetState, string> = { won: "bg-emerald-500", lost: "bg-rose-500", pending: "bg-zinc-300", void: "bg-zinc-200" };
@@ -13,7 +13,7 @@ const LEG_LABEL: Record<BetState, string> = { won: "Won", lost: "Lost", pending:
 
 function Stat({ label, value, tone = "text-zinc-900" }: { label: string; value: string; tone?: string }) {
   return (
-    <div className="min-w-0">
+    <div className="min-w-0 text-center">
       <p className={`truncate text-sm font-semibold tabular-nums sm:text-base ${tone}`}>{value}</p>
       <p className="truncate text-[10px] font-medium uppercase tracking-wide text-zinc-400">{label}</p>
     </div>
@@ -28,25 +28,26 @@ function BetRow({ bet, mine, onRemove }: { bet: Bet; mine: boolean; onRemove: ()
   const result = bet.state === "pending" ? null : bet.state === "void" ? "Void" : signedMoney(bet.net);
   const removable = mine && bet.removable;
   return (
-    <li className={`relative ${LIST_ROW} ${LIST_ROW_END(removable)}`}>
-      <div className="flex items-start justify-between gap-3">
+    <li className={`relative ${LIST_ROW}`}>
+      <div className={`flex items-start justify-between gap-3 ${CLEAR_REMOVE(removable)}`}>
         <div className="min-w-0">
-          <p className={`truncate ${LIST_TITLE}`}>{parlay ? `Parlay · ${bet.legs.length} legs` : bet.legs[0].selection}</p>
+          <p className={LIST_TITLE}>{parlay ? `Parlay · ${bet.legs.length} legs` : bet.legs[0].selection}</p>
           <p className={`tabular-nums ${LIST_META}`}>
             {money(bet.stake)} at {bet.price} · pays {money(bet.payout)} · {formatDateShortWithYear(new Date(bet.placedAt).toISOString().slice(0, 10))}
           </p>
         </div>
         {result ? <span className={`${LIST_VALUE} ${STATE_TEXT[bet.state]}`}>{result}</span> : null}
       </div>
-      <ul className={`mt-1.5 flex flex-col gap-1 ${parlay ? "border-l border-zinc-100 pl-3" : ""}`}>
+      {/* Each leg wraps rather than truncating: the pick, then the bout it is
+          in. The market is left out — "to win" or "by KO/TKO" already says it. */}
+      <ul className={`mt-2 flex flex-col gap-2 ${parlay ? "border-l border-zinc-100 pl-3" : ""}`}>
         {bet.legs.map((leg, index) => (
           <li key={index}>
-            <Link to={`/fights/${leg.fightId}`} className="group flex items-center gap-2 text-[13px] leading-5">
-              <span aria-label={LEG_LABEL[leg.state]} title={LEG_LABEL[leg.state]} className={`h-2 w-2 shrink-0 rounded-full ${LEG_DOT[leg.state]}`} />
-              <span className="min-w-0 flex-1 truncate text-zinc-600 group-hover:text-zinc-900">
-                {parlay ? <span className="font-medium text-zinc-800">{leg.selection} · </span> : null}
-                {leg.f1Name} vs {leg.f2Name}
-                <span className="text-zinc-400"> · {leg.market}</span>
+            <Link to={`/fights/${leg.fightId}`} className="group flex items-start gap-2 text-[13px] leading-5">
+              <span aria-label={LEG_LABEL[leg.state]} title={LEG_LABEL[leg.state]} className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${LEG_DOT[leg.state]}`} />
+              <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+                {parlay ? <span className="block font-medium text-zinc-900">{leg.selection}</span> : null}
+                <span className={`block group-hover:text-zinc-900 ${parlay ? "text-xs leading-5 text-zinc-500" : "text-zinc-600"}`}>{leg.f1Name} vs {leg.f2Name}</span>
               </span>
               <span className="shrink-0 font-semibold tabular-nums text-zinc-700">{leg.price}</span>
             </Link>
@@ -96,9 +97,9 @@ export default function ProfileBets({ handle, mine }: { handle: string; mine: bo
   return <>
     <section className={PANEL_SHELL}>
       <PanelHeading title="Betting record"
-        subtitle={`${data.total.toLocaleString()} ${data.total === 1 ? "bet" : "bets"} · $${data.maxStake} max`}
         aside={<span className={`whitespace-nowrap text-sm font-semibold tabular-nums ${tone}`} title="Profit / loss">{signedMoney(totals.net)}</span>} />
-      <div className="grid grid-cols-5 gap-2 px-4 py-2.5 sm:gap-4 sm:px-5 sm:py-3">
+      {/* The outer figures sit flush with the heading's edges, the rest spaced evenly between. */}
+      <div className="flex justify-between gap-2 px-4 py-3 sm:px-5 [&>*:first-child]:text-left [&>*:last-child]:text-right">
         <Stat label="Won" value={totals.won.toLocaleString()} tone="text-emerald-600" />
         <Stat label="Lost" value={totals.lost.toLocaleString()} tone="text-rose-600" />
         <Stat label="Pending" value={totals.pending.toLocaleString()} />

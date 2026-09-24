@@ -7,7 +7,7 @@ import type { PredictionRate, ProfilePredictions as PredictionsData } from "../p
 import { ConfirmRemove, RemoveX } from "./ConfirmRemove";
 import { Donut, type Slice } from "./Donut";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
-import { fetchPage, LIST_META, LIST_ROW, LIST_ROW_END, LIST_TITLE, LIST_VALUE, LoadMore, useInfiniteList } from "./InfiniteList";
+import { fetchPage, LIST_META, CLEAR_REMOVE, LIST_ROW, LIST_TITLE, LIST_VALUE, LoadMore, useInfiniteList } from "./InfiniteList";
 
 const RIGHT = "var(--color-pick-right)";
 const WRONG = "var(--color-pick-wrong)";
@@ -109,8 +109,8 @@ export default function ProfilePredictions({ handle, mine }: { handle: string; m
           // A pick can be taken back until the fight has a result.
           const removable = mine && row.result.state === "pending";
           return <li key={row.fightId} className="relative">
-          <Link to={`/fights/${row.fightId}?tab=predict`} className={`block ${LIST_ROW} transition-colors hover:bg-zinc-50 ${LIST_ROW_END(removable)}`}>
-            <div className="flex items-baseline justify-between gap-3">
+          <Link to={`/fights/${row.fightId}?tab=predict`} className={`block ${LIST_ROW} transition-colors hover:bg-zinc-50`}>
+            <div className={`flex items-baseline justify-between gap-3 ${CLEAR_REMOVE(removable)}`}>
               <p className={`min-w-0 ${LIST_TITLE}`}>{predictionLabel(row.pick)}</p>
               {row.result.points == null ? null : (
                 <span className={`${LIST_VALUE} ${row.result.state === "won" ? "text-emerald-600" : row.result.state === "lost" ? "text-zinc-400" : "text-zinc-500"}`}>

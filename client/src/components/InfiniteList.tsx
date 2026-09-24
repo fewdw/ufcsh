@@ -113,8 +113,10 @@ export function useInfiniteList<P extends Page, T>({ resetKey, load, items, item
 }
 
 /** Shared by every list on a profile, so the tabs read as one design. */
-export const LIST_ROW = "py-3 pl-4 sm:pl-5";
-export const LIST_ROW_END = (removable: boolean) => (removable ? "pr-11" : "pr-4 sm:pr-5");
+export const LIST_ROW = "py-3 px-4 sm:px-5";
+/** Room for the ✕ in a row's top corner, kept to the row's first line so the
+ *  lines under it still reach the right edge. */
+export const CLEAR_REMOVE = (removable: boolean) => (removable ? "pr-6" : "");
 export const LIST_TITLE = "text-sm font-semibold text-zinc-900";
 export const LIST_META = "text-xs leading-5 text-zinc-500";
 export const LIST_VALUE = "shrink-0 text-sm font-semibold tabular-nums";

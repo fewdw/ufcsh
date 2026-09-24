@@ -14,9 +14,9 @@ export function RemoveX({ label, onClick, large = false }: { label: string; onCl
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`absolute grid place-items-center rounded-full text-zinc-300 transition-colors hover:bg-zinc-100 hover:text-zinc-700 ${large ? "right-1 top-1.5 h-9 w-9" : "right-0.5 top-0.5 h-6 w-6"}`}
+      className={`absolute grid place-items-center rounded-full text-zinc-300 transition-colors hover:bg-zinc-100 hover:text-zinc-700 ${large ? "right-0.5 top-0.5 h-8 w-8" : "right-0.5 top-0.5 h-6 w-6"}`}
     >
-      <X className={large ? "h-4 w-4" : "h-3 w-3"} aria-hidden="true" />
+      <X className={large ? "h-3.5 w-3.5" : "h-3 w-3"} aria-hidden="true" />
     </button>
   );
 }

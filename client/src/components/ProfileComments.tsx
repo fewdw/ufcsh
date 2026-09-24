@@ -7,7 +7,7 @@ import type { ScorerIdentity } from "../scoring";
 import { exactTime, relativeAge } from "../format";
 import { ConfirmRemove, RemoveX } from "./ConfirmRemove";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
-import { fetchPage, LIST_META, LIST_ROW, LIST_ROW_END, LoadMore, useInfiniteList } from "./InfiniteList";
+import { fetchPage, LIST_META, CLEAR_REMOVE, LIST_ROW, LoadMore, useInfiniteList } from "./InfiniteList";
 
 /** Everything a fan has said in fight discussions, newest first. Listed to
  *  others only once they have chosen to show it; always to themselves. */
@@ -75,8 +75,8 @@ export default function ProfileComments({ handle, mine, visible, visibilityContr
         <ul className="divide-y divide-zinc-100">
           {list.items.map(comment => (
             <li key={comment.id} className="relative">
-              <Link to={commentLink(comment.fightId, comment.id)} className={`block ${LIST_ROW} transition-colors hover:bg-zinc-50 ${LIST_ROW_END(mine)}`}>
-                <p className={`flex min-w-0 items-center gap-1.5 ${LIST_META}`}>
+              <Link to={commentLink(comment.fightId, comment.id)} className={`block ${LIST_ROW} transition-colors hover:bg-zinc-50`}>
+                <p className={`flex min-w-0 items-center gap-1.5 ${LIST_META} ${CLEAR_REMOVE(mine)}`}>
                   <span className="min-w-0 truncate font-semibold text-zinc-800">
                     {comment.fight ? `${comment.fight.f1_name} vs ${comment.fight.f2_name}` : "A fight"}
                   </span>

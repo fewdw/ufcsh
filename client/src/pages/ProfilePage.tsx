@@ -8,7 +8,7 @@ import { ConfirmRemove, RemoveX } from "../components/ConfirmRemove";
 import Avatar from "../components/Avatar";
 import ProgressiveImage from "../components/ProgressiveImage";
 import { PANEL_SHELL, PanelHeading } from "../components/FightStats";
-import { LIST_META, LIST_ROW, LIST_ROW_END } from "../components/InfiniteList";
+import { LIST_META, LIST_ROW } from "../components/InfiniteList";
 import { segmentedGroup, segmentedSelected, segmentedIdle } from "../components/segmented";
 import ProfilePredictions from "../components/ProfilePredictions";
 import ProfileBets from "../components/ProfileBets";
@@ -28,9 +28,9 @@ const FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed"];
 const DEFAULT_FILTER: ProfileFilter = "decisions";
 /** `short` is what a phone shows, so all five fit on one line without scrolling. */
 const TABS = [
-  { id: "scorecards", label: "Scorecards", short: "Cards" }, { id: "predictions", label: "Predictions", short: "Picks" },
+  { id: "scorecards", label: "Scorecards", short: "Scores" }, { id: "predictions", label: "Predictions", short: "Picks" },
   { id: "bets", label: "Bets", short: "Bets" }, { id: "comments", label: "Comments", short: "Comments" },
-  { id: "leaderboards", label: "Leaderboards", short: "Boards" },
+  { id: "leaderboards", label: "Leaderboards", short: "Leaderboards" },
 ] as const;
 type Section = (typeof TABS)[number]["id"];
 const quiet = "rounded-full px-3 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
@@ -175,7 +175,7 @@ function Profile({ handle }: { handle: string }) {
                 const params = new URLSearchParams(search); params.set("tab", tabs[next].id); setSearch(params, { replace: true });
                 event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
               }}
-              className={`min-h-9 flex-auto whitespace-nowrap rounded-full px-1.5 py-2 text-xs font-medium transition min-[375px]:text-[13px] sm:px-3 sm:text-sm ${section === tab.id ? segmentedSelected : segmentedIdle}`}
+              className={`min-h-9 flex-auto whitespace-nowrap rounded-full px-1 py-2 text-xs font-medium transition min-[375px]:px-1.5 min-[375px]:text-[13px] sm:px-3 sm:text-sm ${section === tab.id ? segmentedSelected : segmentedIdle}`}
             >
               <span className="sm:hidden">{tab.short}</span>
               <span className="hidden sm:inline">{tab.label}</span>
@@ -540,7 +540,7 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
         to={`/fights/${card.fightId}?tab=score`}
         onPointerEnter={warm}
         onFocus={warm}
-        className={`block ${LIST_ROW} transition-colors hover:bg-zinc-50 ${LIST_ROW_END(mine)}`}
+        className={`block ${LIST_ROW} transition-colors hover:bg-zinc-50 ${mine ? "pr-9 sm:pr-10" : ""}`}
       >
         <div className="flex items-center gap-2">
           <Avatar src={fight.f1_photo} name={fight.f1_name} size="sm" outcome={fight.f1_outcome as "win" | "loss" | null} />
