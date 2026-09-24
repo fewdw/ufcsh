@@ -6,6 +6,81 @@ type Correction = { from: JudgeTotal; to: JudgeTotal };
 // Guard each correction with the exact UFCStats value we verified. If the
 // source fixes a card later, a refresh will retain its new value.
 const corrections: Record<string, Correction[]> = {
+  // https://mmadecisions.com/decision/1106/Gray-Maynard-vs-Rich-Clementi
+  "27868eac1d141498": [{ from: { judge: "Anthony Bailes", f1Score: 30, f2Score: 27 }, to: { judge: "Anthony Bilus", f1Score: 30, f2Score: 27 } }],
+  // https://mmadecisions.com/decision/1252/Cain-Velasquez-vs-Cheick-Kongo
+  "09e7db36cd72bf61": [{ from: { judge: "Keith Hughes", f1Score: 30, f2Score: 27 }, to: { judge: "Howard Hughes", f1Score: 30, f2Score: 27 } }],
+  // https://mmadecisions.com/decision/1555/Jon-Fitch-vs-Thiago-Alves
+  "c92c53954903554a": [{ from: { judge: "Alejandro Rochin", f1Score: 30, f2Score: 27 }, to: { judge: "Dan Stell", f1Score: 30, f2Score: 27 } }],
+  // https://mmadecisions.com/decision/3700/Diego-Nunes-vs-Bart-Palaszewski
+  "a6548a1e188c53fb": [{ from: { judge: "Todd Neilsen", f1Score: 29, f2Score: 28 }, to: { judge: "Todd Nielsen", f1Score: 29, f2Score: 28 } }],
+  // https://mmadecisions.com/decision/3528/Seth-Baczynski-vs-Lance-Benoist
+  "2771872dd02e5d19": [{ from: { judge: "Rich Coreen", f1Score: 29, f2Score: 28 }, to: { judge: "Rich Green", f1Score: 29, f2Score: 28 } }],
+  // https://mmadecisions.com/decision/3526/Buddy-Roberts-vs-Caio-Magalhães
+  "873886ee1dee4c9a": [{ from: { judge: "Rich Coreen", f1Score: 30, f2Score: 27 }, to: { judge: "Rich Green", f1Score: 30, f2Score: 27 } }],
+  // https://mmadecisions.com/decision/3524/Sean-Pierson-vs-Jake-Hecht
+  "d08a7d4de3c760ec": [{ from: { judge: "Rich Coreen", f1Score: 29, f2Score: 28 }, to: { judge: "Rich Green", f1Score: 29, f2Score: 28 } }],
+  // https://mmadecisions.com/decision/3280/Mike-Russow-vs-Jon-Olav-Einemo
+  "c63a050af0692daf": [{ from: { judge: "James Goodman", f1Score: 29, f2Score: 28 }, to: { judge: "Clay Goodman", f1Score: 29, f2Score: 28 } }],
+  // https://mmadecisions.com/decision/3283/Chael-Sonnen-vs-Michael-Bisping
+  "81c5c897717a1ef6": [{ from: { judge: "James Goodman", f1Score: 30, f2Score: 27 }, to: { judge: "Clay Goodman", f1Score: 30, f2Score: 27 } }],
+  // https://www.ufc.com/news/reversal-fortune-big-winner-perosh-ufc-163-prelim-results
+  // https://mmadecisions.com/decision/4371/Francimar-Barroso-vs-Ednaldo-Oliveira
+  "7b97ca2c378e7782": [{ from: { judge: "Guilherme Bravo", f1Score: 30, f2Score: 27 }, to: { judge: "Guilherme Bravo", f1Score: 29, f2Score: 28 } }],
+  // https://mmadecisions.com/decision/4161/Akira-Corassani-vs-Robbie-Peralta
+  "53467e6296c2e5e6": [
+    { from: { judge: "Mark Collett", f1Score: 30, f2Score: 27 }, to: { judge: "Mark Collett", f1Score: 29, f2Score: 28 } },
+    { from: { judge: "Howard Hughes", f1Score: 29, f2Score: 28 }, to: { judge: "Howard Hughes", f1Score: 30, f2Score: 27 } },
+  ],
+  // https://mmadecisions.com/decision/4204/Ovince-Saint-Preux-vs-Gian-Villante
+  "523e8ca343a0becc": [
+    { from: { judge: "Michael Depasquale", f1Score: 30, f2Score: 29 }, to: { judge: "Michael Depasquale", f1Score: 29, f2Score: 29 } },
+    { from: { judge: "Jose Tabora", f1Score: 29, f2Score: 29 }, to: { judge: "Jose Tabora", f1Score: 30, f2Score: 29 } },
+  ],
+  // https://mmadecisions.com/decision/5112/Bethe-Correia-vs-Jessamyn-Duke
+  "c3455ba522bb37eb": [
+    { from: { judge: "Brent Colflesh", f1Score: 30, f2Score: 27 }, to: { judge: "Brent Colflesh", f1Score: 29, f2Score: 28 } },
+    { from: { judge: "Brad Duruttya", f1Score: 29, f2Score: 28 }, to: { judge: "Brad Duruttya", f1Score: 30, f2Score: 27 } },
+  ],
+  // https://mmadecisions.com/decision/5438/Rafael-Natal-vs-Chris-Camozzi
+  "98e21492b6bc15d3": [
+    { from: { judge: "Sue Sanidad", f1Score: 28, f2Score: 29 }, to: { judge: "Sue Sanidad", f1Score: 29, f2Score: 28 } },
+    { from: { judge: "Glenn Trowbridge", f1Score: 29, f2Score: 28 }, to: { judge: "Glenn Trowbridge", f1Score: 28, f2Score: 29 } },
+  ],
+  // https://www.ufc.com/news/magnificent-matt-brown-kos-silva-three
+  // https://mmadecisions.com/decision/5159/Chris-Cariaso-vs-Louis-Smolka
+  "7d947be4c15ebe36": [{ from: { judge: "Chris Lee", f1Score: 29, f2Score: 29 }, to: { judge: "Chris Lee", f1Score: 29, f2Score: 28 } }],
+  // https://mmadecisions.com/decision/4885/Raphael-Assuncao-vs-Pedro-Munhoz
+  "faaa7340f4ede814": [{ from: { judge: "Mark Smith", f1Score: 30, f2Score: 27 }, to: { judge: "Douglas Crosby", f1Score: 30, f2Score: 27 } }],
+  // https://mmadecisions.com/decision/6370/Iuri-Alcântara-vs-Leandro-Issa
+  "7c9830ee4835f757": [
+    { from: { judge: "Hallison Pontes", f1Score: 29, f2Score: 28 }, to: { judge: "Hallison Pontes", f1Score: 29, f2Score: 27 } },
+    { from: { judge: "Richard Bertrand", f1Score: 29, f2Score: 27 }, to: { judge: "Richard Bertrand", f1Score: 29, f2Score: 28 } },
+  ],
+  // https://www.ufc.com/news/ayari-wins-debut-sobotta-evans-smith-get-impressive-victories
+  // https://mmadecisions.com/decision/7267/Christian-Colombo-vs-Jarjis-Danho
+  "ddb4376695f115b9": [{ from: { judge: "Andy Roberts", f1Score: 29, f2Score: 27 }, to: { judge: "Andy Roberts", f1Score: 27, f2Score: 29 } }],
+  // https://mmadecisions.com/decision/6026/Alistair-Overeem-vs-Roy-Nelson
+  "7685da6f627bd98f": [{ from: { judge: "Dan Mathisen", f1Score: 30, f2Score: 27 }, to: { judge: "Steve Armstrong", f1Score: 30, f2Score: 27 } }],
+  // https://www.ufc.com/news/horiguchi-lee-cooper-among-belfast-prelim-winners
+  // https://mmadecisions.com/decision/7467/Brett-Johns-vs-Kwan-Ho-Kwak
+  "a337e11f80a75b7d": [{ from: { judge: "Howard Hughes", f1Score: 30, f2Score: 26 }, to: { judge: "Howard Hughes", f1Score: 30, f2Score: 27 } }],
+  // https://mmadecisions.com/decision/8566/Tatiana-Suarez-vs-Viviane-Pereira
+  // The source notes that the 30-25 card was initially read aloud as 30-26.
+  "5db3e2fdd18129a4": [{ from: { judge: "Jeff Mullen", f1Score: 30, f2Score: 26 }, to: { judge: "Jeff Mullen", f1Score: 30, f2Score: 25 } }],
+  // https://mmadecisions.com/decision/8426/Teruto-Ishihara-vs-Rolando-Dy
+  "6be073563a421bca": [{ from: { judge: "Evan Field", f1Score: 28, f2Score: 27 }, to: { judge: "Evan Field", f1Score: 29, f2Score: 26 } }],
+  // https://mmadecisions.com/decision/8015/John-Dodson-vs-Eddie-Wineland
+  "8b97cd609c7152b7": [
+    { from: { judge: "Anthony Maness", f1Score: 29, f2Score: 28 }, to: { judge: "Anthony Maness", f1Score: 30, f2Score: 27 } },
+    { from: { judge: "Eric Colon", f1Score: 30, f2Score: 27 }, to: { judge: "Eric Colon", f1Score: 29, f2Score: 28 } },
+  ],
+  // https://mmadecisions.com/decision/8030/Cortney-Casey-vs-Jessica-Aguilar
+  "af2ef75664656957": [{ from: { judge: "Chris Reed", f1Score: 30, f2Score: 27 }, to: { judge: "Troy Wincapaw", f1Score: 30, f2Score: 27 } }],
+  // https://mmadecisions.com/decision/7966/Desmond-Green-vs-Josh-Emmett
+  "97b7638c592a95a9": [{ from: { judge: "Eric Colon", f1Score: 28, f2Score: 29 }, to: { judge: "Dave Tirelli", f1Score: 28, f2Score: 29 } }],
+  // https://mmadecisions.com/decision/7847/Marion-Reneau-vs-Bethe-Correia
+  "b03dd50785e761a0": [{ from: { judge: "Marco Borges", f1Score: 29, f2Score: 27 }, to: { judge: "Marco Borges", f1Score: 27, f2Score: 29 } }],
   // https://mmadecisions.com/decision/9304/Andrew-Sanchez-vs-Markus-Perez
   "5e3779f7c1c39679": [{ from: { judge: "Glenn Hamada", f1Score: 29, f2Score: 28 }, to: { judge: "Glenn Trowbridge", f1Score: 29, f2Score: 28 } }],
   // https://mmadecisions.com/decision/8849/Max-Griffin-vs-Mike-Perry
