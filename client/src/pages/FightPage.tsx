@@ -347,9 +347,9 @@ function FormHalf({ name, rows, side }: { name: string; rows: UfcHistoryRow[]; s
   const mirror = side === "f2" ? "@[56rem]:flex-row-reverse" : "";
   return (
     <div className="min-w-0" aria-label={`${name}'s last five`}>
-      <div className={`mb-0.5 flex items-center gap-1.5 px-1 ${CHART_TEXT} font-semibold text-zinc-700 @[56rem]:hidden`}>
-        <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${side === "f1" ? "bg-f1" : "bg-f2"}`} />
-        <span className="truncate">{name}</span>
+      {/* The name in its corner's ink says whose list this is. */}
+      <div className={`mb-1 truncate px-1 text-[13px] font-semibold leading-5 @[56rem]:hidden ${side === "f1" ? "text-f1-ink" : "text-f2-ink"}`}>
+        {name}
       </div>
       <div className="flex flex-col @[34rem]:hidden">
         {rows.length ? rows.map((row, index) => <FormListBout key={row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`} row={row} />)

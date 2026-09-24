@@ -355,13 +355,19 @@ function Figures({ lines, notes = [] }: { lines: Record<Side, string>; notes?: C
           {lines[side]}
         </div>
       ))}
-      {notes.map((note) => (
-        <div key={note.label} className="whitespace-nowrap text-[10px] leading-4 text-zinc-400 @[36rem]:text-[11px]">
-          <span className="font-semibold" style={{ color: SIDE.f1.ink }}>{note.f1}</span>
-          <span className="text-zinc-300"> · </span>
-          <span className="font-semibold" style={{ color: SIDE.f2.ink }}>{note.f2}</span> {note.label}
+      {/* The stat's name sits between the two values, so the line is
+          centred on the pair above it rather than pushed aside by its label. */}
+      {notes.length ? (
+        <div className="mx-auto mt-0.5 grid w-max grid-cols-[1fr_auto_1fr] items-baseline gap-x-1.5 text-[10px] leading-4 @[36rem]:text-[11px]">
+          {notes.map((note) => (
+            <Fragment key={note.label}>
+              <span className="text-right font-semibold" style={{ color: SIDE.f1.ink }}>{note.f1}</span>
+              <span className="text-center text-[9px] uppercase tracking-wide text-zinc-400">{note.label}</span>
+              <span className="text-left font-semibold" style={{ color: SIDE.f2.ink }}>{note.f2}</span>
+            </Fragment>
+          ))}
         </div>
-      ))}
+      ) : null}
     </div>
   );
 }
@@ -561,7 +567,7 @@ function CombinedStrikeColumns({
   // and so the bar and the figure below it always quote the same number.
   const sigLanded = (side: Side) => Math.min(total[side]?.landed ?? 0, significant[side]?.landed ?? 0);
   const sig: ChartNote[] = significant.f1 || significant.f2
-    ? [{ label: "sig.", f1: String(sigLanded("f1")), f2: String(sigLanded("f2")) }]
+    ? [{ label: "sig", f1: String(sigLanded("f1")), f2: String(sigLanded("f2")) }]
     : [];
 
   return (
@@ -616,26 +622,23 @@ function CombinedStrikeColumns({
   );
 }
 
-/** A chart's name, over the plot it names. */
-function ChartTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <h3 className={`mb-1 px-1 text-center ${sectionLabel} @[36rem]:mb-2`}>
-      {children}
+/** The split charts name each pair under its figures. */
+const PAIR_LABEL = `whitespace-nowrap text-center text-[9px] font-semibold uppercase leading-4 tracking-[0.08em] text-zinc-400 @[36rem]:text-[10px]`;
+
+/** A chart and its name. The plots all start at the top, so every baseline
+ *  in a row is one line; a Fight totals caption is pinned to the bottom so
+ *  the captions form a row of their own, while a round is named over it. */
+function ChartBlock({ title, children, titleAbove = false }: { title: string; children: React.ReactNode; titleAbove?: boolean }) {
+  const heading = (
+    <h3 className={`px-1 text-center text-[10px] font-semibold uppercase tracking-[0.1em] text-zinc-400 @[36rem]:text-[11px] ${titleAbove ? "mb-1.5" : "mt-auto pt-2"}`}>
+      {title}
     </h3>
   );
-}
-
-/** The split charts name each pair over it; a single-pair chart holds the
- *  same line empty, so every plot in a row stands on one baseline. */
-const PAIR_LABEL = `h-4 whitespace-nowrap text-center text-[9px] font-semibold uppercase leading-4 tracking-[0.08em] text-zinc-400 @[36rem]:text-[10px]`;
-
-/** A chart with its title and a place for pair labels, as every chart in the
- *  Fight totals panel is laid out. */
-function ChartBlock({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="flex min-w-0 flex-col items-center">
-      <ChartTitle>{title}</ChartTitle>
+      {titleAbove ? heading : null}
       {children}
+      {titleAbove ? null : heading}
     </section>
   );
 }
@@ -685,7 +688,6 @@ function StrikeSplitColumns({
     <div className="grid w-full grid-cols-3 gap-1 @[36rem]:gap-2">
       {targets.map((target) => (
         <div key={target.source} className="flex min-w-0 flex-col items-center">
-          <div className={PAIR_LABEL}>{target.label}</div>
           <Plot className="gap-1">
             {SIDES.map((side) => {
               const value = target[side];
@@ -723,6 +725,7 @@ function StrikeSplitColumns({
             f1: target.f1 ? `${target.f1.landed}/${target.f1.attempted}` : "—",
             f2: target.f2 ? `${target.f2.landed}/${target.f2.attempted}` : "—",
           }} />
+          <div className={PAIR_LABEL}>{target.label}</div>
         </div>
       ))}
     </div>
@@ -758,7 +761,6 @@ export function FightTotals({ fight, grouped = false }: { fight: Matchup; groupe
         // widths put two charts to a row.
         <div className="grid grid-cols-[1fr_1.4fr] gap-x-3 gap-y-4 px-2 pb-3 pt-1 @[36rem]:gap-x-4 @[36rem]:gap-y-6 @[36rem]:px-4 @[36rem]:pb-4 @[36rem]:pt-3 @[50rem]:grid-cols-[0.7fr_1.4fr_0.7fr_1.4fr]">
           <ChartBlock title="Strikes">
-            <div aria-hidden="true" className={PAIR_LABEL} />
             <CombinedStrikeColumns fight={fight} significant={sig} total={tot} notes={knockdowns} />
           </ChartBlock>
 
@@ -768,7 +770,6 @@ export function FightTotals({ fight, grouped = false }: { fight: Matchup; groupe
           </ChartBlock>
 
           <ChartBlock title="Control time">
-            <div aria-hidden="true" className={PAIR_LABEL} />
             <Tooltip
               className="!min-h-0 !p-0 hover:!bg-transparent"
               label={
@@ -814,7 +815,7 @@ function roundNotes(kd: Cell, td: Cell, sub: Cell, ctrl: Cell): ChartNote[] {
     notes.push({ label: "TD", f1: `${takedowns.f1?.landed ?? 0}/${takedowns.f1?.attempted ?? 0}`, f2: `${takedowns.f2?.landed ?? 0}/${takedowns.f2?.attempted ?? 0}` });
   }
   if (intOf(sub.f1) || intOf(sub.f2)) notes.push({ label: "SUB", f1: String(intOf(sub.f1)), f2: String(intOf(sub.f2)) });
-  if (clockOf(ctrl.f1) || clockOf(ctrl.f2)) notes.push({ label: "ctrl", f1: ctrl.f1 || "0:00", f2: ctrl.f2 || "0:00" });
+  if (clockOf(ctrl.f1) || clockOf(ctrl.f2)) notes.push({ label: "Ctrl", f1: ctrl.f1 || "0:00", f2: ctrl.f2 || "0:00" });
   return notes;
 }
 
@@ -845,7 +846,7 @@ function RoundColumn({ fight, index }: { fight: Matchup; index: number }) {
   const ctrl = at("Ctrl");
 
   return (
-    <ChartBlock title={`Round ${index + 1}`}>
+    <ChartBlock title={`Round ${index + 1}`} titleAbove>
       <CombinedStrikeColumns
         fight={fight}
         significant={significant}

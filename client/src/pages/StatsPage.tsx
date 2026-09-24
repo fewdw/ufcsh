@@ -91,11 +91,11 @@ const DEFAULT_SETTINGS: StatsSettings = {
   statsUntil: "all",
   minimumFights: "3",
   minimumSample: "3",
-  limit: "50",
+  limit: "20",
   boutType: "all",
   cardPosition: "all",
   scheduledRounds: "all",
-  recordGroup: "wins",
+  recordGroup: "bouts",
   boutsMode: "total",
   winsMode: "total",
   winsByMethod: "all",
@@ -694,14 +694,17 @@ function Leaderboard({
 }) {
   const rowsScroll = useRouteScrollRestoration<HTMLDivElement>(`stats-board:${board.key}`);
   return (
-    // Four rows — title, description, controls, list — shared through subgrid
+    // Three rows — title with its definition, controls, list — shared through subgrid
     // with every card on the same line of the grid: each header row takes the
     // height of the tallest card beside it, so titles, definitions, controls
     // and the first ranked row all line up without reserving empty space.
-    <section className={`${shell} row-span-4 grid min-w-0 grid-rows-subgrid gap-0 overflow-hidden ${className}`}>
-      <div className="flex items-center justify-between gap-2 px-4 pt-3">
+    <section className={`${shell} row-span-3 grid min-w-0 grid-rows-subgrid gap-0 overflow-hidden ${className}`}>
+      {/* The name and its definition read as one line, the definition in
+          smaller type; a long one wraps to a second line and the whole of it
+          is one hover away. */}
+      <div className="line-clamp-2 px-4 pb-1.5 pt-3 leading-5" title={board.description}>
         {board.key === "record" ? (
-          <div className={segmentedGroup} aria-label="Bouts, wins or losses">
+          <div className={`${segmentedGroup} mr-2 inline-flex align-middle`} aria-label="Bouts, wins or losses">
             {(["bouts", "wins", "losses"] as const).map((group) => (
               <button
                 key={group}
@@ -715,12 +718,10 @@ function Leaderboard({
             ))}
           </div>
         ) : (
-          <h2 className="truncate py-1 text-sm font-semibold text-zinc-950" title={board.title}>{board.title}</h2>
+          <h2 className="mr-1.5 inline text-sm font-semibold text-zinc-950">{board.title}</h2>
         )}
+        <span className="text-[11px] text-zinc-400">{board.description}</span>
       </div>
-      {/* A definition can run to a paragraph. Two lines of it belong on the
-          card; the whole of it belongs one hover away. */}
-      <p className="mt-1 line-clamp-2 px-4 text-[11px] leading-4 text-zinc-400" title={board.description}>{board.description}</p>
       <div className="border-b border-zinc-200 px-4 pb-3">
         <CardControls boardKey={board.key} settings={settings} update={update} division={division} />
       </div>
@@ -816,7 +817,7 @@ function FiltersMenu({
   ].filter(Boolean).length;
 
   return (
-    <OptionsSheet label="Filters" count={active || null} onReset={onReset}>
+    <OptionsSheet label="Filters" count={active || null} onReset={onReset} iconOnlyOnPhone>
       <p className="px-4 pb-2 text-[11px] text-zinc-400">Applies to all five cards.</p>
       <div className="grid grid-cols-2 gap-x-2 gap-y-2.5 border-b border-zinc-100 px-4 pb-3">
         <SheetField label="From">
@@ -1037,12 +1038,6 @@ export default function StatsPage() {
         {error ? <div className="mb-3"><RequestNotice onRetry={retry}>Couldn’t update statistics. The last successful results are shown.</RequestNotice></div> : null}
 
         <SelectedFighterStrip fighters={selectedFighters} onChange={setSelectedFighters} />
-
-        {!selectedFighters.length ? (
-          <p className="mb-3 px-1 text-[11px] text-zinc-500">
-            {`${dashboard.coverage.fighters.toLocaleString("en-US")} fighters across ${dashboard.coverage.fights.toLocaleString("en-US")} bouts match these filters. Each card lists its top ${dashboard.limit}.`}
-          </p>
-        ) : null}
 
         {/* Five cards of one width: three on top, two centred beneath them
             (on a two-column screen the fifth is centred on its own row). */}

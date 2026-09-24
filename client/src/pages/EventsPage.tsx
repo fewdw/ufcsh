@@ -79,12 +79,15 @@ function EventSidebar({
   selectedId,
   mobileOpen,
   onSelect,
+  onBack,
   dock,
 }: {
   events: EventListItem[];
   selectedId: string | null;
   mobileOpen: boolean;
   onSelect: () => void;
+  /** Closes the list on a phone, back to the card it was opened from. */
+  onBack: () => void;
   dock: (typeof DOCK)[keyof typeof DOCK];
 }) {
   const [filter, setFilter] = useHistoryState("events:filter", "");
@@ -145,10 +148,17 @@ function EventSidebar({
 
   return (
     <aside id="events-sidebar" className={`${mobileOpen ? "flex" : "hidden"} min-h-0 w-full flex-1 flex-col overflow-hidden ${dock.sidebar} ${shell}`}>
-      <div className="space-y-2 border-b border-zinc-200 p-3">
+      <div className="space-y-1.5 border-b border-zinc-200 p-2 sm:space-y-2 sm:p-3">
+        {/* On a phone the way back to the card rides beside the filter, so
+            the list gets the screen instead of three stacked controls. */}
+        <div className="flex items-center gap-1.5">
+        <button type="button" onClick={onBack} aria-label="Back to card" title="Back to card"
+          className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-950 ${dock.toggle}`}>
+          <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+        </button>
         {/* Built from the same pill, border and glyph as the header's search
             button, so the two read as one control in two places. */}
-        <label className="relative block">
+        <label className="relative block min-w-0 flex-1">
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
             <SearchGlyph />
           </span>
@@ -157,9 +167,10 @@ function EventSidebar({
             onChange={(e) => setFilter(e.target.value)}
             aria-label={`Filter ${KIND_NOUN[kind]}`}
             placeholder={`Filter ${scoped.length} ${KIND_NOUN[kind]}…`}
-            className="h-9 w-full min-w-0 rounded-full border border-zinc-200 bg-white pl-9 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400"
+            className="h-8 w-full min-w-0 rounded-full border border-zinc-200 bg-white pl-9 pr-3 text-[13px] text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-9 sm:text-sm"
           />
         </label>
+        </div>
         <div className={segmentedGroup} role="group" aria-label="Event tier">
           {KIND_FILTERS.map((option) => (
             <button
@@ -500,14 +511,14 @@ function CompactSide({ side, fight, done, other }: { side: FightSide; fight: Eve
           <FormDots side={side} align="left" />
         </div>
       </div>
-      {fight.odds?.f1.close || fight.odds?.f2.close ? (
-        <Moneyline
-          leg={moneylineLeg(done ? undefined : fight.id, fightLabel, corner, side.name, price)}
-          value={price}
-          name={side.name}
-          className={`odds-pair w-14 shrink-0 rounded-md border py-0.5 text-center text-[12px] font-semibold tabular-nums ${other.outcome === "win" ? "opacity-60" : ""}`}
-        />
-      ) : null}
+      {/* A bout with no line yet keeps the same box, holding a dash, so
+          every row on the card lines up. */}
+      <Moneyline
+        leg={moneylineLeg(done ? undefined : fight.id, fightLabel, corner, side.name, price)}
+        value={price || "-"}
+        name={side.name}
+        className={`odds-pair w-14 shrink-0 rounded-md border py-0.5 text-center text-[12px] font-semibold tabular-nums ${price ? "" : "text-zinc-300"} ${other.outcome === "win" ? "opacity-60" : ""}`}
+      />
     </div>
   );
 }
@@ -952,7 +963,7 @@ export default function EventsPage() {
     <div className={`flex h-full min-h-0 flex-col gap-2 p-2 sm:gap-3 sm:p-3 ${dock.row}`}>
       {/* An open card carries this button in its own header; the list itself
           and an open matchup still need it here. */}
-      {mobileEventsOpen || fightId || !eventId ? (
+      {!mobileEventsOpen && (fightId || !eventId) ? (
         <button
           type="button"
           aria-expanded={mobileEventsOpen}
@@ -968,6 +979,7 @@ export default function EventsPage() {
         selectedId={selectedId}
         mobileOpen={mobileEventsOpen}
         onSelect={() => setMobileEventsOpen(false)}
+        onBack={() => setMobileEventsOpen(false)}
         dock={dock}
       />
       <main className={`${mobileEventsOpen ? "hidden" : "block"} min-h-0 min-w-0 flex-1 ${dock.main}`}>

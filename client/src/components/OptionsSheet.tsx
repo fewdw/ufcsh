@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { SlidersHorizontal, X } from "lucide-react";
 
 /** A page's options. A popover under its button on a wide screen; on a phone
  *  a sheet from the bottom edge, where a thumb can reach every control. A
- *  press anywhere outside it, Escape or the ✕ closes it. */
+ *  press anywhere outside it, Escape or the ✕ closes it. The phone sheet is
+ *  portalled to the body, so its dimmed backdrop covers the header too
+ *  whatever the page's own stacking or blur, and the page under it stays
+ *  still while it is open. */
 export default function OptionsSheet({
   label,
   count,
@@ -21,6 +25,14 @@ export default function OptionsSheet({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const [phone, setPhone] = useState(() => typeof window !== "undefined" && !window.matchMedia("(min-width: 640px)").matches);
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 640px)");
+    const change = () => setPhone(!query.matches);
+    query.addEventListener("change", change);
+    return () => query.removeEventListener("change", change);
+  }, []);
   const close = (returnFocus = false) => {
     setOpen(false);
     if (returnFocus) buttonRef.current?.focus();
@@ -28,7 +40,8 @@ export default function OptionsSheet({
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !sheetRef.current?.contains(target)) setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -43,6 +56,22 @@ export default function OptionsSheet({
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [open]);
+
+  // Nothing behind a phone sheet scrolls: not the page, not an inner list.
+  useEffect(() => {
+    if (!open || !phone) return;
+    const root = document.documentElement;
+    const previous = root.style.overflow;
+    root.style.overflow = "hidden";
+    const block = (event: TouchEvent) => {
+      if (!sheetRef.current?.contains(event.target as Node)) event.preventDefault();
+    };
+    document.addEventListener("touchmove", block, { passive: false });
+    return () => {
+      root.style.overflow = previous;
+      document.removeEventListener("touchmove", block);
+    };
+  }, [open, phone]);
 
   const phoneHidden = iconOnlyOnPhone ? "hidden sm:inline" : "";
   return (
@@ -60,13 +89,14 @@ export default function OptionsSheet({
         <span className={phoneHidden}>{label}</span>
         {count ? <span className={`text-[10px] tabular-nums text-zinc-400 ${phoneHidden}`}>{count}</span> : null}
       </button>
-      {open ? (
-        <>
-          <div className="fixed inset-0 z-40 bg-black/30 sm:hidden" aria-hidden="true" onClick={() => close()} />
+      {open ? (() => {
+        const sheet = <>
+          <div className="fixed inset-0 z-[60] bg-black/30 sm:hidden" aria-hidden="true" onClick={() => close()} />
           <div
+            ref={sheetRef}
             role="dialog"
             aria-label={label}
-            className="fixed inset-x-0 bottom-0 z-50 max-h-[80vh] overflow-y-auto rounded-t-2xl border-t border-zinc-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:mt-2 sm:max-h-[32rem] sm:w-80 sm:rounded-2xl sm:border sm:pb-0 sm:shadow-xl"
+            className="fixed inset-x-0 bottom-0 z-[70] max-h-[80vh] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-zinc-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:z-50 sm:mt-2 sm:max-h-[32rem] sm:w-80 sm:rounded-2xl sm:border sm:pb-0 sm:shadow-xl"
           >
             <div className="sticky top-0 z-10 flex items-center justify-between bg-white px-4 pb-1 pt-3">
               <span className="text-sm font-semibold text-zinc-900">{label}</span>
@@ -81,8 +111,9 @@ export default function OptionsSheet({
             </div>
             {children}
           </div>
-        </>
-      ) : null}
+        </>;
+        return phone ? createPortal(sheet, document.body) : sheet;
+      })() : null}
     </div>
   );
 }
