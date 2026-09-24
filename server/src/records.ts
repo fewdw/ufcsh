@@ -24,6 +24,10 @@ export type ProfileStatEntry = RecordEntry & {
   category_order: number;
 };
 
+// A 1/1 accuracy bout must not outrank sustained output on a profile.
+const MIN_STRIKES_LANDED = 30;
+const MIN_TAKEDOWN_ACCURACY_SAMPLE = 5;
+
 type ActionTotals = {
   bouts: number;
   seconds: number;
@@ -211,7 +215,7 @@ const STATS: StatDef[] = [
   { key: "span", label: "Longest UFC career", format: "years", priority: 13, value: (t) => (t.bouts >= 8 && t.firstDate ? Math.round(((Date.parse(t.lastDate) - Date.parse(t.firstDate)) / (365.25 * 86400000)) * 10) / 10 : null), detail: (t) => `${t.bouts} bouts · ${years(t)}` },
   { key: "titleFights", label: "Most championship bouts", format: "number", priority: 14, value: (t) => (t.titleFights >= 3 ? t.titleFights : null), detail: (t) => `${t.titleWins}-${t.titleLosses} in them` },
   { key: "reigningFaced", label: "Most reigning champions faced", format: "number", priority: 15, value: (t) => (t.reigningBouts >= 3 ? t.reigningBouts : null), detail: (t) => `${t.championBouts} bouts against champions in all` },
-  { key: "sigLanded", label: "Most significant strikes landed", format: "number", priority: 16, value: (t) => (t.statBouts >= 5 ? t.sigLanded : null), detail: (t) => `over ${clock(t.seconds)} of fight time` },
+  { key: "sigLanded", label: "Most significant strikes landed", format: "number", priority: 16, value: (t) => (t.statBouts >= 5 && t.sigLanded >= MIN_STRIKES_LANDED ? t.sigLanded : null), detail: (t) => `over ${clock(t.seconds)} of fight time` },
   { key: "sigRate", label: "Highest strike rate", format: "decimal", priority: 17, value: (t) => (t.statBouts >= 8 ? perFifteen(t.sigLanded, t.seconds) : null), detail: (t) => `${t.sigLanded} landed per 15 minutes` },
   { key: "takedowns", label: "Most takedowns landed", format: "number", priority: 18, value: (t) => (t.statBouts >= 5 && t.takedowns >= 10 ? t.takedowns : null), detail: (t) => `in ${t.statBouts} tracked bouts` },
   { key: "control", label: "Most control time", format: "time", priority: 19, value: (t) => (t.controlBouts >= 5 && t.controlSeconds > 0 ? t.controlSeconds : null), detail: (t) => `over ${clock(t.controlTrackedSeconds)} of tracked fight time` },
@@ -319,6 +323,8 @@ type ActionDirection = "given" | "taken";
 const PROFILE_ACTIONS: StatDef[] = [];
 for (const type of ACTION_TYPES) {
   const name = ACTION_NAMES[type];
+  const isStrike = type.endsWith("Strikes");
+  const minAccuracyCount = isStrike ? MIN_STRIKES_LANDED : MIN_TAKEDOWN_ACCURACY_SAMPLE;
   const category = ["takedowns", "submissions", "control"].includes(type)
     ? { label: "Grappling", order: 6 } : { label: "Striking", order: 5 };
   const supportsAttempts = !["knockdowns", "submissions", "control"].includes(type);
@@ -382,9 +388,16 @@ for (const type of ACTION_TYPES) {
         }
         const attempts = direction === "given" ? a.givenAttempts : a.takenAttempts;
         const scored = direction === "given" ? a.givenAccuracyScored : a.takenAccuracyScored;
+        if ((direction === "given" ? scored : attempts) < minAccuracyCount) return null;
         if (attempts < 1) return null;
         const percentage = actionPercentage(scored, attempts, direction === "taken");
         return percentage == null ? null : Math.round(percentage * 10) / 10;
+      }
+      if (isStrike && (basis === "scored" || basis === "differential")) {
+        const landed = mode === "single" && basis === "scored"
+          ? (direction === "given" ? a.maxGiven : a.maxTaken)
+          : direction === "given" ? a.given : a.taken;
+        if (landed < MIN_STRIKES_LANDED) return null;
       }
       const amount = mode === "single" ? basis === "differential" ? a.maxGivenDifferential
         : basis === "attempted" ? (direction === "given" ? a.maxGivenAttempts : a.maxTakenAttempts)
@@ -489,6 +502,8 @@ function buildTotals(index: FightIndex, division?: string): Map<string, Totals> 
       // Match the Output leaderboard's denominator: a bout counts only when
       // both corners have this action. Attempts use the smaller paired sample.
       for (const type of ACTION_TYPES) {
+        const isStrike = type.endsWith("Strikes");
+        const minAccuracyCount = isStrike ? MIN_STRIKES_LANDED : MIN_TAKEDOWN_ACCURACY_SAMPLE;
         const own = side.actions[type];
         const theirs = opponent.actions[type];
         if (!own || !theirs) continue;
@@ -514,7 +529,7 @@ function buildTotals(index: FightIndex, division?: string): Map<string, Totals> 
           action.maxTakenDetail = `vs ${opponent.name} · ${fight.eventName}`;
         }
         const differential = own.scored - theirs.scored;
-        if (differential > action.maxGivenDifferential) {
+        if ((!isStrike || own.scored >= MIN_STRIKES_LANDED) && differential > action.maxGivenDifferential) {
           action.maxGivenDifferential = differential;
           action.maxGivenDifferentialDetail = `${own.scored} given − ${theirs.scored} taken · vs ${opponent.name} · ${fight.eventName}`;
         }
@@ -534,12 +549,16 @@ function buildTotals(index: FightIndex, division?: string): Map<string, Totals> 
             action.maxTakenAttemptsDetail = `vs ${opponent.name} · ${fight.eventName}`;
           }
           const givenPercentage = actionPercentage(own.scored, own.attempted);
-          if (givenPercentage != null && own.attempted > 0 && givenPercentage > action.maxGivenPercentage) {
+          if (givenPercentage != null && own.attempted > 0
+            && own.scored >= minAccuracyCount
+            && givenPercentage > action.maxGivenPercentage) {
             action.maxGivenPercentage = givenPercentage;
             action.maxGivenPercentageDetail = `${own.scored}/${own.attempted} landed · vs ${opponent.name} · ${fight.eventName}`;
           }
           const takenPercentage = actionPercentage(theirs.scored, theirs.attempted, true);
-          if (takenPercentage != null && theirs.attempted > 0 && takenPercentage > action.maxTakenPercentage) {
+          if (takenPercentage != null && theirs.attempted > 0
+            && theirs.attempted >= minAccuracyCount
+            && takenPercentage > action.maxTakenPercentage) {
             action.maxTakenPercentage = takenPercentage;
             action.maxTakenPercentageDetail = `${theirs.attempted - theirs.scored}/${theirs.attempted} stopped · vs ${opponent.name} · ${fight.eventName}`;
           }
