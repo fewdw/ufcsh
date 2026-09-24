@@ -141,7 +141,8 @@ function BlockedPeople() {
   if (!blocked?.length && !error) return null;
   return (
     <section className={`${PANEL_SHELL} overflow-hidden`}>
-      <PanelHeading title="Blocked people" subtitle="Their comments are collapsed for you, and they can’t reply to yours." />
+      <PanelHeading title="Blocked people" subtitle={`${(blocked ?? []).length}`} />
+      <p className="border-b border-zinc-100 px-5 py-2 text-xs text-zinc-500">Their comments are collapsed for you, and they can’t reply to yours.</p>
       {error ? <p role="alert" className="px-5 py-3 text-xs text-red-600">{error}</p> : null}
       <ul className="divide-y divide-zinc-100">
         {(blocked ?? []).map(person => (

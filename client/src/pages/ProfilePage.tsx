@@ -189,8 +189,8 @@ function Profile({ handle }: { handle: string }) {
             <PanelHeading
               title="Scored fights"
               subtitle={`${view.total.toLocaleString()} of ${scorer.cards.toLocaleString()}`}
-              aside={
-                <div className="flex w-full items-center gap-2 sm:w-auto">
+              controls={
+                <div className="flex w-full items-center gap-2">
                   <ScorecardFilter value={filter} agreement={agreement} total={scorer.cards} onChange={setFilter} />
                   <SearchBox value={query} onChange={value => setParam("q", value || null)} />
                 </div>

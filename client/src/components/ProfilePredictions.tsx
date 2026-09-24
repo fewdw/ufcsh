@@ -78,9 +78,8 @@ export default function ProfilePredictions({ handle, mine }: { handle: string; m
     <section className={PANEL_SHELL}>
       <PanelHeading title="Prediction accuracy"
         subtitle={`${data.total.toLocaleString()} ${data.total === 1 ? "pick" : "picks"}`}
-        aside={<span className="text-right">
-          <span className="block text-lg font-semibold tabular-nums text-zinc-900">{totals.points.toLocaleString()}</span>
-          <span className="block text-[10px] font-medium uppercase tracking-wide text-zinc-400">points</span>
+        aside={<span className="whitespace-nowrap text-sm font-semibold tabular-nums text-zinc-900">
+          {totals.points.toLocaleString()} <span className="text-xs font-medium text-zinc-400">pts</span>
         </span>} />
       <div className="grid grid-cols-3 gap-2 px-3 py-3 sm:px-5">
         <Accuracy title="Winner" rate={accuracy.fighter} empty="None settled" />

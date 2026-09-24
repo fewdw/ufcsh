@@ -52,28 +52,36 @@ export const PANEL_SHELL =
   "rounded-2xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
 const shell = PANEL_SHELL;
 
+/** One line: the panel's name on the left, its count or headline figure on
+ *  the right. `controls` that cannot share that line (a filter and a search
+ *  box) go on a row of their own under it. */
 export function PanelHeading({
   title,
   subtitle,
   aside,
+  controls,
   divider = true,
 }: {
   title: string;
   subtitle?: React.ReactNode;
   aside?: React.ReactNode;
+  controls?: React.ReactNode;
   divider?: boolean;
 }) {
   return (
-    <div
-      className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2.5 sm:px-5 sm:py-3.5 ${
-        divider ? "border-b border-zinc-100" : ""
-      }`}
-    >
-      <div>
-        <h2 className="text-sm font-semibold text-zinc-900">{title}</h2>
-        {subtitle ? <p className="mt-0.5 text-xs leading-snug text-zinc-500">{subtitle}</p> : null}
+    <div className={`px-4 py-2.5 sm:px-5 sm:py-3 ${divider ? "border-b border-zinc-100" : ""}`}>
+      <div className="flex min-h-6 items-center justify-between gap-3">
+        <h2 className="shrink-0 whitespace-nowrap text-sm font-semibold text-zinc-900">{title}</h2>
+        {subtitle || aside ? (
+          <div className="flex min-w-0 items-center justify-end gap-2">
+            {subtitle ? (
+              <p className="min-w-0 truncate text-xs tabular-nums text-zinc-500" title={typeof subtitle === "string" ? subtitle : undefined}>{subtitle}</p>
+            ) : null}
+            {aside ? <div className="shrink-0">{aside}</div> : null}
+          </div>
+        ) : null}
       </div>
-      {aside}
+      {controls ? <div className="mt-2">{controls}</div> : null}
     </div>
   );
 }

@@ -114,7 +114,7 @@ function CommunityPicks({ distribution, scheduledRounds }: { distribution: Predi
 
 function FanPredictions({ predictions, total }: { predictions: FanPrediction[]; total: number }) {
   return <section className={PANEL_SHELL}>
-    <PanelHeading title="Fan predictions" subtitle={`${predictions.length < total ? `${predictions.length} newest of ` : ""}${total.toLocaleString()} on ufc.sh`} />
+    <PanelHeading title="Fan predictions" subtitle={`${predictions.length < total ? `${predictions.length} newest of ` : ""}${total.toLocaleString()}`} />
     <div className="grid grid-flow-col auto-cols-[minmax(11rem,1fr)] overflow-x-auto border-t border-zinc-100 sm:auto-cols-[minmax(12rem,1fr)] xl:grid-cols-5 xl:auto-cols-auto xl:overflow-visible">
       {predictions.map(row => <Link key={row.scorer.publicId} to={`/profiles/${row.scorer.handle}?tab=predictions`}
         className="min-w-0 border-r border-zinc-100 px-3 py-2 last:border-r-0 hover:bg-zinc-50">

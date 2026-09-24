@@ -96,11 +96,8 @@ export default function ProfileBets({ handle, mine }: { handle: string; mine: bo
   return <>
     <section className={PANEL_SHELL}>
       <PanelHeading title="Betting record"
-        subtitle={`${data.total.toLocaleString()} ${data.total === 1 ? "bet" : "bets"} · up to $${data.maxStake} each`}
-        aside={<span className="text-right">
-          <span className={`block text-lg font-semibold tabular-nums ${tone}`}>{signedMoney(totals.net)}</span>
-          <span className="block text-[10px] font-medium uppercase tracking-wide text-zinc-400">profit / loss</span>
-        </span>} />
+        subtitle={`${data.total.toLocaleString()} ${data.total === 1 ? "bet" : "bets"} · $${data.maxStake} max`}
+        aside={<span className={`whitespace-nowrap text-sm font-semibold tabular-nums ${tone}`} title="Profit / loss">{signedMoney(totals.net)}</span>} />
       <div className="grid grid-cols-5 gap-2 px-4 py-2.5 sm:gap-4 sm:px-5 sm:py-3">
         <Stat label="Won" value={totals.won.toLocaleString()} tone="text-emerald-600" />
         <Stat label="Lost" value={totals.lost.toLocaleString()} tone="text-rose-600" />
