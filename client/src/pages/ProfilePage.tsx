@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiCache, prefetch, useApi } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
+import { ConfirmRemove, RemoveX } from "../components/ConfirmRemove";
 import Avatar from "../components/Avatar";
 import ProgressiveImage from "../components/ProgressiveImage";
 import { PANEL_SHELL, PanelHeading } from "../components/FightStats";
@@ -33,7 +34,6 @@ const quiet = "rounded-full px-3 py-1.5 text-xs font-medium text-zinc-500 transi
 /** The account's own actions: short enough that all three sit on one line. */
 const action = "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
 const primary = "rounded-full bg-zinc-900 px-4 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40";
-const danger = "rounded-full bg-rose-600 px-4 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40";
 
 /** A public profile. Anyone can open anyone's: the scorer is named by the
  *  username they chose, or by the one minted for them when they signed up. */
@@ -229,7 +229,8 @@ function Profile({ handle }: { handle: string }) {
       </div>
       {confirming ? (
         <ConfirmRemove
-          card={confirming}
+          title="Remove this scorecard?"
+          detail={`${confirming.fight.f1_name} vs ${confirming.fight.f2_name} · ${confirming.total1}–${confirming.total2}`}
           busy={removal.busy === confirming.fightId}
           onCancel={() => setConfirming(null)}
           onConfirm={() => void removal.remove(confirming.fightId, confirming.revision)}
@@ -481,40 +482,6 @@ function useRemoveCard(onRemoved: () => void) {
   return { remove, busy, error };
 }
 
-/** Removing a card cannot be undone, so it is asked for in a dialog rather
- *  than from a control the reader can brush past. */
-function ConfirmRemove({ card, busy, onCancel, onConfirm }: {
-  card: ScorerCard; busy: boolean; onCancel: () => void; onConfirm: () => void;
-}) {
-  useEffect(() => {
-    const key = (event: KeyboardEvent) => { if (event.key === "Escape") onCancel(); };
-    document.addEventListener("keydown", key);
-    return () => document.removeEventListener("keydown", key);
-  }, [onCancel]);
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4" onClick={onCancel}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="remove-card-title"
-        onClick={event => event.stopPropagation()}
-        className={`${PANEL_SHELL} w-full max-w-sm p-5`}
-      >
-        <h2 id="remove-card-title" className="text-sm font-semibold text-zinc-900">Remove this scorecard?</h2>
-        <p className="mt-1 truncate text-xs tabular-nums text-zinc-500">
-          {card.fight.f1_name} vs {card.fight.f2_name} · {card.total1}–{card.total2}
-        </p>
-        <div className="mt-4 flex justify-end gap-2">
-          <button type="button" className={quiet} onClick={onCancel} disabled={busy}>Cancel</button>
-          <button type="button" autoFocus className={danger} onClick={onConfirm} disabled={busy}>
-            {busy ? "Removing…" : "Remove"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function CardPage({ url, mine, onRemove, onReady }: {
   url: string; mine: boolean; onRemove: (card: ScorerCard) => void; onReady: () => void;
 }) {
@@ -574,17 +541,7 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
           {fight.method ? ` · ${formatMethod(fight.method, fight.round, fight.time)}` : ""}
         </p>
       </Link>
-      {mine ? (
-        <button
-          type="button"
-          onClick={() => onRemove(card)}
-          aria-label={`Remove your scorecard for ${fight.f1_name} vs ${fight.f2_name}`}
-          title="Remove scorecard"
-          className="absolute right-0.5 top-0.5 grid h-6 w-6 place-items-center rounded-full text-zinc-300 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
-        >
-          <X className="h-3 w-3" aria-hidden="true" />
-        </button>
-      ) : null}
+      {mine ? <RemoveX label={`Remove your scorecard for ${fight.f1_name} vs ${fight.f2_name}`} onClick={() => onRemove(card)} /> : null}
     </li>
   );
 }

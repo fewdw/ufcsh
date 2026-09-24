@@ -2,9 +2,10 @@ import { useAuth } from "@clerk/react";
 import { ArrowBigUp } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { commentLink, type ProfileComments as CommentsData } from "../discussion";
+import { commentLink, type ProfileComment, type ProfileComments as CommentsData } from "../discussion";
 import type { ScorerIdentity } from "../scoring";
 import { exactTime, relativeAge } from "../format";
+import { ConfirmRemove, RemoveX } from "./ConfirmRemove";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
 
 /** Everything a fan has said in fight discussions, newest first. Listed to
@@ -19,6 +20,28 @@ export default function ProfileComments({ handle, mine, visible, visibilityContr
   const [data, setData] = useState<CommentsData | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const [confirming, setConfirming] = useState<ProfileComment | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [removeError, setRemoveError] = useState("");
+  const remove = async (comment: ProfileComment) => {
+    if (busy) return;
+    setBusy(true); setRemoveError("");
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Your session expired. Sign in again.");
+      const response = await fetch(`/api/comments/${encodeURIComponent(comment.id)}`, {
+        method: "DELETE", cache: "no-store", signal: AbortSignal.timeout(20_000),
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? "That comment could not be removed.");
+      setConfirming(null);
+      // Step back a page when the last comment on this one went.
+      if (data?.comments.length === 1 && offset > 0) setOffset(Math.max(0, offset - data.pageSize));
+      else setAttempt(value => value + 1);
+    } catch (problem) {
+      setRemoveError(problem instanceof Error ? problem.message : "That comment could not be removed.");
+    } finally { setBusy(false); }
+  };
 
   useEffect(() => {
     let current = true;
@@ -59,8 +82,8 @@ export default function ProfileComments({ handle, mine, visible, visibilityContr
       ) : (
         <ul className="divide-y divide-zinc-100">
           {data.comments.map(comment => (
-            <li key={comment.id}>
-              <Link to={commentLink(comment.fightId, comment.id)} className="block px-4 py-3 transition-colors hover:bg-zinc-50 sm:px-5">
+            <li key={comment.id} className="relative">
+              <Link to={commentLink(comment.fightId, comment.id)} className={`block py-3 pl-4 transition-colors hover:bg-zinc-50 sm:pl-5 ${mine ? "pr-8" : "pr-4 sm:pr-5"}`}>
                 <p className="flex min-w-0 items-center gap-1.5 text-[11px] text-zinc-400">
                   <span className="min-w-0 truncate font-semibold text-zinc-600">
                     {comment.fight ? `${comment.fight.f1_name} vs ${comment.fight.f2_name}` : "A fight"}
@@ -77,6 +100,7 @@ export default function ProfileComments({ handle, mine, visible, visibilityContr
                 </p>
                 {comment.held ? <p className="mt-1 text-[11px] text-amber-700">Hidden from others while a moderator reviews it.</p> : null}
               </Link>
+              {mine ? <RemoveX label="Delete comment" onClick={() => { setConfirming(comment); setRemoveError(""); }} /> : null}
             </li>
           ))}
         </ul>
@@ -89,6 +113,12 @@ export default function ProfileComments({ handle, mine, visible, visibilityContr
       ) : null}
     </section>
     {mine ? <BlockedPeople /> : null}
+    {confirming ? <ConfirmRemove
+      title="Delete this comment?"
+      detail={confirming.body}
+      busy={busy} error={removeError}
+      onCancel={() => { setConfirming(null); setRemoveError(""); }}
+      onConfirm={() => void remove(confirming)} /> : null}
   </>;
 }
 

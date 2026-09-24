@@ -40,10 +40,9 @@ const PLOT_HEIGHT = "h-16 @[36rem]:h-[104px]";
 /** A bar `share` (0–1) of its plot tall, but never shorter than `floor` px. */
 const barHeight = (share: number, floor: number) => `max(${floor}px, ${Math.min(1, share) * 100}%)`;
 
-/** Every bar in Fight totals and Round by round is this wide. `max-w-full`
- *  lets one shrink rather than overflow when a column genuinely cannot hold
- *  it, so they stay identical wherever there is room. */
-const BAR = "w-10 max-w-full";
+/** Every bar in Fight totals and Round by round is this wide, whichever
+ *  chart it belongs to, so a bar's height is the only thing that varies. */
+const BAR = "w-6 shrink-0 @[36rem]:w-9";
 
 /** One text size for the content of every stats panel — figures, labels, rows.
  *  The largest that still fits the tightest cell (a five-round column). */
@@ -340,63 +339,74 @@ function fightSeconds(fight: Matchup): number {
 // ---------------------------------------------------------------------------
 // Paired columns. The page's one chart idiom: two vertical bars on a shared
 // baseline, read as "who did more" before a single digit is parsed. Panels in
-// the same group share a scale so their heights are comparable.
+// the same group share a scale so their heights are comparable. Every bar on
+// the page is the same width and a pair always stands shoulder to shoulder;
+// the figures stack under the pair, first fighter over second, in their inks.
+
+/** A supporting stat under a chart, both fighters on one line in their own
+ *  colours: "6/11 · 0/0 TD". */
+type ChartNote = { label: string; f1: string; f2: string };
+
+function Figures({ lines, notes = [] }: { lines: Record<Side, string>; notes?: ChartNote[] }) {
+  return (
+    <div className="mt-1 min-w-0 text-center tabular-nums @[36rem]:mt-1.5">
+      {SIDES.map((side) => (
+        <div key={side} className={`whitespace-nowrap ${CHART_TEXT} font-bold leading-4`} style={{ color: SIDE[side].ink }}>
+          {lines[side]}
+        </div>
+      ))}
+      {notes.map((note) => (
+        <div key={note.label} className="whitespace-nowrap text-[10px] leading-4 text-zinc-400 @[36rem]:text-[11px]">
+          <span className="font-semibold" style={{ color: SIDE.f1.ink }}>{note.f1}</span>
+          <span className="text-zinc-300"> · </span>
+          <span className="font-semibold" style={{ color: SIDE.f2.ink }}>{note.f2}</span> {note.label}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A plot's frame: the fixed height every chart shares, and the axis rule
+ *  under it, just wider than what stands on it. */
+function Plot({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`flex items-end justify-center border-b border-plot-axis px-1.5 ${PLOT_HEIGHT} ${className}`}>
+      {children}
+    </div>
+  );
+}
 
 function PairedColumns({
   values,
   labels,
-  subs,
+  notes,
   colors,
   max,
-  caption,
-  note,
-  height = PLOT_HEIGHT,
 }: {
   values: Record<Side, number>;
   labels: Record<Side, string>;
-  /** Per-side second line, aligned under its own column — never a shared "50% / 45%". */
-  subs?: Record<Side, React.ReactNode>;
+  notes?: ChartNote[];
   colors?: Record<Side, string>;
   max: number;
-  caption?: string;
-  note?: string;
-  /** Tailwind height classes for the plot. */
-  height?: string;
 }) {
   const scale = max > 0 ? max : 1;
   return (
     <div className="flex flex-col items-center">
-      {/* Bar and its label share one grid column, so they stay aligned whatever
-          the label's width ("12:30" and "0" alike). */}
-      {/* Same frame as the strike chart, so a two-bar plot is laid out the same
-          way wherever it appears in these panels. */}
-      <div className="mx-auto w-full max-w-56">
-        <div className={`grid grid-cols-2 gap-2 border-b border-plot-axis ${height}`}>
-          {SIDES.map((side) => (
-            <div key={side} className="flex items-end justify-center">
-              <div
-                className={`stat-bar plot-grow ${BAR} rounded-t-[4px]`}
-                data-stat-side={side}
-                style={{
-                  height: barHeight(values[side] / scale, values[side] > 0 ? 3 : 1),
-                  backgroundColor: colors?.[side] ?? SIDE[side].fill,
-                  opacity: values[side] > 0 ? 1 : 0.25,
-                }}
-              />
-            </div>
-          ))}
-        </div>
-        <div className="mt-1 grid grid-cols-2 gap-2 @[36rem]:mt-2">
-          {SIDES.map((side) => (
-            <span key={side} className="text-center" style={{ color: colors?.[side] ?? SIDE[side].ink }}>
-              <span className={`block ${CHART_TEXT} font-semibold tabular-nums`}>{labels[side]}</span>
-              {subs?.[side] ?? null}
-            </span>
-          ))}
-        </div>
-      </div>
-      {caption ? <div className={`mt-1 text-center ${sectionLabel}`}>{caption}</div> : null}
-      {note ? <div className="text-center text-[11px] tabular-nums text-zinc-400">{note}</div> : null}
+      <Plot className="gap-1">
+        {SIDES.map((side) => (
+          <div
+            key={side}
+            className={`stat-bar plot-grow ${BAR} rounded-t-[4px]`}
+            data-stat-side={side}
+            style={{
+              height: barHeight(values[side] / scale, values[side] > 0 ? 3 : 1),
+              backgroundColor: colors?.[side] ?? SIDE[side].fill,
+              opacity: values[side] > 0 ? 1 : 0.25,
+            }}
+          />
+        ))}
+      </Plot>
+      <Figures lines={labels} notes={notes} />
     </div>
   );
 }
@@ -532,36 +542,31 @@ function CombinedStrikeColumns({
   fight,
   significant,
   total,
-  compact = false,
-  extra,
+  notes = [],
   context = "Fight total",
   tooltipExtra,
 }: {
   fight: Matchup;
   significant: Record<Side, Attempt | null>;
   total: Record<Side, Attempt | null>;
-  /** Narrower bars, for the per-round columns where five charts share a row. */
-  compact?: boolean;
-  /** Extra lines under a side's figures, aligned to its own column. */
-  extra?: Record<Side, React.ReactNode>;
+  /** Supporting stats under the figures, both fighters to a line. */
+  notes?: ChartNote[];
   /** "Fight total" or the round this column represents. */
   context?: string;
   /** Round-specific grappling and damage facts added to each side's tooltip. */
   tooltipExtra?: Record<Side, string[]>;
 }) {
   const scale = Math.max(1, ...SIDES.map((side) => total[side]?.attempted ?? 0));
-  // Bars and figures share one frame, so a figure is always centred under the
-  // bar it describes however wide the column gets. The frame is sized by the
-  // figures rather than the bars — "159 (155) / 233" is much wider than the
-  // column it belongs to — and the bars simply centre inside their half.
-  const frame = compact ? "max-w-40 gap-0.5" : "max-w-56 gap-2";
   // Clamped so the dark segment can never exceed the filled portion it sits in,
   // and so the bar and the figure below it always quote the same number.
   const sigLanded = (side: Side) => Math.min(total[side]?.landed ?? 0, significant[side]?.landed ?? 0);
+  const sig: ChartNote[] = significant.f1 || significant.f2
+    ? [{ label: "sig.", f1: String(sigLanded("f1")), f2: String(sigLanded("f2")) }]
+    : [];
 
   return (
-    <div className="flex w-full flex-col items-center">
-      <div className={`grid w-full ${frame} grid-cols-2 border-b border-plot-axis ${PLOT_HEIGHT}`}>
+    <div className="flex flex-col items-center">
+      <Plot className="gap-1">
         {SIDES.map((side) => {
           const attempts = total[side]?.attempted ?? 0;
           const landed = total[side]?.landed ?? 0;
@@ -577,74 +582,61 @@ function CombinedStrikeColumns({
                 ...(tooltipExtra?.[side] ?? []),
               ]
             : ["Statistics unavailable"];
-          const ariaLabel = `${fight[side].name}, ${context}: ${lines.join(", ")}`;
           return (
-            <div key={side} className="flex h-full items-end justify-center">
-              <BarTooltip
-                side={side}
-                ariaLabel={ariaLabel}
-                label={<StatBarTip fight={fight} side={side} context={context} lines={lines} />}
+            <BarTooltip
+              key={side}
+              side={side}
+              ariaLabel={`${fight[side].name}, ${context}: ${lines.join(", ")}`}
+              label={<StatBarTip fight={fight} side={side} context={context} lines={lines} />}
+            >
+              <div
+                className="plot-grow relative w-full overflow-hidden rounded-t-md border-2 bg-white"
+                style={{ height: columnHeight, borderColor: SIDE[side].fill }}
               >
                 <div
-                  className="plot-grow relative w-full overflow-hidden rounded-t-md border-2 bg-white"
-                  style={{ height: columnHeight, borderColor: SIDE[side].fill }}
+                  className="absolute inset-x-0 bottom-0 flex flex-col-reverse"
+                  style={{ height: `${attempts > 0 ? (landed / attempts) * 100 : 0}%` }}
                 >
-                  <div
-                    className="absolute inset-x-0 bottom-0 flex flex-col-reverse"
-                    style={{ height: `${attempts > 0 ? (landed / attempts) * 100 : 0}%` }}
-                  >
-                    <span
-                      style={{
-                        flex: significantLanded,
-                        minHeight: significantLanded > 0 ? 2 : 0,
-                        backgroundColor: SIDE[side].deep,
-                      }}
-                    />
-                    <span
-                      style={{
-                        flex: otherLanded,
-                        minHeight: otherLanded > 0 ? 2 : 0,
-                        backgroundColor: SIDE[side].fill,
-                      }}
-                    />
-                  </div>
+                  <span style={{ flex: significantLanded, minHeight: significantLanded > 0 ? 2 : 0, backgroundColor: SIDE[side].deep }} />
+                  <span style={{ flex: otherLanded, minHeight: otherLanded > 0 ? 2 : 0, backgroundColor: SIDE[side].fill }} />
                 </div>
-              </BarTooltip>
-            </div>
+              </div>
+            </BarTooltip>
           );
         })}
-      </div>
-      <div className={`mt-1 grid w-full ${frame} grid-cols-2 @[36rem]:mt-2`}>
-        {SIDES.map((side) => (
-          <div key={side} className="min-w-0 text-center tabular-nums">
-            {/* Landed of thrown, then how many of them were significant. */}
-            <div
-              className={`${CHART_TEXT} font-bold leading-4 whitespace-nowrap`}
-              style={{ color: SIDE[side].ink }}
-            >
-              {total[side] ? `${total[side].landed}/${total[side].attempted}` : "—"}
-            </div>
-            {total[side] && significant[side] ? (
-              <div className="whitespace-nowrap text-[10px] leading-3 text-zinc-500">
-                <span className="font-semibold">{sigLanded(side)}</span> sig.
-              </div>
-            ) : null}
-            {extra?.[side]}
-          </div>
-        ))}
-      </div>
+      </Plot>
+      <Figures
+        lines={{
+          f1: total.f1 ? `${total.f1.landed}/${total.f1.attempted}` : "—",
+          f2: total.f2 ? `${total.f2.landed}/${total.f2.attempted}` : "—",
+        }}
+        notes={[...sig, ...notes]}
+      />
     </div>
   );
 }
 
-/** Category name for one chart in a panel, sitting under the plot it names.
- *  `mt-auto` pins it to the bottom so the three read as one row of captions
- *  even when the charts above them differ in height. */
+/** A chart's name, over the plot it names. */
 function ChartTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className={`mt-auto px-1 pt-1 text-center ${sectionLabel} @[36rem]:px-3 @[36rem]:pb-1 @[36rem]:pt-2`}>
+    <h3 className={`mb-1 px-1 text-center ${sectionLabel} @[36rem]:mb-2`}>
       {children}
     </h3>
+  );
+}
+
+/** The split charts name each pair over it; a single-pair chart holds the
+ *  same line empty, so every plot in a row stands on one baseline. */
+const PAIR_LABEL = `h-4 whitespace-nowrap text-center text-[9px] font-semibold uppercase leading-4 tracking-[0.08em] text-zinc-400 @[36rem]:text-[10px]`;
+
+/** A chart with its title and a place for pair labels, as every chart in the
+ *  Fight totals panel is laid out. */
+function ChartBlock({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="flex min-w-0 flex-col items-center">
+      <ChartTitle>{title}</ChartTitle>
+      {children}
+    </section>
   );
 }
 
@@ -668,17 +660,17 @@ const STRIKE_POSITIONS: StrikeSplit[] = [
 ];
 
 /** Target and position are the same chart over a different split, so they are
- *  one component — the two can never drift apart visually. */
+ *  one component — the two can never drift apart visually. Grouped by
+ *  category, not by fighter: the two bars being compared stand together under
+ *  one label instead of being read across the chart. */
 function StrikeSplitColumns({
   fight,
   block,
   split,
-  title,
 }: {
   fight: Matchup;
   block: ComparisonBlock;
   split: StrikeSplit[];
-  title: string;
 }) {
   const targets = split.map((target) => ({
     ...target,
@@ -689,100 +681,51 @@ function StrikeSplitColumns({
     1,
     ...targets.flatMap((target) => SIDES.map((side) => target[side]?.attempted ?? 0)),
   );
-  // Grouped by category, not by fighter: the two bars being compared stand
-  // together under one caption instead of being read across the chart, and
-  // each caption is printed once instead of twice. The pair's figures stack —
-  // in the fighters' own colours, in legend order — because side by side they
-  // are the widest thing in the panel ("100/300" twice over is 96px against a
-  // 58px caption), and that width is what stopped four charts sharing a row.
-  const groups = "grid grid-cols-3 gap-1 @[36rem]:gap-3";
-
   return (
-    <section className="flex min-w-0 flex-col">
-      {/* No per-fighter heading here: the panel legend names both, and each
-          bar carries their colour. */}
-      <div className="flex-1 py-1 @[36rem]:px-1 @[36rem]:py-3">
-        {/* The axis is one rule under the whole chart rather than one per
-            group, so it stays the continuous line the other plots stand on. */}
-        <div className={`${groups} border-b border-plot-axis ${PLOT_HEIGHT}`}>
-          {targets.map((target) => (
-            // The pair stays a couple at any width: they sit against each
-            // other in the middle of the group rather than drifting apart to
-            // the centres of two halves.
-            <div key={target.source} className="flex items-end justify-center gap-1">
-              {SIDES.map((side) => {
-                const value = target[side];
-                const attempts = value?.attempted ?? 0;
-                const landed = value?.landed ?? 0;
-                const misses = Math.max(0, attempts - landed);
-                const columnHeight = barHeight(attempts / scale, attempts > 0 ? 4 : 1);
-                const lines = value
-                  ? [
-                      `${landed} significant strikes landed ${target.described}`,
-                      `${misses} misses ${target.described}`,
-                    ]
-                  : ["Statistics unavailable"];
-                return (
-                  <BarTooltip
-                    key={side}
-                    side={side}
-                    ariaLabel={`${fight[side].name}, ${target.label}: ${lines.join(", ")}`}
-                    label={<StatBarTip fight={fight} side={side} context={target.label} lines={lines} />}
-                  >
-                    <div
-                      className="plot-grow relative w-full overflow-hidden rounded-t border-2 bg-white"
-                      style={{ height: columnHeight, borderColor: SIDE[side].fill }}
-                    >
-                      <span
-                        className="absolute inset-x-0 bottom-0"
-                        style={{
-                          height: `${attempts > 0 ? (landed / attempts) * 100 : 0}%`,
-                          minHeight: landed > 0 ? 2 : 0,
-                          backgroundColor: SIDE[side].deep,
-                        }}
-                      />
-                    </div>
-                  </BarTooltip>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-        {/* Same grid again, so a group's figures sit under its own pair. */}
-        <div className={`mt-1 ${groups} @[36rem]:mt-2`}>
-          {targets.map((target) => (
-            <div key={target.source} className="min-w-0 text-center">
-              {SIDES.map((side) => (
-                <div
+    <div className="grid w-full grid-cols-3 gap-1 @[36rem]:gap-2">
+      {targets.map((target) => (
+        <div key={target.source} className="flex min-w-0 flex-col items-center">
+          <div className={PAIR_LABEL}>{target.label}</div>
+          <Plot className="gap-1">
+            {SIDES.map((side) => {
+              const value = target[side];
+              const attempts = value?.attempted ?? 0;
+              const landed = value?.landed ?? 0;
+              const misses = Math.max(0, attempts - landed);
+              const lines = value
+                ? [`${landed} significant strikes landed ${target.described}`, `${misses} misses ${target.described}`]
+                : ["Statistics unavailable"];
+              return (
+                <BarTooltip
                   key={side}
-                  className={`whitespace-nowrap leading-4 tabular-nums ${CHART_TEXT} font-bold`}
-                  style={{ color: SIDE[side].ink }}
+                  side={side}
+                  ariaLabel={`${fight[side].name}, ${target.label}: ${lines.join(", ")}`}
+                  label={<StatBarTip fight={fight} side={side} context={target.label} lines={lines} />}
                 >
-                  {target[side] ? `${target[side].landed}/${target[side].attempted}` : "—"}
-                </div>
-              ))}
-              <div
-                className={`mt-0.5 whitespace-nowrap ${sectionLabel}`}
-              >
-                {target.label}
-              </div>
-            </div>
-          ))}
+                  <div
+                    className="plot-grow relative w-full overflow-hidden rounded-t border-2 bg-white"
+                    style={{ height: barHeight(attempts / scale, attempts > 0 ? 4 : 1), borderColor: SIDE[side].fill }}
+                  >
+                    <span
+                      className="absolute inset-x-0 bottom-0"
+                      style={{
+                        height: `${attempts > 0 ? (landed / attempts) * 100 : 0}%`,
+                        minHeight: landed > 0 ? 2 : 0,
+                        backgroundColor: SIDE[side].deep,
+                      }}
+                    />
+                  </div>
+                </BarTooltip>
+              );
+            })}
+          </Plot>
+          <Figures lines={{
+            f1: target.f1 ? `${target.f1.landed}/${target.f1.attempted}` : "—",
+            f2: target.f2 ? `${target.f2.landed}/${target.f2.attempted}` : "—",
+          }} />
         </div>
-      </div>
-      <ChartTitle>{title}</ChartTitle>
-    </section>
-  );
-}
-
-/** A supporting figure under a Fight totals chart — "3/6 TD", "1 KD". Built
- *  like a Round by round extra line so the two panels state a stat the same
- *  way: the number carries the weight, the label stays quiet. */
-function TotalNote({ value, label }: { value: string; label: string }) {
-  return (
-    <span className={`mt-0.5 block whitespace-nowrap text-[10px] leading-4 text-zinc-400 @[36rem]:mt-1.5 @[36rem]:text-[11px]`}>
-      <span className="font-semibold tabular-nums text-zinc-500">{value}</span> {label}
-    </span>
+      ))}
+    </div>
   );
 }
 
@@ -801,84 +744,54 @@ export function FightTotals({ fight, grouped = false }: { fight: Matchup; groupe
   // — this is the whole fight, so "0 KD" is a fact, not a missing value — but
   // a column ufcstats never reported prints nothing at all.
   const kdCell = cell(totals, "KD");
-  const knockdowns =
-    kdCell.f1 || kdCell.f2
-      ? {
-          f1: <TotalNote value={String(intOf(kdCell.f1))} label="KD" />,
-          f2: <TotalNote value={String(intOf(kdCell.f2))} label="KD" />,
-        }
-      : undefined;
+  const knockdowns: ChartNote[] = kdCell.f1 || kdCell.f2 ? [{ label: "KD", f1: String(intOf(kdCell.f1)), f2: String(intOf(kdCell.f2)) }] : [];
   const td = attempts(totals, "Td");
-  const takedowns =
-    td.f1 || td.f2
-      ? {
-          f1: <TotalNote value={td.f1 ? `${td.f1.landed}/${td.f1.attempted}` : "—"} label="TD" />,
-          f2: <TotalNote value={td.f2 ? `${td.f2.landed}/${td.f2.attempted}` : "—"} label="TD" />,
-        }
-      : undefined;
+  const takedowns: ChartNote[] = td.f1 || td.f2
+    ? [{ label: "TD", f1: td.f1 ? `${td.f1.landed}/${td.f1.attempted}` : "—", f2: td.f2 ? `${td.f2.landed}/${td.f2.attempted}` : "—" }]
+    : [];
 
   return (
     <section className={grouped ? "" : `@container ${shell}`}>
       <PanelHeading title="Fight totals" aside={grouped ? undefined : <Legend fight={fight} />} divider={false} />
       {totals ? (
         // Two pairs, each a summary then the split explaining it; narrower
-        // widths wrap by pair, then to one column.
-        <div className="grid grid-cols-[1fr_1.1fr] gap-x-2 gap-y-3 px-2 pb-3 pt-1 @[36rem]:gap-x-3 @[36rem]:gap-y-6 @[36rem]:px-4 @[36rem]:pb-4 @[36rem]:pt-4 @[50rem]:grid-cols-[1fr_1.1fr_0.6fr_1.1fr]">
-          <section className="flex min-w-0 flex-col">
-            <div className="flex flex-1 items-start justify-center py-1 @[36rem]:px-1 @[36rem]:py-3">
-              <CombinedStrikeColumns fight={fight} significant={sig} total={tot} extra={knockdowns} />
-            </div>
-            <ChartTitle>Strikes</ChartTitle>
-          </section>
+        // widths put two charts to a row.
+        <div className="grid grid-cols-[1fr_1.4fr] gap-x-3 gap-y-4 px-2 pb-3 pt-1 @[36rem]:gap-x-4 @[36rem]:gap-y-6 @[36rem]:px-4 @[36rem]:pb-4 @[36rem]:pt-3 @[50rem]:grid-cols-[0.7fr_1.4fr_0.7fr_1.4fr]">
+          <ChartBlock title="Strikes">
+            <div aria-hidden="true" className={PAIR_LABEL} />
+            <CombinedStrikeColumns fight={fight} significant={sig} total={tot} notes={knockdowns} />
+          </ChartBlock>
 
-          {strikeDistribution ? (
-            <StrikeSplitColumns
-              fight={fight}
-              block={strikeDistribution}
-              split={STRIKE_TARGETS}
-              title="Landed by target"
-            />
-          ) : (
-            <section className="flex min-h-52 items-center justify-center text-xs text-zinc-400">
-              Strike distribution unavailable.
-            </section>
-          )}
+          <ChartBlock title="Landed by target">
+            {strikeDistribution ? <StrikeSplitColumns fight={fight} block={strikeDistribution} split={STRIKE_TARGETS} />
+              : <p className="py-8 text-xs text-zinc-400">Strike distribution unavailable.</p>}
+          </ChartBlock>
 
-          <section className="flex min-w-0 flex-col">
-            <div className="flex flex-1 items-start justify-center py-1 @[36rem]:px-1 @[36rem]:py-3">
-              <Tooltip
-                label={
-                  <TipLines
-                    fight={fight}
-                    f1={ctrl.f1 !== null && seconds ? `${clock(ctrl.f1)} · ${Math.round((ctrl.f1 / seconds) * 100)}%` : "—"}
-                    f2={ctrl.f2 !== null && seconds ? `${clock(ctrl.f2)} · ${Math.round((ctrl.f2 / seconds) * 100)}%` : "—"}
-                  />
-                }
-              >
-                <PairedColumns
-                  values={{ f1: ctrl.f1 ?? 0, f2: ctrl.f2 ?? 0 }}
-                  labels={{ f1: ctrl.f1 !== null ? clock(ctrl.f1) : "—", f2: ctrl.f2 !== null ? clock(ctrl.f2) : "—" }}
-                  subs={takedowns}
-                  colors={{ f1: SIDE.f1.fill, f2: SIDE.f2.fill }}
-                  max={Math.max(ctrl.f1 ?? 0, ctrl.f2 ?? 0)}
+          <ChartBlock title="Control time">
+            <div aria-hidden="true" className={PAIR_LABEL} />
+            <Tooltip
+              className="!min-h-0 !p-0 hover:!bg-transparent"
+              label={
+                <TipLines
+                  fight={fight}
+                  f1={ctrl.f1 !== null && seconds ? `${clock(ctrl.f1)} · ${Math.round((ctrl.f1 / seconds) * 100)}%` : "—"}
+                  f2={ctrl.f2 !== null && seconds ? `${clock(ctrl.f2)} · ${Math.round((ctrl.f2 / seconds) * 100)}%` : "—"}
                 />
-              </Tooltip>
-            </div>
-            <ChartTitle>Control time</ChartTitle>
-          </section>
+              }
+            >
+              <PairedColumns
+                values={{ f1: ctrl.f1 ?? 0, f2: ctrl.f2 ?? 0 }}
+                labels={{ f1: ctrl.f1 !== null ? clock(ctrl.f1) : "—", f2: ctrl.f2 !== null ? clock(ctrl.f2) : "—" }}
+                notes={takedowns}
+                max={Math.max(ctrl.f1 ?? 0, ctrl.f2 ?? 0)}
+              />
+            </Tooltip>
+          </ChartBlock>
 
-          {strikeDistribution ? (
-            <StrikeSplitColumns
-              fight={fight}
-              block={strikeDistribution}
-              split={STRIKE_POSITIONS}
-              title="Landed by position"
-            />
-          ) : (
-            <section className="flex min-h-52 items-center justify-center text-xs text-zinc-400">
-              Position breakdown unavailable.
-            </section>
-          )}
+          <ChartBlock title="Landed by position">
+            {strikeDistribution ? <StrikeSplitColumns fight={fight} block={strikeDistribution} split={STRIKE_POSITIONS} />
+              : <p className="py-8 text-xs text-zinc-400">Position breakdown unavailable.</p>}
+          </ChartBlock>
         </div>
       ) : (
         <Empty>Fight statistics are not available for this bout.</Empty>
@@ -891,29 +804,18 @@ export function FightTotals({ fight, grouped = false }: { fight: Matchup; groupe
 // Round by round — one column per round, laid out horizontally and built from
 // the same chart as Fight totals so the two panels read as one system.
 
-/** KD / TD / SUB / control for one fighter in one round, one per line.
- *  Only what happened is listed; a takedown line shows on attempts alone. */
-function RoundExtras({ kd, td, sub, ctrl }: { kd: string; td: string; sub: string; ctrl: string }) {
-  const takedown = attemptOf(td);
-  const knockdowns = intOf(kd);
-  const submissions = intOf(sub);
-  const rows: [value: string, label: string][] = [];
-  if (knockdowns > 0) rows.push([String(knockdowns), "KD"]);
-  if (takedown && takedown.attempted > 0) rows.push([`${takedown.landed}/${takedown.attempted}`, "TD"]);
-  if (submissions > 0) rows.push([String(submissions), "SUB"]);
-  if (clockOf(ctrl)) rows.push([ctrl, "Control"]);
-  if (!rows.length) return null;
-
-  return (
-    <div className="mt-0.5 whitespace-nowrap text-[10px] leading-4 text-zinc-400 @[36rem]:mt-1.5 @[36rem]:text-[11px]">
-      {rows.map(([value, label]) => (
-        <div key={label}>
-          <span className="font-semibold text-zinc-500">{value}</span>{" "}
-          {label === "Control" ? <><span className="@[36rem]:hidden">ctrl</span><span className="hidden @[36rem]:inline">Control</span></> : label}
-        </div>
-      ))}
-    </div>
-  );
+/** KD / TD / SUB / control for one round, both fighters to a line. Only what
+ *  happened is listed; a takedown line shows on attempts alone. */
+function roundNotes(kd: Cell, td: Cell, sub: Cell, ctrl: Cell): ChartNote[] {
+  const notes: ChartNote[] = [];
+  if (intOf(kd.f1) || intOf(kd.f2)) notes.push({ label: "KD", f1: String(intOf(kd.f1)), f2: String(intOf(kd.f2)) });
+  const takedowns = { f1: attemptOf(td.f1), f2: attemptOf(td.f2) };
+  if (takedowns.f1?.attempted || takedowns.f2?.attempted) {
+    notes.push({ label: "TD", f1: `${takedowns.f1?.landed ?? 0}/${takedowns.f1?.attempted ?? 0}`, f2: `${takedowns.f2?.landed ?? 0}/${takedowns.f2?.attempted ?? 0}` });
+  }
+  if (intOf(sub.f1) || intOf(sub.f2)) notes.push({ label: "SUB", f1: String(intOf(sub.f1)), f2: String(intOf(sub.f2)) });
+  if (clockOf(ctrl.f1) || clockOf(ctrl.f2)) notes.push({ label: "ctrl", f1: ctrl.f1 || "0:00", f2: ctrl.f2 || "0:00" });
+  return notes;
 }
 
 function roundTooltipLines(kd: string, td: string, sub: string, ctrl: string): string[] {
@@ -930,8 +832,8 @@ function roundTooltipLines(kd: string, td: string, sub: string, ctrl: string): s
   return lines;
 }
 
-/** One round, built exactly like a Fight totals column: the same strike chart
- *  on the same baseline, its figures below, and the round named underneath. */
+/** One round, built exactly like a Fight totals column: the round named over
+ *  the same strike chart on the same baseline, its figures below. */
 function RoundColumn({ fight, index }: { fight: Matchup; index: number }) {
   const rounds = fight.detail?.type === "past" ? fight.detail.totalsRounds : undefined;
   const at = (label: string) => roundCell(rounds, index, label);
@@ -943,53 +845,47 @@ function RoundColumn({ fight, index }: { fight: Matchup; index: number }) {
   const ctrl = at("Ctrl");
 
   return (
-    <section className="flex min-w-0 flex-col">
-      <div className="flex flex-1 items-start justify-center py-1 @[36rem]:py-3">
-        <CombinedStrikeColumns
-          fight={fight}
-          significant={significant}
-          total={total}
-          compact
-          context={`Round ${index + 1}`}
-          tooltipExtra={{
-            f1: roundTooltipLines(kd.f1, td.f1, sub.f1, ctrl.f1),
-            f2: roundTooltipLines(kd.f2, td.f2, sub.f2, ctrl.f2),
-          }}
-          extra={{
-            f1: <RoundExtras kd={kd.f1} td={td.f1} sub={sub.f1} ctrl={ctrl.f1} />,
-            f2: <RoundExtras kd={kd.f2} td={td.f2} sub={sub.f2} ctrl={ctrl.f2} />,
-          }}
-        />
-      </div>
-      <ChartTitle>Round {index + 1}</ChartTitle>
-    </section>
+    <ChartBlock title={`Round ${index + 1}`}>
+      <CombinedStrikeColumns
+        fight={fight}
+        significant={significant}
+        total={total}
+        context={`Round ${index + 1}`}
+        tooltipExtra={{
+          f1: roundTooltipLines(kd.f1, td.f1, sub.f1, ctrl.f1),
+          f2: roundTooltipLines(kd.f2, td.f2, sub.f2, ctrl.f2),
+        }}
+        notes={roundNotes(kd, td, sub, ctrl)}
+      />
+    </ChartBlock>
   );
 }
 
-/** Static class names so Tailwind can see them; rounds beyond five wrap. Sized
- *  by the panel, not the window, so a column never gets narrower than its two
- *  figures ("25 (25) / 68" twice over, about 150px) — a round that cannot fit
- *  moves to the next row instead of printing over its neighbour. */
-const ROUND_GRID: Record<number, string> = {
-  1: "grid-cols-1",
-  2: "grid-cols-2",
-  3: "grid-cols-2 @[21rem]:grid-cols-3",
-  4: "grid-cols-2 @[44rem]:grid-cols-4",
-  5: "grid-cols-2 @[21rem]:grid-cols-3 @[54rem]:grid-cols-5",
+/** Static class names so Tailwind can see them. Rounds wrap by the panel's
+ *  width, not the window's, and a short last row is centred under the one
+ *  above it rather than left hanging. */
+const ROUND_WIDTH: Record<number, string> = {
+  1: "w-full",
+  2: "w-1/2",
+  3: "w-1/3",
+  4: "w-1/2 @[44rem]:w-1/4",
+  5: "w-1/3 @[54rem]:w-1/5",
 };
 
 export function RoundByRound({ fight, grouped = false }: { fight: Matchup; grouped?: boolean }) {
   const blocks = fight.detail?.type === "past" ? fight.detail.totalsRounds : undefined;
   const count = blocks?.rounds.length ?? 0;
-  const columns = ROUND_GRID[Math.min(Math.max(count, 1), 5)];
+  const width = ROUND_WIDTH[Math.min(Math.max(count, 1), 5)];
 
   return (
     <section className={grouped ? "border-t border-zinc-200" : shell}>
       <PanelHeading title="Round by round" aside={grouped ? undefined : <Legend fight={fight} />} divider={false} />
       {count ? (
-        <div className={`grid gap-x-1 gap-y-3 px-2 pb-3 pt-1 @[36rem]:gap-x-2 @[36rem]:gap-y-5 @[36rem]:px-4 @[36rem]:pb-4 @[36rem]:pt-4 ${columns}`}>
+        <div className="flex flex-wrap justify-center gap-y-4 px-2 pb-3 pt-1 @[36rem]:gap-y-6 @[36rem]:px-4 @[36rem]:pb-4 @[36rem]:pt-3">
           {Array.from({ length: count }, (_, i) => (
-            <RoundColumn key={i} fight={fight} index={i} />
+            <div key={i} className={`min-w-0 px-0.5 ${width}`}>
+              <RoundColumn fight={fight} index={i} />
+            </div>
           ))}
         </div>
       ) : (
