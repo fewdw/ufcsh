@@ -162,10 +162,10 @@ function EventSidebar({
             header the filter sheets use. Docked beside the card it needs none. */}
         <div className={`flex items-center justify-between gap-3 pl-1 ${dock.toggle}`}>
           <div className="min-w-0">
-            <h2 className={`${DIALOG_TITLE} leading-tight`}>All events</h2>
+            <h2 className={`${DIALOG_TITLE} leading-tight`}>Events</h2>
             <p className="text-xs tabular-nums text-zinc-500">{scoped.length.toLocaleString()} {KIND_NOUN[kind]}</p>
           </div>
-          <button type="button" onClick={onBack} aria-label="Close all events" title="Back to card" className={`-mr-1.5 ${CLOSE_BUTTON}`}>
+          <button type="button" onClick={onBack} aria-label="Close events" title="Back to card" className={`-mr-1.5 ${CLOSE_BUTTON}`}>
             <X className={CLOSE_ICON} aria-hidden="true" />
           </button>
         </div>
@@ -828,7 +828,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
           <StepLink event={nav.prev} direction="prev" />
           <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
             className={`${STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
-            <List className="h-3.5 w-3.5" aria-hidden="true" />All events
+            <List className="h-3.5 w-3.5" aria-hidden="true" />Events
           </button>
           <StepLink event={nav.next} direction="next" />
         </div>
@@ -979,7 +979,7 @@ export default function EventsPage() {
           onClick={() => setMobileEventsOpen((open) => !open)}
           className={`${shell} flex shrink-0 items-center gap-1.5 px-4 py-2 text-left text-xs font-semibold text-zinc-700 ${dock.toggle}`}
         >
-          {mobileEventsOpen ? <><ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />Back to card</> : <><List className="h-3.5 w-3.5" aria-hidden="true" />All events</>}
+          {mobileEventsOpen ? <><ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />Back to card</> : <><List className="h-3.5 w-3.5" aria-hidden="true" />Events</>}
         </button>
       ) : null}
       <EventSidebar
