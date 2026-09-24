@@ -94,7 +94,7 @@ export default function RefereePage() {
       <div className={PAGE_BODY}>
         <PageHeader title={data.name}
           meta={["Referee", `${data.career.fights.toLocaleString()} UFC bouts`, data.career.years ? `${data.career.years.first}–${data.career.years.last}` : null, s.title_fights && !active ? `${s.title_fights} title bouts` : null]}
-          aside={<Link to="/officials" className={BUTTON_QUIET}>All officials</Link>} />
+          aside={<Link to="/officials" className={`${BUTTON_QUIET} max-sm:hidden`}>All officials</Link>} />
 
         <Panel title="Record" subtitle={active ? `${s.fights.toLocaleString()} of ${data.career.fights.toLocaleString()} bouts` : undefined}>
           <FilterBar active={active} onClear={filters.clear}>

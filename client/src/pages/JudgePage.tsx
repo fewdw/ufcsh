@@ -154,7 +154,7 @@ export default function JudgePage() {
       <div className={PAGE_BODY}>
         <PageHeader title={data.name}
           meta={["Judge", `${data.career.cards.toLocaleString()} UFC scorecards`, data.career.years ? `${data.career.years.first}–${data.career.years.last}` : null, topDivision ? `mostly ${topDivision.division}` : null]}
-          aside={<Link to="/officials" className={BUTTON_QUIET}>All officials</Link>} />
+          aside={<Link to="/officials" className={`${BUTTON_QUIET} max-sm:hidden`}>All officials</Link>} />
 
         <Panel title="Record" subtitle={active ? `${s.cards.toLocaleString()} of ${data.career.cards.toLocaleString()} cards` : undefined}>
           <FilterBar active={active} onClear={filters.clear}>
