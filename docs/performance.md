@@ -29,7 +29,7 @@ node src/load-test.ts --url=http://localhost:8012 --seconds=20 --rate=2000
 ```
 
 The mix includes page HTML, cards, matchups, fighter profiles and their stat
-boards, the Context tab, officials, venues, search, images, share images and
+boards, officials, venues, search, images, share images and
 page-view beacons, weighted roughly like real traffic.
 
 ## Last results (2026-09-24, V2 branch)
@@ -44,7 +44,7 @@ also running, so these are floors rather than ceilings.
 | Open loop, 2,000 req/s | 1,999 req/s | 4.0 ms | 601 ms | 1.8 s | none |
 
 A single cold request costs 2–13 ms (matchup ~8–13 ms, fighter ~6 ms, stat
-board ~6 ms, Context ~3 ms), so the cold tail is queueing behind two workers,
+board ~6 ms), so the cold tail is queueing behind two workers,
 not slow code. 404s in the mix are booked debutants, which have no profile.
 
 Memory: the V2 indexes add about 25 MB of heap per query worker (full stat

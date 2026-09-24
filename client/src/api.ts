@@ -867,33 +867,6 @@ export type SearchResults = {
 // ---------------------------------------------------------------------------
 // context, officials and venues
 
-export type Milestone = {
-  key: string;
-  label: string;
-  scope: string;
-  value: number;
-  rank: number;
-  field: number;
-  needs: "win" | "finish" | "ko" | "sub" | "bout" | "decision";
-  side: "f1" | "f2";
-  next: { rank: number; value: number; holders: string[]; outcome: "tie" | "pass" | "clear" } | null;
-};
-
-export type FightContext = {
-  fight_id: string;
-  complete: boolean;
-  event: {
-    id: string; name: string; date: string;
-    starts_at: number | null; segment: CardSegment | null; segment_starts_at: number | null;
-    time_zone: string | null; broadcaster: string | null; broadcasters: Partial<Record<CardSegment, string>> | null;
-    attendance: number | null; gate: string | null;
-  };
-  venue: VenueRef | null;
-  officials: { referee: (OfficialRef & { assigned: boolean }) | null; judges: OfficialRef[] };
-  developments: { source: string; url: string; items: string[] } | null;
-  milestones: Milestone[];
-};
-
 export type OfficialFilters = { from: number | null; to: number | null; division: string | null; q: string; result: string | null; view: string | null; offset: number; limit: number };
 type Outcome = "win" | "loss" | "draw" | "nc" | null;
 type FighterRef = { id: string; name: string; outcome: Outcome };

@@ -50,7 +50,6 @@ import { careerBefore, completeRecordBefore, fightIndex, ageOn, parseScheduledRo
 import { syncCareerRecord } from "./career-records.ts";
 import { summarizeCard } from "./card-stats.ts";
 import { mergeJudgeRounds } from "./judge-scorecards.ts";
-import { fightContext } from "./fight-context.ts";
 import { injectPageSeo, pageSeo, SITE_URL, sitemap, type PageSeo } from "./seo.ts";
 import { renderShareImage, type ShareCard, type SharePhoto } from "./og-images.ts";
 export { pageSeo, sitemap };
@@ -1801,7 +1800,6 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   if (p === "/api/events") return listEvents();
   if (p === "/api/live") return liveCard(rankingType);
   if (p.startsWith("/api/events/")) return await getEvent(id, rankingType) ?? undefined;
-  if (/^\/api\/fights\/[a-f0-9]{16}\/context$/i.test(p)) return fightContext(id) ?? undefined;
   if (p.startsWith("/api/fights/")) return await getFight(id, rankingType) ?? undefined;
   if (p === "/api/officials") return officialsDirectory();
   if (p.startsWith("/api/judges/")) return judgeProfile(id, url.searchParams) ?? undefined;

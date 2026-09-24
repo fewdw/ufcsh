@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { backgroundSection, eventInfobox } from "./wikipedia.ts";
+import { eventInfobox } from "./wikipedia.ts";
 
 const article = `{{Infobox MMA event
 |name= UFC 331: Van vs. Pantoja 2
@@ -30,10 +30,4 @@ test("the infobox names the venue, city, attendance and gate as plain text", () 
 
 test("an absent or malformed field is null rather than guessed", () => {
   assert.deepEqual(eventInfobox("{{Infobox MMA event\n|venue=\n|attendance= TBA\n}}"), { venue: null, city: null, attendance: null, gate: null });
-});
-
-test("the background section is prose without references or links", () => {
-  assert.equal(backgroundSection(article),
-    "The event marked the promotion's sixth visit to Los Angeles.\nA flyweight bout between Joshua Van and Alexandre Pantoja headlined.");
-  assert.equal(backgroundSection("no sections"), null);
 });

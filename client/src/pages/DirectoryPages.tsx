@@ -39,10 +39,8 @@ export function OfficialsPage() {
   return (
     <div ref={scroll} className={PAGE}>
       <div className={PAGE_BODY}>
-        <PageHeader eyebrow="Officials" title="Judges & referees">
-          {data.referees.length} referees and {data.judges.length} judges named on official UFC results. Open anyone to see every bout behind their numbers.
-        </PageHeader>
-        <Panel title={kind === "referees" ? "Referees" : "Judges"} subtitle={`${list.length} ${kind === "referees" ? "referees · bouts refereed" : "judges · scorecards"}`}
+        <PageHeader title="Judges & referees" meta={[`${data.referees.length} referees`, `${data.judges.length} judges`]} />
+        <Panel title={kind === "referees" ? "Referees" : "Judges"} subtitle={`${list.length}`}
           aside={<div className={segmentedGroup} role="group" aria-label="Officials">
             {(["referees", "judges"] as const).map((option) => (
               <button key={option} type="button" aria-pressed={kind === option} onClick={() => setKind(option)}
@@ -82,12 +80,8 @@ export function VenuesPage() {
   return (
     <div ref={scroll} className={PAGE}>
       <div className={PAGE_BODY}>
-        <PageHeader eyebrow="Venues" title="Where the UFC has fought">
-          {data.venues.length} venues. {data.coverage.with_venue < data.coverage.events
-            ? `Venue records are still being gathered: ${data.coverage.with_venue.toLocaleString()} of ${data.coverage.events.toLocaleString()} events are placed so far.`
-            : "Every event is placed."}
-        </PageHeader>
-        <Panel title="Venues" subtitle={`${list.length} shown · UFC events held`}>
+        <PageHeader title="Venues" meta={[`${data.venues.length} venues`, data.coverage.with_venue < data.coverage.events ? `${data.coverage.with_venue.toLocaleString()} of ${data.coverage.events.toLocaleString()} events placed so far` : null]} />
+        <Panel title="All venues" subtitle={`${list.length}`}>
           <div className="border-t border-zinc-100 px-4 py-2.5 sm:px-5"><Filter value={query} onChange={setQuery} label="Find a venue, city or country" /></div>
           <ul className="grid border-t border-zinc-100 sm:grid-cols-2">
             {list.map((venue) => (

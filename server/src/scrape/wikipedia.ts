@@ -236,20 +236,6 @@ export function eventInfobox(wikitext: string): EventInfobox {
   };
 }
 
-/** The article's Background section as readable prose, which is where
- * bookings, replacements and weigh-in news are written up with sources. */
-export function backgroundSection(wikitext: string): string | null {
-  const match = /==\s*Background\s*==([\s\S]*?)(?:\n==[^=]|$)/i.exec(wikitext);
-  if (!match) return null;
-  const text = plainText(match[1])
-    .replace(/<[^>]+>/g, "")
-    .replace(/\n\*+\s*/g, "\n")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{2,}/g, "\n")
-    .trim();
-  return text ? text.slice(0, 20_000) : null;
-}
-
 /** An article by its exact title, as stored when the card was first read. */
 export async function fetchArticleByTitle(title: string): Promise<string | null> {
   const url = `${API}?action=parse&format=json&prop=wikitext&redirects=1&page=${encodeURIComponent(title)}`;

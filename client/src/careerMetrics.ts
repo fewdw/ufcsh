@@ -2,8 +2,8 @@ import type { CareerBefore } from "./api";
 
 /**
  * How a fighter fights, read from their UFC bouts before a given night. One
- * definition, shared by the matchup's "How they fight" panel, the Context tab
- * and shared graphics, so none of them can disagree about the same career.
+ * definition, shared by the matchup's "How they fight" panel and shared
+ * graphics, so none of them can disagree about the same career.
  */
 
 export type ProfileMetric = {

@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { useApi } from "./api";
+import { apiCache, useApi } from "./api";
 import { useSearchParams } from "react-router-dom";
 
 /** Layout and helpers shared by the research pages (officials, venues). */
@@ -11,17 +11,30 @@ export const pct = (value: number | null | undefined) => value == null ? "—" :
 export type Option = { value: string; label: string };
 
 /** Filters that live in the address, so a filtered view can be shared and
- *  Back undoes the last change. Changing any filter returns to the first page. */
+ *  Back undoes the last change. Lists always start from the newest row and
+ *  grow as the reader scrolls, so a page offset never enters the address. */
 export function useUrlFilters() {
   const [params, setParams] = useSearchParams();
   const set = (key: string, value: string | null) => {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value); else next.delete(key);
-    if (key !== "offset") next.delete("offset");
+    next.delete("offset");
     setParams(next, { replace: key === "q" });
   };
   const clear = () => setParams(new URLSearchParams());
-  return { params, set, clear, query: params.toString() };
+  const query = new URLSearchParams(params);
+  query.delete("offset");
+  return { params, set, clear, query: query.toString() };
+}
+
+/** One page of an official's rows for `useInfiniteList`, read through the
+ *  shared cache so the first page is the same request as the page itself. */
+export async function officialRows<T extends { limit: number }>(url: string, offset: number): Promise<T & { pageSize: number }> {
+  const pageUrl = offset ? `${url}${url.includes("?") ? "&" : "?"}offset=${offset}` : url;
+  await apiCache.load(pageUrl, 60_000);
+  const page = apiCache.read(pageUrl).data as T | null;
+  if (!page) throw new Error("Couldn’t load more.");
+  return { ...page, pageSize: page.limit };
 }
 
 /** `useApi` that keeps the previous answer on screen, marked stale, while a

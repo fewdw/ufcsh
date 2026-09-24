@@ -15,14 +15,13 @@ import { hasOddsMarkets } from "../oddsLayout";
 import FightView from "./FightPage";
 import { EventPlace } from "../components/CardHeader";
 import { useShortcutNav } from "../shortcuts";
-import { useGraphics } from "../graphicsLauncher";
 import type { Matchup } from "../api";
 import { SITE_URL, useSeo } from "../seo";
 import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
 import { useSettings, withRanking, type OddsFormat } from "../settings";
 import { eventKind, type EventKind } from "../eventKind";
 import SearchGlyph from "../components/SearchGlyph";
-import { ChevronLeft, ChevronRight, ImageIcon, List, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
 
@@ -772,7 +771,6 @@ function StepLink({ event, direction }: { event: EventListItem | null; direction
 function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: boolean; nav: EventNav }) {
   const { settings, update } = useSettings();
   const navigate = useNavigate();
-  const openGraphics = useGraphics();
   useShortcutNav({
     context: "events by date",
     prevLabel: nav.prev ? `earlier card (${nav.prev.name})` : "earlier card",
@@ -864,16 +862,10 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
               </span>
               <EventPlace venue={event.venue} location={event.location} />
             </div>
-            {event.fights.length ? (
-              <button type="button" onClick={() => openGraphics({ kind: "event", id: event.id })}
-                className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-zinc-500 hover:text-zinc-900">
-                <ImageIcon className="h-3 w-3" aria-hidden="true" />Card graphic
-              </button>
-            ) : null}
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1 text-right empty:hidden @[48rem]:max-w-[45%]">
             {schedule.length ? (
-              <dl className="grid grid-cols-[auto_auto] items-baseline gap-x-2 text-[11px] leading-4 @[48rem]:gap-x-3">
+              <dl className="grid grid-cols-[auto_auto] items-baseline gap-x-2 text-[11px] leading-4 @[48rem]:gap-x-4 @[48rem]:gap-y-0.5 @[48rem]:text-sm @[48rem]:leading-5 @[64rem]:text-base @[64rem]:leading-6">
                 {schedule.map(({ segment, at }) => (
                   <div key={segment} className={`contents ${at <= now ? "text-zinc-400" : "text-zinc-500"}`} title={clockTimeWithZone(at) ?? undefined}>
                     <dt className="text-left"><span className="@[48rem]:hidden">{SEGMENT_SHORT[segment]}</span><span className="hidden @[48rem]:inline">{SEGMENT_LABEL[segment]}</span></dt>
@@ -888,7 +880,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
               </dl>
             ) : null}
             {event.card_stats.completed_fights && hasResultSummary ? (
-              <span className="flex flex-col items-end whitespace-nowrap text-[11px] leading-4 tabular-nums text-zinc-500 @[48rem]:flex-row @[48rem]:flex-wrap @[48rem]:items-center @[48rem]:gap-x-2">
+              <span className="flex flex-col items-end whitespace-nowrap text-[11px] leading-4 tabular-nums text-zinc-500 @[48rem]:text-sm @[48rem]:leading-5 @[48rem]:flex-row @[48rem]:flex-wrap @[48rem]:items-center @[48rem]:gap-x-2">
                 {isLive ? <span>{event.card_stats.completed_fights}/{event.fights.length} results</span> : null}
                 <span><strong className="font-semibold text-zinc-700">{event.card_stats.finishes}</strong> finishes</span>
                 <span aria-hidden="true" className="hidden text-zinc-300 @[48rem]:inline">·</span>

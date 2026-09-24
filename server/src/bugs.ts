@@ -829,7 +829,7 @@ function upcomingWithoutBroadcast(): BugCheck {
     id: "upcoming-no-broadcast",
     group: "Venues & officials",
     label: "Upcoming cards without a broadcaster",
-    description: "The Context tab can't say where a bout airs. The promotion's feed usually names broadcasters in fight week; before that this is expected.",
+    description: "Nothing says where this card airs. The promotion's feed usually names broadcasters in fight week; before that this is expected.",
     severity: "low",
   }, rows.map((event): BugItem => ({
     key: event.id, title: event.name, date: event.date,
@@ -843,14 +843,14 @@ function upcomingWithoutReporting(): BugCheck {
   const rows = db.prepare(`
     SELECT ${VENUE_COLUMNS} FROM events
     WHERE complete = 0 AND date >= date('now', '-1 day') AND date <= date('now', '+21 day')
-      AND wiki_info_checked_at IS NOT NULL AND (wiki_background IS NULL OR wiki_background = '')
+      AND wiki_info_checked_at IS NOT NULL AND wiki_title IS NULL
     ORDER BY date ASC
   `).all() as EventVenueRow[];
   return check({
     id: "upcoming-no-article",
     group: "Venues & officials",
     label: "Upcoming cards with no event article",
-    description: "No Wikipedia article (or no Background section) was found, so matchups on this card show no reported developments on the Context tab. A new card's article often appears a few weeks out.",
+    description: "No Wikipedia article was found, so the card has no venue name from the night, attendance or gate yet. A new card's article often appears a few weeks out.",
     severity: "low",
   }, rows.map((event): BugItem => ({
     key: event.id, title: event.name, date: event.date,
@@ -890,7 +890,7 @@ function upcomingWithoutReferee(): BugCheck {
     id: "upcoming-no-referee",
     group: "Venues & officials",
     label: "Fight-week bouts with no referee assigned",
-    description: "The promotion usually assigns referees in its feed shortly before the card. Until then the Context tab says \"not yet confirmed\".",
+    description: "The promotion usually assigns referees in its feed shortly before the card. Until then matchups show no referee.",
     severity: "low",
   }, rows.map((fight) => fightItem(fight, {
     actions: fight.ufc_slug ? [{ id: "segments", label: "Re-read ufc.com card", target: fight.event_id }] : [],

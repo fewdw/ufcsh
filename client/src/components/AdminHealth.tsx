@@ -170,7 +170,6 @@ const ROUTE_INFO: Record<string, { name: string; path: string }> = {
   labs: { name: "Labs data", path: "/api/labs/*" },
   stats: { name: "Stats data", path: "/api/stats" },
   fighter_stats: { name: "Fighter rankings", path: "/api/fighters/:id/stats" },
-  fight_context: { name: "Matchup context", path: "/api/fights/:id/context" },
   officials: { name: "Officials data", path: "/api/judges|referees/*" },
   venues: { name: "Venues data", path: "/api/venues/*" },
   share_images: { name: "Share images", path: "/og/*" },

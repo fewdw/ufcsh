@@ -11,9 +11,6 @@ import { WeightChangeMarker } from "../components/WeightJourney";
 import { weightJourney } from "../weightJourney";
 import RequestNotice from "../components/RequestNotice";
 import FighterStatistics from "../components/FighterStatistics";
-import { ImageIcon } from "lucide-react";
-import { useGraphics } from "../graphicsLauncher";
-import { BUTTON_SECONDARY } from "../ui";
 import { PanelHeading } from "../components/FightStats";
 import { SITE_URL, useSeo } from "../seo";
 import { useRouteScrollRestoration } from "../navigationState";
@@ -492,7 +489,6 @@ function Records({ records }: { records: FighterRecord[] }) {
 export default function FighterPage() {
   const { fighterId } = useParams();
   const { settings } = useSettings();
-  const openGraphics = useGraphics();
   const { data: fighter, loading, error, retry } = useApi<FighterProfile>(fighterId ? withRanking(`/api/fighters/${fighterId}`, settings.rankingSource) : null,
     data => data?.refreshing ? 5_000 : 5 * 60_000);
   const pageScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:page", Boolean(fighter));
@@ -593,10 +589,6 @@ export default function FighterPage() {
             {/* Both records at once, side by side while the card is wide
                 enough and stacked when it is not. The professional wheel
                 waits until that history is verified. */}
-            <button type="button" onClick={() => openGraphics({ kind: "fighter", id: fighter.id })}
-              className={`${BUTTON_SECONDARY} -mt-2 self-start`} title="Make a shareable graphic of this fighter">
-              <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />Generate graphic
-            </button>
             <div className="flex items-start justify-center gap-x-6 gap-y-5 border-t border-zinc-100 pt-3 empty:hidden sm:flex-wrap sm:gap-x-10 sm:pt-4">
               {fighter.record_verified ? <RecordWheel key={`${fighter.id}-all`} history={fighter.pro_history} scope="all" record={fighter.record} /> : null}
               <RecordWheel key={`${fighter.id}-ufc`} history={fighter.history} scope="ufc" record={fighter.ufc_record} />

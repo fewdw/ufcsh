@@ -10,7 +10,6 @@ const listRoutes = new Set([
 export function publicApi(path: string): boolean {
   return listRoutes.has(path) || /^\/api\/(events|fights|fighters|previews)\/[a-f0-9]{16}$/i.test(path)
     || /^\/api\/fighters\/[a-f0-9]{16}\/stats$/i.test(path)
-    || /^\/api\/fights\/[a-f0-9]{16}\/context$/i.test(path)
     || /^\/api\/(judges|referees|venues)\/[a-z0-9-]{1,80}$/.test(path);
 }
 

@@ -39,7 +39,6 @@ export function routeGroup(pathname: string): string {
   if (pathname.startsWith("/api/previews/")) return "previews";
   if (pathname === "/api/stats") return "stats";
   if (/^\/api\/fighters\/[a-f0-9]{16}\/stats$/i.test(pathname)) return "fighter_stats";
-  if (/^\/api\/fights\/[a-f0-9]{16}\/context$/i.test(pathname)) return "fight_context";
   if (pathname === "/api/officials" || /^\/api\/(judges|referees)\//.test(pathname)) return "officials";
   if (pathname === "/api/venues" || pathname.startsWith("/api/venues/")) return "venues";
   if (pathname.startsWith("/og/")) return "share_images";

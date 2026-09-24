@@ -1,4 +1,4 @@
-import { ImageIcon, List, X } from "lucide-react";
+import { List, X } from "lucide-react";
 import { isFightDay } from "../liveEvent";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -19,7 +19,6 @@ import Avatar from "../components/Avatar";
 import { CardEventTitle, CardNavigation, CARD_STEP } from "../components/CardHeader";
 import FightScoring from "../components/FightScoring";
 import FightPredictions from "../components/FightPredictions";
-import FightContextPanel from "../components/FightContextPanel";
 import { FightRail, FightRailSkeleton, FightStepLink, MatchupSkeleton } from "../components/FightRail";
 const FightDiscussion = lazy(() => import("../components/FightDiscussion"));
 import FighterPortrait from "../components/FighterPortrait";
@@ -49,7 +48,6 @@ import { scoreableRoundCount } from "../scoring";
 import { useNow } from "../useNow";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { useShortcutNav } from "../shortcuts";
-import { useGraphics } from "../graphicsLauncher";
 
 const shell = PANEL_SHELL;
 const RESULT_PILL =
@@ -651,8 +649,8 @@ function CommonOpponents({ fight }: { fight: Matchup }) {
 
 // ---------------------------------------------------------------------------
 
-type MatchupTab = "fight" | "matchup" | "context" | "odds" | "score" | "predict" | "discussion";
-const TAB_LABEL: Record<MatchupTab, string> = { fight: "Result", matchup: "Matchup", context: "Context", odds: "Odds", score: "Score", predict: "Predict", discussion: "Discussion" };
+type MatchupTab = "fight" | "matchup" | "odds" | "score" | "predict" | "discussion";
+const TAB_LABEL: Record<MatchupTab, string> = { fight: "Result", matchup: "Matchup", odds: "Odds", score: "Score", predict: "Predict", discussion: "Discussion" };
 
 /** The matchup's sections, grouped by the question they answer. Arrow keys move
  *  between tabs the way a native tab control does. */
@@ -695,7 +693,6 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   const { settings } = useSettings();
   const navigate = useNavigate();
   const location = useLocation();
-  const openGraphics = useGraphics();
   const previousFight = useRef<Matchup | null>(null);
   const [failedPortraitPair, setFailedPortraitPair] = useState<string | null>(null);
   const { data: loadedFight, loading, error, retry } = useApi<Matchup>(withRanking(`/api/fights/${fightId}`, settings.rankingSource),
@@ -832,7 +829,6 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   const tabs: MatchupTab[] = [
     ...(fight.status === "past" || fight.in_progress || hasStats ? ["fight" as const] : []),
     "matchup",
-    "context",
     ...(hasOddsMarkets(fight.odds?.props, fight.f1.name, fight.f2.name) ? ["odds" as const] : []),
     ...(scoreableRoundCount(fight) > 0 ? ["score" as const] : []),
     ...(fight.prediction_available !== false && (fight.status !== "past" || requestedTab === "predict") ? ["predict" as const] : []),
@@ -883,11 +879,6 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
             </section>
 
             <section data-photo-view={portraits ? "full" : "face"} className={`matchup-top-card matchup-overview @container relative overflow-hidden ${shell}`}>
-              <button type="button" onClick={() => openGraphics({ kind: fight.status === "past" ? "result" : "matchup", id: fight.id })}
-                aria-label="Generate a shareable graphic of this matchup" title="Generate graphic"
-                className={`absolute left-2 top-2 z-10 ${CLOSE_BUTTON}`}>
-                <ImageIcon className="h-4 w-4" aria-hidden="true" />
-              </button>
               <button type="button" onClick={closeFight} aria-label="Close matchup and return to card" title="Close matchup (Esc)" aria-keyshortcuts="Escape"
                 className={`absolute right-2 top-2 z-10 ${CLOSE_BUTTON}`}>
                 <X className={CLOSE_ICON} aria-hidden="true" />
@@ -979,7 +970,6 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 <HeadToHead fight={fight} later />
                 <CommonOpponents fight={fight} />
               </> : null}
-              {tab === "context" ? <FightContextPanel key={fight.id} fight={fight} /> : null}
               {tab === "odds" ? <OddsPanel fight={fight} /> : null}
               {tab === "score" ? <FightScoring key={fight.id} fight={fight} /> : null}
               {tab === "predict" ? <FightPredictions key={fight.id} fight={fight} /> : null}

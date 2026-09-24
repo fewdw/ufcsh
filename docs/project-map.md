@@ -15,7 +15,6 @@ client (`client/`) renders every page.
 | In-memory analytics index | `fight-index.ts` (every completed bout, state entering it) |
 | Leaderboards / Labs | `stats.ts`, `labs.ts`, `labs-insights.ts`, `labs-explore.ts` |
 | Profile records and full stat rankings | `records.ts` (`fighterRecords`, `fighterBoard`, `milestonesWithinReach`) |
-| Matchup Context tab | `fight-context.ts` |
 | Judges and referees | `officials.ts` (name merging, profiles, directory, search) |
 | Venues | `venues.ts` (identity from ufc.com venue ids + Wikipedia names) |
 | Admin data-quality board | `bugs.ts` (checks and repair actions), `admin-http.ts`, `repair-guard.ts` |
@@ -33,7 +32,7 @@ copy of the local archive (`DATA_DIR`).
 | --- | --- |
 | Shell, routes, header | `App.tsx`, `main.tsx` |
 | Data fetching and polling | `api.ts` (types + `useApi`), `requestCache.ts`, `polling.ts` |
-| Events and matchups | `pages/EventsPage.tsx`, `pages/FightPage.tsx`, `components/FightRail.tsx`, `components/FightStats.tsx`, `components/FightContextPanel.tsx` |
+| Events and matchups | `pages/EventsPage.tsx`, `pages/FightPage.tsx`, `components/FightRail.tsx`, `components/FightStats.tsx` |
 | Fighter profiles | `pages/FighterPage.tsx`, `components/FighterStatistics.tsx` |
 | Officials and venues | `pages/JudgePage.tsx`, `pages/RefereePage.tsx`, `pages/VenuePage.tsx`, `pages/DirectoryPages.tsx`, shared pieces in `components/ResearchKit.tsx` and `research.ts` |
 | Graphics builder | `graphicsLauncher.tsx` (open from anywhere), `components/GraphicsBuilder.tsx` (dialog), `graphics/build.ts` (data → graphic), `graphics/render.ts` (canvas drawing), `graphics/export.ts` |

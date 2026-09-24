@@ -107,7 +107,7 @@ export default function InfoPage() {
               <Term name="Complete careers">Sherdog, matched to each fighter only after identity checks pass; unverified careers are left out rather than guessed.</Term>
               <Term name="Odds">BestFightOdds moneylines and props, frozen as closing lines once a card is over.</Term>
               <Term name="Judges’ round cards">Verdict MMA and MMA Decisions, attached only when the judge and final score match the official card. Verdict MMA also supplies large community (fan) scorecards.</Term>
-              <Term name="Event articles">Wikipedia, for weigh-in misses, the venue name on the night, attendance, gate and the background reporting shown on a matchup’s Context tab.</Term>
+              <Term name="Event articles">Wikipedia, for weigh-in misses, the venue name on the night, attendance and gate.</Term>
             </dl>
           </Section>
 
@@ -189,8 +189,7 @@ export default function InfoPage() {
             <p><strong>Version 2.0</strong></p>
             <ul>
               <li>Fighter profiles: every ranked statistic, read across the UFC or within one weight class, grouped or best-first.</li>
-              <li>Matchups: a Context tab with form, milestones, history, key differences, sourced developments, venue, broadcast and officials.</li>
-              <li>Graphics builder: shareable fighter, matchup, event and result graphics with copy and download.</li>
+              <li>Graphics builder: shareable fighter, matchup, event and result graphics with copy and download, made from your profile.</li>
               <li>Judge and referee profiles, reached from any scorecard or referee name.</li>
               <li>Venue pages with every card held there, local times and attendance.</li>
               <li>Keyboard shortcuts, this page, and richer previews when pages are shared.</li>

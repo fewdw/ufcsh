@@ -3,11 +3,13 @@ import { Link, useParams } from "react-router-dom";
 import type { JudgeProfile } from "../api";
 import { formatDateShortWithYear, lastName } from "../format";
 import { useRouteScrollRestoration } from "../navigationState";
-import { PAGE, PAGE_BODY, pct, useKeptApi, useUrlFilters } from "../research";
+import { PAGE, PAGE_BODY, pct, officialRows, useKeptApi, useUrlFilters } from "../research";
 import { SITE_URL, useSeo } from "../seo";
+import { BUTTON_QUIET } from "../ui";
 import RequestNotice from "../components/RequestNotice";
+import { LoadMore, useInfiniteList } from "../components/InfiniteList";
 import {
-  FilterBar, FilterSearch, FilterSelect, NotFound, PageHeader, PageState, Pager, Pair, Panel, ReadingNotes, Tile, Tiles, YearRange,
+  FilterBar, FilterSearch, FilterSelect, NotFound, PageHeader, PageState, Pair, Panel, Tile, Tiles, YearRange,
 } from "../components/ResearchKit";
 
 const VERDICTS = [
@@ -120,8 +122,15 @@ function CardRow({ row }: { row: Row }) {
 export default function JudgePage() {
   const { slug = "" } = useParams();
   const filters = useUrlFilters();
-  const { data, error, loading, stale, retry } = useKeptApi<JudgeProfile>(`/api/judges/${encodeURIComponent(slug)}${filters.query ? `?${filters.query}` : ""}`, slug);
+  const url = `/api/judges/${encodeURIComponent(slug)}${filters.query ? `?${filters.query}` : ""}`;
+  const { data, error, loading, stale, retry } = useKeptApi<JudgeProfile>(url, slug);
   const scroll = useRouteScrollRestoration<HTMLDivElement>("judge", Boolean(data));
+  const list = useInfiniteList({
+    resetKey: url,
+    load: (offset) => officialRows<JudgeProfile>(url, offset),
+    items: (page) => page.rows,
+    itemKey: (row) => row.fight_id,
+  });
   useSeo({
     title: data ? `${data.name} — Judge Scorecards & Agreement` : "UFC Judge",
     description: data
@@ -143,21 +152,11 @@ export default function JudgePage() {
   return (
     <div ref={scroll} className={PAGE}>
       <div className={PAGE_BODY}>
-        <PageHeader eyebrow={<><Link to="/officials" className="hover:text-zinc-700 hover:underline">Officials</Link> · Judge</>} title={data.name}>
-          {data.career.cards.toLocaleString()} UFC scorecards
-          {data.career.years ? ` · ${data.career.years.first}–${data.career.years.last}` : ""}
-          {topDivision ? ` · most often at ${topDivision.division} (${topDivision.n})` : ""}
-        </PageHeader>
+        <PageHeader title={data.name}
+          meta={["Judge", `${data.career.cards.toLocaleString()} UFC scorecards`, data.career.years ? `${data.career.years.first}–${data.career.years.last}` : null, topDivision ? `mostly ${topDivision.division}` : null]}
+          aside={<Link to="/officials" className={BUTTON_QUIET}>All officials</Link>} />
 
-        <ReadingNotes>
-          <p><strong className="font-semibold text-zinc-800">Scorecards</strong> come from official results, which name judges only for bouts that went the distance. Round-by-round cards are attached only where the judge and final score match the official card; {s.missing_round_cards.toLocaleString()} of the {s.cards.toLocaleString()} cards shown have no round detail.</p>
-          <p><strong className="font-semibold text-zinc-800">Agreement</strong> is measured by winner, per scorecard: two cards agree when they pick the same fighter (or both a draw). Round agreement compares this judge with each colleague round by round, only where both round cards exist.</p>
-          <p><strong className="font-semibold text-zinc-800">A dissent</strong> is a card that picks a different winner from both other judges on a complete three-judge panel.</p>
-          <p><strong className="font-semibold text-zinc-800">Fan cards</strong> are community averages from Verdict MMA, individual submission times are not provided by the source. These averages may include scores submitted after the result and are not a live-scoring baseline.</p>
-          <p>Agreement is not proof that a judge was correct, and disagreement is not proof they were wrong. Sample sizes are shown beside every figure.</p>
-        </ReadingNotes>
-
-        <Panel title="Record" subtitle={active ? `Filtered: ${s.cards.toLocaleString()} of ${data.career.cards.toLocaleString()} cards` : "Every card on record"}>
+        <Panel title="Record" subtitle={active ? `${s.cards.toLocaleString()} of ${data.career.cards.toLocaleString()} cards` : undefined}>
           <FilterBar active={active} onClear={filters.clear}>
             <YearRange years={data.career.years} from={filters.params.get("from")} to={filters.params.get("to")} onChange={filters.set} />
             <FilterSelect label="Division" value={f.division} all="All divisions" onChange={(value) => filters.set("division", value)}
@@ -167,23 +166,22 @@ export default function JudgePage() {
             <FilterSelect label="Show" value={f.view} all="All cards" onChange={(value) => filters.set("view", value)} options={VIEWS} />
             <FilterSearch value={filters.params.get("q") ?? ""} onChange={(value) => filters.set("q", value || null)} placeholder="Event or fighter" />
           </FilterBar>
-          <div className="pt-3" />
           <Tiles>
             <Tile label="Lone dissents" value={pct(s.dissent_rate)} detail={`${s.dissents} of ${s.panels.toLocaleString()} full panels`}
               compare={s.split_panels ? `${s.dissents_in_splits} of ${s.split_panels} split or majority decisions` : undefined} />
-            <Tile label="Picked the official winner" value={pct(s.agreed_result_rate)} detail={`${s.agreed_result.toLocaleString()} of ${s.with_result.toLocaleString()} cards`} />
-            <Tile label="Rounds agreed with colleagues" value={pct(s.round_agreement_rate)} detail={`${s.rounds_compared.toLocaleString()} round comparisons`}
+            <Tile label="Picked the winner" value={pct(s.agreed_result_rate)} detail={`${s.agreed_result.toLocaleString()} of ${s.with_result.toLocaleString()} cards`} />
+            <Tile label="Rounds agreed" value={pct(s.round_agreement_rate)} detail={`${s.rounds_compared.toLocaleString()} round comparisons`}
               compare={s.lone_rounds ? `Alone on ${s.lone_rounds} rounds` : undefined} />
             <Tile label="10–8 rounds" value={pct(s.ten_eight_rate)} detail={`${s.ten_eights} of ${s.rounds_scored.toLocaleString()} rounds scored`}
               hint="A point deduction can also produce a 10–8 on paper." />
             <Tile label="10–10 rounds" value={pct(s.ten_ten_rate)} detail={`${s.ten_tens} of ${s.rounds_scored.toLocaleString()} rounds scored`} />
-            <Tile label="Round cards available" value={s.cards ? pct(Math.round((s.round_cards / s.cards) * 1000) / 10) : "—"} detail={`${s.round_cards.toLocaleString()} of ${s.cards.toLocaleString()} cards`} />
-            <Tile label="Winner differs from fans" value={s.fan_cards ? `${s.fan_pick_differs} of ${s.fan_cards}` : "—"} detail={s.fan_cards ? "cards with a fan average" : "no fan cards in this selection"} />
-            <Tile label="Rounds differ from fans" value={s.fan_rounds ? `${s.fan_rounds_differ} of ${s.fan_rounds}` : "—"} detail={s.fan_rounds ? "rounds with a fan average" : "no fan rounds in this selection"} />
+            <Tile label="Round-by-round cards" value={s.cards ? pct(Math.round((s.round_cards / s.cards) * 1000) / 10) : "—"} detail={`${s.round_cards.toLocaleString()} of ${s.cards.toLocaleString()} cards`} />
+            <Tile label="Different winner from fans" value={s.fan_cards ? `${s.fan_pick_differs} of ${s.fan_cards}` : "—"} detail={s.fan_cards ? "cards with a fan average" : "no fan cards in this selection"} />
+            <Tile label="Different rounds from fans" value={s.fan_rounds ? `${s.fan_rounds_differ} of ${s.fan_rounds}` : "—"} detail={s.fan_rounds ? "rounds with a fan average" : "no fan rounds in this selection"} />
           </Tiles>
           {data.colleagues.length ? (
             <div className="border-t border-zinc-100 px-4 py-3 sm:px-5">
-              <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-400">Agreement with colleagues (same winner, 3+ shared bouts)</h3>
+              <h3 className="mb-2 text-xs font-medium text-zinc-700">Same winner as other judges</h3>
               <ul className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
                 {data.colleagues.map((colleague) => (
                   <li key={colleague.name} className="flex items-center gap-2 text-xs">
@@ -199,13 +197,13 @@ export default function JudgePage() {
           ) : null}
         </Panel>
 
-        <Panel title="Scorecards" subtitle="Newest first. Open a round table to compare every judge and the fans.">
-          {data.rows.length ? (
-            <ul aria-busy={stale} className={`divide-y divide-zinc-100 border-t border-zinc-100 ${stale ? "opacity-60 transition-opacity" : ""}`}>
-              {data.rows.map((row) => <Fragment key={row.fight_id}><CardRow row={row} /></Fragment>)}
+        <Panel title="Scorecards" subtitle="Newest first">
+          {list.items.length ? (
+            <ul aria-busy={stale || list.loading} className={`divide-y divide-zinc-100 border-t border-zinc-100 ${stale ? "opacity-60 transition-opacity" : ""}`}>
+              {list.items.map((row) => <Fragment key={row.fight_id}><CardRow row={row} /></Fragment>)}
             </ul>
           ) : <p className="border-t border-zinc-100 px-5 py-8 text-center text-sm text-zinc-500">No cards match these filters.</p>}
-          <Pager total={data.total} offset={data.offset} limit={data.limit} noun="cards" onOffset={(offset) => filters.set("offset", offset ? String(offset) : null)} />
+          <LoadMore list={list} />
         </Panel>
       </div>
     </div>

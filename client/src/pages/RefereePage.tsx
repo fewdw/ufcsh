@@ -3,11 +3,13 @@ import type { RefereeProfile, RefereeTally } from "../api";
 import { formatDateShortWithYear, formatMethod } from "../format";
 import { formatDuration } from "../components/chartTokens";
 import { useRouteScrollRestoration } from "../navigationState";
-import { PAGE, PAGE_BODY, pct, useKeptApi, useUrlFilters } from "../research";
+import { PAGE, PAGE_BODY, pct, officialRows, useKeptApi, useUrlFilters } from "../research";
 import { SITE_URL, useSeo } from "../seo";
+import { BUTTON_QUIET } from "../ui";
 import RequestNotice from "../components/RequestNotice";
+import { LoadMore, useInfiniteList } from "../components/InfiniteList";
 import {
-  FilterBar, FilterSearch, FilterSelect, NotFound, PageHeader, PageState, Pager, Pair, Panel, ReadingNotes, Tile, Tiles, YearRange,
+  FilterBar, FilterSearch, FilterSelect, NotFound, PageHeader, PageState, Pair, Panel, Tile, Tiles, YearRange,
 } from "../components/ResearchKit";
 
 const RESULTS: { value: keyof RefereeTally["counts"]; label: string }[] = [
@@ -32,7 +34,10 @@ function StoppageRounds({ tally, baseline }: { tally: RefereeTally; baseline: Re
   if (!total) return null;
   return (
     <div className="border-t border-zinc-100 px-4 py-3 sm:px-5">
-      <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-400">When their finishes came · share by round, UFC baseline in grey</h3>
+      <h3 className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 text-xs font-medium text-zinc-700">
+        Finishes by round
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-normal text-zinc-400"><span className="h-2 w-3 rounded-full bg-zinc-300" aria-hidden="true" />UFC average</span>
+      </h3>
       <ul className="space-y-1.5">
         {tally.stoppage_rounds.map((entry) => {
           const share = (entry.n / total) * 100;
@@ -45,7 +50,7 @@ function StoppageRounds({ tally, baseline }: { tally: RefereeTally; baseline: Re
                 {baseShare != null ? <span className="absolute inset-y-0 left-0 rounded-full bg-zinc-300" style={{ width: `${baseShare}%` }} /> : null}
                 <span className="absolute inset-y-[3px] left-0 rounded-full bg-zinc-800" style={{ width: `${share}%` }} />
               </span>
-              <span className="w-36 shrink-0 whitespace-nowrap text-right tabular-nums text-zinc-500">{Math.round(share)}% · {entry.n}{baseShare != null ? <span className="text-zinc-400"> (UFC {Math.round(baseShare)}%)</span> : null}</span>
+              <span className="w-24 shrink-0 whitespace-nowrap text-right tabular-nums text-zinc-500 sm:w-32">{Math.round(share)}% · {entry.n}{baseShare != null ? <span className="hidden text-zinc-400 sm:inline"> ({Math.round(baseShare)}%)</span> : null}</span>
             </li>
           );
         })}
@@ -57,8 +62,15 @@ function StoppageRounds({ tally, baseline }: { tally: RefereeTally; baseline: Re
 export default function RefereePage() {
   const { slug = "" } = useParams();
   const filters = useUrlFilters();
-  const { data, error, loading, stale, retry } = useKeptApi<RefereeProfile>(`/api/referees/${encodeURIComponent(slug)}${filters.query ? `?${filters.query}` : ""}`, slug);
+  const url = `/api/referees/${encodeURIComponent(slug)}${filters.query ? `?${filters.query}` : ""}`;
+  const { data, error, loading, stale, retry } = useKeptApi<RefereeProfile>(url, slug);
   const scroll = useRouteScrollRestoration<HTMLDivElement>("referee", Boolean(data));
+  const list = useInfiniteList({
+    resetKey: url,
+    load: (offset) => officialRows<RefereeProfile>(url, offset),
+    items: (page) => page.rows,
+    itemKey: (row) => row.fight_id,
+  });
   useSeo({
     title: data ? `${data.name} — Referee Record & Stoppages` : "UFC Referee",
     description: data
@@ -80,20 +92,11 @@ export default function RefereePage() {
   return (
     <div ref={scroll} className={PAGE}>
       <div className={PAGE_BODY}>
-        <PageHeader eyebrow={<><Link to="/officials" className="hover:text-zinc-700 hover:underline">Officials</Link> · Referee</>} title={data.name}>
-          {data.career.fights.toLocaleString()} UFC bouts
-          {data.career.years ? ` · ${data.career.years.first}–${data.career.years.last}` : ""}
-          {s.title_fights && !active ? ` · ${s.title_fights} championship bouts` : ""}
-        </PageHeader>
+        <PageHeader title={data.name}
+          meta={["Referee", `${data.career.fights.toLocaleString()} UFC bouts`, data.career.years ? `${data.career.years.first}–${data.career.years.last}` : null, s.title_fights && !active ? `${s.title_fights} title bouts` : null]}
+          aside={<Link to="/officials" className={BUTTON_QUIET}>All officials</Link>} />
 
-        <ReadingNotes>
-          <p><strong className="font-semibold text-zinc-800">What is counted</strong>: every completed UFC bout whose official result names this referee. Results are grouped as KO/TKO, submission, decision, disqualification, draw and no contest (including overturned results).</p>
-          <p><strong className="font-semibold text-zinc-800">The baseline</strong> is every UFC bout with a named referee under the same year and division filters, so a rate is read against the era and weight classes it comes from.</p>
-          <p><strong className="font-semibold text-zinc-800">Documented incidents</strong> are disqualifications and point deductions that the official result text records. Deductions are rarely written into that text, so their count is a floor, not a total.</p>
-          <p>A pattern in a referee’s bouts is not evidence that the referee caused it: matchmaking, weight class and era decide most of these numbers. Nothing here grades the quality of anyone’s officiating.</p>
-        </ReadingNotes>
-
-        <Panel title="Record" subtitle={active ? `Filtered: ${s.fights.toLocaleString()} of ${data.career.fights.toLocaleString()} bouts` : "Every bout on record"}>
+        <Panel title="Record" subtitle={active ? `${s.fights.toLocaleString()} of ${data.career.fights.toLocaleString()} bouts` : undefined}>
           <FilterBar active={active} onClear={filters.clear}>
             <YearRange years={data.career.years} from={filters.params.get("from")} to={filters.params.get("to")} onChange={filters.set} />
             <FilterSelect label="Division" value={f.division} all="All divisions" onChange={(value) => filters.set("division", value)}
@@ -103,23 +106,22 @@ export default function RefereePage() {
             <FilterSelect label="Show" value={f.view} all="All bouts" onChange={(value) => filters.set("view", value)} options={[{ value: "incidents", label: "Only documented incidents" }]} />
             <FilterSearch value={filters.params.get("q") ?? ""} onChange={(value) => filters.set("q", value || null)} placeholder="Event or fighter" />
           </FilterBar>
-          <div className="pt-3" />
           <Tiles>
             <Tile label="Bouts" value={s.fights.toLocaleString()} detail={`${s.events.toLocaleString()} events`} />
-            <Tile label="Ended inside the distance" value={pct(s.finish_rate)} detail={`${s.counts.ko + s.counts.sub} finishes`} compare={versus(s.finish_rate, b.finish_rate)} />
+            <Tile label="Finished" value={pct(s.finish_rate)} detail={`${s.counts.ko + s.counts.sub} finishes`} compare={versus(s.finish_rate, b.finish_rate)} />
             <Tile label="KO/TKO" value={pct(s.ko_rate)} detail={`${s.counts.ko} bouts`} compare={versus(s.ko_rate, b.ko_rate)} />
             <Tile label="Submission" value={pct(s.sub_rate)} detail={`${s.counts.sub} bouts`} compare={versus(s.sub_rate, b.sub_rate)} />
-            <Tile label="Went to the cards" value={pct(s.decision_rate)} detail={`${s.counts.dec + s.counts.draw} bouts`} compare={versus(s.decision_rate, b.decision_rate)} />
+            <Tile label="Decision" value={pct(s.decision_rate)} detail={`${s.counts.dec + s.counts.draw} bouts`} compare={versus(s.decision_rate, b.decision_rate)} />
             <Tile label="Average finish time" value={s.average_stoppage_seconds != null ? formatDuration(s.average_stoppage_seconds) : "—"}
-              detail="elapsed, KO/TKO and submissions" compare={b.average_stoppage_seconds != null ? `UFC ${formatDuration(b.average_stoppage_seconds)}` : undefined} />
+              detail="KO/TKO and submissions" compare={b.average_stoppage_seconds != null ? `UFC ${formatDuration(b.average_stoppage_seconds)}` : undefined} />
             <Tile label="Disqualifications" value={s.counts.dq} detail={`UFC ${b.counts.dq} in ${b.fights.toLocaleString()} bouts`} />
-            <Tile label="Deductions on record" value={s.deductions} detail="where the result text states one" hint="Most deductions are not written into the official result text; treat this as a floor." />
+            <Tile label="Point deductions" value={s.deductions} detail="where the result names one" hint="Most deductions are not written into the official result, so this is a floor." />
           </Tiles>
           <StoppageRounds tally={s} baseline={b} />
         </Panel>
 
         {data.incidents.length ? (
-          <Panel title="Documented incidents" subtitle="Disqualifications and deductions, as the official result records them.">
+          <Panel title="Disqualifications & deductions">
             <ul className="divide-y divide-zinc-100 border-t border-zinc-100">
               {data.incidents.map((incident) => (
                 <li key={incident.fight_id} className="px-4 py-2.5 text-[13px] sm:px-5">
@@ -131,10 +133,10 @@ export default function RefereePage() {
           </Panel>
         ) : null}
 
-        <Panel title="Bouts" subtitle="Newest first.">
-          {data.rows.length ? (
-            <ul aria-busy={stale} className={`divide-y divide-zinc-100 border-t border-zinc-100 ${stale ? "opacity-60 transition-opacity" : ""}`}>
-              {data.rows.map((row) => (
+        <Panel title="Bouts" subtitle="Newest first">
+          {list.items.length ? (
+            <ul aria-busy={stale || list.loading} className={`divide-y divide-zinc-100 border-t border-zinc-100 ${stale ? "opacity-60 transition-opacity" : ""}`}>
+              {list.items.map((row) => (
                 <li key={row.fight_id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 px-4 py-2.5 sm:px-5">
                   <div className="min-w-0">
                     <p className="text-[13px] leading-5"><Pair f1={row.f1} f2={row.f2} />{row.title ? <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-belt">Title</span> : null}</p>
@@ -148,7 +150,7 @@ export default function RefereePage() {
               ))}
             </ul>
           ) : <p className="border-t border-zinc-100 px-5 py-8 text-center text-sm text-zinc-500">No bouts match these filters.</p>}
-          <Pager total={data.total} offset={data.offset} limit={data.limit} noun="bouts" onOffset={(offset) => filters.set("offset", offset ? String(offset) : null)} />
+          <LoadMore list={list} />
         </Panel>
       </div>
     </div>

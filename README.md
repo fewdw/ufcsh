@@ -71,12 +71,7 @@ fresh in the background.
   (not only top-50 places), across the whole UFC or within one weight class
   counting only bouts fought there, grouped by category or best place first,
   with the field size, share of the field ahead and an optional bout floor.
-- **Context tab** on every matchup: form and record milestones within one
-  result's reach, meetings and common opponents, the differences large enough
-  to matter, reporting from the event's Wikipedia article (with its link),
-  and venue, local and viewer start times, broadcaster, referee and judges
-  once confirmed.
-- **Graphics builder** (profile, fighter, matchup and event pages): matchup,
+- **Graphics builder** (from your profile): matchup,
   result, fighter and card templates in square, portrait and landscape, dark
   or light, with each line chosen by checkbox; copy, download or share. Every
   image carries the UFC.sh mark, its page address and its sources and dates.
@@ -211,7 +206,6 @@ GET /api/labs?...            one fighter-bout population: combined record, outco
                              dimension, its leaders, and the bouts behind it
 GET /api/search?q=...        fighters + events + fights ("x vs y" works) + officials + venues
 GET /api/fighters/:id/stats  every ranked statistic; ?scope=ufc|<division>&minBouts=
-GET /api/fights/:id/context  venue, broadcast, officials, reporting, milestones
 GET /api/officials           every judge and referee
 GET /api/judges/:slug        a judge's cards and agreement; ?from&to&division&result&view&q&offset
 GET /api/referees/:slug      a referee's bouts against a UFC baseline; same filters

@@ -1,74 +1,69 @@
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Search } from "lucide-react";
-import { EYEBROW, BUTTON_SECONDARY } from "../ui";
+import { Search } from "lucide-react";
 import { PANEL } from "./chartTokens";
 import type { Option } from "../research";
 
 /**
- * The pieces every research page shares — judges, referees, venues and the
- * directories that lead to them — so the four read as one part of the app:
- * the same page frame, the same figure tiles, the same filter bar kept in the
- * address, and the same way through a long list.
+ * The pieces the judge, referee and venue pages and their directories share,
+ * so they read as one part of the app: the same header, figures, filter bar
+ * kept in the address, and the same way through a long list.
  */
 
 const FIELD = "h-8 rounded-full border border-zinc-200 bg-white pl-3 pr-7 text-xs font-medium text-zinc-700 outline-none hover:border-zinc-300 focus:border-zinc-400";
 
-export function PageHeader({ eyebrow, title, children, aside }: { eyebrow: ReactNode; title: string; children?: ReactNode; aside?: ReactNode }) {
+/** Name first, then one line of facts separated by dots — the way a fighter's
+ *  profile opens — with at most one action beside it. */
+export function PageHeader({ title, meta, children, aside }: { title: string; meta: ReactNode[]; children?: ReactNode; aside?: ReactNode }) {
+  const facts = meta.filter(Boolean);
   return (
-    <header className={`${PANEL} flex flex-wrap items-start justify-between gap-3 px-4 py-4 sm:px-6 sm:py-5`}>
+    <header className={`${PANEL} flex flex-wrap items-start justify-between gap-x-4 gap-y-3 px-4 py-4 sm:px-6 sm:py-5`}>
       <div className="min-w-0">
-        <p className={EYEBROW}>{eyebrow}</p>
-        <h1 className="mt-1 text-balance text-xl font-semibold tracking-tight text-zinc-950 sm:text-2xl">{title}</h1>
-        {children ? <div className="mt-1.5 text-xs leading-5 text-zinc-500">{children}</div> : null}
+        <h1 className="text-balance break-words text-xl font-semibold tracking-tight text-zinc-950 sm:text-2xl">{title}</h1>
+        {facts.length ? (
+          <p className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs leading-5 text-zinc-500 sm:text-sm">
+            {facts.map((fact, index) => <span key={index} className="contents">{index ? <span aria-hidden="true" className="text-zinc-300">·</span> : null}<span className="min-w-0">{fact}</span></span>)}
+          </p>
+        ) : null}
+        {children ? <div className="mt-1 text-xs leading-5 text-zinc-400">{children}</div> : null}
       </div>
       {aside ? <div className="flex shrink-0 flex-wrap items-center gap-2">{aside}</div> : null}
     </header>
   );
 }
 
-/** One figure with what it is out of. `compare` is the same figure for a
- *  wider population, shown beside it so a rate is never read alone. */
+/** One figure, what it is out of, and — for a rate — the same figure for the
+ *  whole UFC beside it, so it is never read alone. */
 export function Tile({ label, value, detail, compare, hint }: { label: string; value: ReactNode; detail?: ReactNode; compare?: ReactNode; hint?: string }) {
   return (
-    <div className="min-w-0 rounded-xl border border-zinc-100 bg-zinc-50/70 px-3 py-2.5" title={hint}>
-      <p className="line-clamp-2 text-[10px] font-semibold uppercase leading-3.5 tracking-[0.1em] text-zinc-400">{label}</p>
-      <p className="mt-0.5 text-lg font-semibold tabular-nums leading-6 text-zinc-950">{value}</p>
-      {detail ? <p className="text-[11px] leading-4 text-zinc-500">{detail}</p> : null}
-      {compare ? <p className="mt-0.5 text-[11px] leading-4 text-zinc-400">{compare}</p> : null}
+    <div className="min-w-0" title={hint}>
+      <p className="text-xs leading-4 text-zinc-500">{label}</p>
+      <p className="mt-0.5 text-lg font-semibold tabular-nums leading-6 text-zinc-950 sm:text-xl">{value}</p>
+      {detail ? <p className="text-[11px] leading-4 text-zinc-400">{detail}</p> : null}
+      {compare ? <p className="text-[11px] leading-4 text-zinc-400">{compare}</p> : null}
     </div>
   );
 }
 
 export function Tiles({ children }: { children: ReactNode }) {
-  return <div className="grid grid-cols-2 gap-2 px-4 pb-4 sm:grid-cols-3 sm:px-5 lg:grid-cols-4">{children}</div>;
+  return <div className="grid grid-cols-2 gap-x-4 gap-y-4 px-4 py-4 sm:grid-cols-3 sm:gap-x-6 sm:px-5 lg:grid-cols-4">{children}</div>;
 }
 
 export function Panel({ title, subtitle, children, aside }: { title: string; subtitle?: ReactNode; children: ReactNode; aside?: ReactNode }) {
   return (
     <section className={`${PANEL} overflow-hidden`}>
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 sm:px-5 sm:py-3">
-        <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-zinc-900">{title}</h2>
-          {subtitle ? <p className="mt-0.5 text-xs text-zinc-500">{subtitle}</p> : null}
-        </div>
-        {aside}
+      <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-2.5 sm:px-5 sm:py-3">
+        <h2 className="text-sm font-semibold text-zinc-900">{title}</h2>
+        {subtitle || aside ? (
+          <div className="flex min-w-0 items-center gap-2">
+            {subtitle ? <p className="min-w-0 text-xs tabular-nums text-zinc-500">{subtitle}</p> : null}
+            {aside}
+          </div>
+        ) : null}
       </div>
       {children}
     </section>
-  );
-}
-
-/** Definitions and caveats, collapsed after the first visit's worth of reading. */
-export function ReadingNotes({ children, title = "How to read this" }: { children: ReactNode; title?: string }) {
-  return (
-    <details className={`${PANEL} group px-4 py-2.5 text-xs leading-5 text-zinc-600 sm:px-5`}>
-      <summary className="cursor-pointer list-none font-semibold text-zinc-700 [&::-webkit-details-marker]:hidden">
-        <span className="mr-1.5 inline-block transition-transform group-open:rotate-90" aria-hidden="true">›</span>{title}
-      </summary>
-      <div className="mt-2 space-y-1.5 pb-1">{children}</div>
-    </details>
   );
 }
 
@@ -121,21 +116,6 @@ export function FilterBar({ children, active, onClear }: { children: ReactNode; 
       {children}
       {active ? <button type="button" onClick={onClear} className="ml-auto text-xs font-medium text-zinc-500 underline underline-offset-2 hover:text-zinc-900">Clear filters</button> : null}
     </div>
-  );
-}
-
-export function Pager({ total, offset, limit, onOffset, noun }: { total: number; offset: number; limit: number; onOffset: (offset: number) => void; noun: string }) {
-  if (total <= limit) return <p className="border-t border-zinc-100 px-5 py-2.5 text-center text-[11px] text-zinc-400">{total.toLocaleString()} {noun}</p>;
-  return (
-    <nav aria-label="Pages" className="flex items-center justify-between gap-2 border-t border-zinc-100 px-4 py-2.5 sm:px-5">
-      <button type="button" disabled={offset === 0} onClick={() => onOffset(Math.max(0, offset - limit))} className={BUTTON_SECONDARY}>
-        <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />Newer
-      </button>
-      <span className="text-[11px] tabular-nums text-zinc-500">{(offset + 1).toLocaleString()}–{Math.min(total, offset + limit).toLocaleString()} of {total.toLocaleString()} {noun}</span>
-      <button type="button" disabled={offset + limit >= total} onClick={() => onOffset(offset + limit)} className={BUTTON_SECONDARY}>
-        Older<ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-      </button>
-    </nav>
   );
 }
 

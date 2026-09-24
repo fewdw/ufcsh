@@ -25,7 +25,7 @@ import {
 } from "./scrape/odds.ts";
 import { isSummaryAgeDisagreement, validateFightActions } from "./action-stats.ts";
 import { correctOfficialJudges } from "./verified-scorecard-corrections.ts";
-import { backgroundSection, eventInfobox, fetchArticleByTitle, fetchEventArticle, weightMisses } from "./scrape/wikipedia.ts";
+import { eventInfobox, fetchArticleByTitle, fetchEventArticle, weightMisses } from "./scrape/wikipedia.ts";
 import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
 import { syncVerdictScorecards } from "./verdict-import.ts";
 import { americanLine, impliedProbability } from "./fight-index.ts";
@@ -297,16 +297,15 @@ export async function syncVenueArchive(limit = 8): Promise<void> {
 
 let wikiInfoRunning = false;
 
-/** The venue name as it was that night, attendance, gate and background prose
- * from each card's Wikipedia article. Completed cards are read once; cards in
- * the next six weeks are re-read twice a day, because that is where late
- * replacements and weigh-in news are written up with their sources. */
+/** The venue name as it was that night, attendance and gate from each card's
+ * Wikipedia article. Completed cards are read once; cards in the next six
+ * weeks are re-read twice a day while the article is still being written. */
 export async function syncEventWikiInfo(limit = 20): Promise<void> {
   if (wikiInfoRunning) return;
   wikiInfoRunning = true;
   try {
     const store = db.prepare(`UPDATE events SET wiki_title = COALESCE(?, wiki_title), wiki_venue = ?, wiki_city = ?,
-      attendance = ?, gate = ?, wiki_background = ?, wiki_info_checked_at = ? WHERE id = ?`);
+      attendance = ?, gate = ?, wiki_info_checked_at = ? WHERE id = ?`);
     const upcoming = db.prepare(`SELECT id, name, date, wiki_title FROM events WHERE complete = 0
       AND date >= date('now', '-1 day') AND date <= date('now', '+42 days')
       AND (wiki_info_checked_at IS NULL OR wiki_info_checked_at < ?) ORDER BY date ASC LIMIT 6`)
@@ -327,8 +326,7 @@ export async function syncEventWikiInfo(limit = 20): Promise<void> {
           wikitext = article?.wikitext ?? null;
         }
         const infobox = wikitext ? eventInfobox(wikitext) : { venue: null, city: null, attendance: null, gate: null };
-        store.run(title, infobox.venue, infobox.city, infobox.attendance, infobox.gate,
-          wikitext ? backgroundSection(wikitext) : null, Date.now(), event.id);
+        store.run(title, infobox.venue, infobox.city, infobox.attendance, infobox.gate, Date.now(), event.id);
         read++;
       } catch (err) {
         log(`event article failed [${event.name}]:`, String(err));
@@ -1286,7 +1284,10 @@ async function syncImagesInner(limit: number): Promise<void> {
     const age = now - r.photo_checked_at;
     // A fighter still missing either picture is retried on the shorter cycle:
     // ufc.com adds full-body art when someone becomes worth photographing.
-    if (!r.photo_url || !r.photo_full_url) return age > DAY;
+    // Anyone booked or ranked is retried every two hours: a debutant's photos
+    // go up during fight week, and a daily retry could leave them faceless
+    // until the card is over.
+    if (!r.photo_url || !r.photo_full_url) return age > (r.pri <= 100 ? 2 * HOUR : DAY);
     // ufc.com re-shoots an athlete for the card they are on, so anyone ranked,
     // booked, or freshly off a card is looked at again within days rather than
     // carrying last year's face into fight week. A month is the right cycle for

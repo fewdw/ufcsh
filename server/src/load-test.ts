@@ -56,7 +56,6 @@ const routes: [weight: number, name: string, make: () => string, method?: "POST"
   [3, "/api/stats", () => "/api/stats"],
   [12, "/api/images/:id", () => `/api/images/${pick(fighters)}`],
   [8, "/api/pageview", () => pick(["/", "/rankings", "/stats", "/profiles/fan", `/events/${pick(events)}`, `/fights/${pick(fights)}`]), "POST"],
-  [5, "/api/fights/:id/context", () => `/api/fights/${pick(fights)}/context`],
   [4, "/api/fighters/:id/stats", () => `/api/fighters/${pick(fighters)}/stats?scope=ufc`],
   [2, "/api/judges|referees/:slug", () => pick(["/api/judges/sal-d-amato", "/api/judges/derek-cleary", "/api/referees/herb-dean", "/api/referees/marc-goddard"])],
   [1, "/api/venues/:slug", () => pick(["/api/venues", "/api/venues/meta-apex"])],
