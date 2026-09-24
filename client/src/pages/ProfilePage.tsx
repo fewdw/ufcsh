@@ -26,9 +26,11 @@ const FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed"];
 /** Bouts that went to the judges are the ones a card can be read against, so
  *  the list opens on them and finishes are one checkbox away. */
 const DEFAULT_FILTER: ProfileFilter = "decisions";
+/** `short` is what a phone shows, so all five fit on one line without scrolling. */
 const TABS = [
-  { id: "scorecards", label: "Scorecards" }, { id: "predictions", label: "Predictions" },
-  { id: "bets", label: "Bets" }, { id: "comments", label: "Comments" }, { id: "leaderboards", label: "Leaderboards" },
+  { id: "scorecards", label: "Scorecards", short: "Cards" }, { id: "predictions", label: "Predictions", short: "Picks" },
+  { id: "bets", label: "Bets", short: "Bets" }, { id: "comments", label: "Comments", short: "Comments" },
+  { id: "leaderboards", label: "Leaderboards", short: "Boards" },
 ] as const;
 type Section = (typeof TABS)[number]["id"];
 const quiet = "rounded-full px-3 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
@@ -103,11 +105,6 @@ function Profile({ handle }: { handle: string }) {
   const section: Section = tabs.find(tab => tab.id === search.get("tab"))?.id ?? "scorecards";
   const scroll = useRouteScrollRestoration<HTMLDivElement>("profile", Boolean(view));
   const sentinel = useRef<HTMLDivElement>(null);
-  const tabList = useRef<HTMLDivElement>(null);
-  // On a phone the tabs scroll sideways; keep the open one in view.
-  useEffect(() => {
-    tabList.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [section]);
 
   const name = view?.scorer.displayName;
   useSeo({
@@ -158,7 +155,7 @@ function Profile({ handle }: { handle: string }) {
       <div className="mx-auto flex min-w-0 max-w-3xl flex-col gap-2 px-2 py-2 sm:gap-3 sm:px-5 sm:py-4">
         <ProfileHeader scorer={scorer} mine={mine} onRenamed={refresh} />
 
-        <div ref={tabList} role="tablist" aria-label="Profile sections" className={`${segmentedGroup} w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
+        <div role="tablist" aria-label="Profile sections" className={`${segmentedGroup} w-full`}>
           {tabs.map((tab, index) => (
             <button
               key={tab.id}
@@ -178,9 +175,10 @@ function Profile({ handle }: { handle: string }) {
                 const params = new URLSearchParams(search); params.set("tab", tabs[next].id); setSearch(params, { replace: true });
                 event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
               }}
-              className={`min-h-9 flex-auto shrink-0 whitespace-nowrap rounded-full px-3 py-2 text-[13px] font-medium transition sm:text-sm ${section === tab.id ? segmentedSelected : segmentedIdle}`}
+              className={`min-h-9 min-w-0 flex-1 whitespace-nowrap rounded-full px-1 py-2 text-xs font-medium transition min-[380px]:text-[13px] sm:px-3 sm:text-sm ${section === tab.id ? segmentedSelected : segmentedIdle}`}
             >
-              {tab.label}
+              <span className="sm:hidden">{tab.short}</span>
+              <span className="hidden sm:inline">{tab.label}</span>
             </button>
           ))}
         </div>
