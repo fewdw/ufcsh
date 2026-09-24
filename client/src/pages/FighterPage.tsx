@@ -606,7 +606,7 @@ export default function FighterPage() {
 
         <Records records={fighter.records ?? []} />
 
-        <FighterStatistics fighterId={fighter.id} />
+        <FighterStatistics fighterId={fighter.id} history={fighter.history} />
         </div>
 
         <div className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]">

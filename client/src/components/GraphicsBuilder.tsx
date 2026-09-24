@@ -3,6 +3,7 @@ import { Check, Copy, Download, ImageIcon, Search, Share2, X } from "lucide-reac
 import { useApi, type EventDetail, type EventListItem, type FighterBoard, type FighterProfile, type Matchup } from "../api";
 import { buildEvent, buildFighter, buildMatchup, buildResult, photoUrl, togglesFor, type Kind, type PhotoMode, type Toggle } from "../graphics/build";
 import { loadImage, renderGraphic, SIZES, type Format, type Graphic, type Photo, type Theme } from "../graphics/render";
+import { graphicBlob } from "../graphics/export";
 import type { GraphicSubject } from "../graphicsLauncher";
 import { formatDateShortWithYear } from "../format";
 import { landingEvent } from "../liveEvent";
@@ -96,11 +97,13 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
   const [format, setFormat] = useState<Format>("square");
   // Dark reads best in a feed of photos; light is one click away.
   const [theme, setTheme] = useState<Theme>("dark");
-  const [photoMode, setPhotoMode] = useState<PhotoMode>("full");
+  const [photoMode, setPhotoMode] = useState<PhotoMode>("none");
   const [scope, setScope] = useState("ufc");
+  const [optionQuery, setOptionQuery] = useState("");
   const [choices, setChoices] = useState<Record<string, boolean>>({});
   const [status, setStatus] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [graphic, setGraphic] = useState<Graphic | null>(null);
+  const [drawing, setDrawing] = useState(false);
 
   useEffect(() => {
     const node = dialog.current;
@@ -125,15 +128,19 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
   const fightId = subject?.kind === "fight" ? subject.id : null;
   const fighterId = subject?.kind === "fighter" ? subject.id : null;
   const eventId = subject?.kind === "event" ? subject.id : null;
-  const { data: fight } = useApi<Matchup>(fightId && (kind === "matchup" || kind === "result") ? withRanking(`/api/fights/${fightId}`, settings.rankingSource) : null);
+  const fightRequest = useApi<Matchup>(fightId && (kind === "matchup" || kind === "result") ? withRanking(`/api/fights/${fightId}`, settings.rankingSource) : null);
+  const fight = fightRequest.data?.id === fightId ? fightRequest.data : null;
   const { data: fightEvent } = useApi<EventDetail>(fight && kind === "matchup" ? withRanking(`/api/events/${fight.event.id}`, settings.rankingSource) : null);
-  const { data: fighter } = useApi<FighterProfile>(fighterId && kind === "fighter" ? withRanking(`/api/fighters/${fighterId}`, settings.rankingSource) : null);
+  const fighterRequest = useApi<FighterProfile>(fighterId && kind === "fighter" ? withRanking(`/api/fighters/${fighterId}`, settings.rankingSource) : null);
+  const fighter = fighterRequest.data?.id === fighterId ? fighterRequest.data : null;
   const { data: board } = useApi<FighterBoard>(fighterId && kind === "fighter" ? `/api/fighters/${fighterId}/stats?scope=${encodeURIComponent(scope)}` : null);
-  const { data: event } = useApi<EventDetail>(eventId && kind === "event" ? withRanking(`/api/events/${eventId}`, settings.rankingSource) : null);
+  const eventRequest = useApi<EventDetail>(eventId && kind === "event" ? withRanking(`/api/events/${eventId}`, settings.rankingSource) : null);
+  const event = eventRequest.data?.id === eventId ? eventRequest.data : null;
+  const request = kind === "fighter" ? fighterRequest : kind === "event" ? eventRequest : fightRequest;
 
   const label = subject?.label || (fight ? `${fight.f1.name} vs ${fight.f2.name}` : fighter?.name ?? event?.name ?? "");
   const pickedSubject = subject ? { ...subject, label } : null;
-  const toggles: Toggle[] = useMemo(() => togglesFor(kind, board).map((toggle) => ({ ...toggle, on: choices[toggle.id] ?? toggle.on })), [kind, board, choices]);
+  const toggles: Toggle[] = useMemo(() => togglesFor(kind, board, fight).map((toggle) => ({ ...toggle, on: choices[toggle.id] ?? toggle.on })), [kind, board, fight, choices]);
   const groups = useMemo(() => [...new Set(toggles.map((toggle) => toggle.group))], [toggles]);
   const resultUnavailable = kind === "result" && fight && fight.status !== "past";
   const wrongSubject = subject && ((kind === "fighter") !== (subject.kind === "fighter") || (kind === "event") !== (subject.kind === "event"));
@@ -141,6 +148,8 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
   // Build, fetch the pictures, then draw — the latest request wins.
   useEffect(() => {
     let cancelled = false;
+    setDrawing(true);
+    setGraphic(null);
     const run = async () => {
       let next: Graphic | null = null;
       if ((kind === "matchup" || kind === "result") && fight && !resultUnavailable) {
@@ -158,15 +167,17 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
         next = buildEvent(event, toggles);
       }
       if (cancelled) return;
-      setGraphic(next);
       if (next && canvas.current) renderGraphic(canvas.current, next, format, theme);
+      setGraphic(next);
     };
-    void run();
+    void run().catch(() => {
+      if (!cancelled) setStatus({ tone: "error", text: "Couldn’t draw this graphic. Try fewer selections or another picture style." });
+    }).finally(() => { if (!cancelled) setDrawing(false); });
     return () => { cancelled = true; };
   }, [kind, fight, fightEvent, fighter, board, event, toggles, photoMode, format, theme, resultUnavailable]);
 
   const fileName = `ufcsh-${(label || kind).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60)}-${format}.png`;
-  const blob = () => new Promise<Blob>((resolve, reject) => canvas.current?.toBlob((value) => value ? resolve(value) : reject(new Error("empty")), "image/png") ?? reject(new Error("no canvas")));
+  const blob = () => graphicBlob(canvas.current);
   const copy = async () => {
     try {
       // Safari needs the promise itself handed over inside the click.
@@ -177,6 +188,7 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
     }
   };
   const download = async () => {
+    try {
     const url = URL.createObjectURL(await blob());
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -184,6 +196,9 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
     anchor.click();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
     setStatus({ tone: "ok", text: "Downloaded." });
+    } catch {
+      setStatus({ tone: "error", text: "Couldn’t download this image. Try again with pictures set to None." });
+    }
   };
   const [canShare, setCanShare] = useState(false);
   useEffect(() => {
@@ -196,7 +211,7 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
     } catch { /* the reader closed the share sheet */ }
   };
 
-  const loading = !graphic && !resultUnavailable && !wrongSubject && Boolean(subject);
+  const loading = !request.error && (drawing || (!graphic && !resultUnavailable && !wrongSubject && Boolean(subject)));
   // Past this many lines the type shrinks below what a feed keeps legible.
   const lines = graphic?.kind === "versus" ? graphic.sections.reduce((total, section) => total + section.rows.length + 1, 0) + (graphic.judges?.length ? 2 : 0)
     : graphic?.kind === "fighter" ? graphic.stats.length : graphic?.kind === "card" ? graphic.rows.length : 0;
@@ -219,13 +234,13 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
           <div className="space-y-4 border-zinc-100 px-4 py-4 sm:px-5 md:overflow-y-auto md:border-r">
             <section className="space-y-2">
               <h3 className={EYEBROW}>1 · Graphic</h3>
-              <select value={kind} onChange={(event) => { setKind(event.target.value as Kind); setStatus(null); }} aria-label="Graphic type" className={FIELD}>
+              <select value={kind} onChange={(event) => { setKind(event.target.value as Kind); setChoices({}); setOptionQuery(""); setStatus(null); }} aria-label="Graphic type" className={FIELD}>
                 {KINDS.map((option) => <option key={option.value} value={option.value}>{option.label} — {option.hint}</option>)}
               </select>
             </section>
             <section className="space-y-2">
               <h3 className={EYEBROW}>2 · {kind === "fighter" ? "Fighter" : kind === "event" ? "Event" : "Bout"}</h3>
-              <SubjectPicker kind={kind} subject={pickedSubject} onPick={(picked) => { setSubject(picked); setStatus(null); }} />
+              <SubjectPicker kind={kind} subject={pickedSubject} onPick={(picked) => { setSubject(picked); setChoices({}); setScope("ufc"); setStatus(null); }} />
               {resultUnavailable ? <p className="text-xs text-amber-700">This bout hasn’t happened yet — choose Matchup, or pick a finished bout.</p> : null}
               {wrongSubject ? <p className="text-xs text-zinc-500">Pick a {kind === "fighter" ? "fighter" : kind === "event" ? "event" : "bout"} for this graphic.</p> : null}
             </section>
@@ -246,29 +261,31 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
             </section>
             <section className="space-y-3">
               <h3 className={EYEBROW}>4 · Include</h3>
+              <input type="search" aria-label="Find graphic options" placeholder="Find a stat or market…" className={FIELD} value={optionQuery} onChange={(event) => setOptionQuery(event.target.value)} />
               {groups.map((group) => (
-                <fieldset key={group}>
-                  <legend className="mb-1 text-xs font-semibold text-zinc-700">{group}</legend>
+                <details key={group} open={optionQuery ? true : undefined} className="border-t border-zinc-100 pt-2">
+                  <summary className="mb-1 cursor-pointer text-xs font-semibold text-zinc-700">{group} · {toggles.filter((t) => t.group === group && t.on).length} selected</summary>
                   <div className="grid grid-cols-1 gap-x-3 gap-y-1 min-[420px]:grid-cols-2 md:grid-cols-1">
-                    {toggles.filter((toggle) => toggle.group === group).map((toggle) => (
+                    {toggles.filter((toggle) => toggle.group === group && (!optionQuery || toggle.label.toLowerCase().includes(optionQuery.toLowerCase()))).map((toggle) => (
                       <label key={toggle.id} className="flex min-w-0 items-center gap-2 py-0.5 text-[13px] text-zinc-600 sm:text-xs">
                         <input type="checkbox" checked={toggle.on} onChange={(event) => setChoices((current) => ({ ...current, [toggle.id]: event.target.checked }))}
                           className="h-3.5 w-3.5 shrink-0 accent-zinc-900" />
-                        <span className="truncate">{toggle.label}</span>
+                        <span>{toggle.label}</span>
                       </label>
                     ))}
                   </div>
-                </fieldset>
+                </details>
               ))}
             </section>
           </div>
 
-          <div className="flex min-h-0 flex-col gap-3 bg-zinc-50 px-4 py-4 sm:px-5">
+          <div className="order-first flex min-h-0 flex-col gap-3 bg-zinc-50 px-4 py-4 sm:px-5 md:order-none">
             <div className="flex min-h-[16rem] flex-1 items-center justify-center overflow-hidden">
               <canvas ref={canvas} role="img" aria-label={graphic ? `Preview: ${label}` : "Graphic preview"}
                 className={`max-h-full max-w-full rounded-lg shadow-xl ring-1 ring-black/5 ${graphic ? "" : "hidden"}`}
                 style={{ aspectRatio: `${SIZES[format].width} / ${SIZES[format].height}` }} />
-              {!graphic ? <p role="status" className="text-sm text-zinc-400">{loading ? "Drawing…" : "Choose what the graphic is about."}</p> : null}
+              {request.error ? <div role="alert" className="text-center text-sm text-zinc-600">Couldn’t load this subject. <button type="button" onClick={request.retry} className="underline">Retry</button></div>
+                : !graphic ? <p role="status" className="text-sm text-zinc-400">{loading ? "Drawing…" : "Choose what the graphic is about."}</p> : null}
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-2">
               <span className="mr-auto text-[11px] text-zinc-500">

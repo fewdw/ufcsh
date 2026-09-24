@@ -1,6 +1,7 @@
+import { Link } from "react-router-dom";
 import { useMemo, useRef, useState } from "react";
 import { ChevronDown, Search } from "lucide-react";
-import { useApi, type BoardStat, type FighterBoard } from "../api";
+import { useApi, type BoardStat, type FighterBoard, type FighterProfile } from "../api";
 import { useHistoryState } from "../navigationState";
 import { useSettings, type StatsSort } from "../settings";
 import { EYEBROW } from "../ui";
@@ -40,7 +41,7 @@ function StatRow({ stat }: { stat: BoardStat }) {
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-[12px] font-semibold leading-4 text-zinc-800">{stat.label}</span>
-        <span className="block truncate text-[10px] leading-4 text-zinc-400" title={stat.detail}>
+        <span className="block text-[10px] leading-4 text-zinc-400" title={stat.detail}>
           of {stat.field.toLocaleString("en-US")} · {stat.unwanted ? "higher means more" : topShare(stat)} · {stat.detail}
         </span>
       </span>
@@ -59,13 +60,14 @@ function Rows({ stats }: { stats: BoardStat[] }) {
  * or best place first. Collapsed, it shows only their three best placings: the
  * reader who wants the rest asks for it.
  */
-export default function FighterStatistics({ fighterId }: { fighterId: string }) {
+export default function FighterStatistics({ fighterId, history }: { fighterId: string; history: FighterProfile["history"] }) {
   const { settings, update } = useSettings();
   const [scope, setScope] = useHistoryState<string>(`stats-scope:${fighterId}`, "ufc");
+  const [minimum, setMinimum] = useHistoryState<number>(`stats-minimum:${fighterId}`, 0);
   const [query, setQuery] = useState("");
   const open = settings.topStatsOpen;
   const sort: StatsSort = settings.statsSort;
-  const { data, error, retry } = useApi<FighterBoard>(`/api/fighters/${fighterId}/stats?scope=${encodeURIComponent(scope)}`);
+  const { data, error, retry } = useApi<FighterBoard>(`/api/fighters/${fighterId}/stats?scope=${encodeURIComponent(scope)}&minBouts=${minimum}`);
   // Switching scope keeps the last answer on screen, dimmed, until the next
   // arrives, so the controls never jump out from under the pointer.
   const last = useRef<FighterBoard | null>(null);
@@ -153,7 +155,14 @@ export default function FighterStatistics({ fighterId }: { fighterId: string }) 
             </label>
           </div>
 
-          {error && !board ? <div className="px-4 pb-3 sm:px-5"><RequestNotice onRetry={retry}>Couldn’t load these rankings.</RequestNotice></div> : null}
+          <div className="px-4 pb-2.5 sm:px-5">
+            <label className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">Minimum UFC bouts in this scope
+              <select aria-label="Minimum UFC bouts" value={minimum} onChange={(event) => setMinimum(Number(event.target.value))} className="rounded-full border border-zinc-200 bg-white px-2 py-1 text-zinc-700">
+                {[0, 3, 5, 10, 20].map((n) => <option key={n} value={n}>{n ? `${n}+ bouts` : "Default samples"}</option>)}
+              </select>
+            </label>
+          </div>
+          {error ? <div className="px-4 pb-3 sm:px-5"><RequestNotice onRetry={retry}>Couldn’t update these rankings. Any figures below are from the previous selection.</RequestNotice></div> : null}
           {!board && !error ? <p role="status" className="px-5 py-6 text-center text-xs text-zinc-400">Loading rankings…</p> : null}
 
           {board ? (
@@ -184,6 +193,12 @@ export default function FighterStatistics({ fighterId }: { fighterId: string }) 
                   ) : null}
                 </div>
               )}
+              <details className="border-t border-zinc-100 px-4 py-3 text-xs text-zinc-500 sm:px-5">
+                <summary className="cursor-pointer font-medium text-zinc-700">Coverage & bout history</summary>
+                <p className="my-2 leading-5">Current career statistics. Rate rankings keep their own minimum samples even with no extra bout filter. The history below covers this scope; some metrics use fewer bouts, as shown beside each reading. Missing data is never counted as zero.</p>
+                {board.unqualified.length ? <details className="my-2"><summary className="cursor-pointer">{board.unqualified.length} readings without a qualifying sample</summary><ul className="mt-2 grid gap-1 sm:grid-cols-2">{board.unqualified.map((entry) => <li key={entry.key}>{entry.label} · unranked</li>)}</ul></details> : null}
+                <ul className="max-h-64 space-y-2 overflow-y-auto">{history.filter((row) => !row.upcoming && (board.scope === "ufc" || row.weight_class === board.scope)).map((row) => <li key={row.fight_id}><Link className="underline underline-offset-2 hover:text-zinc-900" to={`/fights/${row.fight_id}`}>{row.date} · {row.opponent.name}</Link>{row.method ? ` · ${row.method}` : ""}</li>)}</ul>
+              </details>
               <p className="flex flex-wrap items-center gap-x-1.5 border-t border-zinc-100 px-4 py-2.5 text-[10px] leading-4 text-zinc-400 sm:px-5">
                 <span>
                   {inDivision ? `Only bouts fought at ${board.scope_label} (${board.bouts}) count, ranked against everyone else’s bouts there.` : `Every UFC bout counts (${board.bouts}), ranked against the whole promotion.`}

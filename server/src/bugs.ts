@@ -4,6 +4,8 @@ import { americanLine, fightIndex, impliedProbability } from "./fight-index.ts";
 import { pageNamesFighter } from "./scrape/odds.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { hasCompleteJudgeRounds } from "./judge-scorecards.ts";
+import { officialsIndex } from "./officials.ts";
+import { venueIndex } from "./venues.ts";
 import {
   fighterNames,
   syncEventDetail,
@@ -29,7 +31,7 @@ export type BugItem = {
 };
 export type BugCheck = {
   id: string;
-  group: "Scorecards" | "Odds" | "Records" | "Fights & events" | "Fighters";
+  group: "Scorecards" | "Odds" | "Records" | "Fights & events" | "Venues & officials" | "Fighters";
   label: string;
   description: string;
   severity: "high" | "medium" | "low";
@@ -730,6 +732,270 @@ function fighterGaps(active: Set<string>): BugCheck {
   }, items);
 }
 
+
+// ---------------------------------------------------------------------------
+// venues, broadcasts and officials
+
+type EventVenueRow = {
+  id: string; name: string; date: string; complete: number; location: string; ufc_slug: string | null;
+  venue_id: number | null; wiki_venue: string | null; wiki_title: string | null;
+  venue_checked_at: number | null; wiki_info_checked_at: number | null; segments_fetched_at: number | null;
+};
+
+function venueLinks(event: EventVenueRow): BugLink[] {
+  return [
+    eventLink(event.id),
+    ...(event.ufc_slug ? [{ label: "ufc.com event", href: `https://www.ufc.com/event/${event.ufc_slug}` }] : []),
+    event.wiki_title
+      ? { label: "Wikipedia", href: `https://en.wikipedia.org/wiki/${encodeURIComponent(event.wiki_title.replace(/ /g, "_"))}` }
+      : { label: "Wikipedia search", href: `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(event.name)}` },
+  ];
+}
+
+const venueActions = (event: EventVenueRow): BugItem["actions"] => [
+  ...(event.ufc_slug ? [{ id: "segments" as const, label: "Re-read ufc.com card", target: event.id }] : []),
+  { id: "article" as const, label: "Re-read event article", target: event.id },
+];
+
+const VENUE_COLUMNS = `id, name, date, complete, location, ufc_slug, venue_id, wiki_venue, wiki_title,
+  venue_checked_at, wiki_info_checked_at, segments_fetched_at`;
+
+function eventsWithoutVenue(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${VENUE_COLUMNS} FROM events
+    WHERE venue_id IS NULL AND wiki_venue IS NULL
+      AND (complete = 1 OR date <= date('now', '+60 day'))
+      -- Not yet looked at is a backfill still running, not a gap: every source
+      -- this card has must have been read before its silence counts.
+      AND (ufc_slug IS NULL OR venue_checked_at IS NOT NULL)
+      AND (wiki_title IS NULL OR wiki_info_checked_at IS NOT NULL)
+      AND (ufc_slug IS NOT NULL OR wiki_title IS NOT NULL OR wiki_checked_at IS NOT NULL)
+    ORDER BY date DESC
+  `).all() as EventVenueRow[];
+  return check({
+    id: "event-no-venue",
+    group: "Venues & officials",
+    label: "Events with no venue",
+    description: "Neither the promotion's live-card feed nor the event's Wikipedia article named a venue, so the event has no venue page and matchups show only the city. Pre-2011 cards have no ufc.com page; their venue can only come from Wikipedia.",
+    severity: "medium",
+  }, rows.map((event): BugItem => ({
+    key: event.id,
+    title: event.name,
+    subtitle: event.location,
+    date: event.date,
+    facts: [
+      ["ufc.com slug", event.ufc_slug ?? "none (card predates ufc.com's archive or was never matched)"],
+      ["Feed read", ago(event.venue_checked_at)],
+      ["Article read", ago(event.wiki_info_checked_at)],
+      ["Article", event.wiki_title ?? "not found"],
+    ],
+    links: venueLinks(event),
+    actions: venueActions(event),
+  })));
+}
+
+function venuesFromWikipediaOnly(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${VENUE_COLUMNS} FROM events WHERE venue_id IS NULL AND wiki_venue IS NOT NULL ORDER BY date DESC
+  `).all() as EventVenueRow[];
+  const index = venueIndex();
+  return check({
+    id: "venue-wikipedia-only",
+    group: "Venues & officials",
+    label: "Venues known only from Wikipedia",
+    description: "The venue name comes from the event article alone. When no other card links that name to the promotion's venue id, a renamed arena (Staples Center / Crypto.com Arena) can show as two venues. Re-reading the ufc.com card usually attaches the id; otherwise the name may need an alias.",
+    severity: "low",
+  }, rows.map((event): BugItem => {
+    const venue = index.byEvent.get(event.id);
+    return {
+      key: event.id,
+      title: event.name,
+      subtitle: `${event.wiki_venue} · ${event.location}`,
+      date: event.date,
+      facts: [["Grouped under", venue ? `${venue.name} (${venue.events.length} cards)` : "no venue"], ["ufc.com slug", event.ufc_slug ?? "none"]],
+      links: [...venueLinks(event), ...(venue ? [{ label: `Venue: ${venue.name}`, href: `/venues/${venue.slug}`, internal: true }] : [])],
+      actions: venueActions(event),
+    };
+  }));
+}
+
+function upcomingWithoutBroadcast(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${VENUE_COLUMNS}, broadcast_json FROM events
+    WHERE complete = 0 AND date >= date('now', '-1 day') AND date <= date('now', '+14 day') AND broadcast_json IS NULL
+    ORDER BY date ASC
+  `).all() as (EventVenueRow & { broadcast_json: string | null })[];
+  return check({
+    id: "upcoming-no-broadcast",
+    group: "Venues & officials",
+    label: "Upcoming cards without a broadcaster",
+    description: "The Context tab can't say where a bout airs. The promotion's feed usually names broadcasters in fight week; before that this is expected.",
+    severity: "low",
+  }, rows.map((event): BugItem => ({
+    key: event.id, title: event.name, date: event.date,
+    facts: [["Feed read", ago(event.venue_checked_at)], ["ufc.com slug", event.ufc_slug ?? "none"]],
+    links: venueLinks(event),
+    actions: event.ufc_slug ? [{ id: "segments", label: "Re-read ufc.com card", target: event.id }] : [],
+  })));
+}
+
+function upcomingWithoutReporting(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${VENUE_COLUMNS} FROM events
+    WHERE complete = 0 AND date >= date('now', '-1 day') AND date <= date('now', '+21 day')
+      AND wiki_info_checked_at IS NOT NULL AND (wiki_background IS NULL OR wiki_background = '')
+    ORDER BY date ASC
+  `).all() as EventVenueRow[];
+  return check({
+    id: "upcoming-no-article",
+    group: "Venues & officials",
+    label: "Upcoming cards with no event article",
+    description: "No Wikipedia article (or no Background section) was found, so matchups on this card show no reported developments on the Context tab. A new card's article often appears a few weeks out.",
+    severity: "low",
+  }, rows.map((event): BugItem => ({
+    key: event.id, title: event.name, date: event.date,
+    facts: [["Article", event.wiki_title ?? "not found"], ["Article read", ago(event.wiki_info_checked_at)]],
+    links: venueLinks(event),
+    actions: [{ id: "article", label: "Re-read event article", target: event.id }],
+  })));
+}
+
+function fightsWithoutReferee(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, f.detail_fetched_at FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL) AND f.detail_json IS NOT NULL
+      AND COALESCE(json_extract(f.detail_json, '$.methodInfo.Referee'), '') = ''
+    ORDER BY e.date DESC
+  `).all() as (FightRow & { detail_fetched_at: number | null })[];
+  return check({
+    id: "fight-no-referee",
+    group: "Venues & officials",
+    label: "Completed bouts with no referee",
+    description: "The official result page names no referee, so the bout is missing from every referee's record. Some early cards genuinely never recorded one.",
+    severity: "low",
+  }, rows.map((fight) => fightItem(fight, {
+    facts: [["Detail fetched", ago(fight.detail_fetched_at)]],
+    actions: [{ id: "detail", label: "Re-fetch fight detail", target: fight.id }],
+  })));
+}
+
+function upcomingWithoutReferee(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, e.ufc_slug FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 0 AND e.date >= date('now', '-1 day') AND e.date <= date('now', '+2 day')
+      AND f.f1_outcome IS NULL AND f.f2_outcome IS NULL AND f.referee_assigned IS NULL
+    ORDER BY e.date ASC, f.ord ASC
+  `).all() as (FightRow & { ufc_slug: string | null })[];
+  return check({
+    id: "upcoming-no-referee",
+    group: "Venues & officials",
+    label: "Fight-week bouts with no referee assigned",
+    description: "The promotion usually assigns referees in its feed shortly before the card. Until then the Context tab says \"not yet confirmed\".",
+    severity: "low",
+  }, rows.map((fight) => fightItem(fight, {
+    actions: fight.ufc_slug ? [{ id: "segments", label: "Re-read ufc.com card", target: fight.event_id }] : [],
+  })));
+}
+
+function unnamedJudges(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${FIGHT_COLUMNS} FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE f.detail_json LIKE '%"judges"%'
+      AND EXISTS (SELECT 1 FROM json_each(json_extract(f.detail_json, '$.judges')) j
+        WHERE COALESCE(TRIM(json_extract(j.value, '$.judge')), '') = '')
+    ORDER BY e.date DESC
+  `).all() as FightRow[];
+  return check({
+    id: "judge-unnamed",
+    group: "Venues & officials",
+    label: "Scorecards with an unnamed judge",
+    description: "The official card gives a score but no judge's name, so it counts toward the panel but toward no judge's profile. Common on early cards; MMA Decisions sometimes names them.",
+    severity: "low",
+  }, rows.map((fight) => fightItem(fight, {
+    links: [{ label: "MMA Decisions search", href: `http://mmadecisions.com/search.jsp?s=${encodeURIComponent(fight.f1_name.split(" ").at(-1) ?? "")}` }],
+    actions: [{ id: "detail", label: "Re-fetch fight detail", target: fight.id }],
+  })));
+}
+
+type OfficialIdentity = ReturnType<typeof officialsIndex>["judges"] extends Map<string, infer V> ? V : never;
+
+/** People the name matcher may have split: same surname, different first
+ * names, careers that overlap. Merging is a decision for a person. */
+function possibleDuplicateOfficials(): BugCheck {
+  const index = officialsIndex();
+  const items: BugItem[] = [];
+  for (const [role, table] of [["judge", index.judges], ["referee", index.referees]] as const) {
+    const bySurname = new Map<string, OfficialIdentity[]>();
+    for (const identity of table.values()) {
+      const surname = identity.key.split(" ").slice(1).join(" ");
+      if (!surname) continue;
+      bySurname.set(surname, [...(bySurname.get(surname) ?? []), identity]);
+    }
+    for (const group of bySurname.values()) {
+      if (group.length < 2) continue;
+      for (let i = 0; i < group.length; i++) for (let j = i + 1; j < group.length; j++) {
+        const [a, b] = [group[i], group[j]];
+        const firstA = a.key.split(" ")[0];
+        const firstB = b.key.split(" ")[0];
+        // An initial, or one first name starting the other, is the usual shape of one person listed twice.
+        if (firstA[0] !== firstB[0]) continue;
+        items.push({
+          key: `${role}:${a.slug}:${b.slug}`,
+          title: `${a.name} / ${b.name}`,
+          subtitle: `Possible duplicate ${role}`,
+          facts: [
+            [a.name, `${a.fights.length} bouts · ${a.fights.at(-1)?.fight.date ?? "?"} to ${a.fights[0]?.fight.date ?? "?"}`],
+            [b.name, `${b.fights.length} bouts · ${b.fights.at(-1)?.fight.date ?? "?"} to ${b.fights[0]?.fight.date ?? "?"}`],
+            ["To merge", "add the pair to ALIASES or NICKNAMES in server/src/officials.ts"],
+          ],
+          links: [
+            { label: a.name, href: `/${role === "judge" ? "judges" : "referees"}/${a.slug}`, internal: true },
+            { label: b.name, href: `/${role === "judge" ? "judges" : "referees"}/${b.slug}`, internal: true },
+          ],
+          actions: [],
+        });
+      }
+    }
+  }
+  return check({
+    id: "official-possible-duplicate",
+    group: "Venues & officials",
+    label: "Officials who may be one person",
+    description: "Two profiles share a surname and a first initial but were kept apart because their first names are not known variants of each other. If they are the same official, merge them so their records combine.",
+    severity: "low",
+  }, items);
+}
+
+/** Spellings the matcher did merge, so an administrator can confirm them. */
+function mergedOfficialSpellings(): BugCheck {
+  const index = officialsIndex();
+  const items: BugItem[] = [];
+  for (const [role, table] of [["judge", index.judges], ["referee", index.referees]] as const) {
+    for (const identity of table.values()) {
+      const spellings = new Map<string, number>();
+      for (const officiated of identity.fights) {
+        const names = role === "referee" ? [officiated.referee] : officiated.cards.filter((card) => card.key === identity.key).map((card) => card.judge);
+        for (const name of names) if (name) spellings.set(name, (spellings.get(name) ?? 0) + 1);
+      }
+      if (spellings.size < 2) continue;
+      items.push({
+        key: `${role}:${identity.slug}`,
+        title: identity.name,
+        subtitle: `${role === "judge" ? "Judge" : "Referee"} · ${identity.fights.length} bouts`,
+        facts: [...spellings].sort((a, b) => b[1] - a[1]).map(([name, n]) => [name, `${n} ${n === 1 ? "bout" : "bouts"}`] as [string, string]),
+        links: [{ label: "Profile", href: `/${role === "judge" ? "judges" : "referees"}/${identity.slug}`, internal: true }],
+        actions: [],
+      });
+    }
+  }
+  return check({
+    id: "official-merged-spellings",
+    group: "Venues & officials",
+    label: "Official names merged from several spellings",
+    description: "These spellings were treated as one person (a short first name, a joined surname particle, a title). Review that each group really is one official; a wrong merge mixes two records.",
+    severity: "low",
+  }, items);
+}
 // ---------------------------------------------------------------------------
 
 export function bugReport(): { generated_at: number; sync: { last_tick_at: string | null; last_sync_error: string | null }; checks: BugCheck[] } {
@@ -755,6 +1021,15 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     upcomingWithoutSegment(),
     decisionsWithoutJudges(),
     eventsWithoutWiki(),
+    eventsWithoutVenue(),
+    venuesFromWikipediaOnly(),
+    upcomingWithoutBroadcast(),
+    upcomingWithoutReferee(),
+    upcomingWithoutReporting(),
+    fightsWithoutReferee(),
+    unnamedJudges(),
+    possibleDuplicateOfficials(),
+    mergedOfficialSpellings(),
     fighterGaps(active),
     duplicateFighters(),
   ];
@@ -765,7 +1040,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
   };
 }
 
-export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki";
+export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -820,6 +1095,9 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
     case "clear-bfo":
       db.prepare("UPDATE fighters SET bfo_url = NULL, bfo_checked_at = NULL WHERE id = ?").run(target);
       return { ok: true, message: "Forgotten. The next odds backfill looks the page up again." };
+    case "article":
+      db.prepare("UPDATE events SET wiki_info_checked_at = NULL WHERE id = ?").run(target);
+      return { ok: true, message: "Queued: the event article is re-read on the next background pass." };
     case "wiki":
       db.prepare("UPDATE events SET wiki_checked_at = NULL WHERE id = ?").run(target);
       return { ok: true, message: "Queued for the next weigh-in pass." };

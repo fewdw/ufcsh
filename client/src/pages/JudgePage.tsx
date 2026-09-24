@@ -58,7 +58,7 @@ function RoundTable({ row }: { row: Row }) {
           <tbody>
             {rounds.map((round) => {
               const fans = fanRound(round.round);
-              const flag = Math.abs(round.f1 - round.f2) >= 2 ? "10–8" : round.f1 === round.f2 ? "10–10" : null;
+              const flag = Math.max(round.f1, round.f2) === 10 && Math.min(round.f1, round.f2) === 8 ? "10–8" : round.f1 === 10 && round.f2 === 10 ? "10–10" : null;
               return (
                 <tr key={round.round} className="border-t border-zinc-100">
                   <td className="px-2 py-1 font-medium">R{round.round}{flag ? <span className="ml-1.5 rounded bg-amber-100 px-1 text-[9px] font-semibold text-amber-800">{flag}</span> : null}</td>
@@ -153,7 +153,7 @@ export default function JudgePage() {
           <p><strong className="font-semibold text-zinc-800">Scorecards</strong> come from official results, which name judges only for bouts that went the distance. Round-by-round cards are attached only where the judge and final score match the official card; {s.missing_round_cards.toLocaleString()} of the {s.cards.toLocaleString()} cards shown have no round detail.</p>
           <p><strong className="font-semibold text-zinc-800">Agreement</strong> is measured by winner, per scorecard: two cards agree when they pick the same fighter (or both a draw). Round agreement compares this judge with each colleague round by round, only where both round cards exist.</p>
           <p><strong className="font-semibold text-zinc-800">A dissent</strong> is a card that picks a different winner from both other judges on a complete three-judge panel.</p>
-          <p><strong className="font-semibold text-zinc-800">Fan cards</strong> are community averages from Verdict MMA, submitted during and after each bout by anyone watching; they are a reference point, not a standard.</p>
+          <p><strong className="font-semibold text-zinc-800">Fan cards</strong> are community averages from Verdict MMA, individual submission times are not provided by the source. These averages may include scores submitted after the result and are not a live-scoring baseline.</p>
           <p>Agreement is not proof that a judge was correct, and disagreement is not proof they were wrong. Sample sizes are shown beside every figure.</p>
         </ReadingNotes>
 

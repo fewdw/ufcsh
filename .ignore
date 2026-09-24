@@ -1,0 +1,10 @@
+# Kept out of routine code searches (ripgrep, ugrep and editors honour this).
+# Git still tracks what it tracks; this only narrows what tools read.
+node_modules/
+client/dist/
+server/data/
+*.db
+*.db-*
+*.tsbuildinfo
+package-lock.json
+docs/data-repairs/*.json

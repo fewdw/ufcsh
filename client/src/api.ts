@@ -491,6 +491,7 @@ export type FighterBoard = {
   scope_label: string;
   scopes: { key: string; label: string; bouts: number }[];
   bouts: number;
+  minimum_bouts: number;
   stats: BoardStat[];
   unqualified: { key: string; label: string; category: string }[];
 };

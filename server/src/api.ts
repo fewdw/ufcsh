@@ -1809,7 +1809,7 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   if (p === "/api/venues") return venueDirectory();
   if (p.startsWith("/api/venues/")) return venuePage(id) ?? undefined;
   if (/^\/api\/fighters\/[a-f0-9]{16}\/stats$/i.test(p)) {
-    return hasCompletedUfcFight(id) ? fighterBoard(id, url.searchParams.get("scope") ?? "ufc") ?? undefined : undefined;
+    return hasCompletedUfcFight(id) ? fighterBoard(id, url.searchParams.get("scope") ?? "ufc", Number(url.searchParams.get("minBouts") ?? 0)) ?? undefined : undefined;
   }
   if (p.startsWith("/api/fighters/")) return await getFighter(id, rankingType) ?? undefined;
   if (p.startsWith("/api/previews/")) return getFighterPreview(id) ?? undefined;

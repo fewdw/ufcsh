@@ -57,7 +57,7 @@ function formPoints(fight: Matchup, side: Side, past: boolean): Point[] {
   const streak = fighter.streak;
   if (streak && streak.count >= 2 && (streak.outcome === "win" || streak.outcome === "loss")) {
     const finishes = recent.slice(0, streak.count).filter((row) => row.outcome === "win" && /KO|TKO|SUB/i.test(row.method ?? "")).length;
-    points.push({ side, key: `${side}-streak`, body: <>{name}{record ? ` (${record})` : ""} {past ? "came in" : "comes in"} on a {streak.count}-fight {streak.outcome === "win" ? "winning" : "losing"} streak{streak.complete ? " across promotions" : " in the UFC"}{streak.outcome === "win" && finishes ? `, ${finishes} of them inside the distance` : ""}.</> });
+    points.push({ side, key: `${side}-streak`, body: <>{name}{record ? ` (${record})` : ""} {past ? "came in" : "comes in"} on a {streak.count}-fight {streak.outcome === "win" ? "winning" : "losing"} streak{streak.complete ? " across promotions" : " in the UFC"}{streak.outcome === "win" && finishes ? `, with ${finishes} finishes in the last ${recent.length}` : ""}.</> });
   } else {
     const last = recent[0];
     points.push({ side, key: `${side}-last`, body: <>{name}{record ? ` (${record})` : ""} {outcomeWord(last.outcome)} {last.opponent.name} last time out{last.method ? ` (${formatMethod(last.method, last.round, last.time)})` : ""}, {formatDateShortWithYear(last.date)}.</> });
@@ -83,7 +83,7 @@ function formPoints(fight: Matchup, side: Side, past: boolean): Point[] {
     points.push({ side, key: `${side}-former`, body: <>A former UFC champion.</> });
   }
   if (career && career.titleFights > 0 && !career.champion && !career.interimChampion) {
-    points.push({ side, key: `${side}-titles`, body: <>{career.titleWins}-{career.titleFights - career.titleWins} in UFC championship bouts.</> });
+    points.push({ side, key: `${side}-titles`, body: <>{career.titleWins} wins in {career.titleFights} UFC championship bouts.</> });
   }
   return points;
 }
@@ -121,7 +121,7 @@ function historyPoints(fight: Matchup): Point[] {
       ))}.</>,
     });
   } else {
-    points.push({ side: null, key: "first", body: <>{fight.status === "past" ? "This was their first meeting." : "They have never met."}</> });
+    points.push({ side: null, key: "first", body: <>{fight.status === "past" ? "No earlier meetings in the recorded history." : "No previous meetings in the recorded history."}</> });
   }
   if (after.length) points.push({ side: null, key: "after", body: <>They met {plural(after.length, "more time")} after this bout.</> });
   const shared = fight.common_opponents

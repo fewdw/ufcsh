@@ -902,6 +902,7 @@ export type FighterBoard = {
   /** Every pool this fighter can be read against, most bouts first. */
   scopes: { key: string; label: string; bouts: number }[];
   bouts: number;
+  minimum_bouts: number;
   stats: BoardEntry[];
   /** Readings with no figure yet or one below the ranking's minimum sample. */
   unqualified: { key: string; label: string; category: string }[];
@@ -912,7 +913,10 @@ export type FighterBoard = {
  * or one weight class counting only bouts fought there. Not just top places —
  * a reader asked for the full picture, with the minimum samples intact.
  */
-export function fighterBoard(fighterId: string, scope: string): FighterBoard | null {
+const filteredStandings = new WeakMap<Board, Map<number, Map<string, Standing>>>();
+
+export function fighterBoard(fighterId: string, scope: string, minimum = 0): FighterBoard | null {
+  const minimumBouts = [0, 3, 5, 10, 20].includes(minimum) ? minimum : 0;
   const { boards } = currentTables();
   const everyone = boards.get("UFC history")!;
   const career = everyone.totals.get(fighterId);
@@ -926,16 +930,34 @@ export function fighterBoard(fighterId: string, scope: string): FighterBoard | n
   ];
   const chosen = scopes.find((entry) => entry.key === scope) ?? scopes[0];
   const board = chosen.key === "ufc" ? everyone : boards.get(chosen.key)!;
+  let standings = board.standings;
+  if (minimumBouts) {
+    const cached = filteredStandings.get(board) ?? new Map<number, Map<string, Standing>>();
+    filteredStandings.set(board, cached);
+    let selected = cached.get(minimumBouts);
+    if (!selected) {
+      selected = new Map();
+      const pool = [...board.totals.values()].filter((entry) => entry.bouts >= minimumBouts);
+      for (const stat of PROFILE_STATS) {
+        if (!board.standings.has(stat.key)) continue;
+        const values = pool.map(boardValue(stat)).filter((value): value is number => value != null && Number.isFinite(value))
+          .sort((a, b) => stat.ascending ? a - b : b - a);
+        selected.set(stat.key, standingOf(values, Boolean(stat.ascending)));
+      }
+      cached.set(minimumBouts, selected);
+    }
+    standings = selected;
+  }
   const totals = board.totals.get(fighterId);
   const stats: BoardEntry[] = [];
   const unqualified: FighterBoard["unqualified"] = [];
   if (totals) {
     for (const stat of PROFILE_STATS) {
-      const standing = board.standings.get(stat.key);
+      const standing = standings.get(stat.key);
       if (!standing) continue;
       const category = stat.category ?? CATEGORY[stat.key] ?? { label: "Other", order: 99 };
       const value = boardValue(stat)(totals);
-      if (value == null || !Number.isFinite(value)) {
+      if (value == null || !Number.isFinite(value) || totals.bouts < minimumBouts) {
         // Named rather than dropped, so a missing reading is explained: no
         // figure yet, or one short of the sample the ranking requires.
         unqualified.push({ key: stat.key, label: stat.label, category: category.label });
@@ -960,6 +982,7 @@ export function fighterBoard(fighterId: string, scope: string): FighterBoard | n
     scope_label: chosen.label,
     scopes,
     bouts: totals?.bouts ?? 0,
+    minimum_bouts: minimumBouts,
     stats,
     // Only readings that some fighter qualifies for, so nothing listed here
     // is a statistic this pool cannot rank at all.

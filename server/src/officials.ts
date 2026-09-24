@@ -288,9 +288,8 @@ function readCard(officiated: Officiated, key: string): JudgeReading | null {
   let fanRounds = 0;
   let fanRoundsDiffer = 0;
   for (const round of card.rounds) {
-    const diff = Math.abs(round.f1 - round.f2);
-    if (diff >= 2) tenEights += 1;
-    if (diff === 0) tenTens += 1;
+    if (Math.max(round.f1, round.f2) === 10 && Math.min(round.f1, round.f2) === 8) tenEights += 1;
+    if (round.f1 === 10 && round.f2 === 10) tenTens += 1;
     const myRound = pick(round.f1, round.f2);
     const theirs = others.map((other) => other.rounds.find((entry) => entry.round === round.round)).filter((entry): entry is Round => Boolean(entry));
     for (const other of theirs) {

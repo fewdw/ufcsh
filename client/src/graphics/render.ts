@@ -31,7 +31,7 @@ export type Corner = {
   form?: Outcome[] | null;
 };
 
-export type CompareRow = { label: string; f1: string; f2: string; edge: "f1" | "f2" | null };
+export type CompareRow = { shared?: string; label: string; f1: string; f2: string; edge: "f1" | "f2" | null };
 
 export type VersusGraphic = {
   kind: "versus";
@@ -423,6 +423,16 @@ function renderVersus(ctx: Ctx, w: number, h: number, format: Format, p: Palette
     ctx.lineTo(tableX + tableW, y);
     ctx.stroke();
     const baseline = y + rowH * 0.64;
+    if (row.shared) {
+      ctx.textAlign = "left";
+      ctx.fillStyle = p.muted;
+      fit(ctx, row.label, tableX + 10 * u, baseline, tableW * 0.78, 600, 20 * u * Math.max(scale, 0.75), 14 * u);
+      ctx.textAlign = "right";
+      ctx.fillStyle = p.ink;
+      fit(ctx, row.shared, tableX + tableW - 10 * u, baseline, tableW * 0.18, 700, 27 * u * Math.max(scale, 0.7), 14 * u);
+      y += rowH;
+      continue;
+    }
     ctx.textAlign = "center";
     ctx.fillStyle = p.muted;
     fit(ctx, row.label.toUpperCase(), tableX + tableW / 2, baseline, tableW * 0.36, 700, 17 * u * Math.max(scale, 0.75), 11 * u);
@@ -659,10 +669,13 @@ export function loadImage(url: string | null | undefined): Promise<HTMLImageElem
     pending = new Promise((resolve) => {
       const image = new Image();
       image.decoding = "async";
-      image.onload = () => resolve(image.naturalWidth > 1 ? image : null);
-      image.onerror = () => resolve(null);
+      const timeout = setTimeout(() => { imageCache.delete(url); resolve(null); }, 8000);
+      image.onload = () => { clearTimeout(timeout); resolve(image.naturalWidth > 1 ? image : null); };
+      image.onerror = () => { clearTimeout(timeout); imageCache.delete(url); resolve(null); };
+      image.crossOrigin = "anonymous";
       image.src = url;
     });
+    if (imageCache.size >= 32) imageCache.delete(imageCache.keys().next().value!);
     imageCache.set(url, pending);
   }
   return pending;

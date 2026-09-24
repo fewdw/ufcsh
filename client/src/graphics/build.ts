@@ -29,7 +29,7 @@ const tidy = (name: string) => name.replace(/\b([DO])'([a-z])/g, (_, prefix: str
 const host = SITE_URL.replace(/^https?:\/\//, "");
 
 /** The choices each template offers, with sensible defaults switched on. */
-export function togglesFor(kind: Kind, board?: FighterBoard | null): Toggle[] {
+export function togglesFor(kind: Kind, board?: FighterBoard | null, fight?: Matchup | null): Toggle[] {
   const list: [string, string, string, boolean][] = [];
   if (kind === "matchup" || kind === "result") {
     list.push(["nickname", "Nicknames", "Fighters", false], ["ranking", "Rankings", "Fighters", true], ["records", "Records entering", "Fighters", true], ["form", "Last five", "Fighters", kind === "matchup"]);
@@ -56,14 +56,33 @@ export function togglesFor(kind: Kind, board?: FighterBoard | null): Toggle[] {
       ["height", "Height", "Tale of the tape", true], ["reach", "Reach", "Tale of the tape", true], ["age", "Age", "Tale of the tape", true], ["stance", "Stance", "Tale of the tape", false],
       ["form", "Last five", "Form", true],
     );
-    const best = [...(board?.stats ?? [])].filter((stat) => !stat.unwanted).sort((a, b) => a.rank - b.rank || b.field - a.field).slice(0, 14);
+    const best = [...(board?.stats ?? [])].sort((a, b) => Number(a.unwanted) - Number(b.unwanted) || a.rank - b.rank || b.field - a.field);
     best.forEach((stat, index) => list.push([`stat:${stat.key}`, `#${stat.tied ? "T" : ""}${stat.rank} ${stat.label}`, "Rankings", index < 4]));
   }
   if (kind === "event") {
     list.push(["odds", "Moneylines", "Card", true], ["records", "Records", "Card", true], ["weight", "Weight classes", "Card", true],
       ["results", "Results (when fought)", "Card", true], ["venue", "Venue & start time", "Card", true], ["prelims", "Include prelims", "Card", false]);
   }
+  if (kind === "matchup" && fight) {
+    for (const quote of specificOdds(fight)) list.push([quote.id, `${quote.label} · ${quote.price}`, "Specific odds", false]);
+  }
   return list.map(([id, label, group, on]) => ({ id, label, group, on }));
+}
+
+/** Exact available quotes, including sportsbook, without inventing markets. */
+export function specificOdds(fight: Matchup) {
+  const props = fight.odds?.props;
+  if (!props) return [];
+  const entries = [
+    ...Object.values(props.f1).filter(Boolean),
+    ...Object.values(props.f2).filter(Boolean),
+    ...props.additional,
+  ];
+  return entries.flatMap((quote) => quote!.prices.map((price) => ({
+    id: `quote:${encodeURIComponent(quote!.label)}:${encodeURIComponent(price.bookmaker)}`,
+    label: `${quote!.label} · ${price.bookmaker}`,
+    price: price.line,
+  })));
 }
 
 const on = (toggles: Toggle[], id: string) => toggles.some((toggle) => toggle.id === id && toggle.on);
@@ -79,9 +98,9 @@ function rankBadge(side: MatchupSide | FighterProfile): string | null {
 }
 
 function oddsTime(event: EventDetail | null | undefined, past: boolean): string {
-  if (past || event?.odds_freshness?.final) return "Odds: closing line, BestFightOdds";
+  if (past || event?.odds_freshness?.final) return "Odds: final stored prices · BestFightOdds";
   const at = event?.odds_freshness?.updated_at;
-  return `Odds as of ${at ? stamp(at) : "latest update"} · BestFightOdds`;
+  return `Odds as of ${at ? stamp(at) : "unknown time"} · BestFightOdds`;
 }
 
 /** "Sep 24, 1:31 PM EDT" — the moment a price was read, in the reader's zone. */
@@ -98,7 +117,7 @@ function corner(side: MatchupSide, toggles: Toggle[], photo: Photo, result: stri
     name: side.name,
     nickname: on(toggles, "nickname") ? side.nickname || null : null,
     photo,
-    badge: on(toggles, "ranking") ? rankBadge(side) : null,
+    badge: on(toggles, "ranking") ? [rankBadge(side), "current ranking"].filter(Boolean).join(" · ") : null,
     lines: on(toggles, "records") ? [
       [side.complete_record_before?.text ? `${side.complete_record_before.text} pro` : null, side.ufc_record_before ? `${side.ufc_record_before} UFC` : null].filter(Boolean).join(" · "),
     ].filter(Boolean) : [],
@@ -152,6 +171,9 @@ export function buildMatchup(fight: Matchup, event: EventDetail | null, toggles:
     if (pa || pb) odds.push({ label: `By ${label}`, f1: pa?.line ?? "—", f2: pb?.line ?? "—", edge: null });
   }
   if (on(toggles, "open") && (fight.odds?.f1.open || fight.odds?.f2.open)) odds.unshift({ label: "Opened", f1: fight.odds?.f1.open ?? "—", f2: fight.odds?.f2.open ?? "—", edge: null });
+  for (const quote of specificOdds(fight)) {
+    if (on(toggles, quote.id)) odds.push({ label: quote.label, f1: "", f2: "", shared: quote.price, edge: null });
+  }
   const past = fight.status === "past";
   const hasMoneyline = on(toggles, "odds") && (fight.odds?.f1.close || fight.odds?.f2.close);
   const anyOdds = hasMoneyline || odds.length;
@@ -233,7 +255,7 @@ export function buildFighter(fighter: FighterProfile, board: FighterBoard | null
   const badges = [
     on(toggles, "ranking") ? rankBadge(fighter) : null,
     on(toggles, "record") ? `${fighter.record} pro` : null,
-    on(toggles, "ufcRecord") ? `${fighter.ufc_record} UFC` : null,
+    on(toggles, "ufcRecord") ? `${fighter.ufc_record ?? "—"} UFC` : null,
     on(toggles, "country") ? fighter.country : null,
   ].filter((value): value is string => Boolean(value));
   const facts = [
@@ -285,8 +307,8 @@ export function buildEvent(event: EventDetail, toggles: Toggle[]): CardGraphic {
       const done = Boolean(fight.method) && (fight.f1.outcome || fight.f2.outcome);
       return {
         f1: fight.f1.name, f2: fight.f2.name,
-        f1Sub: on(toggles, "records") ? fight.f1.career_record ?? fight.f1.record : null,
-        f2Sub: on(toggles, "records") ? fight.f2.career_record ?? fight.f2.record : null,
+        f1Sub: on(toggles, "records") ? fight.f1.record : null,
+        f2Sub: on(toggles, "records") ? fight.f2.record : null,
         f1Odds: on(toggles, "odds") ? fight.odds?.f1.close ?? null : null,
         f2Odds: on(toggles, "odds") ? fight.odds?.f2.close ?? null : null,
         meta: on(toggles, "weight") ? `${fight.title_type === "title" || fight.title_type === "interim" ? "Title · " : ""}${fight.weight_class}` : "",
@@ -296,8 +318,8 @@ export function buildEvent(event: EventDetail, toggles: Toggle[]): CardGraphic {
       };
     }),
     footer: footerFor(`/events/${event.id}`, [
-      on(toggles, "records") ? "Records: complete professional record · UFCStats, verified pro histories" : "Card · UFCStats and ufc.com",
-      ...(anyOdds ? [past || event.odds_freshness?.final ? "Odds: closing line, BestFightOdds" : `Odds as of ${event.odds_freshness?.updated_at ? stamp(event.odds_freshness.updated_at) : "latest update"} · BestFightOdds`] : []),
+      on(toggles, "records") ? "Records entering each bout · UFCStats, verified pro histories" : "Card · UFCStats and ufc.com",
+      ...(anyOdds ? [past || event.odds_freshness?.final ? "Odds: closing line, BestFightOdds" : `Odds as of ${event.odds_freshness?.updated_at ? stamp(event.odds_freshness.updated_at) : "unknown time"} · BestFightOdds`] : []),
     ]),
   };
 }

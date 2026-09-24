@@ -133,7 +133,7 @@ export default function InfoPage() {
               <Term name="Durability">Consecutive bouts without being finished.</Term>
               <Term name="Wins above market">Wins minus the wins a vig-free closing line expected.</Term>
               <Term name="Dissent (judge)">A card picking a different winner from both colleagues on a full three-judge panel.</Term>
-              <Term name="10–8 rate">Rounds scored with a gap of two or more, over rounds scored. A point deduction can also produce one on paper.</Term>
+              <Term name="10–8 rate">Rounds scored exactly 10–8, over rounds scored. A point deduction can also produce one on paper.</Term>
             </dl>
           </Section>
 

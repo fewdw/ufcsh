@@ -20,3 +20,10 @@ Production is `https://ufc.sh`. Every successful CI run for a push or merge to `
 ## Rebuild behavior
 
 The dev app runs from a Docker image; code changes are not live through host-based hot reload. Run `/home/ubuntu/ufcsh/dev.sh` after making changes so the dev image is rebuilt from the active dev worktree. To switch the branch shown at `dev.ufc.sh`, use `./deploy/select-dev-branch.sh BRANCH` from the production checkout or the **Choose dev branch** GitHub Action; commit or stash changes in the dev worktree before switching.
+
+## Working in the code
+
+- Start from `docs/project-map.md` to find the file that owns a feature.
+- Checks before a push: `npm test --prefix client`, `server/node_modules/.bin/tsc --noEmit -p server/tsconfig.json`, `npm run lint --prefix client`, `npm run build --prefix client`. The full server suite needs the archive: `DATA_DIR=<copy of data> npm test --prefix server`.
+- Data-quality gaps a feature can leave behind belong on the admin Bugs board (`server/src/bugs.ts`) with a repair action where one exists.
+- Measure before optimising; record results in `docs/performance.md`.

@@ -55,3 +55,12 @@ test("an unknown official is not found rather than empty", () => {
   assert.equal(judgeProfile("no-such-judge", new URLSearchParams()), null);
   assert.equal(refereeProfile("no-such-referee", new URLSearchParams()), null);
 });
+
+test("the bug board's officials checks only list real pairs and real merges", async () => {
+  const { bugReport } = await import("./bugs.ts");
+  const checks = bugReport().checks.filter((check) => check.group === "Venues & officials");
+  const merged = checks.find((check) => check.id === "official-merged-spellings")!;
+  for (const item of merged.items) assert.ok(item.facts.length >= 2, item.title);
+  const duplicates = checks.find((check) => check.id === "official-possible-duplicate")!;
+  for (const item of duplicates.items) assert.match(item.title, / \/ /);
+});

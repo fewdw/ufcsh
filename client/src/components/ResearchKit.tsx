@@ -33,7 +33,7 @@ export function PageHeader({ eyebrow, title, children, aside }: { eyebrow: React
 export function Tile({ label, value, detail, compare, hint }: { label: string; value: ReactNode; detail?: ReactNode; compare?: ReactNode; hint?: string }) {
   return (
     <div className="min-w-0 rounded-xl border border-zinc-100 bg-zinc-50/70 px-3 py-2.5" title={hint}>
-      <p className="truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-400">{label}</p>
+      <p className="line-clamp-2 text-[10px] font-semibold uppercase leading-3.5 tracking-[0.1em] text-zinc-400">{label}</p>
       <p className="mt-0.5 text-lg font-semibold tabular-nums leading-6 text-zinc-950">{value}</p>
       {detail ? <p className="text-[11px] leading-4 text-zinc-500">{detail}</p> : null}
       {compare ? <p className="mt-0.5 text-[11px] leading-4 text-zinc-400">{compare}</p> : null}
