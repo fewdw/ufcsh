@@ -1,5 +1,5 @@
 import { Children, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useApi } from "../api";
 import type { CompleteRecordBefore, FighterProfile, FighterRecord, FighterStat, HistoryRow, ProfessionalHistoryRow } from "../api";
 import { formatDateShortWithYear, formatLine, formatMethod, lastName } from "../format";
@@ -563,7 +563,6 @@ function StatisticalRanks({ stats }: { stats: FighterStat[] }) {
 export default function FighterPage() {
   const { fighterId } = useParams();
   const { settings } = useSettings();
-  const navigate = useNavigate();
   const { data: fighter, loading, error, retry } = useApi<FighterProfile>(fighterId ? withRanking(`/api/fighters/${fighterId}`, settings.rankingSource) : null,
     data => data?.refreshing ? 5_000 : 5 * 60_000);
   const pageScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:page", Boolean(fighter));
@@ -620,14 +619,6 @@ export default function FighterPage() {
     <div ref={pageScroll} className="h-full overflow-y-auto [scrollbar-gutter:stable] lg:overflow-hidden">
       <div className="flex flex-col gap-3 p-3 pb-8 lg:h-full lg:pb-3">
         {error ? <RequestNotice onRetry={retry}>Couldn’t refresh this profile. Showing the last loaded data.</RequestNotice> : null}
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="self-start rounded-full px-2 py-1 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-200/60 hover:text-zinc-700"
-        >
-          ← Back
-        </button>
-
         {/* Wide windows split the profile: who they are and where they rank on
             the left, held in view, and every fight they've had on the right. */}
         {/* On a wide window the page itself never scrolls: each column is its
