@@ -163,8 +163,8 @@ function EventSidebar({
             <h2 className="text-base font-semibold leading-tight text-zinc-950">All events</h2>
             <p className="text-xs tabular-nums text-zinc-500">{scoped.length.toLocaleString()} {KIND_NOUN[kind]}</p>
           </div>
-          <button type="button" onClick={onBack} aria-label="Close all events" title="Back to card" className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-zinc-200 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900">
-            <X className="h-4 w-4" aria-hidden="true" />
+          <button type="button" onClick={onBack} aria-label="Close all events" title="Back to card" className="-mr-1.5 grid h-9 w-9 shrink-0 place-items-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900">
+            <X className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
         {/* Built from the same pill, border and glyph as the header's search
