@@ -64,14 +64,14 @@ function WinnerSplit({ fighters, total }: { fighters: Share[]; total: number }) 
   if (!f1 || !f2) return <ShareBar title="Winner" entries={fighters} total={total} />;
   return <div className="min-w-0 px-4 py-2.5">
     <h3 className="sr-only">Winner</h3>
-    <div className="flex items-baseline justify-between gap-3 text-xs leading-4">
-      <span className="flex min-w-0 items-baseline gap-1 whitespace-nowrap"><span className="shrink-0 font-semibold tabular-nums text-f1-ink">{sharePct(f1.count, total)}% ({f1.count})</span><span className="truncate text-zinc-600">{f1.label}</span></span>
-      <span className="flex min-w-0 items-baseline gap-1 whitespace-nowrap text-right"><span className="shrink-0 font-semibold tabular-nums text-f2-ink">{sharePct(f2.count, total)}% ({f2.count})</span><span className="truncate text-zinc-600">{f2.label}</span></span>
-    </div>
-    <div className="mt-1 flex h-2 gap-px overflow-hidden rounded-full bg-zinc-100" role="img"
+    <div className="flex h-2 gap-px overflow-hidden rounded-full bg-zinc-100" role="img"
       aria-label={`${f1.label} ${f1.count}, ${f2.label} ${f2.count}`}>
       <span style={{ width: `${(f1.count / total) * 100}%`, backgroundColor: f1.color }} />
       <span style={{ width: `${(f2.count / total) * 100}%`, backgroundColor: f2.color }} />
+    </div>
+    <div className="mt-1.5 flex items-baseline justify-between gap-3 text-[11px] leading-4">
+      <span className="flex min-w-0 items-baseline gap-1 whitespace-nowrap"><span className="shrink-0 font-semibold tabular-nums text-f1-ink">{sharePct(f1.count, total)}% ({f1.count})</span><span className="truncate text-zinc-600">{f1.label}</span></span>
+      <span className="flex min-w-0 items-baseline gap-1 whitespace-nowrap text-right"><span className="shrink-0 font-semibold tabular-nums text-f2-ink">{sharePct(f2.count, total)}% ({f2.count})</span><span className="truncate text-zinc-600">{f2.label}</span></span>
     </div>
   </div>;
 }
