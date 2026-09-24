@@ -5,9 +5,12 @@ const listRoutes = new Set([
   "/api/events", "/api/live", "/api/rankings", "/api/stats", "/api/labs",
   "/api/labs/bouts", "/api/labs/matchups", "/api/labs/fill", "/api/labs/insights",
   "/api/labs/judges", "/api/labs/judge-bouts", "/api/labs/road-bouts", "/api/search",
+  "/api/officials", "/api/venues",
 ]);
 export function publicApi(path: string): boolean {
-  return listRoutes.has(path) || /^\/api\/(events|fights|fighters|previews)\/[a-f0-9]{16}$/i.test(path);
+  return listRoutes.has(path) || /^\/api\/(events|fights|fighters|previews)\/[a-f0-9]{16}$/i.test(path)
+    || /^\/api\/fighters\/[a-f0-9]{16}\/stats$/i.test(path)
+    || /^\/api\/(judges|referees|venues)\/[a-z0-9-]{1,80}$/.test(path);
 }
 
 /** Lists that change a few times a day at most: a reader is always answered

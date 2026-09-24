@@ -67,6 +67,26 @@ fresh in the background.
   apply throughout; room filters respond immediately. [Definitions and
   limitations](docs/labs-categories.md) explain the counting units, coverage,
   debut cutoff, and result windows.
+- **Full statistic rankings** on every fighter profile: every ranked reading
+  (not only top-50 places), across the whole UFC or within one weight class
+  counting only bouts fought there, grouped by category or best place first,
+  with the field size, share of the field ahead and an optional bout floor.
+- **Graphics builder** (from your profile): matchup,
+  result, fighter and card templates in square, portrait and landscape, dark
+  or light, with each line chosen by checkbox; copy, download or share. Every
+  image carries the UFC.sh mark, its page address and its sources and dates.
+- **Judge and referee profiles** (`/judges/:slug`, `/referees/:slug`, from any
+  scorecard or referee name): filtered histories, dissents, agreement by
+  winner and by round, 10–8 and 10–10 rates, fan-card differences, and for
+  referees the finish mix against a same-filter UFC baseline.
+- **Venues** (`/venues`, `/venues/:slug`): identity from the promotion's venue
+  ids, the name a building had on the night, attendance, local time, map link.
+- **Keyboard shortcuts** (`?` lists them): `T` live/next event, arrows along a
+  card or between events, `/` search, `Esc` close. **/info** holds sources,
+  definitions, rules, the shortcut list and the changelog.
+- **Share previews**: server-rendered 1200×630 images for fighters, bouts and
+  events, accurate titles and canonical URLs, a full sitemap, and 404s for
+  addresses the archive does not hold.
 - **Activity dots** distinguish both outcome and method: solid green/red for wins/losses by KO/TKO or submission, hollow green/red for decisions. Hover text names the result; unknown methods are not presented as finishes.
 - **Search** opens with `⌘K` / `Ctrl+K` or the header button. Before typing,
   it offers quick navigation to Events, Rankings, Statistics and Labs. Results
@@ -132,6 +152,8 @@ For frontend hot reload during development, run `npm run dev` from `client/`; it
 proxies API requests to the server on port 8000.
 
 For a private HTTPS dev site on this server, see [the dev environment guide](docs/dev-environment.md).
+The [project map](docs/project-map.md) says which file owns which feature, and
+[performance](docs/performance.md) holds the targets and the last load-test results.
 
 On first start the server backfills every UFC event ever (~790 events, ~8k fights,
 ~4.6k fighters) from ufcstats.com. That takes ~30–45 minutes at a polite request rate;
@@ -153,6 +175,8 @@ the app is usable immediately and fills in as it goes. `GET /api/status` shows p
 | Method odds         | bestfightodds.com| event boards every 6h; closing boards after each card; archive backfilled newest first |
 | Judges' round cards and community scorecards | verdictmma.com | new cards found every 6h; the last three weeks re-read every 6h while community totals grow and official round cards are posted; archive via `npm run backfill:scorecards` |
 | Additional official round cards | mmadecisions.com | archive repair for decisions still missing complete judge rounds; matches both fighters and event date, verifies round sums and UFCStats final totals; run `npm run backfill:official-scorecards` |
+| Venues, broadcasters, assigned referees | ufc.com live-card feed | with each card's segment read; archive backfilled a few cards per pass |
+| Venue name on the night, attendance, gate, background reporting | Wikipedia | completed cards once; the next six weeks twice a day |
 | Fighter photos      | ufc.com          | Headshot and full-body cut-out; small batch per minute, ranked and upcoming-card fighters first. Re-checked every 3 days for anyone with a bout in hand and every 30 for the rest, daily while a picture is still missing; ufc.com's silhouette stand-ins count as no picture. Viewing a fighter queues them for the next batch |
 
 Pages say how old their copy is rather than letting it look current: an event
@@ -180,7 +204,13 @@ GET /api/stats?...           five leaderboards; every control is a query paramet
 GET /api/labs?...            one fighter-bout population: combined record, outcome
                              mix, per-round output, yearly trend, breakdown by any
                              dimension, its leaders, and the bouts behind it
-GET /api/search?q=...        fighters + events + fights ("x vs y" works)
+GET /api/search?q=...        fighters + events + fights ("x vs y" works) + officials + venues
+GET /api/fighters/:id/stats  every ranked statistic; ?scope=ufc|<division>&minBouts=
+GET /api/officials           every judge and referee
+GET /api/judges/:slug        a judge's cards and agreement; ?from&to&division&result&view&q&offset
+GET /api/referees/:slug      a referee's bouts against a UFC baseline; same filters
+GET /api/venues[/:slug]      venues and the cards held there
+GET /og/:kind/:id.jpg        link-preview image (fights, fighters, events, site)
 GET /api/status              sync/backfill progress
 ```
 

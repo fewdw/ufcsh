@@ -1,6 +1,6 @@
 import { ScoringError } from "./scoring.ts";
 
-const ACTIONS = new Set(["odds", "props", "career", "detail", "segments", "event", "clear-bfo", "birth", "wiki"]);
+const ACTIONS = new Set(["odds", "props", "career", "detail", "segments", "event", "clear-bfo", "birth", "wiki", "article"]);
 
 /** One concurrent repair per API process, with a verified snapshot before the day's first change. */
 export function createRepairRunner<T>(

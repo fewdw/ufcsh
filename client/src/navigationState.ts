@@ -89,3 +89,10 @@ export function useRouteScrollRestoration<T extends HTMLElement>(id: string, rea
 
   return ref;
 }
+
+/** A comment permalink belongs to one fight; the selected tab carries over. */
+export function cardFightSearch(search: string): string {
+  const params = new URLSearchParams(search);
+  params.delete("comment");
+  return params.size ? `?${params}` : "";
+}

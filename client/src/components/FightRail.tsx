@@ -1,0 +1,180 @@
+import { Link, useLocation } from "react-router-dom";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { prefetch, useApi, type EventDetail, type EventFight, type FightSide } from "../api";
+import { useRef } from "react";
+import Avatar from "./Avatar";
+import { CARD_STEP } from "./CardHeader";
+import { PANEL_SHELL } from "./FightStats";
+import { segmentedSelected } from "./segmented";
+import { formatMethod, lastName } from "../format";
+import { isFightDay, liveFightId } from "../liveEvent";
+import { useSettings, withRanking } from "../settings";
+import { cardFightSearch } from "../navigationState";
+
+/**
+ * The rest of the card beside an open matchup: picture-against-picture
+ * buttons, the Prev/Next steps along it, and the skeletons shown while a
+ * matchup loads cold.
+ */
+
+const shell = PANEL_SHELL;
+
+export function FightRailSkeleton() {
+  return (
+    <aside className={`hidden w-40 shrink-0 flex-col overflow-hidden sm:flex lg:w-48 ${shell}`} aria-label="Loading fight card">
+      <div className="border-b border-zinc-200 px-2 py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">Card</div>
+      <div className="flex min-h-0 flex-1 flex-col gap-1 p-1.5">
+        {Array.from({ length: 5 }, (_, index) => (
+          <div key={index} className="grid grid-cols-2 items-center gap-3 rounded-xl bg-zinc-50 px-1.5 py-2.5" aria-hidden="true">
+            <span className="flex justify-center"><Avatar src={null} name="" size="matchup" /></span>
+            <span className="flex justify-center"><Avatar src={null} name="" size="matchup" /></span>
+          </div>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+/** A matchup opened cold. The panels are drawn empty rather than replaced by a
+ *  centred word, so opening one reads as the page filling in — not as the page
+ *  being thrown away and rebuilt. */
+export function MatchupSkeleton() {
+  return (
+    <div className="min-w-0 flex-1 overflow-hidden" role="status" aria-label="Loading matchup">
+      <div className="flex w-full flex-col gap-3">
+        <section className={`overflow-hidden ${shell}`} aria-hidden="true">
+          <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-3.5">
+            <span className="h-4 w-48 rounded bg-zinc-100" />
+            <span className="h-8 w-20 rounded-lg bg-zinc-100" />
+          </div>
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-6 px-5 py-8">
+            {["left", "center", "right"].map((slot) => (
+              <div key={slot} className={`flex flex-col items-center gap-2 ${slot === "center" ? "" : "min-w-0"}`}>
+                {slot === "center" ? null : <Avatar src={null} name="" size="xl" />}
+                <span className={`h-4 rounded bg-zinc-100 ${slot === "center" ? "w-24" : "w-32"}`} />
+                <span className="h-3 w-20 rounded bg-zinc-50" />
+              </div>
+            ))}
+          </div>
+        </section>
+        {[0, 1].map((panel) => (
+          <section key={panel} className={`${shell} px-5 py-6`} aria-hidden="true">
+            <span className="block h-4 w-40 rounded bg-zinc-100" />
+            <span className="mt-4 block h-24 w-full rounded-xl bg-zinc-50" />
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function railMethodTag(fight: EventFight, outcome: FightSide["outcome"]): { label: string; tone: string } | null {
+  if (outcome === "draw") return { label: "Draw", tone: "bg-amber-100 text-amber-700" };
+  if (outcome === "nc") return { label: "NC", tone: "bg-zinc-200 text-zinc-700" };
+  if (outcome !== "win" || !fight.method) return null;
+  const label = fight.method === "KO/TKO" ? "KO" : fight.method.endsWith("-DEC") ? "DEC" : fight.method;
+  return { label: fight.round ? `${label} R${fight.round}` : label, tone: "bg-emerald-100 text-emerald-700" };
+}
+
+
+export function FightStepLink({ fight, direction, eventId, returnDepth, search }: {
+  fight: EventFight | null;
+  direction: "prev" | "next";
+  eventId: string;
+  returnDepth: number | null;
+  search: string;
+}) {
+  const { settings } = useSettings();
+  const label = direction === "prev" ? "Prev" : "Next";
+  const glyph = direction === "prev" ? <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />;
+  if (!fight) return <span className={`${CARD_STEP} text-zinc-300`} aria-disabled="true">{direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}</span>;
+  return (
+    <Link
+      to={{ pathname: `/fights/${fight.id}`, search }}
+      state={{ eventId, ...(returnDepth ? { eventReturnDepth: returnDepth + 1 } : {}) }}
+      aria-label={`${label} fight: ${fight.f1.name} vs ${fight.f2.name}`}
+      title={`${fight.f1.name} vs ${fight.f2.name}`}
+      onPointerEnter={() => prefetch(withRanking(`/api/fights/${fight.id}`, settings.rankingSource))}
+      onFocus={() => prefetch(withRanking(`/api/fights/${fight.id}`, settings.rankingSource))}
+      className={`${CARD_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}
+    >
+      {direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}
+    </Link>
+  );
+}
+
+export function FightRail({ eventId, currentId, returnDepth }: { eventId: string; currentId: string; returnDepth: number | null }) {
+  const { settings } = useSettings();
+  // Moving along the card keeps the reader on the tab they were reading.
+  const location = useLocation();
+  const railEvent = useRef<EventDetail | null>(null);
+  const { data: event, loading } = useApi<EventDetail>(withRanking(`/api/events/${eventId}`, settings.rankingSource), isFightDay(railEvent.current?.date) ? 15_000 : 5 * 60_000);
+  if (event) railEvent.current = event;
+  if (loading || !event) return <FightRailSkeleton />;
+  // Shown even for a one-bout card, so every matchup has the same layout.
+  if (!event.fights.length) return null;
+  const liveId = liveFightId(event);
+  // A comment permalink belongs to this bout only; the tab carries over.
+  const search = cardFightSearch(location.search);
+  return (
+    <aside className={`hidden w-40 shrink-0 flex-col overflow-hidden sm:flex lg:w-48 ${shell}`}>
+      <div className="border-b border-zinc-200 px-2 py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+        Card
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto p-1.5">
+        {event.fights.map((f) => {
+          const isCurrent = f.id === currentId;
+          const isLive = f.id === liveId;
+          const f1Method = railMethodTag(f, f.f1.outcome);
+          const f2Method = railMethodTag(f, f.f2.outcome);
+          return (
+            <Link
+              key={f.id}
+              to={{ pathname: `/fights/${f.id}`, search }}
+              state={{ eventId, ...(returnDepth ? { eventReturnDepth: returnDepth + 1 } : {}) }}
+              aria-current={isCurrent ? "page" : undefined}
+              title={`${f.f1.name} vs ${f.f2.name}${f.method ? ` · ${formatMethod(f.method, f.round, f.time)}` : ""}${isLive ? " · live now" : ""}`}
+              onPointerEnter={() => prefetch(withRanking(`/api/fights/${f.id}`, settings.rankingSource))}
+              onPointerDown={() => prefetch(withRanking(`/api/fights/${f.id}`, settings.rankingSource))}
+              onFocus={() => prefetch(withRanking(`/api/fights/${f.id}`, settings.rankingSource))}
+              className={[
+                "relative grid w-full grid-cols-2 items-start gap-x-3 gap-y-2 rounded-xl border px-2 py-3 transition-colors",
+                // The bout on now keeps its border whether or not it is also
+                // the matchup being read, so the two markings can coexist.
+                isCurrent ? segmentedSelected : "hover:bg-zinc-50",
+                isLive ? "border-emerald-200" : "border-transparent",
+              ].join(" ")}
+            >
+              {isLive ? (
+                <>
+                  {/* Left, not right: the rail's scrollbar clips the right edge of a tile. */}
+                  <span className="live-dot absolute left-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                  <span className="sr-only">Live now. </span>
+                </>
+              ) : null}
+              <span className="flex min-w-0 flex-col items-center gap-2">
+                <Avatar src={f.f1.photo_url} name={f.f1.name} size="matchup" outcome={f.f1.outcome} />
+                <span className="flex w-full min-w-0 flex-wrap items-center justify-center gap-1">
+                  <span className={`max-w-full whitespace-normal [overflow-wrap:anywhere] text-center text-[10px] font-semibold leading-tight ${isCurrent ? "text-zinc-900" : "text-zinc-600"}`}>{lastName(f.f1.name)}</span>
+                </span>
+              </span>
+              <span className="flex min-w-0 flex-col items-center gap-2">
+                <Avatar src={f.f2.photo_url} name={f.f2.name} size="matchup" outcome={f.f2.outcome} />
+                <span className="flex w-full min-w-0 flex-wrap items-center justify-center gap-1">
+                  <span className={`max-w-full whitespace-normal [overflow-wrap:anywhere] text-center text-[10px] font-semibold leading-tight ${isCurrent ? "text-zinc-900" : "text-zinc-600"}`}>{lastName(f.f2.name)}</span>
+                </span>
+              </span>
+              {f1Method || f2Method ? (
+                <span className="col-span-2 flex flex-wrap items-center justify-center gap-1 text-center text-[9px] text-zinc-500">
+                  {f.f1.outcome === "win" || f.f2.outcome === "win" ? <span>{lastName(f.f1.outcome === "win" ? f.f1.name : f.f2.name)} won</span> : null}
+                  <span className={`rounded px-1 py-px text-[8px] font-semibold ${(f1Method ?? f2Method)!.tone}`}>{(f1Method ?? f2Method)!.label}</span>
+                </span>
+              ) : null}
+            </Link>
+          );
+        })}
+      </div>
+    </aside>
+  );
+}
+

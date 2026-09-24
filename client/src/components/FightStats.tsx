@@ -7,6 +7,7 @@ import { decimalScore, type ScoreSummary } from "../scoring";
 import { lastName } from "../format";
 import { Tooltip as TipBubble } from "./Tooltip";
 import { useTooltip } from "../tooltip";
+import { GRAPPLING_METRICS, profileText, STRIKING_METRICS, type ProfileMetric } from "../careerMetrics";
 
 // ---------------------------------------------------------------------------
 // Tokens. Colours are referenced by name (defined in index.css @theme) rather
@@ -925,42 +926,6 @@ export function FightStatistics({ fight, live = false }: { fight: Matchup; live?
 // career average that keeps moving, an old matchup reads the way it did then,
 // and nothing here can disagree with the form panel above it.
 
-type ProfileMetric = {
-  key: string;
-  label: string;
-  /** What the row is called where half a phone is all it has. */
-  short: string;
-  format: "rate" | "percent" | "share";
-  better: "high" | "low";
-  /** Null whenever the source never recorded the denominator. */
-  value: (career: CareerBefore) => number | null;
-};
-
-const rate = (total: number, seconds: number, per: number) => (seconds > 0 ? (total / (seconds / per)) : null);
-const ratio = (part: number, whole: number) => (whole > 0 ? (part / whole) * 100 : null);
-
-const STRIKING_METRICS: ProfileMetric[] = [
-  { key: "slpm", label: "Strikes landed / min", short: "Landed / min", format: "rate", better: "high", value: (c) => rate(c.sigLanded, c.seconds, 60) },
-  { key: "sapm", label: "Strikes absorbed / min", short: "Absorbed / min", format: "rate", better: "low", value: (c) => rate(c.sigAbsorbed, c.seconds, 60) },
-  { key: "accuracy", label: "Striking accuracy", short: "Accuracy", format: "percent", better: "high", value: (c) => ratio(c.sigAccuracyLanded, c.sigAttempted) },
-  { key: "defense", label: "Strikes avoided", short: "Avoided", format: "percent", better: "high", value: (c) => (c.sigFacedAttempted > 0 ? 100 - (c.sigDefenseAbsorbed / c.sigFacedAttempted) * 100 : null) },
-  { key: "knockdowns", label: "Knockdowns / 15 min", short: "KD / 15 min", format: "rate", better: "high", value: (c) => rate(c.knockdowns, c.seconds, 900) },
-];
-
-const GRAPPLING_METRICS: ProfileMetric[] = [
-  { key: "td", label: "Takedowns / 15 min", short: "TD / 15 min", format: "rate", better: "high", value: (c) => rate(c.takedowns, c.seconds, 900) },
-  { key: "tdacc", label: "Takedown accuracy", short: "TD accuracy", format: "percent", better: "high", value: (c) => ratio(c.takedownAccuracyLanded, c.takedownAttempts) },
-  { key: "tddef", label: "Takedowns stopped", short: "TD stopped", format: "percent", better: "high", value: (c) => (c.takedownsFacedAttempts > 0 ? 100 - (c.takedownDefenseConceded / c.takedownsFacedAttempts) * 100 : null) },
-  { key: "subs", label: "Submission attempts / 15 min", short: "Sub att. / 15 min", format: "rate", better: "high", value: (c) => rate(c.submissionAttempts, c.seconds, 900) },
-  { key: "control", label: "Share of time in control", short: "Control time", format: "share", better: "high", value: (c) => ratio(c.controlSeconds, c.controlTrackedSeconds) },
-];
-
-function profileText(value: number | null, format: ProfileMetric["format"]): string {
-  if (value == null) return "—";
-  if (format === "rate") return (Math.round(value * 100) / 100).toFixed(2).replace(/\.?0+$/, "");
-  return `${Math.round(value)}%`;
-}
-
 /** One measure, both fighters, mirrored around the centre line: the name
  *  over the pair of bars, each figure at its own end. */
 function ProfileRow({
@@ -1162,11 +1127,16 @@ function ScorecardTable({ fight, judges, fans, rounds }: {
       style={{ gridTemplateColumns: `2rem repeat(${columns}, minmax(0, 1fr))` }}
     >
       <span />
-      {judges.map((judge, index) => (
-        <span key={`name-${index}`} className="line-clamp-2 break-words px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] text-zinc-400 sm:text-[10px] sm:leading-4" title={judge.judge || undefined}>
-          {judge.judge ? <><span className="sm:hidden">{lastName(judge.judge)}</span><span className="hidden sm:inline">{judge.judge}</span></> : `Judge ${index + 1}`}
-        </span>
-      ))}
+      {judges.map((judge, index) => {
+        const slug = fight.officials?.judges[index];
+        const name = judge.judge ? <><span className="sm:hidden">{lastName(judge.judge)}</span><span className="hidden sm:inline">{judge.judge}</span></> : `Judge ${index + 1}`;
+        const label = "line-clamp-2 break-words px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] sm:text-[10px] sm:leading-4";
+        // Each name opens that judge's record: every card they have scored.
+        return slug
+          ? <Link key={`name-${index}`} to={`/judges/${slug}`} title={`${judge.judge} — every card they have scored`}
+              className={`${label} text-zinc-500 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900`}>{name}</Link>
+          : <span key={`name-${index}`} className={`${label} text-zinc-400`} title={judge.judge || undefined}>{name}</span>;
+      })}
       {fans ? (
         <Link to={{ search: "?tab=score" }} replace state={location.state} className="line-clamp-2 px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] text-sky-600 underline-offset-2 hover:underline">
           {fans.completeCards.toLocaleString()} {fans.completeCards === 1 ? "fan" : "fans"}

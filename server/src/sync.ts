@@ -10,7 +10,7 @@ import {
   type ScrapedEventDetail,
 } from "./scrape/ufcstats.ts";
 import { scrapeAthleteDirectoryPage, scrapeEventCard, scrapeEventSchedules, scrapeFighterImages, scrapeRankings } from "./scrape/ufccom.ts";
-import { assignRounds, assignSegments, matchEventSchedule } from "./card-schedule.ts";
+import { assignPerBout, assignRounds, assignSegments, matchEventSchedule } from "./card-schedule.ts";
 import {
   alignScrapedOdds,
   findOddsEventPages,
@@ -25,7 +25,7 @@ import {
 } from "./scrape/odds.ts";
 import { isSummaryAgeDisagreement, validateFightActions } from "./action-stats.ts";
 import { correctOfficialJudges } from "./verified-scorecard-corrections.ts";
-import { fetchEventArticle, weightMisses } from "./scrape/wikipedia.ts";
+import { eventInfobox, fetchArticleByTitle, fetchEventArticle, weightMisses } from "./scrape/wikipedia.ts";
 import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
 import { syncVerdictScorecards } from "./verdict-import.ts";
 import { americanLine, impliedProbability } from "./fight-index.ts";
@@ -258,8 +258,82 @@ export async function syncEventSegments(eventId: string): Promise<void> {
     for (const fight of fights) setRounds.run(rounds.get(fight.id) ?? null, fight.id);
     booked = rounds.size;
   }
-  db.prepare("UPDATE events SET segments_fetched_at = ? WHERE id = ?").run(Date.now(), eventId);
-  log(`card segments synced for ${event.ufc_slug} (${segments.size}/${fights.length} bouts placed, ${booked} with booked rounds)`);
+  if (card.info) {
+    const info = card.info;
+    db.prepare(`UPDATE events SET ufc_event_id = ?, venue_id = ?, venue_name = ?, venue_city = ?, venue_state = ?,
+      venue_country = ?, venue_tz = ?, broadcast_json = ? WHERE id = ?`)
+      .run(info.eventId, info.venueId, info.venue, info.city, info.state, info.country, info.timeZone,
+        Object.keys(info.broadcasters).length ? JSON.stringify(info.broadcasters) : null, eventId);
+    // Only a bout still to be fought takes the feed's referee: once it has
+    // happened, the official result page is the record of who was in there.
+    const referees = assignPerBout(fights, info.referees.map((entry) => ({ ...entry, value: entry.referee })));
+    const setReferee = db.prepare("UPDATE fights SET referee_assigned = ? WHERE id = ?");
+    for (const fight of fights) setReferee.run(referees.get(fight.id) ?? null, fight.id);
+  }
+  db.prepare("UPDATE events SET segments_fetched_at = ?, venue_checked_at = ? WHERE id = ?").run(Date.now(), Date.now(), eventId);
+  log(`card segments synced for ${event.ufc_slug} (${segments.size}/${fights.length} bouts placed, ${booked} with booked rounds${card.info?.venue ? `, ${card.info.venue}` : ""})`);
+}
+
+let venueArchiveRunning = false;
+
+/** Venue, broadcasters and referees for cards read before the feed was, a
+ * few per pass, newest first. Each costs the same requests as a segment read. */
+export async function syncVenueArchive(limit = 8): Promise<void> {
+  if (venueArchiveRunning) return;
+  venueArchiveRunning = true;
+  try {
+    const events = db.prepare(`SELECT id, name FROM events WHERE ufc_slug IS NOT NULL AND venue_checked_at IS NULL
+      AND segments_fetched_at IS NOT NULL ORDER BY date DESC LIMIT ?`).all(limit) as { id: string; name: string }[];
+    for (const event of events) {
+      try { await syncEventSegments(event.id); }
+      catch (err) {
+        // A page that no longer lists its bouts is marked read so the pass moves on.
+        log(`venue archive failed [${event.name}]:`, String(err));
+        db.prepare("UPDATE events SET venue_checked_at = ? WHERE id = ?").run(Date.now(), event.id);
+      }
+    }
+  } finally { venueArchiveRunning = false; }
+}
+
+let wikiInfoRunning = false;
+
+/** The venue name as it was that night, attendance and gate from each card's
+ * Wikipedia article. Completed cards are read once; cards in the next six
+ * weeks are re-read twice a day while the article is still being written. */
+export async function syncEventWikiInfo(limit = 20): Promise<void> {
+  if (wikiInfoRunning) return;
+  wikiInfoRunning = true;
+  try {
+    const store = db.prepare(`UPDATE events SET wiki_title = COALESCE(?, wiki_title), wiki_venue = ?, wiki_city = ?,
+      attendance = ?, gate = ?, wiki_info_checked_at = ? WHERE id = ?`);
+    const upcoming = db.prepare(`SELECT id, name, date, wiki_title FROM events WHERE complete = 0
+      AND date >= date('now', '-1 day') AND date <= date('now', '+42 days')
+      AND (wiki_info_checked_at IS NULL OR wiki_info_checked_at < ?) ORDER BY date ASC LIMIT 6`)
+      .all(Date.now() - 12 * HOUR) as { id: string; name: string; date: string; wiki_title: string | null }[];
+    const archive = db.prepare(`SELECT id, name, date, wiki_title FROM events WHERE complete = 1 AND wiki_title IS NOT NULL
+      AND wiki_info_checked_at IS NULL ORDER BY date DESC LIMIT ?`).all(limit) as typeof upcoming;
+    const fightsOf = db.prepare("SELECT f1_name, f2_name FROM fights WHERE event_id = ? ORDER BY ord");
+    let read = 0;
+    for (const event of [...upcoming, ...archive]) {
+      try {
+        let title = event.wiki_title;
+        let wikitext: string | null = null;
+        if (title) wikitext = await fetchArticleByTitle(title);
+        if (!wikitext) {
+          const names = (fightsOf.all(event.id) as { f1_name: string; f2_name: string }[]).flatMap((f) => [f.f1_name, f.f2_name]);
+          const article = await fetchEventArticle(event.name, event.date, names);
+          title = article?.title ?? null;
+          wikitext = article?.wikitext ?? null;
+        }
+        const infobox = wikitext ? eventInfobox(wikitext) : { venue: null, city: null, attendance: null, gate: null };
+        store.run(title, infobox.venue, infobox.city, infobox.attendance, infobox.gate, Date.now(), event.id);
+        read++;
+      } catch (err) {
+        log(`event article failed [${event.name}]:`, String(err));
+      }
+    }
+    if (read) log(`event articles: ${read} read`);
+  } finally { wikiInfoRunning = false; }
 }
 
 // ---------------------------------------------------------------------------
@@ -1452,6 +1526,8 @@ export async function tick(): Promise<void> {
     if (!titleTypesRunning) void guarded("title_type_backfill", () => syncMissingTitleTypes());
     if (!bonusBackfillRunning) void guarded("bonus_backfill", () => syncMissingBonuses());
     if (!weightMissRunning) void guarded("weight_misses", async () => { await syncWeightMisses(); });
+    if (!venueArchiveRunning) void guarded("venue_archive", () => syncVenueArchive());
+    if (!wikiInfoRunning) void guarded("event_articles", () => syncEventWikiInfo());
 
     // 8. Odds: all announced upcoming fights. Each fight is refreshed at most
     //    every 6h (fetched_at), so this step self-regulates without a global gate.

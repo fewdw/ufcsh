@@ -14,6 +14,8 @@ RUN npm run build
 FROM node:26-bookworm-slim AS runtime
 ENV NODE_ENV=production DATA_DIR=/data PORT=8000 API_WORKERS=2
 WORKDIR /app/server
+# Share images are SVG text rasterised on the server; the slim image has no fonts.
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
 COPY server/package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY server/src ./src

@@ -15,7 +15,9 @@
     "backfill:scorecards": "node src/backfill-verdict-scorecards.ts",
     "backfill:official-scorecards": "node src/backfill-mmadecisions-scorecards.ts",
     "load:test": "node src/load-test.ts",
-    "test": "node src/test-runner.ts"
+    "test": "node src/test-runner.ts",
+    "repair:scorecards": "node src/apply-verified-scorecard-corrections.ts",
+    "seed:mock-profile": "node src/seed-mock-profile.ts"
   },
   "dependencies": {
     "@clerk/backend": "^3.18.1",

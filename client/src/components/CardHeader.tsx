@@ -1,5 +1,28 @@
 import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
+import { MapPin } from "lucide-react";
+import type { VenueRef } from "../api";
 import { formatDate, formatDateShort } from "../format";
+
+const DOT = <span aria-hidden="true" className="text-zinc-300">·</span>;
+
+/** Date · venue · city. The venue opens its history, so it reads as a link
+ *  the way the rest of the app's links do: a pin, a weight, a hover. */
+export function EventPlace({ venue, location }: { venue?: VenueRef | null; location: string | null | undefined }) {
+  if (!venue && !location) return null;
+  return (
+    <>
+      {venue ? <>
+        {DOT}
+        <Link to={`/venues/${venue.slug}`} title={`${venue.name}: every card held here`}
+          className="inline-flex min-w-0 items-baseline gap-0.5 rounded font-medium text-zinc-700 transition-colors hover:text-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-2">
+          <MapPin className="h-[1em] w-[1em] shrink-0 self-center text-zinc-400" aria-hidden="true" />{venue.name}
+        </Link>
+      </> : null}
+      {location ? <>{DOT}<span className="min-w-0">{location}</span></> : null}
+    </>
+  );
+}
 
 export const CARD_STEP = "inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
 
@@ -17,10 +40,11 @@ export function CardNavigation({ previous, center, next }: {
   );
 }
 
-export function CardEventTitle({ name, date, location, dayLabel, children }: {
+export function CardEventTitle({ name, date, location, venue, dayLabel, children }: {
   name: string;
   date: string;
   location: string | null | undefined;
+  venue?: VenueRef | null;
   dayLabel?: string | null;
   children?: ReactNode;
 }) {
@@ -33,7 +57,7 @@ export function CardEventTitle({ name, date, location, dayLabel, children }: {
             <span className="@[48rem]:hidden">{formatDateShort(date)}{dayLabel ? `, ${dayLabel}` : ""}</span>
             <span className="hidden @[48rem]:inline">{formatDate(date)}{dayLabel ? ` (${dayLabel})` : ""}</span>
           </span>
-          {location ? <><span aria-hidden="true" className="text-zinc-300">·</span><span>{location}</span></> : null}
+          <EventPlace venue={venue} location={location} />
         </div>
       </div>
       {children ? <div className="flex shrink-0 flex-col items-end gap-1 text-right @[48rem]:max-w-[45%]">{children}</div> : null}

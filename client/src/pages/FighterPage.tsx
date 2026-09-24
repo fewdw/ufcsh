@@ -1,7 +1,7 @@
 import { Children, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useApi } from "../api";
-import type { CompleteRecordBefore, FighterProfile, FighterRecord, FighterStat, HistoryRow, ProfessionalHistoryRow } from "../api";
+import type { CompleteRecordBefore, FighterProfile, FighterRecord, HistoryRow, ProfessionalHistoryRow } from "../api";
 import { formatDateShortWithYear, formatLine, formatMethod, lastName } from "../format";
 import { formatValue, PANEL } from "../components/chartTokens";
 import FighterPortrait from "../components/FighterPortrait";
@@ -10,8 +10,8 @@ import ResultDots from "../components/ResultDots";
 import { WeightChangeMarker } from "../components/WeightJourney";
 import { weightJourney } from "../weightJourney";
 import RequestNotice from "../components/RequestNotice";
+import FighterStatistics from "../components/FighterStatistics";
 import { PanelHeading } from "../components/FightStats";
-import { EYEBROW } from "../ui";
 import { SITE_URL, useSeo } from "../seo";
 import { useRouteScrollRestoration } from "../navigationState";
 import { outsideFighterUrl, useSettings, withRanking } from "../settings";
@@ -486,81 +486,6 @@ function Records({ records }: { records: FighterRecord[] }) {
   );
 }
 
-/** Every qualifying top-50 placement, grouped so alternate readings such as
- * a method's count and percentage stay together instead of repeating panels. */
-function StatisticalRanks({ stats }: { stats: FighterStat[] }) {
-  // Collapsed by default; the visitor's choice carries over to every profile.
-  const { settings, update } = useSettings();
-  if (!stats.length) return null;
-  const groups = [...stats.reduce((map, stat) => {
-    const current = map.get(stat.category) ?? { order: stat.category_order, rows: [] as FighterStat[] };
-    current.rows.push(stat);
-    map.set(stat.category, current);
-    return map;
-  }, new Map<string, { order: number; rows: FighterStat[] }>())]
-    .sort((a, b) => Math.min(...a[1].rows.map((row) => row.rank))
-      - Math.min(...b[1].rows.map((row) => row.rank)) || a[1].order - b[1].order);
-  const place = (stat: FighterStat) => `${stat.tied ? "T" : ""}${stat.rank}`;
-
-  return (
-    <details
-      open={settings.topStatsOpen}
-      onToggle={(event) => update("topStatsOpen", (event.target as HTMLDetailsElement).open)}
-      className={`${shell} group @container overflow-hidden`}
-    >
-      <summary
-        className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-2.5 sm:px-5 sm:py-3 [&::-webkit-details-marker]:hidden"
-        title="Expand top-50 statistics"
-      >
-        <span className="min-w-0">
-          <span className="block text-sm font-semibold text-zinc-900">Top-50 statistics</span>
-          <span className="mt-0.5 block text-xs text-zinc-500">
-            {stats.length} {stats.length === 1 ? "placement" : "placements"} across {groups.length} {groups.length === 1 ? "category" : "categories"}
-          </span>
-        </span>
-        <svg
-          aria-hidden="true"
-          className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform group-open:rotate-180"
-          fill="none"
-          viewBox="0 0 12 12"
-        >
-          <path d="m2.5 4.5 3.5 3 3.5-3" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </summary>
-      <div className="columns-1 gap-0 border-t border-zinc-100 @[36rem]:columns-2" style={{ columnRule: "1px solid var(--color-plot-axis)" }}>
-        {groups.map(([category, group]) => (
-          <section key={category} className="break-inside-avoid min-w-0 border-b border-zinc-100 bg-white px-4 py-3">
-            <h3 className={`mb-1.5 ${EYEBROW}`}>{category}</h3>
-            <div className="divide-y divide-zinc-50">
-              {group.rows.map((stat) => (
-                <div key={`${stat.key}:${stat.scope}`} className="flex min-w-0 items-center gap-2 py-2 first:pt-0 last:pb-0">
-                  <span
-                    className={`grid h-6 w-9 shrink-0 place-items-center rounded-md text-[10px] font-bold tabular-nums ${
-                      stat.rank <= 10 ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600"
-                    }`}
-                    title={`${place(stat)} of ${stat.field.toLocaleString("en-US")} qualifying fighters`}
-                  >
-                    {place(stat)}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[11px] font-semibold leading-4 text-zinc-800">{stat.label}</span>
-                    <span className="block truncate text-[9px] leading-3.5 text-zinc-400" title={`${stat.scope} · ${stat.detail}`}>
-                      {stat.scope} · {stat.detail}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-right text-xs font-semibold tabular-nums text-zinc-900">
-                    {formatValue(stat.value, stat.format)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
-    </details>
-  );
-}
-
 export default function FighterPage() {
   const { fighterId } = useParams();
   const { settings } = useSettings();
@@ -673,7 +598,7 @@ export default function FighterPage() {
 
         <Records records={fighter.records ?? []} />
 
-        <StatisticalRanks stats={fighter.stats ?? []} />
+        <FighterStatistics fighterId={fighter.id} history={fighter.history} />
         </div>
 
         <div className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]">

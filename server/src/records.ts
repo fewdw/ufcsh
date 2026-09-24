@@ -418,9 +418,47 @@ const CATEGORY: Record<string, { label: string; order: number }> = {
   championWins: { label: "Opposition", order: 7 }, championWinRate: { label: "Opposition", order: 7 }, reigningFaced: { label: "Opposition", order: 7 }, revenge: { label: "Opposition", order: 7 },
   cageTime: { label: "Fight time", order: 8 }, averageFightTime: { label: "Fight time", order: 8 },
   underdogWins: { label: "Betting", order: 9 }, biggestUpset: { label: "Betting", order: 9 },
+  favoriteRate: { label: "Betting", order: 9 }, favoriteLosses: { label: "Betting", order: 9 }, underdogRate: { label: "Betting", order: 9 },
+  aboveExpectation: { label: "Betting", order: 9 }, oddsProfit: { label: "Betting", order: 9 }, avgLine: { label: "Betting", order: 9 },
+  opposition: { label: "Opposition", order: 7 }, championsFaced: { label: "Opposition", order: 7 }, streakBreakers: { label: "Opposition", order: 7 },
+  bounceBack: { label: "Runs & durability", order: 4 }, rematchRate: { label: "Runs & durability", order: 4 },
+  longLayoff: { label: "Runs & durability", order: 4 }, quickTurnaround: { label: "Runs & durability", order: 4 },
+  averageFinished: { label: "Runs & durability", order: 4 },
   bonuses: { label: "Bonuses", order: 10 },
   youngestWin: { label: "Age at a win", order: 11 }, oldestWin: { label: "Age at a win", order: 11 },
 };
+
+/**
+ * The Records card and top-50 list keep their floors ("five UFC wins") so a
+ * place there means something. The full board ranks everyone with any of a
+ * count, because "12th of 3,000 in wins" is a true statement at any size.
+ * Rates keep their floors everywhere: one bout must not top a percentage.
+ */
+const atLeast = (value: number, minimum = 1) => (value >= minimum ? value : null);
+const BOARD_VALUE: Record<string, (t: Totals) => number | null> = {
+  wins: (t) => atLeast(t.wins), titleDefenses: (t) => atLeast(t.titleDefenses), defenseRun: (t) => atLeast(t.longestDefenseRun),
+  titleWins: (t) => atLeast(t.titleWins), winStreak: (t) => atLeast(t.longestWinStreak), finishes: (t) => atLeast(t.finishes),
+  kos: (t) => atLeast(t.kos), subs: (t) => atLeast(t.subs), championWins: (t) => atLeast(t.championWins),
+  unbeaten: (t) => atLeast(t.longestUnbeaten), bouts: (t) => atLeast(t.bouts), titleFights: (t) => atLeast(t.titleFights),
+  reigningFaced: (t) => atLeast(t.reigningBouts), knockdowns: (t) => atLeast(t.knockdowns), underdogWins: (t) => atLeast(t.underdogWins),
+  durability: (t) => atLeast(t.longestDurability), bonuses: (t) => atLeast(t.bonuses), divisionWins: (t) => atLeast(t.divisionWins.size),
+  revenge: (t) => atLeast(t.revengeWins), events: (t) => atLeast(t.events.size), decisionWins: (t) => atLeast(t.decisionWins),
+  currentWinStreak: (t) => atLeast(t.currentWinStreak), championsFaced: (t) => atLeast(t.championBouts),
+  cageTime: (t) => (t.timedBouts >= 1 ? t.totalSeconds : null),
+  span: (t) => (t.bouts >= 2 && t.firstDate ? Math.round(((Date.parse(t.lastDate) - Date.parse(t.firstDate)) / (365.25 * 86400000)) * 10) / 10 : null),
+  sigLanded: (t) => (t.statBouts >= 1 && t.sigLanded > 0 ? t.sigLanded : null),
+  takedowns: (t) => (t.statBouts >= 1 && t.takedowns > 0 ? t.takedowns : null),
+  control: (t) => (t.controlBouts >= 1 && t.controlSeconds > 0 ? t.controlSeconds : null),
+};
+const boardValue = (stat: StatDef) => BOARD_VALUE[stat.key] ?? stat.value;
+
+/** Placements where first is not a compliment: most losses as the favorite,
+ * the quickest to be finished, the most strikes absorbed. They stay ranked,
+ * but a "best first" reading must not lead with them. */
+function unwanted(key: string): boolean {
+  if (key === "favoriteLosses" || key === "averageFinished") return true;
+  return /^action:[^:]+:(scored|attempted):taken:/.test(key);
+}
 
 /** A record has to be genuinely rare to be worth printing on a profile. */
 const GLOBAL_TOP = 5;
@@ -666,17 +704,63 @@ function buildTotals(index: FightIndex, division?: string): Map<string, Totals> 
 
 type RankTable<T extends RecordEntry = RecordEntry> = Map<string, T[]>;
 
-function build(index: FightIndex): { records: RankTable; stats: RankTable<ProfileStatEntry> } {
+/** One statistic's standings in one pool: every qualifying value, best
+ * first, collapsed to distinct values so a fighter's place is a binary
+ * search rather than a stored row per fighter. */
+type Standing = { values: Float64Array; ahead: Uint32Array; counts: Uint32Array; field: number; ascending: boolean };
+
+/** Every pool a fighter can be read against, with the totals behind it. */
+type Board = { totals: Map<string, Totals>; standings: Map<string, Standing> };
+
+/** `values` must already be ordered best first. */
+function standingOf(values: number[], ascending: boolean): Standing {
+  const distinct: number[] = [];
+  const counts: number[] = [];
+  const ahead: number[] = [];
+  for (const value of values) {
+    if (distinct.length && distinct[distinct.length - 1] === value) counts[counts.length - 1] += 1;
+    else {
+      ahead.push(ahead.length ? ahead[ahead.length - 1] + counts[counts.length - 1] : 0);
+      distinct.push(value);
+      counts.push(1);
+    }
+  }
+  return { values: Float64Array.from(distinct), ahead: Uint32Array.from(ahead), counts: Uint32Array.from(counts), field: values.length, ascending };
+}
+
+/** Dense place of a value in a standing, with how many are strictly ahead. */
+function placeIn(standing: Standing, value: number): { rank: number; tied: boolean; ahead: number } | null {
+  let low = 0;
+  let high = standing.values.length - 1;
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    const at = standing.values[middle];
+    if (at === value) return { rank: middle + 1, tied: standing.counts[middle] > 1, ahead: standing.ahead[middle] };
+    const better = standing.ascending ? at < value : at > value;
+    if (better) low = middle + 1; else high = middle - 1;
+  }
+  return null;
+}
+
+function build(index: FightIndex): { records: RankTable; stats: RankTable<ProfileStatEntry>; boards: Map<string, Board> } {
   const totals = buildTotals(index);
   const everyone = [...totals.values()];
   const byDivision = new Map<string, Totals[]>();
+  const divisionTotals = new Map<string, Map<string, Totals>>();
   // A division board counts only bouts fought at that weight. A fighter can
   // place in every class they competed in, not just their most common one.
   for (const division of index.divisions) {
     if (division === "Catch Weight" || division === "Super Heavyweight") continue;
-    const pool = [...buildTotals(index, division).values()];
-    if (pool.length >= MIN_DIVISION_FIELD) byDivision.set(division, pool);
+    const table = buildTotals(index, division);
+    const pool = [...table.values()];
+    if (pool.length >= MIN_DIVISION_FIELD) {
+      byDivision.set(division, pool);
+      divisionTotals.set(division, table);
+    }
   }
+  const boards = new Map<string, Board>();
+  boards.set("UFC history", { totals, standings: new Map() });
+  for (const [division, table] of divisionTotals) boards.set(division, { totals: table, standings: new Map() });
 
   const records: RankTable = new Map();
   const stats: RankTable<ProfileStatEntry> = new Map();
@@ -719,6 +803,14 @@ function build(index: FightIndex): { records: RankTable; stats: RankTable<Profil
     for (const scope of scopes) {
       const ranked = rankWithin(scope.pool, stat);
       const field = ranked.scored.length;
+      const relaxed = BOARD_VALUE[stat.key];
+      const boardValues = relaxed
+        ? scope.pool.map(relaxed).filter((value): value is number => value != null && Number.isFinite(value))
+          .sort((a, b) => (stat.ascending ? a - b : b - a))
+        : ranked.scored.map((entry) => entry.value);
+      if (scope.name === "UFC history" || boardValues.length >= MIN_DIVISION_FIELD) {
+        boards.get(scope.name)?.standings.set(stat.key, standingOf(boardValues, Boolean(stat.ascending)));
+      }
       if (scope.name !== "UFC history" && field < MIN_DIVISION_FIELD) continue;
       for (const entry of ranked.scored) {
         const place = ranked.ranks.get(entry.fighter.id)!;
@@ -774,10 +866,10 @@ function build(index: FightIndex): { records: RankTable; stats: RankTable<Profil
       || a.category_order - b.category_order
       || (priority.get(a.key) ?? 999) - (priority.get(b.key) ?? 999));
   }
-  return { records, stats };
+  return { records, stats, boards };
 }
 
-let cached: { version: string; records: RankTable; stats: RankTable<ProfileStatEntry> } | null = null;
+let cached: { version: string; records: RankTable; stats: RankTable<ProfileStatEntry>; boards: Map<string, Board> } | null = null;
 
 function currentTables() {
   const index = fightIndex();
@@ -793,4 +885,107 @@ export function fighterRecords(fighterId: string, limit = 5): RecordEntry[] {
 /** Every meaningful global/division top-50 statistical placement. */
 export function fighterStats(fighterId: string): ProfileStatEntry[] {
   return currentTables().stats.get(fighterId) ?? [];
+}
+
+export type BoardEntry = ProfileStatEntry & {
+  /** Qualifying fighters strictly ahead of this one. */
+  ahead: number;
+  /** Lower is better for the reader even though first place ranks "most". */
+  unwanted: boolean;
+};
+
+export type FighterBoard = {
+  fighter_id: string;
+  /** "ufc" or the division read. */
+  scope: string;
+  scope_label: string;
+  /** Every pool this fighter can be read against, most bouts first. */
+  scopes: { key: string; label: string; bouts: number }[];
+  bouts: number;
+  minimum_bouts: number;
+  stats: BoardEntry[];
+  /** Readings with no figure yet or one below the ranking's minimum sample. */
+  unqualified: { key: string; label: string; category: string }[];
+};
+
+/**
+ * Every statistic this fighter is ranked in within one pool: the whole UFC,
+ * or one weight class counting only bouts fought there. Not just top places —
+ * a reader asked for the full picture, with the minimum samples intact.
+ */
+const filteredStandings = new WeakMap<Board, Map<number, Map<string, Standing>>>();
+
+export function fighterBoard(fighterId: string, scope: string, minimum = 0): FighterBoard | null {
+  const minimumBouts = [0, 3, 5, 10, 20].includes(minimum) ? minimum : 0;
+  const { boards } = currentTables();
+  const everyone = boards.get("UFC history")!;
+  const career = everyone.totals.get(fighterId);
+  if (!career) return null;
+  const scopes = [
+    { key: "ufc", label: "All UFC", bouts: career.bouts },
+    ...[...career.divisions.entries()]
+      .filter(([division]) => boards.has(division))
+      .sort((a, b) => b[1] - a[1])
+      .map(([division, bouts]) => ({ key: division, label: division, bouts })),
+  ];
+  const chosen = scopes.find((entry) => entry.key === scope) ?? scopes[0];
+  const board = chosen.key === "ufc" ? everyone : boards.get(chosen.key)!;
+  let standings = board.standings;
+  if (minimumBouts) {
+    const cached = filteredStandings.get(board) ?? new Map<number, Map<string, Standing>>();
+    filteredStandings.set(board, cached);
+    let selected = cached.get(minimumBouts);
+    if (!selected) {
+      selected = new Map();
+      const pool = [...board.totals.values()].filter((entry) => entry.bouts >= minimumBouts);
+      for (const stat of PROFILE_STATS) {
+        if (!board.standings.has(stat.key)) continue;
+        const values = pool.map(boardValue(stat)).filter((value): value is number => value != null && Number.isFinite(value))
+          .sort((a, b) => stat.ascending ? a - b : b - a);
+        selected.set(stat.key, standingOf(values, Boolean(stat.ascending)));
+      }
+      cached.set(minimumBouts, selected);
+    }
+    standings = selected;
+  }
+  const totals = board.totals.get(fighterId);
+  const stats: BoardEntry[] = [];
+  const unqualified: FighterBoard["unqualified"] = [];
+  if (totals) {
+    for (const stat of PROFILE_STATS) {
+      const standing = standings.get(stat.key);
+      if (!standing) continue;
+      const category = stat.category ?? CATEGORY[stat.key] ?? { label: "Other", order: 99 };
+      const value = boardValue(stat)(totals);
+      if (value == null || !Number.isFinite(value) || totals.bouts < minimumBouts) {
+        // Named rather than dropped, so a missing reading is explained: no
+        // figure yet, or one short of the sample the ranking requires.
+        unqualified.push({ key: stat.key, label: stat.label, category: category.label });
+        continue;
+      }
+      const place = placeIn(standing, value);
+      if (!place) continue;
+      stats.push({
+        // Competition ranking here (1, 2, 2, 4), unlike the dense places of
+        // the top-50 list: deep in a long table, "13th" for a value hundreds
+        // share would overstate it, where "T501st" does not.
+        key: stat.key, label: stat.label, value, format: stat.format,
+        rank: place.ahead + 1, tied: place.tied, field: standing.field, ahead: place.ahead,
+        scope: chosen.key === "ufc" ? "UFC history" : chosen.key, detail: stat.detail(totals),
+        category: category.label, category_order: category.order, unwanted: unwanted(stat.key),
+      });
+    }
+  }
+  return {
+    fighter_id: fighterId,
+    scope: chosen.key,
+    scope_label: chosen.label,
+    scopes,
+    bouts: totals?.bouts ?? 0,
+    minimum_bouts: minimumBouts,
+    stats,
+    // Only readings that some fighter qualifies for, so nothing listed here
+    // is a statistic this pool cannot rank at all.
+    unqualified: unqualified.filter((entry) => board.standings.get(entry.key)?.field),
+  };
 }

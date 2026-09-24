@@ -16,9 +16,13 @@ export type AppSettings = {
   /** Which end of the scale the rankings start from. */
   divisionOrder: DivisionOrder;
   oddsFormat: OddsFormat;
-  /** Whether a fighter profile's "Top-50 statistics" panel starts expanded. */
+  /** Whether a fighter profile's Statistics panel starts expanded. */
   topStatsOpen: boolean;
+  /** How that panel orders its rows: by category, or best place first. */
+  statsSort: StatsSort;
 };
+
+export type StatsSort = "grouped" | "best";
 
 const DEFAULTS: AppSettings = {
   theme: "light",
@@ -27,6 +31,7 @@ const DEFAULTS: AppSettings = {
   divisionOrder: "light",
   oddsFormat: "american",
   topStatsOpen: false,
+  statsSort: "grouped",
 };
 const STORAGE_KEY = "ufcsh:settings:v1";
 
@@ -40,6 +45,7 @@ function loadSettings(): AppSettings {
       divisionOrder: saved?.divisionOrder === "heavy" ? "heavy" : "light",
       oddsFormat: saved?.oddsFormat === "decimal" ? "decimal" : "american",
       topStatsOpen: saved?.topStatsOpen === true,
+      statsSort: saved?.statsSort === "best" ? "best" : "grouped",
     };
   } catch {
     return DEFAULTS;

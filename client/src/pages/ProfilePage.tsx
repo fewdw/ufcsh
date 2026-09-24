@@ -1,5 +1,5 @@
 import { useAuth } from "@clerk/react";
-import { Check, ChevronDown, Flag, LogOut, Pencil, Search, Settings, X } from "lucide-react";
+import { Check, ChevronDown, Flag, ImageIcon, Info, LogOut, Pencil, Search, Settings, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiCache, prefetch, useApi } from "../api";
@@ -22,6 +22,7 @@ import type { ProfileFilter, ScorerCard, ScorerIdentity, ScorerProfile } from ".
 import { useSeo } from "../seo";
 import { BUTTON_PRIMARY, BUTTON_QUIET } from "../ui";
 import FanAvatar from "../components/FanAvatar";
+import { useGraphics } from "../graphicsLauncher";
 
 const FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed"];
 /** Bouts that went to the judges are the ones a card can be read against, so
@@ -63,6 +64,7 @@ function MyProfileRedirect() {
       <div className="flex h-full flex-col items-center justify-center gap-3 px-5 text-center text-sm text-zinc-500">
         <p>Sign in to see your scorecards and predictions.</p>
         {accountsEnabled ? <button type="button" onClick={signIn} className={primary}>Sign in</button> : null}
+        <Link to="/info" className="text-xs font-medium text-zinc-500 underline underline-offset-2 hover:text-zinc-900">About UFC.sh</Link>
       </div>
     );
   return <div role="status" className="flex h-full items-center justify-center text-sm text-zinc-400">Opening your profile…</div>;
@@ -320,6 +322,7 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
   const [editing, setEditing] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const { user, manage, signOut } = useAccount();
+  const openGraphics = useGraphics();
   return (
     <header className={`${PANEL_SHELL} px-4 py-3 sm:px-5`}>
       <div className="flex items-center gap-3 sm:gap-4">
@@ -351,13 +354,19 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
         </div>
       </div>
       {mine && user ? (
-        <div className="mt-3 flex items-center justify-center gap-1 border-t border-zinc-100 pt-2 sm:gap-1.5">
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-1 border-t border-zinc-100 pt-2 sm:gap-1.5">
+          <button type="button" onClick={() => openGraphics()} className={action} title="Make a shareable graphic">
+            <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />Graphic
+          </button>
           <button type="button" onClick={() => setReportOpen(true)} className={action} title="Report an issue">
             <Flag className="h-3.5 w-3.5" aria-hidden="true" />Report
           </button>
           <button type="button" onClick={manage} className={action} title="Manage account">
             <Settings className="h-3.5 w-3.5" aria-hidden="true" />Account
           </button>
+          <Link to="/info" className={action} title="About UFC.sh, sources, rules and shortcuts">
+            <Info className="h-3.5 w-3.5" aria-hidden="true" />Information
+          </Link>
           <button type="button" onClick={signOut} className={action}>
             <LogOut className="h-3.5 w-3.5" aria-hidden="true" />Sign out
           </button>

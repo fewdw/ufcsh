@@ -180,3 +180,36 @@ export function countdown(target: number | null | undefined, now: number = Date.
   const hours = Math.floor(minutes / 60);
   return `${hours}h ${String(minutes % 60).padStart(2, "0")}m`;
 }
+
+/** A clock time at a venue, from its published UTC offset ("GMT-06:00"):
+ *  "7:00 PM". Null when either is unknown — never the reader's zone passed off
+ *  as the venue's. */
+export function venueClock(timestamp: number | null | undefined, offset: string | null | undefined): string | null {
+  const match = /^GMT([+-])(\d{2}):(\d{2})$/.exec(offset ?? "");
+  if (timestamp == null || !Number.isFinite(timestamp) || !match) return null;
+  const minutes = (match[1] === "-" ? -1 : 1) * (Number(match[2]) * 60 + Number(match[3]));
+  return new Date(timestamp + minutes * 60_000).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+}
+
+/** "GMT-06:00" as people write it: "UTC−6". */
+export function offsetLabel(offset: string | null | undefined): string | null {
+  const match = /^GMT([+-])(\d{2}):(\d{2})$/.exec(offset ?? "");
+  if (!match) return null;
+  const hours = Number(match[2]);
+  const minutes = Number(match[3]);
+  return `UTC${match[1] === "-" ? "−" : "+"}${hours}${minutes ? `:${match[3]}` : ""}`;
+}
+
+/** Height "5' 10"" or reach "70"" in inches; null when unreadable. */
+export function inches(value: string | null | undefined): number | null {
+  const text = value ?? "";
+  const feet = text.match(/(\d+)'\s*(\d+(?:\.\d+)?)?/);
+  if (feet) return Number(feet[1]) * 12 + Number(feet[2] ?? 0);
+  const plain = text.match(/([\d.]+)"/);
+  return plain ? Number(plain[1]) : null;
+}
+
+/** Lowercase, accent-free text for matching a typed filter against names. */
+export function normalizeSearch(value: string): string {
+  return value.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}

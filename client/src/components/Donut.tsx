@@ -95,29 +95,3 @@ export function DonutLegend({ slices, total }: { slices: Slice[]; total: number 
     </ul>
   );
 }
-
-/** A donut and its legend side by side, which is how every one of these reads. */
-export function DonutFigure({
-  title, slices, total, centerValue, centerLabel, empty,
-}: {
-  title: string;
-  slices: Slice[];
-  total: number;
-  centerValue?: string;
-  centerLabel?: string;
-  empty?: string;
-}) {
-  return (
-    <figure className="min-w-0">
-      <figcaption className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">{title}</figcaption>
-      {total ? (
-        <div className="flex items-center gap-4">
-          <Donut slices={slices} total={total} centerValue={centerValue} centerLabel={centerLabel} />
-          <DonutLegend slices={slices} total={total} />
-        </div>
-      ) : (
-        <p className="py-6 text-xs text-zinc-400">{empty ?? "No picks yet."}</p>
-      )}
-    </figure>
-  );
-}

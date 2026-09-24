@@ -219,12 +219,18 @@ export type EventFight = {
   bonuses: { perf: boolean; fotn: boolean };
 };
 
+/** Where a card is staged, once the promotion's feed or the event article has said. */
+export type VenueRef = { slug: string; name: string; city: string | null; country: string | null; time_zone: string | null };
+
 export type EventDetail = {
   refreshing?: boolean;
   id: string;
   name: string;
   date: string;
   location: string;
+  venue?: VenueRef | null;
+  /** Broadcaster per card segment, as the promotion lists them. */
+  broadcasters?: Partial<Record<CardSegment, string>> | null;
   status: "past" | "current" | "next" | "future";
   live?: boolean;
   results_updated_at?: number | null;
@@ -314,10 +320,14 @@ export type FightDetailBlock = {
   recentFights?: { f1: string[]; f2: string[] };
 };
 
+export type OfficialRef = { name: string; slug: string | null };
+
 export type Matchup = {
   refreshing?: boolean;
   id: string;
-  event: { id: string; name: string; date: string; location: string };
+  event: { id: string; name: string; date: string; location: string; venue?: VenueRef | null };
+  /** Profile addresses for the named officials; judges in scorecard order. */
+  officials?: { referee: (OfficialRef & { assigned: boolean }) | null; judges: (string | null)[] };
   status: "past" | "upcoming";
   /** False when an upcoming card is outside the three-event prediction horizon. */
   prediction_available?: boolean;
@@ -371,7 +381,6 @@ export type FighterProfile = {
   photo_full_url: string | null;
   ranking: { division: string; rank: string; rank_change: string | null } | null;
   records: FighterRecord[];
-  stats: FighterStat[];
   /** Every verified professional bout; UFC rows retain their richer local data. */
   pro_history: ProfessionalHistoryRow[];
   /** UFC-only history, including verified source-only UFC rows. */
@@ -466,6 +475,25 @@ export type FighterRecord = {
 export type FighterStat = FighterRecord & {
   category: string;
   category_order: number;
+};
+
+/** One ranked reading on a fighter's full statistics board. */
+export type BoardStat = FighterStat & {
+  /** Qualifying fighters strictly ahead. */
+  ahead: number;
+  /** First place here means "most", which is not a compliment (most absorbed). */
+  unwanted: boolean;
+};
+
+export type FighterBoard = {
+  fighter_id: string;
+  scope: string;
+  scope_label: string;
+  scopes: { key: string; label: string; bouts: number }[];
+  bouts: number;
+  minimum_bouts: number;
+  stats: BoardStat[];
+  unqualified: { key: string; label: string; category: string }[];
 };
 
 export type StatsDashboard = {
@@ -832,6 +860,104 @@ export type SearchResults = {
   events: { id: string; name: string; date: string; approximate?: boolean }[];
   /** meeting is this bout's place among every meeting of the pair (1-based). */
   fights: { id: string; f1_name: string; f2_name: string; event_name: string; date: string; meeting: number; meetings: number; approximate?: boolean }[];
+  officials?: { kind: "judge" | "referee"; slug: string; name: string; n: number }[];
+  venues?: { slug: string; name: string; city: string | null; events: number }[];
+};
+
+// ---------------------------------------------------------------------------
+// context, officials and venues
+
+export type OfficialFilters = { from: number | null; to: number | null; division: string | null; q: string; result: string | null; view: string | null; offset: number; limit: number };
+type Outcome = "win" | "loss" | "draw" | "nc" | null;
+type FighterRef = { id: string; name: string; outcome: Outcome };
+type Facets = { years: { first: number; last: number } | null; divisions: { division: string; n: number }[] };
+
+export type JudgeProfile = {
+  kind: "judge";
+  slug: string;
+  name: string;
+  career: { cards: number } & Facets;
+  filters: OfficialFilters;
+  decision_counts: Record<string, number>;
+  summary: {
+    cards: number; panels: number; dissents: number; dissent_rate: number | null;
+    split_panels: number; dissents_in_splits: number;
+    with_result: number; agreed_result: number; agreed_result_rate: number | null;
+    round_cards: number; rounds_scored: number; ten_eights: number; ten_eight_rate: number | null;
+    ten_tens: number; ten_ten_rate: number | null; rounds_compared: number; round_agreement_rate: number | null;
+    lone_rounds: number; fan_cards: number; fan_pick_differs: number; fan_rounds: number; fan_rounds_differ: number;
+    missing_round_cards: number;
+  };
+  colleagues: { name: string; slug: string | null; together: number; agreed: number; rate: number | null }[];
+  total: number;
+  offset: number;
+  limit: number;
+  rows: {
+    fight_id: string; event_id: string; event_name: string; date: string; division: string; scheduled_rounds: number;
+    verdict: "unanimous" | "split" | "majority" | "draw" | "other"; method: string | null;
+    f1: FighterRef; f2: FighterRef;
+    card: { f1: number; f2: number; rounds: { round: number; f1: number; f2: number }[] };
+    others: { judge: string; slug: string | null; f1: number; f2: number; rounds: { round: number; f1: number; f2: number }[] }[];
+    fans: { cards: number; avg1: number; avg2: number; rounds: { round: number; avg1: number; avg2: number }[] } | null;
+    dissent: boolean; agreed_result: boolean | null; ten_eights: number;
+  }[];
+};
+
+export type RefereeTally = {
+  fights: number; events: number; title_fights: number;
+  counts: Record<"ko" | "sub" | "dec" | "dq" | "nc" | "draw" | "other", number>;
+  finish_rate: number | null; ko_rate: number | null; sub_rate: number | null; decision_rate: number | null;
+  average_stoppage_seconds: number | null;
+  stoppage_rounds: { round: number; n: number }[];
+  deductions: number;
+};
+
+export type RefereeProfile = {
+  kind: "referee";
+  slug: string;
+  name: string;
+  career: { fights: number } & Facets;
+  filters: OfficialFilters;
+  result_counts: Record<string, number>;
+  summary: RefereeTally;
+  baseline: RefereeTally & { label: string };
+  incidents: { fight_id: string; date: string; event_name: string; f1: FighterRef; f2: FighterRef; kind: string; details: string | null }[];
+  total: number;
+  offset: number;
+  limit: number;
+  rows: {
+    fight_id: string; event_id: string; event_name: string; date: string; division: string; title: boolean;
+    f1: FighterRef; f2: FighterRef; result: string; method: string | null; method_details: string | null;
+    round: number | null; time: string | null; details: string | null;
+  }[];
+};
+
+export type OfficialsDirectory = {
+  judges: { slug: string; name: string; n: number; first: string | null; last: string | null }[];
+  referees: { slug: string; name: string; n: number; first: string | null; last: string | null }[];
+};
+
+export type VenueEvent = {
+  id: string; name: string; date: string; complete: boolean; starts_at: number | null;
+  name_then: string | null; attendance: number | null; gate: string | null;
+  broadcasters: Record<string, string> | null; time_zone: string | null; fights: number; title_fights: number;
+};
+
+export type VenuePage = {
+  slug: string; name: string; former_names: string[];
+  city: string | null; state: string | null; country: string | null; time_zone: string | null; map_url: string;
+  events: VenueEvent[];
+  notes: { label: string; detail: string }[];
+  summary: {
+    events: number; upcoming: number; fights: number; title_fights: number; first: string | null; last: string | null;
+    attendance_known: number; average_attendance: number | null;
+    attendance_record: { event_id: string; event_name: string; date: string; attendance: number } | null;
+  };
+};
+
+export type VenueDirectory = {
+  venues: { slug: string; name: string; city: string | null; state: string | null; country: string | null; events: number; upcoming: number; last: string | null }[];
+  coverage: { events: number; with_venue: number };
 };
 
 // ---------------------------------------------------------------------------
