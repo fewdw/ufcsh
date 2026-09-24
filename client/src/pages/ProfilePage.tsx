@@ -175,7 +175,7 @@ function Profile({ handle }: { handle: string }) {
                 const params = new URLSearchParams(search); params.set("tab", tabs[next].id); setSearch(params, { replace: true });
                 event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
               }}
-              className={`min-h-9 min-w-0 flex-1 whitespace-nowrap rounded-full px-1 py-2 text-[11px] font-medium transition min-[360px]:text-[13px] sm:px-3 sm:text-sm ${section === tab.id ? segmentedSelected : segmentedIdle}`}
+              className={`min-h-9 flex-auto whitespace-nowrap rounded-full px-1.5 py-2 text-xs font-medium transition min-[375px]:text-[13px] sm:px-3 sm:text-sm ${section === tab.id ? segmentedSelected : segmentedIdle}`}
             >
               <span className="sm:hidden">{tab.short}</span>
               <span className="hidden sm:inline">{tab.label}</span>
