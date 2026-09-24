@@ -1028,7 +1028,7 @@ test("the two opposition filters each change what is read", () => {
 
   const dated = board("minimumFights=5&minimumSample=5&contextMode=opposition&oppositionScope=faced&oppositionSource=all&oppositionWhen=atTime", "context");
   assert.ok(dated.rows.length > 0);
-  assert.match(dated.description, /verified outside-UFC bouts/);
+  assert.match(dated.description, /Combined pro win rate of opponents faced, entering each bout/);
 });
 
 test("a complete career read at fight night never exceeds the same career today", () => {
