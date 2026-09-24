@@ -32,7 +32,7 @@ export default function FightScoring({ fight }: { fight: Matchup }) {
       <section className={PANEL_SHELL}>
         <PanelHeading
           title="Community scorecard"
-          subtitle={`${totals.scorers.toLocaleString()} ${totals.scorers === 1 ? "Scorer" : "Scorers"}`}
+          subtitle={`${totals.scorers.toLocaleString()} ${totals.scorers === 1 ? "scorer" : "scorers"}`}
           aside={live ? (
             <span className="flex items-center gap-1.5 text-xs text-emerald-600">
               <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />Live
@@ -102,7 +102,7 @@ function FanCards({ fight, cards, localCards, totalScorers }: { fight: Matchup; 
     <section className={PANEL_SHELL}>
       <PanelHeading
         title="Fan scorecards"
-        subtitle={`${cards.length < localCards ? `${cards.length} newest of ` : ""}${localCards.toLocaleString()} on ufc.sh${totalScorers > localCards ? ` · ${totalScorers.toLocaleString()} scorers total` : ""}`}
+        subtitle={`${cards.length < localCards ? `${cards.length} of ` : ""}${localCards.toLocaleString()}${totalScorers > localCards ? ` · ${totalScorers.toLocaleString()} total` : ""}`}
       />
       <ul className="grid grid-flow-col auto-cols-[minmax(10.5rem,1fr)] overflow-x-auto border-t border-zinc-100 sm:auto-cols-[minmax(12rem,1fr)] xl:grid-cols-5 xl:auto-cols-auto xl:overflow-visible">
         {cards.map(card => {

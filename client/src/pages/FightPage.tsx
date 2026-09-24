@@ -130,8 +130,13 @@ const RESULT_PREFIX: Record<string, string> = {
   nc: "No contest, ",
 };
 
-/** Before 2014 the performance award was a Knockout or Submission of the Night. */
-const PERF_AWARD = { perf: "Performance bonus", ko: "Knockout bonus", sub: "Submission bonus" } as const;
+/** Before 2014 the performance award was a Knockout or Submission of the Night.
+ *  The pills carry the fans' shorthand; the full name is the tooltip. */
+const PERF_AWARD = {
+  perf: { short: "POTN", full: "Performance of the Night" },
+  ko: { short: "KOTN", full: "Knockout of the Night" },
+  sub: { short: "SOTN", full: "Submission of the Night" },
+} as const;
 const AWARD_PILL = "inline-flex whitespace-nowrap rounded-full bg-amber-100 px-1.5 py-px text-[10px] font-semibold leading-4 text-amber-800";
 
 function FighterHero({
@@ -191,7 +196,7 @@ function FighterHero({
         </div>
         {side.nickname ? <div className="mt-0.5 text-xs text-zinc-400">“{side.nickname}”</div> : null}
         {(result && showResult) || fotn || perf ? (
-          <div className={`mt-2.5 flex flex-col items-center gap-1.5 ${align === "right" ? "@[58rem]:items-end" : "@[58rem]:items-start"}`}>
+          <div className={`mt-2 flex flex-wrap items-center justify-center gap-1 ${align === "right" ? "@[58rem]:justify-end" : "@[58rem]:justify-start"}`}>
             {result && showResult ? (
               <span className={`${RESULT_PILL} max-w-full justify-center text-balance tabular-nums ${outcomeClasses(side.outcome)}`}>
                 <span className="sr-only">{showResult}</span>
@@ -199,8 +204,8 @@ function FighterHero({
               </span>
             ) : null}
             {/* Fight of the Night belongs to both corners, a performance award to the winner. */}
-            {perf ? <span className={AWARD_PILL}>{PERF_AWARD[perf]}</span> : null}
-            {fotn ? <span className={AWARD_PILL}>Fight of the Night bonus</span> : null}
+            {perf ? <span className={AWARD_PILL} title={`${PERF_AWARD[perf].full} bonus`}>{PERF_AWARD[perf].short}</span> : null}
+            {fotn ? <span className={AWARD_PILL} title="Fight of the Night bonus">FOTN</span> : null}
           </div>
         ) : null}
       </div>
@@ -311,18 +316,21 @@ function FormBout({ row }: { row: UfcHistoryRow }) {
 }
 
 /** One stop as a line of its own, for a panel too narrow for five columns:
- *  the same result, opponent, method and date, with room for the full name. */
+ *  the result and opponent, and under them how it ended and when. */
 function FormListBout({ row }: { row: UfcHistoryRow }) {
   const method = resultDot(row).shortMethod ?? "";
   return (
     <FormTarget
       row={row}
-      className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-zinc-900"
+      className="flex min-w-0 items-start gap-1.5 rounded-lg px-1 py-1 transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-zinc-900"
     >
       <FormMark row={row} />
-      <span className={`min-w-0 flex-1 truncate ${CHART_TEXT} font-semibold text-zinc-800`}>{row.opponent.name}</span>
-      <span className="shrink-0 text-[9px] font-semibold uppercase leading-4 tracking-[0.04em] text-zinc-500">{method || "—"}</span>
-      <span className={`w-[4.5rem] shrink-0 whitespace-nowrap text-right ${metaText}`}>{formatDateShortWithYear(row.date)}</span>
+      <span className="min-w-0 flex-1">
+        <span className={`block truncate ${CHART_TEXT} font-semibold leading-4 text-zinc-800`}>{row.opponent.name}</span>
+        <span className="block truncate text-[10px] leading-3 text-zinc-400">
+          <span className="font-semibold uppercase text-zinc-500">{method || "—"}</span> · {formatDateShortWithYear(row.date)}
+        </span>
+      </span>
     </FormTarget>
   );
 }
@@ -339,13 +347,13 @@ function FormHalf({ name, rows, side }: { name: string; rows: UfcHistoryRow[]; s
   const mirror = side === "f2" ? "@[56rem]:flex-row-reverse" : "";
   return (
     <div className="min-w-0" aria-label={`${name}'s last five`}>
-      <div className={`mb-1 flex items-center gap-1.5 px-2 ${CHART_TEXT} font-semibold text-zinc-700 @[56rem]:hidden`}>
-        <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${side === "f1" ? "bg-f1" : "bg-f2"}`} />
-        <span className="truncate">{name}</span>
+      {/* The name in its corner's ink says whose list this is. */}
+      <div className={`mb-1 truncate px-1 text-[13px] font-semibold leading-5 @[56rem]:hidden ${side === "f1" ? "text-f1-ink" : "text-f2-ink"}`}>
+        {name}
       </div>
       <div className="flex flex-col @[34rem]:hidden">
         {rows.length ? rows.map((row, index) => <FormListBout key={row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`} row={row} />)
-          : <p className={`px-2 py-1.5 ${CHART_TEXT} text-zinc-400`}>No earlier bouts available.</p>}
+          : <p className={`px-1 py-1 ${CHART_TEXT} text-zinc-400`}>No earlier bouts available.</p>}
       </div>
       <div className={`hidden items-stretch @[34rem]:flex ${mirror}`}>
         {cells.map((row, index) =>
@@ -370,9 +378,9 @@ function FormHalf({ name, rows, side }: { name: string; rows: UfcHistoryRow[]; s
 
 function FormTimeline({ fight, f1, f2 }: { fight: Matchup; f1: UfcHistoryRow[]; f2: UfcHistoryRow[] }) {
   return (
-    <div className="grid gap-y-4 px-3 py-3 @[56rem]:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] @[56rem]:gap-x-3 @[56rem]:gap-y-0">
+    <div className="grid grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] gap-x-2 px-2 py-2 @[34rem]:grid-cols-1 @[34rem]:gap-y-4 @[34rem]:px-3 @[34rem]:py-3 @[56rem]:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] @[56rem]:gap-x-3 @[56rem]:gap-y-0">
       <FormHalf name={fight.f1.name} rows={f1} side="f1" />
-      <div aria-hidden="true" className="hidden bg-zinc-200 @[56rem]:block" />
+      <div aria-hidden="true" className="bg-zinc-100 @[34rem]:hidden @[56rem]:block @[56rem]:bg-zinc-200" />
       <FormHalf name={fight.f2.name} rows={f2} side="f2" />
     </div>
   );
@@ -434,7 +442,7 @@ function OddsPanel({ fight }: { fight: Matchup }) {
   if (!hasOddsMarkets(props, fight.f1.name, fight.f2.name)) return null;
   return (
     <section className={`${shell} @container flex flex-col overflow-hidden`}>
-      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-zinc-200 px-4 py-2 sm:py-3 dark:border-zinc-800">
         <div className="flex items-center gap-3">
           <h2 className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">Odds</h2>
           <Link
@@ -453,6 +461,7 @@ function OddsPanel({ fight }: { fight: Matchup }) {
         f1Name={fight.f1.name}
         f2Name={fight.f2.name}
         format={settings.oddsFormat}
+        compact
         result={{
           winner: fight.f1.outcome === "win" ? 1 : fight.f2.outcome === "win" ? 2 : null,
           method: fight.method,

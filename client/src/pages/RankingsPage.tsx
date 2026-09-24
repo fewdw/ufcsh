@@ -67,13 +67,13 @@ function activityMeta(entry: RankingEntry, dateMode: "relative" | "date"): { row
   switch (a.status) {
     case "scheduled":
       return {
-        row: "bg-sky-50/90",
+        row: "activity-booked",
         hint: a.next_fight ? `vs ${a.next_fight.opponent} · ${when(a.next_fight.date)}` : "scheduled",
         showsLastFight: false,
       };
     case "active":
       return {
-        row: "bg-violet-50/90",
+        row: "activity-recent",
         hint: lastFightHint || "active",
         showsLastFight: Boolean(lastFightHint),
       };
@@ -459,7 +459,7 @@ export default function RankingsPage() {
                 </button>
               ))}
             </div>
-            <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Divisions shown">
+            <div className={`${segmentedGroup} ml-auto shrink-0 p-0.5 sm:p-1 lg:order-last lg:ml-0`} role="group" aria-label="Divisions shown">
               {FILTERS.map((f) => (
                 <button
                   key={f.key}
@@ -474,7 +474,7 @@ export default function RankingsPage() {
                 </button>
               ))}
             </div>
-            <div className="ml-auto lg:order-last lg:ml-0">
+            <div className="lg:order-last">
               <FeaturesMenu
               features={features}
               onChange={setFeatures}
@@ -490,11 +490,11 @@ export default function RankingsPage() {
               {features.activityColors ? (
                 <>
                   <span className="flex items-center gap-1.5" title="Has a fight booked">
-                    <span className="h-2.5 w-2.5 rounded-sm border border-sky-200 bg-sky-50" />
+                    <span className="activity-booked activity-swatch h-2.5 w-2.5 rounded-sm border" />
                     Booked
                   </span>
                   <span className="flex items-center gap-1.5" title="Fought in the last 45 days">
-                    <span className="h-2.5 w-2.5 rounded-sm border border-violet-200 bg-violet-50" />
+                    <span className="activity-recent activity-swatch h-2.5 w-2.5 rounded-sm border" />
                     Fought ≤45d
                   </span>
                 </>
