@@ -208,3 +208,51 @@ export async function fetchEventArticle(name: string, date: string, fighters: st
   }
   return load(`${year} in UFC`);
 }
+
+export type EventInfobox = { venue: string | null; city: string | null; attendance: number | null; gate: string | null };
+
+/** One infobox field as plain text: links reduced to their label, references
+ * and templates dropped. Empty fields are null, never "". */
+function infoboxField(wikitext: string, name: string): string | null {
+  const infobox = wikitext.search(/\{\{\s*Infobox/i);
+  if (infobox < 0) return null;
+  const end = wikitext.indexOf("\n}}", infobox);
+  const scope = wikitext.slice(infobox, end > infobox ? end : undefined);
+  const match = new RegExp(`\\n\\s*\\|\\s*${name}\\s*=([^\\n]*)`, "i").exec(scope);
+  if (!match) return null;
+  const text = plainText(match[1]).replace(/<br\s*\/?>/gi, ", ").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+  return text || null;
+}
+
+/** Where the card was held and how many came, as the article's infobox has it. */
+export function eventInfobox(wikitext: string): EventInfobox {
+  const attendance = infoboxField(wikitext, "attendance")?.match(/^([\d,]{2,9})/)?.[1];
+  const gate = infoboxField(wikitext, "gate");
+  return {
+    venue: infoboxField(wikitext, "venue"),
+    city: infoboxField(wikitext, "city"),
+    attendance: attendance ? Number(attendance.replace(/,/g, "")) : null,
+    gate: gate && /\$|€|£|¥|US\$|R\$/.test(gate) ? gate.split(/\s*\(/)[0].trim() : null,
+  };
+}
+
+/** The article's Background section as readable prose, which is where
+ * bookings, replacements and weigh-in news are written up with sources. */
+export function backgroundSection(wikitext: string): string | null {
+  const match = /==\s*Background\s*==([\s\S]*?)(?:\n==[^=]|$)/i.exec(wikitext);
+  if (!match) return null;
+  const text = plainText(match[1])
+    .replace(/<[^>]+>/g, "")
+    .replace(/\n\*+\s*/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
+  return text ? text.slice(0, 20_000) : null;
+}
+
+/** An article by its exact title, as stored when the card was first read. */
+export async function fetchArticleByTitle(title: string): Promise<string | null> {
+  const url = `${API}?action=parse&format=json&prop=wikitext&redirects=1&page=${encodeURIComponent(title)}`;
+  const body = JSON.parse(await fetchHtml(url, { retries: 1 }));
+  return body?.parse?.wikitext?.["*"] ?? null;
+}

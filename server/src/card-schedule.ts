@@ -93,24 +93,33 @@ export function assignRounds(
   fights: { id: string; ord: number; f1_name: string; f2_name: string }[],
   bouts: { order: number; f1: string; f2: string; rounds: number }[],
 ): Map<string, number> {
-  const byPair = new Map<string, number | null>();
+  return assignPerBout(fights, bouts.map((bout) => ({ ...bout, value: bout.rounds })));
+}
+
+/** Any per-bout fact from ufc.com's feed (a length, a referee), attached by
+ * the same rule: both names, or card position plus one identical name. A
+ * pairing listed twice with different values is not an answer. */
+export function assignPerBout<T>(
+  fights: { id: string; ord: number; f1_name: string; f2_name: string }[],
+  bouts: { order: number; f1: string; f2: string; value: T }[],
+): Map<string, T> {
+  const byPair = new Map<string, T | null>();
   for (const bout of bouts) {
     const key = pairKey(bout.f1, bout.f2);
-    // The same pairing listed twice with different lengths is not an answer.
-    byPair.set(key, byPair.has(key) && byPair.get(key) !== bout.rounds ? null : bout.rounds);
+    byPair.set(key, byPair.has(key) && byPair.get(key) !== bout.value ? null : bout.value);
   }
-  const assigned = new Map<string, number>();
+  const assigned = new Map<string, T>();
   for (const fight of fights) {
     const paired = byPair.get(pairKey(fight.f1_name, fight.f2_name));
     if (paired !== undefined) {
-      if (paired) assigned.set(fight.id, paired);
+      if (paired != null) assigned.set(fight.id, paired);
       continue;
     }
     // ufc.com numbers its card from 1 at the main event; ours counts from 0.
     const names = new Set([firstLastName(fight.f1_name), firstLastName(fight.f2_name)]);
     const placed = bouts.filter((bout) => bout.order === Number(fight.ord) + 1
       && (names.has(firstLastName(bout.f1)) || names.has(firstLastName(bout.f2))));
-    if (placed.length === 1) assigned.set(fight.id, placed[0].rounds);
+    if (placed.length === 1) assigned.set(fight.id, placed[0].value);
   }
   return assigned;
 }

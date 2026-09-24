@@ -1,5 +1,21 @@
 import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
+import type { VenueRef } from "../api";
 import { formatDate, formatDateShort } from "../format";
+
+/** The venue, linked to its history, ahead of the city the source prints. */
+export function EventPlace({ venue, location }: { venue?: VenueRef | null; location: string | null | undefined }) {
+  if (!venue && !location) return null;
+  return (
+    <>
+      <span aria-hidden="true" className="text-zinc-300">·</span>
+      <span className="min-w-0">
+        {venue ? <><Link to={`/venues/${venue.slug}`} className="font-medium text-zinc-600 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-950">{venue.name}</Link>{location ? ", " : ""}</> : null}
+        {location}
+      </span>
+    </>
+  );
+}
 
 export const CARD_STEP = "inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
 
@@ -17,10 +33,11 @@ export function CardNavigation({ previous, center, next }: {
   );
 }
 
-export function CardEventTitle({ name, date, location, dayLabel, children }: {
+export function CardEventTitle({ name, date, location, venue, dayLabel, children }: {
   name: string;
   date: string;
   location: string | null | undefined;
+  venue?: VenueRef | null;
   dayLabel?: string | null;
   children?: ReactNode;
 }) {
@@ -33,7 +50,7 @@ export function CardEventTitle({ name, date, location, dayLabel, children }: {
             <span className="@[48rem]:hidden">{formatDateShort(date)}{dayLabel ? `, ${dayLabel}` : ""}</span>
             <span className="hidden @[48rem]:inline">{formatDate(date)}{dayLabel ? ` (${dayLabel})` : ""}</span>
           </span>
-          {location ? <><span aria-hidden="true" className="text-zinc-300">·</span><span>{location}</span></> : null}
+          <EventPlace venue={venue} location={location} />
         </div>
       </div>
       {children ? <div className="flex shrink-0 flex-col items-end gap-1 text-right @[48rem]:max-w-[45%]">{children}</div> : null}

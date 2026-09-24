@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, List, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ImageIcon, List, X } from "lucide-react";
 import { isFightDay, liveFightId } from "../liveEvent";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -19,6 +19,7 @@ import Avatar from "../components/Avatar";
 import { CardEventTitle, CardNavigation, CARD_STEP } from "../components/CardHeader";
 import FightScoring from "../components/FightScoring";
 import FightPredictions from "../components/FightPredictions";
+import FightContextPanel from "../components/FightContextPanel";
 const FightDiscussion = lazy(() => import("../components/FightDiscussion"));
 import FighterPortrait from "../components/FighterPortrait";
 import { resultDot } from "../resultDots";
@@ -46,6 +47,8 @@ import { useSettings, withRanking } from "../settings";
 import { scoreableRoundCount } from "../scoring";
 import { useNow } from "../useNow";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
+import { useShortcutNav } from "../shortcuts";
+import { useGraphics } from "../graphicsLauncher";
 
 const shell = PANEL_SHELL;
 const RESULT_PILL =
@@ -810,8 +813,8 @@ function FightRail({ eventId, currentId, returnDepth }: { eventId: string; curre
 
 // ---------------------------------------------------------------------------
 
-type MatchupTab = "fight" | "matchup" | "odds" | "score" | "predict" | "discussion";
-const TAB_LABEL: Record<MatchupTab, string> = { fight: "Result", matchup: "Matchup", odds: "Odds", score: "Score", predict: "Predict", discussion: "Discussion" };
+type MatchupTab = "fight" | "matchup" | "context" | "odds" | "score" | "predict" | "discussion";
+const TAB_LABEL: Record<MatchupTab, string> = { fight: "Result", matchup: "Matchup", context: "Context", odds: "Odds", score: "Score", predict: "Predict", discussion: "Discussion" };
 
 /** The matchup's sections, grouped by the question they answer. Arrow keys move
  *  between tabs the way a native tab control does. */
@@ -854,6 +857,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   const { settings } = useSettings();
   const navigate = useNavigate();
   const location = useLocation();
+  const openGraphics = useGraphics();
   const previousFight = useRef<Matchup | null>(null);
   const [failedPortraitPair, setFailedPortraitPair] = useState<string | null>(null);
   const { data: loadedFight, loading, error, retry } = useApi<Matchup>(withRanking(`/api/fights/${fightId}`, settings.rankingSource),
@@ -919,12 +923,31 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   // matchup is still loading and the event isn't known yet).
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      // A dialog closes itself first, and a field being typed in keeps its Escape.
+      if (document.querySelector("dialog[open]")) return;
+      if (e.target instanceof HTMLElement && e.target.closest("input, textarea, select, [contenteditable='true']")) return;
       closeFight();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [closeFight]);
+
+  // The arrow keys walk the card the same way the Prev/Next links do: Next
+  // moves up toward the main event.
+  const cardFights = cardEvent && cardEvent.id === eventId ? cardEvent.fights : [];
+  const cardAt = cardFights.findIndex((entry) => entry.id === fightId);
+  const stepTo = (target: EventFight | undefined) => target && eventId ? () => navigate(
+    { pathname: `/fights/${target.id}`, search: cardFightSearch(location.search) },
+    { state: { eventId, ...(eventReturnDepth ? { eventReturnDepth: eventReturnDepth + 1 } : {}) } },
+  ) : null;
+  useShortcutNav(cardEvent && cardAt >= 0 ? {
+    context: `fights on ${cardEvent.name}`,
+    prevLabel: "previous fight, toward the opener",
+    nextLabel: "next fight, toward the main event",
+    prev: stepTo(cardFights[cardAt + 1]),
+    next: stepTo(cardAt > 0 ? cardFights[cardAt - 1] : undefined),
+  } : null);
 
   if (loading && !fight) {
     return (
@@ -971,6 +994,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   const tabs: MatchupTab[] = [
     ...(fight.status === "past" || fight.in_progress || hasStats ? ["fight" as const] : []),
     "matchup",
+    "context",
     ...(hasOddsMarkets(fight.odds?.props, fight.f1.name, fight.f2.name) ? ["odds" as const] : []),
     ...(scoreableRoundCount(fight) > 0 ? ["score" as const] : []),
     ...(fight.prediction_available !== false && (fight.status !== "past" || requestedTab === "predict") ? ["predict" as const] : []),
@@ -1013,6 +1037,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 name={fight.event.name}
                 date={fight.event.date}
                 location={fight.event.location}
+                venue={fight.event.venue}
                 dayLabel={fight.status === "past" ? null : futureDayLabel(fight.event.date, now)}
               >
                 {isFightDay(fight.event.date) && error && !changingMatchup ? <span role="status" className="text-xs text-zinc-500">Connection interrupted; retrying…</span> : null}
@@ -1020,6 +1045,11 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
             </section>
 
             <section data-photo-view={portraits ? "full" : "face"} className={`matchup-top-card matchup-overview @container relative overflow-hidden ${shell}`}>
+              <button type="button" onClick={() => openGraphics({ kind: fight.status === "past" ? "result" : "matchup", id: fight.id })}
+                aria-label="Generate a shareable graphic of this matchup" title="Generate graphic"
+                className={`absolute left-2 top-2 z-10 ${CLOSE_BUTTON}`}>
+                <ImageIcon className="h-4 w-4" aria-hidden="true" />
+              </button>
               <button type="button" onClick={closeFight} aria-label="Close matchup and return to card" title="Close matchup (Esc)" aria-keyshortcuts="Escape"
                 className={`absolute right-2 top-2 z-10 ${CLOSE_BUTTON}`}>
                 <X className={CLOSE_ICON} aria-hidden="true" />
@@ -1044,7 +1074,13 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                       the space the two names need. */}
                   <div className="matchup-billing col-span-3 col-start-1 row-start-1 flex flex-col items-center text-center">
                     <WeightClassLabel fight={fight} />
-                    {referee ? <div className="mt-1 text-[10px] text-zinc-400">Ref {referee}</div> : null}
+                    {referee ? (
+                      <div className="mt-1 text-[10px] text-zinc-400">
+                        Ref {fight.officials?.referee?.slug
+                          ? <Link to={`/referees/${fight.officials.referee.slug}`} className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-700">{referee}</Link>
+                          : referee}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="col-start-1 row-start-2 min-w-0">
                     <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} reserveRank={reserveRank} />
@@ -1105,6 +1141,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 <HeadToHead fight={fight} later />
                 <CommonOpponents fight={fight} />
               </> : null}
+              {tab === "context" ? <FightContextPanel key={fight.id} fight={fight} /> : null}
               {tab === "odds" ? <OddsPanel fight={fight} /> : null}
               {tab === "score" ? <FightScoring key={fight.id} fight={fight} /> : null}
               {tab === "predict" ? <FightPredictions key={fight.id} fight={fight} /> : null}

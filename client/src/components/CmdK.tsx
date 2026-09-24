@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, CalendarDays, ChartNoAxesColumn, Search, Trophy, X } from "lucide-react";
+import { ArrowRight, CalendarDays, ChartNoAxesColumn, Gavel, Info, MapPin, Search, Trophy, X } from "lucide-react";
 import { formatDateShortWithYear } from "../format";
 import { parseSearch, useSearch } from "../useSearch";
 import Avatar from "./Avatar";
@@ -12,6 +12,9 @@ const destinations = [
   { to: "/", label: "Events", description: "Browse cards and fight results", icon: CalendarDays },
   { to: "/rankings", label: "Rankings", description: "Explore every division", icon: Trophy },
   { to: "/stats", label: "Statistics", description: "Find records and compare fighters", icon: ChartNoAxesColumn },
+  { to: "/officials", label: "Judges & referees", description: "Scorecards, dissents and stoppages", icon: Gavel },
+  { to: "/venues", label: "Venues", description: "Every arena and the cards held there", icon: MapPin },
+  { to: "/info", label: "About UFC.sh", description: "Sources, definitions, shortcuts and changelog", icon: Info },
 ];
 
 export default function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -60,6 +63,22 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
       render: () => <>
         <span className="min-w-0 flex-1"><span className="flex min-w-0 items-center gap-2"><span className="truncate font-medium text-zinc-900">{fight.f1_name} <span className="text-zinc-400">vs</span> {fight.f2_name}</span>{fight.meetings > 1 ? <span className="shrink-0 rounded-full bg-zinc-100 px-1.5 py-px text-[10px] font-semibold tabular-nums text-zinc-600" title={`Meeting ${fight.meeting} of ${fight.meetings}`}>Fight {fight.meeting}</span> : null}</span><span className="block truncate text-xs text-zinc-500">{fight.event_name}</span></span>
         <span className="shrink-0 text-xs tabular-nums text-zinc-500">{formatDateShortWithYear(fight.date)}</span>
+      </>,
+    })),
+    ...(data?.officials ?? []).map((official) => ({
+      key: `official-${official.kind}-${official.slug}`, to: `/${official.kind === "judge" ? "judges" : "referees"}/${official.slug}`, group: "Officials", label: official.name,
+      render: () => <>
+        <Gavel className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate font-medium text-zinc-900">{official.name}</span>
+        <span className="shrink-0 text-xs text-zinc-500">{official.kind === "judge" ? "Judge" : "Referee"} · {official.n.toLocaleString()}</span>
+      </>,
+    })),
+    ...(data?.venues ?? []).map((venue) => ({
+      key: `venue-${venue.slug}`, to: `/venues/${venue.slug}`, group: "Venues", label: venue.name,
+      render: () => <>
+        <MapPin className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate font-medium text-zinc-900">{venue.name}</span>
+        <span className="shrink-0 text-xs text-zinc-500">{venue.city ?? ""}</span>
       </>,
     })),
   ] : destinations.map(({ to, label, description, icon: Icon }) => ({

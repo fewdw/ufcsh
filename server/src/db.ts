@@ -353,6 +353,27 @@ for (const alter of [
   // moves when a price is stored, so on its own it can't tell "not posted yet"
   // from "never tried".
   "ALTER TABLE odds ADD COLUMN checked_at INTEGER",
+  // Where a card is staged, from the promotion's own live-card feed: its
+  // venue id (stable across renamings), the offset it was scheduled in, and
+  // who carried each segment. Wikipedia's infobox adds the name the venue
+  // had that night, attendance, gate and the article's background prose.
+  "ALTER TABLE events ADD COLUMN ufc_event_id INTEGER",
+  "ALTER TABLE events ADD COLUMN venue_id INTEGER",
+  "ALTER TABLE events ADD COLUMN venue_name TEXT",
+  "ALTER TABLE events ADD COLUMN venue_city TEXT",
+  "ALTER TABLE events ADD COLUMN venue_state TEXT",
+  "ALTER TABLE events ADD COLUMN venue_country TEXT",
+  "ALTER TABLE events ADD COLUMN venue_tz TEXT",
+  "ALTER TABLE events ADD COLUMN broadcast_json TEXT",
+  "ALTER TABLE events ADD COLUMN venue_checked_at INTEGER",
+  "ALTER TABLE events ADD COLUMN wiki_venue TEXT",
+  "ALTER TABLE events ADD COLUMN wiki_city TEXT",
+  "ALTER TABLE events ADD COLUMN attendance INTEGER",
+  "ALTER TABLE events ADD COLUMN gate TEXT",
+  "ALTER TABLE events ADD COLUMN wiki_background TEXT",
+  "ALTER TABLE events ADD COLUMN wiki_info_checked_at INTEGER",
+  // The referee the promotion has assigned to a bout, before UFCStats names one.
+  "ALTER TABLE fights ADD COLUMN referee_assigned TEXT",
 ]) {
   try {
     db.exec(alter);
@@ -499,7 +520,8 @@ const revisionTables: Record<string, string[]> = {
 };
 for (const [table, revisions] of Object.entries(revisionTables)) {
   const checkTimestamps = new Set(["detail_fetched_at", "birth_fetched_at", "photo_checked_at", "bfo_checked_at", "bfo_final_at",
-    "schedule_fetched_at", "segments_fetched_at", "wiki_checked_at", "fetched_at", "checked_at"]);
+    "schedule_fetched_at", "segments_fetched_at", "wiki_checked_at", "fetched_at", "checked_at",
+    "venue_checked_at", "wiki_info_checked_at"]);
   const columns = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[])
     .map(row => row.name).filter(name => !checkTimestamps.has(name));
   const update = `UPDATE data_revisions SET value = value + 1 WHERE key IN (${revisions.map(key => `'${key}'`).join(",")});`;

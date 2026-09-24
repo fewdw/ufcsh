@@ -43,11 +43,14 @@ import { getStats } from "./stats.ts";
 import { getLabs, getLabsBouts, getLabsFill, getLabsMatchups } from "./labs.ts";
 import { getLabsInsights, getLabsJudgeBouts, getLabsJudges, getLabsRoadBouts } from "./labs-insights.ts";
 import { titleNarratives } from "./titles.ts";
-import { fighterRecords, fighterStats } from "./records.ts";
+import { fighterBoard, fighterRecords } from "./records.ts";
 import { careerBefore, completeRecordBefore, fightIndex, ageOn, parseScheduledRounds, professionalBouts, professionalBoutsBefore, sideOf, ufcBoutsBefore, type FightRecord } from "./fight-index.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { summarizeCard } from "./card-stats.ts";
 import { mergeJudgeRounds } from "./judge-scorecards.ts";
+import { fightContext } from "./fight-context.ts";
+import { judgeProfile, officialSlug, officialsDirectory, refereeProfile, searchOfficials } from "./officials.ts";
+import { searchVenues, venueDirectory, venueOfEvent, venuePage } from "./venues.ts";
 
 const CLIENT_DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "client", "dist");
 const IMAGE_CACHE = path.join(DATA_DIR, "images");
@@ -486,6 +489,8 @@ async function getEvent(id: string, rankingType: RankingType): Promise<unknown |
     refreshing,
     date: e.date,
     location: e.location,
+    venue: venueOfEvent(e.id),
+    broadcasters: (() => { try { return (e as any).broadcast_json ? JSON.parse((e as any).broadcast_json) : null; } catch { return null; } })(),
     status: eventStatus(e, nextEventDate()),
     results_updated_at: e.detail_fetched_at,
     live: isFightDay(e.date),
@@ -922,9 +927,15 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
   );
 
   const detail = fightDetail(f);
+  const referee: string | null = detail?.methodInfo?.Referee || f.referee_assigned || null;
   return {
     id: f.id,
-    event: { id: f.event_id, name: f.event_name, date: f.event_date, location: f.event_location },
+    event: { id: f.event_id, name: f.event_name, date: f.event_date, location: f.event_location, venue: venueOfEvent(f.event_id) },
+    /** Profile addresses for the officials the card names; judges in card order. */
+    officials: {
+      referee: referee ? { name: referee, slug: officialSlug("referee", referee), assigned: !detail?.methodInfo?.Referee } : null,
+      judges: Array.isArray(detail?.judges) ? detail.judges.map((card: any) => officialSlug("judge", card?.judge)) : [],
+    },
     refreshing,
     status: fightIsComplete(f) ? "past" : "upcoming",
     // Completed picks remain readable from a profile. Upcoming fights only
@@ -1005,7 +1016,6 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     `)
     .get(id, rankingType) as any;
   const records = fighterRecords(id);
-  const recordKeys = new Set(records.map((entry) => `${entry.key}:${entry.scope}`));
   const profile = {
     id: fr.id,
     name: fr.name,
@@ -1031,7 +1041,6 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     // Where this fighter sits at the top of the sport, recomputed from the
     // same index the leaderboards use, so it moves the moment a result lands.
     records,
-    stats: fighterStats(id).filter((entry) => !recordKeys.has(`${entry.key}:${entry.scope}`)),
     history: mergedUfcHistory,
     pro_history: proHistory,
   };
@@ -1286,7 +1295,7 @@ function fuzzyMatches<T extends { id: string; target: FuzzyTarget }>(
 
 export function search(q: string): unknown {
   const norm = normName(q);
-  if (!norm) return { fighters: [], events: [], fights: [] };
+  if (!norm) return { fighters: [], events: [], fights: [], officials: [], venues: [] };
   const like = `%${norm.replace(/\s+/g, "%")}%`;
   const index = searchIndex();
   // The query's words in order within one line of a row's `names`, as SQL LIKE
@@ -1352,6 +1361,8 @@ export function search(q: string): unknown {
     })),
     events,
     fights,
+    officials: searchOfficials(q),
+    venues: searchVenues(q),
   };
 }
 
@@ -1855,7 +1866,16 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   if (p === "/api/events") return listEvents();
   if (p === "/api/live") return liveCard(rankingType);
   if (p.startsWith("/api/events/")) return await getEvent(id, rankingType) ?? undefined;
+  if (/^\/api\/fights\/[a-f0-9]{16}\/context$/i.test(p)) return fightContext(id) ?? undefined;
   if (p.startsWith("/api/fights/")) return await getFight(id, rankingType) ?? undefined;
+  if (p === "/api/officials") return officialsDirectory();
+  if (p.startsWith("/api/judges/")) return judgeProfile(id, url.searchParams) ?? undefined;
+  if (p.startsWith("/api/referees/")) return refereeProfile(id, url.searchParams) ?? undefined;
+  if (p === "/api/venues") return venueDirectory();
+  if (p.startsWith("/api/venues/")) return venuePage(id) ?? undefined;
+  if (/^\/api\/fighters\/[a-f0-9]{16}\/stats$/i.test(p)) {
+    return hasCompletedUfcFight(id) ? fighterBoard(id, url.searchParams.get("scope") ?? "ufc") ?? undefined : undefined;
+  }
   if (p.startsWith("/api/fighters/")) return await getFighter(id, rankingType) ?? undefined;
   if (p.startsWith("/api/previews/")) return getFighterPreview(id) ?? undefined;
   if (p === "/api/rankings") return { updated_at: syncedAt("rankings_synced_at"), divisions: getRankings(rankingType) };

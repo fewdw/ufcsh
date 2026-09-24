@@ -13,13 +13,16 @@ import OddsPair from "../components/OddsPair";
 import { Moneyline, moneylineLeg, OddsFormatTabs, OddsMarkets, type FightResult } from "../components/MatchupOdds";
 import { hasOddsMarkets } from "../oddsLayout";
 import FightView from "./FightPage";
+import { EventPlace } from "../components/CardHeader";
+import { useShortcutNav } from "../shortcuts";
+import { useGraphics } from "../graphicsLauncher";
 import type { Matchup } from "../api";
 import { SITE_URL, useSeo } from "../seo";
 import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
 import { useSettings, withRanking, type OddsFormat } from "../settings";
 import { eventKind, type EventKind } from "../eventKind";
 import SearchGlyph from "../components/SearchGlyph";
-import { ChevronLeft, ChevronRight, List, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ImageIcon, List, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
 
@@ -760,6 +763,15 @@ function StepLink({ event, direction }: { event: EventListItem | null; direction
 
 function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: boolean; nav: EventNav }) {
   const { settings, update } = useSettings();
+  const navigate = useNavigate();
+  const openGraphics = useGraphics();
+  useShortcutNav({
+    context: "events by date",
+    prevLabel: nav.prev ? `earlier card (${nav.prev.name})` : "earlier card",
+    nextLabel: nav.next ? `later card (${nav.next.name})` : "later card",
+    prev: nav.prev ? () => navigate(`/events/${nav.prev!.id}`) : null,
+    next: nav.next ? () => navigate(`/events/${nav.next!.id}`) : null,
+  });
   const url = withRanking(`/api/events/${eventId}`, settings.rankingSource);
   const { data: event, loading, error } = useApi<EventDetail>(url,
     data => data?.refreshing ? 5_000 : isFightDay(data?.date) ? 15_000 : data?.status !== "past" ? 5 * 60_000 : 0);
@@ -842,8 +854,14 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
                 <span className="@[48rem]:hidden">{formatDateShort(event.date)}{dayLabel ? `, ${dayLabel}` : ""}</span>
                 <span className="hidden @[48rem]:inline">{formatDate(event.date)}{dayLabel ? ` (${dayLabel})` : ""}</span>
               </span>
-              {event.location ? <><span aria-hidden="true" className="text-zinc-300">·</span><span>{event.location}</span></> : null}
+              <EventPlace venue={event.venue} location={event.location} />
             </div>
+            {event.fights.length ? (
+              <button type="button" onClick={() => openGraphics({ kind: "event", id: event.id })}
+                className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-zinc-500 hover:text-zinc-900">
+                <ImageIcon className="h-3 w-3" aria-hidden="true" />Card graphic
+              </button>
+            ) : null}
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1 text-right empty:hidden @[48rem]:max-w-[45%]">
             {schedule.length ? (

@@ -1,11 +1,11 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, Route, Routes, useLocation } from "react-router-dom";
 import AccountButton from "./components/AccountButton";
 import CmdK from "./components/CmdK";
 import SearchGlyph from "./components/SearchGlyph";
 import LiveMatchup from "./components/LiveMatchup";
 import { segmentedIdle, segmentedSelected } from "./components/segmented";
-import { Moon, ShieldCheck, Sun } from "lucide-react";
+import { Keyboard, Moon, ShieldCheck, Sun } from "lucide-react";
 import { accountsEnabled, useAccount } from "./auth";
 import { useAdminResource, type AdminSession } from "./admin";
 import { useSettings, withRanking } from "./settings";
@@ -13,6 +13,8 @@ import { prefetch } from "./api";
 import { useFighterPrefetch } from "./useFighterPrefetch";
 import RouteErrorBoundary from "./components/RouteErrorBoundary";
 import ParlaySlip from "./components/ParlaySlip";
+import { ShortcutProvider, useShortcutHelp } from "./shortcuts";
+import { GraphicsProvider } from "./graphicsLauncher";
 
 const loadEventsPage = () => import("./pages/EventsPage");
 const loadRankingsPage = () => import("./pages/RankingsPage");
@@ -25,6 +27,12 @@ const LabsPage = lazy(() => import("./pages/LabsPage"));
 const AdminPage = lazy(() => import("./pages/AdminPage"));
 const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const AuthPage = lazy(() => import("./pages/AuthPage"));
+const JudgePage = lazy(() => import("./pages/JudgePage"));
+const RefereePage = lazy(() => import("./pages/RefereePage"));
+const VenuePage = lazy(() => import("./pages/VenuePage"));
+const OfficialsPage = lazy(() => import("./pages/DirectoryPages").then((module) => ({ default: module.OfficialsPage })));
+const VenuesPage = lazy(() => import("./pages/DirectoryPages").then((module) => ({ default: module.VenuesPage })));
+const InfoPage = lazy(() => import("./pages/InfoPage"));
 const isDevSite = import.meta.env.VITE_SITE_ORIGIN === "https://dev.ufc.sh";
 
 const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
@@ -44,6 +52,7 @@ function AdminNavItem({ active }: { active: boolean }) {
 
 function Header({ onSearch }: { onSearch: () => void }) {
   const { pathname } = useLocation();
+  const showShortcuts = useShortcutHelp();
   const { settings, update } = useSettings();
   const dark = settings.theme === "dark";
   const isRankings = pathname.startsWith("/rankings");
@@ -107,6 +116,18 @@ function Header({ onSearch }: { onSearch: () => void }) {
             <SearchGlyph />
             <span className="hidden sm:inline">Search anything</span>
             <kbd className="hidden rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 lg:inline">⌘K</kbd>
+          </button>
+          {/* Keyboards live on desktops: the sheet is one press of ? away, and
+              this is where someone who has never pressed it finds it. */}
+          <button
+            type="button"
+            onClick={showShortcuts}
+            aria-label="Keyboard shortcuts"
+            aria-keyshortcuts="?"
+            title="Keyboard shortcuts (?)"
+            className="hidden h-9 w-9 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 lg:grid"
+          >
+            <Keyboard className="h-4 w-4" aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -174,9 +195,12 @@ export default function App() {
     };
   }, []);
 
+  const openSearch = useCallback(() => setSearchOpen(true), []);
   return (
+    <ShortcutProvider onSearch={openSearch}>
+    <GraphicsProvider>
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-zinc-100 text-zinc-900">
-      <Header onSearch={() => setSearchOpen(true)} />
+      <Header onSearch={openSearch} />
       <div className="min-h-0 flex-1 overflow-hidden">
         <RouteErrorBoundary key={routeGroup(location.pathname)}>
         <Suspense fallback={<div role="status" className="flex h-full items-center justify-center text-sm text-zinc-400">Loading…</div>}>
@@ -191,6 +215,12 @@ export default function App() {
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/admin/bugs" element={<AdminPage />} />
           <Route path="/profiles/:handle" element={<ProfilePage />} />
+          <Route path="/judges/:slug" element={<JudgePage />} />
+          <Route path="/referees/:slug" element={<RefereePage />} />
+          <Route path="/officials" element={<OfficialsPage />} />
+          <Route path="/venues" element={<VenuesPage />} />
+          <Route path="/venues/:slug" element={<VenuePage />} />
+          <Route path="/info" element={<InfoPage />} />
           <Route path="/sign-in/*" element={<AuthPage mode="sign-in" />} />
           <Route path="/sign-up/*" element={<AuthPage mode="sign-up" />} />
           <Route path="*" element={<div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-zinc-500"><p>This page couldn’t be found.</p><Link to="/" className="font-semibold text-zinc-900 underline">Back to events</Link></div>} />
@@ -201,5 +231,7 @@ export default function App() {
       <CmdK open={searchOpen} onClose={() => setSearchOpen(false)} />
       <ParlaySlip />
     </div>
+    </GraphicsProvider>
+    </ShortcutProvider>
   );
 }

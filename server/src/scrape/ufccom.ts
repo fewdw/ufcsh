@@ -500,18 +500,76 @@ export function parseCardRounds(feed: unknown, fightIds: number[]): ScrapedBoutR
   return bouts;
 }
 
+/** Where and how a card is staged, as the promotion's own feed states it. */
+export type ScrapedEventInfo = {
+  eventId: number;
+  venueId: number | null;
+  venue: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  /** The offset the card is scheduled in, as published ("GMT-07:00"). */
+  timeZone: string | null;
+  /** Broadcaster per segment, exactly as named ("ESPN+", "PPV"). */
+  broadcasters: Partial<Record<CardSegment, string>>;
+  /** Assigned referee per bout, by card order and both names. */
+  referees: { order: number; f1: string; f2: string; referee: string }[];
+};
+
+const FEED_SEGMENT: Record<string, CardSegment> = { main: "main", prelims: "prelims", "early prelims": "early", early: "early" };
+const clean = (value: unknown): string | null => {
+  const text = typeof value === "string" ? cleanText(value) : "";
+  return text && text.toLowerCase() !== "null" ? text : null;
+};
+
+/** The venue, broadcasters and officials a live-card feed names. Nothing is
+ * inferred: a field the feed leaves out stays null. */
+export function parseEventInfo(feed: unknown): ScrapedEventInfo | null {
+  const event = (feed as any)?.LiveEventDetail;
+  const eventId = Number(event?.EventId);
+  if (!Number.isInteger(eventId) || eventId < 1) return null;
+  const location = event?.Location ?? {};
+  const venueId = Number(location?.VenueId);
+  const broadcasters: ScrapedEventInfo["broadcasters"] = {};
+  const referees: ScrapedEventInfo["referees"] = [];
+  for (const fight of Array.isArray(event?.FightCard) ? event.FightCard : []) {
+    const segment = FEED_SEGMENT[String(fight?.CardSegment ?? "").trim().toLowerCase()];
+    const broadcaster = clean(fight?.CardSegmentBroadcaster);
+    if (segment && broadcaster && !broadcasters[segment]) broadcasters[segment] = broadcaster;
+    const referee = clean(`${fight?.Referee?.FirstName ?? ""} ${fight?.Referee?.LastName ?? ""}`);
+    const names = (fight?.Fighters ?? []).map((fighter: any) =>
+      cleanText(`${fighter?.Name?.FirstName ?? ""} ${fighter?.Name?.LastName ?? ""}`));
+    if (referee && names.length === 2 && names[0] && names[1]) {
+      referees.push({ order: Number(fight?.FightOrder) || 0, f1: names[0], f2: names[1], referee });
+    }
+  }
+  return {
+    eventId,
+    venueId: Number.isInteger(venueId) && venueId > 0 ? venueId : null,
+    venue: clean(location?.Venue),
+    city: clean(location?.City),
+    state: clean(location?.State),
+    country: clean(location?.Country),
+    timeZone: /^GMT[+-]\d{2}:\d{2}$/.test(String(event?.TimeZone ?? "")) ? String(event.TimeZone) : null,
+    broadcasters,
+    referees,
+  };
+}
+
 async function fetchJson(url: string): Promise<unknown> {
   return JSON.parse(await fetchHtml(url, { timeoutMs: 30000 }));
 }
 
-/** An event page plus the rule set of every bout on it. */
-export async function scrapeEventCard(slug: string): Promise<{ segments: ScrapedSegmentBout[]; rounds: ScrapedBoutRounds[] | null }> {
+/** An event page plus the rule set of every bout on it, and the venue,
+ * broadcasters and referees the same feed names. */
+export async function scrapeEventCard(slug: string): Promise<{ segments: ScrapedSegmentBout[]; rounds: ScrapedBoutRounds[] | null; info: ScrapedEventInfo | null }> {
   const html = await fetchHtml(`https://www.ufc.com/event/${slug}`, { timeoutMs: 40000 });
   const segments = parseEventSegments(html);
   const fightIds = parseFightIds(html);
-  if (!fightIds.length) return { segments, rounds: null };
+  if (!fightIds.length) return { segments, rounds: null, info: null };
   const fight = await fetchJson(`${LIVE_CARD_API}/fight/live/${fightIds[0]}.json`) as any;
   const eventId = Number(fight?.LiveFightDetail?.Event?.EventId);
   if (!Number.isInteger(eventId) || eventId < 1) throw new Error(`ufc.com fight ${fightIds[0]} named no event`);
-  return { segments, rounds: parseCardRounds(await fetchJson(`${LIVE_CARD_API}/event/live/${eventId}.json`), fightIds) };
+  const feed = await fetchJson(`${LIVE_CARD_API}/event/live/${eventId}.json`);
+  return { segments, rounds: parseCardRounds(feed, fightIds), info: parseEventInfo(feed) };
 }
