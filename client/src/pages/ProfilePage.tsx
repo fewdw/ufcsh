@@ -324,7 +324,7 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
         </div>
       </div>
       {mine && user ? (
-        <div className="mt-3 flex items-center justify-center gap-1 border-t border-zinc-100 pt-2 sm:justify-start sm:gap-1.5">
+        <div className="mt-3 flex items-center justify-center gap-1 border-t border-zinc-100 pt-2 sm:gap-1.5">
           <button type="button" onClick={() => setReportOpen(true)} className={action} title="Report an issue">
             <Flag className="h-3.5 w-3.5" aria-hidden="true" />Report
           </button>

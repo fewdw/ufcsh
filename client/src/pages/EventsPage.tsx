@@ -27,9 +27,15 @@ const shell = "rounded-2xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgb
 const TITLE_TAG: Record<string, { label: string; className: string }> = {
   title: { label: "title", className: "bg-amber-100 text-amber-700" },
   interim: { label: "interim title", className: "bg-amber-50 text-amber-600" },
-  tournament: { label: "tournament", className: "bg-zinc-100 text-zinc-500" },
-  tuf: { label: "TUF final", className: "bg-zinc-100 text-zinc-500" },
 };
+
+/** Only a belt earns a tag; a tournament or TUF final reads as noise on a
+ *  fight row, at any width. */
+function beltTag(fight: EventFight) {
+  if (!fight.title_fight) return null;
+  return fight.title_type === "interim" ? TITLE_TAG.interim
+    : fight.title_type === "title" || !fight.title_type ? TITLE_TAG.title : null;
+}
 const METHOD_TAG = "shrink-0 rounded-full px-1.5 py-px text-[9px] font-bold uppercase leading-4 tracking-[0.06em]";
 const DAY_MS = 86_400_000;
 const MONTHS = [
@@ -435,9 +441,9 @@ function FightRow({ fight, past, eventId, live = false }: { fight: EventFight; p
       </> : null}
       <span className="text-[10px] font-medium text-zinc-500">{fight.weight_class}</span>
       {fight.scheduled_rounds ? <span className="text-[10px] font-medium text-zinc-400">{roundsLabel(fight.scheduled_rounds)}</span> : null}
-      {fight.title_fight ? (
-        <span className={`rounded px-1 py-px text-[9px] font-bold uppercase ${(TITLE_TAG[fight.title_type ?? "title"] ?? TITLE_TAG.title).className}`}>
-          {(TITLE_TAG[fight.title_type ?? "title"] ?? TITLE_TAG.title).label}
+      {beltTag(fight) ? (
+        <span className={`rounded px-1 py-px text-[9px] font-bold uppercase ${beltTag(fight)!.className}`}>
+          {beltTag(fight)!.label}
         </span>
       ) : null}
     </div>
@@ -527,10 +533,7 @@ function CompactSide({ side, fight, done, other }: { side: FightSide; fight: Eve
  *  sportsbook lists a game: half the height of the face-off layout, and each
  *  name gets the whole width. */
 function CompactFightRow({ fight, done, live }: { fight: EventFight; done: boolean; live: boolean }) {
-  // Only a belt earns a tag here; a tournament or TUF final reads as noise at
-  // this size.
-  const title = fight.title_fight && (fight.title_type === "title" || fight.title_type === "interim" || !fight.title_type)
-    ? TITLE_TAG[fight.title_type ?? "title"] ?? TITLE_TAG.title : null;
+  const title = beltTag(fight);
   const expected = !done ? clockTime(fight.starts_at) : null;
   // The winner's badge already says how it ended; only a result with no
   // winner's badge to carry it is written out here.
@@ -633,16 +636,16 @@ function CardOddsRow({ fight, eventId, live, past, format }: { fight: EventFight
             badge is present, so the odds box lands at the same x on every
             card instead of drifting row to row. */}
         <div className="flex w-full flex-col items-center gap-1">
-          {live || fight.scheduled_rounds || fight.title_fight ? (
+          {live || fight.scheduled_rounds || beltTag(fight) ? (
             <div className="flex w-full flex-wrap items-center justify-center gap-1.5">
               {live ? <>
                 <span className="live-dot h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
                 <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">Live</span>
               </> : null}
               {fight.scheduled_rounds ? <span className="whitespace-nowrap text-[10px] font-medium text-zinc-400">{roundsLabel(fight.scheduled_rounds)}</span> : null}
-              {fight.title_fight ? (
-                <span className={`shrink-0 rounded px-1 py-px text-[9px] font-bold uppercase ${(TITLE_TAG[fight.title_type ?? "title"] ?? TITLE_TAG.title).className}`}>
-                  {(TITLE_TAG[fight.title_type ?? "title"] ?? TITLE_TAG.title).label}
+              {beltTag(fight) ? (
+                <span className={`shrink-0 rounded px-1 py-px text-[9px] font-bold uppercase ${beltTag(fight)!.className}`}>
+                  {beltTag(fight)!.label}
                 </span>
               ) : null}
             </div>

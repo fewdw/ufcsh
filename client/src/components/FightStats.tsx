@@ -1132,105 +1132,12 @@ export function Scorecards({ fight }: { fight: Matchup }) {
   const judges = fight.detail?.type === "past" ? fight.detail.judges : undefined;
   // The fans' card belongs beside the judges', including its round scores.
   const { data } = useApi<ScoreSummary>(judges?.length ? `/api/fights/${fight.id}/scores` : null);
-  const location = useLocation();
   const fans = data && data.totals.avg1 != null && data.totals.avg2 != null ? data.totals : null;
   if (!judges?.length) return null;
   return (
     <section className={`${shell} overflow-hidden`}>
       <PanelHeading title="Scorecards" />
       <ScorecardTable fight={fight} judges={judges} fans={fans} rounds={data?.rounds ?? []} />
-      <ul className={`hidden divide-x divide-zinc-100 sm:grid ${fans ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
-        {judges.map((j, judgeIndex) => {
-          // Older cards carry the scores without the judge's name.
-          const judgeName = j.judge || `Judge ${judgeIndex + 1}`;
-          const winner: Side | null = j.f1Score > j.f2Score ? "f1" : j.f2Score > j.f1Score ? "f2" : null;
-          const score = (side: Side) => {
-            const value = side === "f1" ? j.f1Score : j.f2Score;
-            const leads = winner === side;
-            return (
-              <span
-                className={`w-10 text-2xl tabular-nums leading-none ${side === "f1" ? "text-right" : "text-left"} ${leads ? "font-semibold" : "font-medium text-zinc-400"}`}
-                style={leads ? { color: SIDE[side].ink } : undefined}
-              >
-                {value}
-              </span>
-            );
-          };
-          return (
-            <li
-              key={`${judgeIndex}-${j.judge}`}
-              className="flex min-w-0 flex-col items-center gap-2 px-4 py-4"
-              aria-label={`${judgeName}: ${lastName(fight.f1.name)} ${j.f1Score}, ${lastName(fight.f2.name)} ${j.f2Score}`}
-            >
-              <span className={`max-w-full truncate ${sectionLabel}`}>{judgeName}</span>
-              <span className="flex items-center gap-3" aria-hidden="true">
-                {score("f1")}
-                <span className="h-5 w-px bg-zinc-200" />
-                {score("f2")}
-              </span>
-              {j.rounds?.length ? (
-                <span className="mt-1 grid w-full max-w-40 divide-y divide-zinc-100 border-t border-zinc-100 text-[10px] tabular-nums">
-                  {j.rounds.map(round => (
-                    <span key={round.round} className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-1.5">
-                      <span className={`text-right ${round.f1Score > round.f2Score ? "font-semibold text-f1-ink" : "text-zinc-500"}`}>{round.f1Score}</span>
-                      <span className={sectionLabel}>R{round.round}</span>
-                      <span className={`text-left ${round.f2Score > round.f1Score ? "font-semibold text-f2-ink" : "text-zinc-500"}`}>{round.f2Score}</span>
-                    </span>
-                  ))}
-                </span>
-              ) : null}
-            </li>
-          );
-        })}
-        {fans ? (() => {
-          // A whole average is written like a judge's card; only a fraction in
-          // either total brings decimals out, and then both carry them so the
-          // pair still reads as one score.
-          const places = Number.isInteger(fans.avg1!) && Number.isInteger(fans.avg2!) ? 0 : 2;
-          const card = (side: Side) => (side === "f1" ? fans.avg1! : fans.avg2!).toFixed(places);
-          const rounds = data?.rounds ?? [];
-          return (
-            <li className="min-w-0">
-              <Link
-                to={{ search: "?tab=score" }}
-                replace
-                state={location.state}
-                className="flex h-full min-w-0 flex-col items-center gap-2 px-4 py-4 transition hover:bg-zinc-50"
-                aria-label={`${fans.completeCards} fan ${fans.completeCards === 1 ? "scorecard" : "scorecards"}: ${lastName(fight.f1.name)} ${card("f1")}, ${lastName(fight.f2.name)} ${card("f2")}. ${rounds.map(round => `Round ${round.round}: ${lastName(fight.f1.name)} ${decimalScore(round.total1)}, ${lastName(fight.f2.name)} ${decimalScore(round.total2)}.`).join(" ")} Open the Score tab.`}
-              >
-                <span className={`max-w-full truncate ${sectionLabel}`}>{fans.completeCards.toLocaleString()} {fans.completeCards === 1 ? "Fan" : "Fans"}</span>
-                <span className="flex items-center gap-3" aria-hidden="true">
-                  {(["f1", "f2"] as Side[]).map((side) => {
-                    const leads = side === "f1" ? fans.avg1! > fans.avg2! : fans.avg2! > fans.avg1!;
-                    return (
-                      <Fragment key={side}>
-                        {side === "f2" ? <span className="h-5 w-px shrink-0 bg-zinc-200" /> : null}
-                        <span
-                          className={`${places ? "w-14 text-xl" : "w-10 text-2xl"} tabular-nums leading-none ${side === "f1" ? "text-right" : "text-left"} ${leads ? "font-semibold" : "font-medium text-zinc-400"}`}
-                          style={leads ? { color: SIDE[side].ink } : undefined}
-                        >
-                          {card(side)}
-                        </span>
-                      </Fragment>
-                    );
-                  })}
-                </span>
-                {rounds.length ? (
-                  <span className="mt-1 grid w-full max-w-40 divide-y divide-zinc-100 border-t border-zinc-100 text-[10px] tabular-nums" aria-hidden="true">
-                    {rounds.map(round => (
-                      <span key={round.round} className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-1.5">
-                        <span className={`text-right ${round.total1 > round.total2 ? "font-semibold text-f1-ink" : "text-zinc-500"}`}>{decimalScore(round.total1)}</span>
-                        <span className={sectionLabel}>R{round.round}</span>
-                        <span className={`text-left ${round.total2 > round.total1 ? "font-semibold text-f2-ink" : "text-zinc-500"}`}>{decimalScore(round.total2)}</span>
-                      </span>
-                    ))}
-                  </span>
-                ) : null}
-              </Link>
-            </li>
-          );
-        })() : null}
-      </ul>
     </section>
   );
 }
@@ -1250,7 +1157,7 @@ function ScorePair({ f1, f2, text, size }: { f1: number; f2: number; text: (valu
   );
 }
 
-/** Every card on a phone, as one table: judges (and the fans) across, the
+/** Every card as one table: judges (and the fans) across, the
  *  total first and each round under it, so the round names are printed once. */
 function ScorecardTable({ fight, judges, fans, rounds }: {
   fight: Matchup;
@@ -1265,13 +1172,13 @@ function ScorecardTable({ fight, judges, fans, rounds }: {
   const cell = "flex min-w-0 items-center justify-center px-0.5";
   return (
     <div
-      className="grid px-2 pb-2.5 pt-1.5 text-center sm:hidden"
-      style={{ gridTemplateColumns: `1.5rem repeat(${columns}, minmax(0, 1fr))` }}
+      className="mx-auto grid max-w-3xl px-2 pb-2.5 pt-1.5 text-center sm:px-5 sm:pb-4 sm:pt-3"
+      style={{ gridTemplateColumns: `2rem repeat(${columns}, minmax(0, 1fr))` }}
     >
       <span />
       {judges.map((judge, index) => (
-        <span key={`name-${index}`} className="line-clamp-2 break-words px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] text-zinc-400" title={judge.judge || undefined}>
-          {judge.judge ? lastName(judge.judge) : `Judge ${index + 1}`}
+        <span key={`name-${index}`} className="line-clamp-2 break-words px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] text-zinc-400 sm:text-[10px] sm:leading-4" title={judge.judge || undefined}>
+          {judge.judge ? <><span className="sm:hidden">{lastName(judge.judge)}</span><span className="hidden sm:inline">{judge.judge}</span></> : `Judge ${index + 1}`}
         </span>
       ))}
       {fans ? (
@@ -1283,12 +1190,12 @@ function ScorecardTable({ fight, judges, fans, rounds }: {
       <span className={`${sectionLabel} !text-[9px] !tracking-normal flex items-center`}>Total</span>
       {judges.map((judge, index) => (
         <span key={`total-${index}`} className={`${cell} py-1.5`} aria-label={`${judge.judge || `Judge ${index + 1}`}: ${lastName(fight.f1.name)} ${judge.f1Score}, ${lastName(fight.f2.name)} ${judge.f2Score}`}>
-          <ScorePair f1={judge.f1Score} f2={judge.f2Score} text={String} size="text-lg" />
+          <ScorePair f1={judge.f1Score} f2={judge.f2Score} text={String} size="text-lg sm:text-2xl" />
         </span>
       ))}
       {fans ? (
         <span className={`${cell} py-1.5`} aria-label={`Fans: ${lastName(fight.f1.name)} ${fans.avg1!.toFixed(places)}, ${lastName(fight.f2.name)} ${fans.avg2!.toFixed(places)}`}>
-          <ScorePair f1={fans.avg1!} f2={fans.avg2!} text={(value) => value.toFixed(places)} size={places ? "text-[13px]" : "text-lg"} />
+          <ScorePair f1={fans.avg1!} f2={fans.avg2!} text={(value) => value.toFixed(places)} size={places ? "text-[13px] sm:text-xl" : "text-lg sm:text-2xl"} />
         </span>
       ) : null}
 
@@ -1299,13 +1206,13 @@ function ScorecardTable({ fight, judges, fans, rounds }: {
             const round = judge.rounds?.[index];
             return (
               <span key={judgeIndex} className={`${cell} border-t border-zinc-100 py-1`}>
-                {round ? <ScorePair f1={round.f1Score} f2={round.f2Score} text={String} size="text-[11px]" /> : <span className="text-[11px] text-zinc-300">—</span>}
+                {round ? <ScorePair f1={round.f1Score} f2={round.f2Score} text={String} size="text-[11px] sm:text-xs" /> : <span className="text-[11px] text-zinc-300">—</span>}
               </span>
             );
           })}
           {fans ? (
             <span className={`${cell} border-t border-zinc-100 py-1`}>
-              {rounds[index] ? <ScorePair f1={rounds[index].total1} f2={rounds[index].total2} text={decimalScore} size="text-[11px]" /> : <span className="text-[11px] text-zinc-300">—</span>}
+              {rounds[index] ? <ScorePair f1={rounds[index].total1} f2={rounds[index].total2} text={decimalScore} size="text-[11px] sm:text-xs" /> : <span className="text-[11px] text-zinc-300">—</span>}
             </span>
           ) : null}
         </Fragment>
