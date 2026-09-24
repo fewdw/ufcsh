@@ -177,7 +177,7 @@ function EventSidebar({
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             aria-label={`Filter ${KIND_NOUN[kind]}`}
-            placeholder={`Filter ${scoped.length} ${KIND_NOUN[kind]}…`}
+            placeholder={`Search ${KIND_NOUN[kind]}…`}
             className="h-10 w-full min-w-0 rounded-full border border-zinc-200 bg-white pl-9 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-9 sm:text-sm"
           />
         </label>
