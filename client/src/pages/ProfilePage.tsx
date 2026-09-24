@@ -262,7 +262,7 @@ function SearchBox({ value, onChange }: { value: string; onChange: (value: strin
       type="search"
       value={typed}
       onChange={event => setTyped(event.target.value.slice(0, 60))}
-      placeholder="Search fighters or events…"
+      placeholder="Search fights…"
       aria-label="Search scored fights"
       // Names are not words: no autocorrect, capitals or suggestions. 16px on
       // a phone, or iOS zooms the page in on focus.
