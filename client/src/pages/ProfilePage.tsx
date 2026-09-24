@@ -1,5 +1,5 @@
 import { useAuth } from "@clerk/react";
-import { Check, Flag, LogOut, Pencil, Settings, User, X } from "lucide-react";
+import { Check, Flag, LogOut, Pencil, Search, Settings, User, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiCache, prefetch, useApi } from "../api";
@@ -197,8 +197,8 @@ function Profile({ handle }: { handle: string }) {
               subtitle={`${view.total.toLocaleString()} of ${scorer.cards.toLocaleString()}`}
               controls={
                 <div className="flex w-full items-center gap-2">
-                  <ScorecardFilter value={filter} agreement={agreement} total={scorer.cards} onChange={setFilter} />
                   <SearchBox value={query} onChange={value => setParam("q", value || null)} />
+                  <ScorecardFilter value={filter} agreement={agreement} total={scorer.cards} onChange={setFilter} />
                 </div>
               }
             />
@@ -258,21 +258,23 @@ function SearchBox({ value, onChange }: { value: string; onChange: (value: strin
     return () => window.clearTimeout(timer);
   }, [typed, onChange]);
   return (
-    <input
-      type="search"
-      value={typed}
-      onChange={event => setTyped(event.target.value.slice(0, 60))}
-      placeholder="Search fights…"
-      aria-label="Search scored fights"
-      // Names are not words: no autocorrect, capitals or suggestions. 16px on
-      // a phone, or iOS zooms the page in on focus.
-      autoCorrect="off"
-      autoCapitalize="off"
-      autoComplete="off"
-      spellCheck={false}
-      enterKeyHint="search"
-      className="h-9 min-w-0 flex-1 rounded-full border border-zinc-200 bg-white px-3.5 text-base outline-none focus:border-zinc-400 sm:h-8 sm:w-56 sm:flex-none sm:text-sm"
-    />
+    <label className="relative min-w-0 flex-1 sm:max-w-64">
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
+      <input
+        type="search"
+        value={typed}
+        onChange={event => setTyped(event.target.value.slice(0, 60))}
+        placeholder="Search fights…"
+        aria-label="Search scored fights"
+        // Names are not words: no autocorrect, capitals or suggestions.
+        autoCorrect="off"
+        autoCapitalize="off"
+        autoComplete="off"
+        spellCheck={false}
+        enterKeyHint="search"
+        className="h-9 w-full rounded-full border border-zinc-200 bg-zinc-50 pl-8 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-8 sm:text-[13px]"
+      />
+    </label>
   );
 }
 
@@ -289,7 +291,7 @@ function ScorecardFilter({ value, agreement, total, onChange }: {
       value={value}
       onChange={event => onChange(event.target.value as ProfileFilter)}
       aria-label="Filter scored fights"
-      className="h-9 shrink-0 rounded-full border border-zinc-200 bg-white pl-3 pr-7 text-base font-medium text-zinc-600 sm:h-8 sm:text-xs outline-none transition-colors hover:border-zinc-300 focus:border-zinc-400"
+      className="h-9 shrink-0 rounded-full border border-zinc-200 bg-zinc-50 pl-3.5 pr-7 text-[13px] font-medium text-zinc-700 sm:h-8 sm:text-xs outline-none transition-colors hover:border-zinc-300 focus:border-zinc-400"
     >
       <option value="all">All · {total.toLocaleString()}</option>
       <option value="decisions">Judged · {agreement.decisions.toLocaleString()}</option>
