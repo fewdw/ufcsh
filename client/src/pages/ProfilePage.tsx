@@ -8,6 +8,7 @@ import { ConfirmRemove, RemoveX } from "../components/ConfirmRemove";
 import Avatar from "../components/Avatar";
 import ProgressiveImage from "../components/ProgressiveImage";
 import { PANEL_SHELL, PanelHeading } from "../components/FightStats";
+import { LIST_META, LIST_ROW, LIST_ROW_END } from "../components/InfiniteList";
 import { segmentedGroup, segmentedSelected, segmentedIdle } from "../components/segmented";
 import ProfilePredictions from "../components/ProfilePredictions";
 import ProfileBets from "../components/ProfileBets";
@@ -102,6 +103,11 @@ function Profile({ handle }: { handle: string }) {
   const section: Section = tabs.find(tab => tab.id === search.get("tab"))?.id ?? "scorecards";
   const scroll = useRouteScrollRestoration<HTMLDivElement>("profile", Boolean(view));
   const sentinel = useRef<HTMLDivElement>(null);
+  const tabList = useRef<HTMLDivElement>(null);
+  // On a phone the tabs scroll sideways; keep the open one in view.
+  useEffect(() => {
+    tabList.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [section]);
 
   const name = view?.scorer.displayName;
   useSeo({
@@ -152,7 +158,7 @@ function Profile({ handle }: { handle: string }) {
       <div className="mx-auto flex min-w-0 max-w-3xl flex-col gap-2 px-2 py-2 sm:gap-3 sm:px-5 sm:py-4">
         <ProfileHeader scorer={scorer} mine={mine} onRenamed={refresh} />
 
-        <div role="tablist" aria-label="Profile sections" className={`${segmentedGroup} w-full gap-0.5 p-0.5 sm:gap-1 sm:p-1`}>
+        <div ref={tabList} role="tablist" aria-label="Profile sections" className={`${segmentedGroup} w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
           {tabs.map((tab, index) => (
             <button
               key={tab.id}
@@ -172,7 +178,7 @@ function Profile({ handle }: { handle: string }) {
                 const params = new URLSearchParams(search); params.set("tab", tabs[next].id); setSearch(params, { replace: true });
                 event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
               }}
-              className={`flex-auto whitespace-nowrap rounded-full px-1.5 py-1.5 text-xs font-medium transition min-[400px]:px-2 sm:px-3 ${section === tab.id ? segmentedSelected : segmentedIdle}`}
+              className={`min-h-9 flex-auto shrink-0 whitespace-nowrap rounded-full px-3 py-2 text-[13px] font-medium transition sm:text-sm ${section === tab.id ? segmentedSelected : segmentedIdle}`}
             >
               {tab.label}
             </button>
@@ -215,7 +221,7 @@ function Profile({ handle }: { handle: string }) {
                 </ul>
               )}
             </div>
-            {more ? <div ref={sentinel} className="px-5 py-3 text-center text-xs text-zinc-400">Loading more…</div> : null}
+            {more ? <div ref={sentinel} role="status" className="border-t border-zinc-100 px-5 py-4 text-center text-sm text-zinc-400">Loading more…</div> : null}
           </section>
           </>}
         </div>
@@ -258,7 +264,14 @@ function SearchBox({ value, onChange }: { value: string; onChange: (value: strin
       onChange={event => setTyped(event.target.value.slice(0, 60))}
       placeholder="Search fighters or events…"
       aria-label="Search scored fights"
-      className="min-w-0 flex-1 rounded-md border border-zinc-200 bg-white px-2.5 py-1 text-xs outline-none focus:border-zinc-400 sm:w-52 sm:flex-none"
+      // Names are not words: no autocorrect, capitals or suggestions. 16px on
+      // a phone, or iOS zooms the page in on focus.
+      autoCorrect="off"
+      autoCapitalize="off"
+      autoComplete="off"
+      spellCheck={false}
+      enterKeyHint="search"
+      className="h-9 min-w-0 flex-1 rounded-full border border-zinc-200 bg-white px-3.5 text-base outline-none focus:border-zinc-400 sm:h-8 sm:w-56 sm:flex-none sm:text-sm"
     />
   );
 }
@@ -276,7 +289,7 @@ function ScorecardFilter({ value, agreement, total, onChange }: {
       value={value}
       onChange={event => onChange(event.target.value as ProfileFilter)}
       aria-label="Filter scored fights"
-      className="h-7 rounded-full border border-zinc-200 bg-white pl-2.5 pr-7 text-[10px] font-medium text-zinc-600 outline-none transition-colors hover:border-zinc-300 focus:border-zinc-400"
+      className="h-9 shrink-0 rounded-full border border-zinc-200 bg-white pl-3 pr-7 text-base font-medium text-zinc-600 sm:h-8 sm:text-xs outline-none transition-colors hover:border-zinc-300 focus:border-zinc-400"
     >
       <option value="all">All · {total.toLocaleString()}</option>
       <option value="decisions">Judged · {agreement.decisions.toLocaleString()}</option>
@@ -517,20 +530,20 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
         to={`/fights/${card.fightId}?tab=score`}
         onPointerEnter={warm}
         onFocus={warm}
-        className={`block py-2.5 pl-3 transition-colors hover:bg-zinc-50 sm:pl-4 ${mine ? "pr-7 sm:pr-8" : "pr-3 sm:pr-4"}`}
+        className={`block ${LIST_ROW} transition-colors hover:bg-zinc-50 ${LIST_ROW_END(mine)}`}
       >
         <div className="flex items-center gap-2">
           <Avatar src={fight.f1_photo} name={fight.f1_name} size="sm" outcome={fight.f1_outcome as "win" | "loss" | null} />
-          <p className="min-w-0 flex-1 truncate text-right text-xs font-semibold text-f1-ink">{fight.f1_name}</p>
-          <p className="shrink-0 text-sm font-bold tabular-nums">
+          <p className="min-w-0 flex-1 truncate text-right text-sm font-semibold text-f1-ink">{fight.f1_name}</p>
+          <p className="shrink-0 text-base font-bold tabular-nums">
             <span className={winner === 1 ? "text-f1-ink" : "text-zinc-400"}>{scored ? card.total1 : "—"}</span>
             <span className="mx-1 text-zinc-300">–</span>
             <span className={winner === 2 ? "text-f2-ink" : "text-zinc-400"}>{scored ? card.total2 : "—"}</span>
           </p>
-          <p className="min-w-0 flex-1 truncate text-xs font-semibold text-f2-ink">{fight.f2_name}</p>
+          <p className="min-w-0 flex-1 truncate text-sm font-semibold text-f2-ink">{fight.f2_name}</p>
           <Avatar src={fight.f2_photo} name={fight.f2_name} size="sm" outcome={fight.f2_outcome as "win" | "loss" | null} />
         </div>
-        <p className="mt-1 truncate text-center text-[10px] text-zinc-400">
+        <p className={`mt-1 truncate text-center ${LIST_META}`}>
           {fight.event_name} · {formatDateShortWithYear(fight.date)}
           {fight.weight_class ? ` · ${fight.weight_class}` : ""}
           {card.agreement ? (
@@ -541,7 +554,7 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
           {fight.method ? ` · ${formatMethod(fight.method, fight.round, fight.time)}` : ""}
         </p>
       </Link>
-      {mine ? <RemoveX label={`Remove your scorecard for ${fight.f1_name} vs ${fight.f2_name}`} onClick={() => onRemove(card)} /> : null}
+      {mine ? <RemoveX large label={`Remove your scorecard for ${fight.f1_name} vs ${fight.f2_name}`} onClick={() => onRemove(card)} /> : null}
     </li>
   );
 }

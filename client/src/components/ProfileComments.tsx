@@ -7,6 +7,7 @@ import type { ScorerIdentity } from "../scoring";
 import { exactTime, relativeAge } from "../format";
 import { ConfirmRemove, RemoveX } from "./ConfirmRemove";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
+import { fetchPage, LIST_META, LIST_ROW, LIST_ROW_END, LoadMore, useInfiniteList } from "./InfiniteList";
 
 /** Everything a fan has said in fight discussions, newest first. Listed to
  *  others only once they have chosen to show it; always to themselves. */
@@ -16,10 +17,17 @@ export default function ProfileComments({ handle, mine, visible, visibilityContr
   visibilityControl?: React.ReactNode;
 }) {
   const { getToken } = useAuth();
-  const [offset, setOffset] = useState(0);
-  const [data, setData] = useState<CommentsData | null>(null);
-  const [error, setError] = useState("");
-  const [attempt, setAttempt] = useState(0);
+  const list = useInfiniteList({
+    resetKey: `${handle}:${mine}:${visible}`,
+    load: async offset => {
+      // The owner's token is what lets them read a list they keep private.
+      const token = mine ? await getToken().catch(() => null) : null;
+      return fetchPage<CommentsData>(`/api/profiles/${encodeURIComponent(handle)}/comments?offset=${offset}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} }, "Comments could not be loaded.");
+    },
+    items: page => page.comments,
+    itemKey: comment => comment.id,
+  });
   const [confirming, setConfirming] = useState<ProfileComment | null>(null);
   const [busy, setBusy] = useState(false);
   const [removeError, setRemoveError] = useState("");
@@ -35,40 +43,24 @@ export default function ProfileComments({ handle, mine, visible, visibilityContr
       });
       if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? "That comment could not be removed.");
       setConfirming(null);
-      // Step back a page when the last comment on this one went.
-      if (data?.comments.length === 1 && offset > 0) setOffset(Math.max(0, offset - data.pageSize));
-      else setAttempt(value => value + 1);
     } catch (problem) {
       setRemoveError(problem instanceof Error ? problem.message : "That comment could not be removed.");
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+      void list.reload();
+    }
   };
 
-  useEffect(() => {
-    let current = true;
-    setError("");
-    (async () => {
-      // The owner's token is what lets them read a list they keep private.
-      const token = mine ? await getToken().catch(() => null) : null;
-      const response = await fetch(`/api/profiles/${encodeURIComponent(handle)}/comments?offset=${offset}`, {
-        cache: "no-store", signal: AbortSignal.timeout(20_000),
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error ?? "Comments could not be loaded.");
-      if (current) setData(body as CommentsData);
-    })().catch(problem => { if (current) setError(problem instanceof Error ? problem.message : "Comments could not be loaded."); });
-    return () => { current = false; };
-  }, [attempt, getToken, handle, mine, offset, visible]);
-
+  const data = list.first;
   if (!data) return <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
-    {error ? <>{error} <button type="button" className="underline" onClick={() => setAttempt(value => value + 1)}>Retry</button></> : "Loading comments…"}
+    {list.error ? <>{list.error} <button type="button" className="underline" onClick={() => void list.retry()}>Retry</button></> : "Loading comments…"}
   </section>;
 
   return <>
     <section className={`${PANEL_SHELL} overflow-hidden`}>
       <PanelHeading
         title="Comments"
-        subtitle={data.total ? `${offset + 1}–${Math.min(offset + data.pageSize, data.total)} of ${data.total.toLocaleString()}` : undefined}
+        subtitle={data.total ? data.total.toLocaleString() : undefined}
         aside={mine ? visibilityControl ?? (
           <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${visible ? "bg-emerald-50 text-emerald-700" : "bg-zinc-100 text-zinc-500"}`}>
             {visible ? "Visible on your profile" : "Only you can see this list"}
@@ -81,36 +73,31 @@ export default function ProfileComments({ handle, mine, visible, visibilityContr
         </p>
       ) : (
         <ul className="divide-y divide-zinc-100">
-          {data.comments.map(comment => (
+          {list.items.map(comment => (
             <li key={comment.id} className="relative">
-              <Link to={commentLink(comment.fightId, comment.id)} className={`block py-3 pl-4 transition-colors hover:bg-zinc-50 sm:pl-5 ${mine ? "pr-8" : "pr-4 sm:pr-5"}`}>
-                <p className="flex min-w-0 items-center gap-1.5 text-[11px] text-zinc-400">
-                  <span className="min-w-0 truncate font-semibold text-zinc-600">
+              <Link to={commentLink(comment.fightId, comment.id)} className={`block ${LIST_ROW} transition-colors hover:bg-zinc-50 ${LIST_ROW_END(mine)}`}>
+                <p className={`flex min-w-0 items-center gap-1.5 ${LIST_META}`}>
+                  <span className="min-w-0 truncate font-semibold text-zinc-800">
                     {comment.fight ? `${comment.fight.f1_name} vs ${comment.fight.f2_name}` : "A fight"}
                   </span>
                   {comment.fight ? <span className="hidden min-w-0 truncate sm:inline">· {comment.fight.event_name}</span> : null}
                   <span className="shrink-0" title={exactTime(comment.createdAt) ?? undefined}>· {relativeAge(comment.createdAt)}</span>
                   {comment.depth > 1 ? <span className="shrink-0">· reply</span> : null}
-                  <span className="ml-auto flex shrink-0 items-center gap-0.5 tabular-nums text-zinc-500">
-                    <ArrowBigUp className="h-3.5 w-3.5" aria-hidden="true" />{comment.score}
+                  <span className="ml-auto flex shrink-0 items-center gap-0.5 font-semibold tabular-nums text-zinc-600">
+                    <ArrowBigUp className="h-4 w-4" aria-hidden="true" />{comment.score}
                   </span>
                 </p>
-                <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-sm leading-6 text-zinc-800 [overflow-wrap:anywhere]">
+                <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-[15px] leading-6 text-zinc-900 [overflow-wrap:anywhere]">
                   {comment.body}
                 </p>
-                {comment.held ? <p className="mt-1 text-[11px] text-amber-700">Hidden from others while a moderator reviews it.</p> : null}
+                {comment.held ? <p className="mt-1 text-xs text-amber-700">Hidden from others while a moderator reviews it.</p> : null}
               </Link>
-              {mine ? <RemoveX label="Delete comment" onClick={() => { setConfirming(comment); setRemoveError(""); }} /> : null}
+              {mine ? <RemoveX large label="Delete comment" onClick={() => { setConfirming(comment); setRemoveError(""); }} /> : null}
             </li>
           ))}
         </ul>
       )}
-      {data.total > data.pageSize ? (
-        <div className="flex justify-between border-t border-zinc-100 px-5 py-3 text-xs text-zinc-600">
-          <button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - data.pageSize))} className="rounded-full px-3 py-2 hover:bg-zinc-100 disabled:opacity-40">Newer</button>
-          <button disabled={offset + data.pageSize >= data.total} onClick={() => setOffset(offset + data.pageSize)} className="rounded-full px-3 py-2 hover:bg-zinc-100 disabled:opacity-40">Older</button>
-        </div>
-      ) : null}
+      <LoadMore list={list} />
     </section>
     {mine ? <BlockedPeople /> : null}
     {confirming ? <ConfirmRemove

@@ -7,16 +7,16 @@ const danger = "rounded-full bg-rose-600 px-4 py-1.5 text-xs font-medium text-wh
 
 /** The quiet ✕ in the top corner of a row the reader owns. The row it sits
  *  on needs `relative` and enough right padding to keep clear of it. */
-export function RemoveX({ label, onClick }: { label: string; onClick: () => void }) {
+export function RemoveX({ label, onClick, large = false }: { label: string; onClick: () => void; large?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="absolute right-0.5 top-0.5 grid h-6 w-6 place-items-center rounded-full text-zinc-300 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+      className={`absolute grid place-items-center rounded-full text-zinc-300 transition-colors hover:bg-zinc-100 hover:text-zinc-700 ${large ? "right-1 top-1.5 h-9 w-9" : "right-0.5 top-0.5 h-6 w-6"}`}
     >
-      <X className="h-3 w-3" aria-hidden="true" />
+      <X className={large ? "h-4 w-4" : "h-3 w-3"} aria-hidden="true" />
     </button>
   );
 }
