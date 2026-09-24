@@ -312,7 +312,6 @@ select:not([multiple]):not([size]) {
 .matchup-overview {
   --matchup-rule: color-mix(in srgb, currentColor 10%, transparent);
 }
-.matchup-heading { padding: 14px 24px; }
 .matchup-body { padding: 0 24px 24px; }
 .matchup-hero {
   position: relative;
@@ -368,7 +367,6 @@ select:not([multiple]):not([size]) {
   white-space: nowrap;
 }
 @container (max-width: 57.99rem) {
-  .matchup-heading { padding: 12px 16px; }
   .matchup-body { padding: 0 16px 16px; }
   .matchup-hero { padding: 20px 0; gap: 18px 12px; }
   .matchup-market { padding-top: 16px; border-top: 1px solid var(--matchup-rule); }
@@ -384,7 +382,6 @@ select:not([multiple]):not([size]) {
 
 /* Give the pinned identity and full-body portraits room above the fight data. */
 .matchup-top-card { flex-shrink: 0; }
-.matchup-top-card .matchup-heading { padding: 8px 20px; }
 .matchup-top-card .matchup-body { padding: 0 20px; }
 .matchup-top-card .matchup-hero { padding: 20px 0; gap: 20px; }
 .matchup-top-card .matchup-fighter { gap: 8px; }
@@ -407,9 +404,6 @@ select:not([multiple]):not([size]) {
   .matchup-top-card .matchup-fighter--right .matchup-identity { text-align: right; }
 }
 @container (max-width: 57.99rem) {
-  .matchup-top-card .matchup-heading { padding: 8px 12px; }
-  .matchup-top-card .matchup-heading > div:first-child { flex: 1; }
-  .matchup-top-card .matchup-heading a { font-size: 12px; }
   .matchup-top-card .matchup-body { padding: 0 12px; }
   .matchup-top-card .matchup-hero { padding: 16px 0; gap: 12px; }
   .matchup-top-card .matchup-name { font-size: 15px; }
@@ -431,26 +425,6 @@ select:not([multiple]):not([size]) {
 @container (max-width: 57.99rem) {
   .matchup-top-card .matchup-hero { row-gap: 10px; }
 }
-
-/* A panel's own close button: a bare glyph with a round hover, like every
-   other ✕ in the app, rather than a boxed key. */
-.matchup-header-control {
-  display: inline-flex;
-  height: 28px;
-  min-width: 28px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9999px;
-  background: transparent;
-  color: var(--color-zinc-500);
-  transition: background-color 150ms, color 150ms;
-}
-.matchup-header-control:hover { background: var(--color-zinc-100); color: var(--color-zinc-900); }
-.dark .matchup-header-control:hover { background: #27272a; color: #fff; }
-.matchup-header-control[aria-pressed="true"] { color: var(--color-zinc-900); }
-.dark .matchup-header-control { color: #a1a1aa; }
-.dark .matchup-header-control:hover { background: #27272a; }
-.dark .matchup-header-control[aria-pressed="true"] { color: #f4f4f5; }
 
 .matchup-top-card .matchup-fighter > div:first-child > [data-fighter-portrait="full"] {
   width: 145px;

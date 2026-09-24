@@ -1173,7 +1173,7 @@ function ScorecardTable({ fight, judges, fans, rounds }: {
         </Link>
       ) : null}
 
-      <span className={`${sectionLabel} !text-[9px] !tracking-normal flex items-center`}>Total</span>
+      <span aria-hidden="true" />
       {judges.map((judge, index) => (
         <span key={`total-${index}`} className={`${cell} py-1.5`} aria-label={`${judge.judge || `Judge ${index + 1}`}: ${lastName(fight.f1.name)} ${judge.f1Score}, ${lastName(fight.f2.name)} ${judge.f2Score}`}>
           <ScorePair f1={judge.f1Score} f2={judge.f2Score} text={String} size="text-lg sm:text-2xl" />

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
-import { clockTime, clockTimeWithZone, countdown, formatDate, formatDateShort, formatMethod, futureDayLabel, isDecision, outcomeClasses, rankLabel, roundsLabel } from "../format";
+import { clockTime, clockTimeWithZone, countdown, formatDateShort, formatMethod, futureDayLabel, isDecision, outcomeClasses, rankLabel, roundsLabel } from "../format";
 import { useNow } from "../useNow";
 import Avatar from "../components/Avatar";
 import ResultDots from "../components/ResultDots";
@@ -19,6 +19,7 @@ import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
 import { useSettings, withRanking, type OddsFormat } from "../settings";
 import { eventKind, type EventKind } from "../eventKind";
 import SearchGlyph from "../components/SearchGlyph";
+import { CardEventTitle, CardNavigation, CARD_STEP } from "../components/CardHeader";
 import { ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
@@ -739,19 +740,17 @@ function eventNeighbours(events: EventListItem[], id: string): { prev: EventList
   return { prev: byDate[at - 1] ?? null, next: byDate[at + 1] ?? null };
 }
 
-const STEP = "inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
-
 function StepLink({ event, direction }: { event: EventListItem | null; direction: "prev" | "next" }) {
   const { settings } = useSettings();
   const label = direction === "prev" ? "Prev" : "Next";
   const glyph = direction === "prev" ? <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />;
-  if (!event) return <span className={`${STEP} text-zinc-300`} aria-disabled="true">{direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}</span>;
+  if (!event) return <span className={`${CARD_STEP} text-zinc-300`} aria-disabled="true">{direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}</span>;
   return (
     <Link
       to={`/events/${event.id}`}
       title={`${event.name} · ${formatDateShort(event.date)}`}
       onPointerEnter={() => prefetch(withRanking(`/api/events/${event.id}`, settings.rankingSource))}
-      className={`${STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}
+      className={`${CARD_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}
     >
       {direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}
     </Link>
@@ -824,28 +823,20 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
       <section className={`${shell} shrink-0 overflow-hidden`}>
         {/* On a phone the list folds away, so its button and the step to
             either neighbour ride along the top of the card itself. */}
-        <div className="flex items-center justify-between border-b border-zinc-100 px-1.5 py-1 md:hidden">
-          <StepLink event={nav.prev} direction="prev" />
-          <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
-            className={`${STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
-            <List className="h-3.5 w-3.5" aria-hidden="true" />All events
-          </button>
-          <StepLink event={nav.next} direction="next" />
+        <div className="md:hidden">
+          <CardNavigation
+            previous={<StepLink event={nav.prev} direction="prev" />}
+            center={<button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
+              className={`${CARD_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+              <List className="h-3.5 w-3.5" aria-hidden="true" />All events
+            </button>}
+            next={<StepLink event={nav.next} direction="next" />}
+          />
         </div>
         {/* The name, date and place on the left; the card's start times on
             the right, one per line, at every width — only the type grows. */}
-        <div className="flex items-start justify-between gap-3 px-3 py-2 @[34rem]:px-6 @[48rem]:items-center @[48rem]:gap-6 @[48rem]:py-4">
-          <div className="min-w-0">
-            <h1 className="text-balance text-sm font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-2xl">{event.name}</h1>
-            <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[48rem]:mt-1 @[48rem]:gap-x-2 @[48rem]:text-xs @[48rem]:leading-relaxed">
-              <span className="whitespace-nowrap font-medium text-zinc-600">
-                <span className="@[48rem]:hidden">{formatDateShort(event.date)}{dayLabel ? `, ${dayLabel}` : ""}</span>
-                <span className="hidden @[48rem]:inline">{formatDate(event.date)}{dayLabel ? ` (${dayLabel})` : ""}</span>
-              </span>
-              {event.location ? <><span aria-hidden="true" className="text-zinc-300">·</span><span>{event.location}</span></> : null}
-            </div>
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-1 text-right empty:hidden @[48rem]:max-w-[45%]">
+        <CardEventTitle name={event.name} date={event.date} location={event.location} dayLabel={dayLabel}>
+          <>
             {schedule.length ? (
               <dl className="grid grid-cols-[auto_auto] items-baseline gap-x-2 text-[11px] leading-4 @[48rem]:gap-x-3">
                 {schedule.map(({ segment, at }) => (
@@ -870,8 +861,8 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
                 {isLive && error ? <span role="status">Connection interrupted; retrying…</span> : null}
               </span>
             ) : null}
-          </div>
-        </div>
+          </>
+        </CardEventTitle>
       </section>
 
       {oddsMode && hasAnyOdds ? (
@@ -970,9 +961,8 @@ export default function EventsPage() {
 
   return (
     <div className={`flex h-full min-h-0 flex-col gap-2 p-2 sm:gap-3 sm:p-3 ${dock.row}`}>
-      {/* An open card carries this button in its own header; the list itself
-          and an open matchup still need it here. */}
-      {!mobileEventsOpen && (fightId || !eventId) ? (
+      {/* Open event and matchup headers carry their own All events button. */}
+      {!mobileEventsOpen && !fightId && !eventId ? (
         <button
           type="button"
           aria-expanded={mobileEventsOpen}
@@ -993,7 +983,7 @@ export default function EventsPage() {
       />
       <main className={`${mobileEventsOpen ? "hidden" : "block"} min-h-0 min-w-0 flex-1 ${dock.main}`}>
         {fightId ? (
-          <FightView fightId={fightId} eventIdHint={fightEventIdHint ?? openFight?.event.id} />
+          <FightView fightId={fightId} eventIdHint={fightEventIdHint ?? openFight?.event.id} onBrowse={() => setMobileEventsOpen(true)} />
         ) : eventId ? (
           <EventPane eventId={eventId} oddsMode={oddsMode} nav={{ ...eventNeighbours(events, eventId), onBrowse: () => setMobileEventsOpen(true) }} />
         ) : (
