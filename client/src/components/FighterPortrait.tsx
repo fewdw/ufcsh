@@ -51,7 +51,9 @@ export default function FighterPortrait({
   outcome?: "win" | "loss" | "draw" | "nc" | null;
 }) {
   const [failed, setFailed] = useState(false);
-  const displaySrc = src ?? (!headshot ? "/fighter-shadow.png" : null);
+  // Only the matchup hero uses the full-body silhouette. Profile fallbacks
+  // and round avatars keep the regular blank face.
+  const displaySrc = src ?? (size === "hero" && !headshot ? "/fighter-shadow.png" : null);
   // A different fighter (or a switch back to full body) deserves its own
   // attempt; without this the first broken picture would sink every later one.
   useEffect(() => setFailed(false), [displaySrc]);
