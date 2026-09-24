@@ -405,9 +405,10 @@ function PairedColumns({
             className={`stat-bar plot-grow ${BAR} rounded-t-[4px]`}
             data-stat-side={side}
             style={{
-              height: barHeight(values[side] / scale, values[side] > 0 ? 3 : 1),
+              height: barHeight(values[side] / scale, 3),
               backgroundColor: colors?.[side] ?? SIDE[side].fill,
-              opacity: values[side] > 0 ? 1 : 0.25,
+              // Nothing to draw is drawn as nothing; the slot keeps the pair in place.
+              visibility: values[side] > 0 ? "visible" : "hidden",
             }}
           />
         ))}
@@ -597,7 +598,7 @@ function CombinedStrikeColumns({
             >
               <div
                 className="plot-grow relative w-full overflow-hidden rounded-t-md border-2 bg-white"
-                style={{ height: columnHeight, borderColor: SIDE[side].fill }}
+                style={{ height: columnHeight, borderColor: SIDE[side].fill, visibility: attempts > 0 ? "visible" : "hidden" }}
               >
                 <div
                   className="absolute inset-x-0 bottom-0 flex flex-col-reverse"
@@ -706,7 +707,7 @@ function StrikeSplitColumns({
                 >
                   <div
                     className="plot-grow relative w-full overflow-hidden rounded-t border-2 bg-white"
-                    style={{ height: barHeight(attempts / scale, attempts > 0 ? 4 : 1), borderColor: SIDE[side].fill }}
+                    style={{ height: barHeight(attempts / scale, 4), borderColor: SIDE[side].fill, visibility: attempts > 0 ? "visible" : "hidden" }}
                   >
                     <span
                       className="absolute inset-x-0 bottom-0"
@@ -1030,10 +1031,10 @@ function MethodBar({ side, counts, total }: { side: Side; counts: { ko: number; 
     { key: "sub", label: "Submission", value: counts.sub, color: SIDE[side].fill },
     { key: "dec", label: "Decision or other", value: counts.decision, color: SIDE[side].soft },
   ];
-  if (total <= 0) return <p className="text-[10px] leading-4 text-zinc-400 @[36rem]:text-[11px]">None yet</p>;
   return (
     <>
-      <span className="flex h-2 w-full gap-[2px] overflow-hidden rounded-[3px] @[36rem]:h-3" role="img" aria-label={segments.map((segment) => `${segment.value} by ${segment.label}`).join(", ")}>
+      {/* None yet is an empty track, so both fighters' rows keep one shape. */}
+      <span className="flex h-2 w-full gap-[2px] overflow-hidden rounded-[3px] bg-plot-track @[36rem]:h-3" role="img" aria-label={total > 0 ? segments.map((segment) => `${segment.value} by ${segment.label}`).join(", ") : "None yet"}>
         {segments.filter((segment) => segment.value > 0).map((segment) => (
           <span key={segment.key} title={`${segment.value} by ${segment.label}`} style={{ width: `${(segment.value / total) * 100}%`, backgroundColor: segment.color }} />
         ))}

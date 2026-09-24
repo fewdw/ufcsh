@@ -931,7 +931,7 @@ export default function StatsPage() {
   const [includeWomen, setIncludeWomen] = useHistoryState("stats:include-women", false);
   const [includeInactiveFighters, setIncludeInactiveFighters] = useHistoryState("stats:include-inactive-fighters", true);
   const [showMoreInfo, setShowMoreInfo] = useHistoryState("stats:show-more-info", false);
-  const [keepFullLists, setKeepFullLists] = useHistoryState("stats:keep-full-lists", false);
+  const [keepFullLists, setKeepFullLists] = useHistoryState("stats:keep-full-lists", true);
   const [settings, setSettings] = useHistoryState<StatsSettings>("stats:settings", DEFAULT_SETTINGS);
   const [selectedFighters, setSelectedFighters] = useHistoryState<PickedFighter[]>("stats:fighters", []);
   const [resetTurns, setResetTurns] = useState(0);
@@ -976,7 +976,7 @@ export default function StatsPage() {
     setIncludeWomen(false);
     setIncludeInactiveFighters(true);
     setShowMoreInfo(false);
-    setKeepFullLists(false);
+    setKeepFullLists(true);
     setSettings({ ...DEFAULT_SETTINGS });
     setSelectedFighters([]);
     setResetTurns((turns) => turns + 1);

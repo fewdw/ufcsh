@@ -469,3 +469,15 @@ select:not([multiple]):not([size]) {
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.025);
 }
 .dark .odds-pair-divider { background: #3f3f46; }
+
+/* Rankings activity. Booked is warm (something is coming), fought lately is
+   cool (it just happened); neither is win/loss red or green. Tints strong
+   enough to read on white, and their own values on the dark surface. */
+.activity-booked { background-color: rgb(254 243 199 / 0.75); }
+.activity-recent { background-color: rgb(224 242 254 / 0.8); }
+.activity-swatch.activity-booked { border-color: #fcd34d; }
+.activity-swatch.activity-recent { border-color: #7dd3fc; }
+.dark .activity-booked { background-color: rgb(245 158 11 / 0.14); }
+.dark .activity-recent { background-color: rgb(56 189 248 / 0.12); }
+.dark .activity-swatch.activity-booked { border-color: rgb(245 158 11 / 0.6); }
+.dark .activity-swatch.activity-recent { border-color: rgb(56 189 248 / 0.55); }

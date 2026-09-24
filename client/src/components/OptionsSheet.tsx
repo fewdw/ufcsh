@@ -26,6 +26,10 @@ export default function OptionsSheet({
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
+  /** When a press outside last closed the sheet. On a phone the backdrop
+   *  covers the button, so the tap that closes it lands, as a click, on the
+   *  button underneath once the backdrop is gone — and would reopen it. */
+  const closedAt = useRef(0);
   const [phone, setPhone] = useState(() => typeof window !== "undefined" && !window.matchMedia("(min-width: 640px)").matches);
   useEffect(() => {
     const query = window.matchMedia("(min-width: 640px)");
@@ -41,7 +45,11 @@ export default function OptionsSheet({
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (!rootRef.current?.contains(target) && !sheetRef.current?.contains(target)) setOpen(false);
+      if (sheetRef.current?.contains(target)) return;
+      // The button's own click toggles it shut; anything else closes it here.
+      if (buttonRef.current?.contains(target)) return;
+      closedAt.current = Date.now();
+      setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -82,7 +90,10 @@ export default function OptionsSheet({
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-label={iconOnlyOnPhone ? label : undefined}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          if (!open && Date.now() - closedAt.current < 500) return;
+          setOpen((value) => !value);
+        }}
         className={`flex h-8 items-center gap-1.5 rounded-full border border-zinc-200 bg-white text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 ${iconOnlyOnPhone ? "px-2 sm:px-3" : "px-3"}`}
       >
         <SlidersHorizontal className="h-3.5 w-3.5 text-zinc-500" aria-hidden="true" />
@@ -91,7 +102,7 @@ export default function OptionsSheet({
       </button>
       {open ? (() => {
         const sheet = <>
-          <div className="fixed inset-0 z-[60] bg-black/30 sm:hidden" aria-hidden="true" onClick={() => close()} />
+          <div className="fixed inset-0 z-[60] bg-black/30 sm:hidden" aria-hidden="true" onClick={() => { closedAt.current = Date.now(); close(); }} />
           <div
             ref={sheetRef}
             role="dialog"
