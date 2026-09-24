@@ -1210,7 +1210,10 @@ async function syncImagesInner(limit: number): Promise<void> {
     const age = now - r.photo_checked_at;
     // A fighter still missing either picture is retried on the shorter cycle:
     // ufc.com adds full-body art when someone becomes worth photographing.
-    if (!r.photo_url || !r.photo_full_url) return age > DAY;
+    // Anyone booked or ranked is retried every two hours: a debutant's photos
+    // go up during fight week, and a daily retry could leave them faceless
+    // until the card is over.
+    if (!r.photo_url || !r.photo_full_url) return age > (r.pri <= 100 ? 2 * HOUR : DAY);
     // ufc.com re-shoots an athlete for the card they are on, so anyone ranked,
     // booked, or freshly off a card is looked at again within days rather than
     // carrying last year's face into fight week. A month is the right cycle for
