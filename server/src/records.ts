@@ -39,20 +39,6 @@ type ActionTotals = {
   takenAttempts: number;
   givenAccuracyScored: number;
   takenAccuracyScored: number;
-  maxGiven: number;
-  maxTaken: number;
-  maxGivenDetail: string;
-  maxTakenDetail: string;
-  maxGivenAttempts: number;
-  maxGivenAttemptsDetail: string;
-  maxTakenAttempts: number;
-  maxTakenAttemptsDetail: string;
-  maxGivenDifferential: number;
-  maxGivenDifferentialDetail: string;
-  maxGivenPercentage: number;
-  maxGivenPercentageDetail: string;
-  maxTakenPercentage: number;
-  maxTakenPercentageDetail: string;
 };
 
 type Totals = {
@@ -314,11 +300,13 @@ const ACTION_NAMES: Record<ActionType, string> = {
 };
 
 type ActionBasis = "scored" | "attempted" | "differential" | "percent";
-type ActionMode = "total" | "perFight" | "per15" | "single";
+type ActionMode = "total" | "perFight" | "per15";
 type ActionDirection = "given" | "taken";
 
 /** The distinct Output-board readings. Per-round and per-minute are scaled
- * versions of per-15, so a profile need only show the latter. Date/sample
+ * versions of per-15, so a profile need only show the latter. Single-bout
+ * highs are left to the Stats page: one big night ranks nearly everyone, so
+ * on a profile they crowded out the career placements. Date/sample
  * filters are deliberately not permanent claims about an entire career. */
 const PROFILE_ACTIONS: StatDef[] = [];
 for (const type of ACTION_TYPES) {
@@ -330,18 +318,17 @@ for (const type of ACTION_TYPES) {
   const supportsAttempts = !["knockdowns", "submissions", "control"].includes(type);
   const combinations: { basis: ActionBasis; mode: ActionMode; direction: ActionDirection }[] = [];
   for (const direction of ["given", "taken"] as const) {
-    for (const mode of ["total", "perFight", "per15", "single"] as const) {
+    for (const mode of ["total", "perFight", "per15"] as const) {
       combinations.push({ basis: "scored", mode, direction });
     }
     if (supportsAttempts) {
-      for (const mode of ["total", "perFight", "per15", "single"] as const) {
+      for (const mode of ["total", "perFight", "per15"] as const) {
         combinations.push({ basis: "attempted", mode, direction });
       }
       combinations.push({ basis: "percent", mode: "total", direction });
-      combinations.push({ basis: "percent", mode: "single", direction });
     }
   }
-  for (const mode of ["total", "perFight", "per15", "single"] as const) {
+  for (const mode of ["total", "perFight", "per15"] as const) {
     combinations.push({ basis: "differential", mode, direction: "given" });
   }
   for (const { basis, mode, direction } of combinations) {
@@ -363,13 +350,13 @@ for (const type of ACTION_TYPES) {
     );
     if (duplicate) continue;
     const modeLabel = mode === "total" ? "" : mode === "perFight" ? " per bout"
-      : mode === "per15" ? " per 15 min" : " in one bout";
+      : " per 15 min";
     const scoredVerb = type === "control" ? (direction === "given" ? "earned" : "conceded")
       : type === "submissions" ? (direction === "given" ? "made" : "faced")
         : type === "knockdowns" ? (direction === "given" ? "scored" : "absorbed")
           : direction === "given" ? "landed" : "absorbed";
     const label = basis === "percent"
-      ? `${direction === "given" ? "Highest" : "Best"} ${name} ${direction === "given" ? "accuracy" : "defense"}${mode === "single" ? " in one bout" : ""}`
+      ? `${direction === "given" ? "Highest" : "Best"} ${name} ${direction === "given" ? "accuracy" : "defense"}`
       : basis === "differential" ? `Best ${name} differential${modeLabel}`
         : `Most ${name} ${basis === "attempted" ? (direction === "given" ? "attempted" : "attempts faced") : scoredVerb}${modeLabel}`;
     const key = `action:${type}:${basis}:${direction}:${mode}`;
@@ -382,10 +369,6 @@ for (const type of ACTION_TYPES) {
       const a = t.actions[type];
       if (!a || t.bouts < 3 || count(a) < 3) return null;
       if (basis === "percent") {
-        if (mode === "single") {
-          const best = direction === "given" ? a.maxGivenPercentage : a.maxTakenPercentage;
-          return Number.isFinite(best) ? Math.round(best * 10) / 10 : null;
-        }
         const attempts = direction === "given" ? a.givenAttempts : a.takenAttempts;
         const scored = direction === "given" ? a.givenAccuracyScored : a.takenAccuracyScored;
         if ((direction === "given" ? scored : attempts) < minAccuracyCount) return null;
@@ -394,36 +377,27 @@ for (const type of ACTION_TYPES) {
         return percentage == null ? null : Math.round(percentage * 10) / 10;
       }
       if (isStrike && (basis === "scored" || basis === "differential")) {
-        const landed = mode === "single" && basis === "scored"
-          ? (direction === "given" ? a.maxGiven : a.maxTaken)
-          : direction === "given" ? a.given : a.taken;
+        const landed = direction === "given" ? a.given : a.taken;
         if (landed < MIN_STRIKES_LANDED) return null;
       }
-      const amount = mode === "single" ? basis === "differential" ? a.maxGivenDifferential
-        : basis === "attempted" ? (direction === "given" ? a.maxGivenAttempts : a.maxTakenAttempts)
-          : (direction === "given" ? a.maxGiven : a.maxTaken)
-        : mode === "perFight" ? raw(a) / count(a)
-          : mode === "per15" ? raw(a) / (seconds(a) / 900) : raw(a);
+      const amount = mode === "perFight" ? raw(a) / count(a)
+        : mode === "per15" ? raw(a) / (seconds(a) / 900) : raw(a);
       if (!Number.isFinite(amount) || (basis !== "differential" && amount <= 0)) return null;
-      return mode === "total" || mode === "single" ? amount : Math.round(amount * 10) / 10;
+      return mode === "total" ? amount : Math.round(amount * 10) / 10;
     };
     PROFILE_ACTIONS.push({
       key, label, category, priority: 100 + PROFILE_ACTIONS.length,
       format: basis === "percent" ? "percent"
         : type === "control" ? (basis === "differential" ? "signedTime" : "time")
           : basis === "differential" ? "signed"
-            : mode === "total" || mode === "single" ? "number" : "decimal",
+            : mode === "total" ? "number" : "decimal",
       headline: direction === "given" && (basis === "scored" || basis === "differential" || basis === "percent"),
       value,
       detail: (t) => {
         const a = t.actions[type]!;
-        if (basis === "percent" && mode === "single") return direction === "given" ? a.maxGivenPercentageDetail : a.maxTakenPercentageDetail;
         if (basis === "percent") return direction === "given"
           ? `${a.givenAccuracyScored}/${a.givenAttempts} landed · ${a.attemptBouts} paired bouts`
           : `${a.takenAttempts - a.takenAccuracyScored}/${a.takenAttempts} stopped · ${a.attemptBouts} paired bouts`;
-        if (mode === "single") return basis === "differential" ? a.maxGivenDifferentialDetail
-          : basis === "attempted" ? (direction === "given" ? a.maxGivenAttemptsDetail : a.maxTakenAttemptsDetail)
-            : direction === "given" ? a.maxGivenDetail : a.maxTakenDetail;
         const given = basis === "attempted" ? a.givenAttempts : a.given;
         const taken = basis === "attempted" ? a.takenAttempts : a.taken;
         return `${type === "control" ? clock(given) : given} given · ${type === "control" ? clock(taken) : taken} taken · ${count(a)} bouts${mode === "per15" ? ` · ${clock(seconds(a))} fight time` : ""}`;
@@ -502,37 +476,17 @@ function buildTotals(index: FightIndex, division?: string): Map<string, Totals> 
       // Match the Output leaderboard's denominator: a bout counts only when
       // both corners have this action. Attempts use the smaller paired sample.
       for (const type of ACTION_TYPES) {
-        const isStrike = type.endsWith("Strikes");
-        const minAccuracyCount = isStrike ? MIN_STRIKES_LANDED : MIN_TAKEDOWN_ACCURACY_SAMPLE;
         const own = side.actions[type];
         const theirs = opponent.actions[type];
         if (!own || !theirs) continue;
         const action = t.actions[type] ?? {
           bouts: 0, seconds: 0, attemptBouts: 0, attemptSeconds: 0,
           given: 0, taken: 0, givenAttempts: 0, takenAttempts: 0,
-          givenAccuracyScored: 0, takenAccuracyScored: 0, maxGiven: 0, maxTaken: 0,
-          maxGivenDetail: "", maxTakenDetail: "",
-          maxGivenAttempts: 0, maxGivenAttemptsDetail: "", maxTakenAttempts: 0, maxTakenAttemptsDetail: "",
-          maxGivenDifferential: Number.NEGATIVE_INFINITY, maxGivenDifferentialDetail: "",
-          maxGivenPercentage: Number.NEGATIVE_INFINITY, maxGivenPercentageDetail: "",
-          maxTakenPercentage: Number.NEGATIVE_INFINITY, maxTakenPercentageDetail: "",
+          givenAccuracyScored: 0, takenAccuracyScored: 0,
         };
         action.bouts += 1;
         action.given += own.scored;
         action.taken += theirs.scored;
-        if (own.scored > action.maxGiven) {
-          action.maxGiven = own.scored;
-          action.maxGivenDetail = `vs ${opponent.name} · ${fight.eventName}`;
-        }
-        if (theirs.scored > action.maxTaken) {
-          action.maxTaken = theirs.scored;
-          action.maxTakenDetail = `vs ${opponent.name} · ${fight.eventName}`;
-        }
-        const differential = own.scored - theirs.scored;
-        if ((!isStrike || own.scored >= MIN_STRIKES_LANDED) && differential > action.maxGivenDifferential) {
-          action.maxGivenDifferential = differential;
-          action.maxGivenDifferentialDetail = `${own.scored} given − ${theirs.scored} taken · vs ${opponent.name} · ${fight.eventName}`;
-        }
         if (fight.elapsed != null) action.seconds += fight.elapsed;
         if (own.attempted != null && theirs.attempted != null) {
           action.attemptBouts += 1;
@@ -540,28 +494,6 @@ function buildTotals(index: FightIndex, division?: string): Map<string, Totals> 
           action.takenAttempts += theirs.attempted;
           action.givenAccuracyScored += own.scored;
           action.takenAccuracyScored += theirs.scored;
-          if (own.attempted > action.maxGivenAttempts) {
-            action.maxGivenAttempts = own.attempted;
-            action.maxGivenAttemptsDetail = `vs ${opponent.name} · ${fight.eventName}`;
-          }
-          if (theirs.attempted > action.maxTakenAttempts) {
-            action.maxTakenAttempts = theirs.attempted;
-            action.maxTakenAttemptsDetail = `vs ${opponent.name} · ${fight.eventName}`;
-          }
-          const givenPercentage = actionPercentage(own.scored, own.attempted);
-          if (givenPercentage != null && own.attempted > 0
-            && own.scored >= minAccuracyCount
-            && givenPercentage > action.maxGivenPercentage) {
-            action.maxGivenPercentage = givenPercentage;
-            action.maxGivenPercentageDetail = `${own.scored}/${own.attempted} landed · vs ${opponent.name} · ${fight.eventName}`;
-          }
-          const takenPercentage = actionPercentage(theirs.scored, theirs.attempted, true);
-          if (takenPercentage != null && theirs.attempted > 0
-            && theirs.attempted >= minAccuracyCount
-            && takenPercentage > action.maxTakenPercentage) {
-            action.maxTakenPercentage = takenPercentage;
-            action.maxTakenPercentageDetail = `${theirs.attempted - theirs.scored}/${theirs.attempted} stopped · vs ${opponent.name} · ${fight.eventName}`;
-          }
           if (fight.elapsed != null) action.attemptSeconds += fight.elapsed;
         }
         t.actions[type] = action;

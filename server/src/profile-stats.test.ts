@@ -53,7 +53,7 @@ test("top Output placements appear on the fighter profile with the same value an
   const combinations = [
     { actionType: "significantStrikes", actionBasis: "scored", actionDirection: "given", actionMode: "perFight", division: "all" },
     { actionType: "significantStrikes", actionBasis: "scored", actionDirection: "given", actionMode: "perFight", division: "Featherweight" },
-    { actionType: "totalStrikes", actionBasis: "attempted", actionDirection: "given", actionMode: "single", division: "all" },
+    { actionType: "totalStrikes", actionBasis: "attempted", actionDirection: "given", actionMode: "total", division: "all" },
     { actionType: "control", actionBasis: "differential", actionDirection: "given", actionMode: "per15", division: "all" },
   ];
   for (const selection of combinations) {
@@ -70,23 +70,12 @@ test("top Output placements appear on the fighter profile with the same value an
   }
 });
 
-test("a one-strike bout cannot claim a top accuracy placement", () => {
+test("profiles leave single-bout highs to the Stats page", () => {
   const index = fightIndex();
-  const raul = [...index.fighters.values()].find((fighter) => fighter.name === "Raul Rosas Jr.");
-  assert.ok(raul);
-  const records = fighterRecords(raul.id, 5);
-  assert.ok(records.some((record) => record.label === "Most takedowns landed in one bout"));
-  assert.ok(records.every((record) => !record.label.includes("strikes accuracy in one bout") || !record.detail.startsWith("1/1")));
-
   for (const fighter of index.fighters.values()) {
     for (const entry of fighterStats(fighter.id)) {
-      if (/^action:.*Strikes:percent:given:single$/.test(entry.key)) {
-        const landed = Number(/^([\d,]+)\//.exec(entry.detail)?.[1].replaceAll(",", ""));
-        assert.ok(landed >= 30, `${fighter.name}: ${entry.label} is based on ${entry.detail}`);
-      }
-      if (/^action:.*Strikes:scored:given:single$/.test(entry.key)) {
-        assert.ok(entry.value >= 30, `${fighter.name}: ${entry.label} is only ${entry.value}`);
-      }
+      assert.ok(!entry.key.endsWith(":single"), `${fighter.name}: ${entry.key}`);
+      assert.ok(!entry.label.includes("in one bout"), `${fighter.name}: ${entry.label}`);
     }
   }
 });
