@@ -868,12 +868,12 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
           </div>
         ) : null}
         <div ref={detailScroll} inert={changingMatchup} className="h-full overflow-y-auto" aria-busy={changingMatchup}>
-          <div className="@container flex min-h-full w-full flex-col gap-3 sm:pb-8">
+          <div className="@container flex min-h-full w-full flex-col gap-2 sm:gap-3 sm:pb-8">
             {/* The steps along the card float over it as it scrolls: pinned
                 to the top here, and to the foot of a phone's screen below. */}
             <FloatingNavigation label="Card navigation" className="sticky top-0 z-30 hidden sm:grid"
               previous={cardSteps.previous} center={cardSteps.center} next={cardSteps.next} />
-            <div className="flex shrink-0 flex-col gap-3">
+            <div className="flex shrink-0 flex-col gap-2 sm:gap-3">
             <section className={`overflow-hidden ${shell}`}>
               <CardEventTitle
                 name={fight.event.name}
@@ -948,7 +948,7 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
               </div>
             ) : null}
 
-            <div id="matchup-tabpanel" role={tabs.length > 1 ? "tabpanel" : undefined} aria-labelledby={tabs.length > 1 ? `matchup-tab-${tab}` : undefined} className="flex flex-col gap-3">
+            <div id="matchup-tabpanel" role={tabs.length > 1 ? "tabpanel" : undefined} aria-labelledby={tabs.length > 1 ? `matchup-tab-${tab}` : undefined} className="flex flex-col gap-2 sm:gap-3">
               {tab === "fight" ? <>
                 <Scorecards fight={fight} />
                 {hasStats ? <FightStatistics fight={fight} live={statsLive} /> : fight.in_progress ? (

@@ -23,7 +23,7 @@ import { eventKind, type EventKind } from "../eventKind";
 import SearchGlyph from "../components/SearchGlyph";
 import { ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
-import { CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
+import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import SwipePager from "../components/SwipePager";
 
 const shell = PANEL;
@@ -83,10 +83,17 @@ const KIND_NOUN: Record<KindFilter, string> = {
 const DOCK = {
   // `head`: as a phone's sheet the list's search and filters sit at the foot,
   // under the thumb; docked beside the card they head the list.
+  // A phone's sheet is two panels, the list and under it (at the thumb) its
+  // search and filters; docked beside the card they join into one panel,
+  // the search heading the list.
   card: { sidebar: "md:flex md:w-72 md:shrink-0 md:flex-none lg:w-80", toggle: "md:hidden", main: "md:block", row: "md:flex-row",
-    head: "order-last border-t md:order-none md:border-t-0 md:border-b" },
+    aside: "gap-2 md:gap-0 md:rounded-2xl md:border md:border-zinc-200 md:shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
+    head: "order-last md:order-none md:rounded-none md:border-x-0 md:border-t-0 md:shadow-none",
+    list: "md:rounded-none md:border-0 md:shadow-none" },
   matchup: { sidebar: "xl:flex xl:w-80 xl:shrink-0 xl:flex-none", toggle: "xl:hidden", main: "xl:block", row: "xl:flex-row",
-    head: "order-last border-t xl:order-none xl:border-t-0 xl:border-b" },
+    aside: "gap-2 xl:gap-0 xl:rounded-2xl xl:border xl:border-zinc-200 xl:shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
+    head: "order-last xl:order-none xl:rounded-none xl:border-x-0 xl:border-t-0 xl:shadow-none",
+    list: "xl:rounded-none xl:border-0 xl:shadow-none" },
 } as const;
 
 function EventSidebar({
@@ -162,34 +169,32 @@ function EventSidebar({
   }, [selectedId, events.length]);
 
   return (
-    <aside id="events-sidebar" className={`${mobileOpen ? "flex" : "hidden"} min-h-0 w-full flex-1 flex-col overflow-hidden ${dock.sidebar} ${shell}`}>
-      <div className={`space-y-2 border-zinc-200 p-3 ${dock.head}`}>
-        {/* On a phone the list opens over the card like a sheet: a title and
-            its count, with the ✕ that closes it back to the card — the same
-            header the filter sheets use. Docked beside the card it needs none. */}
-        <div className={`flex items-center justify-between gap-3 pl-1 ${dock.toggle}`}>
-          <div className="min-w-0">
-            <h2 className={`${DIALOG_TITLE} leading-tight`}>Events</h2>
-            <p className="text-xs tabular-nums text-zinc-500">{scoped.length.toLocaleString()} {KIND_NOUN[kind]}</p>
-          </div>
-          <button type="button" onClick={onBack} aria-label="Close events" title="Back to card" className={`-mr-1.5 ${CLOSE_BUTTON}`}>
+    <aside id="events-sidebar" className={`${mobileOpen ? "flex" : "hidden"} min-h-0 w-full flex-1 flex-col overflow-hidden ${dock.sidebar} ${dock.aside}`}>
+      <div className={`${shell} space-y-2 p-3 ${dock.head}`}>
+        {/* Built from the same pill, border and glyph as the header's search
+            button, so the two read as one control in two places. On a phone
+            the ✕ that closes the sheet back to the card sits beside it. */}
+        <div className="flex items-center gap-2">
+          <label className="relative block min-w-0 flex-1">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
+              <SearchGlyph />
+            </span>
+            <input
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              aria-label={`Filter ${KIND_NOUN[kind]}`}
+              placeholder={`Search ${scoped.length.toLocaleString()} ${KIND_NOUN[kind]}…`}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              className="h-10 w-full min-w-0 rounded-full border border-zinc-200 bg-white pl-9 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-9 sm:text-sm"
+            />
+          </label>
+          <button type="button" onClick={onBack} aria-label="Close events" title="Back to card" className={`shrink-0 ${CLOSE_BUTTON} ${dock.toggle}`}>
             <X className={CLOSE_ICON} aria-hidden="true" />
           </button>
         </div>
-        {/* Built from the same pill, border and glyph as the header's search
-            button, so the two read as one control in two places. */}
-        <label className="relative block min-w-0">
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
-            <SearchGlyph />
-          </span>
-          <input
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            aria-label={`Filter ${KIND_NOUN[kind]}`}
-            placeholder={`Search ${KIND_NOUN[kind]}…`}
-            className="h-10 w-full min-w-0 rounded-full border border-zinc-200 bg-white pl-9 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-9 sm:text-sm"
-          />
-        </label>
         <div className={segmentedGroup} role="group" aria-label="Event tier">
           {KIND_FILTERS.map((option) => (
             <button
@@ -208,7 +213,7 @@ function EventSidebar({
         </div>
       </div>
 
-      <div className="relative min-h-0 flex-1">
+      <div className={`relative min-h-0 flex-1 overflow-hidden ${shell} ${dock.list}`}>
         <div
           ref={listRef}
           onScroll={(e) => setShowTop(e.currentTarget.scrollTop > 320)}
