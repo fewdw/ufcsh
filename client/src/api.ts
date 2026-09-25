@@ -964,7 +964,22 @@ export type VenueDirectory = {
 // fetching with an in-memory cache: cached pages render instantly and refresh
 // in the background (stale-while-revalidate).
 
-export const apiCache = new RequestCache();
+/** Responses the page started in `index.html` before this bundle loaded,
+ *  each taken once by the first request for its URL. */
+type Preload = { at: number; responses: Record<string, Promise<Response | null> | undefined> };
+const preload = typeof window === "undefined" ? undefined : (window as { __ufcPreload?: Preload }).__ufcPreload;
+
+function preloaded(url: string): Promise<Response | null> | null {
+  const response = preload?.responses[url];
+  if (!preload || !response) return null;
+  delete preload.responses[url];
+  return Date.now() - preload.at < 30_000 ? response : null;
+}
+
+export const apiCache = new RequestCache(150, (input, init) => {
+  const early = typeof input === "string" ? preloaded(input) : null;
+  return early ? early.then(response => response ?? fetch(input, init)) : fetch(input, init);
+});
 const polling = new PollCoordinator(async url => {
   await apiCache.load(url, 5_000);
   return !apiCache.read(url).error;

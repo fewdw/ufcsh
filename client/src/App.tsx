@@ -10,29 +10,27 @@ import { accountsEnabled, useAccount } from "./auth";
 import { useAdminResource, type AdminSession } from "./admin";
 import { useSettings, withRanking } from "./settings";
 import { prefetch } from "./api";
-import { useFighterPrefetch } from "./useFighterPrefetch";
+import { useLinkPrefetch } from "./useLinkPrefetch";
+import { pages } from "./pages";
 import RouteErrorBoundary from "./components/RouteErrorBoundary";
 import ParlaySlip from "./components/ParlaySlip";
 import { ShortcutProvider, useShortcutHelp } from "./shortcuts";
 import { GraphicsProvider } from "./graphicsLauncher";
 
-const loadEventsPage = () => import("./pages/EventsPage");
-const loadRankingsPage = () => import("./pages/RankingsPage");
-const loadStatsPage = () => import("./pages/StatsPage");
-const EventsPage = lazy(loadEventsPage);
-const FighterPage = lazy(() => import("./pages/FighterPage"));
-const RankingsPage = lazy(loadRankingsPage);
-const StatsPage = lazy(loadStatsPage);
-const LabsPage = lazy(() => import("./pages/LabsPage"));
-const AdminPage = lazy(() => import("./pages/AdminPage"));
-const ProfilePage = lazy(() => import("./pages/ProfilePage"));
-const AuthPage = lazy(() => import("./pages/AuthPage"));
-const JudgePage = lazy(() => import("./pages/JudgePage"));
-const RefereePage = lazy(() => import("./pages/RefereePage"));
-const VenuePage = lazy(() => import("./pages/VenuePage"));
-const OfficialsPage = lazy(() => import("./pages/DirectoryPages").then((module) => ({ default: module.OfficialsPage })));
-const VenuesPage = lazy(() => import("./pages/DirectoryPages").then((module) => ({ default: module.VenuesPage })));
-const InfoPage = lazy(() => import("./pages/InfoPage"));
+const EventsPage = lazy(pages.events);
+const FighterPage = lazy(pages.fighter);
+const RankingsPage = lazy(pages.rankings);
+const StatsPage = lazy(pages.stats);
+const LabsPage = lazy(pages.labs);
+const AdminPage = lazy(pages.admin);
+const ProfilePage = lazy(pages.profile);
+const AuthPage = lazy(pages.auth);
+const JudgePage = lazy(pages.judge);
+const RefereePage = lazy(pages.referee);
+const VenuePage = lazy(pages.venue);
+const OfficialsPage = lazy(() => pages.directories().then((module) => ({ default: module.OfficialsPage })));
+const VenuesPage = lazy(() => pages.directories().then((module) => ({ default: module.VenuesPage })));
+const InfoPage = lazy(pages.info);
 const isDevSite = import.meta.env.VITE_SITE_ORIGIN === "https://dev.ufc.sh";
 
 const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
@@ -64,10 +62,10 @@ function Header({ onSearch }: { onSearch: () => void }) {
   // A profile belongs to no section of the nav, so none of them is lit.
   const isProfile = pathname.startsWith("/profiles");
   const links = [
-    { href: "/", label: "Events", active: !isRankings && !isStats && !isLabs && !isProfile && !isAdmin, load: loadEventsPage },
+    { href: "/", label: "Events", active: !isRankings && !isStats && !isLabs && !isProfile && !isAdmin, load: pages.events },
     // Pointing at Rankings starts the list too, so a tap lands on it loaded.
-    { href: "/rankings", label: "Rankings", active: isRankings, load: () => { prefetch(withRanking("/api/rankings", settings.rankingSource)); return loadRankingsPage(); } },
-    { href: "/stats", label: "Stats", active: isStats || isLabs, load: loadStatsPage },
+    { href: "/rankings", label: "Rankings", active: isRankings, load: () => { prefetch(withRanking("/api/rankings", settings.rankingSource)); return pages.rankings(); } },
+    { href: "/stats", label: "Stats", active: isStats || isLabs, load: pages.stats },
   ];
 
   return (
@@ -165,7 +163,7 @@ export default function App() {
   const trackedPath = useRef<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const { settings } = useSettings();
-  useFighterPrefetch(settings.rankingSource);
+  useLinkPrefetch(settings.rankingSource);
 
   useEffect(() => {
     // React changes pages without a new document request. Count those views by

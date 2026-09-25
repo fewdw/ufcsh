@@ -50,6 +50,44 @@ not slow code. 404s in the mix are booked debutants, which have no profile.
 Memory: the V2 indexes add about 25 MB of heap per query worker (full stat
 boards 21 MB, officials 4 MB) on the full archive.
 
+## Sync writes stalled readers (2026-09-25, `fast` branch)
+
+Production metrics showed page data with a median near 10 ms but a p95 of
+3.4–4.1 s (event, matchup, fighter, stat board, previews). Each sync write
+bumps the analytics revision, and every query worker then rebuilt the fight
+index (~2 s), the all-fighter record tables (~1.8 s) and the search index
+inside the next request — about 60 rebuilds in four hours, in bursts. Requests
+queued behind a rebuilding worker waited seconds.
+
+Reproduced locally at 20 req/s over ~2,000 distinct pages while bumping the
+revisions every 8 s (`load-test.ts --rate=20 --cold`
+plus a loop running `UPDATE data_revisions SET value = value + 1`):
+
+| Build | p50 | p95 | p99 | fighter p95 | matchup p95 | event p95 |
+| --- | --- | --- | --- | --- | --- | --- |
+| main | 7.9 ms | 3,199 ms | 3,923 ms | 3,747 ms | 3,681 ms | 3,228 ms |
+| fast | 4.3 ms | 19.5 ms | ~300 ms (share images) | 14 ms | 16 ms | 23 ms |
+
+What changed:
+
+- Query workers hold their fight and search indexes; a request never rebuilds
+  one. The main process watches the revision and has the pool refresh one
+  worker at a time (at most every 30 s), re-warming records, officials, venues
+  and a page of each kind before that worker takes requests again.
+- The shared response cache serves a stale copy while it rebuilds (10 minutes
+  for event, matchup and fighter data, an hour for lists and page HTML), so a
+  reader is answered from memory unless nobody has asked in that long.
+- The main lists (`/api/events`, live, stats, both rankings, officials,
+  venues, insights) are cached as soon as the workers are ready.
+- Client: `index.html` starts the page's own data alongside the app's code;
+  pointing at, focusing or pressing any internal link starts that page's code
+  and first data; every page's code loads in the background once the first
+  page is idle; the account button opens the profile by handle directly.
+
+At 1,500 req/s the tail on the shared 4 vCPU host is set by CPU contention with
+the load generator and the running production and dev apps (main process ~57%
+idle, workers ~65% idle in a CPU profile), not by the server's code paths.
+
 ## What changed because of the numbers
 
 - Share images first rendered at up to 665 KB PNG and 1.6 s under load: they

@@ -2,7 +2,7 @@ import { Worker } from "node:worker_threads";
 import { OverloadedError, type ApiResult } from "./response-cache.ts";
 
 type Job = { id: number; url: string; resolve: (value: ApiResult) => void; reject: (error: Error) => void; timer?: NodeJS.Timeout };
-type Slot = { worker: Worker; ready: boolean; job?: Job };
+type Slot = { worker: Worker; ready: boolean; job?: Job; refreshed?: () => void };
 
 /** Fixed-size pool with a bounded queue. A slow query cannot stall HTTP or health checks. */
 export class QueryPool {
@@ -10,6 +10,7 @@ export class QueryPool {
   private queue: Job[] = [];
   private nextId = 0;
   private closed = false;
+  private refreshing: Promise<void> | null = null;
   private workerUrl: URL;
   private timeoutMs: number;
   private size: number;
@@ -39,23 +40,44 @@ export class QueryPool {
     });
   }
 
+  /** Rebuild each worker's indexes in turn, taking one out of rotation at a
+   *  time so the rest keep answering. Calls made during a pass share it. */
+  refresh(deadlineMs = 120_000): Promise<void> {
+    this.refreshing ??= (async () => {
+      for (const slot of [...this.slots]) {
+        if (this.closed) break;
+        if (!slot.ready || !this.slots.includes(slot)) continue;
+        await new Promise<void>(resolve => {
+          const timer = setTimeout(() => { void slot.worker.terminate(); resolve(); }, deadlineMs);
+          slot.refreshed = () => { clearTimeout(timer); slot.refreshed = undefined; resolve(); this.dispatch(); };
+          // A worker between jobs starts now; a busy one starts after its job.
+          if (!slot.job) slot.worker.postMessage({ refresh: true });
+        });
+      }
+    })().finally(() => { this.refreshing = null; });
+    return this.refreshing;
+  }
+
   private spawn() {
     const worker = new Worker(this.workerUrl, { env: { ...process.env, DB_INIT: "0", SYNC_MODE: "external" } });
     const slot: Slot = { worker, ready: false };
     this.slots.push(slot);
     worker.on("message", message => {
       if (message.ready) { slot.ready = true; this.dispatch(); return; }
+      if (message.refreshed) { slot.refreshed?.(); return; }
       const job = slot.job;
       if (!job || message.id !== job.id) return;
       clearTimeout(job.timer);
       slot.job = undefined;
       if (message.error) job.reject(new Error(message.error));
       else job.resolve(message.result);
+      if (slot.refreshed) slot.worker.postMessage({ refresh: true });
       this.dispatch();
     });
     worker.on("error", error => console.error("query worker failed:", String(error)));
     worker.on("exit", () => {
       if (slot.job) { clearTimeout(slot.job.timer); slot.job.reject(new OverloadedError("Query worker stopped")); }
+      slot.refreshed?.();
       this.slots = this.slots.filter(value => value !== slot);
       if (!this.closed) setTimeout(() => { if (!this.closed) this.spawn(); }, 1000).unref();
     });
@@ -63,7 +85,7 @@ export class QueryPool {
 
   private dispatch() {
     for (const slot of this.slots) {
-      if (!slot.ready || slot.job || !this.queue.length) continue;
+      if (!slot.ready || slot.job || slot.refreshed || !this.queue.length) continue;
       slot.job = this.queue.shift()!;
       slot.worker.postMessage({ id: slot.job.id, url: slot.job.url });
     }

@@ -46,7 +46,7 @@ import { titleNarratives } from "./titles.ts";
 import { fighterBoard, fighterRecords } from "./records.ts";
 import { completedUfcFightExistsSql, hasCompletedUfcFight, recordText, currentRecord, cachedPhotoUrl, cachedFullPhotoUrl, photoVersion } from "./fighter-identity.ts";
 export { hasCompletedUfcFight };
-import { careerBefore, completeRecordBefore, fightIndex, ageOn, parseScheduledRounds, professionalBouts, professionalBoutsBefore, sideOf, ufcBoutsBefore, type FightRecord } from "./fight-index.ts";
+import { careerBefore, completeRecordBefore, fightIndex, indexesHeld, ageOn, parseScheduledRounds, professionalBouts, professionalBoutsBefore, sideOf, ufcBoutsBefore, type FightRecord } from "./fight-index.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { summarizeCard } from "./card-stats.ts";
 import { mergeJudgeRounds } from "./judge-scorecards.ts";
@@ -1202,9 +1202,19 @@ type SearchIndex = {
   fights: { id: string; date: string; names: string; target: FuzzyTarget }[];
 };
 const searchIndexCache = new VersionCache<SearchIndex>(1);
+let heldSearchIndex: SearchIndex | null = null;
 
-/** Everything the typo-tolerant fallback scans, rebuilt when the data changes. */
+/** Rebuild the search index now if its data changed; query workers call this
+ *  from their refresh pass so a search never waits on the build. */
+export function refreshSearchIndex(): void {
+  heldSearchIndex = null;
+  heldSearchIndex = searchIndex();
+}
+
+/** Everything the typo-tolerant fallback scans, rebuilt when the data changes
+ *  (or, in a query worker holding its indexes, when the pool refreshes it). */
 function searchIndex(): SearchIndex {
+  if (heldSearchIndex && indexesHeld()) return heldSearchIndex;
   const version = dataRevision("search");
   const cached = searchIndexCache.get("index", version);
   if (cached) return cached;
@@ -1657,7 +1667,7 @@ export async function serveStatic(req: http.IncomingMessage, res: http.ServerRes
     const seo = queryPool ? JSON.parse((await queryPool.run(`/_seo?path=${encodeURIComponent(pathname)}`)).json) as PageSeo : pageSeo(pathname);
     return { json: injectPageSeo(index.data.toString(), pathname, seo), status: seo.status ?? 200 };
   };
-  const page = pages ? await pages.get(`page:${index.etag}:${pathname}`, 60_000, build) : await representation(await build());
+  const page = pages ? await pages.get(`page:${index.etag}:${pathname}`, 60_000, build, 60 * 60_000) : await representation(await build());
   sendRepresentation(req, res, page, "no-cache", "text/html");
 }
 
@@ -1901,10 +1911,49 @@ export function startApi(port: number): http.Server {
   });
   const workerCount = Number(process.env.API_WORKERS ?? (process.env.NODE_ENV === "production" ? 2 : 0));
   if (!Number.isInteger(workerCount) || workerCount < 0 || workerCount > 8) throw new Error("API_WORKERS must be an integer from 0 to 8");
-  if (workerCount) queryPool = new QueryPool(workerCount);
+  let refresher: NodeJS.Timeout | undefined;
+  if (workerCount) {
+    const pool = queryPool = new QueryPool(workerCount);
+    // Workers hold their indexes; when the data changes they are rebuilt here,
+    // one worker at a time and at most every half minute, so a burst of sync
+    // writes costs one rebuild and no request waits on one.
+    let seen = dataRevision("analytics");
+    let lastRefreshAt = Date.now();
+    refresher = setInterval(() => {
+      if (!pool.ready || Date.now() - lastRefreshAt < 30_000) return;
+      const revision = dataRevision("analytics");
+      if (revision === seen) return;
+      seen = revision;
+      lastRefreshAt = Date.now();
+      void pool.refresh().catch(error => log("index refresh failed:", String(error)));
+    }, 5_000);
+    refresher.unref();
+  }
   const cacheMb = Number(process.env.RESPONSE_CACHE_MB ?? 128);
   const cache = new ResponseCache((Number.isFinite(cacheMb) && cacheMb > 0 ? cacheMb : 128) * 1024 * 1024);
   const limiter = new RateLimiter();
+  /** A public API answer: the shared cache, filled by a query worker. */
+  const publicAnswer = (url: URL) => {
+    const policy = cachePolicy(url);
+    const key = canonicalApiKey(url);
+    return cache.get(key, policy.ttl, async () => {
+      if (queryPool) return queryPool.run(key);
+      const data = await resolvePublicApi(url);
+      return { json: JSON.stringify(data === undefined ? { error: "not found" } : data), status: data === undefined ? 404 : 200 };
+    }, policy.stale);
+  };
+  // The lists every visit starts from are in memory before the first reader
+  // asks, so no one meets a cold build after a deploy.
+  const warmLists = setInterval(() => {
+    if (queryPool && !queryPool.ready) return;
+    clearInterval(warmLists);
+    if (!queryPool) return;
+    for (const path of ["/api/events", "/api/live", "/api/stats", "/api/rankings?ranking=media", "/api/rankings?ranking=meta",
+      "/api/officials", "/api/venues", "/api/labs/insights"]) {
+      void publicAnswer(new URL(path, "http://localhost")).catch(() => {});
+    }
+  }, 1000);
+  warmLists.unref();
   const observability = new HttpObservability();
   const eventLoop = monitorEventLoopDelay({ resolution: 20 });
   eventLoop.enable();
@@ -2057,14 +2106,7 @@ export function startApi(port: number): http.Server {
       }
       if ((url.searchParams.get("q")?.length ?? 0) > 120) return await sendJson(req, res, { error: "search query too long" }, 400);
       if (publicApi(p)) {
-        const policy = cachePolicy(url);
-        const key = canonicalApiKey(url);
-        const value = await cache.get(key, policy.ttl, async () => {
-          if (queryPool) return queryPool.run(key);
-          const data = await resolvePublicApi(url);
-          return { json: JSON.stringify(data === undefined ? { error: "not found" } : data), status: data === undefined ? 404 : 200 };
-        }, policy.stale);
-        return sendRepresentation(req, res, value, policy.control);
+        return sendRepresentation(req, res, await publicAnswer(url), cachePolicy(url).control);
       }
       if (p === "/api/status" || p === "/api/metrics") {
         if (!isAdmin(req)) return await sendJson(req, res, { error: "authentication required" }, 401);
@@ -2137,6 +2179,8 @@ export function startApi(port: number): http.Server {
     eventLoop.disable();
     recentLoop.disable();
     clearInterval(sampler);
+    clearInterval(warmLists);
+    clearInterval(refresher);
     process.removeListener("SIGTERM", shutdown);
     process.removeListener("SIGINT", shutdown);
     void queryPool?.close();

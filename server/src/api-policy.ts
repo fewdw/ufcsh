@@ -17,13 +17,19 @@ export function publicApi(path: string): boolean {
  *  from memory, and the first one past expiry triggers the rebuild. */
 const slowRoutes = new Set(["/api/rankings", "/api/stats"]);
 
+/** How long past its lifetime a copy is still served while a fresh one is
+ *  built behind it. A reader is answered from memory unless nobody has asked
+ *  for the page in this long; the next one gets the fresh copy. */
+const DYNAMIC_STALE_MS = 10 * 60_000;
+const LIST_STALE_MS = 60 * 60_000;
+
 export function cachePolicy(url: URL): { ttl: number; stale: number; control: string } {
   // Personalized filter URLs remain browser-revalidated; the bounded origin cache
   // still shares identical studies. Keep CDN freshness inside the origin lifetime.
   const dynamic = url.pathname === "/api/live" || /^\/api\/(events|fights|fighters)(\/|$)/.test(url.pathname);
   const ttl = dynamic ? 5_000 : 60_000;
   const slow = slowRoutes.has(url.pathname);
-  const stale = slow ? 6 * 60 * 60_000 : ttl;
+  const stale = slow ? 6 * 60 * 60_000 : dynamic ? DYNAMIC_STALE_MS : LIST_STALE_MS;
   if (url.pathname === "/api/rankings") {
     // The browser keeps its copy for a minute and may show it for a day while
     // it revalidates, so a return visit paints the lists immediately.

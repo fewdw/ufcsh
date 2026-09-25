@@ -20,6 +20,7 @@ import { useMyProfile } from "../profile";
 import { cardWinner, usernameProblem } from "../scoring";
 import type { ProfileFilter, ScorerCard, ScorerIdentity, ScorerProfile } from "../scoring";
 import { useSeo } from "../seo";
+import { useSettings, withRanking } from "../settings";
 import { BUTTON_PRIMARY, BUTTON_QUIET } from "../ui";
 import FanAvatar from "../components/FanAvatar";
 import { useGraphics } from "../graphicsLauncher";
@@ -526,7 +527,8 @@ function CardRows({ cards, mine, onRemove }: { cards: ScorerCard[]; mine: boolea
 function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; onRemove: (card: ScorerCard) => void }) {
   const { fight } = card;
   const winner = cardWinner(card);
-  const warm = () => prefetch(`/api/fights/${card.fightId}`);
+  const { settings } = useSettings();
+  const warm = () => prefetch(withRanking(`/api/fights/${card.fightId}`, settings.rankingSource));
   const scored = Boolean(card.rounds.length);
   return (
     <li className="relative">

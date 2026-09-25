@@ -3,6 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Ask for the page's data now, alongside the application's code, rather
+      // than after it has loaded; `apiCache` in src/api.ts takes these. The
+      // URLs match src/pageRequests.ts, which keys the same requests.
+      (function () {
+        var ranking = "media", path = location.pathname, m, urls = ["/api/live"];
+        try { if ((JSON.parse(localStorage.getItem("ufcsh:settings:v1") || "null") || {}).rankingSource === "meta") ranking = "meta"; } catch (e) {}
+        var ranked = function (url) { return url + "?ranking=" + ranking; };
+        if (path === "/") urls.push("/api/events");
+        else if ((m = /^\/events\/([a-f0-9]{16})$/.exec(path))) urls.push("/api/events", ranked("/api/events/" + m[1]));
+        else if ((m = /^\/fights\/([a-f0-9]{16})$/.exec(path))) urls.push("/api/events", ranked("/api/fights/" + m[1]));
+        else if ((m = /^\/fighters\/([a-f0-9]{16})$/.exec(path))) urls.push(ranked("/api/fighters/" + m[1]), "/api/fighters/" + m[1] + "/stats?scope=ufc&minBouts=0");
+        else if (path === "/rankings") urls.push(ranked("/api/rankings"));
+        else if (path === "/officials" || path === "/venues") urls.push("/api" + path);
+        else if (!location.search && (m = /^\/(judges|referees|venues)\/([a-z0-9-]{1,80})$/.exec(path))) urls.push("/api/" + m[1] + "/" + m[2]);
+        var responses = {};
+        urls.forEach(function (url) { responses[url] = fetch(url).catch(function () { return null; }); });
+        window.__ufcPreload = { at: Date.now(), responses: responses };
+      })();
+    </script>
     <title>UFC Events, Odds, Stats &amp; Rankings | ufc.sh</title>
     <meta
       name="description"

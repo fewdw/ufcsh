@@ -15,8 +15,22 @@ let inflight: Promise<void> | null = null;
 const listeners = new Set<() => void>();
 const publish = (next: Partial<State>) => {
   state = { ...state, ...next };
+  if (state.userId && state.identity) {
+    try { localStorage.setItem(HANDLE_KEY, JSON.stringify({ userId: state.userId, handle: state.identity.handle })); } catch { /* private mode */ }
+  }
   listeners.forEach(listener => listener());
 };
+
+/** The handle this browser last saw for an account, so the account button
+ *  and `/profiles/me` can open the profile at once while the session answers. */
+const HANDLE_KEY = "ufcsh:my-handle:v1";
+export function rememberedHandle(userId: string | undefined): string | null {
+  if (!userId) return null;
+  try {
+    const saved = JSON.parse(localStorage.getItem(HANDLE_KEY) ?? "null") as { userId?: string; handle?: string } | null;
+    return saved?.userId === userId && typeof saved.handle === "string" ? saved.handle : null;
+  } catch { return null; }
+}
 
 async function fetchIdentity(getToken: () => Promise<string | null>, method: "GET" | "PUT", body?: unknown) {
   const token = await getToken();

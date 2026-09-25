@@ -782,9 +782,27 @@ function build(version: string): FightIndex {
 
 let lastFingerprintAt = 0;
 let lastFingerprint = "";
+let held = false;
+
+/** Query workers hold the indexes they have: a request never waits on a
+ *  rebuild (about two seconds on the full archive). The pool calls
+ *  `refreshFightIndex` on one worker at a time while the others serve. */
+export function holdIndexes(): void { held = true; }
+export function indexesHeld(): boolean { return held; }
+
+/** Rebuild now if the tables changed since the index was built. */
+export function refreshFightIndex(): boolean {
+  const version = fingerprint();
+  lastFingerprint = version;
+  lastFingerprintAt = Date.now();
+  if (current?.version === version) return false;
+  current = build(version);
+  return true;
+}
 
 /** The current index, rebuilt lazily when the underlying tables change. */
 export function fightIndex(): FightIndex {
+  if (held && current) return current;
   // Sample the transactional revision every few seconds so bursts share a check.
   const now = Date.now();
   if (!current || now - lastFingerprintAt > 5000) {
