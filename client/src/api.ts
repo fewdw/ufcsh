@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { RequestCache } from "./requestCache";
+import { readSnapshot, writeSnapshot } from "./snapshots";
 import { PollCoordinator } from "./polling";
 
 // ---------------------------------------------------------------------------
@@ -979,7 +980,7 @@ function preloaded(url: string): Promise<Response | null> | null {
 export const apiCache = new RequestCache(150, (input, init) => {
   const early = typeof input === "string" ? preloaded(input) : null;
   return early ? early.then(response => response ?? fetch(input, init)) : fetch(input, init);
-});
+}, { read: readSnapshot, write: writeSnapshot });
 const polling = new PollCoordinator(async url => {
   await apiCache.load(url, 5_000);
   return !apiCache.read(url).error;

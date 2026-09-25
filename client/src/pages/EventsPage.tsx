@@ -812,7 +812,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   if (loading && !event) {
     return (
       <div className={`flex h-full items-center justify-center ${shell}`}>
-        <div className="text-sm text-zinc-400">Loading…</div>
+        <div role="status" className="appear-late text-sm text-zinc-400">Loading…</div>
       </div>
     );
   }
@@ -983,7 +983,7 @@ export default function EventsPage() {
     );
   }
   if (loading || !events) {
-    return <div className="flex h-full items-center justify-center text-sm text-zinc-400">Loading events…</div>;
+    return <div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading events…</div>;
   }
 
   return (

@@ -106,7 +106,7 @@ export default function FighterStatistics({ fighterId, history }: { fighterId: s
         <span className="min-w-0">
           <span className="flex items-center gap-1.5 text-sm font-semibold text-zinc-900">Statistics</span>
           <span className="mt-0.5 block truncate text-xs text-zinc-500">
-            {board ? `${board.stats.length.toLocaleString()} ranked readings · ${board.scope_label}` : error ? "Couldn’t load rankings" : "Loading rankings…"}
+            {board ? `${board.stats.length.toLocaleString()} ranked readings · ${board.scope_label}` : error ? "Couldn’t load rankings" : <span className="appear-late">Loading rankings…</span>}
           </span>
         </span>
         <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
@@ -163,10 +163,10 @@ export default function FighterStatistics({ fighterId, history }: { fighterId: s
             </label>
           </div>
           {error ? <div className="px-4 pb-3 sm:px-5"><RequestNotice onRetry={retry}>Couldn’t update these rankings. Any figures below are from the previous selection.</RequestNotice></div> : null}
-          {!board && !error ? <p role="status" className="px-5 py-6 text-center text-xs text-zinc-400">Loading rankings…</p> : null}
+          {!board && !error ? <p role="status" className="appear-late px-5 py-6 text-center text-xs text-zinc-400">Loading rankings…</p> : null}
 
           {board ? (
-            <div className={stale ? "opacity-60 transition-opacity" : ""} aria-busy={stale}>
+            <div className={stale ? "opacity-60 transition-opacity delay-200" : ""} aria-busy={stale}>
               {!shown.length ? (
                 <p className="px-5 py-6 text-center text-xs text-zinc-500">
                   {needle ? `No ranked statistic matches “${query.trim()}”.` : `No ranked statistics ${inDivision ? `at ${board.scope_label}` : "yet"}.`}

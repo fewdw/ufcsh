@@ -1039,7 +1039,7 @@ export default function StatsPage() {
 
         {/* Five cards of one width: three on top, two centred beneath them
             (on a two-column screen the fifth is centred on its own row). */}
-        <div aria-busy={loading} className={`grid grid-cols-1 gap-x-3 gap-y-3 transition-opacity md:grid-cols-2 xl:grid-cols-6 ${loading || error ? "opacity-70" : ""}`}>
+        <div aria-busy={loading} className={`grid grid-cols-1 gap-x-3 gap-y-3 transition-opacity md:grid-cols-2 xl:grid-cols-6 ${loading || error ? "opacity-70 delay-200" : ""}`}>
           {orderedBoards.map((board, index) => (
             <Leaderboard
               key={board.key}

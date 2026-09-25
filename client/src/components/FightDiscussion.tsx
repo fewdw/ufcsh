@@ -64,30 +64,41 @@ const useDiscussion = () => useContext(DiscussionContext)!;
 /** A fight's discussion: comments, replies to them, and replies to those. */
 export default function FightDiscussion({ fightId }: { fightId: string }) {
   return accountsEnabled ? <WithAccount fightId={fightId} />
-    : <DiscussionPanel fightId={fightId} getToken={noToken} signedIn={false} signIn={null} />;
+    : <DiscussionPanel fightId={fightId} viewerKey="guest" getToken={noToken} signedIn={false} signIn={null} />;
 }
 
 function WithAccount({ fightId }: { fightId: string }) {
   const { getToken } = useAuth();
   const { isLoaded, user, signIn } = useAccount();
-  if (!isLoaded) return <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">Loading discussion…</section>;
+  if (!isLoaded) return <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">Loading discussion…</section>;
   // A different account is a different view of the same thread.
-  return <DiscussionPanel key={user?.id ?? "guest"} fightId={fightId} getToken={getToken} signedIn={Boolean(user)} signIn={signIn} />;
+  return <DiscussionPanel key={user?.id ?? "guest"} fightId={fightId} viewerKey={user?.id ?? "guest"} getToken={getToken} signedIn={Boolean(user)} signIn={signIn} />;
 }
 
 type Meta = { total: number; threads: number; next: number; viewer: Viewer };
 
-function DiscussionPanel({ fightId, getToken, signedIn, signIn }: {
-  fightId: string; getToken: GetToken; signedIn: boolean; signIn: (() => void) | null;
+/** Threads shown this visit, by viewer, bout, order and focus: reopening a
+ *  discussion shows it as it was while it is fetched again. */
+const shownThreads = new Map<string, { comments: CommentNode[]; meta: Meta }>();
+
+function DiscussionPanel({ fightId, viewerKey, getToken, signedIn, signIn }: {
+  fightId: string; viewerKey: string; getToken: GetToken; signedIn: boolean; signIn: (() => void) | null;
 }) {
   const location = useLocation();
   const navigate = useNavigate();
   const focus = new URLSearchParams(location.search).get("comment");
   const [sort, setSort] = useState<CommentSort>("top");
-  const [comments, setComments] = useState<CommentNode[] | null>(null);
-  const [meta, setMeta] = useState<Meta | null>(null);
+  const threadKey = `${viewerKey}:${fightId}:${sort}:${focus ?? ""}`;
+  const [comments, setComments] = useState<CommentNode[] | null>(() => shownThreads.get(threadKey)?.comments ?? null);
+  const [meta, setMeta] = useState<Meta | null>(() => shownThreads.get(threadKey)?.meta ?? null);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !shownThreads.has(threadKey));
+  useEffect(() => {
+    if (!comments || !meta) return;
+    shownThreads.delete(threadKey);
+    shownThreads.set(threadKey, { comments, meta });
+    if (shownThreads.size > 30) shownThreads.delete(shownThreads.keys().next().value!);
+  }, [threadKey, comments, meta]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [replying, setReplying] = useState<string | null>(null);
   const [reporting, setReporting] = useState<CommentNode | null>(null);
@@ -242,11 +253,11 @@ function DiscussionPanel({ fightId, getToken, signedIn, signIn }: {
         {error && !comments ? (
           <p className="px-5 py-10 text-center text-sm text-rose-600">{error} <button type="button" className="underline" onClick={() => void load()}>Retry</button></p>
         ) : !comments ? (
-          <p className="px-5 py-10 text-center text-sm text-zinc-400" role="status">Loading comments…</p>
+          <p className="appear-late px-5 py-10 text-center text-sm text-zinc-400" role="status">Loading comments…</p>
         ) : !comments.length ? (
           <p className="px-5 py-10 text-center text-sm text-zinc-500">No comments yet. Start the conversation.</p>
         ) : (
-          <ul className={`divide-y divide-zinc-100 ${loading ? "opacity-60 transition-opacity" : ""}`}>
+          <ul className={`divide-y divide-zinc-100 ${loading ? "opacity-60 transition-opacity delay-200" : ""}`}>
             {comments.map(node => <li key={node.id} className="px-3 py-3 sm:px-4"><Thread node={node} rootId={node.id} /></li>)}
           </ul>
         )}

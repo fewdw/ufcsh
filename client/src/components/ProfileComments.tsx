@@ -8,10 +8,23 @@ import { exactTime, relativeAge } from "../format";
 import { ConfirmRemove, RemoveX } from "./ConfirmRemove";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
 import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedOption } from "./segmented";
-import { fetchPage, LIST_META, CLEAR_REMOVE, LIST_ROW, LoadMore, useInfiniteList } from "./InfiniteList";
+import { fetchPage, LIST_META, CLEAR_REMOVE, LIST_ROW, LoadMore, useInfiniteList, type ListSource } from "./InfiniteList";
 
 /** Everything a fan has said in fight discussions, newest first. Listed to
  *  others only once they have chosen to show it; always to themselves. */
+/** A fan's comments. The owner's own list is read with their token (it may
+ *  be private), so only the public one is kept across a reload. */
+export const commentsList = (handle: string, sort: ProfileCommentSort, getToken: (() => Promise<string | null>) | null): ListSource<CommentsData> => ({
+  key: `/api/profiles/${encodeURIComponent(handle)}/comments?sort=${sort}${getToken ? "&as=owner" : ""}`,
+  saved: !getToken,
+  load: async offset => {
+    // The owner's token is what lets them read a list they keep private.
+    const token = getToken ? await getToken().catch(() => null) : null;
+    return fetchPage<CommentsData>(`/api/profiles/${encodeURIComponent(handle)}/comments?sort=${sort}&offset=${offset}`,
+      { headers: token ? { Authorization: `Bearer ${token}` } : {} }, "Comments could not be loaded.");
+  },
+});
+
 export default function ProfileComments({ handle, mine, visible, visibilityControl }: {
   handle: string; mine: boolean; visible: boolean;
   /** The owner's switch for showing this list to others. */
@@ -21,12 +34,7 @@ export default function ProfileComments({ handle, mine, visible, visibilityContr
   const [sort, setSort] = useState<ProfileCommentSort>("new");
   const list = useInfiniteList({
     resetKey: `${handle}:${mine}:${visible}:${sort}`,
-    load: async offset => {
-      // The owner's token is what lets them read a list they keep private.
-      const token = mine ? await getToken().catch(() => null) : null;
-      return fetchPage<CommentsData>(`/api/profiles/${encodeURIComponent(handle)}/comments?sort=${sort}&offset=${offset}`,
-        { headers: token ? { Authorization: `Bearer ${token}` } : {} }, "Comments could not be loaded.");
-    },
+    source: commentsList(handle, sort, mine ? getToken : null),
     items: page => page.comments,
     itemKey: comment => comment.id,
   });
@@ -54,7 +62,7 @@ export default function ProfileComments({ handle, mine, visible, visibilityContr
   };
 
   const data = list.first;
-  if (!data) return <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
+  if (!data) return <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
     {list.error ? <>{list.error} <button type="button" className="underline" onClick={() => void list.retry()}>Retry</button></> : "Loading comments…"}
   </section>;
 

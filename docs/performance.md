@@ -97,6 +97,27 @@ At 1,500 req/s the tail on the shared 4 vCPU host is set by CPU contention with
 the load generator and the running production and dev apps (main process ~57%
 idle, workers ~65% idle in a CPU profile), not by the server's code paths.
 
+## Loading states on reload and between tabs (2026-09-25, `fast` branch)
+
+Measured with headless Chromium, sampling every frame for visible
+"Loading…" text. Production (main) showed it on every reload for 300 ms to
+1.5 s (the route's code through Suspense, then the page's data). The `fast`
+build, over 150 ms of added latency, showed none on first visits, reloads or
+rapid profile tab switches, across events, matchups, fighters, rankings,
+stats, officials, venues, judges and profiles.
+
+- The last answer for each page is kept in localStorage (`snapshots.ts`,
+  2.5 MB, dropped on a new build, ignored after a week). A reload paints it at
+  once and always fetches the newest data behind it.
+- The current page's code is awaited (at most 300 ms) before the first render,
+  and a page whose code is already loaded renders without Suspense.
+- Profile lists (predictions, bets, comments) are remembered by key, the
+  other tabs are read while one is shown, and a tab opened again shows its rows
+  while they refresh. The owner's own identity is remembered, so their
+  controls and the account button are right before Clerk loads.
+- Every remaining loading line stays invisible for its first 350 ms
+  (`.appear-late`), and a list refreshing in place dims only after 200 ms.
+
 ## What changed because of the numbers
 
 - Share images first rendered at up to 665 KB PNG and 1.6 s under load: they

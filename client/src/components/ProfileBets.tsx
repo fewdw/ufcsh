@@ -5,7 +5,7 @@ import { removeBet, signedMoney, type Bet, type BetState, type ProfileBets as Be
 import { formatDateShortWithYear } from "../format";
 import { ConfirmRemove, RemoveX } from "./ConfirmRemove";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
-import { fetchPage, LIST_META, CLEAR_REMOVE, LIST_ROW, LIST_TITLE, LIST_VALUE, LoadMore, useInfiniteList } from "./InfiniteList";
+import { fetchPage, LIST_META, CLEAR_REMOVE, LIST_ROW, LIST_TITLE, LIST_VALUE, LoadMore, useInfiniteList, type ListSource } from "./InfiniteList";
 
 const STATE_TEXT: Record<BetState, string> = { won: "text-emerald-600", lost: "text-rose-600", pending: "text-zinc-500", void: "text-zinc-400" };
 const LEG_DOT: Record<BetState, string> = { won: "bg-emerald-500", lost: "bg-rose-500", pending: "bg-zinc-300", void: "bg-zinc-200" };
@@ -61,6 +61,12 @@ function BetRow({ bet, mine, onRemove }: { bet: Bet; mine: boolean; onRemove: ()
 
 /** Every bet a fan has put on their profile, settled against the official
  *  result, with the running profit or loss of a flat $1–$20 stake per bet. */
+/** A fan's bets: public, so they are kept across a reload too. */
+export const betsList = (handle: string): ListSource<BetsData> => ({
+  key: `/api/profiles/${encodeURIComponent(handle)}/bets`, saved: true,
+  load: offset => fetchPage<BetsData>(`/api/profiles/${encodeURIComponent(handle)}/bets?offset=${offset}`, {}, "Bets could not be loaded."),
+});
+
 export default function ProfileBets({ handle, mine }: { handle: string; mine: boolean }) {
   const [confirming, setConfirming] = useState<Bet | null>(null);
   const [busy, setBusy] = useState(false);
@@ -68,7 +74,7 @@ export default function ProfileBets({ handle, mine }: { handle: string; mine: bo
   const { getToken } = useAuth();
   const list = useInfiniteList({
     resetKey: handle,
-    load: offset => fetchPage<BetsData>(`/api/profiles/${encodeURIComponent(handle)}/bets?offset=${offset}`, {}, "Bets could not be loaded."),
+    source: betsList(handle),
     items: page => page.bets,
     itemKey: bet => bet.id,
     refreshMs: 30_000,
@@ -89,7 +95,7 @@ export default function ProfileBets({ handle, mine }: { handle: string; mine: bo
     }
   };
   const data = list.first;
-  if (!data) return <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
+  if (!data) return <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
     {list.error ? <>{list.error} <button className="underline" onClick={() => void list.retry()}>Retry</button></> : "Loading bets…"}
   </section>;
   const { totals } = data;

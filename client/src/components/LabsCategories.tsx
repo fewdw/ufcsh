@@ -63,7 +63,7 @@ export default function LabsCategories({ data, loading, error, onRetry, studyQue
                 ) : !data ? (
                   <p role="status" className="py-8 text-center text-[11px] text-zinc-400">{loading ? "Reading the study…" : "No data for this study."}</p>
                 ) : (
-                  <div className={loading ? "opacity-60 transition-opacity" : ""}>
+                  <div className={loading ? "opacity-60 transition-opacity delay-200" : ""}>
                     {category.key === "judges" ? <JudgesRoom studyQuery={studyQuery} /> : <RoadToUFC data={data} studyQuery={studyQuery} />}
                   </div>
                 )}

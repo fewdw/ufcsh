@@ -513,7 +513,7 @@ export default function FighterPage() {
   });
 
   if (loading) {
-    return <div className="flex h-full items-center justify-center text-sm text-zinc-400">Loading fighter…</div>;
+    return <div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading fighter…</div>;
   }
   if (error && !fighter) {
     return <div className="p-5"><RequestNotice onRetry={retry}>Couldn’t load this fighter. Please try again.</RequestNotice></div>;

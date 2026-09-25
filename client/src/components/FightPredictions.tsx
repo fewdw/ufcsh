@@ -25,7 +25,7 @@ const primary = BUTTON_PRIMARY_LARGE;
 
 export default function FightPredictions({ fight }: { fight: Matchup }) {
   const { data, error, retry } = useApi<PredictionSummary>(`/api/fights/${fight.id}/predictions`, 3_000);
-  if (!data) return <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
+  if (!data) return <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
     {error ? <>{error} <button className="underline" onClick={retry}>Retry</button></> : "Loading predictions…"}
   </section>;
   return <>
@@ -133,7 +133,7 @@ function FanPredictions({ predictions, total }: { predictions: FanPrediction[]; 
 type EditorProps = { fight: Matchup; status: PredictionSummary; onSaved: () => void };
 function PredictionGate(props: EditorProps) {
   const { isLoaded, user, signIn } = useAccount();
-  if (!isLoaded) return <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`}>Loading your account…</section>;
+  if (!isLoaded) return <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-zinc-500`}>Loading your account…</section>;
   if (!user) return <section className={PANEL_SHELL}>
     <PredictionHeading open={props.status.open} />
     <div className="px-4 py-4 text-center">
@@ -217,7 +217,7 @@ function PredictionEditor({ fight, status, onSaved }: EditorProps) {
     <PredictionHeading open={open} />
     <div className="px-4 py-3 sm:px-5 sm:py-4">
       {!saved ? (
-        <p role="status" className="text-sm text-zinc-500">
+        <p role="status" className="appear-late text-sm text-zinc-500">
           {error ? <>{error} <button className="underline" onClick={() => void load()}>Retry</button></> : "Loading your pick…"}
         </p>
       ) : <>

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentType } from "react";
 import { Link, Route, Routes, useLocation } from "react-router-dom";
 import AccountButton from "./components/AccountButton";
 import CmdK from "./components/CmdK";
@@ -11,26 +11,37 @@ import { useAdminResource, type AdminSession } from "./admin";
 import { useSettings, withRanking } from "./settings";
 import { prefetch } from "./api";
 import { useLinkPrefetch } from "./useLinkPrefetch";
-import { pages } from "./pages";
+import { pages, type PageLoader } from "./pages";
 import RouteErrorBoundary from "./components/RouteErrorBoundary";
 import ParlaySlip from "./components/ParlaySlip";
 import { ShortcutProvider, useShortcutHelp } from "./shortcuts";
 import { GraphicsProvider } from "./graphicsLauncher";
 
-const EventsPage = lazy(pages.events);
-const FighterPage = lazy(pages.fighter);
-const RankingsPage = lazy(pages.rankings);
-const StatsPage = lazy(pages.stats);
-const LabsPage = lazy(pages.labs);
-const AdminPage = lazy(pages.admin);
-const ProfilePage = lazy(pages.profile);
-const AuthPage = lazy(pages.auth);
-const JudgePage = lazy(pages.judge);
-const RefereePage = lazy(pages.referee);
-const VenuePage = lazy(pages.venue);
-const OfficialsPage = lazy(() => pages.directories().then((module) => ({ default: module.OfficialsPage })));
-const VenuesPage = lazy(() => pages.directories().then((module) => ({ default: module.VenuesPage })));
-const InfoPage = lazy(pages.info);
+/** A route's page: rendered directly once its code is in hand (the usual case,
+ *  since every page's code is fetched in the background), through Suspense
+ *  only before then. Chosen once per mount, so a page never remounts. */
+function page<M, P extends object>(load: PageLoader<M>, pick: (module: M) => ComponentType<P>) {
+  const Lazy = lazy(() => load().then(module => ({ default: pick(module) })));
+  return function Page(props: P) {
+    const [Component] = useState<ComponentType<P>>(() => load.module ? pick(load.module) : Lazy);
+    return <Component {...props} />;
+  };
+}
+
+const EventsPage = page(pages.events, module => module.default);
+const FighterPage = page(pages.fighter, module => module.default);
+const RankingsPage = page(pages.rankings, module => module.default);
+const StatsPage = page(pages.stats, module => module.default);
+const LabsPage = page(pages.labs, module => module.default);
+const AdminPage = page(pages.admin, module => module.default);
+const ProfilePage = page(pages.profile, module => module.default);
+const AuthPage = page(pages.auth, module => module.default);
+const JudgePage = page(pages.judge, module => module.default);
+const RefereePage = page(pages.referee, module => module.default);
+const VenuePage = page(pages.venue, module => module.default);
+const OfficialsPage = page(pages.directories, module => module.OfficialsPage);
+const VenuesPage = page(pages.directories, module => module.VenuesPage);
+const InfoPage = page(pages.info, module => module.default);
 const isDevSite = import.meta.env.VITE_SITE_ORIGIN === "https://dev.ufc.sh";
 
 const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
@@ -201,7 +212,7 @@ export default function App() {
       <Header onSearch={openSearch} />
       <div className="min-h-0 flex-1 overflow-hidden">
         <RouteErrorBoundary key={routeGroup(location.pathname)}>
-        <Suspense fallback={<div role="status" className="flex h-full items-center justify-center text-sm text-zinc-400">Loading…</div>}>
+        <Suspense fallback={<div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading…</div>}>
         <Routes>
           <Route path="/" element={<EventsPage />} />
           <Route path="/events/:eventId" element={<EventsPage />} />

@@ -100,3 +100,21 @@ test("a scorecard save bypasses an edge-held summary and updates its normal poll
   assert.match(requested[1], /^\/api\/fights\/0123456789abcdef\/scores\?_after_write=/);
   assert.deepEqual(cache.read(url).data, { version: 2 });
 });
+
+test("a saved answer shows at once and is always fetched again", async () => {
+  const saved = new Map<string, string>([["/a", JSON.stringify({ n: "old" })]]);
+  let calls = 0;
+  const cache = new RequestCache(2, async () => { calls++; return Response.json({ n: "new" }); }, {
+    read: key => saved.has(key) ? { data: JSON.parse(saved.get(key)!) } : null,
+    write: (key, text) => { saved.set(key, text); },
+  });
+  assert.deepEqual(cache.read("/a"), { data: { n: "old" }, loading: false, refreshing: false, error: false });
+  assert.equal(cache.read("/a"), cache.read("/a"), "one snapshot object per key");
+  const pending = cache.load("/a", 60_000);
+  assert.deepEqual(cache.read("/a"), { data: { n: "old" }, loading: false, refreshing: true, error: false }, "no loading state while refreshing");
+  await pending;
+  assert.equal(calls, 1, "a restored answer never counts as fresh");
+  assert.deepEqual(cache.read("/a").data, { n: "new" });
+  assert.equal(saved.get("/a"), JSON.stringify({ n: "new" }));
+  assert.equal(cache.read("/b").loading, true, "nothing saved: an ordinary first load");
+});

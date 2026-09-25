@@ -43,7 +43,7 @@ function Gate(props: Props) {
         <div className="px-4 py-4 text-center">
           {isLoaded
             ? <button type="button" className={primary} onClick={signIn}>Sign in to score</button>
-            : <span className="text-sm text-zinc-400">Loading…</span>}
+            : <span className="appear-late text-sm text-zinc-400">Loading…</span>}
         </div>
       </section>
     );
@@ -146,7 +146,7 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
           </Link>
         ) : undefined}
       />
-      {loading ? <p className="p-5 text-sm text-zinc-500">Loading…</p> : !saved ? (
+      {loading ? <p className="appear-late p-5 text-sm text-zinc-500">Loading…</p> : !saved ? (
         <p role="alert" className="p-5 text-sm text-rose-600">
           {error} <button className="underline" onClick={() => void load(undefined, false)}>Retry</button>
         </p>

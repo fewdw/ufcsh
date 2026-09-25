@@ -849,7 +849,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
 
       <div className="relative min-h-0 min-w-0 flex-1">
         {changingMatchup ? (
-          <div className="absolute inset-0 z-30 flex cursor-wait items-start justify-center bg-zinc-100/50 pt-6 backdrop-blur-[1px]">
+          <div className="appear-late absolute inset-0 z-30 flex cursor-wait items-start justify-center bg-zinc-100/50 pt-6 backdrop-blur-[1px]">
             <span className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-500 shadow-sm">
               {error ? <button type="button" onClick={retry}>Couldn’t load matchup · Retry</button> : "Loading matchup…"}
             </span>
@@ -974,7 +974,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
               {tab === "score" ? <FightScoring key={fight.id} fight={fight} /> : null}
               {tab === "predict" ? <FightPredictions key={fight.id} fight={fight} /> : null}
               {tab === "discussion" ? (
-                <Suspense fallback={<div className={`${shell} p-5 text-sm text-zinc-500`} role="status">Loading discussion…</div>}>
+                <Suspense fallback={<div className={`appear-late ${shell} p-5 text-sm text-zinc-500`} role="status">Loading discussion…</div>}>
                   <FightDiscussion key={fight.id} fightId={fight.id} />
                 </Suspense>
               ) : null}

@@ -146,7 +146,7 @@ function FighterHoverPreview({ fighterId, point }: { fighterId: string; point: {
       aria-live="polite"
     >
       {loading || !data ? (
-        <div className="px-4 py-5 text-xs text-zinc-400">Loading fighter preview…</div>
+        <div className="appear-late px-4 py-5 text-xs text-zinc-400">Loading fighter preview…</div>
       ) : (
         <>
           <div className="flex items-center gap-3 border-b border-zinc-100 px-3 py-2.5">
@@ -426,7 +426,7 @@ export default function RankingsPage() {
   }, [divisions, view, settings.divisionOrder]);
 
   if (loading) {
-    return <div className="flex h-full items-center justify-center text-sm text-zinc-400">Loading rankings…</div>;
+    return <div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading rankings…</div>;
   }
   if (error || !divisions || divisions.length === 0) {
     return (

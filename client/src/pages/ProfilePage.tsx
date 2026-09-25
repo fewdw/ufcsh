@@ -7,11 +7,11 @@ import { accountsEnabled, useAccount } from "../auth";
 import { ConfirmRemove, RemoveX } from "../components/ConfirmRemove";
 import Avatar from "../components/Avatar";
 import { PANEL_SHELL, PanelHeading } from "../components/FightStats";
-import { LIST_META, LIST_ROW } from "../components/InfiniteList";
+import { LIST_META, LIST_ROW, prefetchList } from "../components/InfiniteList";
 import { segmentedGroup, segmentedSelected, segmentedIdle, segmentedTab } from "../components/segmented";
-import ProfilePredictions from "../components/ProfilePredictions";
-import ProfileBets from "../components/ProfileBets";
-import ProfileComments from "../components/ProfileComments";
+import ProfilePredictions, { predictionsList } from "../components/ProfilePredictions";
+import ProfileBets, { betsList } from "../components/ProfileBets";
+import ProfileComments, { commentsList } from "../components/ProfileComments";
 import ReportIssueDialog from "../components/ReportIssueDialog";
 import Leaderboards from "../components/Leaderboards";
 import { formatDateShortWithYear, formatMethod } from "../format";
@@ -68,7 +68,7 @@ function MyProfileRedirect() {
         <Link to="/info" className="text-xs font-medium text-zinc-500 underline underline-offset-2 hover:text-zinc-900">About UFC.sh</Link>
       </div>
     );
-  return <div role="status" className="flex h-full items-center justify-center text-sm text-zinc-400">Opening your profile…</div>;
+  return <div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Opening your profile…</div>;
 }
 
 function Empty({ message }: { message: string }) {
@@ -121,6 +121,22 @@ function Profile({ handle }: { handle: string }) {
   });
   useEffect(() => { setPages(1); setReady(1); }, [handle, filter, query]);
 
+  // Every other tab is read while this one is on screen, so switching tabs
+  // shows each one at once (and refreshes it behind the scenes).
+  const { getToken } = useAuth();
+  const loaded = Boolean(view);
+  const commentsOpen = mine || Boolean(view?.scorer.commentsPublic);
+  useEffect(() => {
+    if (!loaded) return;
+    const timer = window.setTimeout(() => {
+      prefetchList(predictionsList(handle));
+      prefetchList(betsList(handle));
+      if (commentsOpen) prefetchList(commentsList(handle, "new", mine ? getToken : null));
+      prefetch("/api/leaderboards");
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [loaded, handle, mine, commentsOpen, getToken]);
+
   const pageSize = view?.pageSize ?? 25;
   const more = Boolean(data && pages * pageSize < data.total);
   useEffect(() => {
@@ -151,7 +167,7 @@ function Profile({ handle }: { handle: string }) {
   const setFilter = (next: ProfileFilter) => setParam("filter", next === DEFAULT_FILTER ? null : next);
 
   if (error && !view) return <Empty message="This profile could not be loaded." />;
-  if (!view) return <div role="status" className="flex h-full items-center justify-center text-sm text-zinc-400">Loading profile…</div>;
+  if (!view) return <div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading profile…</div>;
   const { scorer, agreement } = view;
 
   return (
@@ -207,7 +223,7 @@ function Profile({ handle }: { handle: string }) {
                 </div>
               }
             />
-            <div className={data ? "" : "opacity-60 transition-opacity"}>
+            <div className={data ? "" : "opacity-60 transition-opacity delay-200"}>
               {view.total === 0 ? (
                 <p className="px-5 py-10 text-center text-sm text-zinc-500">
                   {scorer.cards === 0
@@ -226,7 +242,10 @@ function Profile({ handle }: { handle: string }) {
                 </ul>
               )}
             </div>
-            {more ? <div ref={sentinel} role="status" className="border-t border-zinc-100 px-5 py-4 text-center text-sm text-zinc-400">Loading more…</div> : null}
+            {more ? <div ref={sentinel} role="status" className="border-t border-zinc-100 px-5 py-4 text-center text-sm text-zinc-400">
+              {/* Only while a page is on its way; otherwise the row just holds the place. */}
+              <span className={ready < pages ? "appear-late" : "invisible"}>Loading more…</span>
+            </div> : null}
           </section>
           </>}
         </div>
@@ -511,7 +530,7 @@ function CardPage({ url, mine, onRemove, onReady }: {
         Couldn’t load more. <button className="underline" onClick={retry}>Retry</button>
       </li>
     );
-  if (!data) return <li role="status" className="px-5 py-4 text-center text-sm text-zinc-400">Loading…</li>;
+  if (!data) return <li role="status" className="appear-late px-5 py-4 text-center text-sm text-zinc-400">Loading…</li>;
   return <CardRows cards={data.cards} mine={mine} onRemove={onRemove} />;
 }
 

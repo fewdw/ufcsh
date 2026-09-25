@@ -135,7 +135,7 @@ export default function RefereePage() {
 
         <Panel title="Bouts" subtitle="Newest first">
           {list.items.length ? (
-            <ul aria-busy={stale || list.loading} className={`divide-y divide-zinc-100 border-t border-zinc-100 ${stale ? "opacity-60 transition-opacity" : ""}`}>
+            <ul aria-busy={stale || list.loading} className={`divide-y divide-zinc-100 border-t border-zinc-100 ${stale ? "opacity-60 transition-opacity delay-200" : ""}`}>
               {list.items.map((row) => (
                 <li key={row.fight_id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 px-4 py-2.5 sm:px-5">
                   <div className="min-w-0">

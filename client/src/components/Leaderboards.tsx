@@ -37,7 +37,7 @@ function Board({ title, subtitle, entries, format, tab, current }: {
  *  the winner and the method, and profit from their bets. */
 export default function Leaderboards({ handle }: { handle: string }) {
   const { data, error, retry } = useApi<BoardsData>("/api/leaderboards", 60_000);
-  if (!data) return <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
+  if (!data) return <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
     {error ? <>{error} <button className="underline" onClick={retry}>Retry</button></> : "Loading leaderboards…"}
   </section>;
   const pct = (entry: LeaderboardEntry) => ({ text: `${Math.round(entry.value)}%` });

@@ -16,7 +16,7 @@ export default function FightScoring({ fight }: { fight: Matchup }) {
   const { data, error, retry } = useApi<ScoreSummary>(`/api/fights/${fight.id}/scores`, 5_000);
   if (!data)
     return (
-      <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
+      <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
         {error ? <>Scores could not be loaded. <button className="underline" onClick={retry}>Retry</button></> : "Loading scores…"}
       </section>
     );
@@ -87,7 +87,7 @@ export default function FightScoring({ fight }: { fight: Matchup }) {
       </section>
       {data.cards.length ? <FanCards fight={fight} cards={data.cards} localCards={totals.localCards} totalScorers={totals.scorers} /> : null}
       {eligibility.available > 0 ? (
-        <Suspense fallback={<div className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`}>Loading your scorecard…</div>}>
+        <Suspense fallback={<div className={`appear-late ${PANEL_SHELL} p-5 text-sm text-zinc-500`}>Loading your scorecard…</div>}>
           <ScoreEditor fight={fight} eligibility={eligibility} onSaved={() => { void apiCache.loadAfterWrite(`/api/fights/${fight.id}/scores`); }} />
         </Suspense>
       ) : null}

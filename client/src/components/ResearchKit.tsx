@@ -120,7 +120,7 @@ export function FilterBar({ children, active, onClear }: { children: ReactNode; 
 }
 
 export function PageState({ children }: { children: ReactNode }) {
-  return <div role="status" className="flex h-full items-center justify-center px-5 text-center text-sm text-zinc-400">{children}</div>;
+  return <div role="status" className="appear-late flex h-full items-center justify-center px-5 text-center text-sm text-zinc-400">{children}</div>;
 }
 
 export function NotFound({ what, back }: { what: string; back: { to: string; label: string } }) {

@@ -7,7 +7,7 @@ import type { PredictionRate, ProfilePredictions as PredictionsData } from "../p
 import { ConfirmRemove, RemoveX } from "./ConfirmRemove";
 import { Donut, type Slice } from "./Donut";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
-import { fetchPage, LIST_META, CLEAR_REMOVE, LIST_ROW, LIST_TITLE, LIST_VALUE, LoadMore, useInfiniteList } from "./InfiniteList";
+import { fetchPage, LIST_META, CLEAR_REMOVE, LIST_ROW, LIST_TITLE, LIST_VALUE, LoadMore, useInfiniteList, type ListSource } from "./InfiniteList";
 
 const RIGHT = "var(--color-pick-right)";
 const WRONG = "var(--color-pick-wrong)";
@@ -43,12 +43,18 @@ function Mark({ label, right }: { label: string; right: boolean }) {
   </span>;
 }
 
+/** A fan's predictions: public, so they are kept across a reload too. */
+export const predictionsList = (handle: string): ListSource<PredictionsData> => ({
+  key: `/api/profiles/${encodeURIComponent(handle)}/predictions`, saved: true,
+  load: offset => fetchPage<PredictionsData>(`/api/profiles/${encodeURIComponent(handle)}/predictions?offset=${offset}`, {}, "Predictions could not be loaded."),
+});
+
 export default function ProfilePredictions({ handle, mine }: { handle: string; mine: boolean }) {
   const { getToken } = useAuth();
   type Row = PredictionsData["predictions"][number];
   const list = useInfiniteList({
     resetKey: handle,
-    load: offset => fetchPage<PredictionsData>(`/api/profiles/${encodeURIComponent(handle)}/predictions?offset=${offset}`, {}, "Predictions could not be loaded."),
+    source: predictionsList(handle),
     items: page => page.predictions,
     itemKey: row => row.fightId,
     refreshMs: 15_000,
@@ -77,7 +83,7 @@ export default function ProfilePredictions({ handle, mine }: { handle: string; m
     }
   };
   const data = list.first;
-  if (!data) return <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
+  if (!data) return <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
     {list.error ? <>{list.error} <button className="underline" onClick={() => void list.retry()}>Retry</button></> : "Loading predictions…"}
   </section>;
   const { accuracy, totals } = data;
