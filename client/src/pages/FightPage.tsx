@@ -16,7 +16,7 @@ import {
   roundsLabel,
 } from "../format";
 import Avatar from "../components/Avatar";
-import { CardEventTitle, FLOAT_STEP, FloatingNavigation } from "../components/CardHeader";
+import { BottomDock, CardEventTitle, FLOAT_STEP, FloatingNavigation } from "../components/CardHeader";
 import FightScoring from "../components/FightScoring";
 import FightPredictions from "../components/FightPredictions";
 import { FightRail, FightRailSkeleton, FightStepLink, FightStrip, MatchupSkeleton } from "../components/FightRail";
@@ -850,6 +850,14 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
     navigate({ search: `?tab=${next}` }, { replace: true, state: location.state });
   };
 
+  const cardSteps = {
+    previous: <FightStepLink fight={previous} direction="prev" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} className={FLOAT_STEP} />,
+    center: <button type="button" onClick={closeFight} aria-keyshortcuts="Escape"
+      className={`${FLOAT_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+      <List className="h-3.5 w-3.5" aria-hidden="true" />Card
+    </button>,
+    next: <FightStepLink fight={next} direction="next" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} className={FLOAT_STEP} />,
+  };
   const detailPane = (
       <div className="relative h-full min-h-0 min-w-0 flex-1">
         {changingMatchup ? (
@@ -860,16 +868,11 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
           </div>
         ) : null}
         <div ref={detailScroll} inert={changingMatchup} className="h-full overflow-y-auto" aria-busy={changingMatchup}>
-          <div className="@container flex w-full flex-col gap-3 pb-8">
-            {/* The steps along the card float over it as it scrolls. */}
-            <FloatingNavigation label="Card navigation"
-              previous={<FightStepLink fight={previous} direction="prev" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} className={FLOAT_STEP} />}
-              center={<button type="button" onClick={closeFight} aria-keyshortcuts="Escape"
-                className={`${FLOAT_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
-                <List className="h-3.5 w-3.5" aria-hidden="true" />Card
-              </button>}
-              next={<FightStepLink fight={next} direction="next" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} className={FLOAT_STEP} />}
-            />
+          <div className="@container flex min-h-full w-full flex-col gap-3 sm:pb-8">
+            {/* The steps along the card float over it as it scrolls: pinned
+                to the top here, and to the foot of a phone's screen below. */}
+            <FloatingNavigation label="Card navigation" className="sticky top-0 z-30 hidden sm:grid"
+              previous={cardSteps.previous} center={cardSteps.center} next={cardSteps.next} />
             <div className="flex shrink-0 flex-col gap-3">
             <section className={`overflow-hidden ${shell}`}>
               <CardEventTitle
@@ -883,7 +886,6 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
               </CardEventTitle>
             </section>
 
-            <FightStrip eventId={fight.event.id} currentId={fightId} returnDepth={eventReturnDepth} />
             <section data-photo-view={portraits ? "full" : "face"} className={`matchup-top-card matchup-overview @container relative overflow-hidden ${shell}`}>
               <button type="button" onClick={closeFight} aria-label="Close matchup and return to card" title="Close matchup (Esc)" aria-keyshortcuts="Escape"
                 className={`absolute right-2 top-2 z-10 ${CLOSE_BUTTON}`}>
@@ -981,6 +983,12 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
                 <FightDiscussion key={fight.id} fightId={fight.id} />
               ) : null}
             </div>
+            {/* A phone keeps the card and its steps at the foot of the
+                screen, where a thumb browses them. */}
+            <BottomDock className="sm:hidden">
+              <FightStrip eventId={fight.event.id} currentId={fightId} returnDepth={eventReturnDepth} active={!preview} />
+              <FloatingNavigation label="Card navigation" previous={cardSteps.previous} center={cardSteps.center} next={cardSteps.next} />
+            </BottomDock>
           </div>
         </div>
       </div>

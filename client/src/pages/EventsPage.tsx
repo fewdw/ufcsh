@@ -13,7 +13,7 @@ import OddsPair from "../components/OddsPair";
 import { Moneyline, moneylineLeg, OddsFormatTabs, OddsMarkets, type FightResult } from "../components/MatchupOdds";
 import { hasOddsMarkets } from "../oddsLayout";
 import FightView from "./FightPage";
-import { FLOAT_STEP, EventPlace, FloatingNavigation } from "../components/CardHeader";
+import { BottomDock, FLOAT_STEP, EventPlace, FloatingNavigation } from "../components/CardHeader";
 import { useShortcutNav } from "../shortcuts";
 import type { Matchup } from "../api";
 import { SITE_URL, useSeo } from "../seo";
@@ -842,17 +842,6 @@ function EventPane({ eventId, oddsMode, nav, preview = false }: { eventId: strin
 
   return (
     <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto sm:gap-3 sm:pr-1">
-      {/* On a phone the list folds away, so its button and the step to
-          either neighbour float over the card as small pills, staying in
-          reach however far down it is read. */}
-      <FloatingNavigation label="Event navigation" className="md:hidden"
-        previous={<StepLink event={nav.prev} direction="prev" className={FLOAT_STEP} />}
-        center={<button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
-          className={`${FLOAT_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
-          <List className="h-3.5 w-3.5" aria-hidden="true" />Events
-        </button>}
-        next={<StepLink event={nav.next} direction="next" className={FLOAT_STEP} />}
-      />
       <section className={`${shell} shrink-0 overflow-hidden`}>
         {/* The name, date and place on the left; the card's start times on
             the right, one per line, at every width — only the type grows. */}
@@ -942,6 +931,19 @@ function EventPane({ eventId, oddsMode, nav, preview = false }: { eventId: strin
           )}
         </section>
       )}
+      {/* On a phone the list folds away, so its button and the step to
+          either neighbour sit in a bar at the foot of the screen, in reach
+          of a thumb however far down the card is read. */}
+      <BottomDock className="md:hidden">
+        <FloatingNavigation label="Event navigation"
+          previous={<StepLink event={nav.prev} direction="prev" className={FLOAT_STEP} />}
+          center={<button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
+            className={`${FLOAT_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+            <List className="h-3.5 w-3.5" aria-hidden="true" />Events
+          </button>}
+          next={<StepLink event={nav.next} direction="next" className={FLOAT_STEP} />}
+        />
+      </BottomDock>
     </div>
   );
 }

@@ -180,13 +180,25 @@ export function FightRail({ eventId, currentId, returnDepth }: { eventId: string
 }
 
 
+/** Where each card's strip was last scrolled, so moving between its bouts
+ *  leaves the row where the reader put it. */
+const stripScroll = new Map<string, number>();
+
 /**
  * The same card on a phone: a row of face-against-face tiles across the top
  * of the matchup, opener on the left and main event on the right (the way
- * Prev and Next point). It scrolls sideways, with the open matchup brought
- * to the middle, or to its end of the row when it is the first or last bout.
+ * Prev and Next point). It scrolls sideways. The first matchup opened on a
+ * card brings its tile to the middle (or its end of the row); after that the
+ * row stays where the reader left it, moving only as far as it takes to show
+ * the open bout whole.
  */
-export function FightStrip({ eventId, currentId, returnDepth }: { eventId: string; currentId: string; returnDepth: number | null }) {
+export function FightStrip({ eventId, currentId, returnDepth, active = true }: {
+  eventId: string;
+  currentId: string;
+  returnDepth: number | null;
+  /** False while the page is a hidden neighbour; it lines up once shown. */
+  active?: boolean;
+}) {
   const { settings } = useSettings();
   const location = useLocation();
   const row = useRef<HTMLDivElement>(null);
@@ -196,16 +208,30 @@ export function FightStrip({ eventId, currentId, returnDepth }: { eventId: strin
   useLayoutEffect(() => {
     const scroller = row.current;
     const tile = scroller?.querySelector<HTMLElement>("[aria-current='page']");
-    if (!scroller || !tile) return;
-    // The browser stops at either end, so the first and last bouts sit there.
-    scroller.scrollLeft = tile.offsetLeft - (scroller.clientWidth - tile.offsetWidth) / 2;
-  }, [currentId, ready]);
+    if (!active || !scroller || !tile) return;
+    const saved = stripScroll.get(eventId);
+    if (saved == null) {
+      // First look at this card: the open bout in the middle. The browser
+      // stops at either end, so the first and last bouts sit there.
+      scroller.scrollLeft = tile.offsetLeft - (scroller.clientWidth - tile.offsetWidth) / 2;
+    } else {
+      // Afterwards the row stays put, moving only as far as it takes to show
+      // the open bout whole.
+      scroller.scrollLeft = saved;
+      const left = scroller.scrollLeft;
+      const right = left + scroller.clientWidth;
+      if (tile.offsetLeft < left) scroller.scrollLeft = tile.offsetLeft;
+      else if (tile.offsetLeft + tile.offsetWidth > right) scroller.scrollLeft = tile.offsetLeft + tile.offsetWidth - scroller.clientWidth;
+    }
+    stripScroll.set(eventId, scroller.scrollLeft);
+  }, [active, currentId, eventId, ready]);
   if (fights.length < 2) return null;
   const liveId = liveFightId(event!);
   const search = cardFightSearch(location.search);
   return (
-    <nav aria-label="Fights on this card" className={`sm:hidden ${shell} overflow-hidden`}>
-      <div ref={row} className="flex gap-1 overflow-x-auto p-1.5 [scrollbar-width:none]">
+    <nav aria-label="Fights on this card">
+      <div ref={row} onScroll={(e) => { if (active) stripScroll.set(eventId, e.currentTarget.scrollLeft); }}
+        className="relative flex gap-2 overflow-x-auto overscroll-x-contain [scrollbar-width:none]">
         {fights.map((f) => {
           const isCurrent = f.id === currentId;
           const isLive = f.id === liveId;
@@ -217,8 +243,8 @@ export function FightStrip({ eventId, currentId, returnDepth }: { eventId: strin
               aria-current={isCurrent ? "page" : undefined}
               aria-label={`${f.f1.name} vs ${f.f2.name}${isLive ? ", live now" : ""}`}
               onPointerDown={() => prefetch(withRanking(`/api/fights/${f.id}`, settings.rankingSource))}
-              className={`relative grid min-w-24 shrink-0 grid-cols-[auto_auto] gap-x-1.5 gap-y-1 rounded-xl border px-1.5 py-2 transition-colors ${
-                isCurrent ? segmentedSelected : "hover:bg-zinc-50"} ${isLive ? "border-emerald-200" : "border-transparent"}`}
+              className={`relative grid min-w-24 shrink-0 grid-cols-[auto_auto] gap-x-1.5 gap-y-1 rounded-xl border bg-white px-2 py-2 ${
+                isLive ? "border-emerald-300" : isCurrent ? "border-zinc-900 dark:border-zinc-100" : "border-zinc-200"}`}
             >
               {isLive ? <span className="live-dot absolute left-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" /> : null}
               {[f.f1, f.f2].map((side) => (

@@ -119,10 +119,13 @@ export default function SwipePager({ current, prev, next, onStep, render, classN
     ...(warm && next ? [{ key: next, active: false }] : []),
   ];
   return (
-    <div ref={viewport} className={`relative min-h-0 ${className}`}>
+    <div ref={viewport} className={`relative min-h-0 overflow-hidden ${className}`}>
       {slots.map(({ key, active }) => (
         <div key={key} aria-hidden={active ? undefined : true} inert={!active}
-          className={active ? "relative h-full w-full" : "invisible absolute inset-0"}>
+          // Hidden three ways: iOS paints animated marks (their own layers) even
+          // inside a visibility:hidden page, but not through opacity, and not
+          // outside the clipped viewport.
+          className={active ? "relative h-full w-full" : "pointer-events-none invisible absolute inset-0 -translate-x-[200vw] opacity-0"}>
           {render(key, active)}
         </div>
       ))}

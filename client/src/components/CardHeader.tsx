@@ -29,8 +29,8 @@ export const CARD_STEP = "inline-flex min-h-8 items-center gap-1 rounded-full px
 /** A step inside the floating bar. */
 export const FLOAT_STEP = "inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
 
-/** Prev, the list and Next in one thin bar that floats down with the reader,
- *  so the steps stay in reach however far down the card is read. */
+/** Prev, the list and Next in one thin bar. Where it rides is the caller's:
+ *  pinned to the top of a pane, or in the phone's bottom dock. */
 export function FloatingNavigation({ label, previous, center, next, className = "" }: {
   label: string;
   previous: ReactNode;
@@ -39,11 +39,21 @@ export function FloatingNavigation({ label, previous, center, next, className = 
   className?: string;
 }) {
   return (
-    <nav aria-label={label} className={`sticky top-0 z-30 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-1 rounded-full border border-zinc-200 bg-white/95 px-1 py-0.5 shadow-sm backdrop-blur ${className}`}>
+    <nav aria-label={label} className={`grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-1 rounded-full border border-zinc-200 bg-white/95 px-1 py-0.5 shadow-sm backdrop-blur ${className}`}>
       <div className="min-w-0 justify-self-start">{previous}</div>
       <div className="min-w-0">{center}</div>
       <div className="min-w-0 justify-self-end">{next}</div>
     </nav>
+  );
+}
+
+/** The phone's controls, pinned to the bottom of the screen where a thumb
+ *  reaches: it sits last in the scrolling pane and sticks to its foot. */
+export function BottomDock({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={`sticky bottom-0 z-30 mt-auto flex shrink-0 flex-col gap-1.5 bg-zinc-100/90 pb-2 pt-1.5 backdrop-blur ${className}`}>
+      {children}
+    </div>
   );
 }
 
