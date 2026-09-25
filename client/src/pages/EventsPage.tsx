@@ -17,7 +17,7 @@ import { FLOAT_STEP, EventPlace, FloatingNavigation } from "../components/CardHe
 import { useShortcutNav } from "../shortcuts";
 import type { Matchup } from "../api";
 import { SITE_URL, useSeo } from "../seo";
-import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
+import { cardFightSearch, useHistoryState, useRouteScrollRestoration } from "../navigationState";
 import { useSettings, withRanking, type OddsFormat } from "../settings";
 import { eventKind, type EventKind } from "../eventKind";
 import SearchGlyph from "../components/SearchGlyph";
@@ -986,6 +986,17 @@ export default function EventsPage() {
 
   const oddsMode = new URLSearchParams(location.search).get("odds") === "1";
   const shownNav = shownEventId ? eventNeighbours(events ?? [], shownEventId) : { prev: null, next: null };
+  // A matchup's neighbours along its card: Next toward the main event (the
+  // card lists it first), Prev toward the opener.
+  const fightEventId = fightEventIdHint ?? openFight?.event.id ?? null;
+  const { data: fightCard } = useApi<EventDetail>(fightId && fightEventId ? withRanking(`/api/events/${fightEventId}`, settings.rankingSource) : null);
+  const fightAt = fightCard && fightCard.id === fightEventId ? fightCard.fights.findIndex((entry) => entry.id === fightId) : -1;
+  const fightNav = {
+    prev: fightAt >= 0 ? fightCard!.fights[fightAt + 1] ?? null : null,
+    next: fightAt > 0 ? fightCard!.fights[fightAt - 1] : null,
+  };
+  const fightReturnDepth = location.state != null && typeof location.state === "object" && "eventReturnDepth" in location.state
+    && typeof location.state.eventReturnDepth === "number" && location.state.eventReturnDepth > 0 ? location.state.eventReturnDepth : null;
   const dock = fightId ? DOCK.matchup : DOCK.card;
   if (error && !events) {
     return (
@@ -1022,17 +1033,18 @@ export default function EventsPage() {
       />
       <main className={`${mobileEventsOpen ? "hidden" : "block"} min-h-0 min-w-0 flex-1 ${dock.main}`}>
         {fightId ? (
-          <FightView fightId={fightId} eventIdHint={fightEventIdHint ?? openFight?.event.id} />
+          <SwipePager className="h-full" current={fightId} prev={fightNav.prev?.id ?? null} next={fightNav.next?.id ?? null}
+            onStep={(side) => { const to = fightNav[side]; if (to && fightEventId) navigate(
+              { pathname: `/fights/${to.id}`, search: cardFightSearch(location.search) },
+              { state: { eventId: fightEventId, ...(fightReturnDepth ? { eventReturnDepth: fightReturnDepth + 1 } : {}) } },
+            ); }}
+            render={(id, active) => <FightView fightId={id} eventIdHint={fightEventId} preview={!active} />} />
         ) : shownEventId ? (
-          <SwipePager className="h-full" pageKey={shownEventId}
-            prev={shownNav.prev ? () => navigate(`/events/${shownNav.prev!.id}`) : null}
-            next={shownNav.next ? () => navigate(`/events/${shownNav.next!.id}`) : null}
-            renderPeek={(side) => {
-              const near = shownNav[side]!;
-              return <EventPane eventId={near.id} oddsMode={false} preview nav={{ ...eventNeighbours(events, near.id), onBrowse: () => {} }} />;
-            }}>
-            <EventPane eventId={shownEventId} oddsMode={oddsMode} nav={{ ...shownNav, onBrowse: () => setMobileEventsOpen(true) }} />
-          </SwipePager>
+          <SwipePager className="h-full" current={shownEventId} prev={shownNav.prev?.id ?? null} next={shownNav.next?.id ?? null}
+            onStep={(side) => { const to = shownNav[side]; if (to) navigate(`/events/${to.id}`); }}
+            render={(id, active) => active
+              ? <EventPane eventId={id} oddsMode={oddsMode} nav={{ ...eventNeighbours(events, id), onBrowse: () => setMobileEventsOpen(true) }} />
+              : <EventPane eventId={id} oddsMode={false} preview nav={{ ...eventNeighbours(events, id), onBrowse: () => {} }} />} />
         ) : (
           <div className={`flex h-full items-center justify-center ${shell}`}>
             <div className="text-sm text-zinc-400">Select an event.</div>

@@ -217,14 +217,14 @@ export function FightStrip({ eventId, currentId, returnDepth }: { eventId: strin
               aria-current={isCurrent ? "page" : undefined}
               aria-label={`${f.f1.name} vs ${f.f2.name}${isLive ? ", live now" : ""}`}
               onPointerDown={() => prefetch(withRanking(`/api/fights/${f.id}`, settings.rankingSource))}
-              className={`relative grid w-24 shrink-0 grid-cols-2 gap-x-1 gap-y-1 rounded-xl border px-1.5 py-2 transition-colors ${
+              className={`relative grid min-w-24 shrink-0 grid-cols-[auto_auto] gap-x-1.5 gap-y-1 rounded-xl border px-1.5 py-2 transition-colors ${
                 isCurrent ? segmentedSelected : "hover:bg-zinc-50"} ${isLive ? "border-emerald-200" : "border-transparent"}`}
             >
               {isLive ? <span className="live-dot absolute left-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" /> : null}
               {[f.f1, f.f2].map((side) => (
-                <span key={side.id || side.name} className="flex min-w-0 flex-col items-center gap-1">
+                <span key={side.id || side.name} className="flex flex-col items-center gap-1">
                   <Avatar src={side.photo_url} name={side.name} size="sm" outcome={side.outcome} />
-                  <span className={`w-full truncate text-center text-[9px] font-semibold leading-tight ${isCurrent ? "text-zinc-900" : "text-zinc-500"}`}>{lastName(side.name)}</span>
+                  <span className={`whitespace-nowrap text-center text-[9px] font-semibold leading-tight ${isCurrent ? "text-zinc-900" : "text-zinc-500"}`}>{lastName(side.name)}</span>
                 </span>
               ))}
             </Link>

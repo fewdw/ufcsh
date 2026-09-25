@@ -13,8 +13,8 @@ import ScoreEditor from "./ScoreEditor";
 
 /** The community's card and the reader's own card. Nothing else: the numbers
  *  and the seven buttons that produce them are the whole feature. */
-export default function FightScoring({ fight }: { fight: Matchup }) {
-  const { data, error, retry } = useApi<ScoreSummary>(`/api/fights/${fight.id}/scores`, 5_000);
+export default function FightScoring({ fight, poll = true }: { fight: Matchup; poll?: boolean }) {
+  const { data, error, retry } = useApi<ScoreSummary>(`/api/fights/${fight.id}/scores`, poll ? 5_000 : 0);
   if (!data)
     return (
       <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">

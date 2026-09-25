@@ -50,7 +50,6 @@ import { scoreableRoundCount } from "../scoring";
 import { useNow } from "../useNow";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { useShortcutNav } from "../shortcuts";
-import SwipePager from "../components/SwipePager";
 
 const shell = PANEL_SHELL;
 const RESULT_PILL =
@@ -692,8 +691,9 @@ function MatchupTabs({ tabs, current, onSelect }: { tabs: MatchupTab[]; current:
 }
 
 /** Matchup view rendered inside the events layout: card rail + detail + close.
- *  A `preview` is the neighbour drawn beside it mid-swipe: the detail alone,
- *  leaving the address bar, keys and scroll position to the real one. */
+ *  A `preview` is a neighbour drawn out of sight for swiping to: the same
+ *  page, leaving the address bar, keys and scroll position to the real one,
+ *  so it can become the real one without being drawn again. */
 export default function FightView({ fightId, eventIdHint, preview = false }: { fightId: string; eventIdHint?: string | null; preview?: boolean }) {
   const { settings } = useSettings();
   const navigate = useNavigate();
@@ -792,7 +792,6 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
   } : null);
 
   if (loading && !fight) {
-    if (preview) return <MatchupSkeleton />;
     return (
       <div className="flex h-full min-h-0 gap-3">
         {eventId ? <FightRail eventId={eventId} currentId={fightId} returnDepth={eventReturnDepth} /> : <FightRailSkeleton />}
@@ -801,7 +800,6 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
     );
   }
   if (!fight) {
-    if (preview) return <MatchupSkeleton />;
     return (
       <div className="flex h-full min-h-0 gap-3">
         {eventId ? <FightRail eventId={eventId} currentId={fightId} returnDepth={eventReturnDepth} /> : null}
@@ -853,7 +851,7 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
   };
 
   const detailPane = (
-      <div className="relative h-full min-h-0 min-w-0">
+      <div className="relative h-full min-h-0 min-w-0 flex-1">
         {changingMatchup ? (
           <div className="appear-late absolute inset-0 z-30 flex cursor-wait items-start justify-center bg-zinc-100/50 pt-6 backdrop-blur-[1px]">
             <span className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-500 shadow-sm">
@@ -977,8 +975,8 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
                 <CommonOpponents fight={fight} />
               </> : null}
               {tab === "odds" ? <OddsPanel fight={fight} /> : null}
-              {tab === "score" ? <FightScoring key={fight.id} fight={fight} /> : null}
-              {tab === "predict" ? <FightPredictions key={fight.id} fight={fight} /> : null}
+              {tab === "score" ? <FightScoring key={fight.id} fight={fight} poll={!preview} /> : null}
+              {tab === "predict" ? <FightPredictions key={fight.id} fight={fight} poll={!preview} /> : null}
               {tab === "discussion" ? (
                 <FightDiscussion key={fight.id} fightId={fight.id} />
               ) : null}
@@ -987,18 +985,10 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
         </div>
       </div>
   );
-  if (preview) return detailPane;
-
   return (
     <div className="flex h-full min-h-0 gap-3">
       <FightRail eventId={eventId ?? fight.event.id} currentId={fightId} returnDepth={eventReturnDepth} />
-      {/* A phone swipes along the card the same way: left for next, right for prev. */}
-      <SwipePager className="h-full min-w-0 flex-1" pageKey={fightId}
-        prev={previous ? stepTo(previous) : null}
-        next={next ? stepTo(next) : null}
-        renderPeek={(side) => <FightView fightId={(side === "prev" ? previous : next)!.id} eventIdHint={fight.event.id} preview />}>
-        {detailPane}
-      </SwipePager>
+      {detailPane}
     </div>
   );
 }
