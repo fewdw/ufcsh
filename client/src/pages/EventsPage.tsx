@@ -81,8 +81,12 @@ const KIND_NOUN: Record<KindFilter, string> = {
  *  and its own panels side by side, so with one open the list folds behind the
  *  "Browse all events" button until the window is wide enough for all three. */
 const DOCK = {
-  card: { sidebar: "md:flex md:w-72 md:shrink-0 md:flex-none lg:w-80", toggle: "md:hidden", main: "md:block", row: "md:flex-row" },
-  matchup: { sidebar: "xl:flex xl:w-80 xl:shrink-0 xl:flex-none", toggle: "xl:hidden", main: "xl:block", row: "xl:flex-row" },
+  // `head`: as a phone's sheet the list's search and filters sit at the foot,
+  // under the thumb; docked beside the card they head the list.
+  card: { sidebar: "md:flex md:w-72 md:shrink-0 md:flex-none lg:w-80", toggle: "md:hidden", main: "md:block", row: "md:flex-row",
+    head: "order-last border-t md:order-none md:border-t-0 md:border-b" },
+  matchup: { sidebar: "xl:flex xl:w-80 xl:shrink-0 xl:flex-none", toggle: "xl:hidden", main: "xl:block", row: "xl:flex-row",
+    head: "order-last border-t xl:order-none xl:border-t-0 xl:border-b" },
 } as const;
 
 function EventSidebar({
@@ -159,7 +163,7 @@ function EventSidebar({
 
   return (
     <aside id="events-sidebar" className={`${mobileOpen ? "flex" : "hidden"} min-h-0 w-full flex-1 flex-col overflow-hidden ${dock.sidebar} ${shell}`}>
-      <div className="space-y-2 border-b border-zinc-200 p-3">
+      <div className={`space-y-2 border-zinc-200 p-3 ${dock.head}`}>
         {/* On a phone the list opens over the card like a sheet: a title and
             its count, with the ✕ that closes it back to the card — the same
             header the filter sheets use. Docked beside the card it needs none. */}
