@@ -127,6 +127,8 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
             aria-controls={selection.listId}
             aria-activedescendant={selection.activeId}
             autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="none"
             spellCheck={false}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
