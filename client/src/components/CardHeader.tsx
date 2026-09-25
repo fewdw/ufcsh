@@ -27,11 +27,11 @@ export function EventPlace({ venue, location }: { venue?: VenueRef | null; locat
 
 export const CARD_STEP = "inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
 
-/** A step inside the floating bar. */
-export const FLOAT_STEP = "inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
+/** A step inside the card navigation bar. */
+export const NAV_STEP = "inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
 
 /** Prev, the list and Next in one thin bar, heading the card. */
-export function FloatingNavigation({ label, previous, center, next, className = "" }: {
+export function CardNavigation({ label, previous, center, next, className = "" }: {
   label: string;
   previous: ReactNode;
   center: ReactNode;

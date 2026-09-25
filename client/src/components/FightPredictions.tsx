@@ -115,11 +115,11 @@ function CommunityPicks({ distribution, scheduledRounds }: { distribution: Predi
     color: SHADES[method ?? "none"][index], counterClockwise: index === 0,
   })));
   const methods = distribution.methods;
-  // "D" gathers every pick that names no round: decisions and open finishes.
+  // The dash gathers picks with no round specified, including decisions.
   const rounds = distribution.rounds.map(entry => ({
     key: entry.round == null ? "none" : `r${entry.round}`,
     label: entry.round == null ? "Decision or no round named" : `Round ${entry.round}`,
-    short: entry.round == null ? "D" : `${entry.round}`,
+    short: entry.round == null ? "—" : `${entry.round}`,
     count: entry.count,
     sides: distribution.fighters.map(side => side.rounds?.find(pick => pick.round === entry.round)?.count ?? 0),
   }));
@@ -152,6 +152,7 @@ function CommunityPicks({ distribution, scheduledRounds }: { distribution: Predi
           <div className="mt-1 flex justify-center gap-1.5 text-[10px] leading-none text-zinc-500" aria-hidden="true">
             {rounds.map(entry => <span key={entry.key} className="w-[15px] text-center">{entry.short}</span>)}
           </div>
+          <p className="mt-2 text-center text-[9px] leading-tight text-zinc-500">— = no round specified</p>
         </div> : null}
       </div>
     </section>

@@ -16,7 +16,7 @@ import {
   roundsLabel,
 } from "../format";
 import Avatar from "../components/Avatar";
-import { CardEventTitle, FLOAT_STEP, FloatingNavigation } from "../components/CardHeader";
+import { CardEventTitle, NAV_STEP, CardNavigation } from "../components/CardHeader";
 import FightScoring from "../components/FightScoring";
 import FightPredictions from "../components/FightPredictions";
 import { FightRail, FightRailSkeleton, FightStepLink, FightStrip, MatchupSkeleton } from "../components/FightRail";
@@ -887,12 +887,12 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   };
 
   const cardSteps = {
-    previous: <FightStepLink fight={previous} direction="prev" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} className={FLOAT_STEP} />,
+    previous: <FightStepLink fight={previous} direction="prev" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} className={NAV_STEP} />,
     center: <button type="button" onClick={closeFight} aria-keyshortcuts="Escape"
-      className={`${FLOAT_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+      className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
       <List className="h-3.5 w-3.5" aria-hidden="true" />Card
     </button>,
-    next: <FightStepLink fight={next} direction="next" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} className={FLOAT_STEP} />,
+    next: <FightStepLink fight={next} direction="next" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} className={NAV_STEP} />,
   };
   const detailPane = (
       <div className="relative h-full min-h-0 min-w-0 flex-1">
@@ -906,7 +906,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
         <div ref={detailScroll} inert={changingMatchup} className="h-full overflow-y-auto" aria-busy={changingMatchup}>
           <div className="@container flex min-h-full w-full flex-col gap-2 sm:gap-3 sm:pb-8">
             {/* The steps along the card head it, and scroll away with it. */}
-            <FloatingNavigation label="Card navigation"
+            <CardNavigation label="Card navigation"
               previous={cardSteps.previous} center={cardSteps.center} next={cardSteps.next} />
             <div className="flex shrink-0 flex-col gap-2 sm:gap-3">
             <section className={`overflow-hidden ${shell}`}>

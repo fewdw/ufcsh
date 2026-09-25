@@ -140,7 +140,7 @@ export function FightRail({ eventId, currentId, returnDepth, onReselect }: {
               to={{ pathname: `/fights/${f.id}`, search }}
               // A bout picked from the card always opens at its top.
               state={{ eventId, scrollTop: true, ...(returnDepth ? { eventReturnDepth: returnDepth + 1 } : {}) }}
-              onClick={(e) => { if (isCurrent && onReselect) { e.preventDefault(); onReselect(); } }}
+              onClick={(e) => { if (isCurrent && onReselect && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) { e.preventDefault(); onReselect(); } }}
               aria-current={isCurrent ? "page" : undefined}
               title={`${f.f1.name} vs ${f.f2.name}${f.method ? ` · ${formatMethod(f.method, f.round, f.time)}` : ""}${isLive ? " · live now" : ""}`}
               onPointerEnter={() => prefetch(withRanking(`/api/fights/${f.id}`, settings.rankingSource))}
@@ -250,7 +250,7 @@ export function FightStrip({ eventId, currentId, returnDepth, onReselect, classN
               to={{ pathname: `/fights/${f.id}`, search }}
               // A bout picked from the row always opens at its top.
               state={{ eventId, scrollTop: true, ...(returnDepth ? { eventReturnDepth: returnDepth + 1 } : {}) }}
-              onClick={(e) => { if (isCurrent) { e.preventDefault(); onReselect(); } }}
+              onClick={(e) => { if (isCurrent && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) { e.preventDefault(); onReselect(); } }}
               aria-current={isCurrent ? "page" : undefined}
               aria-label={`${f.f1.name} vs ${f.f2.name}${isLive ? ", live now" : ""}`}
               onPointerDown={() => prefetch(withRanking(`/api/fights/${f.id}`, settings.rankingSource))}
@@ -258,7 +258,7 @@ export function FightStrip({ eventId, currentId, returnDepth, onReselect, classN
               // its outline a shade darker, as a selected row does.
               // Faces only: the names are in the link's label and title.
               title={`${f.f1.name} vs ${f.f2.name}`}
-              className={`relative flex shrink-0 items-center gap-1.5 rounded-2xl border bg-white p-2 shadow-[0_1px_2px_rgba(0,0,0,0.04)] ${
+              className={`relative flex shrink-0 items-center gap-2 rounded-2xl border bg-white p-2 shadow-[0_1px_2px_rgba(0,0,0,0.04)] ${
                 isLive ? "border-emerald-300" : isCurrent ? "border-zinc-400" : "border-zinc-200"}`}
             >
               {isLive ? <span className="live-dot absolute left-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" /> : null}

@@ -13,7 +13,7 @@ import OddsPair from "../components/OddsPair";
 import { Moneyline, moneylineLeg, OddsFormatTabs, OddsMarkets, type FightResult } from "../components/MatchupOdds";
 import { hasOddsMarkets } from "../oddsLayout";
 import FightView from "./FightPage";
-import { FLOAT_STEP, EventPlace, FloatingNavigation } from "../components/CardHeader";
+import { NAV_STEP, EventPlace, CardNavigation } from "../components/CardHeader";
 import { useShortcutNav } from "../shortcuts";
 import type { Matchup } from "../api";
 import { SITE_URL, useSeo } from "../seo";
@@ -859,18 +859,18 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
     <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto sm:gap-3 sm:pr-1">
       {/* On a phone the list folds away, so its button and the step to
           either neighbour head the card. */}
-      <FloatingNavigation label="Event navigation" className="md:hidden"
-        previous={<StepLink event={nav.prev} direction="prev" className={FLOAT_STEP} />}
+      <CardNavigation label="Event navigation" className="md:hidden"
+        previous={<StepLink event={nav.prev} direction="prev" className={NAV_STEP} />}
         // Reading the whole card's odds, the way out is back to the card.
         center={oddsMode && hasAnyOdds
-          ? <Link to={`/events/${event.id}`} className={`${FLOAT_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+          ? <Link to={`/events/${event.id}`} className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
             <List className="h-3.5 w-3.5" aria-hidden="true" />Card
           </Link>
           : <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
-            className={`${FLOAT_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+            className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
             <List className="h-3.5 w-3.5" aria-hidden="true" />Events
           </button>}
-        next={<StepLink event={nav.next} direction="next" className={FLOAT_STEP} />}
+        next={<StepLink event={nav.next} direction="next" className={NAV_STEP} />}
       />
       <section className={`${shell} shrink-0 overflow-hidden`}>
         {/* The name, date and place on the left; the card's start times on
