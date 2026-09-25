@@ -174,7 +174,7 @@ const fighterSummaryStmt = () =>
 
 /** Viewing a fighter without a photo queues them for the next background photo batch. */
 function requestPhoto(id: string): void {
-  if (!id) return;
+  if (!id || warming) return;
   const row = prepared("SELECT photo_url, photo_full_url, photo_checked_at FROM fighters WHERE id = ?").get(id) as any;
   if (row && (row.photo_checked_at == null || Date.now() - row.photo_checked_at > ((!row.photo_url || !row.photo_full_url) ? 86_400_000 : 30 * 86_400_000))) {
     prepared("INSERT OR IGNORE INTO image_queue (fighter_id, requested_at) VALUES (?, ?)").run(id, Date.now());
@@ -757,7 +757,19 @@ function professionalHistory(fighterId: string, ufcHistory: any[]): any[] {
   return merged.sort((a, b) => b.date.localeCompare(a.date) || a.source_order - b.source_order);
 }
 
-const matchupRefresh = new BackgroundRefresh(process.env.NO_SYNC === "1" ? () => false : process.env.SYNC_MODE === "external" ? enqueueRefresh : undefined);
+const backgroundRefresh = new BackgroundRefresh(process.env.NO_SYNC === "1" ? () => false : process.env.SYNC_MODE === "external" ? enqueueRefresh : undefined);
+const matchupRefresh = {
+  request: (...args: Parameters<BackgroundRefresh["request"]>) => !warming && backgroundRefresh.request(...args),
+};
+
+/** Set while a query worker warms itself: reading pages to compile their code
+ *  and fill its caches is not a reader's visit, so it queues no source
+ *  refreshes and no photo checks. */
+let warming = false;
+export async function warmingUp(work: () => Promise<void>): Promise<void> {
+  warming = true;
+  try { await work(); } finally { warming = false; }
+}
 
 /** Fixed job vocabulary; persisted queue entries never contain executable code or URLs. */
 export async function runRefreshJob(key: string): Promise<unknown> {
@@ -1204,15 +1216,8 @@ type SearchIndex = {
 const searchIndexCache = new VersionCache<SearchIndex>(1);
 let heldSearchIndex: SearchIndex | null = null;
 
-/** Rebuild the search index now if its data changed; query workers call this
- *  from their refresh pass so a search never waits on the build. */
-export function refreshSearchIndex(): void {
-  heldSearchIndex = null;
-  heldSearchIndex = searchIndex();
-}
-
 /** Everything the typo-tolerant fallback scans, rebuilt when the data changes
- *  (or, in a query worker holding its indexes, when the pool refreshes it). */
+ *  (a query worker keeps its first one; the pool replaces the worker). */
 function searchIndex(): SearchIndex {
   if (heldSearchIndex && indexesHeld()) return heldSearchIndex;
   const version = dataRevision("search");
@@ -1238,6 +1243,7 @@ function searchIndex(): SearchIndex {
   }));
   const index = { fighters, events, fights };
   searchIndexCache.set("index", index);
+  if (indexesHeld()) heldSearchIndex = index;
   return index;
 }
 
@@ -1914,9 +1920,9 @@ export function startApi(port: number): http.Server {
   let refresher: NodeJS.Timeout | undefined;
   if (workerCount) {
     const pool = queryPool = new QueryPool(workerCount);
-    // Workers hold their indexes; when the data changes they are rebuilt here,
-    // one worker at a time and at most every half minute, so a burst of sync
-    // writes costs one rebuild and no request waits on one.
+    // Workers keep their indexes; when the data changes each is replaced by a
+    // freshly built one, at most every half minute, so a burst of sync writes
+    // costs one rebuild and no request waits on one.
     let seen = dataRevision("analytics");
     let lastRefreshAt = Date.now();
     refresher = setInterval(() => {

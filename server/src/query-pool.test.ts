@@ -18,27 +18,33 @@ test("worker deadlines recover capacity after a stalled query", async t => {
   assert.equal((await pool.run("/recovered")).json, "42");
 });
 
-test("a refresh takes one worker out of rotation at a time", async t => {
+test("a refresh replaces every worker without losing capacity", async t => {
+  // Each worker takes a moment to start, as a real one does building its indexes.
   const source = `import { parentPort, threadId } from 'node:worker_threads';
-    parentPort.postMessage({ready:true});
-    let refreshing = false;
-    parentPort.on('message', async ({id,url,refresh}) => {
-      if (refresh) { refreshing = true; await new Promise(r => setTimeout(r, 150)); refreshing = false; parentPort.postMessage({refreshed:true}); return; }
-      parentPort.postMessage({id,result:{json:JSON.stringify({refreshing, threadId}),status:200}});
-    });`;
+    await new Promise(r => setTimeout(r, 100));
+    parentPort.on('message', ({id}) => parentPort.postMessage({id,result:{json:String(threadId),status:200}}));
+    parentPort.postMessage({ready:true});`;
   const pool = new QueryPool(2, new URL(`data:text/javascript,${encodeURIComponent(source)}`), 1000);
   t.after(() => pool.close());
   for (let i = 0; i < 100; i++) { await sleep(10); if (pool.ready) break; }
+  const before = new Set<string>();
+  for (let i = 0; i < 10; i++) before.add((await pool.run("/q")).json);
   const pass = pool.refresh();
   assert.equal(pool.refresh(), pass, "concurrent calls share one pass");
-  const answers: { refreshing: boolean; threadId: number }[] = [];
-  const started = Date.now();
-  while (Date.now() - started < 250) {
-    answers.push(JSON.parse((await pool.run("/q")).json));
+  let answered = 0;
+  let done = false;
+  void pass.then(() => { done = true; });
+  while (!done) {
+    const started = Date.now();
+    assert.equal((await pool.run("/q")).status, 200);
+    assert.ok(Date.now() - started < 50, "no request waits on a starting worker");
+    assert.ok(pool.ready, "the pool stays ready throughout");
+    answered++;
     await sleep(5);
   }
-  await pass;
-  assert.ok(answers.length > 10, "requests keep being answered during the refresh");
-  assert.ok(answers.every(answer => !answer.refreshing), "no request is sent to a refreshing worker");
-  assert.equal((await pool.run("/after")).status, 200);
+  assert.ok(answered > 10, "requests keep being answered during the refresh");
+  const after = new Set<string>();
+  for (let i = 0; i < 20; i++) after.add((await pool.run("/q")).json);
+  assert.ok([...after].every(id => !before.has(id)), "only the new workers answer afterwards");
+  assert.equal(after.size <= 2, true);
 });

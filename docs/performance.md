@@ -66,14 +66,23 @@ plus a loop running `UPDATE data_revisions SET value = value + 1`):
 | Build | p50 | p95 | p99 | fighter p95 | matchup p95 | event p95 |
 | --- | --- | --- | --- | --- | --- | --- |
 | main | 7.9 ms | 3,199 ms | 3,923 ms | 3,747 ms | 3,681 ms | 3,228 ms |
-| fast | 4.3 ms | 19.5 ms | ~300 ms (share images) | 14 ms | 16 ms | 23 ms |
+| fast | 4.3 ms | 18.2 ms | 49.6 ms | 11 ms | 20 ms | 21 ms |
+
+At 100 req/s over the same pages (2 workers), p95 17.5 ms and p99 52.5 ms,
+every page type at or under 40 ms p99. An earlier version that refreshed
+workers in place (taking one out of rotation) measured p99 144 ms and stalled
+entirely with one worker, as dev runs.
 
 What changed:
 
-- Query workers hold their fight and search indexes; a request never rebuilds
-  one. The main process watches the revision and has the pool refresh one
-  worker at a time (at most every 30 s), re-warming records, officials, venues
-  and a page of each kind before that worker takes requests again.
+- Query workers keep the fight and search indexes they built; a request never
+  rebuilds one. The main process watches the revision and, at most every 30 s,
+  has the pool start a fresh worker, which builds its indexes and reads the
+  newest cards, bouts and fighters (compiling each page's code) before it
+  takes a request; then the worker it replaces finishes its job and stops. One
+  replacement at a time, so capacity never drops and memory rises by one
+  worker (~350 MB) for about ten seconds. Warm-up reads queue no source
+  refreshes or photo checks.
 - The shared response cache serves a stale copy while it rebuilds (10 minutes
   for event, matchup and fighter data, an hour for lists and page HTML), so a
   reader is answered from memory unless nobody has asked in that long.

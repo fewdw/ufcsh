@@ -2,7 +2,8 @@ import { Worker } from "node:worker_threads";
 import { OverloadedError, type ApiResult } from "./response-cache.ts";
 
 type Job = { id: number; url: string; resolve: (value: ApiResult) => void; reject: (error: Error) => void; timer?: NodeJS.Timeout };
-type Slot = { worker: Worker; ready: boolean; job?: Job; refreshed?: () => void };
+/** `spare` is a replacement still starting; `retiring` finishes its job and stops. */
+type Slot = { worker: Worker; ready: boolean; job?: Job; spare?: (ready: boolean) => void; retiring?: boolean };
 
 /** Fixed-size pool with a bounded queue. A slow query cannot stall HTTP or health checks. */
 export class QueryPool {
@@ -21,7 +22,7 @@ export class QueryPool {
     this.workerUrl = workerUrl; this.timeoutMs = timeoutMs; this.size = size; this.maxQueue = maxQueue;
     for (let i = 0; i < size; i++) this.spawn();
   }
-  get ready() { return this.slots.length === this.size && this.slots.every(slot => slot.ready); }
+  get ready() { return this.slots.filter(slot => slot.ready && !slot.retiring).length >= this.size; }
   get pending() { return this.queue.length + this.slots.filter(slot => slot.job).length; }
 
   run(url: string): Promise<ApiResult> {
@@ -40,52 +41,66 @@ export class QueryPool {
     });
   }
 
-  /** Rebuild each worker's indexes in turn, taking one out of rotation at a
-   *  time so the rest keep answering. Calls made during a pass share it. */
+  /** Replace every worker with a freshly started one, which builds its
+   *  indexes from the current data before it takes a request. One replacement
+   *  starts at a time and the worker it replaces keeps answering until it is
+   *  ready, so capacity never drops. Calls made during a pass share it. */
   refresh(deadlineMs = 120_000): Promise<void> {
     this.refreshing ??= (async () => {
-      for (const slot of [...this.slots]) {
+      for (const old of this.slots.filter(slot => !slot.spare && !slot.retiring)) {
         if (this.closed) break;
-        if (!slot.ready || !this.slots.includes(slot)) continue;
-        await new Promise<void>(resolve => {
-          const timer = setTimeout(() => { void slot.worker.terminate(); resolve(); }, deadlineMs);
-          slot.refreshed = () => { clearTimeout(timer); slot.refreshed = undefined; resolve(); this.dispatch(); };
-          // A worker between jobs starts now; a busy one starts after its job.
-          if (!slot.job) slot.worker.postMessage({ refresh: true });
-        });
+        const fresh = await this.replacement(deadlineMs);
+        if (!fresh) continue;
+        // If the old worker died meanwhile, its own restart already replaced it.
+        this.retire(this.slots.includes(old) && !old.retiring ? old : fresh);
       }
     })().finally(() => { this.refreshing = null; });
     return this.refreshing;
   }
 
-  private spawn() {
+  private replacement(deadlineMs: number): Promise<Slot | null> {
+    return new Promise(resolve => {
+      const slot = this.spawn();
+      const timer = setTimeout(() => { void slot.worker.terminate(); }, deadlineMs);
+      slot.spare = ready => { clearTimeout(timer); slot.spare = undefined; resolve(ready ? slot : null); };
+    });
+  }
+
+  private retire(slot: Slot) {
+    slot.retiring = true;
+    if (!slot.job) void slot.worker.terminate();
+  }
+
+  private spawn(): Slot {
     const worker = new Worker(this.workerUrl, { env: { ...process.env, DB_INIT: "0", SYNC_MODE: "external" } });
     const slot: Slot = { worker, ready: false };
     this.slots.push(slot);
     worker.on("message", message => {
-      if (message.ready) { slot.ready = true; this.dispatch(); return; }
-      if (message.refreshed) { slot.refreshed?.(); return; }
+      if (message.ready) { slot.ready = true; slot.spare?.(true); this.dispatch(); return; }
       const job = slot.job;
       if (!job || message.id !== job.id) return;
       clearTimeout(job.timer);
       slot.job = undefined;
       if (message.error) job.reject(new Error(message.error));
       else job.resolve(message.result);
-      if (slot.refreshed) slot.worker.postMessage({ refresh: true });
+      if (slot.retiring) void slot.worker.terminate();
       this.dispatch();
     });
     worker.on("error", error => console.error("query worker failed:", String(error)));
     worker.on("exit", () => {
       if (slot.job) { clearTimeout(slot.job.timer); slot.job.reject(new OverloadedError("Query worker stopped")); }
-      slot.refreshed?.();
       this.slots = this.slots.filter(value => value !== slot);
-      if (!this.closed) setTimeout(() => { if (!this.closed) this.spawn(); }, 1000).unref();
+      // A replacement that failed to start, or a retired worker, is not restarted.
+      const replaced = Boolean(slot.spare) || Boolean(slot.retiring);
+      slot.spare?.(false);
+      if (!replaced && !this.closed) setTimeout(() => { if (!this.closed) this.spawn(); }, 1000).unref();
     });
+    return slot;
   }
 
   private dispatch() {
     for (const slot of this.slots) {
-      if (!slot.ready || slot.job || slot.refreshed || !this.queue.length) continue;
+      if (!slot.ready || slot.job || slot.retiring || !this.queue.length) continue;
       slot.job = this.queue.shift()!;
       slot.worker.postMessage({ id: slot.job.id, url: slot.job.url });
     }

@@ -784,21 +784,11 @@ let lastFingerprintAt = 0;
 let lastFingerprint = "";
 let held = false;
 
-/** Query workers hold the indexes they have: a request never waits on a
- *  rebuild (about two seconds on the full archive). The pool calls
- *  `refreshFightIndex` on one worker at a time while the others serve. */
+/** Query workers keep the indexes they built: a request never waits on a
+ *  rebuild (about two seconds on the full archive). The pool replaces a worker
+ *  with a freshly built one when the data changes. */
 export function holdIndexes(): void { held = true; }
 export function indexesHeld(): boolean { return held; }
-
-/** Rebuild now if the tables changed since the index was built. */
-export function refreshFightIndex(): boolean {
-  const version = fingerprint();
-  lastFingerprint = version;
-  lastFingerprintAt = Date.now();
-  if (current?.version === version) return false;
-  current = build(version);
-  return true;
-}
 
 /** The current index, rebuilt lazily when the underlying tables change. */
 export function fightIndex(): FightIndex {
