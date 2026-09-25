@@ -13,7 +13,7 @@ import OddsPair from "../components/OddsPair";
 import { Moneyline, moneylineLeg, OddsFormatTabs, OddsMarkets, type FightResult } from "../components/MatchupOdds";
 import { hasOddsMarkets } from "../oddsLayout";
 import FightView from "./FightPage";
-import { BottomDock, FLOAT_STEP, EventPlace, FloatingNavigation } from "../components/CardHeader";
+import { FLOAT_STEP, EventPlace, FloatingNavigation } from "../components/CardHeader";
 import { useShortcutNav } from "../shortcuts";
 import type { Matchup } from "../api";
 import { SITE_URL, useSeo } from "../seo";
@@ -21,7 +21,7 @@ import { cardFightSearch, useHistoryState, useRouteScrollRestoration } from "../
 import { useSettings, withRanking, type OddsFormat } from "../settings";
 import { eventKind, type EventKind } from "../eventKind";
 import SearchGlyph from "../components/SearchGlyph";
-import { ChevronLeft, ChevronRight, List, LocateFixed, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import SwipePager from "../components/SwipePager";
@@ -81,18 +81,15 @@ const KIND_NOUN: Record<KindFilter, string> = {
  *  and its own panels side by side, so with one open the list folds behind the
  *  "Browse all events" button until the window is wide enough for all three. */
 const DOCK = {
-  // `head`: as a phone's sheet the list's search and filters sit at the foot,
-  // under the thumb; docked beside the card they head the list.
-  // A phone's sheet is two panels, the list and under it (at the thumb) its
-  // search and filters; docked beside the card they join into one panel,
-  // the search heading the list.
+  // A phone's sheet is two panels, the search and filters over the list;
+  // docked beside the card they join into one panel.
   card: { sidebar: "md:flex md:w-72 md:shrink-0 md:flex-none lg:w-80", toggle: "md:hidden", main: "md:block", row: "md:flex-row",
     aside: "gap-2 md:gap-0 md:rounded-2xl md:border md:border-zinc-200 md:shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
-    head: "order-last md:order-none md:rounded-none md:border-x-0 md:border-t-0 md:shadow-none",
+    head: "md:rounded-none md:border-x-0 md:border-t-0 md:shadow-none",
     list: "md:rounded-none md:border-0 md:shadow-none" },
   matchup: { sidebar: "xl:flex xl:w-80 xl:shrink-0 xl:flex-none", toggle: "xl:hidden", main: "xl:block", row: "xl:flex-row",
     aside: "gap-2 xl:gap-0 xl:rounded-2xl xl:border xl:border-zinc-200 xl:shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
-    head: "order-last xl:order-none xl:rounded-none xl:border-x-0 xl:border-t-0 xl:shadow-none",
+    head: "xl:rounded-none xl:border-x-0 xl:border-t-0 xl:shadow-none",
     list: "xl:rounded-none xl:border-0 xl:shadow-none" },
 } as const;
 
@@ -125,7 +122,6 @@ function EventSidebar({
   const warmEvent = (id: string) => prefetch(withRanking(`/api/events/${id}`, settings.rankingSource));
   const listRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLAnchorElement>(null);
-  const [jumped, setJumped] = useState(0);
 
   // A search is for the one visit: once the phone's sheet folds away — ✕, a
   // pick, or any other way out — it opens again on the whole list.
@@ -175,7 +171,7 @@ function EventSidebar({
   // Bring the selected event into view when arriving via a link/search.
   useEffect(() => {
     selectedRef.current?.scrollIntoView({ block: "nearest" });
-  }, [selectedId, events.length, jumped]);
+  }, [selectedId, events.length]);
 
   return (
     <aside id="events-sidebar" className={`${mobileOpen ? "flex" : "hidden"} min-h-0 w-full flex-1 flex-col overflow-hidden ${dock.sidebar} ${dock.aside}`}>
@@ -205,16 +201,6 @@ function EventSidebar({
           </button>
         </div>
         <div className={segmentedGroup} role="group" aria-label="Event tier">
-          {tagged ? (
-            <Link
-              to={`/events/${tagged.id}`}
-              onClick={() => { setFilter(""); setKind("all"); setJumped((n) => n + 1); onSelect(); }}
-              title={`Go to the ${FOCUS[tagged.tag].title} card`}
-              className={`inline-flex min-h-8 shrink-0 items-center gap-1 rounded-full px-2.5 py-1.5 text-[13px] font-semibold transition sm:min-h-0 sm:py-1 sm:text-xs hover:bg-white/70 ${FOCUS[tagged.tag].className}`}
-            >
-              <LocateFixed className="h-3.5 w-3.5" aria-hidden="true" />{FOCUS[tagged.tag].label}
-            </Link>
-          ) : null}
           {KIND_FILTERS.map((option) => (
             <button
               key={option.value}
@@ -730,30 +716,6 @@ const STATUS_TAG = {
   next: { label: "Next", className: "bg-amber-100 text-amber-700" },
 } as const;
 
-/** The button that jumps to the tagged card, worded for what it is now. */
-const FOCUS = {
-  live: { label: "Live", title: "live", className: "text-emerald-700" },
-  done: { label: "Tonight", title: "finished tonight's", className: "text-zinc-700" },
-  next: { label: "Next", title: "next", className: "text-amber-700" },
-} as const;
-
-/** The tagged card — live, finished tonight, or next — one tap away. Only its
- *  glyph, coloured as the list's tag is: the word would repeat "Next" beside
- *  the step that is also called Next. */
-function FocusLink({ focus, currentId, className }: { focus: { id: string; tag: keyof typeof FOCUS } | null; currentId: string; className: string }) {
-  if (!focus) return null;
-  const word = FOCUS[focus.tag];
-  const glyph = <LocateFixed className="h-4 w-4" aria-hidden="true" />;
-  if (focus.id === currentId) {
-    const label = `This is the ${word.title} card`;
-    return <span aria-current="page" aria-label={label} title={label} className={`${className} bg-zinc-100 ${word.className}`}>{glyph}</span>;
-  }
-  const label = `Go to the ${word.title} card`;
-  return (
-    <Link to={`/events/${focus.id}`} aria-label={label} title={label} className={`${className} hover:bg-zinc-100 ${word.className}`}>{glyph}</Link>
-  );
-}
-
 const TAG_SHAPE = "shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em]";
 
 const SEGMENT_LABEL: Record<CardSegment, string> = {
@@ -795,8 +757,6 @@ function SegmentBreak({ segment, at }: { segment: CardSegment; at: number | null
 type EventNav = {
   prev: EventListItem | null;
   next: EventListItem | null;
-  /** The live, finished-tonight or next card. */
-  focus: { id: string; tag: keyof typeof FOCUS } | null;
   onBrowse: () => void;
 };
 
@@ -900,6 +860,21 @@ function EventPane({ eventId, oddsMode, nav, preview = false }: { eventId: strin
 
   return (
     <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto sm:gap-3 sm:pr-1">
+      {/* On a phone the list folds away, so its button and the step to
+          either neighbour head the card. */}
+      <FloatingNavigation label="Event navigation" className="md:hidden"
+        previous={<StepLink event={nav.prev} direction="prev" className={FLOAT_STEP} />}
+        // Reading the whole card's odds, the way out is back to the card.
+        center={oddsMode && hasAnyOdds
+          ? <Link to={`/events/${event.id}`} className={`${FLOAT_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+            <List className="h-3.5 w-3.5" aria-hidden="true" />Card
+          </Link>
+          : <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
+            className={`${FLOAT_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+            <List className="h-3.5 w-3.5" aria-hidden="true" />Events
+          </button>}
+        next={<StepLink event={nav.next} direction="next" className={FLOAT_STEP} />}
+      />
       <section className={`${shell} shrink-0 overflow-hidden`}>
         {/* The name, date and place on the left; the card's start times on
             the right, one per line, at every width — only the type grows. */}
@@ -945,7 +920,7 @@ function EventPane({ eventId, oddsMode, nav, preview = false }: { eventId: strin
 
       {oddsMode && hasAnyOdds ? (
         // Its own height, not the pane's: squeezed to fit, the list would run
-        // out past it and the phone's bottom bar would stop halfway down.
+        // out past the pane.
         <div className="flex shrink-0 flex-col gap-3">
           <div className="flex flex-wrap items-center justify-between gap-2 px-1">
             <Link
@@ -991,27 +966,6 @@ function EventPane({ eventId, oddsMode, nav, preview = false }: { eventId: strin
           )}
         </section>
       )}
-      {/* On a phone the list folds away, so its button and the step to
-          either neighbour sit in a bar at the foot of the screen, in reach
-          of a thumb however far down the card is read. */}
-      <BottomDock className="md:hidden">
-        <FloatingNavigation label="Event navigation" raised
-          previous={<StepLink event={nav.prev} direction="prev" className={FLOAT_STEP} />}
-            // Reading the whole card's odds, the way out is back to the card.
-          center={oddsMode && hasAnyOdds
-            ? <Link to={`/events/${event.id}`} className={`${FLOAT_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
-              <List className="h-3.5 w-3.5" aria-hidden="true" />Card
-            </Link>
-            : <>
-              <FocusLink focus={nav.focus} currentId={event.id} className={FLOAT_STEP} />
-              <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
-                className={`${FLOAT_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
-                <List className="h-3.5 w-3.5" aria-hidden="true" />Events
-              </button>
-            </>}
-          next={<StepLink event={nav.next} direction="next" className={FLOAT_STEP} />}
-        />
-      </BottomDock>
     </div>
   );
 }
@@ -1055,7 +1009,6 @@ export default function EventsPage() {
   }, [landingId, navigate]);
 
   const oddsMode = new URLSearchParams(location.search).get("odds") === "1";
-  const focus = useMemo(() => taggedEvent(events ?? []), [events]);
   const shownNav = shownEventId ? eventNeighbours(events ?? [], shownEventId) : { prev: null, next: null };
   // A matchup's neighbours along its card: Next toward the main event (the
   // card lists it first), Prev toward the opener.
@@ -1114,8 +1067,8 @@ export default function EventsPage() {
           <SwipePager className="h-full" current={shownEventId} prev={shownNav.prev?.id ?? null} next={shownNav.next?.id ?? null}
             onStep={(side) => { const to = shownNav[side]; if (to) navigate(`/events/${to.id}`); }}
             render={(id, active) => active
-              ? <EventPane eventId={id} oddsMode={oddsMode} nav={{ ...eventNeighbours(events, id), focus, onBrowse: () => setMobileEventsOpen(true) }} />
-              : <EventPane eventId={id} oddsMode={false} preview nav={{ ...eventNeighbours(events, id), focus, onBrowse: () => {} }} />} />
+              ? <EventPane eventId={id} oddsMode={oddsMode} nav={{ ...eventNeighbours(events, id), onBrowse: () => setMobileEventsOpen(true) }} />
+              : <EventPane eventId={id} oddsMode={false} preview nav={{ ...eventNeighbours(events, id), onBrowse: () => {} }} />} />
         ) : (
           <div className={`flex h-full items-center justify-center ${shell}`}>
             <div className="text-sm text-zinc-400">Select an event.</div>

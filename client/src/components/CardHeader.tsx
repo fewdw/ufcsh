@@ -30,39 +30,20 @@ export const CARD_STEP = "inline-flex min-h-8 items-center gap-1 rounded-full px
 /** A step inside the floating bar. */
 export const FLOAT_STEP = "inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
 
-/** Prev, the list and Next in one thin bar. Where it rides is the caller's:
- *  pinned to the top of a pane, or `raised` over the page in the phone's
- *  bottom dock. */
-export function FloatingNavigation({ label, previous, center, next, raised = false, className = "" }: {
+/** Prev, the list and Next in one thin bar, heading the card. */
+export function FloatingNavigation({ label, previous, center, next, className = "" }: {
   label: string;
   previous: ReactNode;
   center: ReactNode;
   next: ReactNode;
-  raised?: boolean;
   className?: string;
 }) {
-  const panel = raised ? RAISED_PANEL : PANEL;
   return (
-    <nav aria-label={label} className={`${panel} grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-1 p-1 ${className}`}>
+    <nav aria-label={label} className={`${PANEL} grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-1 p-1 ${className}`}>
       <div className="min-w-0 justify-self-start">{previous}</div>
-      <div className="flex min-w-0 items-center gap-1">{center}</div>
+      <div className="min-w-0">{center}</div>
       <div className="min-w-0 justify-self-end">{next}</div>
     </nav>
-  );
-}
-
-/** A panel lifted off the page it floats over: the same surface and ring, a
- *  deeper shadow. */
-const RAISED_PANEL = "rounded-2xl border border-zinc-200 bg-white shadow-[0_6px_20px_rgba(0,0,0,0.12)]";
-
-/** The phone's controls, pinned to the bottom of the screen where a thumb
- *  reaches: it sits last in the scrolling pane and sticks to its foot. It has
- *  no surface of its own — the page shows around what floats in it. */
-export function BottomDock({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return (
-    <div className={`pointer-events-none sticky bottom-0 z-30 mt-auto flex shrink-0 flex-col gap-2 px-2 pb-2 pt-1 *:pointer-events-auto ${className}`}>
-      {children}
-    </div>
   );
 }
 

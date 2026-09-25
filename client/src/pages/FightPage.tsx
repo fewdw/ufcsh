@@ -16,7 +16,7 @@ import {
   roundsLabel,
 } from "../format";
 import Avatar from "../components/Avatar";
-import { BottomDock, CardEventTitle, FLOAT_STEP, FloatingNavigation } from "../components/CardHeader";
+import { CardEventTitle, FLOAT_STEP, FloatingNavigation } from "../components/CardHeader";
 import FightScoring from "../components/FightScoring";
 import FightPredictions from "../components/FightPredictions";
 import { FightRail, FightRailSkeleton, FightStepLink, FightStrip, MatchupSkeleton } from "../components/FightRail";
@@ -869,9 +869,8 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
         ) : null}
         <div ref={detailScroll} inert={changingMatchup} className="h-full overflow-y-auto" aria-busy={changingMatchup}>
           <div className="@container flex min-h-full w-full flex-col gap-2 sm:gap-3 sm:pb-8">
-            {/* The steps along the card float over it as it scrolls: pinned
-                to the top here, and to the foot of a phone's screen below. */}
-            <FloatingNavigation label="Card navigation" className="sticky top-0 z-30 hidden sm:grid"
+            {/* The steps along the card head it, and scroll away with it. */}
+            <FloatingNavigation label="Card navigation"
               previous={cardSteps.previous} center={cardSteps.center} next={cardSteps.next} />
             <div className="flex shrink-0 flex-col gap-2 sm:gap-3">
             <section className={`overflow-hidden ${shell}`}>
@@ -985,11 +984,6 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
                 <FightDiscussion key={fight.id} fightId={fight.id} />
               ) : null}
             </div>
-            {/* A phone keeps the steps at the foot of the screen, in reach
-                of a thumb. */}
-            <BottomDock className="sm:hidden">
-              <FloatingNavigation label="Card navigation" raised previous={cardSteps.previous} center={cardSteps.center} next={cardSteps.next} />
-            </BottomDock>
           </div>
         </div>
       </div>
