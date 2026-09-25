@@ -271,12 +271,15 @@ select:not([multiple]):not([size]) {
 .dark .ui-primary { background-color: #f4f4f5 !important; color: #18181b !important; }
 .dark .ui-primary:hover { background-color: #d4d4d8 !important; }
 .dark .ui-danger:hover { background-color: #e11d48 !important; }
-.dark * { scrollbar-color: #52525b transparent; }
-
-/* Slim, quiet scrollbars for the always-scrolling panes. */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgb(212 212 216) transparent;
+/* Slim, quiet scrollbars for the always-scrolling panes. Only where there is
+   a mouse: a styled scrollbar on a touch screen is painted in the page, under
+   sticky bars like the matchup tabs, where the native overlay floats above. */
+@media (pointer: fine) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(212 212 216) transparent;
+  }
+  .dark * { scrollbar-color: #52525b transparent; }
 }
 
 /* Chart marks settle in rather than snapping; motion carries the comparison,

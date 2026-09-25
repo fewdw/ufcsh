@@ -1,6 +1,6 @@
 import { PANEL } from "../components/chartTokens";
 import { isFightDay, landingEvent, liveFightId, taggedEvent } from "../liveEvent";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
@@ -24,6 +24,7 @@ import SearchGlyph from "../components/SearchGlyph";
 import { ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
+import { useSwipeNav } from "../swipeNav";
 
 const shell = PANEL;
 /** The source flags a tournament or TUF final the same way it flags a
@@ -750,18 +751,20 @@ function eventNeighbours(events: EventListItem[], id: string): { prev: EventList
 }
 
 const STEP = "inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
+/** The phone's steps: small pills that float over the card as it scrolls. */
+const PILL = "pointer-events-auto inline-flex h-7 items-center gap-1 rounded-full border border-zinc-200 bg-white/95 px-2.5 text-xs font-semibold shadow-sm backdrop-blur transition";
 
-function StepLink({ event, direction }: { event: EventListItem | null; direction: "prev" | "next" }) {
+function StepLink({ event, direction, className = STEP }: { event: EventListItem | null; direction: "prev" | "next"; className?: string }) {
   const { settings } = useSettings();
   const label = direction === "prev" ? "Prev" : "Next";
   const glyph = direction === "prev" ? <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />;
-  if (!event) return <span className={`${STEP} text-zinc-300`} aria-disabled="true">{direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}</span>;
+  if (!event) return <span className={`${className} text-zinc-300`} aria-disabled="true">{direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}</span>;
   return (
     <Link
       to={`/events/${event.id}`}
       title={`${event.name} · ${formatDateShort(event.date)}`}
       onPointerEnter={() => prefetch(withRanking(`/api/events/${event.id}`, settings.rankingSource))}
-      className={`${STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}
+      className={`${className} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}
     >
       {direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}
     </Link>
@@ -783,6 +786,16 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
     data => data?.refreshing ? 5_000 : isFightDay(data?.date) ? 15_000 : data?.status !== "past" ? 5 * 60_000 : 0);
   const isLive = isFightDay(event?.date);
   const eventScroll = useRouteScrollRestoration<HTMLDivElement>("event:card", Boolean(event), eventId);
+  const swipe = useSwipeNav(
+    nav.prev ? () => navigate(`/events/${nav.prev!.id}`) : null,
+    nav.next ? () => navigate(`/events/${nav.next!.id}`) : null,
+    () => [nav.prev, nav.next].forEach((near) => { if (near) prefetch(withRanking(`/api/events/${near.id}`, settings.rankingSource)); }),
+  );
+  const cardRef = useCallback((node: HTMLDivElement | null) => {
+    eventScroll.current = node;
+    const release = swipe(node);
+    return () => { eventScroll.current = null; release?.(); };
+  }, [eventScroll, swipe]);
   // Any card still ahead of us counts down; a finished one has nothing left
   // to count, so its clock never starts.
   const now = useNow(event?.status !== "past");
@@ -838,18 +851,19 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   const hasResultSummary = Number.isFinite(event.card_stats.finishes) && Number.isFinite(event.card_stats.underdog_wins);
 
   return (
-    <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto sm:gap-3 sm:pr-1">
+    <div ref={cardRef} className="@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto sm:gap-3 sm:pr-1">
+      {/* On a phone the list folds away, so its button and the step to
+          either neighbour float over the card as small pills, staying in
+          reach however far down it is read. */}
+      <nav aria-label="Event navigation" className="pointer-events-none sticky top-0 z-30 -mb-1 flex shrink-0 items-center justify-between px-1 pt-0.5 md:hidden">
+        <StepLink event={nav.prev} direction="prev" className={PILL} />
+        <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
+          className={`${PILL} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+          <List className="h-3.5 w-3.5" aria-hidden="true" />Events
+        </button>
+        <StepLink event={nav.next} direction="next" className={PILL} />
+      </nav>
       <section className={`${shell} shrink-0 overflow-hidden`}>
-        {/* On a phone the list folds away, so its button and the step to
-            either neighbour ride along the top of the card itself. */}
-        <div className="flex items-center justify-between border-b border-zinc-100 px-1.5 py-1 md:hidden">
-          <StepLink event={nav.prev} direction="prev" />
-          <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
-            className={`${STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
-            <List className="h-3.5 w-3.5" aria-hidden="true" />Events
-          </button>
-          <StepLink event={nav.next} direction="next" />
-        </div>
         {/* The name, date and place on the left; the card's start times on
             the right, one per line, at every width — only the type grows. */}
         <div className="flex items-start justify-between gap-3 px-3 py-2 @[34rem]:px-6 @[48rem]:items-center @[48rem]:gap-6 @[48rem]:py-4">

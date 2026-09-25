@@ -82,6 +82,9 @@ export default function MatchupSearch({ onPick, placeholder = "Search upcoming m
           aria-controls={open ? selection.listId : undefined}
           aria-activedescendant={selection.activeId}
           autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="none"
+          spellCheck={false}
           value={query}
           onFocus={() => setOpen(true)}
           onChange={(event) => { setQuery(event.target.value); setOpen(true); }}

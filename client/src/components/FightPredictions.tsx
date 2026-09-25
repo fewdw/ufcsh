@@ -1,14 +1,12 @@
 import { useAuth } from "@clerk/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 
 import { useApi, type Matchup } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
 import { recallMine, rememberMine, useSessionUser } from "../profile";
 import { METHOD_LABEL, predictionLabel, predictionPoints, sharePct } from "../predictions";
-import type { FanPrediction, MyPrediction, PredictionDistribution, PredictionMethod, PredictionSummary } from "../predictions";
+import type { MyPrediction, PredictionDistribution, PredictionMethod, PredictionSummary } from "../predictions";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
-import ProgressiveImage from "./ProgressiveImage";
 import { BUTTON_PRIMARY_LARGE } from "../ui";
 
 const METHOD_COLOR: Record<string, string> = {
@@ -31,7 +29,6 @@ export default function FightPredictions({ fight }: { fight: Matchup }) {
   </section>;
   return <>
     {data.total ? <CommunityPicks distribution={data.distribution} scheduledRounds={data.scheduledRounds} /> : null}
-    {data.recent.length ? <FanPredictions predictions={data.recent} total={data.total} /> : null}
     {accountsEnabled ? <PredictionGate key={fight.id} fight={fight} status={data} onSaved={retry} />
       : <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`}>Sign-in must be configured to save predictions.</section>}
   </>;
@@ -39,47 +36,74 @@ export default function FightPredictions({ fight }: { fight: Matchup }) {
 
 type Share = { key: string; label: string; short?: string; count: number; color: string };
 
-/** One question the community answered, as a single split bar with every
- *  answer's share and count named under it: the whole spread reads at once. */
-function ShareBar({ title, entries, total }: { title: string; entries: Share[]; total: number }) {
+const SECTION_LABEL = "mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-400";
+
+/** A full pie, the first answer starting at nine o'clock and running
+ *  clockwise, the rest following on. Slices are parted by a hairline of the
+ *  panel's own colour. */
+function Pie({ entries, total, size = 88 }: { entries: Share[]; total: number; size?: number }) {
   const shown = entries.filter(entry => entry.count > 0);
-  return <div className="min-w-0 px-4 py-2.5">
-    <h3 className="sr-only">{title}</h3>
-    <div className="flex h-2 gap-px overflow-hidden rounded-full bg-zinc-100" role="img"
+  const c = size / 2;
+  const r = c - 1;
+  let angle = Math.PI;
+  const point = (at: number) => `${(c + r * Math.cos(at)).toFixed(2)} ${(c + r * Math.sin(at)).toFixed(2)}`;
+  return <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0" role="img"
+    aria-label={entries.map(entry => `${entry.label} ${sharePct(entry.count, total)}%`).join(", ")}>
+    {shown.length === 1
+      ? <circle cx={c} cy={c} r={r} fill={shown[0].color}><title>{`${shown[0].label}: ${shown[0].count} (100%)`}</title></circle>
+      : shown.map(entry => {
+        const from = angle;
+        angle += (entry.count / total) * Math.PI * 2;
+        const large = angle - from > Math.PI ? 1 : 0;
+        return <path key={entry.key} d={`M ${c} ${c} L ${point(from)} A ${r} ${r} 0 ${large} 1 ${point(angle)} Z`}
+          fill={entry.color} strokeWidth={2} strokeLinejoin="round" className="stroke-white dark:stroke-[#18181b]">
+          <title>{`${entry.label}: ${entry.count} ${entry.count === 1 ? "pick" : "picks"} (${sharePct(entry.count, total)}%)`}</title>
+        </path>;
+      })}
+  </svg>;
+}
+
+/** One question as a pie with its answers listed beside it. */
+function SharePie({ title, entries, total, counts = false, ink }: { title: string; entries: Share[]; total: number; counts?: boolean; ink?: string[] }) {
+  return <div className="min-w-0 px-4 py-3">
+    <h3 className={SECTION_LABEL}>{title}</h3>
+    <div className="flex flex-col items-center gap-2.5 @[22rem]:flex-row @[22rem]:items-center @[22rem]:gap-3">
+      <Pie entries={entries} total={total} />
+      <ul className="w-full min-w-0 space-y-0.5 text-[11px] leading-4" aria-hidden="true">
+        {entries.map((entry, index) => <li key={entry.key} className={`flex min-w-0 items-center gap-1.5 ${entry.count ? "text-zinc-600" : "text-zinc-400"}`}
+          title={`${entry.label}: ${entry.count} ${entry.count === 1 ? "pick" : "picks"}`}>
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: entry.color }} />
+          <span className="min-w-0 truncate">{entry.short ?? entry.label}</span>
+          <span className={`ml-auto shrink-0 font-semibold tabular-nums ${ink?.[index] ?? "text-zinc-900"}`}>
+            {sharePct(entry.count, total)}%{counts ? ` (${entry.count})` : ""}
+          </span>
+        </li>)}
+      </ul>
+    </div>
+  </div>;
+}
+
+/** Rounds are ordered, so they stand as bars side by side, each with its
+ *  share over it and its name under it. */
+function ShareColumns({ title, entries, total }: { title: string; entries: Share[]; total: number }) {
+  const most = Math.max(1, ...entries.map(entry => entry.count));
+  return <div className="min-w-0 px-4 py-3">
+    <h3 className={SECTION_LABEL}>{title}</h3>
+    <div className="flex items-end gap-0.5" role="img"
       aria-label={entries.map(entry => `${entry.label} ${sharePct(entry.count, total)}%`).join(", ")}>
-      {shown.map(entry => <span key={entry.key} className="h-full" style={{ width: `${(entry.count / total) * 100}%`, backgroundColor: entry.color }} title={`${entry.label} · ${entry.count}`} />)}
-    </div>
-    <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] leading-4" aria-hidden="true">
-      {entries.map(entry => <li key={entry.key} className={`flex min-w-0 items-center gap-1 ${entry.count ? "text-zinc-600" : "text-zinc-400"}`} title={`${entry.label}: ${entry.count} ${entry.count === 1 ? "pick" : "picks"}`}>
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: entry.color }} />
-        <span className="truncate">{entry.short ?? entry.label}</span>
-        <span className="font-semibold tabular-nums text-zinc-900">{sharePct(entry.count, total)}%</span>
-      </li>)}
-    </ul>
-  </div>;
-}
-
-/** The winner question is a head-to-head: each name at its own end of the
- *  bar, in its corner's colour. */
-function WinnerSplit({ fighters, total }: { fighters: Share[]; total: number }) {
-  const [f1, f2] = fighters;
-  if (!f1 || !f2) return <ShareBar title="Winner" entries={fighters} total={total} />;
-  return <div className="min-w-0 px-4 py-2.5">
-    <h3 className="sr-only">Winner</h3>
-    <div className="flex h-2 gap-px overflow-hidden rounded-full bg-zinc-100" role="img"
-      aria-label={`${f1.label} ${f1.count}, ${f2.label} ${f2.count}`}>
-      <span style={{ width: `${(f1.count / total) * 100}%`, backgroundColor: f1.color }} />
-      <span style={{ width: `${(f2.count / total) * 100}%`, backgroundColor: f2.color }} />
-    </div>
-    <div className="mt-1.5 flex items-baseline justify-between gap-3 text-[11px] leading-4">
-      <span className="flex min-w-0 items-baseline gap-1 whitespace-nowrap"><span className="shrink-0 font-semibold tabular-nums text-f1-ink">{sharePct(f1.count, total)}% ({f1.count})</span><span className="truncate text-zinc-600">{f1.label}</span></span>
-      <span className="flex min-w-0 items-baseline gap-1 whitespace-nowrap text-right"><span className="shrink-0 font-semibold tabular-nums text-f2-ink">{sharePct(f2.count, total)}% ({f2.count})</span><span className="truncate text-zinc-600">{f2.label}</span></span>
+      {entries.map(entry => <div key={entry.key} className="flex min-w-0 flex-1 flex-col items-center gap-1"
+        title={`${entry.label}: ${entry.count} ${entry.count === 1 ? "pick" : "picks"}`}>
+        <span className={`text-[11px] font-semibold tabular-nums ${entry.count ? "text-zinc-900" : "text-zinc-400"}`}>{sharePct(entry.count, total)}%</span>
+        <div className="flex h-16 w-full items-end justify-center">
+          <span className="block w-full max-w-9 rounded-t" style={{ height: entry.count ? `${Math.max(4, (entry.count / most) * 100)}%` : 2, backgroundColor: entry.count ? entry.color : "var(--color-plot-axis)" }} />
+        </div>
+        <span className={`text-[11px] ${entry.count ? "text-zinc-600" : "text-zinc-400"}`}>{entry.short ?? entry.label}</span>
+      </div>)}
     </div>
   </div>;
 }
 
-/** Compact bars keep a small sample honest; one pick no longer becomes a
- * wall of oversized rings or a screen of rows. */
+/** Who wins and how as pies, when as bars: small samples stay readable. */
 function CommunityPicks({ distribution, scheduledRounds }: { distribution: PredictionDistribution; scheduledRounds: number | null }) {
   const total = distribution.total;
   const fighters: Share[] = distribution.fighters.map((entry, index) => ({
@@ -104,31 +128,13 @@ function CommunityPicks({ distribution, scheduledRounds }: { distribution: Predi
   return (
     <section className={PANEL_SHELL}>
       <PanelHeading title="Community picks" aside={<span className="text-xs tabular-nums text-zinc-500">{total.toLocaleString()} {total === 1 ? "pick" : "picks"}</span>} />
-      <div className={`grid divide-y divide-zinc-100 sm:divide-x sm:divide-y-0 ${roundsKnown ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
-        <WinnerSplit fighters={fighters} total={total} />
-        <ShareBar title="Method" entries={methods} total={total} />
-        {roundsKnown ? <ShareBar title="Finish round" entries={rounds} total={total} /> : null}
+      <div className={`grid grid-cols-2 divide-x divide-zinc-100 ${roundsKnown ? "sm:grid-cols-3" : ""}`}>
+        <div className="@container min-w-0"><SharePie title="Winner" entries={fighters} total={total} counts ink={["text-f1-ink", "text-f2-ink"]} /></div>
+        <div className="@container min-w-0"><SharePie title="Method" entries={methods} total={total} /></div>
+        {roundsKnown ? <div className="col-span-2 border-t border-zinc-100 sm:col-span-1 sm:border-t-0"><ShareColumns title="Finish round" entries={rounds} total={total} /></div> : null}
       </div>
     </section>
   );
-}
-
-function FanPredictions({ predictions, total }: { predictions: FanPrediction[]; total: number }) {
-  return <section className={PANEL_SHELL}>
-    <PanelHeading title="Fan predictions" subtitle={`${predictions.length < total ? `${predictions.length} newest of ` : ""}${total.toLocaleString()}`} />
-    <div className="grid grid-flow-col auto-cols-[minmax(11rem,1fr)] overflow-x-auto border-t border-zinc-100 sm:auto-cols-[minmax(12rem,1fr)] xl:grid-cols-5 xl:auto-cols-auto xl:overflow-visible">
-      {predictions.map(row => <Link key={row.scorer.publicId} to={`/profiles/${row.scorer.handle}?tab=predictions`}
-        className="min-w-0 border-r border-zinc-100 px-3 py-2 last:border-r-0 hover:bg-zinc-50">
-        <span className="flex min-w-0 items-center gap-2">
-          {row.scorer.imageUrl
-            ? <ProgressiveImage src={row.scorer.imageUrl} alt="" referrerPolicy="no-referrer" className="h-6 w-6 shrink-0 rounded-full bg-zinc-100 object-cover ring-1 ring-zinc-200" />
-            : <span className="h-6 w-6 shrink-0 rounded-full bg-zinc-100 ring-1 ring-zinc-200" aria-hidden="true" />}
-          <span className="min-w-0 truncate text-xs font-semibold text-zinc-700">{row.scorer.displayName}</span>
-        </span>
-        <span className="mt-1 block truncate text-xs text-zinc-500">{predictionLabel(row.pick)}</span>
-      </Link>)}
-    </div>
-  </section>;
 }
 
 type EditorProps = { fight: Matchup; status: PredictionSummary; onSaved: () => void };
@@ -246,7 +252,7 @@ function PredictionEditor({ fight, status, onSaved, userId }: EditorProps & { us
                   const picked = fighterId === item.fighterId;
                   return (
                     <button key={item.fighterId} type="button" aria-pressed={picked}
-                      onClick={() => { setFighter(item.fighterId); edited.current = true; setMessage(""); }}
+                      onClick={() => { setFighter(picked ? "" : item.fighterId); edited.current = true; setMessage(""); }}
                       className={`min-w-0 rounded-xl border px-3 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${
                         picked
                           ? index === 0 ? "border-f1 bg-f1-soft text-f1-ink" : "border-f2 bg-f2-soft text-f2-ink"

@@ -2,7 +2,7 @@ import { List, X } from "lucide-react";
 import { isFightDay } from "../liveEvent";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useApi } from "../api";
+import { prefetch, useApi } from "../api";
 import type { EventDetail, EventFight, FightDetailBlock, HistoryRow, Matchup, MatchupSide, ProfessionalHistoryRow } from "../api";
 import {
   formatDate,
@@ -50,6 +50,7 @@ import { scoreableRoundCount } from "../scoring";
 import { useNow } from "../useNow";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { useShortcutNav } from "../shortcuts";
+import { useSwipeNav } from "../swipeNav";
 
 const shell = PANEL_SHELL;
 const RESULT_PILL =
@@ -785,6 +786,18 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     prev: stepTo(cardFights[cardAt + 1]),
     next: stepTo(cardAt > 0 ? cardFights[cardAt - 1] : undefined),
   } : null);
+  // A phone swipes the matchup the same way: left for next, right for prev.
+  const swipe = useSwipeNav(
+    stepTo(cardAt >= 0 ? cardFights[cardAt + 1] : undefined),
+    stepTo(cardAt > 0 ? cardFights[cardAt - 1] : undefined),
+    () => [cardFights[cardAt + 1], cardAt > 0 ? cardFights[cardAt - 1] : undefined]
+      .forEach((near) => { if (near) prefetch(withRanking(`/api/fights/${near.id}`, settings.rankingSource)); }),
+  );
+  const detailRef = useCallback((node: HTMLDivElement | null) => {
+    detailScroll.current = node;
+    const release = swipe(node);
+    return () => { detailScroll.current = null; release?.(); };
+  }, [detailScroll, swipe]);
 
   if (loading && !fight) {
     return (
@@ -857,7 +870,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
             </span>
           </div>
         ) : null}
-        <div ref={detailScroll} inert={changingMatchup} className="h-full overflow-y-auto" aria-busy={changingMatchup}>
+        <div ref={detailRef} inert={changingMatchup} className="h-full overflow-y-auto" aria-busy={changingMatchup}>
           <div className="@container flex w-full flex-col gap-3 pb-8">
             <div className="flex shrink-0 flex-col gap-3">
             <section className={`overflow-hidden ${shell}`}>
