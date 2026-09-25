@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { prefetch, useApi, type EventDetail, type EventFight, type FightSide } from "../api";
-import { useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import Avatar from "./Avatar";
 import { CARD_STEP } from "./CardHeader";
 import { PANEL_SHELL } from "./FightStats";
@@ -179,3 +179,58 @@ export function FightRail({ eventId, currentId, returnDepth }: { eventId: string
   );
 }
 
+
+/**
+ * The same card on a phone: a row of face-against-face tiles across the top
+ * of the matchup, opener on the left and main event on the right (the way
+ * Prev and Next point). It scrolls sideways, with the open matchup brought
+ * to the middle, or to its end of the row when it is the first or last bout.
+ */
+export function FightStrip({ eventId, currentId, returnDepth }: { eventId: string; currentId: string; returnDepth: number | null }) {
+  const { settings } = useSettings();
+  const location = useLocation();
+  const row = useRef<HTMLDivElement>(null);
+  const { data: event } = useApi<EventDetail>(withRanking(`/api/events/${eventId}`, settings.rankingSource));
+  const fights = event ? [...event.fights].reverse() : [];
+  const ready = fights.some((f) => f.id === currentId);
+  useLayoutEffect(() => {
+    const scroller = row.current;
+    const tile = scroller?.querySelector<HTMLElement>("[aria-current='page']");
+    if (!scroller || !tile) return;
+    // The browser stops at either end, so the first and last bouts sit there.
+    scroller.scrollLeft = tile.offsetLeft - (scroller.clientWidth - tile.offsetWidth) / 2;
+  }, [currentId, ready]);
+  if (fights.length < 2) return null;
+  const liveId = liveFightId(event!);
+  const search = cardFightSearch(location.search);
+  return (
+    <nav aria-label="Fights on this card" className={`sm:hidden ${shell} overflow-hidden`}>
+      <div ref={row} className="flex gap-1 overflow-x-auto p-1.5 [scrollbar-width:none]">
+        {fights.map((f) => {
+          const isCurrent = f.id === currentId;
+          const isLive = f.id === liveId;
+          return (
+            <Link
+              key={f.id}
+              to={{ pathname: `/fights/${f.id}`, search }}
+              state={{ eventId, ...(returnDepth ? { eventReturnDepth: returnDepth + 1 } : {}) }}
+              aria-current={isCurrent ? "page" : undefined}
+              aria-label={`${f.f1.name} vs ${f.f2.name}${isLive ? ", live now" : ""}`}
+              onPointerDown={() => prefetch(withRanking(`/api/fights/${f.id}`, settings.rankingSource))}
+              className={`relative grid w-24 shrink-0 grid-cols-2 gap-x-1 gap-y-1 rounded-xl border px-1.5 py-2 transition-colors ${
+                isCurrent ? segmentedSelected : "hover:bg-zinc-50"} ${isLive ? "border-emerald-200" : "border-transparent"}`}
+            >
+              {isLive ? <span className="live-dot absolute left-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" /> : null}
+              {[f.f1, f.f2].map((side) => (
+                <span key={side.id || side.name} className="flex min-w-0 flex-col items-center gap-1">
+                  <Avatar src={side.photo_url} name={side.name} size="sm" outcome={side.outcome} />
+                  <span className={`w-full truncate text-center text-[9px] font-semibold leading-tight ${isCurrent ? "text-zinc-900" : "text-zinc-500"}`}>{lastName(side.name)}</span>
+                </span>
+              ))}
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}

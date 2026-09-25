@@ -19,7 +19,7 @@ import Avatar from "../components/Avatar";
 import { CardEventTitle, FLOAT_STEP, FloatingNavigation } from "../components/CardHeader";
 import FightScoring from "../components/FightScoring";
 import FightPredictions from "../components/FightPredictions";
-import { FightRail, FightRailSkeleton, FightStepLink, MatchupSkeleton } from "../components/FightRail";
+import { FightRail, FightRailSkeleton, FightStepLink, FightStrip, MatchupSkeleton } from "../components/FightRail";
 // Part of this page's own code, so the Discussion tab opens with it rather
 // than behind a fallback while a separate chunk loads.
 import FightDiscussion from "../components/FightDiscussion";
@@ -885,6 +885,7 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
               </CardEventTitle>
             </section>
 
+            <FightStrip eventId={fight.event.id} currentId={fightId} returnDepth={eventReturnDepth} />
             <section data-photo-view={portraits ? "full" : "face"} className={`matchup-top-card matchup-overview @container relative overflow-hidden ${shell}`}>
               <button type="button" onClick={closeFight} aria-label="Close matchup and return to card" title="Close matchup (Esc)" aria-keyshortcuts="Escape"
                 className={`absolute right-2 top-2 z-10 ${CLOSE_BUTTON}`}>
