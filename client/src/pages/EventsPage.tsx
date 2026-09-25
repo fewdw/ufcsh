@@ -895,7 +895,9 @@ function EventPane({ eventId, oddsMode, nav, preview = false }: { eventId: strin
       </section>
 
       {oddsMode && hasAnyOdds ? (
-        <div className="flex min-h-0 flex-1 flex-col gap-3">
+        // Its own height, not the pane's: squeezed to fit, the list would run
+        // out past it and the phone's bottom bar would stop halfway down.
+        <div className="flex shrink-0 flex-col gap-3">
           <div className="flex flex-wrap items-center justify-between gap-2 px-1">
             <Link
               to={`/events/${event.id}`}
@@ -946,10 +948,15 @@ function EventPane({ eventId, oddsMode, nav, preview = false }: { eventId: strin
       <BottomDock className="md:hidden">
         <FloatingNavigation label="Event navigation"
           previous={<StepLink event={nav.prev} direction="prev" className={FLOAT_STEP} />}
-          center={<button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
-            className={`${FLOAT_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
-            <List className="h-3.5 w-3.5" aria-hidden="true" />Events
-          </button>}
+            // Reading the whole card's odds, the way out is back to the card.
+          center={oddsMode && hasAnyOdds
+            ? <Link to={`/events/${event.id}`} className={`${FLOAT_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+              <List className="h-3.5 w-3.5" aria-hidden="true" />Card
+            </Link>
+            : <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
+              className={`${FLOAT_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+              <List className="h-3.5 w-3.5" aria-hidden="true" />Events
+            </button>}
           next={<StepLink event={nav.next} direction="next" className={FLOAT_STEP} />}
         />
       </BottomDock>
