@@ -35,6 +35,12 @@ export function predictionContext(id: string): PredictionContext | undefined {
   const fight = read(row);
   return { fight, bouts: event.all(fight.event_id).map(read), eventOpen: predictionEvents().has(fight.event_id) };
 }
+const card = prepared("SELECT f.id FROM events e LEFT JOIN fights f ON f.event_id = e.id WHERE e.id = ? ORDER BY f.ord");
+/** A card's bouts in running order; undefined when there is no such event. */
+export function eventFightIds(eventId: string): string[] | undefined {
+  const rows = card.all(eventId) as { id: string | null }[];
+  return rows.length ? rows.flatMap(row => row.id ? [row.id] : []) : undefined;
+}
 export function predictionFights(ids: string[]): PredictionFight[] {
   if (!ids.length) return [];
   return prepared(`${columns} WHERE f.id IN (${ids.map(() => "?").join(",")})`).all(...ids).map(read);

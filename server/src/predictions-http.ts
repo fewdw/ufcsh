@@ -4,24 +4,32 @@ import { authenticateScorer, scoringOrigins } from "./scoring-http.ts";
 import { ScoringError } from "./scoring.ts";
 import type { PredictionStore } from "./predictions.ts";
 
-export function createPredictionsHandler(store: PredictionStore, authenticate = authenticateScorer) {
+/** `eventFights` names a card's bouts, or undefined for an unknown card. */
+export function createPredictionsHandler(store: PredictionStore, authenticate = authenticateScorer,
+  eventFights: (eventId: string) => string[] | undefined = () => undefined) {
   const limiter = new RateLimiter();
   return async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> => {
     const fight = /^\/api\/fights\/([a-f0-9]{16})\/predictions(\/mine)?$/.exec(url.pathname);
     const profile = /^\/api\/profiles\/([0-9a-f-]{36}|[a-z0-9]{3,20})\/predictions$/.exec(url.pathname);
-    if (!fight && !profile) return false;
+    const card = /^\/api\/events\/([a-f0-9]{16})\/predictions(\/mine)?$/.exec(url.pathname);
+    if (!fight && !profile && !card) return false;
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.setHeader("Cache-Control", "private, no-store");
     const send = (data: unknown, status = 200) => { res.statusCode = status; res.end(req.method === "HEAD" ? undefined : JSON.stringify(data)); };
     try {
-      const privateRoute = Boolean(fight?.[2]);
-      const allowed = privateRoute ? ["GET", "HEAD", "PUT", "DELETE"] : ["GET", "HEAD"];
+      const privateRoute = Boolean(fight?.[2] || card?.[2]);
+      const allowed = fight?.[2] ? ["GET", "HEAD", "PUT", "DELETE"] : ["GET", "HEAD"];
       if (!allowed.includes(req.method ?? "")) {
         res.setHeader("Allow", allowed.join(", "));
         throw new ScoringError(405, "Method not allowed.");
       }
       if (!limiter.allow(`ip:${clientAddress(req)}`, 240, 30)) throw new ScoringError(429, "Too many requests. Try again shortly.");
-      if (profile) {
+      if (card) {
+        const ids = eventFights(card[1]);
+        if (!ids) throw new ScoringError(404, "Event not found.");
+        if (privateRoute && ((req.headers.origin && !scoringOrigins().includes(req.headers.origin)) || req.headers["sec-fetch-site"] === "cross-site")) throw new ScoringError(403, "Request origin is not allowed.");
+        send(store.card(ids, privateRoute ? await authenticate(req) : null));
+      } else if (profile) {
         const raw = url.searchParams.get("offset") ?? "0";
         if (!/^\d{1,7}$/.test(raw)) throw new ScoringError(400, "Invalid page offset.");
         send(store.profile(profile[1], Number(raw)));

@@ -219,6 +219,23 @@ export class PredictionStore {
         .map(round => ({ round, count: rounds.get(round) ?? 0 })),
     };
   }
+  /**
+   * A whole card at once, for the graphics builder: how the community called
+   * each bout and, for a signed-in fan, their own pick and how it stands.
+   * Bouts nobody has predicted still appear, with a total of zero.
+   */
+  card(ids: string[], user: string | null) {
+    const fights = new Map(this.readFights(ids).map(fight => [fight.id, fight]));
+    const mine = user ? new Map((this.db.prepare(`SELECT * FROM predictions WHERE user_id = ? AND pick_json IS NOT NULL
+      AND fight_id IN (${ids.map(() => "?").join(",") || "''"})`).all(user, ...ids) as StoredPrediction[])
+      .map(row => [row.fight_id, JSON.parse(row.pick_json!) as Pick])) : null;
+    return { fights: ids.filter(id => fights.has(id)).map(id => {
+      const fight = fights.get(id)!;
+      const pick = mine?.get(id) ?? null;
+      return { fightId: id, distribution: this.distribution(id, fight),
+        ...(mine ? { mine: pick ? { pick, result: predictionResult(pick, fight) } : null } : {}) };
+    }) };
+  }
   mine(id: string, user: string) {
     const { fight, ...status } = this.status(id);
     const stored = this.db.prepare("SELECT * FROM predictions WHERE fight_id = ? AND user_id = ?").get(id, user) as StoredPrediction | undefined;

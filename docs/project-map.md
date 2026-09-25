@@ -35,7 +35,7 @@ copy of the local archive (`DATA_DIR`).
 | Events and matchups | `pages/EventsPage.tsx`, `pages/FightPage.tsx`, `components/FightRail.tsx`, `components/FightStats.tsx` |
 | Fighter profiles | `pages/FighterPage.tsx`, `components/FighterStatistics.tsx` |
 | Officials and venues | `pages/JudgePage.tsx`, `pages/RefereePage.tsx`, `pages/VenuePage.tsx`, `pages/DirectoryPages.tsx`, shared pieces in `components/ResearchKit.tsx` and `research.ts` |
-| Graphics builder | `graphicsLauncher.tsx` (open from anywhere), `components/GraphicsBuilder.tsx` (dialog), `graphics/build.ts` (data → graphic), `graphics/render.ts` (canvas drawing), `graphics/export.ts` |
+| Graphics builder | `graphicsLauncher.tsx` (open from anywhere), `components/GraphicsBuilder.tsx` (dialog), `graphics/presets.ts` (the starting points), `graphics/build.ts` (data and picks → graphic), `graphics/render.ts` (templates), `graphics/draw.ts` (themes, texture, type and shared marks), `graphics/fonts.ts` (Barlow Condensed, self-hosted in `public/fonts`), `graphics/export.ts` |
 | Keyboard shortcuts | `shortcuts.tsx` |
 | About / sources / changelog | `pages/InfoPage.tsx` |
 | Shared definitions | `careerMetrics.ts` (how-they-fight rates), `format.ts`, `ui.ts`, `components/segmented.ts`, `components/chartTokens.ts` |
