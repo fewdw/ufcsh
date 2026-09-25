@@ -1,16 +1,20 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 /**
  * Pages in a row — the previous one, the one being read and the next — that a
  * touch screen swipes between: left for next, right for previous.
  *
+ * The card leans a little way after the finger, with a round arrow in the gap
+ * it leaves; the arrow turns dark once letting go would step. A swipe that
+ * goes far enough (or a flick) fades the card out and its neighbour in from
+ * the side the swipe came from; a short one springs back.
+ *
  * On a touch screen each page keeps its own slot, keyed by what it shows, and
- * the neighbours are drawn (out of sight, either side) once the page being
- * read has settled. A swipe drags the row with the finger, so the neighbour
- * is already there, fully drawn, as it slides in; landing on it only moves
- * that same page into the middle — nothing is drawn again or reloaded. A step
- * taken any other way (Prev/Next, the card strip, the arrow keys) to a
- * neighbour slides across the same way.
+ * the neighbours are drawn, hidden, once the page being read has settled — so
+ * the page a swipe lands on is already there and nothing reloads. Steps taken
+ * any other way (Prev/Next, the card strip, the arrow keys) switch at once,
+ * with no animation.
  *
  * A mouse or pen gets the page alone, with no swiping. Touches that start in a
  * field, in something that scrolls sideways itself, or at the screen's edge
@@ -20,10 +24,12 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 type Side = "prev" | "next";
 
 const LOCK = 8; // px of travel before the gesture picks an axis
-const GAP = 12; // px between a page and its neighbour
+const COMMIT = 80; // px of finger travel that counts as a step
 const EDGE = 16; // px at each screen edge left to the browser
-const WARM_MS = 350; // how long the page being read gets to itself first
-const EASE = "cubic-bezier(0.22, 0.9, 0.3, 1)";
+const GIVE = 0.35; // how far the card follows the finger
+const REACH = 64; // the most it leans: room for the arrow, never an empty page
+const OUT_MS = 140;
+const IN_MS = 180;
 
 function ownsSideways(target: EventTarget | null, root: HTMLElement): boolean {
   for (let node = target instanceof Element ? target : null; node && node !== root; node = node.parentElement) {
@@ -44,44 +50,46 @@ export default function SwipePager({ current, prev, next, onStep, render, classN
   next: string | null;
   /** Take the step: navigate so `current` becomes that neighbour. */
   onStep: (side: Side) => void;
-  /** One page. `active` is false for a neighbour drawn out of sight. */
+  /** One page. `active` is false for a neighbour drawn, hidden, ahead of time. */
   render: (key: string, active: boolean) => ReactNode;
   className?: string;
 }) {
   const [touch] = useState(coarsePointer);
   const viewport = useRef<HTMLDivElement>(null);
   const track = useRef<HTMLDivElement>(null);
+  const hints = useRef<Record<Side, HTMLSpanElement | null>>({ prev: null, next: null });
   const [warm, setWarm] = useState(false);
   const latest = useRef({ prev, next, onStep });
   latest.current = { prev, next, onStep };
-  /** Set while a swipe carries the row to a neighbour, so landing is still. */
-  const swiped = useRef(false);
-  const shown = useRef({ current, prev, next });
+  /** The direction of a swipe that is stepping, so its landing can slide in. */
+  const swiped = useRef(0);
+  const shown = useRef(current);
 
   useEffect(() => {
     if (!touch || warm) return;
-    const timer = window.setTimeout(() => setWarm(true), WARM_MS);
+    const timer = window.setTimeout(() => setWarm(true), 350);
     return () => window.clearTimeout(timer);
   }, [touch, warm]);
 
-  // The page changed. After a swipe the row is already showing it: put the
-  // track back under it before paint. Otherwise, if it was a neighbour, slide
-  // across to it from where the last page was.
+  // The page changed. A swipe brings the new one in from the side it came
+  // from; any other step just shows it.
   useLayoutEffect(() => {
     const node = track.current;
-    const was = shown.current;
-    shown.current = { current, prev, next };
-    if (!node || was.current === current) return;
+    if (!node || shown.current === current) return;
+    shown.current = current;
+    const direction = swiped.current;
+    swiped.current = 0;
     node.style.transition = "";
     node.style.transform = "";
-    if (swiped.current || !warm) { swiped.current = false; return; }
-    const from = current === was.next ? 1 : current === was.prev ? -1 : 0;
-    if (!from || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    node.style.transform = `translate3d(calc(${from * 100}% + ${from * GAP}px), 0, 0)`;
+    node.style.opacity = "";
+    if (!direction || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    node.style.transform = `translate3d(${-direction * REACH}px, 0, 0)`;
+    node.style.opacity = "0";
     void node.offsetWidth;
-    node.style.transition = `transform 280ms ${EASE}`;
+    node.style.transition = `transform ${IN_MS}ms ease-out, opacity ${IN_MS}ms ease-out`;
     node.style.transform = "";
-  }, [current, prev, next, warm]);
+    node.style.opacity = "";
+  }, [current]);
 
   useEffect(() => {
     const root = viewport.current;
@@ -90,68 +98,75 @@ export default function SwipePager({ current, prev, next, onStep, render, classN
     let start: { x: number; y: number } | null = null;
     let axis: "x" | "y" | null = null;
     let dx = 0;
-    // The last few finger positions, for the speed of a flick.
     let trail: { x: number; t: number }[] = [];
     let timer = 0;
 
-    const place = (x: number, ms = 0) => {
-      node.style.transition = ms ? `transform ${ms}ms ${EASE}` : "";
+    const place = (x: number, fade: number, ms = 0) => {
+      node.style.transition = ms ? `transform ${ms}ms ease-out, opacity ${ms}ms ease-out` : "";
       node.style.transform = x ? `translate3d(${x}px, 0, 0)` : "";
+      node.style.opacity = fade < 1 ? String(fade) : "";
     };
+    const hint = (moveX: number, possible: boolean) => {
+      const side: Side = moveX < 0 ? "next" : "prev";
+      for (const each of ["prev", "next"] as const) {
+        const arrow = hints.current[each];
+        if (!arrow) continue;
+        const on = possible && each === side && moveX !== 0;
+        arrow.style.opacity = on ? String(Math.min(1, Math.abs(moveX) / COMMIT)) : "0";
+        arrow.dataset.ready = String(on && Math.abs(moveX) >= COMMIT);
+      }
+    };
+    const release = () => { place(0, 1, 220); hint(0, false); };
     const onTouchStart = (event: TouchEvent) => {
       start = null;
       if (event.touches.length !== 1 || swiped.current) return;
-      const touchPoint = event.touches[0];
-      if (touchPoint.clientX < EDGE || touchPoint.clientX > window.innerWidth - EDGE) return;
+      const point = event.touches[0];
+      if (point.clientX < EDGE || point.clientX > window.innerWidth - EDGE) return;
       if (ownsSideways(event.target, root)) return;
-      window.clearTimeout(timer);
-      start = { x: touchPoint.clientX, y: touchPoint.clientY };
+      start = { x: point.clientX, y: point.clientY };
       axis = null;
       dx = 0;
-      trail = [{ x: touchPoint.clientX, t: event.timeStamp }];
+      trail = [{ x: point.clientX, t: event.timeStamp }];
       setWarm(true);
     };
     const onTouchMove = (event: TouchEvent) => {
       if (!start) return;
-      if (event.touches.length !== 1) { start = null; place(0, 240); return; }
-      const touchPoint = event.touches[0];
-      const moveX = touchPoint.clientX - start.x;
-      const moveY = touchPoint.clientY - start.y;
+      if (event.touches.length !== 1) { start = null; release(); return; }
+      const point = event.touches[0];
+      const moveX = point.clientX - start.x;
+      const moveY = point.clientY - start.y;
       if (!axis) {
         if (Math.hypot(moveX, moveY) < LOCK) return;
         axis = Math.abs(moveX) > Math.abs(moveY) ? "x" : "y";
-        // Measured from here, so the page doesn't jump by the lock distance.
-        if (axis === "x") start = { x: touchPoint.clientX, y: touchPoint.clientY };
       }
       if (axis !== "x") return;
       if (event.cancelable) event.preventDefault();
-      dx = touchPoint.clientX - start.x;
-      trail.push({ x: touchPoint.clientX, t: event.timeStamp });
+      dx = moveX;
+      trail.push({ x: point.clientX, t: event.timeStamp });
       if (trail.length > 5) trail.shift();
       const possible = Boolean(dx < 0 ? latest.current.next : latest.current.prev);
-      // Nothing that way: the page stretches a little, and less the further.
-      place(possible ? dx : Math.sign(dx) * 60 * (1 - Math.exp(-Math.abs(dx) / 120)));
+      // Nothing that way: the card gives a little and no more.
+      place(possible ? Math.max(-REACH, Math.min(REACH, dx * GIVE)) : dx / 10, 1);
+      hint(dx, possible);
     };
     const onTouchEnd = () => {
       if (!start || axis !== "x") { start = null; return; }
       start = null;
       const first = trail[0];
       const last = trail[trail.length - 1];
-      const velocity = last && first && last.t > first.t ? (last.x - first.x) / (last.t - first.t) : 0; // px/ms
+      const velocity = last.t > first.t ? (last.x - first.x) / (last.t - first.t) : 0; // px/ms
+      const flick = Math.abs(velocity) > 0.4 && Math.sign(velocity) === Math.sign(dx) && Math.abs(dx) > 30;
       const side: Side = dx < 0 ? "next" : "prev";
-      const width = root.clientWidth;
-      const flick = Math.abs(velocity) > 0.35 && Math.sign(velocity) === Math.sign(dx);
-      if (!latest.current[side] || !(Math.abs(dx) > width * 0.25 || flick)) { place(0, 260); return; }
-      // Carry on at the finger's speed, never slower than a brisk slide.
-      const remaining = width + GAP - Math.abs(dx);
-      const ms = Math.round(Math.min(300, Math.max(140, remaining / Math.max(Math.abs(velocity), 1.2))));
-      place(-Math.sign(dx) * (width + GAP), ms);
-      swiped.current = true;
+      if (!latest.current[side] || !(Math.abs(dx) >= COMMIT || flick)) { release(); return; }
+      const direction = Math.sign(dx);
+      swiped.current = direction;
+      hint(0, false);
+      place(direction * REACH * 1.5, 0, OUT_MS);
       timer = window.setTimeout(() => {
         latest.current.onStep(side);
-        // Should the step not happen after all, come back rather than stick.
-        timer = window.setTimeout(() => { if (swiped.current) { swiped.current = false; place(0, 260); } }, 1000);
-      }, ms);
+        // Should the step not happen after all, come back rather than vanish.
+        timer = window.setTimeout(() => { if (swiped.current) { swiped.current = 0; place(0, 1, 220); } }, 1000);
+      }, OUT_MS);
     };
 
     root.addEventListener("touchstart", onTouchStart, { passive: true });
@@ -171,21 +186,22 @@ export default function SwipePager({ current, prev, next, onStep, render, classN
 
   // Oldest first, so a step never reorders the slots React keeps.
   const slots = [
-    ...(warm && prev ? [{ key: prev, at: -1 }] : []),
-    { key: current, at: 0 },
-    ...(warm && next ? [{ key: next, at: 1 }] : []),
+    ...(warm && prev ? [{ key: prev, active: false }] : []),
+    { key: current, active: true },
+    ...(warm && next ? [{ key: next, active: false }] : []),
   ];
   return (
     <div ref={viewport} className={`relative min-h-0 overflow-x-clip ${className}`}>
-      <div ref={track} className="relative h-full [will-change:transform]">
-        {slots.map(({ key, at }) => (
-          <div key={key} aria-hidden={at ? true : undefined} inert={at !== 0}
-            className={at ? "absolute inset-y-0 w-full" : "relative h-full w-full"}
-            style={at ? { left: `calc(${at * 100}% + ${at * GAP}px)` } : undefined}>
-            {render(key, at === 0)}
+      <div ref={track} className="relative h-full">
+        {slots.map(({ key, active }) => (
+          <div key={key} aria-hidden={active ? undefined : true} inert={!active}
+            className={active ? "relative h-full w-full" : "invisible absolute inset-0"}>
+            {render(key, active)}
           </div>
         ))}
       </div>
+      <span ref={(el) => { hints.current.prev = el; }} data-side="prev" className="swipe-hint" aria-hidden="true"><ChevronLeft className="h-[18px] w-[18px]" strokeWidth={2.5} /></span>
+      <span ref={(el) => { hints.current.next = el; }} data-side="next" className="swipe-hint" aria-hidden="true"><ChevronRight className="h-[18px] w-[18px]" strokeWidth={2.5} /></span>
     </div>
   );
 }
