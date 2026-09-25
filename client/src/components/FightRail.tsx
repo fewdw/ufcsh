@@ -192,12 +192,13 @@ const stripScroll = new Map<string, number>();
  * row stays where the reader left it, moving only as far as it takes to show
  * the open bout whole.
  */
-export function FightStrip({ eventId, currentId, returnDepth, active = true }: {
+export function FightStrip({ eventId, currentId, returnDepth, active = true, className = "" }: {
   eventId: string;
   currentId: string;
   returnDepth: number | null;
   /** False while the page is a hidden neighbour; it lines up once shown. */
   active?: boolean;
+  className?: string;
 }) {
   const { settings } = useSettings();
   const location = useLocation();
@@ -229,7 +230,7 @@ export function FightStrip({ eventId, currentId, returnDepth, active = true }: {
   const liveId = liveFightId(event!);
   const search = cardFightSearch(location.search);
   return (
-    <nav aria-label="Fights on this card">
+    <nav aria-label="Fights on this card" className={className}>
       <div ref={row} onScroll={(e) => { if (active) stripScroll.set(eventId, e.currentTarget.scrollLeft); }}
         className="relative flex gap-2 overflow-x-auto overscroll-x-contain [scrollbar-width:none]">
         {fights.map((f) => {

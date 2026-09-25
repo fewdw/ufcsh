@@ -21,7 +21,7 @@ import { cardFightSearch, useHistoryState, useRouteScrollRestoration } from "../
 import { useSettings, withRanking, type OddsFormat } from "../settings";
 import { eventKind, type EventKind } from "../eventKind";
 import SearchGlyph from "../components/SearchGlyph";
-import { ChevronLeft, ChevronRight, List, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, List, LocateFixed, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import SwipePager from "../components/SwipePager";
@@ -125,6 +125,15 @@ function EventSidebar({
   const warmEvent = (id: string) => prefetch(withRanking(`/api/events/${id}`, settings.rankingSource));
   const listRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLAnchorElement>(null);
+  const [jumped, setJumped] = useState(0);
+
+  // A search is for the one visit: once the phone's sheet folds away — ✕, a
+  // pick, or any other way out — it opens again on the whole list.
+  const [wasOpen, setWasOpen] = useState(mobileOpen);
+  if (wasOpen !== mobileOpen) {
+    setWasOpen(mobileOpen);
+    if (!mobileOpen) setFilter("");
+  }
 
   // Derived from every event, not from the filtered view: the tag says where
   // the promotion is, so a tier filter that hides the tagged card hides the
@@ -166,7 +175,7 @@ function EventSidebar({
   // Bring the selected event into view when arriving via a link/search.
   useEffect(() => {
     selectedRef.current?.scrollIntoView({ block: "nearest" });
-  }, [selectedId, events.length]);
+  }, [selectedId, events.length, jumped]);
 
   return (
     <aside id="events-sidebar" className={`${mobileOpen ? "flex" : "hidden"} min-h-0 w-full flex-1 flex-col overflow-hidden ${dock.sidebar} ${dock.aside}`}>
@@ -196,6 +205,16 @@ function EventSidebar({
           </button>
         </div>
         <div className={segmentedGroup} role="group" aria-label="Event tier">
+          {tagged ? (
+            <Link
+              to={`/events/${tagged.id}`}
+              onClick={() => { setFilter(""); setKind("all"); setJumped((n) => n + 1); onSelect(); }}
+              title={`Go to the ${FOCUS[tagged.tag].title} card`}
+              className={`inline-flex min-h-8 shrink-0 items-center gap-1 rounded-full px-2.5 py-1.5 text-[13px] font-semibold transition sm:min-h-0 sm:py-1 sm:text-xs hover:bg-white/70 ${FOCUS[tagged.tag].className}`}
+            >
+              <LocateFixed className="h-3.5 w-3.5" aria-hidden="true" />{FOCUS[tagged.tag].label}
+            </Link>
+          ) : null}
           {KIND_FILTERS.map((option) => (
             <button
               key={option.value}
@@ -203,7 +222,7 @@ function EventSidebar({
               aria-pressed={kind === option.value}
               onClick={() => setKind(option.value)}
               title={`${option.title} · ${countByKind[option.value]}`}
-              className={`min-h-8 flex-1 rounded-full px-2 py-1.5 text-[13px] font-medium transition sm:min-h-0 sm:py-1 sm:text-xs ${
+              className={`min-h-8 flex-1 whitespace-nowrap rounded-full px-2 py-1.5 text-[13px] font-medium transition sm:min-h-0 sm:py-1 sm:text-xs ${
                 kind === option.value ? segmentedSelected : segmentedIdle
               }`}
             >
@@ -711,6 +730,30 @@ const STATUS_TAG = {
   next: { label: "Next", className: "bg-amber-100 text-amber-700" },
 } as const;
 
+/** The button that jumps to the tagged card, worded for what it is now. */
+const FOCUS = {
+  live: { label: "Live", title: "live", className: "text-emerald-700" },
+  done: { label: "Tonight", title: "finished tonight's", className: "text-zinc-700" },
+  next: { label: "Next", title: "next", className: "text-amber-700" },
+} as const;
+
+/** The tagged card — live, finished tonight, or next — one tap away. Only its
+ *  glyph, coloured as the list's tag is: the word would repeat "Next" beside
+ *  the step that is also called Next. */
+function FocusLink({ focus, currentId, className }: { focus: { id: string; tag: keyof typeof FOCUS } | null; currentId: string; className: string }) {
+  if (!focus) return null;
+  const word = FOCUS[focus.tag];
+  const glyph = <LocateFixed className="h-4 w-4" aria-hidden="true" />;
+  if (focus.id === currentId) {
+    const label = `This is the ${word.title} card`;
+    return <span aria-current="page" aria-label={label} title={label} className={`${className} bg-zinc-100 ${word.className}`}>{glyph}</span>;
+  }
+  const label = `Go to the ${word.title} card`;
+  return (
+    <Link to={`/events/${focus.id}`} aria-label={label} title={label} className={`${className} hover:bg-zinc-100 ${word.className}`}>{glyph}</Link>
+  );
+}
+
 const TAG_SHAPE = "shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em]";
 
 const SEGMENT_LABEL: Record<CardSegment, string> = {
@@ -749,7 +792,13 @@ function SegmentBreak({ segment, at }: { segment: CardSegment; at: number | null
   );
 }
 
-type EventNav = { prev: EventListItem | null; next: EventListItem | null; onBrowse: () => void };
+type EventNav = {
+  prev: EventListItem | null;
+  next: EventListItem | null;
+  /** The live, finished-tonight or next card. */
+  focus: { id: string; tag: keyof typeof FOCUS } | null;
+  onBrowse: () => void;
+};
 
 /** The events either side of this one by date, whatever the list is filtered to. */
 function eventNeighbours(events: EventListItem[], id: string): { prev: EventListItem | null; next: EventListItem | null } {
@@ -946,17 +995,20 @@ function EventPane({ eventId, oddsMode, nav, preview = false }: { eventId: strin
           either neighbour sit in a bar at the foot of the screen, in reach
           of a thumb however far down the card is read. */}
       <BottomDock className="md:hidden">
-        <FloatingNavigation label="Event navigation"
+        <FloatingNavigation label="Event navigation" raised
           previous={<StepLink event={nav.prev} direction="prev" className={FLOAT_STEP} />}
             // Reading the whole card's odds, the way out is back to the card.
           center={oddsMode && hasAnyOdds
             ? <Link to={`/events/${event.id}`} className={`${FLOAT_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
               <List className="h-3.5 w-3.5" aria-hidden="true" />Card
             </Link>
-            : <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
-              className={`${FLOAT_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
-              <List className="h-3.5 w-3.5" aria-hidden="true" />Events
-            </button>}
+            : <>
+              <FocusLink focus={nav.focus} currentId={event.id} className={FLOAT_STEP} />
+              <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
+                className={`${FLOAT_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+                <List className="h-3.5 w-3.5" aria-hidden="true" />Events
+              </button>
+            </>}
           next={<StepLink event={nav.next} direction="next" className={FLOAT_STEP} />}
         />
       </BottomDock>
@@ -1003,6 +1055,7 @@ export default function EventsPage() {
   }, [landingId, navigate]);
 
   const oddsMode = new URLSearchParams(location.search).get("odds") === "1";
+  const focus = useMemo(() => taggedEvent(events ?? []), [events]);
   const shownNav = shownEventId ? eventNeighbours(events ?? [], shownEventId) : { prev: null, next: null };
   // A matchup's neighbours along its card: Next toward the main event (the
   // card lists it first), Prev toward the opener.
@@ -1061,8 +1114,8 @@ export default function EventsPage() {
           <SwipePager className="h-full" current={shownEventId} prev={shownNav.prev?.id ?? null} next={shownNav.next?.id ?? null}
             onStep={(side) => { const to = shownNav[side]; if (to) navigate(`/events/${to.id}`); }}
             render={(id, active) => active
-              ? <EventPane eventId={id} oddsMode={oddsMode} nav={{ ...eventNeighbours(events, id), onBrowse: () => setMobileEventsOpen(true) }} />
-              : <EventPane eventId={id} oddsMode={false} preview nav={{ ...eventNeighbours(events, id), onBrowse: () => {} }} />} />
+              ? <EventPane eventId={id} oddsMode={oddsMode} nav={{ ...eventNeighbours(events, id), focus, onBrowse: () => setMobileEventsOpen(true) }} />
+              : <EventPane eventId={id} oddsMode={false} preview nav={{ ...eventNeighbours(events, id), focus, onBrowse: () => {} }} />} />
         ) : (
           <div className={`flex h-full items-center justify-center ${shell}`}>
             <div className="text-sm text-zinc-400">Select an event.</div>

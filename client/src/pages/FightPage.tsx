@@ -885,6 +885,8 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
                 {isFightDay(fight.event.date) && error && !changingMatchup ? <span role="status" className="text-xs text-zinc-500">Connection interrupted; retrying…</span> : null}
               </CardEventTitle>
             </section>
+            {/* A phone browses the card from a row of bouts under its name. */}
+            <FightStrip eventId={fight.event.id} currentId={fightId} returnDepth={eventReturnDepth} active={!preview} className="sm:hidden" />
 
             <section data-photo-view={portraits ? "full" : "face"} className={`matchup-top-card matchup-overview @container relative overflow-hidden ${shell}`}>
               <button type="button" onClick={closeFight} aria-label="Close matchup and return to card" title="Close matchup (Esc)" aria-keyshortcuts="Escape"
@@ -983,11 +985,10 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
                 <FightDiscussion key={fight.id} fightId={fight.id} />
               ) : null}
             </div>
-            {/* A phone keeps the card and its steps at the foot of the
-                screen, where a thumb browses them. */}
+            {/* A phone keeps the steps at the foot of the screen, in reach
+                of a thumb. */}
             <BottomDock className="sm:hidden">
-              <FightStrip eventId={fight.event.id} currentId={fightId} returnDepth={eventReturnDepth} active={!preview} />
-              <FloatingNavigation label="Card navigation" previous={cardSteps.previous} center={cardSteps.center} next={cardSteps.next} />
+              <FloatingNavigation label="Card navigation" raised previous={cardSteps.previous} center={cardSteps.center} next={cardSteps.next} />
             </BottomDock>
           </div>
         </div>
