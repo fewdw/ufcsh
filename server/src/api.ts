@@ -2091,7 +2091,13 @@ export function startApi(port: number): http.Server {
       const address = clientAddress(req);
       const expensive = p === "/api/search" || p === "/api/stats" || p.startsWith("/api/labs");
       const imageRequest = p.startsWith("/api/images/");
-      const allowed = limiter.allow(`${address}:${imageRequest ? "image" : "request"}`, imageRequest ? 600 : 120, imageRequest ? 100 : 12);
+      // The application's own files (scripts, styles, icons) are served from
+      // memory and a page load asks for a couple of dozen of them, so they have
+      // a bucket of their own: reloading quickly, or many readers behind one
+      // address, must never be answered with a 429 in place of a script.
+      const staticFile = !p.startsWith("/api/") && !p.startsWith("/og/") && path.extname(p) !== "" && p !== "/sitemap.xml";
+      const bucket = imageRequest ? "image" : staticFile ? "static" : "request";
+      const allowed = limiter.allow(`${address}:${bucket}`, imageRequest || staticFile ? 600 : 120, imageRequest || staticFile ? 100 : 12);
       if (!allowed || (expensive && !limiter.allow(`${address}:expensive`, 30, 3))) {
         res.setHeader("Retry-After", "5");
         return await sendJson(req, res, { error: "too many requests" }, 429);

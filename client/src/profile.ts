@@ -15,7 +15,7 @@ let inflight: Promise<void> | null = null;
 const listeners = new Set<() => void>();
 const publish = (next: Partial<State>) => {
   state = { ...state, ...next };
-  if (state.userId && state.identity) saved = { userId: state.userId, identity: state.identity };
+  if (state.userId && state.identity) saved = { userId: state.userId, identity: state.identity, email: saved?.userId === state.userId ? saved.email : undefined };
   else if (!state.userId) saved = null;
   try {
     if (saved) localStorage.setItem(IDENTITY_KEY, JSON.stringify(saved));
@@ -29,12 +29,25 @@ const publish = (next: Partial<State>) => {
  *  loads and the server confirms it. Before the session has loaded, any saved
  *  identity is offered; after, only the one for the signed-in account. */
 const IDENTITY_KEY = "ufcsh:my-identity:v1";
-let saved: { userId: string; identity: ScorerIdentity } | null | undefined;
+let saved: { userId: string; identity: ScorerIdentity; email?: string } | null | undefined;
 export function rememberedIdentity(userId?: string): ScorerIdentity | null {
   if (saved === undefined) {
     try { saved = JSON.parse(localStorage.getItem(IDENTITY_KEY) ?? "null"); } catch { saved = null; }
   }
   return saved?.identity && (userId === undefined || saved.userId === userId) ? saved.identity : null;
+}
+
+/** The signed-in account's email, as last seen here — shown on the owner's
+ *  profile before Clerk loads. It stays in this browser only. */
+export function rememberedEmail(): string | null {
+  rememberedIdentity();
+  return saved?.email ?? null;
+}
+
+function rememberEmail(userId: string, email: string | undefined) {
+  if (!saved || saved.userId !== userId || saved.email === email) return;
+  saved = { ...saved, email };
+  try { localStorage.setItem(IDENTITY_KEY, JSON.stringify(saved)); } catch { /* private mode */ }
 }
 
 async function fetchIdentity(getToken: () => Promise<string | null>, method: "GET" | "PUT", body?: unknown) {
@@ -61,7 +74,8 @@ export function useMyProfile() {
   useEffect(() => {
     if (!isLoaded) return;
     // Signing out, or signing in as someone else, drops the copy held here.
-    if (!user) { if (state.userId || state.identity) publish({ userId: null, identity: null, confirmed: false, loading: false, error: "" }); return; }
+    if (!user) { if (state.userId || state.identity || rememberedIdentity()) publish({ userId: null, identity: null, confirmed: false, loading: false, error: "" }); return; }
+    rememberEmail(user.id, user.primaryEmailAddress?.emailAddress);
     if (state.userId === user.id && (state.confirmed || state.error || state.loading)) return;
     if (inflight) return;
     publish({ userId: user.id, identity: rememberedIdentity(user.id), confirmed: false, loading: true, error: "" });
@@ -81,7 +95,10 @@ export function useMyProfile() {
 
   return {
     // Never expose a previous account's identity during a Clerk user switch.
-    identity: !isLoaded ? rememberedIdentity() : user?.id === snapshot.userId ? snapshot.identity : null,
+    // Between Clerk loading and the effect below recording the account, the
+    // remembered identity for that account fills in, so nothing blinks.
+    identity: !isLoaded ? rememberedIdentity() : !user ? null
+      : user.id === snapshot.userId ? snapshot.identity : rememberedIdentity(user.id),
     loading: !isLoaded || (snapshot.loading && !snapshot.identity),
     error: snapshot.error,
     signedIn: Boolean(user),

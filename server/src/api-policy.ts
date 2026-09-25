@@ -60,7 +60,7 @@ export class RateLimiter {
   private maxKeys: number;
   private now: () => number;
   private sweptAt = -Infinity;
-  // Each visitor holds up to three keys (pages, images, expensive queries).
+  // Each visitor holds up to four keys (pages, images, app files, expensive queries).
   constructor(maxKeys = 250_000, now = Date.now) { this.maxKeys = maxKeys; this.now = now; }
   allow(key: string, capacity: number, perSecond: number): boolean {
     const now = this.now();

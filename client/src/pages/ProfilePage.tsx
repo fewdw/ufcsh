@@ -16,7 +16,7 @@ import ReportIssueDialog from "../components/ReportIssueDialog";
 import Leaderboards from "../components/Leaderboards";
 import { formatDateShortWithYear, formatMethod } from "../format";
 import { useRouteScrollRestoration } from "../navigationState";
-import { useMyProfile } from "../profile";
+import { rememberedEmail, useMyProfile } from "../profile";
 import { cardWinner, usernameProblem } from "../scoring";
 import type { ProfileFilter, ScorerCard, ScorerIdentity, ScorerProfile } from "../scoring";
 import { useSeo } from "../seo";
@@ -341,7 +341,11 @@ function ScorecardFilter({ value, agreement, total, onChange }: {
 function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["scorer"]; mine: boolean; onRenamed: () => void }) {
   const [editing, setEditing] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
-  const { user, manage, signOut } = useAccount();
+  const { isLoaded, user, manage, signOut } = useAccount();
+  // The owner's row stays up while Clerk loads after a reload: `mine` already
+  // comes from the identity this browser remembers, and Clerk queues a
+  // "manage" or "sign out" pressed before it is ready.
+  const owner = mine && (Boolean(user) || !isLoaded);
   const openGraphics = useGraphics();
   return (
     <header className={`${PANEL_SHELL} px-4 py-3 sm:px-5`}>
@@ -366,14 +370,15 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
                 {scorer.cards.toLocaleString()} {scorer.cards === 1 ? "fight scored" : "fights scored"}
                 {scorer.joinedAt ? ` · Joined ${formatDateShortWithYear(new Date(scorer.joinedAt).toISOString().slice(0, 10))}` : ""}
               </p>
-              {mine && user?.primaryEmailAddress?.emailAddress ? (
-                <p className="mt-1 text-xs text-zinc-500 [overflow-wrap:anywhere]">{user.primaryEmailAddress.emailAddress}</p>
+              {owner ? (
+                // Remembered from the last visit until Clerk confirms it.
+                <p className="mt-1 min-h-4 text-xs text-zinc-500 [overflow-wrap:anywhere]">{(isLoaded ? user?.primaryEmailAddress?.emailAddress : rememberedEmail()) ?? "\u00a0"}</p>
               ) : null}
             </>
           )}
         </div>
       </div>
-      {mine && user ? (
+      {owner ? (
         <div className="mt-3 flex flex-wrap items-center justify-center gap-1 border-t border-zinc-100 pt-2 sm:gap-1.5">
           <button type="button" onClick={() => openGraphics()} className={action} title="Make a shareable graphic">
             <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />Graphic
