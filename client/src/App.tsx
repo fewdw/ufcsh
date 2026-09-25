@@ -188,6 +188,13 @@ export default function App() {
     }).catch(() => {});
   }, [location.pathname]);
 
+  // Colour transitions come back once the first page has been drawn (see the
+  // theme script in index.html).
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => document.documentElement.classList.remove("no-transitions"));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
   useEffect(() => {
     const previous = window.history.scrollRestoration;
     window.history.scrollRestoration = "manual";

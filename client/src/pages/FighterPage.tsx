@@ -492,6 +492,9 @@ export default function FighterPage() {
   const { data: fighter, loading, error, retry } = useApi<FighterProfile>(fighterId ? withRanking(`/api/fighters/${fighterId}`, settings.rankingSource) : null,
     data => data?.refreshing ? 5_000 : 5 * 60_000);
   const pageScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:page", Boolean(fighter));
+  // From `lg` the page stands still and its two columns scroll on their own.
+  const mainScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:main", Boolean(fighter));
+  const sideScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:side", Boolean(fighter));
   useSeo({
     title: fighter ? `${fighter.name} — Record & Fight History` : "UFC Fighter Profile",
     description: fighter
@@ -550,7 +553,7 @@ export default function FighterPage() {
         {/* On a wide window the page itself never scrolls: each column is its
             own scroller, so reading one leaves the other exactly where it was. */}
         <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(24rem,5fr)_minmax(0,7fr)] lg:grid-rows-[minmax(0,1fr)]">
-        <div className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
+        <div ref={mainScroll} className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
         <section className={`${shell} @container px-6 py-5`}>
           <div className="flex flex-col gap-5">
             <div className="flex min-w-0 items-center gap-5">
@@ -601,7 +604,7 @@ export default function FighterPage() {
         <FighterStatistics fighterId={fighter.id} history={fighter.history} />
         </div>
 
-        <div className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
+        <div ref={sideScroll} className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
 
         <section className={shell}>
           <PanelHeading title="Fights" subtitle={allFights.length.toLocaleString()} />

@@ -8,8 +8,16 @@
       // than after it has loaded; `apiCache` in src/api.ts takes these. The
       // URLs match src/pageRequests.ts, which keys the same requests.
       (function () {
-        var ranking = "media", path = location.pathname, m, urls = ["/api/live"];
-        try { if ((JSON.parse(localStorage.getItem("ufcsh:settings:v1") || "null") || {}).rankingSource === "meta") ranking = "meta"; } catch (e) {}
+        var ranking = "media", path = location.pathname, m, urls = ["/api/live"], root = document.documentElement;
+        // The saved theme is on the page before anything is drawn, and colour
+        // transitions wait for the first frames, so nothing flashes light
+        // (src/settings.tsx keeps the class in step afterwards).
+        root.classList.add("no-transitions");
+        try {
+          var settings = JSON.parse(localStorage.getItem("ufcsh:settings:v1") || "null") || {};
+          if (settings.rankingSource === "meta") ranking = "meta";
+          if (settings.theme === "dark") { root.classList.add("dark"); root.style.colorScheme = "dark"; }
+        } catch (e) {}
         var ranked = function (url) { return url + "?ranking=" + ranking; };
         if (path === "/") urls.push("/api/events");
         else if ((m = /^\/events\/([a-f0-9]{16})$/.exec(path))) urls.push("/api/events", ranked("/api/events/" + m[1]));
