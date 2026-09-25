@@ -690,11 +690,8 @@ function MatchupTabs({ tabs, current, onSelect }: { tabs: MatchupTab[]; current:
   );
 }
 
-/** Matchup view rendered inside the events layout: card rail + detail + close.
- *  A `preview` is a neighbour drawn out of sight for swiping to: the same
- *  page, leaving the address bar, keys and scroll position to the real one,
- *  so it can become the real one without being drawn again. */
-export default function FightView({ fightId, eventIdHint, preview = false }: { fightId: string; eventIdHint?: string | null; preview?: boolean }) {
+/** Matchup view rendered inside the events layout: card rail + detail + close. */
+export default function FightView({ fightId, eventIdHint }: { fightId: string; eventIdHint?: string | null }) {
   const { settings } = useSettings();
   const navigate = useNavigate();
   const location = useLocation();
@@ -714,7 +711,7 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
   // Scoped to the fight, not the history entry: switching tabs replaces the
   // URL's `?tab=` search param, which mints a new location key and would
   // otherwise read as a brand-new page and reset the scroll to the top.
-  const detailScroll = useRouteScrollRestoration<HTMLDivElement>("fight:detail", Boolean(fight) && !preview, fightId);
+  const detailScroll = useRouteScrollRestoration<HTMLDivElement>("fight:detail", Boolean(fight), fightId);
   const eventId = loadedFight?.event.id ?? eventIdHint ?? previousFight.current?.event.id;
   const { data: cardEvent } = useApi<EventDetail>(eventId ? withRanking(`/api/events/${eventId}`, settings.rankingSource) : null,
     data => data?.refreshing ? 5_000 : isFightDay(data?.date) ? 15_000 : data?.status === "past" ? 0 : 5 * 60_000);
@@ -724,7 +721,6 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
     ? `${loadedFight.f1.name} vs ${loadedFight.f2.name} at ${loadedFight.event.name}: ${loadedFight.weight_class} odds, tale of the tape, fighter statistics${loadedFight.status === "past" ? " and result" : ""}.`
     : "Compare UFC matchup odds, fighter statistics and tale of the tape.";
   useSeo({
-    skip: preview,
     title: matchupTitle,
     description: matchupDescription,
     path: `/fights/${fightId}`,
@@ -763,7 +759,6 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
   // Escape closes the matchup back to its event card (browser-back while the
   // matchup is still loading and the event isn't known yet).
   useEffect(() => {
-    if (preview) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
       // A dialog closes itself first, and a field being typed in keeps its Escape.
@@ -773,7 +768,7 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [closeFight, preview]);
+  }, [closeFight]);
 
   // The arrow keys walk the card the same way the Prev/Next links do: Next
   // moves up toward the main event.
@@ -783,7 +778,7 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
     { pathname: `/fights/${target.id}`, search: cardFightSearch(location.search) },
     { state: { eventId, ...(eventReturnDepth ? { eventReturnDepth: eventReturnDepth + 1 } : {}) } },
   ) : null;
-  useShortcutNav(!preview && cardEvent && cardAt >= 0 ? {
+  useShortcutNav(cardEvent && cardAt >= 0 ? {
     context: `fights on ${cardEvent.name}`,
     prevLabel: "previous fight, toward the opener",
     nextLabel: "next fight, toward the main event",
@@ -885,7 +880,7 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
               </CardEventTitle>
             </section>
             {/* A phone browses the card from a row of bouts under its name. */}
-            <FightStrip eventId={fight.event.id} currentId={fightId} returnDepth={eventReturnDepth} active={!preview} className="sm:hidden" />
+            <FightStrip eventId={fight.event.id} currentId={fightId} returnDepth={eventReturnDepth} className="sm:hidden" />
 
             <section data-photo-view={portraits ? "full" : "face"} className={`matchup-top-card matchup-overview @container relative overflow-hidden ${shell}`}>
               <button type="button" onClick={closeFight} aria-label="Close matchup and return to card" title="Close matchup (Esc)" aria-keyshortcuts="Escape"
@@ -978,8 +973,8 @@ export default function FightView({ fightId, eventIdHint, preview = false }: { f
                 <CommonOpponents fight={fight} />
               </> : null}
               {tab === "odds" ? <OddsPanel fight={fight} /> : null}
-              {tab === "score" ? <FightScoring key={fight.id} fight={fight} poll={!preview} /> : null}
-              {tab === "predict" ? <FightPredictions key={fight.id} fight={fight} poll={!preview} /> : null}
+              {tab === "score" ? <FightScoring key={fight.id} fight={fight} /> : null}
+              {tab === "predict" ? <FightPredictions key={fight.id} fight={fight} /> : null}
               {tab === "discussion" ? (
                 <FightDiscussion key={fight.id} fightId={fight.id} />
               ) : null}

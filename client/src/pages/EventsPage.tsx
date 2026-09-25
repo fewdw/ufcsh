@@ -17,14 +17,13 @@ import { FLOAT_STEP, EventPlace, FloatingNavigation } from "../components/CardHe
 import { useShortcutNav } from "../shortcuts";
 import type { Matchup } from "../api";
 import { SITE_URL, useSeo } from "../seo";
-import { cardFightSearch, useHistoryState, useRouteScrollRestoration } from "../navigationState";
+import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
 import { useSettings, withRanking, type OddsFormat } from "../settings";
 import { eventKind, type EventKind } from "../eventKind";
 import SearchGlyph from "../components/SearchGlyph";
 import { ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
-import SwipePager from "../components/SwipePager";
 
 const shell = PANEL;
 /** The source flags a tournament or TUF final the same way it flags a
@@ -786,12 +785,11 @@ function StepLink({ event, direction, className = STEP }: { event: EventListItem
   );
 }
 
-/** One event's card. A `preview` is the neighbour drawn beside it mid-swipe:
- *  the same page, minus anything that would claim the address bar or keys. */
-function EventPane({ eventId, oddsMode, nav, preview = false }: { eventId: string; oddsMode: boolean; nav: EventNav; preview?: boolean }) {
+/** One event's card. */
+function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: boolean; nav: EventNav }) {
   const { settings, update } = useSettings();
   const navigate = useNavigate();
-  useShortcutNav(preview ? null : {
+  useShortcutNav({
     context: "events by date",
     prevLabel: nav.prev ? `earlier card (${nav.prev.name})` : "earlier card",
     nextLabel: nav.next ? `later card (${nav.next.name})` : "later card",
@@ -802,7 +800,7 @@ function EventPane({ eventId, oddsMode, nav, preview = false }: { eventId: strin
   const { data: event, loading, error } = useApi<EventDetail>(url,
     data => data?.refreshing ? 5_000 : isFightDay(data?.date) ? 15_000 : data?.status !== "past" ? 5 * 60_000 : 0);
   const isLive = isFightDay(event?.date);
-  const eventScroll = useRouteScrollRestoration<HTMLDivElement>("event:card", Boolean(event) && !preview, eventId);
+  const eventScroll = useRouteScrollRestoration<HTMLDivElement>("event:card", Boolean(event), eventId);
   // Any card still ahead of us counts down; a finished one has nothing left
   // to count, so its clock never starts.
   const now = useNow(event?.status !== "past");
@@ -810,7 +808,6 @@ function EventPane({ eventId, oddsMode, nav, preview = false }: { eventId: strin
     ? `${event.name} fight card with ${event.fights.length} matchups, odds${event.status === "past" ? " and results" : ""}.${event.location ? ` Live from ${event.location}.` : ""}`
     : "Browse UFC event fight cards, matchup odds and results.";
   useSeo({
-    skip: preview,
     title: event?.name ?? "UFC Events & Fight Cards",
     description: eventDescription,
     path: `/events/${eventId}`,
@@ -1009,18 +1006,6 @@ export default function EventsPage() {
   }, [landingId, navigate]);
 
   const oddsMode = new URLSearchParams(location.search).get("odds") === "1";
-  const shownNav = shownEventId ? eventNeighbours(events ?? [], shownEventId) : { prev: null, next: null };
-  // A matchup's neighbours along its card: Next toward the main event (the
-  // card lists it first), Prev toward the opener.
-  const fightEventId = fightEventIdHint ?? openFight?.event.id ?? null;
-  const { data: fightCard } = useApi<EventDetail>(fightId && fightEventId ? withRanking(`/api/events/${fightEventId}`, settings.rankingSource) : null);
-  const fightAt = fightCard && fightCard.id === fightEventId ? fightCard.fights.findIndex((entry) => entry.id === fightId) : -1;
-  const fightNav = {
-    prev: fightAt >= 0 ? fightCard!.fights[fightAt + 1] ?? null : null,
-    next: fightAt > 0 ? fightCard!.fights[fightAt - 1] : null,
-  };
-  const fightReturnDepth = location.state != null && typeof location.state === "object" && "eventReturnDepth" in location.state
-    && typeof location.state.eventReturnDepth === "number" && location.state.eventReturnDepth > 0 ? location.state.eventReturnDepth : null;
   const dock = fightId ? DOCK.matchup : DOCK.card;
   if (error && !events) {
     return (
@@ -1057,18 +1042,9 @@ export default function EventsPage() {
       />
       <main className={`${mobileEventsOpen ? "hidden" : "block"} min-h-0 min-w-0 flex-1 ${dock.main}`}>
         {fightId ? (
-          <SwipePager className="h-full" current={fightId} prev={fightNav.prev?.id ?? null} next={fightNav.next?.id ?? null}
-            onStep={(side) => { const to = fightNav[side]; if (to && fightEventId) navigate(
-              { pathname: `/fights/${to.id}`, search: cardFightSearch(location.search) },
-              { state: { eventId: fightEventId, ...(fightReturnDepth ? { eventReturnDepth: fightReturnDepth + 1 } : {}) } },
-            ); }}
-            render={(id, active) => <FightView fightId={id} eventIdHint={fightEventId} preview={!active} />} />
+          <FightView fightId={fightId} eventIdHint={fightEventIdHint ?? openFight?.event.id} />
         ) : shownEventId ? (
-          <SwipePager className="h-full" current={shownEventId} prev={shownNav.prev?.id ?? null} next={shownNav.next?.id ?? null}
-            onStep={(side) => { const to = shownNav[side]; if (to) navigate(`/events/${to.id}`); }}
-            render={(id, active) => active
-              ? <EventPane eventId={id} oddsMode={oddsMode} nav={{ ...eventNeighbours(events, id), onBrowse: () => setMobileEventsOpen(true) }} />
-              : <EventPane eventId={id} oddsMode={false} preview nav={{ ...eventNeighbours(events, id), onBrowse: () => {} }} />} />
+          <EventPane eventId={shownEventId} oddsMode={oddsMode} nav={{ ...eventNeighbours(events, shownEventId), onBrowse: () => setMobileEventsOpen(true) }} />
         ) : (
           <div className={`flex h-full items-center justify-center ${shell}`}>
             <div className="text-sm text-zinc-400">Select an event.</div>

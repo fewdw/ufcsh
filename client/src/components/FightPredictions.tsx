@@ -18,9 +18,8 @@ const optionIdle = "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300
 const optionOn = "pick-option-on";
 const primary = BUTTON_PRIMARY_LARGE;
 
-/** `poll` off (a neighbour drawn for swiping to) reads the picks once rather than polling. */
-export default function FightPredictions({ fight, poll = true }: { fight: Matchup; poll?: boolean }) {
-  const { data, error, retry } = useApi<PredictionSummary>(`/api/fights/${fight.id}/predictions`, poll ? 3_000 : 0);
+export default function FightPredictions({ fight }: { fight: Matchup }) {
+  const { data, error, retry } = useApi<PredictionSummary>(`/api/fights/${fight.id}/predictions`, 3_000);
   if (!data) return <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
     {error ? <>{error} <button className="underline" onClick={retry}>Retry</button></> : "Loading predictions…"}
   </section>;

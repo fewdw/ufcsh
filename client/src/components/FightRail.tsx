@@ -192,12 +192,10 @@ const stripScroll = new Map<string, number>();
  * row stays where the reader left it, moving only as far as it takes to show
  * the open bout whole.
  */
-export function FightStrip({ eventId, currentId, returnDepth, active = true, className = "" }: {
+export function FightStrip({ eventId, currentId, returnDepth, className = "" }: {
   eventId: string;
   currentId: string;
   returnDepth: number | null;
-  /** False while the page is a hidden neighbour; it lines up once shown. */
-  active?: boolean;
   className?: string;
 }) {
   const { settings } = useSettings();
@@ -209,7 +207,7 @@ export function FightStrip({ eventId, currentId, returnDepth, active = true, cla
   useLayoutEffect(() => {
     const scroller = row.current;
     const tile = scroller?.querySelector<HTMLElement>("[aria-current='page']");
-    if (!active || !scroller || !tile) return;
+    if (!scroller || !tile) return;
     const saved = stripScroll.get(eventId);
     if (saved == null) {
       // First look at this card: the open bout in the middle. The browser
@@ -225,13 +223,13 @@ export function FightStrip({ eventId, currentId, returnDepth, active = true, cla
       else if (tile.offsetLeft + tile.offsetWidth > right) scroller.scrollLeft = tile.offsetLeft + tile.offsetWidth - scroller.clientWidth;
     }
     stripScroll.set(eventId, scroller.scrollLeft);
-  }, [active, currentId, eventId, ready]);
+  }, [currentId, eventId, ready]);
   if (fights.length < 2) return null;
   const liveId = liveFightId(event!);
   const search = cardFightSearch(location.search);
   return (
     <nav aria-label="Fights on this card" className={className}>
-      <div ref={row} onScroll={(e) => { if (active) stripScroll.set(eventId, e.currentTarget.scrollLeft); }}
+      <div ref={row} onScroll={(e) => stripScroll.set(eventId, e.currentTarget.scrollLeft)}
         className="relative flex gap-2 overflow-x-auto overscroll-x-contain [scrollbar-width:none]">
         {fights.map((f) => {
           const isCurrent = f.id === currentId;
