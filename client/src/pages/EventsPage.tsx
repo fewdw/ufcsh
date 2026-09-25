@@ -1,6 +1,6 @@
 import { PANEL } from "../components/chartTokens";
 import { isFightDay, landingEvent, liveFightId, taggedEvent } from "../liveEvent";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
@@ -24,7 +24,7 @@ import SearchGlyph from "../components/SearchGlyph";
 import { ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
-import { useSwipeNav } from "../swipeNav";
+import SwipePager from "../components/SwipePager";
 
 const shell = PANEL;
 /** The source flags a tournament or TUF final the same way it flags a
@@ -768,10 +768,12 @@ function StepLink({ event, direction, className = STEP }: { event: EventListItem
   );
 }
 
-function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: boolean; nav: EventNav }) {
+/** One event's card. A `preview` is the neighbour drawn beside it mid-swipe:
+ *  the same page, minus anything that would claim the address bar or keys. */
+function EventPane({ eventId, oddsMode, nav, preview = false }: { eventId: string; oddsMode: boolean; nav: EventNav; preview?: boolean }) {
   const { settings, update } = useSettings();
   const navigate = useNavigate();
-  useShortcutNav({
+  useShortcutNav(preview ? null : {
     context: "events by date",
     prevLabel: nav.prev ? `earlier card (${nav.prev.name})` : "earlier card",
     nextLabel: nav.next ? `later card (${nav.next.name})` : "later card",
@@ -782,17 +784,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   const { data: event, loading, error } = useApi<EventDetail>(url,
     data => data?.refreshing ? 5_000 : isFightDay(data?.date) ? 15_000 : data?.status !== "past" ? 5 * 60_000 : 0);
   const isLive = isFightDay(event?.date);
-  const eventScroll = useRouteScrollRestoration<HTMLDivElement>("event:card", Boolean(event), eventId);
-  const swipe = useSwipeNav(
-    nav.prev ? () => navigate(`/events/${nav.prev!.id}`) : null,
-    nav.next ? () => navigate(`/events/${nav.next!.id}`) : null,
-    () => [nav.prev, nav.next].forEach((near) => { if (near) prefetch(withRanking(`/api/events/${near.id}`, settings.rankingSource)); }),
-  );
-  const cardRef = useCallback((node: HTMLDivElement | null) => {
-    eventScroll.current = node;
-    const release = swipe(node);
-    return () => { eventScroll.current = null; release?.(); };
-  }, [eventScroll, swipe]);
+  const eventScroll = useRouteScrollRestoration<HTMLDivElement>("event:card", Boolean(event) && !preview, eventId);
   // Any card still ahead of us counts down; a finished one has nothing left
   // to count, so its clock never starts.
   const now = useNow(event?.status !== "past");
@@ -800,6 +792,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
     ? `${event.name} fight card with ${event.fights.length} matchups, odds${event.status === "past" ? " and results" : ""}.${event.location ? ` Live from ${event.location}.` : ""}`
     : "Browse UFC event fight cards, matchup odds and results.";
   useSeo({
+    skip: preview,
     title: event?.name ?? "UFC Events & Fight Cards",
     description: eventDescription,
     path: `/events/${eventId}`,
@@ -848,7 +841,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   const hasResultSummary = Number.isFinite(event.card_stats.finishes) && Number.isFinite(event.card_stats.underdog_wins);
 
   return (
-    <div ref={cardRef} className="@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto sm:gap-3 sm:pr-1">
+    <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto sm:gap-3 sm:pr-1">
       {/* On a phone the list folds away, so its button and the step to
           either neighbour float over the card as small pills, staying in
           reach however far down it is read. */}
@@ -992,6 +985,7 @@ export default function EventsPage() {
   }, [landingId, navigate]);
 
   const oddsMode = new URLSearchParams(location.search).get("odds") === "1";
+  const shownNav = shownEventId ? eventNeighbours(events ?? [], shownEventId) : { prev: null, next: null };
   const dock = fightId ? DOCK.matchup : DOCK.card;
   if (error && !events) {
     return (
@@ -1030,7 +1024,15 @@ export default function EventsPage() {
         {fightId ? (
           <FightView fightId={fightId} eventIdHint={fightEventIdHint ?? openFight?.event.id} />
         ) : shownEventId ? (
-          <EventPane eventId={shownEventId} oddsMode={oddsMode} nav={{ ...eventNeighbours(events, shownEventId), onBrowse: () => setMobileEventsOpen(true) }} />
+          <SwipePager className="h-full" pageKey={shownEventId}
+            prev={shownNav.prev ? () => navigate(`/events/${shownNav.prev!.id}`) : null}
+            next={shownNav.next ? () => navigate(`/events/${shownNav.next!.id}`) : null}
+            renderPeek={(side) => {
+              const near = shownNav[side]!;
+              return <EventPane eventId={near.id} oddsMode={false} preview nav={{ ...eventNeighbours(events, near.id), onBrowse: () => {} }} />;
+            }}>
+            <EventPane eventId={shownEventId} oddsMode={oddsMode} nav={{ ...shownNav, onBrowse: () => setMobileEventsOpen(true) }} />
+          </SwipePager>
         ) : (
           <div className={`flex h-full items-center justify-center ${shell}`}>
             <div className="text-sm text-zinc-400">Select an event.</div>

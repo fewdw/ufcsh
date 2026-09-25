@@ -206,11 +206,15 @@ export class PredictionStore {
     const methods = tally(row => row.method as PredictionMethod | null);
     const rounds = tally(row => row.round);
     const order: (PredictionMethod | null)[] = ["ko", "submission", "decision", null];
-    // Each fighter's picks split by how they win, for the combined method chart.
+    const roundOrder = [...Array.from({ length: bout?.scheduled_rounds ?? 0 }, (_unused, index) => index + 1), null];
+    // Each fighter's picks split by how and when they win, for the charts
+    // that show both corners at once.
     const calls = tally(row => `${row.fighterId}|${row.method ?? ""}`);
+    const finishes = tally(row => `${row.fighterId}|${row.round ?? ""}`);
     const side = (fighterId: string, name: string) => ({
       fighterId, name, count: fighters.get(fighterId) ?? 0,
       methods: order.map(method => ({ method, count: calls.get(`${fighterId}|${method ?? ""}`) ?? 0 })),
+      rounds: roundOrder.map(round => ({ round, count: finishes.get(`${fighterId}|${round ?? ""}`) ?? 0 })),
     });
     return {
       total,
@@ -218,8 +222,7 @@ export class PredictionStore {
       methods: order.map(method => ({ method, count: methods.get(method) ?? 0 })),
       // Rounds only mean anything for a finish, so the bucket for "no round
       // named" counts the picks that could have named one and did not.
-      rounds: [...Array.from({ length: bout?.scheduled_rounds ?? 0 }, (_unused, index) => index + 1), null]
-        .map(round => ({ round, count: rounds.get(round) ?? 0 })),
+      rounds: roundOrder.map(round => ({ round, count: rounds.get(round) ?? 0 })),
     };
   }
   /**

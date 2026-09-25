@@ -2,7 +2,7 @@ import { List, X } from "lucide-react";
 import { isFightDay } from "../liveEvent";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { prefetch, useApi } from "../api";
+import { useApi } from "../api";
 import type { EventDetail, EventFight, FightDetailBlock, HistoryRow, Matchup, MatchupSide, ProfessionalHistoryRow } from "../api";
 import {
   formatDate,
@@ -50,7 +50,7 @@ import { scoreableRoundCount } from "../scoring";
 import { useNow } from "../useNow";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { useShortcutNav } from "../shortcuts";
-import { useSwipeNav } from "../swipeNav";
+import SwipePager from "../components/SwipePager";
 
 const shell = PANEL_SHELL;
 const RESULT_PILL =
@@ -691,8 +691,10 @@ function MatchupTabs({ tabs, current, onSelect }: { tabs: MatchupTab[]; current:
   );
 }
 
-/** Matchup view rendered inside the events layout: card rail + detail + close. */
-export default function FightView({ fightId, eventIdHint }: { fightId: string; eventIdHint?: string | null }) {
+/** Matchup view rendered inside the events layout: card rail + detail + close.
+ *  A `preview` is the neighbour drawn beside it mid-swipe: the detail alone,
+ *  leaving the address bar, keys and scroll position to the real one. */
+export default function FightView({ fightId, eventIdHint, preview = false }: { fightId: string; eventIdHint?: string | null; preview?: boolean }) {
   const { settings } = useSettings();
   const navigate = useNavigate();
   const location = useLocation();
@@ -712,7 +714,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   // Scoped to the fight, not the history entry: switching tabs replaces the
   // URL's `?tab=` search param, which mints a new location key and would
   // otherwise read as a brand-new page and reset the scroll to the top.
-  const detailScroll = useRouteScrollRestoration<HTMLDivElement>("fight:detail", Boolean(fight), fightId);
+  const detailScroll = useRouteScrollRestoration<HTMLDivElement>("fight:detail", Boolean(fight) && !preview, fightId);
   const eventId = loadedFight?.event.id ?? eventIdHint ?? previousFight.current?.event.id;
   const { data: cardEvent } = useApi<EventDetail>(eventId ? withRanking(`/api/events/${eventId}`, settings.rankingSource) : null,
     data => data?.refreshing ? 5_000 : isFightDay(data?.date) ? 15_000 : data?.status === "past" ? 0 : 5 * 60_000);
@@ -722,6 +724,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     ? `${loadedFight.f1.name} vs ${loadedFight.f2.name} at ${loadedFight.event.name}: ${loadedFight.weight_class} odds, tale of the tape, fighter statistics${loadedFight.status === "past" ? " and result" : ""}.`
     : "Compare UFC matchup odds, fighter statistics and tale of the tape.";
   useSeo({
+    skip: preview,
     title: matchupTitle,
     description: matchupDescription,
     path: `/fights/${fightId}`,
@@ -760,6 +763,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   // Escape closes the matchup back to its event card (browser-back while the
   // matchup is still loading and the event isn't known yet).
   useEffect(() => {
+    if (preview) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
       // A dialog closes itself first, and a field being typed in keeps its Escape.
@@ -769,7 +773,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [closeFight]);
+  }, [closeFight, preview]);
 
   // The arrow keys walk the card the same way the Prev/Next links do: Next
   // moves up toward the main event.
@@ -779,27 +783,16 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     { pathname: `/fights/${target.id}`, search: cardFightSearch(location.search) },
     { state: { eventId, ...(eventReturnDepth ? { eventReturnDepth: eventReturnDepth + 1 } : {}) } },
   ) : null;
-  useShortcutNav(cardEvent && cardAt >= 0 ? {
+  useShortcutNav(!preview && cardEvent && cardAt >= 0 ? {
     context: `fights on ${cardEvent.name}`,
     prevLabel: "previous fight, toward the opener",
     nextLabel: "next fight, toward the main event",
     prev: stepTo(cardFights[cardAt + 1]),
     next: stepTo(cardAt > 0 ? cardFights[cardAt - 1] : undefined),
   } : null);
-  // A phone swipes the matchup the same way: left for next, right for prev.
-  const swipe = useSwipeNav(
-    stepTo(cardAt >= 0 ? cardFights[cardAt + 1] : undefined),
-    stepTo(cardAt > 0 ? cardFights[cardAt - 1] : undefined),
-    () => [cardFights[cardAt + 1], cardAt > 0 ? cardFights[cardAt - 1] : undefined]
-      .forEach((near) => { if (near) prefetch(withRanking(`/api/fights/${near.id}`, settings.rankingSource)); }),
-  );
-  const detailRef = useCallback((node: HTMLDivElement | null) => {
-    detailScroll.current = node;
-    const release = swipe(node);
-    return () => { detailScroll.current = null; release?.(); };
-  }, [detailScroll, swipe]);
 
   if (loading && !fight) {
+    if (preview) return <MatchupSkeleton />;
     return (
       <div className="flex h-full min-h-0 gap-3">
         {eventId ? <FightRail eventId={eventId} currentId={fightId} returnDepth={eventReturnDepth} /> : <FightRailSkeleton />}
@@ -808,6 +801,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     );
   }
   if (!fight) {
+    if (preview) return <MatchupSkeleton />;
     return (
       <div className="flex h-full min-h-0 gap-3">
         {eventId ? <FightRail eventId={eventId} currentId={fightId} returnDepth={eventReturnDepth} /> : null}
@@ -858,11 +852,8 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     navigate({ search: `?tab=${next}` }, { replace: true, state: location.state });
   };
 
-  return (
-    <div className="flex h-full min-h-0 gap-3">
-      <FightRail eventId={eventId ?? fight.event.id} currentId={fightId} returnDepth={eventReturnDepth} />
-
-      <div className="relative min-h-0 min-w-0 flex-1">
+  const detailPane = (
+      <div className="relative h-full min-h-0 min-w-0">
         {changingMatchup ? (
           <div className="appear-late absolute inset-0 z-30 flex cursor-wait items-start justify-center bg-zinc-100/50 pt-6 backdrop-blur-[1px]">
             <span className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-500 shadow-sm">
@@ -870,7 +861,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
             </span>
           </div>
         ) : null}
-        <div ref={detailRef} inert={changingMatchup} className="h-full overflow-y-auto" aria-busy={changingMatchup}>
+        <div ref={detailScroll} inert={changingMatchup} className="h-full overflow-y-auto" aria-busy={changingMatchup}>
           <div className="@container flex w-full flex-col gap-3 pb-8">
             {/* The steps along the card float over it as it scrolls. */}
             <FloatingNavigation label="Card navigation"
@@ -994,6 +985,19 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
           </div>
         </div>
       </div>
+  );
+  if (preview) return detailPane;
+
+  return (
+    <div className="flex h-full min-h-0 gap-3">
+      <FightRail eventId={eventId ?? fight.event.id} currentId={fightId} returnDepth={eventReturnDepth} />
+      {/* A phone swipes along the card the same way: left for next, right for prev. */}
+      <SwipePager className="h-full min-w-0 flex-1" pageKey={fightId}
+        prev={previous ? stepTo(previous) : null}
+        next={next ? stepTo(next) : null}
+        renderPeek={(side) => <FightView fightId={(side === "prev" ? previous : next)!.id} eventIdHint={fight.event.id} preview />}>
+        {detailPane}
+      </SwipePager>
     </div>
   );
 }

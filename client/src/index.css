@@ -271,18 +271,6 @@ select:not([multiple]):not([size]) {
 .dark .ui-primary { background-color: #f4f4f5 !important; color: #18181b !important; }
 .dark .ui-primary:hover { background-color: #d4d4d8 !important; }
 .dark .ui-danger:hover { background-color: #e11d48 !important; }
-/* The arrow a sideways swipe reveals (see swipeNav.ts). */
-.swipe-hint {
-  position: fixed; top: 50%; z-index: 60; width: 40px; height: 40px; margin-top: -20px;
-  display: grid; place-items: center; border-radius: 9999px; pointer-events: none;
-  background: #fff; color: #3f3f46; border: 1px solid #e4e4e7;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.1); opacity: 0;
-  transition: opacity 120ms, background-color 120ms, color 120ms, transform 120ms;
-}
-.swipe-hint[data-ready="true"] { background: #18181b; color: #fff; border-color: #18181b; transform: scale(1.1); }
-.dark .swipe-hint { background: #27272a; color: #e4e4e7; border-color: #3f3f46; }
-.dark .swipe-hint[data-ready="true"] { background: #f4f4f5; color: #18181b; border-color: #f4f4f5; }
-
 /* Slim, quiet scrollbars for the always-scrolling panes. Only where there is
    a mouse: a styled scrollbar on a touch screen is painted in the page, under
    sticky bars like the matchup tabs, where the native overlay floats above. */

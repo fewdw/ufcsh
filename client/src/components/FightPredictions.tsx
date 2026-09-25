@@ -11,8 +11,6 @@ import { PANEL_SHELL, PanelHeading } from "./FightStats";
 import { BUTTON_PRIMARY_LARGE } from "../ui";
 
 const METHOD_SHORT: Record<PredictionMethod, string> = { ko: "KO", submission: "Sub", decision: "Dec" };
-/** Spelled out in full so Tailwind keeps the theme variables it would otherwise drop. */
-const ROUND_COLOR = ["var(--color-round-1)", "var(--color-round-2)", "var(--color-round-3)", "var(--color-round-4)", "var(--color-round-5)"];
 /** A method or round choice: a full-width cell in an even grid. */
 const option = "rounded-xl border px-2 py-2 text-center text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 disabled:cursor-not-allowed disabled:opacity-40 sm:text-[13px]";
 const optionIdle = "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50";
@@ -32,7 +30,7 @@ export default function FightPredictions({ fight }: { fight: Matchup }) {
   </>;
 }
 
-type Share = { key: string; label: string; short?: string; count: number; color: string };
+type Share = { key: string; label: string; short?: string; count: number; color: string; counterClockwise?: boolean };
 
 const SECTION_LABEL = "mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-400";
 /** Each corner's colour, darkest for a knockout down to lightest for no
@@ -43,24 +41,28 @@ const SHADES: Record<string, [string, string]> = {
 };
 const picksWord = (count: number) => `${count} ${count === 1 ? "pick" : "picks"}`;
 
-/** A full pie, the first answer starting at nine o'clock and running
- *  clockwise, the rest following on. Slices are parted by a hairline of the
- *  panel's own colour. */
+/** A full pie from twelve o'clock: red's slices run clockwise from the top,
+ *  blue's counter-clockwise, so the two corners meet at twelve and the split
+ *  reads like a tug of war. Slices are parted by a hairline of the panel's
+ *  own colour. */
 function Pie({ entries, total, size = 76 }: { entries: Share[]; total: number; size?: number }) {
   const shown = entries.filter(entry => entry.count > 0);
   const c = size / 2;
   const r = c - 1;
-  let angle = Math.PI;
+  const TOP = -Math.PI / 2;
+  let clockwise = TOP;
+  let counter = TOP;
   const point = (at: number) => `${(c + r * Math.cos(at)).toFixed(2)} ${(c + r * Math.sin(at)).toFixed(2)}`;
   return <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0" role="img"
     aria-label={shown.map(entry => `${entry.label} ${sharePct(entry.count, total)}%`).join(", ")}>
     {shown.length === 1
       ? <circle cx={c} cy={c} r={r} fill={shown[0].color}><title>{`${shown[0].label}: ${picksWord(shown[0].count)} (100%)`}</title></circle>
       : shown.map(entry => {
-        const from = angle;
-        angle += (entry.count / total) * Math.PI * 2;
-        const large = angle - from > Math.PI ? 1 : 0;
-        return <path key={entry.key} d={`M ${c} ${c} L ${point(from)} A ${r} ${r} 0 ${large} 1 ${point(angle)} Z`}
+        const sweep = (entry.count / total) * Math.PI * 2;
+        let from: number;
+        if (entry.counterClockwise) { counter -= sweep; from = counter; } else { from = clockwise; clockwise += sweep; }
+        const large = sweep > Math.PI ? 1 : 0;
+        return <path key={entry.key} d={`M ${c} ${c} L ${point(from)} A ${r} ${r} 0 ${large} 1 ${point(from + sweep)} Z`}
           fill={entry.color} strokeWidth={1.5} strokeLinejoin="round" className="stroke-white dark:stroke-[#18181b]">
           <title>{`${entry.label}: ${picksWord(entry.count)} (${sharePct(entry.count, total)}%)`}</title>
         </path>;
@@ -79,14 +81,18 @@ function Key({ rows }: { rows: { key: string; swatches: string[]; label: string;
   </ul>;
 }
 
-/** Rounds are ordered, so they stand as bars side by side. */
-function RoundBars({ entries, total }: { entries: Share[]; total: number }) {
-  const most = Math.max(1, ...entries.map(entry => entry.count));
-  return <div className="flex h-[76px] items-end justify-center gap-1" role="img"
-    aria-label={entries.map(entry => `${entry.label} ${sharePct(entry.count, total)}%`).join(", ")}>
-    {entries.map(entry => <div key={entry.key} className="flex h-full w-4 flex-col items-center justify-end gap-0.5" title={`${entry.label}: ${picksWord(entry.count)}`}>
-      {entry.count ? <span className="text-[9px] font-semibold leading-none tabular-nums text-zinc-700">{sharePct(entry.count, total)}</span> : null}
-      <span className="block w-full rounded-t-[3px]" style={{ height: `${entry.count ? Math.max(6, (entry.count / most) * 100) : 3}%`, backgroundColor: entry.count ? entry.color : "var(--color-plot-axis)" }} />
+/** Rounds are ordered, so they stand side by side: a pair of bars for each,
+ *  blue's and red's, with the round's share of all picks over the pair. */
+function RoundBars({ rounds, total }: { rounds: { key: string; label: string; short: string; count: number; sides: number[] }[]; total: number }) {
+  const most = Math.max(1, ...rounds.flatMap(round => round.sides));
+  return <div className="flex h-[76px] items-end justify-center gap-1.5" role="img"
+    aria-label={rounds.map(round => `${round.label} ${sharePct(round.count, total)}%`).join(", ")}>
+    {rounds.map(round => <div key={round.key} className="flex h-full flex-col items-center justify-end gap-0.5" title={`${round.label}: ${picksWord(round.count)}`}>
+      {round.count ? <span className="text-[9px] font-semibold leading-none tabular-nums text-zinc-700">{sharePct(round.count, total)}</span> : null}
+      <div className="flex h-full items-end gap-px">
+        {round.sides.map((count, index) => <span key={index} className="block w-[7px] rounded-t-[2px]"
+          style={{ height: `${count ? Math.max(6, (count / most) * 100) : 3}%`, backgroundColor: count ? (index === 0 ? "var(--color-f1)" : "var(--color-f2)") : "var(--color-plot-axis)" }} />)}
+      </div>
     </div>)}
   </div>;
 }
@@ -97,23 +103,25 @@ function CommunityPicks({ distribution, scheduledRounds }: { distribution: Predi
   const [f1, f2] = distribution.fighters;
   const fighters: Share[] = distribution.fighters.map((entry, index) => ({
     key: entry.fighterId || `f${index}`, label: entry.name, count: entry.count,
-    color: index === 0 ? "var(--color-f1)" : "var(--color-f2)",
+    color: index === 0 ? "var(--color-f1)" : "var(--color-f2)", counterClockwise: index === 0,
   }));
   const order = ["ko", "submission", "decision", null] as const;
   const methodName = (method: PredictionMethod | null) => method ? METHOD_LABEL[method] : "No method";
-  // Blue's calls, knockout first, then red's: the same halves as the winner pie.
+  // Each corner's calls from twelve o'clock, knockout nearest the top: the
+  // same halves as the winner pie.
   const calls: Share[] = distribution.fighters.flatMap((side, index) => order.map(method => ({
     key: `${index}-${method ?? "none"}`, label: `${side.name} · ${methodName(method)}`,
     count: side.methods?.find(entry => entry.method === method)?.count ?? 0,
-    color: SHADES[method ?? "none"][index],
+    color: SHADES[method ?? "none"][index], counterClockwise: index === 0,
   })));
   const methods = distribution.methods;
-  const rounds: Share[] = distribution.rounds.map(entry => ({
+  // "D" gathers every pick that names no round: decisions and open finishes.
+  const rounds = distribution.rounds.map(entry => ({
     key: entry.round == null ? "none" : `r${entry.round}`,
-    label: entry.round == null ? "No round named" : `Round ${entry.round}`,
-    short: entry.round == null ? "–" : `${entry.round}`,
+    label: entry.round == null ? "Decision or no round named" : `Round ${entry.round}`,
+    short: entry.round == null ? "D" : `${entry.round}`,
     count: entry.count,
-    color: entry.round == null ? "var(--color-pick-none)" : ROUND_COLOR[Math.min(entry.round, 5) - 1],
+    sides: distribution.fighters.map(side => side.rounds?.find(pick => pick.round === entry.round)?.count ?? 0),
   }));
   const roundsKnown = scheduledRounds === 3 || scheduledRounds === 5;
   const byFighter = Boolean(f1?.methods && f2?.methods);
@@ -140,9 +148,9 @@ function CommunityPicks({ distribution, scheduledRounds }: { distribution: Predi
         </div>
         {roundsKnown ? <div className="flex min-w-0 flex-col items-center">
           <h3 className={SECTION_LABEL}>Round %</h3>
-          <RoundBars entries={rounds} total={total} />
-          <div className="mt-1 flex justify-center gap-1 text-[10px] leading-none text-zinc-500" aria-hidden="true">
-            {rounds.map(entry => <span key={entry.key} className="w-4 text-center">{entry.short}</span>)}
+          <RoundBars rounds={rounds} total={total} />
+          <div className="mt-1 flex justify-center gap-1.5 text-[10px] leading-none text-zinc-500" aria-hidden="true">
+            {rounds.map(entry => <span key={entry.key} className="w-[15px] text-center">{entry.short}</span>)}
           </div>
         </div> : null}
       </div>

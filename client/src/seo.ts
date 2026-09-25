@@ -21,14 +21,18 @@ export function useSeo({
   path,
   type = "website",
   structuredData,
+  skip = false,
 }: {
   title?: string;
   description?: string;
   path?: string;
   type?: "website" | "profile";
   structuredData?: Record<string, unknown>;
+  /** A page drawn only as a preview (a swipe's neighbour) leaves the head alone. */
+  skip?: boolean;
 }): void {
   useEffect(() => {
+    if (skip) return;
     const fullTitle = title ? `${title} | ${SITE_NAME}` : `UFC Events, Odds, Stats & Rankings | ${SITE_NAME}`;
     const canonicalUrl = `${SITE_URL}${path ?? window.location.pathname}`;
 
@@ -59,5 +63,5 @@ export function useSeo({
     } else {
       existing?.remove();
     }
-  }, [description, path, structuredData, title, type]);
+  }, [description, path, skip, structuredData, title, type]);
 }
