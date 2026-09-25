@@ -950,6 +950,14 @@ export default function EventsPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileEventsOpen, setMobileEventsOpen] = useState(false);
+  // "/", "/events/…" and "/fights/…" share this one page, so the sheet would
+  // outlive a navigation. Any navigation (the logo, the Events pill, Back)
+  // closes it, in the same render, so the card it lands on shows at once.
+  const [sheetLocation, setSheetLocation] = useState(location.key);
+  if (sheetLocation !== location.key) {
+    setSheetLocation(location.key);
+    setMobileEventsOpen(false);
+  }
   const { data: events, loading, error } = useApi<EventListItem[]>("/api/events",
     data => data?.some(event => isFightDay(event.date)) ? 30_000 : 5 * 60_000);
   const fightEventIdHint =
