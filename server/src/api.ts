@@ -46,7 +46,7 @@ import { titleNarratives } from "./titles.ts";
 import { fighterBoard, fighterRecords } from "./records.ts";
 import { completedUfcFightExistsSql, hasCompletedUfcFight, recordText, currentRecord, cachedPhotoUrl, cachedFullPhotoUrl, photoVersion } from "./fighter-identity.ts";
 export { hasCompletedUfcFight };
-import { careerBefore, completeRecordBefore, fightIndex, ageOn, parseScheduledRounds, professionalBouts, professionalBoutsBefore, sideOf, ufcBoutsBefore, type FightRecord } from "./fight-index.ts";
+import { careerBefore, completeRecordBefore, fightIndex, indexesHeld, ageOn, parseScheduledRounds, professionalBouts, professionalBoutsBefore, sideOf, ufcBoutsBefore, type FightRecord } from "./fight-index.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { summarizeCard } from "./card-stats.ts";
 import { mergeJudgeRounds } from "./judge-scorecards.ts";
@@ -174,7 +174,7 @@ const fighterSummaryStmt = () =>
 
 /** Viewing a fighter without a photo queues them for the next background photo batch. */
 function requestPhoto(id: string): void {
-  if (!id) return;
+  if (!id || warming) return;
   const row = prepared("SELECT photo_url, photo_full_url, photo_checked_at FROM fighters WHERE id = ?").get(id) as any;
   if (row && (row.photo_checked_at == null || Date.now() - row.photo_checked_at > ((!row.photo_url || !row.photo_full_url) ? 86_400_000 : 30 * 86_400_000))) {
     prepared("INSERT OR IGNORE INTO image_queue (fighter_id, requested_at) VALUES (?, ?)").run(id, Date.now());
@@ -757,7 +757,19 @@ function professionalHistory(fighterId: string, ufcHistory: any[]): any[] {
   return merged.sort((a, b) => b.date.localeCompare(a.date) || a.source_order - b.source_order);
 }
 
-const matchupRefresh = new BackgroundRefresh(process.env.NO_SYNC === "1" ? () => false : process.env.SYNC_MODE === "external" ? enqueueRefresh : undefined);
+const backgroundRefresh = new BackgroundRefresh(process.env.NO_SYNC === "1" ? () => false : process.env.SYNC_MODE === "external" ? enqueueRefresh : undefined);
+const matchupRefresh = {
+  request: (...args: Parameters<BackgroundRefresh["request"]>) => !warming && backgroundRefresh.request(...args),
+};
+
+/** Set while a query worker warms itself: reading pages to compile their code
+ *  and fill its caches is not a reader's visit, so it queues no source
+ *  refreshes and no photo checks. */
+let warming = false;
+export async function warmingUp(work: () => Promise<void>): Promise<void> {
+  warming = true;
+  try { await work(); } finally { warming = false; }
+}
 
 /** Fixed job vocabulary; persisted queue entries never contain executable code or URLs. */
 export async function runRefreshJob(key: string): Promise<unknown> {
@@ -1202,9 +1214,12 @@ type SearchIndex = {
   fights: { id: string; date: string; names: string; target: FuzzyTarget }[];
 };
 const searchIndexCache = new VersionCache<SearchIndex>(1);
+let heldSearchIndex: SearchIndex | null = null;
 
-/** Everything the typo-tolerant fallback scans, rebuilt when the data changes. */
+/** Everything the typo-tolerant fallback scans, rebuilt when the data changes
+ *  (a query worker keeps its first one; the pool replaces the worker). */
 function searchIndex(): SearchIndex {
+  if (heldSearchIndex && indexesHeld()) return heldSearchIndex;
   const version = dataRevision("search");
   const cached = searchIndexCache.get("index", version);
   if (cached) return cached;
@@ -1228,6 +1243,7 @@ function searchIndex(): SearchIndex {
   }));
   const index = { fighters, events, fights };
   searchIndexCache.set("index", index);
+  if (indexesHeld()) heldSearchIndex = index;
   return index;
 }
 
@@ -1657,7 +1673,7 @@ export async function serveStatic(req: http.IncomingMessage, res: http.ServerRes
     const seo = queryPool ? JSON.parse((await queryPool.run(`/_seo?path=${encodeURIComponent(pathname)}`)).json) as PageSeo : pageSeo(pathname);
     return { json: injectPageSeo(index.data.toString(), pathname, seo), status: seo.status ?? 200 };
   };
-  const page = pages ? await pages.get(`page:${index.etag}:${pathname}`, 60_000, build) : await representation(await build());
+  const page = pages ? await pages.get(`page:${index.etag}:${pathname}`, 60_000, build, 60 * 60_000) : await representation(await build());
   sendRepresentation(req, res, page, "no-cache", "text/html");
 }
 
@@ -1901,10 +1917,49 @@ export function startApi(port: number): http.Server {
   });
   const workerCount = Number(process.env.API_WORKERS ?? (process.env.NODE_ENV === "production" ? 2 : 0));
   if (!Number.isInteger(workerCount) || workerCount < 0 || workerCount > 8) throw new Error("API_WORKERS must be an integer from 0 to 8");
-  if (workerCount) queryPool = new QueryPool(workerCount);
+  let refresher: NodeJS.Timeout | undefined;
+  if (workerCount) {
+    const pool = queryPool = new QueryPool(workerCount);
+    // Workers keep their indexes; when the data changes each is replaced by a
+    // freshly built one, at most every half minute, so a burst of sync writes
+    // costs one rebuild and no request waits on one.
+    let seen = dataRevision("analytics");
+    let lastRefreshAt = Date.now();
+    refresher = setInterval(() => {
+      if (!pool.ready || Date.now() - lastRefreshAt < 30_000) return;
+      const revision = dataRevision("analytics");
+      if (revision === seen) return;
+      seen = revision;
+      lastRefreshAt = Date.now();
+      void pool.refresh().catch(error => log("index refresh failed:", String(error)));
+    }, 5_000);
+    refresher.unref();
+  }
   const cacheMb = Number(process.env.RESPONSE_CACHE_MB ?? 128);
   const cache = new ResponseCache((Number.isFinite(cacheMb) && cacheMb > 0 ? cacheMb : 128) * 1024 * 1024);
   const limiter = new RateLimiter();
+  /** A public API answer: the shared cache, filled by a query worker. */
+  const publicAnswer = (url: URL) => {
+    const policy = cachePolicy(url);
+    const key = canonicalApiKey(url);
+    return cache.get(key, policy.ttl, async () => {
+      if (queryPool) return queryPool.run(key);
+      const data = await resolvePublicApi(url);
+      return { json: JSON.stringify(data === undefined ? { error: "not found" } : data), status: data === undefined ? 404 : 200 };
+    }, policy.stale);
+  };
+  // The lists every visit starts from are in memory before the first reader
+  // asks, so no one meets a cold build after a deploy.
+  const warmLists = setInterval(() => {
+    if (queryPool && !queryPool.ready) return;
+    clearInterval(warmLists);
+    if (!queryPool) return;
+    for (const path of ["/api/events", "/api/live", "/api/stats", "/api/rankings?ranking=media", "/api/rankings?ranking=meta",
+      "/api/officials", "/api/venues", "/api/labs/insights"]) {
+      void publicAnswer(new URL(path, "http://localhost")).catch(() => {});
+    }
+  }, 1000);
+  warmLists.unref();
   const observability = new HttpObservability();
   const eventLoop = monitorEventLoopDelay({ resolution: 20 });
   eventLoop.enable();
@@ -2036,7 +2091,13 @@ export function startApi(port: number): http.Server {
       const address = clientAddress(req);
       const expensive = p === "/api/search" || p === "/api/stats" || p.startsWith("/api/labs");
       const imageRequest = p.startsWith("/api/images/");
-      const allowed = limiter.allow(`${address}:${imageRequest ? "image" : "request"}`, imageRequest ? 600 : 120, imageRequest ? 100 : 12);
+      // The application's own files (scripts, styles, icons) are served from
+      // memory and a page load asks for a couple of dozen of them, so they have
+      // a bucket of their own: reloading quickly, or many readers behind one
+      // address, must never be answered with a 429 in place of a script.
+      const staticFile = !p.startsWith("/api/") && !p.startsWith("/og/") && path.extname(p) !== "" && p !== "/sitemap.xml";
+      const bucket = imageRequest ? "image" : staticFile ? "static" : "request";
+      const allowed = limiter.allow(`${address}:${bucket}`, imageRequest || staticFile ? 600 : 120, imageRequest || staticFile ? 100 : 12);
       if (!allowed || (expensive && !limiter.allow(`${address}:expensive`, 30, 3))) {
         res.setHeader("Retry-After", "5");
         return await sendJson(req, res, { error: "too many requests" }, 429);
@@ -2057,14 +2118,7 @@ export function startApi(port: number): http.Server {
       }
       if ((url.searchParams.get("q")?.length ?? 0) > 120) return await sendJson(req, res, { error: "search query too long" }, 400);
       if (publicApi(p)) {
-        const policy = cachePolicy(url);
-        const key = canonicalApiKey(url);
-        const value = await cache.get(key, policy.ttl, async () => {
-          if (queryPool) return queryPool.run(key);
-          const data = await resolvePublicApi(url);
-          return { json: JSON.stringify(data === undefined ? { error: "not found" } : data), status: data === undefined ? 404 : 200 };
-        }, policy.stale);
-        return sendRepresentation(req, res, value, policy.control);
+        return sendRepresentation(req, res, await publicAnswer(url), cachePolicy(url).control);
       }
       if (p === "/api/status" || p === "/api/metrics") {
         if (!isAdmin(req)) return await sendJson(req, res, { error: "authentication required" }, 401);
@@ -2137,6 +2191,8 @@ export function startApi(port: number): http.Server {
     eventLoop.disable();
     recentLoop.disable();
     clearInterval(sampler);
+    clearInterval(warmLists);
+    clearInterval(refresher);
     process.removeListener("SIGTERM", shutdown);
     process.removeListener("SIGINT", shutdown);
     void queryPool?.close();

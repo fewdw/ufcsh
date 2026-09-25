@@ -11,142 +11,10 @@ import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/
 import { formatValue, PANEL } from "../components/chartTokens";
 import { useSeo } from "../seo";
 import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
+import { DEFAULT_SETTINGS, statsRequest, type Method, type Metric, type StatsSettings } from "../statsDefaults";
 
 const shell = PANEL;
 const selectClass = "max-w-full rounded-full border border-zinc-200 bg-zinc-50 py-1 pl-2.5 pr-7 text-[10px] font-medium text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-400";
-
-type Method = "all" | "ko" | "sub" | "finish" | "decision" | "unanimous" | "majority" | "split" | "dq";
-type Metric = "total" | "percent";
-
-type StatsSettings = {
-  // shared by every card
-  statsSince: string;
-  statsUntil: string;
-  minimumFights: "1" | "3" | "5" | "10" | "15" | "20";
-  minimumSample: "1" | "3" | "5" | "10" | "15";
-  limit: string;
-  boutType: "all" | "title" | "nonTitle";
-  cardPosition: "all" | "main" | "undercard";
-  scheduledRounds: "all" | "3" | "5";
-  // Record
-  recordGroup: "bouts" | "wins" | "losses";
-  boutsMode: "total" | "span" | "titleFights" | "divisions";
-  winsMode: "total" | "streak" | "titleWins" | "titleDefenses" | "championWins" | "divisions" | "ageAtWin";
-  winsByMethod: Method;
-  winsByMetric: Metric;
-  winsPercentOf: "allFights" | "allWins" | "finishWins" | "decisionWins";
-  streakKind: "wins" | "unbeaten";
-  streakByMethod: Method;
-  streakWhen: "longest" | "current";
-  titleWinMethod: Method;
-  titleWinsMetric: Metric;
-  defenseScope: "total" | "consecutive";
-  titleDefenseMethod: Method;
-  titleDefenseMetric: Metric;
-  championScope: "ever" | "current";
-  championWinMethod: Method;
-  championWinsMetric: Metric;
-  divisionWinMethod: Method;
-  ageEnd: "youngest" | "oldest";
-  lossesMode: "total" | "streak" | "titleLosses" | "failedTitleDefenses" | "divisions";
-  lossesByMethod: Method;
-  lossesByMetric: Metric;
-  lossesPercentOf: "allFights" | "allLosses" | "finishLosses" | "decisionLosses";
-  lossStreakMethod: Method;
-  titleLossMethod: Method;
-  titleLossesMetric: Metric;
-  failedDefenseMethod: Method;
-  failedDefenseMetric: Metric;
-  divisionLossMethod: Method;
-  // Finishing
-  finishMode: "count" | "speed" | "fightTime" | "cageTime";
-  finishDirection: "given" | "taken";
-  speedScope: "average" | "single";
-  roundFinishMethod: "ko" | "sub" | "finish";
-  roundFinishRound: "all" | "1" | "2" | "3" | "4" | "5" | "1-3" | "4-5";
-  roundFinishMetric: Metric;
-  roundFinishPercentOf: "allFights" | "allResults" | "methodResults" | "roundResults";
-  fightTimeOrder: "shortest" | "longest";
-  // Output
-  actionType: "significantStrikes" | "totalStrikes" | "headStrikes" | "bodyStrikes" | "legStrikes" | "distanceStrikes" | "clinchStrikes" | "groundStrikes" | "takedowns" | "knockdowns" | "submissions" | "control";
-  actionDirection: "given" | "taken";
-  actionMode: "perFight" | "perRound" | "per15" | "perMinute" | "total" | "single";
-  actionBasis: "scored" | "attempted" | "differential" | "percent";
-  actionMinimumAttempts: "1" | "3" | "5" | "10" | "20" | "50";
-  // Context
-  contextMode: "opposition" | "championsFaced" | "streakBreakers" | "bounceBack" | "rematches" | "returns" | "durability";
-  oppositionScope: "beaten" | "faced";
-  oppositionSource: "ufc" | "all";
-  oppositionWhen: "atTime" | "today";
-  rematchMetric: "rate" | "revenge";
-  returnWindow: "quick" | "layoff";
-  // Market
-  bettingMode: "underdog" | "favorite" | "aboveExpectation" | "roi" | "avgLine";
-  underdogMetric: "wins" | "rate" | "biggest";
-  favoriteMetric: "rate" | "losses";
-};
-
-const DEFAULT_SETTINGS: StatsSettings = {
-  statsSince: "all",
-  statsUntil: "all",
-  minimumFights: "3",
-  minimumSample: "3",
-  limit: "20",
-  boutType: "all",
-  cardPosition: "all",
-  scheduledRounds: "all",
-  recordGroup: "bouts",
-  boutsMode: "total",
-  winsMode: "total",
-  winsByMethod: "all",
-  winsByMetric: "total",
-  winsPercentOf: "allFights",
-  streakKind: "wins",
-  streakByMethod: "all",
-  streakWhen: "longest",
-  titleWinMethod: "all",
-  titleWinsMetric: "total",
-  defenseScope: "total",
-  titleDefenseMethod: "all",
-  titleDefenseMetric: "total",
-  championScope: "ever",
-  championWinMethod: "all",
-  championWinsMetric: "total",
-  divisionWinMethod: "all",
-  ageEnd: "youngest",
-  lossesMode: "total",
-  lossesByMethod: "all",
-  lossesByMetric: "total",
-  lossesPercentOf: "allFights",
-  lossStreakMethod: "all",
-  titleLossMethod: "all",
-  titleLossesMetric: "total",
-  failedDefenseMethod: "all",
-  failedDefenseMetric: "total",
-  divisionLossMethod: "all",
-  finishMode: "count",
-  finishDirection: "given",
-  speedScope: "average",
-  roundFinishMethod: "finish",
-  roundFinishRound: "all",
-  roundFinishMetric: "total",
-  roundFinishPercentOf: "allFights",
-  fightTimeOrder: "shortest",
-  actionType: "significantStrikes",
-  actionDirection: "given",
-  actionMode: "perFight",
-  actionBasis: "scored",
-  actionMinimumAttempts: "1",
-  contextMode: "opposition",
-  oppositionScope: "beaten",
-  oppositionSource: "all",
-  oppositionWhen: "atTime",
-  rematchMetric: "rate",
-  returnWindow: "quick",
-  bettingMode: "underdog",
-  underdogMetric: "wins",
-  favoriteMetric: "rate",
-};
 
 type Update = <K extends keyof StatsSettings>(key: K, value: StatsSettings[K]) => void;
 
@@ -934,19 +802,12 @@ export default function StatsPage() {
   const [selectedFighters, setSelectedFighters] = useHistoryState<PickedFighter[]>("stats:fighters", []);
   const [resetTurns, setResetTurns] = useState(0);
 
-  const query = useMemo(() => {
-    const params = new URLSearchParams();
-    if (division !== "all") params.set("division", division);
-    if (includeWomen) params.set("includeWomen", "1");
-    if (!includeInactiveFighters) params.set("includeInactiveFighters", "0");
-    if (showMoreInfo) params.set("moreInfo", "1");
-    if (keepFullLists) params.set("keepFullLists", "1");
-    for (const [key, value] of Object.entries(settings)) params.set(key, value);
-    if (selectedFighters.length) params.set("fighterIds", selectedFighters.map((fighter) => fighter.id).join(","));
-    return params.toString();
-  }, [division, includeWomen, includeInactiveFighters, showMoreInfo, keepFullLists, selectedFighters, settings]);
+  const request = useMemo(() => statsRequest({
+    division, includeWomen, includeInactiveFighters, showMoreInfo, keepFullLists, settings,
+    fighterIds: selectedFighters.map((fighter) => fighter.id),
+  }), [division, includeWomen, includeInactiveFighters, showMoreInfo, keepFullLists, selectedFighters, settings]);
 
-  const { data, loading, error, retry } = useApi<StatsDashboard>(`/api/stats?${query}`, 5 * 60_000);
+  const { data, loading, error, retry } = useApi<StatsDashboard>(request, 5 * 60_000);
   const [displayed, setDisplayed] = useState<StatsDashboard | null>(null);
   useEffect(() => {
     if (data) setDisplayed(data);
@@ -980,7 +841,7 @@ export default function StatsPage() {
     setResetTurns((turns) => turns + 1);
   };
 
-  if (loading && !dashboard) return <div className="flex h-full items-center justify-center text-sm text-zinc-400">Calculating rankings…</div>;
+  if (loading && !dashboard) return <div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Calculating rankings…</div>;
   if (!dashboard) return <div className="flex h-full items-center justify-center p-4 text-sm text-zinc-400">{error ? <RequestNotice onRetry={retry}>Couldn’t load statistics.</RequestNotice> : "No statistics yet."}</div>;
 
   return (
@@ -1039,7 +900,7 @@ export default function StatsPage() {
 
         {/* Five cards of one width: three on top, two centred beneath them
             (on a two-column screen the fifth is centred on its own row). */}
-        <div aria-busy={loading} className={`grid grid-cols-1 gap-x-3 gap-y-3 transition-opacity md:grid-cols-2 xl:grid-cols-6 ${loading || error ? "opacity-70" : ""}`}>
+        <div aria-busy={loading} className={`grid grid-cols-1 gap-x-3 gap-y-3 transition-opacity md:grid-cols-2 xl:grid-cols-6 ${loading || error ? "opacity-70 delay-200" : ""}`}>
           {orderedBoards.map((board, index) => (
             <Leaderboard
               key={board.key}

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentType } from "react";
 import { Link, Route, Routes, useLocation } from "react-router-dom";
 import AccountButton from "./components/AccountButton";
 import CmdK from "./components/CmdK";
@@ -10,29 +10,39 @@ import { accountsEnabled, useAccount } from "./auth";
 import { useAdminResource, type AdminSession } from "./admin";
 import { useSettings, withRanking } from "./settings";
 import { prefetch } from "./api";
-import { useFighterPrefetch } from "./useFighterPrefetch";
+import { useLinkPrefetch, warmSections } from "./useLinkPrefetch";
+import { DEFAULT_STATS_REQUEST } from "./statsDefaults";
+import { pages, type PageLoader } from "./pages";
 import RouteErrorBoundary from "./components/RouteErrorBoundary";
 import ParlaySlip from "./components/ParlaySlip";
 import { ShortcutProvider, useShortcutHelp } from "./shortcuts";
 import { GraphicsProvider } from "./graphicsLauncher";
 
-const loadEventsPage = () => import("./pages/EventsPage");
-const loadRankingsPage = () => import("./pages/RankingsPage");
-const loadStatsPage = () => import("./pages/StatsPage");
-const EventsPage = lazy(loadEventsPage);
-const FighterPage = lazy(() => import("./pages/FighterPage"));
-const RankingsPage = lazy(loadRankingsPage);
-const StatsPage = lazy(loadStatsPage);
-const LabsPage = lazy(() => import("./pages/LabsPage"));
-const AdminPage = lazy(() => import("./pages/AdminPage"));
-const ProfilePage = lazy(() => import("./pages/ProfilePage"));
-const AuthPage = lazy(() => import("./pages/AuthPage"));
-const JudgePage = lazy(() => import("./pages/JudgePage"));
-const RefereePage = lazy(() => import("./pages/RefereePage"));
-const VenuePage = lazy(() => import("./pages/VenuePage"));
-const OfficialsPage = lazy(() => import("./pages/DirectoryPages").then((module) => ({ default: module.OfficialsPage })));
-const VenuesPage = lazy(() => import("./pages/DirectoryPages").then((module) => ({ default: module.VenuesPage })));
-const InfoPage = lazy(() => import("./pages/InfoPage"));
+/** A route's page: rendered directly once its code is in hand (the usual case,
+ *  since every page's code is fetched in the background), through Suspense
+ *  only before then. Chosen once per mount, so a page never remounts. */
+function page<M, P extends object>(load: PageLoader<M>, pick: (module: M) => ComponentType<P>) {
+  const Lazy = lazy(() => load().then(module => ({ default: pick(module) })));
+  return function Page(props: P) {
+    const [Component] = useState<ComponentType<P>>(() => load.module ? pick(load.module) : Lazy);
+    return <Component {...props} />;
+  };
+}
+
+const EventsPage = page(pages.events, module => module.default);
+const FighterPage = page(pages.fighter, module => module.default);
+const RankingsPage = page(pages.rankings, module => module.default);
+const StatsPage = page(pages.stats, module => module.default);
+const LabsPage = page(pages.labs, module => module.default);
+const AdminPage = page(pages.admin, module => module.default);
+const ProfilePage = page(pages.profile, module => module.default);
+const AuthPage = page(pages.auth, module => module.default);
+const JudgePage = page(pages.judge, module => module.default);
+const RefereePage = page(pages.referee, module => module.default);
+const VenuePage = page(pages.venue, module => module.default);
+const OfficialsPage = page(pages.directories, module => module.OfficialsPage);
+const VenuesPage = page(pages.directories, module => module.VenuesPage);
+const InfoPage = page(pages.info, module => module.default);
 const isDevSite = import.meta.env.VITE_SITE_ORIGIN === "https://dev.ufc.sh";
 
 const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
@@ -64,10 +74,11 @@ function Header({ onSearch }: { onSearch: () => void }) {
   // A profile belongs to no section of the nav, so none of them is lit.
   const isProfile = pathname.startsWith("/profiles");
   const links = [
-    { href: "/", label: "Events", active: !isRankings && !isStats && !isLabs && !isProfile && !isAdmin, load: loadEventsPage },
-    // Pointing at Rankings starts the list too, so a tap lands on it loaded.
-    { href: "/rankings", label: "Rankings", active: isRankings, load: () => { prefetch(withRanking("/api/rankings", settings.rankingSource)); return loadRankingsPage(); } },
-    { href: "/stats", label: "Stats", active: isStats || isLabs, load: loadStatsPage },
+    // Pointing at a section starts its code and its first data, so a tap
+    // lands on it loaded.
+    { href: "/", label: "Events", active: !isRankings && !isStats && !isLabs && !isProfile && !isAdmin, load: () => { warmSections(settings.rankingSource); return pages.events(); } },
+    { href: "/rankings", label: "Rankings", active: isRankings, load: () => { prefetch(withRanking("/api/rankings", settings.rankingSource)); return pages.rankings(); } },
+    { href: "/stats", label: "Stats", active: isStats || isLabs, load: () => { prefetch(DEFAULT_STATS_REQUEST); return pages.stats(); } },
   ];
 
   return (
@@ -165,7 +176,7 @@ export default function App() {
   const trackedPath = useRef<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const { settings } = useSettings();
-  useFighterPrefetch(settings.rankingSource);
+  useLinkPrefetch(settings.rankingSource);
 
   useEffect(() => {
     // React changes pages without a new document request. Count those views by
@@ -178,6 +189,13 @@ export default function App() {
       credentials: "omit", keepalive: true,
     }).catch(() => {});
   }, [location.pathname]);
+
+  // Colour transitions come back once the first page has been drawn (see the
+  // theme script in index.html).
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => document.documentElement.classList.remove("no-transitions"));
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   useEffect(() => {
     const previous = window.history.scrollRestoration;
@@ -202,8 +220,12 @@ export default function App() {
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-zinc-100 text-zinc-900">
       <Header onSearch={openSearch} />
       <div className="min-h-0 flex-1 overflow-hidden">
+        {/* One boundary for the whole app, outside the per-section error
+            boundary: navigations run as transitions, so a page whose code is
+            still on its way leaves the current one on screen until it is
+            ready instead of flashing a fallback. */}
+        <Suspense fallback={<div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading…</div>}>
         <RouteErrorBoundary key={routeGroup(location.pathname)}>
-        <Suspense fallback={<div role="status" className="flex h-full items-center justify-center text-sm text-zinc-400">Loading…</div>}>
         <Routes>
           <Route path="/" element={<EventsPage />} />
           <Route path="/events/:eventId" element={<EventsPage />} />
@@ -225,8 +247,8 @@ export default function App() {
           <Route path="/sign-up/*" element={<AuthPage mode="sign-up" />} />
           <Route path="*" element={<div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-zinc-500"><p>This page couldn’t be found.</p><Link to="/" className="font-semibold text-zinc-900 underline">Back to events</Link></div>} />
         </Routes>
-        </Suspense>
         </RouteErrorBoundary>
+        </Suspense>
       </div>
       <CmdK open={searchOpen} onClose={() => setSearchOpen(false)} />
       <ParlaySlip />

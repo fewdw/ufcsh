@@ -1,6 +1,6 @@
 import { List, X } from "lucide-react";
 import { isFightDay } from "../liveEvent";
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useApi } from "../api";
 import type { EventDetail, EventFight, FightDetailBlock, HistoryRow, Matchup, MatchupSide, ProfessionalHistoryRow } from "../api";
@@ -20,7 +20,9 @@ import { CardEventTitle, CardNavigation, CARD_STEP } from "../components/CardHea
 import FightScoring from "../components/FightScoring";
 import FightPredictions from "../components/FightPredictions";
 import { FightRail, FightRailSkeleton, FightStepLink, MatchupSkeleton } from "../components/FightRail";
-const FightDiscussion = lazy(() => import("../components/FightDiscussion"));
+// Part of this page's own code, so the Discussion tab opens with it rather
+// than behind a fallback while a separate chunk loads.
+import FightDiscussion from "../components/FightDiscussion";
 import FighterPortrait from "../components/FighterPortrait";
 import { resultDot } from "../resultDots";
 import MatchupOdds, { OddsFormatTabs, OddsMarkets } from "../components/MatchupOdds";
@@ -849,7 +851,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
 
       <div className="relative min-h-0 min-w-0 flex-1">
         {changingMatchup ? (
-          <div className="absolute inset-0 z-30 flex cursor-wait items-start justify-center bg-zinc-100/50 pt-6 backdrop-blur-[1px]">
+          <div className="appear-late absolute inset-0 z-30 flex cursor-wait items-start justify-center bg-zinc-100/50 pt-6 backdrop-blur-[1px]">
             <span className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-500 shadow-sm">
               {error ? <button type="button" onClick={retry}>Couldn’t load matchup · Retry</button> : "Loading matchup…"}
             </span>
@@ -974,9 +976,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
               {tab === "score" ? <FightScoring key={fight.id} fight={fight} /> : null}
               {tab === "predict" ? <FightPredictions key={fight.id} fight={fight} /> : null}
               {tab === "discussion" ? (
-                <Suspense fallback={<div className={`${shell} p-5 text-sm text-zinc-500`} role="status">Loading discussion…</div>}>
-                  <FightDiscussion key={fight.id} fightId={fight.id} />
-                </Suspense>
+                <FightDiscussion key={fight.id} fightId={fight.id} />
               ) : null}
             </div>
           </div>

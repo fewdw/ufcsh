@@ -3,6 +3,8 @@ import { ArrowBigDown, ArrowBigUp, ChevronDown, Ellipsis, Flag, Link2, Minus, Pe
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { accountsEnabled, useAccount } from "../auth";
+import { useSessionUser } from "../profile";
+import { readSnapshot, writeSnapshot } from "../snapshots";
 import {
   COLLAPSE_SCORE, COMMENT_MAX, REPORT_REASONS, commentLink, commentSegments, deleteNode, insertReply, pickLabel,
   replyTarget, updateEvery, updateNode,
@@ -64,30 +66,55 @@ const useDiscussion = () => useContext(DiscussionContext)!;
 /** A fight's discussion: comments, replies to them, and replies to those. */
 export default function FightDiscussion({ fightId }: { fightId: string }) {
   return accountsEnabled ? <WithAccount fightId={fightId} />
-    : <DiscussionPanel fightId={fightId} getToken={noToken} signedIn={false} signIn={null} />;
+    : <DiscussionPanel fightId={fightId} viewerKey="guest" getToken={noToken} signedIn={false} signIn={null} />;
 }
 
 function WithAccount({ fightId }: { fightId: string }) {
   const { getToken } = useAuth();
-  const { isLoaded, user, signIn } = useAccount();
-  if (!isLoaded) return <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">Loading discussion…</section>;
+  const { signIn } = useAccount();
+  // The account this browser last saw stands in until Clerk answers, so the
+  // thread and the composer are drawn at once.
+  const { userId } = useSessionUser();
   // A different account is a different view of the same thread.
-  return <DiscussionPanel key={user?.id ?? "guest"} fightId={fightId} getToken={getToken} signedIn={Boolean(user)} signIn={signIn} />;
+  return <DiscussionPanel key={userId ?? "guest"} fightId={fightId} viewerKey={userId ?? "guest"} getToken={getToken} signedIn={Boolean(userId)} signIn={signIn} />;
 }
 
 type Meta = { total: number; threads: number; next: number; viewer: Viewer };
 
-function DiscussionPanel({ fightId, getToken, signedIn, signIn }: {
-  fightId: string; getToken: GetToken; signedIn: boolean; signIn: (() => void) | null;
+/** Threads shown, by viewer, bout, order and focus: reopening a discussion,
+ *  or reloading the page, shows it as it was while it is fetched again. */
+type Shown = { comments: CommentNode[]; meta: Meta };
+const shownThreads = new Map<string, Shown>();
+function recallThread(key: string): Shown | null {
+  const known = shownThreads.get(key);
+  if (known) return known;
+  const saved = readSnapshot(`thread:${key}`)?.data as Shown | undefined;
+  if (saved) shownThreads.set(key, saved);
+  return saved ?? null;
+}
+
+function DiscussionPanel({ fightId, viewerKey, getToken, signedIn, signIn }: {
+  fightId: string; viewerKey: string; getToken: GetToken; signedIn: boolean; signIn: (() => void) | null;
 }) {
   const location = useLocation();
   const navigate = useNavigate();
   const focus = new URLSearchParams(location.search).get("comment");
   const [sort, setSort] = useState<CommentSort>("top");
-  const [comments, setComments] = useState<CommentNode[] | null>(null);
-  const [meta, setMeta] = useState<Meta | null>(null);
+  const threadKey = `${viewerKey}:${fightId}:${sort}:${focus ?? ""}`;
+  const [comments, setComments] = useState<CommentNode[] | null>(() => recallThread(threadKey)?.comments ?? null);
+  const [meta, setMeta] = useState<Meta | null>(() => recallThread(threadKey)?.meta ?? null);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !recallThread(threadKey));
+  /** Which thread the comments on screen belong to (a new sort keeps the old
+   *  ones up until its own arrive). */
+  const shownFor = useRef<string | null>(recallThread(threadKey) ? threadKey : null);
+  useEffect(() => {
+    if (!comments || !meta || shownFor.current !== threadKey) return;
+    shownThreads.delete(threadKey);
+    shownThreads.set(threadKey, { comments, meta });
+    if (shownThreads.size > 30) shownThreads.delete(shownThreads.keys().next().value!);
+    writeSnapshot(`thread:${threadKey}`, JSON.stringify({ comments, meta }));
+  }, [threadKey, comments, meta]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [replying, setReplying] = useState<string | null>(null);
   const [reporting, setReporting] = useState<CommentNode | null>(null);
@@ -116,11 +143,13 @@ function DiscussionPanel({ fightId, getToken, signedIn, signIn }: {
         if (mine !== generation.current) return;
         // A link to another bout's comment: show this bout's discussion instead.
         if (data.fightId !== fightId) { showAll(); return; }
+        shownFor.current = threadKey;
         setComments([data.comment]);
         setMeta({ total: data.comment.replyCount + 1, threads: 1, next: 1, viewer: data.viewer });
       } else {
         const data = await request<DiscussionPage>(`/api/fights/${fightId}/comments?sort=${sort}`, { optional: true });
         if (mine !== generation.current) return;
+        shownFor.current = threadKey;
         setComments(data.comments);
         setMeta({ total: data.total, threads: data.threads, next: data.pageSize, viewer: data.viewer });
       }
@@ -129,7 +158,7 @@ function DiscussionPanel({ fightId, getToken, signedIn, signIn }: {
     } finally {
       if (mine === generation.current) setLoading(false);
     }
-  }, [fightId, focus, request, showAll, sort]);
+  }, [fightId, focus, request, showAll, sort, threadKey]);
   useEffect(() => { void load(); }, [load]);
 
   // A permalink opens scrolled to its comment, once.
@@ -242,11 +271,11 @@ function DiscussionPanel({ fightId, getToken, signedIn, signIn }: {
         {error && !comments ? (
           <p className="px-5 py-10 text-center text-sm text-rose-600">{error} <button type="button" className="underline" onClick={() => void load()}>Retry</button></p>
         ) : !comments ? (
-          <p className="px-5 py-10 text-center text-sm text-zinc-400" role="status">Loading comments…</p>
+          <p className="appear-late px-5 py-10 text-center text-sm text-zinc-400" role="status">Loading comments…</p>
         ) : !comments.length ? (
           <p className="px-5 py-10 text-center text-sm text-zinc-500">No comments yet. Start the conversation.</p>
         ) : (
-          <ul className={`divide-y divide-zinc-100 ${loading ? "opacity-60 transition-opacity" : ""}`}>
+          <ul className={`divide-y divide-zinc-100 ${loading ? "opacity-60 transition-opacity delay-200" : ""}`}>
             {comments.map(node => <li key={node.id} className="px-3 py-3 sm:px-4"><Thread node={node} rootId={node.id} /></li>)}
           </ul>
         )}

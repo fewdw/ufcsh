@@ -1,8 +1,28 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigationType } from "react-router-dom";
 
-const scrollPositions = new Map<string, { top: number; left: number }>();
+type Position = { top: number; left: number };
+const SCROLL_KEY = "ufcsh:scroll:v1";
+
+/** Scroll positions by history entry and region. They are kept in
+ *  sessionStorage as the page goes away, so a reload (whose history entry keeps
+ *  its key) returns every region to where it was. */
+const scrollPositions = new Map<string, Position>((() => {
+  try { return JSON.parse(sessionStorage.getItem(SCROLL_KEY) ?? "[]") as [string, Position][]; } catch { return []; }
+})());
+function rememberScroll(key: string, position: Position) {
+  scrollPositions.delete(key);
+  scrollPositions.set(key, position);
+  if (scrollPositions.size > 300) scrollPositions.delete(scrollPositions.keys().next().value!);
+}
+function persistScroll() {
+  try { sessionStorage.setItem(SCROLL_KEY, JSON.stringify([...scrollPositions])); } catch { /* storage unavailable */ }
+}
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", persistScroll);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") persistScroll(); });
+}
 const historyState = new Map<string, unknown>();
 
 /** State attached to one browser-history entry. Returning with Back restores
@@ -38,6 +58,7 @@ export function useHistoryState<T>(id: string, initial: T | (() => T)): [T, Disp
  * top just because the fight overlay pushed a new history entry. */
 export function useRouteScrollRestoration<T extends HTMLElement>(id: string, ready = true, scopeKey?: string): RefObject<T | null> {
   const { key: locationKey } = useLocation();
+  const navigationType = useNavigationType();
   const key = scopeKey ?? locationKey;
   const ref = useRef<T>(null);
 
@@ -52,7 +73,7 @@ export function useRouteScrollRestoration<T extends HTMLElement>(id: string, rea
     let animationFrame = 0;
 
     const save = () => {
-      if (!restoring) scrollPositions.set(cacheKey, { top: element.scrollTop, left: element.scrollLeft });
+      if (!restoring) rememberScroll(cacheKey, { top: element.scrollTop, left: element.scrollLeft });
     };
     const stopRestoring = () => {
       restoring = false;
@@ -63,7 +84,9 @@ export function useRouteScrollRestoration<T extends HTMLElement>(id: string, rea
       element.scrollTop = saved.top;
       element.scrollLeft = saved.left;
       frame += 1;
-      if (frame < 20 && (Math.abs(element.scrollTop - saved.top) > 1 || Math.abs(element.scrollLeft - saved.left) > 1)) {
+      // Keep trying for about a second while late content (a photo, a second
+      // request) makes the region tall enough to reach the saved place.
+      if (frame < 60 && (Math.abs(element.scrollTop - saved.top) > 1 || Math.abs(element.scrollLeft - saved.left) > 1)) {
         animationFrame = requestAnimationFrame(restore);
       } else {
         restoring = false;
@@ -71,7 +94,10 @@ export function useRouteScrollRestoration<T extends HTMLElement>(id: string, rea
     };
 
     if (saved) restore();
-    else element.scrollTo({ top: 0, left: 0 });
+    // A tab, filter or sort changes the address in place (a replace): the
+    // reader stays where they are. A new page starts at the top.
+    else if (navigationType !== "REPLACE") element.scrollTo({ top: 0, left: 0 });
+    else save();
     element.addEventListener("scroll", save, { passive: true });
     element.addEventListener("wheel", stopRestoring, { passive: true });
     element.addEventListener("pointerdown", stopRestoring, { passive: true });
@@ -79,13 +105,13 @@ export function useRouteScrollRestoration<T extends HTMLElement>(id: string, rea
 
     return () => {
       cancelAnimationFrame(animationFrame);
-      scrollPositions.set(cacheKey, restoring && saved ? saved : { top: element.scrollTop, left: element.scrollLeft });
+      rememberScroll(cacheKey, restoring && saved ? saved : { top: element.scrollTop, left: element.scrollLeft });
       element.removeEventListener("scroll", save);
       element.removeEventListener("wheel", stopRestoring);
       element.removeEventListener("pointerdown", stopRestoring);
       element.removeEventListener("touchstart", stopRestoring);
     };
-  }, [id, key, ready]);
+  }, [id, key, ready, navigationType]);
 
   return ref;
 }

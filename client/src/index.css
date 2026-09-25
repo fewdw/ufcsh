@@ -302,6 +302,23 @@ select:not([multiple]):not([size]) {
   50% { opacity: 0.35; transform: scale(0.82); }
 }
 
+/* Until the first page is drawn nothing animates its colours: an element
+   styled before the theme settles must not fade from one palette to the other. */
+.no-transitions *, .no-transitions *::before, .no-transitions *::after {
+  transition: none !important;
+}
+
+/* A loading placeholder stays invisible for its first moments: most answers
+   arrive within them, and a line that flashes on and off reads as slowness.
+   It still holds its space, so nothing shifts when it does appear. */
+.appear-late {
+  animation: appear-late 160ms ease-out 350ms backwards;
+}
+
+@keyframes appear-late {
+  from { opacity: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     transition-duration: 0.01ms !important;

@@ -1,4 +1,6 @@
 export type ApiSnapshot = { data: unknown; loading: boolean; refreshing: boolean; error: boolean };
+/** Where answers outlive the page: read once per key, written after each fetch. */
+export type Persistence = { read(key: string): { data: unknown } | null; write(key: string, text: string): void };
 const EMPTY: ApiSnapshot = { data: null, loading: true, refreshing: false, error: false };
 
 /** Bounded, shared requests. A failed refresh retains data and reports failure. */
@@ -9,13 +11,28 @@ export class RequestCache {
   private fetchedAt = new Map<string, number>();
   private capacity: number;
   private fetcher: typeof fetch;
+  private persistence?: Persistence;
+  private restored = new Set<string>();
 
-  constructor(capacity = 80, fetcher: typeof fetch = (...args) => fetch(...args)) {
+  constructor(capacity = 80, fetcher: typeof fetch = (...args) => fetch(...args), persistence?: Persistence) {
     this.capacity = capacity;
     this.fetcher = fetcher;
+    this.persistence = persistence;
   }
 
-  read = (url: string): ApiSnapshot => this.entries.get(url) ?? EMPTY;
+  /** A saved answer is shown at once and treated as due for a refresh, so
+   *  the first load after a reload always asks the server. */
+  read = (url: string): ApiSnapshot => {
+    const entry = this.entries.get(url);
+    if (entry || !this.persistence || this.restored.has(url)) return entry ?? EMPTY;
+    if (this.restored.size > 2000) this.restored.clear();
+    this.restored.add(url);
+    const saved = this.persistence.read(url);
+    if (!saved) return EMPTY;
+    const snapshot = { data: saved.data, loading: false, refreshing: false, error: false };
+    this.entries.set(url, snapshot);
+    return snapshot;
+  };
 
   subscribe(url: string, listener: () => void) {
     const subscribers = this.listeners.get(url) ?? new Set();
@@ -34,6 +51,7 @@ export class RequestCache {
       if (!this.listeners.has(key) && !this.pending.has(key)) {
         this.entries.delete(key);
         this.fetchedAt.delete(key);
+        this.restored.delete(key);
       }
     }
   }
@@ -53,9 +71,11 @@ export class RequestCache {
       .then(() => this.fetcher(requestUrl, { signal: AbortSignal.timeout(20_000) }))
       .then((response) => {
         if (!response.ok) throw new Error(String(response.status));
-        return response.json();
+        return response.text();
       })
-      .then((result) => {
+      .then((text) => {
+        const result = JSON.parse(text);
+        this.persistence?.write(url, text);
         this.fetchedAt.set(url, Date.now());
         this.publish(url, { data: result, loading: false, refreshing: false, error: false });
       })

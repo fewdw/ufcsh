@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Matchup } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
+import { recallMine, rememberMine, useSessionUser } from "../profile";
 import { lastName } from "../format";
 import type { MyScorecard, RoundScore, ScoreSummary } from "../scoring";
 import { fightFinish, scoreTotal } from "../scoring";
@@ -33,31 +34,43 @@ export default function ScoreEditor(props: Props) {
 }
 
 function Gate(props: Props) {
-  const { isLoaded, user, signIn } = useAccount();
-  if (!isLoaded || !user)
+  const { signIn } = useAccount();
+  // The account this browser last saw stands in until Clerk answers, so the
+  // card is on screen at once; with none, the reader is taken as signed out.
+  const { userId } = useSessionUser();
+  if (!userId)
     return (
       // Laid out like the Predict tab's signed-out panel: its heading, then
       // the one thing to do.
       <section className={PANEL_SHELL}>
         <PanelHeading title="Your scorecard" />
         <div className="px-4 py-4 text-center">
-          {isLoaded
-            ? <button type="button" className={primary} onClick={signIn}>Sign in to score</button>
-            : <span className="text-sm text-zinc-400">Loading…</span>}
+          <button type="button" className={primary} onClick={signIn}>Sign in to score</button>
         </div>
       </section>
     );
   return (
     <section className={PANEL_SHELL}>
-      <Editor key={`${props.fight.id}:${user.id}`} {...props} userId={user.id} />
+      <Editor key={`${props.fight.id}:${userId}`} {...props} userId={userId} />
     </section>
   );
 }
 
 function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: string }) {
   const { getToken } = useAuth();
-  const [saved, setSaved] = useState<MyScorecard | null>(null);
-  const [rounds, setRounds] = useState<RoundScore[]>([]);
+  // The last card seen here is shown at once and fetched again behind it.
+  const [seed] = useState(() => recallMine<MyScorecard>(userId, `scorecard:${fight.id}`));
+  const [saved, setSaved] = useState<MyScorecard | null>(seed);
+  const [rounds, setRounds] = useState<RoundScore[]>(() => {
+    // An interrupted session (a redirect, a reload) keeps its unsaved work.
+    try {
+      const draft = JSON.parse(sessionStorage.getItem(`ufc-score:${userId}:${fight.id}`) ?? "null");
+      if (seed && draft?.revision === seed.revision && Array.isArray(draft.rounds)) return draft.rounds;
+    } catch { /* Storage is optional. */ }
+    return seed?.rounds ?? [];
+  });
+  /** Set once the reader changes a round: a refresh then leaves their card alone. */
+  const edited = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
@@ -83,7 +96,11 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
     try {
       const card = await request("GET", undefined, signal);
       if (!mounted.current || signal?.aborted) return;
-      setSaved(card); setRounds(card.rounds); setConflict(false);
+      rememberMine(userId, `scorecard:${fight.id}`, card);
+      setSaved(card); setConflict(false);
+      // A change already made stays; saving it settles any newer revision.
+      if (edited.current) return;
+      setRounds(card.rounds);
       if (restore) {
         // An interrupted session (a redirect, a reload) keeps its unsaved work;
         // the Save button carrying "Unsaved" is what says so.
@@ -94,7 +111,7 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
       }
     } catch (err) { if (mounted.current && !signal?.aborted) setError(err instanceof Error ? err.message : "Unable to load your scorecard."); }
     finally { if (mounted.current && !signal?.aborted) setLoading(false); }
-  }, [request, storageKey]);
+  }, [request, storageKey, userId, fight.id]);
   useEffect(() => {
     mounted.current = true;
     const controller = new AbortController();
@@ -111,12 +128,12 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
-  const updateRound = (n: number, update: Partial<RoundScore>) => setRounds(previous => {
+  const updateRound = (n: number, update: Partial<RoundScore>) => { edited.current = true; setRounds(previous => {
     const old = previous.find(r => r.round === n);
     return [...previous.filter(r => r.round !== n), { round: n, f1: 10, f2: 9, deduct1: 0, deduct2: 0, ...old, ...update }].sort((a, b) => a.round - b.round);
-  });
+  }); };
   /** Choosing the score already on the card takes that round back off it. */
-  const clearRound = (n: number) => setRounds(previous => previous.filter(r => r.round !== n));
+  const clearRound = (n: number) => { edited.current = true; setRounds(previous => previous.filter(r => r.round !== n)); };
   const submit = async (remove = false) => {
     if (!saved || busy) return;
     setBusy(true); setError("");
@@ -124,6 +141,8 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
       const card = await request(remove ? "DELETE" : "PUT", { revision: saved.revision, rounds: rounds.filter(r => r.round <= eligibility.available) });
       if (!mounted.current) return;
       setSaved(card); setRounds(card.rounds); setConflict(false);
+      edited.current = false;
+      rememberMine(userId, `scorecard:${fight.id}`, card);
       onSaved();
     } catch (err) { if (mounted.current) setError(err instanceof Error ? err.message : "Unable to save. Please retry."); }
     finally { if (mounted.current) setBusy(false); }
@@ -146,7 +165,7 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
           </Link>
         ) : undefined}
       />
-      {loading ? <p className="p-5 text-sm text-zinc-500">Loading…</p> : !saved ? (
+      {!saved && loading ? <p className="appear-late p-5 text-sm text-zinc-500">Loading…</p> : !saved ? (
         <p role="alert" className="p-5 text-sm text-rose-600">
           {error} <button className="underline" onClick={() => void load(undefined, false)}>Retry</button>
         </p>
@@ -225,7 +244,7 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
             </p>
             <div className="flex flex-wrap items-center justify-end gap-1">
               {/* Nothing that cannot be pressed right now is on the card. */}
-              {!busy && !conflict && rounds.length > 0 ? <button type="button" className={quiet} onClick={() => setRounds([])}>Reset</button> : null}
+              {!busy && !conflict && rounds.length > 0 ? <button type="button" className={quiet} onClick={() => { edited.current = true; setRounds([]); }}>Reset</button> : null}
               {!busy && !conflict && saved.rounds.length > 0 ? <button type="button" className={quiet} onClick={() => void submit(true)}>Remove</button> : null}
               <button type="button" className={primary} disabled={busy || conflict || !dirty || !scored.length || !consecutive || !complete}
                 title={!consecutive ? "Score earlier rounds first" : !complete ? "Score every round" : undefined}

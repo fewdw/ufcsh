@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 
 import { useApi, type Matchup } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
+import { recallMine, rememberMine, useSessionUser } from "../profile";
 import { METHOD_LABEL, predictionLabel, predictionPoints, sharePct } from "../predictions";
 import type { FanPrediction, MyPrediction, PredictionDistribution, PredictionMethod, PredictionSummary } from "../predictions";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
@@ -25,7 +26,7 @@ const primary = BUTTON_PRIMARY_LARGE;
 
 export default function FightPredictions({ fight }: { fight: Matchup }) {
   const { data, error, retry } = useApi<PredictionSummary>(`/api/fights/${fight.id}/predictions`, 3_000);
-  if (!data) return <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
+  if (!data) return <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
     {error ? <>{error} <button className="underline" onClick={retry}>Retry</button></> : "Loading predictions…"}
   </section>;
   return <>
@@ -132,15 +133,17 @@ function FanPredictions({ predictions, total }: { predictions: FanPrediction[]; 
 
 type EditorProps = { fight: Matchup; status: PredictionSummary; onSaved: () => void };
 function PredictionGate(props: EditorProps) {
-  const { isLoaded, user, signIn } = useAccount();
-  if (!isLoaded) return <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`}>Loading your account…</section>;
-  if (!user) return <section className={PANEL_SHELL}>
+  const { signIn } = useAccount();
+  // The account this browser last saw stands in until Clerk answers, so the
+  // pick is on screen at once; with none, the reader is taken as signed out.
+  const { userId } = useSessionUser();
+  if (!userId) return <section className={PANEL_SHELL}>
     <PredictionHeading open={props.status.open} />
     <div className="px-4 py-4 text-center">
       <button type="button" className={primary} onClick={signIn}>Sign in to {props.status.open ? "predict" : "view your pick"}</button>
     </div>
   </section>;
-  return <PredictionEditor key={`${props.fight.id}:${user.id}`} {...props} />;
+  return <PredictionEditor key={`${props.fight.id}:${userId}`} {...props} userId={userId} />;
 }
 
 /** The one place the open/closed state is stated. */
@@ -152,12 +155,16 @@ function PredictionHeading({ open }: { open: boolean }) {
   } />;
 }
 
-function PredictionEditor({ fight, status, onSaved }: EditorProps) {
+function PredictionEditor({ fight, status, onSaved, userId }: EditorProps & { userId: string }) {
   const { getToken } = useAuth();
-  const [saved, setSaved] = useState<MyPrediction | null>(null);
-  const [fighterId, setFighter] = useState("");
-  const [method, setMethod] = useState<PredictionMethod | null>(null);
-  const [round, setRound] = useState<number | null>(null);
+  // The last pick seen here is shown at once and fetched again behind it.
+  const [seed] = useState(() => recallMine<MyPrediction>(userId, `prediction:${fight.id}`));
+  const [saved, setSaved] = useState<MyPrediction | null>(seed);
+  const [fighterId, setFighter] = useState(seed?.pick?.fighterId ?? "");
+  const [method, setMethod] = useState<PredictionMethod | null>(seed?.pick?.method ?? null);
+  const [round, setRound] = useState<number | null>(seed?.pick?.round ?? null);
+  /** Set once the reader changes a choice: a refresh then leaves it alone. */
+  const edited = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -179,13 +186,16 @@ function PredictionEditor({ fight, status, onSaved }: EditorProps) {
     }
     return data as MyPrediction;
   }, [fight.id, getToken, onSaved]);
-  const accept = (data: MyPrediction) => {
-    setSaved(data); setFighter(data.pick?.fighterId ?? "");
-    setMethod(data.pick?.method ?? null); setRound(data.pick?.round ?? null); setConflict(false);
+  const accept = (data: MyPrediction, keepEdits = false) => {
+    setSaved(data); setConflict(false);
+    rememberMine(userId, `prediction:${fight.id}`, data);
+    if (keepEdits && edited.current) return;
+    edited.current = false;
+    setFighter(data.pick?.fighterId ?? ""); setMethod(data.pick?.method ?? null); setRound(data.pick?.round ?? null);
   };
   const load = useCallback(async (signal?: AbortSignal) => {
     setError("");
-    try { const data = await request("GET", undefined, signal); if (mounted.current && !signal?.aborted) accept(data); }
+    try { const data = await request("GET", undefined, signal); if (mounted.current && !signal?.aborted) accept(data, true); }
     catch (err) { if (mounted.current && !signal?.aborted) setError(err instanceof Error ? err.message : "Unable to load prediction."); }
   }, [request]);
   useEffect(() => {
@@ -217,7 +227,7 @@ function PredictionEditor({ fight, status, onSaved }: EditorProps) {
     <PredictionHeading open={open} />
     <div className="px-4 py-3 sm:px-5 sm:py-4">
       {!saved ? (
-        <p role="status" className="text-sm text-zinc-500">
+        <p role="status" className="appear-late text-sm text-zinc-500">
           {error ? <>{error} <button className="underline" onClick={() => void load()}>Retry</button></> : "Loading your pick…"}
         </p>
       ) : <>
@@ -236,7 +246,7 @@ function PredictionEditor({ fight, status, onSaved }: EditorProps) {
                   const picked = fighterId === item.fighterId;
                   return (
                     <button key={item.fighterId} type="button" aria-pressed={picked}
-                      onClick={() => { setFighter(item.fighterId); setMessage(""); }}
+                      onClick={() => { setFighter(item.fighterId); edited.current = true; setMessage(""); }}
                       className={`min-w-0 rounded-xl border px-3 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${
                         picked
                           ? index === 0 ? "border-f1 bg-f1-soft text-f1-ink" : "border-f2 bg-f2-soft text-f2-ink"
@@ -263,7 +273,7 @@ function PredictionEditor({ fight, status, onSaved }: EditorProps) {
                   const picked = method === value;
                   return (
                     <button key={value} type="button" aria-pressed={picked}
-                      onClick={() => { const next = picked ? null : value; setMethod(next); if (next == null || next === "decision") setRound(null); setMessage(""); }}
+                      onClick={() => { const next = picked ? null : value; setMethod(next); if (next == null || next === "decision") setRound(null); edited.current = true; setMessage(""); }}
                       className={`${option} ${picked ? optionOn : optionIdle}`}>
                       {METHOD_LABEL[value]}
                     </button>
@@ -283,7 +293,7 @@ function PredictionEditor({ fight, status, onSaved }: EditorProps) {
                       const picked = round === value;
                       return (
                         <button key={value} type="button" aria-pressed={picked}
-                          onClick={() => { setRound(picked ? null : value); setMessage(""); }}
+                          onClick={() => { setRound(picked ? null : value); edited.current = true; setMessage(""); }}
                           className={`${option} ${picked ? optionOn : optionIdle}`}>
                           R{value}
                         </button>

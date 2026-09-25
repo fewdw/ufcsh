@@ -1,4 +1,3 @@
-import { lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
 import type { Matchup } from "../api";
 import { apiCache, useApi } from "../api";
@@ -7,8 +6,10 @@ import { cardWinner, decimalScore, fightFinish } from "../scoring";
 import type { FanCard, ScoreSummary } from "../scoring";
 import { PANEL_SHELL, PanelHeading, sectionLabel } from "./FightStats";
 import FanAvatar from "./FanAvatar";
+// Part of the matchup page's own code: a lazily loaded editor held the Score
+// tab on a fallback for at least React's 300 ms reveal throttle.
+import ScoreEditor from "./ScoreEditor";
 
-const ScoreEditor = lazy(() => import("./ScoreEditor"));
 
 /** The community's card and the reader's own card. Nothing else: the numbers
  *  and the seven buttons that produce them are the whole feature. */
@@ -16,7 +17,7 @@ export default function FightScoring({ fight }: { fight: Matchup }) {
   const { data, error, retry } = useApi<ScoreSummary>(`/api/fights/${fight.id}/scores`, 5_000);
   if (!data)
     return (
-      <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
+      <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
         {error ? <>Scores could not be loaded. <button className="underline" onClick={retry}>Retry</button></> : "Loading scores…"}
       </section>
     );
@@ -87,9 +88,7 @@ export default function FightScoring({ fight }: { fight: Matchup }) {
       </section>
       {data.cards.length ? <FanCards fight={fight} cards={data.cards} localCards={totals.localCards} totalScorers={totals.scorers} /> : null}
       {eligibility.available > 0 ? (
-        <Suspense fallback={<div className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`}>Loading your scorecard…</div>}>
-          <ScoreEditor fight={fight} eligibility={eligibility} onSaved={() => { void apiCache.loadAfterWrite(`/api/fights/${fight.id}/scores`); }} />
-        </Suspense>
+        <ScoreEditor fight={fight} eligibility={eligibility} onSaved={() => { void apiCache.loadAfterWrite(`/api/fights/${fight.id}/scores`); }} />
       ) : null}
     </>
   );

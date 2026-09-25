@@ -1,6 +1,36 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { readSnapshot, writeSnapshot } from "../snapshots";
 
 type Page = { total: number; pageSize: number };
+
+/** A list's identity and first request, shared by the hook that shows it and
+ *  by `prefetchList`. `saved` lists (public ones) also outlive a reload. */
+export type ListSource<P> = { key: string; load: (offset: number) => Promise<P>; saved?: boolean };
+
+/** Lists already read this visit, newest last: a tab opened again shows its
+ *  rows at once and refreshes them behind the scenes. */
+const remembered = new Map<string, Page[]>();
+
+function remember(source: ListSource<Page>, pages: Page[]) {
+  remembered.delete(source.key);
+  remembered.set(source.key, pages);
+  if (remembered.size > 40) remembered.delete(remembered.keys().next().value!);
+  if (source.saved && pages[0]) writeSnapshot(`list:${source.key}`, JSON.stringify(pages[0]));
+}
+
+function recall<P extends Page>(source: ListSource<P> | undefined): P[] {
+  if (!source) return [];
+  const pages = remembered.get(source.key);
+  if (pages) return pages as P[];
+  const saved = source.saved ? readSnapshot(`list:${source.key}`) : null;
+  return saved ? [saved.data as P] : [];
+}
+
+/** Read a list's first page before it is opened (a tab not yet shown). */
+export function prefetchList<P extends Page>(source: ListSource<P>): void {
+  if (remembered.has(source.key)) return;
+  void source.load(0).then(page => { if (!remembered.has(source.key)) remember(source, [page]); }, () => {});
+}
 
 /** The nearest ancestor that scrolls, so a sentinel is watched against the
  *  panel the reader actually scrolls rather than the window. */
@@ -18,24 +48,29 @@ function scrollParent(node: HTMLElement): HTMLElement | null {
  * screen can be fetched again together — after a removal, or on a timer — so
  * the list stays one continuous run instead of a pager.
  */
-export function useInfiniteList<P extends Page, T>({ resetKey, load, items, itemKey, refreshMs }: {
+export function useInfiniteList<P extends Page, T>({ resetKey, load, source, items, itemKey, refreshMs }: {
   /** A new key starts the list over from its first page. */
   resetKey: string;
-  load: (offset: number) => Promise<P>;
   items: (page: P) => T[];
   itemKey: (item: T) => string;
   refreshMs?: number;
-}) {
-  const [pages, setPages] = useState<P[]>([]);
+} & ({ source: ListSource<P>; load?: never } | { load: (offset: number) => Promise<P>; source?: never })) {
+  const [pages, setPages] = useState<P[]>(() => recall(source));
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const shown = useRef<P[]>([]);
+  const shown = useRef<P[]>(pages);
   const busy = useRef(false);
   /** Bumped whenever the list starts over, so a late answer is dropped. */
   const generation = useRef(0);
-  const loadRef = useRef(load);
-  loadRef.current = load;
-  const commit = (next: P[]) => { shown.current = next; setPages(next); };
+  const loadRef = useRef(source?.load ?? load!);
+  loadRef.current = source?.load ?? load!;
+  const sourceRef = useRef(source);
+  sourceRef.current = source;
+  const commit = (next: P[]) => {
+    shown.current = next;
+    setPages(next);
+    if (sourceRef.current) remember(sourceRef.current as ListSource<Page>, next);
+  };
 
   const loadNext = useCallback(async () => {
     const current = shown.current;
@@ -73,12 +108,20 @@ export function useInfiniteList<P extends Page, T>({ resetKey, load, items, item
   useEffect(() => {
     generation.current++;
     busy.current = false;
+    setError("");
+    // A list read before is shown as it was and fetched again behind it.
+    const known = recall(sourceRef.current);
+    if (known.length) {
+      shown.current = known;
+      setPages(known);
+      void reload();
+      return;
+    }
     // Start counting from the first page again, but leave the rows on screen
     // until it arrives, so switching a sort does not flash an empty panel.
     shown.current = [];
-    setError("");
     void loadNext();
-  }, [resetKey, loadNext]);
+  }, [resetKey, loadNext, reload]);
 
   useEffect(() => {
     if (!refreshMs) return;
@@ -124,14 +167,16 @@ export const LIST_META = "text-xs leading-5 text-zinc-500";
 export const LIST_VALUE = "shrink-0 text-sm font-semibold tabular-nums";
 
 /** The foot of a scrolling list: where the next page is asked for. */
-export function LoadMore({ list }: { list: Pick<ReturnType<typeof useInfiniteList>, "more" | "error" | "retry" | "sentinel"> }) {
+export function LoadMore({ list }: { list: Pick<ReturnType<typeof useInfiniteList>, "more" | "loading" | "error" | "retry" | "sentinel"> }) {
   if (list.error && list.more) return (
     <p className="border-t border-zinc-100 px-5 py-4 text-center text-sm text-rose-600">
       Couldn’t load more. <button type="button" className="underline" onClick={() => void list.retry()}>Retry</button>
     </p>
   );
   if (!list.more) return null;
-  return <div ref={list.sentinel} role="status" className="border-t border-zinc-100 px-5 py-4 text-center text-sm text-zinc-400">Loading more…</div>;
+  return <div ref={list.sentinel} role="status" className="border-t border-zinc-100 px-5 py-4 text-center text-sm text-zinc-400">
+    <span className={list.loading ? "appear-late" : "invisible"}>Loading more…</span>
+  </div>;
 }
 
 /** Plain JSON, never a cached copy: a list page must reflect the last write. */

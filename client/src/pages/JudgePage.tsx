@@ -199,7 +199,7 @@ export default function JudgePage() {
 
         <Panel title="Scorecards" subtitle="Newest first">
           {list.items.length ? (
-            <ul aria-busy={stale || list.loading} className={`divide-y divide-zinc-100 border-t border-zinc-100 ${stale ? "opacity-60 transition-opacity" : ""}`}>
+            <ul aria-busy={stale || list.loading} className={`divide-y divide-zinc-100 border-t border-zinc-100 ${stale ? "opacity-60 transition-opacity delay-200" : ""}`}>
               {list.items.map((row) => <Fragment key={row.fight_id}><CardRow row={row} /></Fragment>)}
             </ul>
           ) : <p className="border-t border-zinc-100 px-5 py-8 text-center text-sm text-zinc-500">No cards match these filters.</p>}
