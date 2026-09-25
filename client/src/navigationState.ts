@@ -57,17 +57,20 @@ export function useHistoryState<T>(id: string, initial: T | (() => T)): [T, Disp
  * still showing underneath a fight opened on top of it — isn't reset to the
  * top just because the fight overlay pushed a new history entry. */
 export function useRouteScrollRestoration<T extends HTMLElement>(id: string, ready = true, scopeKey?: string): RefObject<T | null> {
-  const { key: locationKey } = useLocation();
+  const { key: locationKey, state } = useLocation();
   const navigationType = useNavigationType();
   const key = scopeKey ?? locationKey;
   const ref = useRef<T>(null);
+  const wantsTop = state != null && typeof state === "object" && "scrollTop" in state && state.scrollTop === true;
 
   useLayoutEffect(() => {
     if (!ready) return;
     const element = ref.current;
     if (!element) return;
     const cacheKey = `${key}:${id}`;
-    const saved = scrollPositions.get(cacheKey);
+    // A link can ask for the top (`state.scrollTop`) even of a page read
+    // before; going back to it later still finds the reader's place.
+    const saved = navigationType === "PUSH" && wantsTop ? undefined : scrollPositions.get(cacheKey);
     let restoring = Boolean(saved);
     let frame = 0;
     let animationFrame = 0;
@@ -111,7 +114,7 @@ export function useRouteScrollRestoration<T extends HTMLElement>(id: string, rea
       element.removeEventListener("pointerdown", stopRestoring);
       element.removeEventListener("touchstart", stopRestoring);
     };
-  }, [id, key, ready, navigationType]);
+  }, [id, key, ready, navigationType, wantsTop]);
 
   return ref;
 }

@@ -104,7 +104,13 @@ export function FightStepLink({ fight, direction, eventId, returnDepth, search, 
   );
 }
 
-export function FightRail({ eventId, currentId, returnDepth }: { eventId: string; currentId: string; returnDepth: number | null }) {
+export function FightRail({ eventId, currentId, returnDepth, onReselect }: {
+  eventId: string;
+  currentId: string;
+  returnDepth: number | null;
+  /** The open bout's own tile was clicked: back to the top of it. */
+  onReselect?: () => void;
+}) {
   const { settings } = useSettings();
   // Moving along the card keeps the reader on the tab they were reading.
   const location = useLocation();
@@ -132,7 +138,9 @@ export function FightRail({ eventId, currentId, returnDepth }: { eventId: string
             <Link
               key={f.id}
               to={{ pathname: `/fights/${f.id}`, search }}
-              state={{ eventId, ...(returnDepth ? { eventReturnDepth: returnDepth + 1 } : {}) }}
+              // A bout picked from the card always opens at its top.
+              state={{ eventId, scrollTop: true, ...(returnDepth ? { eventReturnDepth: returnDepth + 1 } : {}) }}
+              onClick={(e) => { if (isCurrent && onReselect) { e.preventDefault(); onReselect(); } }}
               aria-current={isCurrent ? "page" : undefined}
               title={`${f.f1.name} vs ${f.f2.name}${f.method ? ` · ${formatMethod(f.method, f.round, f.time)}` : ""}${isLive ? " · live now" : ""}`}
               onPointerEnter={() => prefetch(withRanking(`/api/fights/${f.id}`, settings.rankingSource))}
@@ -192,10 +200,12 @@ const stripScroll = new Map<string, number>();
  * row stays where the reader left it, moving only as far as it takes to show
  * the open bout whole.
  */
-export function FightStrip({ eventId, currentId, returnDepth, className = "" }: {
+export function FightStrip({ eventId, currentId, returnDepth, onReselect, className = "" }: {
   eventId: string;
   currentId: string;
   returnDepth: number | null;
+  /** The open bout's own tile was tapped: back to the top of it. */
+  onReselect: () => void;
   className?: string;
 }) {
   const { settings } = useSettings();
@@ -238,7 +248,9 @@ export function FightStrip({ eventId, currentId, returnDepth, className = "" }: 
             <Link
               key={f.id}
               to={{ pathname: `/fights/${f.id}`, search }}
-              state={{ eventId, ...(returnDepth ? { eventReturnDepth: returnDepth + 1 } : {}) }}
+              // A bout picked from the row always opens at its top.
+              state={{ eventId, scrollTop: true, ...(returnDepth ? { eventReturnDepth: returnDepth + 1 } : {}) }}
+              onClick={(e) => { if (isCurrent) { e.preventDefault(); onReselect(); } }}
               aria-current={isCurrent ? "page" : undefined}
               aria-label={`${f.f1.name} vs ${f.f2.name}${isLive ? ", live now" : ""}`}
               onPointerDown={() => prefetch(withRanking(`/api/fights/${f.id}`, settings.rankingSource))}
