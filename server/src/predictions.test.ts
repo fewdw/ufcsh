@@ -230,3 +230,32 @@ test("prediction HTTP isolates ownership and enforces authentication, origin and
   assert.equal((await fetch(url, { method: "PUT", headers, body: JSON.stringify(pick(bout, { revision: 1 })) })).status, 409);
   assert.equal((await fetch(url, { method: "DELETE", headers, body: JSON.stringify({ revision: 1 }) })).status, 200);
 });
+
+test("a card's predictions come back together: the community split for every bout and only the caller's own picks", async t => {
+  const { store, bouts } = fixture(t);
+  const card = bouts.map(bout => bout.id);
+  const handler = createPredictionsHandler(store, async req => {
+    if (!req.headers.authorization?.startsWith("Bearer test-")) throw new (await import("./scoring.ts")).ScoringError(401, "Sign in.");
+    return req.headers.authorization.slice("Bearer test-".length);
+  }, id => id === "e0e0e0e0e0e0e0e0" ? card : undefined);
+  const server = http.createServer((req, res) => { void handler(req, res, new URL(req.url!, "http://localhost")).then(handled => { if (!handled) { res.statusCode = 404; res.end(); } }); });
+  server.listen(0, "127.0.0.1"); await once(server, "listening");
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const root = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  store.save(bouts[3].id, "alice", pick(bouts[3]));
+  store.save(bouts[3].id, "bob", pick(bouts[3], { fighterId: bouts[3].f2_id, method: null, round: null }));
+  store.save(bouts[4].id, "bob", pick(bouts[4]));
+  const open = await (await fetch(`${root}/api/events/e0e0e0e0e0e0e0e0/predictions`)).json();
+  assert.equal(open.fights.length, bouts.length);
+  assert.equal(open.fights[3].distribution.total, 2);
+  assert.equal(open.fights[4].distribution.fighters[0].count, 1);
+  assert.equal("mine" in open.fights[3], false, "the public view carries nobody's own pick");
+  const url = `${root}/api/events/e0e0e0e0e0e0e0e0/predictions/mine`;
+  assert.equal((await fetch(url)).status, 401);
+  assert.equal((await fetch(url, { method: "PUT", headers: { authorization: "Bearer test-alice" } })).status, 405);
+  const mine = await (await fetch(url, { headers: { authorization: "Bearer test-alice" } })).json();
+  assert.equal(mine.fights[3].mine.pick.fighterId, bouts[3].f1_id);
+  assert.equal(mine.fights[3].mine.result.state, "pending");
+  assert.equal(mine.fights[4].mine, null, "bob's pick is not alice's");
+  assert.equal((await fetch(`${root}/api/events/ffffffffffffffff/predictions`)).status, 404);
+});

@@ -71,7 +71,15 @@ GET    /api/fights/:id/predictions/mine
 PUT    /api/fights/:id/predictions/mine
 DELETE /api/fights/:id/predictions/mine
 GET    /api/profiles/:handle/predictions?offset=0
+GET    /api/events/:id/predictions
+GET    /api/events/:id/predictions/mine
 ```
+
+The two event routes serve a whole card at once for the graphics builder:
+every bout's community distribution and, on `/mine`, the signed-in fan's own
+pick and its result on each bout (`null` where they made none). `/mine` is
+read-only and uses the same authentication and origin checks as the per-fight
+route.
 
 PUT accepts `{ revision, fighterId, method, round, line, matchupKey }`; method/round are
 nullable. DELETE accepts `{ revision }`. Own-pick routes use the existing Clerk

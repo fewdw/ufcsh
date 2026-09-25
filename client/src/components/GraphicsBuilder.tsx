@@ -1,9 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Copy, Download, ImageIcon, Search, Share2, X } from "lucide-react";
+import { useAuth } from "@clerk/react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { Check, ChevronRight, Copy, Download, ImageIcon, Search, Share2, X } from "lucide-react";
 import { useApi, type EventDetail, type EventListItem, type FighterBoard, type FighterProfile, type Matchup } from "../api";
-import { buildEvent, buildFighter, buildMatchup, buildResult, photoUrl, togglesFor, type Kind, type PhotoMode, type Toggle } from "../graphics/build";
-import { loadImage, renderGraphic, SIZES, type Format, type Graphic, type Photo, type Theme } from "../graphics/render";
+import { accountsEnabled } from "../auth";
+import type { Bet, ProfileBets } from "../bets";
+import { buildEvent, buildFighter, buildMatchup, buildParlay, buildResult, cardFights, photoUrl, togglesFor, type BoutPicks, type Kind, type PhotoMode, type Toggle } from "../graphics/build";
+import { loadGraphicFonts } from "../graphics/fonts";
+import { PRESETS, type Preset } from "../graphics/presets";
+import { loadImage, renderGraphic, SIZES, THEMES, type Format, type Graphic, type Photo, type Theme } from "../graphics/render";
 import { graphicBlob } from "../graphics/export";
+import type { MyPrediction, PredictionDistribution, PredictionPick, PredictionResult, PredictionSummary } from "../predictions";
+import { useMyProfile } from "../profile";
+import type { ScorerIdentity } from "../scoring";
 import type { GraphicSubject } from "../graphicsLauncher";
 import { formatDateShortWithYear } from "../format";
 import { landingEvent } from "../liveEvent";
@@ -12,12 +20,8 @@ import { parseSearch, useSearch } from "../useSearch";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE, EYEBROW } from "../ui";
 import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "./segmented";
 
-const KINDS: { value: Kind; label: string; hint: string }[] = [
-  { value: "matchup", label: "Matchup", hint: "Tale of the tape, odds and how they fight" },
-  { value: "result", label: "Fight result", hint: "Winner, method, totals and scorecards" },
-  { value: "fighter", label: "Fighter", hint: "Record, measurements and rankings" },
-  { value: "event", label: "Event card", hint: "Every bout with records and prices" },
-];
+/** A card's picks as the server sends them: every bout, and the reader's own when signed in. */
+type CardPicks = { fights: { fightId: string; distribution: PredictionDistribution; mine?: { pick: PredictionPick; result: PredictionResult } | null }[] };
 const FIELD = "h-9 w-full rounded-xl border border-zinc-200 bg-white px-3 text-[13px] text-zinc-900 outline-none hover:border-zinc-300 focus:border-zinc-400 sm:text-xs";
 const canCopy = typeof window !== "undefined" && typeof ClipboardItem !== "undefined" && Boolean(navigator.clipboard?.write);
 
@@ -45,7 +49,7 @@ function SubjectPicker({ kind, subject, onPick }: { kind: Kind; subject: Subject
       ) : null}
       <label className="relative block">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
-        <input type="search" value={query} onChange={(event) => setQuery(event.target.value.slice(0, 60))} autoComplete="off" spellCheck={false}
+        <input type="search" value={query} onChange={(event) => setQuery(event.target.value.slice(0, 60))} autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
           placeholder={wanted === "fighter" ? "Find a fighter…" : wanted === "fight" ? "Find a bout, e.g. “Van vs Pantoja”…" : "Find an event…"}
           aria-label={wanted === "fighter" ? "Find a fighter" : wanted === "fight" ? "Find a bout" : "Find an event"}
           className={`${FIELD} pl-8`} />
@@ -80,6 +84,39 @@ function Segmented<T extends string>({ label, value, options, onChange }: { labe
   );
 }
 
+type MineEntry = { url: string; data: unknown } | { url: string; error: string };
+type Account = { identity: ScorerIdentity | null; signedIn: boolean };
+
+/** The signed-in reader, for their own picks and bets. Mounted only where
+ *  accounts are configured, since it needs the session. */
+function AccountBridge({ url, onAccount, onMine }: { url: string | null; onAccount: (account: Account) => void; onMine: (entry: MineEntry) => void }) {
+  const { identity, signedIn } = useMyProfile();
+  const { getToken } = useAuth();
+  useEffect(() => { onAccount({ identity, signedIn }); }, [identity, signedIn, onAccount]);
+  useEffect(() => {
+    if (!url || !signedIn) return;
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const token = await getToken();
+        if (!token) throw new Error("Sign in again to add your picks.");
+        const response = await fetch(url, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]), headers: { Authorization: `Bearer ${token}` } });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error ?? "Your picks couldn’t be loaded.");
+        onMine({ url, data });
+      } catch (error) {
+        if (!controller.signal.aborted) onMine({ url, error: error instanceof Error ? error.message : "Your picks couldn’t be loaded." });
+      }
+    })();
+    return () => controller.abort();
+  }, [url, signedIn, getToken, onMine]);
+  return null;
+}
+
+const betLabel = (bet: Bet) => `${bet.legs.length > 1 ? `${bet.legs.length}-leg parlay` : bet.legs[0]?.selection ?? "Bet"} · ${bet.price} · ${formatDateShortWithYear(new Date(bet.placedAt).toISOString().slice(0, 10))}${bet.state === "pending" ? "" : ` · ${bet.state === "won" ? "Won" : bet.state === "lost" ? "Lost" : "Void"}`}`;
+const chip = "min-h-8 rounded-full border px-3 text-[13px] font-medium transition-colors sm:min-h-7 sm:text-xs";
+const chipIdle = "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50";
+
 /**
  * The graphics builder: choose a template and a subject, tick exactly what the
  * image should carry, pick a shape, then copy or download it. Everything is
@@ -91,19 +128,25 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
   const dialog = useRef<HTMLDialogElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [kind, setKind] = useState<Kind>(initial?.kind ?? "matchup");
+  const [presetId, setPresetId] = useState(() => PRESETS.find((preset) => preset.kind === (initial?.kind ?? "matchup"))?.id ?? "tape");
   const [subject, setSubject] = useState<Subject | null>(initial
     ? { kind: initial.kind === "fighter" ? "fighter" : initial.kind === "event" ? "event" : "fight", id: initial.id, label: "" }
     : null);
-  const [format, setFormat] = useState<Format>("square");
-  // Dark reads best in a feed of photos; light is one click away.
-  const [theme, setTheme] = useState<Theme>("dark");
-  const [photoMode, setPhotoMode] = useState<PhotoMode>("none");
+  const [format, setFormat] = useState<Format>("portrait");
+  // The fight-night red reads best in a feed; the others are one tap away.
+  const [theme, setTheme] = useState<Theme>("red");
+  const [photoMode, setPhotoMode] = useState<PhotoMode>(() => PRESETS.find((preset) => preset.kind === (initial?.kind ?? "matchup"))?.photo ?? "full");
+  const [account, setAccount] = useState<Account>({ identity: null, signedIn: false });
+  const [mine, setMine] = useState<MineEntry | null>(null);
+  const [betId, setBetId] = useState<string | null>(null);
   const [scope, setScope] = useState("ufc");
   const [optionQuery, setOptionQuery] = useState("");
   const [choices, setChoices] = useState<Record<string, boolean>>({});
   const [status, setStatus] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [graphic, setGraphic] = useState<Graphic | null>(null);
   const [drawing, setDrawing] = useState(false);
+  // On a phone the pinned preview lets go while the keyboard is up, so the field stays in view.
+  const [typing, setTyping] = useState(false);
 
   useEffect(() => {
     const node = dialog.current;
@@ -136,14 +179,75 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
   const { data: board } = useApi<FighterBoard>(fighterId && kind === "fighter" ? `/api/fighters/${fighterId}/stats?scope=${encodeURIComponent(scope)}` : null);
   const eventRequest = useApi<EventDetail>(eventId && kind === "event" ? withRanking(`/api/events/${eventId}`, settings.rankingSource) : null);
   const event = eventRequest.data?.id === eventId ? eventRequest.data : null;
-  const request = kind === "fighter" ? fighterRequest : kind === "event" ? eventRequest : fightRequest;
+  const handle = account.identity?.handle ?? null;
+  const owner = account.identity?.username ?? null;
+  const betsRequest = useApi<ProfileBets>(kind === "parlay" && handle ? `/api/profiles/${encodeURIComponent(handle)}/bets` : null);
+  const bets = betsRequest.data?.bets ?? [];
+  const bet = bets.find((entry) => entry.id === betId) ?? bets[0] ?? null;
+  const request = kind === "fighter" ? fighterRequest : kind === "event" ? eventRequest : kind === "parlay" ? betsRequest : fightRequest;
 
-  const label = subject?.label || (fight ? `${fight.f1.name} vs ${fight.f2.name}` : fighter?.name ?? event?.name ?? "");
+  const label = kind === "parlay" ? bet ? betLabel(bet) : "" : subject?.label || (fight ? `${fight.f1.name} vs ${fight.f2.name}` : fighter?.name ?? event?.name ?? "");
   const pickedSubject = subject ? { ...subject, label } : null;
   const toggles: Toggle[] = useMemo(() => togglesFor(kind, board, fight).map((toggle) => ({ ...toggle, on: choices[toggle.id] ?? toggle.on })), [kind, board, fight, choices]);
+  const ticked = (id: string) => toggles.some((toggle) => toggle.id === id && toggle.on);
+  const boutKind = kind === "matchup" || kind === "result";
+
+  // Picks: the reader's own through their session, the community's in public.
+  const mineUrl = !ticked("pick:mine") ? null : boutKind && fightId ? `/api/fights/${fightId}/predictions/mine` : kind === "event" && eventId ? `/api/events/${eventId}/predictions/mine` : null;
+  const communityUrl = !ticked("pick:community") ? null : boutKind && fightId ? `/api/fights/${fightId}/predictions` : kind === "event" && eventId ? `/api/events/${eventId}/predictions` : null;
+  const { data: community } = useApi<PredictionSummary | CardPicks>(communityUrl);
+  const mineData = mine && mine.url === mineUrl && "data" in mine ? mine.data : null;
+  const mineError = mine && mine.url === mineUrl && "error" in mine ? mine.error : null;
+  const boutPicks: BoutPicks = useMemo(() => {
+    if (!boutKind) return {};
+    const own = mineData as MyPrediction | null;
+    return {
+      mine: own ? own.pick ? { pick: own.pick, result: own.result } : null : undefined,
+      community: community && "distribution" in community ? community.distribution : null,
+    };
+  }, [boutKind, mineData, community]);
+  const cardPicks = useMemo(() => {
+    const map = new Map<string, BoutPicks>();
+    if (kind !== "event") return map;
+    for (const entry of (community as CardPicks | undefined)?.fights ?? []) map.set(entry.fightId, { community: entry.distribution });
+    for (const entry of (mineData as CardPicks | null)?.fights ?? []) map.set(entry.fightId, { ...map.get(entry.fightId), mine: entry.mine ?? null });
+    return map;
+  }, [kind, community, mineData]);
+  // Until the reader's own picks are in hand, the graphic is drawn without them
+  // rather than as "My picks" with none.
+  const drawToggles = useMemo(() => mineData ? toggles : toggles.map((toggle) => toggle.id === "pick:mine" ? { ...toggle, on: false } : toggle), [toggles, mineData]);
+  const pickNote = !ticked("pick:mine") ? null
+    : !accountsEnabled ? "Accounts aren’t set up here, so there are no picks to show."
+      : !account.signedIn ? "Sign in to put your picks on the graphic."
+        : mineError ? mineError
+          : !mineData ? null
+            : boutKind && !boutPicks.mine ? "You haven’t picked this bout."
+              : kind === "event" && ![...cardPicks.values()].some((entry) => entry.mine) ? "You haven’t picked any bout on this card." : null;
+  const communityNote = ticked("pick:community") && community && (boutKind ? !boutPicks.community?.total : ![...cardPicks.values()].some((entry) => entry.community?.total))
+    ? `No community picks on this ${boutKind ? "bout" : "card"} yet.` : null;
+
+  const applyPreset = (preset: Preset) => {
+    setPresetId(preset.id);
+    setKind(preset.kind);
+    setPhotoMode(preset.photo);
+    setChoices(preset.choices ?? {});
+    setOptionQuery("");
+    setStatus(null);
+    // Carry the subject across: a bout's card, a card's main event, a bout's first fighter.
+    const wants = preset.kind === "fighter" ? "fighter" : preset.kind === "event" ? "event" : preset.kind === "parlay" ? null : "fight";
+    if (!wants || !subject || subject.kind === wants) return;
+    if (wants === "event" && fight) setSubject({ kind: "event", id: fight.event.id, label: `${fight.event.name} · ${formatDateShortWithYear(fight.event.date)}` });
+    else if (wants === "fight" && event?.fights.length) {
+      const main = event.fights[0];
+      setSubject({ kind: "fight", id: main.id, label: `${main.f1.name} vs ${main.f2.name} · ${event.name}` });
+    } else if (wants === "fighter" && (fight || event?.fights.length)) {
+      const first = fight?.f1 ?? event!.fights[0].f1;
+      setSubject({ kind: "fighter", id: first.id, label: first.name });
+    }
+  };
   const groups = useMemo(() => [...new Set(toggles.map((toggle) => toggle.group))], [toggles]);
   const resultUnavailable = kind === "result" && fight && fight.status !== "past";
-  const wrongSubject = subject && ((kind === "fighter") !== (subject.kind === "fighter") || (kind === "event") !== (subject.kind === "event"));
+  const wrongSubject = kind !== "parlay" && subject && ((kind === "fighter") !== (subject.kind === "fighter") || (kind === "event") !== (subject.kind === "event"));
 
   // Build, fetch the pictures, then draw — the latest request wins.
   useEffect(() => {
@@ -151,6 +255,7 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
     setDrawing(true);
     setGraphic(null);
     const run = async () => {
+      await loadGraphicFonts();
       let next: Graphic | null = null;
       if ((kind === "matchup" || kind === "result") && fight && !resultUnavailable) {
         const sides = [photoUrl(fight.f1, photoMode), photoUrl(fight.f2, photoMode)];
@@ -158,13 +263,22 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
         // Both corners or neither: one picture beside an empty corner reads as an error.
         const kinds = sides.map((side, index) => images[index] ? side.kind : null);
         const photos = (images.every(Boolean) ? images.map((image, index) => ({ image: image!, kind: kinds[index]! })) : [null, null]) as [Photo, Photo];
-        next = kind === "matchup" ? buildMatchup(fight, fightEvent ?? null, toggles, photos) : buildResult(fight, toggles, photos);
+        next = kind === "matchup" ? buildMatchup(fight, fightEvent ?? null, drawToggles, photos, boutPicks, owner) : buildResult(fight, drawToggles, photos, boutPicks, owner);
       } else if (kind === "fighter" && fighter) {
         const side = photoUrl(fighter, photoMode);
         const image = await loadImage(side.url);
         next = buildFighter(fighter, board ?? null, toggles, image ? { image, kind: side.kind } : null);
       } else if (kind === "event" && event) {
-        next = buildEvent(event, toggles);
+        const faces = photoMode !== "none";
+        const photos = new Map<string, Photo>();
+        if (faces) {
+          const sides = cardFights(event, toggles).flatMap((bout) => [bout.f1, bout.f2]);
+          const images = await Promise.all(sides.map((side) => loadImage(photoUrl(side, "head").url)));
+          sides.forEach((side, index) => photos.set(side.id, images[index] ? { image: images[index]!, kind: "head" } : null));
+        }
+        next = buildEvent(event, drawToggles, faces ? "faces" : "list", photos, cardPicks, owner);
+      } else if (kind === "parlay" && bet) {
+        next = buildParlay(bet, owner, handle);
       }
       if (cancelled) return;
       if (next && canvas.current) renderGraphic(canvas.current, next, format, theme);
@@ -174,7 +288,7 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
       if (!cancelled) setStatus({ tone: "error", text: "Couldn’t draw this graphic. Try fewer selections or another picture style." });
     }).finally(() => { if (!cancelled) setDrawing(false); });
     return () => { cancelled = true; };
-  }, [kind, fight, fightEvent, fighter, board, event, toggles, photoMode, format, theme, resultUnavailable]);
+  }, [kind, fight, fightEvent, fighter, board, event, toggles, drawToggles, photoMode, format, theme, resultUnavailable, boutPicks, cardPicks, owner, bet, handle]);
 
   const fileName = `ufcsh-${(label || kind).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60)}-${format}.png`;
   const blob = () => graphicBlob(canvas.current);
@@ -211,45 +325,111 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
     } catch { /* the reader closed the share sheet */ }
   };
 
-  const loading = !request.error && (drawing || (!graphic && !resultUnavailable && !wrongSubject && Boolean(subject)));
+  const loading = !request.error && (drawing || (!graphic && !resultUnavailable && !wrongSubject && (kind === "parlay" ? Boolean(bet) : Boolean(subject))));
   // Past this many lines the type shrinks below what a feed keeps legible.
   const lines = graphic?.kind === "versus" ? graphic.sections.reduce((total, section) => total + section.rows.length + 1, 0) + (graphic.judges?.length ? 2 : 0)
-    : graphic?.kind === "fighter" ? graphic.stats.length : graphic?.kind === "card" ? graphic.rows.length : 0;
+    : graphic?.kind === "fighter" ? graphic.stats.length : graphic?.kind === "card" ? graphic.rows.length * (1 + Math.max(0, ...graphic.rows.map((row) => row.splits.length)) * 0.6) : graphic?.kind === "parlay" ? graphic.legs.length : 0;
   const crowded = lines > (format === "portrait" ? 14 : format === "landscape" ? 10 : 11);
+  const { width, height } = SIZES[format];
+  const actions = (
+    <>
+      {canShare ? <button type="button" disabled={!graphic} onClick={() => void share()} className={`${BUTTON_SECONDARY} h-10 flex-1 md:h-auto md:flex-none`}><Share2 className="h-3.5 w-3.5" aria-hidden="true" />Share</button> : null}
+      {canCopy ? <button type="button" disabled={!graphic} onClick={() => void copy()} className={`${BUTTON_SECONDARY} h-10 flex-1 md:h-auto md:flex-none`}><Copy className="h-3.5 w-3.5" aria-hidden="true" />Copy<span className="hidden min-[400px]:inline">&nbsp;image</span></button> : null}
+      <button type="button" disabled={!graphic} onClick={() => void download()} className={`${BUTTON_PRIMARY} h-10 flex-1 md:h-auto md:flex-none`}><Download className="h-3.5 w-3.5" aria-hidden="true" />Download</button>
+    </>
+  );
+  const statusLine = status ? <span role="status" className={`text-xs ${status.tone === "ok" ? "text-emerald-700" : "text-rose-600"}`}>{status.text}</span> : null;
+  const disclaimer = "Fighter photos belong to their owners; include them only where you are entitled to share them. Each image links back to its page on UFC.sh.";
   return (
     <dialog ref={dialog} aria-labelledby="graphics-title"
       onCancel={(event) => { event.preventDefault(); onClose(); }}
       onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
-      className="search-dialog fixed inset-0 m-auto h-[min(100dvh,56rem)] w-[min(100vw,72rem)] max-w-none overflow-hidden rounded-none border-zinc-200 bg-white p-0 text-zinc-900 shadow-2xl sm:h-[min(calc(100dvh-2rem),56rem)] sm:w-[min(calc(100vw-2rem),72rem)] sm:rounded-2xl sm:border">
+      className="search-dialog fixed inset-0 m-auto h-dvh max-h-none w-screen max-w-none overflow-hidden rounded-none border-zinc-200 bg-white p-0 text-zinc-900 shadow-2xl sm:h-[min(calc(100dvh-2rem),56rem)] sm:w-[min(calc(100vw-2rem),72rem)] sm:rounded-2xl sm:border">
+      {accountsEnabled ? <AccountBridge url={mineUrl} onAccount={setAccount} onMine={setMine} /> : null}
       <div className="flex h-full min-h-0 flex-col">
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3 sm:px-5">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-100 px-4 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-5 sm:py-3">
           <div className="min-w-0">
             <h2 id="graphics-title" className={`${DIALOG_TITLE} flex items-center gap-2`}><ImageIcon className="h-4 w-4 text-zinc-400" aria-hidden="true" />Generate graphic</h2>
-            <p className="mt-0.5 truncate text-xs text-zinc-500">Choose what it shows, then copy or download. Every image carries its sources and the UFC.sh mark.</p>
+            <p className="mt-0.5 hidden truncate text-xs text-zinc-500 sm:block">Choose what it shows, then copy or download. Every image carries its sources and the UFC.sh mark.</p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close graphics builder" className={`-mr-2 ${CLOSE_BUTTON}`}><X className={CLOSE_ICON} aria-hidden="true" /></button>
         </div>
 
-        <div className="grid min-h-0 flex-1 overflow-y-auto md:grid-cols-[20rem_minmax(0,1fr)] md:overflow-hidden">
-          <div className="space-y-4 border-zinc-100 px-4 py-4 sm:px-5 md:overflow-y-auto md:border-r">
+        {/* Phones: the preview stays pinned over the scrolling controls, so a
+            change shows as it is made; the actions sit in a footer. Wider
+            screens: controls on the left, preview and actions on the right. */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain md:grid md:grid-cols-[20rem_minmax(0,1fr)] md:overflow-hidden">
+          <div className={`${typing ? "" : "sticky top-0"} z-10 flex flex-col gap-2 border-b border-zinc-200 bg-zinc-50 px-4 py-3 sm:px-5 md:static md:col-start-2 md:row-start-1 md:min-h-0 md:gap-3 md:overflow-hidden md:border-b-0 md:py-4`}>
+            {/* A size container, so the frame can fit the space in both
+                directions whatever the shape. On a phone it is no taller
+                than the shape needs at full width. */}
+            <div className="grid h-[min(36dvh,var(--fit))] place-items-center md:h-auto md:min-h-[16rem] md:flex-1"
+              style={{ containerType: "size", "--fit": `calc((100vw - 2rem) * ${height / width})` } as CSSProperties}>
+              <div className="relative" style={{ aspectRatio: `${width} / ${height}`, width: `min(100cqw, calc(100cqh * ${width / height}))` }}>
+                <canvas ref={canvas} role="img" aria-label={graphic ? `Preview: ${label}` : "Graphic preview"}
+                  className={`absolute inset-0 h-full w-full rounded-lg shadow-xl ring-1 ring-black/5 ${graphic ? "" : "hidden"}`} />
+                {graphic ? null : (
+                  <div className={`absolute inset-0 grid place-items-center rounded-lg p-4 text-center ring-1 ring-inset ring-zinc-200 ${loading ? "animate-pulse bg-zinc-100" : "bg-white"}`}>
+                    {request.error ? <div role="alert" className="text-sm text-zinc-600">Couldn’t load this subject. <button type="button" onClick={request.retry} className="underline">Retry</button></div>
+                      : <p role="status" className="text-sm text-zinc-400">{loading ? "Drawing…" : "Choose what the graphic is about."}</p>}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="mr-auto text-[11px] text-zinc-500">
+                {SIZES[format].label} · PNG
+                {crowded ? <span className="block text-amber-700 md:ml-2 md:inline">A lot is selected — text will be small in a feed{format !== "portrait" ? "; Portrait fits more" : ""}.</span> : null}
+              </span>
+              <span className="hidden md:contents">{statusLine}{actions}</span>
+            </div>
+            <p className="hidden shrink-0 text-[10px] leading-4 text-zinc-400 md:block">{disclaimer}</p>
+          </div>
+
+          <div className="space-y-5 px-4 py-4 sm:px-5 md:col-start-1 md:row-start-1 md:space-y-4 md:overflow-y-auto md:border-r md:border-zinc-100"
+            onFocus={(event) => { if (event.target instanceof HTMLInputElement && event.target.type === "search") setTyping(true); }}
+            onBlur={() => setTyping(false)}>
             <section className="space-y-2">
               <h3 className={EYEBROW}>1 · Graphic</h3>
-              <select value={kind} onChange={(event) => { setKind(event.target.value as Kind); setChoices({}); setOptionQuery(""); setStatus(null); }} aria-label="Graphic type" className={FIELD}>
-                {KINDS.map((option) => <option key={option.value} value={option.value}>{option.label} — {option.hint}</option>)}
-              </select>
+              <div className="space-y-2" role="group" aria-label="Graphic">
+                {(["Fight", "Card", "Yours"] as const).map((group) => (
+                  <div key={group} className="flex flex-wrap items-center gap-1.5">
+                    <span className="w-full text-[11px] font-medium text-zinc-400 min-[480px]:w-11 md:w-full">{group}</span>
+                    {PRESETS.filter((preset) => preset.group === group).map((preset) => (
+                      <button key={preset.id} type="button" aria-pressed={presetId === preset.id} onClick={() => applyPreset(preset)}
+                        className={`${chip} ${presetId === preset.id ? "pick-option-on" : chipIdle}`}>{preset.label}</button>
+                    ))}
+                  </div>
+                ))}
+              </div>
             </section>
             <section className="space-y-2">
-              <h3 className={EYEBROW}>2 · {kind === "fighter" ? "Fighter" : kind === "event" ? "Event" : "Bout"}</h3>
-              <SubjectPicker kind={kind} subject={pickedSubject} onPick={(picked) => { setSubject(picked); setChoices({}); setScope("ufc"); setStatus(null); }} />
-              {resultUnavailable ? <p className="text-xs text-amber-700">This bout hasn’t happened yet — choose Matchup, or pick a finished bout.</p> : null}
+              <h3 className={EYEBROW}>2 · {kind === "fighter" ? "Fighter" : kind === "event" ? "Event" : kind === "parlay" ? "Bet" : "Bout"}</h3>
+              {kind === "parlay" ? (
+                !accountsEnabled ? <p className="text-xs text-zinc-500">Accounts aren’t set up here, so there are no bets to show.</p>
+                  : !account.signedIn ? <p className="text-xs text-zinc-500">Sign in to make a graphic of your bets.</p>
+                    : betsRequest.data && !bets.length ? <p className="text-xs text-zinc-500">No bets yet. Build a parlay from any fight’s odds, then come back.</p>
+                      : (
+                        <select value={bet?.id ?? ""} onChange={(event) => setBetId(event.target.value)} aria-label="Bet" className={FIELD} disabled={!bets.length}>
+                          {!bets.length ? <option value="">Loading your bets…</option> : null}
+                          {bets.map((entry) => <option key={entry.id} value={entry.id}>{betLabel(entry)}</option>)}
+                        </select>
+                      )
+              ) : (
+                <SubjectPicker kind={kind} subject={pickedSubject} onPick={(picked) => { setSubject(picked); setScope("ufc"); setStatus(null); }} />
+              )}
+              {resultUnavailable ? <p className="text-xs text-amber-700">This bout hasn’t happened yet — choose Tale of the tape, or pick a finished bout.</p> : null}
               {wrongSubject ? <p className="text-xs text-zinc-500">Pick a {kind === "fighter" ? "fighter" : kind === "event" ? "event" : "bout"} for this graphic.</p> : null}
             </section>
             <section className="space-y-2">
               <h3 className={EYEBROW}>3 · Shape & look</h3>
               <Segmented label="Shape" value={format} onChange={setFormat}
                 options={[{ value: "square", label: "Square" }, { value: "portrait", label: "Portrait" }, { value: "landscape", label: "Landscape" }]} />
-              <Segmented label="Theme" value={theme} onChange={setTheme} options={[{ value: "dark", label: "Dark" }, { value: "light", label: "Light" }]} />
-              {kind !== "event" ? (
+              <Segmented label="Theme" value={theme} onChange={setTheme} options={THEMES} />
+              {kind === "event" ? (
+                <Segmented label="Pictures" value={photoMode === "none" ? "none" : "head"} onChange={setPhotoMode}
+                  options={[{ value: "head", label: "Faces" }, { value: "none", label: "Bout list" }]} />
+              ) : kind !== "parlay" ? (
                 <Segmented label="Pictures" value={photoMode} onChange={setPhotoMode}
                   options={[{ value: "full", label: "Full body" }, { value: "head", label: "Face" }, { value: "none", label: "None" }]} />
               ) : null}
@@ -259,48 +439,38 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
                 </select>
               ) : null}
             </section>
-            <section className="space-y-3">
+            <section className={`space-y-2 md:space-y-3 ${kind === "parlay" ? "hidden" : ""}`}>
               <h3 className={EYEBROW}>4 · Include</h3>
-              <input type="search" aria-label="Find graphic options" placeholder="Find a stat or market…" className={FIELD} value={optionQuery} onChange={(event) => setOptionQuery(event.target.value)} />
-              {groups.map((group) => (
-                <details key={group} open={optionQuery ? true : undefined} className="border-t border-zinc-100 pt-2">
-                  <summary className="mb-1 cursor-pointer text-xs font-semibold text-zinc-700">{group} · {toggles.filter((t) => t.group === group && t.on).length} selected</summary>
-                  <div className="grid grid-cols-1 gap-x-3 gap-y-1 min-[420px]:grid-cols-2 md:grid-cols-1">
-                    {toggles.filter((toggle) => toggle.group === group && (!optionQuery || toggle.label.toLowerCase().includes(optionQuery.toLowerCase()))).map((toggle) => (
-                      <label key={toggle.id} className="flex min-w-0 items-center gap-2 py-0.5 text-[13px] text-zinc-600 sm:text-xs">
-                        <input type="checkbox" checked={toggle.on} onChange={(event) => setChoices((current) => ({ ...current, [toggle.id]: event.target.checked }))}
-                          className="h-3.5 w-3.5 shrink-0 accent-zinc-900" />
-                        <span>{toggle.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </details>
-              ))}
+              {pickNote || communityNote ? <p role="status" className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-inset ring-amber-200">{[pickNote, communityNote].filter(Boolean).join(" ")}</p> : null}
+              <input type="search" autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false} aria-label="Find graphic options" placeholder="Find a stat or market…" className={FIELD} value={optionQuery} onChange={(event) => setOptionQuery(event.target.value)} />
+              <div>
+                {groups.map((group) => (
+                  <details key={group} open={optionQuery ? true : undefined} className="group border-t border-zinc-100 first:border-t-0 md:first:border-t">
+                    <summary className="flex cursor-pointer list-none items-center gap-2 py-3 text-[13px] font-semibold text-zinc-700 md:py-2 md:text-xs [&::-webkit-details-marker]:hidden">
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform group-open:rotate-90" aria-hidden="true" />
+                      <span className="mr-auto">{group}</span>
+                      <span className="text-xs font-medium text-zinc-400 md:text-[11px]">{toggles.filter((t) => t.group === group && t.on).length} selected</span>
+                    </summary>
+                    <div className="grid grid-cols-1 gap-x-3 pb-2 min-[420px]:grid-cols-2 md:grid-cols-1 md:gap-y-1 md:pb-0">
+                      {toggles.filter((toggle) => toggle.group === group && (!optionQuery || toggle.label.toLowerCase().includes(optionQuery.toLowerCase()))).map((toggle) => (
+                        <label key={toggle.id} className="flex min-h-10 min-w-0 items-center gap-2.5 text-[13px] text-zinc-600 md:min-h-0 md:gap-2 md:py-0.5 md:text-xs">
+                          <input type="checkbox" checked={toggle.on} onChange={(event) => setChoices((current) => ({ ...current, [toggle.id]: event.target.checked }))}
+                            className="h-4 w-4 shrink-0 accent-zinc-900 md:h-3.5 md:w-3.5" />
+                          <span className="min-w-0">{toggle.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </details>
+                ))}
+              </div>
             </section>
+            <p className="text-[10px] leading-4 text-zinc-400 md:hidden">{disclaimer}</p>
           </div>
+        </div>
 
-          <div className="order-first flex min-h-0 flex-col gap-3 bg-zinc-50 px-4 py-4 sm:px-5 md:order-none">
-            <div className="flex min-h-[16rem] flex-1 items-center justify-center overflow-hidden">
-              <canvas ref={canvas} role="img" aria-label={graphic ? `Preview: ${label}` : "Graphic preview"}
-                className={`max-h-full max-w-full rounded-lg shadow-xl ring-1 ring-black/5 ${graphic ? "" : "hidden"}`}
-                style={{ aspectRatio: `${SIZES[format].width} / ${SIZES[format].height}` }} />
-              {request.error ? <div role="alert" className="text-center text-sm text-zinc-600">Couldn’t load this subject. <button type="button" onClick={request.retry} className="underline">Retry</button></div>
-                : !graphic ? <p role="status" className="text-sm text-zinc-400">{loading ? "Drawing…" : "Choose what the graphic is about."}</p> : null}
-            </div>
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <span className="mr-auto text-[11px] text-zinc-500">
-                {SIZES[format].label} · PNG
-                {crowded ? <span className="ml-2 text-amber-700">A lot is selected — text will be small in a feed{format !== "portrait" ? "; Portrait fits more" : ""}.</span> : null}
-              </span>
-              {status ? <span role="status" className={`text-xs ${status.tone === "ok" ? "text-emerald-700" : "text-rose-600"}`}>{status.text}</span> : null}
-              {canShare ? <button type="button" disabled={!graphic} onClick={() => void share()} className={BUTTON_SECONDARY}><Share2 className="h-3.5 w-3.5" aria-hidden="true" />Share</button> : null}
-              {canCopy ? <button type="button" disabled={!graphic} onClick={() => void copy()} className={BUTTON_SECONDARY}><Copy className="h-3.5 w-3.5" aria-hidden="true" />Copy image</button> : null}
-              <button type="button" disabled={!graphic} onClick={() => void download()} className={BUTTON_PRIMARY}><Download className="h-3.5 w-3.5" aria-hidden="true" />Download</button>
-            </div>
-            <p className="shrink-0 text-[10px] leading-4 text-zinc-400">
-              Fighter photos belong to their owners; include them only where you are entitled to share them. Each image links back to its page on UFC.sh.
-            </p>
-          </div>
+        <div className="shrink-0 space-y-2 border-t border-zinc-100 bg-white px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:px-5 md:hidden">
+          {statusLine ? <p className="text-center">{statusLine}</p> : null}
+          <div className="flex gap-2">{actions}</div>
         </div>
       </div>
     </dialog>
