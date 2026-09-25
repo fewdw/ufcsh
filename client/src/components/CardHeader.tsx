@@ -1,3 +1,4 @@
+import { PANEL } from "./chartTokens";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { MapPin } from "lucide-react";
@@ -26,13 +27,19 @@ export function EventPlace({ venue, location }: { venue?: VenueRef | null; locat
 
 export const CARD_STEP = "inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
 
-export function CardNavigation({ previous, center, next }: {
+/** A step inside the card navigation bar. */
+export const NAV_STEP = "inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
+
+/** Prev, the list and Next in one thin bar, heading the card. */
+export function CardNavigation({ label, previous, center, next, className = "" }: {
+  label: string;
   previous: ReactNode;
   center: ReactNode;
   next: ReactNode;
+  className?: string;
 }) {
   return (
-    <nav aria-label="Card navigation" className="grid grid-cols-[1fr_auto_1fr] items-center gap-1 border-b border-zinc-100 px-1.5 py-1">
+    <nav aria-label={label} className={`${PANEL} grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-1 p-1 ${className}`}>
       <div className="min-w-0 justify-self-start">{previous}</div>
       <div className="min-w-0">{center}</div>
       <div className="min-w-0 justify-self-end">{next}</div>

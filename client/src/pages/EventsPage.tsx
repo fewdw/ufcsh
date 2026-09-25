@@ -13,7 +13,7 @@ import OddsPair from "../components/OddsPair";
 import { Moneyline, moneylineLeg, OddsFormatTabs, OddsMarkets, type FightResult } from "../components/MatchupOdds";
 import { hasOddsMarkets } from "../oddsLayout";
 import FightView from "./FightPage";
-import { EventPlace } from "../components/CardHeader";
+import { NAV_STEP, EventPlace, CardNavigation } from "../components/CardHeader";
 import { useShortcutNav } from "../shortcuts";
 import type { Matchup } from "../api";
 import { SITE_URL, useSeo } from "../seo";
@@ -23,7 +23,7 @@ import { eventKind, type EventKind } from "../eventKind";
 import SearchGlyph from "../components/SearchGlyph";
 import { ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
-import { CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
+import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 
 const shell = PANEL;
 /** The source flags a tournament or TUF final the same way it flags a
@@ -80,8 +80,16 @@ const KIND_NOUN: Record<KindFilter, string> = {
  *  and its own panels side by side, so with one open the list folds behind the
  *  "Browse all events" button until the window is wide enough for all three. */
 const DOCK = {
-  card: { sidebar: "md:flex md:w-72 md:shrink-0 md:flex-none lg:w-80", toggle: "md:hidden", main: "md:block", row: "md:flex-row" },
-  matchup: { sidebar: "xl:flex xl:w-80 xl:shrink-0 xl:flex-none", toggle: "xl:hidden", main: "xl:block", row: "xl:flex-row" },
+  // A phone's sheet is two panels, the search and filters over the list;
+  // docked beside the card they join into one panel.
+  card: { sidebar: "md:flex md:w-72 md:shrink-0 md:flex-none lg:w-80", toggle: "md:hidden", main: "md:block", row: "md:flex-row",
+    aside: "gap-2 md:gap-0 md:rounded-2xl md:border md:border-zinc-200 md:shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
+    head: "md:rounded-none md:border-x-0 md:border-t-0 md:shadow-none",
+    list: "md:rounded-none md:border-0 md:shadow-none" },
+  matchup: { sidebar: "xl:flex xl:w-80 xl:shrink-0 xl:flex-none", toggle: "xl:hidden", main: "xl:block", row: "xl:flex-row",
+    aside: "gap-2 xl:gap-0 xl:rounded-2xl xl:border xl:border-zinc-200 xl:shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
+    head: "xl:rounded-none xl:border-x-0 xl:border-t-0 xl:shadow-none",
+    list: "xl:rounded-none xl:border-0 xl:shadow-none" },
 } as const;
 
 function EventSidebar({
@@ -113,6 +121,14 @@ function EventSidebar({
   const warmEvent = (id: string) => prefetch(withRanking(`/api/events/${id}`, settings.rankingSource));
   const listRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLAnchorElement>(null);
+
+  // A search is for the one visit: once the phone's sheet folds away — ✕, a
+  // pick, or any other way out — it opens again on the whole list.
+  const [wasOpen, setWasOpen] = useState(mobileOpen);
+  if (wasOpen !== mobileOpen) {
+    setWasOpen(mobileOpen);
+    if (!mobileOpen) setFilter("");
+  }
 
   // Derived from every event, not from the filtered view: the tag says where
   // the promotion is, so a tier filter that hides the tagged card hides the
@@ -157,34 +173,32 @@ function EventSidebar({
   }, [selectedId, events.length]);
 
   return (
-    <aside id="events-sidebar" className={`${mobileOpen ? "flex" : "hidden"} min-h-0 w-full flex-1 flex-col overflow-hidden ${dock.sidebar} ${shell}`}>
-      <div className="space-y-2 border-b border-zinc-200 p-3">
-        {/* On a phone the list opens over the card like a sheet: a title and
-            its count, with the ✕ that closes it back to the card — the same
-            header the filter sheets use. Docked beside the card it needs none. */}
-        <div className={`flex items-center justify-between gap-3 pl-1 ${dock.toggle}`}>
-          <div className="min-w-0">
-            <h2 className={`${DIALOG_TITLE} leading-tight`}>Events</h2>
-            <p className="text-xs tabular-nums text-zinc-500">{scoped.length.toLocaleString()} {KIND_NOUN[kind]}</p>
-          </div>
-          <button type="button" onClick={onBack} aria-label="Close events" title="Back to card" className={`-mr-1.5 ${CLOSE_BUTTON}`}>
+    <aside id="events-sidebar" className={`${mobileOpen ? "flex" : "hidden"} min-h-0 w-full flex-1 flex-col overflow-hidden ${dock.sidebar} ${dock.aside}`}>
+      <div className={`${shell} space-y-2 p-3 ${dock.head}`}>
+        {/* Built from the same pill, border and glyph as the header's search
+            button, so the two read as one control in two places. On a phone
+            the ✕ that closes the sheet back to the card sits beside it. */}
+        <div className="flex items-center gap-2">
+          <label className="relative block min-w-0 flex-1">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
+              <SearchGlyph />
+            </span>
+            <input
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              aria-label={`Filter ${KIND_NOUN[kind]}`}
+              placeholder={`Search ${scoped.length.toLocaleString()} ${KIND_NOUN[kind]}…`}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              className="h-10 w-full min-w-0 rounded-full border border-zinc-200 bg-white pl-9 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-9 sm:text-sm"
+            />
+          </label>
+          <button type="button" onClick={onBack} aria-label="Close events" title="Back to card" className={`shrink-0 ${CLOSE_BUTTON} ${dock.toggle}`}>
             <X className={CLOSE_ICON} aria-hidden="true" />
           </button>
         </div>
-        {/* Built from the same pill, border and glyph as the header's search
-            button, so the two read as one control in two places. */}
-        <label className="relative block min-w-0">
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
-            <SearchGlyph />
-          </span>
-          <input
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            aria-label={`Filter ${KIND_NOUN[kind]}`}
-            placeholder={`Search ${KIND_NOUN[kind]}…`}
-            className="h-10 w-full min-w-0 rounded-full border border-zinc-200 bg-white pl-9 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-9 sm:text-sm"
-          />
-        </label>
         <div className={segmentedGroup} role="group" aria-label="Event tier">
           {KIND_FILTERS.map((option) => (
             <button
@@ -193,7 +207,7 @@ function EventSidebar({
               aria-pressed={kind === option.value}
               onClick={() => setKind(option.value)}
               title={`${option.title} · ${countByKind[option.value]}`}
-              className={`min-h-8 flex-1 rounded-full px-2 py-1.5 text-[13px] font-medium transition sm:min-h-0 sm:py-1 sm:text-xs ${
+              className={`min-h-8 flex-1 whitespace-nowrap rounded-full px-2 py-1.5 text-[13px] font-medium transition sm:min-h-0 sm:py-1 sm:text-xs ${
                 kind === option.value ? segmentedSelected : segmentedIdle
               }`}
             >
@@ -203,7 +217,7 @@ function EventSidebar({
         </div>
       </div>
 
-      <div className="relative min-h-0 flex-1">
+      <div className={`relative min-h-0 flex-1 overflow-hidden ${shell} ${dock.list}`}>
         <div
           ref={listRef}
           onScroll={(e) => setShowTop(e.currentTarget.scrollTop > 320)}
@@ -739,7 +753,11 @@ function SegmentBreak({ segment, at }: { segment: CardSegment; at: number | null
   );
 }
 
-type EventNav = { prev: EventListItem | null; next: EventListItem | null; onBrowse: () => void };
+type EventNav = {
+  prev: EventListItem | null;
+  next: EventListItem | null;
+  onBrowse: () => void;
+};
 
 /** The events either side of this one by date, whatever the list is filtered to. */
 function eventNeighbours(events: EventListItem[], id: string): { prev: EventListItem | null; next: EventListItem | null } {
@@ -750,24 +768,24 @@ function eventNeighbours(events: EventListItem[], id: string): { prev: EventList
 }
 
 const STEP = "inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
-
-function StepLink({ event, direction }: { event: EventListItem | null; direction: "prev" | "next" }) {
+function StepLink({ event, direction, className = STEP }: { event: EventListItem | null; direction: "prev" | "next"; className?: string }) {
   const { settings } = useSettings();
   const label = direction === "prev" ? "Prev" : "Next";
   const glyph = direction === "prev" ? <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />;
-  if (!event) return <span className={`${STEP} text-zinc-300`} aria-disabled="true">{direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}</span>;
+  if (!event) return <span className={`${className} text-zinc-300`} aria-disabled="true">{direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}</span>;
   return (
     <Link
       to={`/events/${event.id}`}
       title={`${event.name} · ${formatDateShort(event.date)}`}
       onPointerEnter={() => prefetch(withRanking(`/api/events/${event.id}`, settings.rankingSource))}
-      className={`${STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}
+      className={`${className} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}
     >
       {direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}
     </Link>
   );
 }
 
+/** One event's card. */
 function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: boolean; nav: EventNav }) {
   const { settings, update } = useSettings();
   const navigate = useNavigate();
@@ -839,17 +857,22 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
 
   return (
     <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto sm:gap-3 sm:pr-1">
-      <section className={`${shell} shrink-0 overflow-hidden`}>
-        {/* On a phone the list folds away, so its button and the step to
-            either neighbour ride along the top of the card itself. */}
-        <div className="flex items-center justify-between border-b border-zinc-100 px-1.5 py-1 md:hidden">
-          <StepLink event={nav.prev} direction="prev" />
-          <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
-            className={`${STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+      {/* On a phone the list folds away, so its button and the step to
+          either neighbour head the card. */}
+      <CardNavigation label="Event navigation" className="md:hidden"
+        previous={<StepLink event={nav.prev} direction="prev" className={NAV_STEP} />}
+        // Reading the whole card's odds, the way out is back to the card.
+        center={oddsMode && hasAnyOdds
+          ? <Link to={`/events/${event.id}`} className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+            <List className="h-3.5 w-3.5" aria-hidden="true" />Card
+          </Link>
+          : <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
+            className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
             <List className="h-3.5 w-3.5" aria-hidden="true" />Events
-          </button>
-          <StepLink event={nav.next} direction="next" />
-        </div>
+          </button>}
+        next={<StepLink event={nav.next} direction="next" className={NAV_STEP} />}
+      />
+      <section className={`${shell} shrink-0 overflow-hidden`}>
         {/* The name, date and place on the left; the card's start times on
             the right, one per line, at every width — only the type grows. */}
         <div className="flex items-start justify-between gap-3 px-3 py-2 @[34rem]:px-6 @[48rem]:items-center @[48rem]:gap-6 @[48rem]:py-4">
@@ -893,7 +916,9 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
       </section>
 
       {oddsMode && hasAnyOdds ? (
-        <div className="flex min-h-0 flex-1 flex-col gap-3">
+        // Its own height, not the pane's: squeezed to fit, the list would run
+        // out past the pane.
+        <div className="flex shrink-0 flex-col gap-3">
           <div className="flex flex-wrap items-center justify-between gap-2 px-1">
             <Link
               to={`/events/${event.id}`}

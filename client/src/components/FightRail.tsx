@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { prefetch, useApi, type EventDetail, type EventFight, type FightSide } from "../api";
-import { useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import Avatar from "./Avatar";
 import { CARD_STEP } from "./CardHeader";
 import { PANEL_SHELL } from "./FightStats";
@@ -77,17 +77,18 @@ function railMethodTag(fight: EventFight, outcome: FightSide["outcome"]): { labe
 }
 
 
-export function FightStepLink({ fight, direction, eventId, returnDepth, search }: {
+export function FightStepLink({ fight, direction, eventId, returnDepth, search, className = CARD_STEP }: {
   fight: EventFight | null;
   direction: "prev" | "next";
   eventId: string;
   returnDepth: number | null;
   search: string;
+  className?: string;
 }) {
   const { settings } = useSettings();
   const label = direction === "prev" ? "Prev" : "Next";
   const glyph = direction === "prev" ? <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />;
-  if (!fight) return <span className={`${CARD_STEP} text-zinc-300`} aria-disabled="true">{direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}</span>;
+  if (!fight) return <span className={`${className} text-zinc-300`} aria-disabled="true">{direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}</span>;
   return (
     <Link
       to={{ pathname: `/fights/${fight.id}`, search }}
@@ -96,14 +97,20 @@ export function FightStepLink({ fight, direction, eventId, returnDepth, search }
       title={`${fight.f1.name} vs ${fight.f2.name}`}
       onPointerEnter={() => prefetch(withRanking(`/api/fights/${fight.id}`, settings.rankingSource))}
       onFocus={() => prefetch(withRanking(`/api/fights/${fight.id}`, settings.rankingSource))}
-      className={`${CARD_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}
+      className={`${className} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}
     >
       {direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}
     </Link>
   );
 }
 
-export function FightRail({ eventId, currentId, returnDepth }: { eventId: string; currentId: string; returnDepth: number | null }) {
+export function FightRail({ eventId, currentId, returnDepth, onReselect }: {
+  eventId: string;
+  currentId: string;
+  returnDepth: number | null;
+  /** The open bout's own tile was clicked: back to the top of it. */
+  onReselect?: () => void;
+}) {
   const { settings } = useSettings();
   // Moving along the card keeps the reader on the tab they were reading.
   const location = useLocation();
@@ -131,7 +138,9 @@ export function FightRail({ eventId, currentId, returnDepth }: { eventId: string
             <Link
               key={f.id}
               to={{ pathname: `/fights/${f.id}`, search }}
-              state={{ eventId, ...(returnDepth ? { eventReturnDepth: returnDepth + 1 } : {}) }}
+              // A bout picked from the card always opens at its top.
+              state={{ eventId, scrollTop: true, ...(returnDepth ? { eventReturnDepth: returnDepth + 1 } : {}) }}
+              onClick={(e) => { if (isCurrent && onReselect && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) { e.preventDefault(); onReselect(); } }}
               aria-current={isCurrent ? "page" : undefined}
               title={`${f.f1.name} vs ${f.f2.name}${f.method ? ` · ${formatMethod(f.method, f.round, f.time)}` : ""}${isLive ? " · live now" : ""}`}
               onPointerEnter={() => prefetch(withRanking(`/api/fights/${f.id}`, settings.rankingSource))}
@@ -178,3 +187,88 @@ export function FightRail({ eventId, currentId, returnDepth }: { eventId: string
   );
 }
 
+
+/** Where each card's strip was last scrolled, so moving between its bouts
+ *  leaves the row where the reader put it. */
+const stripScroll = new Map<string, number>();
+
+/**
+ * The same card on a phone: a row of face-against-face tiles across the top
+ * of the matchup, opener on the left and main event on the right (the way
+ * Prev and Next point). It scrolls sideways. The first matchup opened on a
+ * card brings its tile to the middle (or its end of the row); after that the
+ * row stays where the reader left it, moving only as far as it takes to show
+ * the open bout whole.
+ */
+export function FightStrip({ eventId, currentId, returnDepth, onReselect, className = "" }: {
+  eventId: string;
+  currentId: string;
+  returnDepth: number | null;
+  /** The open bout's own tile was tapped: back to the top of it. */
+  onReselect: () => void;
+  className?: string;
+}) {
+  const { settings } = useSettings();
+  const location = useLocation();
+  const row = useRef<HTMLDivElement>(null);
+  const { data: event } = useApi<EventDetail>(withRanking(`/api/events/${eventId}`, settings.rankingSource));
+  const fights = event ? [...event.fights].reverse() : [];
+  const ready = fights.some((f) => f.id === currentId);
+  useLayoutEffect(() => {
+    const scroller = row.current;
+    const tile = scroller?.querySelector<HTMLElement>("[aria-current='page']");
+    if (!scroller || !tile) return;
+    const saved = stripScroll.get(eventId);
+    if (saved == null) {
+      // First look at this card: the open bout in the middle. The browser
+      // stops at either end, so the first and last bouts sit there.
+      scroller.scrollLeft = tile.offsetLeft - (scroller.clientWidth - tile.offsetWidth) / 2;
+    } else {
+      // Afterwards the row stays put, moving only as far as it takes to show
+      // the open bout whole.
+      scroller.scrollLeft = saved;
+      const left = scroller.scrollLeft;
+      const right = left + scroller.clientWidth;
+      if (tile.offsetLeft < left) scroller.scrollLeft = tile.offsetLeft;
+      else if (tile.offsetLeft + tile.offsetWidth > right) scroller.scrollLeft = tile.offsetLeft + tile.offsetWidth - scroller.clientWidth;
+    }
+    stripScroll.set(eventId, scroller.scrollLeft);
+  }, [currentId, eventId, ready]);
+  if (fights.length < 2) return null;
+  const liveId = liveFightId(event!);
+  const search = cardFightSearch(location.search);
+  return (
+    <nav aria-label="Fights on this card" className={className}>
+      <div ref={row} onScroll={(e) => stripScroll.set(eventId, e.currentTarget.scrollLeft)}
+        className="relative flex gap-2 overflow-x-auto overscroll-x-contain [scrollbar-width:none]">
+        {fights.map((f) => {
+          const isCurrent = f.id === currentId;
+          const isLive = f.id === liveId;
+          return (
+            <Link
+              key={f.id}
+              to={{ pathname: `/fights/${f.id}`, search }}
+              // A bout picked from the row always opens at its top.
+              state={{ eventId, scrollTop: true, ...(returnDepth ? { eventReturnDepth: returnDepth + 1 } : {}) }}
+              onClick={(e) => { if (isCurrent && e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) { e.preventDefault(); onReselect(); } }}
+              aria-current={isCurrent ? "page" : undefined}
+              aria-label={`${f.f1.name} vs ${f.f2.name}${isLive ? ", live now" : ""}`}
+              onPointerDown={() => prefetch(withRanking(`/api/fights/${f.id}`, settings.rankingSource))}
+              // Each bout is a panel like any other; the open one only draws
+              // its outline a shade darker, as a selected row does.
+              // Faces only: the names are in the link's label and title.
+              title={`${f.f1.name} vs ${f.f2.name}`}
+              className={`relative flex shrink-0 items-center gap-2 rounded-2xl border bg-white p-2 shadow-[0_1px_2px_rgba(0,0,0,0.04)] ${
+                isLive ? "border-emerald-300" : isCurrent ? "border-zinc-400" : "border-zinc-200"}`}
+            >
+              {isLive ? <span className="live-dot absolute left-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" /> : null}
+              {[f.f1, f.f2].map((side) => (
+                <Avatar key={side.id || side.name} src={side.photo_url} name={side.name} size="sm" outcome={side.outcome} />
+              ))}
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}

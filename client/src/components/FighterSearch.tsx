@@ -118,6 +118,9 @@ export default function FighterSearch({
             aria-controls={expanded ? selection.listId : undefined}
             aria-activedescendant={selection.activeId}
             autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
             value={query}
             disabled={selected.length >= max}
             onFocus={() => setOpen(true)}
