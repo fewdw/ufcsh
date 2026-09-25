@@ -37,10 +37,26 @@ function imageLevels(src: string): Level[] {
   return [{ url: src, covers: Infinity }];
 }
 
-/** Every copy this page has already decoded. Remembering them, rather than
- *  probing with `new Image()`, matters: a probe is a real request, so probing
- *  each level would download the original of every avatar on the page. */
-const decoded = new Set<string>();
+/** Every copy already decoded here. Remembering them, rather than probing
+ *  with `new Image()`, matters: a probe is a real request, so probing each
+ *  level would download the original of every avatar on the page. They are
+ *  kept across reloads too: photo URLs are versioned and cached for a year, so
+ *  a reload paints the sharp copy straight from the browser's cache instead of
+ *  climbing up from the placeholder again. */
+const DECODED_KEY = "ufcsh:decoded-images:v1";
+const decoded = new Set<string>((() => {
+  try { return JSON.parse(localStorage.getItem(DECODED_KEY) ?? "[]") as string[]; } catch { return []; }
+})());
+let saving = 0;
+function markDecoded(url: string) {
+  if (decoded.has(url)) return;
+  decoded.add(url);
+  if (saving) return;
+  saving = window.setTimeout(() => {
+    saving = 0;
+    try { localStorage.setItem(DECODED_KEY, JSON.stringify([...decoded].slice(-4000))); } catch { /* storage full or off */ }
+  }, 1000);
+}
 
 /** A copy already decoded on this page can be shown straight away. */
 function firstLevel(levels: Level[]): number {
@@ -50,9 +66,11 @@ function firstLevel(levels: Level[]): number {
 
 /** Paints the placeholder at once, then swaps in each sharper copy only after
  *  it has decoded, stopping at the first one sharp enough for the rendered size. */
-function ImageForSource({ src, onLoad, onError, ...props }: Props) {
+function ImageForSource({ src, onLoad, onError, loading, decoding, ...props }: Props) {
   const levels = useMemo(() => imageLevels(src), [src]);
   const [level, setLevel] = useState(() => firstLevel(levels));
+  // A copy the browser already holds is drawn with the page, not after it.
+  const [cached] = useState(() => decoded.has(levels[level].url));
   const [needed, setNeeded] = useState<number | null>(null);
 
   useEffect(() => {
@@ -62,7 +80,7 @@ function ImageForSource({ src, onLoad, onError, ...props }: Props) {
     const image = new Image();
     image.src = levels[next].url;
     image.decode().then(
-      () => { decoded.add(levels[next].url); if (!cancelled) setLevel(next); },
+      () => { markDecoded(levels[next].url); if (!cancelled) setLevel(next); },
       () => { if (!cancelled && next < levels.length - 1) setLevel(next); },
     );
     return () => { cancelled = true; };
@@ -70,9 +88,11 @@ function ImageForSource({ src, onLoad, onError, ...props }: Props) {
 
   return <img
     {...props}
+    loading={cached ? "eager" : loading}
+    decoding={cached ? "sync" : decoding}
     src={levels[level].url}
     onLoad={event => {
-      decoded.add(levels[level].url);
+      markDecoded(levels[level].url);
       const box = event.currentTarget;
       setNeeded(Math.ceil(Math.max(box.clientHeight, box.clientWidth * 0.625) * (window.devicePixelRatio || 1)));
       onLoad?.(event);

@@ -61,37 +61,45 @@ let queued = new Map<string, string>();
 let scheduled = false;
 
 /** Save an answer's JSON text. Writes are batched into an idle moment so a
- *  page never waits on storage. */
+ *  page never waits on storage, and anything still waiting is written as the
+ *  page goes away, so a quick reload finds it. */
 export function writeSnapshot(key: string, text: string): void {
   if (!storage() || text.length > MAX_ENTRY) return;
   queued.set(key, text);
   if (scheduled) return;
   scheduled = true;
-  const flush = () => {
-    scheduled = false;
-    const store = storage();
-    const batch = queued;
-    queued = new Map();
-    if (!store) return;
-    const current = loadIndex(store);
-    for (const [name, value] of batch) {
-      current.entries = current.entries.filter(([other]) => other !== name);
-      let used = current.entries.reduce((sum, [, size]) => sum + size, 0);
-      while (current.entries.length && used + value.length > BUDGET) {
-        const [oldest, size] = current.entries.shift()!;
-        store.removeItem(PREFIX + oldest);
-        used -= size;
-      }
-      try {
-        store.setItem(PREFIX + name, value);
-        current.entries.push([name, value.length, Date.now()]);
-      } catch {
-        // The origin's storage is full of something else; keep what fits.
-        store.removeItem(PREFIX + name);
-      }
-    }
-    saveIndex(store);
-  };
   if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") window.requestIdleCallback(flush, { timeout: 2000 });
   else setTimeout(flush, 200);
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", flush);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flush(); });
+}
+
+function flush() {
+  scheduled = false;
+  if (!queued.size) return;
+  const store = storage();
+  const batch = queued;
+  queued = new Map();
+  if (!store) return;
+  const current = loadIndex(store);
+  for (const [name, value] of batch) {
+    current.entries = current.entries.filter(([other]) => other !== name);
+    let used = current.entries.reduce((sum, [, size]) => sum + size, 0);
+    while (current.entries.length && used + value.length > BUDGET) {
+      const [oldest, size] = current.entries.shift()!;
+      store.removeItem(PREFIX + oldest);
+      used -= size;
+    }
+    try {
+      store.setItem(PREFIX + name, value);
+      current.entries.push([name, value.length, Date.now()]);
+    } catch {
+      // The origin's storage is full of something else; keep what fits.
+      store.removeItem(PREFIX + name);
+    }
+  }
+  saveIndex(store);
 }

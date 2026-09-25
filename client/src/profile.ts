@@ -2,6 +2,7 @@ import { useAuth } from "@clerk/react";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { useAccount } from "./auth";
 import type { ScorerIdentity } from "./scoring";
+import { readSnapshot, writeSnapshot } from "./snapshots";
 
 /** The reader's own profile: who they are publicly, and the one place a
  *  username is claimed. Everything else about a profile is public and goes
@@ -42,6 +43,27 @@ export function rememberedIdentity(userId?: string): ScorerIdentity | null {
 export function rememberedEmail(): string | null {
   rememberedIdentity();
   return saved?.email ?? null;
+}
+
+/** Who is signed in, as far as can be told right now: Clerk's answer once it
+ *  has loaded, and before that the account this browser last saw, so a
+ *  reader's own panels (their pick, their scorecard, the discussion as they
+ *  see it) are drawn at once instead of waiting on the session. `known` says
+ *  which. A request made before Clerk is ready waits for it (`getToken`). */
+export function useSessionUser(): { userId: string | null; known: boolean } {
+  const { isLoaded, user } = useAccount();
+  if (isLoaded) return { userId: user?.id ?? null, known: true };
+  rememberedIdentity();
+  return { userId: saved?.userId ?? null, known: false };
+}
+
+/** The reader's own last answer for something (their pick on a fight, their
+ *  card), kept with the other saved answers so a reload shows it at once. */
+export function recallMine<T>(userId: string, key: string): T | null {
+  return (readSnapshot(`mine:${userId}:${key}`)?.data as T | undefined) ?? null;
+}
+export function rememberMine(userId: string, key: string, value: unknown): void {
+  writeSnapshot(`mine:${userId}:${key}`, JSON.stringify(value));
 }
 
 function rememberEmail(userId: string, email: string | undefined) {

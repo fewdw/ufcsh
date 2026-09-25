@@ -115,6 +115,18 @@ stats, officials, venues, judges and profiles.
   other tabs are read while one is shown, and a tab opened again shows its rows
   while they refresh. The owner's own identity is remembered, so their
   controls and the account button are right before Clerk loads.
+- The reader's own panels (their pick, their scorecard, the discussion as they
+  see it) render from the account this browser last saw and their last answer
+  while Clerk loads; requests wait for the session (`getToken`) and refresh
+  them. The score editor and discussion ship with the matchup page: as lazy
+  chunks they sat behind React's 300 ms Suspense reveal throttle.
+- One Suspense boundary sits outside the per-section error boundary, so a
+  section switch (a transition) keeps the current page until the next is ready;
+  the header sections' code loads first, 300 ms after the first page, and their
+  default data (events + the landing card, rankings, stats) after that.
+- Fighter photos remember which copy is already in the browser's cache
+  (versioned URLs, cached for a year), so a reload paints the sharp copy
+  directly instead of placeholder then photo.
 - Every remaining loading line stays invisible for its first 350 ms
   (`.appear-late`), and a list refreshing in place dims only after 200 ms.
 

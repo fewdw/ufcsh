@@ -963,15 +963,14 @@ export default function EventsPage() {
 
   // When a matchup is open, the sidebar highlights its event.
   const { data: openFight } = useApi<Matchup>(fightId && !fightEventIdHint ? withRanking(`/api/fights/${fightId}`, settings.rankingSource) : null);
-  const selectedId = eventId ?? fightEventIdHint ?? openFight?.event.id ?? null;
-
-  // Open the tagged card: live, finished tonight, or next announced.
+  // "/" opens the tagged card (live, finished tonight, or next announced): it
+  // is drawn straight away, and the address catches up behind it.
+  const landingId = !eventId && !fightId && events?.length ? landingEvent(events)!.id : null;
+  const shownEventId = eventId ?? landingId;
+  const selectedId = shownEventId ?? fightEventIdHint ?? openFight?.event.id ?? null;
   useEffect(() => {
-    if (!eventId && !fightId && events && events.length) {
-      const next = landingEvent(events)!;
-      navigate(`/events/${next.id}`, { replace: true });
-    }
-  }, [eventId, fightId, events, navigate]);
+    if (landingId) navigate(`/events/${landingId}`, { replace: true });
+  }, [landingId, navigate]);
 
   const oddsMode = new URLSearchParams(location.search).get("odds") === "1";
   const dock = fightId ? DOCK.matchup : DOCK.card;
@@ -989,7 +988,7 @@ export default function EventsPage() {
   return (
     <div className={`flex h-full min-h-0 flex-col gap-2 p-2 sm:gap-3 sm:p-3 ${dock.row}`}>
       {/* The event and matchup views have their own route back to the card. */}
-      {!mobileEventsOpen && !fightId && !eventId ? (
+      {!mobileEventsOpen && !fightId && !shownEventId ? (
         <button
           type="button"
           aria-expanded={mobileEventsOpen}
@@ -1011,8 +1010,8 @@ export default function EventsPage() {
       <main className={`${mobileEventsOpen ? "hidden" : "block"} min-h-0 min-w-0 flex-1 ${dock.main}`}>
         {fightId ? (
           <FightView fightId={fightId} eventIdHint={fightEventIdHint ?? openFight?.event.id} />
-        ) : eventId ? (
-          <EventPane eventId={eventId} oddsMode={oddsMode} nav={{ ...eventNeighbours(events, eventId), onBrowse: () => setMobileEventsOpen(true) }} />
+        ) : shownEventId ? (
+          <EventPane eventId={shownEventId} oddsMode={oddsMode} nav={{ ...eventNeighbours(events, shownEventId), onBrowse: () => setMobileEventsOpen(true) }} />
         ) : (
           <div className={`flex h-full items-center justify-center ${shell}`}>
             <div className="text-sm text-zinc-400">Select an event.</div>

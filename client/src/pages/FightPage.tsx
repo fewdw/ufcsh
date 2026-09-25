@@ -1,6 +1,6 @@
 import { List, X } from "lucide-react";
 import { isFightDay } from "../liveEvent";
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useApi } from "../api";
 import type { EventDetail, EventFight, FightDetailBlock, HistoryRow, Matchup, MatchupSide, ProfessionalHistoryRow } from "../api";
@@ -20,7 +20,9 @@ import { CardEventTitle, CardNavigation, CARD_STEP } from "../components/CardHea
 import FightScoring from "../components/FightScoring";
 import FightPredictions from "../components/FightPredictions";
 import { FightRail, FightRailSkeleton, FightStepLink, MatchupSkeleton } from "../components/FightRail";
-const FightDiscussion = lazy(() => import("../components/FightDiscussion"));
+// Part of this page's own code, so the Discussion tab opens with it rather
+// than behind a fallback while a separate chunk loads.
+import FightDiscussion from "../components/FightDiscussion";
 import FighterPortrait from "../components/FighterPortrait";
 import { resultDot } from "../resultDots";
 import MatchupOdds, { OddsFormatTabs, OddsMarkets } from "../components/MatchupOdds";
@@ -974,9 +976,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
               {tab === "score" ? <FightScoring key={fight.id} fight={fight} /> : null}
               {tab === "predict" ? <FightPredictions key={fight.id} fight={fight} /> : null}
               {tab === "discussion" ? (
-                <Suspense fallback={<div className={`appear-late ${shell} p-5 text-sm text-zinc-500`} role="status">Loading discussion…</div>}>
-                  <FightDiscussion key={fight.id} fightId={fight.id} />
-                </Suspense>
+                <FightDiscussion key={fight.id} fightId={fight.id} />
               ) : null}
             </div>
           </div>

@@ -10,7 +10,8 @@ import { accountsEnabled, useAccount } from "./auth";
 import { useAdminResource, type AdminSession } from "./admin";
 import { useSettings, withRanking } from "./settings";
 import { prefetch } from "./api";
-import { useLinkPrefetch } from "./useLinkPrefetch";
+import { useLinkPrefetch, warmSections } from "./useLinkPrefetch";
+import { DEFAULT_STATS_REQUEST } from "./statsDefaults";
 import { pages, type PageLoader } from "./pages";
 import RouteErrorBoundary from "./components/RouteErrorBoundary";
 import ParlaySlip from "./components/ParlaySlip";
@@ -73,10 +74,11 @@ function Header({ onSearch }: { onSearch: () => void }) {
   // A profile belongs to no section of the nav, so none of them is lit.
   const isProfile = pathname.startsWith("/profiles");
   const links = [
-    { href: "/", label: "Events", active: !isRankings && !isStats && !isLabs && !isProfile && !isAdmin, load: pages.events },
-    // Pointing at Rankings starts the list too, so a tap lands on it loaded.
+    // Pointing at a section starts its code and its first data, so a tap
+    // lands on it loaded.
+    { href: "/", label: "Events", active: !isRankings && !isStats && !isLabs && !isProfile && !isAdmin, load: () => { warmSections(settings.rankingSource); return pages.events(); } },
     { href: "/rankings", label: "Rankings", active: isRankings, load: () => { prefetch(withRanking("/api/rankings", settings.rankingSource)); return pages.rankings(); } },
-    { href: "/stats", label: "Stats", active: isStats || isLabs, load: pages.stats },
+    { href: "/stats", label: "Stats", active: isStats || isLabs, load: () => { prefetch(DEFAULT_STATS_REQUEST); return pages.stats(); } },
   ];
 
   return (
@@ -218,8 +220,12 @@ export default function App() {
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-zinc-100 text-zinc-900">
       <Header onSearch={openSearch} />
       <div className="min-h-0 flex-1 overflow-hidden">
-        <RouteErrorBoundary key={routeGroup(location.pathname)}>
+        {/* One boundary for the whole app, outside the per-section error
+            boundary: navigations run as transitions, so a page whose code is
+            still on its way leaves the current one on screen until it is
+            ready instead of flashing a fallback. */}
         <Suspense fallback={<div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading…</div>}>
+        <RouteErrorBoundary key={routeGroup(location.pathname)}>
         <Routes>
           <Route path="/" element={<EventsPage />} />
           <Route path="/events/:eventId" element={<EventsPage />} />
@@ -241,8 +247,8 @@ export default function App() {
           <Route path="/sign-up/*" element={<AuthPage mode="sign-up" />} />
           <Route path="*" element={<div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-zinc-500"><p>This page couldn’t be found.</p><Link to="/" className="font-semibold text-zinc-900 underline">Back to events</Link></div>} />
         </Routes>
-        </Suspense>
         </RouteErrorBoundary>
+        </Suspense>
       </div>
       <CmdK open={searchOpen} onClose={() => setSearchOpen(false)} />
       <ParlaySlip />
