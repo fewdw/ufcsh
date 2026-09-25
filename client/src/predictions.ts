@@ -13,7 +13,7 @@ export type PredictionResult = {
 /** How everyone has called this bout, for the community charts. */
 export type PredictionDistribution = {
   total: number;
-  fighters: { fighterId: string; name: string; count: number }[];
+  fighters: { fighterId: string; name: string; count: number; methods?: { method: PredictionMethod | null; count: number }[] }[];
   methods: { method: PredictionMethod | null; count: number }[];
   rounds: { round: number | null; count: number }[];
 };

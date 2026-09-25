@@ -26,13 +26,20 @@ export function EventPlace({ venue, location }: { venue?: VenueRef | null; locat
 
 export const CARD_STEP = "inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
 
-export function CardNavigation({ previous, center, next }: {
+/** A step inside the floating bar. */
+export const FLOAT_STEP = "inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
+
+/** Prev, the list and Next in one thin bar that floats down with the reader,
+ *  so the steps stay in reach however far down the card is read. */
+export function FloatingNavigation({ label, previous, center, next, className = "" }: {
+  label: string;
   previous: ReactNode;
   center: ReactNode;
   next: ReactNode;
+  className?: string;
 }) {
   return (
-    <nav aria-label="Card navigation" className="grid grid-cols-[1fr_auto_1fr] items-center gap-1 border-b border-zinc-100 px-1.5 py-1">
+    <nav aria-label={label} className={`sticky top-0 z-30 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-1 rounded-full border border-zinc-200 bg-white/95 px-1 py-0.5 shadow-sm backdrop-blur ${className}`}>
       <div className="min-w-0 justify-self-start">{previous}</div>
       <div className="min-w-0">{center}</div>
       <div className="min-w-0 justify-self-end">{next}</div>

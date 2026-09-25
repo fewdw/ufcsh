@@ -16,7 +16,7 @@ import {
   roundsLabel,
 } from "../format";
 import Avatar from "../components/Avatar";
-import { CardEventTitle, CardNavigation, CARD_STEP } from "../components/CardHeader";
+import { CardEventTitle, FLOAT_STEP, FloatingNavigation } from "../components/CardHeader";
 import FightScoring from "../components/FightScoring";
 import FightPredictions from "../components/FightPredictions";
 import { FightRail, FightRailSkeleton, FightStepLink, MatchupSkeleton } from "../components/FightRail";
@@ -853,7 +853,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   // Only the tab panel below should change; the reader's scroll position is
   // left alone. (A tab shorter than the current scroll depth still behaves
   // correctly on its own — the browser clamps scrollTop to the new content's
-  // height, and the tab bar stays put since it's sticky.)
+  // height, and the tab bar stays put above it.)
   const selectTab = (next: MatchupTab) => {
     navigate({ search: `?tab=${next}` }, { replace: true, state: location.state });
   };
@@ -872,16 +872,17 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
         ) : null}
         <div ref={detailRef} inert={changingMatchup} className="h-full overflow-y-auto" aria-busy={changingMatchup}>
           <div className="@container flex w-full flex-col gap-3 pb-8">
+            {/* The steps along the card float over it as it scrolls. */}
+            <FloatingNavigation label="Card navigation"
+              previous={<FightStepLink fight={previous} direction="prev" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} className={FLOAT_STEP} />}
+              center={<button type="button" onClick={closeFight} aria-keyshortcuts="Escape"
+                className={`${FLOAT_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+                <List className="h-3.5 w-3.5" aria-hidden="true" />Card
+              </button>}
+              next={<FightStepLink fight={next} direction="next" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} className={FLOAT_STEP} />}
+            />
             <div className="flex shrink-0 flex-col gap-3">
             <section className={`overflow-hidden ${shell}`}>
-              <CardNavigation
-                previous={<FightStepLink fight={previous} direction="prev" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} />}
-                center={<button type="button" onClick={closeFight} aria-keyshortcuts="Escape"
-                  className={`${CARD_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
-                  <List className="h-3.5 w-3.5" aria-hidden="true" />Card
-                </button>}
-                next={<FightStepLink fight={next} direction="next" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} />}
-              />
               <CardEventTitle
                 name={fight.event.name}
                 date={fight.event.date}
@@ -948,12 +949,10 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
             </div>
 
             {tabs.length > 1 ? (
-              <div className="sticky top-0 z-20 -mt-3 bg-zinc-100 pt-3">
-                {/* The same segmented control the sidebar filters use, on the
-                    same white panel it sits on there. */}
-                <div className={`${shell} p-1.5`}>
-                  <MatchupTabs tabs={tabs} current={tab} onSelect={selectTab} />
-                </div>
+              // The same segmented control the sidebar filters use, on the
+              // same white panel it sits on there.
+              <div className={`${shell} p-1.5`}>
+                <MatchupTabs tabs={tabs} current={tab} onSelect={selectTab} />
               </div>
             ) : null}
 

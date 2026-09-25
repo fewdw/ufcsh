@@ -77,17 +77,18 @@ function railMethodTag(fight: EventFight, outcome: FightSide["outcome"]): { labe
 }
 
 
-export function FightStepLink({ fight, direction, eventId, returnDepth, search }: {
+export function FightStepLink({ fight, direction, eventId, returnDepth, search, className = CARD_STEP }: {
   fight: EventFight | null;
   direction: "prev" | "next";
   eventId: string;
   returnDepth: number | null;
   search: string;
+  className?: string;
 }) {
   const { settings } = useSettings();
   const label = direction === "prev" ? "Prev" : "Next";
   const glyph = direction === "prev" ? <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />;
-  if (!fight) return <span className={`${CARD_STEP} text-zinc-300`} aria-disabled="true">{direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}</span>;
+  if (!fight) return <span className={`${className} text-zinc-300`} aria-disabled="true">{direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}</span>;
   return (
     <Link
       to={{ pathname: `/fights/${fight.id}`, search }}
@@ -96,7 +97,7 @@ export function FightStepLink({ fight, direction, eventId, returnDepth, search }
       title={`${fight.f1.name} vs ${fight.f2.name}`}
       onPointerEnter={() => prefetch(withRanking(`/api/fights/${fight.id}`, settings.rankingSource))}
       onFocus={() => prefetch(withRanking(`/api/fights/${fight.id}`, settings.rankingSource))}
-      className={`${CARD_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}
+      className={`${className} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}
     >
       {direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}
     </Link>

@@ -4,15 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useApi, type Matchup } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
 import { recallMine, rememberMine, useSessionUser } from "../profile";
+import { lastName } from "../format";
 import { METHOD_LABEL, predictionLabel, predictionPoints, sharePct } from "../predictions";
 import type { MyPrediction, PredictionDistribution, PredictionMethod, PredictionSummary } from "../predictions";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
 import { BUTTON_PRIMARY_LARGE } from "../ui";
 
-const METHOD_COLOR: Record<string, string> = {
-  ko: "var(--color-pick-ko)", submission: "var(--color-pick-sub)",
-  decision: "var(--color-pick-dec)", none: "var(--color-pick-none)",
-};
+const METHOD_SHORT: Record<PredictionMethod, string> = { ko: "KO", submission: "Sub", decision: "Dec" };
 /** Spelled out in full so Tailwind keeps the theme variables it would otherwise drop. */
 const ROUND_COLOR = ["var(--color-round-1)", "var(--color-round-2)", "var(--color-round-3)", "var(--color-round-4)", "var(--color-round-5)"];
 /** A method or round choice: a full-width cell in an even grid. */
@@ -36,102 +34,117 @@ export default function FightPredictions({ fight }: { fight: Matchup }) {
 
 type Share = { key: string; label: string; short?: string; count: number; color: string };
 
-const SECTION_LABEL = "mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-400";
+const SECTION_LABEL = "mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-400";
+/** Each corner's colour, darkest for a knockout down to lightest for no
+ *  method named: the method pie reads by fighter and by how at once. */
+const SHADES: Record<string, [string, string]> = {
+  ko: ["#1e40af", "#991b1b"], submission: ["#3b82f6", "#ef4444"],
+  decision: ["#93c5fd", "#fca5a5"], none: ["#dbeafe", "#fee2e2"],
+};
+const picksWord = (count: number) => `${count} ${count === 1 ? "pick" : "picks"}`;
 
 /** A full pie, the first answer starting at nine o'clock and running
  *  clockwise, the rest following on. Slices are parted by a hairline of the
  *  panel's own colour. */
-function Pie({ entries, total, size = 88 }: { entries: Share[]; total: number; size?: number }) {
+function Pie({ entries, total, size = 76 }: { entries: Share[]; total: number; size?: number }) {
   const shown = entries.filter(entry => entry.count > 0);
   const c = size / 2;
   const r = c - 1;
   let angle = Math.PI;
   const point = (at: number) => `${(c + r * Math.cos(at)).toFixed(2)} ${(c + r * Math.sin(at)).toFixed(2)}`;
   return <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0" role="img"
-    aria-label={entries.map(entry => `${entry.label} ${sharePct(entry.count, total)}%`).join(", ")}>
+    aria-label={shown.map(entry => `${entry.label} ${sharePct(entry.count, total)}%`).join(", ")}>
     {shown.length === 1
-      ? <circle cx={c} cy={c} r={r} fill={shown[0].color}><title>{`${shown[0].label}: ${shown[0].count} (100%)`}</title></circle>
+      ? <circle cx={c} cy={c} r={r} fill={shown[0].color}><title>{`${shown[0].label}: ${picksWord(shown[0].count)} (100%)`}</title></circle>
       : shown.map(entry => {
         const from = angle;
         angle += (entry.count / total) * Math.PI * 2;
         const large = angle - from > Math.PI ? 1 : 0;
         return <path key={entry.key} d={`M ${c} ${c} L ${point(from)} A ${r} ${r} 0 ${large} 1 ${point(angle)} Z`}
-          fill={entry.color} strokeWidth={2} strokeLinejoin="round" className="stroke-white dark:stroke-[#18181b]">
-          <title>{`${entry.label}: ${entry.count} ${entry.count === 1 ? "pick" : "picks"} (${sharePct(entry.count, total)}%)`}</title>
+          fill={entry.color} strokeWidth={1.5} strokeLinejoin="round" className="stroke-white dark:stroke-[#18181b]">
+          <title>{`${entry.label}: ${picksWord(entry.count)} (${sharePct(entry.count, total)}%)`}</title>
         </path>;
       })}
   </svg>;
 }
 
-/** One question as a pie with its answers listed beside it. */
-function SharePie({ title, entries, total, counts = false, ink }: { title: string; entries: Share[]; total: number; counts?: boolean; ink?: string[] }) {
-  return <div className="min-w-0 px-4 py-3">
-    <h3 className={SECTION_LABEL}>{title}</h3>
-    <div className="flex flex-col items-center gap-2.5 @[22rem]:flex-row @[22rem]:items-center @[22rem]:gap-3">
-      <Pie entries={entries} total={total} />
-      <ul className="w-full min-w-0 space-y-0.5 text-[11px] leading-4" aria-hidden="true">
-        {entries.map((entry, index) => <li key={entry.key} className={`flex min-w-0 items-center gap-1.5 ${entry.count ? "text-zinc-600" : "text-zinc-400"}`}
-          title={`${entry.label}: ${entry.count} ${entry.count === 1 ? "pick" : "picks"}`}>
-          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: entry.color }} />
-          <span className="min-w-0 truncate">{entry.short ?? entry.label}</span>
-          <span className={`ml-auto shrink-0 font-semibold tabular-nums ${ink?.[index] ?? "text-zinc-900"}`}>
-            {sharePct(entry.count, total)}%{counts ? ` (${entry.count})` : ""}
-          </span>
-        </li>)}
-      </ul>
-    </div>
-  </div>;
+/** A small key under a chart: swatches, a short name, the share. */
+function Key({ rows }: { rows: { key: string; swatches: string[]; label: string; value: string; ink?: string; muted?: boolean }[] }) {
+  return <ul className="mt-2 w-full space-y-0.5 text-[11px] leading-4" aria-hidden="true">
+    {rows.map(row => <li key={row.key} className={`flex min-w-0 items-center gap-1 ${row.muted ? "text-zinc-400" : "text-zinc-600"}`}>
+      <span className="flex shrink-0 -space-x-0.5">{row.swatches.map(color => <span key={color} className="h-2 w-2 rounded-full ring-1 ring-white dark:ring-[#18181b]" style={{ backgroundColor: color }} />)}</span>
+      <span className="min-w-0 truncate">{row.label}</span>
+      <span className={`ml-auto shrink-0 font-semibold tabular-nums ${row.ink ?? "text-zinc-900"}`}>{row.value}</span>
+    </li>)}
+  </ul>;
 }
 
-/** Rounds are ordered, so they stand as bars side by side, each with its
- *  share over it and its name under it. */
-function ShareColumns({ title, entries, total }: { title: string; entries: Share[]; total: number }) {
+/** Rounds are ordered, so they stand as bars side by side. */
+function RoundBars({ entries, total }: { entries: Share[]; total: number }) {
   const most = Math.max(1, ...entries.map(entry => entry.count));
-  return <div className="min-w-0 px-4 py-3">
-    <h3 className={SECTION_LABEL}>{title}</h3>
-    <div className="flex items-end gap-0.5" role="img"
-      aria-label={entries.map(entry => `${entry.label} ${sharePct(entry.count, total)}%`).join(", ")}>
-      {entries.map(entry => <div key={entry.key} className="flex min-w-0 flex-1 flex-col items-center gap-1"
-        title={`${entry.label}: ${entry.count} ${entry.count === 1 ? "pick" : "picks"}`}>
-        <span className={`text-[11px] font-semibold tabular-nums ${entry.count ? "text-zinc-900" : "text-zinc-400"}`}>{sharePct(entry.count, total)}%</span>
-        <div className="flex h-16 w-full items-end justify-center">
-          <span className="block w-full max-w-9 rounded-t" style={{ height: entry.count ? `${Math.max(4, (entry.count / most) * 100)}%` : 2, backgroundColor: entry.count ? entry.color : "var(--color-plot-axis)" }} />
-        </div>
-        <span className={`text-[11px] ${entry.count ? "text-zinc-600" : "text-zinc-400"}`}>{entry.short ?? entry.label}</span>
-      </div>)}
-    </div>
+  return <div className="flex h-[76px] items-end justify-center gap-1" role="img"
+    aria-label={entries.map(entry => `${entry.label} ${sharePct(entry.count, total)}%`).join(", ")}>
+    {entries.map(entry => <div key={entry.key} className="flex h-full w-4 flex-col items-center justify-end gap-0.5" title={`${entry.label}: ${picksWord(entry.count)}`}>
+      {entry.count ? <span className="text-[9px] font-semibold leading-none tabular-nums text-zinc-700">{sharePct(entry.count, total)}</span> : null}
+      <span className="block w-full rounded-t-[3px]" style={{ height: `${entry.count ? Math.max(6, (entry.count / most) * 100) : 3}%`, backgroundColor: entry.count ? entry.color : "var(--color-plot-axis)" }} />
+    </div>)}
   </div>;
 }
 
-/** Who wins and how as pies, when as bars: small samples stay readable. */
+/** Who wins, how and when, side by side in one row. */
 function CommunityPicks({ distribution, scheduledRounds }: { distribution: PredictionDistribution; scheduledRounds: number | null }) {
   const total = distribution.total;
+  const [f1, f2] = distribution.fighters;
   const fighters: Share[] = distribution.fighters.map((entry, index) => ({
     key: entry.fighterId || `f${index}`, label: entry.name, count: entry.count,
     color: index === 0 ? "var(--color-f1)" : "var(--color-f2)",
   }));
-  const methods: Share[] = distribution.methods.map(entry => ({
-    key: entry.method ?? "none",
-    label: entry.method ? METHOD_LABEL[entry.method] : "No method named",
-    short: entry.method ? METHOD_LABEL[entry.method] : "Any",
-    count: entry.count, color: METHOD_COLOR[entry.method ?? "none"],
-  }));
+  const order = ["ko", "submission", "decision", null] as const;
+  const methodName = (method: PredictionMethod | null) => method ? METHOD_LABEL[method] : "No method";
+  // Blue's calls, knockout first, then red's: the same halves as the winner pie.
+  const calls: Share[] = distribution.fighters.flatMap((side, index) => order.map(method => ({
+    key: `${index}-${method ?? "none"}`, label: `${side.name} · ${methodName(method)}`,
+    count: side.methods?.find(entry => entry.method === method)?.count ?? 0,
+    color: SHADES[method ?? "none"][index],
+  })));
+  const methods = distribution.methods;
   const rounds: Share[] = distribution.rounds.map(entry => ({
     key: entry.round == null ? "none" : `r${entry.round}`,
     label: entry.round == null ? "No round named" : `Round ${entry.round}`,
-    short: entry.round == null ? "Any" : `R${entry.round}`,
+    short: entry.round == null ? "–" : `${entry.round}`,
     count: entry.count,
     color: entry.round == null ? "var(--color-pick-none)" : ROUND_COLOR[Math.min(entry.round, 5) - 1],
   }));
   const roundsKnown = scheduledRounds === 3 || scheduledRounds === 5;
+  const byFighter = Boolean(f1?.methods && f2?.methods);
 
   return (
     <section className={PANEL_SHELL}>
-      <PanelHeading title="Community picks" aside={<span className="text-xs tabular-nums text-zinc-500">{total.toLocaleString()} {total === 1 ? "pick" : "picks"}</span>} />
-      <div className={`grid grid-cols-2 divide-x divide-zinc-100 ${roundsKnown ? "sm:grid-cols-3" : ""}`}>
-        <div className="@container min-w-0"><SharePie title="Winner" entries={fighters} total={total} counts ink={["text-f1-ink", "text-f2-ink"]} /></div>
-        <div className="@container min-w-0"><SharePie title="Method" entries={methods} total={total} /></div>
-        {roundsKnown ? <div className="col-span-2 border-t border-zinc-100 sm:col-span-1 sm:border-t-0"><ShareColumns title="Finish round" entries={rounds} total={total} /></div> : null}
+      <PanelHeading title="Community picks" divider={false} aside={<span className="text-xs tabular-nums text-zinc-500">{picksWord(total)}</span>} />
+      <div className={`grid gap-3 px-4 pb-4 sm:gap-6 sm:px-5 ${roundsKnown ? "grid-cols-3" : "grid-cols-2"}`}>
+        <div className="flex min-w-0 flex-col items-center">
+          <h3 className={SECTION_LABEL}>Winner</h3>
+          <Pie entries={fighters} total={total} />
+          <Key rows={fighters.map((entry, index) => ({
+            key: entry.key, swatches: [entry.color], label: lastName(entry.label),
+            value: `${sharePct(entry.count, total)}%`, ink: index === 0 ? "text-f1-ink" : "text-f2-ink", muted: !entry.count,
+          }))} />
+        </div>
+        <div className="flex min-w-0 flex-col items-center">
+          <h3 className={SECTION_LABEL}>Method</h3>
+          <Pie entries={byFighter ? calls : methods.map(entry => ({ key: entry.method ?? "none", label: methodName(entry.method), count: entry.count, color: SHADES[entry.method ?? "none"][0] }))} total={total} />
+          <Key rows={methods.filter(entry => entry.method || entry.count).map(entry => ({
+            key: entry.method ?? "none", swatches: byFighter ? SHADES[entry.method ?? "none"] : [SHADES[entry.method ?? "none"][0]],
+            label: entry.method ? METHOD_SHORT[entry.method] : "Any", value: `${sharePct(entry.count, total)}%`, muted: !entry.count,
+          }))} />
+        </div>
+        {roundsKnown ? <div className="flex min-w-0 flex-col items-center">
+          <h3 className={SECTION_LABEL}>Round %</h3>
+          <RoundBars entries={rounds} total={total} />
+          <div className="mt-1 flex justify-center gap-1 text-[10px] leading-none text-zinc-500" aria-hidden="true">
+            {rounds.map(entry => <span key={entry.key} className="w-4 text-center">{entry.short}</span>)}
+          </div>
+        </div> : null}
       </div>
     </section>
   );
@@ -154,7 +167,7 @@ function PredictionGate(props: EditorProps) {
 
 /** The one place the open/closed state is stated. */
 function PredictionHeading({ open }: { open: boolean }) {
-  return <PanelHeading title="Your prediction" aside={
+  return <PanelHeading title="Your prediction" divider={false} aside={
     <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${open ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500"}`}>
       {open ? "Open" : "Closed"}
     </span>
@@ -231,7 +244,7 @@ function PredictionEditor({ fight, status, onSaved, userId }: EditorProps & { us
 
   return <section className={PANEL_SHELL}>
     <PredictionHeading open={open} />
-    <div className="px-4 py-3 sm:px-5 sm:py-4">
+    <div className="px-4 pb-4 sm:px-5">
       {!saved ? (
         <p role="status" className="appear-late text-sm text-zinc-500">
           {error ? <>{error} <button className="underline" onClick={() => void load()}>Retry</button></> : "Loading your pick…"}
@@ -246,22 +259,18 @@ function PredictionEditor({ fight, status, onSaved, userId }: EditorProps & { us
             <legend className="sr-only">Your fight prediction</legend>
 
             <div>
-              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Winner</p>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2" role="group" aria-label="Winner">
                 {status.fighters.map((item, index) => {
                   const picked = fighterId === item.fighterId;
                   return (
                     <button key={item.fighterId} type="button" aria-pressed={picked}
                       onClick={() => { setFighter(picked ? "" : item.fighterId); edited.current = true; setMessage(""); }}
-                      className={`min-w-0 rounded-xl border px-3 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${
+                      className={`min-w-0 rounded-xl border px-3 py-2.5 text-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${
                         picked
                           ? index === 0 ? "border-f1 bg-f1-soft text-f1-ink" : "border-f2 bg-f2-soft text-f2-ink"
                           : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50"
                       }`}>
                       <span className="block break-words text-sm font-semibold leading-snug">{item.name}</span>
-                      <span className={`mt-0.5 block text-[11px] ${picked ? "opacity-80" : "text-zinc-400"}`}>
-                        {picked ? "Your pick" : "Pick to win"}
-                      </span>
                     </button>
                   );
                 })}
@@ -271,10 +280,7 @@ function PredictionEditor({ fight, status, onSaved, userId }: EditorProps & { us
             {/* Three ways it can end, a row of equal buttons under the two
                 fighters. Optional: pressing the chosen one again clears it. */}
             <div>
-              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
-                Method <span className="font-medium normal-case tracking-normal text-zinc-400">optional · +{rules.method}</span>
-              </p>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-2" role="group" aria-label="Method (optional)">
                 {(["ko", "submission", "decision"] as const).map(value => {
                   const picked = method === value;
                   return (
@@ -290,11 +296,8 @@ function PredictionEditor({ fight, status, onSaved, userId }: EditorProps & { us
 
             {method === "ko" || method === "submission" ? (
               <div>
-                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
-                  Round <span className="font-medium normal-case tracking-normal text-zinc-400">optional · +{rules.round}</span>
-                </p>
                 {roundsKnown ? (
-                  <div className={`grid gap-2 ${status.scheduledRounds === 5 ? "grid-cols-5" : "grid-cols-3"}`}>
+                  <div role="group" aria-label="Round (optional)" className={`grid gap-2 ${status.scheduledRounds === 5 ? "grid-cols-5" : "grid-cols-3"}`}>
                     {Array.from({ length: status.scheduledRounds! }, (_unused, index) => index + 1).map(value => {
                       const picked = round === value;
                       return (
@@ -311,15 +314,12 @@ function PredictionEditor({ fight, status, onSaved, userId }: EditorProps & { us
             ) : null}
           </fieldset>
 
-          <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-zinc-100 pt-3">
+          <div className="mt-3 flex flex-wrap items-center gap-3">
             <button type="button" disabled={busy || conflict || !fighterId || (!!saved.pick && !dirty)}
               className={primary} onClick={() => void submit()}>
               {busy ? "Saving…" : saved.pick ? "Update pick" : "Save pick"}
             </button>
-            <p className="text-xs tabular-nums text-zinc-500">
-              Worth <span className="font-semibold text-zinc-900">{onOffer}</span> pts if it lands
-              <span className="text-zinc-400"> · {rules.entry} just for picking</span>
-            </p>
+            <p className="text-xs tabular-nums text-zinc-500"><span className="font-semibold text-zinc-900">{onOffer}</span> pts</p>
             {saved.pick && saved.removable ? (
               <button type="button" disabled={busy || conflict} onClick={() => void submit(true)}
                 className="ml-auto text-xs text-zinc-400 underline underline-offset-2 hover:text-zinc-700 disabled:opacity-40">
