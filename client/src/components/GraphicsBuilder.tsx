@@ -49,7 +49,7 @@ function SubjectPicker({ kind, subject, onPick }: { kind: Kind; subject: Subject
       ) : null}
       <label className="relative block">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
-        <input type="search" value={query} onChange={(event) => setQuery(event.target.value.slice(0, 60))} autoComplete="off" spellCheck={false}
+        <input type="search" value={query} onChange={(event) => setQuery(event.target.value.slice(0, 60))} autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
           placeholder={wanted === "fighter" ? "Find a fighter…" : wanted === "fight" ? "Find a bout, e.g. “Van vs Pantoja”…" : "Find an event…"}
           aria-label={wanted === "fighter" ? "Find a fighter" : wanted === "fight" ? "Find a bout" : "Find an event"}
           className={`${FIELD} pl-8`} />
@@ -442,7 +442,7 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
             <section className={`space-y-2 md:space-y-3 ${kind === "parlay" ? "hidden" : ""}`}>
               <h3 className={EYEBROW}>4 · Include</h3>
               {pickNote || communityNote ? <p role="status" className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-inset ring-amber-200">{[pickNote, communityNote].filter(Boolean).join(" ")}</p> : null}
-              <input type="search" aria-label="Find graphic options" placeholder="Find a stat or market…" className={FIELD} value={optionQuery} onChange={(event) => setOptionQuery(event.target.value)} />
+              <input type="search" autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false} aria-label="Find graphic options" placeholder="Find a stat or market…" className={FIELD} value={optionQuery} onChange={(event) => setOptionQuery(event.target.value)} />
               <div>
                 {groups.map((group) => (
                   <details key={group} open={optionQuery ? true : undefined} className="group border-t border-zinc-100 first:border-t-0 md:first:border-t">
