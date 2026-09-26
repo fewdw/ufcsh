@@ -7,6 +7,7 @@ import {
   scrapeFightDetail,
   scrapeFighterBirthDate,
   scrapeRosterPage,
+  swapDetailCorners,
   type ScrapedEventDetail,
 } from "./scrape/ufcstats.ts";
 import { scrapeAthleteDirectoryPage, scrapeEventCard, scrapeEventSchedules, scrapeFighterImages, scrapeRankings } from "./scrape/ufccom.ts";
@@ -75,8 +76,8 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
 
     const currentIds = new Set(detail.fights.map((f) => f.id));
     const existing = db
-      .prepare("SELECT id, f1_id, f2_id, f1_outcome, f2_outcome FROM fights WHERE event_id = ?")
-      .all(detail.id) as { id: string; f1_id: string; f2_id: string; f1_outcome: string | null; f2_outcome: string | null }[];
+      .prepare("SELECT id, f1_id, f2_id, f1_outcome, f2_outcome, detail_json FROM fights WHERE event_id = ?")
+      .all(detail.id) as { id: string; f1_id: string; f2_id: string; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null }[];
     const previous = new Map(existing.map(f => [f.id, f]));
     for (const row of existing) {
       if (!currentIds.has(row.id)) {
@@ -133,8 +134,13 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
         }
       }
       if (old && old.f1_id === f.f2.id && old.f2_id === f.f1.id && old.f1_id !== old.f2_id) {
-        db.prepare(`UPDATE fights SET detail_json = NULL, detail_fetched_at = NULL,
-          f1_weight_miss = f2_weight_miss, f2_weight_miss = f1_weight_miss WHERE id = ?`).run(f.id);
+        // The stored stats are turned round rather than dropped, so a bout that
+        // just ended keeps its numbers while the source is still settling them.
+        // A cleared fetch time has them read again straight away.
+        let swapped: string | null = null;
+        try { swapped = old.detail_json ? JSON.stringify(swapDetailCorners(JSON.parse(old.detail_json))) : null; } catch { /* refetch */ }
+        db.prepare(`UPDATE fights SET detail_json = ?, detail_fetched_at = NULL,
+          f1_weight_miss = f2_weight_miss, f2_weight_miss = f1_weight_miss WHERE id = ?`).run(swapped, f.id);
         db.prepare(`UPDATE odds SET f1_open = f2_open, f2_open = f1_open,
           f1_close = f2_close, f2_close = f1_close, f1_history = f2_history, f2_history = f1_history
           WHERE fight_id = ?`).run(f.id);
