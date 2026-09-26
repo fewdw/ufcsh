@@ -55,6 +55,16 @@ export function matchEventSchedule(
 
 const pairKey = (f1: string, f2: string) => [firstLastName(f1), firstLastName(f2)].sort().join("|");
 
+/** Whether a page's card and ours share at least one pairing by name. One that
+ *  shares none is another event's page. */
+export function sharesBout(
+  fights: { f1_name: string; f2_name: string }[],
+  bouts: { f1: string; f2: string }[],
+): boolean {
+  const pairs = new Set(bouts.map((bout) => pairKey(bout.f1, bout.f2)));
+  return fights.some((fight) => pairs.has(pairKey(fight.f1_name, fight.f2_name)));
+}
+
 /**
  * Which segment of the card each bout belongs to. Names carry the assignment,
  * because either source can reorder a card after a change; the segment sizes
