@@ -1619,13 +1619,10 @@ export async function tick(): Promise<void> {
       void guarded("method_odds_backfill", async () => { await syncMethodOddsBackfill(20); });
     }
 
-    // 11b. Verdict MMA judges' round cards and community scorecards: newly
-    //     completed cards, and the last three weeks re-read as their community
-    //     totals grow and official cards get posted. Six-hourly, in parallel.
-    if (metaAgeMs("verdict_scorecards_at") > 6 * HOUR) {
-      touchMeta("verdict_scorecards_at");
-      void guarded("verdict_scorecards", async () => { await syncVerdictScorecards(); });
-    }
+    // 11b. Verdict MMA judges' round cards and community scorecards, in
+    //     parallel. The pass decides what is due: fight-night cards every 15
+    //     minutes, older ones less often as their totals settle.
+    void guarded("verdict_scorecards", async () => { await syncVerdictScorecards(); });
 
     // 12. Birth dates, in parallel on the ufcstats queue. Live results share
     //     that queue, but each page is one request so nothing waits long.

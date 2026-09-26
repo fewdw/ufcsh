@@ -106,10 +106,10 @@ const nearbyFights = db.prepare(`SELECT f.id, f.event_id, e.date,
   FROM fights f JOIN events e ON e.id = f.event_id
   LEFT JOIN career_profiles c1 ON c1.fighter_id = f.f1_id AND c1.status = 'verified'
   LEFT JOIN career_profiles c2 ON c2.fighter_id = f.f2_id AND c2.status = 'verified'
-  WHERE e.complete = 1 AND e.date BETWEEN ? AND ?
+  WHERE (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL) AND e.date BETWEEN ? AND ?
   ORDER BY abs(julianday(e.date) - julianday(?)), f.ord`);
 
-/** Completed scoreable fights on the date Verdict gives, or a day either side:
+/** Finished scoreable fights (on a live card too) on the date Verdict gives, or a day either side:
  * Verdict files many cards under the UTC date, a day before or after the
  * local card date UFCStats uses. Both fighter names still have to agree. */
 const sides = (fight: LocalFight): [Side, Side] => [
@@ -168,8 +168,18 @@ async function importFight(eventId: number, fightNumber: number, fight: LocalFig
         avg1: card.avg2, avg2: card.avg1,
         rounds: card.rounds.map(round => ({ ...round, avg1: round.avg2, avg2: round.avg1 })),
       };
-      communityJson = JSON.stringify({ source: "Verdict MMA", sourceUrl, fetchedAt, ...aligned });
-      stats.community += 1;
+      // An unchanged tally is left alone, so a re-read doesn't rebuild the
+      // analytics that watch this table.
+      const next = { source: "Verdict MMA", sourceUrl, ...aligned };
+      let same = false;
+      try {
+        const { fetchedAt: _, ...stored } = JSON.parse(fight.community_score_json ?? "null") ?? {};
+        same = JSON.stringify(stored) === JSON.stringify(next);
+      } catch { /* replace malformed */ }
+      if (!same || mode === "refresh") {
+        communityJson = JSON.stringify({ source: next.source, sourceUrl, fetchedAt, ...aligned });
+        stats.community += 1;
+      }
     }
     if (mode === "refresh") replaceUpdate.run(judgeJson, communityJson, fetchedAt, fight.id);
     else mergeUpdate.run(judgeJson, communityJson, fetchedAt, fight.id);
@@ -241,24 +251,37 @@ async function listedVerdictIds(): Promise<number[]> {
 }
 
 let running = false;
+let discoveredAt = 0;
+
+/** How long a card's community totals may go unread, by days since it was
+ * fought: votes pour in on fight night, trickle for weeks, and stop. */
+const REFRESH_BY_AGE: [maxDays: number, everyMs: number][] = [
+  [2, 15 * 60_000],
+  [7, 2 * 3_600_000],
+  [30, 12 * 3_600_000],
+  [180, 7 * 86_400_000],
+  [365, 30 * 86_400_000],
+];
+
+/** Cards due a re-read, most recent first. A card first seen before it was
+ * fought (so nothing matched yet) counts while one of ours is on that date. */
+const dueCards = db.prepare(`SELECT v.verdict_id, v.checked_at, julianday('now') - julianday(COALESCE(e.date, v.date)) AS age
+  FROM verdict_events v LEFT JOIN events e ON e.id = v.event_id
+  WHERE (v.event_id IS NOT NULL AND e.date <= date('now') AND e.date >= date('now', '-365 day'))
+    OR (v.event_id IS NULL AND v.date BETWEEN date('now', '-3 day') AND date('now', '+1 day')
+      AND EXISTS (SELECT 1 FROM events n WHERE n.date BETWEEN date(v.date, '-1 day') AND date(v.date, '+1 day')))
+  ORDER BY age`);
 
 /**
- * Background pass: find Verdict's page for every newly completed card, and
- * re-read the last three weeks of cards, whose community totals keep growing
- * and whose official round cards are often posted days after the event.
+ * Background pass: find Verdict's page for every new card hourly, and re-read
+ * each card on the schedule above, so community totals keep growing on the
+ * site and official round cards posted days later are picked up.
  */
 export async function syncVerdictScorecards(): Promise<VerdictImportStats & { events: number }> {
   const total = { events: 0, matchedFights: 0, official: 0, community: 0, failed: 0 };
   if (running) return total;
   running = true;
   try {
-    const known = new Set((db.prepare("SELECT verdict_id FROM verdict_events").all() as { verdict_id: number }[]).map(row => row.verdict_id));
-    const maxKnown = (db.prepare("SELECT MAX(verdict_id) AS id FROM verdict_events").get() as { id: number | null }).id ?? 0;
-    let ids: number[] = [];
-    try { ids = await listedVerdictIds(); } catch (error) { log(`verdict events listing: ${String(error)}`); }
-    // Ids are allocated as cards are announced, so anything past the highest
-    // one seen is new; a few beyond it catch cards the listing no longer shows.
-    for (let id = maxKnown + 1; id <= maxKnown + 10; id++) ids.push(id);
     const add = (result: Awaited<ReturnType<typeof importVerdictEvent>>) => {
       if (!result) return;
       total.events += 1;
@@ -267,16 +290,24 @@ export async function syncVerdictScorecards(): Promise<VerdictImportStats & { ev
       total.community += result.community;
       total.failed += result.failed;
     };
-    // Probed ids past the end mostly don't exist yet, so their misses are quiet.
-    for (const id of [...new Set(ids)].filter(id => !known.has(id)).sort((a, b) => a - b)) {
-      add(await importVerdictEvent(id, "missing", { quiet: id > maxKnown }));
+    if (Date.now() - discoveredAt > 3_600_000) {
+      discoveredAt = Date.now();
+      const known = new Set((db.prepare("SELECT verdict_id FROM verdict_events").all() as { verdict_id: number }[]).map(row => row.verdict_id));
+      const maxKnown = (db.prepare("SELECT MAX(verdict_id) AS id FROM verdict_events").get() as { id: number | null }).id ?? 0;
+      let ids: number[] = [];
+      try { ids = await listedVerdictIds(); } catch (error) { log(`verdict events listing: ${String(error)}`); }
+      // Ids are allocated as cards are announced, so anything past the highest
+      // one seen is new; a few beyond it catch cards the listing no longer shows.
+      for (let id = maxKnown + 1; id <= maxKnown + 10; id++) ids.push(id);
+      // Probed ids past the end mostly don't exist yet, so their misses are quiet.
+      for (const id of [...new Set(ids)].filter(id => !known.has(id)).sort((a, b) => a - b)) {
+        add(await importVerdictEvent(id, "missing", { quiet: id > maxKnown }));
+      }
     }
-    // Cards of the last three weeks, including ones first seen before they
-    // were fought (so nothing matched yet), every six hours.
-    const recent = db.prepare(`SELECT v.verdict_id FROM verdict_events v LEFT JOIN events e ON e.id = v.event_id
-      WHERE v.checked_at < ? AND ((v.event_id IS NOT NULL AND e.complete = 1 AND e.date >= date('now', '-21 day'))
-        OR (v.event_id IS NULL AND v.date BETWEEN date('now', '-21 day') AND date('now')))`).all(Date.now() - 6 * 3_600_000) as { verdict_id: number }[];
-    for (const { verdict_id } of recent) add(await importVerdictEvent(verdict_id, "recent"));
+    for (const card of dueCards.all() as { verdict_id: number; checked_at: number; age: number }[]) {
+      const every = REFRESH_BY_AGE.find(([maxDays]) => card.age <= maxDays)?.[1];
+      if (every && card.checked_at < Date.now() - every) add(await importVerdictEvent(card.verdict_id, "recent"));
+    }
     if (total.events) log(`verdict scorecards: ${total.events} events, ${total.matchedFights} fights, ${total.official} official, ${total.community} community, ${total.failed} failed`);
     return total;
   } finally {
