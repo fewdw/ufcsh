@@ -9,12 +9,17 @@ export function scoringOrigins(): string[] {
   return process.env.NODE_ENV === "production" ? [] : ["http://localhost:8000", "http://127.0.0.1:8000", "http://localhost:5173", "http://127.0.0.1:5173"];
 }
 let clerk: ReturnType<typeof createClerkClient> | undefined;
+/** The one Clerk client, or null where sign-in is not configured. */
+export function clerkClient() {
+  if (!process.env.CLERK_SECRET_KEY || !process.env.CLERK_PUBLISHABLE_KEY) return null;
+  return clerk ??= createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY, publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
+    ...(process.env.CLERK_PROXY_URL ? { proxyUrl: process.env.CLERK_PROXY_URL } : {}) });
+}
 export async function authenticateScorer(req: IncomingMessage): Promise<string> {
-  if (!process.env.CLERK_SECRET_KEY || !process.env.CLERK_PUBLISHABLE_KEY || !scoringOrigins().length) throw new ScoringError(503, "Sign-in is not configured yet.");
+  const clerk = clerkClient();
+  if (!clerk || !scoringOrigins().length) throw new ScoringError(503, "Sign-in is not configured yet.");
   const authorization = req.headers.authorization;
   if (!authorization?.startsWith("Bearer ") || authorization.length > 8192) throw new ScoringError(401, "Sign in to continue.");
-  clerk ??= createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY, publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
-    ...(process.env.CLERK_PROXY_URL ? { proxyUrl: process.env.CLERK_PROXY_URL } : {}) });
   // Only explicit bearer tokens reach Clerk. Cookies and caller-supplied Host / forwarded headers cannot authenticate writes.
   const request = new Request(scoringOrigins()[0] + req.url, { headers: { authorization } });
   const state = await clerk.authenticateRequest(request, { authorizedParties: scoringOrigins(), acceptsToken: "session_token", jwtKey: process.env.CLERK_JWT_KEY });
@@ -38,11 +43,11 @@ function safeAvatar(url: unknown): string | null {
  * kept beside the profile. Scorecard saves never make this request. */
 const AVATAR_TTL = 86_400_000;
 export async function scorerAvatar(userId: string): Promise<{ imageUrl: string | null; joinedAt: number | null } | null> {
-  if (!process.env.CLERK_SECRET_KEY || !process.env.CLERK_PUBLISHABLE_KEY) return null;
-  clerk ??= createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY, publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
-    ...(process.env.CLERK_PROXY_URL ? { proxyUrl: process.env.CLERK_PROXY_URL } : {}) });
-  const user = await clerk.users.getUser(userId);
-  // Only public profile metadata is copied. Names, emails and account details stay with Clerk.
+  const clerk = clerkClient();
+  return clerk ? publicAccount(await clerk.users.getUser(userId)) : null;
+}
+/** Only public profile metadata is copied. Names, emails and account details stay with Clerk. */
+export function publicAccount(user: { hasImage: boolean; imageUrl: string; createdAt: number }) {
   return {
     imageUrl: user.hasImage ? safeAvatar(user.imageUrl) : null,
     joinedAt: Number.isFinite(user.createdAt) ? user.createdAt : null,
@@ -56,9 +61,8 @@ const emails = new Map<string, { email: string | null; at: number }>();
 export async function scorerEmail(userId: string): Promise<string | null> {
   const cached = emails.get(userId);
   if (cached && Date.now() - cached.at < EMAIL_TTL) return cached.email;
-  if (!process.env.CLERK_SECRET_KEY || !process.env.CLERK_PUBLISHABLE_KEY) return null;
-  clerk ??= createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY, publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
-    ...(process.env.CLERK_PROXY_URL ? { proxyUrl: process.env.CLERK_PROXY_URL } : {}) });
+  const clerk = clerkClient();
+  if (!clerk) return null;
   const user = await clerk.users.getUser(userId);
   const primary = user.emailAddresses.find(address => address.id === user.primaryEmailAddressId);
   const email = primary?.verification?.status === "verified" ? primary.emailAddress.trim().toLowerCase() : null;
