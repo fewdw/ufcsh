@@ -5,19 +5,20 @@ import { fightIndex, type FightRecord } from "./fight-index.ts";
 /** Who counts as a UFC fighter, what their record reads, and where their
  * pictures are served from — shared by the API, page metadata and share images. */
 
-export const completedUfcFightExistsSql = (fighterIdSql: string, fightAlias: string) => `EXISTS (
+// Booked or fought: a cancelled bout is deleted from its card, so any row means
+// the fighter is on the UFC's books, debutants included.
+export const ufcFightExistsSql = (fighterIdSql: string, fightAlias: string) => `EXISTS (
   SELECT 1 FROM fights ${fightAlias}
-  WHERE (${fightAlias}.f1_id = ${fighterIdSql} OR ${fightAlias}.f2_id = ${fighterIdSql})
-    AND (${fightAlias}.f1_outcome IS NOT NULL OR ${fightAlias}.f2_outcome IS NOT NULL)
+  WHERE ${fightAlias}.f1_id = ${fighterIdSql} OR ${fightAlias}.f2_id = ${fighterIdSql}
 )`;
 
-const completedUfcFightForFighter = prepared(`
-  SELECT ${completedUfcFightExistsSql("?1", "f")} AS eligible
+const ufcFightForFighter = prepared(`
+  SELECT ${ufcFightExistsSql("?1", "f")} AS eligible
 `);
 
-/** A booking or a stray UFCStats directory entry does not make a UFC fighter. */
-export function hasCompletedUfcFight(id: string): boolean {
-  return Boolean(id && (completedUfcFightForFighter.get(id) as { eligible: number }).eligible);
+/** A stray UFCStats directory entry with no UFC bout does not make a UFC fighter. */
+export function hasUfcFight(id: string): boolean {
+  return Boolean(id && (ufcFightForFighter.get(id) as { eligible: number }).eligible);
 }
 
 export function recordText(record: Pick<FightRecord, "wins" | "losses" | "draws">): string {
