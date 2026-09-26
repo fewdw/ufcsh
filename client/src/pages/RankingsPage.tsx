@@ -1,5 +1,5 @@
 import { PANEL } from "../components/chartTokens";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api";
 import type { Division, FighterPreview, FighterPreviewFight, RankingEntry } from "../api";
@@ -332,6 +332,21 @@ function DivisionCard({
   );
 }
 
+// A pointer that can hover, on a screen wide enough for a card beside it:
+// a phone or tablet has no hover, so the option and the card are left out.
+const HOVER_QUERY = "(hover: hover) and (pointer: fine) and (min-width: 768px)";
+function useCanHover(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const query = window.matchMedia(HOVER_QUERY);
+      query.addEventListener("change", onChange);
+      return () => query.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(HOVER_QUERY).matches,
+    () => false,
+  );
+}
+
 const FEATURE_OPTIONS: { key: keyof RankingFeatures; label: string; hint: string }[] = [
   { key: "opponents", label: "Opponents", hint: "Next opponent or last result under each name" },
   { key: "hoverHistory", label: "Last 5 on hover", hint: "Recent and booked fights beside the pointer" },
@@ -358,9 +373,11 @@ function FeaturesMenu({
   divisionOrder: DivisionOrder;
   onDivisionOrder: (order: DivisionOrder) => void;
 }) {
-  const enabledCount = Object.values(features).filter(Boolean).length;
+  const canHover = useCanHover();
+  const options = FEATURE_OPTIONS.filter((option) => canHover || option.key !== "hoverHistory");
+  const enabledCount = options.filter((option) => features[option.key]).length;
   return (
-    <OptionsSheet label="Filters" count={`${enabledCount}/${FEATURE_OPTIONS.length}`} onReset={() => onChange(DEFAULT_FEATURES)} iconOnlyOnPhone="lg">
+    <OptionsSheet label="Filters" count={`${enabledCount}/${options.length}`} onReset={() => onChange(DEFAULT_FEATURES)} iconOnlyOnPhone="lg">
       {/* The key to every mark in the lists, whichever are switched on. */}
       <div className="mb-1 space-y-1.5 border-b border-zinc-100 px-4 pb-3 text-[11px] text-zinc-500">
         {/* Last 5: shape is where, fill how it ended, colour the result. */}
@@ -375,7 +392,7 @@ function FeaturesMenu({
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">{legend}</div>
       </div>
       <div className="px-1.5">
-        {FEATURE_OPTIONS.map((option) => (
+        {options.map((option) => (
           <SwitchRow key={option.key} label={option.label} hint={option.hint} on={features[option.key]}
             onChange={(on) => onChange({ ...features, [option.key]: on })} />
         ))}
@@ -425,6 +442,9 @@ export default function RankingsPage() {
   });
   const [view, setView] = useHistoryState<ViewFilter>("rankings:view", "men");
   const [features, setFeatures] = useHistoryState<RankingFeatures>("rankings:features", loadFeatures);
+  const canHover = useCanHover();
+  // The saved choice is kept; a device that can't hover just doesn't use it.
+  const activeFeatures = useMemo(() => canHover ? features : { ...features, hoverHistory: false }, [canHover, features]);
   const { data, loading, error } = useApi<{ updated_at: number | null; divisions: Division[] }>(withRanking("/api/rankings", settings.rankingSource));
   const divisions = data?.divisions ?? null;
   const pageScroll = useRouteScrollRestoration<HTMLDivElement>("rankings:page", Boolean(divisions?.length));
@@ -538,10 +558,10 @@ export default function RankingsPage() {
                 key={d.division}
                 className="w-full sm:w-[calc(50%_-_0.375rem)] lg:w-[calc(33.333%_-_0.5rem)] 2xl:w-[calc(25%_-_0.5625rem)]"
               >
-                <DivisionCard division={d} features={features} source={settings.rankingSource} />
+                <DivisionCard division={d} features={activeFeatures} source={settings.rankingSource} />
               </div>
             ) : (
-              <DivisionCard key={d.division} division={d} features={features} source={settings.rankingSource} />
+              <DivisionCard key={d.division} division={d} features={activeFeatures} source={settings.rankingSource} />
             )
           ))}
         </div>
