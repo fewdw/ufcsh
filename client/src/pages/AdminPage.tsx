@@ -47,14 +47,13 @@ function AdminShell({ tab, onTab }: { tab: TabId; onTab: (next: TabId) => void }
     );
   }
 
+  // The page itself never scrolls: the tabs stay put and each tab scrolls
+  // inside the space left under them. Bugs splits that space into its own
+  // scrolling sections; the others scroll as one.
+  const fills = tab === "bugs";
   return (
-    <div className="h-full overflow-y-auto overflow-x-hidden">
-      <div className="mx-auto flex min-w-0 max-w-6xl flex-col gap-3 px-2 py-3 sm:gap-4 sm:px-5 sm:py-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-lg font-semibold tracking-tight text-zinc-900">Admin</h1>
-          <p className="text-xs text-zinc-500">{data.email}</p>
-        </div>
-        <div className={`${PANEL_SHELL} p-1.5`}>
+    <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-6xl flex-col gap-3 px-2 pt-3 sm:gap-4 sm:px-5 sm:pt-4">
+      <div className={`${PANEL_SHELL} shrink-0 p-1.5`}>
         <div role="tablist" aria-label="Admin sections" className={`${segmentedGroup} w-full overflow-x-auto`}>
           {TABS.map((item, index) => (
             <button
@@ -79,17 +78,21 @@ function AdminShell({ tab, onTab }: { tab: TabId; onTab: (next: TabId) => void }
             </button>
           ))}
         </div>
-        </div>
-        <div id="admin-tabpanel" role="tabpanel" aria-labelledby={`admin-tab-${tab}`}>
-          <Suspense fallback={<div role="status" className="py-16 text-center text-sm text-zinc-400">Loading…</div>}>
-            {tab === "health" ? <AdminHealth /> : null}
-            {tab === "bugs" ? <AdminBugs /> : null}
-            {tab === "live" ? <AdminLive /> : null}
-            {tab === "admin" ? <AdminAdmins email={data.email} /> : null}
-            {tab === "flags" ? <AdminFlags /> : null}
-            {tab === "comments" ? <AdminComments /> : null}
-          </Suspense>
-        </div>
+      </div>
+      <div
+        id="admin-tabpanel"
+        role="tabpanel"
+        aria-labelledby={`admin-tab-${tab}`}
+        className={`min-h-0 flex-1 overscroll-contain ${fills ? "flex flex-col pb-3 sm:pb-4" : "overflow-y-auto overflow-x-hidden pb-6"}`}
+      >
+        <Suspense fallback={<div role="status" className="py-16 text-center text-sm text-zinc-400">Loading…</div>}>
+          {tab === "health" ? <AdminHealth /> : null}
+          {tab === "bugs" ? <AdminBugs /> : null}
+          {tab === "live" ? <AdminLive /> : null}
+          {tab === "admin" ? <AdminAdmins email={data.email} /> : null}
+          {tab === "flags" ? <AdminFlags /> : null}
+          {tab === "comments" ? <AdminComments /> : null}
+        </Suspense>
       </div>
     </div>
   );

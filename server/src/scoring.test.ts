@@ -452,3 +452,33 @@ test("released rounds are stored per bout and drive what the store will accept",
   for (const bad of [-1, 6, 1.5, "2", null]) assert.throws(() => store.setOpenRounds(id, bad, "owner@example.com"), ScoringError, `rejects ${bad}`);
   assert.throws(() => store.setOpenRounds("ffffffffffffffff", 1, "owner@example.com"), ScoringError, "a bout that is not in the database cannot be opened");
 });
+
+test("a result deletes rounds the bout never reached; closing a round by hand deletes its scores", (t) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const live = { ...fight, f1_outcome: null, f2_outcome: null, event_date: today, method: null, round: null, detail_json: '{"type":"future"}' };
+  const { store, setFight } = fixture(t, live);
+  // Round 3 opened by mistake while round 2 was still being fought.
+  store.setOpenRounds(id, 3, "owner@example.com");
+  store.save(id, "alice", { revision: 0, rounds });
+  store.save(id, "bob", { revision: 0, rounds: rounds.slice(0, 2) });
+  assert.deepEqual(store.roundCounts(id), { 1: 2, 2: 2, 3: 1 });
+  // Closing round 3 by hand removes what was scored for it.
+  store.setOpenRounds(id, 2, "owner@example.com");
+  assert.deepEqual(store.roundCounts(id), { 1: 2, 2: 2 });
+  assert.equal(store.mine(id, "alice").rounds.length, 2);
+  // An unusable result settles nothing.
+  setFight({ ...live, f1_outcome: "win", f2_outcome: "loss", method: "KO/TKO", round: null });
+  assert.equal(store.settle({ ...live, f1_outcome: "win", f2_outcome: "loss", method: "KO/TKO", round: null }), 0);
+  assert.deepEqual(store.roundCounts(id), { 1: 2, 2: 2 });
+  // A round-two stoppage: round two was never judged.
+  const stopped = { ...live, f1_outcome: "win", f2_outcome: "loss", method: "KO/TKO", round: "2", detail_json: '{"type":"past"}' };
+  setFight(stopped);
+  assert.equal(store.settle(stopped), 2);
+  assert.deepEqual(store.roundCounts(id), { 1: 2 });
+  assert.equal(store.openRounds(id), 0, "the hand-opened rounds close with the result");
+  const alice = store.mine(id, "alice");
+  assert.deepEqual(alice.rounds.map(r => r.round), [1]);
+  // The card is still the scorer's to edit: its revision did not move.
+  assert.equal(store.save(id, "alice", { revision: alice.revision, rounds: rounds.slice(0, 1) }).rounds.length, 1);
+  assert.equal(store.settle(stopped), 0, "settling twice changes nothing");
+});

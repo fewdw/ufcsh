@@ -64,6 +64,14 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   reports them; the editor unlocks each one on its own as the tab polls. The current round may be available: users should save after the
   horn. Unobserved future rounds cannot be submitted. This is community scoring,
   not an official clock or a permanently locked live judging competition.
+- The admin panel's **Live rounds** tab shows one bout: the one the header's
+  LIVE tag names (the opening bout, then whichever follows the last result),
+  with Prev/Next for a feed that is late with a result. That bout's Score tab
+  appears as soon as it starts, rounds locked until opened. Closing a round
+  by hand deletes the scores entered for it (the panel asks first). When the
+  result lands, rounds the bout never reached and a stoppage round are deleted,
+  not just hidden, and the hand-opened count is cleared — checked every 15
+  seconds, and only for a well-formed result.
 - Live users can save a consecutive partial card, then add the next round or edit
   earlier scores. Once a result arrives, the same card becomes a completed-fight
   card. If a round becomes ineligible after a stoppage, all reads and aggregates

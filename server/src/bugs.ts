@@ -29,13 +29,23 @@ export type BugItem = {
   facts: [label: string, value: string][];
   links: BugLink[];
   actions: { id: BugActionId; label: string; target: string }[];
+  /** Set by the check's grade, not by the item itself. */
+  level?: BugLevel;
 };
+/** How much an open item matters right now: wrong or missing where readers are
+ *  looking (critical), soon to be (must), a real gap nobody is waiting on
+ *  (minor), or expected / cosmetic (ok). Graded per item, so the same gap
+ *  climbs as its card approaches. */
+export type BugLevel = "critical" | "must" | "minor" | "ok";
+export const BUG_LEVELS: BugLevel[] = ["critical", "must", "minor", "ok"];
+type Grade = BugLevel | ((item: BugItem) => BugLevel);
 export type BugCheck = {
   id: string;
   group: "Scorecards" | "Odds" | "Records" | "Fights & events" | "Venues & officials" | "Fighters";
   label: string;
   description: string;
-  severity: "high" | "medium" | "low";
+  /** The worst level among its items; "ok" when there are none. */
+  level: BugLevel;
   total: number;
   items: BugItem[];
 };
@@ -64,8 +74,32 @@ const ago = (ms: number | null | undefined) => {
 };
 const recordText = (w: number, l: number, d: number) => `${w}-${l}${d ? `-${d}` : ""}`;
 
-function check(meta: Omit<BugCheck, "total" | "items">, items: BugItem[]): BugCheck {
-  return { ...meta, total: items.length, items: items.slice(0, ITEM_LIMIT) };
+/** Whole days from today (UTC) to a date: 0 today, negative past, null undated. */
+function daysFrom(date: string | undefined): number | null {
+  const day = date ? Date.parse(`${date.slice(0, 10)}T00:00:00Z`) : NaN;
+  if (!Number.isFinite(day)) return null;
+  return Math.round((day - Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`)) / 86_400_000);
+}
+/** Graded by how soon the card is: the first [within days, level] step that
+ *  holds, nearest first. Undated items take `otherwise`. */
+const ahead = (steps: [number, BugLevel][], otherwise: BugLevel = "ok") => (item: BugItem): BugLevel => {
+  const days = daysFrom(item.date);
+  return (days != null && steps.find(([within]) => days <= within)?.[1]) || otherwise;
+};
+/** Graded by how recently it happened. */
+const recent = (steps: [number, BugLevel][], otherwise: BugLevel = "ok") => (item: BugItem): BugLevel => {
+  const days = daysFrom(item.date);
+  return (days != null && steps.find(([within]) => -days <= within)?.[1]) || otherwise;
+};
+
+function check(meta: Omit<BugCheck, "total" | "items" | "level"> & { grade: Grade }, items: BugItem[]): BugCheck {
+  const { grade, ...rest } = meta;
+  const rank = (item: BugItem) => BUG_LEVELS.indexOf(item.level!);
+  // Worst first; a stable sort keeps each check's own order within a level.
+  const graded = items
+    .map((item) => ({ ...item, level: typeof grade === "string" ? grade : grade(item) }))
+    .sort((a, b) => rank(a) - rank(b));
+  return { ...rest, level: graded[0]?.level ?? "ok", total: graded.length, items: graded.slice(0, ITEM_LIMIT) };
 }
 
 /** Fighters with a bout since the start of last year or one booked. */
@@ -131,7 +165,7 @@ function upcomingMoneyline(): BugCheck {
     group: "Odds",
     label: "Upcoming bouts without a moneyline",
     description: "Announced bouts with no price stored. Usually the source hasn't posted a line yet. If the event board or a fighter page already lists the bout, the names don't match. Check the aliases, then add a fix to the name matching.",
-    severity: "high",
+    grade: ahead([[1, "critical"], [7, "must"], [21, "minor"]]),
   }, rows.map((fight) => fightItem(fight, {
     facts: [["Last checked", ago(fight.fetched_at)], ...aliasFact(fight)],
     links: [
@@ -155,7 +189,7 @@ function upcomingProps(): BugCheck {
     group: "Odds",
     label: "Upcoming bouts without method props",
     description: "No KO, submission or decision prices. Props go up late, usually fight week. Bouts that already have a moneyline come first, because the board is more likely to have their props.",
-    severity: "medium",
+    grade: ahead([[2, "must"], [7, "minor"]]),
   }, rows.map((fight) => fightItem(fight, {
     facts: [["Moneyline", fight.f1_close ? "yes" : "no"], ["Board last read", ago(fight.bfo_checked_at)], ...aliasFact(fight)],
     links: fight.bfo_url ? [{ label: "BFO event board", href: fight.bfo_url }] : [],
@@ -175,7 +209,7 @@ function pastMoneyline(): BugCheck {
     group: "Odds",
     label: "Completed bouts without a closing line",
     description: "Completed UFC bouts since 2008 with no price, which leaves them out of Market stats and the Labs odds filters. Late replacements often never got a line. The rest are usually a name mismatch on the fighter's BFO page.",
-    severity: "medium",
+    grade: recent([[30, "must"], [730, "minor"]]),
   }, rows.map((fight) => fightItem(fight, {
     facts: [["Last checked", ago(fight.fetched_at)], ...aliasFact(fight)],
     links: [...(fight.bfo_url ? [{ label: "BFO event board", href: fight.bfo_url }] : []), ...fighterBfoLinks(fight)],
@@ -195,7 +229,7 @@ function pastProps(): BugCheck {
     group: "Odds",
     label: "Completed bouts without method props (2021+)",
     description: "\"Board read in full\" means the event board was read after the card and had no props for this bout, so nothing is missing on our side. If the board wasn't read in full, the backfill hasn't reached the event yet.",
-    severity: "low",
+    grade: recent([[30, "minor"]]),
   }, rows.map((fight) => fightItem(fight, {
     facts: [["Board read in full", fight.bfo_final_at ? ago(fight.bfo_final_at) : "no"], ...aliasFact(fight)],
     links: fight.bfo_url ? [{ label: "BFO event board", href: fight.bfo_url }] : [],
@@ -235,7 +269,7 @@ function oddsMissingByRound(): BugCheck {
     group: "Odds",
     label: "Method props with no round-by-round breakdown",
     description: "Method props exist for this bout, but the board had no per-round KO/TKO or submission price, so the Odds tab's \"By round\" table is empty. For a bout more than a week out this is normal — round markets are usually the last thing a book posts — but for fight week or a completed bout it's worth a re-read.",
-    severity: "low",
+    grade: recent([[30, "minor"]]),
   }, items);
 }
 
@@ -280,7 +314,7 @@ function suspiciousOdds(): BugCheck {
     group: "Odds",
     label: "Prices that don't add up",
     description: "Stored lines that contradict themselves: implied probabilities far outside a normal 100–110% book, one corner priced without the other, an unreadable price, or a huge open-to-close swing. Known cause: BestFightOdds shows each side's closing range across sportsbooks, and we store the top of it (the best price). When the books disagree, the two best prices add up to under 100%. Every case checked on 2026-09-13 matched the source exactly, and the midpoints of the ranges added up to 102–107%, so these are not scraping errors.",
-    severity: "high",
+    grade: (item) => (daysFrom(item.date) ?? -Infinity) >= -30 ? "critical" : "must",
   }, items);
 }
 
@@ -313,7 +347,7 @@ function wrongFighterPages(): BugCheck {
     group: "Odds",
     label: "Odds page cached for the wrong fighter?",
     description: "The saved BestFightOdds page doesn't match the fighter's name or any alias (like \"Maicon Patricio\" saved for Patricio Pitbull). A wrong page means that fighter's past odds never match, or worse, get lines from another person's bouts. Pages that already supplied lines come first. Open the matchups to check them. Forgetting a page makes the next backfill look it up again.",
-    severity: "high",
+    grade: "must",
   }, items);
 }
 
@@ -380,7 +414,7 @@ function recordMismatch(active: Set<string>): BugCheck {
     group: "Records",
     label: "UFC results differ between sources",
     description: "A UFC bout in the verified Sherdog history has a different result than UFCStats (a win on one side, a no contest or loss on the other), so the record we show disagrees with the fight page. Usually an overturned result one source hasn't updated. Differences in the regional part of a record aren't listed: UFCStats can't see those bouts, and every case checked was UFCStats miscounting. Active fighters come first.",
-    severity: "medium",
+    grade: (item) => item.subtitle === "Active" ? "must" : "minor",
   }, items.map(({ weight: _weight, ...item }) => item));
 }
 
@@ -391,6 +425,14 @@ function unverifiedRecords(active: Set<string>): BugCheck {
     WHERE (cp.status IS NULL OR cp.status != 'verified')
       AND EXISTS (SELECT 1 FROM fights f WHERE f.f1_id = fr.id OR f.f2_id = fr.id)
   `).all() as { id: string; name: string; nickname: string; wins: number; losses: number; draws: number; status: string | null; error: string | null; source_url: string | null; checked_at: number | null }[];
+  // A fighter on a card in the next two weeks is about to be looked up by
+  // everyone reading that card.
+  const booked = new Map((db.prepare(`
+    SELECT f.f1_id AS id, MIN(e.date) AS date FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 0 AND e.date >= date('now', '-1 day') AND e.date <= date('now', '+14 day') GROUP BY f.f1_id
+    UNION ALL SELECT f.f2_id, MIN(e.date) FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 0 AND e.date >= date('now', '-1 day') AND e.date <= date('now', '+14 day') GROUP BY f.f2_id
+  `).all() as { id: string; date: string }[]).map((row) => [row.id, row.date]));
   const statusOrder: Record<string, number> = { error: 0, ambiguous: 1, not_found: 2, pending: 3 };
   const items = rows
     .filter((row) => active.has(row.id))
@@ -399,7 +441,9 @@ function unverifiedRecords(active: Set<string>): BugCheck {
       key: row.id,
       title: row.name,
       subtitle: row.nickname ? `"${row.nickname}"` : undefined,
+      date: booked.get(row.id),
       facts: [
+        ...(booked.has(row.id) ? [["Booked", `fights ${booked.get(row.id)}`] as [string, string]] : []),
         ["Status", row.status ?? "never checked"],
         ...(row.error ? [["Reason", row.error] as [string, string]] : []),
         ["Shown instead (UFCStats)", recordText(row.wins, row.losses, row.draws)],
@@ -418,7 +462,7 @@ function unverifiedRecords(active: Set<string>): BugCheck {
     group: "Records",
     label: "Active fighters without a verified history",
     description: "No Sherdog history could be tied to the fighter, so their profile shows only the UFCStats record: no outside-UFC bouts and no Road to UFC numbers. \"Ambiguous\" means candidates were found but none matched the UFC bouts closely enough.",
-    severity: "high",
+    grade: (item) => booked.has(item.key) ? "critical" : "must",
   }, items);
 }
 
@@ -443,7 +487,7 @@ function unlinkedUfcBouts(): BugCheck {
     group: "Records",
     label: "Sherdog UFC bouts with no matching UFCStats fight",
     description: "Sherdog lists a UFC bout that isn't linked to any of our fights. It might be under a different opponent spelling, a bout UFCStats doesn't have, or a history row given to the wrong fighter. A candidate bout on the same date usually points to a name mismatch.",
-    severity: "medium",
+    grade: "minor",
   }, rows.map((row): BugItem => {
     const nearby = onDate.all(row.fighter_id, row.fighter_id, row.date) as { id: string; f1_name: string; f2_name: string }[];
     return {
@@ -481,7 +525,7 @@ function fightsMissingFromHistory(): BugCheck {
     group: "Records",
     label: "UFC fights missing from a verified history",
     description: "A completed UFC fight is missing from the fighter's verified Sherdog history, so their career record is short by one. Sherdog may not have added a recent result yet, or the reconciliation missed the row.",
-    severity: "medium",
+    grade: "must",
   }, rows.map((row) => ({
     ...fightItem(row, {
       facts: [["Missing from", row.name]],
@@ -507,7 +551,7 @@ function duplicateFighters(): BugCheck {
     group: "Fighters",
     label: "Different fighters with the same name",
     description: "UFCStats has more than one fighter under this name. Usually they really are different people, but name-only matching (odds, rankings, search) can pick the wrong one. Check that each record and weight looks like a separate person.",
-    severity: "low",
+    grade: "ok",
   }, [...groups.values()].map((group): BugItem => ({
     key: group[0].norm_name,
     title: group[0].name,
@@ -538,7 +582,7 @@ function decisionsWithoutJudges(): BugCheck {
     group: "Fights & events",
     label: "Decisions without judges' scorecards",
     description: "The bout went to the judges but no scorecards are stored, so it's missing from the judges' room and the scorecard panel. Bouts from 2002 and earlier are skipped, since UFCStats never had their scorecards. For recent bouts, re-fetching usually fixes it.",
-    severity: "low",
+    grade: recent([[3, "must"], [365, "minor"]]),
   }, rows.map((fight) => fightItem(fight, {
     facts: [["Method", fight.method], ["Detail fetched", ago(fight.detail_fetched_at)]],
     actions: [{ id: "detail", label: "Re-fetch fight detail", target: fight.id }],
@@ -566,7 +610,7 @@ function decisionsWithoutJudgeRounds(): BugCheck {
     group: "Scorecards",
     label: "Official cards missing round scores",
     description: "Decisions since 2003 where one or more official cards still lack round scores. The Verdict and MMA Decisions imports match the event date and both fighter names, then verify each judge's final total before attaching rounds.",
-    severity: "medium",
+    grade: recent([[7, "minor"]]),
   }, rows.map(fight => fightItem(fight, {
     facts: [["Official totals", fight.detail_json?.includes('"judges"') ? "yes" : "no"], ["Verdict checked", ago(fight.verdict_checked_at)]],
     links: [{ label: "Verdict events", href: "https://verdictmma.com/events" }],
@@ -586,7 +630,7 @@ function fightsWithoutCommunityScores(): BugCheck {
     group: "Scorecards",
     label: "Fights missing community scorecards",
     description: "Completed bouts with at least one scoreable round but no imported community aggregate. Imported counts and averages stay separate from user profiles and are weighted with new ufc.sh cards at read time.",
-    severity: "low",
+    grade: recent([[7, "minor"]]),
   }, rows.map(fight => fightItem(fight, {
     facts: [["Method", fight.method ?? "unknown"], ["Rounds reached", fight.round ?? "unknown"], ["Verdict checked", ago(fight.verdict_checked_at)]],
     links: [{ label: "Verdict events", href: "https://verdictmma.com/events" }],
@@ -614,7 +658,7 @@ function untrustworthyFightStats(): BugCheck {
     group: "Fights & events",
     label: "Stored stats that contradict the source",
     description: "The stored fight page disagrees with the card's summary row, or its per-round tables stop short of the round the bout ended in — the shape of a page read while the bout was still being fought. Re-fetching the event and then the fight detail settles both.",
-    severity: "high",
+    grade: "critical",
   }, items);
 }
 
@@ -634,7 +678,7 @@ function upcomingWithoutSegment(): BugCheck {
     group: "Fights & events",
     label: "Upcoming bouts not placed on a broadcast",
     description: "The bout isn't placed under early prelims, prelims or main card, so it has no estimated start time. Usually ufc.com hasn't listed it yet (a new booking), or its names differ from UFCStats.",
-    severity: "medium",
+    grade: ahead([[3, "must"], [14, "minor"]]),
   }, rows.map((fight) => fightItem(fight, {
     facts: [["ufc.com slug", fight.ufc_slug ?? "none"], ["Segments read", ago(fight.segments_fetched_at)]],
     links: fight.ufc_slug ? [{ label: "ufc.com event", href: `https://www.ufc.com/event/${fight.ufc_slug}` }] : [],
@@ -658,7 +702,7 @@ function staleEvents(): BugCheck {
     group: "Fights & events",
     label: "Events with missing results or no bouts",
     description: "Either a past event still isn't marked complete, a completed event has bouts without a result, or an event has no bouts at all.",
-    severity: "high",
+    grade: (item) => { const days = daysFrom(item.date) ?? 0; return Math.abs(days) <= 7 ? "critical" : days > 7 ? "minor" : "must"; },
   }, rows.map((event): BugItem => ({
     key: event.id,
     title: event.name,
@@ -680,7 +724,7 @@ function eventsWithoutWiki(): BugCheck {
     group: "Fights & events",
     label: "Events with no Wikipedia article found",
     description: "No Wikipedia article was found, so this event's missed weigh-ins are unknown (not the same as \"everyone made weight\"). Usually a Fight Night whose article has a different title. Re-checking queues it for the next background pass.",
-    severity: "low",
+    grade: recent([[90, "minor"]]),
   }, rows.map((event): BugItem => ({
     key: event.id,
     title: event.name,
@@ -706,7 +750,7 @@ function catchweightsWithoutLimit(): BugCheck {
     group: "Fights & events",
     label: "Catchweight bouts without their weight",
     description: "Catchweight bouts whose agreed limit is unknown, so profiles say \"Catch Weight\" without the pounds. It is read from the event's Wikipedia results table, then from either fighter's record table; a bout neither mentions stays here. Re-checking reads both again now.",
-    severity: "low",
+    grade: ahead([[7, "minor"]]),
   }, rows.map((fight): BugItem => ({
     key: fight.id,
     title: `${fight.f1_name} vs ${fight.f2_name}`,
@@ -758,7 +802,7 @@ function fighterGaps(active: Set<string>): BugCheck {
     group: "Fighters",
     label: "Active fighters with profile gaps",
     description: "Fighters with a bout since the start of last year, or one booked, who are missing a photo, birth date (which drives age and Labs age filters), country, height, reach or stance.",
-    severity: "medium",
+    grade: "minor",
   }, items);
 }
 
@@ -807,7 +851,7 @@ function eventsWithoutVenue(): BugCheck {
     group: "Venues & officials",
     label: "Events with no venue",
     description: "Neither the promotion's live-card feed nor the event's Wikipedia article named a venue, so the event has no venue page and matchups show only the city. Pre-2011 cards have no ufc.com page; their venue can only come from Wikipedia.",
-    severity: "medium",
+    grade: (item) => { const days = daysFrom(item.date); return days != null && days >= -30 && days <= 14 ? "must" : "minor"; },
   }, rows.map((event): BugItem => ({
     key: event.id,
     title: event.name,
@@ -834,7 +878,7 @@ function venuesFromWikipediaOnly(): BugCheck {
     group: "Venues & officials",
     label: "Venues known only from Wikipedia",
     description: "The venue name comes from the event article alone. When no other card links that name to the promotion's venue id, a renamed arena (Staples Center / Crypto.com Arena) can show as two venues. Re-reading the ufc.com card usually attaches the id; otherwise the name may need an alias.",
-    severity: "low",
+    grade: "ok",
   }, rows.map((event): BugItem => {
     const venue = index.byEvent.get(event.id);
     return {
@@ -860,7 +904,7 @@ function upcomingWithoutBroadcast(): BugCheck {
     group: "Venues & officials",
     label: "Upcoming cards without a broadcaster",
     description: "Nothing says where this card airs. The promotion's feed usually names broadcasters in fight week; before that this is expected.",
-    severity: "low",
+    grade: ahead([[1, "must"], [7, "minor"]]),
   }, rows.map((event): BugItem => ({
     key: event.id, title: event.name, date: event.date,
     facts: [["Feed read", ago(event.venue_checked_at)], ["ufc.com slug", event.ufc_slug ?? "none"]],
@@ -881,7 +925,7 @@ function upcomingWithoutReporting(): BugCheck {
     group: "Venues & officials",
     label: "Upcoming cards with no event article",
     description: "No Wikipedia article was found, so the card has no venue name from the night, attendance or gate yet. A new card's article often appears a few weeks out.",
-    severity: "low",
+    grade: ahead([[7, "minor"]]),
   }, rows.map((event): BugItem => ({
     key: event.id, title: event.name, date: event.date,
     facts: [["Article", event.wiki_title ?? "not found"], ["Article read", ago(event.wiki_info_checked_at)]],
@@ -902,7 +946,7 @@ function fightsWithoutReferee(): BugCheck {
     group: "Venues & officials",
     label: "Completed bouts with no referee",
     description: "The official result page names no referee, so the bout is missing from every referee's record. Some early cards genuinely never recorded one.",
-    severity: "low",
+    grade: recent([[7, "minor"]]),
   }, rows.map((fight) => fightItem(fight, {
     facts: [["Detail fetched", ago(fight.detail_fetched_at)]],
     actions: [{ id: "detail", label: "Re-fetch fight detail", target: fight.id }],
@@ -921,7 +965,7 @@ function upcomingWithoutReferee(): BugCheck {
     group: "Venues & officials",
     label: "Fight-week bouts with no referee assigned",
     description: "The promotion usually assigns referees in its feed shortly before the card. Until then matchups show no referee.",
-    severity: "low",
+    grade: ahead([[0, "minor"]]),
   }, rows.map((fight) => fightItem(fight, {
     actions: fight.ufc_slug ? [{ id: "segments", label: "Re-read ufc.com card", target: fight.event_id }] : [],
   })));
@@ -940,7 +984,7 @@ function unnamedJudges(): BugCheck {
     group: "Venues & officials",
     label: "Scorecards with an unnamed judge",
     description: "The official card gives a score but no judge's name, so it counts toward the panel but toward no judge's profile. Common on early cards; MMA Decisions sometimes names them.",
-    severity: "low",
+    grade: "ok",
   }, rows.map((fight) => fightItem(fight, {
     links: [{ label: "MMA Decisions search", href: `http://mmadecisions.com/search.jsp?s=${encodeURIComponent(fight.f1_name.split(" ").at(-1) ?? "")}` }],
     actions: [{ id: "detail", label: "Re-fetch fight detail", target: fight.id }],
@@ -992,7 +1036,7 @@ function possibleDuplicateOfficials(): BugCheck {
     group: "Venues & officials",
     label: "Officials who may be one person",
     description: "Two profiles share a surname and a first initial but were kept apart because their first names are not known variants of each other. If they are the same official, merge them so their records combine.",
-    severity: "low",
+    grade: "ok",
   }, items);
 }
 
@@ -1023,7 +1067,7 @@ function mergedOfficialSpellings(): BugCheck {
     group: "Venues & officials",
     label: "Official names merged from several spellings",
     description: "These spellings were treated as one person (a short first name, a joined surname particle, a title). Review that each group really is one official; a wrong merge mixes two records.",
-    severity: "low",
+    grade: "ok",
   }, items);
 }
 // ---------------------------------------------------------------------------

@@ -251,7 +251,7 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
                 onClick={() => void submit()}>{busy ? "Saving…" : "Save"}</button>
             </div>
           </div>
-          {eligibility.state === "live" && eligibility.available < eligibility.scheduled ? <p className="mt-2 text-[11px] text-zinc-400">Rounds open as the feed reports them.</p> : null}
+          {eligibility.state !== "completed" && eligibility.available < eligibility.scheduled ? <p className="mt-2 text-[11px] text-zinc-400">Each round opens at its horn.</p> : null}
           {error ? (
             <p role="alert" className="mt-2 text-right text-[11px] text-rose-600">
               {error} {conflict ? <button className="underline" disabled={busy} onClick={() => void load(undefined, false)}>Reload</button> : null}

@@ -130,7 +130,9 @@ test("opening a round releases it for scoring and reports the bout back", async 
   );
   const opened = await request(`live/${FIGHT}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rounds: 2 }) });
   assert.equal(opened.status, 200);
-  const fight = (await opened.json() as any).fight;
+  const body = await opened.json() as any;
+  assert.equal(body.current.id, FIGHT, "the bout on now is marked");
+  const fight = body.fights[0];
   assert.deepEqual({ open: fight.openRounds, available: fight.available, state: fight.state }, { open: 2, available: 2, state: "live" });
   // The scoring store — what a reader's Score tab asks — agrees at once.
   assert.equal(scores.eligibility(FIGHT).available, 2);

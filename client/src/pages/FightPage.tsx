@@ -866,7 +866,9 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     ...(fight.status === "past" || fight.in_progress || hasStats ? ["fight" as const] : []),
     "matchup",
     ...(hasOddsMarkets(fight.odds?.props, fight.f1.name, fight.f2.name) ? ["odds" as const] : []),
-    ...(scoreableRoundCount(fight) > 0 ? ["score" as const] : []),
+    // The bout on now has its Score tab from the moment it starts, rounds
+    // locked until the feed or the admin panel opens them.
+    ...(scoreableRoundCount(fight) > 0 || fight.in_progress ? ["score" as const] : []),
     ...(fight.prediction_available !== false && (fight.status !== "past" || requestedTab === "predict") ? ["predict" as const] : []),
     "discussion",
   ];
