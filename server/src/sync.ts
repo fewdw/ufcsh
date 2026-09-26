@@ -259,16 +259,25 @@ export async function syncEventSegments(eventId: string): Promise<void> {
   const segments = assignSegments(fights, card.segments);
   const update = db.prepare("UPDATE fights SET segment = ? WHERE id = ?");
   for (const [id, segment] of segments) update.run(segment, id);
+  // The feed is reached through the page's first fight, and ufc.com has linked
+  // fights to another event's feed (UFC 239's under the Minneapolis card). A
+  // feed that shares no bout with ours says nothing about this card.
+  const foreign = Boolean(card.info?.bouts.length && fights.length && !sharesBout(fights, card.info.bouts));
   // A bout the feed no longer identifies loses its length: a booking that
   // changed or a bout that moved must not keep a stale number.
   let booked = 0;
-  if (card.rounds) {
+  if (card.rounds && !foreign) {
     const rounds = assignRounds(fights, card.rounds);
     const setRounds = db.prepare("UPDATE fights SET scheduled_rounds = ? WHERE id = ?");
     for (const fight of fights) setRounds.run(rounds.get(fight.id) ?? null, fight.id);
     booked = rounds.size;
   }
-  if (card.info) {
+  if (foreign) {
+    db.prepare(`UPDATE events SET ufc_event_id = NULL, venue_id = NULL, venue_name = NULL, venue_city = NULL,
+      venue_state = NULL, venue_country = NULL, venue_tz = NULL, broadcast_json = NULL WHERE id = ?`).run(eventId);
+    db.prepare("UPDATE fights SET referee_assigned = NULL WHERE event_id = ?").run(eventId);
+    log(`card segments: ${event.ufc_slug} links to another event's feed; its venue and officials are ignored`);
+  } else if (card.info) {
     const info = card.info;
     db.prepare(`UPDATE events SET ufc_event_id = ?, venue_id = ?, venue_name = ?, venue_city = ?, venue_state = ?,
       venue_country = ?, venue_tz = ?, broadcast_json = ? WHERE id = ?`)
