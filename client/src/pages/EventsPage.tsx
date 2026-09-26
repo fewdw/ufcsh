@@ -1,6 +1,6 @@
 import { PANEL } from "../components/chartTokens";
 import { isFightDay, landingEvent, liveFightId, taggedEvent } from "../liveEvent";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
@@ -852,7 +852,16 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
     .map((segment) => ({ segment, at: segmentStart(event.schedule, segment) }))
     .filter((entry): entry is { segment: CardSegment; at: number } => entry.at != null);
   const dayLabel = futureDayLabel(event.date, now);
-  const hasResultSummary = Number.isFinite(event.card_stats.finishes) && Number.isFinite(event.card_stats.underdog_wins);
+  // A finished card's tally, one per line; a count of none is left out.
+  const decided = event.fights.filter((fight) => fight.f1.outcome === "win" || fight.f2.outcome === "win");
+  const kos = decided.filter((fight) => /^(?:KO|TKO)/i.test(fight.method ?? "")).length;
+  const subs = decided.filter((fight) => /^SUB/i.test(fight.method ?? "")).length;
+  const underdogWins = Number.isFinite(event.card_stats.underdog_wins) ? event.card_stats.underdog_wins : 0;
+  const results = event.card_stats.completed_fights ? [
+    { label: kos === 1 ? "KO" : "KOs", count: kos },
+    { label: subs === 1 ? "submission" : "submissions", count: subs },
+    { label: underdogWins === 1 ? "underdog win" : "underdog wins", count: underdogWins },
+  ].filter((entry) => entry.count > 0) : [];
 
   return (
     <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto sm:gap-3 sm:pr-1">
@@ -902,13 +911,16 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
                 ))}
               </dl>
             ) : null}
-            {event.card_stats.completed_fights && hasResultSummary ? (
-              <span className="flex flex-col items-end whitespace-nowrap text-[11px] leading-4 tabular-nums text-zinc-500 @[48rem]:flex-row @[48rem]:flex-wrap @[48rem]:items-center @[48rem]:gap-x-2 @[48rem]:text-xs">
-                {isLive ? <span>{event.card_stats.completed_fights}/{event.fights.length} results</span> : null}
-                <span><strong className="font-semibold text-zinc-700">{event.card_stats.finishes}</strong> finishes</span>
-                <span aria-hidden="true" className="hidden text-zinc-300 @[48rem]:inline">·</span>
-                <span><strong className="font-semibold text-zinc-700">{event.card_stats.underdog_wins}</strong> underdog wins</span>
-              </span>
+            {results.length || (isLive && event.card_stats.completed_fights) ? (
+              <div className="grid grid-cols-[auto_auto] items-baseline gap-x-1.5 gap-y-0.5 text-xs leading-4 text-zinc-500 @[34rem]:text-[13px] @[34rem]:leading-5">
+                {isLive && event.card_stats.completed_fights ? <><span className="text-right font-semibold tabular-nums text-zinc-800">{event.card_stats.completed_fights}/{event.fights.length}</span><span className="text-left">results</span></> : null}
+                {results.map(({ label, count }) => (
+                  <Fragment key={label}>
+                    <span className="text-right font-semibold tabular-nums text-zinc-800">{count}</span>
+                    <span className="text-left">{label}</span>
+                  </Fragment>
+                ))}
+              </div>
             ) : null}
             {isLive && error ? <span role="status" className="text-[11px] text-zinc-500">Connection interrupted; retrying…</span> : null}
           </div>

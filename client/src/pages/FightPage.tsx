@@ -1,4 +1,5 @@
 import { List, X } from "lucide-react";
+import Flag from "../components/Flag";
 import { isFightDay } from "../liveEvent";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -200,6 +201,7 @@ function FighterHero({
           : reserveRank ? <div aria-hidden="true" className="mb-1.5 h-5 @[58rem]:hidden" /> : null}
         <div className={`matchup-name text-balance font-semibold transition-[filter] ${side.outcome === "loss" ? "text-zinc-400" : align === "left" ? "text-f1 group-hover:brightness-90" : "text-f2 group-hover:brightness-90"}`}>
           {side.name}
+          {side.country_code || side.country ? <Flag code={side.country_code} name={side.country} className="ml-1.5 inline-block align-[-0.05em] text-[0.85em]" /> : null}
         </div>
         {side.nickname ? <div className="mt-0.5 text-xs text-zinc-400">“{side.nickname}”</div> : null}
         {(result && showResult) || fotn || perf || side.weight_miss != null ? (

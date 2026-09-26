@@ -354,13 +354,17 @@ function fightSeconds(fight: Matchup): number {
 
 /** A supporting stat under a chart, both fighters on one line in their own
  *  colours: "6/11 · 0/0 TD". */
-type ChartNote = { label: string; f1: string; f2: string };
+type ChartNote = {
+  label: string; f1: string; f2: string;
+  /** Each side's share of the round, 0–1, drawn as bars out from the centre. */
+  share?: Record<Side, number>;
+};
 
 function Figures({ lines, notes = [] }: { lines: Record<Side, string>; notes?: ChartNote[] }) {
   return (
     <div className="mt-1 min-w-0 text-center tabular-nums @[36rem]:mt-1.5">
       {SIDES.map((side) => (
-        <div key={side} className={`whitespace-nowrap ${CHART_TEXT} font-bold leading-4`} style={{ color: SIDE[side].ink }}>
+        <div key={side} className={`min-h-4 whitespace-nowrap ${CHART_TEXT} font-bold leading-4`} style={{ color: SIDE[side].ink }}>
           {lines[side]}
         </div>
       ))}
@@ -373,6 +377,15 @@ function Figures({ lines, notes = [] }: { lines: Record<Side, string>; notes?: C
               <span className="text-right font-semibold" style={{ color: SIDE.f1.ink }}>{note.f1}</span>
               <span className="text-center text-[9px] uppercase tracking-wide text-zinc-400">{note.label}</span>
               <span className="text-left font-semibold" style={{ color: SIDE.f2.ink }}>{note.f2}</span>
+              {note.share ? (
+                <span className="col-span-3 mb-0.5 mt-px flex h-1.5 min-w-20 gap-px" aria-hidden="true">
+                  {SIDES.map((side) => (
+                    <span key={side} className={`flex h-full flex-1 overflow-hidden bg-zinc-100 ${side === "f1" ? "justify-end rounded-l-full" : "rounded-r-full"}`}>
+                      <span className="h-full" style={{ width: `${note.share![side] > 0 ? Math.max(4, note.share![side] * 100) : 0}%`, backgroundColor: SIDE[side].fill }} />
+                    </span>
+                  ))}
+                </span>
+              ) : null}
             </Fragment>
           ))}
         </div>
@@ -576,8 +589,8 @@ function CombinedStrikeColumns({
   // Clamped so the dark segment can never exceed the filled portion it sits in,
   // and so the bar and the figure below it always quote the same number.
   const sigLanded = (side: Side) => Math.min(total[side]?.landed ?? 0, significant[side]?.landed ?? 0);
-  const sig: ChartNote[] = significant.f1 || significant.f2
-    ? [{ label: "sig", f1: String(sigLanded("f1")), f2: String(sigLanded("f2")) }]
+  const sig: ChartNote[] = sigLanded("f1") || sigLanded("f2")
+    ? [{ label: "sig", f1: sigLanded("f1") ? String(sigLanded("f1")) : "", f2: sigLanded("f2") ? String(sigLanded("f2")) : "" }]
     : [];
 
   return (
@@ -623,8 +636,9 @@ function CombinedStrikeColumns({
       </Plot>
       <Figures
         lines={{
-          f1: total.f1 ? `${total.f1.landed}/${total.f1.attempted}` : "—",
-          f2: total.f2 ? `${total.f2.landed}/${total.f2.attempted}` : "—",
+          // Nothing thrown reads as nothing, not "0/0".
+          f1: total.f1 ? (total.f1.attempted ? `${total.f1.landed}/${total.f1.attempted}` : "") : "—",
+          f2: total.f2 ? (total.f2.attempted ? `${total.f2.landed}/${total.f2.attempted}` : "") : "—",
         }}
         notes={[...sig, ...notes]}
       />
@@ -810,16 +824,24 @@ export function FightTotals({ fight, grouped = false }: { fight: Matchup; groupe
 // the same chart as Fight totals so the two panels read as one system.
 
 /** KD / TD / SUB / control for one round, both fighters to a line. Only what
- *  happened is listed; a takedown line shows on attempts alone. */
+ *  happened is listed: a line shows when either fighter has something, and a
+ *  fighter with nothing on it (0, 0/0, 0:00) is left blank. Control also
+ *  carries a bar per fighter, scaled to a full five-minute round. */
 function roundNotes(kd: Cell, td: Cell, sub: Cell, ctrl: Cell): ChartNote[] {
   const notes: ChartNote[] = [];
-  if (intOf(kd.f1) || intOf(kd.f2)) notes.push({ label: "KD", f1: String(intOf(kd.f1)), f2: String(intOf(kd.f2)) });
+  const count = (value: string | undefined) => intOf(value) ? String(intOf(value)) : "";
+  if (intOf(kd.f1) || intOf(kd.f2)) notes.push({ label: "KD", f1: count(kd.f1), f2: count(kd.f2) });
   const takedowns = { f1: attemptOf(td.f1), f2: attemptOf(td.f2) };
-  if (takedowns.f1?.attempted || takedowns.f2?.attempted) {
-    notes.push({ label: "TD", f1: `${takedowns.f1?.landed ?? 0}/${takedowns.f1?.attempted ?? 0}`, f2: `${takedowns.f2?.landed ?? 0}/${takedowns.f2?.attempted ?? 0}` });
+  const tries = (attempt: Attempt | null) => attempt?.attempted ? `${attempt.landed}/${attempt.attempted}` : "";
+  if (takedowns.f1?.attempted || takedowns.f2?.attempted) notes.push({ label: "TD", f1: tries(takedowns.f1), f2: tries(takedowns.f2) });
+  if (intOf(sub.f1) || intOf(sub.f2)) notes.push({ label: "SUB", f1: count(sub.f1), f2: count(sub.f2) });
+  const held = { f1: clockOf(ctrl.f1) ?? 0, f2: clockOf(ctrl.f2) ?? 0 };
+  if (held.f1 || held.f2) {
+    notes.push({
+      label: "Ctrl", f1: held.f1 ? ctrl.f1 : "", f2: held.f2 ? ctrl.f2 : "",
+      share: { f1: Math.min(1, held.f1 / 300), f2: Math.min(1, held.f2 / 300) },
+    });
   }
-  if (intOf(sub.f1) || intOf(sub.f2)) notes.push({ label: "SUB", f1: String(intOf(sub.f1)), f2: String(intOf(sub.f2)) });
-  if (clockOf(ctrl.f1) || clockOf(ctrl.f2)) notes.push({ label: "Ctrl", f1: ctrl.f1 || "0:00", f2: ctrl.f2 || "0:00" });
   return notes;
 }
 
