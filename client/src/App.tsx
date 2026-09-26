@@ -5,7 +5,7 @@ import CmdK from "./components/CmdK";
 import SearchGlyph from "./components/SearchGlyph";
 import LiveMatchup from "./components/LiveMatchup";
 import { segmentedIdle, segmentedSelected } from "./components/segmented";
-import { Keyboard, Moon, ShieldCheck, Sun } from "lucide-react";
+import { ChevronDown, Keyboard, Moon, ShieldCheck, Star, Sun, Users } from "lucide-react";
 import { accountsEnabled, useAccount } from "./auth";
 import { useAdminResource, type AdminSession } from "./admin";
 import { useSettings, withRanking } from "./settings";
@@ -47,17 +47,69 @@ const InfoPage = page(pages.info, module => module.default);
 
 const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
 
-/** Admin is a fourth pill only for the few who have it. On a phone it is the
- *  shield alone, so the row still fits beside the account picture. */
-function AdminNavItem({ active }: { active: boolean }) {
+const MORE_PATHS = ["/roster", "/favorites", "/admin"];
+const within = (pathname: string, path: string) => pathname === path || pathname.startsWith(`${path}/`);
+
+function MenuItem({ href, label, icon: Icon, pathname }: { href: string; label: string; icon: typeof Users; pathname: string }) {
+  const current = within(pathname, href);
+  return <li>
+    <Link to={href} aria-current={current ? "page" : undefined}
+      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${current ? "bg-zinc-100 text-zinc-900" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"}`}>
+      <Icon className="h-4 w-4 text-zinc-400" aria-hidden="true" />
+      {label}
+    </Link>
+  </li>;
+}
+
+/** Admin is listed only for the few who have it. */
+function AdminMenuItem({ pathname }: { pathname: string }) {
   const { isLoaded, user } = useAccount();
   const { data } = useAdminResource<AdminSession>(isLoaded && user ? "/api/admin/session" : null);
-  if (!data?.admin) return null;
-  return <Link to="/admin" aria-current={active ? "page" : undefined} aria-label="Admin" title="Admin"
-    className={`${NAV_ITEM} flex items-center ${active ? segmentedSelected : segmentedIdle}`}>
-    <ShieldCheck className="h-4 w-4 sm:hidden" aria-hidden="true" />
-    <span className="hidden sm:inline">Admin</span>
-  </Link>;
+  return data?.admin ? <MenuItem href="/admin" label="Admin" icon={ShieldCheck} pathname={pathname} /> : null;
+}
+
+/** The rest of the site, one pill after the sections. A mouse opens it on
+ *  hover; a tap or a key opens it on click. */
+function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
+  const { settings, update } = useSettings();
+  const dark = settings.theme === "dark";
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const escape = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
+  }, [open]);
+  return <div ref={ref} className="relative"
+    onPointerEnter={(e) => { if (e.pointerType === "mouse") setOpen(true); }}
+    onPointerLeave={(e) => { if (e.pointerType === "mouse") setOpen(false); }}>
+    <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open} aria-haspopup="true" aria-label="More"
+      className={`${NAV_ITEM} flex items-center gap-0.5 ${active ? segmentedSelected : segmentedIdle}`}>
+      <span className="hidden sm:inline">More</span>
+      <ChevronDown className={`h-4 w-4 transition-transform sm:h-3.5 sm:w-3.5 ${open ? "rotate-180" : ""}`} aria-hidden="true" />
+    </button>
+    {/* The top padding bridges the gap to the button, so a pointer moving
+        down onto the menu never leaves it. */}
+    {open ? <div className="absolute right-0 top-full z-50 pt-1.5 sm:left-0 sm:right-auto">
+      <ul className="w-44 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg">
+        <MenuItem href="/roster" label="Roster" icon={Users} pathname={pathname} />
+        <MenuItem href="/favorites" label="Favorites" icon={Star} pathname={pathname} />
+        {accountsEnabled ? <AdminMenuItem pathname={pathname} /> : null}
+        {/* The narrowest phones have no room for the theme button in the row. */}
+        <li className="min-[380px]:hidden">
+          <button type="button" onClick={() => update("theme", dark ? "light" : "dark")}
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900">
+            {dark ? <Sun className="h-4 w-4 text-zinc-400" aria-hidden="true" /> : <Moon className="h-4 w-4 text-zinc-400" aria-hidden="true" />}
+            {dark ? "Light mode" : "Dark mode"}
+          </button>
+        </li>
+      </ul>
+    </div> : null}
+  </div>;
 }
 
 function Header({ onSearch }: { onSearch: () => void }) {
@@ -85,13 +137,13 @@ function Header({ onSearch }: { onSearch: () => void }) {
   // Labs is a mode of Statistics rather than a top-level destination, so the
   // Stats pill stays lit while it is open and the switch lives on the page.
   const isLabs = pathname.startsWith("/labs");
-  const isAdmin = pathname.startsWith("/admin");
+  const isMore = MORE_PATHS.some(path => within(pathname, path));
   // A profile belongs to no section of the nav, so none of them is lit.
   const isProfile = pathname.startsWith("/profiles");
   const links = [
     // Pointing at a section starts its code and its first data, so a tap
     // lands on it loaded.
-    { href: "/", label: "Events", active: !isRankings && !isStats && !isLabs && !isProfile && !isAdmin, load: () => { warmSections(settings.rankingSource); return pages.events(); } },
+    { href: "/", label: "Events", active: !isRankings && !isStats && !isLabs && !isProfile && !isMore, load: () => { warmSections(settings.rankingSource); return pages.events(); } },
     { href: "/rankings", label: "Rankings", active: isRankings, load: () => { prefetch(withRanking("/api/rankings", settings.rankingSource)); return pages.rankings(); } },
     { href: "/stats", label: "Stats", active: isStats || isLabs, load: () => { prefetch(DEFAULT_STATS_REQUEST); return pages.stats(); } },
   ];
@@ -122,7 +174,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
               {link.label}
             </Link>
           ))}
-          {accountsEnabled ? <AdminNavItem active={isAdmin} /> : null}
+          <MoreMenu pathname={pathname} active={isMore} />
         </nav>
 
         {/* The middle of the row from `md` up, and its own line below that —
@@ -161,7 +213,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
             aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
             aria-pressed={dark}
             title={dark ? "Light mode" : "Dark mode"}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 sm:h-9 sm:w-9"
+            className="hidden h-8 w-8 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 min-[380px]:grid sm:h-9 sm:w-9"
           >
             {dark ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
           </button>
@@ -252,6 +304,8 @@ export default function App() {
           <Route path="/labs" element={<LabsPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/admin/bugs" element={<AdminPage />} />
+          <Route path="/roster" element={null} />
+          <Route path="/favorites" element={null} />
           <Route path="/profiles/:handle" element={<ProfilePage />} />
           <Route path="/judges/:slug" element={<JudgePage />} />
           <Route path="/referees/:slug" element={<RefereePage />} />
