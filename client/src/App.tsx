@@ -50,12 +50,29 @@ const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition 
 const MORE_PATHS = ["/roster", "/favorites", "/admin"];
 const within = (pathname: string, path: string) => pathname === path || pathname.startsWith(`${path}/`);
 
-/** The rest of the site, one pill after the sections. A mouse opens it on
- *  hover; a tap or a key opens it on click. Admin is listed only for the few
- *  who have it. */
-function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
+function MenuItem({ href, label, icon: Icon, pathname }: { href: string; label: string; icon: typeof Users; pathname: string }) {
+  const current = within(pathname, href);
+  return <li>
+    <Link to={href} aria-current={current ? "page" : undefined}
+      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${current ? "bg-zinc-100 text-zinc-900" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"}`}>
+      <Icon className="h-4 w-4 text-zinc-400" aria-hidden="true" />
+      {label}
+    </Link>
+  </li>;
+}
+
+/** Admin is listed only for the few who have it. */
+function AdminMenuItem({ pathname }: { pathname: string }) {
   const { isLoaded, user } = useAccount();
-  const { data } = useAdminResource<AdminSession>(accountsEnabled && isLoaded && user ? "/api/admin/session" : null);
+  const { data } = useAdminResource<AdminSession>(isLoaded && user ? "/api/admin/session" : null);
+  return data?.admin ? <MenuItem href="/admin" label="Admin" icon={ShieldCheck} pathname={pathname} /> : null;
+}
+
+/** The rest of the site, one pill after the sections. A mouse opens it on
+ *  hover; a tap or a key opens it on click. */
+function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
+  const { settings, update } = useSettings();
+  const dark = settings.theme === "dark";
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => setOpen(false), [pathname]);
@@ -67,11 +84,6 @@ function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
     document.addEventListener("keydown", escape);
     return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
   }, [open]);
-  const items = [
-    { href: "/roster", label: "Roster", icon: Users },
-    { href: "/favorites", label: "Favorites", icon: Star },
-    ...(data?.admin ? [{ href: "/admin", label: "Admin", icon: ShieldCheck }] : []),
-  ];
   return <div ref={ref} className="relative"
     onPointerEnter={(e) => { if (e.pointerType === "mouse") setOpen(true); }}
     onPointerLeave={(e) => { if (e.pointerType === "mouse") setOpen(false); }}>
@@ -84,16 +96,17 @@ function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
         down onto the menu never leaves it. */}
     {open ? <div className="absolute right-0 top-full z-50 pt-1.5 sm:left-0 sm:right-auto">
       <ul className="w-44 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg">
-        {items.map(({ href, label, icon: Icon }) => {
-          const current = within(pathname, href);
-          return <li key={href}>
-            <Link to={href} aria-current={current ? "page" : undefined}
-              className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${current ? "bg-zinc-100 text-zinc-900" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"}`}>
-              <Icon className="h-4 w-4 text-zinc-400" aria-hidden="true" />
-              {label}
-            </Link>
-          </li>;
-        })}
+        <MenuItem href="/roster" label="Roster" icon={Users} pathname={pathname} />
+        <MenuItem href="/favorites" label="Favorites" icon={Star} pathname={pathname} />
+        {accountsEnabled ? <AdminMenuItem pathname={pathname} /> : null}
+        {/* The narrowest phones have no room for the theme button in the row. */}
+        <li className="min-[380px]:hidden">
+          <button type="button" onClick={() => update("theme", dark ? "light" : "dark")}
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900">
+            {dark ? <Sun className="h-4 w-4 text-zinc-400" aria-hidden="true" /> : <Moon className="h-4 w-4 text-zinc-400" aria-hidden="true" />}
+            {dark ? "Light mode" : "Dark mode"}
+          </button>
+        </li>
       </ul>
     </div> : null}
   </div>;
@@ -200,7 +213,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
             aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
             aria-pressed={dark}
             title={dark ? "Light mode" : "Dark mode"}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 sm:h-9 sm:w-9"
+            className="hidden h-8 w-8 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 min-[380px]:grid sm:h-9 sm:w-9"
           >
             {dark ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
           </button>
