@@ -1188,6 +1188,9 @@ export function getRankings(rankingType: RankingType): unknown {
             current_streak: latestOutcome && streakCount
               ? { count: streakCount, outcome: latestOutcome, label: `${streakCount}${streakSuffix[latestOutcome] ?? ""}` }
               : null,
+            // The last five professional results, oldest first, drawn as the
+            // card view's dots.
+            form: completed.slice(-5).map((bout) => ({ outcome: bout.outcome, method: canonicalMethod(bout.method), ufc: bout.isUfc })),
           };
         }
         return {

@@ -24,6 +24,7 @@ import { useSettings, withRanking } from "../settings";
 import { BUTTON_PRIMARY, BUTTON_QUIET } from "../ui";
 import FanAvatar from "../components/FanAvatar";
 import { useGraphics } from "../graphicsLauncher";
+import { useAdminResource, type AdminSession } from "../admin";
 
 const FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed"];
 /** Bouts that went to the judges are the ones a card can be read against, so
@@ -342,6 +343,8 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
   const [editing, setEditing] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const { isLoaded, user, manage, signOut } = useAccount();
+  // The graphics builder is still being built; admins only for now.
+  const { data: adminSession } = useAdminResource<AdminSession>(mine && isLoaded && user ? "/api/admin/session" : null);
   // The owner's row stays up while Clerk loads after a reload: `mine` already
   // comes from the identity this browser remembers, and Clerk queues a
   // "manage" or "sign out" pressed before it is ready.
@@ -380,9 +383,11 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
       </div>
       {owner ? (
         <div className="mt-3 flex flex-wrap items-center justify-center gap-1 border-t border-zinc-100 pt-2 sm:gap-1.5">
-          <button type="button" onClick={() => openGraphics()} className={action} title="Make a shareable graphic">
-            <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />Graphic
-          </button>
+          {adminSession?.admin ? (
+            <button type="button" onClick={() => openGraphics()} className={action} title="Make a shareable graphic">
+              <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />Graphic
+            </button>
+          ) : null}
           <button type="button" onClick={() => setReportOpen(true)} className={action} title="Report an issue">
             <Flag className="h-3.5 w-3.5" aria-hidden="true" />Report
           </button>

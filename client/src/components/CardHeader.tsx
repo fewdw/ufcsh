@@ -9,18 +9,18 @@ const DOT = <span aria-hidden="true" className="text-zinc-300">·</span>;
 
 /** Date · venue · city. The venue opens its history, so it reads as a link
  *  the way the rest of the app's links do: a pin, a weight, a hover. */
-export function EventPlace({ venue, location }: { venue?: VenueRef | null; location: string | null | undefined }) {
+export function EventPlace({ venue, location, leading = true }: { venue?: VenueRef | null; location: string | null | undefined; leading?: boolean }) {
   if (!venue && !location) return null;
   return (
     <>
       {venue ? <>
-        {DOT}
+        {leading ? DOT : null}
         <Link to={`/venues/${venue.slug}`} title={`${venue.name}: every card held here`}
           className="inline-flex min-w-0 items-baseline gap-0.5 rounded font-medium text-zinc-700 transition-colors hover:text-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-2">
           <MapPin className="h-[1em] w-[1em] shrink-0 self-center text-zinc-400" aria-hidden="true" />{venue.name}
         </Link>
       </> : null}
-      {location ? <>{DOT}<span className="min-w-0">{location}</span></> : null}
+      {location ? <>{leading || venue ? DOT : null}<span className="min-w-0">{location}</span></> : null}
     </>
   );
 }

@@ -1,5 +1,5 @@
 import { PANEL } from "../components/chartTokens";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api";
 import type { Division, FighterPreview, FighterPreviewFight, RankingEntry } from "../api";
@@ -224,16 +224,20 @@ function RankRow({
           </span>
         ) : null}
       </span>
-      <span className={`ml-auto grid shrink-0 items-center ${features.streaks ? "grid-cols-[1.75rem_2.25rem]" : "grid-cols-[2.25rem]"}`}>
+      <span className={`ml-auto grid shrink-0 items-center ${features.streaks ? "grid-cols-[1.75rem_auto]" : "grid-cols-[2.25rem]"}`}>
         <span className={`text-center text-[11px] font-semibold tabular-nums ${mv?.cls ?? ""}`}>
           {mv?.label ?? ""}
         </span>
         {features.streaks ? (
-          <span
-            className={`text-right text-[10px] font-bold tabular-nums ${entry.activity.current_streak ? streakTone(entry.activity.current_streak.outcome) : ""}`}
-            title={entry.activity.current_streak ? `Current professional streak: ${entry.activity.current_streak.label}` : undefined}
-          >
-            {entry.activity.current_streak?.label ?? ""}
+          // The card view's form: the last five, oldest first, then the run.
+          <span className="flex items-center justify-end gap-1.5">
+            <ResultDots results={entry.activity.form ?? []} label="Last 5 professional results, oldest first" />
+            <span
+              className={`w-6 text-right text-[10px] font-bold tabular-nums ${entry.activity.current_streak ? streakTone(entry.activity.current_streak.outcome) : ""}`}
+              title={entry.activity.current_streak ? `Current professional streak: ${entry.activity.current_streak.label}` : undefined}
+            >
+              {entry.activity.current_streak?.label ?? ""}
+            </span>
           </span>
         ) : null}
       </span>
@@ -330,7 +334,7 @@ function DivisionCard({
 const FEATURE_OPTIONS: { key: keyof RankingFeatures; label: string; hint: string }[] = [
   { key: "opponents", label: "Opponents", hint: "Next opponent or last result under each name" },
   { key: "hoverHistory", label: "Last 5 on hover", hint: "Recent and booked fights beside the pointer" },
-  { key: "streaks", label: "Streaks", hint: "4W, 2L, 1D, 1NC" },
+  { key: "streaks", label: "Form", hint: "Last 5 results and the current run" },
   { key: "activityColors", label: "Activity colours", hint: "Booked and recently active fighters" },
 ];
 
@@ -342,7 +346,9 @@ function FeaturesMenu({
   onDateMode,
   divisionOrder,
   onDivisionOrder,
+  legend,
 }: {
+  legend: ReactNode;
   features: RankingFeatures;
   onChange: (features: RankingFeatures) => void;
   dateMode: DateMode;
@@ -353,6 +359,8 @@ function FeaturesMenu({
   const enabledCount = Object.values(features).filter(Boolean).length;
   return (
     <OptionsSheet label="Display" count={`${enabledCount}/4`} onReset={() => onChange(DEFAULT_FEATURES)} iconOnlyOnPhone>
+      {/* On a phone the toolbar has no room for the key; it opens the sheet. */}
+      <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-zinc-100 px-4 pb-3 text-[11px] text-zinc-500 md:hidden">{legend}</div>
       <div className="px-1.5">
         {FEATURE_OPTIONS.map((option) => (
           <SwitchRow key={option.key} label={option.label} hint={option.hint} on={features[option.key]}
@@ -437,73 +445,73 @@ export default function RankingsPage() {
   }
 
   const centerFilteredCards = view === "women" || view === "p4p";
+  const legend = (
+    <>
+      {features.activityColors ? (
+        <>
+          <span className="flex items-center gap-1.5" title="Has a fight booked">
+            <span className="activity-booked activity-swatch h-2.5 w-2.5 rounded-sm border" />
+            Booked
+          </span>
+          <span className="flex items-center gap-1.5" title="Fought in the last 45 days">
+            <span className="activity-recent activity-swatch h-2.5 w-2.5 rounded-sm border" />
+            Fought ≤45d
+          </span>
+        </>
+      ) : null}
+      {/* ufc.com is read every six hours; a day without one is worth saying. */}
+      <Freshness label="Updated" at={data?.updated_at} staleAfterHours={24} />
+    </>
+  );
 
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
       <div className="p-2 pb-8 sm:p-3">
-        <div className={`${shell} mb-2 flex flex-col gap-1.5 px-2.5 py-2 sm:mb-3 sm:px-3 lg:flex-row lg:items-center lg:gap-3`}>
-          {/* One row on a phone: both switches and the Display button. From
-              `lg` the row dissolves so the legend can sit between them. */}
-          <div className="flex items-center gap-1.5 sm:gap-2 lg:contents">
-            <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Ranking view">
-              {SOURCES.map((source) => (
-                <button
-                  key={source.key}
-                  type="button"
-                  aria-pressed={settings.rankingSource === source.key}
-                  onClick={() => update("rankingSource", source.key)}
-                  title={source.help}
-                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition sm:px-3.5 ${
-                    settings.rankingSource === source.key ? segmentedSelected : segmentedIdle
-                  }`}
-                >
-                  {source.label}
-                </button>
-              ))}
-            </div>
-            <div className={`${segmentedGroup} ml-auto shrink-0 p-0.5 sm:p-1 lg:order-last lg:ml-0`} role="group" aria-label="Divisions shown">
-              {FILTERS.map((f) => (
-                <button
-                  key={f.key}
-                  type="button"
-                  aria-pressed={view === f.key}
-                  onClick={() => setView(f.key)}
-                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition sm:px-3.5 ${
-                    view === f.key ? segmentedSelected : segmentedIdle
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-            <div className="lg:order-last">
-              <FeaturesMenu
-              features={features}
-              onChange={setFeatures}
-              dateMode={settings.dateMode}
-              onDateMode={(mode) => update("dateMode", mode)}
-              divisionOrder={settings.divisionOrder}
-              onDivisionOrder={(order) => update("divisionOrder", order)}
-            />
-            </div>
+        {/* One row at every width. The key sits at its end from `md`; on a
+            phone it moves into the Display sheet. */}
+        <div className={`${shell} mb-2 flex items-center gap-1.5 px-2.5 py-2 sm:mb-3 sm:gap-2 sm:px-3 lg:gap-3`}>
+          <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Ranking view">
+            {SOURCES.map((source) => (
+              <button
+                key={source.key}
+                type="button"
+                aria-pressed={settings.rankingSource === source.key}
+                onClick={() => update("rankingSource", source.key)}
+                title={source.help}
+                className={`rounded-full px-2.5 py-1 text-xs font-medium transition sm:px-3.5 ${
+                  settings.rankingSource === source.key ? segmentedSelected : segmentedIdle
+                }`}
+              >
+                {source.label}
+              </button>
+            ))}
           </div>
-          <div className="flex items-center gap-3 px-1 lg:ml-auto lg:px-0">
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-zinc-500 lg:justify-end">
-              {features.activityColors ? (
-                <>
-                  <span className="flex items-center gap-1.5" title="Has a fight booked">
-                    <span className="activity-booked activity-swatch h-2.5 w-2.5 rounded-sm border" />
-                    Booked
-                  </span>
-                  <span className="flex items-center gap-1.5" title="Fought in the last 45 days">
-                    <span className="activity-recent activity-swatch h-2.5 w-2.5 rounded-sm border" />
-                    Fought ≤45d
-                  </span>
-                </>
-              ) : null}
-              {/* ufc.com is read every six hours; a day without one is worth saying. */}
-              <Freshness label="Updated" at={data?.updated_at} staleAfterHours={24} />
-            </div>
+          <div className={`${segmentedGroup} ml-auto shrink-0 p-0.5 sm:p-1 md:ml-0`} role="group" aria-label="Divisions shown">
+            {FILTERS.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                aria-pressed={view === f.key}
+                onClick={() => setView(f.key)}
+                className={`rounded-full px-2.5 py-1 text-xs font-medium transition sm:px-3.5 ${
+                  view === f.key ? segmentedSelected : segmentedIdle
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <FeaturesMenu
+            features={features}
+            onChange={setFeatures}
+            dateMode={settings.dateMode}
+            onDateMode={(mode) => update("dateMode", mode)}
+            divisionOrder={settings.divisionOrder}
+            onDivisionOrder={(order) => update("divisionOrder", order)}
+            legend={legend}
+          />
+          <div className="ml-auto hidden min-w-0 items-center justify-end gap-x-3 whitespace-nowrap text-[11px] text-zinc-500 md:flex">
+            {legend}
           </div>
         </div>
 

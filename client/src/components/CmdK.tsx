@@ -17,6 +17,27 @@ const destinations = [
   { to: "/info", label: "About UFC.sh", description: "Sources, definitions, shortcuts and changelog", icon: Info },
 ];
 
+type VisibleBox = { top: number; height: number; keyboard: boolean };
+const visibleBox = (): VisibleBox | null => {
+  const vv = window.visualViewport;
+  return vv ? { top: vv.offsetTop, height: vv.height, keyboard: vv.height < window.innerHeight * 0.8 } : null;
+};
+
+/** The visible part of the viewport: what is left above an on-screen
+ *  keyboard. `keyboard` is set once something covers a fifth of the page. */
+function useVisibleViewport() {
+  const [box, setBox] = useState(visibleBox);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const measure = () => setBox(visibleBox());
+    vv.addEventListener("resize", measure);
+    vv.addEventListener("scroll", measure);
+    return () => { vv.removeEventListener("resize", measure); vv.removeEventListener("scroll", measure); };
+  }, []);
+  return box;
+}
+
 export default function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
   // Mount a fresh search for every opening; the dialog restores the trigger's focus.
   return open ? <SearchDialog onClose={onClose} /> : null;
@@ -26,6 +47,7 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const viewport = useVisibleViewport();
   const inputRef = useRef<HTMLInputElement>(null);
   const trimmed = query.trim();
   const { data, searching, error, retry } = useSearch(trimmed ? `/api/search?q=${encodeURIComponent(trimmed)}` : null, parseSearch);
@@ -101,6 +123,9 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
       ref={dialogRef}
       aria-label="Search and navigation"
       className="search-dialog fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none bg-transparent p-3 text-zinc-900 sm:p-4"
+      // A phone's keyboard covers the page without shrinking it, so the
+      // dialog holds to the part still visible above the keyboard.
+      style={viewport ? { top: viewport.top, bottom: "auto", height: viewport.height } : undefined}
       onCancel={(event) => { event.preventDefault(); onClose(); }}
       onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
       onKeyDown={(event) => {
@@ -114,7 +139,7 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
         }
       }}
     >
-      <div className="mx-auto mt-[8vh] flex max-h-[80dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl sm:mt-[10vh]">
+      <div className={`mx-auto flex w-full ${viewport?.keyboard ? "mt-0 max-h-full" : "mt-[8vh] max-h-[80dvh] sm:mt-[10vh]"} max-w-xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl`}>
         <div className="flex shrink-0 items-center gap-3 border-b border-zinc-100 px-4">
           <Search className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />
           <input

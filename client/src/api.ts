@@ -404,6 +404,7 @@ export type RankingEntry = {
     days_since?: number | null;
     next_fight?: { date: string; event_name: string; event_id: string; fight_id: string; opponent: string } | null;
     current_streak?: { count: number; outcome: "win" | "loss" | "draw" | "nc"; label: string } | null;
+    form?: import("./resultDots").FormResult[];
   };
 };
 

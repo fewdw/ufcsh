@@ -847,8 +847,9 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   const oddsFights = event.fights.filter(hasFightOdds);
   const hasAnyOdds = oddsFights.length > 0;
   // Every announced part of an upcoming card, main card first; the next one
-  // carries a countdown on the day. A live card shows its results instead.
-  const schedule = past || isLive ? [] : (["main", "prelims", "early"] as CardSegment[])
+  // carries a countdown on the day. A live card keeps its times, the
+  // segments already under way greyed out.
+  const schedule = past ? [] : (["main", "prelims", "early"] as CardSegment[])
     .map((segment) => ({ segment, at: segmentStart(event.schedule, segment) }))
     .filter((entry): entry is { segment: CardSegment; at: number } => entry.at != null);
   const nextStart = schedule.filter((entry) => entry.at > now).reduce<number | null>((soonest, entry) => soonest == null || entry.at < soonest ? entry.at : soonest, null);
@@ -874,43 +875,47 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
       />
       <section className={`${shell} shrink-0 overflow-hidden`}>
         {/* The name, date and place on the left; the card's start times on
-            the right, one per line, at every width — only the type grows. */}
-        <div className="flex items-start justify-between gap-3 px-3 py-2 @[34rem]:px-6 @[48rem]:items-center @[48rem]:gap-6 @[48rem]:py-4">
+            the right, centred against it, one per line at every width. */}
+        <div className="flex items-center justify-between gap-3 px-3 py-2.5 @[34rem]:gap-5 @[34rem]:px-5 @[34rem]:py-3.5">
           <div className="min-w-0">
-            <h1 className="text-balance text-sm font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-2xl">{event.name}</h1>
-            <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[48rem]:mt-1 @[48rem]:gap-x-2 @[48rem]:text-xs @[48rem]:leading-relaxed">
-              <span className="whitespace-nowrap font-medium text-zinc-600">
-                <span className="@[48rem]:hidden">{formatDateShort(event.date)}{dayLabel ? `, ${dayLabel}` : ""}</span>
-                <span className="hidden @[48rem]:inline">{formatDate(event.date)}{dayLabel ? ` (${dayLabel})` : ""}</span>
-              </span>
-              <EventPlace venue={event.venue} location={event.location} />
-            </div>
+            <h1 className="text-balance text-base font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-xl @[64rem]:text-2xl">{event.name}</h1>
+            {event.date || event.venue || event.location ? (
+              <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[34rem]:gap-x-2 @[34rem]:text-xs">
+                {event.date ? (
+                  <span className="whitespace-nowrap font-medium text-zinc-600">
+                    <span className="@[48rem]:hidden">{formatDateShort(event.date)}{dayLabel ? `, ${dayLabel}` : ""}</span>
+                    <span className="hidden @[48rem]:inline">{formatDate(event.date)}{dayLabel ? ` (${dayLabel})` : ""}</span>
+                  </span>
+                ) : null}
+                <EventPlace venue={event.venue} location={event.location} leading={Boolean(event.date)} />
+              </div>
+            ) : null}
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1 text-right empty:hidden @[48rem]:max-w-[45%]">
+          <div className="flex shrink-0 flex-col items-end justify-center gap-1 text-right empty:hidden">
             {schedule.length ? (
-              <dl className="grid grid-cols-[auto_auto] items-baseline gap-x-2 text-[11px] leading-4 @[48rem]:gap-x-4 @[48rem]:gap-y-0.5 @[48rem]:text-sm @[48rem]:leading-5 @[64rem]:text-base @[64rem]:leading-6">
+              <dl className="grid grid-cols-[auto_auto] items-baseline gap-x-3 gap-y-0.5 text-xs leading-4 @[34rem]:text-[13px] @[34rem]:leading-5 @[48rem]:gap-x-4">
                 {schedule.map(({ segment, at }) => (
                   <div key={segment} className={`contents ${at <= now ? "text-zinc-400" : "text-zinc-500"}`} title={clockTimeWithZone(at) ?? undefined}>
-                    <dt className="text-left"><span className="@[48rem]:hidden">{SEGMENT_SHORT[segment]}</span><span className="hidden @[48rem]:inline">{SEGMENT_LABEL[segment]}</span></dt>
-                    <dd className="flex items-baseline justify-end gap-1.5 whitespace-nowrap tabular-nums @[48rem]:gap-2">
+                    <dt className="text-left"><span className="@[34rem]:hidden">{SEGMENT_SHORT[segment]}</span><span className="hidden @[34rem]:inline">{SEGMENT_LABEL[segment]}</span></dt>
+                    <dd className="flex items-baseline justify-end gap-1.5 whitespace-nowrap tabular-nums">
                       {/* A countdown is worth reading on the day and unreadable
                           before it, so past a day out the date says enough. */}
                       {at === nextStart && at - now < DAY_MS ? <span className="text-zinc-400">in {countdown(at, now)}</span> : null}
-                      <span className={at <= now ? "" : "font-medium text-zinc-700"}><span className="@[48rem]:hidden">{clockTime(at)?.replace(":00 ", " ")}</span><span className="hidden @[48rem]:inline">{clockTimeWithZone(at)}</span></span>
+                      <span className={at <= now ? "" : "font-semibold text-zinc-800"}><span className="@[48rem]:hidden">{clockTime(at)?.replace(":00 ", " ")}</span><span className="hidden @[48rem]:inline">{clockTimeWithZone(at)}</span></span>
                     </dd>
                   </div>
                 ))}
               </dl>
             ) : null}
             {event.card_stats.completed_fights && hasResultSummary ? (
-              <span className="flex flex-col items-end whitespace-nowrap text-[11px] leading-4 tabular-nums text-zinc-500 @[48rem]:text-sm @[48rem]:leading-5 @[48rem]:flex-row @[48rem]:flex-wrap @[48rem]:items-center @[48rem]:gap-x-2">
+              <span className="flex flex-col items-end whitespace-nowrap text-[11px] leading-4 tabular-nums text-zinc-500 @[48rem]:flex-row @[48rem]:flex-wrap @[48rem]:items-center @[48rem]:gap-x-2 @[48rem]:text-xs">
                 {isLive ? <span>{event.card_stats.completed_fights}/{event.fights.length} results</span> : null}
                 <span><strong className="font-semibold text-zinc-700">{event.card_stats.finishes}</strong> finishes</span>
                 <span aria-hidden="true" className="hidden text-zinc-300 @[48rem]:inline">·</span>
                 <span><strong className="font-semibold text-zinc-700">{event.card_stats.underdog_wins}</strong> underdog wins</span>
-                {isLive && error ? <span role="status">Connection interrupted; retrying…</span> : null}
               </span>
             ) : null}
+            {isLive && error ? <span role="status" className="text-[11px] text-zinc-500">Connection interrupted; retrying…</span> : null}
           </div>
         </div>
       </section>
