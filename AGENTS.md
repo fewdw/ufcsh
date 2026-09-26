@@ -13,7 +13,8 @@
 
 ## Feature work
 
-- Work on a feature branch in `/home/ubuntu/ufcsh-dev`. Never commit to `main`, and leave `/home/ubuntu/ufcsh` clean on `main`, because production deploys from it.
+- When I ask you to work on a feature: Work on a feature branch in `/home/ubuntu/ufcsh-dev`. Never commit to `main`, and leave `/home/ubuntu/ufcsh` clean on `main`, because production deploys from it.
+- Use short and meaningful branch names, add a category before and then a few words. Like `feat/` `bug/a-few-words-here` etc.
 - When a change is complete and the checks pass, commit and push without asking. On a branch's first push, open a PR to `main`; later pushes update it. Never merge. Merging is a production release.
 - Pushing deploys the branch to https://dev.ufc.sh. Wait for the deploy, confirm dev is healthy, then tell me to reload dev to review. Verify only on dev; never run `./deploy/update.sh` unless I ask.
 - After you merge always pull main on your VPS to make sure its latest version locally.
