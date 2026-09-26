@@ -65,7 +65,9 @@ it was shared in the conversation.
 The production checkout is `/home/ubuntu/ufcsh` and stays on `main`. The dev
 worktree is `/home/ubuntu/ufcsh-dev`. Every push to a branch other than
 `main` deploys that branch to `dev.ufc.sh` automatically (the `deploy-dev` job
-in CI), without waiting for the checks. To show a different pushed branch by
+in CI), without waiting for the checks. A push or merge to `main` deploys
+production and then moves dev onto `main` as well (the `sync-dev` job), so the
+two match until the next branch push. To show a different pushed branch by
 hand, run
 `./deploy/select-dev-branch.sh BRANCH` from the production checkout. Or in
 GitHub, open **Actions → Choose dev branch → Run workflow**, leave the workflow

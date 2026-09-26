@@ -161,6 +161,7 @@ function FighterHero({
   const rank = side.ranking?.rank === "IC" || side.ranking?.rank === "I" ? "I" : rankLabel(side.ranking) || "NR";
   const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title="Current ranking from the selected source; NR means unranked">{rank}</span>;
   const showResult = side.outcome ? RESULT_PREFIX[side.outcome] : undefined;
+  const compactResult = result?.replace(/^(UNANIMOUS|SPLIT|MAJORITY)\b/, (word) => `${word[0]}-DEC`);
   const fotn = !!bonuses?.fotn;
   const perf = bonuses?.perf && side.outcome === "win" ? bonuses.perf_kind ?? "perf" : null;
   const className = `matchup-fighter matchup-fighter--${align} group flex min-w-0 flex-col items-center gap-3 text-center @[58rem]:gap-4 ${
@@ -198,13 +199,18 @@ function FighterHero({
         {(result && showResult) || fotn || perf || side.weight_miss != null ? (
           <div className={`mt-2 flex flex-wrap items-center justify-center gap-1 ${align === "right" ? "@[58rem]:justify-end" : "@[58rem]:justify-start"}`}>
             {result && showResult ? (
-              <span className={`${RESULT_PILL} max-w-full justify-center text-balance tabular-nums ${outcomeClasses(side.outcome)}`}>
+              <span className={`${RESULT_PILL} max-w-full justify-center !rounded-lg text-balance tabular-nums ${outcomeClasses(side.outcome)}`}>
                 <span className="sr-only">{showResult}</span>
-                {result}
+                {/* A phone-width card abbreviates the decision so the result
+                    stays on one line. */}
+                {compactResult !== result ? <>
+                  <span className="@[30rem]:hidden">{compactResult}</span>
+                  <span className="hidden @[30rem]:inline">{result}</span>
+                </> : result}
               </span>
             ) : null}
             {side.weight_miss != null ? (
-              <span className={`${RESULT_PILL} max-w-full justify-center text-balance tabular-nums bg-rose-100 text-rose-700`}>
+              <span className={`${RESULT_PILL} max-w-full justify-center !rounded-lg text-balance tabular-nums bg-rose-100 text-rose-700`}>
                 Missed weight{side.weight_miss ? ` · ${side.weight_miss} lb` : ""}
               </span>
             ) : null}
@@ -951,7 +957,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                   <div className="col-start-1 row-start-2 min-w-0">
                     <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} reserveRank={reserveRank} />
                   </div>
-                  <div className="matchup-market self-start col-start-2 row-start-2 flex w-auto flex-col items-center text-center @[58rem]:self-center @[58rem]:max-w-[19rem]">
+                  <div className="matchup-market self-start col-start-2 row-start-2 flex w-auto flex-col items-center text-center @[58rem]:max-w-[19rem]">
                     <div className="matchup-prices">
                       <MatchupOdds key={fight.id} f1={fight.odds?.f1.close} f2={fight.odds?.f2.close}
                         f1Open={fight.odds?.f1.open} f2Open={fight.odds?.f2.open}

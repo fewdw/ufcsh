@@ -439,12 +439,23 @@ select:not([multiple]):not([size]) {
   .matchup-top-card .matchup-name { font-size: 15px; }
   .matchup-top-card .matchup-fighter > div:first-child > img { width: 44px; height: 44px; }
   .matchup-top-card .matchup-fighter > div:first-child > span { width: 53px; height: 80px; }
-  .matchup-top-card .matchup-market { gap: 0; padding-top: 0; }
+  .matchup-top-card .matchup-market { gap: 0; padding-top: 0; border-top: 0; }
   /* Shrink to fit the content instead of the 216px desktop price card, so it
      reads as a small badge sitting in the gap between the two portraits
      rather than a third block stacked below them. */
   .matchup-top-card .matchup-prices { width: auto; }
   .matchup-top-card .matchup-identity > div:first-child { flex-wrap: wrap; gap: 4px; }
+}
+
+/* Between a phone and the side-by-side layout the card still stacks each
+   fighter over their name, but has the room for the full price card,
+   full-size portraits and names that read at a glance. */
+@container (min-width: 40rem) and (max-width: 57.99rem) {
+  .matchup-top-card .matchup-hero { column-gap: 24px; }
+  .matchup-top-card .matchup-name { font-size: 20px; }
+  .matchup-top-card .matchup-prices { width: 216px; }
+  .matchup-top-card .matchup-fighter > div:first-child > img { width: 56px; height: 56px; }
+  .matchup-top-card .matchup-fighter > div:first-child > span { width: 74px; height: 112px; }
 }
 
 /* The billing line is the hero grid's first row. It wants far less air
@@ -464,6 +475,12 @@ select:not([multiple]):not([size]) {
   .matchup-top-card .matchup-fighter > div:first-child > [data-fighter-portrait="full"] {
     width: 112px;
     height: 170px;
+  }
+}
+@container (min-width: 40rem) and (max-width: 57.99rem) {
+  .matchup-top-card .matchup-fighter > div:first-child > [data-fighter-portrait="full"] {
+    width: 145px;
+    height: 220px;
   }
 }
 
