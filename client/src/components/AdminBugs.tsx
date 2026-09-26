@@ -1,28 +1,29 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAdminRequest, useAdminResource } from "../admin";
-
-const PANE = "overflow-y-auto overscroll-contain md:sticky md:top-0 md:max-h-[calc(100dvh-5.5rem)]";
 import { formatDateShortWithYear } from "../format";
 
 type BugLink = { label: string; href: string; internal?: boolean };
 type BugAction = { id: string; label: string; target: string };
+/** Graded on the server, per item, from how close its card is and what it
+ *  breaks: the same gap climbs as fight night approaches. */
+type Level = "critical" | "must" | "minor" | "ok";
 type BugItem = {
   key: string;
   title: string;
   subtitle?: string;
   date?: string;
+  level: Level;
   facts: [string, string][];
   links: BugLink[];
   actions: BugAction[];
 };
-type Severity = "high" | "medium" | "low";
 type BugCheck = {
   id: string;
   group: string;
   label: string;
   description: string;
-  severity: Severity;
+  level: Level;
   total: number;
   items: BugItem[];
 };
@@ -32,6 +33,20 @@ type BugReport = {
   sync: { last_tick_at: string | null; last_sync_error: string | null };
   checks: BugCheck[];
 };
+
+const LEVELS: { id: Level; label: string; hint: string; dot: string }[] = [
+  { id: "critical", label: "Critical", hint: "Wrong or missing where readers are looking right now", dot: "bg-rose-500" },
+  { id: "must", label: "Must fix", hint: "Will be seen soon, or wrong on a live page", dot: "bg-orange-500" },
+  { id: "minor", label: "Not bad", hint: "A real gap nobody is waiting on", dot: "bg-yellow-400" },
+  { id: "ok", label: "OK", hint: "Expected for now, or cosmetic", dot: "bg-zinc-300" },
+];
+const LEVEL = Object.fromEntries(LEVELS.map((level) => [level.id, level])) as Record<Level, (typeof LEVELS)[number]>;
+const rank = (level: Level) => LEVELS.findIndex((item) => item.id === level);
+const isLevel = (value: string | null): value is Level => LEVELS.some((level) => level.id === value);
+
+function Dot({ level, className = "" }: { level: Level; className?: string }) {
+  return <span className={`h-2 w-2 shrink-0 rounded-full ${LEVEL[level].dot} ${className}`} title={`${LEVEL[level].label}: ${LEVEL[level].hint}`} />;
+}
 
 type Review = { at: number; note: string };
 const REVIEW_KEY = "bugs-reviewed-v1";
@@ -67,12 +82,6 @@ function useReviews() {
   }, [save]);
   return { reviews, toggle, setNote };
 }
-
-const severityDot: Record<Severity, string> = {
-  high: "bg-rose-500",
-  medium: "bg-amber-400",
-  low: "bg-zinc-300",
-};
 
 const reviewId = (check: BugCheck, item: BugItem) => `${check.id}:${item.key}`;
 
@@ -156,6 +165,7 @@ function ItemRow({
         />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2">
+            <Dot level={item.level} className="translate-y-[-1px] self-center" />
             {primary ? (
               <Link to={primary.href} className="font-semibold text-zinc-900 hover:underline">{item.title}</Link>
             ) : (
@@ -240,34 +250,51 @@ export default function AdminBugs() {
 
   const query = params.get("q") ?? "";
   const hideReviewed = params.get("reviewed") !== "show";
+  const levelParam = params.get("level");
+  const level = isLevel(levelParam) ? levelParam : null;
   const setParam = (key: string, value: string | null) => {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value); else next.delete(key);
     setParams(next, { replace: true });
   };
 
-  const openCount = useCallback((check: BugCheck) =>
-    check.items.filter((item) => matches(item, query) && !(hideReviewed && reviews[reviewId(check, item)])).length
-    + Math.max(0, check.total - check.items.length),
-  [query, hideReviewed, reviews]);
+  const isOpen = useCallback((check: BugCheck, item: BugItem) =>
+    matches(item, query) && !(hideReviewed && reviews[reviewId(check, item)]), [query, hideReviewed, reviews]);
+  // Per check: its open items, the ones beyond the listed thousand (the least
+  // serious, since items arrive worst first), and the worst level still open.
+  const tally = useMemo(() => new Map((data?.checks ?? []).map((check) => {
+    const open = check.items.filter((item) => isOpen(check, item));
+    const unlisted = Math.max(0, check.total - check.items.length);
+    const counts = { critical: 0, must: 0, minor: 0, ok: 0 } as Record<Level, number>;
+    for (const item of open) counts[item.level]++;
+    if (unlisted) counts[check.items.at(-1)?.level ?? check.level] += unlisted;
+    const worst = LEVELS.find((entry) => counts[entry.id] > 0)?.id ?? "ok";
+    return [check.id, { counts, worst, count: level ? counts[level] : open.length + unlisted }];
+  })), [data, isOpen, level]);
+  const stat = (check: BugCheck) => tally.get(check.id)!;
 
-  const checks = useMemo(() => data?.checks ?? [], [data]);
-  const selected = checks.find((check) => check.id === params.get("check"))
-    ?? checks.find((check) => openCount(check) > 0)
-    ?? checks[0];
-
-  useEffect(() => { setShown(PAGE); }, [selected?.id, query, hideReviewed]);
-
-  const visible = useMemo(() => selected
-    ? selected.items.filter((item) => matches(item, query) && !(hideReviewed && reviews[reviewId(selected, item)]))
-    : [], [selected, query, hideReviewed, reviews]);
-  const reviewedHere = selected ? selected.items.filter((item) => reviews[reviewId(selected, item)]).length : 0;
-
+  // Worst first: groups by their worst check, checks by their worst item, the
+  // report's own order breaking ties.
   const groups = useMemo(() => {
     const map = new Map<string, BugCheck[]>();
-    for (const check of checks) map.set(check.group, [...(map.get(check.group) ?? []), check]);
-    return [...map.entries()];
-  }, [checks]);
+    for (const check of data?.checks ?? []) map.set(check.group, [...(map.get(check.group) ?? []), check]);
+    const worst = (check: BugCheck) => (tally.get(check.id)?.count ? rank(tally.get(check.id)!.worst) : LEVELS.length);
+    return [...map.entries()]
+      .map(([group, checks]) => [group, [...checks].sort((a, b) => worst(a) - worst(b))] as const)
+      .sort((a, b) => worst(a[1][0]) - worst(b[1][0]));
+  }, [data, tally]);
+  const ordered = useMemo(() => groups.flatMap(([, checks]) => checks), [groups]);
+
+  const selected = ordered.find((check) => check.id === params.get("check"))
+    ?? ordered.find((check) => stat(check).count > 0)
+    ?? ordered[0];
+
+  useEffect(() => { setShown(PAGE); }, [selected?.id, query, hideReviewed, level]);
+
+  const visible = useMemo(() => selected
+    ? selected.items.filter((item) => isOpen(selected, item) && (!level || item.level === level))
+    : [], [selected, isOpen, level]);
+  const reviewedHere = selected ? selected.items.filter((item) => reviews[reviewId(selected, item)]).length : 0;
 
   const refresh = async () => {
     setRefreshing(true);
@@ -292,135 +319,155 @@ export default function AdminBugs() {
     return <div role="status" className="flex items-center justify-center py-16 text-sm text-zinc-400">Checking the database…</div>;
   }
 
-  const totalOpen = checks.reduce((sum, check) => sum + openCount(check), 0);
+  const totals = LEVELS.map((entry) => ({
+    ...entry,
+    count: data.checks.reduce((sum, check) => sum + stat(check).counts[entry.id], 0),
+  }));
 
   return (
-    <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Data bugs</h2>
-            <p className="text-xs text-zinc-500">
-              {totalOpen.toLocaleString()} open across {checks.length} checks · built {ago(data.generated_at)} · last sync tick {ago(data.sync.last_tick_at)}
-              {!data.can_act && " · repairs are disabled"}
-            </p>
-            {data.sync.last_sync_error && (
-              <p className="mt-1 text-xs text-rose-600">Last sync error: {data.sync.last_sync_error}</p>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setParam("q", e.target.value || null)}
-              placeholder="Filter by name, event, date…"
-              className="w-56 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-zinc-400"
-            />
-            <label className="flex items-center gap-1.5 text-xs text-zinc-600">
-              <input
-                type="checkbox"
-                checked={hideReviewed}
-                onChange={(e) => setParam("reviewed", e.target.checked ? null : "show")}
-                className="accent-zinc-900"
-              />
-              Hide reviewed
-            </label>
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+        {/* Each level is also a filter: the board, its counts and the list
+            narrow to it, and a second click lets go. */}
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by level">
+          {totals.map((entry) => (
             <button
+              key={entry.id}
               type="button"
-              onClick={() => void refresh()}
-              disabled={refreshing}
-              className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+              aria-pressed={level === entry.id}
+              onClick={() => setParam("level", level === entry.id ? null : entry.id)}
+              title={entry.hint}
+              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs tabular-nums transition ${
+                level === entry.id
+                  ? "border-zinc-900 bg-zinc-900 text-white"
+                  : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50"
+              } ${entry.count || level === entry.id ? "" : "opacity-50"}`}
             >
-              {refreshing ? "Refreshing…" : "Re-run checks"}
+              <span className={`h-2 w-2 rounded-full ${entry.dot}`} aria-hidden="true" />
+              <span className="font-semibold">{entry.count.toLocaleString()}</span>
+              <span>{entry.label}</span>
             </button>
-          </div>
+          ))}
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setParam("q", e.target.value || null)}
+            placeholder="Filter by name, event, date…"
+            className="w-full min-w-0 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-zinc-400 sm:w-56"
+          />
+          <label className="flex items-center gap-1.5 text-xs text-zinc-600">
+            <input
+              type="checkbox"
+              checked={hideReviewed}
+              onChange={(e) => setParam("reviewed", e.target.checked ? null : "show")}
+              className="accent-zinc-900"
+            />
+            Hide reviewed
+          </label>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            disabled={refreshing}
+            className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+          >
+            {refreshing ? "Checking…" : "Re-run checks"}
+          </button>
+        </div>
+        <p className="w-full text-[11px] text-zinc-400">
+          Built {ago(data.generated_at)} · last sync tick {ago(data.sync.last_tick_at)}
+          {!data.can_act && " · repairs are disabled"}
+          {data.sync.last_sync_error && <span className="text-rose-600"> · last sync error: {data.sync.last_sync_error}</span>}
+        </p>
+      </div>
 
-        <div className="flex flex-col gap-4 md:flex-row md:items-start">
-          {/* The checks and the selected list each scroll on their own: both
-              stick under the page header and are capped at the window's
-              height, so a long list never drags the checks out of reach. */}
-          <nav className={`${PANE} max-h-72 rounded-xl border border-zinc-200 bg-white p-2 md:w-72 md:shrink-0`} aria-label="Checks">
-            {groups.map(([group, groupChecks]) => (
-              <div key={group} className="mb-2 last:mb-0">
-                <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
-                  <span>{group}</span>
-                  <span className="tabular-nums" aria-label={`${group} total`}>
-                    {groupChecks.reduce((sum, check) => sum + openCount(check), 0).toLocaleString()}
-                  </span>
-                </div>
-                <ul>
-                  {groupChecks.map((check) => {
-                    const count = openCount(check);
-                    const active = check.id === selected?.id;
-                    return (
-                      <li key={check.id}>
-                        <button
-                          type="button"
-                          onClick={() => setParam("check", check.id)}
-                          aria-current={active ? "true" : undefined}
-                          className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${active ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-100"}`}
-                        >
-                          <span className={`h-2 w-2 shrink-0 rounded-full ${severityDot[check.severity]}`} title={`${check.severity} severity`} />
-                          <span className="min-w-0 flex-1 truncate">{check.label}</span>
-                          <span className={`tabular-nums text-xs ${active ? "text-zinc-300" : count ? "text-zinc-500" : "text-zinc-300"}`}>{count}</span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
+      {/* The checks and the selected list each scroll on their own inside
+          the space under the tabs; the page itself never moves. */}
+      <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,2fr)_minmax(0,3fr)] gap-3 md:grid-cols-[18rem_minmax(0,1fr)] md:grid-rows-1">
+        <nav className="min-h-0 overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-white p-2" aria-label="Checks">
+          {groups.map(([group, groupChecks]) => (
+            <div key={group} className="mb-2 last:mb-0">
+              <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
+                <span>{group}</span>
+                <span className="tabular-nums" aria-label={`${group} total`}>
+                  {groupChecks.reduce((sum, check) => sum + stat(check).count, 0).toLocaleString()}
+                </span>
               </div>
-            ))}
-          </nav>
+              <ul>
+                {groupChecks.map((check) => {
+                  const { count, worst } = stat(check);
+                  const active = check.id === selected?.id;
+                  return (
+                    <li key={check.id}>
+                      <button
+                        type="button"
+                        onClick={() => setParam("check", check.id)}
+                        aria-current={active ? "true" : undefined}
+                        title={check.label}
+                        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${active ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-100"}`}
+                      >
+                        <Dot level={count ? worst : "ok"} className={count ? "" : "opacity-40"} />
+                        <span className="min-w-0 flex-1 truncate">{check.label}</span>
+                        <span className={`tabular-nums text-xs ${active ? "text-zinc-300" : count ? "text-zinc-500" : "text-zinc-300"}`}>{count.toLocaleString()}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </nav>
 
-          {selected && (
-            <section className={`${PANE} min-w-0 flex-1 rounded-xl border border-zinc-200 bg-white`}>
-              <header className="sticky top-0 z-10 rounded-t-xl border-b border-zinc-200 bg-white px-4 py-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="flex items-center gap-2 font-semibold text-zinc-900">
-                    <span className={`h-2 w-2 rounded-full ${severityDot[selected.severity]}`} />
-                    {selected.label}
-                  </h2>
-                  <div className="flex items-center gap-3 text-xs text-zinc-500">
-                    <span>
-                      {visible.length.toLocaleString()} shown · {reviewedHere} reviewed · {selected.total.toLocaleString()} total
-                      {selected.total > selected.items.length && ` (first ${selected.items.length} listed)`}
-                    </span>
-                    <button type="button" onClick={() => void copyAll()} className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900">
-                      Copy shown
-                    </button>
-                  </div>
-                </div>
-                <p className="mt-1 max-w-3xl text-xs leading-relaxed text-zinc-500">{selected.description}</p>
-              </header>
-              {visible.length === 0 ? (
-                <p className="px-4 py-10 text-center text-sm text-zinc-400">
-                  {selected.total === 0 ? "Nothing wrong here." : "Everything here is reviewed or filtered out."}
-                </p>
-              ) : (
-                <ul>
-                  {visible.slice(0, shown).map((item) => (
-                    <ItemRow
-                      key={item.key}
-                      check={selected}
-                      item={item}
-                      canAct={data.can_act}
-                      review={reviews[reviewId(selected, item)]}
-                      onToggle={() => toggle(reviewId(selected, item))}
-                      onNote={(note) => setNote(reviewId(selected, item), note)}
-                    />
-                  ))}
-                </ul>
-              )}
-              {visible.length > shown && (
-                <div className="border-t border-zinc-100 px-4 py-3 text-center">
-                  <button type="button" onClick={() => setShown((n) => n + PAGE)} className="text-sm font-medium text-zinc-700 underline decoration-zinc-300 underline-offset-2">
-                    Show {Math.min(PAGE, visible.length - shown)} more of {visible.length - shown}
+        {selected && (
+          <section className="min-h-0 min-w-0 overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-white">
+            <header className="sticky top-0 z-10 rounded-t-xl border-b border-zinc-200 bg-white px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="flex min-w-0 items-center gap-2 font-semibold text-zinc-900">
+                  <Dot level={stat(selected).count ? stat(selected).worst : "ok"} />
+                  {selected.label}
+                </h2>
+                <div className="flex items-center gap-3 text-xs text-zinc-500">
+                  <span>
+                    {visible.length.toLocaleString()} shown · {reviewedHere} reviewed · {selected.total.toLocaleString()} total
+                    {selected.total > selected.items.length && ` (first ${selected.items.length} listed)`}
+                  </span>
+                  <button type="button" onClick={() => void copyAll()} className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900">
+                    Copy shown
                   </button>
                 </div>
-              )}
-            </section>
-          )}
-        </div>
+              </div>
+              <p className="mt-1 max-w-3xl text-xs leading-relaxed text-zinc-500">{selected.description}</p>
+            </header>
+            {visible.length === 0 ? (
+              <p className="px-4 py-10 text-center text-sm text-zinc-400">
+                {selected.total === 0 ? "Nothing wrong here." : level ? `Nothing ${LEVEL[level].label.toLowerCase()} here.` : "Everything here is reviewed or filtered out."}
+              </p>
+            ) : (
+              <ul>
+                {visible.slice(0, shown).map((item) => (
+                  <ItemRow
+                    key={item.key}
+                    check={selected}
+                    item={item}
+                    canAct={data.can_act}
+                    review={reviews[reviewId(selected, item)]}
+                    onToggle={() => toggle(reviewId(selected, item))}
+                    onNote={(note) => setNote(reviewId(selected, item), note)}
+                  />
+                ))}
+              </ul>
+            )}
+            {visible.length > shown && (
+              <div className="border-t border-zinc-100 px-4 py-3 text-center">
+                <button type="button" onClick={() => setShown((n) => n + PAGE)} className="text-sm font-medium text-zinc-700 underline decoration-zinc-300 underline-offset-2">
+                  Show {Math.min(PAGE, visible.length - shown)} more of {visible.length - shown}
+                </button>
+              </div>
+            )}
+          </section>
+        )}
+      </div>
     </div>
   );
 }

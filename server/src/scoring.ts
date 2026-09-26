@@ -277,12 +277,52 @@ export class ScoringStore {
     if (!Number.isInteger(rounds) || (rounds as number) < 0 || (rounds as number) > 5) {
       throw new ScoringError(400, "Open between zero and five rounds.");
     }
-    if (!this.fight(id)) throw new ScoringError(404, "Fight not found.");
+    const fight = this.fight(id);
+    if (!fight) throw new ScoringError(404, "Fight not found.");
     this.stmt(`INSERT INTO live_rounds VALUES (?, ?, ?, ?)
       ON CONFLICT(fight_id) DO UPDATE SET rounds = excluded.rounds,
         updated_by = excluded.updated_by, updated_at = excluded.updated_at`)
       .run(id, rounds as number, by, Date.now());
+    // A round closed by hand on a live bout was opened too early: whatever was
+    // scored for it was scored before it happened.
+    const eligibility = scoringEligibility(fight, Date.now(), rounds as number);
+    if (!fightIsComplete(fight) && isFightDay(fight.event_date) && eligibility.scheduled) this.trimRounds(id, eligibility.available);
     return rounds as number;
+  }
+  /** How many cards hold each round of a bout, for the admin panel. */
+  roundCounts(id: string): Record<number, number> {
+    const rows = this.stmt("SELECT round, COUNT(*) AS n FROM scores WHERE fight_id = ? GROUP BY round").all(id) as { round: number; n: number }[];
+    return Object.fromEntries(rows.map(row => [row.round, row.n]));
+  }
+  /**
+   * Once a result is in, rounds past the last scorable one are deleted rather
+   * than only hidden: a round released by hand that the bout never reached,
+   * and a stoppage round, which is not judged. Only a well-formed result
+   * settles anything — a missing or out-of-range round deletes nothing.
+   */
+  settle(fight: ScoringFight): number {
+    if (!fightIsComplete(fight) || !fight.method) return 0;
+    const eligibility = scoringEligibility(fight, Date.now(), 0);
+    const last = Number(fight.round);
+    if (!eligibility.scheduled || !Number.isInteger(last) || last < 1 || last > eligibility.scheduled) return 0;
+    this.stmt("DELETE FROM live_rounds WHERE fight_id = ?").run(fight.id);
+    return this.trimRounds(fight.id, eligibility.available);
+  }
+  /** Deletes every score past round `keep`, from both the rows aggregates read
+   *  and each card's own copy. Revisions are left alone, so an open editor can
+   *  keep saving the rounds that remain. */
+  private trimRounds(id: string, keep: number): number {
+    if (!this.stmt("SELECT 1 FROM scores WHERE fight_id = ? AND round > ? LIMIT 1").get(id, keep)) return 0;
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const cards = this.stmt(`SELECT id, rounds_json FROM scorecards WHERE fight_id = ?
+        AND id IN (SELECT card_id FROM scores WHERE fight_id = ? AND round > ?)`).all(id, id, keep) as { id: string; rounds_json: string }[];
+      const update = this.stmt("UPDATE scorecards SET rounds_json = ? WHERE id = ?");
+      for (const card of cards) update.run(JSON.stringify((JSON.parse(card.rounds_json) as RoundScore[]).filter(r => r.round <= keep)), card.id);
+      const removed = Number(this.stmt("DELETE FROM scores WHERE fight_id = ? AND round > ?").run(id, keep).changes);
+      this.db.exec("COMMIT");
+      return removed;
+    } catch (error) { this.db.exec("ROLLBACK"); throw error; }
   }
   mine(id: string, user: string) {
     const eligibility = this.eligibility(id);

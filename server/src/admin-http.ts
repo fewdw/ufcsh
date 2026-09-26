@@ -7,7 +7,8 @@ import type { ReportStore } from "./reports.ts";
 import type { CommentStore } from "./comments.ts";
 
 /** A bout the panel can release rounds for: everything on a card being fought
- *  today, whether or not the feed has noticed it has started. */
+ *  today, whether or not the feed has noticed it has started. Listed in the
+ *  order they are fought: opening bout first. */
 export type AdminLiveFight = ScoringFight & { ord: number };
 
 export type AdminHandlerOptions = {
@@ -23,6 +24,9 @@ export type AdminHandlerOptions = {
   metrics?: () => unknown;
   canAct: () => boolean;
   liveFights: () => AdminLiveFight[];
+  /** The bout on now — the one the site's LIVE tag names — and whether it has
+   *  started. Defaults to the first bout without a result. */
+  currentBout?: () => { id: string; live: boolean } | null;
   authenticate?: (req: IncomingMessage) => Promise<string>;
   emailOf?: (userId: string) => Promise<string | null>;
   now?: () => number;
@@ -50,6 +54,10 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
  */
 export function createAdminHandler(options: AdminHandlerOptions) {
   const { admins, scores, reports, comments, report, runAction, canAct, liveFights, metrics } = options;
+  const currentBout = options.currentBout ?? (() => {
+    const bout = liveFights().find(fight => fight.f1_outcome == null && fight.f2_outcome == null);
+    return bout ? { id: bout.id, live: false } : null;
+  });
   const authenticate = options.authenticate ?? authenticateScorer;
   const emailOf = options.emailOf ?? scorerEmail;
   const now = options.now ?? Date.now;
@@ -71,6 +79,20 @@ export function createAdminHandler(options: AdminHandlerOptions) {
       openRounds: released,
       available: eligibility.available,
       state: eligibility.state,
+      /** Cards holding each round, so closing one says what it deletes. */
+      scored: scores.roundCounts(fight.id),
+    };
+  };
+  /** The whole card, in fight order, with the bout on now marked. A result
+   *  landing settles that bout's rounds here too, so the panel never shows a
+   *  round the bout did not reach. */
+  const card = () => {
+    const fights = liveFights();
+    for (const fight of fights) scores.settle(fight);
+    const current = currentBout();
+    return {
+      current: current && fights.some(fight => fight.id === current.id) ? current : null,
+      fights: fights.map(describe),
     };
   };
 
@@ -139,13 +161,15 @@ export function createAdminHandler(options: AdminHandlerOptions) {
         if (!metrics) throw new ScoringError(404, "Not found.");
         send(metrics());
       }
-      else if (route === "live") send({ fights: liveFights().map(describe) });
+      else if (route === "live") send(card());
       else if (liveFight) {
         const body = await readBody(req) as { rounds?: unknown };
-        scores.setOpenRounds(liveFight[1], body?.rounds, email ?? "");
+        // Only a bout on today's card, and never one that is already over.
         const fight = liveFights().find(candidate => candidate.id === liveFight[1]);
         if (!fight) throw new ScoringError(404, "Fight not found.");
-        send({ fight: describe(fight) });
+        if (fight.f1_outcome != null || fight.f2_outcome != null) throw new ScoringError(409, "This bout is over; its rounds follow the result.");
+        scores.setOpenRounds(fight.id, body?.rounds, email ?? "");
+        send(card());
       }
       else throw new ScoringError(404, "Not found.");
     } catch (error) {

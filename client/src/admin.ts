@@ -24,7 +24,12 @@ export type AdminLiveFight = {
   /** What a reader can actually score: the larger of the two, capped. */
   available: number;
   state: "completed" | "live" | "waiting";
+  /** Cards holding each round, keyed by round number. */
+  scored: Record<number, number>;
 };
+/** Today's card, opening bout first, and the bout on now — the one the site's
+ *  LIVE tag names. `live` is whether it has started. */
+export type AdminLiveCard = { current: { id: string; live: boolean } | null; fights: AdminLiveFight[] };
 
 /** Every admin request carries the reader's Clerk session token. Cookies are
  *  never enough: the server accepts an explicit bearer token only. */

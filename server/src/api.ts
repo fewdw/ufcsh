@@ -382,24 +382,29 @@ function listEvents(): unknown {
 }
 
 /** The bout on now for a running card (fought bottom-up, so the lowest one
- * without a result), or null when nothing is running. */
-function liveCard(rankingType: RankingType): unknown | null {
-  if (process.env.SYNC_MODE !== "external" && process.env.NO_SYNC !== "1") void syncLiveEvents().catch(err => log("live card refresh failed:", String(err)));
+ * without a result), or null when nothing is running. `live` is whether it has
+ * started: numbers already published settle it, and so does a round opened
+ * from the admin panel. Otherwise the announced start does — once it has
+ * passed we assume the bout is under way — and with no time at all a card
+ * that has produced a result is a card being fought. */
+function currentBout() {
   const e = prepared(`SELECT * FROM events WHERE complete = 0
     AND date >= date('now', '-1 day') AND date <= date('now') ORDER BY date DESC LIMIT 1`).get() as EventRow | undefined;
   if (!e || !isFightDay(e.date)) return null;
   const fights = prepared("SELECT * FROM fights WHERE event_id = ? ORDER BY ord ASC").all(e.id) as any[];
   const bout = [...fights].reverse().find((f) => !fightIsComplete(f));
   if (!bout) return null;
-
-  const times = segmentTimes(e);
-  const card = fights.map(scheduledBout);
-  const starts_at = estimatedStart(card, Number(bout.ord) || 0, times);
+  const starts_at = estimatedStart(fights.map(scheduledBout), Number(bout.ord) || 0, segmentTimes(e));
   const completed = fights.filter(fightIsComplete).length;
-  // Numbers already published settle it. Otherwise the announced start does:
-  // once it has passed we assume the bout is under way, and with no time at
-  // all a card that has produced a result is a card being fought.
-  const live = fightIsUnderway(bout) || (starts_at != null ? Date.now() >= starts_at : completed > 0);
+  const live = fightIsUnderway(bout) || releasedRounds(bout.id) > 0 || (starts_at != null ? Date.now() >= starts_at : completed > 0);
+  return { event: e, fights, bout, starts_at, completed, live };
+}
+
+function liveCard(rankingType: RankingType): unknown | null {
+  if (process.env.SYNC_MODE !== "external" && process.env.NO_SYNC !== "1") void syncLiveEvents().catch(err => log("live card refresh failed:", String(err)));
+  const current = currentBout();
+  if (!current) return null;
+  const { event: e, fights, bout, starts_at, completed, live } = current;
 
   return {
     event: {
@@ -790,14 +795,12 @@ export async function runRefreshJob(key: string): Promise<unknown> {
   }
 }
 
-/** The bout being fought now: on fight day, once the card has a result in, the
- * next unfinished bout — the same rule the event card uses to box it as live. */
-function fightInProgress(f: { id: string; event_id: string; event_date: string; f1_outcome: string | null; f2_outcome: string | null }): boolean {
+/** The bout being fought now: the one the LIVE tag in the header names, once
+ * it has started. Its Score tab opens then, before any round is. */
+function fightInProgress(f: { id: string; event_date: string; f1_outcome: string | null; f2_outcome: string | null }): boolean {
   if (fightIsComplete(f) || !isFightDay(f.event_date)) return false;
-  const card = prepared("SELECT id, f1_outcome, f2_outcome FROM fights WHERE event_id = ? ORDER BY ord ASC")
-    .all(f.event_id) as { id: string; f1_outcome: string | null; f2_outcome: string | null }[];
-  if (!card.some(fightIsComplete)) return false;
-  return card.findLast((bout) => !fightIsComplete(bout))?.id === f.id;
+  const current = currentBout();
+  return !!current?.live && current.bout.id === f.id;
 }
 
 async function getFight(id: string, rankingType: RankingType): Promise<unknown | null> {
@@ -1874,6 +1877,19 @@ async function repairSnapshot(day: string): Promise<void> {
   for (const old of files.slice(0, -3)) await fs.rm(path.join(directory, old));
 }
 
+/** Today's card for the admin panel, opening bout first. */
+function liveFights(): AdminLiveFight[] {
+  return prepared(`
+    SELECT f.id, f.ord, f.f1_name, f.f2_name, f.weight_class, f.scheduled_rounds,
+      f.round, f.time, f.method, f.detail_json, f.f1_outcome, f.f2_outcome,
+      f.f1_id, f.f2_id, NULL AS f1_photo, NULL AS f2_photo,
+      e.id AS event_id, e.name AS event_name, e.date AS event_date
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.id = (SELECT id FROM events WHERE date >= date('now', '-1 day') AND date <= date('now') ORDER BY date DESC LIMIT 1)
+    ORDER BY f.ord DESC
+  `).all() as AdminLiveFight[];
+}
+
 export function startApi(port: number): http.Server {
   // Scoring keeps its own database, so a scorecard's bouts are read from this
   // one in a single batch per request.
@@ -1913,16 +1929,19 @@ export function startApi(port: number): http.Server {
       : runBugAction(action, target),
     // Administrators may pause online repairs without disabling the report.
     canAct: () => process.env.DISABLE_REPAIRS !== "1",
-    liveFights: () => prepared(`
-      SELECT f.id, f.ord, f.f1_name, f.f2_name, f.weight_class, f.scheduled_rounds,
-        f.round, f.time, f.method, f.detail_json, f.f1_outcome, f.f2_outcome,
-        f.f1_id, f.f2_id, NULL AS f1_photo, NULL AS f2_photo,
-        e.id AS event_id, e.name AS event_name, e.date AS event_date
-      FROM fights f JOIN events e ON e.id = f.event_id
-      WHERE e.date >= date('now', '-1 day') AND e.date <= date('now')
-      ORDER BY e.date DESC, f.ord DESC
-    `).all() as AdminLiveFight[],
+    liveFights,
+    currentBout: () => {
+      const current = currentBout();
+      return current ? { id: current.bout.id, live: current.live } : null;
+    },
   });
+  // A result settles its bout's rounds whether or not anyone has the panel
+  // open: rounds it never reached are deleted, not just hidden.
+  const settler = setInterval(() => {
+    try { for (const fight of liveFights()) scoreStore.settle(fight); }
+    catch (error) { log("settling live rounds failed:", String(error)); }
+  }, 15_000);
+  settler.unref();
   const workerCount = Number(process.env.API_WORKERS ?? (process.env.NODE_ENV === "production" ? 2 : 0));
   if (!Number.isInteger(workerCount) || workerCount < 0 || workerCount > 8) throw new Error("API_WORKERS must be an integer from 0 to 8");
   let refresher: NodeJS.Timeout | undefined;
@@ -2200,6 +2219,7 @@ export function startApi(port: number): http.Server {
     recentLoop.disable();
     clearInterval(sampler);
     clearInterval(warmLists);
+    clearInterval(settler);
     clearInterval(refresher);
     process.removeListener("SIGTERM", shutdown);
     process.removeListener("SIGINT", shutdown);
