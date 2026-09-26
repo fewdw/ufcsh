@@ -10,7 +10,7 @@ import {
   type ScrapedEventDetail,
 } from "./scrape/ufcstats.ts";
 import { scrapeAthleteDirectoryPage, scrapeEventCard, scrapeEventSchedules, scrapeFighterImages, scrapeRankings } from "./scrape/ufccom.ts";
-import { assignPerBout, assignRounds, assignSegments, matchEventSchedule } from "./card-schedule.ts";
+import { assignPerBout, assignRounds, assignSegments, matchEventSchedule, sharesBout } from "./card-schedule.ts";
 import {
   alignScrapedOdds,
   findOddsEventPages,
@@ -205,9 +205,11 @@ function storeSchedules(events: { id: string; name: string; date: string }[], sc
   const update = db.prepare(`UPDATE events SET ufc_slug = ?, main_card_at = ?, prelims_at = ?,
     early_prelims_at = ?, schedule_fetched_at = ? WHERE id = ?`);
   let timed = 0;
+  // A page belongs to one card; one already taken can't be another's.
+  const taken = db.prepare("SELECT 1 FROM events WHERE ufc_slug = ? AND id != ?");
   for (const event of events) {
     const schedule = matchEventSchedule(event, schedules);
-    if (!schedule) continue;
+    if (!schedule || taken.get(schedule.slug, event.id)) continue;
     update.run(schedule.slug, schedule.mainCardAt, schedule.prelimsAt, schedule.earlyPrelimsAt, Date.now(), event.id);
     timed++;
   }
@@ -246,6 +248,14 @@ export async function syncEventSegments(eventId: string): Promise<void> {
   const card = await scrapeEventCard(event.ufc_slug);
   const fights = db.prepare("SELECT id, ord, f1_name, f2_name FROM fights WHERE event_id = ?")
     .all(eventId) as { id: string; ord: number; f1_name: string; f2_name: string }[];
+  // The archive index has paired pages with the wrong dates before. A page
+  // whose card shares no bout with ours is another event's: forget it and
+  // everything read from it, so the next archive pass offers the right one.
+  if (fights.length && card.segments.length && !sharesBout(fights, card.segments)) {
+    forgetUfcPage(eventId);
+    log(`card segments: ${event.ufc_slug} is another event's page; forgotten`);
+    return;
+  }
   const segments = assignSegments(fights, card.segments);
   const update = db.prepare("UPDATE fights SET segment = ? WHERE id = ?");
   for (const [id, segment] of segments) update.run(segment, id);
@@ -272,6 +282,15 @@ export async function syncEventSegments(eventId: string): Promise<void> {
   }
   db.prepare("UPDATE events SET segments_fetched_at = ?, venue_checked_at = ? WHERE id = ?").run(Date.now(), Date.now(), eventId);
   log(`card segments synced for ${event.ufc_slug} (${segments.size}/${fights.length} bouts placed, ${booked} with booked rounds${card.info?.venue ? `, ${card.info.venue}` : ""})`);
+}
+
+export function forgetUfcPage(eventId: string): void {
+  db.prepare(`UPDATE events SET ufc_slug = NULL, main_card_at = NULL, prelims_at = NULL, early_prelims_at = NULL,
+    schedule_fetched_at = NULL, segments_fetched_at = NULL, ufc_event_id = NULL, venue_id = NULL, venue_name = NULL,
+    venue_city = NULL, venue_state = NULL, venue_country = NULL, venue_tz = NULL, broadcast_json = NULL,
+    venue_checked_at = NULL WHERE id = ?`).run(eventId);
+  db.prepare("UPDATE fights SET segment = NULL, scheduled_rounds = NULL, referee_assigned = NULL WHERE event_id = ?").run(eventId);
+  setMeta("schedule_archive_done", "0");
 }
 
 let venueArchiveRunning = false;
@@ -318,7 +337,11 @@ export async function syncEventWikiInfo(limit = 20): Promise<void> {
       try {
         let title = event.wiki_title;
         let wikitext: string | null = null;
-        if (title) wikitext = await fetchArticleByTitle(title);
+        // A season page holds several cards; only this card's section counts.
+        if (title) {
+          const article = await fetchArticleByTitle(title);
+          wikitext = article && eventSection(article, event.date);
+        }
         if (!wikitext) {
           const names = (fightsOf.all(event.id) as { f1_name: string; f2_name: string }[]).flatMap((f) => [f.f1_name, f.f2_name]);
           const article = await fetchEventArticle(event.name, event.date, names);

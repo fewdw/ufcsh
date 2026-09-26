@@ -1,6 +1,11 @@
 import { ScoringError } from "./scoring.ts";
+import type { BugActionId } from "./bugs.ts";
 
-const ACTIONS = new Set(["odds", "props", "career", "detail", "segments", "event", "clear-bfo", "birth", "wiki", "article"]);
+// Keyed by the board's own action type, so a repair it offers can't be left out.
+const ACTIONS: Record<BugActionId, true> = {
+  odds: true, props: true, career: true, detail: true, segments: true, event: true,
+  "clear-bfo": true, birth: true, wiki: true, article: true, catchweight: true, "forget-ufc": true,
+};
 
 /** One concurrent repair per API process, with a verified snapshot before the day's first change. */
 export function createRepairRunner<T>(
@@ -12,7 +17,7 @@ export function createRepairRunner<T>(
   let running = false;
   let backedUpDay = "";
   return async (action: string, target: string, actor: string): Promise<T> => {
-    if (!ACTIONS.has(action) || !/^[a-f0-9]{16}$/i.test(target)) throw new ScoringError(400, "Unknown repair or target.");
+    if (!Object.hasOwn(ACTIONS, action) || !/^[a-f0-9]{16}$/i.test(target)) throw new ScoringError(400, "Unknown repair or target.");
     if (running) throw new ScoringError(503, "Another repair is running. Retry shortly.");
     running = true;
     const started = now();

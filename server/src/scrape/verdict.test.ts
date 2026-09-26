@@ -39,3 +39,15 @@ test("Verdict fight pages retain official rounds and community counts and averag
     ],
   });
 });
+
+test("a stoppage's community card keeps the rounds scored before it", () => {
+  const page = parseVerdictFightPage(`
+    <head><meta property="og:title" content="Marlon Vera vs Charles Jourdain"></head><main>
+    <section><h2>Verdict Scorecard</h2><div>${grid(["Vera", "9.83", "9.98", "TKO", "19.82"], ["Jourdain", "9.16", "8.69", "", "17.85"])}</div>
+      <a href="/community-scorecards/event/1947/fight/4"><span><span>6,481</span> scorecards</span></a></section>
+    </main>`);
+  assert.deepEqual(page?.community, {
+    cards: 6481, f1Name: "Vera", f2Name: "Jourdain", avg1: 19.82, avg2: 17.85,
+    rounds: [{ round: 1, avg1: 9.83, avg2: 9.16 }, { round: 2, avg1: 9.98, avg2: 8.69 }],
+  });
+});

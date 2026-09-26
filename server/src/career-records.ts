@@ -3,6 +3,7 @@ import { daysBetween, log, normName } from "./util.ts";
 import {
   scrapeSherdogProfile,
   searchSherdogFighters,
+  sherdogUpcomingOpponents,
   type SherdogBout,
   type SherdogCandidate,
   type SherdogProfile,
@@ -245,18 +246,49 @@ export function isVerifiedIdentity(
   return birthMatches || sameNickname || candidateCount === 1;
 }
 
-async function resolve(local: LocalFighter, knownUrl = ""): Promise<{ state: "verified"; value: VerifiedCandidate } | { state: "not_found" | "ambiguous"; reason: string }> {
-  let searched = knownUrl ? [] : await searchSherdogFighters(local.name);
+async function searchByName(local: LocalFighter): Promise<SherdogCandidate[]> {
+  let searched = await searchSherdogFighters(local.name);
   const searchName = withoutSuffix(local.name.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\./g, ""));
-  if (!knownUrl && searchName !== local.name && !searched.some((candidate) => samePersonName(local.name, candidate.name, candidate.nickname))) {
+  if (searchName !== local.name && !searched.some((candidate) => samePersonName(local.name, candidate.name, candidate.nickname))) {
     searched = await searchSherdogFighters(searchName);
   }
   // The source may spell the name a letter differently, which its search
   // won't find. The surname alone finds it; only close names are kept, and
   // those still have to verify on birth date and history.
   const surname = searchName.split(" ").filter(Boolean).at(-1) ?? "";
-  if (!knownUrl && !searched.length && surname.length >= 4 && surname !== searchName) {
+  if (!searched.length && surname.length >= 4 && surname !== searchName) {
     searched = (await searchSherdogFighters(surname)).filter((candidate) => closeName(local.name, candidate.name));
+  }
+  return searched;
+}
+
+/** A booked fighter is named under "Upcoming Fights" on their opponent's
+ *  verified page: a way to the profile when the source's search is down or
+ *  doesn't list a new signing. */
+async function bookedOpponentCandidates(local: LocalFighter): Promise<SherdogCandidate[]> {
+  const pages = db.prepare(`
+    SELECT DISTINCT cp.source_url FROM fights f JOIN events e ON e.id = f.event_id
+    JOIN career_profiles cp ON cp.fighter_id = CASE WHEN f.f1_id = ? THEN f.f2_id ELSE f.f1_id END
+    WHERE e.complete = 0 AND (f.f1_id = ? OR f.f2_id = ?) AND cp.status = 'verified' AND cp.source_url IS NOT NULL
+  `).all(local.id, local.id, local.id) as { source_url: string }[];
+  const found = new Map<string, SherdogCandidate>();
+  for (const page of pages) {
+    const named = await sherdogUpcomingOpponents(page.source_url).catch(() => []);
+    for (const candidate of named) if (samePersonName(local.name, candidate.name)) found.set(candidate.url, candidate);
+  }
+  return [...found.values()];
+}
+
+async function resolve(local: LocalFighter, knownUrl = ""): Promise<{ state: "verified"; value: VerifiedCandidate } | { state: "not_found" | "ambiguous"; reason: string }> {
+  let searched: SherdogCandidate[] = [];
+  if (!knownUrl) {
+    let searchError: unknown = null;
+    searched = await searchByName(local).catch((error) => { searchError = error; return []; });
+    if (!searched.some((candidate) => samePersonName(local.name, candidate.name, candidate.nickname))) {
+      const booked = await bookedOpponentCandidates(local);
+      searched = [...booked, ...searched.filter((candidate) => !booked.some((found) => found.url === candidate.url))];
+    }
+    if (!searched.length && searchError) throw searchError;
   }
   const exactCandidates = searched.filter((candidate) => samePersonName(local.name, candidate.name, candidate.nickname));
   const candidates = knownUrl

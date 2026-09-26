@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAdminRequest, useAdminResource } from "../admin";
 import { formatDateShortWithYear } from "../format";
@@ -96,7 +96,7 @@ function itemText(check: BugCheck, item: BugItem): string {
 
 function matches(item: BugItem, query: string): boolean {
   if (!query) return true;
-  const haystack = [item.title, item.subtitle ?? "", item.date ?? "", ...item.facts.flat()].join(" ").toLowerCase();
+  const haystack = [item.key, item.title, item.subtitle ?? "", item.date ?? "", ...item.facts.flat()].join(" ").toLowerCase();
   return query.toLowerCase().split(/\s+/).filter(Boolean).every((word) => haystack.includes(word));
 }
 
@@ -264,13 +264,14 @@ export default function AdminBugs() {
   // serious, since items arrive worst first), and the worst level still open.
   const tally = useMemo(() => new Map((data?.checks ?? []).map((check) => {
     const open = check.items.filter((item) => isOpen(check, item));
-    const unlisted = Math.max(0, check.total - check.items.length);
+    // Items past the listed thousand can't be searched, so a search leaves them out.
+    const unlisted = query ? 0 : Math.max(0, check.total - check.items.length);
     const counts = { critical: 0, must: 0, minor: 0, ok: 0 } as Record<Level, number>;
     for (const item of open) counts[item.level]++;
     if (unlisted) counts[check.items.at(-1)?.level ?? check.level] += unlisted;
     const worst = LEVELS.find((entry) => counts[entry.id] > 0)?.id ?? "ok";
     return [check.id, { counts, worst, count: level ? counts[level] : open.length + unlisted }];
-  })), [data, isOpen, level]);
+  })), [data, isOpen, level, query]);
   const stat = (check: BugCheck) => tally.get(check.id)!;
 
   // Worst first: groups by their worst check, checks by their worst item, the
@@ -285,16 +286,19 @@ export default function AdminBugs() {
   }, [data, tally]);
   const ordered = useMemo(() => groups.flatMap(([, checks]) => checks), [groups]);
 
-  const selected = ordered.find((check) => check.id === params.get("check"))
+  // A search with no check picked looks through every check at once.
+  const searchAll = Boolean(query) && !params.get("check");
+  const selected = searchAll ? undefined : ordered.find((check) => check.id === params.get("check"))
     ?? ordered.find((check) => stat(check).count > 0)
     ?? ordered[0];
 
   useEffect(() => { setShown(PAGE); }, [selected?.id, query, hideReviewed, level]);
 
-  const visible = useMemo(() => selected
-    ? selected.items.filter((item) => isOpen(selected, item) && (!level || item.level === level))
-    : [], [selected, isOpen, level]);
+  const visible = useMemo(() => (searchAll ? ordered : selected ? [selected] : []).flatMap((check) => check.items
+    .filter((item) => isOpen(check, item) && (!level || item.level === level))
+    .map((item) => ({ check, item }))), [searchAll, ordered, selected, isOpen, level]);
   const reviewedHere = selected ? selected.items.filter((item) => reviews[reviewId(selected, item)]).length : 0;
+  const matchedChecks = new Set(visible.map(({ check }) => check.id)).size;
 
   const refresh = async () => {
     setRefreshing(true);
@@ -303,8 +307,7 @@ export default function AdminBugs() {
   };
 
   const copyAll = async () => {
-    if (!selected) return;
-    try { await navigator.clipboard.writeText(visible.map((item) => itemText(selected, item)).join("\n\n")); } catch { /* unavailable */ }
+    try { await navigator.clipboard.writeText(visible.map(({ check, item }) => itemText(check, item)).join("\n\n")); } catch { /* unavailable */ }
   };
 
   if (error && !data) {
@@ -353,8 +356,14 @@ export default function AdminBugs() {
           <input
             type="search"
             value={query}
-            onChange={(e) => setParam("q", e.target.value || null)}
-            placeholder="Filter by name, event, date…"
+            onChange={(e) => {
+              const next = new URLSearchParams(params);
+              if (e.target.value) next.set("q", e.target.value); else next.delete("q");
+              next.delete("check");
+              setParams(next, { replace: true });
+            }}
+            placeholder="Search every check…"
+            aria-label="Search every check by name, event, date or id"
             className="w-full min-w-0 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-zinc-400 sm:w-56"
           />
           <label className="flex items-center gap-1.5 text-xs text-zinc-600">
@@ -386,6 +395,19 @@ export default function AdminBugs() {
           the space under the tabs; the page itself never moves. */}
       <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,2fr)_minmax(0,3fr)] gap-3 md:grid-cols-[18rem_minmax(0,1fr)] md:grid-rows-1">
         <nav className="min-h-0 overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-white p-2" aria-label="Checks">
+          {query && (
+            <button
+              type="button"
+              onClick={() => setParam("check", null)}
+              aria-current={searchAll ? "true" : undefined}
+              className={`mb-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${searchAll ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-100"}`}
+            >
+              <span className="min-w-0 flex-1 truncate">All matches</span>
+              <span className={`tabular-nums text-xs ${searchAll ? "text-zinc-300" : "text-zinc-500"}`}>
+                {ordered.reduce((sum, check) => sum + stat(check).count, 0).toLocaleString()}
+              </span>
+            </button>
+          )}
           {groups.map(([group, groupChecks]) => (
             <div key={group} className="mb-2 last:mb-0">
               <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
@@ -419,42 +441,67 @@ export default function AdminBugs() {
           ))}
         </nav>
 
-        {selected && (
+        {(selected || searchAll) && (
           <section className="min-h-0 min-w-0 overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-white">
             <header className="sticky top-0 z-10 rounded-t-xl border-b border-zinc-200 bg-white px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="flex min-w-0 items-center gap-2 font-semibold text-zinc-900">
-                  <Dot level={stat(selected).count ? stat(selected).worst : "ok"} />
-                  {selected.label}
+                  {selected ? (
+                    <>
+                      <Dot level={stat(selected).count ? stat(selected).worst : "ok"} />
+                      {selected.label}
+                    </>
+                  ) : (
+                    <span className="min-w-0 truncate">Matches for “{query}”</span>
+                  )}
                 </h2>
                 <div className="flex items-center gap-3 text-xs text-zinc-500">
                   <span>
-                    {visible.length.toLocaleString()} shown · {reviewedHere} reviewed · {selected.total.toLocaleString()} total
-                    {selected.total > selected.items.length && ` (first ${selected.items.length} listed)`}
+                    {selected ? (
+                      <>
+                        {visible.length.toLocaleString()} shown · {reviewedHere} reviewed · {selected.total.toLocaleString()} total
+                        {selected.total > selected.items.length && ` (first ${selected.items.length} listed)`}
+                      </>
+                    ) : (
+                      `${visible.length.toLocaleString()} in ${matchedChecks} ${matchedChecks === 1 ? "check" : "checks"}`
+                    )}
                   </span>
                   <button type="button" onClick={() => void copyAll()} className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900">
                     Copy shown
                   </button>
                 </div>
               </div>
-              <p className="mt-1 max-w-3xl text-xs leading-relaxed text-zinc-500">{selected.description}</p>
+              {selected && <p className="mt-1 max-w-3xl text-xs leading-relaxed text-zinc-500">{selected.description}</p>}
             </header>
             {visible.length === 0 ? (
               <p className="px-4 py-10 text-center text-sm text-zinc-400">
-                {selected.total === 0 ? "Nothing wrong here." : level ? `Nothing ${LEVEL[level].label.toLowerCase()} here.` : "Everything here is reviewed or filtered out."}
+                {!selected ? "No check has a match." : selected.total === 0 ? "Nothing wrong here." : level ? `Nothing ${LEVEL[level].label.toLowerCase()} here.` : "Everything here is reviewed or filtered out."}
               </p>
             ) : (
               <ul>
-                {visible.slice(0, shown).map((item) => (
-                  <ItemRow
-                    key={item.key}
-                    check={selected}
-                    item={item}
-                    canAct={data.can_act}
-                    review={reviews[reviewId(selected, item)]}
-                    onToggle={() => toggle(reviewId(selected, item))}
-                    onNote={(note) => setNote(reviewId(selected, item), note)}
-                  />
+                {visible.slice(0, shown).map(({ check, item }, i) => (
+                  <Fragment key={`${check.id}:${item.key}`}>
+                    {/* Across every check, each run of one check's items is headed by its name. */}
+                    {searchAll && check.id !== visible[i - 1]?.check.id && (
+                      <li className="border-b border-zinc-100 bg-zinc-50 px-4 py-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setParam("check", check.id)}
+                          className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-900"
+                        >
+                          {check.group} · {check.label}
+                        </button>
+                      </li>
+                    )}
+                    <ItemRow
+                      check={check}
+                      item={item}
+                      canAct={data.can_act}
+                      review={reviews[reviewId(check, item)]}
+                      onToggle={() => toggle(reviewId(check, item))}
+                      onNote={(note) => setNote(reviewId(check, item), note)}
+                    />
+                  </Fragment>
                 ))}
               </ul>
             )}
