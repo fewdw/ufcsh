@@ -65,6 +65,21 @@ function Header({ onSearch }: { onSearch: () => void }) {
   const showShortcuts = useShortcutHelp();
   const { settings, update } = useSettings();
   const dark = settings.theme === "dark";
+  // The bout on now sits mid-row only while it fits whole; the moment its
+  // names would be cut, it drops to its own line instead.
+  const slotRef = useRef<HTMLDivElement>(null);
+  const pillRef = useRef<HTMLDivElement>(null);
+  const [pillFits, setPillFits] = useState(true);
+  useEffect(() => {
+    const slot = slotRef.current;
+    const pill = pillRef.current;
+    if (!slot || !pill) return;
+    const measure = () => setPillFits(pill.offsetWidth <= slot.clientWidth);
+    const observer = new ResizeObserver(measure);
+    observer.observe(slot);
+    observer.observe(pill);
+    return () => observer.disconnect();
+  }, []);
   const isRankings = pathname.startsWith("/rankings");
   const isStats = pathname.startsWith("/stats");
   // Labs is a mode of Statistics rather than a top-level destination, so the
@@ -111,10 +126,10 @@ function Header({ onSearch }: { onSearch: () => void }) {
         </nav>
 
         {/* The middle of the row from `md` up, and its own line below that —
-            never dropped, since it is the one thing on the page that changes
-            minute to minute. */}
-        <div className="hidden min-w-0 flex-1 justify-center md:flex">
-          <LiveMatchup />
+            never dropped or cut short, since it is the one thing on the page
+            that changes minute to minute. */}
+        <div ref={slotRef} className="hidden min-w-0 flex-1 justify-center overflow-hidden md:flex">
+          <div ref={pillRef} className={`w-max shrink-0 ${pillFits ? "" : "invisible"}`}><LiveMatchup /></div>
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-0.5 min-[380px]:gap-1 sm:gap-2 md:ml-0">
@@ -156,7 +171,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
 
       {/* `empty:hidden` keeps this strip off the page entirely on the days
           there is no card running, which is most of them. */}
-      <div className="flex justify-center border-t border-zinc-100 px-2.5 py-1.5 empty:hidden md:hidden">
+      <div className={`flex justify-center border-t border-zinc-100 px-2.5 py-1.5 empty:hidden ${pillFits ? "md:hidden" : ""}`}>
         <LiveMatchup />
       </div>
     </header>

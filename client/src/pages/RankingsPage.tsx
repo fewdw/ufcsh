@@ -217,7 +217,7 @@ function RankRow({
         {features.opponents && meta.hint ? (
           <span
             title={meta.hint}
-            className={`block whitespace-normal text-[10px] leading-3.5 [overflow-wrap:anywhere] xl:truncate xl:whitespace-nowrap ${
+            className={`block whitespace-normal text-[10px] leading-3.5 [overflow-wrap:anywhere] ${
               meta.showsLastFight
                 ? lastFightTone(entry.activity.last_fight_outcome)
                 : "text-zinc-400"
@@ -476,9 +476,9 @@ export default function RankingsPage() {
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
       <div className="p-2 pb-8 sm:p-3">
-        {/* One row at every width, Filters always last. From `md` the key
-            sits just before it; below that it lives in the Filters sheet. */}
-        <div className={`${shell} mb-2 flex items-center gap-1.5 px-2.5 py-2 sm:mb-3 sm:gap-2 sm:px-3 lg:gap-3`}>
+        {/* Filters always last. From `md` the key sits just before it on the
+            one row; below that it takes a second row of its own, at the right. */}
+        <div className={`${shell} mb-2 flex flex-wrap items-center gap-1.5 px-2.5 py-2 sm:mb-3 sm:gap-2 sm:px-3 lg:gap-3`}>
           <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Ranking view">
             {SOURCES.map((source) => (
               <button
@@ -510,7 +510,7 @@ export default function RankingsPage() {
               </button>
             ))}
           </div>
-          <div className="ml-auto hidden min-w-0 items-center justify-end gap-x-3 overflow-hidden whitespace-nowrap text-[11px] text-zinc-500 md:flex">
+          <div className="order-last flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 md:order-none md:ml-auto md:basis-auto md:flex-nowrap md:whitespace-nowrap">
             {features.activityColors ? activityKey : null}
             {updated}
           </div>
@@ -529,14 +529,14 @@ export default function RankingsPage() {
           className={
             centerFilteredCards
               ? "flex flex-wrap justify-center gap-2 sm:gap-3"
-              : "grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-4"
+              : "grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-4"
           }
         >
           {shown.map((d) => (
             centerFilteredCards ? (
               <div
                 key={d.division}
-                className="w-full sm:w-[calc(50%_-_0.375rem)] lg:w-[calc(33.333%_-_0.5rem)] xl:w-[calc(25%_-_0.5625rem)]"
+                className="w-full sm:w-[calc(50%_-_0.375rem)] lg:w-[calc(33.333%_-_0.5rem)] 2xl:w-[calc(25%_-_0.5625rem)]"
               >
                 <DivisionCard division={d} features={features} source={settings.rankingSource} />
               </div>

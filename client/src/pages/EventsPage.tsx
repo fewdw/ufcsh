@@ -367,24 +367,25 @@ function FighterBlock({
   const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title="Current ranking from the selected source; NR means unranked">{rank}</span>;
   const nameBlock = (
     <div className={`min-w-0 max-w-full ${align === "right" ? "text-right" : ""}`}>
-      {/* The badges never wrap away from the name, so both names start at
-          the same height; a long name wraps within its own span instead of
-          being cut short. */}
-      <div className="flex min-w-0 flex-nowrap items-center gap-2" style={align === "right" ? { justifyContent: "flex-end" } : undefined}>
-        {align === "left" ? rankingBadge : null}
-        {align === "right" ? <BonusIcons bonuses={bonuses} outcome={side.outcome} /> : null}
-        <span className={`min-w-0 text-sm leading-5 font-semibold ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>
+      {/* Mirrored for the right corner: ranking outermost, then the name,
+          then the result, weight and bonus tags as one group. When the name
+          and tags cannot share a line, the tags wrap below it rather than
+          overlapping it. */}
+      <div className={`flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
+        {rankingBadge}
+        <span className={`min-w-0 break-words text-sm leading-5 font-semibold ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>
           {side.name}
         </span>
-        {resultTag ? (
-          <span className={`${METHOD_TAG} ${outcomeClasses(side.outcome)}`}>
-            {resultTag.label}
-            {resultTag.when ? <span className="ml-1 font-semibold tabular-nums opacity-70">{resultTag.when}</span> : null}
-          </span>
-        ) : null}
-        <WeightMissBadge side={side} />
-        {align === "left" ? <BonusIcons bonuses={bonuses} outcome={side.outcome} /> : null}
-        {align === "right" ? rankingBadge : null}
+        <span className={`flex shrink-0 items-center gap-2 empty:hidden ${align === "right" ? "flex-row-reverse" : ""}`}>
+          {resultTag ? (
+            <span className={`${METHOD_TAG} ${outcomeClasses(side.outcome)}`}>
+              {resultTag.label}
+              {resultTag.when ? <span className="ml-1 font-semibold tabular-nums opacity-70">{resultTag.when}</span> : null}
+            </span>
+          ) : null}
+          <WeightMissBadge side={side} />
+          <BonusIcons bonuses={bonuses} outcome={side.outcome} />
+        </span>
       </div>
       <div className={`mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] tabular-nums text-zinc-500 ${align === "right" ? "flex-row-reverse" : ""}`}>
         <span className="whitespace-nowrap" title="Professional record entering this fight"><span className="font-medium text-zinc-700">{side.record || "—"}</span> pro</span>
@@ -918,13 +919,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
         // Its own height, not the pane's: squeezed to fit, the list would run
         // out past the pane.
         <div className="flex shrink-0 flex-col gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-            <Link
-              to={`/events/${event.id}`}
-              className="text-xs font-medium text-zinc-500 underline decoration-zinc-300 underline-offset-2 transition hover:text-zinc-900 dark:text-zinc-400 dark:decoration-zinc-600 dark:hover:text-zinc-100"
-            >
-              ← Back to matchups
-            </Link>
+          <div className="flex flex-wrap items-center justify-end gap-2 px-1">
             <OddsFormatTabs format={settings.oddsFormat} onChange={(oddsFormat) => update("oddsFormat", oddsFormat)} />
           </div>
           <div className="flex flex-col gap-2 pb-3">
