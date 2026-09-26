@@ -61,7 +61,7 @@ export function CardNavigation({ label, previous, center, next, className = "" }
       </nav>
       {createPortal(
         <nav aria-label={label} inert={!scrolledPast}
-          className={`fixed bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full border border-zinc-200 bg-white/95 p-1 shadow-lg backdrop-blur transition duration-200 ease-out sm:hidden [&_[data-nav-extra]]:static [&_[data-nav-extra]]:translate-y-0 ${
+          className={`fixed bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full border border-zinc-200 bg-white/95 p-1 shadow-lg backdrop-blur transition duration-200 ease-out sm:hidden [&_[data-nav-extra]]:hidden ${
             scrolledPast ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-4 opacity-0"}`}>
           {previous}{center}{next}
         </nav>,

@@ -953,12 +953,16 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                           : referee}
                       </div>
                     ) : null}
-                    <div className="matchup-prices mt-2.5">
+                    {/* .matchup-prices zeroes its own margin, so the gap
+                        under the weight class (and referee) is padding here. */}
+                    <div className="pt-3">
+                    <div className="matchup-prices">
                       <MatchupOdds key={fight.id} f1={fight.odds?.f1.close} f2={fight.odds?.f2.close}
                         f1Open={fight.odds?.f1.open} f2Open={fight.odds?.f2.open}
                         f1Name={fight.f1.name} f2Name={fight.f2.name}
                         props={fight.odds?.props}
                         fightId={fight.status === "upcoming" ? fight.id : undefined} />
+                    </div>
                     </div>
                   </div>
                   <div className="col-start-3 row-start-1 min-w-0">
