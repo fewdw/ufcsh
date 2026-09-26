@@ -20,7 +20,11 @@ export type AppSettings = {
   topStatsOpen: boolean;
   /** How that panel orders its rows: by category, or best place first. */
   statsSort: StatsSort;
+  /** Which end a card is read from: the main event down, or the opener up. */
+  cardOrder: CardOrder;
 };
+
+export type CardOrder = "main" | "opener";
 
 export type StatsSort = "grouped" | "best";
 
@@ -32,6 +36,7 @@ const DEFAULTS: AppSettings = {
   oddsFormat: "american",
   topStatsOpen: false,
   statsSort: "grouped",
+  cardOrder: "main",
 };
 const STORAGE_KEY = "ufcsh:settings:v1";
 
@@ -46,6 +51,7 @@ function loadSettings(): AppSettings {
       oddsFormat: saved?.oddsFormat === "decimal" ? "decimal" : "american",
       topStatsOpen: saved?.topStatsOpen === true,
       statsSort: saved?.statsSort === "best" ? "best" : "grouped",
+      cardOrder: saved?.cardOrder === "opener" ? "opener" : "main",
     };
   } catch {
     return DEFAULTS;

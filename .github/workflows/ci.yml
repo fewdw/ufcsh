@@ -51,3 +51,21 @@ jobs:
           printf '%s %s\n' "$DEPLOY_HOST" "$DEPLOY_HOST_KEY" > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i "$HOME/.ssh/ufcsh_deploy" "ubuntu@$DEPLOY_HOST" "prod $DEPLOY_SHA"
+  # Every push to a branch other than main shows that branch at dev.ufc.sh
+  # straight away, without waiting for the checks. The Choose dev branch
+  # workflow still switches dev to any branch by hand.
+  deploy-dev:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/main' && !github.event.deleted
+    uses: ./.github/workflows/deploy-dev-branch.yml
+    with:
+      branch: ${{ github.ref_name }}
+    secrets: inherit
+  # A push or merge to main moves dev onto main too, once the checks pass,
+  # so production and dev show the same code.
+  sync-dev:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: checks
+    uses: ./.github/workflows/deploy-dev-branch.yml
+    with:
+      branch: main
+    secrets: inherit

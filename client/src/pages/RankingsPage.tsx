@@ -1,5 +1,5 @@
 import { PANEL } from "../components/chartTokens";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api";
 import type { Division, FighterPreview, FighterPreviewFight, RankingEntry } from "../api";
@@ -22,6 +22,7 @@ type RankingFeatures = {
   opponents: boolean;
   hoverHistory: boolean;
   streaks: boolean;
+  lastFive: boolean;
   activityColors: boolean;
 };
 
@@ -29,6 +30,7 @@ const DEFAULT_FEATURES: RankingFeatures = {
   opponents: true,
   hoverHistory: false,
   streaks: true,
+  lastFive: true,
   activityColors: true,
 };
 
@@ -44,6 +46,7 @@ function loadFeatures(): RankingFeatures {
       opponents: typeof saved.opponents === "boolean" ? saved.opponents : DEFAULT_FEATURES.opponents,
       hoverHistory: current && typeof current.hoverHistory === "boolean" ? current.hoverHistory : DEFAULT_FEATURES.hoverHistory,
       streaks: typeof saved.streaks === "boolean" ? saved.streaks : DEFAULT_FEATURES.streaks,
+      lastFive: typeof saved.lastFive === "boolean" ? saved.lastFive : DEFAULT_FEATURES.lastFive,
       activityColors: typeof saved.activityColors === "boolean" ? saved.activityColors : DEFAULT_FEATURES.activityColors,
     };
   } catch {
@@ -214,7 +217,7 @@ function RankRow({
         {features.opponents && meta.hint ? (
           <span
             title={meta.hint}
-            className={`block whitespace-normal text-[10px] leading-3.5 [overflow-wrap:anywhere] xl:truncate xl:whitespace-nowrap ${
+            className={`block whitespace-normal text-[10px] leading-3.5 [overflow-wrap:anywhere] ${
               meta.showsLastFight
                 ? lastFightTone(entry.activity.last_fight_outcome)
                 : "text-zinc-400"
@@ -224,13 +227,15 @@ function RankRow({
           </span>
         ) : null}
       </span>
-      <span className={`ml-auto grid shrink-0 items-center ${features.streaks ? "grid-cols-[1.75rem_2.25rem]" : "grid-cols-[2.25rem]"}`}>
-        <span className={`text-center text-[11px] font-semibold tabular-nums ${mv?.cls ?? ""}`}>
+      <span className="ml-auto flex shrink-0 items-center gap-1.5">
+        {/* The card view's form: the last five, oldest first, then the run. */}
+        <span className={`w-7 text-center text-[11px] font-semibold tabular-nums ${mv?.cls ?? ""}`}>
           {mv?.label ?? ""}
         </span>
+        {features.lastFive ? <ResultDots results={entry.activity.form ?? []} label="Last 5 professional results, oldest first" /> : null}
         {features.streaks ? (
           <span
-            className={`text-right text-[10px] font-bold tabular-nums ${entry.activity.current_streak ? streakTone(entry.activity.current_streak.outcome) : ""}`}
+            className={`w-6 text-right text-[10px] font-bold tabular-nums ${entry.activity.current_streak ? streakTone(entry.activity.current_streak.outcome) : ""}`}
             title={entry.activity.current_streak ? `Current professional streak: ${entry.activity.current_streak.label}` : undefined}
           >
             {entry.activity.current_streak?.label ?? ""}
@@ -330,11 +335,12 @@ function DivisionCard({
 const FEATURE_OPTIONS: { key: keyof RankingFeatures; label: string; hint: string }[] = [
   { key: "opponents", label: "Opponents", hint: "Next opponent or last result under each name" },
   { key: "hoverHistory", label: "Last 5 on hover", hint: "Recent and booked fights beside the pointer" },
+  { key: "lastFive", label: "Show last 5", hint: "The last five results, oldest first" },
   { key: "streaks", label: "Streaks", hint: "4W, 2L, 1D, 1NC" },
   { key: "activityColors", label: "Activity colours", hint: "Booked and recently active fighters" },
 ];
 
-/** Display options for the lists. */
+/** Filters: what the lists show, with the key to their marks. */
 function FeaturesMenu({
   features,
   onChange,
@@ -342,7 +348,9 @@ function FeaturesMenu({
   onDateMode,
   divisionOrder,
   onDivisionOrder,
+  legend,
 }: {
+  legend: ReactNode;
   features: RankingFeatures;
   onChange: (features: RankingFeatures) => void;
   dateMode: DateMode;
@@ -352,7 +360,20 @@ function FeaturesMenu({
 }) {
   const enabledCount = Object.values(features).filter(Boolean).length;
   return (
-    <OptionsSheet label="Display" count={`${enabledCount}/4`} onReset={() => onChange(DEFAULT_FEATURES)} iconOnlyOnPhone>
+    <OptionsSheet label="Filters" count={`${enabledCount}/${FEATURE_OPTIONS.length}`} onReset={() => onChange(DEFAULT_FEATURES)} iconOnlyOnPhone="lg">
+      {/* The key to every mark in the lists, whichever are switched on. */}
+      <div className="mb-1 space-y-1.5 border-b border-zinc-100 px-4 pb-3 text-[11px] text-zinc-500">
+        {/* Last 5: shape is where, fill how it ended, colour the result. */}
+        <div className="grid grid-cols-3 gap-x-3 gap-y-1">
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 border-[1.5px] border-zinc-500 rounded-full bg-zinc-500" />In UFC</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 border-[1.5px] border-zinc-500 rounded-full bg-zinc-500" />Finished</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" />Win</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 border-[1.5px] border-zinc-500 rounded-[3px] bg-zinc-500" />Outside UFC</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 border-[1.5px] border-zinc-500 rounded-full" />Dec</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500" />Loss</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">{legend}</div>
+      </div>
       <div className="px-1.5">
         {FEATURE_OPTIONS.map((option) => (
           <SwitchRow key={option.key} label={option.label} hint={option.hint} on={features[option.key]}
@@ -437,88 +458,85 @@ export default function RankingsPage() {
   }
 
   const centerFilteredCards = view === "women" || view === "p4p";
+  const activityKey = (
+    <>
+      <span className="flex items-center gap-1.5" title="Has a fight booked">
+        <span className="activity-booked activity-swatch h-2.5 w-2.5 rounded-sm border" />
+        Booked
+      </span>
+      <span className="flex items-center gap-1.5" title="Fought in the last 45 days">
+        <span className="activity-recent activity-swatch h-2.5 w-2.5 rounded-sm border" />
+        Fought ≤45d
+      </span>
+    </>
+  );
+  // ufc.com is read every six hours; a day without one is worth saying.
+  const updated = <Freshness label="Updated" at={data?.updated_at} staleAfterHours={24} />;
 
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
       <div className="p-2 pb-8 sm:p-3">
-        <div className={`${shell} mb-2 flex flex-col gap-1.5 px-2.5 py-2 sm:mb-3 sm:px-3 lg:flex-row lg:items-center lg:gap-3`}>
-          {/* One row on a phone: both switches and the Display button. From
-              `lg` the row dissolves so the legend can sit between them. */}
-          <div className="flex items-center gap-1.5 sm:gap-2 lg:contents">
-            <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Ranking view">
-              {SOURCES.map((source) => (
-                <button
-                  key={source.key}
-                  type="button"
-                  aria-pressed={settings.rankingSource === source.key}
-                  onClick={() => update("rankingSource", source.key)}
-                  title={source.help}
-                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition sm:px-3.5 ${
-                    settings.rankingSource === source.key ? segmentedSelected : segmentedIdle
-                  }`}
-                >
-                  {source.label}
-                </button>
-              ))}
-            </div>
-            <div className={`${segmentedGroup} ml-auto shrink-0 p-0.5 sm:p-1 lg:order-last lg:ml-0`} role="group" aria-label="Divisions shown">
-              {FILTERS.map((f) => (
-                <button
-                  key={f.key}
-                  type="button"
-                  aria-pressed={view === f.key}
-                  onClick={() => setView(f.key)}
-                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition sm:px-3.5 ${
-                    view === f.key ? segmentedSelected : segmentedIdle
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-            <div className="lg:order-last">
-              <FeaturesMenu
-              features={features}
-              onChange={setFeatures}
-              dateMode={settings.dateMode}
-              onDateMode={(mode) => update("dateMode", mode)}
-              divisionOrder={settings.divisionOrder}
-              onDivisionOrder={(order) => update("divisionOrder", order)}
-            />
-            </div>
+        {/* Filters always last. From `md` the key sits just before it on the
+            one row; below that it takes a second row of its own, at the right. */}
+        <div className={`${shell} mb-2 flex flex-wrap items-center gap-1.5 px-2.5 py-2 sm:mb-3 sm:gap-2 sm:px-3 lg:gap-3`}>
+          <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Ranking view">
+            {SOURCES.map((source) => (
+              <button
+                key={source.key}
+                type="button"
+                aria-pressed={settings.rankingSource === source.key}
+                onClick={() => update("rankingSource", source.key)}
+                title={source.help}
+                className={`rounded-full px-2.5 py-1 text-xs font-medium transition sm:px-3.5 md:px-2.5 lg:px-3.5 ${
+                  settings.rankingSource === source.key ? segmentedSelected : segmentedIdle
+                }`}
+              >
+                {source.label}
+              </button>
+            ))}
           </div>
-          <div className="flex items-center gap-3 px-1 lg:ml-auto lg:px-0">
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-zinc-500 lg:justify-end">
-              {features.activityColors ? (
-                <>
-                  <span className="flex items-center gap-1.5" title="Has a fight booked">
-                    <span className="activity-booked activity-swatch h-2.5 w-2.5 rounded-sm border" />
-                    Booked
-                  </span>
-                  <span className="flex items-center gap-1.5" title="Fought in the last 45 days">
-                    <span className="activity-recent activity-swatch h-2.5 w-2.5 rounded-sm border" />
-                    Fought ≤45d
-                  </span>
-                </>
-              ) : null}
-              {/* ufc.com is read every six hours; a day without one is worth saying. */}
-              <Freshness label="Updated" at={data?.updated_at} staleAfterHours={24} />
-            </div>
+          <div className={`${segmentedGroup} ml-auto shrink-0 p-0.5 sm:p-1 md:ml-0`} role="group" aria-label="Divisions shown">
+            {FILTERS.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                aria-pressed={view === f.key}
+                onClick={() => setView(f.key)}
+                className={`rounded-full px-2.5 py-1 text-xs font-medium transition sm:px-3.5 md:px-2.5 lg:px-3.5 ${
+                  view === f.key ? segmentedSelected : segmentedIdle
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
           </div>
+          <div className="order-last flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 md:order-none md:ml-auto md:basis-auto md:flex-nowrap md:whitespace-nowrap">
+            {features.activityColors ? activityKey : null}
+            {updated}
+          </div>
+          <FeaturesMenu
+            features={features}
+            onChange={setFeatures}
+            dateMode={settings.dateMode}
+            onDateMode={(mode) => update("dateMode", mode)}
+            divisionOrder={settings.divisionOrder}
+            onDivisionOrder={(order) => update("divisionOrder", order)}
+            legend={<>{activityKey}{updated}</>}
+          />
         </div>
 
         <div
           className={
             centerFilteredCards
               ? "flex flex-wrap justify-center gap-2 sm:gap-3"
-              : "grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-4"
+              : "grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-4"
           }
         >
           {shown.map((d) => (
             centerFilteredCards ? (
               <div
                 key={d.division}
-                className="w-full sm:w-[calc(50%_-_0.375rem)] lg:w-[calc(33.333%_-_0.5rem)] xl:w-[calc(25%_-_0.5625rem)]"
+                className="w-full sm:w-[calc(50%_-_0.375rem)] lg:w-[calc(33.333%_-_0.5rem)] 2xl:w-[calc(25%_-_0.5625rem)]"
               >
                 <DivisionCard division={d} features={features} source={settings.rankingSource} />
               </div>

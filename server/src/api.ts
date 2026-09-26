@@ -321,6 +321,7 @@ function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingTy
     id: f.id,
     ord: f.ord,
     weight_class: f.weight_class,
+    catch_weight: f.catch_weight ?? null,
     title_fight: !!f.title_fight,
     /** Which kind: a belt, an interim belt, or a tournament/TUF final, which
      * carries the same flag at the source but is not a championship bout. */
@@ -578,6 +579,8 @@ function fighterHistory(fighterId: string, includeOpponentForm = false): unknown
       event_name: f.event_name,
       date: f.event_date,
       weight_class: f.weight_class,
+      catch_weight: f.catch_weight ?? null,
+      scheduled_rounds: scheduledRounds(f, f.detail_json ? JSON.parse(f.detail_json) : null),
       title_fight: !!f.title_fight,
       title_type: f.title_type || null,
       title_narrative: narratives.get(f.id) ?? null,
@@ -920,6 +923,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
      *  live card sees the Score tab open without reloading the page. */
     rounds_open: releasedRounds(f.id),
     weight_class: f.weight_class,
+    catch_weight: f.catch_weight ?? null,
     title_fight: !!f.title_fight,
     /** Which kind: a belt, an interim belt, or a tournament/TUF final, which
      * carries the same flag at the source but is not a championship bout. */
@@ -1031,6 +1035,7 @@ export function getFighterPreview(id: string): unknown | null {
     event_name: fight.event_name,
     date: fight.date,
     weight_class: fight.weight_class,
+    catch_weight: fight.catch_weight ?? null,
     outcome: fight.outcome,
     method: fight.method,
     opponent: fight.opponent,
@@ -1188,6 +1193,9 @@ export function getRankings(rankingType: RankingType): unknown {
             current_streak: latestOutcome && streakCount
               ? { count: streakCount, outcome: latestOutcome, label: `${streakCount}${streakSuffix[latestOutcome] ?? ""}` }
               : null,
+            // The last five professional results, oldest first, drawn as the
+            // card view's dots.
+            form: completed.slice(-5).map((bout) => ({ outcome: bout.outcome, method: canonicalMethod(bout.method), ufc: bout.isUfc })),
           };
         }
         return {

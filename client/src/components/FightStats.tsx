@@ -354,13 +354,17 @@ function fightSeconds(fight: Matchup): number {
 
 /** A supporting stat under a chart, both fighters on one line in their own
  *  colours: "6/11 · 0/0 TD". */
-type ChartNote = { label: string; f1: string; f2: string };
+type ChartNote = {
+  label: string; f1: string; f2: string;
+  /** Each side's share of the round, 0–1, drawn as bars out from the centre. */
+  share?: Record<Side, number>;
+};
 
 function Figures({ lines, notes = [] }: { lines: Record<Side, string>; notes?: ChartNote[] }) {
   return (
     <div className="mt-1 min-w-0 text-center tabular-nums @[36rem]:mt-1.5">
       {SIDES.map((side) => (
-        <div key={side} className={`whitespace-nowrap ${CHART_TEXT} font-bold leading-4`} style={{ color: SIDE[side].ink }}>
+        <div key={side} className={`min-h-4 whitespace-nowrap ${CHART_TEXT} font-bold leading-4`} style={{ color: SIDE[side].ink }}>
           {lines[side]}
         </div>
       ))}
@@ -373,6 +377,15 @@ function Figures({ lines, notes = [] }: { lines: Record<Side, string>; notes?: C
               <span className="text-right font-semibold" style={{ color: SIDE.f1.ink }}>{note.f1}</span>
               <span className="text-center text-[9px] uppercase tracking-wide text-zinc-400">{note.label}</span>
               <span className="text-left font-semibold" style={{ color: SIDE.f2.ink }}>{note.f2}</span>
+              {note.share ? (
+                <span className="col-span-3 mb-0.5 mt-px flex h-1.5 min-w-20 gap-px" aria-hidden="true">
+                  {SIDES.map((side) => (
+                    <span key={side} className={`flex h-full flex-1 overflow-hidden bg-zinc-100 ${side === "f1" ? "justify-end rounded-l-full" : "rounded-r-full"}`}>
+                      <span className="h-full" style={{ width: `${note.share![side] > 0 ? Math.max(4, note.share![side] * 100) : 0}%`, backgroundColor: SIDE[side].fill }} />
+                    </span>
+                  ))}
+                </span>
+              ) : null}
             </Fragment>
           ))}
         </div>
@@ -576,8 +589,8 @@ function CombinedStrikeColumns({
   // Clamped so the dark segment can never exceed the filled portion it sits in,
   // and so the bar and the figure below it always quote the same number.
   const sigLanded = (side: Side) => Math.min(total[side]?.landed ?? 0, significant[side]?.landed ?? 0);
-  const sig: ChartNote[] = significant.f1 || significant.f2
-    ? [{ label: "sig", f1: String(sigLanded("f1")), f2: String(sigLanded("f2")) }]
+  const sig: ChartNote[] = sigLanded("f1") || sigLanded("f2")
+    ? [{ label: "sig", f1: sigLanded("f1") ? String(sigLanded("f1")) : "", f2: sigLanded("f2") ? String(sigLanded("f2")) : "" }]
     : [];
 
   return (
@@ -623,8 +636,9 @@ function CombinedStrikeColumns({
       </Plot>
       <Figures
         lines={{
-          f1: total.f1 ? `${total.f1.landed}/${total.f1.attempted}` : "—",
-          f2: total.f2 ? `${total.f2.landed}/${total.f2.attempted}` : "—",
+          // Nothing thrown reads as nothing, not "0/0".
+          f1: total.f1 ? (total.f1.attempted ? `${total.f1.landed}/${total.f1.attempted}` : "") : "—",
+          f2: total.f2 ? (total.f2.attempted ? `${total.f2.landed}/${total.f2.attempted}` : "") : "—",
         }}
         notes={[...sig, ...notes]}
       />
@@ -810,16 +824,24 @@ export function FightTotals({ fight, grouped = false }: { fight: Matchup; groupe
 // the same chart as Fight totals so the two panels read as one system.
 
 /** KD / TD / SUB / control for one round, both fighters to a line. Only what
- *  happened is listed; a takedown line shows on attempts alone. */
+ *  happened is listed: a line shows when either fighter has something, and a
+ *  fighter with nothing on it (0, 0/0, 0:00) is left blank. Control also
+ *  carries a bar per fighter, scaled to a full five-minute round. */
 function roundNotes(kd: Cell, td: Cell, sub: Cell, ctrl: Cell): ChartNote[] {
   const notes: ChartNote[] = [];
-  if (intOf(kd.f1) || intOf(kd.f2)) notes.push({ label: "KD", f1: String(intOf(kd.f1)), f2: String(intOf(kd.f2)) });
+  const count = (value: string | undefined) => intOf(value) ? String(intOf(value)) : "";
+  if (intOf(kd.f1) || intOf(kd.f2)) notes.push({ label: "KD", f1: count(kd.f1), f2: count(kd.f2) });
   const takedowns = { f1: attemptOf(td.f1), f2: attemptOf(td.f2) };
-  if (takedowns.f1?.attempted || takedowns.f2?.attempted) {
-    notes.push({ label: "TD", f1: `${takedowns.f1?.landed ?? 0}/${takedowns.f1?.attempted ?? 0}`, f2: `${takedowns.f2?.landed ?? 0}/${takedowns.f2?.attempted ?? 0}` });
+  const tries = (attempt: Attempt | null) => attempt?.attempted ? `${attempt.landed}/${attempt.attempted}` : "";
+  if (takedowns.f1?.attempted || takedowns.f2?.attempted) notes.push({ label: "TD", f1: tries(takedowns.f1), f2: tries(takedowns.f2) });
+  if (intOf(sub.f1) || intOf(sub.f2)) notes.push({ label: "SUB", f1: count(sub.f1), f2: count(sub.f2) });
+  const held = { f1: clockOf(ctrl.f1) ?? 0, f2: clockOf(ctrl.f2) ?? 0 };
+  if (held.f1 || held.f2) {
+    notes.push({
+      label: "Ctrl", f1: held.f1 ? ctrl.f1 : "", f2: held.f2 ? ctrl.f2 : "",
+      share: { f1: Math.min(1, held.f1 / 300), f2: Math.min(1, held.f2 / 300) },
+    });
   }
-  if (intOf(sub.f1) || intOf(sub.f2)) notes.push({ label: "SUB", f1: String(intOf(sub.f1)), f2: String(intOf(sub.f2)) });
-  if (clockOf(ctrl.f1) || clockOf(ctrl.f2)) notes.push({ label: "Ctrl", f1: ctrl.f1 || "0:00", f2: ctrl.f2 || "0:00" });
   return notes;
 }
 
@@ -1086,7 +1108,7 @@ export function Scorecards({ fight }: { fight: Matchup }) {
   const fans = data && data.totals.avg1 != null && data.totals.avg2 != null ? data.totals : null;
   if (!judges?.length) return null;
   return (
-    <section className={`${shell} overflow-hidden`}>
+    <section className={`${shell} @container overflow-hidden`}>
       <PanelHeading title="Scorecards" />
       <ScorecardTable fight={fight} judges={judges} fans={fans} rounds={data?.rounds ?? []} />
     </section>
@@ -1123,18 +1145,18 @@ function ScorecardTable({ fight, judges, fans, rounds }: {
   const cell = "flex min-w-0 items-center justify-center px-0.5";
   return (
     <div
-      className="mx-auto grid max-w-3xl px-2 pb-2.5 pt-1.5 text-center sm:px-5 sm:pb-4 sm:pt-3"
+      className="mx-auto grid max-w-3xl px-2 pb-2.5 pt-1.5 text-center @[32rem]:px-5 @[32rem]:pb-4 @[32rem]:pt-3"
       style={{ gridTemplateColumns: `2rem repeat(${columns}, minmax(0, 1fr))` }}
     >
       <span />
       {judges.map((judge, index) => {
         const slug = fight.officials?.judges[index];
-        const name = judge.judge ? <><span className="sm:hidden">{lastName(judge.judge)}</span><span className="hidden sm:inline">{judge.judge}</span></> : `Judge ${index + 1}`;
-        const label = "line-clamp-2 break-words px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] sm:text-[10px] sm:leading-4";
+        const name = judge.judge ? <><span className="@[40rem]:hidden">{lastName(judge.judge)}</span><span className="hidden @[40rem]:inline">{judge.judge}</span></> : `Judge ${index + 1}`;
+        const label = "line-clamp-2 break-words px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] @[32rem]:text-[10px] @[32rem]:leading-4";
         // Each name opens that judge's record: every card they have scored.
         return slug
           ? <Link key={`name-${index}`} to={`/judges/${slug}`} title={`${judge.judge} — every card they have scored`}
-              className={`${label} text-zinc-500 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900`}>{name}</Link>
+              className={`${label} text-zinc-500 transition hover:text-zinc-900 dark:hover:text-zinc-100`}>{name} <span aria-hidden="true">↗</span></Link>
           : <span key={`name-${index}`} className={`${label} text-zinc-400`} title={judge.judge || undefined}>{name}</span>;
       })}
       {fans ? (
@@ -1146,12 +1168,12 @@ function ScorecardTable({ fight, judges, fans, rounds }: {
       <span aria-hidden="true" />
       {judges.map((judge, index) => (
         <span key={`total-${index}`} className={`${cell} py-1.5`} aria-label={`${judge.judge || `Judge ${index + 1}`}: ${lastName(fight.f1.name)} ${judge.f1Score}, ${lastName(fight.f2.name)} ${judge.f2Score}`}>
-          <ScorePair f1={judge.f1Score} f2={judge.f2Score} text={String} size="text-lg sm:text-2xl" />
+          <ScorePair f1={judge.f1Score} f2={judge.f2Score} text={String} size="text-lg @[32rem]:text-2xl" />
         </span>
       ))}
       {fans ? (
         <span className={`${cell} py-1.5`} aria-label={`Fans: ${lastName(fight.f1.name)} ${fans.avg1!.toFixed(places)}, ${lastName(fight.f2.name)} ${fans.avg2!.toFixed(places)}`}>
-          <ScorePair f1={fans.avg1!} f2={fans.avg2!} text={(value) => value.toFixed(places)} size={places ? "text-[13px] sm:text-xl" : "text-lg sm:text-2xl"} />
+          <ScorePair f1={fans.avg1!} f2={fans.avg2!} text={(value) => value.toFixed(places)} size={places ? "text-[13px] @[44rem]:text-xl" : "text-lg @[32rem]:text-2xl"} />
         </span>
       ) : null}
 
@@ -1162,13 +1184,13 @@ function ScorecardTable({ fight, judges, fans, rounds }: {
             const round = judge.rounds?.[index];
             return (
               <span key={judgeIndex} className={`${cell} border-t border-zinc-100 py-1`}>
-                {round ? <ScorePair f1={round.f1Score} f2={round.f2Score} text={String} size="text-[11px] sm:text-xs" /> : <span className="text-[11px] text-zinc-300">—</span>}
+                {round ? <ScorePair f1={round.f1Score} f2={round.f2Score} text={String} size="text-[11px] @[32rem]:text-xs" /> : <span className="text-[11px] text-zinc-300">—</span>}
               </span>
             );
           })}
           {fans ? (
             <span className={`${cell} border-t border-zinc-100 py-1`}>
-              {rounds[index] ? <ScorePair f1={rounds[index].total1} f2={rounds[index].total2} text={decimalScore} size="text-[11px] sm:text-xs" /> : <span className="text-[11px] text-zinc-300">—</span>}
+              {rounds[index] ? <ScorePair f1={rounds[index].total1} f2={rounds[index].total2} text={decimalScore} size="text-[11px] @[32rem]:text-xs" /> : <span className="text-[11px] text-zinc-300">—</span>}
             </span>
           ) : null}
         </Fragment>

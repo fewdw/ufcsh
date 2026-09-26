@@ -14,6 +14,7 @@ import {
   syncFighterBirthDate,
   syncMethodOddsForEvent,
   syncOddsForFight,
+  syncCatchWeights,
 } from "./sync.ts";
 
 /** The data-quality board behind /admin?tab=bugs. Checks only read; repair
@@ -693,6 +694,35 @@ function eventsWithoutWiki(): BugCheck {
   })));
 }
 
+function catchweightsWithoutLimit(): BugCheck {
+  const rows = db.prepare(`
+    SELECT f.id, f.event_id, f.f1_name, f.f2_name, f.catch_weight_checked_at, e.name AS event_name, e.date, e.wiki_title
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE f.weight_class = 'Catch Weight' AND f.catch_weight IS NULL
+    ORDER BY e.date DESC
+  `).all() as { id: string; event_id: string; f1_name: string; f2_name: string; catch_weight_checked_at: number | null; event_name: string; date: string; wiki_title: string | null }[];
+  return check({
+    id: "catchweight-no-limit",
+    group: "Fights & events",
+    label: "Catchweight bouts without their weight",
+    description: "Catchweight bouts whose agreed limit is unknown, so profiles say \"Catch Weight\" without the pounds. It is read from the event's Wikipedia results table, then from either fighter's record table; a bout neither mentions stays here. Re-checking reads both again now.",
+    severity: "low",
+  }, rows.map((fight): BugItem => ({
+    key: fight.id,
+    title: `${fight.f1_name} vs ${fight.f2_name}`,
+    subtitle: fight.event_name,
+    date: fight.date,
+    facts: [["Checked", ago(fight.catch_weight_checked_at)], ["Article", fight.wiki_title ?? "none found"]],
+    links: [
+      ...fightLinks(fight.id),
+      eventLink(fight.event_id),
+      ...(fight.wiki_title ? [{ label: "Event article", href: `https://en.wikipedia.org/wiki/${encodeURIComponent(fight.wiki_title.replace(/ /g, "_"))}` }] : []),
+      { label: `Wikipedia: ${fight.f1_name}`, href: `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(fight.f1_name)}` },
+    ],
+    actions: [{ id: "catchweight", label: "Re-check now", target: fight.id }],
+  })));
+}
+
 function fighterGaps(active: Set<string>): BugCheck {
   const rows = db.prepare(`
     SELECT id, name, photo_url, photo_checked_at, birth_date, birth_fetched_at, country, height, reach, stance
@@ -1021,6 +1051,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     upcomingWithoutSegment(),
     decisionsWithoutJudges(),
     eventsWithoutWiki(),
+    catchweightsWithoutLimit(),
     eventsWithoutVenue(),
     venuesFromWikipediaOnly(),
     upcomingWithoutBroadcast(),
@@ -1040,7 +1071,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
   };
 }
 
-export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article";
+export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -1101,6 +1132,12 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
     case "wiki":
       db.prepare("UPDATE events SET wiki_checked_at = NULL WHERE id = ?").run(target);
       return { ok: true, message: "Queued for the next weigh-in pass." };
+    case "catchweight": {
+      const result = await syncCatchWeights(1, [target]);
+      const row = db.prepare("SELECT catch_weight FROM fights WHERE id = ?").get(target) as { catch_weight: number | null } | undefined;
+      if (result.failed) return { ok: false, message: "Wikipedia couldn't be reached. Nothing was changed." };
+      return { ok: row?.catch_weight != null, message: row?.catch_weight != null ? `Stored ${row.catch_weight} lb.` : "Neither the event article nor either fighter's record table gives a weight." };
+    }
     default:
       return { ok: false, message: `Unknown action ${action}.` };
   }

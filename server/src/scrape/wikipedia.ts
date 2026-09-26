@@ -242,3 +242,112 @@ export async function fetchArticleByTitle(title: string): Promise<string | null>
   const body = JSON.parse(await fetchHtml(url, { retries: 1 }));
   return body?.parse?.wikitext?.["*"] ?? null;
 }
+
+export type CatchweightBout = { id: string; f1: string; f2: string };
+
+// "Catchweight (160 lb)", "Catch weight (145.5 lbs; 66 kg)", "Catchweight 170 lb".
+const CATCH_CELL = /Catch ?weight\s*\(?\s*(\d{3}(?:\.\d+)?)(?:\s|&nbsp;|-)*(?:lbs?|pounds?)\b/gi;
+// Prose: "a 130 pound catchweight bout", "at a catchweight of 160 pounds".
+const CATCH_PROSE = [
+  /(\d{3}(?:\.\d+)?)[ -]?(?:lbs?|pounds?)\.?\s+catch ?weight/i,
+  /catch ?weight (?:bout |fight )?(?:of|at) (\d{3}(?:\.\d+)?)[ -]?(?:lbs?|pounds?)/i,
+];
+const plausible = (pounds: number) => pounds >= 110 && pounds <= 290;
+
+/** How a name is looked for in text: in full, or by a surname no one else on
+ * these bouts shares. */
+function namePatterns(bouts: CatchweightBout[]) {
+  const all = bouts.flatMap((bout) => [bout.f1, bout.f2]).map(normName);
+  const last = (norm: string) => norm.split(" ").at(-1) ?? "";
+  return (name: string) => {
+    const norm = normName(name);
+    const surname = last(norm);
+    const unique = surname.length >= 3 && all.filter((other) => last(other) === surname).length === 1;
+    return (text: string) => text.includes(` ${norm} `) || (unique && text.includes(` ${surname} `));
+  };
+}
+
+/**
+ * The agreed limit of each catchweight bout, in pounds, as the event article
+ * states it: first from the results table's weight cell ("Catchweight
+ * (160 lb)"), then from prose that names either fighter ("a 130 pound
+ * catchweight bout"). A bout matches a row by either corner's full name or a
+ * surname unique on the card, since Wikipedia and UFCStats sometimes spell
+ * one of the two differently.
+ */
+export function catchweights(wikitext: string, bouts: CatchweightBout[]): Map<string, number> {
+  const found = new Map<string, number>();
+  if (!bouts.length) return found;
+  const names = namePatterns(bouts);
+  const matchers = bouts.map((bout) => ({ bout, f1: names(bout.f1), f2: names(bout.f2) }));
+  const assign = (text: string, pounds: number) => {
+    if (!plausible(pounds)) return;
+    const hay = ` ${normName(plainText(text))} `;
+    const scored = matchers
+      .filter((m) => !found.has(m.bout.id))
+      .map((m) => ({ m, score: Number(m.f1(hay)) + Number(m.f2(hay)) }))
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score);
+    // Two bouts matching equally well is ambiguous; leave both.
+    if (!scored.length || (scored[1] && scored[1].score === scored[0].score)) return;
+    found.set(scored[0].m.bout.id, pounds);
+  };
+  // Table rows: the cell and what follows it up to the next row.
+  for (const match of wikitext.matchAll(CATCH_CELL)) {
+    const rest = wikitext.slice(match.index + match[0].length, match.index + match[0].length + 600);
+    const row = rest.split(/\{\{\s*MMAevent bout|\n\|-|\n\{\{\s*MMAevent card|Catch ?weight/i)[0];
+    assign(row, Number(match[1]));
+  }
+  // Prose sentences, for bouts the table left unmatched.
+  const prose = plainText(wikitext).replace(/\s+/g, " ").split(/(?<=[.!?])\s+(?=[A-Z])/);
+  for (const sentence of prose) {
+    for (const pattern of CATCH_PROSE) {
+      const hit = pattern.exec(sentence);
+      if (hit) assign(sentence, Number(hit[1]));
+    }
+  }
+  return found;
+}
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/**
+ * The catchweight a fighter's own article gives for one bout: the row of its
+ * record table on that date against that opponent ("Catchweight (195 lbs)
+ * bout."). Event articles sometimes file a catchweight bout under the
+ * division it was nearest; the record tables are kept bout by bout.
+ */
+export function recordCatchweight(wikitext: string, opponent: string, date: string): number | null {
+  const [year, month, day] = date.split("-").map(Number);
+  const dts = new RegExp(`\\{\\{\\s*dts\\s*\\|\\s*${year}\\s*\\|\\s*(?:0?${month}|${MONTHS[month - 1]})\\s*\\|\\s*0?${day}\\b`, "i");
+  const written = new RegExp(`${MONTHS[month - 1]} 0?${day},? ${year}|0?${day} ${MONTHS[month - 1]},? ${year}|${year}-0?${month}-0?${day}`, "i");
+  const surname = normName(opponent).split(" ").at(-1) ?? "";
+  for (const row of wikitext.split(/\n\|-/)) {
+    if (!dts.test(row) && !written.test(row)) continue;
+    const text = ` ${normName(plainText(row))} ${normName(row)} `;
+    if (!text.includes(` ${normName(opponent)} `) && !(surname.length >= 3 && text.includes(` ${surname} `))) continue;
+    CATCH_CELL.lastIndex = 0;
+    const hit = CATCH_CELL.exec(row);
+    CATCH_CELL.lastIndex = 0;
+    if (hit && plausible(Number(hit[1]))) return Number(hit[1]);
+  }
+  return null;
+}
+
+/** A fighter's own article: the page under their name, the "(fighter)"
+ * disambiguation, then a search. Only a page with a mixed martial arts
+ * record counts, so a namesake's biography is never read. */
+export async function fetchFighterArticle(name: string): Promise<string | null> {
+  const isFighter = (text: string | null) => text && /mixed martial arts record/i.test(text) ? text : null;
+  for (const title of [name, `${name} (fighter)`]) {
+    const text = isFighter(await fetchArticleByTitle(title).catch(() => null));
+    if (text) return text;
+  }
+  const search = JSON.parse(await fetchHtml(`${API}?action=query&format=json&list=search&srlimit=3&srsearch=${encodeURIComponent(`${name} mixed martial artist`)}`, { retries: 1 }));
+  for (const hit of search?.query?.search ?? []) {
+    if (!normName(hit.title).includes(normName(name).split(" ").at(-1) ?? "")) continue;
+    const text = isFighter(await fetchArticleByTitle(hit.title).catch(() => null));
+    if (text) return text;
+  }
+  return null;
+}

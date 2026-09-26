@@ -63,7 +63,12 @@ it was shared in the conversation.
 ## Daily workflow
 
 The production checkout is `/home/ubuntu/ufcsh` and stays on `main`. The dev
-worktree is `/home/ubuntu/ufcsh-dev`. To choose a pushed branch for dev, run
+worktree is `/home/ubuntu/ufcsh-dev`. Every push to a branch other than
+`main` deploys that branch to `dev.ufc.sh` automatically (the `deploy-dev` job
+in CI), without waiting for the checks. A push or merge to `main` deploys
+production and then moves dev onto `main` as well (the `sync-dev` job), so the
+two match until the next branch push. To show a different pushed branch by
+hand, run
 `./deploy/select-dev-branch.sh BRANCH` from the production checkout. Or in
 GitHub, open **Actions → Choose dev branch → Run workflow**, leave the workflow
 ref on `main`, and type the branch name. This fetches the branch, switches the
@@ -79,8 +84,8 @@ cd /home/ubuntu/ufcsh
 docker compose -p ufcsh --env-file .env.dev -f compose.dev.yaml logs -f app-dev dev-tunnel
 ```
 
-When satisfied, commit and push your branch and open a PR. The CI checks run
-on that branch. Once the PR reaches `main` and CI succeeds there, GitHub
+When satisfied, commit and push your branch and open a PR. The push shows
+the branch at `dev.ufc.sh`, and the CI checks run on it. Once the PR reaches `main` and CI succeeds there, GitHub
 Actions deploys production to `ufc.sh` automatically. Switching dev branches
 never deploys production. `/home/ubuntu/ufcsh/deploy/update.sh` remains
 available for manual recovery.

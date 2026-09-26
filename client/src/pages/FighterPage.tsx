@@ -2,18 +2,19 @@ import { Children, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useApi } from "../api";
 import type { CompleteRecordBefore, FighterProfile, FighterRecord, HistoryRow, ProfessionalHistoryRow } from "../api";
-import { formatDateShortWithYear, formatLine, formatMethod, lastName } from "../format";
+import { divisionName, formatDateShortWithYear, formatLine, formatMethod, lastName } from "../format";
 import { formatValue, PANEL } from "../components/chartTokens";
 import FighterPortrait from "../components/FighterPortrait";
 import Flag from "../components/Flag";
 import ResultDots from "../components/ResultDots";
-import { WeightChangeMarker } from "../components/WeightJourney";
-import { weightJourney } from "../weightJourney";
+import { divisionMoves, type DivisionMove } from "../weightJourney";
 import RequestNotice from "../components/RequestNotice";
+import { BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
 import FighterStatistics from "../components/FighterStatistics";
 import { PanelHeading } from "../components/FightStats";
 import { SITE_URL, useSeo } from "../seo";
-import { useRouteScrollRestoration } from "../navigationState";
+import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
+import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedTab } from "../components/segmented";
 import { outsideFighterUrl, useSettings, withRanking } from "../settings";
 
 const shell = PANEL;
@@ -186,11 +187,6 @@ function EnteringRecords({
   );
 }
 
-const PERF_AWARD = {
-  perf: { short: "POTN", full: "Performance of the Night" },
-  ko: { short: "KOTN", full: "Knockout of the Night" },
-  sub: { short: "SOTN", full: "Submission of the Night" },
-} as const;
 const TAG = "inline-flex items-center gap-1 rounded px-1.5 py-px text-[10px] font-semibold leading-4";
 
 /** Rows of bouts. A container, not a viewport breakpoint: this list shares the
@@ -210,8 +206,8 @@ function BoutNotes({ row, className = "mt-1" }: { row: HistoryRow | Professional
   if (!perf && !row.bonuses?.fotn && !misses.length) return null;
   return (
     <span className={`flex flex-wrap gap-1 ${className}`}>
-      {row.bonuses?.fotn ? <span className={`${TAG} bg-orange-50 text-orange-700`} title="Fight of the Night bonus"><span aria-hidden="true">🔥</span>FOTN</span> : null}
-      {perf ? <span className={`${TAG} bg-amber-50 text-amber-800`} title={`${perf.full} bonus`}><span aria-hidden="true">💰</span>{perf.short}</span> : null}
+      {row.bonuses?.fotn ? <span className={BONUS_TAG} title={`${FIGHT_BONUS.full} bonus`}>{FIGHT_BONUS.short}</span> : null}
+      {perf ? <span className={BONUS_TAG} title={`${perf.full} bonus`}>{perf.short}</span> : null}
       {misses.map((miss) => (
         <span key={miss.who} className={`${TAG} bg-rose-50 text-rose-700`} title={`${miss.name} missed weight${miss.pounds ? ` at ${miss.pounds} lb` : ""}`}>
           <span aria-hidden="true">⚖️</span>{miss.who}{miss.pounds ? ` · ${miss.pounds} lb` : ""}
@@ -281,11 +277,17 @@ function boutFields(row: HistoryRow | ProfessionalHistoryRow) {
   };
 }
 
+/** The bout's division, said as a move when it differs from the last one. */
+function DivisionLabel({ division, move }: { division: string; move?: DivisionMove }) {
+  if (!move) return <span>{division}</span>;
+  return <span className="font-semibold text-zinc-700">{move.direction === "up" ? "↑ Up to" : "↓ Down to"} {move.to}</span>;
+}
+
 const HIT = "transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900";
 
 /** A bout packed into three lines (who, how, where) for narrow screens,
  * where the full table would not fit. */
-function BoutCard({ row, fighterName }: { row: HistoryRow | ProfessionalHistoryRow; fighterName: string }) {
+function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHistoryRow; fighterName: string; move?: DivisionMove }) {
   const bout = boutFields(row);
   return (
     <div className={`grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 px-4 py-2.5 @3xl:hidden`}>
@@ -326,7 +328,7 @@ function BoutCard({ row, fighterName }: { row: HistoryRow | ProfessionalHistoryR
         <span className="sr-only">{bout.result}</span>
         <FactRun>
           <span className="font-medium">{bout.method}</span>
-          {bout.outside ? <span className="font-semibold text-violet-500">Outside UFC</span> : <span>{row.weight_class}</span>}
+          {bout.outside ? <span className="font-semibold text-violet-500">Outside UFC</span> : <DivisionLabel division={divisionName(row.weight_class, "catch_weight" in row ? row.catch_weight : null)} move={move} />}
           {row.title_narrative ? <span className={`font-semibold ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
         </FactRun>
         {/* Out of the run and against the right edge, where it lines up with
@@ -358,7 +360,7 @@ function BoutCard({ row, fighterName }: { row: HistoryRow | ProfessionalHistoryR
 
 /** The same bout as a row of four columns, once the list is wider than the
  *  46rem they need. Each column is its own hit target, as the card's lines are. */
-function BoutTableRow({ row, fighterName }: { row: HistoryRow | ProfessionalHistoryRow; fighterName: string }) {
+function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | ProfessionalHistoryRow; fighterName: string; move?: DivisionMove }) {
   const bout = boutFields(row);
   const cell = "hidden min-w-0 px-3 py-2.5 @3xl:flex";
   return (
@@ -409,7 +411,7 @@ function BoutTableRow({ row, fighterName }: { row: HistoryRow | ProfessionalHist
 
       <div className={`${cell} flex-col justify-start border-l border-zinc-100 text-left`}>
         <span className="block break-words text-[11px] leading-5 text-zinc-500">
-          {bout.outside ? <span className="font-semibold text-violet-500">Outside UFC</span> : row.weight_class}
+          {bout.outside ? <span className="font-semibold text-violet-500">Outside UFC</span> : <DivisionLabel division={divisionName(row.weight_class, "catch_weight" in row ? row.catch_weight : null)} move={move} />}
           {row.title_narrative ? <span className={`block font-semibold leading-4 ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
         </span>
       </div>
@@ -433,7 +435,7 @@ function BoutTableRow({ row, fighterName }: { row: HistoryRow | ProfessionalHist
  * accessibility tree as well as off the screen — so a reader meets exactly one
  * copy of the bout, and neither shape has to bend its markup to serve the other.
  */
-function HistoryRowView({ row, fighterName }: { row: HistoryRow | ProfessionalHistoryRow; fighterName: string }) {
+function HistoryRowView({ row, fighterName, move }: { row: HistoryRow | ProfessionalHistoryRow; fighterName: string; move?: DivisionMove }) {
   return (
     // The four tracks need 43rem between them, so the table waits for @3xl's
     // 48rem rather than a window width — which is what it used to key off, and
@@ -441,8 +443,8 @@ function HistoryRowView({ row, fighterName }: { row: HistoryRow | ProfessionalHi
     // track is sized to hold "KO/TKO · R5 · 1:32" and a four-figure price on
     // one line at that narrowest width, since it is the first thing read.
     <div className="grid grid-cols-1 items-stretch @3xl:grid-cols-[13rem_minmax(11rem,1.1fr)_7rem_minmax(12rem,1.3fr)]">
-      <BoutCard row={row} fighterName={fighterName} />
-      <BoutTableRow row={row} fighterName={fighterName} />
+      <BoutCard row={row} fighterName={fighterName} move={move} />
+      <BoutTableRow row={row} fighterName={fighterName} move={move} />
     </div>
   );
 }
@@ -486,6 +488,61 @@ function Records({ records }: { records: FighterRecord[] }) {
   );
 }
 
+/** Height, reach and the rest as small labelled tiles; birthplace, the one
+ *  long value, takes a row of its own. */
+function BioGrid({ bio, className = "" }: { bio: [string, ReactNode][]; className?: string }) {
+  if (!bio.length) return null;
+  const wide: Record<string, string> = { Bonuses: "col-span-full @[56rem]:col-span-2", Born: "col-span-full @[56rem]:col-span-4" };
+  return (
+    <dl className={`grid grid-cols-3 gap-x-4 gap-y-2.5 @[56rem]:grid-cols-6 ${className}`}>
+      {bio.map(([label, value]) => (
+        <div key={label} className={`min-w-0 ${wide[label] ?? ""}`} title={label === "Age" ? "Current age today" : undefined}>
+          <dt className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">{label}</dt>
+          <dd className="text-sm font-medium tabular-nums text-zinc-800">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** Both kinds of bonus as one split tag, each half its count; a kind never
+ *  won is left out. */
+function BonusTally({ fight, perf }: { fight: number; perf: number }) {
+  const parts = [
+    { key: "fight", label: FIGHT_BONUS.short, count: fight, title: FIGHT_BONUS.full },
+    { key: "perf", label: PERF_AWARD.perf.short, count: perf, title: "Performance (or Knockout / Submission) of the Night" },
+  ].filter((part) => part.count > 0);
+  return (
+    <span className={`${BONUS_TAG} mt-0.5 gap-0 px-0 text-[11px]`}>
+      {parts.map((part, index) => (
+        <span key={part.key} title={`${part.count} × ${part.title}`}
+          className={`inline-flex items-baseline gap-1 px-2 ${index ? "border-l border-amber-400/60" : ""}`}>
+          {part.label}<span className="font-bold tabular-nums">{part.count}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+type ProfileTab = "fights" | "stats";
+const PROFILE_TABS: { key: ProfileTab; label: string }[] = [{ key: "fights", label: "Fights" }, { key: "stats", label: "Stats" }];
+
+/** The Fights / Stats switch on a narrow window, styled like the matchup tabs. */
+function ProfileTabs({ current, onSelect }: { current: ProfileTab; onSelect: (tab: ProfileTab) => void }) {
+  return (
+    <div className={`${shell} p-1.5 lg:hidden`}>
+      <div role="tablist" aria-label="Fighter sections" className={`${segmentedGroup} w-full`}>
+        {PROFILE_TABS.map(({ key, label }) => (
+          <button key={key} type="button" role="tab" aria-selected={key === current} onClick={() => onSelect(key)}
+            className={`${segmentedTab} ${key === current ? segmentedSelected : segmentedIdle}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function FighterPage() {
   const { fighterId } = useParams();
   const { settings } = useSettings();
@@ -495,6 +552,8 @@ export default function FighterPage() {
   // From `lg` the page stands still and its two columns scroll on their own.
   const mainScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:main", Boolean(fighter));
   const sideScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:side", Boolean(fighter));
+  // Below `lg` the two columns become two tabs under the fighter.
+  const [tab, setTab] = useHistoryState<ProfileTab>("fighter:tab", "fights");
   useSeo({
     title: fighter ? `${fighter.name} — Record & Fight History` : "UFC Fighter Profile",
     description: fighter
@@ -527,21 +586,28 @@ export default function FighterPage() {
 
   const upcoming = fighter.history.filter((h) => h.upcoming);
   const past = fighter.pro_history ?? fighter.history.filter((h) => !h.upcoming);
-  const ufcPast = past.filter((h) => h.promotion !== "outside");
   const allFights = [...upcoming, ...past].sort((a, b) => b.date.localeCompare(a.date));
-  const journey = weightJourney(ufcPast);
-  const weightChanges = new Map(journey.milestones.map((milestone) => [milestone.fightId, milestone]));
+  const moves = divisionMoves(fighter.history);
 
-  const bio: [string, string][] = (
+  const done = fighter.history.filter((h) => !h.upcoming);
+  const fightBonuses = done.filter((h) => h.bonuses?.fotn).length;
+  const perfBonuses = done.filter((h) => h.bonuses?.perf).length;
+  const bio: [string, ReactNode][] = (
     [
       ["Height", fighter.height],
       ["Weight", fighter.weight],
       ["Reach", fighter.reach],
       ["Stance", fighter.stance],
       ["Age", fighter.age == null ? "" : String(fighter.age)],
+      ["5-round fights", String(done.filter((h) => h.scheduled_rounds === 5).length)],
+      ["Bonuses", fightBonuses || perfBonuses ? <BonusTally fight={fightBonuses} perf={perfBonuses} /> : ""],
       ["Born", [fighter.birthplace, fighter.country].filter(Boolean).join(", ")],
-    ] as [string, string][]
+    ] as [string, ReactNode][]
   ).filter(([, v]) => v);
+  const wheels = <>
+    {fighter.record_verified ? <RecordWheel key={`${fighter.id}-all`} history={fighter.pro_history} scope="all" record={fighter.record} /> : null}
+    <RecordWheel key={`${fighter.id}-ufc`} history={fighter.history} scope="ufc" record={fighter.ufc_record} />
+  </>;
 
 
   return (
@@ -554,57 +620,59 @@ export default function FighterPage() {
             own scroller, so reading one leaves the other exactly where it was. */}
         <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(24rem,5fr)_minmax(0,7fr)] lg:grid-rows-[minmax(0,1fr)]">
         <div ref={mainScroll} className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
-        <section className={`${shell} @container px-6 py-5`}>
-          <div className="flex flex-col gap-5">
-            <div className="flex min-w-0 items-center gap-5">
+        <section className={`${shell} @container px-4 py-4 @[30rem]:px-6 @[30rem]:py-5`}>
+          <div className="flex flex-col gap-4 @[30rem]:gap-5">
+            <div className="flex min-w-0 items-center gap-4 @[30rem]:gap-6">
               <div className="flex shrink-0 flex-col items-center gap-2">
                 <FighterPortrait src={fighter.photo_full_url} headshot={fighter.photo_url} name={fighter.name} size="profile" />
               </div>
-              <div className="min-w-0">
-              <h1 className="flex flex-wrap items-center gap-2 break-words text-2xl font-semibold tracking-tight text-zinc-950">
-                <span>{fighter.name}</span>
-                {fighter.country_code || fighter.country ? (
-                  <Flag code={fighter.country_code} name={fighter.country} className="text-xl" />
-                ) : null}
-              </h1>
-              {fighter.nickname ? <div className="text-sm text-zinc-400">“{fighter.nickname}”</div> : null}
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-                {/* With a verified history the records head their wheels below;
-                    until then the pro record has no wheel, so it stays here. */}
-                {fighter.record_verified ? null : <span className="font-semibold tabular-nums text-zinc-900" title="Professional record"><span className="text-[10px] font-bold text-zinc-400">PRO</span> {fighter.record}</span>}
-                {fighter.ranking ? (
-                  <span title="Current ranking from the source chosen on the Rankings page" className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${fighter.ranking.rank === "C" ? "bg-amber-100 text-belt" : fighter.ranking.rank === "IC" ? "bg-slate-100 text-belt-interim" : "bg-zinc-100 text-zinc-600"}`}>
-                    {fighter.ranking.rank === "C" ? "Champion" : fighter.ranking.rank === "IC" ? "Interim champion" : `#${fighter.ranking.rank}`} · {fighter.ranking.division}
-                  </span>
-                ) : null}
-              </div>
-              {bio.length ? (
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
-                  {bio.map(([label, value]) => (
-                    <span key={label} title={label === "Age" ? "Current age today" : undefined}>
-                      <span className="text-zinc-400">{label}</span> {value}
+              <div className="min-w-0 flex-1">
+                {/* The flag is held to the last word of the name, so it never
+                    wraps onto a line by itself. */}
+                <h1 className="text-balance break-words text-xl font-semibold leading-tight tracking-tight text-zinc-950 @[30rem]:text-2xl @[56rem]:text-3xl">
+                  {fighter.name}
+                  {fighter.country_code || fighter.country ? <>{"\u00a0"}<Flag code={fighter.country_code} name={fighter.country} className="text-[0.8em]" /></> : null}
+                </h1>
+                {fighter.nickname ? <div className="mt-0.5 text-sm text-zinc-400">“{fighter.nickname}”</div> : null}
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-sm empty:hidden">
+                  {/* With a verified history the records head their wheels below;
+                      until then the pro record has no wheel, so it stays here. */}
+                  {fighter.record_verified ? null : <span className="font-semibold tabular-nums text-zinc-900" title="Professional record"><span className="text-[10px] font-bold text-zinc-400">PRO</span> {fighter.record}</span>}
+                  {fighter.ranking ? (
+                    <span title="Current ranking from the source chosen on the Rankings page" className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${fighter.ranking.rank === "C" ? "bg-amber-100 text-belt" : fighter.ranking.rank === "IC" ? "bg-slate-100 text-belt-interim" : "bg-zinc-100 text-zinc-600"}`}>
+                      {fighter.ranking.rank === "C" ? "Champion" : fighter.ranking.rank === "IC" ? "Interim champion" : `#${fighter.ranking.rank}`} · {fighter.ranking.division}
                     </span>
-                  ))}
+                  ) : null}
                 </div>
-              ) : null}
+                {/* Beside the portrait when the card is wide, under it when not. */}
+                <BioGrid bio={bio} className="mt-4 hidden @[40rem]:grid" />
               </div>
             </div>
+            <BioGrid bio={bio} className="@[40rem]:hidden" />
             {/* Both records at once, side by side while the card is wide
                 enough and stacked when it is not. The professional wheel
                 waits until that history is verified. */}
-            <div className="flex items-start justify-center gap-x-6 gap-y-5 border-t border-zinc-100 pt-3 empty:hidden sm:flex-wrap sm:gap-x-10 sm:pt-4">
-              {fighter.record_verified ? <RecordWheel key={`${fighter.id}-all`} history={fighter.pro_history} scope="all" record={fighter.record} /> : null}
-              <RecordWheel key={`${fighter.id}-ufc`} history={fighter.history} scope="ufc" record={fighter.ufc_record} />
+            <div className="hidden items-start justify-center gap-x-6 gap-y-5 border-t border-zinc-100 pt-3 empty:hidden sm:flex-wrap sm:gap-x-10 sm:pt-4 lg:flex">
+              {wheels}
             </div>
           </div>
         </section>
 
-        <Records records={fighter.records ?? []} />
+        {/* On a narrow window the wheels leave the header for a panel of
+            their own under it, above the tabs, whichever tab is open. */}
+        <section className={`${shell} flex items-start justify-center gap-x-6 gap-y-5 px-4 py-4 sm:flex-wrap sm:gap-x-10 lg:hidden`}>
+          {wheels}
+        </section>
 
-        <FighterStatistics fighterId={fighter.id} history={fighter.history} />
+        <ProfileTabs current={tab} onSelect={setTab} />
+
+        <div className={`${tab === "stats" ? "contents" : "hidden lg:contents"} [&>*]:shrink-0`}>
+          <Records records={fighter.records ?? []} />
+          <FighterStatistics fighterId={fighter.id} history={fighter.history} />
+        </div>
         </div>
 
-        <div ref={sideScroll} className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
+        <div ref={sideScroll} className={`${tab === "fights" ? "flex" : "hidden lg:flex"} min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]`}>
 
         <section className={shell}>
           <PanelHeading title="Fights" subtitle={allFights.length.toLocaleString()} />
@@ -613,15 +681,10 @@ export default function FighterPage() {
           ) : null}
           <div className={BOUT_LIST}>
             {allFights.length ? (
-              allFights.map((row, index) => {
-                const milestone = row.fight_id ? weightChanges.get(row.fight_id) : undefined;
-                return <div key={row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`}
-                  id={row.fight_id ? `weight-bout-${row.fight_id}` : undefined} tabIndex={milestone ? -1 : undefined}
-                  className="scroll-m-4 overflow-hidden rounded-sm focus:outline-2 focus:outline-sky-300">
-                  <HistoryRowView row={row} fighterName={fighter.name} />
-                  {milestone ? <WeightChangeMarker milestone={milestone} /> : null}
-                </div>;
-              })
+              allFights.map((row, index) => (
+                <HistoryRowView key={row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`} row={row} fighterName={fighter.name}
+                  move={row.fight_id ? moves.get(row.fight_id) : undefined} />
+              ))
             ) : (
               <div className="px-5 py-6 text-sm text-zinc-400">No fights on record.</div>
             )}

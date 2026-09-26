@@ -1,10 +1,10 @@
 import { PANEL } from "../components/chartTokens";
 import { isFightDay, landingEvent, liveFightId, taggedEvent } from "../liveEvent";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
-import { clockTime, clockTimeWithZone, countdown, formatDate, formatDateShort, formatMethod, futureDayLabel, isDecision, outcomeClasses, rankLabel, roundsLabel } from "../format";
+import { clockTime, clockTimeWithZone, divisionName, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankLabel, roundsLabel } from "../format";
 import { useNow } from "../useNow";
 import Avatar from "../components/Avatar";
 import ResultDots from "../components/ResultDots";
@@ -21,7 +21,7 @@ import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
 import { useSettings, withRanking, type OddsFormat } from "../settings";
 import { eventKind, type EventKind } from "../eventKind";
 import SearchGlyph from "../components/SearchGlyph";
-import { ChevronLeft, ChevronRight, List, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 
@@ -41,7 +41,6 @@ function beltTag(fight: EventFight) {
     : fight.title_type === "title" ? TITLE_TAG.title : null;
 }
 const METHOD_TAG = "shrink-0 rounded-full px-1.5 py-px text-[9px] font-bold uppercase leading-4 tracking-[0.06em]";
-const DAY_MS = 86_400_000;
 const MONTHS = [
   "January",
   "February",
@@ -249,6 +248,7 @@ function EventSidebar({
                       onFocus={() => warmEvent(event.id)}
                       onClick={onSelect}
                       ref={isSelected ? selectedRef : undefined}
+                      aria-current={isSelected ? "page" : undefined}
                       className={[
                         "rounded-xl border border-transparent px-3 py-2 transition-colors",
                         // Selection borrows the header nav's token outright: a
@@ -368,24 +368,25 @@ function FighterBlock({
   const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title="Current ranking from the selected source; NR means unranked">{rank}</span>;
   const nameBlock = (
     <div className={`min-w-0 max-w-full ${align === "right" ? "text-right" : ""}`}>
-      {/* The badges never wrap away from the name, so both names start at
-          the same height; a long name wraps within its own span instead of
-          being cut short. */}
-      <div className="flex min-w-0 flex-nowrap items-center gap-2" style={align === "right" ? { justifyContent: "flex-end" } : undefined}>
-        {align === "left" ? rankingBadge : null}
-        {align === "right" ? <BonusIcons bonuses={bonuses} outcome={side.outcome} /> : null}
-        <span className={`min-w-0 text-sm leading-5 font-semibold ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>
+      {/* Mirrored for the right corner: ranking outermost, then the name,
+          then the result, weight and bonus tags as one group. When the name
+          and tags cannot share a line, the tags wrap below it rather than
+          overlapping it. */}
+      <div className={`flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
+        {rankingBadge}
+        <span className={`min-w-0 break-words text-sm leading-5 font-semibold ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>
           {side.name}
         </span>
-        {resultTag ? (
-          <span className={`${METHOD_TAG} ${outcomeClasses(side.outcome)}`}>
-            {resultTag.label}
-            {resultTag.when ? <span className="ml-1 font-semibold tabular-nums opacity-70">{resultTag.when}</span> : null}
-          </span>
-        ) : null}
-        <WeightMissBadge side={side} />
-        {align === "left" ? <BonusIcons bonuses={bonuses} outcome={side.outcome} /> : null}
-        {align === "right" ? rankingBadge : null}
+        <span className={`flex shrink-0 items-center gap-2 empty:hidden ${align === "right" ? "flex-row-reverse" : ""}`}>
+          {resultTag ? (
+            <span className={`${METHOD_TAG} ${outcomeClasses(side.outcome)}`}>
+              {resultTag.label}
+              {resultTag.when ? <span className="ml-1 font-semibold tabular-nums opacity-70">{resultTag.when}</span> : null}
+            </span>
+          ) : null}
+          <WeightMissBadge side={side} />
+          <BonusIcons bonuses={bonuses} outcome={side.outcome} />
+        </span>
       </div>
       <div className={`mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] tabular-nums text-zinc-500 ${align === "right" ? "flex-row-reverse" : ""}`}>
         <span className="whitespace-nowrap" title="Professional record entering this fight"><span className="font-medium text-zinc-700">{side.record || "—"}</span> pro</span>
@@ -468,7 +469,7 @@ function FightRow({ fight, past, eventId, live = false }: { fight: EventFight; p
         <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">Live</span>
         <span className="text-[10px] text-zinc-300" aria-hidden="true">·</span>
       </> : null}
-      <span className="text-[10px] font-medium text-zinc-500">{fight.weight_class}</span>
+      <span className="text-[10px] font-medium text-zinc-500">{divisionName(fight.weight_class, fight.catch_weight)}</span>
       {fight.scheduled_rounds ? <span className="text-[10px] font-medium text-zinc-400">{roundsLabel(fight.scheduled_rounds)}</span> : null}
       {beltTag(fight) ? (
         <span className={`rounded px-1 py-px text-[9px] font-bold uppercase ${beltTag(fight)!.className}`}>
@@ -576,7 +577,7 @@ function CompactFightRow({ fight, done, live }: { fight: EventFight; done: boole
           <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
           <span className="font-bold uppercase tracking-[0.14em] text-emerald-700">Live</span>
         </> : null}
-        <span className="font-medium text-zinc-500">{fight.weight_class}</span>
+        <span className="font-medium text-zinc-500">{divisionName(fight.weight_class, fight.catch_weight)}</span>
         {fight.scheduled_rounds ? <span>{roundsLabel(fight.scheduled_rounds)}</span> : null}
         {title ? <span className={`rounded px-1 py-px text-[9px] font-bold uppercase leading-3 ${title.className}`}>{title.label}</span> : null}
         {result ? <span className="ml-auto text-right" title={fight.method_details ?? result}>{result}</span> : null}
@@ -686,7 +687,7 @@ function CardOddsRow({ fight, eventId, live, past, format }: { fight: EventFight
               className="w-full whitespace-nowrap text-center text-[10px] font-medium tabular-nums text-zinc-400"
               title={expected ? "Approximate start in your time zone. Usually 30 minutes per bout (40 for five-round bouts), adjusted to fit before the next segment with a 10-minute transition. Rounded to 5 minutes; finishes and broadcast delays can change actual starts." : undefined}
             >
-              {fight.weight_class}
+              {divisionName(fight.weight_class, fight.catch_weight)}
               {fight.weight_class && expected ? " · " : ""}
               {expected ? `~${expected}` : ""}
             </span>
@@ -845,72 +846,96 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   const past = event.status === "past";
   const liveId = liveFightId(event);
   const oddsFights = event.fights.filter(hasFightOdds);
+  // Read from the opener up, the card runs in the order it is fought.
+  const openerFirst = settings.cardOrder === "opener";
+  const cardFights = openerFirst ? [...event.fights].reverse() : event.fights;
   const hasAnyOdds = oddsFights.length > 0;
-  // Every announced part of an upcoming card, main card first; the next one
-  // carries a countdown on the day. A live card shows its results instead.
-  const schedule = past || isLive ? [] : (["main", "prelims", "early"] as CardSegment[])
+  // Every announced part of an upcoming or live card, main card first, the
+  // segments already under way greyed out.
+  const schedule = past ? [] : (["main", "prelims", "early"] as CardSegment[])
     .map((segment) => ({ segment, at: segmentStart(event.schedule, segment) }))
     .filter((entry): entry is { segment: CardSegment; at: number } => entry.at != null);
-  const nextStart = schedule.filter((entry) => entry.at > now).reduce<number | null>((soonest, entry) => soonest == null || entry.at < soonest ? entry.at : soonest, null);
-  const dayLabel = futureDayLabel(event.date, now);
-  const hasResultSummary = Number.isFinite(event.card_stats.finishes) && Number.isFinite(event.card_stats.underdog_wins);
+  // A finished card's tally, one per line; a count of none is left out.
+  const decided = event.fights.filter((fight) => fight.f1.outcome === "win" || fight.f2.outcome === "win");
+  const kos = decided.filter((fight) => /^(?:KO|TKO)/i.test(fight.method ?? "")).length;
+  const subs = decided.filter((fight) => /^SUB/i.test(fight.method ?? "")).length;
+  const underdogWins = Number.isFinite(event.card_stats.underdog_wins) ? event.card_stats.underdog_wins : 0;
+  const results = event.card_stats.completed_fights ? [
+    { label: kos === 1 ? "KO" : "KOs", count: kos },
+    { label: subs === 1 ? "submission" : "submissions", count: subs },
+    { label: underdogWins === 1 ? "underdog win" : "underdog wins", count: underdogWins },
+  ].filter((entry) => entry.count > 0) : [];
 
   return (
     <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto sm:gap-3 sm:pr-1">
       {/* On a phone the list folds away, so its button and the step to
-          either neighbour head the card. */}
-      <CardNavigation label="Event navigation" className="md:hidden"
+          either neighbour head the card, and so do they wherever the card
+          is narrow enough to stack its bouts. */}
+      <CardNavigation label="Event navigation" className="@3xl:hidden"
         previous={<StepLink event={nav.prev} direction="prev" className={NAV_STEP} />}
         // Reading the whole card's odds, the way out is back to the card.
         center={oddsMode && hasAnyOdds
           ? <Link to={`/events/${event.id}`} className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
             <List className="h-3.5 w-3.5" aria-hidden="true" />Card
           </Link>
-          : <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
-            className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
-            <List className="h-3.5 w-3.5" aria-hidden="true" />Events
-          </button>}
+          // Events stays centred; the order toggle hangs off its right.
+          : <span className="relative inline-flex">
+            <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
+              className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+              <List className="h-3.5 w-3.5" aria-hidden="true" />Events
+            </button>
+            <button type="button" data-nav-extra onClick={() => update("cardOrder", openerFirst ? "main" : "opener")}
+              aria-label={openerFirst ? "Opener first; show the main event first" : "Main event first; show the opener first"}
+              title={openerFirst ? "Opener first" : "Main event first"}
+              className="absolute left-full top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950">
+              {openerFirst ? <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}
+            </button>
+          </span>}
         next={<StepLink event={nav.next} direction="next" className={NAV_STEP} />}
       />
       <section className={`${shell} shrink-0 overflow-hidden`}>
         {/* The name, date and place on the left; the card's start times on
-            the right, one per line, at every width — only the type grows. */}
-        <div className="flex items-start justify-between gap-3 px-3 py-2 @[34rem]:px-6 @[48rem]:items-center @[48rem]:gap-6 @[48rem]:py-4">
+            the right, centred against it, one per line at every width. */}
+        <div className="flex items-center justify-between gap-3 px-3 py-2.5 @[34rem]:gap-5 @[34rem]:px-5 @[34rem]:py-3.5">
           <div className="min-w-0">
-            <h1 className="text-balance text-sm font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-2xl">{event.name}</h1>
-            <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[48rem]:mt-1 @[48rem]:gap-x-2 @[48rem]:text-xs @[48rem]:leading-relaxed">
-              <span className="whitespace-nowrap font-medium text-zinc-600">
-                <span className="@[48rem]:hidden">{formatDateShort(event.date)}{dayLabel ? `, ${dayLabel}` : ""}</span>
-                <span className="hidden @[48rem]:inline">{formatDate(event.date)}{dayLabel ? ` (${dayLabel})` : ""}</span>
-              </span>
-              <EventPlace venue={event.venue} location={event.location} />
-            </div>
+            <h1 className="text-balance text-base font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-xl @[64rem]:text-2xl">{event.name}</h1>
+            {event.date || event.venue || event.location ? (
+              <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[34rem]:gap-x-2 @[34rem]:text-xs">
+                {event.date ? (
+                  <span className="whitespace-nowrap font-medium text-zinc-600">
+                    <span className="@[48rem]:hidden">{formatDateShort(event.date)}</span>
+                    <span className="hidden @[48rem]:inline">{formatDate(event.date)}</span>
+                  </span>
+                ) : null}
+                <EventPlace venue={event.venue} location={event.location} leading={Boolean(event.date)} />
+              </div>
+            ) : null}
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1 text-right empty:hidden @[48rem]:max-w-[45%]">
+          <div className="flex shrink-0 flex-col items-end justify-center gap-1 text-right empty:hidden">
             {schedule.length ? (
-              <dl className="grid grid-cols-[auto_auto] items-baseline gap-x-2 text-[11px] leading-4 @[48rem]:gap-x-4 @[48rem]:gap-y-0.5 @[48rem]:text-sm @[48rem]:leading-5 @[64rem]:text-base @[64rem]:leading-6">
+              <dl className="grid grid-cols-[auto_auto] items-baseline gap-x-3 gap-y-0.5 text-xs leading-4 @[34rem]:text-[13px] @[34rem]:leading-5 @[48rem]:gap-x-4">
                 {schedule.map(({ segment, at }) => (
                   <div key={segment} className={`contents ${at <= now ? "text-zinc-400" : "text-zinc-500"}`} title={clockTimeWithZone(at) ?? undefined}>
-                    <dt className="text-left"><span className="@[48rem]:hidden">{SEGMENT_SHORT[segment]}</span><span className="hidden @[48rem]:inline">{SEGMENT_LABEL[segment]}</span></dt>
-                    <dd className="flex items-baseline justify-end gap-1.5 whitespace-nowrap tabular-nums @[48rem]:gap-2">
-                      {/* A countdown is worth reading on the day and unreadable
-                          before it, so past a day out the date says enough. */}
-                      {at === nextStart && at - now < DAY_MS ? <span className="text-zinc-400">in {countdown(at, now)}</span> : null}
-                      <span className={at <= now ? "" : "font-medium text-zinc-700"}><span className="@[48rem]:hidden">{clockTime(at)?.replace(":00 ", " ")}</span><span className="hidden @[48rem]:inline">{clockTimeWithZone(at)}</span></span>
+                    <dt className="text-left"><span className="@[34rem]:hidden">{SEGMENT_SHORT[segment]}</span><span className="hidden @[34rem]:inline">{SEGMENT_LABEL[segment]}</span></dt>
+                    <dd className="flex items-baseline justify-end gap-1.5 whitespace-nowrap tabular-nums">
+                      <span className={at <= now ? "" : "font-semibold text-zinc-800"}><span className="@[48rem]:hidden">{clockTime(at)?.replace(":00 ", " ")}</span><span className="hidden @[48rem]:inline">{clockTimeWithZone(at)}</span></span>
                     </dd>
                   </div>
                 ))}
               </dl>
             ) : null}
-            {event.card_stats.completed_fights && hasResultSummary ? (
-              <span className="flex flex-col items-end whitespace-nowrap text-[11px] leading-4 tabular-nums text-zinc-500 @[48rem]:text-sm @[48rem]:leading-5 @[48rem]:flex-row @[48rem]:flex-wrap @[48rem]:items-center @[48rem]:gap-x-2">
-                {isLive ? <span>{event.card_stats.completed_fights}/{event.fights.length} results</span> : null}
-                <span><strong className="font-semibold text-zinc-700">{event.card_stats.finishes}</strong> finishes</span>
-                <span aria-hidden="true" className="hidden text-zinc-300 @[48rem]:inline">·</span>
-                <span><strong className="font-semibold text-zinc-700">{event.card_stats.underdog_wins}</strong> underdog wins</span>
-                {isLive && error ? <span role="status">Connection interrupted; retrying…</span> : null}
-              </span>
+            {results.length || (isLive && event.card_stats.completed_fights) ? (
+              <div className="grid grid-cols-[auto_auto] items-baseline gap-x-1.5 gap-y-0.5 text-xs leading-4 text-zinc-500 @[34rem]:text-[13px] @[34rem]:leading-5">
+                {isLive && event.card_stats.completed_fights ? <><span className="text-right font-semibold tabular-nums text-zinc-800">{event.card_stats.completed_fights}/{event.fights.length}</span><span className="text-left">results</span></> : null}
+                {results.map(({ label, count }) => (
+                  <Fragment key={label}>
+                    <span className="text-right font-semibold tabular-nums text-zinc-800">{count}</span>
+                    <span className="text-left">{label}</span>
+                  </Fragment>
+                ))}
+              </div>
             ) : null}
+            {isLive && error ? <span role="status" className="text-[11px] text-zinc-500">Connection interrupted; retrying…</span> : null}
           </div>
         </div>
       </section>
@@ -919,13 +944,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
         // Its own height, not the pane's: squeezed to fit, the list would run
         // out past the pane.
         <div className="flex shrink-0 flex-col gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-            <Link
-              to={`/events/${event.id}`}
-              className="text-xs font-medium text-zinc-500 underline decoration-zinc-300 underline-offset-2 transition hover:text-zinc-900 dark:text-zinc-400 dark:decoration-zinc-600 dark:hover:text-zinc-100"
-            >
-              ← Back to matchups
-            </Link>
+          <div className="flex flex-wrap items-center justify-end gap-2 px-1">
             <OddsFormatTabs format={settings.oddsFormat} onChange={(oddsFormat) => update("oddsFormat", oddsFormat)} />
           </div>
           <div className="flex flex-col gap-2 pb-3">
@@ -946,8 +965,8 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
           {event.fights.length === 0 ? (
             <div className="px-6 py-10 text-center text-sm text-zinc-400">Fight card not announced yet.</div>
           ) : (
-            event.fights.map((fight, index) => {
-              const newSegment = Boolean(fight.segment) && fight.segment !== event.fights[index - 1]?.segment;
+            cardFights.map((fight, index) => {
+              const newSegment = Boolean(fight.segment) && fight.segment !== cardFights[index - 1]?.segment;
               return (
                 <div key={fight.id} className={index === 0 ? "" : newSegment ? "border-t border-zinc-200" : "border-t border-zinc-100"}>
                   {newSegment ? <SegmentBreak segment={fight.segment!} at={segmentStart(event.schedule, fight.segment!)} /> : null}
@@ -975,6 +994,15 @@ export default function EventsPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileEventsOpen, setMobileEventsOpen] = useState(false);
+  // A phone swaps the card for the list; with the list already beside the
+  // card, Events takes you to this card's place in it instead.
+  const browseEvents = () => {
+    const current = document.querySelector<HTMLElement>('#events-sidebar a[aria-current="page"]');
+    if (window.matchMedia("(min-width: 768px)").matches && current) {
+      current.scrollIntoView({ block: "center" });
+      current.focus({ preventScroll: true });
+    } else setMobileEventsOpen(true);
+  };
   // "/", "/events/…" and "/fights/…" share this one page, so the sheet would
   // outlive a navigation. Any navigation (the logo, the Events pill, Back)
   // closes it, in the same render, so the card it lands on shows at once.
@@ -1044,7 +1072,7 @@ export default function EventsPage() {
         {fightId ? (
           <FightView fightId={fightId} eventIdHint={fightEventIdHint ?? openFight?.event.id} />
         ) : shownEventId ? (
-          <EventPane eventId={shownEventId} oddsMode={oddsMode} nav={{ ...eventNeighbours(events, shownEventId), onBrowse: () => setMobileEventsOpen(true) }} />
+          <EventPane eventId={shownEventId} oddsMode={oddsMode} nav={{ ...eventNeighbours(events, shownEventId), onBrowse: browseEvents }} />
         ) : (
           <div className={`flex h-full items-center justify-center ${shell}`}>
             <div className="text-sm text-zinc-400">Select an event.</div>

@@ -1,5 +1,6 @@
 import { useAuth } from "@clerk/react";
-import { Check, ChevronDown, Flag, ImageIcon, Info, LogOut, Pencil, Search, Settings, X } from "lucide-react";
+import { Check, ChevronDown, Flag, ImageIcon, Info, LogOut, Pencil, Search, Settings, SquareTerminal, X } from "lucide-react";
+import { isDevSite, useDevStats } from "../devStats";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiCache, prefetch, useApi } from "../api";
@@ -24,6 +25,7 @@ import { useSettings, withRanking } from "../settings";
 import { BUTTON_PRIMARY, BUTTON_QUIET } from "../ui";
 import FanAvatar from "../components/FanAvatar";
 import { useGraphics } from "../graphicsLauncher";
+import { useAdminResource, type AdminSession } from "../admin";
 
 const FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed"];
 /** Bouts that went to the judges are the ones a card can be read against, so
@@ -342,6 +344,9 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
   const [editing, setEditing] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const { isLoaded, user, manage, signOut } = useAccount();
+  const [devStats, toggleDevStats] = useDevStats();
+  // The graphics builder is still being built; admins only for now.
+  const { data: adminSession } = useAdminResource<AdminSession>(mine && isLoaded && user ? "/api/admin/session" : null);
   // The owner's row stays up while Clerk loads after a reload: `mine` already
   // comes from the identity this browser remembers, and Clerk queues a
   // "manage" or "sign out" pressed before it is ready.
@@ -380,9 +385,11 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
       </div>
       {owner ? (
         <div className="mt-3 flex flex-wrap items-center justify-center gap-1 border-t border-zinc-100 pt-2 sm:gap-1.5">
-          <button type="button" onClick={() => openGraphics()} className={action} title="Make a shareable graphic">
-            <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />Graphic
-          </button>
+          {adminSession?.admin ? (
+            <button type="button" onClick={() => openGraphics()} className={action} title="Make a shareable graphic">
+              <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />Graphic
+            </button>
+          ) : null}
           <button type="button" onClick={() => setReportOpen(true)} className={action} title="Report an issue">
             <Flag className="h-3.5 w-3.5" aria-hidden="true" />Report
           </button>
@@ -392,6 +399,11 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
           <Link to="/info" className={action} title="About UFC.sh, sources, rules and shortcuts">
             <Info className="h-3.5 w-3.5" aria-hidden="true" />Information
           </Link>
+          {isDevSite ? (
+            <button type="button" onClick={toggleDevStats} aria-pressed={devStats} className={`${action} ${devStats ? "!text-sky-600" : ""}`} title="Show screen size, URL and more; tap the overlay to copy it">
+              <SquareTerminal className="h-3.5 w-3.5" aria-hidden="true" />Dev stats
+            </button>
+          ) : null}
           <button type="button" onClick={signOut} className={action}>
             <LogOut className="h-3.5 w-3.5" aria-hidden="true" />Sign out
           </button>

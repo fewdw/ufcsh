@@ -25,7 +25,7 @@ import {
 } from "./scrape/odds.ts";
 import { isSummaryAgeDisagreement, validateFightActions } from "./action-stats.ts";
 import { correctOfficialJudges } from "./verified-scorecard-corrections.ts";
-import { eventInfobox, fetchArticleByTitle, fetchEventArticle, weightMisses } from "./scrape/wikipedia.ts";
+import { catchweights, eventInfobox, eventSection, fetchArticleByTitle, fetchEventArticle, fetchFighterArticle, recordCatchweight, weightMisses } from "./scrape/wikipedia.ts";
 import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
 import { syncVerdictScorecards } from "./verdict-import.ts";
 import { americanLine, impliedProbability } from "./fight-index.ts";
@@ -727,6 +727,68 @@ export async function syncWeightMisses(limit = 30): Promise<{ events: number; mi
     return total;
   } finally {
     weightMissRunning = false;
+  }
+}
+
+let catchWeightsRunning = false;
+
+type CatchRow = { id: string; event_id: string; f1_name: string; f2_name: string; name: string; date: string; wiki_title: string | null };
+
+/**
+ * The agreed limit of catchweight bouts, from Wikipedia: the event article's
+ * results table (or its prose), then either fighter's record table for a bout
+ * the event article files under a division. Unfound bouts are looked for
+ * again after a month once the card is over, twice a day before it.
+ */
+export async function syncCatchWeights(limit = 25, ids?: string[]): Promise<{ checked: number; found: number; failed: number }> {
+  const total = { checked: 0, found: 0, failed: 0 };
+  if (catchWeightsRunning) return total;
+  catchWeightsRunning = true;
+  try {
+    const now = Date.now();
+    const rows = (ids?.length
+      ? db.prepare(`SELECT f.id, f.event_id, f.f1_name, f.f2_name, e.name, e.date, e.wiki_title
+          FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id IN (${ids.map(() => "?").join(",")})`).all(...ids)
+      : db.prepare(`SELECT f.id, f.event_id, f.f1_name, f.f2_name, e.name, e.date, e.wiki_title
+          FROM fights f JOIN events e ON e.id = f.event_id
+          WHERE f.weight_class = 'Catch Weight' AND f.catch_weight IS NULL
+            AND (f.catch_weight_checked_at IS NULL OR f.catch_weight_checked_at < CASE WHEN e.complete = 1 THEN ? ELSE ? END)
+          ORDER BY e.date DESC LIMIT ?`).all(now - 30 * DAY, now - 12 * HOUR, limit)) as CatchRow[];
+    const store = db.prepare("UPDATE fights SET catch_weight = COALESCE(?, catch_weight), catch_weight_checked_at = ? WHERE id = ?");
+    const byEvent = new Map<string, CatchRow[]>();
+    for (const row of rows) byEvent.set(row.event_id, [...(byEvent.get(row.event_id) ?? []), row]);
+    for (const bouts of byEvent.values()) {
+      const event = bouts[0];
+      const found = new Map<string, number>();
+      try {
+        let wikitext = event.wiki_title ? await fetchArticleByTitle(event.wiki_title) : null;
+        wikitext = wikitext ? eventSection(wikitext, event.date) ?? wikitext : null;
+        if (!wikitext) {
+          const card = db.prepare("SELECT f1_name, f2_name FROM fights WHERE event_id = ? ORDER BY ord").all(event.event_id) as { f1_name: string; f2_name: string }[];
+          wikitext = (await fetchEventArticle(event.name, event.date, card.flatMap((f) => [f.f1_name, f.f2_name])))?.wikitext ?? null;
+        }
+        if (wikitext) for (const [id, pounds] of catchweights(wikitext, bouts.map((b) => ({ id: b.id, f1: b.f1_name, f2: b.f2_name })))) found.set(id, pounds);
+        for (const bout of bouts) {
+          if (found.has(bout.id)) continue;
+          for (const [fighter, opponent] of [[bout.f1_name, bout.f2_name], [bout.f2_name, bout.f1_name]]) {
+            const article = await fetchFighterArticle(fighter);
+            const pounds = article ? recordCatchweight(article, opponent, bout.date) : null;
+            if (pounds != null) { found.set(bout.id, pounds); break; }
+          }
+        }
+      } catch (err) {
+        total.failed += bouts.length;
+        log(`catch weights failed [${event.name}]:`, String(err));
+        continue;
+      }
+      for (const bout of bouts) store.run(found.get(bout.id) ?? null, Date.now(), bout.id);
+      total.checked += bouts.length;
+      total.found += found.size;
+    }
+    if (rows.length) log(`catch weights: ${total.found}/${total.checked} found, ${total.failed} failed`);
+    return total;
+  } finally {
+    catchWeightsRunning = false;
   }
 }
 
@@ -1526,6 +1588,7 @@ export async function tick(): Promise<void> {
     if (!titleTypesRunning) void guarded("title_type_backfill", () => syncMissingTitleTypes());
     if (!bonusBackfillRunning) void guarded("bonus_backfill", () => syncMissingBonuses());
     if (!weightMissRunning) void guarded("weight_misses", async () => { await syncWeightMisses(); });
+    if (!catchWeightsRunning) void guarded("catch_weights", async () => { await syncCatchWeights(); });
     if (!venueArchiveRunning) void guarded("venue_archive", () => syncVenueArchive());
     if (!wikiInfoRunning) void guarded("event_articles", () => syncEventWikiInfo());
 

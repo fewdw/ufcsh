@@ -17,6 +17,57 @@ const destinations = [
   { to: "/info", label: "About UFC.sh", description: "Sources, definitions, shortcuts and changelog", icon: Info },
 ];
 
+const normalize = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/** How closely a result's name answers the query: 3 the name itself, 2 its
+ *  words begin with the query's, 1 a plain match, 0 a "did you mean". */
+function relevance(item: Item, query: string): number {
+  if (item.approximate) return 0;
+  const name = normalize(item.label ?? "");
+  if (!name) return 1;
+  if (name === query) return 3;
+  const words = name.split(" ");
+  return query.split(" ").every((word) => words.some((part) => part.startsWith(word))) ? 2 : 1;
+}
+
+/** Groups keep their usual order unless another holds a closer match: an
+ *  official or venue named exactly rises above loose fighter and fight hits. */
+function byRelevance(items: Item[], raw: string): Item[] {
+  const query = normalize(raw);
+  const groups = new Map<string, { order: number; best: number }>();
+  const scored = items.map((item, index) => {
+    const score = relevance(item, query);
+    const group = groups.get(item.group) ?? { order: groups.size, best: 0 };
+    group.best = Math.max(group.best, score);
+    groups.set(item.group, group);
+    return { item, index, score };
+  });
+  const rank = (entry: typeof scored[number]) => groups.get(entry.item.group)!;
+  return scored.sort((a, b) => rank(b).best - rank(a).best || rank(a).order - rank(b).order
+    || b.score - a.score || a.index - b.index).map((entry) => entry.item);
+}
+
+type VisibleBox = { top: number; height: number; keyboard: boolean };
+const visibleBox = (): VisibleBox | null => {
+  const vv = window.visualViewport;
+  return vv ? { top: vv.offsetTop, height: vv.height, keyboard: vv.height < window.innerHeight * 0.8 } : null;
+};
+
+/** The visible part of the viewport: what is left above an on-screen
+ *  keyboard. `keyboard` is set once something covers a fifth of the page. */
+function useVisibleViewport() {
+  const [box, setBox] = useState(visibleBox);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const measure = () => setBox(visibleBox());
+    vv.addEventListener("resize", measure);
+    vv.addEventListener("scroll", measure);
+    return () => { vv.removeEventListener("resize", measure); vv.removeEventListener("scroll", measure); };
+  }, []);
+  return box;
+}
+
 export default function CmdK({ open, onClose }: { open: boolean; onClose: () => void }) {
   // Mount a fresh search for every opening; the dialog restores the trigger's focus.
   return open ? <SearchDialog onClose={onClose} /> : null;
@@ -26,6 +77,7 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const viewport = useVisibleViewport();
   const inputRef = useRef<HTMLInputElement>(null);
   const trimmed = query.trim();
   const { data, searching, error, retry } = useSearch(trimmed ? `/api/search?q=${encodeURIComponent(trimmed)}` : null, parseSearch);
@@ -41,7 +93,7 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
-  const items: Item[] = trimmed ? [
+  const found: Item[] = trimmed ? [
     ...(data?.fighters ?? []).map((fighter) => ({
       key: `fighter-${fighter.id}`, to: `/fighters/${fighter.id}`, group: fighter.approximate ? "Fighters · did you mean" : "Fighters", approximate: fighter.approximate, label: fighter.name,
       render: () => <>
@@ -89,6 +141,7 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
       <ArrowRight className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
     </>,
   }));
+  const items = trimmed ? byRelevance(found, trimmed) : found;
   const selection = useSearchSelection(items.map((item) => item.key), true);
   const go = (item: Item | undefined) => {
     if (!item) return;
@@ -101,6 +154,9 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
       ref={dialogRef}
       aria-label="Search and navigation"
       className="search-dialog fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none bg-transparent p-3 text-zinc-900 sm:p-4"
+      // A phone's keyboard covers the page without shrinking it, so the
+      // dialog holds to the part still visible above the keyboard.
+      style={viewport ? { top: viewport.top, bottom: "auto", height: viewport.height } : undefined}
       onCancel={(event) => { event.preventDefault(); onClose(); }}
       onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
       onKeyDown={(event) => {
@@ -114,7 +170,7 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
         }
       }}
     >
-      <div className="mx-auto mt-[8vh] flex max-h-[80dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl sm:mt-[10vh]">
+      <div className={`mx-auto flex w-full ${viewport?.keyboard ? "mt-0 max-h-full" : "mt-[8vh] max-h-[80dvh] sm:mt-[10vh]"} max-w-xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl`}>
         <div className="flex shrink-0 items-center gap-3 border-b border-zinc-100 px-4">
           <Search className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />
           <input

@@ -30,7 +30,7 @@ export default function LiveMatchup() {
       {live ? (
         <span className="live-dot h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
       ) : null}
-      <span className={`shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] ${live ? "text-emerald-700" : "text-zinc-400"}`}>
+      <span className={`shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700`}>
         {live ? "Live" : "Next"}
       </span>
       <span className="truncate text-xs font-semibold text-zinc-900">{names}</span>

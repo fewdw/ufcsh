@@ -115,14 +115,19 @@ function CommunityPicks({ distribution, scheduledRounds }: { distribution: Predi
     color: SHADES[method ?? "none"][index], counterClockwise: index === 0,
   })));
   const methods = distribution.methods;
-  // The dash gathers picks with no round specified, including decisions.
-  const rounds = distribution.rounds.map(entry => ({
-    key: entry.round == null ? "none" : `r${entry.round}`,
-    label: entry.round == null ? "Decision or no round named" : `Round ${entry.round}`,
-    short: entry.round == null ? "—" : `${entry.round}`,
-    count: entry.count,
-    sides: distribution.fighters.map(side => side.rounds?.find(pick => pick.round === entry.round)?.count ?? 0),
-  }));
+  // Only picks that say when: a named round, or the distance (D). A finish
+  // with no round named says nothing about when, so it is left out.
+  const decisions = (methods?: { method: PredictionMethod | null; count: number }[]) =>
+    methods?.find(entry => entry.method === "decision")?.count ?? 0;
+  const rounds = [
+    ...distribution.rounds.filter(entry => entry.round != null).map(entry => ({
+      key: `r${entry.round}`, label: `Round ${entry.round}`, short: `${entry.round}`, count: entry.count,
+      sides: distribution.fighters.map(side => side.rounds?.find(pick => pick.round === entry.round)?.count ?? 0),
+    })),
+    { key: "decision", label: "Decision", short: "D", count: decisions(distribution.methods),
+      sides: distribution.fighters.map(side => decisions(side.methods)) },
+  ];
+  const timed = rounds.reduce((sum, entry) => sum + entry.count, 0);
   const roundsKnown = scheduledRounds === 3 || scheduledRounds === 5;
   const byFighter = Boolean(f1?.methods && f2?.methods);
 
@@ -148,11 +153,11 @@ function CommunityPicks({ distribution, scheduledRounds }: { distribution: Predi
         </div>
         {roundsKnown ? <div className="flex min-w-0 flex-col items-center">
           <h3 className={SECTION_LABEL}>Round %</h3>
-          <RoundBars rounds={rounds} total={total} />
+          <RoundBars rounds={rounds} total={timed} />
           <div className="mt-1 flex justify-center gap-1.5 text-[10px] leading-none text-zinc-500" aria-hidden="true">
             {rounds.map(entry => <span key={entry.key} className="w-[15px] text-center">{entry.short}</span>)}
           </div>
-          <p className="mt-2 text-center text-[9px] leading-tight text-zinc-500">— = no round specified</p>
+          <p className="mt-2 text-center text-[9px] leading-tight text-zinc-500">D = decision</p>
         </div> : null}
       </div>
     </section>

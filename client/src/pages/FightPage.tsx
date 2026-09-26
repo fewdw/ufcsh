@@ -1,4 +1,5 @@
 import { List, X } from "lucide-react";
+import Flag from "../components/Flag";
 import { isFightDay } from "../liveEvent";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -8,12 +9,12 @@ import {
   formatDate,
   formatDateShortWithYear,
   formatMethod,
-  futureDayLabel,
   lastName,
   outcomeClasses,
   outcomeLabel,
   rankLabel,
   roundsLabel,
+  divisionName,
 } from "../format";
 import Avatar from "../components/Avatar";
 import { CardEventTitle, NAV_STEP, CardNavigation } from "../components/CardHeader";
@@ -47,9 +48,9 @@ import { cardFightSearch, useRouteScrollRestoration } from "../navigationState";
 import { SITE_URL, useSeo } from "../seo";
 import { useSettings, withRanking } from "../settings";
 import { scoreableRoundCount } from "../scoring";
-import { useNow } from "../useNow";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { useShortcutNav } from "../shortcuts";
+import { BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
 
 const shell = PANEL_SHELL;
 const RESULT_PILL =
@@ -105,7 +106,7 @@ function WeightClassLabel({ fight }: { fight: Matchup }) {
   const tournament = belt === "tuf" || belt === "tournament";
   return (
     <span
-      className={`inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-0.5 text-[10px] uppercase tracking-[0.14em] ${
+      className={`inline-flex flex-col items-center text-balance rounded-xl border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[9px] uppercase leading-[13px] tracking-[0.05em] @[30rem]:flex-row @[30rem]:rounded-full @[30rem]:px-2.5 @[30rem]:text-[10px] @[30rem]:leading-4 @[30rem]:tracking-[0.14em] ${
         belt === "interim"
           ? "font-bold text-belt-interim"
           : belt
@@ -118,11 +119,11 @@ function WeightClassLabel({ fight }: { fight: Matchup }) {
       {belt === "tuf" ? "TUF Tournament" : belt === "tournament" ? "Tournament" : (
         <>
           {belt === "interim" ? "Interim " : ""}
-          {fight.weight_class}
+          {divisionName(fight.weight_class, fight.catch_weight)}
           {belt ? " Title" : ""}
         </>
       )}
-      {fight.scheduled_rounds ? <span className="ml-1.5 text-zinc-400">{roundsLabel(fight.scheduled_rounds)}</span> : null}
+      {fight.scheduled_rounds ? <span className="whitespace-nowrap text-zinc-400 @[30rem]:ml-1.5">{roundsLabel(fight.scheduled_rounds)}</span> : null}
     </span>
   );
 }
@@ -137,14 +138,6 @@ const RESULT_PREFIX: Record<string, string> = {
   nc: "No contest, ",
 };
 
-/** Before 2014 the performance award was a Knockout or Submission of the Night.
- *  The pills carry the fans' shorthand; the full name is the tooltip. */
-const PERF_AWARD = {
-  perf: { short: "POTN", full: "Performance of the Night" },
-  ko: { short: "KOTN", full: "Knockout of the Night" },
-  sub: { short: "SOTN", full: "Submission of the Night" },
-} as const;
-const AWARD_PILL = "inline-flex whitespace-nowrap rounded-full bg-amber-100 px-1.5 py-px text-[10px] font-semibold leading-4 text-amber-800";
 
 function FighterHero({
   side,
@@ -169,6 +162,7 @@ function FighterHero({
   const rank = side.ranking?.rank === "IC" || side.ranking?.rank === "I" ? "I" : rankLabel(side.ranking) || "NR";
   const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title="Current ranking from the selected source; NR means unranked">{rank}</span>;
   const showResult = side.outcome ? RESULT_PREFIX[side.outcome] : undefined;
+  const compactResult = result?.replace(/^(UNANIMOUS|SPLIT|MAJORITY)\b/, (word) => `${word[0]}-DEC`);
   const fotn = !!bonuses?.fotn;
   const perf = bonuses?.perf && side.outcome === "win" ? bonuses.perf_kind ?? "perf" : null;
   const className = `matchup-fighter matchup-fighter--${align} group flex min-w-0 flex-col items-center gap-3 text-center @[58rem]:gap-4 ${
@@ -200,24 +194,30 @@ function FighterHero({
           : reserveRank ? <div aria-hidden="true" className="mb-1.5 h-5 @[58rem]:hidden" /> : null}
         <div className={`matchup-name text-balance font-semibold transition-[filter] ${side.outcome === "loss" ? "text-zinc-400" : align === "left" ? "text-f1 group-hover:brightness-90" : "text-f2 group-hover:brightness-90"}`}>
           {side.name}
+          {side.country_code || side.country ? <Flag code={side.country_code} name={side.country} className="ml-1.5 inline-block align-[-0.05em] text-[0.85em]" /> : null}
         </div>
         {side.nickname ? <div className="mt-0.5 text-xs text-zinc-400">“{side.nickname}”</div> : null}
         {(result && showResult) || fotn || perf || side.weight_miss != null ? (
           <div className={`mt-2 flex flex-wrap items-center justify-center gap-1 ${align === "right" ? "@[58rem]:justify-end" : "@[58rem]:justify-start"}`}>
             {result && showResult ? (
-              <span className={`${RESULT_PILL} max-w-full justify-center text-balance tabular-nums ${outcomeClasses(side.outcome)}`}>
+              <span className={`${RESULT_PILL} max-w-full justify-center !rounded-lg text-balance tabular-nums ${outcomeClasses(side.outcome)}`}>
                 <span className="sr-only">{showResult}</span>
-                {result}
+                {/* A phone-width card abbreviates the decision so the result
+                    stays on one line. */}
+                {compactResult !== result ? <>
+                  <span className="@[30rem]:hidden">{compactResult}</span>
+                  <span className="hidden @[30rem]:inline">{result}</span>
+                </> : result}
               </span>
             ) : null}
             {side.weight_miss != null ? (
-              <span className={`${RESULT_PILL} max-w-full justify-center text-balance tabular-nums bg-rose-100 text-rose-700`}>
+              <span className={`${RESULT_PILL} max-w-full justify-center !rounded-lg text-balance tabular-nums bg-rose-100 text-rose-700`}>
                 Missed weight{side.weight_miss ? ` · ${side.weight_miss} lb` : ""}
               </span>
             ) : null}
             {/* Fight of the Night belongs to both corners, a performance award to the winner. */}
-            {perf ? <span className={AWARD_PILL} title={`${PERF_AWARD[perf].full} bonus`}>{PERF_AWARD[perf].short}</span> : null}
-            {fotn ? <span className={AWARD_PILL} title="Fight of the Night bonus">FOTN</span> : null}
+            {perf ? <span className={BONUS_TAG} title={`${PERF_AWARD[perf].full} bonus`}>{PERF_AWARD[perf].short}</span> : null}
+            {fotn ? <span className={BONUS_TAG} title={`${FIGHT_BONUS.full} bonus`}>{FIGHT_BONUS.short}</span> : null}
           </div>
         ) : null}
       </div>
@@ -750,7 +750,6 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   const eventId = loadedFight?.event.id ?? eventIdHint ?? previousFight.current?.event.id;
   const { data: cardEvent } = useApi<EventDetail>(eventId ? withRanking(`/api/events/${eventId}`, settings.rankingSource) : null,
     data => data?.refreshing ? 5_000 : isFightDay(data?.date) ? 15_000 : data?.status === "past" ? 0 : 5 * 60_000);
-  const now = useNow(fight?.status !== "past");
   const matchupTitle = loadedFight ? `${loadedFight.f1.name} vs ${loadedFight.f2.name}` : "UFC Matchup";
   const matchupDescription = loadedFight
     ? `${loadedFight.f1.name} vs ${loadedFight.f2.name} at ${loadedFight.event.name}: ${loadedFight.weight_class} odds, tale of the tape, fighter statistics${loadedFight.status === "past" ? " and result" : ""}.`
@@ -915,7 +914,6 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 date={fight.event.date}
                 location={fight.event.location}
                 venue={fight.event.venue}
-                dayLabel={fight.status === "past" ? null : futureDayLabel(fight.event.date, now)}
               >
                 {isFightDay(fight.event.date) && error && !changingMatchup ? <span role="status" className="text-xs text-zinc-500">Connection interrupted; retrying…</span> : null}
               </CardEventTitle>
@@ -941,26 +939,24 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     name or "Former champion" from being clipped while the
                     space either side of the card goes unused. */}
                 <div className="matchup-hero grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-1.5 @[58rem]:gap-6">
-                  {/* The weight class, rounds and referee line head the hero
-                      at every width. It spans all three columns rather than
-                      riding in the middle one with the price: "Light
-                      Heavyweight Title" is wider than the price card, and an
-                      auto-width middle column sized to the badge would eat
-                      the space the two names need. */}
-                  <div className="matchup-billing col-span-3 col-start-1 row-start-1 flex flex-col items-center text-center">
-                    <WeightClassLabel fight={fight} />
+                  <div className="col-start-1 row-start-1 min-w-0">
+                    <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} reserveRank={reserveRank} />
+                  </div>
+                  {/* The weight class, the referee and the price are one block
+                      in the middle column, centred both ways against the two
+                      fighters at every width. */}
+                  <div className="matchup-market col-start-2 row-start-1 flex w-auto max-w-[8.5rem] flex-col items-center self-center text-center @[30rem]:max-w-[16rem] @[58rem]:max-w-[19rem]">
+                    <div><WeightClassLabel fight={fight} /></div>
                     {referee ? (
-                      <div className="mt-1 text-[10px] text-zinc-400">
-                        Ref {fight.officials?.referee?.slug
-                          ? <Link to={`/referees/${fight.officials.referee.slug}`} className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-700">{referee}</Link>
+                      <div className="mt-1 text-[10px] text-zinc-500" title="Referee">
+                        {fight.officials?.referee?.slug
+                          ? <Link to={`/referees/${fight.officials.referee.slug}`} title="Referee: every bout they have worked" className="transition hover:text-zinc-900 dark:hover:text-zinc-100">{referee} <span aria-hidden="true">↗</span></Link>
                           : referee}
                       </div>
                     ) : null}
-                  </div>
-                  <div className="col-start-1 row-start-2 min-w-0">
-                    <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} reserveRank={reserveRank} />
-                  </div>
-                  <div className="matchup-market self-start col-start-2 row-start-2 flex w-auto flex-col items-center text-center @[58rem]:self-center @[58rem]:max-w-[19rem]">
+                    {/* .matchup-prices zeroes its own margin, so the gap
+                        under the weight class (and referee) is padding here. */}
+                    <div className="pt-3">
                     <div className="matchup-prices">
                       <MatchupOdds key={fight.id} f1={fight.odds?.f1.close} f2={fight.odds?.f2.close}
                         f1Open={fight.odds?.f1.open} f2Open={fight.odds?.f2.open}
@@ -968,8 +964,9 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                         props={fight.odds?.props}
                         fightId={fight.status === "upcoming" ? fight.id : undefined} />
                     </div>
+                    </div>
                   </div>
-                  <div className="col-start-3 row-start-2 min-w-0">
+                  <div className="col-start-3 row-start-1 min-w-0">
                     <FighterHero side={fight.f2} align="right" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} reserveRank={reserveRank} />
                   </div>
                 </div>
