@@ -248,6 +248,7 @@ function EventSidebar({
                       onFocus={() => warmEvent(event.id)}
                       onClick={onSelect}
                       ref={isSelected ? selectedRef : undefined}
+                      aria-current={isSelected ? "page" : undefined}
                       className={[
                         "rounded-xl border border-transparent px-3 py-2 transition-colors",
                         // Selection borrows the header nav's token outright: a
@@ -865,8 +866,9 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   return (
     <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto sm:gap-3 sm:pr-1">
       {/* On a phone the list folds away, so its button and the step to
-          either neighbour head the card. */}
-      <CardNavigation label="Event navigation" className="md:hidden"
+          either neighbour head the card, and so do they wherever the card
+          is narrow enough to stack its bouts. */}
+      <CardNavigation label="Event navigation" className="@3xl:hidden"
         previous={<StepLink event={nav.prev} direction="prev" className={NAV_STEP} />}
         // Reading the whole card's odds, the way out is back to the card.
         center={oddsMode && hasAnyOdds
@@ -980,6 +982,15 @@ export default function EventsPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileEventsOpen, setMobileEventsOpen] = useState(false);
+  // A phone swaps the card for the list; with the list already beside the
+  // card, Events takes you to this card's place in it instead.
+  const browseEvents = () => {
+    const current = document.querySelector<HTMLElement>('#events-sidebar a[aria-current="page"]');
+    if (window.matchMedia("(min-width: 768px)").matches && current) {
+      current.scrollIntoView({ block: "center" });
+      current.focus({ preventScroll: true });
+    } else setMobileEventsOpen(true);
+  };
   // "/", "/events/…" and "/fights/…" share this one page, so the sheet would
   // outlive a navigation. Any navigation (the logo, the Events pill, Back)
   // closes it, in the same render, so the card it lands on shows at once.
@@ -1049,7 +1060,7 @@ export default function EventsPage() {
         {fightId ? (
           <FightView fightId={fightId} eventIdHint={fightEventIdHint ?? openFight?.event.id} />
         ) : shownEventId ? (
-          <EventPane eventId={shownEventId} oddsMode={oddsMode} nav={{ ...eventNeighbours(events, shownEventId), onBrowse: () => setMobileEventsOpen(true) }} />
+          <EventPane eventId={shownEventId} oddsMode={oddsMode} nav={{ ...eventNeighbours(events, shownEventId), onBrowse: browseEvents }} />
         ) : (
           <div className={`flex h-full items-center justify-center ${shell}`}>
             <div className="text-sm text-zinc-400">Select an event.</div>

@@ -638,13 +638,15 @@ export default function FighterPage() {
           </div>
         </section>
 
+        {/* On a narrow window the wheels leave the header for a panel of
+            their own under it, above the tabs, whichever tab is open. */}
+        <section className={`${shell} flex items-start justify-center gap-x-6 gap-y-5 px-4 py-4 sm:flex-wrap sm:gap-x-10 lg:hidden`}>
+          {wheels}
+        </section>
+
         <ProfileTabs current={tab} onSelect={setTab} />
 
-        {/* Stats: on a narrow window the wheels leave the header for this tab. */}
         <div className={`${tab === "stats" ? "contents" : "hidden lg:contents"} [&>*]:shrink-0`}>
-          <section className={`${shell} flex items-start justify-center gap-x-6 gap-y-5 px-4 py-4 sm:flex-wrap sm:gap-x-10 lg:hidden`}>
-            {wheels}
-          </section>
           <Records records={fighter.records ?? []} />
           <FighterStatistics fighterId={fighter.id} history={fighter.history} />
         </div>
