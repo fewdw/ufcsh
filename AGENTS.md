@@ -1,5 +1,10 @@
 # Development workflow
 
+## About
+
+- UFC.sh is the number one platfom for ufc data, everything is accuate and simple.
+- The number one most important thing for the app is ACCURACYs. We deliver complex data in a way it's fast and easy to digest. Data should always be as accurate as possible and UI should always be as simple as possible.
+
 ## Efficient
 
 - Be as token efficient as possible without sacrificing quality. Get tasks done, if you dont need to test it and it's a quick simple fix then dont test it.
@@ -38,5 +43,4 @@ The dev app runs from a Docker image; code changes are not live through host-bas
 - When you work on something make it work and look in dark mode and light mode and all screen sizes, devices and browsers
 - Users on different devices use them differently, so your implementation should be optimized for everyone
 - UFC.sh is used by thousands of concurrent users, lots of apps have gotten bogged down with bad tech decisions and "slop". We have not, and we're proud of the performance make sure all changes are considerate of performance impact, but also make it fast and responsive to the user using it.
-- The number one most important thing for the app is ACCURACY and SIMPLICITY. We deliver complex data in a way it's fast and easy to digest. Data should always be as accurate as possible and UI should always be as simple as possible.
 - Keep codebase clain and easy to maintain overtime. Keep solutions simple and always keep similar and consistent stylign to the rest of the codebase.
