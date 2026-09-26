@@ -213,3 +213,9 @@ export function inches(value: string | null | undefined): number | null {
 export function normalizeSearch(value: string): string {
   return value.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
+
+/** A division as printed: a catchweight carries its agreed limit once known
+ *  ("Catch Weight (160 lbs)"). */
+export function divisionName(weightClass: string, catchWeight?: number | null): string {
+  return catchWeight && /catch/i.test(weightClass) ? `${weightClass} (${catchWeight} lbs)` : weightClass;
+}

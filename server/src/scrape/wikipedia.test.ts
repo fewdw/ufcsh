@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { eventSection, infoboxDate, namesCard, plainText, weightMisses } from "./wikipedia.ts";
+import { catchweights, eventSection, infoboxDate, namesCard, plainText, recordCatchweight, weightMisses } from "./wikipedia.ts";
 
 const article = (background: string, results = "") =>
   `{{Infobox MMA event\n| date = {{start date|2024|01|20}}\n}}\n==Background==\n${background}\n==Results==\n${results}`;
@@ -83,4 +83,53 @@ test("a follow-up sentence belongs to the fighter named first, not the first on 
     { name: "Charles Oliveira", pounds: null },
     { name: "Felipe Arantes", pounds: null },
   ]);
+});
+
+test("catchweights reads the results table, including a non-breaking space and a differently spelled corner", () => {
+  const wikitext = `==Results==
+{{MMAevent bout
+|Catchweight (130 lb)
+|[[Charles Johnson (fighter)|Charles Johnson]]
+|def.
+|Eduardo Henrique
+|Submission (twister)
+|3
+|1:36
+|
+}}
+{{MMAevent bout|Catchweight (215&nbsp;lb)|[[Kimbo Slice]]|def.|[[Houston Alexander]]|Decision (unanimous)|3|5:00|
+}}`;
+  const found = catchweights(wikitext, [
+    { id: "a", f1: "Charles Johnson", f2: "Eduardo Chapolin" },
+    { id: "b", f1: "Kevin Ferguson", f2: "Houston Alexander" },
+  ]);
+  assert.equal(found.get("a"), 130);
+  assert.equal(found.get("b"), 215);
+});
+
+test("catchweights falls back to prose naming a fighter", () => {
+  const found = catchweights("Charles Johnson was expected to face Jose Ochoa in a 130 pound catchweight bout.", [
+    { id: "a", f1: "Charles Johnson", f2: "Eduardo Chapolin" },
+  ]);
+  assert.equal(found.get("a"), 130);
+});
+
+test("recordCatchweight finds the bout on its date against its opponent", () => {
+  const record = `{| class="wikitable"
+|-
+| {{no2}}Loss
+| [[Vitor Belfort]]
+| TKO (punches)
+| [[UFC 103]]
+| {{dts|2009|September|19|format=mdy}}
+| {{small|Catchweight (195 lbs) bout.}}
+|-
+| {{yes2}}Win
+| [[Wanderlei Silva]]
+| {{dts|2012|June|23|format=mdy}}
+| {{small|Catchweight (190 lbs) bout.}}
+|}`;
+  assert.equal(recordCatchweight(record, "Vitor Belfort", "2009-09-19"), 195);
+  assert.equal(recordCatchweight(record, "Wanderlei Silva", "2012-06-23"), 190);
+  assert.equal(recordCatchweight(record, "Vitor Belfort", "2012-06-23"), null);
 });

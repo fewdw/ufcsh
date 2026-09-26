@@ -374,6 +374,11 @@ for (const alter of [
   "ALTER TABLE events ADD COLUMN wiki_info_checked_at INTEGER",
   // The referee the promotion has assigned to a bout, before UFCStats names one.
   "ALTER TABLE fights ADD COLUMN referee_assigned TEXT",
+  // The agreed limit of a catchweight bout, in pounds, from Wikipedia (the
+  // event's results table, else either fighter's record table). NULL until
+  // found; catch_weight_checked_at says when it was last looked for.
+  "ALTER TABLE fights ADD COLUMN catch_weight REAL",
+  "ALTER TABLE fights ADD COLUMN catch_weight_checked_at INTEGER",
 ]) {
   try {
     db.exec(alter);
@@ -521,7 +526,7 @@ const revisionTables: Record<string, string[]> = {
 for (const [table, revisions] of Object.entries(revisionTables)) {
   const checkTimestamps = new Set(["detail_fetched_at", "birth_fetched_at", "photo_checked_at", "bfo_checked_at", "bfo_final_at",
     "schedule_fetched_at", "segments_fetched_at", "wiki_checked_at", "fetched_at", "checked_at",
-    "venue_checked_at", "wiki_info_checked_at"]);
+    "venue_checked_at", "wiki_info_checked_at", "catch_weight_checked_at"]);
   const columns = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[])
     .map(row => row.name).filter(name => !checkTimestamps.has(name));
   const update = `UPDATE data_revisions SET value = value + 1 WHERE key IN (${revisions.map(key => `'${key}'`).join(",")});`;
@@ -529,8 +534,15 @@ for (const [table, revisions] of Object.entries(revisionTables)) {
     const changed = columns.map(name => `OLD.${name} IS NOT NEW.${name}`);
     if (table === "fights") changed.push("(OLD.detail_fetched_at IS NULL) != (NEW.detail_fetched_at IS NULL)");
     const condition = operation === "UPDATE" ? `WHEN ${changed.join(" OR ")}` : "";
-    db.exec(`CREATE TRIGGER IF NOT EXISTS revision_${table}_${operation.toLowerCase()} AFTER ${operation} ON ${table}
-      ${condition} BEGIN ${update} END`);
+    // A trigger lists the columns it watches, so one created before a column
+    // was added would miss changes to it: rebuild any whose text differs.
+    const name = `revision_${table}_${operation.toLowerCase()}`;
+    const sql = `CREATE TRIGGER ${name} AFTER ${operation} ON ${table}
+      ${condition} BEGIN ${update} END`;
+    const existing = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?").get(name) as { sql: string } | undefined;
+    if (existing?.sql === sql) continue;
+    db.exec(`DROP TRIGGER IF EXISTS ${name}`);
+    db.exec(sql);
   }
 }
 }

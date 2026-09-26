@@ -205,6 +205,8 @@ export type EventFight = {
   /** Estimated start of a bout the card has not reached yet, in epoch ms. */
   starts_at?: number | null;
   weight_class: string;
+  /** The agreed limit of a catchweight bout, in pounds, once known. */
+  catch_weight?: number | null;
   title_fight: boolean;
   /** A belt, an interim belt, or a tournament/TUF final, which is not one. */
   title_type: "title" | "interim" | "tuf" | "tournament" | null;
@@ -249,6 +251,8 @@ export type HistoryRow = {
   event_name: string;
   date: string;
   weight_class: string;
+  /** The agreed limit of a catchweight bout, in pounds, once known. */
+  catch_weight?: number | null;
   /** Rounds the bout was booked for; UFC rows only. */
   scheduled_rounds?: number | null;
   title_fight: boolean;
@@ -341,6 +345,8 @@ export type Matchup = {
   /** Rounds an administrator has released for scoring, ahead of the live feed. */
   rounds_open?: number | null;
   weight_class: string;
+  /** The agreed limit of a catchweight bout, in pounds, once known. */
+  catch_weight?: number | null;
   /** Rounds the bout is booked for; null for a format with no round count. */
   scheduled_rounds: number | null;
   title_fight: boolean;

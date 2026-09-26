@@ -2,7 +2,7 @@ import { Children, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useApi } from "../api";
 import type { CompleteRecordBefore, FighterProfile, FighterRecord, HistoryRow, ProfessionalHistoryRow } from "../api";
-import { formatDateShortWithYear, formatLine, formatMethod, lastName } from "../format";
+import { divisionName, formatDateShortWithYear, formatLine, formatMethod, lastName } from "../format";
 import { formatValue, PANEL } from "../components/chartTokens";
 import FighterPortrait from "../components/FighterPortrait";
 import Flag from "../components/Flag";
@@ -328,7 +328,7 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
         <span className="sr-only">{bout.result}</span>
         <FactRun>
           <span className="font-medium">{bout.method}</span>
-          {bout.outside ? <span className="font-semibold text-violet-500">Outside UFC</span> : <DivisionLabel division={row.weight_class} move={move} />}
+          {bout.outside ? <span className="font-semibold text-violet-500">Outside UFC</span> : <DivisionLabel division={divisionName(row.weight_class, "catch_weight" in row ? row.catch_weight : null)} move={move} />}
           {row.title_narrative ? <span className={`font-semibold ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
         </FactRun>
         {/* Out of the run and against the right edge, where it lines up with
@@ -411,7 +411,7 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
 
       <div className={`${cell} flex-col justify-start border-l border-zinc-100 text-left`}>
         <span className="block break-words text-[11px] leading-5 text-zinc-500">
-          {bout.outside ? <span className="font-semibold text-violet-500">Outside UFC</span> : <DivisionLabel division={row.weight_class} move={move} />}
+          {bout.outside ? <span className="font-semibold text-violet-500">Outside UFC</span> : <DivisionLabel division={divisionName(row.weight_class, "catch_weight" in row ? row.catch_weight : null)} move={move} />}
           {row.title_narrative ? <span className={`block font-semibold leading-4 ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
         </span>
       </div>

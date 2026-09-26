@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
-import { clockTime, clockTimeWithZone, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankLabel, roundsLabel } from "../format";
+import { clockTime, clockTimeWithZone, divisionName, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankLabel, roundsLabel } from "../format";
 import { useNow } from "../useNow";
 import Avatar from "../components/Avatar";
 import ResultDots from "../components/ResultDots";
@@ -469,7 +469,7 @@ function FightRow({ fight, past, eventId, live = false }: { fight: EventFight; p
         <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">Live</span>
         <span className="text-[10px] text-zinc-300" aria-hidden="true">·</span>
       </> : null}
-      <span className="text-[10px] font-medium text-zinc-500">{fight.weight_class}</span>
+      <span className="text-[10px] font-medium text-zinc-500">{divisionName(fight.weight_class, fight.catch_weight)}</span>
       {fight.scheduled_rounds ? <span className="text-[10px] font-medium text-zinc-400">{roundsLabel(fight.scheduled_rounds)}</span> : null}
       {beltTag(fight) ? (
         <span className={`rounded px-1 py-px text-[9px] font-bold uppercase ${beltTag(fight)!.className}`}>
@@ -577,7 +577,7 @@ function CompactFightRow({ fight, done, live }: { fight: EventFight; done: boole
           <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
           <span className="font-bold uppercase tracking-[0.14em] text-emerald-700">Live</span>
         </> : null}
-        <span className="font-medium text-zinc-500">{fight.weight_class}</span>
+        <span className="font-medium text-zinc-500">{divisionName(fight.weight_class, fight.catch_weight)}</span>
         {fight.scheduled_rounds ? <span>{roundsLabel(fight.scheduled_rounds)}</span> : null}
         {title ? <span className={`rounded px-1 py-px text-[9px] font-bold uppercase leading-3 ${title.className}`}>{title.label}</span> : null}
         {result ? <span className="ml-auto text-right" title={fight.method_details ?? result}>{result}</span> : null}
@@ -687,7 +687,7 @@ function CardOddsRow({ fight, eventId, live, past, format }: { fight: EventFight
               className="w-full whitespace-nowrap text-center text-[10px] font-medium tabular-nums text-zinc-400"
               title={expected ? "Approximate start in your time zone. Usually 30 minutes per bout (40 for five-round bouts), adjusted to fit before the next segment with a 10-minute transition. Rounded to 5 minutes; finishes and broadcast delays can change actual starts." : undefined}
             >
-              {fight.weight_class}
+              {divisionName(fight.weight_class, fight.catch_weight)}
               {fight.weight_class && expected ? " · " : ""}
               {expected ? `~${expected}` : ""}
             </span>

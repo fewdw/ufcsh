@@ -14,6 +14,7 @@ import {
   outcomeLabel,
   rankLabel,
   roundsLabel,
+  divisionName,
 } from "../format";
 import Avatar from "../components/Avatar";
 import { CardEventTitle, NAV_STEP, CardNavigation } from "../components/CardHeader";
@@ -118,7 +119,7 @@ function WeightClassLabel({ fight }: { fight: Matchup }) {
       {belt === "tuf" ? "TUF Tournament" : belt === "tournament" ? "Tournament" : (
         <>
           {belt === "interim" ? "Interim " : ""}
-          {fight.weight_class}
+          {divisionName(fight.weight_class, fight.catch_weight)}
           {belt ? " Title" : ""}
         </>
       )}
