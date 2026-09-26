@@ -163,7 +163,8 @@ function ItemRow({
           title="Mark reviewed"
           className="mt-1 h-4 w-4 shrink-0 accent-zinc-900"
         />
-        <div className="min-w-0 flex-1">
+        {/* Wide enough to read; on a phone the buttons wrap below instead. */}
+        <div className="min-w-[14rem] flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2">
             <Dot level={item.level} className="translate-y-[-1px] self-center" />
             {primary ? (
