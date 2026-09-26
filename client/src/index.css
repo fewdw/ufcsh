@@ -198,6 +198,11 @@ select:not([multiple]):not([size]) {
 .dark .text-zinc-300 { color: #71717a !important; }
 .dark .border-zinc-100 { border-color: #27272a !important; }
 .dark .border-zinc-200 { border-color: #3f3f46 !important; }
+/* Breakpoint variants carry their own class names; without these a docked
+   panel keeps its light-mode outline in dark mode. */
+.dark .md\:border-zinc-100 { border-color: #27272a !important; }
+.dark .md\:border-zinc-200,
+.dark .xl\:border-zinc-200 { border-color: #3f3f46 !important; }
 .dark .border-zinc-300,
 .dark .border-zinc-400 { border-color: #52525b !important; }
 .dark .divide-zinc-50 > :not(:last-child),

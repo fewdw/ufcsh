@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
-import { clockTime, clockTimeWithZone, countdown, formatDate, formatDateShort, formatMethod, futureDayLabel, isDecision, outcomeClasses, rankLabel, roundsLabel } from "../format";
+import { clockTime, clockTimeWithZone, formatDate, formatDateShort, formatMethod, futureDayLabel, isDecision, outcomeClasses, rankLabel, roundsLabel } from "../format";
 import { useNow } from "../useNow";
 import Avatar from "../components/Avatar";
 import ResultDots from "../components/ResultDots";
@@ -41,7 +41,6 @@ function beltTag(fight: EventFight) {
     : fight.title_type === "title" ? TITLE_TAG.title : null;
 }
 const METHOD_TAG = "shrink-0 rounded-full px-1.5 py-px text-[9px] font-bold uppercase leading-4 tracking-[0.06em]";
-const DAY_MS = 86_400_000;
 const MONTHS = [
   "January",
   "February",
@@ -846,13 +845,11 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   const liveId = liveFightId(event);
   const oddsFights = event.fights.filter(hasFightOdds);
   const hasAnyOdds = oddsFights.length > 0;
-  // Every announced part of an upcoming card, main card first; the next one
-  // carries a countdown on the day. A live card keeps its times, the
+  // Every announced part of an upcoming or live card, main card first, the
   // segments already under way greyed out.
   const schedule = past ? [] : (["main", "prelims", "early"] as CardSegment[])
     .map((segment) => ({ segment, at: segmentStart(event.schedule, segment) }))
     .filter((entry): entry is { segment: CardSegment; at: number } => entry.at != null);
-  const nextStart = schedule.filter((entry) => entry.at > now).reduce<number | null>((soonest, entry) => soonest == null || entry.at < soonest ? entry.at : soonest, null);
   const dayLabel = futureDayLabel(event.date, now);
   const hasResultSummary = Number.isFinite(event.card_stats.finishes) && Number.isFinite(event.card_stats.underdog_wins);
 
@@ -898,9 +895,6 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
                   <div key={segment} className={`contents ${at <= now ? "text-zinc-400" : "text-zinc-500"}`} title={clockTimeWithZone(at) ?? undefined}>
                     <dt className="text-left"><span className="@[34rem]:hidden">{SEGMENT_SHORT[segment]}</span><span className="hidden @[34rem]:inline">{SEGMENT_LABEL[segment]}</span></dt>
                     <dd className="flex items-baseline justify-end gap-1.5 whitespace-nowrap tabular-nums">
-                      {/* A countdown is worth reading on the day and unreadable
-                          before it, so past a day out the date says enough. */}
-                      {at === nextStart && at - now < DAY_MS ? <span className="text-zinc-400">in {countdown(at, now)}</span> : null}
                       <span className={at <= now ? "" : "font-semibold text-zinc-800"}><span className="@[48rem]:hidden">{clockTime(at)?.replace(":00 ", " ")}</span><span className="hidden @[48rem]:inline">{clockTimeWithZone(at)}</span></span>
                     </dd>
                   </div>

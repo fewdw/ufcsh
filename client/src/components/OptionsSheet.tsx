@@ -23,7 +23,8 @@ export default function OptionsSheet({
   count?: ReactNode;
   onReset: () => void;
   children: ReactNode;
-  iconOnlyOnPhone?: boolean;
+  /** Show only the icon on a phone, or with "lg" below the `lg` breakpoint. */
+  iconOnlyOnPhone?: boolean | "lg";
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -128,7 +129,7 @@ export default function OptionsSheet({
     };
   }, [open, phone]);
 
-  const phoneHidden = iconOnlyOnPhone ? "hidden sm:inline" : "";
+  const phoneHidden = iconOnlyOnPhone === "lg" ? "hidden lg:inline" : iconOnlyOnPhone ? "hidden sm:inline" : "";
   return (
     <div ref={rootRef} className="relative z-40">
       <button
@@ -141,7 +142,7 @@ export default function OptionsSheet({
           if (!open && Date.now() - closedAt.current < 500) return;
           setOpen((value) => !value);
         }}
-        className={`flex h-8 items-center gap-1.5 rounded-full border border-zinc-200 bg-white text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 ${iconOnlyOnPhone ? "px-2 sm:px-3" : "px-3"}`}
+        className={`flex h-8 items-center gap-1.5 rounded-full border border-zinc-200 bg-white text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 ${iconOnlyOnPhone === "lg" ? "px-2 lg:px-3" : iconOnlyOnPhone ? "px-2 sm:px-3" : "px-3"}`}
       >
         <SlidersHorizontal className="h-3.5 w-3.5 text-zinc-500" aria-hidden="true" />
         <span className={phoneHidden}>{label}</span>

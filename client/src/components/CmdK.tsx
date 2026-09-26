@@ -17,6 +17,36 @@ const destinations = [
   { to: "/info", label: "About UFC.sh", description: "Sources, definitions, shortcuts and changelog", icon: Info },
 ];
 
+const normalize = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/** How closely a result's name answers the query: 3 the name itself, 2 its
+ *  words begin with the query's, 1 a plain match, 0 a "did you mean". */
+function relevance(item: Item, query: string): number {
+  if (item.approximate) return 0;
+  const name = normalize(item.label ?? "");
+  if (!name) return 1;
+  if (name === query) return 3;
+  const words = name.split(" ");
+  return query.split(" ").every((word) => words.some((part) => part.startsWith(word))) ? 2 : 1;
+}
+
+/** Groups keep their usual order unless another holds a closer match: an
+ *  official or venue named exactly rises above loose fighter and fight hits. */
+function byRelevance(items: Item[], raw: string): Item[] {
+  const query = normalize(raw);
+  const groups = new Map<string, { order: number; best: number }>();
+  const scored = items.map((item, index) => {
+    const score = relevance(item, query);
+    const group = groups.get(item.group) ?? { order: groups.size, best: 0 };
+    group.best = Math.max(group.best, score);
+    groups.set(item.group, group);
+    return { item, index, score };
+  });
+  const rank = (entry: typeof scored[number]) => groups.get(entry.item.group)!;
+  return scored.sort((a, b) => rank(b).best - rank(a).best || rank(a).order - rank(b).order
+    || b.score - a.score || a.index - b.index).map((entry) => entry.item);
+}
+
 type VisibleBox = { top: number; height: number; keyboard: boolean };
 const visibleBox = (): VisibleBox | null => {
   const vv = window.visualViewport;
@@ -63,7 +93,7 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
-  const items: Item[] = trimmed ? [
+  const found: Item[] = trimmed ? [
     ...(data?.fighters ?? []).map((fighter) => ({
       key: `fighter-${fighter.id}`, to: `/fighters/${fighter.id}`, group: fighter.approximate ? "Fighters · did you mean" : "Fighters", approximate: fighter.approximate, label: fighter.name,
       render: () => <>
@@ -111,6 +141,7 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
       <ArrowRight className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
     </>,
   }));
+  const items = trimmed ? byRelevance(found, trimmed) : found;
   const selection = useSearchSelection(items.map((item) => item.key), true);
   const go = (item: Item | undefined) => {
     if (!item) return;
