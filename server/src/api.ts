@@ -32,6 +32,7 @@ import { ReportStore } from "./reports.ts";
 import { createReportsHandler } from "./reports-http.ts";
 import { CommentStore } from "./comments.ts";
 import { createCommentsHandler } from "./comments-http.ts";
+import { ACCOUNT_SYNC_MS, accountSyncCheck, syncAccounts } from "./accounts.ts";
 import { releasedRounds } from "./live-rounds.ts";
 import { ensureImageVariant, variantPath, type ImageSize } from "./image-variants.ts";
 import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds } from "./sync.ts";
@@ -1923,7 +1924,10 @@ export function startApi(port: number): http.Server {
     reports: reportStore,
     comments: commentStore,
     metrics: () => adminMetrics(),
-    report: async () => (queryPool ? JSON.parse((await queryPool.run("/api/bugs")).json) : bugReport()),
+    report: async () => {
+      const report = queryPool ? JSON.parse((await queryPool.run("/api/bugs")).json) : bugReport();
+      return { ...report, checks: [accountSyncCheck(), ...report.checks] };
+    },
     runAction: (action, target, actor) => process.env.NODE_ENV === "production"
       ? productionRepair(action, target, actor)
       : runBugAction(action, target),
@@ -1942,6 +1946,14 @@ export function startApi(port: number): http.Server {
     catch (error) { log("settling live rounds failed:", String(error)); }
   }, 15_000);
   settler.unref();
+  // Accounts deleted or changed at Clerk are caught up here.
+  const accountStores = { scores: scoreStore, comments: commentStore, predictions: predictionStore, bets: betStore };
+  const accountSync = setInterval(() => {
+    void syncAccounts(accountStores)
+      .then(({ forgotten }) => { if (forgotten) log(`forgot ${forgotten} deleted account(s)`); })
+      .catch(error => log("account sync failed:", String(error)));
+  }, ACCOUNT_SYNC_MS);
+  accountSync.unref();
   const workerCount = Number(process.env.API_WORKERS ?? (process.env.NODE_ENV === "production" ? 2 : 0));
   if (!Number.isInteger(workerCount) || workerCount < 0 || workerCount > 8) throw new Error("API_WORKERS must be an integer from 0 to 8");
   let refresher: NodeJS.Timeout | undefined;
@@ -2020,7 +2032,7 @@ export function startApi(port: number): http.Server {
     };
     const value = {
       ...commentStore.stats(),
-      accounts: count("SELECT COUNT(*) AS n FROM scorers"),
+      accounts: count("SELECT COUNT(*) AS n FROM scorers WHERE deleted_at IS NULL"),
       accountsLastDay: count("SELECT COUNT(*) AS n FROM scorers WHERE created_at > ?", Date.now() - 86_400_000),
       predictionsLastDay: count("SELECT COUNT(*) AS n FROM predictions WHERE updated_at > ?", Date.now() - 86_400_000),
     };
@@ -2220,6 +2232,7 @@ export function startApi(port: number): http.Server {
     clearInterval(sampler);
     clearInterval(warmLists);
     clearInterval(settler);
+    clearInterval(accountSync);
     clearInterval(refresher);
     process.removeListener("SIGTERM", shutdown);
     process.removeListener("SIGINT", shutdown);

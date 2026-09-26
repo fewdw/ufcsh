@@ -41,7 +41,7 @@ export const BUG_LEVELS: BugLevel[] = ["critical", "must", "minor", "ok"];
 type Grade = BugLevel | ((item: BugItem) => BugLevel);
 export type BugCheck = {
   id: string;
-  group: "Scorecards" | "Odds" | "Records" | "Fights & events" | "Venues & officials" | "Fighters";
+  group: "Accounts" | "Scorecards" | "Odds" | "Records" | "Fights & events" | "Venues & officials" | "Fighters";
   label: string;
   description: string;
   /** The worst level among its items; "ok" when there are none. */
