@@ -47,12 +47,11 @@ export function CardNavigation({ label, previous, center, next, className = "" }
   );
 }
 
-export function CardEventTitle({ name, date, location, venue, dayLabel, children }: {
+export function CardEventTitle({ name, date, location, venue, children }: {
   name: string;
   date: string;
   location: string | null | undefined;
   venue?: VenueRef | null;
-  dayLabel?: string | null;
   children?: ReactNode;
 }) {
   return (
@@ -61,8 +60,8 @@ export function CardEventTitle({ name, date, location, venue, dayLabel, children
         <h1 className="text-balance text-sm font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-2xl">{name}</h1>
         <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[48rem]:mt-1 @[48rem]:gap-x-2 @[48rem]:text-xs @[48rem]:leading-relaxed">
           <span className="whitespace-nowrap font-medium text-zinc-600">
-            <span className="@[48rem]:hidden">{formatDateShort(date)}{dayLabel ? `, ${dayLabel}` : ""}</span>
-            <span className="hidden @[48rem]:inline">{formatDate(date)}{dayLabel ? ` (${dayLabel})` : ""}</span>
+            <span className="@[48rem]:hidden">{formatDateShort(date)}</span>
+            <span className="hidden @[48rem]:inline">{formatDate(date)}</span>
           </span>
           <EventPlace venue={venue} location={location} />
         </div>

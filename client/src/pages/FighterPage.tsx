@@ -13,7 +13,8 @@ import RequestNotice from "../components/RequestNotice";
 import FighterStatistics from "../components/FighterStatistics";
 import { PanelHeading } from "../components/FightStats";
 import { SITE_URL, useSeo } from "../seo";
-import { useRouteScrollRestoration } from "../navigationState";
+import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
+import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedTab } from "../components/segmented";
 import { outsideFighterUrl, useSettings, withRanking } from "../settings";
 
 const shell = PANEL;
@@ -486,6 +487,25 @@ function Records({ records }: { records: FighterRecord[] }) {
   );
 }
 
+type ProfileTab = "fights" | "stats";
+const PROFILE_TABS: { key: ProfileTab; label: string }[] = [{ key: "fights", label: "Fights" }, { key: "stats", label: "Stats" }];
+
+/** The Fights / Stats switch on a narrow window, styled like the matchup tabs. */
+function ProfileTabs({ current, onSelect }: { current: ProfileTab; onSelect: (tab: ProfileTab) => void }) {
+  return (
+    <div className={`${shell} p-1.5 lg:hidden`}>
+      <div role="tablist" aria-label="Fighter sections" className={`${segmentedGroup} w-full`}>
+        {PROFILE_TABS.map(({ key, label }) => (
+          <button key={key} type="button" role="tab" aria-selected={key === current} onClick={() => onSelect(key)}
+            className={`${segmentedTab} ${key === current ? segmentedSelected : segmentedIdle}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function FighterPage() {
   const { fighterId } = useParams();
   const { settings } = useSettings();
@@ -495,6 +515,8 @@ export default function FighterPage() {
   // From `lg` the page stands still and its two columns scroll on their own.
   const mainScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:main", Boolean(fighter));
   const sideScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:side", Boolean(fighter));
+  // Below `lg` the two columns become two tabs under the fighter.
+  const [tab, setTab] = useHistoryState<ProfileTab>("fighter:tab", "fights");
   useSeo({
     title: fighter ? `${fighter.name} — Record & Fight History` : "UFC Fighter Profile",
     description: fighter
@@ -542,6 +564,10 @@ export default function FighterPage() {
       ["Born", [fighter.birthplace, fighter.country].filter(Boolean).join(", ")],
     ] as [string, string][]
   ).filter(([, v]) => v);
+  const wheels = <>
+    {fighter.record_verified ? <RecordWheel key={`${fighter.id}-all`} history={fighter.pro_history} scope="all" record={fighter.record} /> : null}
+    <RecordWheel key={`${fighter.id}-ufc`} history={fighter.history} scope="ufc" record={fighter.ufc_record} />
+  </>;
 
 
   return (
@@ -592,19 +618,25 @@ export default function FighterPage() {
             {/* Both records at once, side by side while the card is wide
                 enough and stacked when it is not. The professional wheel
                 waits until that history is verified. */}
-            <div className="flex items-start justify-center gap-x-6 gap-y-5 border-t border-zinc-100 pt-3 empty:hidden sm:flex-wrap sm:gap-x-10 sm:pt-4">
-              {fighter.record_verified ? <RecordWheel key={`${fighter.id}-all`} history={fighter.pro_history} scope="all" record={fighter.record} /> : null}
-              <RecordWheel key={`${fighter.id}-ufc`} history={fighter.history} scope="ufc" record={fighter.ufc_record} />
+            <div className="hidden items-start justify-center gap-x-6 gap-y-5 border-t border-zinc-100 pt-3 empty:hidden sm:flex-wrap sm:gap-x-10 sm:pt-4 lg:flex">
+              {wheels}
             </div>
           </div>
         </section>
 
-        <Records records={fighter.records ?? []} />
+        <ProfileTabs current={tab} onSelect={setTab} />
 
-        <FighterStatistics fighterId={fighter.id} history={fighter.history} />
+        {/* Stats: on a narrow window the wheels leave the header for this tab. */}
+        <div className={tab === "stats" ? "contents" : "hidden lg:contents"}>
+          <section className={`${shell} flex items-start justify-center gap-x-6 gap-y-5 px-4 py-4 sm:flex-wrap sm:gap-x-10 lg:hidden`}>
+            {wheels}
+          </section>
+          <Records records={fighter.records ?? []} />
+          <FighterStatistics fighterId={fighter.id} history={fighter.history} />
+        </div>
         </div>
 
-        <div ref={sideScroll} className="flex min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]">
+        <div ref={sideScroll} className={`${tab === "fights" ? "flex" : "hidden lg:flex"} min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]`}>
 
         <section className={shell}>
           <PanelHeading title="Fights" subtitle={allFights.length.toLocaleString()} />

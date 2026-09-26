@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
-import { clockTime, clockTimeWithZone, formatDate, formatDateShort, formatMethod, futureDayLabel, isDecision, outcomeClasses, rankLabel, roundsLabel } from "../format";
+import { clockTime, clockTimeWithZone, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankLabel, roundsLabel } from "../format";
 import { useNow } from "../useNow";
 import Avatar from "../components/Avatar";
 import ResultDots from "../components/ResultDots";
@@ -851,7 +851,6 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   const schedule = past ? [] : (["main", "prelims", "early"] as CardSegment[])
     .map((segment) => ({ segment, at: segmentStart(event.schedule, segment) }))
     .filter((entry): entry is { segment: CardSegment; at: number } => entry.at != null);
-  const dayLabel = futureDayLabel(event.date, now);
   // A finished card's tally, one per line; a count of none is left out.
   const decided = event.fights.filter((fight) => fight.f1.outcome === "win" || fight.f2.outcome === "win");
   const kos = decided.filter((fight) => /^(?:KO|TKO)/i.test(fight.method ?? "")).length;
@@ -890,8 +889,8 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
               <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[34rem]:gap-x-2 @[34rem]:text-xs">
                 {event.date ? (
                   <span className="whitespace-nowrap font-medium text-zinc-600">
-                    <span className="@[48rem]:hidden">{formatDateShort(event.date)}{dayLabel ? `, ${dayLabel}` : ""}</span>
-                    <span className="hidden @[48rem]:inline">{formatDate(event.date)}{dayLabel ? ` (${dayLabel})` : ""}</span>
+                    <span className="@[48rem]:hidden">{formatDateShort(event.date)}</span>
+                    <span className="hidden @[48rem]:inline">{formatDate(event.date)}</span>
                   </span>
                 ) : null}
                 <EventPlace venue={event.venue} location={event.location} leading={Boolean(event.date)} />

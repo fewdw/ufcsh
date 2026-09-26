@@ -9,7 +9,6 @@ import {
   formatDate,
   formatDateShortWithYear,
   formatMethod,
-  futureDayLabel,
   lastName,
   outcomeClasses,
   outcomeLabel,
@@ -48,7 +47,6 @@ import { cardFightSearch, useRouteScrollRestoration } from "../navigationState";
 import { SITE_URL, useSeo } from "../seo";
 import { useSettings, withRanking } from "../settings";
 import { scoreableRoundCount } from "../scoring";
-import { useNow } from "../useNow";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { useShortcutNav } from "../shortcuts";
 
@@ -752,7 +750,6 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   const eventId = loadedFight?.event.id ?? eventIdHint ?? previousFight.current?.event.id;
   const { data: cardEvent } = useApi<EventDetail>(eventId ? withRanking(`/api/events/${eventId}`, settings.rankingSource) : null,
     data => data?.refreshing ? 5_000 : isFightDay(data?.date) ? 15_000 : data?.status === "past" ? 0 : 5 * 60_000);
-  const now = useNow(fight?.status !== "past");
   const matchupTitle = loadedFight ? `${loadedFight.f1.name} vs ${loadedFight.f2.name}` : "UFC Matchup";
   const matchupDescription = loadedFight
     ? `${loadedFight.f1.name} vs ${loadedFight.f2.name} at ${loadedFight.event.name}: ${loadedFight.weight_class} odds, tale of the tape, fighter statistics${loadedFight.status === "past" ? " and result" : ""}.`
@@ -917,7 +914,6 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 date={fight.event.date}
                 location={fight.event.location}
                 venue={fight.event.venue}
-                dayLabel={fight.status === "past" ? null : futureDayLabel(fight.event.date, now)}
               >
                 {isFightDay(fight.event.date) && error && !changingMatchup ? <span role="status" className="text-xs text-zinc-500">Connection interrupted; retrying…</span> : null}
               </CardEventTitle>
