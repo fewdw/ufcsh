@@ -51,3 +51,30 @@ jobs:
           printf '%s %s\n' "$DEPLOY_HOST" "$DEPLOY_HOST_KEY" > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i "$HOME/.ssh/ufcsh_deploy" "ubuntu@$DEPLOY_HOST" "prod $DEPLOY_SHA"
+  # Every push to a branch other than main shows that branch at dev.ufc.sh
+  # straight away, without waiting for the checks. The Choose dev branch
+  # workflow still switches dev to any branch by hand.
+  deploy-dev:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/main' && !github.event.deleted
+    runs-on: ubuntu-latest
+    environment:
+      name: development
+      url: https://dev.ufc.sh
+    concurrency:
+      group: dev-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Deploy pushed branch
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_HOST_KEY: ${{ vars.DEPLOY_HOST_KEY }}
+          DEV_BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/ufcsh_deploy"
+          chmod 600 "$HOME/.ssh/ufcsh_deploy"
+          printf '%s %s\n' "$DEPLOY_HOST" "$DEPLOY_HOST_KEY" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i "$HOME/.ssh/ufcsh_deploy" "ubuntu@$DEPLOY_HOST" "dev $DEV_BRANCH"

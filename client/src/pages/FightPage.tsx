@@ -941,9 +941,9 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                   <div className="matchup-billing col-span-3 col-start-1 row-start-1 flex flex-col items-center text-center">
                     <WeightClassLabel fight={fight} />
                     {referee ? (
-                      <div className="mt-1 text-[10px] text-zinc-400">
-                        Ref {fight.officials?.referee?.slug
-                          ? <Link to={`/referees/${fight.officials.referee.slug}`} className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-700">{referee}</Link>
+                      <div className="mt-1 text-[10px] text-zinc-500" title="Referee">
+                        {fight.officials?.referee?.slug
+                          ? <Link to={`/referees/${fight.officials.referee.slug}`} title="Referee: every bout they have worked" className="transition hover:text-zinc-900 dark:hover:text-zinc-100">{referee} <span aria-hidden="true">↗</span></Link>
                           : referee}
                       </div>
                     ) : null}

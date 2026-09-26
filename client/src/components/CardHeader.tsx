@@ -1,14 +1,13 @@
 import { PANEL } from "./chartTokens";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { MapPin } from "lucide-react";
 import type { VenueRef } from "../api";
 import { formatDate, formatDateShort } from "../format";
 
 const DOT = <span aria-hidden="true" className="text-zinc-300">·</span>;
 
 /** Date · venue · city. The venue opens its history, so it reads as a link
- *  the way the rest of the app's links do: a pin, a weight, a hover. */
+ *  the way the rest of the app's links do: a trailing arrow and a hover. */
 export function EventPlace({ venue, location, leading = true }: { venue?: VenueRef | null; location: string | null | undefined; leading?: boolean }) {
   if (!venue && !location) return null;
   return (
@@ -16,8 +15,8 @@ export function EventPlace({ venue, location, leading = true }: { venue?: VenueR
       {venue ? <>
         {leading ? DOT : null}
         <Link to={`/venues/${venue.slug}`} title={`${venue.name}: every card held here`}
-          className="inline-flex min-w-0 items-baseline gap-0.5 rounded font-medium text-zinc-700 transition-colors hover:text-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-2">
-          <MapPin className="h-[1em] w-[1em] shrink-0 self-center text-zinc-400" aria-hidden="true" />{venue.name}
+          className="min-w-0 rounded text-zinc-500 transition hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 dark:hover:text-zinc-100">
+          {venue.name} <span aria-hidden="true">↗</span>
         </Link>
       </> : null}
       {location ? <>{leading || venue ? DOT : null}<span className="min-w-0">{location}</span></> : null}

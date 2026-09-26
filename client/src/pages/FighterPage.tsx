@@ -490,17 +490,37 @@ function Records({ records }: { records: FighterRecord[] }) {
 
 /** Height, reach and the rest as small labelled tiles; birthplace, the one
  *  long value, takes a row of its own. */
-function BioGrid({ bio, className = "" }: { bio: [string, string][]; className?: string }) {
+function BioGrid({ bio, className = "" }: { bio: [string, ReactNode][]; className?: string }) {
   if (!bio.length) return null;
+  const wide: Record<string, string> = { Bonuses: "col-span-full @[56rem]:col-span-2", Born: "col-span-full @[56rem]:col-span-4" };
   return (
     <dl className={`grid grid-cols-3 gap-x-4 gap-y-2.5 @[56rem]:grid-cols-6 ${className}`}>
       {bio.map(([label, value]) => (
-        <div key={label} className={`min-w-0 ${label === "Born" ? "col-span-full" : ""}`} title={label === "Age" ? "Current age today" : undefined}>
+        <div key={label} className={`min-w-0 ${wide[label] ?? ""}`} title={label === "Age" ? "Current age today" : undefined}>
           <dt className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">{label}</dt>
           <dd className="text-sm font-medium tabular-nums text-zinc-800">{value}</dd>
         </div>
       ))}
     </dl>
+  );
+}
+
+/** Both kinds of bonus as one split tag, each half its count; a kind never
+ *  won is left out. */
+function BonusTally({ fight, perf }: { fight: number; perf: number }) {
+  const parts = [
+    { key: "fight", label: FIGHT_BONUS.short, count: fight, title: FIGHT_BONUS.full },
+    { key: "perf", label: PERF_AWARD.perf.short, count: perf, title: "Performance (or Knockout / Submission) of the Night" },
+  ].filter((part) => part.count > 0);
+  return (
+    <span className={`${BONUS_TAG} mt-0.5 gap-0 px-0 text-[11px]`}>
+      {parts.map((part, index) => (
+        <span key={part.key} title={`${part.count} × ${part.title}`}
+          className={`inline-flex items-baseline gap-1 px-2 ${index ? "border-l border-amber-400/60" : ""}`}>
+          {part.label}<span className="font-bold tabular-nums">{part.count}</span>
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -569,16 +589,20 @@ export default function FighterPage() {
   const allFights = [...upcoming, ...past].sort((a, b) => b.date.localeCompare(a.date));
   const moves = divisionMoves(fighter.history);
 
-  const bio: [string, string][] = (
+  const done = fighter.history.filter((h) => !h.upcoming);
+  const fightBonuses = done.filter((h) => h.bonuses?.fotn).length;
+  const perfBonuses = done.filter((h) => h.bonuses?.perf).length;
+  const bio: [string, ReactNode][] = (
     [
       ["Height", fighter.height],
       ["Weight", fighter.weight],
       ["Reach", fighter.reach],
       ["Stance", fighter.stance],
       ["Age", fighter.age == null ? "" : String(fighter.age)],
-      ["5-round fights", String(fighter.history.filter((h) => !h.upcoming && h.scheduled_rounds === 5).length)],
+      ["5-round fights", String(done.filter((h) => h.scheduled_rounds === 5).length)],
+      ["Bonuses", fightBonuses || perfBonuses ? <BonusTally fight={fightBonuses} perf={perfBonuses} /> : ""],
       ["Born", [fighter.birthplace, fighter.country].filter(Boolean).join(", ")],
-    ] as [string, string][]
+    ] as [string, ReactNode][]
   ).filter(([, v]) => v);
   const wheels = <>
     {fighter.record_verified ? <RecordWheel key={`${fighter.id}-all`} history={fighter.pro_history} scope="all" record={fighter.record} /> : null}

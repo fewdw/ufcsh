@@ -19,7 +19,7 @@ Production is `https://ufc.sh`. Every successful CI run for a push or merge to `
 
 ## Rebuild behavior
 
-The dev app runs from a Docker image; code changes are not live through host-based hot reload. Run `/home/ubuntu/ufcsh/dev.sh` after making changes so the dev image is rebuilt from the active dev worktree. To switch the branch shown at `dev.ufc.sh`, use `./deploy/select-dev-branch.sh BRANCH` from the production checkout or the **Choose dev branch** GitHub Action; commit or stash changes in the dev worktree before switching.
+The dev app runs from a Docker image; code changes are not live through host-based hot reload. Run `/home/ubuntu/ufcsh/dev.sh` after making changes so the dev image is rebuilt from the active dev worktree. Every push to a branch other than `main` automatically deploys that branch to `dev.ufc.sh`. To switch the branch shown at `dev.ufc.sh` by hand, use `./deploy/select-dev-branch.sh BRANCH` from the production checkout or the **Choose dev branch** GitHub Action; commit or stash changes in the dev worktree before switching.
 
 ## Working in the code
 

@@ -1156,7 +1156,7 @@ function ScorecardTable({ fight, judges, fans, rounds }: {
         // Each name opens that judge's record: every card they have scored.
         return slug
           ? <Link key={`name-${index}`} to={`/judges/${slug}`} title={`${judge.judge} — every card they have scored`}
-              className={`${label} text-zinc-500 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900`}>{name}</Link>
+              className={`${label} text-zinc-500 transition hover:text-zinc-900 dark:hover:text-zinc-100`}>{name} <span aria-hidden="true">↗</span></Link>
           : <span key={`name-${index}`} className={`${label} text-zinc-400`} title={judge.judge || undefined}>{name}</span>;
       })}
       {fans ? (
