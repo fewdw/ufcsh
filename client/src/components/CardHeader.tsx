@@ -1,5 +1,6 @@
 import { PANEL } from "./chartTokens";
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import type { VenueRef } from "../api";
 import { formatDate, formatDateShort } from "../format";
@@ -37,12 +38,36 @@ export function CardNavigation({ label, previous, center, next, className = "" }
   next: ReactNode;
   className?: string;
 }) {
+  const bar = useRef<HTMLElement>(null);
+  const [scrolledPast, setScrolledPast] = useState(false);
+  // Once the bar has scrolled up out of view, a phone gets the same three
+  // steps as a pill floating at the bottom of the screen.
+  useEffect(() => {
+    const element = bar.current;
+    if (!element) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      const box = entry.boundingClientRect;
+      setScrolledPast(!entry.isIntersecting && box.height > 0 && box.top < window.innerHeight / 2);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   return (
-    <nav aria-label={label} className={`${PANEL} grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-1 p-1 ${className}`}>
-      <div className="min-w-0 justify-self-start">{previous}</div>
-      <div className="min-w-0">{center}</div>
-      <div className="min-w-0 justify-self-end">{next}</div>
-    </nav>
+    <>
+      <nav ref={bar} aria-label={label} className={`${PANEL} grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-1 p-1 ${className}`}>
+        <div className="min-w-0 justify-self-start">{previous}</div>
+        <div className="min-w-0">{center}</div>
+        <div className="min-w-0 justify-self-end">{next}</div>
+      </nav>
+      {createPortal(
+        <nav aria-label={label} inert={!scrolledPast}
+          className={`fixed bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full border border-zinc-200 bg-white/95 p-1 shadow-lg backdrop-blur transition duration-200 ease-out sm:hidden [&_[data-nav-extra]]:static [&_[data-nav-extra]]:translate-y-0 ${
+            scrolledPast ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-4 opacity-0"}`}>
+          {previous}{center}{next}
+        </nav>,
+        document.body,
+      )}
+    </>
   );
 }
 

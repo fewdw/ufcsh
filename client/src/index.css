@@ -427,7 +427,7 @@ select:not([multiple]):not([size]) {
   .matchup-top-card .matchup-fighter--left .matchup-identity > div:first-child { justify-content: flex-start; }
   .matchup-top-card .matchup-fighter--right .matchup-identity > div:first-child { justify-content: flex-end; }
   .matchup-top-card .matchup-identity > div:first-child { flex-wrap: wrap; gap: 6px; }
-  .matchup-top-card .matchup-hero > div:not(.matchup-market, .matchup-billing) { align-self: stretch; }
+  .matchup-top-card .matchup-hero > div:not(.matchup-market) { align-self: stretch; }
   /* The name block centres on the portrait beside it rather than hanging
      from the top edge with empty space below. */
   .matchup-top-card .matchup-fighter { align-items: center; height: 100%; }

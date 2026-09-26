@@ -105,7 +105,7 @@ function WeightClassLabel({ fight }: { fight: Matchup }) {
   const tournament = belt === "tuf" || belt === "tournament";
   return (
     <span
-      className={`inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-0.5 text-[10px] uppercase tracking-[0.14em] ${
+      className={`inline-flex flex-col items-center text-balance rounded-xl border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[9px] uppercase leading-[13px] tracking-[0.05em] @[30rem]:flex-row @[30rem]:rounded-full @[30rem]:px-2.5 @[30rem]:text-[10px] @[30rem]:leading-4 @[30rem]:tracking-[0.14em] ${
         belt === "interim"
           ? "font-bold text-belt-interim"
           : belt
@@ -122,7 +122,7 @@ function WeightClassLabel({ fight }: { fight: Matchup }) {
           {belt ? " Title" : ""}
         </>
       )}
-      {fight.scheduled_rounds ? <span className="ml-1.5 text-zinc-400">{roundsLabel(fight.scheduled_rounds)}</span> : null}
+      {fight.scheduled_rounds ? <span className="whitespace-nowrap text-zinc-400 @[30rem]:ml-1.5">{roundsLabel(fight.scheduled_rounds)}</span> : null}
     </span>
   );
 }
@@ -938,14 +938,14 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     name or "Former champion" from being clipped while the
                     space either side of the card goes unused. */}
                 <div className="matchup-hero grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-1.5 @[58rem]:gap-6">
-                  {/* The weight class, rounds and referee line head the hero
-                      at every width. It spans all three columns rather than
-                      riding in the middle one with the price: "Light
-                      Heavyweight Title" is wider than the price card, and an
-                      auto-width middle column sized to the badge would eat
-                      the space the two names need. */}
-                  <div className="matchup-billing col-span-3 col-start-1 row-start-1 flex flex-col items-center text-center">
-                    <WeightClassLabel fight={fight} />
+                  <div className="col-start-1 row-start-1 min-w-0">
+                    <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} reserveRank={reserveRank} />
+                  </div>
+                  {/* The weight class, the referee and the price are one block
+                      in the middle column, centred both ways against the two
+                      fighters at every width. */}
+                  <div className="matchup-market col-start-2 row-start-1 flex w-auto max-w-[8.5rem] flex-col items-center self-center text-center @[30rem]:max-w-[16rem] @[58rem]:max-w-[19rem]">
+                    <div><WeightClassLabel fight={fight} /></div>
                     {referee ? (
                       <div className="mt-1 text-[10px] text-zinc-500" title="Referee">
                         {fight.officials?.referee?.slug
@@ -953,12 +953,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                           : referee}
                       </div>
                     ) : null}
-                  </div>
-                  <div className="col-start-1 row-start-2 min-w-0">
-                    <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} reserveRank={reserveRank} />
-                  </div>
-                  <div className="matchup-market self-start col-start-2 row-start-2 flex w-auto flex-col items-center text-center @[58rem]:max-w-[19rem]">
-                    <div className="matchup-prices">
+                    <div className="matchup-prices mt-2.5">
                       <MatchupOdds key={fight.id} f1={fight.odds?.f1.close} f2={fight.odds?.f2.close}
                         f1Open={fight.odds?.f1.open} f2Open={fight.odds?.f2.open}
                         f1Name={fight.f1.name} f2Name={fight.f2.name}
@@ -966,7 +961,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                         fightId={fight.status === "upcoming" ? fight.id : undefined} />
                     </div>
                   </div>
-                  <div className="col-start-3 row-start-2 min-w-0">
+                  <div className="col-start-3 row-start-1 min-w-0">
                     <FighterHero side={fight.f2} align="right" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} reserveRank={reserveRank} />
                   </div>
                 </div>

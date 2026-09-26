@@ -884,7 +884,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
               className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
               <List className="h-3.5 w-3.5" aria-hidden="true" />Events
             </button>
-            <button type="button" onClick={() => update("cardOrder", openerFirst ? "main" : "opener")}
+            <button type="button" data-nav-extra onClick={() => update("cardOrder", openerFirst ? "main" : "opener")}
               aria-label={openerFirst ? "Opener first; show the main event first" : "Main event first; show the opener first"}
               title={openerFirst ? "Opener first" : "Main event first"}
               className="absolute left-full top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950">
