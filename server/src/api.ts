@@ -578,6 +578,7 @@ function fighterHistory(fighterId: string, includeOpponentForm = false): unknown
       event_name: f.event_name,
       date: f.event_date,
       weight_class: f.weight_class,
+      scheduled_rounds: scheduledRounds(f, f.detail_json ? JSON.parse(f.detail_json) : null),
       title_fight: !!f.title_fight,
       title_type: f.title_type || null,
       title_narrative: narratives.get(f.id) ?? null,

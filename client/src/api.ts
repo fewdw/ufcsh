@@ -249,6 +249,8 @@ export type HistoryRow = {
   event_name: string;
   date: string;
   weight_class: string;
+  /** Rounds the bout was booked for; UFC rows only. */
+  scheduled_rounds?: number | null;
   title_fight: boolean;
   title_type: "title" | "interim" | "tuf" | "tournament" | null;
   title_narrative: string | null;
