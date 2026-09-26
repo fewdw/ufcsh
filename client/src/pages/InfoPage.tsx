@@ -93,6 +93,7 @@ export default function InfoPage() {
           </header>
 
           <Section id="about">
+            <p>UFC.sh is the #1 UFC data platform: accurate and simple.</p>
             <p>UFC.sh is <strong>independent and fan-made</strong>. It is not affiliated with, endorsed by or sponsored by the UFC, Zuffa or TKO Group. “UFC” and fighter names are used only to describe the sport the site covers.</p>
             <p>The aim: turn a week of card preparation into a couple of hours, without asking anyone to take a number on faith.</p>
             <Draft>Write a few lines about yourself: who you are, why you built this, and how people can reach you (a public email or social handle).</Draft>
