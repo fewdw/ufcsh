@@ -9,6 +9,7 @@ import Flag from "../components/Flag";
 import ResultDots from "../components/ResultDots";
 import { divisionMoves, type DivisionMove } from "../weightJourney";
 import RequestNotice from "../components/RequestNotice";
+import { BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
 import FighterStatistics from "../components/FighterStatistics";
 import { PanelHeading } from "../components/FightStats";
 import { SITE_URL, useSeo } from "../seo";
@@ -186,11 +187,6 @@ function EnteringRecords({
   );
 }
 
-const PERF_AWARD = {
-  perf: { short: "POTN", full: "Performance of the Night" },
-  ko: { short: "KOTN", full: "Knockout of the Night" },
-  sub: { short: "SOTN", full: "Submission of the Night" },
-} as const;
 const TAG = "inline-flex items-center gap-1 rounded px-1.5 py-px text-[10px] font-semibold leading-4";
 
 /** Rows of bouts. A container, not a viewport breakpoint: this list shares the
@@ -210,8 +206,8 @@ function BoutNotes({ row, className = "mt-1" }: { row: HistoryRow | Professional
   if (!perf && !row.bonuses?.fotn && !misses.length) return null;
   return (
     <span className={`flex flex-wrap gap-1 ${className}`}>
-      {row.bonuses?.fotn ? <span className={`${TAG} bg-orange-50 text-orange-700`} title="Fight of the Night bonus"><span aria-hidden="true">🔥</span>FOTN</span> : null}
-      {perf ? <span className={`${TAG} bg-amber-50 text-amber-800`} title={`${perf.full} bonus`}><span aria-hidden="true">💰</span>{perf.short}</span> : null}
+      {row.bonuses?.fotn ? <span className={BONUS_TAG} title={`${FIGHT_BONUS.full} bonus`}>{FIGHT_BONUS.short}</span> : null}
+      {perf ? <span className={BONUS_TAG} title={`${perf.full} bonus`}>{perf.short}</span> : null}
       {misses.map((miss) => (
         <span key={miss.who} className={`${TAG} bg-rose-50 text-rose-700`} title={`${miss.name} missed weight${miss.pounds ? ` at ${miss.pounds} lb` : ""}`}>
           <span aria-hidden="true">⚖️</span>{miss.who}{miss.pounds ? ` · ${miss.pounds} lb` : ""}

@@ -217,6 +217,7 @@ select:not([multiple]):not([size]) {
 .dark .bg-rose-100 { background-color: #881337 !important; }
 .dark .bg-amber-50 { background-color: #451a03 !important; }
 .dark .bg-amber-100 { background-color: #78350f !important; }
+.dark .bg-amber-200 { background-color: #92400e !important; }
 .dark .bg-sky-50 { background-color: #082f49 !important; }
 .dark .bg-sky-100 { background-color: #0c4a6e !important; }
 .dark .bg-slate-100 { background-color: #1e293b !important; }
@@ -237,6 +238,7 @@ select:not([multiple]):not([size]) {
 .dark .text-orange-700 { color: #fdba74 !important; }
 .dark .text-amber-700,
 .dark .text-amber-800 { color: #fcd34d !important; }
+.dark .text-amber-900 { color: #fde68a !important; }
 .dark .text-sky-600,
 .dark .text-sky-700 { color: #7dd3fc !important; }
 .dark .text-violet-500,

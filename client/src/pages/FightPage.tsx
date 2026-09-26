@@ -49,6 +49,7 @@ import { useSettings, withRanking } from "../settings";
 import { scoreableRoundCount } from "../scoring";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { useShortcutNav } from "../shortcuts";
+import { BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
 
 const shell = PANEL_SHELL;
 const RESULT_PILL =
@@ -136,14 +137,6 @@ const RESULT_PREFIX: Record<string, string> = {
   nc: "No contest, ",
 };
 
-/** Before 2014 the performance award was a Knockout or Submission of the Night.
- *  The pills carry the fans' shorthand; the full name is the tooltip. */
-const PERF_AWARD = {
-  perf: { short: "POTN", full: "Performance of the Night" },
-  ko: { short: "KOTN", full: "Knockout of the Night" },
-  sub: { short: "SOTN", full: "Submission of the Night" },
-} as const;
-const AWARD_PILL = "inline-flex whitespace-nowrap rounded-full bg-amber-100 px-1.5 py-px text-[10px] font-semibold leading-4 text-amber-800";
 
 function FighterHero({
   side,
@@ -216,8 +209,8 @@ function FighterHero({
               </span>
             ) : null}
             {/* Fight of the Night belongs to both corners, a performance award to the winner. */}
-            {perf ? <span className={AWARD_PILL} title={`${PERF_AWARD[perf].full} bonus`}>{PERF_AWARD[perf].short}</span> : null}
-            {fotn ? <span className={AWARD_PILL} title="Fight of the Night bonus">FOTN</span> : null}
+            {perf ? <span className={BONUS_TAG} title={`${PERF_AWARD[perf].full} bonus`}>{PERF_AWARD[perf].short}</span> : null}
+            {fotn ? <span className={BONUS_TAG} title={`${FIGHT_BONUS.full} bonus`}>{FIGHT_BONUS.short}</span> : null}
           </div>
         ) : null}
       </div>

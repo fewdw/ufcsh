@@ -21,7 +21,7 @@ import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
 import { useSettings, withRanking, type OddsFormat } from "../settings";
 import { eventKind, type EventKind } from "../eventKind";
 import SearchGlyph from "../components/SearchGlyph";
-import { ChevronLeft, ChevronRight, List, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 
@@ -846,6 +846,9 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   const past = event.status === "past";
   const liveId = liveFightId(event);
   const oddsFights = event.fights.filter(hasFightOdds);
+  // Read from the opener up, the card runs in the order it is fought.
+  const openerFirst = settings.cardOrder === "opener";
+  const cardFights = openerFirst ? [...event.fights].reverse() : event.fights;
   const hasAnyOdds = oddsFights.length > 0;
   // Every announced part of an upcoming or live card, main card first, the
   // segments already under way greyed out.
@@ -875,10 +878,19 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
           ? <Link to={`/events/${event.id}`} className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
             <List className="h-3.5 w-3.5" aria-hidden="true" />Card
           </Link>
-          : <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
-            className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
-            <List className="h-3.5 w-3.5" aria-hidden="true" />Events
-          </button>}
+          // Events stays centred; the order toggle hangs off its right.
+          : <span className="relative inline-flex">
+            <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
+              className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+              <List className="h-3.5 w-3.5" aria-hidden="true" />Events
+            </button>
+            <button type="button" onClick={() => update("cardOrder", openerFirst ? "main" : "opener")}
+              aria-label={openerFirst ? "Opener first; show the main event first" : "Main event first; show the opener first"}
+              title={openerFirst ? "Opener first" : "Main event first"}
+              className="absolute left-full top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950">
+              {openerFirst ? <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}
+            </button>
+          </span>}
         next={<StepLink event={nav.next} direction="next" className={NAV_STEP} />}
       />
       <section className={`${shell} shrink-0 overflow-hidden`}>
@@ -953,8 +965,8 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
           {event.fights.length === 0 ? (
             <div className="px-6 py-10 text-center text-sm text-zinc-400">Fight card not announced yet.</div>
           ) : (
-            event.fights.map((fight, index) => {
-              const newSegment = Boolean(fight.segment) && fight.segment !== event.fights[index - 1]?.segment;
+            cardFights.map((fight, index) => {
+              const newSegment = Boolean(fight.segment) && fight.segment !== cardFights[index - 1]?.segment;
               return (
                 <div key={fight.id} className={index === 0 ? "" : newSegment ? "border-t border-zinc-200" : "border-t border-zinc-100"}>
                   {newSegment ? <SegmentBreak segment={fight.segment!} at={segmentStart(event.schedule, fight.segment!)} /> : null}
