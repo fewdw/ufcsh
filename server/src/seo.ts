@@ -63,7 +63,7 @@ export function pageSeo(pathname: string): PageSeo {
   if (pathname === "/" || pathname === "/index.html") return home;
   const fixed = STATIC_PAGES[pathname];
   if (fixed) return { ...DEFAULT, ...fixed, canonical: `${SITE_URL}${pathname}` };
-  if (pathname === "/admin" || pathname === "/admin/bugs" || /^\/sign-(in|up)(\/|$)/.test(pathname)) return { ...home, noindex: true };
+  if (pathname === "/admin" || pathname === "/admin/bugs" || pathname === "/roster" || pathname === "/favorites" || /^\/sign-(in|up)(\/|$)/.test(pathname)) return { ...home, noindex: true };
   const parts = pathname.split("/");
   const id = decodeURIComponent(parts[2] ?? "");
   if (parts.length !== 3 || !id) return notFound();
