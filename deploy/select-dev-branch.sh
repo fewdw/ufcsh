@@ -38,23 +38,8 @@ if [[ -n "$(git -C "$dev_dir" status --porcelain)" ]]; then
   exit 2
 fi
 
-if [[ "$branch" == main ]]; then
-  git -C "$dev_dir" switch --detach origin/main
-else
-  current_branch="$(git -C "$dev_dir" branch --show-current)"
-  if [[ "$current_branch" != "$branch" ]]; then
-    if git -C "$repo_dir" show-ref --verify --quiet "refs/heads/$branch"; then
-      git -C "$dev_dir" switch "$branch"
-    else
-      git -C "$dev_dir" switch --track -c "$branch" "origin/$branch"
-    fi
-  fi
-  git -C "$dev_dir" merge --ff-only "origin/$branch"
-  if [[ "$(git -C "$dev_dir" rev-parse HEAD)" != "$(git -C "$repo_dir" rev-parse "$remote_ref")" ]]; then
-    echo 'The local dev branch has commits absent from origin. Push or resolve them first.' >&2
-    exit 2
-  fi
-fi
+# Detached: the branch itself stays free for the agent worktree that pushed it.
+git -C "$dev_dir" switch --detach "origin/$branch"
 
 echo "Showing $branch ($(git -C "$dev_dir" rev-parse --short HEAD)) at https://dev.ufc.sh"
 DEV_BUILD_CONTEXT="$dev_dir" "$repo_dir/dev.sh"
