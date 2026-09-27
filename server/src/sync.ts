@@ -29,6 +29,7 @@ import { correctOfficialJudges } from "./verified-scorecard-corrections.ts";
 import { catchweights, eventInfobox, eventSection, fetchArticleByTitle, fetchEventArticle, fetchFighterArticle, recordCatchweight, weightMisses } from "./scrape/wikipedia.ts";
 import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
 import { syncVerdictScorecards } from "./verdict-import.ts";
+import { syncRosterMoves } from "./roster-moves.ts";
 import { americanLine, impliedProbability } from "./fight-index.ts";
 
 const HOUR = 3600_000;
@@ -1540,6 +1541,9 @@ export async function tick(): Promise<void> {
     if (metaAgeMs("roster_synced_at") > DAY || getMeta("roster_stale") === "1") {
       await guarded("roster", syncRoster);
     }
+
+    // 2b. Signings and releases: Wikipedia's list is edited through the day.
+    if (metaAgeMs("roster_moves_checked_at") > 6 * HOUR) await guarded("roster_moves", syncRosterMoves);
 
     const events = db.prepare("SELECT id, name, date, complete, detail_fetched_at FROM events ORDER BY date DESC").all() as EventRow[];
     const now = Date.now();

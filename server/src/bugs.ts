@@ -7,6 +7,8 @@ import { hasCompleteJudgeRounds } from "./judge-scorecards.ts";
 import { importVerdictEvent } from "./verdict-import.ts";
 import { mergedByHand, officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
+import { rosterMoveFighter, storedRosterMoves, syncRosterMoves } from "./roster-moves.ts";
+import { ROSTER_ARTICLE } from "./scrape/wikipedia.ts";
 import {
   fighterNames,
   forgetUfcPage,
@@ -1139,6 +1141,43 @@ function mergedOfficialSpellings(): BugCheck {
     grade: "ok",
   }, items);
 }
+function rosterMovesUnread(): BugCheck {
+  const wiki: BugLink = { label: "Wikipedia", href: `https://en.wikipedia.org/wiki/${encodeURIComponent(ROSTER_ARTICLE.replaceAll(" ", "_"))}` };
+  const reread = { id: "roster-moves" as const, label: "Re-read Wikipedia", target: "roster" };
+  const synced = Number(getMeta("roster_moves_synced_at")) || null;
+  const items: BugItem[] = [];
+  if (!synced || Date.now() - synced > 24 * 3_600_000) items.push({
+    key: "sync",
+    title: synced ? "Not read in over a day" : "Never read",
+    facts: [["Last read", ago(synced)], ["Last tried", ago(Number(getMeta("roster_moves_checked_at")) || null)]],
+    links: [wiki],
+    actions: [reread],
+  });
+  const { signed, cut } = storedRosterMoves();
+  for (const [list, moves] of [["Signed", signed], ["Cut", cut]] as const) {
+    for (const move of moves) {
+      // Anyone cut has fought for the UFC, so a release without a profile
+      // is almost always a name spelled differently from UFCStats.
+      const missing = [!move.date && "date", !move.division && "division", !move.record && "record", !move.country && "country",
+        list === "Cut" && !rosterMoveFighter(move.name) && "profile"].filter(Boolean);
+      if (missing.length) items.push({
+        key: `${list}:${move.name}`,
+        title: move.name,
+        subtitle: `${list} · missing ${missing.join(", ")}`,
+        facts: [["Date", move.date ?? "unread"], ["Division", move.division ?? "unread"], ["Record", move.record ?? "unread"]],
+        links: [wiki, { label: "UFCStats search", href: `${UFCSTATS}/statistics/fighters/search?query=${encodeURIComponent(move.name.split(" ").at(-1) ?? move.name)}` }],
+        actions: [reread],
+      });
+    }
+  }
+  return check({
+    id: "roster-moves",
+    group: "Fighters",
+    label: "Signings and releases not read",
+    description: "The /roster page lists Wikipedia's recent signings and releases, re-read every 6 hours. A stale read means the article couldn't be reached or its tables changed shape (the last good read stays up). A row missing a field was written in a form the reader doesn't understand; a release with no profile is usually a name spelled differently from UFCStats.",
+    grade: (item) => item.key === "sync" ? "must" : "minor",
+  }, items);
+}
 // ---------------------------------------------------------------------------
 
 export function bugReport(): { generated_at: number; sync: { last_tick_at: string | null; last_sync_error: string | null }; checks: BugCheck[] } {
@@ -1178,6 +1217,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     mergedOfficialSpellings(),
     fighterGaps(active),
     duplicateFighters(),
+    rosterMovesUnread(),
   ];
   return {
     generated_at: Date.now(),
@@ -1186,7 +1226,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
   };
 }
 
-export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict";
+export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -1250,6 +1290,15 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
     case "event":
       await syncEventDetail(target);
       return { ok: true, message: "Event re-fetched." };
+    case "roster-moves": {
+      try {
+        await syncRosterMoves();
+      } catch (err) {
+        return { ok: false, message: `Couldn't read it (${String(err)}). The last good list stays up.` };
+      }
+      const { signed, cut } = storedRosterMoves();
+      return { ok: true, message: `Read ${signed.length} signings and ${cut.length} releases.` };
+    }
     case "birth":
       await syncFighterBirthDate(target);
       return { ok: true, message: "Birth date re-fetched." };

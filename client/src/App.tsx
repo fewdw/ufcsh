@@ -44,6 +44,7 @@ const VenuePage = page(pages.venue, module => module.default);
 const OfficialsPage = page(pages.directories, module => module.OfficialsPage);
 const VenuesPage = page(pages.directories, module => module.VenuesPage);
 const InfoPage = page(pages.info, module => module.default);
+const RosterPage = page(pages.roster, module => module.default);
 
 const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
 
@@ -304,7 +305,7 @@ export default function App() {
           <Route path="/labs" element={<LabsPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/admin/bugs" element={<AdminPage />} />
-          <Route path="/roster" element={null} />
+          <Route path="/roster" element={<RosterPage />} />
           <Route path="/favorites" element={null} />
           <Route path="/profiles/:handle" element={<ProfilePage />} />
           <Route path="/judges/:slug" element={<JudgePage />} />

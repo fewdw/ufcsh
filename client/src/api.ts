@@ -944,6 +944,18 @@ export type RefereeProfile = {
   }[];
 };
 
+export type RosterMove = {
+  date: string | null;
+  name: string;
+  nickname: string | null;
+  country: string | null;
+  division: string | null;
+  reason: string | null;
+  record: string | null;
+  fighter_id: string | null;
+};
+export type RosterMoves = { updated_at: number | null; signed: RosterMove[]; cut: RosterMove[] };
+
 export type OfficialsDirectory = {
   judges: { slug: string; name: string; n: number; first: string | null; last: string | null }[];
   referees: { slug: string; name: string; n: number; first: string | null; last: string | null }[];

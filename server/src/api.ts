@@ -56,6 +56,7 @@ import { renderShareImage, type ShareCard, type SharePhoto } from "./og-images.t
 export { pageSeo, sitemap };
 import { judgeProfile, officialSlug, officialsDirectory, refereeProfile, searchOfficials } from "./officials.ts";
 import { searchVenues, venueDirectory, venueOfEvent, venuePage } from "./venues.ts";
+import { rosterMoves } from "./roster-moves.ts";
 
 const CLIENT_DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "client", "dist");
 const IMAGE_CACHE = path.join(DATA_DIR, "images");
@@ -1855,6 +1856,7 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   if (p === "/api/labs/judge-bouts") return getLabsJudgeBouts(url.searchParams);
   if (p === "/api/labs/road-bouts") return getLabsRoadBouts(url.searchParams);
   if (p === "/api/labs") return getLabs(url.searchParams);
+  if (p === "/api/roster") return rosterMoves();
   if (p === "/api/search") return search(url.searchParams.get("q") ?? "");
   if (p === "/api/bugs") return bugReport();
   return undefined;

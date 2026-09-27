@@ -361,3 +361,114 @@ export async function fetchFighterArticle(name: string): Promise<string | null> 
   }
   return null;
 }
+
+export type RosterMove = {
+  date: string | null;
+  name: string;
+  nickname: string | null;
+  /** ISO 3166 alpha-2, or EN/SC/WA for the home nations. */
+  country: string | null;
+  division: string | null;
+  /** Why a fighter left: "Released", "Retired", "Contract not renewed". */
+  reason: string | null;
+  record: string | null;
+};
+
+export const ROSTER_ARTICLE = "List of current UFC fighters";
+
+// {{flagicon}} takes IOC and ISO alpha-3 codes interchangeably.
+const ALPHA2: Record<string, string> = {
+  ABW: "AW", ARU: "AW", AFG: "AF", AGO: "AO", ANG: "AO", ALB: "AL", ARG: "AR", ARM: "AM", AUS: "AU", AUT: "AT",
+  AZE: "AZ", BEL: "BE", BHR: "BH", BRN: "BH", BLR: "BY", BOL: "BO", BRA: "BR", BUL: "BG", BGR: "BG", CAN: "CA",
+  CHE: "CH", SUI: "CH", CHI: "CL", CHL: "CL", CHN: "CN", CMR: "CM", COL: "CO", CRO: "HR", HRV: "HR", CUB: "CU",
+  CZE: "CZ", DEN: "DK", DNK: "DK", DEU: "DE", GER: "DE", DOM: "DO", DRC: "CD", COD: "CD", ECU: "EC", EGY: "EG",
+  ENG: "EN", SCO: "SC", WAL: "WA", GBR: "GB", ESP: "ES", FIN: "FI", FRA: "FR", GEO: "GE", GHA: "GH", GRE: "GR",
+  GRC: "GR", HUN: "HU", INA: "ID", IDN: "ID", IND: "IN", IRE: "IE", IRL: "IE", IRN: "IR", IRQ: "IQ", ISL: "IS",
+  ISR: "IL", ITA: "IT", JAM: "JM", JPN: "JP", KAZ: "KZ", KEN: "KE", KGZ: "KG", KOR: "KR", LAT: "LV", LVA: "LV",
+  LIT: "LT", LTU: "LT", MAR: "MA", MDA: "MD", MEX: "MX", MMR: "MM", MNE: "ME", MGL: "MN", MNG: "MN", NED: "NL",
+  NLD: "NL", NGA: "NG", NGR: "NG", NOR: "NO", NZL: "NZ", PAN: "PA", PER: "PE", PHI: "PH", PHL: "PH", POL: "PL",
+  POR: "PT", PRT: "PT", PSE: "PS", PLE: "PS", PUR: "PR", PRI: "PR", ROU: "RO", RSA: "ZA", ZAF: "ZA", RUS: "RU",
+  SEN: "SN", SRB: "RS", SVK: "SK", SLO: "SI", SVN: "SI", SWE: "SE", THA: "TH", TJK: "TJ", TPE: "TW", TWN: "TW",
+  TUN: "TN", TUR: "TR", UAE: "AE", ARE: "AE", UGA: "UG", UKR: "UA", URU: "UY", URY: "UY", USA: "US", UZB: "UZ",
+  VEN: "VE", VIE: "VN", VNM: "VN",
+};
+
+/** "{{dts|2026|Sep|5}}", "{{dts|2026-09-05}}" or "December 13, 2024", as YYYY-MM-DD. */
+function moveDate(cell: string): string | null {
+  const parts = cell.match(/\{\{\s*dts\s*\|([^}]*)\}\}/i)?.[1].split("|").map(part => part.trim()).filter(part => !part.includes("="));
+  if (parts?.length === 3 && /^\d{4}$/.test(parts[0])) {
+    const month = /^\d+$/.test(parts[1]) ? Number(parts[1]) : MONTHS.findIndex(name => name.slice(0, 3).toLowerCase() === parts[1].slice(0, 3).toLowerCase()) + 1;
+    const day = Number(parts[2]);
+    return month >= 1 && day >= 1 && day <= 31 ? `${parts[0]}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}` : null;
+  }
+  const text = parts?.length === 1 ? parts[0] : plainText(cell).trim();
+  const parsed = Date.parse(`${text} 12:00 UTC`);
+  return /\d{4}/.test(text) && Number.isFinite(parsed) ? new Date(parsed).toISOString().slice(0, 10) : null;
+}
+
+/** A cell's visible text; {{sortname|First|Last}} reads "First Last". */
+function cellText(cell: string): string | null {
+  const text = plainText(cell.replace(/\{\{\s*sortname\s*\|([^|}]*)\|([^|}]*)[^}]*\}\}/gi, "$1 $2"))
+    .replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+  return text || null;
+}
+
+/** The rows of the first table in one "== Heading ==" section, keyed by the
+ *  table's own column headings, so a reordered column is still read right. */
+function sectionRows(wikitext: string, heading: RegExp): Record<string, string>[] {
+  const start = wikitext.search(heading);
+  if (start < 0) throw new Error(`no section matching ${heading}`);
+  const rest = wikitext.slice(start + 3);
+  const next = rest.search(/\n==[^=]/);
+  const section = withoutRefs(next < 0 ? rest : rest.slice(0, next));
+  const table = section.slice(section.indexOf("{|"), section.indexOf("\n|}"));
+  const [head, ...rows] = table.split(/\n\|-[^\n]*/);
+  const columns = [...head.matchAll(/^!(.*)$/gm)].map(match => (cellText(match[1].split("|").at(-1) ?? "") ?? "").toLowerCase());
+  const spans: { left: number; value: string }[] = [];
+  return rows.map(row => {
+    const cells: string[] = [];
+    for (const line of row.split("\n")) {
+      if (line.startsWith("|")) cells.push(...line.slice(1).split("||"));
+      else if (cells.length) cells[cells.length - 1] += `\n${line}`;
+    }
+    // A cell may carry attributes before its value: rowspan="2"|{{dts|…}}.
+    const values: string[] = [];
+    for (let column = 0; column < columns.length; column++) {
+      if (spans[column]?.left) { spans[column].left--; values.push(spans[column].value); continue; }
+      const cell = cells.shift() ?? "";
+      const attributes = cell.match(/^([^|{[]*=[^|{[]*)\|(?!\|)/);
+      const value = attributes ? cell.slice(attributes[0].length) : cell;
+      const span = Number(attributes?.[1].match(/rowspan\s*=\s*"?(\d+)/i)?.[1] ?? 1);
+      if (span > 1) spans[column] = { left: span - 1, value };
+      values.push(value);
+    }
+    return Object.fromEntries(columns.map((column, i) => [column, values[i]]));
+  }).filter(row => Object.values(row).some(value => value.trim()));
+}
+
+function rosterMoves(wikitext: string, heading: RegExp): RosterMove[] {
+  const rows = sectionRows(wikitext, heading);
+  const column = (row: Record<string, string>, pattern: RegExp) => Object.entries(row).find(([key]) => pattern.test(key))?.[1] ?? "";
+  return rows.map(row => {
+    const flag = column(row, /country|iso|nation/).match(/\{\{\s*flag(?:icon)?\s*\|\s*([A-Za-z]{3})\s*[|}]/)?.[1].toUpperCase();
+    return {
+      date: moveDate(column(row, /^date$/)),
+      // Footnote marks ("Amanda Nunes *") are the key's, not the name's.
+      name: (cellText(column(row, /^name$/)) ?? "").replace(/[\s*†‡#^]+$/, ""),
+      nickname: cellText(column(row, /nickname/)),
+      country: flag ? ALPHA2[flag] ?? null : null,
+      division: cellText(column(row, /division/)),
+      reason: cellText(column(row, /reason/)),
+      record: cellText(column(row, /^mma record$/)),
+    };
+  }).filter(move => move.name);
+}
+
+/** Wikipedia's "Recent signings" and "Recent releases and retirements"
+ *  tables, the ones editors keep from the UFC's own roster changes. */
+export function rosterChanges(wikitext: string): { signed: RosterMove[]; cut: RosterMove[] } {
+  return {
+    signed: rosterMoves(wikitext, /\n==\s*Recent signings\s*==/i),
+    cut: rosterMoves(wikitext, /\n==\s*Recent releases(?: and retirements)?\s*==/i),
+  };
+}

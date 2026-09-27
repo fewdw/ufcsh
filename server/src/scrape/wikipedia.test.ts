@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { catchweights, eventSection, infoboxDate, namesCard, plainText, recordCatchweight, weightMisses } from "./wikipedia.ts";
+import { catchweights, eventSection, infoboxDate, namesCard, plainText, recordCatchweight, rosterChanges, weightMisses } from "./wikipedia.ts";
 
 const article = (background: string, results = "") =>
   `{{Infobox MMA event\n| date = {{start date|2024|01|20}}\n}}\n==Background==\n${background}\n==Results==\n${results}`;
@@ -132,4 +132,70 @@ test("recordCatchweight finds the bout on its date against its opponent", () => 
   assert.equal(recordCatchweight(record, "Vitor Belfort", "2009-09-19"), 195);
   assert.equal(recordCatchweight(record, "Wanderlei Silva", "2012-06-23"), 190);
   assert.equal(recordCatchweight(record, "Vitor Belfort", "2012-06-23"), null);
+});
+
+test("reads recent signings and releases by their column headings", () => {
+  const wikitext = `
+== Recent releases and retirements ==
+Fighters released over the last month.
+{| class="wikitable sortable"
+! width=10%|Date
+! width=3%|{{small|Country}}
+! width=14%|Name
+! width=14%|Nickname
+! width=15%|Reason
+! width=17%|Division
+! width=3%| Ref
+! width=11%|MMA record
+|-
+|rowspan="2"|{{dts|2026|Sep|16}}
+|{{flagicon|USA}}
+|{{sortname|Lyman|Good}}
+|''Cyborg''
+|Released
+|Welterweight
+|<ref name="cuts">{{Cite web
+|url=https://example.com/cuts|title=Cuts}}</ref>
+|{{ntsh|21.78}}21–6 (1 NC)
+|-
+|{{flagicon|ENG}}
+|[[Michael Page (fighter)|Michael Page]]
+|
+|Contract not renewed
+|Middleweight
+|<ref name="cuts"/>
+|{{ntsh|26.90}}26–3
+|}
+
+== Recent signings ==
+{| class="wikitable sortable"
+! width=13%|Date
+! width=3%|{{small|[[ISO 3166-1 alpha-3|ISO]]}}
+! width=13%|Name
+! width=13%|Nickname
+! width=13%|Division
+! width=29%|Status / next fight / Info
+! width=3%|Ref
+! width=14%|MMA record
+|-
+|December 13, 2024
+|{{flagicon|CHI}}
+|Kennedy Freeman
+|''The Machine 2.0''
+|Women's Flyweight
+|
+|
+|{{ntsh|7.0}}6–0
+|}
+
+== Suspended fighters ==
+`;
+  const { signed, cut } = rosterChanges(wikitext);
+  assert.deepEqual(cut, [
+    { date: "2026-09-16", name: "Lyman Good", nickname: "Cyborg", country: "US", division: "Welterweight", reason: "Released", record: "21–6 (1 NC)" },
+    { date: "2026-09-16", name: "Michael Page", nickname: null, country: "EN", division: "Middleweight", reason: "Contract not renewed", record: "26–3" },
+  ]);
+  assert.deepEqual(signed, [
+    { date: "2024-12-13", name: "Kennedy Freeman", nickname: "The Machine 2.0", country: "CL", division: "Women's Flyweight", reason: null, record: "6–0" },
+  ]);
 });

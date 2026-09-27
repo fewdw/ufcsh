@@ -49,6 +49,7 @@ const STATIC_PAGES: Record<string, { title: string; description: string }> = {
   "/labs": { title: "UFC Labs — Fighter-Bout Studies | ufc.sh", description: "Build a population of UFC fighter-bouts by age, streak, layoff, odds and more, and read its combined record." },
   "/officials": { title: "UFC Judges & Referees | ufc.sh", description: "Every UFC judge and referee on record: scorecards, agreement, dissents, stoppages and the bouts behind each number." },
   "/venues": { title: "UFC Venues | ufc.sh", description: "Every arena that has hosted a UFC event, with the cards held there, attendance and upcoming events." },
+  "/roster": { title: "UFC Roster Changes: Signings & Releases | ufc.sh", description: "Fighters the UFC has recently signed and recently released, with division, record and date." },
   "/info": { title: "About, Sources & Methods | ufc.sh", description: "About UFC.sh: an independent, fan-made UFC research tool. Data sources, definitions, community rules, privacy and changelog." },
 };
 
@@ -63,7 +64,7 @@ export function pageSeo(pathname: string): PageSeo {
   if (pathname === "/" || pathname === "/index.html") return home;
   const fixed = STATIC_PAGES[pathname];
   if (fixed) return { ...DEFAULT, ...fixed, canonical: `${SITE_URL}${pathname}` };
-  if (pathname === "/admin" || pathname === "/admin/bugs" || pathname === "/roster" || pathname === "/favorites" || /^\/sign-(in|up)(\/|$)/.test(pathname)) return { ...home, noindex: true };
+  if (pathname === "/admin" || pathname === "/admin/bugs" || pathname === "/favorites" || /^\/sign-(in|up)(\/|$)/.test(pathname)) return { ...home, noindex: true };
   const parts = pathname.split("/");
   const id = decodeURIComponent(parts[2] ?? "");
   if (parts.length !== 3 || !id) return notFound();
