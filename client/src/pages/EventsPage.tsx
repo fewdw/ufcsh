@@ -850,11 +850,14 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   const openerFirst = settings.cardOrder === "opener";
   const cardFights = openerFirst ? [...event.fights].reverse() : event.fights;
   const hasAnyOdds = oddsFights.length > 0;
-  // Every announced part of an upcoming or live card, main card first, the
-  // segments already under way greyed out.
-  const schedule = past ? [] : (["main", "prelims", "early"] as CardSegment[])
+  const announced = (["main", "prelims", "early"] as CardSegment[])
     .map((segment) => ({ segment, at: segmentStart(event.schedule, segment) }))
     .filter((entry): entry is { segment: CardSegment; at: number } => entry.at != null);
+  // Once the fighting starts, the tally replaces the start times; how far
+  // along the card is sits in the header's live pill.
+  const underway = past || event.card_stats.completed_fights > 0 || announced.some(({ at }) => at <= now);
+  // Every announced part of a card not yet under way, main card first.
+  const schedule = underway ? [] : announced;
   // A finished card's tally, one per line; a count of none is left out.
   const decided = event.fights.filter((fight) => fight.f1.outcome === "win" || fight.f2.outcome === "win");
   const kos = decided.filter((fight) => /^(?:KO|TKO)/i.test(fight.method ?? "")).length;
@@ -867,7 +870,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   ].filter((entry) => entry.count > 0) : [];
 
   return (
-    <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto sm:gap-3 sm:pr-1">
+    <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+4rem)] sm:gap-3 sm:pb-0 sm:pr-1">
       {/* On a phone the list folds away, so its button and the step to
           either neighbour head the card, and so do they wherever the card
           is narrow enough to stack its bouts. */}
@@ -915,18 +918,17 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
             {schedule.length ? (
               <dl className="grid grid-cols-[auto_auto] items-baseline gap-x-3 gap-y-0.5 text-xs leading-4 @[34rem]:text-[13px] @[34rem]:leading-5 @[48rem]:gap-x-4">
                 {schedule.map(({ segment, at }) => (
-                  <div key={segment} className={`contents ${at <= now ? "text-zinc-400" : "text-zinc-500"}`} title={clockTimeWithZone(at) ?? undefined}>
+                  <div key={segment} className="contents text-zinc-500" title={clockTimeWithZone(at) ?? undefined}>
                     <dt className="text-left"><span className="@[34rem]:hidden">{SEGMENT_SHORT[segment]}</span><span className="hidden @[34rem]:inline">{SEGMENT_LABEL[segment]}</span></dt>
                     <dd className="flex items-baseline justify-end gap-1.5 whitespace-nowrap tabular-nums">
-                      <span className={at <= now ? "" : "font-semibold text-zinc-800"}><span className="@[48rem]:hidden">{clockTime(at)?.replace(":00 ", " ")}</span><span className="hidden @[48rem]:inline">{clockTimeWithZone(at)}</span></span>
+                      <span className="font-semibold text-zinc-800"><span className="@[48rem]:hidden">{clockTime(at)?.replace(":00 ", " ")}</span><span className="hidden @[48rem]:inline">{clockTimeWithZone(at)}</span></span>
                     </dd>
                   </div>
                 ))}
               </dl>
             ) : null}
-            {results.length || (isLive && event.card_stats.completed_fights) ? (
+            {results.length ? (
               <div className="grid grid-cols-[auto_auto] items-baseline gap-x-1.5 gap-y-0.5 text-xs leading-4 text-zinc-500 @[34rem]:text-[13px] @[34rem]:leading-5">
-                {isLive && event.card_stats.completed_fights ? <><span className="text-right font-semibold tabular-nums text-zinc-800">{event.card_stats.completed_fights}/{event.fights.length}</span><span className="text-left">results</span></> : null}
                 {results.map(({ label, count }) => (
                   <Fragment key={label}>
                     <span className="text-right font-semibold tabular-nums text-zinc-800">{count}</span>

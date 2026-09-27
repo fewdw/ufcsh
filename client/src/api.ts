@@ -36,6 +36,8 @@ export type LiveCard = {
   schedule: CardSchedule;
   completed_fights: number;
   total_fights: number;
+  /** The bout's place on the card counted from the opener; the main event is total_fights. */
+  fight_number: number;
   /** Under way — either its numbers are already out or its start has passed. */
   live: boolean;
   starts_at: number | null;
