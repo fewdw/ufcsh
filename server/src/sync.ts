@@ -1625,11 +1625,6 @@ export async function tick(): Promise<void> {
       void guarded("method_odds_backfill", async () => { await syncMethodOddsBackfill(20); });
     }
 
-    // 11b. Verdict MMA judges' round cards and community scorecards, in
-    //     parallel. The pass decides what is due: fight-night cards every 15
-    //     minutes, older ones less often as their totals settle.
-    void guarded("verdict_scorecards", async () => { await syncVerdictScorecards(); });
-
     // 12. Birth dates, in parallel on the ufcstats queue. Live results share
     //     that queue, but each page is one request so nothing waits long.
     if (!birthDatesRunning) void guarded("birth_dates", () => syncBirthDates(80));
@@ -1647,6 +1642,9 @@ export async function tick(): Promise<void> {
 export function startScheduler(): void {
   void syncLiveEvents();
   setInterval(() => void syncLiveEvents().catch(err => log("live refresh failed:", String(err))), 10_000);
+  // Verdict MMA round cards and community scorecards, on their own clock so a
+  // long tick can't hold back a fight-night tally. The pass decides what is due.
+  setInterval(() => void guarded("verdict_scorecards", async () => { await syncVerdictScorecards(); }), 30_000);
   void tick();
   // Full historical totals power Actions attempts, accuracy, targets, position,
   // and control. Run continuously in the background and resume after restarts.

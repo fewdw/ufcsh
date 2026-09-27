@@ -196,7 +196,7 @@ export type ImportMode = "missing" | "recent" | "refresh";
 export async function importVerdictEvent(
   verdictId: number,
   mode: ImportMode = "missing",
-  { quiet = false, skipCheckedSince = Infinity } = {},
+  { quiet = false, skipCheckedSince = Infinity, due = (_fight: LocalFight): boolean => true } = {},
 ): Promise<(VerdictImportStats & { eventId: string | null }) | null> {
   const stats: VerdictImportStats = { matchedFights: 0, official: 0, community: 0, failed: 0 };
   let page: ReturnType<typeof parseVerdictEventPage>;
@@ -220,7 +220,7 @@ export async function importVerdictEvent(
   const eventId = matches[0]?.fight.event_id ?? null;
   // Verdict splits a card over two pages that both list it, so a pass skips
   // fights it has already read.
-  const wanted = matches.filter(({ fight }) => (fight.verdict_checked_at ?? 0) < skipCheckedSince
+  const wanted = matches.filter(({ fight }) => (fight.verdict_checked_at ?? 0) < skipCheckedSince && due(fight)
     && (mode !== "missing" || needsJudges(fight) || !fight.community_score_json));
   if (wanted.length) {
     const numbered = wanted.some(match => match.source.fightNumber == null)
@@ -253,7 +253,7 @@ async function listedVerdictIds(): Promise<number[]> {
 let running = false;
 let discoveredAt = 0;
 
-/** How long a card's community totals may go unread, by days since it was
+/** How long a bout's community totals may go unread, by days since it was
  * fought: votes pour in on fight night, trickle for weeks, and stop. */
 const REFRESH_BY_AGE: [maxDays: number, everyMs: number][] = [
   [2, 15 * 60_000],
@@ -262,10 +262,22 @@ const REFRESH_BY_AGE: [maxDays: number, everyMs: number][] = [
   [180, 7 * 86_400_000],
   [365, 30 * 86_400_000],
 ];
+/** A decision on fight night without its tally is what readers open next. */
+const LIVE_MS = 60_000;
+const ageInDays = (date: string, now: number) => (now - Date.parse(`${date}T00:00:00Z`)) / 86_400_000;
+const everyFor = (age: number, live: boolean) => live && age <= 2 ? LIVE_MS : REFRESH_BY_AGE.find(([maxDays]) => age <= maxDays)?.[1];
+
+function fightDue(fight: LocalFight, now = Date.now()): boolean {
+  const every = everyFor(ageInDays(fight.date, now), isDecision(fight) && !fight.community_score_json);
+  return every != null && (fight.verdict_checked_at ?? 0) < now - every;
+}
 
 /** Cards due a re-read, most recent first. A card first seen before it was
- * fought (so nothing matched yet) counts while one of ours is on that date. */
-const dueCards = db.prepare(`SELECT v.verdict_id, v.checked_at, julianday('now') - julianday(COALESCE(e.date, v.date)) AS age
+ * fought (so nothing matched yet) counts while one of ours is on that date.
+ * `live`: still being fought, or a decision on it still waits for a tally. */
+const dueCards = db.prepare(`SELECT v.verdict_id, v.checked_at, julianday('now') - julianday(COALESCE(e.date, v.date)) AS age,
+    (v.event_id IS NULL OR e.complete = 0 OR EXISTS (SELECT 1 FROM fights f WHERE f.event_id = e.id
+      AND f.method LIKE '%DEC%' AND f.community_score_json IS NULL)) AS live
   FROM verdict_events v LEFT JOIN events e ON e.id = v.event_id
   WHERE (v.event_id IS NOT NULL AND e.date <= date('now') AND e.date >= date('now', '-365 day'))
     OR (v.event_id IS NULL AND v.date BETWEEN date('now', '-3 day') AND date('now', '+1 day')
@@ -274,8 +286,9 @@ const dueCards = db.prepare(`SELECT v.verdict_id, v.checked_at, julianday('now')
 
 /**
  * Background pass: find Verdict's page for every new card hourly, and re-read
- * each card on the schedule above, so community totals keep growing on the
- * site and official round cards posted days later are picked up.
+ * each card and bout on the schedule above, so a decision's tally lands
+ * within a minute or two of the result, keeps growing on the site after, and
+ * official round cards posted days later are picked up.
  */
 export async function syncVerdictScorecards(): Promise<VerdictImportStats & { events: number }> {
   const total = { events: 0, matchedFights: 0, official: 0, community: 0, failed: 0 };
@@ -304,9 +317,9 @@ export async function syncVerdictScorecards(): Promise<VerdictImportStats & { ev
         add(await importVerdictEvent(id, "missing", { quiet: id > maxKnown }));
       }
     }
-    for (const card of dueCards.all() as { verdict_id: number; checked_at: number; age: number }[]) {
-      const every = REFRESH_BY_AGE.find(([maxDays]) => card.age <= maxDays)?.[1];
-      if (every && card.checked_at < Date.now() - every) add(await importVerdictEvent(card.verdict_id, "recent"));
+    for (const card of dueCards.all() as { verdict_id: number; checked_at: number; age: number; live: number }[]) {
+      const every = everyFor(card.age, !!card.live);
+      if (every && card.checked_at < Date.now() - every) add(await importVerdictEvent(card.verdict_id, "recent", { due: fight => fightDue(fight) }));
     }
     if (total.events) log(`verdict scorecards: ${total.events} events, ${total.matchedFights} fights, ${total.official} official, ${total.community} community, ${total.failed} failed`);
     return total;
