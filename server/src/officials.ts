@@ -60,10 +60,17 @@ for (const [full, short] of NICKNAMES) {
   for (const name of short) if (!FIRST_NAME.has(name)) FIRST_NAME.set(name, full);
 }
 // One New Jersey judge is recorded under both surnames and a misspelled given name.
+// The Russian referee Kiselev under three transliterations, one of them surname
+// first; the Austin judge Stafin as Jay and as Jason.
 const ALIASES = new Map([
   ["maimunah querido", "munah querido"], ["mamunah querido", "munah querido"], ["munah holland", "munah querido"],
   ["munah holland querido", "munah querido"], ["henry gueary", "henry guery"],
+  ["vjacheslav kiselev", "vyacheslav kiselev"], ["viacheslav kiselev", "vyacheslav kiselev"], ["kiselev viacheslav", "vyacheslav kiselev"],
+  ["jay stafin", "jason stafin"],
 ]);
+
+/** A spelling merged by hand above, which needs no second review. */
+export const mergedByHand = (name: string) => ALIASES.has(normName(name));
 
 /** The identity a written name belongs to: titles and suffixes dropped, the
  * first name reduced to its full form, the surname's particles joined. */

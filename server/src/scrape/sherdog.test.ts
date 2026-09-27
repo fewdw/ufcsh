@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { isVerifiedIdentity, reconcileCareerBouts, samePersonName } from "../career-records.ts";
-import { parseSherdogProfile, type SherdogBout } from "./sherdog.ts";
+import { parseSherdogProfile, parseSherdogUpcomingOpponents, type SherdogBout } from "./sherdog.ts";
 
 const fixture = `
   <div class="fighter-title"><span class="fn">Test Fighter</span><span class="nickname"><em>The Test</em></span></div>
@@ -91,4 +91,14 @@ test("a one-bout UFC career accepts a frozen total only when the dated source re
   const local = { id: "local", name: "Test Fighter", nickname: "", birth_date: "", wins: 2, losses: 1, draws: 0 };
   assert.ok(isVerifiedIdentity(local, 1, profile, bouts, known));
   assert.equal(isVerifiedIdentity({ ...local, wins: 1 }, 1, profile, bouts, known), false);
+});
+
+test("the Upcoming Fights section names the opponent, not the page's own fighter", () => {
+  const html = `<div class="fight_card_preview"><div class="fight">
+    <div class="fighter left_side"><h3><a href="/fighter/Sedriques-Dumas-288537"><span itemprop="name">Sedriques Dumas</span></a></h3></div>
+    <div class="fighter right_side"><h3><a href="/fighter/Luis-Hernandez-371502"><span itemprop="name">Luis Hernandez</span></a></h3></div>
+  </div></div>`;
+  assert.deepEqual(parseSherdogUpcomingOpponents(html, "https://www.sherdog.com/fighter/Sedriques-Dumas-288537"), [
+    { id: "371502", name: "Luis Hernandez", nickname: "", url: "https://www.sherdog.com/fighter/Luis-Hernandez-371502", height: "", weight: "" },
+  ]);
 });

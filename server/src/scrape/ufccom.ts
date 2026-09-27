@@ -514,6 +514,8 @@ export type ScrapedEventInfo = {
   broadcasters: Partial<Record<CardSegment, string>>;
   /** Assigned referee per bout, by card order and both names. */
   referees: { order: number; f1: string; f2: string; referee: string }[];
+  /** Every pairing the feed lists, to tell whether it is our card's at all. */
+  bouts: { f1: string; f2: string }[];
 };
 
 const FEED_SEGMENT: Record<string, CardSegment> = { main: "main", prelims: "prelims", "early prelims": "early", early: "early" };
@@ -532,6 +534,7 @@ export function parseEventInfo(feed: unknown): ScrapedEventInfo | null {
   const venueId = Number(location?.VenueId);
   const broadcasters: ScrapedEventInfo["broadcasters"] = {};
   const referees: ScrapedEventInfo["referees"] = [];
+  const bouts: ScrapedEventInfo["bouts"] = [];
   for (const fight of Array.isArray(event?.FightCard) ? event.FightCard : []) {
     const segment = FEED_SEGMENT[String(fight?.CardSegment ?? "").trim().toLowerCase()];
     const broadcaster = clean(fight?.CardSegmentBroadcaster);
@@ -539,6 +542,7 @@ export function parseEventInfo(feed: unknown): ScrapedEventInfo | null {
     const referee = clean(`${fight?.Referee?.FirstName ?? ""} ${fight?.Referee?.LastName ?? ""}`);
     const names = (fight?.Fighters ?? []).map((fighter: any) =>
       cleanText(`${fighter?.Name?.FirstName ?? ""} ${fighter?.Name?.LastName ?? ""}`));
+    if (names.length === 2 && names[0] && names[1]) bouts.push({ f1: names[0], f2: names[1] });
     if (referee && names.length === 2 && names[0] && names[1]) {
       referees.push({ order: Number(fight?.FightOrder) || 0, f1: names[0], f2: names[1], referee });
     }
@@ -553,6 +557,7 @@ export function parseEventInfo(feed: unknown): ScrapedEventInfo | null {
     timeZone: /^GMT[+-]\d{2}:\d{2}$/.test(String(event?.TimeZone ?? "")) ? String(event.TimeZone) : null,
     broadcasters,
     referees,
+    bouts,
   };
 }
 

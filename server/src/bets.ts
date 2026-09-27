@@ -331,6 +331,10 @@ export class BetStore {
       maxStake: MAX_STAKE_CENTS / 100,
       bets: bets.slice(offset, offset + PAGE_SIZE).map(bet => ({ ...bet, removable: this.removable(bet.legs) })) };
   }
+  /** A deleted account's bets leave the leaderboard. */
+  forget(user: string): void {
+    this.db.prepare("DELETE FROM bets WHERE user_id = ?").run(user);
+  }
   /** Net result per scorer over settled bets, for the leaderboard. */
   standings() {
     const rows = this.db.prepare("SELECT * FROM bets").all() as StoredBet[];
