@@ -801,7 +801,11 @@ export async function runRefreshJob(key: string): Promise<unknown> {
 function fightInProgress(f: { id: string; event_date: string; f1_outcome: string | null; f2_outcome: string | null }): boolean {
   if (fightIsComplete(f) || !isFightDay(f.event_date)) return false;
   const current = currentBout();
-  return !!current?.live && current.bout.id === f.id;
+  if (current?.live && current.bout.id === f.id) return true;
+  // A result stored after `f` was read moves the card on to the next bout
+  // while `f` still has none: it is still on until the next read says how it
+  // ended, rather than neither live nor finished for a poll.
+  return fightIsComplete(prepared("SELECT f1_outcome, f2_outcome FROM fights WHERE id = ?").get(f.id) as { f1_outcome: string | null; f2_outcome: string | null } | undefined ?? {});
 }
 
 async function getFight(id: string, rankingType: RankingType): Promise<unknown | null> {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assignRounds, assignSegments, estimatedStart, matchEventSchedule } from "./card-schedule.ts";
+import { assignRounds, assignSegments, estimatedStart, matchEventSchedule, sharesBout } from "./card-schedule.ts";
 import type { ScrapedEventSchedule, ScrapedSegmentBout } from "./scrape/ufccom.ts";
 
 const schedule = (slug: string, headline: string, prelims: string, main: string, early?: string): ScrapedEventSchedule => ({
@@ -162,4 +162,10 @@ test("one fighter named identically in the same card slot identifies the bout", 
     { order: 3, f1: "Patricio Pitbull", f2: "Choi Doo Ho", rounds: 3 },
   ]);
   assert.equal(rounds.get("a"), 3);
+});
+
+test("a page that shares no bout with our card is another event's", () => {
+  const fights = [{ f1_name: "Paddy Holohan", f2_name: "Louis Smolka" }, { f1_name: "Norman Parke", f2_name: "Reza Madadi" }];
+  assert.equal(sharesBout(fights, [{ f1: "Louis Smolka", f2: "Paddy Holohan" }]), true);
+  assert.equal(sharesBout(fights, [{ f1: "Neil Magny", f2: "Kelvin Gastelum" }, { f1: "Ricardo Lamas", f2: "Diego Sanchez" }]), false);
 });

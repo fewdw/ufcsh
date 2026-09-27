@@ -31,3 +31,17 @@ test("the infobox names the venue, city, attendance and gate as plain text", () 
 test("an absent or malformed field is null rather than guessed", () => {
   assert.deepEqual(eventInfobox("{{Infobox MMA event\n|venue=\n|attendance= TBA\n}}"), { venue: null, city: null, attendance: null, gate: null });
 });
+
+test("a wrapped venue and a multi-line citation don't hide fields", () => {
+  const ufc74 = `{{Infobox MMA event
+| name = UFC 74: Respect
+| venue = {{nowrap|[[Mandalay Bay Events Center]]}}
+| city = [[Las Vegas, Nevada]]
+| attendance = 11,118 (9,622 paid)<ref name="gate">{{cite web
+ |url         = http://example.test
+ |date        = August 27, 2007
+}}</ref>
+| gate = $3,307,000<ref name="gate" />
+}}`;
+  assert.deepEqual(eventInfobox(ufc74), { venue: "Mandalay Bay Events Center", city: "Las Vegas, Nevada", attendance: 11118, gate: "$3,307,000" });
+});

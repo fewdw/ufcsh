@@ -92,7 +92,12 @@ function build(): VenueIndex {
   const city = (row: EventVenueRow) => normName(cityOf(row).city ?? "");
   const aliasKey = (name: string, place: string) => `${normName(name)}|${place}`;
   const aliases = new Map<string, number>();
-  for (const row of rows) if (row.venue_id && row.wiki_venue) aliases.set(aliasKey(row.wiki_venue, city(row)), row.venue_id);
+  for (const row of rows) {
+    if (!row.venue_id) continue;
+    // The promotion's own name for a building is the first alias of all.
+    if (row.venue_name) aliases.set(aliasKey(row.venue_name, city(row)), row.venue_id);
+    if (row.wiki_venue) aliases.set(aliasKey(row.wiki_venue, city(row)), row.venue_id);
+  }
 
   type Group = { key: string; rows: EventVenueRow[] };
   const groups = new Map<string, Group>();

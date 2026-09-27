@@ -187,34 +187,34 @@ function EnteringRecords({
   );
 }
 
-const TAG = "inline-flex items-center gap-1 rounded px-1.5 py-px text-[10px] font-semibold leading-4";
-
 /** Rows of bouts. A container, not a viewport breakpoint: this list shares the
  *  page with a second column from `lg` up, so how much room a bout actually has
  *  is not something the window width can answer. The divider carries more of
  *  the load at card width, where it is the only line marking where one ends. */
 const BOUT_LIST = "@container divide-y divide-zinc-100 pb-2 @3xl:divide-zinc-50";
 
-/** What the bout's result line does not say: awards this fighter took home and
- * whoever came in over the limit. Each tag spells its meaning out in words. */
+/** The awards this fighter took home, which the result line does not say. */
 function BoutNotes({ row, className = "mt-1" }: { row: HistoryRow | ProfessionalHistoryRow; className?: string }) {
   const perf = row.bonuses?.perf ? PERF_AWARD[row.bonuses.perf] : null;
-  const misses = [
-    { who: "Missed weight", name: "This fighter", pounds: row.weight_miss?.fighter },
-    { who: `${lastName(row.opponent.name)} missed weight`, name: row.opponent.name, pounds: row.weight_miss?.opponent },
-  ].filter((miss) => miss.pounds != null);
-  if (!perf && !row.bonuses?.fotn && !misses.length) return null;
+  if (!perf && !row.bonuses?.fotn) return null;
   return (
     <span className={`flex flex-wrap gap-1 ${className}`}>
       {row.bonuses?.fotn ? <span className={BONUS_TAG} title={`${FIGHT_BONUS.full} bonus`}>{FIGHT_BONUS.short}</span> : null}
       {perf ? <span className={BONUS_TAG} title={`${perf.full} bonus`}>{perf.short}</span> : null}
-      {misses.map((miss) => (
-        <span key={miss.who} className={`${TAG} bg-rose-50 text-rose-700`} title={`${miss.name} missed weight${miss.pounds ? ` at ${miss.pounds} lb` : ""}`}>
-          <span aria-hidden="true">⚖️</span>{miss.who}{miss.pounds ? ` · ${miss.pounds} lb` : ""}
-        </span>
-      ))}
     </span>
   );
+}
+
+/** Whoever came in over the limit, said beside the division they missed. */
+function weightMisses(row: HistoryRow | ProfessionalHistoryRow) {
+  return [
+    { who: "Missed weight", name: "This fighter", pounds: row.weight_miss?.fighter },
+    { who: `${lastName(row.opponent.name)} missed weight`, name: row.opponent.name, pounds: row.weight_miss?.opponent },
+  ].filter((miss) => miss.pounds != null).map((miss) => (
+    <span key={miss.who} className="font-semibold text-rose-700" title={`${miss.name} missed weight${miss.pounds ? ` at ${miss.pounds} lb` : ""}`}>
+      {miss.who}{miss.pounds ? ` · ${miss.pounds} lb` : ""}
+    </span>
+  ));
 }
 
 /** The three places a bout can lead: its matchup, the opponent's profile, the
@@ -330,6 +330,7 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
           <span className="font-medium">{bout.method}</span>
           {bout.outside ? <span className="font-semibold text-violet-500">Outside UFC</span> : <DivisionLabel division={divisionName(row.weight_class, "catch_weight" in row ? row.catch_weight : null)} move={move} />}
           {row.title_narrative ? <span className={`font-semibold ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
+          {weightMisses(row)}
         </FactRun>
         {/* Out of the run and against the right edge, where it lines up with
             the date below and with every other price down the list — and where
@@ -413,6 +414,7 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
         <span className="block break-words text-[11px] leading-5 text-zinc-500">
           {bout.outside ? <span className="font-semibold text-violet-500">Outside UFC</span> : <DivisionLabel division={divisionName(row.weight_class, "catch_weight" in row ? row.catch_weight : null)} move={move} />}
           {row.title_narrative ? <span className={`block font-semibold leading-4 ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
+          {weightMisses(row).map((miss) => <span key={miss.key} className="mt-1 block leading-4">{miss}</span>)}
         </span>
       </div>
 
