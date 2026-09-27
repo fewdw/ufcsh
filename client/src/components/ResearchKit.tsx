@@ -361,9 +361,8 @@ export function YearBars({ title, data, unit, marked, from, to, onPick }: {
   const max = Math.max(...years.map((entry) => entry.n), 1);
   const single = from && from === to ? Number(from) : null;
   const inRange = (year: number) => (!from || year >= Number(from)) && (!to || year <= Number(to));
-  // Every column carries its year; a count above it while there is room.
+  // Every column carries its year under it and its count on top.
   const short = years.length > 8;
-  const counts = years.length <= 14;
   const describe = (entry: YearCount) => `${entry.year} · ${entry.n.toLocaleString()} ${unit}${marked ? ` · ${entry.marked.toLocaleString()} ${marked}` : ""}`;
   return (
     <Panel title={title} subtitle={hover ? describe(hover) : undefined}>
@@ -375,15 +374,17 @@ export function YearBars({ title, data, unit, marked, from, to, onPick }: {
               onMouseEnter={() => setHover(entry)} onFocus={() => setHover(entry)} onBlur={() => setHover(null)}
               className={`group flex min-w-0 max-w-12 flex-1 flex-col items-center transition-opacity ${inRange(entry.year) ? "" : "opacity-30"}`}>
               <span className="flex h-24 w-full flex-col justify-end">
-                {counts ? <span className="mb-0.5 text-center text-[10px] font-semibold tabular-nums text-zinc-500">{entry.n || ""}</span> : null}
+                <span className={`mb-0.5 whitespace-nowrap text-center font-semibold tabular-nums tracking-tight text-zinc-500 ${short ? "text-[9px]" : "text-[10px]"}`}>{entry.n || ""}</span>
                 {entry.n ? (
-                  <span className="flex w-full flex-col justify-end gap-px overflow-hidden rounded-t-[3px]" style={{ height: `${(entry.n / max) * (counts ? 80 : 100)}%` }}>
+                  <span className="flex w-full flex-col justify-end gap-px overflow-hidden rounded-t-[3px]" style={{ height: `${(entry.n / max) * 80}%` }}>
                     {entry.n - entry.marked ? <span className="w-full bg-zinc-300 group-hover:bg-zinc-400" style={{ flexGrow: entry.n - entry.marked }} /> : null}
                     {entry.marked ? <span className="w-full bg-zinc-800 group-hover:opacity-80 dark:bg-zinc-200" style={{ flexGrow: entry.marked }} /> : null}
                   </span>
                 ) : <span className="h-px w-full bg-zinc-200" />}
               </span>
-              <span className={`mt-1 text-[10px] tabular-nums ${single === entry.year ? "font-semibold text-zinc-900" : "text-zinc-400"}`}>{short ? `’${String(entry.year).slice(2)}` : entry.year}</span>
+              <span className={`mt-1 whitespace-nowrap tabular-nums tracking-tight ${short ? "text-[9px] sm:text-[10px]" : "text-[10px]"} ${single === entry.year ? "font-semibold text-zinc-900" : "text-zinc-400"}`}>
+                {short ? <><span className="max-sm:hidden">’</span>{String(entry.year).slice(2)}</> : entry.year}
+              </span>
             </button>
           ))}
         </div>
