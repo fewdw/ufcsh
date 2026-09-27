@@ -3,7 +3,7 @@ import type { JudgeProfile } from "../api";
 import { lastName } from "../format";
 import { PANEL } from "../components/chartTokens";
 import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "../components/segmented";
-import { pct, officialRows, useKeptApi, useUrlFilters } from "../research";
+import { gapChip, pct, officialRows, useKeptApi, useUrlFilters } from "../research";
 import { SITE_URL, useSeo } from "../seo";
 import RequestNotice from "../components/RequestNotice";
 import { LoadMore, useInfiniteList } from "../components/InfiniteList";
@@ -183,6 +183,13 @@ export default function JudgePage() {
   const tab = filters.params.get("tab") === "stats" ? "stats" : "list";
   const split = data.verdict_split;
   const against: Against = filters.params.get("vs") === "fans" ? "fans" : "judges";
+  const b = data.baseline;
+  /** A rate beside every UFC judge's in the same years and divisions. */
+  const rate = (key: string, title: string, value: number | null, base: number | null, detail: string | null) => ({
+    key, title, ...gapChip(value, base), value: pct(value),
+    detail: [detail, `Judges ${pct(base)}`].filter(Boolean).join(" · "),
+    hint: "Points above or below every UFC judge in the same years and divisions",
+  });
 
   const identity = (
     <IdentityCard title={data.name} subtitle="Judge"
@@ -200,24 +207,35 @@ export default function JudgePage() {
           <button type="button" onClick={() => filters.clear(["tab", "vs"])} className="font-medium underline underline-offset-2 hover:text-zinc-900">Show all</button>
         </p>
       ) : null}
-      <div className="flex justify-center">
-        <Wheel label="Cards" groups={[
-          { title: `With the result (${s.agreed_result})`, tone: "text-emerald-700", slices: VERDICTS.map((verdict, index) => ({ key: `w-${verdict.value}`, label: verdict.label, n: split[verdict.value].with, color: WITH[index] })) },
-          { title: `Against (${s.with_result - s.agreed_result})`, tone: "text-rose-700", slices: VERDICTS.map((verdict, index) => ({ key: `a-${verdict.value}`, label: verdict.label, n: split[verdict.value].against, color: AGAINST[index] })) },
+      <div className="grid grid-cols-3 items-start gap-2">
+        <Wheel compact label="Result" groups={[
+          { title: `Agreed ${s.agreed_result}`, tone: "text-emerald-700", slices: VERDICTS.map((verdict, index) => ({ key: `w-${verdict.value}`, label: verdict.label, n: split[verdict.value].with, color: WITH[index] })) },
+          { title: `Against ${s.with_result - s.agreed_result}`, tone: "text-rose-700", slices: VERDICTS.map((verdict, index) => ({ key: `a-${verdict.value}`, label: verdict.label, n: split[verdict.value].against, color: AGAINST[index] })) },
+        ]} />
+        <Wheel compact label="Judges" groups={[
+          { title: "Same winner", tone: "text-emerald-700", slices: [
+            { key: "both", label: "Both", n: s.panel_agreement.both, color: WITH[0] },
+            { key: "one", label: "One", n: s.panel_agreement.one, color: WITH[1] },
+          ] },
+          { title: "Alone", tone: "text-rose-700", slices: [{ key: "none", label: "Neither", n: s.panel_agreement.none, color: AGAINST[0] }] },
+        ]} />
+        <Wheel compact label="Fans" groups={[
+          { title: "Same winner", tone: "text-emerald-700", slices: [{ key: "same", label: "Same", n: s.fan_cards - s.fan_pick_differs, color: WITH[0] }] },
+          { title: "Different", tone: "text-rose-700", slices: [{ key: "differ", label: "Different", n: s.fan_pick_differs, color: AGAINST[0] }] },
         ]} />
       </div>
     </IdentityCard>
   );
 
   const stats = <>
-    <RankRows title="How they score" rows={[
-      { key: "agreed", title: "Picked the winner", detail: `${s.agreed_result.toLocaleString()} of ${s.with_result.toLocaleString()}`, value: pct(s.agreed_result_rate) },
-      { key: "dissents", title: "Lone dissents", detail: `${s.dissents} of ${s.panels.toLocaleString()}`, value: pct(s.dissent_rate) },
-      { key: "lone-rounds", title: "Rounds agreed", detail: s.lone_rounds ? `Alone on ${s.lone_rounds}` : undefined, value: pct(s.round_agreement_rate) },
-      { key: "ten-eight", title: "10–8 rounds", detail: `${s.ten_eights} of ${s.rounds_scored.toLocaleString()}`, value: pct(s.ten_eight_rate), hint: "A point deduction can also produce a 10–8 on paper." },
-      { key: "ten-ten", title: "10–10 rounds", detail: `${s.ten_tens} of ${s.rounds_scored.toLocaleString()}`, value: pct(s.ten_ten_rate) },
-      { key: "fans-differ", title: "Different winner from fans", value: s.fan_cards ? `${s.fan_pick_differs} of ${s.fan_cards}` : "—" },
-      { key: "fan-rounds-differ", title: "Different rounds from fans", value: s.fan_rounds ? `${s.fan_rounds_differ} of ${s.fan_rounds}` : "—" },
+    <RankRows title="Against other judges" rows={[
+      rate("agreed", "Picked the winner", s.agreed_result_rate, b.agreed_result_rate, `${s.agreed_result.toLocaleString()} of ${s.with_result.toLocaleString()}`),
+      rate("dissents", "Lone dissents", s.dissent_rate, b.dissent_rate, `${s.dissents} of ${s.panels.toLocaleString()}`),
+      rate("lone-rounds", "Rounds agreed", s.round_agreement_rate, b.round_agreement_rate, s.lone_rounds ? `Alone on ${s.lone_rounds}` : null),
+      { ...rate("ten-eight", "10–8 rounds", s.ten_eight_rate, b.ten_eight_rate, `${s.ten_eights} of ${s.rounds_scored.toLocaleString()}`), hint: "A point deduction can also produce a 10–8 on paper." },
+      rate("ten-ten", "10–10 rounds", s.ten_ten_rate, b.ten_ten_rate, `${s.ten_tens} of ${s.rounds_scored.toLocaleString()}`),
+      rate("fans-differ", "Different winner from fans", s.fan_pick_differ_rate, b.fan_pick_differ_rate, s.fan_cards ? `${s.fan_pick_differs} of ${s.fan_cards}` : null),
+      rate("fan-rounds-differ", "Different rounds from fans", s.fan_round_differ_rate, b.fan_round_differ_rate, s.fan_rounds ? `${s.fan_rounds_differ} of ${s.fan_rounds}` : null),
     ].map((row) => ({ ...row, selected: f.view === row.key, onSelect: () => filters.set("view", f.view === row.key ? null : row.key) }))} />
     <RankRows title="Their usual cards" rows={data.score_lines.map((line) => ({
       key: line.score, chip: line.score, title: `${line.n.toLocaleString()} cards`, value: pct(s.cards ? Math.round((line.n / s.cards) * 1000) / 10 : null),

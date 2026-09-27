@@ -886,6 +886,17 @@ type Facets = { years: { first: number; last: number } | null; divisions: { divi
 export type YearCount = { year: number; n: number; marked: number };
 type MethodCounts = Record<"ko" | "sub" | "dec" | "other", number>;
 
+export type JudgeSummary = {
+    cards: number; panels: number; dissents: number; dissent_rate: number | null;
+    split_panels: number; dissents_in_splits: number; panel_agreement: { both: number; one: number; none: number };
+    with_result: number; agreed_result: number; agreed_result_rate: number | null;
+    round_cards: number; rounds_scored: number; ten_eights: number; ten_eight_rate: number | null;
+    ten_tens: number; ten_ten_rate: number | null; rounds_compared: number; round_agreement_rate: number | null;
+    lone_rounds: number; fan_cards: number; fan_pick_differs: number; fan_pick_differ_rate: number | null;
+    fan_rounds: number; fan_rounds_differ: number; fan_round_differ_rate: number | null;
+    missing_round_cards: number;
+};
+
 export type JudgeProfile = {
   kind: "judge";
   slug: string;
@@ -893,15 +904,9 @@ export type JudgeProfile = {
   career: { cards: number } & Facets;
   filters: OfficialFilters;
   decision_counts: Record<string, number>;
-  summary: {
-    cards: number; panels: number; dissents: number; dissent_rate: number | null;
-    split_panels: number; dissents_in_splits: number;
-    with_result: number; agreed_result: number; agreed_result_rate: number | null;
-    round_cards: number; rounds_scored: number; ten_eights: number; ten_eight_rate: number | null;
-    ten_tens: number; ten_ten_rate: number | null; rounds_compared: number; round_agreement_rate: number | null;
-    lone_rounds: number; fan_cards: number; fan_pick_differs: number; fan_rounds: number; fan_rounds_differ: number;
-    missing_round_cards: number;
-  };
+  summary: JudgeSummary;
+  baseline: JudgeSummary;
+
   by_year: YearCount[];
   verdict_split: Record<"unanimous" | "split" | "majority" | "draw", { with: number; against: number }>;
   score_lines: { score: string; n: number }[];

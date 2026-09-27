@@ -341,6 +341,62 @@ function readCard(officiated: Officiated, key: string): JudgeReading | null {
   };
 }
 
+/** The figures a judge's page shows, over any set of cards. */
+function judgeSummary(readings: JudgeReading[]) {
+  const sum = (pickValue: (reading: JudgeReading) => number) => readings.reduce((total, reading) => total + pickValue(reading), 0);
+  const panels = readings.filter((reading) => reading.others.length === 2);
+  const withResult = readings.filter((reading) => reading.agreedResult != null);
+  const withRounds = readings.filter((reading) => reading.roundsScored > 0);
+  const withFans = readings.filter((reading) => reading.fanPickDiffers != null);
+  const splits = readings.filter((reading) => reading.verdict === "split" || reading.verdict === "majority");
+  const agreeing = (count: number) => panels.filter((reading) => reading.others.filter((other) => pick(other.f1, other.f2) === pick(reading.card.f1, reading.card.f2)).length === count).length;
+  return {
+    cards: readings.length,
+    panels: panels.length,
+    dissents: sum((reading) => Number(reading.dissent)),
+    dissent_rate: pct(sum((reading) => Number(reading.dissent)), panels.length),
+    split_panels: splits.length,
+    dissents_in_splits: splits.filter((reading) => reading.dissent).length,
+    // Full panels by how many of the other two judges had the same winner.
+    panel_agreement: { both: agreeing(2), one: agreeing(1), none: agreeing(0) },
+    with_result: withResult.length,
+    agreed_result: withResult.filter((reading) => reading.agreedResult).length,
+    agreed_result_rate: pct(withResult.filter((reading) => reading.agreedResult).length, withResult.length),
+    round_cards: withRounds.length,
+    rounds_scored: sum((reading) => reading.roundsScored),
+    ten_eights: sum((reading) => reading.tenEights),
+    ten_eight_rate: pct(sum((reading) => reading.tenEights), sum((reading) => reading.roundsScored)),
+    ten_tens: sum((reading) => reading.tenTens),
+    ten_ten_rate: pct(sum((reading) => reading.tenTens), sum((reading) => reading.roundsScored)),
+    rounds_compared: sum((reading) => reading.roundsCompared),
+    round_agreement_rate: pct(sum((reading) => reading.roundsAgreed), sum((reading) => reading.roundsCompared)),
+    lone_rounds: sum((reading) => reading.loneRounds),
+    fan_cards: withFans.length,
+    fan_pick_differs: withFans.filter((reading) => reading.fanPickDiffers).length,
+    fan_pick_differ_rate: pct(withFans.filter((reading) => reading.fanPickDiffers).length, withFans.length),
+    fan_rounds: sum((reading) => reading.fanRounds),
+    fan_rounds_differ: sum((reading) => reading.fanRoundsDiffer),
+    fan_round_differ_rate: pct(sum((reading) => reading.fanRoundsDiffer), sum((reading) => reading.fanRounds)),
+    // Share of bouts whose panel is missing at least one round card: the
+    // round figures above only describe the rest.
+    missing_round_cards: readings.length - withRounds.length,
+  };
+}
+
+/** Every UFC judge's every card, read once per index. */
+let everyCard: { version: string; readings: JudgeReading[] } | null = null;
+function allJudgeReadings(): JudgeReading[] {
+  const index = officialsIndex();
+  if (everyCard?.version === index.version) return everyCard.readings;
+  const readings = index.fights.flatMap((officiated) => officiated.cards.flatMap((card) => {
+    if (!card.key) return [];
+    const reading = readCard(officiated, card.key);
+    return reading ? [reading] : [];
+  }));
+  everyCard = { version: index.version, readings };
+  return readings;
+}
+
 export function judgeProfile(slug: string, params: URLSearchParams): unknown | null {
   const index = officialsIndex();
   const judge = index.judgeSlugs.get(slug);
@@ -371,12 +427,6 @@ export function judgeProfile(slug: string, params: URLSearchParams): unknown | n
     scores.set(line, (scores.get(line) ?? 0) + 1);
   }
 
-  const sum = (pickValue: (reading: JudgeReading) => number) => readings.reduce((total, reading) => total + pickValue(reading), 0);
-  const panels = readings.filter((reading) => reading.others.length === 2);
-  const withResult = readings.filter((reading) => reading.agreedResult != null);
-  const withRounds = readings.filter((reading) => reading.roundsScored > 0);
-  const withFans = readings.filter((reading) => reading.fanPickDiffers != null);
-  const splits = readings.filter((reading) => reading.verdict === "split" || reading.verdict === "majority");
   // Agreement with each colleague, by who each card went to.
   const colleagues = new Map<string, { name: string; slug: string | null; together: number; agreed: number }>();
   for (const reading of readings) {
@@ -397,33 +447,10 @@ export function judgeProfile(slug: string, params: URLSearchParams): unknown | n
     career: { cards: all.length, ...facets(judge.fights) },
     filters: { ...filters, q: params.get("q") ?? "" },
     decision_counts: Object.fromEntries(decisions),
-    summary: {
-      cards: readings.length,
-      panels: panels.length,
-      dissents: sum((reading) => Number(reading.dissent)),
-      dissent_rate: pct(sum((reading) => Number(reading.dissent)), panels.length),
-      split_panels: splits.length,
-      dissents_in_splits: splits.filter((reading) => reading.dissent).length,
-      with_result: withResult.length,
-      agreed_result: withResult.filter((reading) => reading.agreedResult).length,
-      agreed_result_rate: pct(withResult.filter((reading) => reading.agreedResult).length, withResult.length),
-      round_cards: withRounds.length,
-      rounds_scored: sum((reading) => reading.roundsScored),
-      ten_eights: sum((reading) => reading.tenEights),
-      ten_eight_rate: pct(sum((reading) => reading.tenEights), sum((reading) => reading.roundsScored)),
-      ten_tens: sum((reading) => reading.tenTens),
-      ten_ten_rate: pct(sum((reading) => reading.tenTens), sum((reading) => reading.roundsScored)),
-      rounds_compared: sum((reading) => reading.roundsCompared),
-      round_agreement_rate: pct(sum((reading) => reading.roundsAgreed), sum((reading) => reading.roundsCompared)),
-      lone_rounds: sum((reading) => reading.loneRounds),
-      fan_cards: withFans.length,
-      fan_pick_differs: withFans.filter((reading) => reading.fanPickDiffers).length,
-      fan_rounds: sum((reading) => reading.fanRounds),
-      fan_rounds_differ: sum((reading) => reading.fanRoundsDiffer),
-      // Share of bouts whose panel is missing at least one round card: the
-      // round figures above only describe the rest.
-      missing_round_cards: readings.length - withRounds.length,
-    },
+    summary: judgeSummary(readings),
+    // The same figures over every UFC judge's cards in the same years and
+    // divisions, so each rate reads against the field.
+    baseline: judgeSummary(allJudgeReadings().filter((reading) => matchesBase(reading.officiated, { ...filters, q: "" }) && inResult(reading))),
     // The judge's cards by the decision they sat on, split by whether their
     // card went to the official winner.
     verdict_split: Object.fromEntries((["unanimous", "split", "majority", "draw"] as Verdict[]).map((verdict) => {

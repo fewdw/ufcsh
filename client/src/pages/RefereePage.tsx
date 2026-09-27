@@ -103,7 +103,7 @@ export default function RefereePage() {
       rate("Decision", s.decision_rate, b.decision_rate, "dec"),
       {
         key: "time", chip: timeGap == null ? "—" : `${timeGap > 0 ? "+" : timeGap < 0 ? "−" : ""}${Math.abs(timeGap)}s`,
-        chipClass: timeGap ? "bg-zinc-900 text-white" : undefined, title: "Average finish time",
+        chipClass: timeGap ? "w-14 bg-zinc-900 text-white" : "w-14 bg-zinc-100 text-zinc-600", title: "Average finish time",
         detail: `UFC ${b.average_stoppage_seconds != null ? formatDuration(b.average_stoppage_seconds) : "—"}`,
         value: s.average_stoppage_seconds != null ? formatDuration(s.average_stoppage_seconds) : "—",
       },

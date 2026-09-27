@@ -117,26 +117,29 @@ export function IdentityCard({ title, subtitle, badge, facts, children }: {
 export type WheelGroup = { title: string; tone: string; slices: { key: string; label: string; n: number; color: string }[] };
 
 /** A whole split by kind, drawn as the fighter page draws a record: a ring
- *  with the total in its hole and each part named beside it. */
-export function Wheel({ label, groups }: { label: string; groups: WheelGroup[] }) {
-  const slices = groups.flatMap((group) => group.slices).filter((slice) => slice.n > 0);
-  const total = slices.reduce((sum, slice) => sum + slice.n, 0);
+ *  with the total in its hole and each part named beside it. The first group
+ *  (the agreeing, the finished) starts at twelve o'clock and runs
+ *  counter-clockwise, as a fighter's wins do; the rest run clockwise. */
+export function Wheel({ label, groups, compact }: { label: string; groups: WheelGroup[]; compact?: boolean }) {
+  const [first, ...rest] = groups;
+  const ordered = [...rest.flatMap((group) => group.slices), ...[...(first?.slices ?? [])].reverse()].filter((slice) => slice.n > 0);
+  const total = ordered.reduce((sum, slice) => sum + slice.n, 0);
   if (!total) return null;
   let position = 0;
-  const gradient = slices.map((slice) => {
+  const gradient = ordered.map((slice) => {
     const start = position;
     position += (slice.n / total) * 100;
     return `${slice.color} ${start}% ${position}%`;
   }).join(", ");
   return (
-    <div className="flex min-w-0 items-center gap-3">
-      <div className="grid h-20 w-20 shrink-0 place-items-center rounded-full" style={{ background: `conic-gradient(from 0deg, ${gradient})` }}
-        role="img" aria-label={`${label}: ${slices.map((slice) => `${slice.n} ${slice.label}`).join(", ")}`}>
-        <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-center shadow-[0_0_0_1px_rgba(0,0,0,0.04)]">
-          <span className="text-sm font-semibold tabular-nums text-zinc-900">{total.toLocaleString()}<span className="block text-[8px] font-bold uppercase tracking-wider text-zinc-400">{label}</span></span>
+    <div className={`flex min-w-0 ${compact ? "flex-col items-center gap-2" : "items-center gap-3"}`}>
+      <div className={`grid shrink-0 place-items-center rounded-full ${compact ? "h-16 w-16" : "h-20 w-20"}`} style={{ background: `conic-gradient(from 0deg, ${gradient})` }}
+        role="img" aria-label={`${label}: ${groups.flatMap((group) => group.slices).filter((slice) => slice.n > 0).map((slice) => `${slice.n} ${slice.label}`).join(", ")}`}>
+        <div className={`grid place-items-center rounded-full bg-white text-center shadow-[0_0_0_1px_rgba(0,0,0,0.04)] ${compact ? "h-10 w-10" : "h-12 w-12"}`}>
+          <span className={`${compact ? "text-xs" : "text-sm"} font-semibold tabular-nums text-zinc-900`}>{total.toLocaleString()}<span className="block text-[8px] font-bold uppercase tracking-wider text-zinc-400">{label}</span></span>
         </div>
       </div>
-      <div className="flex gap-x-4">
+      <div className={compact ? "flex flex-col gap-1.5" : "flex gap-x-4"}>
         {groups.map((group) => (
           <div key={group.title}>
             <div className={`mb-1 text-[8px] font-bold uppercase tracking-wider ${group.tone}`}>{group.title}</div>
@@ -358,35 +361,38 @@ export function YearBars({ title, data, unit, marked, from, to, onPick }: {
   const max = Math.max(...years.map((entry) => entry.n), 1);
   const single = from && from === to ? Number(from) : null;
   const inRange = (year: number) => (!from || year >= Number(from)) && (!to || year <= Number(to));
+  // Every column carries its year; a count above it while there is room.
+  const short = years.length > 8;
+  const counts = years.length <= 14;
   const describe = (entry: YearCount) => `${entry.year} · ${entry.n.toLocaleString()} ${unit}${marked ? ` · ${entry.marked.toLocaleString()} ${marked}` : ""}`;
   return (
     <Panel title={title} subtitle={hover ? describe(hover) : undefined}>
       <div className="px-4 pb-3 pt-3 sm:px-5">
-        <div className="flex h-24 items-end justify-between gap-0.5" onMouseLeave={() => setHover(null)}>
+        <div className="flex items-stretch justify-between gap-0.5" onMouseLeave={() => setHover(null)}>
           {years.map((entry) => (
             <button key={entry.year} type="button" aria-label={describe(entry)} aria-pressed={single === entry.year}
               onClick={() => onPick(single === entry.year ? null : entry.year)}
               onMouseEnter={() => setHover(entry)} onFocus={() => setHover(entry)} onBlur={() => setHover(null)}
-              className={`group flex h-full min-w-0 max-w-10 flex-1 flex-col justify-end transition-opacity ${inRange(entry.year) ? "" : "opacity-30"}`}>
-              {entry.n ? (
-                <span className="flex w-full flex-col justify-end gap-px overflow-hidden rounded-t-[3px]" style={{ height: `${(entry.n / max) * 100}%` }}>
-                  {entry.n - entry.marked ? <span className="w-full bg-zinc-300 group-hover:bg-zinc-400" style={{ flexGrow: entry.n - entry.marked }} /> : null}
-                  {entry.marked ? <span className="w-full bg-zinc-800 group-hover:opacity-80 dark:bg-zinc-200" style={{ flexGrow: entry.marked }} /> : null}
-                </span>
-              ) : <span className="h-px w-full bg-zinc-200" />}
+              className={`group flex min-w-0 max-w-12 flex-1 flex-col items-center transition-opacity ${inRange(entry.year) ? "" : "opacity-30"}`}>
+              <span className="flex h-24 w-full flex-col justify-end">
+                {counts ? <span className="mb-0.5 text-center text-[10px] font-semibold tabular-nums text-zinc-500">{entry.n || ""}</span> : null}
+                {entry.n ? (
+                  <span className="flex w-full flex-col justify-end gap-px overflow-hidden rounded-t-[3px]" style={{ height: `${(entry.n / max) * (counts ? 80 : 100)}%` }}>
+                    {entry.n - entry.marked ? <span className="w-full bg-zinc-300 group-hover:bg-zinc-400" style={{ flexGrow: entry.n - entry.marked }} /> : null}
+                    {entry.marked ? <span className="w-full bg-zinc-800 group-hover:opacity-80 dark:bg-zinc-200" style={{ flexGrow: entry.marked }} /> : null}
+                  </span>
+                ) : <span className="h-px w-full bg-zinc-200" />}
+              </span>
+              <span className={`mt-1 text-[10px] tabular-nums ${single === entry.year ? "font-semibold text-zinc-900" : "text-zinc-400"}`}>{short ? `’${String(entry.year).slice(2)}` : entry.year}</span>
             </button>
           ))}
         </div>
-        <div className="mt-1.5 flex items-center justify-between text-[10px] tabular-nums text-zinc-400">
-          <span>{first}</span>
-          {marked ? (
-            <span className="flex items-center gap-3">
-              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-zinc-800 dark:bg-zinc-200" aria-hidden="true" />{marked}</span>
-              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-zinc-300" aria-hidden="true" />{unit}</span>
-            </span>
-          ) : null}
-          <span>{last}</span>
-        </div>
+        {marked ? (
+          <div className="mt-2 flex items-center justify-center gap-3 text-[10px] text-zinc-400">
+            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-zinc-800 dark:bg-zinc-200" aria-hidden="true" />{marked}</span>
+            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-zinc-300" aria-hidden="true" />{unit}</span>
+          </div>
+        ) : null}
       </div>
     </Panel>
   );
