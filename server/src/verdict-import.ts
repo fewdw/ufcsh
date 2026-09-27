@@ -262,22 +262,23 @@ const REFRESH_BY_AGE: [maxDays: number, everyMs: number][] = [
   [180, 7 * 86_400_000],
   [365, 30 * 86_400_000],
 ];
-/** A decision on fight night without its tally is what readers open next. */
+/** A bout just scored on fight night (a decision, or a stoppage after the
+ * first round) without its tally is what readers open next. */
 const LIVE_MS = 60_000;
 const ageInDays = (date: string, now: number) => (now - Date.parse(`${date}T00:00:00Z`)) / 86_400_000;
-const everyFor = (age: number, live: boolean) => live && age <= 2 ? LIVE_MS : REFRESH_BY_AGE.find(([maxDays]) => age <= maxDays)?.[1];
+const everyFor = (age: number, live: boolean) => live && age <= 1.5 ? LIVE_MS : REFRESH_BY_AGE.find(([maxDays]) => age <= maxDays)?.[1];
 
 function fightDue(fight: LocalFight, now = Date.now()): boolean {
-  const every = everyFor(ageInDays(fight.date, now), isDecision(fight) && !fight.community_score_json);
+  const every = everyFor(ageInDays(fight.date, now), scoreable(fight) && !fight.community_score_json);
   return every != null && (fight.verdict_checked_at ?? 0) < now - every;
 }
 
 /** Cards due a re-read, most recent first. A card first seen before it was
  * fought (so nothing matched yet) counts while one of ours is on that date.
- * `live`: still being fought, or a decision on it still waits for a tally. */
+ * `live`: still being fought, or a scored bout on it still waits for a tally. */
 const dueCards = db.prepare(`SELECT v.verdict_id, v.checked_at, julianday('now') - julianday(COALESCE(e.date, v.date)) AS age,
     (v.event_id IS NULL OR e.complete = 0 OR EXISTS (SELECT 1 FROM fights f WHERE f.event_id = e.id
-      AND f.method LIKE '%DEC%' AND f.community_score_json IS NULL)) AS live
+      AND (f.method LIKE '%DEC%' OR CAST(f.round AS INTEGER) > 1) AND f.community_score_json IS NULL)) AS live
   FROM verdict_events v LEFT JOIN events e ON e.id = v.event_id
   WHERE (v.event_id IS NOT NULL AND e.date <= date('now') AND e.date >= date('now', '-365 day'))
     OR (v.event_id IS NULL AND v.date BETWEEN date('now', '-3 day') AND date('now', '+1 day')
