@@ -218,6 +218,22 @@ function matchesBase(officiated: Officiated, filters: OfficialFilters): boolean 
 
 const pct = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : null);
 
+const isTitle = (fight: IndexedFight) => fight.titleFight && (fight.titleType === "title" || fight.titleType === "interim");
+
+/** Bouts a year across the whole career under every filter but the years, so
+ * the chart that picks a year never shrinks to the year picked. */
+function byYear<T>(items: T[], fightOf: (item: T) => IndexedFight, marked: (item: T) => boolean) {
+  const years = new Map<number, { year: number; n: number; marked: number }>();
+  for (const item of items) {
+    const year = fightOf(item).year;
+    const entry = years.get(year) ?? { year, n: 0, marked: 0 };
+    entry.n += 1;
+    if (marked(item)) entry.marked += 1;
+    years.set(year, entry);
+  }
+  return [...years.values()].sort((a, b) => a.year - b.year);
+}
+
 function facets(fights: Officiated[]) {
   const divisions = new Map<string, number>();
   let first = 9999;
@@ -325,6 +341,62 @@ function readCard(officiated: Officiated, key: string): JudgeReading | null {
   };
 }
 
+/** The figures a judge's page shows, over any set of cards. */
+function judgeSummary(readings: JudgeReading[]) {
+  const sum = (pickValue: (reading: JudgeReading) => number) => readings.reduce((total, reading) => total + pickValue(reading), 0);
+  const panels = readings.filter((reading) => reading.others.length === 2);
+  const withResult = readings.filter((reading) => reading.agreedResult != null);
+  const withRounds = readings.filter((reading) => reading.roundsScored > 0);
+  const withFans = readings.filter((reading) => reading.fanPickDiffers != null);
+  const splits = readings.filter((reading) => reading.verdict === "split" || reading.verdict === "majority");
+  const agreeing = (count: number) => panels.filter((reading) => reading.others.filter((other) => pick(other.f1, other.f2) === pick(reading.card.f1, reading.card.f2)).length === count).length;
+  return {
+    cards: readings.length,
+    panels: panels.length,
+    dissents: sum((reading) => Number(reading.dissent)),
+    dissent_rate: pct(sum((reading) => Number(reading.dissent)), panels.length),
+    split_panels: splits.length,
+    dissents_in_splits: splits.filter((reading) => reading.dissent).length,
+    // Full panels by how many of the other two judges had the same winner.
+    panel_agreement: { both: agreeing(2), one: agreeing(1), none: agreeing(0) },
+    with_result: withResult.length,
+    agreed_result: withResult.filter((reading) => reading.agreedResult).length,
+    agreed_result_rate: pct(withResult.filter((reading) => reading.agreedResult).length, withResult.length),
+    round_cards: withRounds.length,
+    rounds_scored: sum((reading) => reading.roundsScored),
+    ten_eights: sum((reading) => reading.tenEights),
+    ten_eight_rate: pct(sum((reading) => reading.tenEights), sum((reading) => reading.roundsScored)),
+    ten_tens: sum((reading) => reading.tenTens),
+    ten_ten_rate: pct(sum((reading) => reading.tenTens), sum((reading) => reading.roundsScored)),
+    rounds_compared: sum((reading) => reading.roundsCompared),
+    round_agreement_rate: pct(sum((reading) => reading.roundsAgreed), sum((reading) => reading.roundsCompared)),
+    lone_rounds: sum((reading) => reading.loneRounds),
+    fan_cards: withFans.length,
+    fan_pick_differs: withFans.filter((reading) => reading.fanPickDiffers).length,
+    fan_pick_differ_rate: pct(withFans.filter((reading) => reading.fanPickDiffers).length, withFans.length),
+    fan_rounds: sum((reading) => reading.fanRounds),
+    fan_rounds_differ: sum((reading) => reading.fanRoundsDiffer),
+    fan_round_differ_rate: pct(sum((reading) => reading.fanRoundsDiffer), sum((reading) => reading.fanRounds)),
+    // Share of bouts whose panel is missing at least one round card: the
+    // round figures above only describe the rest.
+    missing_round_cards: readings.length - withRounds.length,
+  };
+}
+
+/** Every UFC judge's every card, read once per index. */
+let everyCard: { version: string; readings: JudgeReading[] } | null = null;
+function allJudgeReadings(): JudgeReading[] {
+  const index = officialsIndex();
+  if (everyCard?.version === index.version) return everyCard.readings;
+  const readings = index.fights.flatMap((officiated) => officiated.cards.flatMap((card) => {
+    if (!card.key) return [];
+    const reading = readCard(officiated, card.key);
+    return reading ? [reading] : [];
+  }));
+  everyCard = { version: index.version, readings };
+  return readings;
+}
+
 export function judgeProfile(slug: string, params: URLSearchParams): unknown | null {
   const index = officialsIndex();
   const judge = index.judgeSlugs.get(slug);
@@ -334,19 +406,27 @@ export function judgeProfile(slug: string, params: URLSearchParams): unknown | n
   const base = all.filter((reading) => matchesBase(reading.officiated, filters));
   const decisions = new Map<Verdict, number>();
   for (const reading of base) decisions.set(reading.verdict, (decisions.get(reading.verdict) ?? 0) + 1);
-  const readings = base
-    .filter((reading) => !filters.result || reading.verdict === filters.result)
-    .filter((reading) => filters.view === "dissents" ? reading.dissent
+  const inResult = (reading: JudgeReading) => !filters.result || reading.verdict === filters.result;
+  // The view (dissents, 10–8s…) narrows the list only; the figures stay on
+  // every card in the other filters, so pressing a figure never moves it.
+  const inView = (reading: JudgeReading) => (filters.view === "dissents" ? reading.dissent
       : filters.view === "against-result" ? reading.agreedResult === false
         : filters.view === "ten-eight" ? reading.tenEights > 0
-          : filters.view === "rounds" ? reading.roundsScored > 0 : true);
+          : filters.view === "rounds" ? reading.roundsScored > 0
+            : filters.view === "title" ? isTitle(reading.officiated.fight)
+              : filters.view === "agreed" ? reading.agreedResult === true
+                : filters.view === "lone-rounds" ? reading.loneRounds > 0
+                  : filters.view === "ten-ten" ? reading.tenTens > 0
+                    : filters.view === "fans-differ" ? reading.fanPickDiffers === true
+                      : filters.view === "fan-rounds-differ" ? reading.fanRoundsDiffer > 0 : true);
+  const readings = base.filter(inResult);
+  const listed = readings.filter(inView);
+  const scores = new Map<string, number>();
+  for (const reading of readings) {
+    const line = `${Math.max(reading.card.f1, reading.card.f2)}–${Math.min(reading.card.f1, reading.card.f2)}`;
+    scores.set(line, (scores.get(line) ?? 0) + 1);
+  }
 
-  const sum = (pickValue: (reading: JudgeReading) => number) => readings.reduce((total, reading) => total + pickValue(reading), 0);
-  const panels = readings.filter((reading) => reading.others.length === 2);
-  const withResult = readings.filter((reading) => reading.agreedResult != null);
-  const withRounds = readings.filter((reading) => reading.roundsScored > 0);
-  const withFans = readings.filter((reading) => reading.fanPickDiffers != null);
-  const splits = readings.filter((reading) => reading.verdict === "split" || reading.verdict === "majority");
   // Agreement with each colleague, by who each card went to.
   const colleagues = new Map<string, { name: string; slug: string | null; together: number; agreed: number }>();
   for (const reading of readings) {
@@ -359,7 +439,7 @@ export function judgeProfile(slug: string, params: URLSearchParams): unknown | n
       colleagues.set(other.key, entry);
     }
   }
-  const page = readings.slice(filters.offset, filters.offset + filters.limit);
+  const page = listed.slice(filters.offset, filters.offset + filters.limit);
   return {
     kind: "judge",
     slug: judge.slug,
@@ -367,44 +447,30 @@ export function judgeProfile(slug: string, params: URLSearchParams): unknown | n
     career: { cards: all.length, ...facets(judge.fights) },
     filters: { ...filters, q: params.get("q") ?? "" },
     decision_counts: Object.fromEntries(decisions),
-    summary: {
-      cards: readings.length,
-      panels: panels.length,
-      dissents: sum((reading) => Number(reading.dissent)),
-      dissent_rate: pct(sum((reading) => Number(reading.dissent)), panels.length),
-      split_panels: splits.length,
-      dissents_in_splits: splits.filter((reading) => reading.dissent).length,
-      with_result: withResult.length,
-      agreed_result: withResult.filter((reading) => reading.agreedResult).length,
-      agreed_result_rate: pct(withResult.filter((reading) => reading.agreedResult).length, withResult.length),
-      round_cards: withRounds.length,
-      rounds_scored: sum((reading) => reading.roundsScored),
-      ten_eights: sum((reading) => reading.tenEights),
-      ten_eight_rate: pct(sum((reading) => reading.tenEights), sum((reading) => reading.roundsScored)),
-      ten_tens: sum((reading) => reading.tenTens),
-      ten_ten_rate: pct(sum((reading) => reading.tenTens), sum((reading) => reading.roundsScored)),
-      rounds_compared: sum((reading) => reading.roundsCompared),
-      round_agreement_rate: pct(sum((reading) => reading.roundsAgreed), sum((reading) => reading.roundsCompared)),
-      lone_rounds: sum((reading) => reading.loneRounds),
-      fan_cards: withFans.length,
-      fan_pick_differs: withFans.filter((reading) => reading.fanPickDiffers).length,
-      fan_rounds: sum((reading) => reading.fanRounds),
-      fan_rounds_differ: sum((reading) => reading.fanRoundsDiffer),
-      // Share of bouts whose panel is missing at least one round card: the
-      // round figures above only describe the rest.
-      missing_round_cards: readings.length - withRounds.length,
-    },
+    summary: judgeSummary(readings),
+    // The same figures over every UFC judge's cards in the same years and
+    // divisions, so each rate reads against the field.
+    baseline: judgeSummary(allJudgeReadings().filter((reading) => matchesBase(reading.officiated, { ...filters, q: "" }) && inResult(reading))),
+    // The judge's cards by the decision they sat on, split by whether their
+    // card went to the official winner.
+    verdict_split: Object.fromEntries((["unanimous", "split", "majority", "draw"] as Verdict[]).map((verdict) => {
+      const cards = readings.filter((reading) => reading.verdict === verdict && reading.agreedResult != null);
+      return [verdict, { with: cards.filter((reading) => reading.agreedResult).length, against: cards.filter((reading) => !reading.agreedResult).length }];
+    })),
+    by_year: byYear(all.filter((reading) => matchesBase(reading.officiated, { ...filters, from: null, to: null }) && inResult(reading)),
+      (reading) => reading.officiated.fight, (reading) => reading.dissent),
+    score_lines: [...scores].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([score, n]) => ({ score, n })),
     colleagues: [...colleagues.values()].filter((entry) => entry.together >= 3)
       .sort((a, b) => b.together - a.together).slice(0, 12)
       .map((entry) => ({ ...entry, rate: pct(entry.agreed, entry.together) })),
-    total: readings.length,
+    total: listed.length,
     offset: filters.offset,
     limit: filters.limit,
     rows: page.map((reading) => {
       const { fight } = reading.officiated;
       return {
         fight_id: fight.id, event_id: fight.eventId, event_name: fight.eventName, date: fight.date,
-        division: fight.weightClass, scheduled_rounds: fight.scheduledRounds, verdict: reading.verdict, method: fight.method,
+        division: fight.weightClass, title: isTitle(fight), scheduled_rounds: fight.scheduledRounds, verdict: reading.verdict, method: fight.method,
         f1: fighterRef(fight, 0), f2: fighterRef(fight, 1),
         card: { f1: reading.card.f1, f2: reading.card.f2, rounds: reading.card.rounds },
         others: reading.others.map((other) => ({ judge: other.judge, slug: other.key ? index.judges.get(other.key)?.slug ?? null : null, f1: other.f1, f2: other.f2, rounds: other.rounds })),
@@ -447,7 +513,7 @@ function tally(fights: Officiated[]) {
     const kind = resultClass(fight);
     counts[kind] += 1;
     events.add(fight.eventId);
-    if (fight.titleFight && (fight.titleType === "title" || fight.titleType === "interim")) titleFights += 1;
+    if (isTitle(fight)) titleFights += 1;
     if ((kind === "ko" || kind === "sub") && fight.round) {
       stoppageRounds.set(fight.round, (stoppageRounds.get(fight.round) ?? 0) + 1);
       if (fight.elapsed != null) { stoppageSeconds += fight.elapsed; stoppagesTimed += 1; }
@@ -478,8 +544,21 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
   const base = referee.fights.filter((officiated) => matchesBase(officiated, filters));
   const results = new Map<ResultClass, number>();
   for (const officiated of base) results.set(resultClass(officiated.fight), (results.get(resultClass(officiated.fight)) ?? 0) + 1);
-  const fights = base.filter((officiated) => !filters.result || resultClass(officiated.fight) === filters.result)
-    .filter((officiated) => filters.view === "incidents" ? resultClass(officiated.fight) === "dq" || Boolean(officiated.details && DEDUCTION.test(officiated.details)) : true);
+  const shown = (officiated: Officiated) => (!filters.result || resultClass(officiated.fight) === filters.result)
+    && (filters.view === "incidents" ? resultClass(officiated.fight) === "dq" || Boolean(officiated.details && DEDUCTION.test(officiated.details))
+      : filters.view === "title" ? isTitle(officiated.fight) : true);
+  // Result and view narrow the list only; the figures stay on every bout in
+  // the other filters, so pressing a figure never moves it.
+  const fights = base.filter(shown);
+  const regulars = new Map<string, { id: string; name: string; n: number; wins: number }>();
+  for (const { fight } of base) {
+    for (const side of fight.sides) {
+      const entry = regulars.get(side.id) ?? { id: side.id, name: side.name, n: 0, wins: 0 };
+      entry.n += 1;
+      if (side.outcome === "win") entry.wins += 1;
+      regulars.set(side.id, entry);
+    }
+  }
   // The same filters across every bout in the UFC with a referee named, so a
   // rate reads against the era and divisions it came from, not a bare number.
   const baseline = index.fights.filter((officiated) => officiated.referee && matchesBase(officiated, { ...filters, q: "" }));
@@ -491,9 +570,12 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
     career: { fights: referee.fights.length, ...facets(referee.fights) },
     filters: { ...filters, q: params.get("q") ?? "" },
     result_counts: Object.fromEntries(results),
-    summary: tally(fights),
+    summary: tally(base),
+    by_year: byYear(referee.fights.filter((officiated) => matchesBase(officiated, { ...filters, from: null, to: null })),
+      (officiated) => officiated.fight, (officiated) => resultClass(officiated.fight) === "ko" || resultClass(officiated.fight) === "sub"),
+    regulars: [...regulars.values()].filter((entry) => entry.n >= 2).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)).slice(0, 10),
     baseline: { ...tally(baseline), label: "Every UFC bout with a named referee under the same date and division filters" },
-    incidents: fights.filter((officiated) => resultClass(officiated.fight) === "dq" || Boolean(officiated.details && DEDUCTION.test(officiated.details)))
+    incidents: base.filter((officiated) => resultClass(officiated.fight) === "dq" || Boolean(officiated.details && DEDUCTION.test(officiated.details)))
       .slice(0, 50).map((officiated) => ({
         fight_id: officiated.fight.id, date: officiated.fight.date, event_name: officiated.fight.eventName,
         f1: fighterRef(officiated.fight, 0), f2: fighterRef(officiated.fight, 1),
@@ -507,7 +589,7 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
       const { fight } = officiated;
       return {
         fight_id: fight.id, event_id: fight.eventId, event_name: fight.eventName, date: fight.date,
-        division: fight.weightClass, title: fight.titleFight && (fight.titleType === "title" || fight.titleType === "interim"),
+        division: fight.weightClass, title: isTitle(fight),
         f1: fighterRef(fight, 0), f2: fighterRef(fight, 1),
         result: resultClass(fight), method: fight.method, method_details: fight.methodDetails,
         round: fight.round, time: fight.time, details: officiated.details,

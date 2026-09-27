@@ -130,6 +130,14 @@ stats, officials, venues, judges and profiles.
 - Every remaining loading line stays invisible for its first 350 ms
   (`.appear-late`), and a list refreshing in place dims only after 200 ms.
 
+## Judge baseline (2026-09-27, `feat/official-venue-pages`)
+
+Judge profiles compare each rate with every UFC judge in the same years and
+divisions, which reads all ~12,000 judge cards. The cards are read once per
+fight-index version (about 350 ms, first request after a data change) and
+reused; each uncached `/api/judges/:slug` then took 30–75 ms locally across
+four filter combinations, before the response cache.
+
 ## What changed because of the numbers
 
 - Share images first rendered at up to 665 KB PNG and 1.6 s under load: they

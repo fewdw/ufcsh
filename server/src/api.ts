@@ -610,6 +610,7 @@ function fighterHistory(fighterId: string, includeOpponentForm = false): unknown
       // A performance award goes to the winner; Fight of the Night to both.
       bonuses: fightIsComplete(f) ? {
         perf: f.perf_bonus && (isF1 ? f.f1_outcome : f.f2_outcome) === "win" ? PERF_BONUS_KIND[f.perf_bonus] ?? "perf" : null,
+        perf_against: f.perf_bonus && (isF1 ? f.f1_outcome : f.f2_outcome) === "loss" ? PERF_BONUS_KIND[f.perf_bonus] ?? "perf" : null,
         fotn: !!f.fotn_bonus,
       } : null,
       // Pounds as text, "" when the weight is unknown, null when made or unread.
