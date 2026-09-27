@@ -48,9 +48,9 @@ export function OfficialsPage() {
             ))}
           </div>}>
           <div className="border-t border-zinc-100 px-4 py-2.5 sm:px-5"><Filter value={query} onChange={setQuery} label={`Find a ${kind === "referees" ? "referee" : "judge"}`} /></div>
-          <ul className="grid border-t border-zinc-100 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="grid grid-cols-1 border-t border-zinc-100 sm:grid-cols-2 lg:grid-cols-3">
             {list.map((entry) => (
-              <li key={entry.slug} className="border-b border-zinc-50">
+              <li key={entry.slug} className="border-b border-zinc-100">
                 <Link to={`/${kind}/${entry.slug}`} className="flex items-baseline justify-between gap-2 px-4 py-2 hover:bg-zinc-50 sm:px-5">
                   <span className="min-w-0 truncate text-[13px] font-medium text-zinc-900">{entry.name}</span>
                   <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">{entry.n.toLocaleString()} · {years(entry.first, entry.last)}</span>
@@ -83,9 +83,9 @@ export function VenuesPage() {
         <PageHeader title="Venues" meta={[`${data.venues.length} venues`, data.coverage.with_venue < data.coverage.events ? `${data.coverage.with_venue.toLocaleString()} of ${data.coverage.events.toLocaleString()} events placed so far` : null]} />
         <Panel title="All venues" subtitle={`${list.length}`}>
           <div className="border-t border-zinc-100 px-4 py-2.5 sm:px-5"><Filter value={query} onChange={setQuery} label="Find a venue, city or country" /></div>
-          <ul className="grid border-t border-zinc-100 sm:grid-cols-2">
+          <ul className="grid grid-cols-1 border-t border-zinc-100 sm:grid-cols-2">
             {list.map((venue) => (
-              <li key={venue.slug} className="border-b border-zinc-50">
+              <li key={venue.slug} className="border-b border-zinc-100">
                 <Link to={`/venues/${venue.slug}`} className="flex items-baseline justify-between gap-2 px-4 py-2 hover:bg-zinc-50 sm:px-5">
                   <span className="min-w-0">
                     <span className="block truncate text-[13px] font-medium text-zinc-900">{venue.name}</span>

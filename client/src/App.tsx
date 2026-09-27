@@ -6,8 +6,8 @@ import SearchGlyph from "./components/SearchGlyph";
 import LiveMatchup from "./components/LiveMatchup";
 import { segmentedIdle, segmentedSelected } from "./components/segmented";
 import { ChevronDown, Keyboard, Moon, Sun } from "lucide-react";
-import { accountsEnabled, useAccount } from "./auth";
-import { useAdminResource, type AdminSession } from "./admin";
+import { accountsEnabled } from "./auth";
+import { inMore, MoreLayout, MoreLinks } from "./components/MoreNav";
 import { useSettings, withRanking } from "./settings";
 import { prefetch } from "./api";
 import { useLinkPrefetch, warmSections } from "./useLinkPrefetch";
@@ -48,26 +48,6 @@ const RosterPage = page(pages.roster, module => module.default);
 
 const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
 
-const MORE_PATHS = ["/roster", "/favorites", "/admin"];
-const within = (pathname: string, path: string) => pathname === path || pathname.startsWith(`${path}/`);
-
-function MenuItem({ href, label, pathname }: { href: string; label: string; pathname: string }) {
-  const current = within(pathname, href);
-  return <li>
-    <Link to={href} aria-current={current ? "page" : undefined}
-      className={`block rounded-lg px-3 py-2 text-sm font-medium transition-colors ${current ? "bg-zinc-100 text-zinc-900" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"}`}>
-      {label}
-    </Link>
-  </li>;
-}
-
-/** Admin is listed only for the few who have it. */
-function AdminMenuItem({ pathname }: { pathname: string }) {
-  const { isLoaded, user } = useAccount();
-  const { data } = useAdminResource<AdminSession>(isLoaded && user ? "/api/admin/session" : null);
-  return data?.admin ? <MenuItem href="/admin" label="Admin" pathname={pathname} /> : null;
-}
-
 /** The rest of the site, one pill after the sections. A mouse opens it on
  *  hover; a tap or a key opens it on click. */
 function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
@@ -96,9 +76,14 @@ function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
         down onto the menu never leaves it. */}
     {open ? <div className="absolute right-0 top-full z-50 pt-1.5 sm:left-0 sm:right-auto">
       <ul className="w-44 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg">
-        <MenuItem href="/roster" label="Roster" pathname={pathname} />
-        <MenuItem href="/favorites" label="Favorites" pathname={pathname} />
-        {accountsEnabled ? <AdminMenuItem pathname={pathname} /> : null}
+        <MoreLinks item={(section, current) => (
+          <li key={section.href}>
+            <Link to={section.href} aria-current={current ? "page" : undefined}
+              className={`block rounded-lg px-3 py-2 text-sm font-medium transition-colors ${current ? "bg-zinc-100 text-zinc-900" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"}`}>
+              {section.label}
+            </Link>
+          </li>
+        )} />
         {/* The narrowest phones have no room for the theme button in the row. */}
         <li className="min-[380px]:hidden">
           <button type="button" onClick={() => update("theme", dark ? "light" : "dark")}
@@ -136,7 +121,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
   // Labs is a mode of Statistics rather than a top-level destination, so the
   // Stats pill stays lit while it is open and the switch lives on the page.
   const isLabs = pathname.startsWith("/labs");
-  const isMore = MORE_PATHS.some(path => within(pathname, path));
+  const isMore = inMore(pathname);
   // A profile belongs to no section of the nav, so none of them is lit.
   const isProfile = pathname.startsWith("/profiles");
   const links = [
@@ -301,16 +286,20 @@ export default function App() {
           <Route path="/rankings" element={<RankingsPage />} />
           <Route path="/stats" element={<StatsPage />} />
           <Route path="/labs" element={<LabsPage />} />
-          <Route path="/admin" element={<AdminPage />} />
-          <Route path="/admin/bugs" element={<AdminPage />} />
-          <Route path="/roster" element={<RosterPage />} />
-          <Route path="/favorites" element={null} />
+          <Route element={<MoreLayout />}>
+            <Route path="/roster" element={<RosterPage />} />
+            <Route path="/favorites" element={null} />
+            <Route path="/officials" element={<OfficialsPage />} />
+            <Route path="/judges/:slug" element={<JudgePage />} />
+            <Route path="/referees/:slug" element={<RefereePage />} />
+            <Route path="/venues" element={<VenuesPage />} />
+            <Route path="/venues/:slug" element={<VenuePage />} />
+            <Route path="/matchmaking" element={null} />
+            <Route path="/news" element={null} />
+            <Route path="/admin" element={<AdminPage />} />
+            <Route path="/admin/bugs" element={<AdminPage />} />
+          </Route>
           <Route path="/profiles/:handle" element={<ProfilePage />} />
-          <Route path="/judges/:slug" element={<JudgePage />} />
-          <Route path="/referees/:slug" element={<RefereePage />} />
-          <Route path="/officials" element={<OfficialsPage />} />
-          <Route path="/venues" element={<VenuesPage />} />
-          <Route path="/venues/:slug" element={<VenuePage />} />
           <Route path="/info" element={<InfoPage />} />
           <Route path="/sign-in/*" element={<AuthPage mode="sign-in" />} />
           <Route path="/sign-up/*" element={<AuthPage mode="sign-up" />} />
