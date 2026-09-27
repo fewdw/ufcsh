@@ -63,16 +63,19 @@ export default function RefereePage() {
   const filtered = Boolean(narrowing || f.q);
   const years = data.career.years;
   const tab = filters.params.get("tab") === "stats" ? "stats" : "list";
-  const rate = (label: string, value: number | null, base: number | null, detail: string) => ({
-    key: label, ...gapChip(value, base), title: label, detail: `${detail} · UFC ${pct(base)}`, value: pct(value),
+  /** A rate beside the UFC's in the same years and divisions; pressing it
+   *  lists those bouts. */
+  const rate = (label: string, value: number | null, base: number | null, result?: string) => ({
+    key: label, ...gapChip(value, base), title: label, detail: `UFC ${pct(base)}`, value: pct(value),
     hint: "Points above or below every UFC bout in the same years and divisions",
+    ...(result ? { selected: f.result === result, onSelect: () => filters.set("result", f.result === result ? null : result) } : {}),
   });
   const stoppages = s.stoppage_rounds.reduce((sum, entry) => sum + entry.n, 0);
   const baseStoppages = b.stoppage_rounds.reduce((sum, entry) => sum + entry.n, 0);
   const timeGap = s.average_stoppage_seconds != null && b.average_stoppage_seconds != null ? s.average_stoppage_seconds - b.average_stoppage_seconds : null;
 
   const identity = (
-    <IdentityCard title={data.name} subtitle="UFC referee"
+    <IdentityCard title={data.name} subtitle="Referee"
       badge={s.title_fights && !filtered ? <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-belt">{s.title_fights} title bouts</span> : null}
       facts={[
         ["Bouts", data.career.fights.toLocaleString()],
@@ -84,7 +87,7 @@ export default function RefereePage() {
       ]}>
       {filtered ? (
         <p className="mb-3 text-xs text-zinc-500">
-          Showing {s.fights.toLocaleString()} of {data.career.fights.toLocaleString()} bouts ·{" "}
+          {data.total.toLocaleString()} of {data.career.fights.toLocaleString()} ·{" "}
           <button type="button" onClick={() => filters.clear(["tab"])} className="font-medium underline underline-offset-2 hover:text-zinc-900">Show all</button>
         </p>
       ) : null}
@@ -93,24 +96,26 @@ export default function RefereePage() {
   );
 
   const stats = <>
-    <RankRows title="Against the UFC" subtitle="Same years and divisions" rows={[
-      rate("Finish rate", s.finish_rate, b.finish_rate, `${(s.counts.ko + s.counts.sub).toLocaleString()} finishes`),
-      rate("KO/TKO", s.ko_rate, b.ko_rate, `${s.counts.ko.toLocaleString()} bouts`),
-      rate("Submission", s.sub_rate, b.sub_rate, `${s.counts.sub.toLocaleString()} bouts`),
-      rate("Decision", s.decision_rate, b.decision_rate, `${(s.counts.dec + s.counts.draw).toLocaleString()} bouts`),
+    <RankRows title="Against the UFC" rows={[
+      rate("Finish rate", s.finish_rate, b.finish_rate),
+      rate("KO/TKO", s.ko_rate, b.ko_rate, "ko"),
+      rate("Submission", s.sub_rate, b.sub_rate, "sub"),
+      rate("Decision", s.decision_rate, b.decision_rate, "dec"),
       {
         key: "time", chip: timeGap == null ? "—" : `${timeGap > 0 ? "+" : timeGap < 0 ? "−" : ""}${Math.abs(timeGap)}s`,
         chipClass: timeGap ? "bg-zinc-900 text-white" : undefined, title: "Average finish time",
-        detail: `KO/TKO and submissions · UFC ${b.average_stoppage_seconds != null ? formatDuration(b.average_stoppage_seconds) : "—"}`,
+        detail: `UFC ${b.average_stoppage_seconds != null ? formatDuration(b.average_stoppage_seconds) : "—"}`,
         value: s.average_stoppage_seconds != null ? formatDuration(s.average_stoppage_seconds) : "—",
       },
-      { key: "dq", chip: "DQ", title: "Disqualifications", detail: `UFC ${b.counts.dq} in ${b.fights.toLocaleString()} bouts`, value: s.counts.dq },
-      { key: "pts", chip: "PTS", title: "Point deductions", detail: "Where the result names one", value: s.deductions, hint: "Most deductions are not written into the official result, so this is a floor." },
+      { key: "dq", chip: "DQ", title: "Disqualifications", detail: `UFC ${b.counts.dq} of ${b.fights.toLocaleString()}`, value: s.counts.dq,
+        selected: f.result === "dq", onSelect: () => filters.set("result", f.result === "dq" ? null : "dq") },
+      { key: "pts", chip: "PTS", title: "Point deductions", value: s.deductions, hint: "Counted where the official result names one, so this is a floor.",
+        selected: f.view === "incidents", onSelect: () => filters.set("view", f.view === "incidents" ? null : "incidents") },
     ]} />
-    <RankRows title="Finishes by round" subtitle={`${stoppages.toLocaleString()} finishes`} rows={s.stoppage_rounds.map((entry) => {
+    <RankRows title="Finishes by round" rows={s.stoppage_rounds.map((entry) => {
       const base = b.stoppage_rounds.find((row) => row.round === entry.round);
       return {
-        key: String(entry.round), chip: `R${entry.round}`, title: `${entry.n.toLocaleString()} finishes`,
+        key: String(entry.round), chip: `R${entry.round}`, title: entry.n.toLocaleString(),
         detail: base && baseStoppages ? `UFC ${Math.round((base.n / baseStoppages) * 100)}%` : undefined,
         value: `${Math.round((entry.n / stoppages) * 100)}%`,
       };
@@ -120,19 +125,19 @@ export default function RefereePage() {
     <RankRows title="Refereed most" rows={data.regulars.map((fighter, index) => ({
       key: fighter.id, chip: index + 1, chipClass: TOP(index),
       title: <Link to={`/fighters/${fighter.id}`} className="hover:underline">{fighter.name}</Link>,
-      detail: `${fighter.wins} ${fighter.wins === 1 ? "win" : "wins"} in these bouts`, value: fighter.n,
+      detail: `${fighter.wins} W`, value: fighter.n,
     }))} />
     <RankRows title="Disqualifications & deductions" rows={data.incidents.map((incident) => ({
       key: incident.fight_id, chip: incident.kind === "Disqualification" ? "DQ" : "PTS", chipClass: "bg-amber-100 text-amber-800",
       title: <Pair f1={incident.f1} f2={incident.f2} />,
-      detail: <>{incident.details ?? "No detail recorded"} · <Link to={`/fights/${incident.fight_id}`} className="hover:underline">{incident.event_name}</Link>, {formatDateShortWithYear(incident.date)}</>,
+      detail: <>{incident.details ? `${incident.details} · ` : ""}<Link to={`/fights/${incident.fight_id}`} className="hover:underline">{incident.event_name}</Link>, {formatDateShortWithYear(incident.date)}</>,
       value: "",
     }))} />
   </>;
 
   const bouts = (
-    <section className={`${PANEL} overflow-hidden`}>
-      <ListHeading title="Bouts" count={s.fights.toLocaleString()} active={narrowing} onReset={() => filters.clear(["q", "tab"])}
+    <section className={PANEL}>
+      <ListHeading title="Bouts" count={data.total.toLocaleString()} active={narrowing} onReset={() => filters.clear(["q", "tab"])}
         search={<FilterSearch value={filters.params.get("q") ?? ""} onChange={(value) => filters.set("q", value || null)} placeholder="Search events or fighters" />}>
         <YearRange years={years} from={filters.params.get("from")} to={filters.params.get("to")} onChange={filters.set} />
         <FilterSelect label="Division" value={f.division} all="All divisions" onChange={(value) => filters.set("division", value)}

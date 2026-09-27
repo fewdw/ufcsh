@@ -350,13 +350,21 @@ export function judgeProfile(slug: string, params: URLSearchParams): unknown | n
   const base = all.filter((reading) => matchesBase(reading.officiated, filters));
   const decisions = new Map<Verdict, number>();
   for (const reading of base) decisions.set(reading.verdict, (decisions.get(reading.verdict) ?? 0) + 1);
-  const shown = (reading: JudgeReading) => (!filters.result || reading.verdict === filters.result)
-    && (filters.view === "dissents" ? reading.dissent
+  const inResult = (reading: JudgeReading) => !filters.result || reading.verdict === filters.result;
+  // The view (dissents, 10–8s…) narrows the list only; the figures stay on
+  // every card in the other filters, so pressing a figure never moves it.
+  const inView = (reading: JudgeReading) => (filters.view === "dissents" ? reading.dissent
       : filters.view === "against-result" ? reading.agreedResult === false
         : filters.view === "ten-eight" ? reading.tenEights > 0
           : filters.view === "rounds" ? reading.roundsScored > 0
-            : filters.view === "title" ? isTitle(reading.officiated.fight) : true);
-  const readings = base.filter(shown);
+            : filters.view === "title" ? isTitle(reading.officiated.fight)
+              : filters.view === "agreed" ? reading.agreedResult === true
+                : filters.view === "lone-rounds" ? reading.loneRounds > 0
+                  : filters.view === "ten-ten" ? reading.tenTens > 0
+                    : filters.view === "fans-differ" ? reading.fanPickDiffers === true
+                      : filters.view === "fan-rounds-differ" ? reading.fanRoundsDiffer > 0 : true);
+  const readings = base.filter(inResult);
+  const listed = readings.filter(inView);
   const scores = new Map<string, number>();
   for (const reading of readings) {
     const line = `${Math.max(reading.card.f1, reading.card.f2)}–${Math.min(reading.card.f1, reading.card.f2)}`;
@@ -381,7 +389,7 @@ export function judgeProfile(slug: string, params: URLSearchParams): unknown | n
       colleagues.set(other.key, entry);
     }
   }
-  const page = readings.slice(filters.offset, filters.offset + filters.limit);
+  const page = listed.slice(filters.offset, filters.offset + filters.limit);
   return {
     kind: "judge",
     slug: judge.slug,
@@ -422,13 +430,13 @@ export function judgeProfile(slug: string, params: URLSearchParams): unknown | n
       const cards = readings.filter((reading) => reading.verdict === verdict && reading.agreedResult != null);
       return [verdict, { with: cards.filter((reading) => reading.agreedResult).length, against: cards.filter((reading) => !reading.agreedResult).length }];
     })),
-    by_year: byYear(all.filter((reading) => matchesBase(reading.officiated, { ...filters, from: null, to: null }) && shown(reading)),
+    by_year: byYear(all.filter((reading) => matchesBase(reading.officiated, { ...filters, from: null, to: null }) && inResult(reading)),
       (reading) => reading.officiated.fight, (reading) => reading.dissent),
     score_lines: [...scores].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([score, n]) => ({ score, n })),
     colleagues: [...colleagues.values()].filter((entry) => entry.together >= 3)
       .sort((a, b) => b.together - a.together).slice(0, 12)
       .map((entry) => ({ ...entry, rate: pct(entry.agreed, entry.together) })),
-    total: readings.length,
+    total: listed.length,
     offset: filters.offset,
     limit: filters.limit,
     rows: page.map((reading) => {
@@ -512,9 +520,11 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
   const shown = (officiated: Officiated) => (!filters.result || resultClass(officiated.fight) === filters.result)
     && (filters.view === "incidents" ? resultClass(officiated.fight) === "dq" || Boolean(officiated.details && DEDUCTION.test(officiated.details))
       : filters.view === "title" ? isTitle(officiated.fight) : true);
+  // Result and view narrow the list only; the figures stay on every bout in
+  // the other filters, so pressing a figure never moves it.
   const fights = base.filter(shown);
   const regulars = new Map<string, { id: string; name: string; n: number; wins: number }>();
-  for (const { fight } of fights) {
+  for (const { fight } of base) {
     for (const side of fight.sides) {
       const entry = regulars.get(side.id) ?? { id: side.id, name: side.name, n: 0, wins: 0 };
       entry.n += 1;
@@ -533,12 +543,12 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
     career: { fights: referee.fights.length, ...facets(referee.fights) },
     filters: { ...filters, q: params.get("q") ?? "" },
     result_counts: Object.fromEntries(results),
-    summary: tally(fights),
-    by_year: byYear(referee.fights.filter((officiated) => matchesBase(officiated, { ...filters, from: null, to: null }) && shown(officiated)),
+    summary: tally(base),
+    by_year: byYear(referee.fights.filter((officiated) => matchesBase(officiated, { ...filters, from: null, to: null })),
       (officiated) => officiated.fight, (officiated) => resultClass(officiated.fight) === "ko" || resultClass(officiated.fight) === "sub"),
     regulars: [...regulars.values()].filter((entry) => entry.n >= 2).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)).slice(0, 10),
     baseline: { ...tally(baseline), label: "Every UFC bout with a named referee under the same date and division filters" },
-    incidents: fights.filter((officiated) => resultClass(officiated.fight) === "dq" || Boolean(officiated.details && DEDUCTION.test(officiated.details)))
+    incidents: base.filter((officiated) => resultClass(officiated.fight) === "dq" || Boolean(officiated.details && DEDUCTION.test(officiated.details)))
       .slice(0, 50).map((officiated) => ({
         fight_id: officiated.fight.id, date: officiated.fight.date, event_name: officiated.fight.eventName,
         f1: fighterRef(officiated.fight, 0), f2: fighterRef(officiated.fight, 1),

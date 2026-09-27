@@ -115,7 +115,7 @@ export default function VenuePage() {
   const rate = (label: string, part: number, ufc: number) => {
     const value = share(part, data.results);
     const base = share(ufc, data.ufc_results);
-    return { key: label, ...gapChip(value, base), title: label, detail: `${part.toLocaleString()} bouts · UFC ${pct(base)}`, value: pct(value) };
+    return { key: label, ...gapChip(value, base), title: label, detail: `UFC ${pct(base)}`, value: pct(value) };
   };
 
   const identity = (
@@ -131,12 +131,12 @@ export default function VenuePage() {
       ]}>
       <div className="flex justify-center"><Wheel label="Bouts" groups={wheel(data.results)} /></div>
       {data.notes.length ? <p className="mt-4 text-xs leading-5 text-zinc-500">{data.notes.map((note) => note.detail).join(" ")}</p> : null}
-      <a href={data.map_url} target="_blank" rel="noreferrer" className="mt-3 inline-block text-xs font-medium text-zinc-500 hover:text-zinc-900">Open in Maps ↗</a>
+      <a href={data.map_url} target="_blank" rel="noreferrer" className="mt-3 inline-block text-xs font-medium text-zinc-500 hover:text-zinc-900">Map ↗</a>
     </IdentityCard>
   );
 
   const stats = <>
-    <RankRows title="Against the UFC" subtitle="Every UFC bout" rows={[
+    <RankRows title="Against the UFC" rows={[
       rate("Finish rate", data.results.ko + data.results.sub, data.ufc_results.ko + data.ufc_results.sub),
       rate("KO/TKO", data.results.ko, data.ufc_results.ko),
       rate("Submission", data.results.sub, data.ufc_results.sub),
@@ -147,7 +147,7 @@ export default function VenuePage() {
     <RankRows title="Most wins here" rows={data.top_winners.map((fighter, index) => ({
       key: fighter.id, chip: index + 1, chipClass: TOP(index),
       title: <Link to={`/fighters/${fighter.id}`} className="hover:underline">{fighter.name}</Link>,
-      detail: `${fighter.wins}–${fighter.losses}${fighter.draws ? `–${fighter.draws}` : ""} here`, value: fighter.wins,
+      detail: `${fighter.wins}–${fighter.losses}${fighter.draws ? `–${fighter.draws}` : ""}`, value: fighter.wins,
     }))} />
   </>;
 
@@ -170,7 +170,7 @@ export default function VenuePage() {
         </div>
       </Panel>
     ) : null}
-    <section className={`${PANEL} overflow-hidden`}>
+    <section className={PANEL}>
       <ListHeading
         title={
           <span className={`${segmentedGroup} inline-flex`} role="group" aria-label="List">

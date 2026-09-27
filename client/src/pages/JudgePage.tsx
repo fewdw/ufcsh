@@ -2,6 +2,7 @@ import { Link, useParams } from "react-router-dom";
 import type { JudgeProfile } from "../api";
 import { lastName } from "../format";
 import { PANEL } from "../components/chartTokens";
+import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "../components/segmented";
 import { pct, officialRows, useKeptApi, useUrlFilters } from "../research";
 import { SITE_URL, useSeo } from "../seo";
 import RequestNotice from "../components/RequestNotice";
@@ -16,9 +17,14 @@ const VERDICTS = [
   { value: "majority", label: "Majority" }, { value: "draw", label: "Draw" },
 ] as const;
 const VIEWS = [
-  { value: "dissents", label: "Their dissents" },
+  { value: "agreed", label: "Picked the winner" },
   { value: "against-result", label: "Against the result" },
+  { value: "dissents", label: "Lone dissents" },
+  { value: "lone-rounds", label: "Alone on a round" },
   { value: "ten-eight", label: "With a 10–8" },
+  { value: "ten-ten", label: "With a 10–10" },
+  { value: "fans-differ", label: "Different winner from fans" },
+  { value: "fan-rounds-differ", label: "Different rounds from fans" },
   { value: "rounds", label: "With rounds" },
   { value: "title", label: "Title bouts" },
 ];
@@ -37,39 +43,55 @@ function Score({ f1, f2, strong }: { f1: number; f2: number; strong?: boolean })
   );
 }
 
-/** Every round side by side: this judge, the other two, and the crowd. */
-function RoundTable({ row }: { row: Row }) {
-  const rounds = row.card.rounds;
-  if (!rounds.length) return null;
-  const others = row.others;
-  const fanRound = (round: number) => row.fans?.rounds.find((entry) => entry.round === round);
-  const cell = "px-2 py-1 text-center tabular-nums";
+/** The crowd's average, the side they had ahead in that side's colour. A gap
+ *  under a tenth of a point is as even as a crowd gets. */
+function FanScore({ avg1, avg2, digits = 1 }: { avg1: number; avg2: number; digits?: number }) {
+  const lead = Math.abs(avg1 - avg2) < 0.1 ? 0 : Math.sign(avg1 - avg2);
   return (
-    <details className="mt-2">
+    <span className="tabular-nums">
+      <span className={lead > 0 ? "font-semibold text-f1-ink" : ""}>{avg1.toFixed(digits)}</span>–<span className={lead < 0 ? "font-semibold text-f2-ink" : ""}>{avg2.toFixed(digits)}</span>
+    </span>
+  );
+}
+
+const pickOf = (f1: number, f2: number) => Math.sign(f1 - f2);
+const fanPick = (fans: { avg1: number; avg2: number }) => Math.abs(fans.avg1 - fans.avg2) < 0.1 ? 0 : Math.sign(fans.avg1 - fans.avg2);
+
+/** Every round side by side: this judge, the other two, and the crowd —
+ *  whichever of them scored rounds. */
+function RoundTable({ row }: { row: Row }) {
+  const numbers = [...new Set([...row.card.rounds, ...row.others.flatMap((other) => other.rounds), ...(row.fans?.rounds ?? [])].map((round) => round.round))].sort((a, b) => a - b);
+  if (!numbers.length) return null;
+  const others = row.others;
+  const fans = row.fans?.rounds.length ? row.fans.rounds : null;
+  const cell = "whitespace-nowrap px-1.5 py-1 text-center tabular-nums";
+  return (
+    <details className="mt-1.5">
       <summary className="cursor-pointer text-[11px] font-medium text-zinc-500 hover:text-zinc-900">Round by round</summary>
       <div className="mt-1.5 overflow-x-auto">
-        <table className="w-full min-w-[22rem] text-[11px] text-zinc-600">
+        <table className="text-[11px] text-zinc-600">
           <thead>
             <tr className="text-[10px] uppercase tracking-[0.08em] text-zinc-400">
-              <th className="px-2 py-1 text-left font-semibold">Round</th>
-              <th className={`${cell} font-semibold text-zinc-700`}>This judge</th>
+              <th className="py-1 pr-1.5 text-left font-semibold">R</th>
+              <th className={`${cell} font-semibold text-zinc-700`}>Card</th>
               {others.map((other, index) => <th key={index} className={`${cell} font-semibold`}>{other.judge ? lastName(other.judge) : `Judge ${index + 2}`}</th>)}
-              {row.fans?.rounds.length ? <th className={`${cell} font-semibold`}>Fans</th> : null}
+              {fans ? <th className={`${cell} font-semibold text-sky-600`}>Fans</th> : null}
             </tr>
           </thead>
           <tbody>
-            {rounds.map((round) => {
-              const fans = fanRound(round.round);
-              const flag = Math.max(round.f1, round.f2) === 10 && Math.min(round.f1, round.f2) === 8 ? "10–8" : round.f1 === 10 && round.f2 === 10 ? "10–10" : null;
+            {numbers.map((number) => {
+              const mine = row.card.rounds.find((entry) => entry.round === number);
+              const crowd = fans?.find((entry) => entry.round === number);
+              const flag = mine && Math.max(mine.f1, mine.f2) === 10 && Math.min(mine.f1, mine.f2) === 8 ? "10–8" : mine && mine.f1 === 10 && mine.f2 === 10 ? "10–10" : null;
               return (
-                <tr key={round.round} className="border-t border-zinc-100">
-                  <td className="px-2 py-1 font-medium">R{round.round}{flag ? <span className="ml-1.5 rounded bg-amber-100 px-1 text-[9px] font-semibold text-amber-800">{flag}</span> : null}</td>
-                  <td className={`${cell} font-semibold text-zinc-900`}><Score f1={round.f1} f2={round.f2} /></td>
+                <tr key={number} className="border-t border-zinc-100">
+                  <td className="whitespace-nowrap py-1 pr-1.5 font-medium">{number}{flag ? <span className="ml-1.5 rounded bg-amber-100 px-1 text-[9px] font-semibold text-amber-800">{flag}</span> : null}</td>
+                  <td className={`${cell} font-semibold text-zinc-900`}>{mine ? <Score f1={mine.f1} f2={mine.f2} /> : "—"}</td>
                   {others.map((other, index) => {
-                    const theirs = other.rounds.find((entry) => entry.round === round.round);
+                    const theirs = other.rounds.find((entry) => entry.round === number);
                     return <td key={index} className={cell}>{theirs ? <Score f1={theirs.f1} f2={theirs.f2} /> : "—"}</td>;
                   })}
-                  {row.fans?.rounds.length ? <td className={cell}>{fans ? `${fans.avg1.toFixed(2)}–${fans.avg2.toFixed(2)}` : "—"}</td> : null}
+                  {fans ? <td className={cell}>{crowd ? <FanScore avg1={crowd.avg1} avg2={crowd.avg2} digits={2} /> : "—"}</td> : null}
                 </tr>
               );
             })}
@@ -80,22 +102,29 @@ function RoundTable({ row }: { row: Row }) {
   );
 }
 
-/** Whether the card went to the official winner, where a fighter's row says
- *  whether they won. */
-function Verdict({ row }: { row: Row }) {
-  const tone = row.agreed_result == null ? "bg-zinc-300 text-zinc-700" : row.agreed_result ? "bg-emerald-500 text-white" : "bg-rose-500 text-white";
+type Against = "judges" | "fans";
+
+/** Where a fighter's row says whether they won, this says whether the card
+ *  went with the others: red for a lone dissent against the other two judges,
+ *  or for a different winner from the fans. */
+function Verdict({ row, against }: { row: Row; against: Against }) {
+  const mine = pickOf(row.card.f1, row.card.f2);
+  const agrees = against === "fans"
+    ? row.fans ? fanPick(row.fans) === mine : null
+    : row.others.length === 2 ? !row.dissent : null;
+  const tone = agrees == null ? "bg-zinc-200 text-zinc-500" : agrees ? "bg-emerald-500 text-white" : "bg-rose-500 text-white";
   return (
     <span className={`grid h-7 min-w-7 shrink-0 place-items-center rounded-full text-[11px] font-bold leading-none ${tone}`}
-      title={row.agreed_result == null ? "No winner to agree with" : row.agreed_result ? "Card went to the winner" : "Card went against the result"}>
-      {row.agreed_result == null ? "–" : row.agreed_result ? "✓" : "✕"}
+      title={agrees == null ? `No ${against === "fans" ? "fan card" : "full panel"}` : `${agrees ? "Same winner as" : "Different winner from"} the ${against}`}>
+      {agrees == null ? "–" : agrees ? "✓" : "✕"}
     </span>
   );
 }
 
-function CardRow({ row }: { row: Row }) {
+function CardRow({ row, against }: { row: Row; against: Against }) {
   const verdict = row.verdict === "other" ? row.method ?? "Other" : VERDICTS.find((entry) => entry.value === row.verdict)?.label;
   return (
-    <BoutRow lead={<Verdict row={row} />}
+    <BoutRow lead={<Verdict row={row} against={against} />}
       how={<span className="flex flex-col">
         <Score f1={row.card.f1} f2={row.card.f2} strong />
         <span>
@@ -114,7 +143,7 @@ function CardRow({ row }: { row: Row }) {
               <Score f1={other.f1} f2={other.f2} />
             </span>
           ))}
-          {row.fans ? <span title={`${row.fans.cards.toLocaleString()} community cards (average)`}>Fans <span className="tabular-nums">{row.fans.avg1.toFixed(1)}–{row.fans.avg2.toFixed(1)}</span></span> : null}
+          {row.fans ? <span title={`Average of ${row.fans.cards.toLocaleString()} fan cards`}><span className="text-sky-600">Fans</span> <FanScore avg1={row.fans.avg1} avg2={row.fans.avg2} /></span> : null}
         </p>
         <RoundTable row={row} />
       </>} />
@@ -153,9 +182,10 @@ export default function JudgePage() {
   const years = data.career.years;
   const tab = filters.params.get("tab") === "stats" ? "stats" : "list";
   const split = data.verdict_split;
+  const against: Against = filters.params.get("vs") === "fans" ? "fans" : "judges";
 
   const identity = (
-    <IdentityCard title={data.name} subtitle="UFC judge"
+    <IdentityCard title={data.name} subtitle="Judge"
       facts={[
         ["Cards", data.career.cards.toLocaleString()],
         ["Active", years ? `${years.first}–${years.last}` : null],
@@ -166,8 +196,8 @@ export default function JudgePage() {
       ]}>
       {filtered ? (
         <p className="mb-3 text-xs text-zinc-500">
-          Showing {s.cards.toLocaleString()} of {data.career.cards.toLocaleString()} cards ·{" "}
-          <button type="button" onClick={() => filters.clear(["tab"])} className="font-medium underline underline-offset-2 hover:text-zinc-900">Show all</button>
+          {data.total.toLocaleString()} of {data.career.cards.toLocaleString()} ·{" "}
+          <button type="button" onClick={() => filters.clear(["tab", "vs"])} className="font-medium underline underline-offset-2 hover:text-zinc-900">Show all</button>
         </p>
       ) : null}
       <div className="flex justify-center">
@@ -181,14 +211,14 @@ export default function JudgePage() {
 
   const stats = <>
     <RankRows title="How they score" rows={[
-      { key: "winner", title: "Picked the winner", detail: `${s.agreed_result.toLocaleString()} of ${s.with_result.toLocaleString()} cards`, value: pct(s.agreed_result_rate) },
-      { key: "dissent", title: "Lone dissents", detail: `${s.dissents} of ${s.panels.toLocaleString()} full panels${s.split_panels ? ` · ${s.dissents_in_splits} of ${s.split_panels} split or majority decisions` : ""}`, value: pct(s.dissent_rate) },
-      { key: "rounds", title: "Rounds agreed with the panel", detail: `${s.rounds_compared.toLocaleString()} comparisons${s.lone_rounds ? ` · alone on ${s.lone_rounds}` : ""}`, value: pct(s.round_agreement_rate) },
-      { key: "108", title: "10–8 rounds", detail: `${s.ten_eights} of ${s.rounds_scored.toLocaleString()} rounds scored`, value: pct(s.ten_eight_rate), hint: "A point deduction can also produce a 10–8 on paper." },
-      { key: "1010", title: "10–10 rounds", detail: `${s.ten_tens} of ${s.rounds_scored.toLocaleString()} rounds scored`, value: pct(s.ten_ten_rate) },
-      { key: "fans", title: "Different winner from fans", detail: s.fan_cards ? `of ${s.fan_cards} cards with a fan average` : "No fan cards here", value: s.fan_cards ? s.fan_pick_differs : "—" },
-      { key: "fanrounds", title: "Different rounds from fans", detail: s.fan_rounds ? `of ${s.fan_rounds} rounds with a fan average` : "No fan rounds here", value: s.fan_rounds ? s.fan_rounds_differ : "—" },
-    ]} />
+      { key: "agreed", title: "Picked the winner", detail: `${s.agreed_result.toLocaleString()} of ${s.with_result.toLocaleString()}`, value: pct(s.agreed_result_rate) },
+      { key: "dissents", title: "Lone dissents", detail: `${s.dissents} of ${s.panels.toLocaleString()}`, value: pct(s.dissent_rate) },
+      { key: "lone-rounds", title: "Rounds agreed", detail: s.lone_rounds ? `Alone on ${s.lone_rounds}` : undefined, value: pct(s.round_agreement_rate) },
+      { key: "ten-eight", title: "10–8 rounds", detail: `${s.ten_eights} of ${s.rounds_scored.toLocaleString()}`, value: pct(s.ten_eight_rate), hint: "A point deduction can also produce a 10–8 on paper." },
+      { key: "ten-ten", title: "10–10 rounds", detail: `${s.ten_tens} of ${s.rounds_scored.toLocaleString()}`, value: pct(s.ten_ten_rate) },
+      { key: "fans-differ", title: "Different winner from fans", value: s.fan_cards ? `${s.fan_pick_differs} of ${s.fan_cards}` : "—" },
+      { key: "fan-rounds-differ", title: "Different rounds from fans", value: s.fan_rounds ? `${s.fan_rounds_differ} of ${s.fan_rounds}` : "—" },
+    ].map((row) => ({ ...row, selected: f.view === row.key, onSelect: () => filters.set("view", f.view === row.key ? null : row.key) }))} />
     <RankRows title="Their usual cards" rows={data.score_lines.map((line) => ({
       key: line.score, chip: line.score, title: `${line.n.toLocaleString()} cards`, value: pct(s.cards ? Math.round((line.n / s.cards) * 1000) / 10 : null),
     }))} />
@@ -197,13 +227,24 @@ export default function JudgePage() {
     <RankRows title="Same winner as" rows={data.colleagues.map((colleague, index) => ({
       key: colleague.name, chip: index + 1, chipClass: TOP(index),
       title: colleague.slug ? <Link to={`/judges/${colleague.slug}`} className="hover:underline">{colleague.name}</Link> : colleague.name,
-      detail: `${colleague.together} cards together`, value: pct(colleague.rate),
+      detail: `${colleague.together} cards`, value: pct(colleague.rate),
     }))} />
   </>;
 
   const cards = (
-    <section className={`${PANEL} overflow-hidden`}>
-      <ListHeading title="Scorecards" count={s.cards.toLocaleString()} active={narrowing} onReset={() => filters.clear(["q", "tab"])}
+    <section className={PANEL}>
+      <ListHeading
+        title={
+          <span className={`${segmentedGroup} inline-flex`} role="group" aria-label="Compare each card with">
+            {(["judges", "fans"] as const).map((value) => (
+              <button key={value} type="button" aria-pressed={against === value} onClick={() => filters.set("vs", value === "fans" ? "fans" : null)}
+                className={`${segmentedOption} ${against === value ? segmentedSelected : segmentedIdle}`}>
+                {value === "fans" ? "Fans" : "Judges"}
+              </button>
+            ))}
+          </span>
+        }
+        count={data.total.toLocaleString()} active={narrowing} onReset={() => filters.clear(["q", "tab", "vs"])}
         search={<FilterSearch value={filters.params.get("q") ?? ""} onChange={(value) => filters.set("q", value || null)} placeholder="Search events or fighters" />}>
         <YearRange years={years} from={filters.params.get("from")} to={filters.params.get("to")} onChange={filters.set} />
         <FilterSelect label="Division" value={f.division} all="All divisions" onChange={(value) => filters.set("division", value)}
@@ -214,7 +255,7 @@ export default function JudgePage() {
       </ListHeading>
       {list.items.length ? (
         <div aria-busy={stale || list.loading} className={`${BOUT_LIST} ${stale ? "opacity-60 transition-opacity delay-200" : ""}`}>
-          {list.items.map((row) => <CardRow key={row.fight_id} row={row} />)}
+          {list.items.map((row) => <CardRow key={row.fight_id} row={row} against={against} />)}
         </div>
       ) : <p className="px-5 py-8 text-center text-sm text-zinc-500">No cards match these filters.</p>}
       <LoadMore list={list} />

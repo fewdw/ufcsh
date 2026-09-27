@@ -44,8 +44,10 @@ export function useUrlFilters() {
   };
   /** Every filter off; `keep` names parameters that choose a view, not filter it. */
   const clear = (keep: string[] = []) => setParams(new URLSearchParams([...params].filter(([key]) => keep.includes(key))));
+  // The tab and the comparison only change what the page shows, not what the
+  // server is asked for.
   const query = new URLSearchParams(params);
-  query.delete("offset");
+  for (const key of ["offset", "tab", "vs"]) query.delete(key);
   return { params, set, pickYear, clear, query: query.toString() };
 }
 

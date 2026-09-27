@@ -153,27 +153,36 @@ export function Wheel({ label, groups }: { label: string; groups: WheelGroup[] }
   );
 }
 
-export type RankRow = { key: string; chip?: ReactNode; chipClass?: string; title: ReactNode; detail?: ReactNode; value: ReactNode; hint?: string };
+export type RankRow = {
+  key: string; chip?: ReactNode; chipClass?: string; title: ReactNode; detail?: ReactNode; value: ReactNode; hint?: string;
+  /** Rows that filter the list: pressing one shows only its bouts. */
+  onSelect?: () => void; selected?: boolean;
+};
 
 /** Rows the way a fighter's Records read: a chip, what it is, and the figure
  *  against the right edge. */
-export function RankRows({ title, subtitle, rows, footer }: { title: string; subtitle?: ReactNode; rows: RankRow[]; footer?: ReactNode }) {
+export function RankRows({ title, subtitle, rows }: { title: string; subtitle?: ReactNode; rows: RankRow[] }) {
   if (!rows.length) return null;
   return (
     <Panel title={title} subtitle={subtitle}>
       <div className="divide-y divide-zinc-50 py-1">
-        {rows.map((row) => (
-          <div key={row.key} className="flex items-center gap-3 px-4 py-2" title={row.hint}>
+        {rows.map((row) => {
+          const body = <>
             {row.chip != null ? <span className={`grid h-8 min-w-10 shrink-0 place-items-center rounded-lg px-1.5 text-xs font-bold tabular-nums ${row.chipClass ?? "bg-zinc-100 text-zinc-600"}`}>{row.chip}</span> : null}
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[13px] font-semibold leading-tight text-zinc-900">{row.title}</span>
               {row.detail ? <span className="mt-0.5 block text-[11px] leading-tight text-zinc-400">{row.detail}</span> : null}
             </span>
             <span className="shrink-0 text-right text-base font-semibold tabular-nums text-zinc-950">{row.value}</span>
-          </div>
-        ))}
+          </>;
+          return row.onSelect ? (
+            <button key={row.key} type="button" onClick={row.onSelect} aria-pressed={row.selected} title={row.hint}
+              className={`flex w-full items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-zinc-50 ${row.selected ? "bg-zinc-100 shadow-[inset_3px_0_0_var(--color-series-1)]" : ""}`}>
+              {body}
+            </button>
+          ) : <div key={row.key} className="flex items-center gap-3 px-4 py-2" title={row.hint}>{body}</div>;
+        })}
       </div>
-      {footer}
     </Panel>
   );
 }
@@ -339,7 +348,7 @@ export function YearBars({ title, data, unit, marked, from, to, onPick }: {
   const inRange = (year: number) => (!from || year >= Number(from)) && (!to || year <= Number(to));
   const describe = (entry: YearCount) => `${entry.year} · ${entry.n.toLocaleString()} ${unit}${marked ? ` · ${entry.marked.toLocaleString()} ${marked}` : ""}`;
   return (
-    <Panel title={title} subtitle={hover ? describe(hover) : single ? `${single} · tap again for every year` : "Tap a year to filter"}>
+    <Panel title={title} subtitle={hover ? describe(hover) : undefined}>
       <div className="px-4 pb-3 pt-3 sm:px-5">
         <div className="flex h-24 items-end justify-between gap-0.5" onMouseLeave={() => setHover(null)}>
           {years.map((entry) => (
