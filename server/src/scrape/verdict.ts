@@ -181,7 +181,8 @@ function scoreGrid($: cheerio.CheerioAPI, root: cheerio.Cheerio<any>) {
   const rows = header.parent().children("div[style*='display:grid'][style*='margin-bottom']").map((_i, node) => {
     const cells = $(node).children("span");
     const name = cleanText(cells.first().text());
-    const values = cells.slice(1).map((_j, cell) => number($(cell).text())).get();
+    // Cheerio's map drops nulls, which would shift the total into a round.
+    const values = cells.slice(1).toArray().map((cell) => number($(cell).text()));
     return { name, scores: values.slice(0, rounds.length), total: values[rounds.length] ?? null };
   }).get();
   return { rounds, rows };
@@ -198,14 +199,19 @@ export function parseVerdictFightPage(html: string): VerdictFightPage | null {
     const grid = scoreGrid($, section);
     const countText = section.find("a[href*='/community-scorecards/'] span").filter((_j, node) => /\d/.test($(node).text())).first().text();
     const cards = number(countText);
-    if (!cards || grid.rows.length !== 2 || grid.rows.some(row => row.total == null || row.scores.some(score => score == null))) return;
+    // A stoppage's round shows how it ended ("TKO") instead of averages: only
+    // the rounds before it were scored, and nothing may follow a blank round.
+    const blank = grid.rounds.findIndex((_round, index) => grid.rows.some(row => row.scores[index] == null));
+    const scored = blank < 0 ? grid.rounds.length : blank;
+    if (!cards || !scored || grid.rows.length !== 2
+      || grid.rows.some(row => row.total == null || row.scores.slice(scored).some(score => score != null))) return;
     community = {
       cards,
       f1Name: grid.rows[0].name,
       f2Name: grid.rows[1].name,
       avg1: grid.rows[0].total!,
       avg2: grid.rows[1].total!,
-      rounds: grid.rounds.map((round, index) => ({ round, avg1: grid.rows[0].scores[index]!, avg2: grid.rows[1].scores[index]! })),
+      rounds: grid.rounds.slice(0, scored).map((round, index) => ({ round, avg1: grid.rows[0].scores[index]!, avg2: grid.rows[1].scores[index]! })),
     };
   });
 

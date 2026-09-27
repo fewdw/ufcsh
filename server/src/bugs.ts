@@ -4,10 +4,11 @@ import { americanLine, fightIndex, impliedProbability } from "./fight-index.ts";
 import { pageNamesFighter } from "./scrape/odds.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { hasCompleteJudgeRounds } from "./judge-scorecards.ts";
-import { officialsIndex } from "./officials.ts";
+import { mergedByHand, officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
 import {
   fighterNames,
+  forgetUfcPage,
   syncEventDetail,
   syncEventSegments,
   syncFightDetail,
@@ -843,6 +844,8 @@ function eventsWithoutVenue(): BugCheck {
       -- this card has must have been read before its silence counts.
       AND (ufc_slug IS NULL OR venue_checked_at IS NOT NULL)
       AND (wiki_title IS NULL OR wiki_info_checked_at IS NOT NULL)
+      -- The article is looked for only in the last six weeks before a card.
+      AND (complete = 1 OR wiki_info_checked_at IS NOT NULL)
       AND (ufc_slug IS NOT NULL OR wiki_title IS NOT NULL OR wiki_checked_at IS NOT NULL)
     ORDER BY date DESC
   `).all() as EventVenueRow[];
@@ -865,6 +868,37 @@ function eventsWithoutVenue(): BugCheck {
     ],
     links: venueLinks(event),
     actions: venueActions(event),
+  })));
+}
+
+const placeKey = (text: string | null | undefined) =>
+  (text ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z]/g, "");
+
+/** The promotion's feed placing a card in another city than UFCStats does: the
+ *  ufc.com page matched to the card was another event's. */
+function venueInWrongCity(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${VENUE_COLUMNS}, venue_name, venue_city FROM events WHERE venue_id IS NOT NULL AND venue_city IS NOT NULL ORDER BY date DESC
+  `).all() as (EventVenueRow & { venue_name: string | null; venue_city: string })[];
+  const items = rows.filter((event) => {
+    const feed = placeKey(event.venue_city);
+    const listed = event.location.split(",").map(placeKey);
+    return feed && listed[0] && !listed.includes(feed);
+  });
+  return check({
+    id: "venue-wrong-city",
+    group: "Venues & officials",
+    label: "Venue in a different city from the card",
+    description: "The promotion's feed names a venue in another city than UFCStats gives for the card, so the ufc.com page matched to it belongs to another event and its venue, broadcasters and start times are wrong. Re-reading the card rejects a page whose bouts aren't ours; a page that lists no bouts has to be forgotten, after which the archive offers the card its own page.",
+    grade: "must",
+  }, items.map((event): BugItem => ({
+    key: event.id,
+    title: event.name,
+    subtitle: event.location,
+    date: event.date,
+    facts: [["Feed venue", `${event.venue_name ?? "?"}, ${event.venue_city}`], ["ufc.com slug", event.ufc_slug ?? "none"]],
+    links: venueLinks(event),
+    actions: [...venueActions(event).filter((action) => action.id === "segments"), { id: "forget-ufc", label: "Forget ufc.com page", target: event.id }],
   })));
 }
 
@@ -1051,7 +1085,8 @@ function mergedOfficialSpellings(): BugCheck {
         const names = role === "referee" ? [officiated.referee] : officiated.cards.filter((card) => card.key === identity.key).map((card) => card.judge);
         for (const name of names) if (name) spellings.set(name, (spellings.get(name) ?? 0) + 1);
       }
-      if (spellings.size < 2) continue;
+      // Spellings merged by hand in officials.ts were already reviewed.
+      if ([...spellings.keys()].filter((name) => !mergedByHand(name)).length < 2) continue;
       items.push({
         key: `${role}:${identity.slug}`,
         title: identity.name,
@@ -1096,6 +1131,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     decisionsWithoutJudges(),
     eventsWithoutWiki(),
     catchweightsWithoutLimit(),
+    venueInWrongCity(),
     eventsWithoutVenue(),
     venuesFromWikipediaOnly(),
     upcomingWithoutBroadcast(),
@@ -1115,7 +1151,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
   };
 }
 
-export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight";
+export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -1158,9 +1194,14 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
     case "detail":
       await syncFightDetail(target);
       return { ok: true, message: "Fight detail re-fetched." };
-    case "segments":
+    case "segments": {
       await syncEventSegments(target);
-      return { ok: true, message: "ufc.com card re-read." };
+      const row = db.prepare("SELECT ufc_slug FROM events WHERE id = ?").get(target) as { ufc_slug: string | null } | undefined;
+      return { ok: true, message: row?.ufc_slug ? "ufc.com card re-read." : "That page was another event's; forgotten. The archive offers this card its own page on its next pass." };
+    }
+    case "forget-ufc":
+      forgetUfcPage(target);
+      return { ok: true, message: "Forgotten, with everything read from it. The archive offers this card its own page on its next pass." };
     case "event":
       await syncEventDetail(target);
       return { ok: true, message: "Event re-fetched." };
