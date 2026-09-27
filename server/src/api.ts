@@ -415,6 +415,8 @@ function liveCard(rankingType: RankingType): unknown | null {
     schedule: cardSchedule(e),
     completed_fights: completed,
     total_fights: fights.length,
+    // Counted from the opener: the main event is total_fights of total_fights.
+    fight_number: fights.length - fights.indexOf(bout),
     live,
     starts_at,
     fight: {
