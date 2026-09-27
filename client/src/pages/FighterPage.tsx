@@ -9,7 +9,7 @@ import Flag from "../components/Flag";
 import ResultDots from "../components/ResultDots";
 import { divisionMoves, type DivisionMove } from "../weightJourney";
 import RequestNotice from "../components/RequestNotice";
-import { BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
+import { BONUS_AGAINST_TAG, BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
 import FighterStatistics from "../components/FighterStatistics";
 import { PanelHeading } from "../components/FightStats";
 import { SITE_URL, useSeo } from "../seo";
@@ -193,14 +193,17 @@ function EnteringRecords({
  *  the load at card width, where it is the only line marking where one ends. */
 const BOUT_LIST = "@container divide-y divide-zinc-100 pb-2 @3xl:divide-zinc-50";
 
-/** The awards this fighter took home, which the result line does not say. */
+/** The awards this fighter took home, which the result line does not say, and
+ *  in red the performance award the opponent earned on them. */
 function BoutNotes({ row, className = "mt-1" }: { row: HistoryRow | ProfessionalHistoryRow; className?: string }) {
   const perf = row.bonuses?.perf ? PERF_AWARD[row.bonuses.perf] : null;
-  if (!perf && !row.bonuses?.fotn) return null;
+  const against = row.bonuses?.perf_against ? PERF_AWARD[row.bonuses.perf_against] : null;
+  if (!perf && !against && !row.bonuses?.fotn) return null;
   return (
     <span className={`flex flex-wrap gap-1 ${className}`}>
       {row.bonuses?.fotn ? <span className={BONUS_TAG} title={`${FIGHT_BONUS.full} bonus`}>{FIGHT_BONUS.short}</span> : null}
       {perf ? <span className={BONUS_TAG} title={`${perf.full} bonus`}>{perf.short}</span> : null}
+      {against ? <span className={BONUS_AGAINST_TAG} title={`${against.full} bonus for the opponent`}>{against.short}</span> : null}
     </span>
   );
 }
@@ -508,20 +511,29 @@ function BioGrid({ bio, className = "" }: { bio: [string, ReactNode][]; classNam
 }
 
 /** Both kinds of bonus as one split tag, each half its count; a kind never
- *  won is left out. */
-function BonusTally({ fight, perf }: { fight: number; perf: number }) {
+ *  won is left out. Performance bonuses given up follow in red. */
+function BonusTally({ fight, perf, against }: { fight: number; perf: number; against: number }) {
   const parts = [
     { key: "fight", label: FIGHT_BONUS.short, count: fight, title: FIGHT_BONUS.full },
     { key: "perf", label: PERF_AWARD.perf.short, count: perf, title: "Performance (or Knockout / Submission) of the Night" },
   ].filter((part) => part.count > 0);
   return (
-    <span className={`${BONUS_TAG} mt-0.5 gap-0 px-0 text-[11px]`}>
-      {parts.map((part, index) => (
-        <span key={part.key} title={`${part.count} × ${part.title}`}
-          className={`inline-flex items-baseline gap-1 px-2 ${index ? "border-l border-amber-400/60" : ""}`}>
-          {part.label}<span className="font-bold tabular-nums">{part.count}</span>
+    <span className="mt-0.5 flex flex-wrap gap-1">
+      {parts.length ? (
+        <span className={`${BONUS_TAG} gap-0 px-0 text-[11px]`}>
+          {parts.map((part, index) => (
+            <span key={part.key} title={`${part.count} × ${part.title}`}
+              className={`inline-flex items-baseline gap-1 px-2 ${index ? "border-l border-amber-400/60" : ""}`}>
+              {part.label}<span className="font-bold tabular-nums">{part.count}</span>
+            </span>
+          ))}
         </span>
-      ))}
+      ) : null}
+      {against ? (
+        <span className={`${BONUS_AGAINST_TAG} gap-1 px-2 text-[11px]`} title={`${against} × Performance bonus for the opponent`}>
+          {PERF_AWARD.perf.short} against<span className="font-bold tabular-nums">{against}</span>
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -594,6 +606,7 @@ export default function FighterPage() {
   const done = fighter.history.filter((h) => !h.upcoming);
   const fightBonuses = done.filter((h) => h.bonuses?.fotn).length;
   const perfBonuses = done.filter((h) => h.bonuses?.perf).length;
+  const perfAgainst = done.filter((h) => h.bonuses?.perf_against).length;
   const bio: [string, ReactNode][] = (
     [
       ["Height", fighter.height],
@@ -602,7 +615,7 @@ export default function FighterPage() {
       ["Stance", fighter.stance],
       ["Age", fighter.age == null ? "" : String(fighter.age)],
       ["5-round fights", String(done.filter((h) => h.scheduled_rounds === 5).length)],
-      ["Bonuses", fightBonuses || perfBonuses ? <BonusTally fight={fightBonuses} perf={perfBonuses} /> : ""],
+      ["Bonuses", fightBonuses || perfBonuses || perfAgainst ? <BonusTally fight={fightBonuses} perf={perfBonuses} against={perfAgainst} /> : ""],
       ["Born", [fighter.birthplace, fighter.country].filter(Boolean).join(", ")],
     ] as [string, ReactNode][]
   ).filter(([, v]) => v);
