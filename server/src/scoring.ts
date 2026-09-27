@@ -90,6 +90,9 @@ type StoredScorer = {
   username: string | null; username_key: string | null; username_set_at: number | null;
   image_url: string | null; image_synced_at: number | null;
   comments_public: number | null;
+  /** When the account was deleted at Clerk. The row stays as a tombstone so
+   *  comment placeholders, reports and sanctions keep their reference. */
+  deleted_at: number | null;
 };
 /** How a scorer appears anywhere public: a name, a picture and an address. */
 export type ScorerIdentity = { publicId: string; handle: string; username: string | null; displayName: string; imageUrl: string | null };
@@ -222,7 +225,7 @@ export class ScoringStore {
     const columns = new Set((this.db.prepare("PRAGMA table_info(scorers)").all() as { name: string }[]).map(column => column.name));
     // Whether a scorer's comments are listed on their profile. Hidden until
     // they choose otherwise.
-    for (const [name, type] of [["username", "TEXT"], ["username_key", "TEXT"], ["username_set_at", "INTEGER"], ["image_url", "TEXT"], ["image_synced_at", "INTEGER"], ["created_at", "INTEGER"], ["comments_public", "INTEGER NOT NULL DEFAULT 0"]] as const) {
+    for (const [name, type] of [["username", "TEXT"], ["username_key", "TEXT"], ["username_set_at", "INTEGER"], ["image_url", "TEXT"], ["image_synced_at", "INTEGER"], ["created_at", "INTEGER"], ["comments_public", "INTEGER NOT NULL DEFAULT 0"], ["deleted_at", "INTEGER"]] as const) {
       if (!columns.has(name)) this.db.exec(`ALTER TABLE scorers ADD COLUMN ${name} ${type}`);
     }
     // Older scorers predate the join-time column. Their earliest known site
@@ -251,7 +254,7 @@ export class ScoringStore {
   lookup(column: "user_id" | "handle", value: string): (ScorerIdentity & { userId: string }) | null {
     const row = column === "user_id" ? this.scorer("user_id", value)
       : this.scorer("username_key", value.toLowerCase()) ?? this.scorer("public_id", value);
-    return row ? { userId: row.user_id, ...this.identify(row) } : null;
+    return row && !row.deleted_at ? { userId: row.user_id, ...this.identify(row) } : null;
   }
   eligibility(id: string) {
     const fight = this.fight(id);
@@ -439,6 +442,8 @@ export class ScoringStore {
    *  not saved a card yet still has a profile to open and share. */
   identity(user: string): ScorerIdentity {
     const existing = this.scorer("user_id", user);
+    // A session can outlive its account by a minute; nothing is written for it.
+    if (existing?.deleted_at) throw new ScoringError(410, "This account was deleted.");
     // A scorer from before names existed is given one the first time they are
     // looked up, so no profile is left addressed by a bare identifier.
     if (existing?.username) return this.identify(existing);
@@ -493,6 +498,19 @@ export class ScoringStore {
     this.stmt("UPDATE scorers SET comments_public = ? WHERE user_id = ?").run(value ? 1 : 0, user);
     return { ...this.identity(user), commentsPublic: value };
   }
+  /** Every live account, for the check against Clerk. */
+  accounts(): { userId: string; imageUrl: string | null; joinedAt: number | null }[] {
+    return this.stmt("SELECT user_id AS userId, image_url AS imageUrl, created_at AS joinedAt FROM scorers WHERE deleted_at IS NULL ORDER BY user_id")
+      .all() as { userId: string; imageUrl: string | null; joinedAt: number | null }[];
+  }
+  /** An account deleted at Clerk: its cards leave every average, and its name
+   *  and picture are gone, so the name is free for anyone to claim. Run inside
+   *  the caller's transaction (`forgetAccount`). */
+  forget(user: string): void {
+    this.stmt("DELETE FROM scorecards WHERE user_id = ?").run(user);
+    this.stmt(`UPDATE scorers SET username = NULL, username_key = NULL, username_set_at = NULL, image_url = NULL,
+      comments_public = 0, deleted_at = ? WHERE user_id = ?`).run(Date.now(), user);
+  }
   /** When the account behind a scorer was created, as far as is known. */
   joinedAt(user: string): number | null {
     return this.scorer("user_id", user)?.created_at ?? null;
@@ -508,7 +526,7 @@ export class ScoringStore {
     // A profile answers to its username, whatever the capitalisation, and to
     // the public id it had before any name was chosen — old links keep working.
     const scorer = this.scorer("username_key", handle.toLowerCase()) ?? this.scorer("public_id", handle);
-    if (!scorer) throw new ScoringError(404, "Profile not found.");
+    if (!scorer || scorer.deleted_at) throw new ScoringError(404, "Profile not found.");
     const offset = Math.max(0, options.offset ?? 0);
     const filter: ProfileFilter = PROFILE_FILTERS.includes(options.filter!) ? options.filter! : "all";
     const query = (options.query ?? "").trim().toLowerCase().slice(0, 60);

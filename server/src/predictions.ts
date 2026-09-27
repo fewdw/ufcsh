@@ -299,6 +299,10 @@ export class PredictionStore {
     }
     return this.mine(id, user);
   }
+  /** A deleted account's picks leave the community split and the boards. */
+  forget(user: string): void {
+    this.db.prepare("DELETE FROM predictions WHERE user_id = ?").run(user);
+  }
   /** Points and accuracy per scorer over every pick, for the leaderboards. */
   standings() {
     const stored = this.db.prepare("SELECT fight_id, user_id, pick_json FROM predictions WHERE pick_json IS NOT NULL").all() as
@@ -324,7 +328,7 @@ export class PredictionStore {
     return byUser;
   }
   profile(handle: string, offset = 0) {
-    const scorer = this.db.prepare("SELECT user_id FROM scorers WHERE username_key = ? OR public_id = ?").get(handle.toLowerCase(), handle) as { user_id: string } | undefined;
+    const scorer = this.db.prepare("SELECT user_id FROM scorers WHERE (username_key = ? OR public_id = ?) AND deleted_at IS NULL").get(handle.toLowerCase(), handle) as { user_id: string } | undefined;
     if (!scorer) throw new ScoringError(404, "Profile not found.");
     const stored = this.db.prepare("SELECT * FROM predictions WHERE user_id = ? AND pick_json IS NOT NULL ORDER BY updated_at DESC, fight_id").all(scorer.user_id) as StoredPrediction[];
     const fights = new Map<string, PredictionFight>();
