@@ -905,6 +905,28 @@ function eventsWithoutVenue(): BugCheck {
 const placeKey = (text: string | null | undefined) =>
   (text ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z]/g, "");
 
+/** Missing source fields would make the venue's championship history incomplete. */
+function incompleteTitleBouts(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, f.method, f.f1_outcome, f.f2_outcome FROM fights f
+    JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 1 AND f.title_type IN ('title', 'interim')
+      AND (f.f1_id = '' OR f.f2_id = '' OR f.f1_name = '' OR f.f2_name = ''
+        OR f.weight_class = '' OR COALESCE(f.method, '') = ''
+        OR f.f1_outcome IS NULL OR f.f2_outcome IS NULL)
+    ORDER BY e.date DESC
+  `).all() as (FightRow & { method: string | null; f1_outcome: string | null; f2_outcome: string | null })[];
+  return check({
+    id: "title-bout-incomplete", group: "Venues & officials", label: "Incomplete championship results",
+    description: "Completed UFC title bouts missing fighter identity, division or result fields. These records power championship history on venue and referee profiles.",
+    grade: "must",
+  }, rows.map(row => fightItem(row, {
+    facts: [["Division", row.weight_class || "missing"], ["Method", row.method || "missing"],
+      ["Outcomes", `${row.f1_outcome ?? "missing"} / ${row.f2_outcome ?? "missing"}`]],
+    actions: [{ id: "event", label: "Re-fetch event", target: row.event_id }, { id: "detail", label: "Re-fetch fight", target: row.id }],
+  })));
+}
+
 /** The promotion's feed placing a card in another city than UFCStats does: the
  *  ufc.com page matched to the card was another event's. */
 function venueInWrongCity(): BugCheck {
@@ -1167,6 +1189,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     eventsWithoutWiki(),
     catchweightsWithoutLimit(),
     venueInWrongCity(),
+    incompleteTitleBouts(),
     eventsWithoutVenue(),
     venuesFromWikipediaOnly(),
     upcomingWithoutBroadcast(),

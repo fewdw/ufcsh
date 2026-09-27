@@ -959,6 +959,11 @@ export type VenuePage = {
   slug: string; name: string; former_names: string[];
   city: string | null; state: string | null; country: string | null; time_zone: string | null; map_url: string;
   events: VenueEvent[];
+  title_bouts: {
+    fight_id: string; event_id: string; event_name: string; date: string; division: string;
+    title_type: "title" | "interim"; f1_id: string; f1_name: string; f1_outcome: Outcome;
+    f2_id: string; f2_name: string; f2_outcome: Outcome; method: string | null; round: string | null; time: string | null;
+  }[];
   notes: { label: string; detail: string }[];
   summary: {
     events: number; upcoming: number; fights: number; title_fights: number; first: string | null; last: string | null;

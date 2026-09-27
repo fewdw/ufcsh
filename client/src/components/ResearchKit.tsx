@@ -47,7 +47,7 @@ export function Tile({ label, value, detail, compare, hint }: { label: string; v
 }
 
 export function Tiles({ children }: { children: ReactNode }) {
-  return <div className="grid grid-cols-2 gap-x-4 gap-y-4 px-4 py-4 sm:grid-cols-3 sm:gap-x-6 sm:px-5 lg:grid-cols-4">{children}</div>;
+  return <div className="profile-detail-tiles grid grid-cols-2 gap-x-4 gap-y-4 px-4 py-4 sm:grid-cols-3 sm:gap-x-6 sm:px-5 lg:grid-cols-4">{children}</div>;
 }
 
 export function Panel({ title, subtitle, children, aside }: { title: string; subtitle?: ReactNode; children: ReactNode; aside?: ReactNode }) {

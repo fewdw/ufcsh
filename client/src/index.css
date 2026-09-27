@@ -520,3 +520,46 @@ select:not([multiple]):not([size]) {
    its row, dark on the light theme and light on the dark one. */
 .pick-option-on { background-color: #18181b; border-color: #18181b; color: #fff; }
 .dark .pick-option-on { background-color: #f4f4f5; border-color: #f4f4f5; color: #18181b; }
+
+/* Research profiles: identity, key figures, then an explorable record. */
+.profile-page { --profile-accent: var(--color-series-1); }
+.profile-page[data-profile="judge"] { --profile-accent: var(--color-series-4); }
+.profile-page[data-profile="venue"] { --profile-accent: var(--color-belt); }
+.profile-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 20px 24px 28px;
+  border: 1px solid var(--color-zinc-200);
+  border-top: 3px solid var(--profile-accent);
+  border-radius: 18px;
+  background: linear-gradient(115deg, color-mix(in srgb, var(--profile-accent) 7%, transparent), transparent 70%);
+}
+.profile-watermark { position: absolute; right: 24px; top: 28px; width: 190px; height: 190px; color: var(--profile-accent); opacity: .08; transform: rotate(-12deg); pointer-events: none; }
+.profile-eyebrow { display: flex; align-items: center; gap: 7px; color: var(--profile-accent); font-size: 10px; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; }
+.profile-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.profile-stat { min-width: 0; padding: 18px 20px; border: 1px solid var(--color-zinc-200); border-radius: 14px; background: white; }
+button.profile-stat:hover { border-color: var(--profile-accent); background: color-mix(in srgb, var(--profile-accent) 5%, transparent); }
+.profile-quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 20px; border-top: 1px solid var(--color-zinc-100); }
+.profile-quick button { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--color-zinc-500); }
+.profile-quick button:hover { color: var(--profile-accent); background: color-mix(in srgb, var(--profile-accent) 6%, transparent); }
+.profile-quick button[aria-pressed="true"] { color: var(--profile-accent); background: color-mix(in srgb, var(--profile-accent) 12%, transparent); }
+.profile-page .profile-detail-tiles > div { border-left: 2px solid color-mix(in srgb, var(--profile-accent) 25%, transparent); padding-left: 12px; }
+.profile-page .profile-record-row { padding-top: 18px; padding-bottom: 18px; }
+.profile-page .profile-record-row:hover { background: color-mix(in srgb, var(--profile-accent) 3%, transparent); }
+.profile-score { border: 1px solid color-mix(in srgb, var(--profile-accent) 20%, transparent); background: color-mix(in srgb, var(--profile-accent) 5%, transparent); border-radius: 10px; padding: 8px 12px; }
+.profile-date { width: 48px; flex-shrink: 0; border: 1px solid var(--color-zinc-200); border-radius: 10px; padding: 6px 0; text-align: center; }
+.dark .profile-hero, .dark .profile-stat, .dark .profile-date { border-color: #3f3f46; }
+.dark .profile-hero { border-top-color: var(--profile-accent); }
+.dark .profile-stat { background: #18181b; }
+.dark button.profile-stat:hover { border-color: var(--profile-accent); }
+.dark .profile-quick { border-color: #27272a; }
+.dark .profile-page { --profile-accent: #60a5fa; }
+.dark .profile-page[data-profile="judge"] { --profile-accent: #a78bfa; }
+.dark .profile-page[data-profile="venue"] { --profile-accent: #eab308; }
+@media (max-width: 639px) {
+  .profile-hero { padding: 16px 16px 24px; }
+  .profile-watermark { right: -30px; }
+  .profile-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .profile-stat { padding: 14px; }
+  .profile-quick { padding: 10px 12px; }
+}

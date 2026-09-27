@@ -180,8 +180,20 @@ export function venuePage(slug: string): unknown | null {
   const held = venue.events.filter((event) => event.complete);
   const attendance = held.filter((event) => event.attendance != null);
   const record = attendance.reduce<VenueEventRef | null>((best, event) => (!best || event.attendance! > best.attendance! ? event : best), null);
+  // Use the same event membership and title definition as the summary. One
+  // indexed query returns the championship bouts without loading every card.
+  const titleBouts = prepared(`
+    SELECT f.id AS fight_id, f.event_id, e.name AS event_name, e.date,
+      f.weight_class AS division, f.title_type, f.f1_id, f.f1_name, f.f1_outcome,
+      f.f2_id, f.f2_name, f.f2_outcome, f.method, f.round, f.time
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE f.event_id IN (SELECT value FROM json_each(?))
+      AND f.title_type IN ('title', 'interim')
+    ORDER BY e.date DESC, f.ord ASC
+  `).all(JSON.stringify(held.map(event => event.id)));
   return {
     ...venue,
+    title_bouts: titleBouts,
     summary: {
       events: held.length,
       upcoming: venue.events.length - held.length,

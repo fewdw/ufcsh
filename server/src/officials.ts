@@ -479,6 +479,7 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
   const results = new Map<ResultClass, number>();
   for (const officiated of base) results.set(resultClass(officiated.fight), (results.get(resultClass(officiated.fight)) ?? 0) + 1);
   const fights = base.filter((officiated) => !filters.result || resultClass(officiated.fight) === filters.result)
+    .filter((officiated) => filters.view === "title" ? officiated.fight.titleFight && (officiated.fight.titleType === "title" || officiated.fight.titleType === "interim") : true)
     .filter((officiated) => filters.view === "incidents" ? resultClass(officiated.fight) === "dq" || Boolean(officiated.details && DEDUCTION.test(officiated.details)) : true);
   // The same filters across every bout in the UFC with a referee named, so a
   // rate reads against the era and divisions it came from, not a bare number.

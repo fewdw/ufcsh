@@ -5,11 +5,11 @@ import { formatDateShortWithYear, lastName } from "../format";
 import { useRouteScrollRestoration } from "../navigationState";
 import { PAGE, PAGE_BODY, pct, officialRows, useKeptApi, useUrlFilters } from "../research";
 import { SITE_URL, useSeo } from "../seo";
-import { BUTTON_QUIET } from "../ui";
+import { ProfileHeader, ProfileStat, ProfileStats, QuickFilters } from "../components/ProfileKit";
 import RequestNotice from "../components/RequestNotice";
 import { LoadMore, useInfiniteList } from "../components/InfiniteList";
 import {
-  FilterBar, FilterSearch, FilterSelect, NotFound, PageHeader, PageState, Pair, Panel, Tile, Tiles, YearRange,
+  FilterBar, FilterSearch, FilterSelect, NotFound, PageState, Pair, Panel, Tile, Tiles, YearRange,
 } from "../components/ResearchKit";
 
 const VERDICTS = [
@@ -17,10 +17,10 @@ const VERDICTS = [
   { value: "majority", label: "Majority" }, { value: "draw", label: "Draw" },
 ];
 const VIEWS = [
-  { value: "dissents", label: "Only their dissents" },
-  { value: "against-result", label: "Only cards against the result" },
-  { value: "ten-eight", label: "Only cards with a 10–8" },
-  { value: "rounds", label: "Only cards with rounds" },
+  { value: "dissents", label: "Lone dissents" },
+  { value: "against-result", label: "Against the result" },
+  { value: "ten-eight", label: "10–8 rounds" },
+  { value: "rounds", label: "Round-by-round" },
 ];
 const VERDICT_TONE: Record<string, string> = {
   unanimous: "bg-zinc-100 text-zinc-600", split: "bg-amber-100 text-amber-800", majority: "bg-sky-100 text-sky-700",
@@ -82,11 +82,11 @@ function RoundTable({ row }: { row: Row }) {
 
 function CardRow({ row }: { row: Row }) {
   return (
-    <li className="px-4 py-3 sm:px-5">
+    <li className="profile-record-row px-4 sm:px-5">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
         <div className="min-w-0">
-          <p className="text-[13px] leading-5"><Pair f1={row.f1} f2={row.f2} /></p>
-          <p className="text-[11px] leading-4 text-zinc-400">
+          <p className="text-sm leading-6"><Pair f1={row.f1} f2={row.f2} /></p>
+          <p className="mt-1 text-xs leading-5 text-zinc-400">
             <Link to={`/fights/${row.fight_id}?tab=fight`} className="hover:text-zinc-700 hover:underline">{row.event_name}</Link> · {formatDateShortWithYear(row.date)} · {row.division}
           </p>
           <p className="mt-1 flex flex-wrap gap-1">
@@ -96,7 +96,7 @@ function CardRow({ row }: { row: Row }) {
             {row.ten_eights ? <span className="rounded bg-amber-100 px-1.5 py-px text-[10px] font-semibold text-amber-800">{row.ten_eights}× 10–8</span> : null}
           </p>
         </div>
-        <div className="flex shrink-0 items-baseline gap-3 text-right">
+        <div className="profile-score mt-2 flex max-w-full flex-wrap items-baseline gap-3 text-right sm:mt-0">
           <span className="flex flex-col items-end"><span className="text-[9px] font-semibold uppercase tracking-[0.1em] text-zinc-400">Card</span><Score f1={row.card.f1} f2={row.card.f2} strong /></span>
           {row.others.map((other, index) => (
             <span key={index} className="flex flex-col items-end">
@@ -150,44 +150,44 @@ export default function JudgePage() {
   const active = Boolean(f.from || f.to || f.division || f.result || f.view || f.q);
   const topDivision = data.career.divisions[0];
   return (
-    <div ref={scroll} className={PAGE}>
-      <div className={PAGE_BODY}>
-        <PageHeader title={data.name}
-          meta={["Judge", `${data.career.cards.toLocaleString()} UFC scorecards`, data.career.years ? `${data.career.years.first}–${data.career.years.last}` : null, topDivision ? `mostly ${topDivision.division}` : null]}
-          aside={<Link to="/officials" className={`${BUTTON_QUIET} max-sm:hidden`}>All officials</Link>} />
+    <div ref={scroll} className={`${PAGE} profile-page`} data-profile="judge">
+      <div className={`${PAGE_BODY} !gap-4`}>
+        <ProfileHeader kind="judge" title={data.name}
+          meta={<>{data.career.years ? `${data.career.years.first}–${data.career.years.last} · ` : ""}{data.career.cards.toLocaleString()} UFC scorecards{topDivision ? ` · most scored: ${topDivision.division}` : ""}</>} />
+        <ProfileStats>
+          <ProfileStat label={active ? "Scorecards in selection" : "UFC scorecards"} value={s.cards.toLocaleString()} detail={`${s.round_cards.toLocaleString()} with round-by-round scores`} />
+          <ProfileStat label="Picked the winner" value={pct(s.agreed_result_rate)} detail={`${s.agreed_result.toLocaleString()} of ${s.with_result.toLocaleString()} cards`} />
+          <ProfileStat label="Lone dissents" value={pct(s.dissent_rate)} detail={`${s.dissents} of ${s.panels.toLocaleString()} full panels`} onClick={() => filters.set("view", "dissents")} />
+          <ProfileStat label="10–8 rounds" value={pct(s.ten_eight_rate)} detail={`${s.ten_eights} of ${s.rounds_scored.toLocaleString()} rounds scored`} onClick={() => filters.set("view", "ten-eight")} />
+        </ProfileStats>
 
-        <Panel title="Record" subtitle={active ? `${s.cards.toLocaleString()} of ${data.career.cards.toLocaleString()} cards` : undefined}>
+        <Panel title="Explore the scorecards" subtitle={active ? `${s.cards.toLocaleString()} matching cards` : "Career overview"}>
+          <QuickFilters value={f.view} onChange={(value) => filters.set("view", value)} options={[{ value: "", label: "All scorecards" }, ...VIEWS]} />
           <FilterBar active={active} onClear={filters.clear}>
             <YearRange years={data.career.years} from={filters.params.get("from")} to={filters.params.get("to")} onChange={filters.set} />
             <FilterSelect label="Division" value={f.division} all="All divisions" onChange={(value) => filters.set("division", value)}
               options={data.career.divisions.map((entry) => ({ value: entry.division, label: `${entry.division} (${entry.n})` }))} />
             <FilterSelect label="Decision" value={f.result} all="All decisions" onChange={(value) => filters.set("result", value)}
               options={VERDICTS.map((option) => ({ ...option, label: `${option.label} (${data.decision_counts[option.value] ?? 0})` }))} />
-            <FilterSelect label="Show" value={f.view} all="All cards" onChange={(value) => filters.set("view", value)} options={VIEWS} />
             <FilterSearch value={filters.params.get("q") ?? ""} onChange={(value) => filters.set("q", value || null)} placeholder="Event or fighter" />
           </FilterBar>
           <Tiles>
-            <Tile label="Lone dissents" value={pct(s.dissent_rate)} detail={`${s.dissents} of ${s.panels.toLocaleString()} full panels`}
-              compare={s.split_panels ? `${s.dissents_in_splits} of ${s.split_panels} split or majority decisions` : undefined} />
-            <Tile label="Picked the winner" value={pct(s.agreed_result_rate)} detail={`${s.agreed_result.toLocaleString()} of ${s.with_result.toLocaleString()} cards`} />
             <Tile label="Rounds agreed" value={pct(s.round_agreement_rate)} detail={`${s.rounds_compared.toLocaleString()} round comparisons`}
               compare={s.lone_rounds ? `Alone on ${s.lone_rounds} rounds` : undefined} />
-            <Tile label="10–8 rounds" value={pct(s.ten_eight_rate)} detail={`${s.ten_eights} of ${s.rounds_scored.toLocaleString()} rounds scored`}
-              hint="A point deduction can also produce a 10–8 on paper." />
             <Tile label="10–10 rounds" value={pct(s.ten_ten_rate)} detail={`${s.ten_tens} of ${s.rounds_scored.toLocaleString()} rounds scored`} />
-            <Tile label="Round-by-round cards" value={s.cards ? pct(Math.round((s.round_cards / s.cards) * 1000) / 10) : "—"} detail={`${s.round_cards.toLocaleString()} of ${s.cards.toLocaleString()} cards`} />
             <Tile label="Different winner from fans" value={s.fan_cards ? `${s.fan_pick_differs} of ${s.fan_cards}` : "—"} detail={s.fan_cards ? "cards with a fan average" : "no fan cards in this selection"} />
             <Tile label="Different rounds from fans" value={s.fan_rounds ? `${s.fan_rounds_differ} of ${s.fan_rounds}` : "—"} detail={s.fan_rounds ? "rounds with a fan average" : "no fan rounds in this selection"} />
           </Tiles>
+          <p className="px-5 pb-4 text-[11px] leading-5 text-zinc-400">Agreement measures consistency, not scoring accuracy. Round statistics use available round-by-round cards; deductions can also produce a 10–8.</p>
           {data.colleagues.length ? (
             <div className="border-t border-zinc-100 px-4 py-3 sm:px-5">
-              <h3 className="mb-2 text-xs font-medium text-zinc-700">Same winner as other judges</h3>
+              <h3 className="mb-2 text-xs font-medium text-zinc-700">Same winner as other judges <span className="font-normal text-zinc-400">· agreement / shared panels</span></h3>
               <ul className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
                 {data.colleagues.map((colleague) => (
                   <li key={colleague.name} className="flex items-center gap-2 text-xs">
-                    <span className="w-36 min-w-0 truncate">{colleague.slug ? <Link to={`/judges/${colleague.slug}`} className="font-medium text-zinc-800 hover:underline">{colleague.name}</Link> : colleague.name}</span>
+                    <span className="w-28 min-w-0 truncate sm:w-32">{colleague.slug ? <Link to={`/judges/${colleague.slug}`} className="font-medium text-zinc-800 hover:underline">{colleague.name}</Link> : colleague.name}</span>
                     <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100" aria-hidden="true">
-                      <span className="block h-full rounded-full bg-zinc-400" style={{ width: `${colleague.rate ?? 0}%` }} />
+                      <span className="block h-full rounded-full bg-series-4" style={{ width: `${colleague.rate ?? 0}%` }} />
                     </span>
                     <span className="w-24 shrink-0 text-right tabular-nums text-zinc-500">{pct(colleague.rate)} · {colleague.together}</span>
                   </li>
@@ -197,7 +197,7 @@ export default function JudgePage() {
           ) : null}
         </Panel>
 
-        <Panel title="Scorecards" subtitle="Newest first">
+        <Panel title={f.view === "dissents" ? "Dissenting scorecards" : "Scorecard history"} subtitle={`${data.total.toLocaleString()} cards · newest first`}>
           {list.items.length ? (
             <ul aria-busy={stale || list.loading} className={`divide-y divide-zinc-100 border-t border-zinc-100 ${stale ? "opacity-60 transition-opacity delay-200" : ""}`}>
               {list.items.map((row) => <Fragment key={row.fight_id}><CardRow row={row} /></Fragment>)}

@@ -64,3 +64,17 @@ test("the bug board's officials checks only list real pairs and real merges", as
   const duplicates = checks.find((check) => check.id === "official-possible-duplicate")!;
   for (const item of duplicates.items) assert.match(item.title, / \/ /);
 });
+
+test("referee championship filters include every title bout and keep date filters", () => {
+  const directory = officialsDirectory() as { referees: { slug: string }[] };
+  const busiest = directory.referees[0];
+  assert.ok(busiest, "archive must contain referees");
+  const profile = refereeProfile(busiest.slug, new URLSearchParams()) as any;
+  const titles = refereeProfile(busiest.slug, new URLSearchParams({ view: "title" })) as any;
+  assert.equal(titles.total, profile.summary.title_fights);
+  assert.ok(titles.total > 0);
+  assert.ok(titles.rows.every((row: any) => row.title));
+  const recent = refereeProfile(busiest.slug, new URLSearchParams({ view: "title", from: "2020" })) as any;
+  assert.ok(recent.rows.every((row: any) => row.title && row.date >= "2020"));
+  assert.ok(recent.total <= titles.total);
+});
