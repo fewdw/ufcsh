@@ -133,10 +133,15 @@ export function Wheel({ label, groups, compact }: { label: string; groups: Wheel
   }).join(", ");
   return (
     <div className={`flex min-w-0 ${compact ? "flex-col items-center gap-2" : "items-center gap-3"}`}>
-      <div className={`grid shrink-0 place-items-center rounded-full ${compact ? "h-16 w-16" : "h-20 w-20"}`} style={{ background: `conic-gradient(from 0deg, ${gradient})` }}
-        role="img" aria-label={`${label}: ${groups.flatMap((group) => group.slices).filter((slice) => slice.n > 0).map((slice) => `${slice.n} ${slice.label}`).join(", ")}`}>
-        <div className={`grid place-items-center rounded-full bg-white text-center shadow-[0_0_0_1px_rgba(0,0,0,0.04)] ${compact ? "h-10 w-10" : "h-12 w-12"}`}>
-          <span className={`${compact ? "text-xs" : "text-sm"} font-semibold tabular-nums text-zinc-900`}>{total.toLocaleString()}<span className="block text-[8px] font-bold uppercase tracking-wider text-zinc-400">{label}</span></span>
+      {/* What the ring counts sits above it, as a fighter's PRO and UFC
+          records do; the hole holds only the total, sized to fit. */}
+      <div className="flex shrink-0 flex-col items-center gap-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">{label}</span>
+        <div className="grid h-20 w-20 place-items-center rounded-full" style={{ background: `conic-gradient(from 0deg, ${gradient})` }}
+          role="img" aria-label={`${label}: ${groups.flatMap((group) => group.slices).filter((slice) => slice.n > 0).map((slice) => `${slice.n} ${slice.label}`).join(", ")}`}>
+          <div className="grid h-[3.75rem] w-[3.75rem] place-items-center rounded-full bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.04)]">
+            <span className={`${total >= 1000 ? "text-[13px]" : "text-base"} font-semibold tabular-nums tracking-tight text-zinc-900`}>{total.toLocaleString()}</span>
+          </div>
         </div>
       </div>
       <div className={compact ? "flex flex-col gap-1.5" : "flex gap-x-4"}>
