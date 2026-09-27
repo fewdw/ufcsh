@@ -907,13 +907,16 @@ function venuesFromWikipediaOnly(): BugCheck {
     SELECT ${VENUE_COLUMNS} FROM events WHERE venue_id IS NULL AND wiki_venue IS NOT NULL ORDER BY date DESC
   `).all() as EventVenueRow[];
   const index = venueIndex();
+  // A name some other card already ties to the promotion's venue id is settled.
+  const official = new Set((db.prepare("SELECT id FROM events WHERE venue_id IS NOT NULL").all() as { id: string }[]).map((row) => row.id));
+  const unlinked = rows.filter((event) => !index.byEvent.get(event.id)?.events.some((card) => official.has(card.id)));
   return check({
     id: "venue-wikipedia-only",
     group: "Venues & officials",
     label: "Venues known only from Wikipedia",
-    description: "The venue name comes from the event article alone. When no other card links that name to the promotion's venue id, a renamed arena (Staples Center / Crypto.com Arena) can show as two venues. Re-reading the ufc.com card usually attaches the id; otherwise the name may need an alias.",
+    description: "The venue name comes from the event article alone, and no other card links that name to the promotion's venue id, so a renamed arena (Staples Center / Crypto.com Arena) can show as two venues. Cards whose name another card already ties to the id are left out. Re-reading the ufc.com card usually attaches the id; otherwise the name may need an alias.",
     grade: "ok",
-  }, rows.map((event): BugItem => {
+  }, unlinked.map((event): BugItem => {
     const venue = index.byEvent.get(event.id);
     return {
       key: event.id,
