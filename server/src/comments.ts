@@ -484,6 +484,25 @@ export class CommentStore {
     this.changed(row.fight_id);
   }
 
+  /** An account deleted at Clerk. Its comments become the same placeholders
+   *  an author's own deletion leaves (kept only while replies hang beneath
+   *  them), its votes come off the scores they counted toward, and its blocks
+   *  go both ways. Reports and sanctions stay with the moderators. Run inside
+   *  the caller's transaction (`forgetAccount`). */
+  forgetAuthor(user: string): void {
+    const fights = this.stmt(`SELECT fight_id FROM comments WHERE user_id = ?1
+      UNION SELECT c.fight_id FROM comment_votes v JOIN comments c ON c.id = v.comment_id WHERE v.user_id = ?1`)
+      .all(user) as { fight_id: string }[];
+    this.stmt("UPDATE comments SET deleted_at = COALESCE(deleted_at, ?), body = '', body_key = '' WHERE user_id = ?").run(this.now(), user);
+    this.stmt(`UPDATE comments SET
+      ups = ups - (SELECT COUNT(*) FROM comment_votes WHERE comment_id = comments.id AND user_id = ?1 AND value = 1),
+      downs = downs - (SELECT COUNT(*) FROM comment_votes WHERE comment_id = comments.id AND user_id = ?1 AND value = -1)
+      WHERE id IN (SELECT comment_id FROM comment_votes WHERE user_id = ?1)`).run(user);
+    this.stmt("DELETE FROM comment_votes WHERE user_id = ?").run(user);
+    this.stmt("DELETE FROM comment_blocks WHERE user_id = ?1 OR blocked_id = ?1").run(user);
+    for (const row of fights) this.changed(row.fight_id);
+  }
+
   vote(user: string, id: string, value: unknown): { score: number; myVote: -1 | 0 | 1 } {
     if (value !== -1 && value !== 0 && value !== 1) throw new ScoringError(400, "Vote up, down, or clear your vote.");
     const row = this.get(id);

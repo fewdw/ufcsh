@@ -32,6 +32,7 @@ import { ReportStore } from "./reports.ts";
 import { createReportsHandler } from "./reports-http.ts";
 import { CommentStore } from "./comments.ts";
 import { createCommentsHandler } from "./comments-http.ts";
+import { ACCOUNT_SYNC_MS, accountSyncCheck, syncAccounts } from "./accounts.ts";
 import { releasedRounds } from "./live-rounds.ts";
 import { ensureImageVariant, variantPath, type ImageSize } from "./image-variants.ts";
 import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds } from "./sync.ts";
@@ -44,8 +45,8 @@ import { getLabs, getLabsBouts, getLabsFill, getLabsMatchups } from "./labs.ts";
 import { getLabsInsights, getLabsJudgeBouts, getLabsJudges, getLabsRoadBouts } from "./labs-insights.ts";
 import { titleNarratives } from "./titles.ts";
 import { fighterBoard, fighterRecords } from "./records.ts";
-import { completedUfcFightExistsSql, hasCompletedUfcFight, recordText, currentRecord, cachedPhotoUrl, cachedFullPhotoUrl, photoVersion } from "./fighter-identity.ts";
-export { hasCompletedUfcFight };
+import { ufcFightExistsSql, hasUfcFight, recordText, currentRecord, cachedPhotoUrl, cachedFullPhotoUrl, photoVersion } from "./fighter-identity.ts";
+export { hasUfcFight };
 import { careerBefore, completeRecordBefore, fightIndex, indexesHeld, ageOn, parseScheduledRounds, professionalBouts, professionalBoutsBefore, sideOf, ufcBoutsBefore, type FightRecord } from "./fight-index.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { summarizeCard } from "./card-stats.ts";
@@ -191,7 +192,7 @@ function fighterSummary(id: string, fallbackName: string, rankingType: RankingTy
     id: row.id,
     name: row.name,
     nickname: row.nickname,
-    profile_eligible: hasCompletedUfcFight(row.id),
+    profile_eligible: hasUfcFight(row.id),
     record: recordText(career.value),
     record_verified: career.verified,
     photo_url: cachedPhotoUrl(row.id, row.photo_url),
@@ -800,7 +801,11 @@ export async function runRefreshJob(key: string): Promise<unknown> {
 function fightInProgress(f: { id: string; event_date: string; f1_outcome: string | null; f2_outcome: string | null }): boolean {
   if (fightIsComplete(f) || !isFightDay(f.event_date)) return false;
   const current = currentBout();
-  return !!current?.live && current.bout.id === f.id;
+  if (current?.live && current.bout.id === f.id) return true;
+  // A result stored after `f` was read moves the card on to the next bout
+  // while `f` still has none: it is still on until the next read says how it
+  // ended, rather than neither live nor finished for a poll.
+  return fightIsComplete(prepared("SELECT f1_outcome, f2_outcome FROM fights WHERE id = ?").get(f.id) as { f1_outcome: string | null; f2_outcome: string | null } | undefined ?? {});
 }
 
 async function getFight(id: string, rankingType: RankingType): Promise<unknown | null> {
@@ -954,9 +959,9 @@ const profileCache = new VersionCache<Record<string, unknown>>();
 
 export async function getFighter(id: string, rankingType: RankingType): Promise<unknown | null> {
   const fr = prepared("SELECT * FROM fighters WHERE id = ?").get(id) as any;
-  // UFCStats contains directory-only identities and future debutants. They are
-  // allowed to appear on a scheduled card, but never become browsable profiles.
-  if (!fr || !hasCompletedUfcFight(id)) return null;
+  // UFCStats contains directory-only identities; only fighters with a UFC bout,
+  // booked or fought, get a profile.
+  if (!fr || !hasUfcFight(id)) return null;
   let refreshing = false;
   if (!fr.birth_fetched_at) {
     refreshing = matchupRefresh.request(`birth:${id}`, () => syncFighterBirthDateOnce(id),
@@ -1153,7 +1158,7 @@ export function getRankings(rankingType: RankingType): unknown {
         SELECT r.rank, r.fighter_name,
                r.fighter_id, r.rank_change, fr.photo_url, fr.nickname,
                fr.wins, fr.losses, fr.draws,
-               ${completedUfcFightExistsSql("r.fighter_id", "fought")} AS profile_eligible
+               ${ufcFightExistsSql("r.fighter_id", "fought")} AS profile_eligible
         FROM rankings r LEFT JOIN fighters fr ON fr.id = r.fighter_id
         WHERE r.ranking_type = ? AND r.division = ? ORDER BY r.div_pos ASC
       `)
@@ -1240,7 +1245,7 @@ function searchIndex(): SearchIndex {
              WHERE (f.f1_id = fr.id OR f.f2_id = fr.id)
                AND (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)) AS ufc_fights
     FROM fighters fr
-    WHERE ${completedUfcFightExistsSql("fr.id", "fought")}
+    WHERE ${ufcFightExistsSql("fr.id", "fought")}
   `).all() as any[]).map(({ norm_name, ...f }) => ({
     ...f, target: fuzzyTarget(f.name, f.nickname), names: `${norm_name}\n${(f.nickname ?? "").toLowerCase()}`,
   }));
@@ -1730,7 +1735,7 @@ export function shareCardData(kind: string, id: string): ShareCardData | null {
   }
   if (kind === "fighters") {
     const row = prepared("SELECT id, name, nickname FROM fighters WHERE id = ?").get(id) as { id: string; name: string; nickname: string } | undefined;
-    if (!row || !hasCompletedUfcFight(id)) return null;
+    if (!row || !hasUfcFight(id)) return null;
     const summary = fighterSummary(id, row.name);
     const indexed = fightIndex().fighters.get(id);
     const top = fighterRecords(id, 1)[0];
@@ -1834,7 +1839,7 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   if (p === "/api/venues") return venueDirectory();
   if (p.startsWith("/api/venues/")) return venuePage(id) ?? undefined;
   if (/^\/api\/fighters\/[a-f0-9]{16}\/stats$/i.test(p)) {
-    return hasCompletedUfcFight(id) ? fighterBoard(id, url.searchParams.get("scope") ?? "ufc", Number(url.searchParams.get("minBouts") ?? 0)) ?? undefined : undefined;
+    return hasUfcFight(id) ? fighterBoard(id, url.searchParams.get("scope") ?? "ufc", Number(url.searchParams.get("minBouts") ?? 0)) ?? undefined : undefined;
   }
   if (p.startsWith("/api/fighters/")) return await getFighter(id, rankingType) ?? undefined;
   if (p.startsWith("/api/previews/")) return getFighterPreview(id) ?? undefined;
@@ -1923,7 +1928,10 @@ export function startApi(port: number): http.Server {
     reports: reportStore,
     comments: commentStore,
     metrics: () => adminMetrics(),
-    report: async () => (queryPool ? JSON.parse((await queryPool.run("/api/bugs")).json) : bugReport()),
+    report: async () => {
+      const report = queryPool ? JSON.parse((await queryPool.run("/api/bugs")).json) : bugReport();
+      return { ...report, checks: [accountSyncCheck(), ...report.checks] };
+    },
     runAction: (action, target, actor) => process.env.NODE_ENV === "production"
       ? productionRepair(action, target, actor)
       : runBugAction(action, target),
@@ -1942,6 +1950,14 @@ export function startApi(port: number): http.Server {
     catch (error) { log("settling live rounds failed:", String(error)); }
   }, 15_000);
   settler.unref();
+  // Accounts deleted or changed at Clerk are caught up here.
+  const accountStores = { scores: scoreStore, comments: commentStore, predictions: predictionStore, bets: betStore };
+  const accountSync = setInterval(() => {
+    void syncAccounts(accountStores)
+      .then(({ forgotten }) => { if (forgotten) log(`forgot ${forgotten} deleted account(s)`); })
+      .catch(error => log("account sync failed:", String(error)));
+  }, ACCOUNT_SYNC_MS);
+  accountSync.unref();
   const workerCount = Number(process.env.API_WORKERS ?? (process.env.NODE_ENV === "production" ? 2 : 0));
   if (!Number.isInteger(workerCount) || workerCount < 0 || workerCount > 8) throw new Error("API_WORKERS must be an integer from 0 to 8");
   let refresher: NodeJS.Timeout | undefined;
@@ -2020,7 +2036,7 @@ export function startApi(port: number): http.Server {
     };
     const value = {
       ...commentStore.stats(),
-      accounts: count("SELECT COUNT(*) AS n FROM scorers"),
+      accounts: count("SELECT COUNT(*) AS n FROM scorers WHERE deleted_at IS NULL"),
       accountsLastDay: count("SELECT COUNT(*) AS n FROM scorers WHERE created_at > ?", Date.now() - 86_400_000),
       predictionsLastDay: count("SELECT COUNT(*) AS n FROM predictions WHERE updated_at > ?", Date.now() - 86_400_000),
     };
@@ -2220,6 +2236,7 @@ export function startApi(port: number): http.Server {
     clearInterval(sampler);
     clearInterval(warmLists);
     clearInterval(settler);
+    clearInterval(accountSync);
     clearInterval(refresher);
     process.removeListener("SIGTERM", shutdown);
     process.removeListener("SIGINT", shutdown);

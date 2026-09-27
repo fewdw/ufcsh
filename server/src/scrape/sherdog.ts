@@ -185,3 +185,17 @@ export function parseSherdogProfile(html: string, url: string): SherdogProfile {
 export async function scrapeSherdogProfile(url: string): Promise<SherdogProfile> {
   return parseSherdogProfile(await fetchHtml(url), url);
 }
+
+/** Fighters a profile's "Upcoming Fights" section names, other than its own. */
+export function parseSherdogUpcomingOpponents(html: string, url: string): SherdogCandidate[] {
+  const $ = cheerio.load(html);
+  const own = url.match(/-(\d+)(?:\?.*)?$/)?.[1];
+  return $(".fight_card_preview .fighter h3 a[href*='/fighter/']").map((_, link) => {
+    const href = $(link).attr("href") ?? "";
+    return { id: href.match(/-(\d+)$/)?.[1] ?? "", name: cleanText($(link).text()), nickname: "", url: absoluteUrl(href), height: "", weight: "" };
+  }).get().filter((candidate) => candidate.id && candidate.id !== own);
+}
+
+export async function sherdogUpcomingOpponents(url: string): Promise<SherdogCandidate[]> {
+  return parseSherdogUpcomingOpponents(await fetchHtml(url), url);
+}

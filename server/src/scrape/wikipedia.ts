@@ -7,11 +7,25 @@ export type WeightMiss = { name: string; pounds: number | null };
 
 /** Wikitext reduced to readable prose: references, templates and file links
  * removed, wiki links replaced by their visible text. */
+const withoutRefs = (wikitext: string) => wikitext
+  .replace(/<!--[\s\S]*?-->/g, "")
+  .replace(/<ref[^>]*\/>/g, "")
+  .replace(/<ref[\s\S]*?<\/ref>/g, "");
+
+/** The infobox alone. References go first: a multi-line citation inside one
+ *  closes with its own "\n}}", which would otherwise end the infobox early. */
+function infoboxScope(wikitext: string): string | null {
+  const text = withoutRefs(wikitext);
+  const infobox = text.search(/\{\{\s*Infobox/i);
+  if (infobox < 0) return null;
+  const end = text.indexOf("\n}}", infobox);
+  return text.slice(infobox, end > infobox ? end : undefined);
+}
+
 export function plainText(wikitext: string): string {
-  let text = wikitext
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<ref[^>]*\/>/g, "")
-    .replace(/<ref[\s\S]*?<\/ref>/g, "");
+  let text = withoutRefs(wikitext)
+    // Layout wrappers keep their text: {{nowrap|[[Mandalay Bay Events Center]]}}.
+    .replace(/\{\{\s*(?:nowrap|nobr|small)\s*\|([^{}]*)\}\}/gi, "$1");
   // Innermost templates first, until none remain.
   for (let previous = ""; previous !== text;) {
     previous = text;
@@ -30,11 +44,9 @@ export function infoboxDate(wikitext: string): string | null {
   // a day: "June 2021" is when an editor tagged the page, not the event.
   // Citations carry dates too, so without an infobox only the first field
   // counts — a year summary page must never pass for an event's article.
-  const infobox = wikitext.search(/\{\{\s*Infobox/i);
-  const end = infobox >= 0 ? wikitext.indexOf("\n}}", infobox) : -1;
-  const scope = infobox >= 0 ? wikitext.slice(infobox, end > infobox ? end : undefined) : wikitext;
-  const fields = [...scope.matchAll(/\|\s*date\s*=\s*((?:\{\{[^}]*\}\}|[^\n|])*)/gi)];
-  for (const match of infobox >= 0 ? fields : fields.slice(0, 1)) {
+  const infobox = infoboxScope(wikitext);
+  const fields = [...(infobox ?? wikitext).matchAll(/\|\s*date\s*=\s*((?:\{\{[^}]*\}\}|[^\n|])*)/gi)];
+  for (const match of infobox != null ? fields : fields.slice(0, 1)) {
     const field = match[1];
     const template = field.match(/\{\{\s*start date[^|]*\|\s*(\d{4})\s*\|\s*(\d{1,2})\s*\|\s*(\d{1,2})/i);
     if (template) return `${template[1]}-${template[2].padStart(2, "0")}-${template[3].padStart(2, "0")}`;
@@ -214,10 +226,8 @@ export type EventInfobox = { venue: string | null; city: string | null; attendan
 /** One infobox field as plain text: links reduced to their label, references
  * and templates dropped. Empty fields are null, never "". */
 function infoboxField(wikitext: string, name: string): string | null {
-  const infobox = wikitext.search(/\{\{\s*Infobox/i);
-  if (infobox < 0) return null;
-  const end = wikitext.indexOf("\n}}", infobox);
-  const scope = wikitext.slice(infobox, end > infobox ? end : undefined);
+  const scope = infoboxScope(wikitext);
+  if (scope == null) return null;
   const match = new RegExp(`\\n\\s*\\|\\s*${name}\\s*=([^\\n]*)`, "i").exec(scope);
   if (!match) return null;
   const text = plainText(match[1]).replace(/<br\s*\/?>/gi, ", ").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
