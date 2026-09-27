@@ -29,6 +29,10 @@ db.exec(`
     checked_at INTEGER NOT NULL
   )
 `);
+// Why the last read of a card failed; NULL once one succeeds.
+if (!(db.prepare("PRAGMA table_info(verdict_events)").all() as { name: string }[]).some(column => column.name === "error")) {
+  db.exec("ALTER TABLE verdict_events ADD COLUMN error TEXT");
+}
 
 const tokensOf = (name: string) => normName(name).replace(/\bjr\b/g, "junior").split(" ").filter(Boolean);
 
@@ -123,11 +127,14 @@ function localFightsNear(date: string): LocalFight[] {
 }
 
 const mergeUpdate = db.prepare(`UPDATE fights SET judge_rounds_json = COALESCE(?, judge_rounds_json),
-  community_score_json = COALESCE(?, community_score_json), verdict_checked_at = ? WHERE id = ?`);
-const replaceUpdate = db.prepare(`UPDATE fights SET judge_rounds_json = ?, community_score_json = ?, verdict_checked_at = ? WHERE id = ?`);
+  community_score_json = COALESCE(?, community_score_json), verdict_checked_at = ?, verdict_error = NULL WHERE id = ?`);
+const replaceUpdate = db.prepare(`UPDATE fights SET judge_rounds_json = ?, community_score_json = ?, verdict_checked_at = ?, verdict_error = NULL WHERE id = ?`);
+const fightError = db.prepare("UPDATE fights SET verdict_error = ? WHERE id = ?");
+const eventError = db.prepare(`INSERT INTO verdict_events (verdict_id, checked_at, error) VALUES (?, ?, ?)
+  ON CONFLICT(verdict_id) DO UPDATE SET error = excluded.error`);
 const recordEvent = db.prepare(`INSERT INTO verdict_events (verdict_id, event_id, date, checked_at) VALUES (?, ?, ?, ?)
   ON CONFLICT(verdict_id) DO UPDATE SET event_id = COALESCE(excluded.event_id, verdict_events.event_id),
-    date = excluded.date, checked_at = excluded.checked_at`);
+    date = excluded.date, checked_at = excluded.checked_at, error = NULL`);
 
 /**
  * `refresh` replaces whatever is stored with what Verdict shows now (the
@@ -138,9 +145,9 @@ async function importFight(eventId: number, fightNumber: number, fight: LocalFig
   const sourceUrl = `${VERDICT}/event/${eventId}/fight/${fightNumber}`;
   try {
     const page = parseVerdictFightPage(await fetchVerdictHtml(`/event/${eventId}/fight/${fightNumber}`));
-    if (!page) return;
+    if (!page) throw new Error("fight page has no title to read");
     const order = alignment(page.f1Name, page.f2Name, ...sides(fight))?.order;
-    if (!order) return;
+    if (!order) throw new Error(`fight page names ${page.f1Name} vs ${page.f2Name}`);
     const fetchedAt = Date.now();
     let judgeJson: string | null = null;
     if ((mode === "refresh" || needsJudges(fight)) && page.judges.length && isDecision(fight)) {
@@ -185,6 +192,7 @@ async function importFight(eventId: number, fightNumber: number, fight: LocalFig
     else mergeUpdate.run(judgeJson, communityJson, fetchedAt, fight.id);
   } catch (error) {
     stats.failed += 1;
+    fightError.run(`${sourceUrl}: ${String(error)}`.slice(0, 500), fight.id);
     if (stats.failed <= 20) log(`verdict fight ${eventId}/${fightNumber}: ${String(error)}`);
   }
 }
@@ -203,7 +211,11 @@ export async function importVerdictEvent(
   try {
     page = parseVerdictEventPage(await fetchVerdictHtml(`/event/${verdictId}`));
   } catch (error) {
-    if (!quiet) log(`verdict event ${verdictId}: ${String(error)}`);
+    // Probes past the newest known card mostly don't exist yet: not an error.
+    if (!quiet) {
+      log(`verdict event ${verdictId}: ${String(error)}`);
+      eventError.run(verdictId, Date.now(), String(error).slice(0, 500));
+    }
     return null;
   }
   const candidates = localFightsNear(page.date);
@@ -227,6 +239,7 @@ export async function importVerdictEvent(
       ? parseVerdictEventFightNumbers(await fetchVerdictDocument(`/event/${verdictId}`).catch((error) => {
         stats.failed += 1;
         log(`verdict event ${verdictId} fight numbers: ${String(error)}`);
+        eventError.run(verdictId, Date.now(), `fight numbers: ${String(error)}`.slice(0, 500));
         return "";
       }), verdictId)
       : [];
@@ -234,7 +247,10 @@ export async function importVerdictEvent(
       const resolved = match.source.fightNumber != null ? match.source : numbered.find(source =>
         source.f1Name === match.source.f1Name && source.f2Name === match.source.f2Name)
         ?? numbered.find(source => alignment(source.f1Name, source.f2Name, ...sides(match.fight))?.tier === 1);
-      if (resolved?.fightNumber == null) continue;
+      if (resolved?.fightNumber == null) {
+        fightError.run(`${VERDICT}/event/${verdictId}: no fight number for this bout`, match.fight.id);
+        continue;
+      }
       stats.matchedFights += 1;
       await importFight(resolved.eventId ?? verdictId, resolved.fightNumber, match.fight, mode, stats);
     }
@@ -262,22 +278,23 @@ const REFRESH_BY_AGE: [maxDays: number, everyMs: number][] = [
   [180, 7 * 86_400_000],
   [365, 30 * 86_400_000],
 ];
-/** A decision on fight night without its tally is what readers open next. */
+/** A bout just scored on fight night (a decision, or a stoppage after the
+ * first round) without its tally is what readers open next. */
 const LIVE_MS = 60_000;
 const ageInDays = (date: string, now: number) => (now - Date.parse(`${date}T00:00:00Z`)) / 86_400_000;
-const everyFor = (age: number, live: boolean) => live && age <= 2 ? LIVE_MS : REFRESH_BY_AGE.find(([maxDays]) => age <= maxDays)?.[1];
+const everyFor = (age: number, live: boolean) => live && age <= 1.5 ? LIVE_MS : REFRESH_BY_AGE.find(([maxDays]) => age <= maxDays)?.[1];
 
 function fightDue(fight: LocalFight, now = Date.now()): boolean {
-  const every = everyFor(ageInDays(fight.date, now), isDecision(fight) && !fight.community_score_json);
+  const every = everyFor(ageInDays(fight.date, now), scoreable(fight) && !fight.community_score_json);
   return every != null && (fight.verdict_checked_at ?? 0) < now - every;
 }
 
 /** Cards due a re-read, most recent first. A card first seen before it was
  * fought (so nothing matched yet) counts while one of ours is on that date.
- * `live`: still being fought, or a decision on it still waits for a tally. */
+ * `live`: still being fought, or a scored bout on it still waits for a tally. */
 const dueCards = db.prepare(`SELECT v.verdict_id, v.checked_at, julianday('now') - julianday(COALESCE(e.date, v.date)) AS age,
     (v.event_id IS NULL OR e.complete = 0 OR EXISTS (SELECT 1 FROM fights f WHERE f.event_id = e.id
-      AND f.method LIKE '%DEC%' AND f.community_score_json IS NULL)) AS live
+      AND (f.method LIKE '%DEC%' OR CAST(f.round AS INTEGER) > 1) AND f.community_score_json IS NULL)) AS live
   FROM verdict_events v LEFT JOIN events e ON e.id = v.event_id
   WHERE (v.event_id IS NOT NULL AND e.date <= date('now') AND e.date >= date('now', '-365 day'))
     OR (v.event_id IS NULL AND v.date BETWEEN date('now', '-3 day') AND date('now', '+1 day')
@@ -305,7 +322,7 @@ export async function syncVerdictScorecards(): Promise<VerdictImportStats & { ev
     };
     if (Date.now() - discoveredAt > 3_600_000) {
       discoveredAt = Date.now();
-      const known = new Set((db.prepare("SELECT verdict_id FROM verdict_events").all() as { verdict_id: number }[]).map(row => row.verdict_id));
+      const known = new Set((db.prepare("SELECT verdict_id FROM verdict_events WHERE error IS NULL OR date IS NOT NULL").all() as { verdict_id: number }[]).map(row => row.verdict_id));
       const maxKnown = (db.prepare("SELECT MAX(verdict_id) AS id FROM verdict_events").get() as { id: number | null }).id ?? 0;
       let ids: number[] = [];
       try { ids = await listedVerdictIds(); } catch (error) { log(`verdict events listing: ${String(error)}`); }
