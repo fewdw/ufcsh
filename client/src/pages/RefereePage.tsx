@@ -1,4 +1,5 @@
 import { Link, useParams } from "react-router-dom";
+import { ArrowUpRight } from "lucide-react";
 import type { RefereeProfile, RefereeTally } from "../api";
 import { formatDateShortWithYear, formatMethod } from "../format";
 import { formatDuration } from "../components/chartTokens";
@@ -154,8 +155,8 @@ export default function RefereePage() {
                     <p className="mt-1 text-xs leading-5 text-zinc-400"><Link to={`/fights/${row.fight_id}`} className="hover:text-zinc-700 hover:underline">{row.event_name}</Link> · {formatDateShortWithYear(row.date)} · {row.division}</p>
                     {row.details && row.result !== "dec" ? <p className="mt-0.5 text-[11px] text-zinc-500">{row.details}</p> : null}
                   </div>
-                  <Link to={`/fights/${row.fight_id}`} className={`shrink-0 rounded-md px-2.5 py-1.5 text-[11px] font-semibold tabular-nums ${RESULT_TONE[row.result] ?? RESULT_TONE.other}`}>
-                    {formatMethod(row.method, row.round != null ? String(row.round) : null, row.time) || row.result.toUpperCase()} ↗
+                  <Link to={`/fights/${row.fight_id}`} className={`inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-semibold tabular-nums ${RESULT_TONE[row.result] ?? RESULT_TONE.other}`}>
+                    {formatMethod(row.method, row.round != null ? String(row.round) : null, row.time) || row.result.toUpperCase()}<ArrowUpRight size={12} aria-hidden="true" />
                   </Link>
                 </li>
               ))}
