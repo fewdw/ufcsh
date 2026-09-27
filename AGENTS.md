@@ -25,7 +25,11 @@
 - In a new worktree, run `npm ci --prefix client` and `npm ci --prefix server` before running checks.
 - Never commit to `main`. Never merge. Merging is a production release.
 - When a change is complete and checks pass, commit and push without asking. On a branch's first push, open a PR to `main`; later pushes update it.
-- After I merge a PR, pull `main` in `/home/ubuntu/ufcsh` so it matches the latest version, and remove that branch's worktree with `git -C /home/ubuntu/ufcsh-dev worktree remove <path>`.
+- After a PR is merged (by me, or by you when I ask), always clean up without being asked:
+  - Pull `main` in `/home/ubuntu/ufcsh` so it matches the latest version.
+  - Remove the worktree: `git -C /home/ubuntu/ufcsh-dev worktree remove <path>`.
+  - Delete the local branch: `git -C /home/ubuntu/ufcsh-dev branch -D <branch>`.
+  - Delete the GitHub branch: `git -C /home/ubuntu/ufcsh-dev push origin --delete <branch>`.
 
 ## Parallel agents
 
