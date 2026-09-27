@@ -1,7 +1,7 @@
 import { prepared } from "./db.ts";
 import { ufcFightExistsSql, currentRecord, hasUfcFight, recordText } from "./fighter-identity.ts";
-import { officialsIndex } from "./officials.ts";
-import { venueIndex } from "./venues.ts";
+import { judgeProfile, officialsIndex, refereeProfile } from "./officials.ts";
+import { venueIndex, venuePage } from "./venues.ts";
 
 /**
  * What a page is called before any script runs: the title, description,
@@ -144,30 +144,74 @@ export function pageSeo(pathname: string): PageSeo {
     const official = (parts[1] === "judges" ? index.judgeSlugs : index.refereeSlugs).get(id);
     if (!official) return notFound();
     const role = parts[1] === "judges" ? "judge" : "referee";
+    const url = `${SITE_URL}/${parts[1]}/${official.slug}`;
+    const years = official.fights.length ? `${official.fights.at(-1)!.fight.year}–${official.fights[0].fight.year}` : "";
+    const count = official.fights.length.toLocaleString("en-US");
+    const bouts = (rows: { fight_id: string; event_name: string; date: string; f1: { name: string }; f2: { name: string } }[]) =>
+      `<ul>${rows.map((row) => `<li>${link(`/fights/${row.fight_id}`, `${row.f1.name} vs ${row.f2.name}`)} · ${htmlEscape(row.event_name)} (${htmlEscape(row.date)})</li>`).join("")}</ul>`;
+    let description: string;
+    let facts: string;
+    let list: string;
+    if (role === "judge") {
+      const profile = judgeProfile(official.slug, new URLSearchParams()) as any;
+      const s = profile.summary;
+      description = `${official.name}, UFC judge${years ? ` (${years})` : ""}: ${count} scorecards, picked the winner on ${s.agreed_result_rate ?? "—"}%, lone dissent on ${s.dissent_rate ?? "—"}%, 10–8s on ${s.ten_eight_rate ?? "—"}% of rounds, and every card beside the other judges and the fans.`;
+      facts = `Picked the winner ${s.agreed_result_rate ?? "—"}% · Lone dissents ${s.dissent_rate ?? "—"}% · Rounds agreed ${s.round_agreement_rate ?? "—"}%`;
+      list = bouts(profile.rows);
+    } else {
+      const profile = refereeProfile(official.slug, new URLSearchParams()) as any;
+      const s = profile.summary;
+      description = `${official.name}, UFC referee${years ? ` (${years})` : ""}: ${count} bouts, ${s.finish_rate ?? "—"}% finished (UFC ${profile.baseline.finish_rate ?? "—"}%), ${s.title_fights} title bouts, stoppages by round, disqualifications and every bout they refereed.`;
+      facts = `Finished ${s.finish_rate ?? "—"}% · KO/TKO ${s.ko_rate ?? "—"}% · Submission ${s.sub_rate ?? "—"}% · Decision ${s.decision_rate ?? "—"}%`;
+      list = bouts(profile.rows);
+    }
     return {
       ...DEFAULT,
-      title: `${official.name} — UFC ${role === "judge" ? "Judge Scorecards" : "Referee Record"} | ufc.sh`,
-      description: role === "judge"
-        ? `${official.name}: ${official.fights.length.toLocaleString("en-US")} UFC scorecards, dissent rate, 10–8 frequency and agreement with other judges and fans.`
-        : `${official.name}: ${official.fights.length.toLocaleString("en-US")} UFC bouts refereed, stoppage types and disqualifications, against a UFC-wide baseline.`,
-      canonical: `${SITE_URL}/${parts[1]}/${official.slug}`,
+      title: `${official.name} — UFC ${role === "judge" ? "Judge Scorecards & Stats" : "Referee Record & Stoppages"} | ufc.sh`,
+      description,
+      canonical: url,
       type: "profile",
-      structuredData: { "@context": "https://schema.org", "@type": "Person", name: official.name, jobTitle: `MMA ${role}`, url: `${SITE_URL}/${parts[1]}/${official.slug}` },
-      summary: `<h1>${htmlEscape(official.name)}</h1><p>UFC ${role}, ${official.fights.length} bouts on record. ${link("/officials", "All officials")}</p>`,
+      structuredData: {
+        "@context": "https://schema.org",
+        "@graph": [
+          { "@type": "ProfilePage", url, name: `${official.name} — UFC ${role}`, mainEntity: { "@type": "Person", name: official.name, jobTitle: `MMA ${role}`, url } },
+          { "@type": "BreadcrumbList", itemListElement: [
+            { "@type": "ListItem", position: 1, name: "Judges & referees", item: `${SITE_URL}/officials` },
+            { "@type": "ListItem", position: 2, name: official.name, item: url },
+          ] },
+        ],
+      },
+      summary: `<h1>${htmlEscape(official.name)}</h1><p>UFC ${role} · ${count} ${role === "judge" ? "scorecards" : "bouts"}${years ? ` · ${years}` : ""}. ${htmlEscape(facts)}. ${link("/officials", "All judges & referees")}</p>${list}`,
     };
   }
   if (parts[1] === "venues") {
     const venue = venueIndex().bySlug.get(id);
     if (!venue) return notFound();
-    const place = [venue.city, venue.country].filter(Boolean).join(", ");
-    const held = venue.events.filter((event) => event.complete).length;
+    const place = [venue.city, venue.state, venue.country].filter(Boolean).join(", ");
+    const page = venuePage(venue.slug) as any;
+    const held = page.summary.events as number;
+    const url = `${SITE_URL}/venues/${venue.slug}`;
+    const span = page.summary.first ? `${page.summary.first.slice(0, 4)}–${page.summary.last.slice(0, 4)}` : "";
+    const titles = page.title_bouts as { fight_id: string; event_name: string; date: string; division: string; f1: { name: string }; f2: { name: string } }[];
     return {
       ...DEFAULT,
-      title: `${venue.name} — UFC Events | ufc.sh`,
-      description: `Every UFC event at ${venue.name}${place ? `, ${place}` : ""}: ${held} ${held === 1 ? "card" : "cards"} held, attendance and upcoming events.`,
-      canonical: `${SITE_URL}/venues/${venue.slug}`,
-      structuredData: { "@context": "https://schema.org", "@type": "StadiumOrArena", name: venue.name, url: `${SITE_URL}/venues/${venue.slug}`, ...(place ? { address: place } : {}) },
-      summary: `<h1>${htmlEscape(venue.name)}</h1><p>${htmlEscape(place)}</p><ul>${venue.events.slice(0, 40).map((event) => `<li>${link(`/events/${event.id}`, event.name)} (${htmlEscape(event.date)})</li>`).join("")}</ul>`,
+      title: `${venue.name} — UFC Events & Title Fights | ufc.sh`,
+      description: `Every UFC event at ${venue.name}${place ? `, ${place}` : ""}${span ? ` (${span})` : ""}: ${held} ${held === 1 ? "card" : "cards"}, ${page.summary.fights.toLocaleString("en-US")} bouts, ${page.summary.title_fights} title fights${page.summary.attendance_record && page.summary.attendance_known >= 3 ? `, a record crowd of ${page.summary.attendance_record.attendance.toLocaleString("en-US")}` : ""} and upcoming events.`,
+      canonical: url,
+      structuredData: {
+        "@context": "https://schema.org",
+        "@graph": [
+          { "@type": "StadiumOrArena", name: venue.name, url, ...(venue.former_names.length ? { alternateName: venue.former_names } : {}),
+            ...(place ? { address: { "@type": "PostalAddress", addressLocality: venue.city ?? undefined, addressRegion: venue.state ?? undefined, addressCountry: venue.country ?? undefined } } : {}) },
+          { "@type": "BreadcrumbList", itemListElement: [
+            { "@type": "ListItem", position: 1, name: "Venues", item: `${SITE_URL}/venues` },
+            { "@type": "ListItem", position: 2, name: venue.name, item: url },
+          ] },
+        ],
+      },
+      summary: `<h1>${htmlEscape(venue.name)}</h1><p>${htmlEscape([place, span].filter(Boolean).join(" · "))}. ${held} UFC cards, ${page.summary.title_fights} title fights. ${link("/venues", "All venues")}</p>`
+        + (titles.length ? `<h2>Title fights</h2><ul>${titles.map((bout) => `<li>${link(`/fights/${bout.fight_id}`, `${bout.f1.name} vs ${bout.f2.name}`)} · ${htmlEscape(bout.division)} · ${htmlEscape(bout.event_name)} (${htmlEscape(bout.date)})</li>`).join("")}</ul>` : "")
+        + `<h2>Events</h2><ul>${venue.events.slice(0, 60).map((event) => `<li>${link(`/events/${event.id}`, event.name)} (${htmlEscape(event.date)})</li>`).join("")}</ul>`,
     };
   }
   return notFound();
@@ -228,9 +272,9 @@ export function sitemap(): string {
     ...events.map((event) => entry(`/events/${encodeURIComponent(event.id)}`, event.date)),
     ...fights.map((fight) => entry(`/fights/${encodeURIComponent(fight.id)}`, fight.date)),
     ...fighters.map((fighter) => entry(`/fighters/${encodeURIComponent(fighter.id)}`)),
-    ...[...officials.judgeSlugs.keys()].map((slug) => entry(`/judges/${slug}`)),
-    ...[...officials.refereeSlugs.keys()].map((slug) => entry(`/referees/${slug}`)),
-    ...[...venues.bySlug.keys()].map((slug) => entry(`/venues/${slug}`)),
+    ...[...officials.judgeSlugs.values()].map((judge) => entry(`/judges/${judge.slug}`, judge.fights[0]?.fight.date)),
+    ...[...officials.refereeSlugs.values()].map((referee) => entry(`/referees/${referee.slug}`, referee.fights[0]?.fight.date)),
+    ...[...venues.bySlug.values()].map((venue) => entry(`/venues/${venue.slug}`, venue.events.find((event) => event.complete)?.date)),
     "</urlset>",
   ].join("");
 }
