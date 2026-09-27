@@ -70,8 +70,8 @@ production and then moves dev onto `main` as well (the `sync-dev` job), so the
 two match until the next branch push. To show a different pushed branch by
 hand, run
 `./deploy/select-dev-branch.sh BRANCH` from the production checkout. Or in
-GitHub, open **Actions → Choose dev branch → Run workflow**, leave the workflow
-ref on `main`, and type the branch name. This fetches the branch, switches the
+GitHub, open **Actions → Choose dev branch → Run workflow**, pick the branch in
+the dropdown, and click **Run workflow**. This fetches the branch, switches the
 dev worktree, rebuilds the app, and updates `dev.ufc.sh`. The worktree must be
 clean before switching branches; commit or stash unfinished changes first.
 

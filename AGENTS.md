@@ -37,7 +37,7 @@
 
 - Pushing any branch other than `main` deploys it to https://dev.ufc.sh. Dev shows one branch at a time, so another agent's push can replace yours.
 - After pushing, wait for the deploy, then confirm dev is healthy and serving your branch's latest commit. Then tell me to reload dev to review, and name the branch.
-- If another branch has taken over dev, say so and name your branch so I can switch with the **Choose dev branch** GitHub Action.
+- If another branch has taken over dev, say so and name your branch so I can switch with the **Choose dev branch** GitHub Action (Actions → Choose dev branch → Run workflow → pick the branch in the dropdown → Run workflow).
 - Verify only on dev. Never run `./deploy/update.sh` unless I ask.
 
 ## Production releases
@@ -50,7 +50,7 @@
 
 - The dev app runs from a Docker image. Code changes aren't live through hot reload.
 - Deploy your changes to dev by pushing your branch. Don't run `/home/ubuntu/ufcsh/dev.sh` from a worktree: it rebuilds from `/home/ubuntu/ufcsh-dev`, not your worktree, and would overwrite another agent's deploy.
-- To switch the branch shown on dev by hand, use `./deploy/select-dev-branch.sh BRANCH` from `/home/ubuntu/ufcsh` or the **Choose dev branch** GitHub Action. Only do this when I ask.
+- To switch the branch shown on dev by hand, use `./deploy/select-dev-branch.sh BRANCH` from `/home/ubuntu/ufcsh`, or `gh workflow run deploy-dev.yml --ref BRANCH` (the **Choose dev branch** Action). Only do this when I ask.
 
 ## Secrets and data
 
