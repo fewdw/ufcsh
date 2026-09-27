@@ -1,4 +1,4 @@
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import type { RefereeProfile, RefereeTally } from "../api";
 import { formatDateShortWithYear, formatMethod } from "../format";
 import { formatDuration, PANEL } from "../components/chartTokens";
@@ -43,9 +43,9 @@ export default function RefereePage() {
     itemKey: (row) => row.fight_id,
   });
   useSeo({
-    title: data ? `${data.name} — Referee Record & Stoppages` : "UFC Referee",
+    title: data ? `${data.name} — UFC Referee Record & Stoppages` : "UFC Referee",
     description: data
-      ? `${data.name}: ${data.career.fights.toLocaleString()} UFC bouts refereed, stoppage types, disqualifications and how their bouts compare with the UFC as a whole.`
+      ? `${data.name}, UFC referee${data.career.years ? ` (${data.career.years.first}–${data.career.years.last})` : ""}: ${data.career.fights.toLocaleString()} bouts, ${data.summary.finish_rate ?? "—"}% finished (UFC ${data.baseline.finish_rate ?? "—"}%), ${data.summary.title_fights} title bouts, stoppages by round, disqualifications and every bout they refereed.`
       : "UFC referee history and stoppage patterns.",
     path: `/referees/${slug}`,
     type: "profile",
@@ -124,13 +124,13 @@ export default function RefereePage() {
       from={filters.params.get("from")} to={filters.params.get("to")} onPick={filters.pickYear} />
     <RankRows title="Refereed most" rows={data.regulars.map((fighter, index) => ({
       key: fighter.id, chip: index + 1, chipClass: TOP(index),
-      title: <Link to={`/fighters/${fighter.id}`} className="hover:underline">{fighter.name}</Link>,
+      title: fighter.name, to: `/fighters/${fighter.id}`,
       detail: `${fighter.wins} W`, value: fighter.n,
     }))} />
     <RankRows title="Disqualifications & deductions" rows={data.incidents.map((incident) => ({
       key: incident.fight_id, chip: incident.kind === "Disqualification" ? "DQ" : "PTS", chipClass: "bg-amber-100 text-amber-800",
       title: <Pair f1={incident.f1} f2={incident.f2} />,
-      detail: <>{incident.details ? `${incident.details} · ` : ""}<Link to={`/fights/${incident.fight_id}`} className="hover:underline">{incident.event_name}</Link>, {formatDateShortWithYear(incident.date)}</>,
+      detail: `${incident.details ? `${incident.details} · ` : ""}${incident.event_name}, ${formatDateShortWithYear(incident.date)}`, to: `/fights/${incident.fight_id}`,
       value: "",
     }))} />
   </>;

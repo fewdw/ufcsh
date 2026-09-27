@@ -8,7 +8,7 @@ import { SITE_URL, useSeo } from "../seo";
 import RequestNotice from "../components/RequestNotice";
 import { LoadMore, useInfiniteList } from "../components/InfiniteList";
 import {
-  BOUT_LIST, BoutRow, FilterSearch, FilterSelect, IdentityCard, ListHeading, NotFound, PageState, ProfileColumns, RankRows,
+  BOUT_LIST, BoutRow, ROW_CONTROL, FilterSearch, FilterSelect, IdentityCard, ListHeading, NotFound, PageState, ProfileColumns, RankRows,
   TitleNote, Wheel, YearBars, YearRange,
 } from "../components/ResearchKit";
 
@@ -66,7 +66,7 @@ function RoundTable({ row }: { row: Row }) {
   const fans = row.fans?.rounds.length ? row.fans.rounds : null;
   const cell = "whitespace-nowrap px-1.5 py-1 text-center tabular-nums";
   return (
-    <details className="mt-1.5">
+    <details className={`mt-1.5 w-fit ${ROW_CONTROL}`}>
       <summary className="cursor-pointer text-[11px] font-medium text-zinc-500 hover:text-zinc-900">Round by round</summary>
       <div className="mt-1.5 overflow-x-auto">
         <table className="text-[11px] text-zinc-600">
@@ -139,7 +139,7 @@ function CardRow({ row, against }: { row: Row; against: Against }) {
         <p className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] leading-4 text-zinc-400">
           {row.others.map((other, index) => (
             <span key={index}>
-              {other.slug ? <Link to={`/judges/${other.slug}`} className="hover:text-zinc-900 hover:underline">{other.judge ? lastName(other.judge) : "Judge"}</Link> : other.judge ? lastName(other.judge) : "Judge"}{" "}
+              {other.slug ? <Link to={`/judges/${other.slug}`} className={`hover:text-zinc-900 hover:underline ${ROW_CONTROL}`}>{other.judge ? lastName(other.judge) : "Judge"}</Link> : other.judge ? lastName(other.judge) : "Judge"}{" "}
               <Score f1={other.f1} f2={other.f2} />
             </span>
           ))}
@@ -162,9 +162,9 @@ export default function JudgePage() {
     itemKey: (row) => row.fight_id,
   });
   useSeo({
-    title: data ? `${data.name} — Judge Scorecards & Agreement` : "UFC Judge",
+    title: data ? `${data.name} — UFC Judge Scorecards & Stats` : "UFC Judge",
     description: data
-      ? `${data.name}: ${data.career.cards.toLocaleString()} UFC scorecards, dissent rate, 10–8 frequency and agreement with other judges and fan cards.`
+      ? `${data.name}, UFC judge${data.career.years ? ` (${data.career.years.first}–${data.career.years.last})` : ""}: ${data.career.cards.toLocaleString()} scorecards, picked the winner on ${data.summary.agreed_result_rate ?? "—"}%, lone dissent on ${data.summary.dissent_rate ?? "—"}%, 10–8s on ${data.summary.ten_eight_rate ?? "—"}% of rounds, and every card beside the other judges and the fans.`
       : "UFC judge scorecards, agreement and dissent history.",
     path: `/judges/${slug}`,
     type: "profile",
@@ -191,7 +191,7 @@ export default function JudgePage() {
         ["Active", years ? `${years.first}–${years.last}` : null],
         ["Most often", data.career.divisions[0]?.division],
         ["Picked winner", pct(s.agreed_result_rate)],
-        ["Dissents", s.dissents.toLocaleString()],
+        ["Dissents", pct(s.dissent_rate)],
         ["Round cards", s.round_cards.toLocaleString()],
       ]}>
       {filtered ? (
@@ -226,7 +226,7 @@ export default function JudgePage() {
       from={filters.params.get("from")} to={filters.params.get("to")} onPick={filters.pickYear} />
     <RankRows title="Same winner as" rows={data.colleagues.map((colleague, index) => ({
       key: colleague.name, chip: index + 1, chipClass: TOP(index),
-      title: colleague.slug ? <Link to={`/judges/${colleague.slug}`} className="hover:underline">{colleague.name}</Link> : colleague.name,
+      title: colleague.name, to: colleague.slug ? `/judges/${colleague.slug}` : undefined,
       detail: `${colleague.together} cards`, value: pct(colleague.rate),
     }))} />
   </>;

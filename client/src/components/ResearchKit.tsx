@@ -157,6 +157,8 @@ export type RankRow = {
   key: string; chip?: ReactNode; chipClass?: string; title: ReactNode; detail?: ReactNode; value: ReactNode; hint?: string;
   /** Rows that filter the list: pressing one shows only its bouts. */
   onSelect?: () => void; selected?: boolean;
+  /** Rows that open a page: the whole row is the link. */
+  to?: string;
 };
 
 /** Rows the way a fighter's Records read: a chip, what it is, and the figure
@@ -175,6 +177,9 @@ export function RankRows({ title, subtitle, rows }: { title: string; subtitle?: 
             </span>
             <span className="shrink-0 text-right text-base font-semibold tabular-nums text-zinc-950">{row.value}</span>
           </>;
+          if (row.to) {
+            return <Link key={row.key} to={row.to} title={row.hint} className="group flex w-full items-center gap-3 px-4 py-2 transition-colors hover:bg-zinc-50">{body}</Link>;
+          }
           return row.onSelect ? (
             <button key={row.key} type="button" onClick={row.onSelect} aria-pressed={row.selected} title={row.hint}
               className={`flex w-full items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-zinc-50 ${row.selected ? "bg-zinc-100 shadow-[inset_3px_0_0_var(--color-series-1)]" : ""}`}>
@@ -204,17 +209,22 @@ export function MethodCircle({ result }: { result: string }) {
   );
 }
 
-/** Both fighters, the winner in ink and the loser muted, both linked. */
+/** Both fighters, the winner in ink and the loser muted. The row around
+ *  them is the link to their matchup, and pointing at it lights both names. */
 export function Pair({ f1, f2 }: { f1: Side; f2: Side }) {
-  const tone = (outcome: string | null) => outcome === "win" ? "font-semibold text-zinc-900" : "text-zinc-500";
+  const tone = (outcome: string | null) => outcome === "win" ? "font-semibold text-zinc-900" : "text-zinc-500 group-hover:text-zinc-900";
   return (
-    <span className="min-w-0">
-      <Link to={`/fighters/${f1.id}`} className={`${tone(f1.outcome)} hover:underline`}>{f1.name}</Link>
+    <span className="min-w-0 decoration-zinc-400 underline-offset-2 group-hover:underline">
+      <span className={tone(f1.outcome)}>{f1.name}</span>
       <span className="px-1 text-zinc-300">vs</span>
-      <Link to={`/fighters/${f2.id}`} className={`${tone(f2.outcome)} hover:underline`}>{f2.name}</Link>
+      <span className={tone(f2.outcome)}>{f2.name}</span>
     </span>
   );
 }
+
+/** A row that is one link, the whole of it a target for a thumb. Anything
+ *  inside it that is its own control sits above the link with `ROW_CONTROL`. */
+export const ROW_CONTROL = "relative z-10";
 
 export function TitleNote({ interim }: { interim?: boolean }) {
   return <span className={`font-semibold ${interim ? "text-belt-interim" : "text-belt"}`}>{interim ? "Interim title" : "Title"}</span>;
@@ -228,15 +238,17 @@ export function BoutRow({ lead, how, f1, f2, division, note, eventName, date, fi
 }) {
   const cell = "hidden min-w-0 px-3 py-2.5 @3xl:flex";
   return (
-    <div className="grid grid-cols-1 items-stretch @3xl:grid-cols-[11rem_minmax(12rem,1.3fr)_8rem_minmax(11rem,1fr)]">
+    <div className="group relative grid grid-cols-1 items-stretch transition-colors hover:bg-zinc-50 @3xl:grid-cols-[11rem_minmax(12rem,1.3fr)_8rem_minmax(11rem,1fr)]">
+      <Link to={`/fights/${fightId}`} aria-label={`${f1.name} vs ${f2.name}, ${eventName}`}
+        className="absolute inset-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-zinc-900" />
       <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 px-4 py-2.5 @3xl:hidden">
         <span className="row-span-3 self-start pt-0.5">{lead}</span>
         <p className="text-[13px] leading-5"><Pair f1={f1} f2={f2} /></p>
         <p className="text-[11px] leading-4 text-zinc-500"><span className="font-medium">{how}</span><span className="text-zinc-300"> · </span>{division}{note ? <><span className="text-zinc-300"> · </span>{note}</> : null}</p>
-        <Link to={`/fights/${fightId}`} className="flex min-w-0 items-baseline gap-2 py-0.5 hover:underline">
+        <p className="flex min-w-0 items-baseline gap-2 py-0.5">
           <span className="min-w-0 flex-1 truncate text-[11px] leading-4 text-zinc-600">{eventName}</span>
           <span className="shrink-0 text-[10px] tabular-nums text-zinc-400">{formatDateShortWithYear(date)}</span>
-        </Link>
+        </p>
         {extra ? <div className="col-start-2">{extra}</div> : null}
       </div>
       <div className={`${cell} items-center gap-2.5`}>
@@ -251,10 +263,10 @@ export function BoutRow({ lead, how, f1, f2, division, note, eventName, date, fi
         <span className="break-words">{division}</span>
         {note ? <span className="leading-4">{note}</span> : null}
       </div>
-      <Link to={`/fights/${fightId}`} className={`${cell} flex-col justify-center border-l border-zinc-100 text-right transition-colors hover:bg-zinc-50`}>
+      <div className={`${cell} flex-col justify-center border-l border-zinc-100 text-right`}>
         <span className="block text-xs font-medium leading-5 text-zinc-600">{eventName}</span>
         <span className="mt-0.5 block text-[11px] tabular-nums text-zinc-400">{formatDateShortWithYear(date)}</span>
-      </Link>
+      </div>
     </div>
   );
 }

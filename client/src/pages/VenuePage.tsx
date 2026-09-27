@@ -66,9 +66,9 @@ export default function VenuePage() {
   const filters = useUrlFilters();
   const place = data ? [data.city, data.state, data.country].filter(Boolean).join(", ") : "";
   useSeo({
-    title: data ? `${data.name} — UFC Events & History` : "UFC Venue",
+    title: data ? `${data.name} — UFC Events & Title Fights` : "UFC Venue",
     description: data
-      ? `Every UFC event at ${data.name}${place ? `, ${place}` : ""}: ${data.summary.events} cards, attendance and upcoming events.`
+      ? `Every UFC event at ${data.name}${place ? `, ${place}` : ""}: ${data.summary.events} ${data.summary.events === 1 ? "card" : "cards"}, ${data.summary.fights.toLocaleString("en-US")} bouts, ${data.summary.title_fights} title fights${data.summary.attendance_record && data.summary.attendance_known >= 3 ? `, a record crowd of ${data.summary.attendance_record.attendance.toLocaleString("en-US")}` : ""} and upcoming events.`
       : "UFC venue history, events and attendance.",
     path: `/venues/${slug}`,
     structuredData: data ? {
@@ -146,7 +146,7 @@ export default function VenuePage() {
       from={from} to={to} onPick={filters.pickYear} />
     <RankRows title="Most wins here" rows={data.top_winners.map((fighter, index) => ({
       key: fighter.id, chip: index + 1, chipClass: TOP(index),
-      title: <Link to={`/fighters/${fighter.id}`} className="hover:underline">{fighter.name}</Link>,
+      title: fighter.name, to: `/fighters/${fighter.id}`,
       detail: `${fighter.wins}–${fighter.losses}${fighter.draws ? `–${fighter.draws}` : ""}`, value: fighter.wins,
     }))} />
   </>;
