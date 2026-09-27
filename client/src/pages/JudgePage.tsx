@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import { Link, useParams } from "react-router-dom";
+import { Scale } from "lucide-react";
 import type { JudgeProfile } from "../api";
 import { formatDateShortWithYear, lastName } from "../format";
 import { useRouteScrollRestoration } from "../navigationState";
@@ -9,7 +10,7 @@ import { BUTTON_QUIET } from "../ui";
 import RequestNotice from "../components/RequestNotice";
 import { LoadMore, useInfiniteList } from "../components/InfiniteList";
 import {
-  FilterBar, FilterSearch, FilterSelect, NotFound, PageHeader, PageState, Pair, Panel, Tile, Tiles, YearRange,
+  BarList, FilterBar, FilterSearch, FilterSelect, NotFound, PageHeader, PageState, Pair, Panel, Tile, Tiles, TitleBadge, YearBars, YearRange,
 } from "../components/ResearchKit";
 
 const VERDICTS = [
@@ -21,6 +22,7 @@ const VIEWS = [
   { value: "against-result", label: "Only cards against the result" },
   { value: "ten-eight", label: "Only cards with a 10–8" },
   { value: "rounds", label: "Only cards with rounds" },
+  { value: "title", label: "Only title bouts" },
 ];
 const VERDICT_TONE: Record<string, string> = {
   unanimous: "bg-zinc-100 text-zinc-600", split: "bg-amber-100 text-amber-800", majority: "bg-sky-100 text-sky-700",
@@ -82,10 +84,11 @@ function RoundTable({ row }: { row: Row }) {
 
 function CardRow({ row }: { row: Row }) {
   return (
-    <li className="px-4 py-3 sm:px-5">
+    <li className="relative px-4 py-3 sm:px-5">
+      {row.dissent || row.agreed_result === false ? <span className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-rose-500" aria-hidden="true" /> : null}
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
         <div className="min-w-0">
-          <p className="text-[13px] leading-5"><Pair f1={row.f1} f2={row.f2} /></p>
+          <p className="text-[13px] leading-5"><Pair f1={row.f1} f2={row.f2} />{row.title ? <TitleBadge /> : null}</p>
           <p className="text-[11px] leading-4 text-zinc-400">
             <Link to={`/fights/${row.fight_id}?tab=fight`} className="hover:text-zinc-700 hover:underline">{row.event_name}</Link> · {formatDateShortWithYear(row.date)} · {row.division}
           </p>
@@ -152,8 +155,8 @@ export default function JudgePage() {
   return (
     <div ref={scroll} className={PAGE}>
       <div className={PAGE_BODY}>
-        <PageHeader title={data.name}
-          meta={["Judge", `${data.career.cards.toLocaleString()} UFC scorecards`, data.career.years ? `${data.career.years.first}–${data.career.years.last}` : null, topDivision ? `mostly ${topDivision.division}` : null]}
+        <PageHeader title={data.name} kicker="Judge" icon={Scale}
+          meta={[`${data.career.cards.toLocaleString()} UFC scorecards`, data.career.years ? `${data.career.years.first}–${data.career.years.last}` : null, topDivision ? `mostly ${topDivision.division}` : null]}
           aside={<Link to="/officials" className={`${BUTTON_QUIET} max-sm:hidden`}>All officials</Link>} />
 
         <Panel title="Record" subtitle={active ? `${s.cards.toLocaleString()} of ${data.career.cards.toLocaleString()} cards` : undefined}>
@@ -168,9 +171,9 @@ export default function JudgePage() {
           </FilterBar>
           <Tiles>
             <Tile label="Lone dissents" value={pct(s.dissent_rate)} detail={`${s.dissents} of ${s.panels.toLocaleString()} full panels`}
-              compare={s.split_panels ? `${s.dissents_in_splits} of ${s.split_panels} split or majority decisions` : undefined} />
-            <Tile label="Picked the winner" value={pct(s.agreed_result_rate)} detail={`${s.agreed_result.toLocaleString()} of ${s.with_result.toLocaleString()} cards`} />
-            <Tile label="Rounds agreed" value={pct(s.round_agreement_rate)} detail={`${s.rounds_compared.toLocaleString()} round comparisons`}
+              compare={s.split_panels ? `${s.dissents_in_splits} of ${s.split_panels} split or majority decisions` : undefined} meter={{ value: s.dissent_rate }} />
+            <Tile label="Picked the winner" value={pct(s.agreed_result_rate)} detail={`${s.agreed_result.toLocaleString()} of ${s.with_result.toLocaleString()} cards`} meter={{ value: s.agreed_result_rate }} />
+            <Tile label="Rounds agreed" value={pct(s.round_agreement_rate)} detail={`${s.rounds_compared.toLocaleString()} round comparisons`} meter={{ value: s.round_agreement_rate }}
               compare={s.lone_rounds ? `Alone on ${s.lone_rounds} rounds` : undefined} />
             <Tile label="10–8 rounds" value={pct(s.ten_eight_rate)} detail={`${s.ten_eights} of ${s.rounds_scored.toLocaleString()} rounds scored`}
               hint="A point deduction can also produce a 10–8 on paper." />
@@ -179,22 +182,17 @@ export default function JudgePage() {
             <Tile label="Different winner from fans" value={s.fan_cards ? `${s.fan_pick_differs} of ${s.fan_cards}` : "—"} detail={s.fan_cards ? "cards with a fan average" : "no fan cards in this selection"} />
             <Tile label="Different rounds from fans" value={s.fan_rounds ? `${s.fan_rounds_differ} of ${s.fan_rounds}` : "—"} detail={s.fan_rounds ? "rounds with a fan average" : "no fan rounds in this selection"} />
           </Tiles>
-          {data.colleagues.length ? (
-            <div className="border-t border-zinc-100 px-4 py-3 sm:px-5">
-              <h3 className="mb-2 text-xs font-medium text-zinc-700">Same winner as other judges</h3>
-              <ul className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
-                {data.colleagues.map((colleague) => (
-                  <li key={colleague.name} className="flex items-center gap-2 text-xs">
-                    <span className="w-36 min-w-0 truncate">{colleague.slug ? <Link to={`/judges/${colleague.slug}`} className="font-medium text-zinc-800 hover:underline">{colleague.name}</Link> : colleague.name}</span>
-                    <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100" aria-hidden="true">
-                      <span className="block h-full rounded-full bg-zinc-400" style={{ width: `${colleague.rate ?? 0}%` }} />
-                    </span>
-                    <span className="w-24 shrink-0 text-right tabular-nums text-zinc-500">{pct(colleague.rate)} · {colleague.together}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
+          <YearBars title="Scorecards by year" data={data.by_year} unit="cards" marked="lone dissents"
+            from={filters.params.get("from")} to={filters.params.get("to")} onPick={filters.pickYear} />
+          <BarList title="Their most common final cards" rows={data.score_lines.map((line) => ({
+            key: line.score, label: <span className="font-medium tabular-nums text-zinc-800">{line.score}</span>,
+            share: (line.n / data.score_lines[0].n) * 100, value: `${line.n.toLocaleString()} · ${pct(s.cards ? Math.round((line.n / s.cards) * 1000) / 10 : null)}`,
+          }))} />
+          <BarList title="Same winner as other judges" rows={data.colleagues.map((colleague) => ({
+            key: colleague.name,
+            label: colleague.slug ? <Link to={`/judges/${colleague.slug}`} className="font-medium text-zinc-800 hover:underline">{colleague.name}</Link> : colleague.name,
+            share: colleague.rate ?? 0, value: `${pct(colleague.rate)} · ${colleague.together}`,
+          }))} />
         </Panel>
 
         <Panel title="Scorecards" subtitle="Newest first">

@@ -218,6 +218,22 @@ function matchesBase(officiated: Officiated, filters: OfficialFilters): boolean 
 
 const pct = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : null);
 
+const isTitle = (fight: IndexedFight) => fight.titleFight && (fight.titleType === "title" || fight.titleType === "interim");
+
+/** Bouts a year across the whole career under every filter but the years, so
+ * the chart that picks a year never shrinks to the year picked. */
+function byYear<T>(items: T[], fightOf: (item: T) => IndexedFight, marked: (item: T) => boolean) {
+  const years = new Map<number, { year: number; n: number; marked: number }>();
+  for (const item of items) {
+    const year = fightOf(item).year;
+    const entry = years.get(year) ?? { year, n: 0, marked: 0 };
+    entry.n += 1;
+    if (marked(item)) entry.marked += 1;
+    years.set(year, entry);
+  }
+  return [...years.values()].sort((a, b) => a.year - b.year);
+}
+
 function facets(fights: Officiated[]) {
   const divisions = new Map<string, number>();
   let first = 9999;
@@ -334,12 +350,18 @@ export function judgeProfile(slug: string, params: URLSearchParams): unknown | n
   const base = all.filter((reading) => matchesBase(reading.officiated, filters));
   const decisions = new Map<Verdict, number>();
   for (const reading of base) decisions.set(reading.verdict, (decisions.get(reading.verdict) ?? 0) + 1);
-  const readings = base
-    .filter((reading) => !filters.result || reading.verdict === filters.result)
-    .filter((reading) => filters.view === "dissents" ? reading.dissent
+  const shown = (reading: JudgeReading) => (!filters.result || reading.verdict === filters.result)
+    && (filters.view === "dissents" ? reading.dissent
       : filters.view === "against-result" ? reading.agreedResult === false
         : filters.view === "ten-eight" ? reading.tenEights > 0
-          : filters.view === "rounds" ? reading.roundsScored > 0 : true);
+          : filters.view === "rounds" ? reading.roundsScored > 0
+            : filters.view === "title" ? isTitle(reading.officiated.fight) : true);
+  const readings = base.filter(shown);
+  const scores = new Map<string, number>();
+  for (const reading of readings) {
+    const line = `${Math.max(reading.card.f1, reading.card.f2)}–${Math.min(reading.card.f1, reading.card.f2)}`;
+    scores.set(line, (scores.get(line) ?? 0) + 1);
+  }
 
   const sum = (pickValue: (reading: JudgeReading) => number) => readings.reduce((total, reading) => total + pickValue(reading), 0);
   const panels = readings.filter((reading) => reading.others.length === 2);
@@ -394,6 +416,9 @@ export function judgeProfile(slug: string, params: URLSearchParams): unknown | n
       // round figures above only describe the rest.
       missing_round_cards: readings.length - withRounds.length,
     },
+    by_year: byYear(all.filter((reading) => matchesBase(reading.officiated, { ...filters, from: null, to: null }) && shown(reading)),
+      (reading) => reading.officiated.fight, (reading) => reading.dissent),
+    score_lines: [...scores].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([score, n]) => ({ score, n })),
     colleagues: [...colleagues.values()].filter((entry) => entry.together >= 3)
       .sort((a, b) => b.together - a.together).slice(0, 12)
       .map((entry) => ({ ...entry, rate: pct(entry.agreed, entry.together) })),
@@ -404,7 +429,7 @@ export function judgeProfile(slug: string, params: URLSearchParams): unknown | n
       const { fight } = reading.officiated;
       return {
         fight_id: fight.id, event_id: fight.eventId, event_name: fight.eventName, date: fight.date,
-        division: fight.weightClass, scheduled_rounds: fight.scheduledRounds, verdict: reading.verdict, method: fight.method,
+        division: fight.weightClass, title: isTitle(fight), scheduled_rounds: fight.scheduledRounds, verdict: reading.verdict, method: fight.method,
         f1: fighterRef(fight, 0), f2: fighterRef(fight, 1),
         card: { f1: reading.card.f1, f2: reading.card.f2, rounds: reading.card.rounds },
         others: reading.others.map((other) => ({ judge: other.judge, slug: other.key ? index.judges.get(other.key)?.slug ?? null : null, f1: other.f1, f2: other.f2, rounds: other.rounds })),
@@ -447,7 +472,7 @@ function tally(fights: Officiated[]) {
     const kind = resultClass(fight);
     counts[kind] += 1;
     events.add(fight.eventId);
-    if (fight.titleFight && (fight.titleType === "title" || fight.titleType === "interim")) titleFights += 1;
+    if (isTitle(fight)) titleFights += 1;
     if ((kind === "ko" || kind === "sub") && fight.round) {
       stoppageRounds.set(fight.round, (stoppageRounds.get(fight.round) ?? 0) + 1);
       if (fight.elapsed != null) { stoppageSeconds += fight.elapsed; stoppagesTimed += 1; }
@@ -478,8 +503,19 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
   const base = referee.fights.filter((officiated) => matchesBase(officiated, filters));
   const results = new Map<ResultClass, number>();
   for (const officiated of base) results.set(resultClass(officiated.fight), (results.get(resultClass(officiated.fight)) ?? 0) + 1);
-  const fights = base.filter((officiated) => !filters.result || resultClass(officiated.fight) === filters.result)
-    .filter((officiated) => filters.view === "incidents" ? resultClass(officiated.fight) === "dq" || Boolean(officiated.details && DEDUCTION.test(officiated.details)) : true);
+  const shown = (officiated: Officiated) => (!filters.result || resultClass(officiated.fight) === filters.result)
+    && (filters.view === "incidents" ? resultClass(officiated.fight) === "dq" || Boolean(officiated.details && DEDUCTION.test(officiated.details))
+      : filters.view === "title" ? isTitle(officiated.fight) : true);
+  const fights = base.filter(shown);
+  const regulars = new Map<string, { id: string; name: string; n: number; wins: number }>();
+  for (const { fight } of fights) {
+    for (const side of fight.sides) {
+      const entry = regulars.get(side.id) ?? { id: side.id, name: side.name, n: 0, wins: 0 };
+      entry.n += 1;
+      if (side.outcome === "win") entry.wins += 1;
+      regulars.set(side.id, entry);
+    }
+  }
   // The same filters across every bout in the UFC with a referee named, so a
   // rate reads against the era and divisions it came from, not a bare number.
   const baseline = index.fights.filter((officiated) => officiated.referee && matchesBase(officiated, { ...filters, q: "" }));
@@ -492,6 +528,9 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
     filters: { ...filters, q: params.get("q") ?? "" },
     result_counts: Object.fromEntries(results),
     summary: tally(fights),
+    by_year: byYear(referee.fights.filter((officiated) => matchesBase(officiated, { ...filters, from: null, to: null }) && shown(officiated)),
+      (officiated) => officiated.fight, (officiated) => resultClass(officiated.fight) === "ko" || resultClass(officiated.fight) === "sub"),
+    regulars: [...regulars.values()].filter((entry) => entry.n >= 2).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)).slice(0, 10),
     baseline: { ...tally(baseline), label: "Every UFC bout with a named referee under the same date and division filters" },
     incidents: fights.filter((officiated) => resultClass(officiated.fight) === "dq" || Boolean(officiated.details && DEDUCTION.test(officiated.details)))
       .slice(0, 50).map((officiated) => ({
@@ -507,7 +546,7 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
       const { fight } = officiated;
       return {
         fight_id: fight.id, event_id: fight.eventId, event_name: fight.eventName, date: fight.date,
-        division: fight.weightClass, title: fight.titleFight && (fight.titleType === "title" || fight.titleType === "interim"),
+        division: fight.weightClass, title: isTitle(fight),
         f1: fighterRef(fight, 0), f2: fighterRef(fight, 1),
         result: resultClass(fight), method: fight.method, method_details: fight.methodDetails,
         round: fight.round, time: fight.time, details: officiated.details,
