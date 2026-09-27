@@ -903,6 +903,7 @@ export type JudgeProfile = {
     missing_round_cards: number;
   };
   by_year: YearCount[];
+  verdict_split: Record<"unanimous" | "split" | "majority" | "draw", { with: number; against: number }>;
   score_lines: { score: string; n: number }[];
   colleagues: { name: string; slug: string | null; together: number; agreed: number; rate: number | null }[];
   total: number;

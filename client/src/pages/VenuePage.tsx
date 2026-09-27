@@ -1,38 +1,68 @@
 import { Link, useParams } from "react-router-dom";
-import { Landmark, List, MapPin } from "lucide-react";
 import { useApi, type VenuePage as VenueData } from "../api";
-import { clockTimeWithZone, formatDate, formatDateShortWithYear, normalizeSearch, offsetLabel, venueClock } from "../format";
-import { useRouteScrollRestoration } from "../navigationState";
-import { PAGE, PAGE_BODY, pct, useUrlFilters } from "../research";
-import { SITE_URL, useSeo } from "../seo";
+import { clockTimeWithZone, formatDate, formatDateShort, formatMethod, normalizeSearch, offsetLabel, venueClock } from "../format";
 import { PANEL } from "../components/chartTokens";
+import { gapChip, pct, useUrlFilters } from "../research";
+import { SITE_URL, useSeo } from "../seo";
 import RequestNotice from "../components/RequestNotice";
-import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedTab } from "../components/segmented";
+import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "../components/segmented";
 import {
-  BarList, FilterSearch, FilterSelect, HEADER_ACTION, ListHeading, MethodBadge, MixBar, NotFound, PageHeader, PageState, Pair, Panel,
-  Tile, Tiles, TitleBadge, YearBars, YearRange,
+  BOUT_LIST, BoutRow, FilterSearch, FilterSelect, IdentityCard, ListHeading, MethodCircle, NotFound, PageState, Panel,
+  ProfileColumns, RankRows, TitleNote, Wheel, YearBars, YearRange, type WheelGroup,
 } from "../components/ResearchKit";
 
 type Results = VenueData["results"];
 
-const mix = (results: Results) => [
-  { key: "ko", label: "KO/TKO", n: results.ko }, { key: "sub", label: "Submission", n: results.sub },
-  { key: "dec", label: "Decision", n: results.dec }, { key: "other", label: "Other", n: results.other },
+const wheel = (results: Results): WheelGroup[] => [
+  { title: "Finished", tone: "text-zinc-500", slices: [
+    { key: "ko", label: "KO/TKO", n: results.ko, color: "var(--color-pick-ko)" },
+    { key: "sub", label: "SUB", n: results.sub, color: "var(--color-pick-sub)" },
+  ] },
+  { title: "Not finished", tone: "text-zinc-500", slices: [
+    { key: "dec", label: "DEC", n: results.dec, color: "var(--color-pick-dec)" },
+    { key: "other", label: "Other", n: results.other, color: "var(--color-pick-none)" },
+  ] },
 ];
-const finishRate = (results: Results) => {
+const share = (part: number, results: Results) => {
   const decided = results.ko + results.sub + results.dec;
-  return decided ? Math.round(((results.ko + results.sub) / decided) * 1000) / 10 : null;
+  return decided ? Math.round((part / decided) * 1000) / 10 : null;
 };
 const EVENT_KINDS = [
   { value: "title", label: "Cards with a title bout" },
   { value: "numbered", label: "Numbered events" },
   { value: "fight-night", label: "Fight Nights" },
 ];
+const TOP = (index: number) => index < 3 ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600";
+
+type Event = VenueData["events"][number];
+
+/** A card in the fighter list's shape: the date where a result would be, the
+ *  card, then its title bouts and crowd against the right edge. */
+function EventRow({ event, record }: { event: Event; record: number }) {
+  return (
+    <Link to={`/events/${event.id}`} className="grid grid-cols-[3.25rem_minmax(0,1fr)_auto] items-center gap-x-3 px-4 py-2.5 transition-colors hover:bg-zinc-50 sm:px-5">
+      <span className="text-center leading-tight">
+        <span className="block text-[13px] font-semibold text-zinc-900">{formatDateShort(event.date)}</span>
+        <span className="block text-[10px] tabular-nums text-zinc-400">{event.date.slice(0, 4)}</span>
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-[13px] font-semibold leading-5 text-zinc-900">{event.name}</span>
+        <span className="block truncate text-[11px] leading-4 text-zinc-500">
+          {event.fights} bouts{event.finishes != null && event.fights ? ` · ${event.finishes} finished` : ""}
+          {event.title_fights ? <> · <span className="font-semibold text-belt">{event.title_fights > 1 ? `${event.title_fights} title bouts` : "Title bout"}</span></> : null}
+          {event.name_then ? ` · as ${event.name_then}` : ""}
+        </span>
+      </span>
+      <span className="text-right text-[11px] tabular-nums text-zinc-500" title={event.attendance ? "Attendance" : undefined}>
+        {event.attendance ? <>{event.attendance.toLocaleString("en-US")}{event.attendance === record ? <span className="block text-[10px] font-semibold text-belt">Record</span> : null}</> : null}
+      </span>
+    </Link>
+  );
+}
 
 export default function VenuePage() {
   const { slug = "" } = useParams();
   const { data, error, loading, retry } = useApi<VenueData>(`/api/venues/${encodeURIComponent(slug)}`);
-  const scroll = useRouteScrollRestoration<HTMLDivElement>("venue", Boolean(data));
   const filters = useUrlFilters();
   const place = data ? [data.city, data.state, data.country].filter(Boolean).join(", ") : "";
   useSeo({
@@ -79,144 +109,108 @@ export default function VenuePage() {
     if (event.title_fights) entry.marked += 1;
     return counts.set(year, entry);
   }, new Map<number, { year: number; n: number; marked: number }>());
-  const finished = finishRate(data.results);
-  const ufcFinished = finishRate(data.ufc_results);
   const record = s.attendance_record?.attendance ?? 0;
+  const tab = filters.params.get("tab") === "stats" ? "stats" : "list";
   const show = (value: "events" | "titles") => filters.set("show", value === "titles" ? "titles" : null);
+  const rate = (label: string, part: number, ufc: number) => {
+    const value = share(part, data.results);
+    const base = share(ufc, data.ufc_results);
+    return { key: label, ...gapChip(value, base), title: label, detail: `${part.toLocaleString()} bouts · UFC ${pct(base)}`, value: pct(value) };
+  };
 
-  return (
-    <div ref={scroll} className={PAGE}>
-      <div className={PAGE_BODY}>
-        <PageHeader title={data.name} icon={Landmark}
-          meta={[place || "Location not recorded", span, data.time_zone ? `Local time ${offsetLabel(data.time_zone)}` : null]}
-          actions={<>
-            <a href={data.map_url} target="_blank" rel="noreferrer" className={HEADER_ACTION}><MapPin className="h-3.5 w-3.5" aria-hidden="true" />Map</a>
-            <Link to="/venues" className={HEADER_ACTION}><List className="h-3.5 w-3.5" aria-hidden="true" />All venues</Link>
-          </>}>
-          {data.former_names.length ? `Formerly ${data.former_names.join(", ")}` : null}
-          {data.notes.length ? (
-            <ul className="mt-2 flex flex-wrap gap-1.5">
-              {data.notes.map((note) => (
-                <li key={note.label} className="max-w-full rounded-lg bg-zinc-50 px-2.5 py-1.5 text-xs leading-5 text-zinc-600">
-                  <span className="mr-1.5 font-semibold text-zinc-900">{note.label}</span>{note.detail}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </PageHeader>
+  const identity = (
+    <IdentityCard title={data.name} subtitle={place || "Location not recorded"}
+      badge={data.former_names.length ? <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-[11px] font-semibold text-zinc-600">Formerly {data.former_names.join(", ")}</span> : null}
+      facts={[
+        ["Events", s.events.toLocaleString()],
+        ["Bouts", s.fights.toLocaleString()],
+        ["Title bouts", String(s.title_fights)],
+        ["Active", span],
+        ["Biggest crowd", s.attendance_record ? <Link key="crowd" to={`/events/${s.attendance_record.event_id}`} className="hover:underline">{s.attendance_record.attendance.toLocaleString("en-US")}</Link> : null],
+        ["Local time", data.time_zone ? offsetLabel(data.time_zone) : null],
+      ]}>
+      <div className="flex justify-center"><Wheel label="Bouts" groups={wheel(data.results)} /></div>
+      {data.notes.length ? <p className="mt-4 text-xs leading-5 text-zinc-500">{data.notes.map((note) => note.detail).join(" ")}</p> : null}
+      <a href={data.map_url} target="_blank" rel="noreferrer" className="mt-3 inline-block text-xs font-medium text-zinc-500 hover:text-zinc-900">Open in Maps ↗</a>
+    </IdentityCard>
+  );
 
-        <Panel title="Record">
-          <Tiles>
-            <Tile label="Events" value={s.events} detail={s.upcoming ? `${s.upcoming} more scheduled` : span ? `Since ${span.slice(0, 4)}` : undefined} />
-            <Tile label="Bouts" value={s.fights.toLocaleString()} detail={s.events ? `${(s.fights / s.events).toFixed(1)} a card` : undefined} />
-            <Tile label="Title bouts" value={s.title_fights} detail={`on ${past.filter((event) => event.title_fights).length} cards`} />
-            <Tile label="Finished" value={pct(finished)} detail={`${(data.results.ko + data.results.sub).toLocaleString()} KO/TKO and submissions`}
-              compare={ufcFinished != null ? `UFC ${ufcFinished}%` : undefined} meter={{ value: finished, mark: ufcFinished }} />
-            {s.attendance_record ? (
-              <Tile label="Biggest crowd" value={<Link to={`/events/${s.attendance_record.event_id}`} className="hover:underline">{s.attendance_record.attendance.toLocaleString("en-US")}</Link>}
-                detail={<span className="line-clamp-1">{s.attendance_record.event_name}</span>} />
-            ) : null}
-            {s.average_attendance != null && s.attendance_known >= 3 ? <Tile label="Average crowd" value={s.average_attendance.toLocaleString("en-US")} detail={`${s.attendance_known} cards with a count`} /> : null}
-          </Tiles>
-          <MixBar title="How bouts ended here" segments={mix(data.results)} baseline={mix(data.ufc_results)} />
-          <YearBars title="Cards by year" data={[...byYear.values()].sort((a, b) => a.year - b.year)} unit="cards" marked="with a title bout"
-            from={from} to={to} onPick={filters.pickYear} />
-          <BarList title="Most wins here" rows={data.top_winners.map((fighter) => ({
-            key: fighter.id,
-            label: <Link to={`/fighters/${fighter.id}`} className="font-medium text-zinc-800 hover:underline">{fighter.name}</Link>,
-            share: (fighter.wins / data.top_winners[0].wins) * 100,
-            value: `${fighter.wins}–${fighter.losses}${fighter.draws ? `–${fighter.draws}` : ""}`,
-          }))} />
-        </Panel>
+  const stats = <>
+    <RankRows title="Against the UFC" subtitle="Every UFC bout" rows={[
+      rate("Finish rate", data.results.ko + data.results.sub, data.ufc_results.ko + data.ufc_results.sub),
+      rate("KO/TKO", data.results.ko, data.ufc_results.ko),
+      rate("Submission", data.results.sub, data.ufc_results.sub),
+      rate("Decision", data.results.dec, data.ufc_results.dec),
+    ]} />
+    <YearBars title="Cards by year" data={[...byYear.values()].sort((a, b) => a.year - b.year)} unit="cards" marked="with a title bout"
+      from={from} to={to} onPick={filters.pickYear} />
+    <RankRows title="Most wins here" rows={data.top_winners.map((fighter, index) => ({
+      key: fighter.id, chip: index + 1, chipClass: TOP(index),
+      title: <Link to={`/fighters/${fighter.id}`} className="hover:underline">{fighter.name}</Link>,
+      detail: `${fighter.wins}–${fighter.losses}${fighter.draws ? `–${fighter.draws}` : ""} here`, value: fighter.wins,
+    }))} />
+  </>;
 
-        {upcoming.length ? (
-          <Panel title="Upcoming" subtitle={`${upcoming.length}`}>
-            <ul className="divide-y divide-zinc-100 border-t border-zinc-100">
-              {upcoming.map((event) => {
-                const local = event.starts_at ? venueClock(event.starts_at, event.time_zone) : null;
-                return (
-                  <li key={event.id}>
-                    <Link to={`/events/${event.id}`} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-4 py-2.5 transition-colors hover:bg-zinc-50 sm:px-5">
-                      <span className="min-w-0 text-[13px] font-semibold text-zinc-900">{event.name}{event.title_fights ? <TitleBadge /> : null}</span>
-                      <span className="text-xs tabular-nums text-zinc-500">
-                        {formatDate(event.date)}
-                        {event.starts_at ? ` · ${clockTimeWithZone(event.starts_at)}` : ""}
-                        {local ? <span className="text-zinc-400"> · {local} local</span> : null}
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </Panel>
-        ) : null}
-
-        {/* The same white card a fan's profile tabs sit on. */}
-        <div className={`${PANEL} p-1.5`}>
-          <div role="group" aria-label="List" className={`${segmentedGroup} w-full`}>
+  const lists = <>
+    {upcoming.length ? (
+      <Panel title="Upcoming" subtitle={upcoming.length}>
+        <div className="divide-y divide-zinc-100">
+          {upcoming.map((event) => {
+            const local = event.starts_at ? venueClock(event.starts_at, event.time_zone) : null;
+            return (
+              <Link key={event.id} to={`/events/${event.id}`} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-4 py-2.5 transition-colors hover:bg-zinc-50 sm:px-5">
+                <span className="min-w-0 text-[13px] font-semibold text-zinc-900">{event.name}</span>
+                <span className="text-xs tabular-nums text-zinc-500">
+                  {formatDate(event.date)}{event.starts_at ? ` · ${clockTimeWithZone(event.starts_at)}` : ""}
+                  {local ? <span className="text-zinc-400"> · {local} local</span> : null}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      </Panel>
+    ) : null}
+    <section className={`${PANEL} overflow-hidden`}>
+      <ListHeading
+        title={
+          <span className={`${segmentedGroup} inline-flex`} role="group" aria-label="List">
             {(["events", "titles"] as const).map((value) => (
               <button key={value} type="button" aria-pressed={titles === (value === "titles")} onClick={() => show(value)}
-                className={`${segmentedTab} ${titles === (value === "titles") ? segmentedSelected : segmentedIdle}`}>
-                {value === "titles" ? "Title fights" : "Events"} <span className="tabular-nums text-zinc-400">{value === "titles" ? data.title_bouts.length : past.length}</span>
+                className={`${segmentedOption} ${titles === (value === "titles") ? segmentedSelected : segmentedIdle}`}>
+                {value === "titles" ? "Title fights" : "Events"}
               </button>
             ))}
+          </span>
+        }
+        count={(titles ? titleBouts.length : events.length).toLocaleString()} active={narrowing} onReset={() => filters.clear(["show", "q", "tab"])}
+        search={<FilterSearch value={filters.params.get("q") ?? ""} onChange={(value) => filters.set("q", value || null)} placeholder={titles ? "Search events or fighters" : "Search events"} />}>
+        <YearRange years={years} from={from} to={to} onChange={filters.set} />
+        {titles
+          ? <FilterSelect label="Division" value={division} all="All divisions" onChange={(value) => filters.set("division", value)}
+            options={divisions.map(([name, n]) => ({ value: name, label: `${name} (${n})` }))} />
+          : <FilterSelect label="Cards" value={kind} all="All cards" onChange={(value) => filters.set("kind", value)} options={EVENT_KINDS} />}
+      </ListHeading>
+      {titles ? (
+        titleBouts.length ? (
+          <div className={BOUT_LIST}>
+            {titleBouts.map((bout) => (
+              <BoutRow key={bout.fight_id} lead={<MethodCircle result={bout.result} />}
+                how={formatMethod(bout.method, bout.round != null ? String(bout.round) : null, bout.time) || "—"}
+                f1={bout.f1} f2={bout.f2} division={bout.division} note={<TitleNote interim={bout.interim} />}
+                eventName={bout.event_name} date={bout.date} fightId={bout.fight_id} />
+            ))}
           </div>
+        ) : <p className="px-5 py-8 text-center text-sm text-zinc-500">{data.title_bouts.length ? "No title fights match these filters." : "No title fights here yet."}</p>
+      ) : events.length ? (
+        <div className="divide-y divide-zinc-100 pb-2">
+          {events.map((event) => <EventRow key={event.id} event={event} record={record} />)}
         </div>
+      ) : <p className="px-5 py-8 text-center text-sm text-zinc-500">{past.length ? "No cards match these filters." : "No completed UFC cards here yet."}</p>}
+    </section>
+  </>;
 
-        <section className={`${PANEL} overflow-hidden`}>
-          <ListHeading title={titles ? "Title fights" : "Events"} count={(titles ? titleBouts.length : events.length).toLocaleString()}
-            active={narrowing} onReset={() => filters.clear(["show", "q"])}
-            search={<FilterSearch value={filters.params.get("q") ?? ""} onChange={(value) => filters.set("q", value || null)} placeholder={titles ? "Search events or fighters" : "Search events"} />}>
-            <YearRange years={years} from={from} to={to} onChange={filters.set} />
-            {titles
-              ? <FilterSelect label="Division" value={division} all="All divisions" onChange={(value) => filters.set("division", value)}
-                options={divisions.map(([name, n]) => ({ value: name, label: `${name} (${n})` }))} />
-              : <FilterSelect label="Cards" value={kind} all="All cards" onChange={(value) => filters.set("kind", value)} options={EVENT_KINDS} />}
-          </ListHeading>
-          {titles ? (
-            titleBouts.length ? (
-              <ul className="divide-y divide-zinc-100">
-                {titleBouts.map((bout) => (
-                  <li key={bout.fight_id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 px-4 py-2.5 sm:px-5">
-                    <div className="min-w-0">
-                      <p className="text-[13px] leading-5"><Pair f1={bout.f1} f2={bout.f2} /><TitleBadge interim={bout.interim} /></p>
-                      <p className="text-[11px] leading-4 text-zinc-400"><Link to={`/fights/${bout.fight_id}`} className="hover:text-zinc-700 hover:underline">{bout.event_name}</Link> · {formatDateShortWithYear(bout.date)} · {bout.division}</p>
-                    </div>
-                    <MethodBadge result={bout.result} method={bout.method} round={bout.round} time={bout.time} />
-                  </li>
-                ))}
-              </ul>
-            ) : <p className="px-5 py-8 text-center text-sm text-zinc-500">{data.title_bouts.length ? "No title fights match these filters." : "No title fights here yet."}</p>
-          ) : events.length ? (
-            <ul className="divide-y divide-zinc-100">
-              {events.map((event) => (
-                <li key={event.id}>
-                  <Link to={`/events/${event.id}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 px-4 py-2.5 transition-colors hover:bg-zinc-50 sm:px-5">
-                    <span className="min-w-0">
-                      <span className="block truncate text-[13px] font-semibold text-zinc-900">{event.name}</span>
-                      <span className="block truncate text-[11px] text-zinc-400">
-                        {formatDateShortWithYear(event.date)} · {event.fights} bouts{event.finishes != null && event.fights ? ` · ${event.finishes} finished` : ""}
-                        {event.title_fights ? <span className="font-semibold text-belt"> · {event.title_fights > 1 ? `${event.title_fights} title bouts` : "Title bout"}</span> : null}
-                        {event.name_then ? ` · as ${event.name_then}` : ""}
-                      </span>
-                    </span>
-                    {event.attendance ? (
-                      <span className="flex w-20 flex-col items-end gap-1 sm:w-28" title={`${event.attendance.toLocaleString("en-US")} attendance`}>
-                        <span className="text-xs tabular-nums text-zinc-600">{event.attendance.toLocaleString("en-US")}</span>
-                        {record ? (
-                          <span className="h-1 w-full overflow-hidden rounded-full bg-[var(--color-plot-track)]" aria-hidden="true">
-                            <span className="block h-full rounded-full bg-zinc-400" style={{ width: `${(event.attendance / record) * 100}%` }} />
-                          </span>
-                        ) : null}
-                      </span>
-                    ) : <span />}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          ) : <p className="px-5 py-8 text-center text-sm text-zinc-500">{past.length ? "No cards match these filters." : "No completed UFC cards here yet."}</p>}
-        </section>
-      </div>
-    </div>
+  return (
+    <ProfileColumns scope="venue" ready={Boolean(data)} identity={identity} stats={stats} list={lists} listLabel="Events"
+      tab={tab} onTab={(next) => filters.set("tab", next === "stats" ? "stats" : null)} />
   );
 }

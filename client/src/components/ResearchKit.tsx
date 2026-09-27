@@ -1,83 +1,46 @@
-import type { ComponentType, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Search } from "lucide-react";
 import { PANEL } from "./chartTokens";
 import OptionsSheet, { SHEET_SELECT, SheetField } from "./OptionsSheet";
+import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedTab } from "./segmented";
 import type { YearCount } from "../api";
-import { formatMethod } from "../format";
+import { formatDateShortWithYear } from "../format";
+import { useRouteScrollRestoration } from "../navigationState";
 import { METHOD_COLOR, type Option } from "../research";
 
 /**
- * The pieces the judge, referee and venue pages and their directories share,
- * so they read as one part of the app: the same header, figures, filters
- * kept in the address, and the same way through a long list.
+ * The pieces the judge, referee and venue pages and their directories share.
+ * The profiles are built the way a fighter's is: who they are and their
+ * figures in one column, every bout in the other, and the same wheel, record
+ * rows and bout rows, so they read as one part of the app.
  */
 
-/** Built like a fan's profile: a round mark, the name, one line of facts
- *  separated by dots, then a row of actions under a rule. */
-export function PageHeader({ title, meta, children, actions, icon: Icon }: {
-  title: string; meta: ReactNode[]; children?: ReactNode; actions?: ReactNode;
-  icon?: ComponentType<{ className?: string }>;
-}) {
+/** Name first, then one line of facts separated by dots, with at most one
+ *  action beside it. Used by the directories. */
+export function PageHeader({ title, meta, children, aside }: { title: string; meta: ReactNode[]; children?: ReactNode; aside?: ReactNode }) {
   const facts = meta.filter(Boolean);
   return (
-    <header className={`${PANEL} px-4 py-3 sm:px-5`}>
-      <div className="flex items-center gap-3 sm:gap-4">
-        {Icon ? (
-          <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-zinc-100 text-zinc-500 ring-1 ring-zinc-200">
-            <Icon className="h-5 w-5" />
-          </span>
+    <header className={`${PANEL} flex flex-wrap items-start justify-between gap-x-4 gap-y-3 px-4 py-4 sm:px-6 sm:py-5`}>
+      <div className="min-w-0">
+        <h1 className="text-balance break-words text-xl font-semibold tracking-tight text-zinc-950 sm:text-2xl">{title}</h1>
+        {facts.length ? (
+          <p className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs leading-5 text-zinc-500 sm:text-sm">
+            {facts.map((fact, index) => <span key={index} className="contents">{index ? <span aria-hidden="true" className="text-zinc-300">·</span> : null}<span className="min-w-0">{fact}</span></span>)}
+          </p>
         ) : null}
-        <div className="min-w-0 flex-1">
-          <h1 className="text-base font-semibold tracking-tight text-zinc-900 [overflow-wrap:anywhere] sm:text-lg">{title}</h1>
-          {facts.length ? (
-            <p className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 text-xs text-zinc-500">
-              {facts.map((fact, index) => <span key={index} className="contents">{index ? <span aria-hidden="true" className="text-zinc-300">·</span> : null}<span className="min-w-0">{fact}</span></span>)}
-            </p>
-          ) : null}
-          {children ? <div className="mt-1 text-xs leading-5 text-zinc-400">{children}</div> : null}
-        </div>
+        {children ? <div className="mt-1 text-xs leading-5 text-zinc-400">{children}</div> : null}
       </div>
-      {actions ? <div className="mt-3 flex flex-wrap items-center justify-center gap-1 border-t border-zinc-100 pt-2 sm:gap-1.5">{actions}</div> : null}
+      {aside ? <div className="flex shrink-0 flex-wrap items-center gap-2">{aside}</div> : null}
     </header>
   );
-}
-
-/** One of the header's actions, the way a fan's profile shows them. */
-export const HEADER_ACTION = "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900";
-
-/** One figure, what it is out of, and — for a rate — the same figure for the
- *  whole UFC beside it, so it is never read alone. */
-export function Tile({ label, value, detail, compare, hint, meter }: {
-  label: string; value: ReactNode; detail?: ReactNode; compare?: ReactNode; hint?: string;
-  /** A share out of 100 drawn under the figure, with the UFC's own as a tick. */
-  meter?: { value: number | null; mark?: number | null };
-}) {
-  return (
-    <div className="min-w-0" title={hint}>
-      <p className="text-xs leading-4 text-zinc-500">{label}</p>
-      <p className="mt-0.5 text-lg font-semibold tabular-nums leading-6 text-zinc-950 sm:text-xl">{value}</p>
-      {meter && meter.value != null ? (
-        <span className="relative my-1.5 block h-1.5 max-w-40 rounded-full bg-[var(--color-plot-track)]" aria-hidden="true">
-          <span className="absolute inset-y-0 left-0 rounded-full bg-[var(--color-series-1)]" style={{ width: `${Math.min(100, meter.value)}%` }} />
-          {meter.mark != null ? <span className="absolute -inset-y-1 w-0.5 rounded-full bg-zinc-500" style={{ left: `calc(${Math.min(100, meter.mark)}% - 1px)` }} /> : null}
-        </span>
-      ) : null}
-      {detail ? <p className="text-[11px] leading-4 text-zinc-400">{detail}</p> : null}
-      {compare ? <p className="text-[11px] leading-4 text-zinc-400">{compare}</p> : null}
-    </div>
-  );
-}
-
-export function Tiles({ children }: { children: ReactNode }) {
-  return <div className="grid grid-cols-2 gap-x-4 gap-y-4 px-4 py-4 sm:grid-cols-3 sm:gap-x-6 sm:px-5 lg:grid-cols-4">{children}</div>;
 }
 
 export function Panel({ title, subtitle, children, aside }: { title: string; subtitle?: ReactNode; children: ReactNode; aside?: ReactNode }) {
   return (
     <section className={`${PANEL} overflow-hidden`}>
-      <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-2.5 sm:px-5 sm:py-3">
+      <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-zinc-100 px-4 py-2.5 sm:px-5 sm:py-3">
         <h2 className="text-sm font-semibold text-zinc-900">{title}</h2>
         {subtitle || aside ? (
           <div className="flex min-w-0 items-center gap-2">
@@ -90,6 +53,207 @@ export function Panel({ title, subtitle, children, aside }: { title: string; sub
     </section>
   );
 }
+
+/** Two columns on a wide window, each its own scroller, as a fighter's page
+ *  is: the person and their figures on the left, the bouts on the right. On a
+ *  narrow one the identity stays on top and the two become tabs. */
+export function ProfileColumns({ scope, ready, identity, stats, list, listLabel, tab, onTab }: {
+  scope: string; ready: boolean; identity: ReactNode; stats: ReactNode; list: ReactNode; listLabel: string;
+  tab: "list" | "stats"; onTab: (tab: "list" | "stats") => void;
+}) {
+  const page = useRouteScrollRestoration<HTMLDivElement>(`${scope}:page`, ready);
+  const main = useRouteScrollRestoration<HTMLDivElement>(`${scope}:main`, ready);
+  const side = useRouteScrollRestoration<HTMLDivElement>(`${scope}:side`, ready);
+  const column = "min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]";
+  return (
+    <div ref={page} className="h-full overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable] lg:overflow-hidden">
+      <div className="flex flex-col gap-3 p-3 pb-8 lg:h-full lg:pb-3">
+        <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(24rem,5fr)_minmax(0,7fr)] lg:grid-rows-[minmax(0,1fr)]">
+          <div ref={main} className={`flex ${column}`}>
+            {identity}
+            <div className={`${PANEL} p-1.5 lg:hidden`}>
+              <div role="tablist" aria-label="Sections" className={`${segmentedGroup} w-full`}>
+                {([["list", listLabel], ["stats", "Stats"]] as const).map(([key, label]) => (
+                  <button key={key} type="button" role="tab" aria-selected={key === tab} onClick={() => onTab(key)}
+                    className={`${segmentedTab} ${key === tab ? segmentedSelected : segmentedIdle}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className={`${tab === "stats" ? "contents" : "hidden lg:contents"} [&>*]:shrink-0`}>{stats}</div>
+          </div>
+          <div ref={side} className={`${tab === "list" ? "flex" : "hidden lg:flex"} ${column}`}>{list}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The card a profile opens with: the name large, what they are under it,
+ *  then their facts as small labelled values, and whatever follows under a
+ *  rule — a wheel, a note. */
+export function IdentityCard({ title, subtitle, badge, facts, children }: {
+  title: string; subtitle: ReactNode; badge?: ReactNode; facts: [string, ReactNode][]; children?: ReactNode;
+}) {
+  return (
+    <section className={`${PANEL} @container px-4 py-4 @[30rem]:px-6 @[30rem]:py-5`}>
+      <h1 className="text-balance break-words text-xl font-semibold leading-tight tracking-tight text-zinc-950 @[30rem]:text-2xl @[56rem]:text-3xl">{title}</h1>
+      <div className="mt-0.5 text-sm text-zinc-400">{subtitle}</div>
+      {badge ? <div className="mt-2 flex flex-wrap items-center gap-2">{badge}</div> : null}
+      <dl className="mt-4 grid grid-cols-3 gap-x-4 gap-y-2.5">
+        {facts.filter(([, value]) => value != null && value !== "").map(([label, value]) => (
+          <div key={label} className="min-w-0">
+            <dt className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">{label}</dt>
+            <dd className="truncate text-sm font-medium tabular-nums text-zinc-800">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {children ? <div className="mt-4 border-t border-zinc-100 pt-4">{children}</div> : null}
+    </section>
+  );
+}
+
+export type WheelGroup = { title: string; tone: string; slices: { key: string; label: string; n: number; color: string }[] };
+
+/** A whole split by kind, drawn as the fighter page draws a record: a ring
+ *  with the total in its hole and each part named beside it. */
+export function Wheel({ label, groups }: { label: string; groups: WheelGroup[] }) {
+  const slices = groups.flatMap((group) => group.slices).filter((slice) => slice.n > 0);
+  const total = slices.reduce((sum, slice) => sum + slice.n, 0);
+  if (!total) return null;
+  let position = 0;
+  const gradient = slices.map((slice) => {
+    const start = position;
+    position += (slice.n / total) * 100;
+    return `${slice.color} ${start}% ${position}%`;
+  }).join(", ");
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <div className="grid h-20 w-20 shrink-0 place-items-center rounded-full" style={{ background: `conic-gradient(from 0deg, ${gradient})` }}
+        role="img" aria-label={`${label}: ${slices.map((slice) => `${slice.n} ${slice.label}`).join(", ")}`}>
+        <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-center shadow-[0_0_0_1px_rgba(0,0,0,0.04)]">
+          <span className="text-sm font-semibold tabular-nums text-zinc-900">{total.toLocaleString()}<span className="block text-[8px] font-bold uppercase tracking-wider text-zinc-400">{label}</span></span>
+        </div>
+      </div>
+      <div className="flex gap-x-4">
+        {groups.map((group) => (
+          <div key={group.title}>
+            <div className={`mb-1 text-[8px] font-bold uppercase tracking-wider ${group.tone}`}>{group.title}</div>
+            {group.slices.filter((slice) => slice.n > 0).map((slice) => (
+              <div key={slice.key} className="flex items-center gap-1.5 text-[10px] leading-4 text-zinc-500">
+                <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: slice.color }} />
+                <span className="whitespace-nowrap"><strong className="font-semibold text-zinc-700">{slice.n.toLocaleString()}</strong> {slice.label}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export type RankRow = { key: string; chip?: ReactNode; chipClass?: string; title: ReactNode; detail?: ReactNode; value: ReactNode; hint?: string };
+
+/** Rows the way a fighter's Records read: a chip, what it is, and the figure
+ *  against the right edge. */
+export function RankRows({ title, subtitle, rows, footer }: { title: string; subtitle?: ReactNode; rows: RankRow[]; footer?: ReactNode }) {
+  if (!rows.length) return null;
+  return (
+    <Panel title={title} subtitle={subtitle}>
+      <div className="divide-y divide-zinc-50 py-1">
+        {rows.map((row) => (
+          <div key={row.key} className="flex items-center gap-3 px-4 py-2" title={row.hint}>
+            {row.chip != null ? <span className={`grid h-8 min-w-10 shrink-0 place-items-center rounded-lg px-1.5 text-xs font-bold tabular-nums ${row.chipClass ?? "bg-zinc-100 text-zinc-600"}`}>{row.chip}</span> : null}
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-semibold leading-tight text-zinc-900">{row.title}</span>
+              {row.detail ? <span className="mt-0.5 block text-[11px] leading-tight text-zinc-400">{row.detail}</span> : null}
+            </span>
+            <span className="shrink-0 text-right text-base font-semibold tabular-nums text-zinc-950">{row.value}</span>
+          </div>
+        ))}
+      </div>
+      {footer}
+    </Panel>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// bouts
+
+type Side = { id: string; name: string; outcome: string | null };
+
+const METHOD_LETTER: Record<string, string> = { ko: "KO", sub: "SUB", dec: "DEC", dq: "DQ", nc: "NC", draw: "D", other: "—" };
+
+/** The circle a fighter's bout row opens with, here saying how it ended. */
+export function MethodCircle({ result }: { result: string }) {
+  return (
+    <span aria-hidden="true" className="grid h-7 min-w-7 shrink-0 place-items-center rounded-full px-1 text-[9px] font-bold leading-none text-white"
+      style={{ background: METHOD_COLOR[result] ?? METHOD_COLOR.other }}>
+      {METHOD_LETTER[result] ?? "—"}
+    </span>
+  );
+}
+
+/** Both fighters, the winner in ink and the loser muted, both linked. */
+export function Pair({ f1, f2 }: { f1: Side; f2: Side }) {
+  const tone = (outcome: string | null) => outcome === "win" ? "font-semibold text-zinc-900" : "text-zinc-500";
+  return (
+    <span className="min-w-0">
+      <Link to={`/fighters/${f1.id}`} className={`${tone(f1.outcome)} hover:underline`}>{f1.name}</Link>
+      <span className="px-1 text-zinc-300">vs</span>
+      <Link to={`/fighters/${f2.id}`} className={`${tone(f2.outcome)} hover:underline`}>{f2.name}</Link>
+    </span>
+  );
+}
+
+export function TitleNote({ interim }: { interim?: boolean }) {
+  return <span className={`font-semibold ${interim ? "text-belt-interim" : "text-belt"}`}>{interim ? "Interim title" : "Title"}</span>;
+}
+
+/** One bout in a fighter page's shape: how it ended, who fought, the division
+ *  and the card. A card on a phone, four columns once the list is wide. */
+export function BoutRow({ lead, how, f1, f2, division, note, eventName, date, fightId, extra }: {
+  lead: ReactNode; how: ReactNode; f1: Side; f2: Side; division: string; note?: ReactNode;
+  eventName: string; date: string; fightId: string; extra?: ReactNode;
+}) {
+  const cell = "hidden min-w-0 px-3 py-2.5 @3xl:flex";
+  return (
+    <div className="grid grid-cols-1 items-stretch @3xl:grid-cols-[11rem_minmax(12rem,1.3fr)_8rem_minmax(11rem,1fr)]">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 px-4 py-2.5 @3xl:hidden">
+        <span className="row-span-3 self-start pt-0.5">{lead}</span>
+        <p className="text-[13px] leading-5"><Pair f1={f1} f2={f2} /></p>
+        <p className="text-[11px] leading-4 text-zinc-500"><span className="font-medium">{how}</span><span className="text-zinc-300"> · </span>{division}{note ? <><span className="text-zinc-300"> · </span>{note}</> : null}</p>
+        <Link to={`/fights/${fightId}`} className="flex min-w-0 items-baseline gap-2 py-0.5 hover:underline">
+          <span className="min-w-0 flex-1 truncate text-[11px] leading-4 text-zinc-600">{eventName}</span>
+          <span className="shrink-0 text-[10px] tabular-nums text-zinc-400">{formatDateShortWithYear(date)}</span>
+        </Link>
+        {extra ? <div className="col-start-2">{extra}</div> : null}
+      </div>
+      <div className={`${cell} items-center gap-2.5`}>
+        {lead}
+        <span className="min-w-0 text-[11px] font-medium leading-5 text-zinc-500">{how}</span>
+      </div>
+      <div className={`${cell} flex-col justify-center`}>
+        <p className="text-sm leading-5"><Pair f1={f1} f2={f2} /></p>
+        {extra}
+      </div>
+      <div className={`${cell} flex-col justify-center border-l border-zinc-100 text-[11px] leading-5 text-zinc-500`}>
+        <span className="break-words">{division}</span>
+        {note ? <span className="leading-4">{note}</span> : null}
+      </div>
+      <Link to={`/fights/${fightId}`} className={`${cell} flex-col justify-center border-l border-zinc-100 text-right transition-colors hover:bg-zinc-50`}>
+        <span className="block text-xs font-medium leading-5 text-zinc-600">{eventName}</span>
+        <span className="mt-0.5 block text-[11px] tabular-nums text-zinc-400">{formatDateShortWithYear(date)}</span>
+      </Link>
+    </div>
+  );
+}
+
+export const BOUT_LIST = "@container divide-y divide-zinc-100 pb-2 @3xl:divide-zinc-50";
+
+// ---------------------------------------------------------------------------
+// filters
 
 /** A search box that commits to the address after a pause, so typing does not
  *  flood history or the server. It takes the list's whole width. */
@@ -138,14 +302,14 @@ export function YearRange({ years, from, to, onChange }: { years: { first: numbe
 /** A list's heading, the way a fan's scored fights open: the name and count,
  *  a Filters button holding every filter, and the search on its own row. */
 export function ListHeading({ title, count, active, onReset, search, children }: {
-  title: string; count: ReactNode; active: number; onReset: () => void; search: ReactNode; children: ReactNode;
+  title: ReactNode; count: ReactNode; active: number; onReset: () => void; search: ReactNode; children: ReactNode;
 }) {
   return (
     <div className="border-b border-zinc-100 px-4 py-2.5 sm:px-5 sm:py-3">
       <div className="flex min-h-6 items-center justify-between gap-3">
-        <h2 className="shrink-0 whitespace-nowrap text-sm font-semibold text-zinc-900">{title}</h2>
-        <div className="flex min-w-0 items-center justify-end gap-2">
-          <p className="min-w-0 truncate text-xs tabular-nums text-zinc-500">{count}</p>
+        <h2 className="min-w-0 truncate text-sm font-semibold text-zinc-900">{title}</h2>
+        <div className="flex shrink-0 items-center justify-end gap-2">
+          <p className="text-xs tabular-nums text-zinc-500">{count}</p>
           <OptionsSheet label="Filters" count={active || undefined} onReset={onReset}>
             <div className="grid grid-cols-2 gap-2 px-4 pb-4 pt-2">{children}</div>
           </OptionsSheet>
@@ -156,95 +320,11 @@ export function ListHeading({ title, count, active, onReset, search, children }:
   );
 }
 
-/** A figure panel's note that a filter from the list below is narrowing it. */
-export function FilteredNote({ shown, total, unit, onClear }: { shown: number; total: number; unit: string; onClear: () => void }) {
-  return (
-    <span className="inline-flex items-center gap-2">
-      <span>{shown.toLocaleString()} of {total.toLocaleString()} {unit}</span>
-      <button type="button" onClick={onClear} className="font-medium text-zinc-500 underline underline-offset-2 hover:text-zinc-900">Clear</button>
-    </span>
-  );
-}
-
-export function PageState({ children }: { children: ReactNode }) {
-  return <div role="status" className="appear-late flex h-full items-center justify-center px-5 text-center text-sm text-zinc-400">{children}</div>;
-}
-
-export function NotFound({ what, back }: { what: string; back: { to: string; label: string } }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 px-5 text-center text-sm text-zinc-500">
-      <p>{what} couldn’t be found.</p>
-      <Link to={back.to} className="font-semibold text-zinc-900 underline">{back.label}</Link>
-    </div>
-  );
-}
-
-/** A fighter pair with the winner in ink and the loser muted, both linked. */
-export function Pair({ f1, f2 }: { f1: { id: string; name: string; outcome: string | null }; f2: { id: string; name: string; outcome: string | null } }) {
-  const tone = (outcome: string | null) => outcome === "win" ? "font-semibold text-zinc-900" : "text-zinc-500";
-  return (
-    <span className="min-w-0">
-      <Link to={`/fighters/${f1.id}`} className={`${tone(f1.outcome)} hover:underline`}>{f1.name}</Link>
-      <span className="px-1 text-zinc-300">vs</span>
-      <Link to={`/fighters/${f2.id}`} className={`${tone(f2.outcome)} hover:underline`}>{f2.name}</Link>
-    </span>
-  );
-}
-
-
-export function MethodBadge({ result, method, round, time }: { result: string; method: string | null; round: number | null; time: string | null }) {
-  return (
-    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-zinc-200 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-zinc-700">
-      <span className="h-2 w-2 rounded-full" style={{ background: METHOD_COLOR[result] ?? METHOD_COLOR.other }} aria-hidden="true" />
-      {formatMethod(method, round != null ? String(round) : null, time) || result.toUpperCase()}
-    </span>
-  );
-}
-
-export function TitleBadge({ interim }: { interim?: boolean }) {
-  return <span className={`ml-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] ${interim ? "text-belt-interim" : "text-belt"}`}>{interim ? "Interim title" : "Title"}</span>;
-}
-
-type Segment = { key: string; label: string; n: number };
-
-/** A whole split into its parts — how bouts ended — beside the UFC's split,
- *  so a share is never read alone. Each part is named, not only coloured. */
-export function MixBar({ title, segments, baseline }: { title: string; segments: Segment[]; baseline?: Segment[] }) {
-  const total = segments.reduce((sum, entry) => sum + entry.n, 0);
-  const baseTotal = baseline?.reduce((sum, entry) => sum + entry.n, 0) ?? 0;
-  if (!total) return null;
-  const bar = (parts: Segment[], whole: number, thin?: boolean) => (
-    <span className={`flex gap-0.5 overflow-hidden rounded-full ${thin ? "h-1.5" : "h-3"}`} aria-hidden="true">
-      {parts.filter((entry) => entry.n).map((entry) => (
-        <span key={entry.key} className="h-full first:rounded-l-full last:rounded-r-full" style={{ width: `${(entry.n / whole) * 100}%`, background: METHOD_COLOR[entry.key] ?? METHOD_COLOR.other }} />
-      ))}
-    </span>
-  );
-  return (
-    <div className="border-t border-zinc-100 px-4 py-3 sm:px-5">
-      <h3 className="mb-2 text-xs font-medium text-zinc-700">{title}</h3>
-      {bar(segments, total)}
-      {baseline && baseTotal ? <div className="mt-1.5 flex items-center gap-2"><span className="text-[10px] font-medium text-zinc-400">UFC</span><span className="flex-1">{bar(baseline, baseTotal, true)}</span></div> : null}
-      <ul className="mt-2.5 flex flex-wrap gap-x-5 gap-y-1.5 text-xs">
-        {segments.filter((entry) => entry.n).map((entry) => {
-          const base = baseline?.find((row) => row.key === entry.key);
-          return (
-            <li key={entry.key} className="flex items-baseline gap-1.5">
-              <span className="h-2 w-2 self-center rounded-full" style={{ background: METHOD_COLOR[entry.key] ?? METHOD_COLOR.other }} aria-hidden="true" />
-              <span className="text-zinc-600">{entry.label}</span>
-              <span className="font-semibold tabular-nums text-zinc-900">{Math.round((entry.n / total) * 100)}%</span>
-              <span className="tabular-nums text-zinc-400">{entry.n.toLocaleString()}{base && baseTotal ? ` · UFC ${Math.round((base.n / baseTotal) * 100)}%` : ""}</span>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
+// ---------------------------------------------------------------------------
+// charts
 
 /** Activity a year as columns; a column picks that year, picking it again
- *  clears it. The marked part of each column (finishes, dissents) sits at
- *  the base in the accent colour, the rest in grey. */
+ *  clears it. The marked part (finishes, dissents) sits at the base. */
 export function YearBars({ title, data, unit, marked, from, to, onPick }: {
   title: string; data: YearCount[]; unit: string; marked?: string;
   from: string | null; to: string | null; onPick: (year: number | null) => void;
@@ -257,58 +337,52 @@ export function YearBars({ title, data, unit, marked, from, to, onPick }: {
   const max = Math.max(...years.map((entry) => entry.n), 1);
   const single = from && from === to ? Number(from) : null;
   const inRange = (year: number) => (!from || year >= Number(from)) && (!to || year <= Number(to));
-  const describe = (entry: YearCount) => `${entry.year}: ${entry.n.toLocaleString()} ${unit}${marked ? ` · ${entry.marked.toLocaleString()} ${marked}` : ""}`;
-  const total = years.reduce((sum, entry) => sum + entry.n, 0);
+  const describe = (entry: YearCount) => `${entry.year} · ${entry.n.toLocaleString()} ${unit}${marked ? ` · ${entry.marked.toLocaleString()} ${marked}` : ""}`;
   return (
-    <div className="border-t border-zinc-100 px-4 py-3 sm:px-5">
-      <h3 className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 text-xs font-medium text-zinc-700">
-        {title}
-        <span className="text-[11px] font-normal tabular-nums text-zinc-500" aria-live="polite">
-          {hover ? describe(hover) : marked ? (
-            <span className="inline-flex items-center gap-3">
-              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-[var(--color-series-1)]" aria-hidden="true" />{marked}</span>
-              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-zinc-300" aria-hidden="true" />other {unit}</span>
+    <Panel title={title} subtitle={hover ? describe(hover) : single ? `${single} · tap again for every year` : "Tap a year to filter"}>
+      <div className="px-4 pb-3 pt-3 sm:px-5">
+        <div className="flex h-24 items-end justify-between gap-0.5" onMouseLeave={() => setHover(null)}>
+          {years.map((entry) => (
+            <button key={entry.year} type="button" aria-label={describe(entry)} aria-pressed={single === entry.year}
+              onClick={() => onPick(single === entry.year ? null : entry.year)}
+              onMouseEnter={() => setHover(entry)} onFocus={() => setHover(entry)} onBlur={() => setHover(null)}
+              className={`group flex h-full min-w-0 max-w-10 flex-1 flex-col justify-end transition-opacity ${inRange(entry.year) ? "" : "opacity-30"}`}>
+              {entry.n ? (
+                <span className="flex w-full flex-col justify-end gap-px overflow-hidden rounded-t-[3px]" style={{ height: `${(entry.n / max) * 100}%` }}>
+                  {entry.n - entry.marked ? <span className="w-full bg-zinc-300 group-hover:bg-zinc-400" style={{ flexGrow: entry.n - entry.marked }} /> : null}
+                  {entry.marked ? <span className="w-full bg-zinc-800 group-hover:opacity-80 dark:bg-zinc-200" style={{ flexGrow: entry.marked }} /> : null}
+                </span>
+              ) : <span className="h-px w-full bg-zinc-200" />}
+            </button>
+          ))}
+        </div>
+        <div className="mt-1.5 flex items-center justify-between text-[10px] tabular-nums text-zinc-400">
+          <span>{first}</span>
+          {marked ? (
+            <span className="flex items-center gap-3">
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-zinc-800 dark:bg-zinc-200" aria-hidden="true" />{marked}</span>
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-zinc-300" aria-hidden="true" />{unit}</span>
             </span>
-          ) : `${total.toLocaleString()} ${unit}`}
-        </span>
-      </h3>
-      <div className="flex h-20 items-end justify-between gap-0.5" onMouseLeave={() => setHover(null)}>
-        {years.map((entry) => (
-          <button key={entry.year} type="button" aria-label={describe(entry)} aria-pressed={single === entry.year}
-            onClick={() => onPick(single === entry.year ? null : entry.year)}
-            onMouseEnter={() => setHover(entry)} onFocus={() => setHover(entry)} onBlur={() => setHover(null)}
-            className={`group flex h-full min-w-0 max-w-14 flex-1 flex-col justify-end rounded-sm transition-opacity hover:bg-zinc-50 ${inRange(entry.year) ? "" : "opacity-30"}`}>
-            {entry.n ? (
-              <span className="flex w-full flex-col justify-end gap-px overflow-hidden rounded-t-[3px]" style={{ height: `${(entry.n / max) * 100}%` }}>
-                {entry.n - entry.marked ? <span className="w-full bg-zinc-300 group-hover:bg-zinc-400" style={{ flexGrow: entry.n - entry.marked }} /> : null}
-                {entry.marked ? <span className="w-full bg-[var(--color-series-1)]" style={{ flexGrow: entry.marked }} /> : null}
-              </span>
-            ) : <span className="h-px w-full bg-zinc-200" />}
-          </button>
-        ))}
+          ) : null}
+          <span>{last}</span>
+        </div>
       </div>
-      <div className="mt-1 flex justify-between text-[10px] tabular-nums text-zinc-400"><span>{first}</span>{last - first >= 6 ? <span>{Math.round((first + last) / 2)}</span> : null}<span>{last}</span></div>
-    </div>
+    </Panel>
   );
 }
 
-/** A ranked list: a name, a bar for the figure and the figure in words. */
-export function BarList({ title, rows, columns = 2 }: { title: string; rows: { key: string; label: ReactNode; share: number; value: ReactNode }[]; columns?: 1 | 2 }) {
-  if (!rows.length) return null;
+// ---------------------------------------------------------------------------
+// states
+
+export function PageState({ children }: { children: ReactNode }) {
+  return <div role="status" className="appear-late flex h-full items-center justify-center px-5 text-center text-sm text-zinc-400">{children}</div>;
+}
+
+export function NotFound({ what, back }: { what: string; back: { to: string; label: string } }) {
   return (
-    <div className="border-t border-zinc-100 px-4 py-3 sm:px-5">
-      <h3 className="mb-2 text-xs font-medium text-zinc-700">{title}</h3>
-      <ul className={`grid gap-x-6 gap-y-1.5 ${columns === 2 ? "sm:grid-cols-2" : ""}`}>
-        {rows.map((row) => (
-          <li key={row.key} className="grid grid-cols-[minmax(0,9rem)_minmax(2rem,1fr)_auto] items-center gap-2 text-xs">
-            <span className="min-w-0 truncate">{row.label}</span>
-            <span className="h-1.5 overflow-hidden rounded-full bg-[var(--color-plot-track)]" aria-hidden="true">
-              <span className="block h-full rounded-full bg-[var(--color-series-1)]" style={{ width: `${Math.max(2, Math.min(100, row.share))}%` }} />
-            </span>
-            <span className="whitespace-nowrap text-right tabular-nums text-zinc-500">{row.value}</span>
-          </li>
-        ))}
-      </ul>
+    <div className="flex h-full flex-col items-center justify-center gap-3 px-5 text-center text-sm text-zinc-500">
+      <p>{what} couldn’t be found.</p>
+      <Link to={back.to} className="font-semibold text-zinc-900 underline">{back.label}</Link>
     </div>
   );
 }

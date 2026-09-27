@@ -8,6 +8,14 @@ export const PAGE_BODY = "mx-auto flex w-full max-w-5xl flex-col gap-3 p-2 pb-10
 
 export const pct = (value: number | null | undefined) => value == null ? "—" : `${value}%`;
 
+/** A rate beside the UFC's, as the chip of a record row: how many points
+ *  above or below it sits. */
+export function gapChip(value: number | null, baseline: number | null): { chip: string; chipClass: string } {
+  if (value == null || baseline == null) return { chip: "—", chipClass: "bg-zinc-100 text-zinc-500" };
+  const gap = Math.round((value - baseline) * 10) / 10;
+  return { chip: gap === 0 ? "=" : `${gap > 0 ? "+" : "−"}${Math.abs(gap)}`, chipClass: gap === 0 ? "bg-zinc-100 text-zinc-600" : "bg-zinc-900 text-white" };
+}
+
 export type Option = { value: string; label: string };
 
 /** How a bout ended, in the colours the rest of the app gives methods. */

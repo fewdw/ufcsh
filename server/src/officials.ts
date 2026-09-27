@@ -416,6 +416,12 @@ export function judgeProfile(slug: string, params: URLSearchParams): unknown | n
       // round figures above only describe the rest.
       missing_round_cards: readings.length - withRounds.length,
     },
+    // The judge's cards by the decision they sat on, split by whether their
+    // card went to the official winner.
+    verdict_split: Object.fromEntries((["unanimous", "split", "majority", "draw"] as Verdict[]).map((verdict) => {
+      const cards = readings.filter((reading) => reading.verdict === verdict && reading.agreedResult != null);
+      return [verdict, { with: cards.filter((reading) => reading.agreedResult).length, against: cards.filter((reading) => !reading.agreedResult).length }];
+    })),
     by_year: byYear(all.filter((reading) => matchesBase(reading.officiated, { ...filters, from: null, to: null }) && shown(reading)),
       (reading) => reading.officiated.fight, (reading) => reading.dissent),
     score_lines: [...scores].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([score, n]) => ({ score, n })),
