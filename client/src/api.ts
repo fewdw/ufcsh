@@ -273,8 +273,9 @@ export type HistoryRow = {
   closing_odds?: { fighter: string | null; opponent: string | null } | null;
   opponent_form?: { date: string; outcome: "win" | "loss" | "draw" | "nc" | null; method: string | null; ufc?: boolean; opponent: { id: string; name: string } }[];
   /** perf is set only when this fighter won the award: Performance, or the
-   * pre-2014 Knockout / Submission of the Night. */
-  bonuses?: { perf: "perf" | "ko" | "sub" | null; fotn: boolean } | null;
+   * pre-2014 Knockout / Submission of the Night. perf_against is set when the
+   * opponent won it in this fight. */
+  bonuses?: { perf: "perf" | "ko" | "sub" | null; perf_against?: "perf" | "ko" | "sub" | null; fotn: boolean } | null;
   /** Pounds as text, "" when the weight is unknown, null when made or unread. */
   weight_miss?: { fighter: string | null; opponent: string | null };
   upcoming: boolean;
