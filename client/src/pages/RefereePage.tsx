@@ -1,16 +1,15 @@
 import { Link, useParams } from "react-router-dom";
-import { Hand } from "lucide-react";
+import { Hand, Users } from "lucide-react";
 import type { RefereeProfile, RefereeTally } from "../api";
 import { formatDateShortWithYear } from "../format";
-import { formatDuration } from "../components/chartTokens";
+import { formatDuration, PANEL } from "../components/chartTokens";
 import { useRouteScrollRestoration } from "../navigationState";
 import { METHOD_COLOR, PAGE, PAGE_BODY, pct, officialRows, useKeptApi, useUrlFilters } from "../research";
 import { SITE_URL, useSeo } from "../seo";
-import { BUTTON_QUIET } from "../ui";
 import RequestNotice from "../components/RequestNotice";
 import { LoadMore, useInfiniteList } from "../components/InfiniteList";
 import {
-  BarList, FilterBar, FilterSearch, FilterSelect, MethodBadge, MixBar, NotFound, PageHeader, PageState, Pair, Panel,
+  BarList, FilteredNote, FilterSearch, FilterSelect, HEADER_ACTION, ListHeading, MethodBadge, MixBar, NotFound, PageHeader, PageState, Pair, Panel,
   Tile, Tiles, TitleBadge, YearBars, YearRange,
 } from "../components/ResearchKit";
 
@@ -93,24 +92,16 @@ export default function RefereePage() {
   const s = data.summary;
   const b = data.baseline;
   const f = data.filters;
-  const active = Boolean(f.from || f.to || f.division || f.result || f.view || f.q);
+  const narrowing = [f.from, f.to, f.division, f.result, f.view].filter(Boolean).length;
+  const active = Boolean(narrowing || f.q);
   return (
     <div ref={scroll} className={PAGE}>
       <div className={PAGE_BODY}>
-        <PageHeader title={data.name} kicker="Referee" icon={Hand}
-          meta={[`${data.career.fights.toLocaleString()} UFC bouts`, data.career.years ? `${data.career.years.first}–${data.career.years.last}` : null, s.title_fights && !active ? `${s.title_fights} title bouts` : null]}
-          aside={<Link to="/officials" className={`${BUTTON_QUIET} max-sm:hidden`}>All officials</Link>} />
+        <PageHeader title={data.name} icon={Hand}
+          meta={["Referee", `${data.career.fights.toLocaleString()} UFC bouts`, data.career.years ? `${data.career.years.first}–${data.career.years.last}` : null, s.title_fights && !active ? `${s.title_fights} title bouts` : null]}
+          actions={<Link to="/officials" className={HEADER_ACTION}><Users className="h-3.5 w-3.5" aria-hidden="true" />All officials</Link>} />
 
-        <Panel title="Record" subtitle={active ? `${s.fights.toLocaleString()} of ${data.career.fights.toLocaleString()} bouts` : undefined}>
-          <FilterBar active={active} onClear={filters.clear}>
-            <YearRange years={data.career.years} from={filters.params.get("from")} to={filters.params.get("to")} onChange={filters.set} />
-            <FilterSelect label="Division" value={f.division} all="All divisions" onChange={(value) => filters.set("division", value)}
-              options={data.career.divisions.map((entry) => ({ value: entry.division, label: `${entry.division} (${entry.n})` }))} />
-            <FilterSelect label="Result" value={f.result} all="All results" onChange={(value) => filters.set("result", value)}
-              options={RESULTS.map((option) => ({ value: option.value, label: `${option.label} (${data.result_counts[option.value] ?? 0})` }))} />
-            <FilterSelect label="Show" value={f.view} all="All bouts" onChange={(value) => filters.set("view", value)} options={[{ value: "title", label: "Only title bouts" }, { value: "incidents", label: "Only documented incidents" }]} />
-            <FilterSearch value={filters.params.get("q") ?? ""} onChange={(value) => filters.set("q", value || null)} placeholder="Event or fighter" />
-          </FilterBar>
+        <Panel title="Record" subtitle={active ? <FilteredNote shown={s.fights} total={data.career.fights} unit="bouts" onClear={() => filters.clear()} /> : undefined}>
           <Tiles>
             <Tile label="Bouts" value={s.fights.toLocaleString()} detail={`${s.events.toLocaleString()} events`} />
             <Tile label="Finished" value={pct(s.finish_rate)} detail={`${s.counts.ko + s.counts.sub} finishes`} compare={versus(s.finish_rate, b.finish_rate)} meter={{ value: s.finish_rate, mark: b.finish_rate }} />
@@ -147,9 +138,18 @@ export default function RefereePage() {
           </Panel>
         ) : null}
 
-        <Panel title="Bouts" subtitle="Newest first">
+        <section className={`${PANEL} overflow-hidden`}>
+          <ListHeading title="Bouts" count={s.fights.toLocaleString()} active={narrowing} onReset={() => filters.clear(["q"])}
+            search={<FilterSearch value={filters.params.get("q") ?? ""} onChange={(value) => filters.set("q", value || null)} placeholder="Search events or fighters" />}>
+            <YearRange years={data.career.years} from={filters.params.get("from")} to={filters.params.get("to")} onChange={filters.set} />
+            <FilterSelect label="Division" value={f.division} all="All divisions" onChange={(value) => filters.set("division", value)}
+              options={data.career.divisions.map((entry) => ({ value: entry.division, label: `${entry.division} (${entry.n})` }))} />
+            <FilterSelect label="Result" value={f.result} all="All results" onChange={(value) => filters.set("result", value)}
+              options={RESULTS.map((option) => ({ value: option.value, label: `${option.label} (${data.result_counts[option.value] ?? 0})` }))} />
+            <FilterSelect label="Show" value={f.view} all="All bouts" onChange={(value) => filters.set("view", value)} options={[{ value: "title", label: "Title bouts" }, { value: "incidents", label: "Documented incidents" }]} />
+          </ListHeading>
           {list.items.length ? (
-            <ul aria-busy={stale || list.loading} className={`divide-y divide-zinc-100 border-t border-zinc-100 ${stale ? "opacity-60 transition-opacity delay-200" : ""}`}>
+            <ul aria-busy={stale || list.loading} className={`divide-y divide-zinc-100 ${stale ? "opacity-60 transition-opacity delay-200" : ""}`}>
               {list.items.map((row) => (
                 <li key={row.fight_id} className="relative flex flex-wrap items-start justify-between gap-x-4 gap-y-1 px-4 py-2.5 sm:px-5">
                   <span className="absolute inset-y-2 left-0 w-[3px] rounded-r-full" style={{ background: METHOD_COLOR[row.result] ?? METHOD_COLOR.other }} aria-hidden="true" />
@@ -162,9 +162,9 @@ export default function RefereePage() {
                 </li>
               ))}
             </ul>
-          ) : <p className="border-t border-zinc-100 px-5 py-8 text-center text-sm text-zinc-500">No bouts match these filters.</p>}
+          ) : <p className="px-5 py-8 text-center text-sm text-zinc-500">No bouts match these filters.</p>}
           <LoadMore list={list} />
-        </Panel>
+        </section>
       </div>
     </div>
   );

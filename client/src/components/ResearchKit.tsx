@@ -3,46 +3,49 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Search } from "lucide-react";
 import { PANEL } from "./chartTokens";
+import OptionsSheet, { SHEET_SELECT, SheetField } from "./OptionsSheet";
 import type { YearCount } from "../api";
 import { formatMethod } from "../format";
 import { METHOD_COLOR, type Option } from "../research";
 
 /**
  * The pieces the judge, referee and venue pages and their directories share,
- * so they read as one part of the app: the same header, figures, filter bar
+ * so they read as one part of the app: the same header, figures, filters
  * kept in the address, and the same way through a long list.
  */
 
-const FIELD = "h-8 rounded-full border border-zinc-200 bg-white pl-3 pr-7 text-xs font-medium text-zinc-700 outline-none hover:border-zinc-300 focus:border-zinc-400";
-
-/** Name first, then one line of facts separated by dots — the way a fighter's
- *  profile opens — with at most one action beside it. */
-export function PageHeader({ title, meta, children, aside, kicker, icon: Icon }: {
-  title: string; meta: ReactNode[]; children?: ReactNode; aside?: ReactNode;
-  /** What the page is about ("Referee"), above the name with its icon. */
-  kicker?: string; icon?: ComponentType<{ className?: string }>;
+/** Built like a fan's profile: a round mark, the name, one line of facts
+ *  separated by dots, then a row of actions under a rule. */
+export function PageHeader({ title, meta, children, actions, icon: Icon }: {
+  title: string; meta: ReactNode[]; children?: ReactNode; actions?: ReactNode;
+  icon?: ComponentType<{ className?: string }>;
 }) {
   const facts = meta.filter(Boolean);
   return (
-    <header className={`${PANEL} flex flex-wrap items-start justify-between gap-x-4 gap-y-3 px-4 py-4 sm:px-6 sm:py-5`}>
-      <div className="min-w-0">
-        {kicker ? (
-          <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-series-1)]">
-            {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden="true" /> : null}{kicker}
-          </p>
+    <header className={`${PANEL} px-4 py-3 sm:px-5`}>
+      <div className="flex items-center gap-3 sm:gap-4">
+        {Icon ? (
+          <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-zinc-100 text-zinc-500 ring-1 ring-zinc-200">
+            <Icon className="h-5 w-5" />
+          </span>
         ) : null}
-        <h1 className="text-balance break-words text-2xl font-semibold tracking-tight text-zinc-950 sm:text-3xl">{title}</h1>
-        {facts.length ? (
-          <p className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs leading-5 text-zinc-500 sm:text-sm">
-            {facts.map((fact, index) => <span key={index} className="contents">{index ? <span aria-hidden="true" className="text-zinc-300">·</span> : null}<span className="min-w-0">{fact}</span></span>)}
-          </p>
-        ) : null}
-        {children ? <div className="mt-1 text-xs leading-5 text-zinc-400">{children}</div> : null}
+        <div className="min-w-0 flex-1">
+          <h1 className="text-base font-semibold tracking-tight text-zinc-900 [overflow-wrap:anywhere] sm:text-lg">{title}</h1>
+          {facts.length ? (
+            <p className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 text-xs text-zinc-500">
+              {facts.map((fact, index) => <span key={index} className="contents">{index ? <span aria-hidden="true" className="text-zinc-300">·</span> : null}<span className="min-w-0">{fact}</span></span>)}
+            </p>
+          ) : null}
+          {children ? <div className="mt-1 text-xs leading-5 text-zinc-400">{children}</div> : null}
+        </div>
       </div>
-      {aside ? <div className="flex shrink-0 flex-wrap items-center gap-2">{aside}</div> : null}
+      {actions ? <div className="mt-3 flex flex-wrap items-center justify-center gap-1 border-t border-zinc-100 pt-2 sm:gap-1.5">{actions}</div> : null}
     </header>
   );
 }
+
+/** One of the header's actions, the way a fan's profile shows them. */
+export const HEADER_ACTION = "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900";
 
 /** One figure, what it is out of, and — for a rate — the same figure for the
  *  whole UFC beside it, so it is never read alone. */
@@ -89,7 +92,7 @@ export function Panel({ title, subtitle, children, aside }: { title: string; sub
 }
 
 /** A search box that commits to the address after a pause, so typing does not
- *  flood history or the server. */
+ *  flood history or the server. It takes the list's whole width. */
 export function FilterSearch({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) {
   const [typed, setTyped] = useState(value);
   const committed = useRef(value);
@@ -100,21 +103,23 @@ export function FilterSearch({ value, onChange, placeholder }: { value: string; 
     return () => window.clearTimeout(timer);
   }, [typed, onChange]);
   return (
-    <label className="relative min-w-40 flex-1">
+    <label className="relative block w-full">
       <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
       <input type="search" value={typed} onChange={(event) => setTyped(event.target.value.slice(0, 60))} placeholder={placeholder}
         aria-label={placeholder} autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
-        className="h-8 w-full rounded-full border border-zinc-200 bg-zinc-50 pl-8 pr-3 text-[13px] text-zinc-900 outline-none placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:text-xs" />
+        className="h-9 w-full rounded-full border border-zinc-200 bg-zinc-50 pl-8 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-8 sm:text-[13px]" />
     </label>
   );
 }
 
 export function FilterSelect({ label, value, options, onChange, all }: { label: string; value: string | null; options: Option[]; onChange: (value: string | null) => void; all: string }) {
   return (
-    <select value={value ?? ""} onChange={(event) => onChange(event.target.value || null)} aria-label={label} className={FIELD}>
-      <option value="">{all}</option>
-      {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-    </select>
+    <SheetField label={label}>
+      <select value={value ?? ""} onChange={(event) => onChange(event.target.value || null)} className={SHEET_SELECT}>
+        <option value="">{all}</option>
+        {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
+    </SheetField>
   );
 }
 
@@ -123,20 +128,41 @@ export function YearRange({ years, from, to, onChange }: { years: { first: numbe
   if (!years) return null;
   const options = Array.from({ length: years.last - years.first + 1 }, (_, index) => String(years.last - index)).map((year) => ({ value: year, label: year }));
   return (
-    <span className="inline-flex items-center gap-1">
-      <FilterSelect label="From year" value={from} options={options} onChange={(value) => onChange("from", value)} all={`From ${years.first}`} />
-      <span className="text-xs text-zinc-400" aria-hidden="true">–</span>
-      <FilterSelect label="To year" value={to} options={options} onChange={(value) => onChange("to", value)} all={`To ${years.last}`} />
-    </span>
+    <>
+      <FilterSelect label="From" value={from} options={options} onChange={(value) => onChange("from", value)} all={String(years.first)} />
+      <FilterSelect label="To" value={to} options={options} onChange={(value) => onChange("to", value)} all={String(years.last)} />
+    </>
   );
 }
 
-export function FilterBar({ children, active, onClear }: { children: ReactNode; active: boolean; onClear: () => void }) {
+/** A list's heading, the way a fan's scored fights open: the name and count,
+ *  a Filters button holding every filter, and the search on its own row. */
+export function ListHeading({ title, count, active, onReset, search, children }: {
+  title: string; count: ReactNode; active: number; onReset: () => void; search: ReactNode; children: ReactNode;
+}) {
   return (
-    <div className="flex flex-wrap items-center gap-2 border-y border-zinc-100 bg-zinc-50/50 px-4 py-2.5 sm:px-5">
-      {children}
-      {active ? <button type="button" onClick={onClear} className="ml-auto text-xs font-medium text-zinc-500 underline underline-offset-2 hover:text-zinc-900">Clear filters</button> : null}
+    <div className="border-b border-zinc-100 px-4 py-2.5 sm:px-5 sm:py-3">
+      <div className="flex min-h-6 items-center justify-between gap-3">
+        <h2 className="shrink-0 whitespace-nowrap text-sm font-semibold text-zinc-900">{title}</h2>
+        <div className="flex min-w-0 items-center justify-end gap-2">
+          <p className="min-w-0 truncate text-xs tabular-nums text-zinc-500">{count}</p>
+          <OptionsSheet label="Filters" count={active || undefined} onReset={onReset}>
+            <div className="grid grid-cols-2 gap-2 px-4 pb-4 pt-2">{children}</div>
+          </OptionsSheet>
+        </div>
+      </div>
+      <div className="mt-2">{search}</div>
     </div>
+  );
+}
+
+/** A figure panel's note that a filter from the list below is narrowing it. */
+export function FilteredNote({ shown, total, unit, onClear }: { shown: number; total: number; unit: string; onClear: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span>{shown.toLocaleString()} of {total.toLocaleString()} {unit}</span>
+      <button type="button" onClick={onClear} className="font-medium text-zinc-500 underline underline-offset-2 hover:text-zinc-900">Clear</button>
+    </span>
   );
 }
 

@@ -1,16 +1,16 @@
 import { Fragment } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Scale } from "lucide-react";
+import { Scale, Users } from "lucide-react";
 import type { JudgeProfile } from "../api";
 import { formatDateShortWithYear, lastName } from "../format";
 import { useRouteScrollRestoration } from "../navigationState";
 import { PAGE, PAGE_BODY, pct, officialRows, useKeptApi, useUrlFilters } from "../research";
 import { SITE_URL, useSeo } from "../seo";
-import { BUTTON_QUIET } from "../ui";
+import { PANEL } from "../components/chartTokens";
 import RequestNotice from "../components/RequestNotice";
 import { LoadMore, useInfiniteList } from "../components/InfiniteList";
 import {
-  BarList, FilterBar, FilterSearch, FilterSelect, NotFound, PageHeader, PageState, Pair, Panel, Tile, Tiles, TitleBadge, YearBars, YearRange,
+  BarList, FilteredNote, FilterSearch, FilterSelect, HEADER_ACTION, ListHeading, NotFound, PageHeader, PageState, Pair, Panel, Tile, Tiles, TitleBadge, YearBars, YearRange,
 } from "../components/ResearchKit";
 
 const VERDICTS = [
@@ -18,11 +18,11 @@ const VERDICTS = [
   { value: "majority", label: "Majority" }, { value: "draw", label: "Draw" },
 ];
 const VIEWS = [
-  { value: "dissents", label: "Only their dissents" },
-  { value: "against-result", label: "Only cards against the result" },
-  { value: "ten-eight", label: "Only cards with a 10–8" },
-  { value: "rounds", label: "Only cards with rounds" },
-  { value: "title", label: "Only title bouts" },
+  { value: "dissents", label: "Their dissents" },
+  { value: "against-result", label: "Against the result" },
+  { value: "ten-eight", label: "With a 10–8" },
+  { value: "rounds", label: "With rounds" },
+  { value: "title", label: "Title bouts" },
 ];
 const VERDICT_TONE: Record<string, string> = {
   unanimous: "bg-zinc-100 text-zinc-600", split: "bg-amber-100 text-amber-800", majority: "bg-sky-100 text-sky-700",
@@ -150,25 +150,17 @@ export default function JudgePage() {
 
   const s = data.summary;
   const f = data.filters;
-  const active = Boolean(f.from || f.to || f.division || f.result || f.view || f.q);
+  const narrowing = [f.from, f.to, f.division, f.result, f.view].filter(Boolean).length;
+  const active = Boolean(narrowing || f.q);
   const topDivision = data.career.divisions[0];
   return (
     <div ref={scroll} className={PAGE}>
       <div className={PAGE_BODY}>
-        <PageHeader title={data.name} kicker="Judge" icon={Scale}
-          meta={[`${data.career.cards.toLocaleString()} UFC scorecards`, data.career.years ? `${data.career.years.first}–${data.career.years.last}` : null, topDivision ? `mostly ${topDivision.division}` : null]}
-          aside={<Link to="/officials" className={`${BUTTON_QUIET} max-sm:hidden`}>All officials</Link>} />
+        <PageHeader title={data.name} icon={Scale}
+          meta={["Judge", `${data.career.cards.toLocaleString()} UFC scorecards`, data.career.years ? `${data.career.years.first}–${data.career.years.last}` : null, topDivision ? `mostly ${topDivision.division}` : null]}
+          actions={<Link to="/officials" className={HEADER_ACTION}><Users className="h-3.5 w-3.5" aria-hidden="true" />All officials</Link>} />
 
-        <Panel title="Record" subtitle={active ? `${s.cards.toLocaleString()} of ${data.career.cards.toLocaleString()} cards` : undefined}>
-          <FilterBar active={active} onClear={filters.clear}>
-            <YearRange years={data.career.years} from={filters.params.get("from")} to={filters.params.get("to")} onChange={filters.set} />
-            <FilterSelect label="Division" value={f.division} all="All divisions" onChange={(value) => filters.set("division", value)}
-              options={data.career.divisions.map((entry) => ({ value: entry.division, label: `${entry.division} (${entry.n})` }))} />
-            <FilterSelect label="Decision" value={f.result} all="All decisions" onChange={(value) => filters.set("result", value)}
-              options={VERDICTS.map((option) => ({ ...option, label: `${option.label} (${data.decision_counts[option.value] ?? 0})` }))} />
-            <FilterSelect label="Show" value={f.view} all="All cards" onChange={(value) => filters.set("view", value)} options={VIEWS} />
-            <FilterSearch value={filters.params.get("q") ?? ""} onChange={(value) => filters.set("q", value || null)} placeholder="Event or fighter" />
-          </FilterBar>
+        <Panel title="Record" subtitle={active ? <FilteredNote shown={s.cards} total={data.career.cards} unit="cards" onClear={() => filters.clear()} /> : undefined}>
           <Tiles>
             <Tile label="Lone dissents" value={pct(s.dissent_rate)} detail={`${s.dissents} of ${s.panels.toLocaleString()} full panels`}
               compare={s.split_panels ? `${s.dissents_in_splits} of ${s.split_panels} split or majority decisions` : undefined} meter={{ value: s.dissent_rate }} />
@@ -195,14 +187,23 @@ export default function JudgePage() {
           }))} />
         </Panel>
 
-        <Panel title="Scorecards" subtitle="Newest first">
+        <section className={`${PANEL} overflow-hidden`}>
+          <ListHeading title="Scorecards" count={s.cards.toLocaleString()} active={narrowing} onReset={() => filters.clear(["q"])}
+            search={<FilterSearch value={filters.params.get("q") ?? ""} onChange={(value) => filters.set("q", value || null)} placeholder="Search events or fighters" />}>
+            <YearRange years={data.career.years} from={filters.params.get("from")} to={filters.params.get("to")} onChange={filters.set} />
+            <FilterSelect label="Division" value={f.division} all="All divisions" onChange={(value) => filters.set("division", value)}
+              options={data.career.divisions.map((entry) => ({ value: entry.division, label: `${entry.division} (${entry.n})` }))} />
+            <FilterSelect label="Decision" value={f.result} all="All decisions" onChange={(value) => filters.set("result", value)}
+              options={VERDICTS.map((option) => ({ ...option, label: `${option.label} (${data.decision_counts[option.value] ?? 0})` }))} />
+            <FilterSelect label="Show" value={f.view} all="All cards" onChange={(value) => filters.set("view", value)} options={VIEWS} />
+          </ListHeading>
           {list.items.length ? (
-            <ul aria-busy={stale || list.loading} className={`divide-y divide-zinc-100 border-t border-zinc-100 ${stale ? "opacity-60 transition-opacity delay-200" : ""}`}>
+            <ul aria-busy={stale || list.loading} className={`divide-y divide-zinc-100 ${stale ? "opacity-60 transition-opacity delay-200" : ""}`}>
               {list.items.map((row) => <Fragment key={row.fight_id}><CardRow row={row} /></Fragment>)}
             </ul>
-          ) : <p className="border-t border-zinc-100 px-5 py-8 text-center text-sm text-zinc-500">No cards match these filters.</p>}
+          ) : <p className="px-5 py-8 text-center text-sm text-zinc-500">No cards match these filters.</p>}
           <LoadMore list={list} />
-        </Panel>
+        </section>
       </div>
     </div>
   );

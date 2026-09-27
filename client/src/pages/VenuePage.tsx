@@ -1,15 +1,15 @@
 import { Link, useParams } from "react-router-dom";
-import { Landmark, MapPin } from "lucide-react";
+import { Landmark, List, MapPin } from "lucide-react";
 import { useApi, type VenuePage as VenueData } from "../api";
 import { clockTimeWithZone, formatDate, formatDateShortWithYear, normalizeSearch, offsetLabel, venueClock } from "../format";
 import { useRouteScrollRestoration } from "../navigationState";
 import { PAGE, PAGE_BODY, pct, useUrlFilters } from "../research";
 import { SITE_URL, useSeo } from "../seo";
-import { BUTTON_SECONDARY } from "../ui";
+import { PANEL } from "../components/chartTokens";
 import RequestNotice from "../components/RequestNotice";
-import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "../components/segmented";
+import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedTab } from "../components/segmented";
 import {
-  BarList, FilterBar, FilterSearch, FilterSelect, MethodBadge, MixBar, NotFound, PageHeader, PageState, Pair, Panel,
+  BarList, FilterSearch, FilterSelect, HEADER_ACTION, ListHeading, MethodBadge, MixBar, NotFound, PageHeader, PageState, Pair, Panel,
   Tile, Tiles, TitleBadge, YearBars, YearRange,
 } from "../components/ResearchKit";
 
@@ -71,7 +71,7 @@ export default function VenuePage() {
     && (!division || bout.division === division)
     && (!q || normalizeSearch(`${bout.event_name} ${bout.f1.name} ${bout.f2.name}`).includes(q)));
   const divisions = [...data.title_bouts.reduce((counts, bout) => counts.set(bout.division, (counts.get(bout.division) ?? 0) + 1), new Map<string, number>())];
-  const active = Boolean(from || to || kind || division || q);
+  const narrowing = [from, to, titles ? division : kind].filter(Boolean).length;
   const byYear = past.reduce((counts, event) => {
     const year = Number(event.date.slice(0, 4));
     const entry = counts.get(year) ?? { year, n: 0, marked: 0 };
@@ -82,15 +82,17 @@ export default function VenuePage() {
   const finished = finishRate(data.results);
   const ufcFinished = finishRate(data.ufc_results);
   const record = s.attendance_record?.attendance ?? 0;
-  const clearFilters = () => filters.clear(["show"]);
   const show = (value: "events" | "titles") => filters.set("show", value === "titles" ? "titles" : null);
 
   return (
     <div ref={scroll} className={PAGE}>
       <div className={PAGE_BODY}>
-        <PageHeader title={data.name} kicker="Venue" icon={Landmark}
+        <PageHeader title={data.name} icon={Landmark}
           meta={[place || "Location not recorded", span, data.time_zone ? `Local time ${offsetLabel(data.time_zone)}` : null]}
-          aside={<a href={data.map_url} target="_blank" rel="noreferrer" className={BUTTON_SECONDARY}><MapPin className="h-3.5 w-3.5" aria-hidden="true" />Map</a>}>
+          actions={<>
+            <a href={data.map_url} target="_blank" rel="noreferrer" className={HEADER_ACTION}><MapPin className="h-3.5 w-3.5" aria-hidden="true" />Map</a>
+            <Link to="/venues" className={HEADER_ACTION}><List className="h-3.5 w-3.5" aria-hidden="true" />All venues</Link>
+          </>}>
           {data.former_names.length ? `Formerly ${data.former_names.join(", ")}` : null}
           {data.notes.length ? (
             <ul className="mt-2 flex flex-wrap gap-1.5">
@@ -149,25 +151,28 @@ export default function VenuePage() {
           </Panel>
         ) : null}
 
-        <Panel title={titles ? "Title fights" : "Events"} subtitle={active ? `${titles ? titleBouts.length : events.length} shown` : undefined}
-          aside={
-            <div className={segmentedGroup} role="group" aria-label="List">
-              {(["events", "titles"] as const).map((value) => (
-                <button key={value} type="button" aria-pressed={titles === (value === "titles")} onClick={() => show(value)}
-                  className={`${segmentedOption} ${titles === (value === "titles") ? segmentedSelected : segmentedIdle}`}>
-                  {value === "titles" ? `Title fights · ${data.title_bouts.length}` : `Events · ${past.length}`}
-                </button>
-              ))}
-            </div>
-          }>
-          <FilterBar active={active} onClear={clearFilters}>
+        {/* The same white card a fan's profile tabs sit on. */}
+        <div className={`${PANEL} p-1.5`}>
+          <div role="group" aria-label="List" className={`${segmentedGroup} w-full`}>
+            {(["events", "titles"] as const).map((value) => (
+              <button key={value} type="button" aria-pressed={titles === (value === "titles")} onClick={() => show(value)}
+                className={`${segmentedTab} ${titles === (value === "titles") ? segmentedSelected : segmentedIdle}`}>
+                {value === "titles" ? "Title fights" : "Events"} <span className="tabular-nums text-zinc-400">{value === "titles" ? data.title_bouts.length : past.length}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <section className={`${PANEL} overflow-hidden`}>
+          <ListHeading title={titles ? "Title fights" : "Events"} count={(titles ? titleBouts.length : events.length).toLocaleString()}
+            active={narrowing} onReset={() => filters.clear(["show", "q"])}
+            search={<FilterSearch value={filters.params.get("q") ?? ""} onChange={(value) => filters.set("q", value || null)} placeholder={titles ? "Search events or fighters" : "Search events"} />}>
             <YearRange years={years} from={from} to={to} onChange={filters.set} />
             {titles
               ? <FilterSelect label="Division" value={division} all="All divisions" onChange={(value) => filters.set("division", value)}
                 options={divisions.map(([name, n]) => ({ value: name, label: `${name} (${n})` }))} />
-              : <FilterSelect label="Show" value={kind} all="All cards" onChange={(value) => filters.set("kind", value)} options={EVENT_KINDS} />}
-            <FilterSearch value={filters.params.get("q") ?? ""} onChange={(value) => filters.set("q", value || null)} placeholder={titles ? "Event or fighter" : "Event"} />
-          </FilterBar>
+              : <FilterSelect label="Cards" value={kind} all="All cards" onChange={(value) => filters.set("kind", value)} options={EVENT_KINDS} />}
+          </ListHeading>
           {titles ? (
             titleBouts.length ? (
               <ul className="divide-y divide-zinc-100">
@@ -210,7 +215,7 @@ export default function VenuePage() {
               ))}
             </ul>
           ) : <p className="px-5 py-8 text-center text-sm text-zinc-500">{past.length ? "No cards match these filters." : "No completed UFC cards here yet."}</p>}
-        </Panel>
+        </section>
       </div>
     </div>
   );
