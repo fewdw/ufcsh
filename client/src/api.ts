@@ -413,9 +413,10 @@ export type RankingEntry = {
     last_fight_opponent?: string | null;
     last_fight_outcome?: "win" | "loss" | "draw" | "nc" | null;
     days_since?: number | null;
-    next_fight?: { date: string; event_name: string; event_id: string; fight_id: string; opponent: string } | null;
+    next_fight?: { date: string; event_name: string; event_id: string; fight_id: string; opponent: string; opponent_id: string | null } | null;
     current_streak?: { count: number; outcome: "win" | "loss" | "draw" | "nc"; label: string } | null;
     form?: import("./resultDots").FormResult[];
+    opponent_results?: Record<string, "win" | "loss" | "draw" | "nc">;
   };
 };
 
