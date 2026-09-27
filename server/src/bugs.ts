@@ -4,6 +4,7 @@ import { americanLine, fightIndex, impliedProbability } from "./fight-index.ts";
 import { pageNamesFighter } from "./scrape/odds.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { hasCompleteJudgeRounds } from "./judge-scorecards.ts";
+import { importVerdictEvent } from "./verdict-import.ts";
 import { mergedByHand, officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
 import {
@@ -638,6 +639,36 @@ function fightsWithoutCommunityScores(): BugCheck {
   })));
 }
 
+function verdictImportErrors(): BugCheck {
+  const fights = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, f.verdict_error, f.verdict_checked_at
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE f.verdict_error IS NOT NULL ORDER BY e.date DESC
+  `).all() as (FightRow & { verdict_error: string; verdict_checked_at: number | null })[];
+  const cards = db.prepare(`SELECT verdict_id, date, checked_at, error FROM verdict_events
+    WHERE error IS NOT NULL ORDER BY verdict_id DESC`).all() as { verdict_id: number; date: string | null; checked_at: number; error: string }[];
+  return check({
+    id: "verdict-import-errors",
+    group: "Scorecards",
+    label: "Verdict reads that failed",
+    description: "The last read of these Verdict pages failed: the page didn't load, didn't parse, or named other fighters. The background pass retries on its schedule; a retry here reads the card again now.",
+    grade: recent([[7, "must"], [365, "minor"]]),
+  }, [
+    ...fights.map(fight => fightItem(fight, {
+      facts: [["Error", fight.verdict_error], ["Verdict checked", ago(fight.verdict_checked_at)]],
+      actions: [{ id: "verdict", label: "Retry Verdict", target: fight.id }],
+    })),
+    ...cards.map(card => ({
+      key: `verdict-${card.verdict_id}`,
+      title: `Verdict card ${card.verdict_id}`,
+      date: card.date ?? undefined,
+      facts: [["Error", card.error], ["Tried", ago(card.checked_at)]] as [string, string][],
+      links: [{ label: "Verdict card", href: `https://verdictmma.com/event/${card.verdict_id}` }],
+      actions: [{ id: "verdict" as const, label: "Retry Verdict", target: `card:${card.verdict_id}` }],
+    })),
+  ]);
+}
+
 function untrustworthyFightStats(): BugCheck {
   const rows = db.prepare(`
     SELECT ${FIGHT_COLUMNS}, f.round, f.f1_str, f.f2_str, f.f1_td, f.f2_td, f.f1_kd, f.f2_kd, f.f1_sub, f.f2_sub,
@@ -1117,6 +1148,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
   const checks = [
     decisionsWithoutJudgeRounds(),
     fightsWithoutCommunityScores(),
+    verdictImportErrors(),
     suspiciousOdds(),
     wrongFighterPages(),
     upcomingMoneyline(),
@@ -1154,7 +1186,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
   };
 }
 
-export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc";
+export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -1193,6 +1225,16 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
       const verified = await syncCareerRecord(target);
       const row = db.prepare("SELECT status, error FROM career_profiles WHERE fighter_id = ?").get(target) as { status: string; error: string } | undefined;
       return { ok: verified, message: verified ? "History verified and re-stored." : `Still ${row?.status ?? "unverified"}${row?.error ? `: ${row.error}` : ""}.` };
+    }
+    case "verdict": {
+      const ids = target.startsWith("card:") ? [Number(target.slice(5))]
+        : (db.prepare("SELECT verdict_id FROM verdict_events WHERE event_id = (SELECT event_id FROM fights WHERE id = ?)").all(target) as { verdict_id: number }[]).map(row => row.verdict_id);
+      if (!ids.length) return { ok: false, message: "No Verdict card is matched to this event." };
+      for (const id of ids) await importVerdictEvent(id, "recent");
+      const error = target.startsWith("card:")
+        ? (db.prepare("SELECT error FROM verdict_events WHERE verdict_id = ?").get(ids[0]) as { error: string | null } | undefined)?.error
+        : (db.prepare("SELECT verdict_error AS error FROM fights WHERE id = ?").get(target) as { error: string | null } | undefined)?.error;
+      return { ok: !error, message: error ? `Still failing: ${error}` : "Read again without errors." };
     }
     case "detail":
       await syncFightDetail(target);
