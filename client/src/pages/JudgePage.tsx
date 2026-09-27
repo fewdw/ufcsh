@@ -124,7 +124,7 @@ export default function JudgePage() {
   const filters = useUrlFilters();
   const url = `/api/judges/${encodeURIComponent(slug)}${filters.query ? `?${filters.query}` : ""}`;
   const { data, error, loading, stale, retry } = useKeptApi<JudgeProfile>(url, slug);
-  const scroll = useRouteScrollRestoration<HTMLDivElement>("judge", Boolean(data));
+  const scroll = useRouteScrollRestoration<HTMLDivElement>("judge", Boolean(data), `judge:${slug}`);
   const list = useInfiniteList({
     resetKey: url,
     load: (offset) => officialRows<JudgeProfile>(url, offset),
@@ -157,11 +157,11 @@ export default function JudgePage() {
         <ProfileStats>
           <ProfileStat label={active ? "Scorecards in selection" : "UFC scorecards"} value={s.cards.toLocaleString()} detail={`${s.round_cards.toLocaleString()} with round-by-round scores`} />
           <ProfileStat label="Picked the winner" value={pct(s.agreed_result_rate)} detail={`${s.agreed_result.toLocaleString()} of ${s.with_result.toLocaleString()} cards`} />
-          <ProfileStat label="Lone dissents" value={pct(s.dissent_rate)} detail={`${s.dissents} of ${s.panels.toLocaleString()} full panels`} onClick={() => filters.set("view", "dissents")} />
-          <ProfileStat label="10–8 rounds" value={pct(s.ten_eight_rate)} detail={`${s.ten_eights} of ${s.rounds_scored.toLocaleString()} rounds scored`} onClick={() => filters.set("view", "ten-eight")} />
+          <ProfileStat label="Lone dissents" value={pct(s.dissent_rate)} detail={`${s.dissents} of ${s.panels.toLocaleString()} full panels`} onClick={() => { filters.set("view", "dissents"); document.getElementById("judge-record")?.scrollIntoView({ block: "start" }); }} />
+          <ProfileStat label="10–8 rounds" value={pct(s.ten_eight_rate)} detail={`${s.ten_eights} of ${s.rounds_scored.toLocaleString()} rounds scored`} onClick={() => { filters.set("view", "ten-eight"); document.getElementById("judge-record")?.scrollIntoView({ block: "start" }); }} />
         </ProfileStats>
 
-        <Panel title="Explore the scorecards" subtitle={active ? `${s.cards.toLocaleString()} matching cards` : "Career overview"}>
+        <Panel id="judge-record" title="Explore the scorecards" subtitle={active ? `${s.cards.toLocaleString()} matching cards` : "Career overview"}>
           <QuickFilters value={f.view} onChange={(value) => filters.set("view", value)} options={[{ value: "", label: "All scorecards" }, ...VIEWS]} />
           <FilterBar active={active} onClear={filters.clear}>
             <YearRange years={data.career.years} from={filters.params.get("from")} to={filters.params.get("to")} onChange={filters.set} />

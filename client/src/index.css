@@ -537,7 +537,7 @@ select:not([multiple]):not([size]) {
 .profile-watermark { position: absolute; right: 24px; top: 28px; width: 190px; height: 190px; color: var(--profile-accent); opacity: .08; transform: rotate(-12deg); pointer-events: none; }
 .profile-eyebrow { display: flex; align-items: center; gap: 7px; color: var(--profile-accent); font-size: 10px; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; }
 .profile-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.profile-stat { min-width: 0; padding: 18px 20px; border: 1px solid var(--color-zinc-200); border-radius: 14px; background: white; }
+.profile-stat { display: flex; flex-direction: column; justify-content: flex-start; min-width: 0; padding: 18px 20px; border: 1px solid var(--color-zinc-200); border-radius: 14px; background: white; }
 button.profile-stat:hover { border-color: var(--profile-accent); background: color-mix(in srgb, var(--profile-accent) 5%, transparent); }
 .profile-quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 20px; border-top: 1px solid var(--color-zinc-100); }
 .profile-quick button { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--color-zinc-500); }

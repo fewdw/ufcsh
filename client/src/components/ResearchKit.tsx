@@ -50,9 +50,9 @@ export function Tiles({ children }: { children: ReactNode }) {
   return <div className="profile-detail-tiles grid grid-cols-2 gap-x-4 gap-y-4 px-4 py-4 sm:grid-cols-3 sm:gap-x-6 sm:px-5 lg:grid-cols-4">{children}</div>;
 }
 
-export function Panel({ title, subtitle, children, aside }: { title: string; subtitle?: ReactNode; children: ReactNode; aside?: ReactNode }) {
+export function Panel({ title, subtitle, children, aside, id }: { title: string; subtitle?: ReactNode; children: ReactNode; aside?: ReactNode; id?: string }) {
   return (
-    <section className={`${PANEL} overflow-hidden`}>
+    <section id={id} className={`${PANEL} overflow-hidden scroll-mt-3`}>
       <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-2.5 sm:px-5 sm:py-3">
         <h2 className="text-sm font-semibold text-zinc-900">{title}</h2>
         {subtitle || aside ? (

@@ -14,7 +14,7 @@ export default function VenuePage() {
   const { slug = "" } = useParams();
   const filters = useUrlFilters();
   const { data, error, loading, retry } = useApi<VenueData>(`/api/venues/${encodeURIComponent(slug)}`);
-  const scroll = useRouteScrollRestoration<HTMLDivElement>("venue", Boolean(data));
+  const scroll = useRouteScrollRestoration<HTMLDivElement>("venue", Boolean(data), `venue:${slug}`);
   const place = data ? [data.city, data.state, data.country].filter(Boolean).join(", ") : "";
   useSeo({
     title: data ? `${data.name} — UFC Events & History` : "UFC Venue",
@@ -60,7 +60,7 @@ export default function VenuePage() {
         <ProfileStats>
           <ProfileStat label="UFC events" value={s.events.toLocaleString()} detail={span ? `Event history · ${span}` : "Completed events"} />
           <ProfileStat label="Bouts hosted" value={s.fights.toLocaleString()} detail="Across completed UFC cards" />
-          <ProfileStat label="Title fights" value={s.title_fights.toLocaleString()} detail="Explore championship history" onClick={() => filters.set("view", "title")} />
+          <ProfileStat label="Title fights" value={s.title_fights.toLocaleString()} detail="Explore championship history" onClick={() => { filters.set("view", "title"); document.getElementById("venue-history")?.scrollIntoView({ block: "start" }); }} />
           <ProfileStat label="Biggest recorded crowd" value={s.attendance_record ? <Link to={`/events/${s.attendance_record.event_id}`} className="hover:underline">{s.attendance_record.attendance.toLocaleString()}</Link> : "—"}
             detail={s.attendance_known ? `Attendance known for ${s.attendance_known} of ${s.events} events` : "Attendance not recorded"} />
         </ProfileStats>
@@ -80,13 +80,13 @@ export default function VenuePage() {
 
         {activity.length > 1 ? <Panel title="Events through the years" subtitle="Select a year to filter history">
           <div className="flex items-end gap-1 overflow-x-auto border-t border-zinc-100 px-5 py-5">
-            {activity.map(entry => <button type="button" key={entry.year} aria-pressed={year === entry.year} aria-label={`${entry.year}: ${entry.count} events`} onClick={() => filters.set("year", year === entry.year ? null : entry.year)} className="group flex min-w-9 flex-1 flex-col items-center gap-2 rounded px-1 focus-visible:outline-offset-0">
+            {activity.map(entry => <button type="button" key={entry.year} aria-pressed={year === entry.year} aria-label={`${entry.year}: ${entry.count} events`} onClick={() => { filters.set("year", year === entry.year ? null : entry.year); document.getElementById("venue-history")?.scrollIntoView({ block: "start" }); }} className="group flex min-w-9 flex-1 flex-col items-center gap-2 rounded px-1 focus-visible:outline-offset-0">
               <span className="text-[10px] tabular-nums text-zinc-500">{entry.count}</span><span className="w-full max-w-12 rounded-t bg-belt opacity-50 group-hover:opacity-100 group-aria-pressed:opacity-100" style={{ height: `${Math.max(4, entry.count / busiest * 64)}px` }} aria-hidden="true" /><span className="text-[10px] text-zinc-500">{entry.year}</span>
             </button>)}
           </div>
         </Panel> : null}
 
-        <Panel title="Explore the history" subtitle={`${titleView ? bouts.length : events.length} ${titleView ? "title fights" : "events"}`}>
+        <Panel id="venue-history" title="Explore the history" subtitle={`${titleView ? bouts.length : events.length} ${titleView ? "title fights" : "events"}`}>
           <QuickFilters label="Venue history view" value={titleView ? "title" : null} onChange={value => filters.set("view", value)} options={[{ value: "", label: "All events" }, { value: "title", label: `Title fights · ${s.title_fights}` }]} />
           <FilterBar active={active} onClear={filters.clear}>
             <FilterSelect label="Year" value={year} all="All years" options={years.map(value => ({ value, label: value }))} onChange={value => filters.set("year", value)} />

@@ -14,7 +14,7 @@ export function ProfileHeader({ kind, title, meta, children, aside }: {
     </div>
     <div className="relative mt-6">
       <p className="profile-eyebrow"><Icon size={14} aria-hidden="true" />UFC {kind === "venue" ? "venue history" : `${kind} profile`}</p>
-      <h1 className="mt-2 text-4xl font-semibold tracking-tight text-zinc-950 sm:text-5xl">{title}</h1>
+      <h1 className="mt-2 break-words text-4xl font-semibold tracking-tight text-zinc-950 sm:text-5xl">{title}</h1>
       <p className="mt-3 text-sm leading-6 text-zinc-500">{meta}</p>
       {children}
     </div>

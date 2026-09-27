@@ -65,7 +65,7 @@ export default function RefereePage() {
   const filters = useUrlFilters();
   const url = `/api/referees/${encodeURIComponent(slug)}${filters.query ? `?${filters.query}` : ""}`;
   const { data, error, loading, stale, retry } = useKeptApi<RefereeProfile>(url, slug);
-  const scroll = useRouteScrollRestoration<HTMLDivElement>("referee", Boolean(data));
+  const scroll = useRouteScrollRestoration<HTMLDivElement>("referee", Boolean(data), `referee:${slug}`);
   const list = useInfiniteList({
     resetKey: url,
     load: (offset) => officialRows<RefereeProfile>(url, offset),
@@ -97,12 +97,12 @@ export default function RefereePage() {
           meta={<>{data.career.years ? `${data.career.years.first}–${data.career.years.last} · ` : ""}{data.career.fights.toLocaleString()} UFC bouts officiated</>} />
         <ProfileStats>
           <ProfileStat label={active ? "Bouts in selection" : "UFC bouts"} value={s.fights.toLocaleString()} detail={`${s.events.toLocaleString()} events`} />
-          <ProfileStat label="Title bouts" value={s.title_fights.toLocaleString()} detail="Explore championship fights" onClick={() => filters.set("view", "title")} />
+          <ProfileStat label="Title bouts" value={s.title_fights.toLocaleString()} detail="Explore championship fights" onClick={() => { filters.set("view", "title"); document.getElementById("referee-record")?.scrollIntoView({ block: "start" }); }} />
           <ProfileStat label="Finish rate" value={pct(s.finish_rate)} detail={versus(s.finish_rate, b.finish_rate) ?? "KO/TKO and submissions"} />
           <ProfileStat label="Average finish time" value={s.average_stoppage_seconds != null ? formatDuration(s.average_stoppage_seconds) : "—"} detail="Elapsed time · KO/TKO & submissions" />
         </ProfileStats>
 
-        <Panel title="Explore the record" subtitle={active ? `${s.fights.toLocaleString()} matching bouts` : "Career overview"}>
+        <Panel id="referee-record" title="Explore the record" subtitle={active ? `${s.fights.toLocaleString()} matching bouts` : "Career overview"}>
           <QuickFilters value={f.view} onChange={(value) => filters.set("view", value)} options={[{ value: "", label: "All bouts" }, { value: "title", label: "Title fights" }, { value: "incidents", label: "Documented incidents" }]} />
           <FilterBar active={active} onClear={filters.clear}>
             <YearRange years={data.career.years} from={filters.params.get("from")} to={filters.params.get("to")} onChange={filters.set} />
