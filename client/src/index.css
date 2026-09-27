@@ -212,7 +212,6 @@ select:not([multiple]):not([size]) {
 .dark .bg-emerald-100 { background-color: #064e3b !important; }
 /* The live bout's box: a faint green wash that deepens a touch on hover. */
 .dark .bg-emerald-50\/30 { background-color: rgb(16 185 129 / 0.06) !important; }
-.dark .hover\:bg-emerald-50\/60:hover { background-color: rgb(16 185 129 / 0.12) !important; }
 .dark .bg-rose-50 { background-color: #4c0519 !important; }
 .dark .bg-rose-100 { background-color: #881337 !important; }
 .dark .bg-amber-50 { background-color: #451a03 !important; }
@@ -257,27 +256,32 @@ select:not([multiple]):not([size]) {
 .dark .ring-amber-500 { --tw-ring-color: #b45309 !important; }
 .dark .ring-slate-200 { --tw-ring-color: #475569 !important; }
 .dark .ring-white { --tw-ring-color: #18181b !important; }
-.dark .hover\:bg-zinc-50:hover,
-.dark .hover\:bg-zinc-50\/80:hover,
-.dark .hover\:bg-zinc-50\/70:hover,
-.dark .hover\:bg-zinc-100:hover { background-color: #27272a !important; }
-.dark .hover\:bg-zinc-200:hover,
-.dark .hover\:bg-zinc-200\/60:hover { background-color: #3f3f46 !important; }
-.dark .hover\:bg-white:hover,
-.dark .hover\:bg-white\/70:hover { background-color: #27272a !important; }
-.dark .hover\:bg-emerald-100:hover { background-color: #064e3b !important; }
-.dark .hover\:bg-rose-100:hover { background-color: #881337 !important; }
-.dark .hover\:bg-amber-100:hover { background-color: #78350f !important; }
-.dark .hover\:bg-sky-100:hover { background-color: #0c4a6e !important; }
-.dark .hover\:text-zinc-900:hover,
-.dark .hover\:text-zinc-950:hover { color: #fff !important; }
 .dark select,
 .dark input { color-scheme: dark; }
 /* A black button on a near-black panel disappears; on the dark theme the
    primary action inverts to a light pill instead (see ui.ts). */
 .dark .ui-primary { background-color: #f4f4f5 !important; color: #18181b !important; }
-.dark .ui-primary:hover { background-color: #d4d4d8 !important; }
-.dark .ui-danger:hover { background-color: #e11d48 !important; }
+/* Like Tailwind's own hover: variant, only where a pointer can hover. A touch
+   screen fires :hover on whatever a scrolling finger lands on. */
+@media (hover: hover) {
+  .dark .hover\:bg-emerald-50\/60:hover { background-color: rgb(16 185 129 / 0.12) !important; }
+  .dark .hover\:bg-zinc-50:hover,
+  .dark .hover\:bg-zinc-50\/80:hover,
+  .dark .hover\:bg-zinc-50\/70:hover,
+  .dark .hover\:bg-zinc-100:hover { background-color: #27272a !important; }
+  .dark .hover\:bg-zinc-200:hover,
+  .dark .hover\:bg-zinc-200\/60:hover { background-color: #3f3f46 !important; }
+  .dark .hover\:bg-white:hover,
+  .dark .hover\:bg-white\/70:hover { background-color: #27272a !important; }
+  .dark .hover\:bg-emerald-100:hover { background-color: #064e3b !important; }
+  .dark .hover\:bg-rose-100:hover { background-color: #881337 !important; }
+  .dark .hover\:bg-amber-100:hover { background-color: #78350f !important; }
+  .dark .hover\:bg-sky-100:hover { background-color: #0c4a6e !important; }
+  .dark .hover\:text-zinc-900:hover,
+  .dark .hover\:text-zinc-950:hover { color: #fff !important; }
+  .dark .ui-primary:hover { background-color: #d4d4d8 !important; }
+  .dark .ui-danger:hover { background-color: #e11d48 !important; }
+}
 /* Slim, quiet scrollbars for the always-scrolling panes. Only where there is
    a mouse: a styled scrollbar on a touch screen is painted in the page, under
    sticky bars like the matchup tabs, where the native overlay floats above. */

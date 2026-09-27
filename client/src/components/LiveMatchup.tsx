@@ -34,6 +34,11 @@ export default function LiveMatchup() {
         {live ? "Live" : "Next"}
       </span>
       <span className="truncate text-xs font-semibold text-zinc-900">{names}</span>
+      {live && data.fight_number ? (
+        <span className="shrink-0 text-[11px] font-medium tabular-nums text-zinc-500">
+          {data.fight_number}/{data.total_fights}
+        </span>
+      ) : null}
       {!live && away ? (
         <span className="shrink-0 text-[11px] font-medium tabular-nums text-zinc-500" aria-label={`starts in ${away}`}>
           {away}
