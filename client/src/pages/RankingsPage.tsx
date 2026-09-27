@@ -21,6 +21,7 @@ type ViewFilter = "men" | "women" | "p4p" | "all";
 type RankingFeatures = {
   opponents: boolean;
   hoverHistory: boolean;
+  hoverResults: boolean;
   streaks: boolean;
   lastFive: boolean;
   activityColors: boolean;
@@ -29,6 +30,7 @@ type RankingFeatures = {
 const DEFAULT_FEATURES: RankingFeatures = {
   opponents: true,
   hoverHistory: false,
+  hoverResults: false,
   streaks: true,
   lastFive: true,
   activityColors: true,
@@ -45,6 +47,7 @@ function loadFeatures(): RankingFeatures {
     return {
       opponents: typeof saved.opponents === "boolean" ? saved.opponents : DEFAULT_FEATURES.opponents,
       hoverHistory: current && typeof current.hoverHistory === "boolean" ? current.hoverHistory : DEFAULT_FEATURES.hoverHistory,
+      hoverResults: typeof saved.hoverResults === "boolean" ? saved.hoverResults : DEFAULT_FEATURES.hoverResults,
       streaks: typeof saved.streaks === "boolean" ? saved.streaks : DEFAULT_FEATURES.streaks,
       lastFive: typeof saved.lastFive === "boolean" ? saved.lastFive : DEFAULT_FEATURES.lastFive,
       activityColors: typeof saved.activityColors === "boolean" ? saved.activityColors : DEFAULT_FEATURES.activityColors,
@@ -182,10 +185,14 @@ function RankRow({
   entry,
   division,
   features,
+  hoveredFighter,
+  onHover,
 }: {
   entry: RankingEntry;
   division: string;
   features: RankingFeatures;
+  hoveredFighter: RankingEntry | null;
+  onHover: (entry: RankingEntry | null) => void;
 }) {
   const { settings } = useSettings();
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -245,7 +252,13 @@ function RankRow({
     </>
   );
 
-  const className = `flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors ${features.activityColors ? meta.row : ""} ${
+  const result = entry.fighter_id && hoveredFighter
+    ? hoveredFighter.activity.next_fight?.opponent_id === entry.fighter_id
+      ? "scheduled"
+      : hoveredFighter.activity.opponent_results?.[entry.fighter_id]
+    : null;
+  const resultClass = result === "win" || result === "loss" || result === "scheduled" ? `opponent-${result}` : "";
+  const className = `flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors ${hoveredFighter ? resultClass : features.activityColors ? meta.row : ""} ${
     entry.fighter_id ? "hover:bg-zinc-100" : ""
   }`;
 
@@ -256,7 +269,14 @@ function RankRow({
       : entry.name;
 
   return entry.fighter_id ? (
-    <div>
+    <div
+      onPointerEnter={(event) => {
+        if (features.hoverResults && event.pointerType === "mouse") onHover(entry);
+      }}
+      onPointerLeave={() => onHover(null)}
+      onPointerCancel={() => onHover(null)}
+      onClick={() => onHover(null)}
+    >
       <Link
         to={`/fighters/${entry.fighter_id}`}
         className={className}
@@ -293,11 +313,15 @@ function DivisionCard({
   division,
   features,
   source,
+  hoveredFighter,
+  onHover,
 }: {
   division: Division;
   features: RankingFeatures;
   /** The view being read, so a list borrowed from the other one can say so. */
   source: RankingSource;
+  hoveredFighter: RankingEntry | null;
+  onHover: (entry: RankingEntry | null) => void;
 }) {
   const borrowed = division.source !== source;
   return (
@@ -325,6 +349,8 @@ function DivisionCard({
             entry={entry}
             division={division.division}
             features={features}
+            hoveredFighter={hoveredFighter}
+            onHover={onHover}
           />
         ))}
       </div>
@@ -332,17 +358,17 @@ function DivisionCard({
   );
 }
 
-// A pointer that can hover, on a screen wide enough for a card beside it:
-// a phone or tablet has no hover, so the option and the card are left out.
-const HOVER_QUERY = "(hover: hover) and (pointer: fine) and (min-width: 768px)";
-function useCanHover(): boolean {
+// Hover colours need a mouse/trackpad; the preview card also needs enough width.
+const HOVER_QUERY = "(hover: hover) and (pointer: fine)";
+function useCanHover(wide = false): boolean {
+  const media = wide ? `${HOVER_QUERY} and (min-width: 768px)` : HOVER_QUERY;
   return useSyncExternalStore(
     (onChange) => {
-      const query = window.matchMedia(HOVER_QUERY);
+      const query = window.matchMedia(media);
       query.addEventListener("change", onChange);
       return () => query.removeEventListener("change", onChange);
     },
-    () => window.matchMedia(HOVER_QUERY).matches,
+    () => window.matchMedia(media).matches,
     () => false,
   );
 }
@@ -350,6 +376,7 @@ function useCanHover(): boolean {
 const FEATURE_OPTIONS: { key: keyof RankingFeatures; label: string; hint: string }[] = [
   { key: "opponents", label: "Opponents", hint: "Next opponent or last result under each name" },
   { key: "hoverHistory", label: "Last 5 on hover", hint: "Recent and booked fights beside the pointer" },
+  { key: "hoverResults", label: "Hover fighter wins and losses", hint: "Latest result: green = won, red = lost, blue = scheduled" },
   { key: "lastFive", label: "Show last 5", hint: "The last five results, oldest first" },
   { key: "streaks", label: "Streaks", hint: "4W, 2L, 1D, 1NC" },
   { key: "activityColors", label: "Activity colours", hint: "Booked and recently active fighters" },
@@ -374,7 +401,8 @@ function FeaturesMenu({
   onDivisionOrder: (order: DivisionOrder) => void;
 }) {
   const canHover = useCanHover();
-  const options = FEATURE_OPTIONS.filter((option) => canHover || option.key !== "hoverHistory");
+  const canPreview = useCanHover(true);
+  const options = FEATURE_OPTIONS.filter((option) => option.key === "hoverHistory" ? canPreview : option.key === "hoverResults" ? canHover : true);
   const enabledCount = options.filter((option) => features[option.key]).length;
   return (
     <OptionsSheet label="Filters" count={`${enabledCount}/${options.length}`} onReset={() => onChange(DEFAULT_FEATURES)} iconOnlyOnPhone="lg">
@@ -443,8 +471,11 @@ export default function RankingsPage() {
   const [view, setView] = useHistoryState<ViewFilter>("rankings:view", "men");
   const [features, setFeatures] = useHistoryState<RankingFeatures>("rankings:features", loadFeatures);
   const canHover = useCanHover();
+  const canPreview = useCanHover(true);
+  const [hoveredEntry, setHoveredEntry] = useState<RankingEntry | null>(null);
   // The saved choice is kept; a device that can't hover just doesn't use it.
-  const activeFeatures = useMemo(() => canHover ? features : { ...features, hoverHistory: false }, [canHover, features]);
+  const activeFeatures = useMemo(() => ({ ...features, hoverHistory: features.hoverHistory && canPreview, hoverResults: features.hoverResults && canHover }), [canHover, canPreview, features]);
+  const hoveredFighter = activeFeatures.hoverResults ? hoveredEntry : null;
   const { data, loading, error } = useApi<{ updated_at: number | null; divisions: Division[] }>(withRanking("/api/rankings", settings.rankingSource));
   const divisions = data?.divisions ?? null;
   const pageScroll = useRouteScrollRestoration<HTMLDivElement>("rankings:page", Boolean(divisions?.length));
@@ -531,7 +562,13 @@ export default function RankingsPage() {
             ))}
           </div>
           <div className="order-last flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 md:order-none md:ml-auto md:basis-auto md:flex-nowrap md:whitespace-nowrap">
-            {features.activityColors ? activityKey : null}
+            {hoveredFighter ? (
+              <>
+                <span className="text-emerald-600">Won</span>
+                <span className="text-rose-500">Lost</span>
+                <span className="text-sky-600">Scheduled</span>
+              </>
+            ) : features.activityColors ? activityKey : null}
             {updated}
           </div>
           <FeaturesMenu
@@ -558,10 +595,10 @@ export default function RankingsPage() {
                 key={d.division}
                 className="w-full sm:w-[calc(50%_-_0.375rem)] lg:w-[calc(33.333%_-_0.5rem)] 2xl:w-[calc(25%_-_0.5625rem)]"
               >
-                <DivisionCard division={d} features={activeFeatures} source={settings.rankingSource} />
+                <DivisionCard division={d} features={activeFeatures} source={settings.rankingSource} hoveredFighter={hoveredFighter} onHover={setHoveredEntry} />
               </div>
             ) : (
-              <DivisionCard key={d.division} division={d} features={activeFeatures} source={settings.rankingSource} />
+              <DivisionCard key={d.division} division={d} features={activeFeatures} source={settings.rankingSource} hoveredFighter={hoveredFighter} onHover={setHoveredEntry} />
             )
           ))}
         </div>

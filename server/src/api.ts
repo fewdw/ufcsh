@@ -1148,11 +1148,15 @@ export function getRankings(rankingType: RankingType): unknown {
     }
   }
 
+  const rankedIds = new Set((prepared("SELECT DISTINCT fighter_id FROM rankings WHERE fighter_id IS NOT NULL").all() as { fighter_id: string }[])
+    .map((row) => row.fighter_id));
   const nextFightStmt = prepared(`
     SELECT e.date AS date, e.name AS event_name, e.id AS event_id, f.id AS fight_id,
-           CASE WHEN f.f1_id = ? THEN f.f2_name ELSE f.f1_name END AS opponent
+           CASE WHEN f.f1_id = ? THEN f.f2_name ELSE f.f1_name END AS opponent,
+           CASE WHEN f.f1_id = ? THEN f.f2_id ELSE f.f1_id END AS opponent_id
     FROM fights f JOIN events e ON e.id = f.event_id
     WHERE (f.f1_id = ? OR f.f2_id = ?) AND e.complete = 0 AND e.date >= ?
+      AND f.f1_outcome IS NULL AND f.f2_outcome IS NULL
     ORDER BY e.date ASC LIMIT 1
   `);
   return divisions.map((d) => {
@@ -1177,7 +1181,7 @@ export function getRankings(rankingType: RankingType): unknown {
           const completed = professionalBouts(index, e.fighter_id)
             .filter((bout) => bout.date <= today);
           const last = completed.at(-1) ?? null;
-          const next = nextFightStmt.get(e.fighter_id, e.fighter_id, e.fighter_id, today) as any;
+          const next = nextFightStmt.get(e.fighter_id, e.fighter_id, e.fighter_id, e.fighter_id, today) as any;
           const daysSince = last?.date ? Math.round((Date.parse(today) - Date.parse(last.date)) / 86400000) : null;
           let status = "normal";
           if (next) status = "scheduled";
@@ -1206,6 +1210,10 @@ export function getRankings(rankingType: RankingType): unknown {
             // The last five professional results, oldest first, drawn as the
             // card view's dots.
             form: completed.slice(-5).map((bout) => ({ outcome: bout.outcome, method: canonicalMethod(bout.method), ufc: bout.isUfc })),
+            // Oldest first: a rematch replaces the previous result, including draws/NCs.
+            opponent_results: Object.fromEntries(completed
+              .filter((bout) => bout.opponentId && rankedIds.has(bout.opponentId))
+              .map((bout) => [bout.opponentId, bout.outcome])),
           };
         }
         return {

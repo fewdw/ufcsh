@@ -150,6 +150,8 @@ export type CareerBout = {
   /** How it ended, in the source's own words ("KO/TKO", "Decision", …). */
   method: string;
   opponentName: string;
+  /** Linked identity, absent when a source opponent has no verified profile. */
+  opponentId?: string | null;
   eventName: string;
   isUfc: boolean;
   ufcFightId: string | null;
@@ -712,7 +714,10 @@ function build(version: string): FightIndex {
   const verifiedProfiles = db.prepare("SELECT fighter_id FROM career_profiles WHERE status = 'verified'").all() as { fighter_id: string }[];
   const careerRows = db.prepare(`
     SELECT cb.fighter_id, cb.date, cb.source_order, cb.outcome, cb.method, cb.opponent_name,
-           cb.event_name, cb.is_ufc, cb.ufc_fight_id
+           cb.event_name, cb.is_ufc, cb.ufc_fight_id,
+           (SELECT CASE WHEN COUNT(*) = 1 THEN MIN(opponent.fighter_id) END
+            FROM career_profiles opponent
+            WHERE opponent.source_url = cb.opponent_url AND opponent.status = 'verified') AS opponent_id
     FROM career_bouts cb JOIN career_profiles cp ON cp.fighter_id = cb.fighter_id
     WHERE cp.status = 'verified'
     ORDER BY cb.fighter_id, cb.date ASC, cb.source_order DESC
@@ -726,6 +731,7 @@ function build(version: string): FightIndex {
       outcome: row.outcome as Outcome,
       method: row.method ?? "",
       opponentName: row.opponent_name,
+      opponentId: row.opponent_id ?? null,
       eventName: row.event_name,
       isUfc: Boolean(row.is_ufc),
       ufcFightId: row.ufc_fight_id ?? null,
@@ -747,6 +753,7 @@ function build(version: string): FightIndex {
         outcome: side.outcome,
         method: fight.method ?? "",
         opponentName: opponent.name,
+        opponentId: opponent.id,
         eventName: fight.eventName,
         isUfc: true,
         ufcFightId: fight.id,
