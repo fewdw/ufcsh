@@ -1,5 +1,5 @@
 import { prepared } from "./db.ts";
-import { completedUfcFightExistsSql, currentRecord, hasCompletedUfcFight, recordText } from "./fighter-identity.ts";
+import { ufcFightExistsSql, currentRecord, hasUfcFight, recordText } from "./fighter-identity.ts";
 import { officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
 
@@ -110,8 +110,8 @@ export function pageSeo(pathname: string): PageSeo {
         eventStatus: fight.complete ? "https://schema.org/EventCompleted" : "https://schema.org/EventScheduled",
         url: `${SITE_URL}/fights/${fight.id}`,
         competitor: [
-          { "@type": "Person", name: fight.f1_name, ...(hasCompletedUfcFight(fight.f1_id) ? { url: `${SITE_URL}/fighters/${fight.f1_id}` } : {}) },
-          { "@type": "Person", name: fight.f2_name, ...(hasCompletedUfcFight(fight.f2_id) ? { url: `${SITE_URL}/fighters/${fight.f2_id}` } : {}) },
+          { "@type": "Person", name: fight.f1_name, ...(hasUfcFight(fight.f1_id) ? { url: `${SITE_URL}/fighters/${fight.f1_id}` } : {}) },
+          { "@type": "Person", name: fight.f2_name, ...(hasUfcFight(fight.f2_id) ? { url: `${SITE_URL}/fighters/${fight.f2_id}` } : {}) },
         ],
         superEvent: { "@type": "SportsEvent", name: fight.event_name, url: `${SITE_URL}/events/${fight.event_id}` },
         ...(fight.location ? { location: { "@type": "Place", name: fight.location } } : {}),
@@ -121,7 +121,7 @@ export function pageSeo(pathname: string): PageSeo {
   }
   if (parts[1] === "fighters") {
     const fighter = prepared("SELECT id, name, nickname, wins, losses, draws, photo_url FROM fighters WHERE id = ?").get(id) as any;
-    if (!fighter || !hasCompletedUfcFight(id)) return notFound();
+    if (!fighter || !hasUfcFight(id)) return notFound();
     const record = recordText(currentRecord(fighter.id, fighter).value);
     return {
       ...DEFAULT,
@@ -212,7 +212,7 @@ export function sitemap(): string {
     .all() as { id: string; date: string }[];
   const fighters = prepared(`
     SELECT id FROM fighters fr
-    WHERE ${completedUfcFightExistsSql("fr.id", "f")}
+    WHERE ${ufcFightExistsSql("fr.id", "f")}
     ORDER BY id
   `).all() as { id: string }[];
   const officials = officialsIndex();
