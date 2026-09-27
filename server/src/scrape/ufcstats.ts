@@ -243,6 +243,22 @@ export type FightDetail = {
   recentFights?: { f1: string[]; f2: string[] };
 };
 
+/** The same detail told from the other corner, for when the event page swaps
+ * the fighters (it lists a winner first). */
+export function swapDetailCorners(detail: FightDetail): FightDetail {
+  const flip = <T extends { f1: unknown; f2: unknown }>(pair: T): T => ({ ...pair, f1: pair.f2, f2: pair.f1 });
+  return {
+    ...detail,
+    ...(detail.judges ? { judges: detail.judges.map(card => ({ ...card, f1Score: card.f2Score, f2Score: card.f1Score })) } : {}),
+    ...(detail.totals ? { totals: flip(detail.totals) } : {}),
+    ...(detail.sigStrikes ? { sigStrikes: flip(detail.sigStrikes) } : {}),
+    ...(detail.totalsRounds ? { totalsRounds: { ...detail.totalsRounds, rounds: detail.totalsRounds.rounds.map(flip) } } : {}),
+    ...(detail.sigStrikesRounds ? { sigStrikesRounds: { ...detail.sigStrikesRounds, rounds: detail.sigStrikesRounds.rounds.map(flip) } } : {}),
+    ...(detail.taleOfTape ? { taleOfTape: detail.taleOfTape.map(flip) } : {}),
+    ...(detail.recentFights ? { recentFights: flip(detail.recentFights) } : {}),
+  };
+}
+
 /**
  * Split one stat row into the two fighters' values, dropping the name column.
  * `swap` is set when the fight-details page lists the fighters in the opposite
