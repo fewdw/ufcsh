@@ -381,6 +381,9 @@ for (const alter of [
   // found; catch_weight_checked_at says when it was last looked for.
   "ALTER TABLE fights ADD COLUMN catch_weight REAL",
   "ALTER TABLE fights ADD COLUMN catch_weight_checked_at INTEGER",
+  // Signed on Wikipedia's roster list but not yet on UFCStats: a profile of
+  // our own until UFCStats books them, when the real one takes over.
+  "ALTER TABLE fighters ADD COLUMN signee INTEGER NOT NULL DEFAULT 0",
 ]) {
   try {
     db.exec(alter);
@@ -511,6 +514,15 @@ if (getMeta("migration_bonus_kinds") !== "1") {
 
 // Data revisions survive process boundaries without invalidating analytics on
 // scheduler heartbeats, refresh queues, or unchanged scraper checks.
+// Each recent UFC fighter's status on their ufc.com athlete page. left_at is
+// when we saw it go from active to not fighting: the moment they left the roster.
+db.exec(`CREATE TABLE IF NOT EXISTS ufc_status (
+  fighter_id TEXT PRIMARY KEY,
+  url        TEXT,
+  status     TEXT,
+  checked_at INTEGER NOT NULL,
+  left_at    INTEGER
+)`);
 db.exec("CREATE TABLE IF NOT EXISTS data_revisions (key TEXT PRIMARY KEY, value INTEGER NOT NULL)");
 for (const key of ["analytics", "profiles", "search"]) {
   db.prepare("INSERT OR IGNORE INTO data_revisions VALUES (?, 0)").run(key);

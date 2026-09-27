@@ -952,6 +952,8 @@ export type RosterMove = {
   division: string | null;
   reason: string | null;
   record: string | null;
+  ufc_record: string | null;
+  photo_url: string | null;
   fighter_id: string | null;
 };
 export type RosterMoves = { updated_at: number | null; signed: RosterMove[]; cut: RosterMove[] };

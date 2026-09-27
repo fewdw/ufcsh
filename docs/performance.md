@@ -130,6 +130,18 @@ stats, officials, venues, judges and profiles.
 - Every remaining loading line stays invisible for its first 350 ms
   (`.appear-late`), and a list refreshing in place dims only after 200 ms.
 
+## Roster changes (2026-09-27, `feat/nav-more-menu`)
+
+Measured on a copy of the dev archive, 5-run averages, warm fight index.
+
+- `/api/roster` build: 55 ms → 7.6 ms. Unlinked names ran a spacing-blind
+  scan of every fighter (`replace(norm_name, ' ', '')`) on each request; a
+  signee's own profile is now looked up by id first, so the scan only runs for
+  names with neither. Built at most once a minute and served from memory.
+- ufc.com status queue (sync worker, once a minute): 30 ms to pick the next
+  two fighters due. Each of the ~920 fighters with a bout in the last three
+  years is re-read every 12 hours: ~1,850 athlete pages a day (~100 KB each).
+
 ## What changed because of the numbers
 
 - Share images first rendered at up to 665 KB PNG and 1.6 s under load: they

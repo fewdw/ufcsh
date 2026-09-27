@@ -5,7 +5,7 @@ import type { BugActionId } from "./bugs.ts";
 const ACTIONS: Record<BugActionId, true> = {
   odds: true, props: true, career: true, detail: true, segments: true, event: true,
   "clear-bfo": true, birth: true, wiki: true, article: true, catchweight: true, "forget-ufc": true, verdict: true,
-  "roster-moves": true,
+  "roster-moves": true, "ufc-status": true,
 };
 
 /** One concurrent repair per API process, with a verified snapshot before the day's first change. */

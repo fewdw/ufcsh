@@ -253,6 +253,15 @@ export async function fetchArticleByTitle(title: string): Promise<string | null>
   return body?.parse?.wikitext?.["*"] ?? null;
 }
 
+/** The article's current revision, one small request, so an unchanged page
+ *  is never downloaded again. */
+export async function articleRevision(title: string): Promise<number | null> {
+  const url = `${API}?action=query&format=json&prop=revisions&rvprop=ids&redirects=1&titles=${encodeURIComponent(title)}`;
+  const body = JSON.parse(await fetchHtml(url, { retries: 1 }));
+  const page = Object.values(body?.query?.pages ?? {})[0] as { revisions?: { revid: number }[] } | undefined;
+  return page?.revisions?.[0]?.revid ?? null;
+}
+
 export type CatchweightBout = { id: string; f1: string; f2: string };
 
 // "Catchweight (160 lb)", "Catch weight (145.5 lbs; 66 kg)", "Catchweight 170 lb".

@@ -367,6 +367,44 @@ export async function scrapeFighterImages(name: string, loadHtml = fetchHtml): P
   return found;
 }
 
+export type AthleteStatus = "active" | "not_fighting";
+
+/** The name and roster status an athlete page shows. This host is served
+ *  ufc.com's French site, so both languages are read. */
+export function parseAthleteStatus(html: string): { name: string; status: AthleteStatus | null } {
+  const $ = cheerio.load(html);
+  const field = $(".c-bio__field").filter((_, element) => /^stat(us|ut)$/i.test($(element).find(".c-bio__label").text().trim())).first();
+  const text = field.find(".c-bio__text").text().trim().toLowerCase();
+  return {
+    name: $(".hero-profile__name").first().text().trim(),
+    status: /^(active|actif)$/.test(text) ? "active" : /^(not fighting|ne se bat pas)$/.test(text) ? "not_fighting" : null,
+  };
+}
+
+/** A fighter's status, from the page already found for them or else the one
+ *  their name slugs to, then ufc.com's search. A page under another name is
+ *  never read. Null when no page could be read. */
+export async function scrapeAthleteStatus(name: string, knownUrl: string | null, loadHtml = fetchHtml): Promise<{ url: string; status: AthleteStatus | null } | null> {
+  // A search hit was already matched to the name, allowing one respelling.
+  const read = async (url: string, matched = false) => {
+    try {
+      const page = parseAthleteStatus(await loadHtml(url, { timeoutMs: 30000, retries: 0 }));
+      return matched || normName(page.name) === normName(name) ? { url, status: page.status } : null;
+    } catch {
+      return null;
+    }
+  };
+  if (knownUrl) return read(knownUrl, true);
+  const direct = await read(`https://www.ufc.com/athlete/${athleteSlug(name)}`);
+  if (direct) return direct;
+  try {
+    const hit = parseSearchAthlete(await loadHtml(`https://www.ufc.com/search?query=${encodeURIComponent(name)}`, { timeoutMs: 30000, retries: 0 }), name);
+    return hit.href ? read(hit.href, true) : null;
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Event schedules and card segments. UFCStats supplies a date but never a
 // start time, and never says which bouts are on the main card. ufc.com carries

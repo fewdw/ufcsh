@@ -5,7 +5,7 @@ import CmdK from "./components/CmdK";
 import SearchGlyph from "./components/SearchGlyph";
 import LiveMatchup from "./components/LiveMatchup";
 import { segmentedIdle, segmentedSelected } from "./components/segmented";
-import { ChevronDown, Keyboard, Moon, ShieldCheck, Star, Sun, Users } from "lucide-react";
+import { ChevronDown, Keyboard, Moon, Sun } from "lucide-react";
 import { accountsEnabled, useAccount } from "./auth";
 import { useAdminResource, type AdminSession } from "./admin";
 import { useSettings, withRanking } from "./settings";
@@ -51,12 +51,11 @@ const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition 
 const MORE_PATHS = ["/roster", "/favorites", "/admin"];
 const within = (pathname: string, path: string) => pathname === path || pathname.startsWith(`${path}/`);
 
-function MenuItem({ href, label, icon: Icon, pathname }: { href: string; label: string; icon: typeof Users; pathname: string }) {
+function MenuItem({ href, label, pathname }: { href: string; label: string; pathname: string }) {
   const current = within(pathname, href);
   return <li>
     <Link to={href} aria-current={current ? "page" : undefined}
-      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${current ? "bg-zinc-100 text-zinc-900" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"}`}>
-      <Icon className="h-4 w-4 text-zinc-400" aria-hidden="true" />
+      className={`block rounded-lg px-3 py-2 text-sm font-medium transition-colors ${current ? "bg-zinc-100 text-zinc-900" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"}`}>
       {label}
     </Link>
   </li>;
@@ -66,7 +65,7 @@ function MenuItem({ href, label, icon: Icon, pathname }: { href: string; label: 
 function AdminMenuItem({ pathname }: { pathname: string }) {
   const { isLoaded, user } = useAccount();
   const { data } = useAdminResource<AdminSession>(isLoaded && user ? "/api/admin/session" : null);
-  return data?.admin ? <MenuItem href="/admin" label="Admin" icon={ShieldCheck} pathname={pathname} /> : null;
+  return data?.admin ? <MenuItem href="/admin" label="Admin" pathname={pathname} /> : null;
 }
 
 /** The rest of the site, one pill after the sections. A mouse opens it on
@@ -97,14 +96,13 @@ function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
         down onto the menu never leaves it. */}
     {open ? <div className="absolute right-0 top-full z-50 pt-1.5 sm:left-0 sm:right-auto">
       <ul className="w-44 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg">
-        <MenuItem href="/roster" label="Roster" icon={Users} pathname={pathname} />
-        <MenuItem href="/favorites" label="Favorites" icon={Star} pathname={pathname} />
+        <MenuItem href="/roster" label="Roster" pathname={pathname} />
+        <MenuItem href="/favorites" label="Favorites" pathname={pathname} />
         {accountsEnabled ? <AdminMenuItem pathname={pathname} /> : null}
         {/* The narrowest phones have no room for the theme button in the row. */}
         <li className="min-[380px]:hidden">
           <button type="button" onClick={() => update("theme", dark ? "light" : "dark")}
-            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900">
-            {dark ? <Sun className="h-4 w-4 text-zinc-400" aria-hidden="true" /> : <Moon className="h-4 w-4 text-zinc-400" aria-hidden="true" />}
+            className="block w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900">
             {dark ? "Light mode" : "Dark mode"}
           </button>
         </li>

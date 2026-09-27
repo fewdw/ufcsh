@@ -29,7 +29,7 @@ import { correctOfficialJudges } from "./verified-scorecard-corrections.ts";
 import { catchweights, eventInfobox, eventSection, fetchArticleByTitle, fetchEventArticle, fetchFighterArticle, recordCatchweight, weightMisses } from "./scrape/wikipedia.ts";
 import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
 import { syncVerdictScorecards } from "./verdict-import.ts";
-import { syncRosterMoves } from "./roster-moves.ts";
+import { syncRosterMoves, syncUfcStatuses } from "./roster-moves.ts";
 import { americanLine, impliedProbability } from "./fight-index.ts";
 
 const HOUR = 3600_000;
@@ -1542,8 +1542,11 @@ export async function tick(): Promise<void> {
       await guarded("roster", syncRoster);
     }
 
-    // 2b. Signings and releases: Wikipedia's list is edited through the day.
-    if (metaAgeMs("roster_moves_checked_at") > 6 * HOUR) await guarded("roster_moves", syncRosterMoves);
+    // 2b. Signings and releases: Wikipedia's list is edited through the day,
+    //     so its revision is checked often and the page read only on a change;
+    //     ufc.com's athlete pages show departures before anyone reports them.
+    if (metaAgeMs("roster_moves_checked_at") > 10 * 60_000) await guarded("roster_moves", syncRosterMoves);
+    await guarded("ufc_statuses", () => syncUfcStatuses());
 
     const events = db.prepare("SELECT id, name, date, complete, detail_fetched_at FROM events ORDER BY date DESC").all() as EventRow[];
     const now = Date.now();

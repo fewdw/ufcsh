@@ -1170,12 +1170,32 @@ function rosterMovesUnread(): BugCheck {
       });
     }
   }
+  // ufc.com: a markup change would leave every status unread, and a fighter
+  // whose page can't be found is never watched for leaving.
+  const statuses = db.prepare("SELECT COUNT(*) AS checked, COUNT(status) AS read FROM ufc_status WHERE checked_at > ?").get(Date.now() - 24 * 3_600_000) as { checked: number; read: number };
+  if (statuses.checked >= 20 && statuses.read < statuses.checked / 2) items.push({
+    key: "ufc-status",
+    title: "ufc.com statuses mostly unreadable",
+    facts: [["Read in the last day", `${statuses.read} of ${statuses.checked}`]],
+    links: [{ label: "ufc.com athletes", href: "https://www.ufc.com/athletes/all" }],
+    actions: [],
+  });
+  const unfound = db.prepare(`SELECT s.fighter_id, fr.name, s.checked_at FROM ufc_status s JOIN fighters fr ON fr.id = s.fighter_id
+    WHERE s.status IS NULL ORDER BY fr.name`).all() as { fighter_id: string; name: string; checked_at: number }[];
+  for (const fighter of unfound) items.push({
+    key: `ufc:${fighter.fighter_id}`,
+    title: fighter.name,
+    subtitle: "No ufc.com page found, so a departure can't be seen",
+    facts: [["Last tried", ago(fighter.checked_at)]],
+    links: [fighterLink(fighter.fighter_id, fighter.name), { label: "ufc.com search", href: `https://www.ufc.com/search?query=${encodeURIComponent(fighter.name)}` }],
+    actions: [{ id: "ufc-status", label: "Look again", target: fighter.fighter_id }],
+  });
   return check({
     id: "roster-moves",
     group: "Fighters",
     label: "Signings and releases not read",
-    description: "The /roster page lists Wikipedia's recent signings and releases, re-read every 6 hours. A stale read means the article couldn't be reached or its tables changed shape (the last good read stays up). A row missing a field was written in a form the reader doesn't understand; a release with no profile is usually a name spelled differently from UFCStats.",
-    grade: (item) => item.key === "sync" ? "must" : "minor",
+    description: "The /roster page lists Wikipedia's recent signings and releases (checked every 10 minutes), plus fighters whose ufc.com page turned from Active to Not Fighting (each recent fighter read twice a day). A stale read means the article couldn't be reached or its tables changed shape (the last good read stays up). A row missing a field was written in a form the reader doesn't understand; a release with no profile is usually a name spelled differently from UFCStats.",
+    grade: (item) => item.key === "sync" || item.key === "ufc-status" ? "must" : item.key.startsWith("ufc:") ? "ok" : "minor",
   }, items);
 }
 // ---------------------------------------------------------------------------
@@ -1226,7 +1246,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
   };
 }
 
-export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves";
+export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -1290,6 +1310,9 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
     case "event":
       await syncEventDetail(target);
       return { ok: true, message: "Event re-fetched." };
+    case "ufc-status":
+      db.prepare("UPDATE ufc_status SET url = NULL, checked_at = 0 WHERE fighter_id = ?").run(target);
+      return { ok: true, message: "Queued; ufc.com is searched again on the next pass." };
     case "roster-moves": {
       try {
         await syncRosterMoves();

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { athleteSlug, parseAthleteImages, parseCardRounds, parseFightIds, parseRankingsHtml, parseSearchAthlete, scrapeFighterImages } from "./ufccom.ts";
+import { athleteSlug, parseAthleteImages, parseAthleteStatus, parseCardRounds, parseFightIds, parseRankingsHtml, parseSearchAthlete, scrapeFighterImages } from "./ufccom.ts";
 
 const MEDIA_LABELS = [
   "Men's Pound-for-Pound",
@@ -278,4 +278,14 @@ test("a bout's rounds are kept only when the feed states them consistently", () 
   assert.deepEqual(parseCardRounds({}, [1]), []);
   // A page listing a bout the feed does not carry means the feed is another card.
   assert.deepEqual(parseCardRounds(feed, [1, 12345]), []);
+});
+
+test("reads an athlete's roster status in English or French", () => {
+  const page = (name: string, label: string, status: string) =>
+    `<h1 class="hero-profile__name">${name}</h1><div class="c-bio__field"><div class="c-bio__label">Lieu de naissance</div><div class="c-bio__text">Kazakhstan</div></div>
+     <div class="c-bio__field"><div class="c-bio__label">${label}</div><div class="c-bio__text">${status}</div></div>`;
+  assert.deepEqual(parseAthleteStatus(page("Lyman Good", "Status", "Ne se bat pas")), { name: "Lyman Good", status: "not_fighting" });
+  assert.deepEqual(parseAthleteStatus(page("Lyman Good", "Status", "Not Fighting")), { name: "Lyman Good", status: "not_fighting" });
+  assert.deepEqual(parseAthleteStatus(page("Islam Makhachev", "Statut", "Actif")), { name: "Islam Makhachev", status: "active" });
+  assert.deepEqual(parseAthleteStatus(page("Mariya Agapova", "Status", "Retired")), { name: "Mariya Agapova", status: null });
 });

@@ -13,10 +13,11 @@ export const ufcFightExistsSql = (fighterIdSql: string, fightAlias: string) => `
 )`;
 
 const ufcFightForFighter = prepared(`
-  SELECT ${ufcFightExistsSql("?1", "f")} AS eligible
+  SELECT ${ufcFightExistsSql("?1", "f")} OR EXISTS (SELECT 1 FROM fighters s WHERE s.id = ?1 AND s.signee = 1) AS eligible
 `);
 
-/** A stray UFCStats directory entry with no UFC bout does not make a UFC fighter. */
+/** A stray UFCStats directory entry with no UFC bout does not make a UFC
+ *  fighter; a signed fighter UFCStats hasn't booked yet does. */
 export function hasUfcFight(id: string): boolean {
   return Boolean(id && (ufcFightForFighter.get(id) as { eligible: number }).eligible);
 }
