@@ -141,6 +141,9 @@ Measured on a copy of the dev archive, 5-run averages, warm fight index.
 - ufc.com status queue (sync worker, once a minute): 30 ms to pick the next
   two fighters due. Each of the ~920 fighters with a bout in the last three
   years is re-read every 12 hours: ~1,850 athlete pages a day (~100 KB each).
+- `/api/officials` build: 0.4 ms → 8 ms, for each judge's agreement with the
+  rest of the panel and the fans (every card, ~12,000). Built once per fight
+  index version and served from the response cache.
 
 ## Judge baseline (2026-09-27, `feat/official-venue-pages`)
 

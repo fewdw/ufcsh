@@ -7,6 +7,8 @@ const SIZES = {
   md: "h-12 w-12 text-xs",
   lg: "h-20 w-20 text-lg",
   xl: "h-28 w-28 text-xl",
+  // A list row that tightens to one line on a wide screen.
+  row: "h-9 w-9 text-[11px] xl:h-6 xl:w-6 xl:text-[8px]",
   matchup: "h-13 w-13 text-xs lg:h-15 lg:w-15 lg:text-sm",
 } as const;
 

@@ -12,6 +12,7 @@ function warm(url: URL, ranking: RankingSource) {
   if (url.origin !== window.location.origin) return;
   void pageFor(url.pathname)?.().catch(() => {});
   for (const request of pageRequests(url.pathname, url.search, ranking)) prefetch(request);
+  if (url.pathname === "/stats" && !url.search) prefetch(DEFAULT_STATS_REQUEST);
 }
 
 /** Events (the list and the card "/" opens), Rankings and Stats in their

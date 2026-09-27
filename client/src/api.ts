@@ -973,7 +973,7 @@ export type RosterMove = {
 export type RosterMoves = { updated_at: number | null; signed: RosterMove[]; cut: RosterMove[] };
 
 export type OfficialsDirectory = {
-  judges: { slug: string; name: string; n: number; first: string | null; last: string | null }[];
+  judges: { slug: string; name: string; n: number; first: string | null; last: string | null; fan_cards: number; agree_all: number | null; agree_judges: number | null; agree_fans: number | null }[];
   referees: { slug: string; name: string; n: number; first: string | null; last: string | null }[];
 };
 

@@ -3,19 +3,26 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { accountsEnabled, useAccount } from "../auth";
 import { useAdminResource, type AdminSession } from "../admin";
 
-/** The pages behind More, each with the paths that belong to it. */
+/** The pages behind More, each with the paths that belong to it: the numbers
+ *  first, then the news around the roster, the people and places behind the
+ *  cards, and the reader's own. */
 const SECTIONS = [
+  { href: "/stats", label: "Stats", paths: ["/stats"] },
+  { href: "/labs", label: "Labs", paths: ["/labs"] },
+  { href: "/news", label: "News", paths: ["/news"] },
   { href: "/roster", label: "Roster", paths: ["/roster"] },
-  { href: "/favorites", label: "Favorites", paths: ["/favorites"] },
+  { href: "/matchmaking", label: "Matchmaking", paths: ["/matchmaking"] },
   { href: "/officials", label: "Officials", paths: ["/officials", "/judges", "/referees"] },
   { href: "/venues", label: "Venues", paths: ["/venues"] },
-  { href: "/matchmaking", label: "Matchmaking", paths: ["/matchmaking"] },
-  { href: "/news", label: "News", paths: ["/news"] },
+  { href: "/favorites", label: "Favorites", paths: ["/favorites"] },
 ];
 const ADMIN = { href: "/admin", label: "Admin", paths: ["/admin"] };
 
 const within = (pathname: string, path: string) => pathname === path || pathname.startsWith(`${path}/`);
 const current = (pathname: string, section: typeof ADMIN) => section.paths.some((path) => within(pathname, path));
+
+/** Where the More button leads when it is pressed rather than hovered. */
+export const MORE_HOME = SECTIONS[0].href;
 
 export const inMore = (pathname: string) => [...SECTIONS, ADMIN].some((section) => current(pathname, section));
 

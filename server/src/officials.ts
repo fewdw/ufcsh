@@ -294,6 +294,9 @@ type JudgeReading = {
   fanPickDiffers: boolean | null;
 };
 
+/** The crowd's winner; an average gap under a tenth of a point reads as a draw. */
+const crowdPick = (fans: FanCard) => (Math.abs(fans.avg1 - fans.avg2) < 0.1 ? 0 : Math.sign(fans.avg1 - fans.avg2));
+
 function readCard(officiated: Officiated, key: string): JudgeReading | null {
   const card = officiated.cards.find((entry) => entry.key === key);
   if (!card) return null;
@@ -329,7 +332,6 @@ function readCard(officiated: Officiated, key: string): JudgeReading | null {
       if (crowd !== myRound) fanRoundsDiffer += 1;
     }
   }
-  const fans = officiated.fans;
   return {
     officiated, card, others,
     verdict: verdictOf(officiated.fight),
@@ -337,7 +339,7 @@ function readCard(officiated: Officiated, key: string): JudgeReading | null {
     dissent,
     tenEights, tenTens, roundsScored: card.rounds.length, roundsCompared, roundsAgreed, loneRounds,
     fanRounds, fanRoundsDiffer,
-    fanPickDiffers: fans ? (Math.abs(fans.avg1 - fans.avg2) < 0.1 ? 0 : Math.sign(fans.avg1 - fans.avg2)) !== mine : null,
+    fanPickDiffers: officiated.fans ? crowdPick(officiated.fans) !== mine : null,
   };
 }
 
@@ -601,18 +603,49 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
 // ---------------------------------------------------------------------------
 // directory
 
+// Fewer cards than these, and a judge's agreement rate is left unranked.
+const MIN_AGREEMENT_CARDS = 50;
+const MIN_FAN_CARDS = 5;
+
+/** How often a judge's winner matches each other judge on the panel, the
+ *  crowd's, and both counted together, as percentages. */
+function judgeAgreement(identity: Identity) {
+  let cards = 0, compared = 0, agreed = 0, fanCards = 0, fanAgreed = 0;
+  for (const officiated of identity.fights) {
+    const card = officiated.cards.find((entry) => entry.key === identity.key);
+    if (!card) continue;
+    const mine = pick(card.f1, card.f2);
+    const others = officiated.cards.filter((entry) => entry !== card);
+    if (others.length) cards += 1;
+    compared += others.length;
+    agreed += others.filter((other) => pick(other.f1, other.f2) === mine).length;
+    if (officiated.fans) {
+      fanCards += 1;
+      if (crowdPick(officiated.fans) === mine) fanAgreed += 1;
+    }
+  }
+  const ranked = cards >= MIN_AGREEMENT_CARDS;
+  return {
+    fan_cards: fanCards,
+    agree_all: ranked ? pct(agreed + fanAgreed, compared + fanCards) : null,
+    agree_judges: ranked ? pct(agreed, compared) : null,
+    agree_fans: fanCards >= MIN_FAN_CARDS ? pct(fanAgreed, fanCards) : null,
+  };
+}
+
 export function officialsDirectory(): unknown {
   const index = officialsIndex();
-  const list = (table: Map<string, Identity>, count: (identity: Identity) => number) => [...table.values()]
+  const list = <T>(table: Map<string, Identity>, extra: (identity: Identity) => T) => [...table.values()]
+    .filter((identity) => identity.fights.length > 0)
     .map((identity) => ({
-      slug: identity.slug, name: identity.name, n: count(identity),
+      slug: identity.slug, name: identity.name, n: identity.fights.length,
       first: identity.fights.at(-1)?.fight.date ?? null, last: identity.fights[0]?.fight.date ?? null,
+      ...extra(identity),
     }))
-    .filter((entry) => entry.n > 0)
     .sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
   return {
-    judges: list(index.judges, (identity) => identity.fights.length),
-    referees: list(index.referees, (identity) => identity.fights.length),
+    judges: list(index.judges, judgeAgreement),
+    referees: list(index.referees, () => ({})),
   };
 }
 

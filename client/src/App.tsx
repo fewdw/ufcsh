@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentType } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentType, type MouseEvent } from "react";
 import { Link, Route, Routes, useLocation } from "react-router-dom";
 import AccountButton from "./components/AccountButton";
 import CmdK from "./components/CmdK";
@@ -7,11 +7,10 @@ import LiveMatchup from "./components/LiveMatchup";
 import { segmentedIdle, segmentedSelected } from "./components/segmented";
 import { ChevronDown, Keyboard, Moon, Sun } from "lucide-react";
 import { accountsEnabled } from "./auth";
-import { inMore, MoreLayout, MoreLinks } from "./components/MoreNav";
+import { inMore, MORE_HOME, MoreLayout, MoreLinks } from "./components/MoreNav";
 import { useSettings, withRanking } from "./settings";
 import { prefetch } from "./api";
 import { useLinkPrefetch, warmSections } from "./useLinkPrefetch";
-import { DEFAULT_STATS_REQUEST } from "./statsDefaults";
 import { pages, type PageLoader } from "./pages";
 import RouteErrorBoundary from "./components/RouteErrorBoundary";
 import ParlaySlip from "./components/ParlaySlip";
@@ -48,11 +47,10 @@ const RosterPage = page(pages.roster, module => module.default);
 
 const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
 
-/** The rest of the site, one pill after the sections. A mouse opens it on
- *  hover; a tap or a key opens it on click. */
+/** The rest of the site, one pill after the sections. From `md` up a mouse
+ *  opens its list on hover and a press opens Stats; a tap or a key opens the
+ *  list. Below `md` it is a plain link: the pages' own tab strip takes over. */
 function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
-  const { settings, update } = useSettings();
-  const dark = settings.theme === "dark";
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => setOpen(false), [pathname]);
@@ -64,17 +62,24 @@ function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
     document.addEventListener("keydown", escape);
     return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
   }, [open]);
+  const wide = () => window.matchMedia("(min-width: 768px)").matches;
+  const press = (e: MouseEvent<HTMLAnchorElement>) => {
+    const pointer = (e.nativeEvent as PointerEvent).pointerType;
+    if (wide() && pointer !== "mouse") { e.preventDefault(); setOpen(v => !v); }
+    else if (active) e.preventDefault();
+  };
   return <div ref={ref} className="relative"
-    onPointerEnter={(e) => { if (e.pointerType === "mouse") setOpen(true); }}
+    onPointerEnter={(e) => { if (e.pointerType === "mouse" && wide()) setOpen(true); }}
     onPointerLeave={(e) => { if (e.pointerType === "mouse") setOpen(false); }}>
-    <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open} aria-haspopup="true" aria-label="More"
+    <Link to={MORE_HOME} onClick={press} aria-expanded={open} aria-haspopup="true"
+      aria-current={active ? "page" : undefined}
       className={`${NAV_ITEM} flex items-center gap-0.5 ${active ? segmentedSelected : segmentedIdle}`}>
-      <span className="hidden sm:inline">More</span>
-      <ChevronDown className={`h-4 w-4 transition-transform sm:h-3.5 sm:w-3.5 ${open ? "rotate-180" : ""}`} aria-hidden="true" />
-    </button>
+      More
+      <ChevronDown className={`hidden h-3.5 w-3.5 transition-transform md:block ${open ? "rotate-180" : ""}`} aria-hidden="true" />
+    </Link>
     {/* The top padding bridges the gap to the button, so a pointer moving
         down onto the menu never leaves it. */}
-    {open ? <div className="absolute right-0 top-full z-50 pt-1.5 sm:left-0 sm:right-auto">
+    {open ? <div className="absolute left-0 top-full z-50 pt-1.5">
       <ul className="w-44 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg">
         <MoreLinks item={(section, current) => (
           <li key={section.href}>
@@ -84,13 +89,6 @@ function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
             </Link>
           </li>
         )} />
-        {/* The narrowest phones have no room for the theme button in the row. */}
-        <li className="min-[380px]:hidden">
-          <button type="button" onClick={() => update("theme", dark ? "light" : "dark")}
-            className="block w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900">
-            {dark ? "Light mode" : "Dark mode"}
-          </button>
-        </li>
       </ul>
     </div> : null}
   </div>;
@@ -117,19 +115,14 @@ function Header({ onSearch }: { onSearch: () => void }) {
     return () => observer.disconnect();
   }, []);
   const isRankings = pathname.startsWith("/rankings");
-  const isStats = pathname.startsWith("/stats");
-  // Labs is a mode of Statistics rather than a top-level destination, so the
-  // Stats pill stays lit while it is open and the switch lives on the page.
-  const isLabs = pathname.startsWith("/labs");
   const isMore = inMore(pathname);
   // A profile belongs to no section of the nav, so none of them is lit.
   const isProfile = pathname.startsWith("/profiles");
   const links = [
     // Pointing at a section starts its code and its first data, so a tap
     // lands on it loaded.
-    { href: "/", label: "Events", active: !isRankings && !isStats && !isLabs && !isProfile && !isMore, load: () => { warmSections(settings.rankingSource); return pages.events(); } },
+    { href: "/", label: "Events", active: !isRankings && !isProfile && !isMore, load: () => { warmSections(settings.rankingSource); return pages.events(); } },
     { href: "/rankings", label: "Rankings", active: isRankings, load: () => { prefetch(withRanking("/api/rankings", settings.rankingSource)); return pages.rankings(); } },
-    { href: "/stats", label: "Stats", active: isStats || isLabs, load: () => { prefetch(DEFAULT_STATS_REQUEST); return pages.stats(); } },
   ];
 
   return (
@@ -197,7 +190,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
             aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
             aria-pressed={dark}
             title={dark ? "Light mode" : "Dark mode"}
-            className="hidden h-8 w-8 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 min-[380px]:grid sm:h-9 sm:w-9"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 sm:h-9 sm:w-9"
           >
             {dark ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
           </button>
@@ -284,9 +277,9 @@ export default function App() {
           <Route path="/fights/:fightId" element={<EventsPage />} />
           <Route path="/fighters/:fighterId" element={<FighterPage />} />
           <Route path="/rankings" element={<RankingsPage />} />
-          <Route path="/stats" element={<StatsPage />} />
-          <Route path="/labs" element={<LabsPage />} />
           <Route element={<MoreLayout />}>
+            <Route path="/stats" element={<StatsPage />} />
+            <Route path="/labs" element={<LabsPage />} />
             <Route path="/roster" element={<RosterPage />} />
             <Route path="/favorites" element={null} />
             <Route path="/officials" element={<OfficialsPage />} />
