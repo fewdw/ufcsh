@@ -516,6 +516,19 @@ select:not([multiple]):not([size]) {
 .dark .activity-swatch.activity-booked { border-color: rgb(245 158 11 / 0.6); }
 .dark .activity-swatch.activity-recent { border-color: rgb(56 189 248 / 0.55); }
 
+.opponent-win { background-color: rgb(16 185 129 / 0.16); }
+.opponent-loss { background-color: rgb(244 63 94 / 0.14); }
+.opponent-scheduled { background-color: rgb(14 165 233 / 0.16); }
+.opponent-draw { background-color: rgb(245 158 11 / 0.18); }
+.opponent-nc { background-color: rgb(139 92 246 / 0.16); }
+.opponent-selected { box-shadow: inset 0 0 0 2px #71717a; }
+.dark .opponent-win { background-color: rgb(16 185 129 / 0.2); }
+.dark .opponent-loss { background-color: rgb(244 63 94 / 0.2); }
+.dark .opponent-scheduled { background-color: rgb(14 165 233 / 0.2); }
+.dark .opponent-draw { background-color: rgb(245 158 11 / 0.22); }
+.dark .opponent-nc { background-color: rgb(139 92 246 / 0.24); }
+.dark .opponent-selected { box-shadow: inset 0 0 0 2px #a1a1aa; }
+
 /* A chosen method or round in the prediction form: the one solid cell in
    its row, dark on the light theme and light on the dark one. */
 .pick-option-on { background-color: #18181b; border-color: #18181b; color: #fff; }

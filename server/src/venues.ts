@@ -1,4 +1,5 @@
 import { prepared } from "./db.ts";
+import { fightIndex, type IndexedFight } from "./fight-index.ts";
 import { normName } from "./util.ts";
 
 /**
@@ -174,14 +175,60 @@ export function venueOfEvent(eventId: string): { slug: string; name: string; cit
   return { slug: venue.slug, name: event?.name_then ?? venue.name, city: venue.city, country: venue.country, time_zone: event?.time_zone ?? venue.time_zone };
 }
 
+type Method = "ko" | "sub" | "dec" | "other";
+
+function methodOf(fight: IndexedFight): Method {
+  if (fight.method === "KO/TKO") return "ko";
+  if (fight.method === "SUB") return "sub";
+  if (fight.method?.endsWith("-DEC")) return "dec";
+  return "other";
+}
+
+const isTitle = (fight: IndexedFight) => fight.titleFight && (fight.titleType === "title" || fight.titleType === "interim");
+const side = (fight: IndexedFight, index: 0 | 1) => ({ id: fight.sides[index].id, name: fight.sides[index].name, outcome: fight.sides[index].outcome });
+
+/** How bouts ended, for a venue or the whole UFC: a finish rate reads against the rest. */
+function methodCounts(fights: IndexedFight[]): Record<Method, number> {
+  const counts: Record<Method, number> = { ko: 0, sub: 0, dec: 0, other: 0 };
+  for (const fight of fights) counts[methodOf(fight)] += 1;
+  return counts;
+}
+
 export function venuePage(slug: string): unknown | null {
   const venue = venueIndex().bySlug.get(slug);
   if (!venue) return null;
-  const held = venue.events.filter((event) => event.complete);
+  const index = fightIndex();
+  const eventIds = new Set(venue.events.map((event) => event.id));
+  const fights = index.fights.filter((fight) => eventIds.has(fight.eventId));
+  const finishes = new Map<string, number>();
+  const fighters = new Map<string, { id: string; name: string; wins: number; losses: number; draws: number }>();
+  for (const fight of fights) {
+    const kind = methodOf(fight);
+    if (kind === "ko" || kind === "sub") finishes.set(fight.eventId, (finishes.get(fight.eventId) ?? 0) + 1);
+    for (const entry of fight.sides) {
+      const record = fighters.get(entry.id) ?? { id: entry.id, name: entry.name, wins: 0, losses: 0, draws: 0 };
+      if (entry.outcome === "win") record.wins += 1;
+      else if (entry.outcome === "loss") record.losses += 1;
+      else if (entry.outcome === "draw") record.draws += 1;
+      fighters.set(entry.id, record);
+    }
+  }
+  const held = venue.events.filter((event) => event.complete).map((event) => ({ ...event, finishes: finishes.get(event.id) ?? 0 }));
   const attendance = held.filter((event) => event.attendance != null);
   const record = attendance.reduce<VenueEventRef | null>((best, event) => (!best || event.attendance! > best.attendance! ? event : best), null);
   return {
     ...venue,
+    events: [...venue.events.filter((event) => !event.complete), ...held],
+    results: methodCounts(fights),
+    ufc_results: methodCounts(index.fights),
+    title_bouts: fights.filter(isTitle).sort((a, b) => b.date.localeCompare(a.date) || a.ord - b.ord).map((fight) => ({
+      fight_id: fight.id, event_id: fight.eventId, event_name: fight.eventName, date: fight.date,
+      division: fight.weightClass, interim: fight.titleType === "interim",
+      f1: side(fight, 0), f2: side(fight, 1),
+      method: fight.method, round: fight.round, time: fight.time, result: methodOf(fight),
+    })),
+    top_winners: [...fighters.values()].filter((entry) => entry.wins >= 2)
+      .sort((a, b) => b.wins - a.wins || a.losses - b.losses || a.name.localeCompare(b.name)).slice(0, 10),
     summary: {
       events: held.length,
       upcoming: venue.events.length - held.length,

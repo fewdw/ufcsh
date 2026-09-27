@@ -273,8 +273,9 @@ export type HistoryRow = {
   closing_odds?: { fighter: string | null; opponent: string | null } | null;
   opponent_form?: { date: string; outcome: "win" | "loss" | "draw" | "nc" | null; method: string | null; ufc?: boolean; opponent: { id: string; name: string } }[];
   /** perf is set only when this fighter won the award: Performance, or the
-   * pre-2014 Knockout / Submission of the Night. */
-  bonuses?: { perf: "perf" | "ko" | "sub" | null; fotn: boolean } | null;
+   * pre-2014 Knockout / Submission of the Night. perf_against is set when the
+   * opponent won it in this fight. */
+  bonuses?: { perf: "perf" | "ko" | "sub" | null; perf_against?: "perf" | "ko" | "sub" | null; fotn: boolean } | null;
   /** Pounds as text, "" when the weight is unknown, null when made or unread. */
   weight_miss?: { fighter: string | null; opponent: string | null };
   upcoming: boolean;
@@ -412,9 +413,10 @@ export type RankingEntry = {
     last_fight_opponent?: string | null;
     last_fight_outcome?: "win" | "loss" | "draw" | "nc" | null;
     days_since?: number | null;
-    next_fight?: { date: string; event_name: string; event_id: string; fight_id: string; opponent: string } | null;
+    next_fight?: { date: string; event_name: string; event_id: string; fight_id: string; opponent: string; opponent_id: string | null } | null;
     current_streak?: { count: number; outcome: "win" | "loss" | "draw" | "nc"; label: string } | null;
     form?: import("./resultDots").FormResult[];
+    opponent_results?: Record<string, "win" | "loss" | "draw" | "nc">;
   };
 };
 
@@ -883,6 +885,19 @@ export type OfficialFilters = { from: number | null; to: number | null; division
 type Outcome = "win" | "loss" | "draw" | "nc" | null;
 type FighterRef = { id: string; name: string; outcome: Outcome };
 type Facets = { years: { first: number; last: number } | null; divisions: { division: string; n: number }[] };
+export type YearCount = { year: number; n: number; marked: number };
+type MethodCounts = Record<"ko" | "sub" | "dec" | "other", number>;
+
+export type JudgeSummary = {
+    cards: number; panels: number; dissents: number; dissent_rate: number | null;
+    split_panels: number; dissents_in_splits: number; panel_agreement: { both: number; one: number; none: number };
+    with_result: number; agreed_result: number; agreed_result_rate: number | null;
+    round_cards: number; rounds_scored: number; ten_eights: number; ten_eight_rate: number | null;
+    ten_tens: number; ten_ten_rate: number | null; rounds_compared: number; round_agreement_rate: number | null;
+    lone_rounds: number; fan_cards: number; fan_pick_differs: number; fan_pick_differ_rate: number | null;
+    fan_rounds: number; fan_rounds_differ: number; fan_round_differ_rate: number | null;
+    missing_round_cards: number;
+};
 
 export type JudgeProfile = {
   kind: "judge";
@@ -891,21 +906,18 @@ export type JudgeProfile = {
   career: { cards: number } & Facets;
   filters: OfficialFilters;
   decision_counts: Record<string, number>;
-  summary: {
-    cards: number; panels: number; dissents: number; dissent_rate: number | null;
-    split_panels: number; dissents_in_splits: number;
-    with_result: number; agreed_result: number; agreed_result_rate: number | null;
-    round_cards: number; rounds_scored: number; ten_eights: number; ten_eight_rate: number | null;
-    ten_tens: number; ten_ten_rate: number | null; rounds_compared: number; round_agreement_rate: number | null;
-    lone_rounds: number; fan_cards: number; fan_pick_differs: number; fan_rounds: number; fan_rounds_differ: number;
-    missing_round_cards: number;
-  };
+  summary: JudgeSummary;
+  baseline: JudgeSummary;
+
+  by_year: YearCount[];
+  verdict_split: Record<"unanimous" | "split" | "majority" | "draw", { with: number; against: number }>;
+  score_lines: { score: string; n: number }[];
   colleagues: { name: string; slug: string | null; together: number; agreed: number; rate: number | null }[];
   total: number;
   offset: number;
   limit: number;
   rows: {
-    fight_id: string; event_id: string; event_name: string; date: string; division: string; scheduled_rounds: number;
+    fight_id: string; event_id: string; event_name: string; date: string; division: string; title: boolean; scheduled_rounds: number;
     verdict: "unanimous" | "split" | "majority" | "draw" | "other"; method: string | null;
     f1: FighterRef; f2: FighterRef;
     card: { f1: number; f2: number; rounds: { round: number; f1: number; f2: number }[] };
@@ -933,6 +945,8 @@ export type RefereeProfile = {
   result_counts: Record<string, number>;
   summary: RefereeTally;
   baseline: RefereeTally & { label: string };
+  by_year: YearCount[];
+  regulars: { id: string; name: string; n: number; wins: number }[];
   incidents: { fight_id: string; date: string; event_name: string; f1: FighterRef; f2: FighterRef; kind: string; details: string | null }[];
   total: number;
   offset: number;
@@ -967,6 +981,8 @@ export type VenueEvent = {
   id: string; name: string; date: string; complete: boolean; starts_at: number | null;
   name_then: string | null; attendance: number | null; gate: string | null;
   broadcasters: Record<string, string> | null; time_zone: string | null; fights: number; title_fights: number;
+  /** KO/TKO and submissions; only on completed cards. */
+  finishes?: number;
 };
 
 export type VenuePage = {
@@ -974,6 +990,13 @@ export type VenuePage = {
   city: string | null; state: string | null; country: string | null; time_zone: string | null; map_url: string;
   events: VenueEvent[];
   notes: { label: string; detail: string }[];
+  results: MethodCounts;
+  ufc_results: MethodCounts;
+  title_bouts: {
+    fight_id: string; event_id: string; event_name: string; date: string; division: string; interim: boolean;
+    f1: FighterRef; f2: FighterRef; method: string | null; round: number | null; time: string | null; result: keyof MethodCounts;
+  }[];
+  top_winners: { id: string; name: string; wins: number; losses: number; draws: number }[];
   summary: {
     events: number; upcoming: number; fights: number; title_fights: number; first: string | null; last: string | null;
     attendance_known: number; average_attendance: number | null;

@@ -142,6 +142,14 @@ Measured on a copy of the dev archive, 5-run averages, warm fight index.
   two fighters due. Each of the ~920 fighters with a bout in the last three
   years is re-read every 12 hours: ~1,850 athlete pages a day (~100 KB each).
 
+## Judge baseline (2026-09-27, `feat/official-venue-pages`)
+
+Judge profiles compare each rate with every UFC judge in the same years and
+divisions, which reads all ~12,000 judge cards. The cards are read once per
+fight-index version (about 350 ms, first request after a data change) and
+reused; each uncached `/api/judges/:slug` then took 30–75 ms locally across
+four filter combinations, before the response cache.
+
 ## What changed because of the numbers
 
 - Share images first rendered at up to 665 KB PNG and 1.6 s under load: they
@@ -164,3 +172,11 @@ The runs above do not prove capacity for thousands of simultaneous live-scoring
 users on fight night: score submissions and comment writes go to SQLite in the
 main process and were not part of the mix. Before claiming that, load-test the
 write paths on a quiet host and put a CDN in front of the public read routes.
+
+## Rankings hover results (2026-09-27)
+
+On the dev archive, linked opponent results and scheduled opponent IDs add
+29,714 bytes to the media rankings JSON, or 4,303 bytes with gzip, compared
+with the same response without those fields. The response includes only
+currently ranked opponents. Hover highlighting reads that response in memory
+and introduces no per-hover data request.
