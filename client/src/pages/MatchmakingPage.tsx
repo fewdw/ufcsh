@@ -161,81 +161,70 @@ function CardBuilder() {
 const rankLabel = (rank: number | null) => (rank === 0 ? "C" : rank == null ? null : `#${rank}`);
 
 function Streak({ streak }: { streak: number }) {
-  if (Math.abs(streak) < 2) return null;
+  if (!streak) return null;
   return (
-    <span className={`rounded px-1 text-[10px] font-semibold tabular-nums ${streak > 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}
+    <span className={`text-[10px] font-semibold tabular-nums ${streak > 0 ? "text-emerald-700" : "text-rose-700"}`}
       title={`${Math.abs(streak)} straight ${streak > 0 ? "wins" : "losses"}`}>
-      {streak > 0 ? "W" : "L"}{Math.abs(streak)}
+      {Math.abs(streak)}{streak > 0 ? "W" : "L"}
     </span>
   );
 }
 
 /** A fighter in a suggested bout: photo, rank, name, record and run. */
-function Side({ fighter, align = "left" }: { fighter: MatchFighter; align?: "left" | "right" }) {
+function Side({ fighter, align = "left" }: { fighter: MatchFighter; align?: "left" | "right" | "responsive" }) {
   const rank = rankLabel(fighter.rank);
   const right = align === "right";
+  const responsive = align === "responsive";
   const body = (
     <>
-      <Avatar src={fighter.photo_url} name={fighter.name} size="sm" />
-      <span className={`min-w-0 ${right ? "text-right" : ""}`}>
-        <span className={`flex min-w-0 items-center gap-1 ${right ? "flex-row-reverse" : ""}`}>
+      <Avatar src={fighter.photo_url} name={fighter.name} size="xs" />
+      <span className={`min-w-0 ${right ? "text-right" : responsive ? "@min-[420px]:text-right" : ""}`}>
+        <span className={`flex min-w-0 items-center gap-1 ${right ? "flex-row-reverse" : responsive ? "@min-[420px]:flex-row-reverse" : ""}`}>
           {rank ? <span className="shrink-0 text-[11px] font-semibold tabular-nums text-zinc-400">{rank}</span> : null}
           <span className="truncate text-[13px] font-medium text-zinc-900">{fighter.name}</span>
         </span>
-        <span className={`flex items-center gap-1 text-[11px] tabular-nums text-zinc-500 ${right ? "flex-row-reverse" : ""}`}>
+        <span className={`flex items-center gap-1 text-[11px] tabular-nums text-zinc-500 ${right ? "flex-row-reverse" : responsive ? "@min-[420px]:flex-row-reverse" : ""}`}>
           {fighter.record}<Streak streak={fighter.streak} />
         </span>
       </span>
     </>
   );
-  const className = `flex min-w-0 flex-1 items-center gap-2 ${right ? "flex-row-reverse" : ""}`;
-  return fighter.id ? <Link to={`/fighters/${fighter.id}`} className={`${className} rounded-lg hover:opacity-80`}>{body}</Link> : <span className={className}>{body}</span>;
+  const className = `flex min-w-0 flex-1 items-center gap-2 ${right ? "flex-row-reverse" : responsive ? "@min-[420px]:flex-row-reverse" : ""}`;
+  return fighter.id ? <Link to={`/fighters/${fighter.id}`} title={fighter.name} className={`${className} rounded-lg hover:opacity-80`}>{body}</Link> : <span className={className}>{body}</span>;
 }
-
-const KIND = {
-  title: { label: "Title fight", tone: "bg-amber-50 text-amber-800" },
-  booked: { label: "Booked", tone: "bg-zinc-100 text-zinc-600" },
-  suggested: { label: "Suggested", tone: "bg-sky-50 text-sky-700" },
-} as const;
 
 function Top15({ data }: { data: MatchmakingData }) {
   return (
-    <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 2xl:grid-cols-3">
+    <div className="grid grid-cols-1 gap-2 md:auto-rows-fr md:grid-cols-2 2xl:grid-cols-3">
       {data.top15.map((entry) => (
-        <section key={entry.division} className={`${PANEL} min-w-0 overflow-hidden`}>
-          <h2 className="border-b border-zinc-200 px-4 py-3 text-sm font-semibold text-zinc-900">{entry.division}</h2>
-          <ul>
+        <section key={entry.division} className={`${PANEL} @container flex min-w-0 flex-col overflow-hidden`}>
+          <h2 className="border-b border-zinc-200 px-3 py-2 text-sm font-semibold text-zinc-900">{entry.division}</h2>
+          <ul className="grid flex-1 auto-rows-fr">
             {entry.fights.map((fight) => (
-              <li key={`${fight.a.id}-${fight.b.id}`} className="border-b border-zinc-100 px-4 py-3">
-                <div className="flex items-center gap-2">
+              <li key={`${fight.a.id}-${fight.b.id}`} className="flex min-w-0 flex-col justify-center gap-1 border-b border-zinc-100 px-3 py-2 last:border-0">
+                <div className="flex flex-col gap-1 @min-[420px]:flex-row @min-[420px]:items-center @min-[420px]:gap-2">
                   <Side fighter={fight.a} />
-                  <span className="shrink-0 text-[10px] font-bold uppercase text-zinc-400">vs</span>
-                  <Side fighter={fight.b} align="right" />
+                  <span className="hidden shrink-0 text-[10px] uppercase text-zinc-400 @min-[420px]:block">vs</span>
+                  <Side fighter={fight.b} align="responsive" />
                 </div>
-                <p className="mt-1.5 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-[11px] leading-4 text-zinc-500">
-                  <span className={`rounded-full px-2 py-px text-[10px] font-semibold ${KIND[fight.kind].tone}`}>
-                    {fight.kind === "booked" && fight.reason.startsWith("Title") ? "Title fight · booked" : KIND[fight.kind].label}
-                  </span>
+                <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-zinc-500">
+                  {fight.kind !== "suggested" ? (
+                    <span className={`shrink-0 rounded px-1.5 text-[10px] font-semibold ${fight.kind === "title" || fight.reason.startsWith("Title") ? "bg-amber-50 text-amber-800" : "bg-zinc-100 text-zinc-600"}`}>
+                      {fight.kind === "title" ? "Title" : fight.reason.startsWith("Title") ? "Title · booked" : "Booked"}
+                    </span>
+                  ) : null}
                   {fight.event
-                    ? <Link to={`/events/${fight.event.id}`} className="hover:text-zinc-900">{fight.event.name} · {formatDate(fight.event.date)}</Link>
-                    : <span>{fight.reason}</span>}
-                </p>
+                    ? <Link to={`/events/${fight.event.id}`} title={`${fight.event.name} · ${formatDate(fight.event.date)}`} className="truncate hover:text-zinc-900">{fight.event.name} · {formatDate(fight.event.date)}</Link>
+                    : <span className="truncate" title={fight.reason}>{fight.reason}</span>}
+                </div>
               </li>
             ))}
-            {entry.idle.length ? (
-              <li className="px-4 py-3">
-                <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Not matched</h3>
-                <ul className="flex flex-col gap-1">
-                  {entry.idle.map(({ fighter, reason }) => (
-                    <li key={fighter.id} className="flex items-baseline gap-2 text-[12px]">
-                      <span className="shrink-0 tabular-nums text-zinc-400">{rankLabel(fighter.rank)}</span>
-                      <Link to={`/fighters/${fighter.id}`} className="font-medium text-zinc-800 hover:text-zinc-950">{fighter.name}</Link>
-                      <span className="text-zinc-500">{reason}</span>
-                    </li>
-                  ))}
-                </ul>
+            {entry.idle.map(({ fighter, reason }) => (
+              <li key={fighter.id} className="flex flex-col justify-center gap-1 border-b border-zinc-100 px-3 py-2 last:border-0">
+                <Side fighter={fighter} />
+                <p className="text-[11px] leading-4 text-zinc-500">{reason}</p>
               </li>
-            ) : null}
+            ))}
           </ul>
         </section>
       ))}
