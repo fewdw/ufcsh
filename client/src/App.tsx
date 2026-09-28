@@ -55,10 +55,9 @@ const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition 
 /** The rest of the site, one pill after the sections. From `md` up a mouse
  *  opens its groups on hover and a press opens Stats; a tap or a key opens
  *  them. On a phone they open as a panel across the width of the header. */
-function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
-  const [open, setOpen] = useState(false);
+function MoreMenu({ pathname, active, open, setOpen }: { pathname: string; active: boolean; open: boolean; setOpen: (open: boolean) => void }) {
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => setOpen(false), [pathname, setOpen]);
   useEffect(() => {
     if (!open) return;
     const outside = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
@@ -66,11 +65,11 @@ function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
     document.addEventListener("pointerdown", outside);
     document.addEventListener("keydown", escape);
     return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
-  }, [open]);
+  }, [open, setOpen]);
   const wide = () => window.matchMedia("(min-width: 768px)").matches;
   const press = (e: MouseEvent<HTMLAnchorElement>) => {
     const pointer = (e.nativeEvent as PointerEvent).pointerType;
-    if (!wide() || pointer !== "mouse") { e.preventDefault(); setOpen(v => !v); }
+    if (!wide() || pointer !== "mouse") { e.preventDefault(); setOpen(!open); }
     else if (active) e.preventDefault();
   };
   return <div ref={ref} className="md:relative"
@@ -78,7 +77,7 @@ function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
     onPointerLeave={(e) => { if (e.pointerType === "mouse") setOpen(false); }}>
     <Link to={MORE_HOME} onClick={press} aria-expanded={open} aria-haspopup="true"
       aria-current={active ? "page" : undefined}
-      className={`${NAV_ITEM} flex items-center gap-0.5 ${active ? segmentedSelected : segmentedIdle}`}>
+      className={`${NAV_ITEM} flex items-center gap-0.5 ${open || active ? segmentedSelected : segmentedIdle}`}>
       More
       <ChevronDown className={`hidden h-3.5 w-3.5 transition-transform md:block ${open ? "rotate-180" : ""}`} aria-hidden="true" />
     </Link>
@@ -109,6 +108,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
   const { pathname } = useLocation();
   const { settings, update } = useSettings();
   const dark = settings.theme === "dark";
+  const [moreOpen, setMoreOpen] = useState(false);
   // The bout on now sits mid-row only while it fits whole; the moment its
   // names would be cut, it drops to its own line instead.
   const slotRef = useRef<HTMLDivElement>(null);
@@ -156,12 +156,12 @@ function Header({ onSearch }: { onSearch: () => void }) {
               onFocus={() => { void link.load().catch(() => {}); }}
               onTouchStart={() => { void link.load().catch(() => {}); }}
               aria-current={link.active ? "page" : undefined}
-              className={`${NAV_ITEM} ${link.active ? segmentedSelected : segmentedIdle}`}
+              className={`${NAV_ITEM} ${link.active && !moreOpen ? segmentedSelected : segmentedIdle}`}
             >
               {link.label}
             </Link>
           ))}
-          <MoreMenu pathname={pathname} active={isMore} />
+          <MoreMenu pathname={pathname} active={isMore} open={moreOpen} setOpen={setMoreOpen} />
         </nav>
 
         {/* The middle of the row from `md` up, and its own line below that —
