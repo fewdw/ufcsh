@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { PANEL } from "../components/chartTokens";
 import { useRouteScrollRestoration } from "../navigationState";
@@ -25,27 +25,6 @@ function Section({ id, children }: { id: (typeof SECTIONS)[number]["id"]; childr
         {children}
       </div>
     </section>
-  );
-}
-
-function Email() {
-  const [status, setStatus] = useState("");
-  async function copy() {
-    try {
-      const address = ["frederic", "alefebvre"].join(".") + "@" + ["gmail", "com"].join(".");
-      await navigator.clipboard.writeText(address);
-      setStatus("Copied!");
-    } catch {
-      setStatus("Couldn’t copy. Replace ‘at’ with @ and ‘dot’ with a period.");
-    }
-  }
-  return (
-    <>
-      <button type="button" onClick={copy} title="Copy email" className="cursor-pointer text-left text-blue-600 underline underline-offset-2 dark:text-blue-400">
-        frederic dot alefebvre at gmail dot com
-      </button>
-      <span role="status" className="ml-1 text-xs">{status}</span>
-    </>
   );
 }
 
@@ -80,7 +59,7 @@ export default function InfoPage() {
 
           <Section id="about">
             <p>Hey! I’m a software developer building the #1 UFC data platform for hardcore fans—all the best features in one place.</p>
-            <p>I work on it weekly. Ideas, bugs or wrong stats? Please report them from your <Link to="/profiles/me">profile</Link> or email me: <Email />.</p>
+            <p>I work on it weekly. Ideas, bugs or wrong stats? Please report them from your <Link to="/profiles/me">profile</Link> or email me: frederic [dot] alefebvre [at] gmail [dot] com.</p>
             <p>Mistakes happen, but I’m working hard to keep it accurate. Thanks for helping!</p>
           </Section>
 
@@ -110,14 +89,13 @@ export default function InfoPage() {
 
           <Section id="support">
             <p>This passion project comes out of my pocket. Every dollar helps cover hosting and make the site better.</p>
-            <p>Interac (Canada) or PayPal: <Email />.</p>
+            <p>Interac (Canada) or PayPal: frederic [dot] alefebvre [at] gmail [dot] com.</p>
           </Section>
 
           <Section id="changelog">
             <p><time dateTime="2026-09-28">September 28, 2026</time></p>
             <ul>
               <li>Shorter info page, updated menu and support details.</li>
-              <li>Click to copy my email.</li>
               <li>Removed the navbar shortcut button; ? still works.</li>
             </ul>
           </Section>
