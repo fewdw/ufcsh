@@ -19,11 +19,11 @@ export type ShortcutNav = {
 
 /** Every shortcut, in the order the help sheet and the info page list them. */
 export const SHORTCUTS: { keys: string[]; action: string }[] = [
-  { keys: ["T"], action: "Go to the live event, or the next one when nothing is live" },
-  { keys: ["←", "→"], action: "Previous / next event on a card, or previous / next fight in a matchup (Next moves up the card toward the main event)" },
-  { keys: ["Esc"], action: "Close the matchup or the open dialog" },
-  { keys: ["/"], action: "Search fighters, events, matchups, officials and venues" },
-  { keys: ["⌘", "K"], action: "Search (Ctrl + K on Windows and Linux)" },
+  { keys: ["T"], action: "Live or next event" },
+  { keys: ["←", "→"], action: "Previous / next event or fight (toward main event)" },
+  { keys: ["Esc"], action: "Close matchup or dialog" },
+  { keys: ["/"], action: "Search" },
+  { keys: ["⌘", "K"], action: "Search (Ctrl + K on Windows/Linux)" },
   { keys: ["?"], action: "Show these shortcuts" },
 ];
 

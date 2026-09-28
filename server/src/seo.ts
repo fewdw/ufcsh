@@ -49,7 +49,7 @@ const STATIC_PAGES: Record<string, { title: string; description: string }> = {
   "/labs": { title: "UFC Labs — Fighter-Bout Studies | ufc.sh", description: "Build a population of UFC fighter-bouts by age, streak, layoff, odds and more, and read its combined record." },
   "/officials": { title: "UFC Judges & Referees | ufc.sh", description: "Every UFC judge and referee on record: scorecards, agreement, dissents, stoppages and the bouts behind each number." },
   "/venues": { title: "UFC Venues | ufc.sh", description: "Every arena that has hosted a UFC event, with the cards held there, attendance and upcoming events." },
-  "/info": { title: "About, Sources & Methods | ufc.sh", description: "About UFC.sh: an independent, fan-made UFC research tool. Data sources, definitions, community rules, privacy and changelog." },
+  "/info": { title: "About | ufc.sh", description: "UFC data for hardcore fans. About, shortcuts, community rules, privacy, support and the latest changes." },
 };
 
 const link = (href: string, text: string) => `<a href="${htmlEscape(href)}">${htmlEscape(text)}</a>`;
