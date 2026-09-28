@@ -58,11 +58,6 @@ const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition 
 function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  // A pointer leaving for a far link crosses empty space above the menu,
-  // so hover closes it only after a moment away.
-  const closing = useRef<number>(undefined);
-  const stay = () => window.clearTimeout(closing.current);
-  useEffect(() => stay, []);
   useEffect(() => setOpen(false), [pathname]);
   useEffect(() => {
     if (!open) return;
@@ -79,16 +74,17 @@ function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
     else if (active) e.preventDefault();
   };
   return <div ref={ref} className="md:relative"
-    onPointerEnter={(e) => { if (e.pointerType === "mouse" && wide()) { stay(); setOpen(true); } }}
-    onPointerLeave={(e) => { if (e.pointerType === "mouse") { stay(); closing.current = window.setTimeout(() => setOpen(false), 400); } }}>
+    onPointerEnter={(e) => { if (e.pointerType === "mouse" && wide()) setOpen(true); }}
+    onPointerLeave={(e) => { if (e.pointerType === "mouse") setOpen(false); }}>
     <Link to={MORE_HOME} onClick={press} aria-expanded={open} aria-haspopup="true"
       aria-current={active ? "page" : undefined}
       className={`${NAV_ITEM} flex items-center gap-0.5 ${active ? segmentedSelected : segmentedIdle}`}>
       More
       <ChevronDown className={`hidden h-3.5 w-3.5 transition-transform md:block ${open ? "rotate-180" : ""}`} aria-hidden="true" />
     </Link>
-    {/* The top padding bridges the gap to the button, so a pointer moving
-        down onto the menu never leaves it. */}
+    {/* A thin triangle beside the button catches a pointer cutting across
+        to a far link; the top padding bridges the gap below it. */}
+    {open ? <div aria-hidden="true" className="absolute left-full top-0 hidden h-full w-56 [clip-path:polygon(0_0,100%_100%,0_100%)] md:block" /> : null}
     {open ? <div className="absolute inset-x-2 top-full z-50 pt-1.5 md:inset-x-auto md:left-0">
       <div className="grid grid-cols-2 gap-x-2 gap-y-3 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg md:w-max lg:grid-cols-4">
         <MoreGroups group={(label, links) => (
