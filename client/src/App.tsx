@@ -85,7 +85,7 @@ function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
     {/* The top padding bridges the gap to the button, so a pointer moving
         down onto the menu never leaves it. */}
     {open ? <div className="absolute inset-x-2 top-full z-50 pt-1.5 md:inset-x-auto md:left-0">
-      <div className="grid grid-cols-2 gap-x-2 gap-y-3 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg md:w-max lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-x-2 gap-y-3 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg md:w-max">
         <MoreGroups group={(label, links) => (
           <div key={label} className="md:min-w-36">
             <p className="mx-3 mb-1 border-b border-zinc-200 pb-1.5 pt-1 text-xs font-bold uppercase tracking-[0.08em] text-zinc-900">{label}</p>
