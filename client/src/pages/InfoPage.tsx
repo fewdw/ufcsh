@@ -95,8 +95,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-09-28">September 28, 2026</time></p>
             <ul>
-              <li>Added Show movement to rankings filters, on by default.</li>
-              <li>Movement visibility is saved independently of ranked records.</li>
+              <li>Ranked records now follow movement arrows.</li>
+              <li>Filters grouped by default, with off first.</li>
+              <li>Ranked record controls grouped together.</li>
             </ul>
           </Section>
         </div>

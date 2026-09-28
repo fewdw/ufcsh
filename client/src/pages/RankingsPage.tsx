@@ -247,20 +247,20 @@ function RankRow({
           </span>
         ) : null}
       </span>
-      {features.top15Record && top15Record ? (
-        <span
-          className="shrink-0 text-center text-[11px] font-semibold tabular-nums text-zinc-600"
-          title={`Record against current champions and top 15 in ${recordScope}: ${top15Record.wins} wins, ${top15Record.losses} losses, ${top15Record.draws} draws. All meetings; no contests excluded.`}
-          aria-label={`Record in top 15 in ${recordScope}: ${top15Record.wins} wins, ${top15Record.losses} losses, ${top15Record.draws} draws`}
-        >
-          {top15Record.wins}-{top15Record.losses}{top15Record.draws ? `-${top15Record.draws}` : ""}
-        </span>
-      ) : null}
       <span className="ml-auto flex shrink-0 items-center gap-1.5">
         {/* The card view's form: the last five, oldest first, then the run. */}
         {features.movement ? <span className={`w-7 text-center text-[11px] font-semibold tabular-nums ${mv?.cls ?? ""}`}>
           {mv?.label ?? ""}
         </span> : null}
+        {features.top15Record && top15Record ? (
+          <span
+            className="shrink-0 text-center text-[11px] font-semibold tabular-nums text-zinc-600"
+            title={`Record against current champions and top 15 in ${recordScope}: ${top15Record.wins} wins, ${top15Record.losses} losses, ${top15Record.draws} draws. All meetings; no contests excluded.`}
+            aria-label={`Record in top 15 in ${recordScope}: ${top15Record.wins} wins, ${top15Record.losses} losses, ${top15Record.draws} draws`}
+          >
+            {top15Record.wins}-{top15Record.losses}{top15Record.draws ? `-${top15Record.draws}` : ""}
+          </span>
+        ) : null}
         {features.lastFive ? <ResultDots results={entry.activity.form ?? []} label="Last 5 professional results, oldest first" /> : null}
         {features.streaks ? (
           <span
@@ -469,26 +469,33 @@ function FeaturesMenu({
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">{legend}</div>
       </div>
       <div className="px-1.5">
-        {options.map((option) => (
-          <div key={option.key}>
-            <SwitchRow
-              label={option.key === "hoverResults" && !canHover ? "Tap fighter results" : option.label}
-              hint={option.key === "hoverResults" && !canHover ? "Tap to highlight opponents. Profile links paused." : option.hint}
-              on={features[option.key]}
-              onChange={(on) => onChange({ ...features, [option.key]: on })} />
-            {option.key === "top15Record" ? (
-              <div className="px-2.5 pb-3">
-                <SheetField label="Ranked opponents">
-                  <select aria-label="Ranked opponents" value={features.top15Scope} disabled={!features.top15Record}
-                    onChange={(event) => onChange({ ...features, top15Scope: event.target.value as RankingFeatures["top15Scope"] })}
-                    className={`${SHEET_SELECT} disabled:opacity-50`}>
-                    <option value="division">Current division</option>
-                    <option value="all">All divisions</option>
-                  </select>
-                </SheetField>
+        {[false, true].map((defaultOn) => (
+          <fieldset key={String(defaultOn)} className="min-w-0 border-0 p-0 pb-2">
+            <legend className="px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+              Default {defaultOn ? "on" : "off"}
+            </legend>
+            {options.filter((option) => DEFAULT_FEATURES[option.key] === defaultOn).map((option) => (
+              <div key={option.key} className={option.key === "top15Record" ? "my-1 rounded-xl border border-zinc-200 bg-zinc-50" : undefined}>
+                <SwitchRow
+                  label={option.key === "hoverResults" && !canHover ? "Tap fighter results" : option.label}
+                  hint={option.key === "hoverResults" && !canHover ? "Tap to highlight opponents. Profile links paused." : option.hint}
+                  on={features[option.key]}
+                  onChange={(on) => onChange({ ...features, [option.key]: on })} />
+                {option.key === "top15Record" ? (
+                  <div className="mx-2.5 mb-3 border-l-2 border-zinc-200 pl-3">
+                    <SheetField label="Ranked opponents">
+                      <select aria-label="Ranked opponents" value={features.top15Scope} disabled={!features.top15Record}
+                        onChange={(event) => onChange({ ...features, top15Scope: event.target.value as RankingFeatures["top15Scope"] })}
+                        className={`${SHEET_SELECT} disabled:opacity-50`}>
+                        <option value="division">Current division</option>
+                        <option value="all">All divisions</option>
+                      </select>
+                    </SheetField>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-          </div>
+            ))}
+          </fieldset>
         ))}
       </div>
       <div className="mt-1 grid grid-cols-2 gap-2 border-t border-zinc-100 px-4 py-3">
