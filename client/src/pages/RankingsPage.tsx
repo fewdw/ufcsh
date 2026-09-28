@@ -277,7 +277,7 @@ function RankRow({
   // One horizontal band per result against the highlighted fighter, latest
   // at the bottom: a split rematch shows both its win and its loss.
   const results = entry.fighter_id && highlightedFighter ? [
-    ...highlightedFighter.activity.opponent_results?.[entry.fighter_id] ?? [],
+    ...highlightedFighter.activity.opponent_history?.[entry.fighter_id] ?? [],
     ...highlightedFighter.activity.next_fight?.opponent_id === entry.fighter_id ? ["scheduled"] : [],
   ] : [];
   const resultStyle = results.length ? {

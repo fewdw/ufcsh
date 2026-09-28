@@ -1251,7 +1251,7 @@ export function getRankings(rankingType: RankingType): unknown {
             form: completed.slice(-5).map((bout) => ({ outcome: bout.outcome, method: canonicalMethod(bout.method), ufc: bout.isUfc })),
             // Each distinct result against a ranked opponent, ordered by when
             // it last happened: a rematch moves its result to the end.
-            opponent_results: opponentResults(completed, rankedIds),
+            opponent_history: opponentResults(completed, rankedIds),
           };
         }
         return {

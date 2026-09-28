@@ -14,13 +14,13 @@ test("rankings carry older opponents, every rematch result, and scheduled oppone
     };
     const volk = fighter("Alexander Volkanovski");
     const max = fighter("Max Holloway");
-    assert.deepEqual(volk.activity.opponent_results?.[max.fighter_id!], ["win"], "history beyond the last five is included");
-    assert.deepEqual(max.activity.opponent_results?.[volk.fighter_id!], ["loss"], "results use the hovered fighter's perspective");
+    assert.deepEqual(volk.activity.opponent_history?.[max.fighter_id!], ["win"], "history beyond the last five is included");
+    assert.deepEqual(max.activity.opponent_history?.[volk.fighter_id!], ["loss"], "results use the hovered fighter's perspective");
 
     const izzy = fighter("Israel Adesanya");
     const alex = fighter("Alex Pereira");
-    assert.deepEqual(izzy.activity.opponent_results?.[alex.fighter_id!], ["loss", "win"], "a split rematch keeps both results, latest last");
-    assert.deepEqual(alex.activity.opponent_results?.[izzy.fighter_id!], ["win", "loss"], "a split rematch keeps both results, latest last");
+    assert.deepEqual(izzy.activity.opponent_history?.[alex.fighter_id!], ["loss", "win"], "a split rematch keeps both results, latest last");
+    assert.deepEqual(alex.activity.opponent_history?.[izzy.fighter_id!], ["win", "loss"], "a split rematch keeps both results, latest last");
 
     let bookings = 0;
     for (const entry of entries) {
