@@ -424,6 +424,30 @@ function recordMismatch(active: Set<string>): BugCheck {
   }, items.map(({ weight: _weight, ...item }) => item));
 }
 
+function rankedRecordGaps(): BugCheck {
+  const rows = db.prepare(`
+    SELECT r.ranking_type, r.division, r.rank, r.fighter_name, fr.id, cp.status
+    FROM rankings r LEFT JOIN fighters fr ON fr.id = r.fighter_id
+    LEFT JOIN career_profiles cp ON cp.fighter_id = fr.id
+    WHERE fr.id IS NULL OR cp.status IS NULL OR cp.status != 'verified'
+    ORDER BY r.ranking_type, r.division, r.div_pos
+  `).all() as { ranking_type: string; division: string; rank: string; fighter_name: string; id: string | null; status: string | null }[];
+  return check({
+    id: "ranked-record-gaps",
+    group: "Records",
+    label: "Ranked fighters without a linked, verified history",
+    description: "Top 15 records need linked fighter identities and verified professional histories. Missing links or histories can undercount meetings with current ranked opponents. Re-sync rankings for missing identities; re-verify linked fighters' histories.",
+    grade: "must",
+  }, rows.map((row) => ({
+    key: `${row.ranking_type}:${row.division}:${row.rank}:${row.fighter_name}`,
+    title: row.fighter_name,
+    subtitle: `${row.ranking_type} · ${row.division} · ${row.rank}`,
+    facts: [["History", row.id ? row.status ?? "never checked" : "fighter identity missing"]],
+    links: [{ label: "Rankings", href: "/rankings", internal: true }, ...(row.id ? [fighterLink(row.id, row.fighter_name)] : [])],
+    actions: row.id ? [{ id: "career", label: "Re-verify history", target: row.id }] : [],
+  })));
+}
+
 function unverifiedRecords(active: Set<string>): BugCheck {
   const rows = db.prepare(`
     SELECT fr.id, fr.name, fr.nickname, fr.wins, fr.losses, fr.draws, cp.status, cp.error, cp.source_url, cp.checked_at
@@ -1254,6 +1278,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     pastProps(),
     oddsMissingByRound(),
     unverifiedRecords(active),
+    rankedRecordGaps(),
     fightsMissingFromHistory(),
     unlinkedUfcBouts(),
     recordMismatch(active),

@@ -22,6 +22,9 @@ type RankingFeatures = {
   opponents: boolean;
   hoverHistory: boolean;
   hoverResults: boolean;
+  top15Record: boolean;
+  top15Scope: "division" | "all";
+  movement: boolean;
   streaks: boolean;
   lastFive: boolean;
   activityColors: boolean;
@@ -31,6 +34,9 @@ const DEFAULT_FEATURES: RankingFeatures = {
   opponents: true,
   hoverHistory: false,
   hoverResults: false,
+  top15Record: false,
+  top15Scope: "division",
+  movement: true,
   streaks: true,
   lastFive: true,
   activityColors: true,
@@ -48,6 +54,9 @@ function loadFeatures(): RankingFeatures {
       opponents: typeof saved.opponents === "boolean" ? saved.opponents : DEFAULT_FEATURES.opponents,
       hoverHistory: current && typeof current.hoverHistory === "boolean" ? current.hoverHistory : DEFAULT_FEATURES.hoverHistory,
       hoverResults: typeof saved.hoverResults === "boolean" ? saved.hoverResults : DEFAULT_FEATURES.hoverResults,
+      top15Record: typeof saved.top15Record === "boolean" ? saved.top15Record : DEFAULT_FEATURES.top15Record,
+      top15Scope: saved.top15Scope === "all" ? "all" : DEFAULT_FEATURES.top15Scope,
+      movement: typeof saved.movement === "boolean" ? saved.movement : DEFAULT_FEATURES.movement,
       streaks: typeof saved.streaks === "boolean" ? saved.streaks : DEFAULT_FEATURES.streaks,
       lastFive: typeof saved.lastFive === "boolean" ? saved.lastFive : DEFAULT_FEATURES.lastFive,
       activityColors: typeof saved.activityColors === "boolean" ? saved.activityColors : DEFAULT_FEATURES.activityColors,
@@ -205,6 +214,8 @@ function RankRow({
   const isInterimChamp = entry.is_interim_champion || entry.rank === "IC";
   const displayedRank = isInterimChamp ? "IC" : entry.rank;
   const nextFight = entry.activity.next_fight;
+  const top15Record = features.top15Scope === "all" ? entry.activity.ranked_record : entry.activity.top15_record;
+  const recordScope = features.top15Scope === "all" ? "all divisions" : division;
 
   const inner = (
     <>
@@ -222,7 +233,7 @@ function RankRow({
       </span>
       <Avatar src={entry.photo_url} name={entry.name} size="xs" />
       <span className="min-w-0 flex-1">
-        <span className="block text-[13px] font-medium leading-4 text-zinc-900">{entry.name}</span>
+        <span className="block text-[13px] font-medium leading-4 text-zinc-900 [overflow-wrap:anywhere]">{entry.name}</span>
         {features.opponents && meta.hint ? (
           <span
             title={meta.hint}
@@ -238,9 +249,18 @@ function RankRow({
       </span>
       <span className="ml-auto flex shrink-0 items-center gap-1.5">
         {/* The card view's form: the last five, oldest first, then the run. */}
-        <span className={`w-7 text-center text-[11px] font-semibold tabular-nums ${mv?.cls ?? ""}`}>
+        {features.movement ? <span className={`w-7 text-center text-[11px] font-semibold tabular-nums ${mv?.cls ?? ""}`}>
           {mv?.label ?? ""}
-        </span>
+        </span> : null}
+        {features.top15Record && top15Record ? (
+          <span
+            className="shrink-0 text-center text-[11px] font-semibold tabular-nums text-zinc-600"
+            title={`Record against current champions and top 15 in ${recordScope}: ${top15Record.wins} wins, ${top15Record.losses} losses, ${top15Record.draws} draws. All meetings; no contests excluded.`}
+            aria-label={`Record in top 15 in ${recordScope}: ${top15Record.wins} wins, ${top15Record.losses} losses, ${top15Record.draws} draws`}
+          >
+            {top15Record.wins}-{top15Record.losses}{top15Record.draws ? `-${top15Record.draws}` : ""}
+          </span>
+        ) : null}
         {features.lastFive ? <ResultDots results={entry.activity.form ?? []} label="Last 5 professional results, oldest first" /> : null}
         {features.streaks ? (
           <span
@@ -400,10 +420,12 @@ function useCanHover(wide = false): boolean {
   );
 }
 
-const FEATURE_OPTIONS: { key: keyof RankingFeatures; label: string; hint: string }[] = [
+const FEATURE_OPTIONS: { key: Exclude<keyof RankingFeatures, "top15Scope">; label: string; hint: string }[] = [
   { key: "opponents", label: "Opponents", hint: "Next opponent or last result under each name" },
   { key: "hoverHistory", label: "Last 5 on hover", hint: "Recent and booked fights beside the pointer" },
   { key: "hoverResults", label: "Hover fighter results", hint: "Highlight opponents by their latest result" },
+  { key: "top15Record", label: "Show top 15 wins/losses", hint: "Record against current champions and top 15" },
+  { key: "movement", label: "Show movement", hint: "Rank changes in the latest update" },
   { key: "lastFive", label: "Show last 5", hint: "The last five results, oldest first" },
   { key: "streaks", label: "Streaks", hint: "4W, 2L, 1D, 1NC" },
   { key: "activityColors", label: "Activity colours", hint: "Booked and recently active fighters" },
@@ -447,12 +469,33 @@ function FeaturesMenu({
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">{legend}</div>
       </div>
       <div className="px-1.5">
-        {options.map((option) => (
-          <SwitchRow key={option.key}
-            label={option.key === "hoverResults" && !canHover ? "Tap fighter results" : option.label}
-            hint={option.key === "hoverResults" && !canHover ? "Tap to highlight opponents. Profile links paused." : option.hint}
-            on={features[option.key]}
-            onChange={(on) => onChange({ ...features, [option.key]: on })} />
+        {[false, true].map((defaultOn) => (
+          <fieldset key={String(defaultOn)} className="min-w-0 border-0 p-0 pb-2">
+            <legend className="px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+              Default {defaultOn ? "on" : "off"}
+            </legend>
+            {options.filter((option) => DEFAULT_FEATURES[option.key] === defaultOn).map((option) => (
+              <div key={option.key} className={option.key === "top15Record" ? "my-1 rounded-xl border border-zinc-200 bg-zinc-50" : undefined}>
+                <SwitchRow
+                  label={option.key === "hoverResults" && !canHover ? "Tap fighter results" : option.label}
+                  hint={option.key === "hoverResults" && !canHover ? "Tap to highlight opponents. Profile links paused." : option.hint}
+                  on={features[option.key]}
+                  onChange={(on) => onChange({ ...features, [option.key]: on })} />
+                {option.key === "top15Record" ? (
+                  <div className="mx-2.5 mb-3 border-l-2 border-zinc-200 pl-3">
+                    <SheetField label="Ranked opponents">
+                      <select aria-label="Ranked opponents" value={features.top15Scope} disabled={!features.top15Record}
+                        onChange={(event) => onChange({ ...features, top15Scope: event.target.value as RankingFeatures["top15Scope"] })}
+                        className={`${SHEET_SELECT} disabled:opacity-50`}>
+                        <option value="division">Current division</option>
+                        <option value="all">All divisions</option>
+                      </select>
+                    </SheetField>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </fieldset>
         ))}
       </div>
       <div className="mt-1 grid grid-cols-2 gap-2 border-t border-zinc-100 px-4 py-3">

@@ -1155,6 +1155,12 @@ export function getRankings(rankingType: RankingType): unknown {
 
   const rankedIds = new Set((prepared("SELECT DISTINCT fighter_id FROM rankings WHERE fighter_id IS NOT NULL").all() as { fighter_id: string }[])
     .map((row) => row.fighter_id));
+  const selectedRankedIds = new Set((prepared(`
+    SELECT DISTINCT fighter_id FROM rankings
+    WHERE (ranking_type = ? OR (ranking_type = 'media' AND division LIKE '%Pound-for-Pound%'))
+      AND (rank IN ('C', 'IC') OR CAST(rank AS INTEGER) BETWEEN 1 AND 15)
+      AND fighter_id != ''
+  `).all(rankingType) as { fighter_id: string }[]).map((row) => row.fighter_id));
   const nextFightStmt = prepared(`
     SELECT e.date AS date, e.name AS event_name, e.id AS event_id, f.id AS fight_id,
            CASE WHEN f.f1_id = ? THEN f.f2_name ELSE f.f1_name END AS opponent,
@@ -1174,6 +1180,12 @@ export function getRankings(rankingType: RankingType): unknown {
         WHERE r.ranking_type = ? AND r.division = ? ORDER BY r.div_pos ASC
       `)
       .all(d.source, d.division) as any[];
+    // Membership comes from this published division today, not a fighter's
+    // historic rank or another weight class. Include the champion and ties.
+    const divisionOpponentIds = new Set<string>(entries
+      .filter((entry) => entry.fighter_id && (entry.rank === "C" || entry.rank === "IC"
+        || (Number(entry.rank) >= 1 && Number(entry.rank) <= 15)))
+      .map((entry) => entry.fighter_id));
     return {
       division: d.division,
       weight_limit: d.weight_limit,
@@ -1202,8 +1214,19 @@ export function getRankings(rankingType: RankingType): unknown {
             }
           }
           const streakSuffix: Record<string, string> = { win: "W", loss: "L", draw: "D", nc: "NC" };
+          const top15Record = d.division.includes("Pound-for-Pound") ? null : { wins: 0, losses: 0, draws: 0 };
+          const rankedRecord = { wins: 0, losses: 0, draws: 0 };
+          for (const bout of completed) {
+            if (!bout.opponentId || bout.opponentId === e.fighter_id) continue;
+            const result = bout.outcome === "win" ? "wins" : bout.outcome === "loss" ? "losses" : bout.outcome === "draw" ? "draws" : null;
+            if (!result) continue;
+            if (top15Record && divisionOpponentIds.has(bout.opponentId)) top15Record[result]++;
+            if (selectedRankedIds.has(bout.opponentId)) rankedRecord[result]++;
+          }
           activity = {
             status,
+            top15_record: top15Record,
+            ranked_record: rankedRecord,
             last_fight_date: last?.date ?? null,
             last_fight_opponent: last?.opponentName ?? null,
             last_fight_outcome: last?.outcome ?? null,

@@ -53,7 +53,7 @@ const STATIC_PAGES: Record<string, { title: string; description: string }> = {
   "/news": { title: "UFC News: Latest from Every Outlet | ufc.sh", description: "The latest UFC news from MMA Fighting, Sherdog, BBC Sport, The Guardian and more, in one list: top stories first, every headline linked to its source." },
   "/leaderboards": { title: "UFC Fan Leaderboards: Top Predictors & Bettors | ufc.sh", description: "The best UFC predictors and bettors on UFC.sh: prediction points, winner and method accuracy, and betting profit." },
   "/roster": { title: "UFC Roster Changes: Signings & Releases | ufc.sh", description: "Fighters the UFC has recently signed and recently released, with division, record and date." },
-  "/info": { title: "About, Sources & Methods | ufc.sh", description: "About UFC.sh: an independent, fan-made UFC research tool. Data sources, definitions, community rules, privacy and changelog." },
+  "/info": { title: "About | ufc.sh", description: "UFC data for hardcore fans. About, shortcuts, community rules, privacy, support and the latest changes." },
 };
 
 const link = (href: string, text: string) => `<a href="${htmlEscape(href)}">${htmlEscape(text)}</a>`;

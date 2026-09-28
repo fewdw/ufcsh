@@ -417,6 +417,8 @@ export type RankingEntry = {
     current_streak?: { count: number; outcome: "win" | "loss" | "draw" | "nc"; label: string } | null;
     form?: import("./resultDots").FormResult[];
     opponent_results?: Record<string, "win" | "loss" | "draw" | "nc">;
+    top15_record?: { wins: number; losses: number; draws: number } | null;
+    ranked_record?: { wins: number; losses: number; draws: number };
   };
 };
 
