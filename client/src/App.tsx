@@ -58,6 +58,11 @@ const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition 
 function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  // A pointer leaving for a far link crosses empty space above the menu,
+  // so hover closes it only after a moment away.
+  const closing = useRef<number>(undefined);
+  const stay = () => window.clearTimeout(closing.current);
+  useEffect(() => stay, []);
   useEffect(() => setOpen(false), [pathname]);
   useEffect(() => {
     if (!open) return;
@@ -74,8 +79,8 @@ function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
     else if (active) e.preventDefault();
   };
   return <div ref={ref} className="md:relative"
-    onPointerEnter={(e) => { if (e.pointerType === "mouse" && wide()) setOpen(true); }}
-    onPointerLeave={(e) => { if (e.pointerType === "mouse") setOpen(false); }}>
+    onPointerEnter={(e) => { if (e.pointerType === "mouse" && wide()) { stay(); setOpen(true); } }}
+    onPointerLeave={(e) => { if (e.pointerType === "mouse") { stay(); closing.current = window.setTimeout(() => setOpen(false), 400); } }}>
     <Link to={MORE_HOME} onClick={press} aria-expanded={open} aria-haspopup="true"
       aria-current={active ? "page" : undefined}
       className={`${NAV_ITEM} flex items-center gap-0.5 ${active ? segmentedSelected : segmentedIdle}`}>
