@@ -82,8 +82,9 @@ function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
       More
       <ChevronDown className={`hidden h-3.5 w-3.5 transition-transform md:block ${open ? "rotate-180" : ""}`} aria-hidden="true" />
     </Link>
-    {/* The top padding bridges the gap to the button, so a pointer moving
-        down onto the menu never leaves it. */}
+    {/* A thin triangle beside the button catches a pointer cutting across
+        to a far link; the top padding bridges the gap below it. */}
+    {open ? <div aria-hidden="true" className="absolute left-full top-0 hidden h-full w-56 [clip-path:polygon(0_0,100%_100%,0_100%)] md:block" /> : null}
     {open ? <div className="absolute inset-x-2 top-full z-50 pt-1.5 md:inset-x-auto md:left-0">
       <div className="grid grid-cols-2 gap-x-2 gap-y-3 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg md:w-max lg:grid-cols-4">
         <MoreGroups group={(label, links) => (
