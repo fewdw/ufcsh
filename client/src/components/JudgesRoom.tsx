@@ -5,6 +5,7 @@ import { useApi, type JudgeEvidenceBout, type JudgeEvidenceResponse, type JudgeE
 import { BarList, ChartCard, Legend, StatTile } from "./charts";
 import { SERIES, compact, formatValue } from "./chartTokens";
 import RequestNotice from "./RequestNotice";
+import { searchList } from "../search";
 
 const rate = (part: number, whole: number) => whole ? (part / whole) * 100 : null;
 const percent = (value: number | null) => formatValue(value, "percent");
@@ -146,8 +147,7 @@ export default function JudgesRoom({ studyQuery }: { studyQuery: string }) {
   useEffect(() => { setSelection(null); }, [studyQuery, rounds, view]);
   const judges = useMemo(() => {
     if (!j) return [];
-    const q = judgeSearch.trim().toLocaleLowerCase();
-    return j.officials.filter((judge) => !q || judge.label.toLocaleLowerCase().includes(q)).map((judge) => ({ judge, reading: judgeReading(judge, metric) })).sort((a, b) => {
+    return searchList(j.officials, judgeSearch, (judge) => judge.label).map((judge) => ({ judge, reading: judgeReading(judge, metric) })).sort((a, b) => {
       const aEnough = a.reading.denominator >= 10 ? 1 : 0;
       const bEnough = b.reading.denominator >= 10 ? 1 : 0;
       return bEnough - aEnough || (b.reading.value ?? -1) - (a.reading.value ?? -1) || b.reading.denominator - a.reading.denominator || a.judge.label.localeCompare(b.judge.label);

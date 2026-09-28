@@ -1,14 +1,15 @@
 import { createHash } from "node:crypto";
 import { db, getMeta, prepared, setMeta, touchMeta } from "./db.ts";
 import { hasUfcFight } from "./fighter-identity.ts";
-import { scrapeAthleteStatus } from "./scrape/ufccom.ts";
+import { scrapeAthleteStatus, scrapeNewAthlete, scrapeNewestAthletes } from "./scrape/ufccom.ts";
 import { articleRevision, fetchArticleByTitle, ROSTER_ARTICLE, rosterChanges, type RosterMove } from "./scrape/wikipedia.ts";
 import { log, normName } from "./util.ts";
 
 /** Who the UFC has just signed and just let go. Two sources: Wikipedia's
  *  current-roster article (signings, and releases with their reason), and
- *  ufc.com itself, whose athlete pages flip from "Active" to "Not Fighting"
- *  the moment a fighter leaves the roster, reported or not. */
+ *  ufc.com itself, which makes a profile for every new signing and whose
+ *  athlete pages flip from "Active" to "Not Fighting" the moment a fighter
+ *  leaves the roster, reported or not. */
 
 export type RosterChanges = { signed: RosterMove[]; cut: RosterMove[] };
 
@@ -146,6 +147,13 @@ export async function syncUfcStatuses(batch = 2): Promise<void> {
         left_at = CASE WHEN ?3 = 'active' THEN NULL WHEN ?5 IS NOT NULL THEN ?5 ELSE left_at END
     `).run(fighter.id, found?.url ?? null, status, Date.now(), left ? Date.now() : null);
     if (left) log(`roster: ${fighter.name} left the UFC roster (ufc.com)`);
+    // A fighter we saw leave whose page reads Active again has come back.
+    if (fighter.status === "not_fighting" && status === "active") {
+      const state = storedUfcSignings();
+      state.signed.push({ name: fighter.name, division: null, date: new Date().toISOString().slice(0, 10) });
+      setMeta("ufc_signings", JSON.stringify(state));
+      log(`roster: ${fighter.name} is back on the UFC roster (ufc.com)`);
+    }
   }
 }
 
@@ -153,4 +161,72 @@ export async function syncUfcStatuses(batch = 2): Promise<void> {
 export function ufcDepartures(): { fighter_id: string; left_at: number }[] {
   return db.prepare(`SELECT fighter_id, left_at FROM ufc_status WHERE left_at >= ? AND status = 'not_fighting' ORDER BY left_at DESC`)
     .all(Date.now() - DEPARTURE_DAYS * 86_400_000) as { fighter_id: string; left_at: number }[];
+}
+
+/** A signing ufc.com showed us, dated the day we first saw it. */
+export type UfcSigning = { name: string; division: string | null; date: string };
+/** Every profile slug seen at the top of the newest-first list (newest last),
+ *  new ones not yet reading Active with when they were last read, and the
+ *  signings found. */
+type UfcSignings = { seen: string[]; pending: Record<string, number>; signed: UfcSigning[] };
+
+const PENDING_RECHECK_MS = 30 * 60_000;
+const SEEN_KEPT = 1000;
+
+function storedUfcSignings(): UfcSignings {
+  const stored = getMeta("ufc_signings");
+  return stored ? JSON.parse(stored) as UfcSignings : { seen: [], pending: {}, signed: [] };
+}
+
+/** One read of ufc.com's newest athlete profiles. A profile we haven't seen
+ *  is a signing once its own page reads Active; one that doesn't yet is read
+ *  again every half hour while it stays on the list. The first read, and any
+ *  read sharing nobody with the last (the list is no longer newest-first),
+ *  only learns who is there, so nobody already on the roster is reported. */
+export async function syncUfcSignings(readNewest = scrapeNewestAthletes, readAthlete = scrapeNewAthlete): Promise<void> {
+  touchMeta("ufc_signings_checked_at");
+  const newest = await readNewest();
+  const state = storedUfcSignings();
+  const seen = new Set(state.seen);
+  const slugs = newest.map(athlete => athlete.slug);
+  if (!slugs.some(slug => seen.has(slug))) {
+    if (seen.size) log(`roster: ufc.com's newest athletes share nobody with the last read; re-learning them`);
+    setMeta("ufc_signings", JSON.stringify({ ...state, seen: [...state.seen, ...slugs.reverse()].slice(-SEEN_KEPT), pending: {} }));
+    touchMeta("ufc_signings_synced_at");
+    return;
+  }
+  const pending: Record<string, number> = {};
+  const today = new Date().toISOString().slice(0, 10);
+  // Oldest first, so a batch keeps the order ufc.com made it in.
+  for (const { slug } of [...newest].reverse()) {
+    if (seen.has(slug)) continue;
+    if (Date.now() - (state.pending[slug] ?? 0) < PENDING_RECHECK_MS) {
+      pending[slug] = state.pending[slug];
+      continue;
+    }
+    // An unreadable page is tried again on the next read.
+    const athlete = await readAthlete(slug).catch(() => null);
+    if (!athlete) continue;
+    if (athlete.status !== "active" || !athlete.name) {
+      pending[slug] = Date.now();
+      continue;
+    }
+    seen.add(slug);
+    state.seen.push(slug);
+    state.signed.push({ name: athlete.name, division: athlete.division, date: today });
+    log(`roster: ${athlete.name} signed (ufc.com)`);
+  }
+  const since = new Date(Date.now() - DEPARTURE_DAYS * 86_400_000).toISOString().slice(0, 10);
+  setMeta("ufc_signings", JSON.stringify({
+    seen: state.seen.slice(-SEEN_KEPT),
+    pending,
+    signed: state.signed.filter(signing => signing.date >= since),
+  }));
+  touchMeta("ufc_signings_synced_at");
+}
+
+/** Signings ufc.com showed in the last month. */
+export function ufcSignings(): UfcSigning[] {
+  const since = new Date(Date.now() - DEPARTURE_DAYS * 86_400_000).toISOString().slice(0, 10);
+  return storedUfcSignings().signed.filter(signing => signing.date >= since);
 }

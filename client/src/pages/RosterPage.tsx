@@ -1,8 +1,10 @@
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useApi, type RosterMove, type RosterMoves } from "../api";
 import { formatDateShort, formatDateShortWithYear } from "../format";
 import { useRouteScrollRestoration } from "../navigationState";
 import { PAGE, PAGE_BODY } from "../research";
+import { markRosterSeen, moveKey, unseenMoves } from "../rosterSeen";
 import { useSeo } from "../seo";
 import Avatar from "../components/Avatar";
 import Flag from "../components/Flag";
@@ -19,7 +21,7 @@ const thisYear = String(new Date().getFullYear());
 
 /** One fighter. A signing tightens to a single line on a wide screen, so the
  *  whole list fits on one; a cut keeps its two lines for both records. */
-function Move({ move, cut }: { move: RosterMove; cut: boolean }) {
+function Move({ move, cut, fresh }: { move: RosterMove; cut: boolean; fresh: boolean }) {
   const records = cut
     ? [move.record && `${move.record} pro`, move.ufc_record && `${move.ufc_record} UFC`]
     : [move.record];
@@ -29,6 +31,7 @@ function Move({ move, cut }: { move: RosterMove; cut: boolean }) {
     <Avatar src={move.photo_url} name={move.name} size={cut ? "sm" : "row"} />
     <span className={`min-w-0 flex-1 ${cut ? "" : "xl:flex xl:items-baseline xl:justify-between xl:gap-2"}`}>
       <span className="flex min-w-0 items-center gap-1.5">
+        {fresh ? <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${cut ? "bg-rose-500" : "bg-emerald-500"}`} title="New since your last visit"><span className="sr-only">New:</span></span> : null}
         <span className="truncate text-[13px] font-medium text-zinc-900">{move.name}</span>
         {move.country ? <Flag code={move.country} name={countryName(move.country)} className="text-xs" /> : null}
       </span>
@@ -48,6 +51,8 @@ function Move({ move, cut }: { move: RosterMove; cut: boolean }) {
   );
 }
 
+const NONE: ReadonlySet<string> = new Set();
+
 const NOTES = {
   signed: "Signed or returning, and yet to fight on a UFC card.",
   cut: "Released, not renewed, retired or taken off the UFC roster in the last month.",
@@ -55,7 +60,7 @@ const NOTES = {
 
 /** One list: its heading on a wide screen, where both lists sit side by side;
  *  hidden on a narrow one unless its tab is picked. */
-function MoveList({ kind, moves, shown }: { kind: "signed" | "cut"; moves: RosterMove[]; shown: boolean }) {
+function MoveList({ kind, moves, shown, fresh }: { kind: "signed" | "cut"; moves: RosterMove[]; shown: boolean; fresh: ReadonlySet<string> }) {
   const cut = kind === "cut";
   return (
     <div className={`${shown ? "" : "hidden"} min-w-0 xl:block ${cut ? "border-zinc-100 xl:border-l" : "xl:col-span-2"}`}>
@@ -65,7 +70,7 @@ function MoveList({ kind, moves, shown }: { kind: "signed" | "cut"; moves: Roste
       </div>
       <p className="border-b border-zinc-100 px-4 py-2 text-[11px] leading-4 text-zinc-500 sm:px-5 xl:hidden">{NOTES[kind]}</p>
       <ul className={`grid grid-cols-1 ${cut ? "" : "sm:grid-cols-2"}`}>
-        {moves.map((move) => <Move key={`${move.fighter_id ?? move.name}-${move.date}`} move={move} cut={cut} />)}
+        {moves.map((move) => <Move key={`${move.fighter_id ?? move.name}-${move.date}`} move={move} cut={cut} fresh={fresh.has(moveKey(kind, move))} />)}
       </ul>
       {!moves.length ? <p className="px-5 py-8 text-center text-sm text-zinc-500">No one right now.</p> : null}
     </div>
@@ -80,6 +85,14 @@ export default function RosterPage() {
   const [params, setParams] = useSearchParams();
   const list = params.get("tab") === "cut" ? "cut" : "signed";
   const scroll = useRouteScrollRestoration<HTMLDivElement>("roster", Boolean(data));
+  // What was new when the page opened keeps its dot for this visit; the
+  // sidebar's counts clear at once.
+  const [fresh, setFresh] = useState<ReadonlySet<string> | null>(null);
+  useEffect(() => {
+    if (!data) return;
+    setFresh((current) => current ?? unseenMoves(data));
+    markRosterSeen(data);
+  }, [data]);
   useSeo({ title: "UFC Roster Changes", description: "Fighters the UFC has recently signed and recently released, with division, record and date.", path: "/roster" });
   if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the roster changes.</RequestNotice></div>;
   if (!data) return <PageState>Loading roster changes…</PageState>;
@@ -103,8 +116,8 @@ export default function RosterPage() {
             </div>
           </header>
           <div className="xl:grid xl:grid-cols-3">
-            <MoveList kind="signed" moves={data.signed} shown={list === "signed"} />
-            <MoveList kind="cut" moves={data.cut} shown={list === "cut"} />
+            <MoveList kind="signed" moves={data.signed} shown={list === "signed"} fresh={fresh ?? NONE} />
+            <MoveList kind="cut" moves={data.cut} shown={list === "cut"} fresh={fresh ?? NONE} />
           </div>
         </section>
       </div>

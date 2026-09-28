@@ -7,7 +7,7 @@ import { hasCompleteJudgeRounds } from "./judge-scorecards.ts";
 import { importVerdictEvent } from "./verdict-import.ts";
 import { mergedByHand, officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
-import { rosterMoveFighter, storedRosterMoves, syncRosterMoves } from "./roster-moves.ts";
+import { rosterMoveFighter, storedRosterMoves, syncRosterMoves, syncUfcSignings } from "./roster-moves.ts";
 import { ROSTER_ARTICLE } from "./scrape/wikipedia.ts";
 import {
   fighterNames,
@@ -1170,6 +1170,17 @@ function rosterMovesUnread(): BugCheck {
       });
     }
   }
+  // ufc.com's newest profiles are read every 5 minutes: an hour without a
+  // read means its search page changed or turned us away, and signings are
+  // only reported once Wikipedia has them.
+  const signingsRead = Number(getMeta("ufc_signings_synced_at")) || null;
+  if (!signingsRead || Date.now() - signingsRead > 3_600_000) items.push({
+    key: "ufc-signings",
+    title: signingsRead ? "ufc.com's newest athletes not read in over an hour" : "ufc.com's newest athletes never read",
+    facts: [["Last read", ago(signingsRead)], ["Last tried", ago(Number(getMeta("ufc_signings_checked_at")) || null)]],
+    links: [{ label: "ufc.com newest athletes", href: "https://www.ufc.com/search?type=athletes&query=" }],
+    actions: [{ id: "roster-moves", label: "Read again", target: "ufc" }],
+  });
   // ufc.com: a markup change would leave every status unread, and a fighter
   // whose page can't be found is never watched for leaving.
   const statuses = db.prepare("SELECT COUNT(*) AS checked, COUNT(status) AS read FROM ufc_status WHERE checked_at > ?").get(Date.now() - 24 * 3_600_000) as { checked: number; read: number };
@@ -1194,8 +1205,8 @@ function rosterMovesUnread(): BugCheck {
     id: "roster-moves",
     group: "Fighters",
     label: "Signings and releases not read",
-    description: "The /roster page lists Wikipedia's recent signings and releases (checked every 10 minutes), plus fighters whose ufc.com page turned from Active to Not Fighting (each recent fighter read twice a day). A stale read means the article couldn't be reached or its tables changed shape (the last good read stays up). A row missing a field was written in a form the reader doesn't understand; a release with no profile is usually a name spelled differently from UFCStats.",
-    grade: (item) => item.key === "sync" || item.key === "ufc-status" ? "must" : item.key.startsWith("ufc:") ? "ok" : "minor",
+    description: "The /roster page lists Wikipedia's recent signings and releases (checked every 10 minutes), ufc.com's newest athlete profiles (every 5 minutes: a signing shows before anyone writes it up), plus fighters whose ufc.com page turned from Active to Not Fighting (each recent fighter read twice a day). A stale read means the article couldn't be reached or its tables changed shape (the last good read stays up). A row missing a field was written in a form the reader doesn't understand; a release with no profile is usually a name spelled differently from UFCStats.",
+    grade: (item) => item.key === "sync" || item.key === "ufc-status" || item.key === "ufc-signings" ? "must" : item.key.startsWith("ufc:") ? "ok" : "minor",
   }, items);
 }
 // ---------------------------------------------------------------------------
@@ -1315,6 +1326,10 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
       return { ok: true, message: "Queued; ufc.com is searched again on the next pass." };
     case "roster-moves": {
       try {
+        if (target === "ufc") {
+          await syncUfcSignings();
+          return { ok: true, message: "Read ufc.com's newest athletes." };
+        }
         await syncRosterMoves();
       } catch (err) {
         return { ok: false, message: `Couldn't read it (${String(err)}). The last good list stays up.` };

@@ -1,7 +1,7 @@
 import { db } from "./db.ts";
 import { ageOn, americanLine, careerBefore, impliedProbability, type FightIndex, type IndexedFight, type IndexedSide, type PriorState, fightIndex, winProfit } from "./fight-index.ts";
 import { normName, todayIso } from "./util.ts";
-import { fuzzyScore, fuzzyTarget, splitMatchup } from "./fuzzy.ts";
+import { containsTyped, fuzzyScore, fuzzyTarget, splitMatchup } from "./fuzzy.ts";
 
 /** Labs: population analysis over fighter-bout observations, each with the
  * fighter's state entering the bout. Reads the shared fight index, so numbers
@@ -930,8 +930,7 @@ export function getLabsMatchups(params: URLSearchParams): unknown {
 
   const exact = rows.filter((row) => {
     if (!q) return true;
-    const haystack = normName(`${row.f1_name} ${row.f2_name} ${row.event_name}`);
-    return q.split(" ").every((word) => haystack.includes(word));
+    return containsTyped(normName(`${row.f1_name} ${row.f2_name} ${row.event_name}`), q);
   });
   // Nothing matched as typed: fall back to close spellings ("holowya").
   const query = splitMatchup(q)?.join(" ") ?? q;

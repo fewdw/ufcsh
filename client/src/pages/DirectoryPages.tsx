@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ArrowDown, ArrowUp, Search } from "lucide-react";
 import { useApi, type OfficialsDirectory, type VenueDirectory } from "../api";
-import { normalizeSearch } from "../format";
+import { searchList } from "../search";
 import { useRouteScrollRestoration } from "../navigationState";
 import { PAGE, PAGE_BODY } from "../research";
 import { useSeo } from "../seo";
@@ -110,8 +110,7 @@ export function OfficialsPage() {
   useSeo({ title: "UFC Judges & Referees", description: "Every UFC judge and referee on record: scorecards, agreement, stoppages and the bouts behind each number.", path: "/officials" });
   const rate = kind === "judges" && judgeOrder.sort !== "name" ? JUDGE_RATE[judgeOrder.sort] : null;
   const list = useMemo(() => {
-    const needle = normalizeSearch(query);
-    const matches = <T extends { name: string }>(entries: T[]) => entries.filter((entry) => !needle || normalizeSearch(entry.name).includes(needle));
+    const matches = <T extends { name: string }>(entries: T[]) => searchList(entries, query, (entry) => entry.name);
     if (!data) return [];
     if (kind === "referees") {
       return ordered(matches(data.referees), (entry) => refereeOrder.sort === "name" ? entry.name : entry.n, refereeOrder.reversed, byBouts);
@@ -175,8 +174,7 @@ export function VenuesPage() {
   const scroll = useRouteScrollRestoration<HTMLDivElement>("venues", Boolean(data));
   useSeo({ title: "UFC Venues", description: "Every arena and venue that has hosted a UFC event, with the cards held there and attendance.", path: "/venues" });
   const list = useMemo(() => {
-    const needle = normalizeSearch(query);
-    const found = (data?.venues ?? []).filter((venue) => !needle || normalizeSearch(`${venue.name} ${venue.city ?? ""} ${venue.country ?? ""}`).includes(needle));
+    const found = searchList(data?.venues ?? [], query, (venue) => [venue.name, ...venue.former_names, venue.city, venue.state, venue.country].filter(Boolean).join(" "));
     const sorted = found.sort(order.sort === "name" ? byName : busiest);
     return order.reversed ? sorted.reverse() : sorted;
   }, [data, query, order.sort, order.reversed]);

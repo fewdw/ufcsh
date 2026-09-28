@@ -1,5 +1,6 @@
 import { fightIndex, type IndexedFight } from "./fight-index.ts";
 import { mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
+import { searchList } from "./fuzzy.ts";
 import { normName } from "./util.ts";
 
 /**
@@ -204,15 +205,17 @@ export function parseOfficialFilters(params: URLSearchParams): OfficialFilters {
   };
 }
 
-function matchesBase(officiated: Officiated, filters: OfficialFilters): boolean {
+/** The bouts a typed search finds among these, or null when nothing is typed. */
+function searched(fights: Officiated[], q: string): Set<Officiated> | null {
+  return q ? new Set(searchList(fights, q, ({ fight }) => `${fight.eventName} ${fight.sides[0].name} ${fight.sides[1].name}`)) : null;
+}
+
+function matchesBase(officiated: Officiated, filters: OfficialFilters, found: Set<Officiated> | null = null): boolean {
   const { fight } = officiated;
   if (filters.from != null && fight.year < filters.from) return false;
   if (filters.to != null && fight.year > filters.to) return false;
   if (filters.division && fight.weightClass !== filters.division) return false;
-  if (filters.q) {
-    const haystack = normName(`${fight.eventName} ${fight.sides[0].name} ${fight.sides[1].name}`);
-    if (!haystack.includes(filters.q)) return false;
-  }
+  if (found && !found.has(officiated)) return false;
   return true;
 }
 
@@ -405,7 +408,8 @@ export function judgeProfile(slug: string, params: URLSearchParams): unknown | n
   if (!judge) return null;
   const filters = parseOfficialFilters(params);
   const all = judge.fights.map((officiated) => readCard(officiated, judge.key)).filter((entry): entry is JudgeReading => Boolean(entry));
-  const base = all.filter((reading) => matchesBase(reading.officiated, filters));
+  const found = searched(judge.fights, filters.q);
+  const base = all.filter((reading) => matchesBase(reading.officiated, filters, found));
   const decisions = new Map<Verdict, number>();
   for (const reading of base) decisions.set(reading.verdict, (decisions.get(reading.verdict) ?? 0) + 1);
   const inResult = (reading: JudgeReading) => !filters.result || reading.verdict === filters.result;
@@ -452,14 +456,14 @@ export function judgeProfile(slug: string, params: URLSearchParams): unknown | n
     summary: judgeSummary(readings),
     // The same figures over every UFC judge's cards in the same years and
     // divisions, so each rate reads against the field.
-    baseline: judgeSummary(allJudgeReadings().filter((reading) => matchesBase(reading.officiated, { ...filters, q: "" }) && inResult(reading))),
+    baseline: judgeSummary(allJudgeReadings().filter((reading) => matchesBase(reading.officiated, filters) && inResult(reading))),
     // The judge's cards by the decision they sat on, split by whether their
     // card went to the official winner.
     verdict_split: Object.fromEntries((["unanimous", "split", "majority", "draw"] as Verdict[]).map((verdict) => {
       const cards = readings.filter((reading) => reading.verdict === verdict && reading.agreedResult != null);
       return [verdict, { with: cards.filter((reading) => reading.agreedResult).length, against: cards.filter((reading) => !reading.agreedResult).length }];
     })),
-    by_year: byYear(all.filter((reading) => matchesBase(reading.officiated, { ...filters, from: null, to: null }) && inResult(reading)),
+    by_year: byYear(all.filter((reading) => matchesBase(reading.officiated, { ...filters, from: null, to: null }, found) && inResult(reading)),
       (reading) => reading.officiated.fight, (reading) => reading.dissent),
     score_lines: [...scores].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([score, n]) => ({ score, n })),
     colleagues: [...colleagues.values()].filter((entry) => entry.together >= 3)
@@ -546,7 +550,8 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
   const referee = index.refereeSlugs.get(slug);
   if (!referee) return null;
   const filters = parseOfficialFilters(params);
-  const base = referee.fights.filter((officiated) => matchesBase(officiated, filters));
+  const found = searched(referee.fights, filters.q);
+  const base = referee.fights.filter((officiated) => matchesBase(officiated, filters, found));
   const results = new Map<ResultClass, number>();
   for (const officiated of base) results.set(resultClass(officiated.fight), (results.get(resultClass(officiated.fight)) ?? 0) + 1);
   const shown = (officiated: Officiated) => (!filters.result || resultClass(officiated.fight) === filters.result)
@@ -566,7 +571,7 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
   }
   // The same filters across every bout in the UFC with a referee named, so a
   // rate reads against the era and divisions it came from, not a bare number.
-  const baseline = index.fights.filter((officiated) => officiated.referee && matchesBase(officiated, { ...filters, q: "" }));
+  const baseline = index.fights.filter((officiated) => officiated.referee && matchesBase(officiated, filters));
   const page = fights.slice(filters.offset, filters.offset + filters.limit);
   return {
     kind: "referee",
@@ -576,7 +581,7 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
     filters: { ...filters, q: params.get("q") ?? "" },
     result_counts: Object.fromEntries(results),
     summary: tally(base),
-    by_year: byYear(referee.fights.filter((officiated) => matchesBase(officiated, { ...filters, from: null, to: null })),
+    by_year: byYear(referee.fights.filter((officiated) => matchesBase(officiated, { ...filters, from: null, to: null }, found)),
       (officiated) => officiated.fight, (officiated) => resultClass(officiated.fight) === "ko" || resultClass(officiated.fight) === "sub"),
     regulars: [...regulars.values()].filter((entry) => entry.n >= 2).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)).slice(0, 10),
     baseline: { ...tally(baseline), label: "Every UFC bout with a named referee under the same date and division filters" },
@@ -657,14 +662,7 @@ export function searchOfficials(query: string, limit = 4): { kind: Kind; slug: s
   const needle = normName(query);
   if (needle.length < 3) return [];
   const index = officialsIndex();
-  const found: { kind: Kind; slug: string; name: string; n: number }[] = [];
-  for (const [kind, table] of [["referee", index.referees], ["judge", index.judges]] as const) {
-    for (const identity of table.values()) {
-      const name = normName(identity.name);
-      if (name.includes(needle) || name.split(" ").some((part) => part.startsWith(needle))) {
-        found.push({ kind, slug: identity.slug, name: identity.name, n: identity.fights.length });
-      }
-    }
-  }
-  return found.sort((a, b) => b.n - a.n).slice(0, limit);
+  const everyone = ([["referee", index.referees], ["judge", index.judges]] as const)
+    .flatMap(([kind, table]) => [...table.values()].map((identity) => ({ kind, slug: identity.slug, name: identity.name, n: identity.fights.length })));
+  return searchList(everyone, needle, (official) => official.name).sort((a, b) => b.n - a.n).slice(0, limit);
 }

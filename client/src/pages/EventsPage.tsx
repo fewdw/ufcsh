@@ -24,6 +24,7 @@ import SearchGlyph from "../components/SearchGlyph";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
+import { searchList } from "../search";
 
 const shell = PANEL;
 /** The source flags a tournament or TUF final the same way it flags a
@@ -148,11 +149,7 @@ function EventSidebar({
   );
 
   const filtered = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    if (!q) return scoped;
-    return scoped.filter(
-      (e) => e.name.toLowerCase().includes(q) || e.location.toLowerCase().includes(q) || e.date.includes(q),
-    );
+    return searchList(scoped, filter, (e) => `${e.name} ${e.location} ${e.date}`);
   }, [scoped, filter]);
 
   const groups = useMemo(() => {

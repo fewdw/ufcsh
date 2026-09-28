@@ -1,11 +1,12 @@
 import { Link, useParams } from "react-router-dom";
 import { useApi, type VenuePage as VenueData } from "../api";
-import { clockTimeWithZone, formatDate, formatDateShort, formatMethod, normalizeSearch, offsetLabel, venueClock } from "../format";
+import { clockTimeWithZone, formatDate, formatDateShort, formatMethod, offsetLabel, venueClock } from "../format";
 import { PANEL } from "../components/chartTokens";
 import { gapChip, pct, useUrlFilters } from "../research";
 import { SITE_URL, useSeo } from "../seo";
 import RequestNotice from "../components/RequestNotice";
 import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "../components/segmented";
+import { searchList } from "../search";
 import {
   BOUT_LIST, BoutRow, FilterSearch, FilterSelect, IdentityCard, ListHeading, MethodCircle, NotFound, PageState, Panel,
   ProfileColumns, RankRows, TitleNote, Wheel, YearBars, YearRange, type WheelGroup,
@@ -91,15 +92,13 @@ export default function VenuePage() {
   const to = filters.params.get("to");
   const kind = filters.params.get("kind");
   const division = filters.params.get("division");
-  const q = normalizeSearch(filters.params.get("q") ?? "");
+  const q = filters.params.get("q") ?? "";
   const titles = filters.params.get("show") === "titles";
   const inYears = (date: string) => (!from || date.slice(0, 4) >= from) && (!to || date.slice(0, 4) <= to);
-  const events = past.filter((event) => inYears(event.date)
-    && (!q || normalizeSearch(event.name).includes(q))
+  const events = searchList(past, q, (event) => event.name).filter((event) => inYears(event.date)
     && (kind === "title" ? event.title_fights > 0 : kind === "numbered" ? /^UFC \d+/.test(event.name) : kind === "fight-night" ? !/^UFC \d+/.test(event.name) : true));
-  const titleBouts = data.title_bouts.filter((bout) => inYears(bout.date)
-    && (!division || bout.division === division)
-    && (!q || normalizeSearch(`${bout.event_name} ${bout.f1.name} ${bout.f2.name}`).includes(q)));
+  const titleBouts = searchList(data.title_bouts, q, (bout) => `${bout.event_name} ${bout.f1.name} ${bout.f2.name}`)
+    .filter((bout) => inYears(bout.date) && (!division || bout.division === division));
   const divisions = [...data.title_bouts.reduce((counts, bout) => counts.set(bout.division, (counts.get(bout.division) ?? 0) + 1), new Map<string, number>())];
   const narrowing = [from, to, titles ? division : kind].filter(Boolean).length;
   const byYear = past.reduce((counts, event) => {

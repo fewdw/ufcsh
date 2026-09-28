@@ -149,6 +149,13 @@ Measured on a copy of the dev archive, 5-run averages, warm fight index.
   filtered bouts with each bout's officials looked up by id. Every other card's
   cost is the shared aggregation loop, as before. Served from the response cache.
 
+- `/api/matchmaking` build: 35 ms (every division's ranked plan plus next
+  opponents for the last card), once per fight-index version, data revision and
+  day; served from the response cache and warmed with the other lists.
+- ufc.com signings: one athlete-search page (newest 21 profiles) every 5
+  minutes, plus one athlete page per new profile until it reads Active (re-read
+  at most every 30 minutes). About 290 requests a day in all.
+
 ## Judge baseline (2026-09-27, `feat/official-venue-pages`)
 
 Judge profiles compare each rate with every UFC judge in the same years and

@@ -1,7 +1,9 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { accountsEnabled, useAccount } from "../auth";
 import { useAdminResource, type AdminSession } from "../admin";
+import { useApi, type RosterMoves } from "../api";
+import { onRosterSeen, seedRosterSeen, unseenMoves } from "../rosterSeen";
 
 /** The pages behind More, each with the paths that belong to it: the numbers
  *  first, then the news around the roster, the people and places behind the
@@ -47,6 +49,28 @@ export function MoreLinks({ item }: { item: (section: typeof ADMIN, active: bool
   </>;
 }
 
+/** Signings (green) and releases (red) since Roster was last opened, beside
+ *  its name in the sidebar. Read only where the sidebar shows. */
+function RosterNews() {
+  const [wide] = useState(() => window.matchMedia("(min-width: 768px)").matches);
+  const { data } = useApi<RosterMoves>(wide ? "/api/roster" : null);
+  const [, refresh] = useReducer((turn: number) => turn + 1, 0);
+  useEffect(() => onRosterSeen(refresh), []);
+  useEffect(() => { if (data) seedRosterSeen(data); }, [data]);
+  if (!data) return null;
+  const unseen = [...unseenMoves(data)];
+  const added = unseen.filter((key) => key.startsWith("signed:")).length;
+  const removed = unseen.length - added;
+  if (!unseen.length) return null;
+  const label = [added ? `${added} new signing${added === 1 ? "" : "s"}` : "", removed ? `${removed} new release${removed === 1 ? "" : "s"}` : ""].filter(Boolean).join(", ");
+  return (
+    <span className="flex shrink-0 gap-1 text-[11px] font-semibold tabular-nums" role="status" aria-label={label} title={label}>
+      {added ? <span className="min-w-5 rounded-full bg-emerald-50 px-1.5 text-center text-emerald-700">{added}</span> : null}
+      {removed ? <span className="min-w-5 rounded-full bg-rose-50 px-1.5 text-center text-rose-700">{removed}</span> : null}
+    </span>
+  );
+}
+
 /** The More pages: a sidebar from `md` up, a strip of tabs above the page on
  *  a phone. Each page keeps its own scrolling. */
 export function MoreLayout() {
@@ -74,8 +98,9 @@ export function MoreLayout() {
           <MoreLinks item={(section, active) => (
             <li key={section.href}>
               <Link to={section.href} aria-current={active ? "page" : undefined}
-                className={`block rounded-lg px-3 py-2 text-sm font-medium transition-colors ${active ? "bg-zinc-100 text-zinc-900" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"}`}>
+                className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${active ? "bg-zinc-100 text-zinc-900" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"}`}>
                 {section.label}
+                {section.href === "/roster" ? <RosterNews /> : null}
               </Link>
             </li>
           )} />

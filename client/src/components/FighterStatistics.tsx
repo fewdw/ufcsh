@@ -9,6 +9,7 @@ import { formatValue, PANEL } from "./chartTokens";
 import InfoTip from "./InfoTip";
 import RequestNotice from "./RequestNotice";
 import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "./segmented";
+import { searchList } from "../search";
 
 const place = (stat: BoardStat) => `${stat.tied ? "T" : ""}${stat.rank}`;
 
@@ -77,9 +78,7 @@ export default function FighterStatistics({ fighterId, history }: { fighterId: s
 
   const divisions = board?.scopes.filter((entry) => entry.key !== "ufc") ?? [];
   const inDivision = scope !== "ufc";
-  const needle = query.trim().toLowerCase();
-  const shown = useMemo(() => (board?.stats ?? []).filter((stat) =>
-    !needle || stat.label.toLowerCase().includes(needle) || stat.category.toLowerCase().includes(needle)), [board, needle]);
+  const shown = useMemo(() => searchList(board?.stats ?? [], query, (stat) => `${stat.label} ${stat.category}`), [board, query]);
   const leading = useMemo(() => [...(board?.stats ?? [])].filter((stat) => !stat.unwanted).sort(byStanding).slice(0, 3), [board]);
 
   const groups = useMemo(() => {
@@ -169,7 +168,7 @@ export default function FighterStatistics({ fighterId, history }: { fighterId: s
             <div className={stale ? "opacity-60 transition-opacity delay-200" : ""} aria-busy={stale}>
               {!shown.length ? (
                 <p className="px-5 py-6 text-center text-xs text-zinc-500">
-                  {needle ? `No ranked statistic matches “${query.trim()}”.` : `No ranked statistics ${inDivision ? `at ${board.scope_label}` : "yet"}.`}
+                  {query.trim() ? `No ranked statistic matches “${query.trim()}”.` : `No ranked statistics ${inDivision ? `at ${board.scope_label}` : "yet"}.`}
                 </p>
               ) : sort === "grouped" ? (
                 <div className="columns-1 gap-0 @[40rem]:columns-2" style={{ columnRule: "1px solid var(--color-plot-axis)" }}>

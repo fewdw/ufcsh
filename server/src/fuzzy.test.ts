@@ -76,3 +76,15 @@ test("upcoming matchup search falls back to close spellings", () => {
   const found = (getLabsMatchups(new URLSearchParams({ q: typo })) as { matchups: unknown[] }).matchups;
   assert.ok(found.length > 0, typo);
 });
+
+test("list filters ignore spacing and word order, and fall back to typos only when nothing matches", async () => {
+  const { searchList } = await import("./fuzzy.ts");
+  const venues = ["T-Mobile Arena Las Vegas", "UFC APEX Las Vegas", "Madison Square Garden New York"];
+  const find = (query: string, rows = venues) => searchList(rows, query, (row) => row);
+  assert.deepEqual(find("tmobile"), ["T-Mobile Arena Las Vegas"]);
+  assert.deepEqual(find("vegas apex"), ["UFC APEX Las Vegas"]);
+  assert.deepEqual(find("madisn garden"), ["Madison Square Garden New York"]);
+  const officials = ["Herb Dean", "Sean Shelby", "Dan Miragliotta"];
+  assert.deepEqual(find("harb dean", officials), ["Herb Dean"]);
+  assert.deepEqual(find("dean", officials), ["Herb Dean"]);
+});

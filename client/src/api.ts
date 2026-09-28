@@ -1009,7 +1009,7 @@ export type VenuePage = {
 };
 
 export type VenueDirectory = {
-  venues: { slug: string; name: string; city: string | null; state: string | null; country: string | null; events: number; upcoming: number; last: string | null }[];
+  venues: { slug: string; name: string; former_names: string[]; city: string | null; state: string | null; country: string | null; events: number; upcoming: number; last: string | null }[];
   coverage: { events: number; with_venue: number };
 };
 
@@ -1063,3 +1063,24 @@ export function useApi<T>(url: string | null, pollMs?: number | ((data: T | null
   }, [url, intervalMs]);
   return { ...state, data: state.data as T | null, retry };
 }
+
+export type MatchFighter = {
+  id: string; name: string; photo_url: string | null; rank: number | null;
+  record: string; streak: number; last_date: string | null;
+};
+
+export type MatchmakingData = {
+  updated_at: number | null;
+  top15: {
+    division: string;
+    fights: { kind: "title" | "booked" | "suggested"; a: MatchFighter; b: MatchFighter; reason: string; event: { id: string; name: string; date: string } | null }[];
+    idle: { fighter: MatchFighter; reason: string }[];
+  }[];
+  last_event: {
+    id: string; name: string; date: string;
+    bouts: {
+      fight_id: string; division: string; method: string | null; title: boolean;
+      sides: { fighter: MatchFighter; outcome: "win" | "loss" | "draw" | "nc" | null; next: { kind: "suggested" | "booked" | "rematch" | "none"; opponent: MatchFighter | null; reason: string } }[];
+    }[];
+  } | null;
+};
