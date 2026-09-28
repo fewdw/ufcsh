@@ -23,6 +23,7 @@
   `git -C /home/ubuntu/ufcsh-dev fetch && git -C /home/ubuntu/ufcsh-dev worktree add /home/ubuntu/ufcsh-wt/<branch-name> -b <category>/<branch-name> origin/main`
 - Branch names are short and meaningful, with a category prefix: `feat/`, `bug/`, `perf/`, `chore/`. Example: `bug/fighter-record-totals`.
 - In a new worktree, run `npm ci --prefix client` and `npm ci --prefix server` before running checks.
+- Before every explicitly authorized merge, replace the entire changelog in `client/src/pages/InfoPage.tsx` with the release date and a few very short lines covering all changes and fixes in that merge; delete all old entries, then merge.
 - Never commit to `main`. Never merge. Merging is a production release.
 - When a change is complete and checks pass, commit and push without asking. On a branch's first push, open a PR to `main`; later pushes update it.
 - After a PR is merged (by me, or by you when I ask), always clean up without being asked:

@@ -5,7 +5,7 @@ import CmdK from "./components/CmdK";
 import SearchGlyph from "./components/SearchGlyph";
 import LiveMatchup from "./components/LiveMatchup";
 import { segmentedIdle, segmentedSelected } from "./components/segmented";
-import { Keyboard, Moon, ShieldCheck, Sun } from "lucide-react";
+import { Moon, ShieldCheck, Sun } from "lucide-react";
 import { accountsEnabled, useAccount } from "./auth";
 import { useAdminResource, type AdminSession } from "./admin";
 import { useSettings, withRanking } from "./settings";
@@ -15,7 +15,7 @@ import { DEFAULT_STATS_REQUEST } from "./statsDefaults";
 import { pages, type PageLoader } from "./pages";
 import RouteErrorBoundary from "./components/RouteErrorBoundary";
 import ParlaySlip from "./components/ParlaySlip";
-import { ShortcutProvider, useShortcutHelp } from "./shortcuts";
+import { ShortcutProvider } from "./shortcuts";
 import { DevStatsOverlay, isDevSite } from "./devStats";
 import { GraphicsProvider } from "./graphicsLauncher";
 
@@ -62,7 +62,6 @@ function AdminNavItem({ active }: { active: boolean }) {
 
 function Header({ onSearch }: { onSearch: () => void }) {
   const { pathname } = useLocation();
-  const showShortcuts = useShortcutHelp();
   const { settings, update } = useSettings();
   const dark = settings.theme === "dark";
   // The bout on now sits mid-row only while it fits whole; the moment its
@@ -142,18 +141,6 @@ function Header({ onSearch }: { onSearch: () => void }) {
             <SearchGlyph />
             <span className="hidden sm:inline">Search anything</span>
             <kbd className="hidden rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 lg:inline">⌘K</kbd>
-          </button>
-          {/* Keyboards live on desktops: the sheet is one press of ? away, and
-              this is where someone who has never pressed it finds it. */}
-          <button
-            type="button"
-            onClick={showShortcuts}
-            aria-label="Keyboard shortcuts"
-            aria-keyshortcuts="?"
-            title="Keyboard shortcuts (?)"
-            className="hidden h-9 w-9 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 lg:grid"
-          >
-            <Keyboard className="h-4 w-4" aria-hidden="true" />
           </button>
           <button
             type="button"
