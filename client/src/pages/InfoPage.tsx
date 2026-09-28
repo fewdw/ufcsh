@@ -109,6 +109,8 @@ export default function InfoPage() {
               <Term name="Odds">BestFightOdds moneylines and props, frozen as closing lines once a card is over.</Term>
               <Term name="Judges’ round cards">Verdict MMA and MMA Decisions, attached only when the judge and final score match the official card. Verdict MMA also supplies large community (fan) scorecards.</Term>
               <Term name="Event articles">Wikipedia, for weigh-in misses, the venue name on the night, attendance and gate.</Term>
+              <Term name="Signings & releases">ufc.com’s newest athlete profiles every five minutes, Wikipedia’s roster article, and each recent fighter’s ufc.com page.</Term>
+              <Term name="News">Headlines from ESPN, MMA Junkie, UFC.com, MMA Fighting, Sherdog, Yahoo Sports, BBC Sport, The Guardian, CBS Sports, talkSPORT, MMA Mania, Bloody Elbow, Cageside Press, MMA News and MMA Weekly, every ten minutes. Each links to the outlet; only the headline, a short summary and the outlet’s picture are shown here.</Term>
             </dl>
           </Section>
 

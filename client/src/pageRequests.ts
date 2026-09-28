@@ -13,7 +13,7 @@ export function pageRequests(pathname: string, search: string, ranking: "media" 
   }
   if ((match = /^\/(fights|events)\/([a-f0-9]{16})\/?$/.exec(pathname))) return [ranked(`/api/${match[1]}/${match[2]}`)];
   if (pathname === "/rankings") return [ranked("/api/rankings")];
-  if (pathname === "/officials" || pathname === "/venues" || pathname === "/roster" || pathname === "/matchmaking") return ["/api" + pathname];
+  if (pathname === "/officials" || pathname === "/venues" || pathname === "/roster" || pathname === "/matchmaking" || pathname === "/news") return ["/api" + pathname];
   if ((match = /^\/(judges|referees|venues)\/([a-z0-9-]{1,80})\/?$/.exec(pathname))) return plain ? [`/api/${match[1]}/${match[2]}`] : [];
   if ((match = /^\/profiles\/([^/]+)\/?$/.exec(pathname)) && match[1] !== "me" && plain) {
     return [`/api/profiles/${match[1]}?filter=decisions&q=&offset=0`];

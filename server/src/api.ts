@@ -57,6 +57,7 @@ export { pageSeo, sitemap };
 import { judgeProfile, officialSlug, officialsDirectory, refereeProfile, searchOfficials } from "./officials.ts";
 import { searchVenues, venueDirectory, venueOfEvent, venuePage } from "./venues.ts";
 import { matchmaking } from "./matchmaking.ts";
+import { newsView } from "./news.ts";
 import { rosterMoveFighter, storedRosterMoves, ufcDepartures, ufcSignings } from "./roster-moves.ts";
 import type { RosterMove } from "./scrape/wikipedia.ts";
 
@@ -1926,6 +1927,7 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   if (p === "/api/labs") return getLabs(url.searchParams);
   if (p === "/api/roster") return rosterView();
   if (p === "/api/matchmaking") return matchmaking();
+  if (p === "/api/news") return newsView();
   if (p === "/api/search") return search(url.searchParams.get("q") ?? "");
   if (p === "/api/bugs") return bugReport();
   return undefined;
@@ -2071,7 +2073,7 @@ export function startApi(port: number): http.Server {
     clearInterval(warmLists);
     if (!queryPool) return;
     for (const path of ["/api/events", "/api/live", "/api/stats", "/api/rankings?ranking=media", "/api/rankings?ranking=meta",
-      "/api/officials", "/api/venues", "/api/labs/insights", "/api/matchmaking"]) {
+      "/api/officials", "/api/venues", "/api/labs/insights", "/api/matchmaking", "/api/news"]) {
       void publicAnswer(new URL(path, "http://localhost")).catch(() => {});
     }
   }, 1000);

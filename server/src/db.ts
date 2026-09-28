@@ -523,6 +523,19 @@ db.exec(`CREATE TABLE IF NOT EXISTS ufc_status (
   checked_at INTEGER NOT NULL,
   left_at    INTEGER
 )`);
+// The news feeds' items, kept three weeks (news.ts). Not a revision table:
+// news arriving must not rebuild the fight index.
+db.exec(`CREATE TABLE IF NOT EXISTS news (
+  url          TEXT PRIMARY KEY,
+  source       TEXT NOT NULL,
+  title        TEXT NOT NULL,
+  summary      TEXT NOT NULL DEFAULT '',
+  image        TEXT,
+  categories   TEXT NOT NULL DEFAULT '[]',
+  published_at INTEGER NOT NULL,
+  seen_at      INTEGER NOT NULL
+)`);
+db.exec("CREATE INDEX IF NOT EXISTS idx_news_published ON news(published_at)");
 db.exec("CREATE TABLE IF NOT EXISTS data_revisions (key TEXT PRIMARY KEY, value INTEGER NOT NULL)");
 for (const key of ["analytics", "profiles", "search"]) {
   db.prepare("INSERT OR IGNORE INTO data_revisions VALUES (?, 0)").run(key);

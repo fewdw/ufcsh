@@ -1084,3 +1084,17 @@ export type MatchmakingData = {
     }[];
   } | null;
 };
+
+export type NewsStory = {
+  url: string; source: string; title: string; summary: string; image: string | null; published_at: number;
+  fighters: { id: string; name: string; photo_url: string | null }[];
+  event: { id: string; name: string } | null;
+  also: { source: string; url: string; title: string }[];
+};
+
+export type NewsData = {
+  updated_at: number | null;
+  sources: { name: string; ok: boolean }[];
+  top: NewsStory[];
+  latest: NewsStory[];
+};

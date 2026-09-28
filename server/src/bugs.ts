@@ -8,6 +8,8 @@ import { importVerdictEvent } from "./verdict-import.ts";
 import { mergedByHand, officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
 import { rosterMoveFighter, storedRosterMoves, syncRosterMoves, syncUfcSignings } from "./roster-moves.ts";
+import { feedStatus, syncNews } from "./news.ts";
+import { NEWS_FEEDS } from "./scrape/news.ts";
 import { ROSTER_ARTICLE } from "./scrape/wikipedia.ts";
 import {
   fighterNames,
@@ -1209,6 +1211,31 @@ function rosterMovesUnread(): BugCheck {
     grade: (item) => item.key === "sync" || item.key === "ufc-status" || item.key === "ufc-signings" ? "must" : item.key.startsWith("ufc:") ? "ok" : "minor",
   }, items);
 }
+/** /news: each outlet's feed is read every ten minutes. One unread for two
+ *  hours has moved, changed shape or started turning us away. */
+function newsFeedsUnread(): BugCheck {
+  const items: BugItem[] = [];
+  for (const feed of NEWS_FEEDS) {
+    const status = feedStatus(feed.source);
+    if (status?.ok_at && Date.now() - status.ok_at < 2 * 3_600_000) continue;
+    items.push({
+      key: feed.source,
+      title: feed.source,
+      subtitle: status?.error ?? "Never read",
+      facts: [["Last read", ago(status?.ok_at ?? null)], ["Last tried", ago(status?.tried_at ?? null)]],
+      links: [{ label: "Feed", href: feed.url }],
+      actions: [{ id: "news", label: "Read again", target: "all" }],
+    });
+  }
+  return check({
+    id: "news-feeds",
+    group: "Fights & events",
+    label: "News outlets not read",
+    description: "The /news page reads each outlet's feed every ten minutes (ESPN, MMA Junkie, UFC.com, Yahoo, CBS, talkSPORT and MMA News through Google News, which they allow; the rest directly). An outlet unread for two hours drops out of the page until it is read again: its feed moved, changed shape or turned us away.",
+    grade: "minor",
+  }, items);
+}
+
 // ---------------------------------------------------------------------------
 
 export function bugReport(): { generated_at: number; sync: { last_tick_at: string | null; last_sync_error: string | null }; checks: BugCheck[] } {
@@ -1249,6 +1276,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     fighterGaps(active),
     duplicateFighters(),
     rosterMovesUnread(),
+    newsFeedsUnread(),
   ];
   return {
     generated_at: Date.now(),
@@ -1257,7 +1285,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
   };
 }
 
-export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status";
+export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -1324,6 +1352,9 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
     case "ufc-status":
       db.prepare("UPDATE ufc_status SET url = NULL, checked_at = 0 WHERE fighter_id = ?").run(target);
       return { ok: true, message: "Queued; ufc.com is searched again on the next pass." };
+    case "news":
+      await syncNews();
+      return { ok: true, message: "Read every outlet again." };
     case "roster-moves": {
       try {
         if (target === "ufc") {

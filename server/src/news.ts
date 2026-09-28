@@ -1,0 +1,351 @@
+import { db, getMeta, prepared, setMeta, touchMeta } from "./db.ts";
+import { fightIndex } from "./fight-index.ts";
+import { fetchFeed, NEWS_FEEDS, type FeedItem } from "./scrape/news.ts";
+import { log, normName } from "./util.ts";
+
+/**
+ * /news: the latest UFC news from the outlets that report it, in one list.
+ * Each outlet's feed is read every ten minutes and kept for three weeks. What
+ * is shown is decided when the page is built, against today's roster:
+ *  - relevant: a UFC-only feed, an outlet's own UFC tag, or "UFC" (the
+ *    Contender Series, Dana White…) or an active UFC fighter in the headline;
+ *    a headline about another promotion is left out unless it names the UFC;
+ *  - grouped: the same story from several outlets is one story, credited to
+ *    whoever reported it first, with the others listed;
+ *  - top stories: the last three days' stories ranked by how many outlets
+ *    carried them, how prominent the fighters are, and how new they are.
+ */
+
+const KEEP_DAYS = 21;
+const SHOWN_DAYS = 14;
+const TOP_HOURS = 72;
+const TOP_STORIES = 5;
+const LATEST_STORIES = 150;
+
+type Stored = { url: string; source: string; title: string; summary: string; image: string | null; categories: string; published_at: number };
+
+// ---------------------------------------------------------------------------
+// Reading the feeds
+
+type FeedStatus = { ok_at: number | null; tried_at: number; error: string | null; items: number };
+
+export function feedStatus(source: string): FeedStatus | null {
+  const stored = getMeta(`news_feed:${source}`);
+  return stored ? JSON.parse(stored) as FeedStatus : null;
+}
+
+/** One read of every feed at once (each outlet is its own host). A feed that
+ *  fails keeps what it had; the others still land. */
+export async function syncNews(read: (url: string) => Promise<FeedItem[]> = fetchFeed): Promise<void> {
+  touchMeta("news_checked_at");
+  const now = Date.now();
+  const upsert = db.prepare(`
+    INSERT INTO news (url, source, title, summary, image, categories, published_at, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(url) DO UPDATE SET title = excluded.title, summary = excluded.summary,
+      image = coalesce(excluded.image, image), categories = excluded.categories
+  `);
+  // Google News lists an outlet's other editions too (jp.ufc.com): only the site asked for.
+  const results = await Promise.allSettled(NEWS_FEEDS.map(async (feed) => (await read(feed.url)).filter((item) => !feed.site || item.site === feed.site)));
+  const count = () => (db.prepare("SELECT COUNT(*) AS n FROM news").get() as { n: number }).n;
+  const before = count();
+  results.forEach((result, i) => {
+    const { source } = NEWS_FEEDS[i];
+    const last = feedStatus(source);
+    if (result.status === "rejected") {
+      setMeta(`news_feed:${source}`, JSON.stringify({ ok_at: last?.ok_at ?? null, tried_at: now, error: String(result.reason), items: last?.items ?? 0 }));
+      log(`news: ${source} unread (${String(result.reason)})`);
+      return;
+    }
+    db.exec("BEGIN");
+    try {
+      for (const item of result.value) {
+        // A date ahead of now is a scheduled post; it's news when we see it.
+        const published = item.published && item.published <= now + 10 * 60_000 ? item.published : now;
+        if (published < now - KEEP_DAYS * 86_400_000) continue;
+        upsert.run(item.url, source, item.title, item.summary, item.image, JSON.stringify(item.categories), published, now);
+      }
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+    setMeta(`news_feed:${source}`, JSON.stringify({ ok_at: now, tried_at: now, error: null, items: result.value.length }));
+  });
+  const added = count() - before;
+  db.prepare("DELETE FROM news WHERE published_at < ?").run(now - KEEP_DAYS * 86_400_000);
+  touchMeta("news_synced_at");
+  if (added > 0) log(`news: ${added} new items`);
+}
+
+// ---------------------------------------------------------------------------
+// Fighters named in a headline
+
+/** `byName`: found by full name, not by surname alone. */
+type Named = { id: string; name: string; weight: number; byName?: boolean };
+
+/** Words a surname can't stand in for: too common in a headline to mean one fighter. */
+const COMMON = new Set(["price", "brown", "black", "white", "green", "young", "silva", "santos", "costa", "souza", "sousa", "oliveira",
+  "ferreira", "pereira", "rodrigues", "rodriguez", "martinez", "hernandez", "gonzalez", "lopez", "perez", "garcia", "smith",
+  "johnson", "williams", "jones", "davis", "miller", "wilson", "moore", "taylor", "thomas", "jackson", "martin", "thompson",
+  "morgan", "grant", "stewart", "turner", "parker", "evans", "edwards", "collins", "murphy", "cooper", "reyes", "cruz",
+  "prime", "power", "lewis", "walker", "allen", "king", "wright", "scott", "hill", "adams", "baker", "nelson", "carter",
+  "mitchell", "roberts", "phillips", "campbell", "brady", "strong", "street", "cannon", "night", "fight"]);
+
+const SUFFIXES = new Set(["jr", "sr", "ii", "iii", "iv"]);
+
+/** Recent UFC fighters by full name and by surname (where it can only mean
+ *  one of them), weighted by standing: a champion counts most. */
+export function nameIndex() {
+  const index = fightIndex();
+  const since = new Date(Date.now() - 4 * 365 * 86_400_000).toISOString().slice(0, 10);
+  const active = new Date(Date.now() - 2 * 365 * 86_400_000).toISOString().slice(0, 10);
+  const booked = new Set((prepared(`SELECT f.f1_id AS a, f.f2_id AS b FROM fights f JOIN events e ON e.id = f.event_id WHERE e.complete = 0`).all() as { a: string; b: string }[])
+    .flatMap((row) => [row.a, row.b]));
+  const rank = new Map<string, number>();
+  for (const row of prepared(`SELECT rank, fighter_id FROM rankings WHERE ranking_type = 'media' AND fighter_id != ''`).all() as { rank: string; fighter_id: string }[]) {
+    const value = row.rank === "C" ? 0 : Number(row.rank);
+    if (Number.isFinite(value)) rank.set(row.fighter_id, Math.min(rank.get(row.fighter_id) ?? 99, value));
+  }
+  const full = new Map<string, Named | null>();
+  const surname = new Map<string, Named | null>();
+  const surnameCount = new Map<string, number>();
+  const activeIds = new Set<string>();
+  // "Raul Rosas Jr." shares a surname with Jessie Rosas.
+  const lastName = (words: string[]) => words.filter((word) => !SUFFIXES.has(word)).at(-1) ?? "";
+  for (const fighter of index.fighters.values()) {
+    const last = lastName(normName(fighter.name).split(" "));
+    surnameCount.set(last, (surnameCount.get(last) ?? 0) + 1);
+  }
+  for (const fighter of index.fighters.values()) {
+    const lastDate = fighter.fights.at(-1)?.date ?? "";
+    if (lastDate < since && !booked.has(fighter.id)) continue;
+    if (lastDate >= active || booked.has(fighter.id)) activeIds.add(fighter.id);
+    const standing = rank.get(fighter.id);
+    const named: Named = { id: fighter.id, name: fighter.name, weight: standing === 0 ? 3 : standing != null && standing <= 5 ? 2 : standing != null ? 1.5 : 1 };
+    const words = normName(fighter.name).split(" ").filter(Boolean);
+    if (words.length >= 2) {
+      const key = words.join(" ");
+      full.set(key, full.has(key) ? null : named);
+    }
+    const last = lastName(words);
+    if (words.length >= 2 && last.length >= 5 && !COMMON.has(last) && surnameCount.get(last) === 1) surname.set(last, named);
+  }
+  return { full, surname, activeIds };
+}
+
+type NameIndex = ReturnType<typeof nameIndex>;
+
+/** The fighters a text names: by full name anywhere, and (in a headline) by
+ *  surname where it is written as one: capitalized, and not after another
+ *  capitalized word, which would make it someone else's full name ("Valesca
+ *  Machado" is not Caio Machado). Strongest first. */
+export function namedFighters(text: string, names: NameIndex, surnames = true): Named[] {
+  const words = text.match(/[\p{L}\p{N}'’.-]+/gu) ?? [];
+  const norm = words.map((word) => normName(word.replace(/['’]s$/, "")));
+  const found = new Map<string, Named>();
+  const used = new Set<number>();
+  for (let size = 4; size >= 2; size--) {
+    for (let i = 0; i + size <= norm.length; i++) {
+      const hit = names.full.get(norm.slice(i, i + size).join(" "));
+      if (!hit) continue;
+      found.set(hit.id, { ...hit, byName: true });
+      for (let j = i; j < i + size; j++) used.add(j);
+    }
+  }
+  norm.forEach((word, i) => {
+    if (!surnames || used.has(i) || !/^\p{Lu}/u.test(words[i])) return;
+    if (i > 0 && /^\p{Lu}\p{Ll}/u.test(words[i - 1])) return;
+    const hit = names.surname.get(word);
+    if (hit && !found.has(hit.id)) found.set(hit.id, hit);
+  });
+  return [...found.values()].sort((a, b) => b.weight - a.weight);
+}
+
+// ---------------------------------------------------------------------------
+// Which items are UFC news
+
+const UFC_WORDS = /\bUFC\b|Dana White|Contender Series|Road to UFC|Noche UFC|The Ultimate Fighter|\bOctagon\b/i;
+const ELSEWHERE = /\b(?:BKFC|PFL|Bellator|ONE Championship|ONE Fight Night|Oktagon|Misfits|KSW|Cage Warriors|RIZIN|Power Slap|Zuffa Boxing|GFL|Glory|boxing debut)\b/i;
+/** Pages a search turns up that aren't stories: scoreboards, stream and
+ *  schedule pages, and the videos an event page lists. */
+const NOT_A_STORY = /\b(?:Live Score|Gametracker|Stream of|How to Watch|Live Stats|Watch Times|Channel finder|Octagon Interview|Post-Fight Interview|Full Fight|Preview Show|Highlights)\b/i;
+
+/** UFC news: from a UFC-only feed, tagged UFC by its outlet (and nothing
+ *  else: some outlets tag every MMA story "UFC"), or with the UFC or an active
+ *  UFC fighter in the headline. A summary's "former UFC…" isn't enough, and a
+ *  headline about another promotion needs "UFC" in it. */
+export function isUfcNews(item: { title: string; categories: string[] }, fromUfcFeed: boolean, titleNamed: Named[], activeIds: ReadonlySet<string>): boolean {
+  if (NOT_A_STORY.test(item.title) || (ELSEWHERE.test(item.title) && !/\bUFC\b/.test(item.title))) return false;
+  if (fromUfcFeed || UFC_WORDS.test(item.title)) return true;
+  if (item.categories.some((category) => /\bUFC\b/.test(category)) && !item.categories.some((category) => ELSEWHERE.test(category) || /boxing/i.test(category))) return true;
+  return titleNamed.some((fighter) => activeIds.has(fighter.id) && fighter.byName);
+}
+
+// ---------------------------------------------------------------------------
+// Stories
+
+const STOP = new Set(["the", "and", "for", "with", "after", "says", "said", "ufc", "vs", "his", "her", "who", "what", "how", "why",
+  "was", "has", "have", "from", "into", "over", "about", "will", "not", "but", "out", "off", "new", "next", "fight", "fights",
+  "win", "wins", "this", "that", "they", "their", "its", "are", "been", "more", "than", "just", "gets", "set", "full", "video"]);
+
+type Item = Stored & {
+  categoryList: string[];
+  named: Named[];
+  titleNamed: Set<string>;
+  /** The headline's words, and those left once fighters' names are taken out. */
+  words: Set<string>;
+  topic: Set<string>;
+};
+
+function overlap(a: Set<string>, b: Set<string>, ignore?: ReadonlySet<string>): number {
+  const left = ignore ? [...a].filter((word) => !ignore.has(word)) : [...a];
+  const right = ignore ? new Set([...b].filter((word) => !ignore.has(word))) : b;
+  const shared = left.filter((word) => right.has(word)).length;
+  return shared / Math.max(1, Math.min(left.length, right.size));
+}
+
+/** Two headlines about one story, within a day of each other: mostly the
+ *  same words; the same two fighters; or one fighter and some of the same
+ *  uncommon words ("quit", "retirement" — not "Vegas" or "121", which half
+ *  the week's headlines share). Two outlets on one fighter aren't always one
+ *  story. */
+export function sameStory(a: Item, b: Item, common: ReadonlySet<string>): boolean {
+  if (Math.abs(a.published_at - b.published_at) > 24 * 3_600_000) return false;
+  if (overlap(a.words, b.words) >= 0.6) return true;
+  const shared = [...a.titleNamed].filter((id) => b.titleNamed.has(id)).length;
+  return shared >= 2 || (shared === 1 && overlap(a.topic, b.topic, common) >= 0.3);
+}
+
+export type NewsStory = {
+  url: string; source: string; title: string; summary: string; image: string | null; published_at: number;
+  fighters: { id: string; name: string; photo_url: string | null }[];
+  event: { id: string; name: string } | null;
+  also: { source: string; url: string; title: string }[];
+};
+
+/** Which card a story is about: a numbered card it names ("UFC 331"), or the
+ *  card its fighters were on or are booked for, from a week before the story
+ *  to six weeks after. */
+function eventFinder() {
+  const events = prepared("SELECT id, name, date FROM events").all() as { id: string; name: string; date: string }[];
+  const numbered = new Map<string, { id: string; name: string; date: string }>();
+  for (const event of events) {
+    const number = /^UFC (\d+)\b/.exec(event.name)?.[1];
+    if (number) numbered.set(number, event);
+  }
+  const days = (date: string, at: number) => Math.abs(Date.parse(date) - at) / 86_400_000;
+  const byEvent = new Map(events.map((event) => [event.id, event]));
+  const cards = new Map<string, string[]>();
+  for (const row of prepared("SELECT event_id, f1_id, f2_id FROM fights").all() as { event_id: string; f1_id: string; f2_id: string }[]) {
+    for (const id of [row.f1_id, row.f2_id]) if (id) cards.set(id, [...(cards.get(id) ?? []), row.event_id]);
+  }
+  return (titles: string[], fighterIds: string[], published: number): { id: string; name: string } | null => {
+    for (const title of titles) {
+      // A number only means that card while it's close: "UFC 250" today isn't the 2020 card.
+      const card = numbered.get(/\bUFC (\d{3})\b/.exec(title)?.[1] ?? "");
+      if (card && days(card.date, published) <= 90) return { id: card.id, name: card.name };
+    }
+    const from = new Date(published - 7 * 86_400_000).toISOString().slice(0, 10);
+    const to = new Date(published + 42 * 86_400_000).toISOString().slice(0, 10);
+    const counts = new Map<string, number>();
+    for (const id of fighterIds) {
+      for (const eventId of new Set(cards.get(id) ?? [])) {
+        const event = byEvent.get(eventId);
+        if (event && event.date >= from && event.date <= to) counts.set(eventId, (counts.get(eventId) ?? 0) + 1);
+      }
+    }
+    // Most of the story's fighters; then the card nearest the story.
+    const best = [...counts].sort((a, b) => b[1] - a[1] || days(byEvent.get(a[0])!.date, published) - days(byEvent.get(b[0])!.date, published))[0];
+    return best ? { id: best[0], name: byEvent.get(best[0])!.name } : null;
+  };
+}
+
+const LIVE = /\blive (?:blog|results|updates|coverage)\b|\bplay-by-play\b|\bresults\b/i;
+
+let cached: { key: string; data: unknown } | null = null;
+
+export function newsView(): unknown {
+  const index = fightIndex();
+  const key = `${getMeta("news_synced_at")}:${index.version}`;
+  if (cached?.key === key) return cached.data;
+  const names = nameIndex();
+  const findEvent = eventFinder();
+  const now = Date.now();
+  const ufcFeeds = new Set(NEWS_FEEDS.filter((feed) => feed.ufc).map((feed) => feed.source));
+  const rows = prepared("SELECT url, source, title, summary, image, categories, published_at FROM news WHERE published_at >= ? ORDER BY published_at ASC")
+    .all(now - SHOWN_DAYS * 86_400_000) as Stored[];
+  // An article one outlet republishes from another (Yahoo carries many)
+  // keeps its headline: the first copy stands for both.
+  const headlines = new Set<string>();
+  const items: Item[] = rows.flatMap((row) => {
+    const headline = normName(row.title);
+    if (headlines.has(headline)) return [];
+    headlines.add(headline);
+    const categoryList = JSON.parse(row.categories) as string[];
+    // A few words is a page's name ("Channel finder", a fighter's profile), not a headline.
+    if (row.title.split(/\s+/).length < 4) return [];
+    const titleNamed = namedFighters(row.title, names);
+    if (!isUfcNews({ title: row.title, categories: categoryList }, ufcFeeds.has(row.source), titleNamed, names.activeIds)) return [];
+    const named = [...new Map([...titleNamed, ...namedFighters(row.summary, names, false)].map((fighter) => [fighter.id, fighter])).values()];
+    const words = new Set(normName(row.title).split(" ").filter((word) => word.length >= 3 && !STOP.has(word)));
+    const nameWords = new Set(titleNamed.flatMap((fighter) => normName(fighter.name).split(" ")));
+    return [{ ...row, categoryList, named, titleNamed: new Set(titleNamed.map((fighter) => fighter.id)), words, topic: new Set([...words].filter((word) => !nameWords.has(word))) }];
+  });
+  // Words in more than one headline in twenty-five say nothing about which story it is.
+  const frequency = new Map<string, number>();
+  for (const item of items) for (const word of item.topic) frequency.set(word, (frequency.get(word) ?? 0) + 1);
+  const common = new Set([...frequency].filter(([, n]) => n > Math.max(3, items.length / 25)).map(([word]) => word));
+
+  // Oldest first, so each story is credited to whoever had it first. Each is
+  // matched against a story's first report only, so a week of coverage of
+  // one fight doesn't chain into a single story.
+  const stories: Item[][] = [];
+  for (const item of items) {
+    const story = stories.find((group) => group[0].source !== item.source && sameStory(group[0], item, common));
+    if (story) story.push(item);
+    else stories.push([item]);
+  }
+  const shape = (story: Item[]): NewsStory => {
+    // The first report, unless a later one has a picture and it doesn't; a
+    // live blog or results page only when nothing else covers it.
+    const reports = story.filter((item) => !LIVE.test(item.title));
+    const pool = reports.length ? reports : story;
+    const lead = pool.find((item) => item.image) ?? pool[0];
+    const fighters = new Map<string, Named>();
+    for (const item of [lead, ...story]) for (const fighter of item.named) if (item === lead || item.titleNamed.has(fighter.id)) fighters.set(fighter.id, fighter);
+    const outlets = new Set([lead.source]);
+    return {
+      url: lead.url, source: lead.source, title: lead.title, summary: lead.summary || story.find((item) => item.summary)?.summary || "",
+      image: lead.image, published_at: story[0].published_at,
+      fighters: [...fighters.values()].slice(0, 4).map(({ id, name }) => ({ id, name, photo_url: index.fighters.get(id)?.photoUrl ?? null })),
+      event: findEvent(story.map((item) => item.title), story.flatMap((item) => [...item.titleNamed]), story[0].published_at),
+      also: story.filter((item) => item !== lead && !outlets.has(item.source) && outlets.add(item.source)).map(({ source, url, title }) => ({ source, url, title })),
+    };
+  };
+  const score = (story: Item[]) => {
+    const sources = new Set(story.map((item) => item.source)).size;
+    const prominence = Math.max(0, ...story.flatMap((item) => item.named.filter((fighter) => item.titleNamed.has(fighter.id)).map((fighter) => fighter.weight)));
+    const hours = (now - story[0].published_at) / 3_600_000;
+    return (1 + (sources - 1) * 1.5) * (1 + prominence) * 0.5 ** (hours / 18);
+  };
+  const top = stories.filter((story) => now - story[0].published_at <= TOP_HOURS * 3_600_000)
+    .map((story) => ({ story, score: score(story) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, TOP_STORIES)
+    .map(({ story }) => story);
+  const latest = stories.filter((story) => !top.includes(story))
+    .sort((a, b) => b[0].published_at - a[0].published_at)
+    .slice(0, LATEST_STORIES);
+
+  const data = {
+    updated_at: Number(getMeta("news_synced_at")) || null,
+    sources: NEWS_FEEDS.map(({ source }) => {
+      const status = feedStatus(source);
+      return { name: source, ok: Boolean(status?.ok_at) && !status?.error };
+    }),
+    top: top.map(shape),
+    latest: latest.map(shape),
+  };
+  cached = { key, data };
+  return data;
+}

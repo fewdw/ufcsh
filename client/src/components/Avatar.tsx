@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import ProgressiveImage from "./ProgressiveImage";
 
 const SIZES = {
+  tag: "h-4 w-4 text-[6px]",
   xs: "h-7 w-7 text-[9px]",
   sm: "h-9 w-9 text-[11px]",
   md: "h-12 w-12 text-xs",
