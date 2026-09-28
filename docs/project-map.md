@@ -14,7 +14,7 @@ client (`client/`) renders every page.
 | Fighter identity, records, photo URLs | `fighter-identity.ts` |
 | In-memory analytics index | `fight-index.ts` (every completed bout, state entering it) |
 | Leaderboards / Labs | `stats.ts` (fighter cards), `stats-fights.ts` (Fights card: bouts, judges, referees), `labs.ts`, `labs-insights.ts`, `labs-explore.ts` |
-| Matchmaking (title fights, ranked pairings, next opponents after the last card) | `matchmaking.ts` |
+| Matchmaking (title fights, ranked pairings, next opponents after recent cards) | `matchmaking.ts` |
 | News (outlets, relevance, fighter/event tags, story grouping, top stories) | `news.ts`; feeds read in `scrape/news.ts` (`NEWS_FEEDS`) |
 | Profile records and full stat rankings | `records.ts` (`fighterRecords`, `fighterBoard`, `milestonesWithinReach`) |
 | Judges and referees | `officials.ts` (name merging, profiles, directory, search) |
@@ -35,7 +35,7 @@ copy of the local archive (`DATA_DIR`).
 | --- | --- |
 | Shell, routes, header | `App.tsx`, `main.tsx` |
 | More menu and sidebar (Stats, Labs, News, Roster, Matchmaking, Officials, Venues, Leaderboards, Favorites, Report; Graphic and Admin for admins) | `components/MoreNav.tsx`; pages `LeaderboardsPage.tsx`, `ReportPage.tsx`, `GraphicPage.tsx` |
-| Matchmaking page (card builder, Top 15, after the last card) | `pages/MatchmakingPage.tsx` |
+| Matchmaking page (Top 15, recent cards, card builder) | `pages/MatchmakingPage.tsx` |
 | News page (top stories, latest by day, outlet toggles) | `pages/NewsPage.tsx` |
 | Data fetching and polling | `api.ts` (types + `useApi`), `requestCache.ts`, `polling.ts`; early data in `index.html`, link prefetch in `useLinkPrefetch.ts` + `pageRequests.ts`, page chunks in `pages.ts`, answers kept across reloads in `snapshots.ts` |
 | Events and matchups | `pages/EventsPage.tsx`, `pages/FightPage.tsx`, `components/FightRail.tsx`, `components/FightStats.tsx` |

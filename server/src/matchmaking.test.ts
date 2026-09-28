@@ -2,6 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { matchmaking, nextOpponents, pairUp, planDivision, titleChallenger, type Booking, type Fighter, type Result } from "./matchmaking.ts";
 
+import { prepared } from "./db.ts";
+import { todayIso } from "./util.ts";
+
 const TODAY = "2026-09-28";
 const DIV = "Lightweight";
 
@@ -121,8 +124,25 @@ test("the matchmaking view uses each fighter once per division and suggests no o
     assert.equal(new Set(ids).size, ids.length, division.division);
     for (const idle of division.idle) assert.ok(!ids.includes(idle.fighter.id));
   }
-  for (const bout of view.last_event?.bouts ?? []) {
+  for (const bout of view.recent_events.flatMap((event) => event.bouts)) {
     assert.equal(bout.sides.length, 2);
     for (const side of bout.sides) assert.ok(side.next.reason);
   }
+});
+
+
+test("recent cards show four completed events, newest first, including breaks in the schedule", () => {
+  const events = matchmaking().recent_events;
+  assert.equal(events.length, 4);
+  assert.equal(new Set(events.map((event) => event.id)).size, 4);
+  for (const [i, event] of events.entries()) {
+    assert.ok(event.bouts.length > 0);
+    assert.ok(event.date <= todayIso());
+    if (i) assert.ok(events[i - 1].date >= event.date);
+    const row = prepared("SELECT complete FROM events WHERE id = ?").get(event.id) as { complete: number };
+    assert.equal(row.complete, 1);
+  }
+  // No completed card has been skipped, even when its date is over four weeks ago.
+  const latest = prepared("SELECT id FROM events WHERE complete = 1 AND date <= ? ORDER BY date DESC, id DESC").all(todayIso()) as { id: string }[];
+  assert.deepEqual(events.map((event) => event.id), latest.slice(0, 4).map((event) => event.id));
 });
