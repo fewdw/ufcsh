@@ -530,6 +530,7 @@ export type StatsDashboard = {
     description: string;
     format: "number" | "percent" | "decimal" | "signed" | "time" | "signedTime" | "currency" | "odds" | "years";
     rows: StatsLeader[];
+    order?: "high" | "low";
   }[];
 };
 

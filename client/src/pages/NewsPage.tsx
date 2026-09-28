@@ -32,7 +32,7 @@ const external = { target: "_blank", rel: "noopener noreferrer" } as const;
 function Row({ story }: { story: NewsStory }) {
   const also = story.also.map((other) => other.source).join(", ");
   return (
-    <article className="border-t border-zinc-100 py-3.5 first:border-t-0">
+    <article className="border-t border-zinc-100 py-3.5 first:border-t-0 not-dark:border-zinc-200">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px] leading-4">
         <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-zinc-900">
           {story.source}

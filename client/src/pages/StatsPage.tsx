@@ -117,7 +117,7 @@ function MethodSelect({ label, value, onChange }: { label: string; value: string
 // families inside a select are grouped, so a long menu still reads as a menu
 // rather than a wall of options.
 
-function CardControls({ boardKey, settings, update, division }: { boardKey: string; settings: StatsSettings; update: Update; division: string }) {
+function CardControls({ boardKey, order, settings, update, division }: { boardKey: string; order?: "high" | "low"; settings: StatsSettings; update: Update; division: string }) {
   const actionSupportsAttempts = !["knockdowns", "submissions", "control"].includes(settings.actionType);
   const actionIsPercent = settings.actionBasis === "percent";
   const scoredLabel = settings.actionType === "knockdowns" ? "Scored"
@@ -602,6 +602,12 @@ function CardControls({ boardKey, settings, update, division }: { boardKey: stri
           ) : null}
         </>
       ) : null}
+      {order ? (
+        <Select label="Order" value={order} onChange={(value) => update(`${boardKey}Order` as "recordOrder", value as "high" | "low")}>
+          <option value="high">Highest first</option>
+          <option value="low">Lowest first</option>
+        </Select>
+      ) : null}
     </div>
   );
 }
@@ -612,9 +618,6 @@ const GROUPS = {
   record: { key: "recordGroup", options: ["bouts", "wins", "losses"], label: "Bouts, wins or losses" },
   fights: { key: "fightsGroup", options: ["fights", "judges", "referees"], label: "Fights, judges or referees" },
 } as const;
-
-/** Formats a bar can honestly stand behind: magnitudes that start at zero. */
-const BARRED = new Set(["number", "percent", "decimal", "years"]);
 
 const initials = (name: string) => name.split(" ").filter(Boolean).map((part) => part[0]).slice(0, 2).join("").toUpperCase();
 
@@ -643,11 +646,6 @@ function Leaderboard({
 }) {
   const rowsScroll = useRouteScrollRestoration<HTMLDivElement>(`stats-board:${board.key}`);
   const group = board.key in GROUPS ? GROUPS[board.key as keyof typeof GROUPS] : null;
-  // A bar under each row, scaled to 100% or to the leader, wherever the list
-  // runs from most to least of something that starts at zero.
-  const values = board.rows.map((row) => row.value);
-  const barred = BARRED.has(board.format) && values.length > 1 && values.every((value) => value >= 0) && values[0] >= values[values.length - 1];
-  const scale = board.format === "percent" ? 100 : Math.max(...values, 0);
   return (
     // Three rows — title with its definition, controls, list — shared through subgrid
     // with every card on the same line of the grid: each header row takes the
@@ -675,7 +673,7 @@ function Leaderboard({
         <p className="mt-1 text-[11px] leading-4 text-zinc-400">{board.description}</p>
       </div>
       <div className="border-b border-zinc-100 px-4 pb-3">
-        <CardControls boardKey={board.key} settings={settings} update={update} division={division} />
+        <CardControls boardKey={board.key} order={board.order} settings={settings} update={update} division={division} />
       </div>
       <div ref={rowsScroll} className="h-[30rem] min-h-0 divide-y divide-zinc-100 overflow-y-auto">
         {board.rows.length === 0 ? (
@@ -713,12 +711,6 @@ function Leaderboard({
             <span className="pt-0.5 text-right text-sm font-semibold tabular-nums text-zinc-950">
               {formatValue(row.value, board.format)}
             </span>
-            {/* Under the name and the number alike, so every track is one length. */}
-            {barred ? (
-              <span className="col-span-2 col-start-3 mt-1 block h-1 overflow-hidden rounded-full bg-zinc-100" aria-hidden="true">
-                <span className={`block h-full rounded-full ${podium ? "bg-zinc-400" : "bg-zinc-300"}`} style={{ width: `${scale > 0 ? Math.max(2, Math.min(100, (row.value / scale) * 100)) : 0}%` }} />
-              </span>
-            ) : null}
           </Link>
           );
         })}
