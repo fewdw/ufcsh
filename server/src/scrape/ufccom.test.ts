@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { athleteSlug, parseAthleteImages, parseCardRounds, parseFightIds, parseRankingsHtml, parseSearchAthlete, scrapeFighterImages } from "./ufccom.ts";
+import { athleteSlug, parseAthleteDivision, parseAthleteImages, parseAthleteStatus, parseCardRounds, parseFightIds, parseNewestAthletes, parseRankingsHtml, parseSearchAthlete, scrapeFighterImages } from "./ufccom.ts";
 
 const MEDIA_LABELS = [
   "Men's Pound-for-Pound",
@@ -278,4 +278,59 @@ test("a bout's rounds are kept only when the feed states them consistently", () 
   assert.deepEqual(parseCardRounds({}, [1]), []);
   // A page listing a bout the feed does not carry means the feed is another card.
   assert.deepEqual(parseCardRounds(feed, [1, 12345]), []);
+});
+
+test("reads an athlete's roster status in English or French", () => {
+  const page = (name: string, label: string, status: string) =>
+    `<h1 class="hero-profile__name">${name}</h1><div class="c-bio__field"><div class="c-bio__label">Lieu de naissance</div><div class="c-bio__text">Kazakhstan</div></div>
+     <div class="c-bio__field"><div class="c-bio__label">${label}</div><div class="c-bio__text">${status}</div></div>`;
+  assert.deepEqual(parseAthleteStatus(page("Lyman Good", "Status", "Ne se bat pas")), { name: "Lyman Good", status: "not_fighting" });
+  assert.deepEqual(parseAthleteStatus(page("Lyman Good", "Status", "Not Fighting")), { name: "Lyman Good", status: "not_fighting" });
+  assert.deepEqual(parseAthleteStatus(page("Islam Makhachev", "Statut", "Actif")), { name: "Islam Makhachev", status: "active" });
+  assert.deepEqual(parseAthleteStatus(page("Mariya Agapova", "Status", "Retired")), { name: "Mariya Agapova", status: null });
+});
+
+// Trimmed from https://www.ufc.com/search?type=athletes&query= (2026-09-28).
+const NEWEST_ATHLETES = `<div class="view-header">1 - 21 of 4196</div><ul class="l-flex--3col-1to3 solr-athletes-list">
+  <li class="l-flex__item solr-athletes-list__item"><div class="solr-athlete-card">
+    <div class="node node--type-athlete node--view-mode-solr-search-results ds-1col clearfix">
+    <a href="https://www.ufc.com/athlete/bruce-whitehead">
+      <div class="field field--name-node-title field--type-ds field--label-hidden field__item"><h2>
+  Bruce Whitehead
+</h2></div>
+      <span class="c-listing-athlete__record">0 - 0 - 0 | (W - L - D)</span>
+      <div class="field field--name-origin field--type-address field--label-hidden field__item">  Houston
+United States
+</div></a></div></div></li>
+  <li class="l-flex__item solr-athletes-list__item"><div class="solr-athlete-card">
+    <div class="node node--type-athlete node--view-mode-solr-search-results ds-1col clearfix">
+    <a href="https://www.ufc.com/athlete/alvi-dasuyev">
+      <div class="field field--name-image field--type-entity-reference field--label-hidden field__item"><div class="c-embedded-single-media"><div class="c-embedded-single-media__item">
+        <img src="https://ufc.com/images/styles/inline/s3/2026-09/DASUYEV_ALVI_09-22.png?itok=BJYD95NU" width="520" height="325" loading="lazy" class="image-style-inline" />
+      </div></div></div>
+      <div class="field field--name-node-title field--type-ds field--label-hidden field__item"><h2>
+  Alvi Dasuyev
+</h2></div>
+      <div class="field field--name-stats-weight-class field--type-entity-reference field--label-hidden field__items"><div class="field__item">Welterweight</div></div>
+      <span class="c-listing-athlete__record">1 - 0 - 0 | (W - L - D)</span>
+    </a></div></div></li>
+</ul>`;
+
+test("reads ufc.com's newest athlete profiles in order", () => {
+  assert.deepEqual(parseNewestAthletes(NEWEST_ATHLETES), [
+    { slug: "bruce-whitehead", name: "Bruce Whitehead" },
+    { slug: "alvi-dasuyev", name: "Alvi Dasuyev" },
+  ]);
+  assert.deepEqual(parseNewestAthletes("<div class=\"view-header\">0 results</div>"), []);
+});
+
+test("reads a new athlete's division in English, or none yet", () => {
+  // Trimmed from https://www.ufc.com/athlete/akbar-abdullaev (served in French).
+  const hero = (division: string) => `<p class="hero-profile__tag">Actif</p><h1 class="hero-profile__name">Akbar Abdullaev</h1>
+    <div class="hero-profile__division"><p class="hero-profile__division-title">${division}</p><p class="hero-profile__division-body">1-0-0 (W-L-D)</p></div>`;
+  assert.equal(parseAthleteDivision(hero("Poids légers Division")), "Lightweight");
+  assert.equal(parseAthleteDivision(hero("Poids mi-moyens Division")), "Welterweight");
+  assert.equal(parseAthleteDivision(hero("Poids mi-lourds Division")), "Light Heavyweight");
+  assert.equal(parseAthleteDivision(hero("Women's Strawweight Division")), "Women's Strawweight");
+  assert.equal(parseAthleteDivision(hero("")), null);
 });

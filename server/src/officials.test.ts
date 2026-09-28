@@ -34,6 +34,12 @@ test("a judge's figures are counted over the cards shown, with their samples", (
     const mine = pick(row.card.f1, row.card.f2);
     assert.ok(row.others.every((other: any) => pick(other.f1, other.f2) !== mine));
   }
+  // Agreement is a percentage, left unranked on too few cards.
+  for (const judge of directory.judges as any[]) {
+    for (const rate of [judge.agree_all, judge.agree_judges, judge.agree_fans]) assert.ok(rate === null || (rate >= 0 && rate <= 100));
+    if (judge.n < 50) assert.equal(judge.agree_judges, null);
+    if (judge.fan_cards < 5) assert.equal(judge.agree_fans, null);
+  }
   const filtered = judgeProfile(busiest.slug, new URLSearchParams({ result: "split" })) as any;
   assert.ok(filtered.rows.every((row: any) => row.verdict === "split"));
 });

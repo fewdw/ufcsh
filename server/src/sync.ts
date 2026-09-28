@@ -29,6 +29,8 @@ import { correctOfficialJudges } from "./verified-scorecard-corrections.ts";
 import { catchweights, eventInfobox, eventSection, fetchArticleByTitle, fetchEventArticle, fetchFighterArticle, recordCatchweight, weightMisses } from "./scrape/wikipedia.ts";
 import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
 import { syncVerdictScorecards } from "./verdict-import.ts";
+import { syncRosterMoves, syncUfcSignings, syncUfcStatuses } from "./roster-moves.ts";
+import { syncNews } from "./news.ts";
 import { americanLine, impliedProbability } from "./fight-index.ts";
 
 const HOUR = 3600_000;
@@ -1540,6 +1542,17 @@ export async function tick(): Promise<void> {
     if (metaAgeMs("roster_synced_at") > DAY || getMeta("roster_stale") === "1") {
       await guarded("roster", syncRoster);
     }
+
+    // 2b. Signings and releases: Wikipedia's list is edited through the day,
+    //     so its revision is checked often and the page read only on a change;
+    //     ufc.com's athlete pages show departures before anyone reports them.
+    if (metaAgeMs("roster_moves_checked_at") > 10 * 60_000) await guarded("roster_moves", syncRosterMoves);
+    //     ufc.com lists its newest athlete profiles first: one page every 5
+    //     minutes sees a signing as soon as its profile exists.
+    if (metaAgeMs("ufc_signings_checked_at") > 5 * 60_000) await guarded("ufc_signings", syncUfcSignings);
+    //     News: every outlet's feed at once, every ten minutes.
+    if (metaAgeMs("news_checked_at") > 10 * 60_000) await guarded("news", () => syncNews());
+    await guarded("ufc_statuses", () => syncUfcStatuses());
 
     const events = db.prepare("SELECT id, name, date, complete, detail_fetched_at FROM events ORDER BY date DESC").all() as EventRow[];
     const now = Date.now();

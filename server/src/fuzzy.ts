@@ -105,3 +105,33 @@ export function splitMatchup(query: string): [string, string] | null {
   if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
   return [parts[0], parts[1]];
 }
+
+/**
+ * The rows a typed filter finds, by the rules the site's list filters share
+ * (`client/src/search.ts`): spacing, punctuation and word order never matter
+ * ("tmobile" finds "T-Mobile Arena"), words may be cut short, and only when
+ * nothing matches that way may a longer word carry a typo or two.
+ */
+export function searchList<T>(rows: T[], query: string, text: (row: T) => string): T[] {
+  const normalized = normName(query);
+  if (!normalized) return rows;
+  const words = normalized.split(" ");
+  const haystacks = rows.map((row) => normName(text(row)));
+  const strict = rows.filter((_, index) => containsTyped(haystacks[index], normalized));
+  if (strict.length) return strict;
+  return rows.filter((_, index) => {
+    const targets = haystacks[index].split(" ");
+    return words.every((word) => targets.some((target) => wordDistance(word, target) !== Infinity));
+  });
+}
+
+/** The first half of `searchList`, for a row tested on its own: `text` holds
+ *  every word of `query` (both already `normName`d), spacing ignored. */
+export function containsTyped(text: string, query: string): boolean {
+  if (text.includes(query)) return true;
+  const compact = text.replace(/ /g, "");
+  if (compact.includes(query.replace(/ /g, ""))) return true;
+  // A word of one or two letters has to start a word, or "t" would be found anywhere.
+  const words = text.split(" ");
+  return query.split(" ").every((word) => (word.length > 2 ? compact.includes(word) : words.some((target) => target.startsWith(word))));
+}

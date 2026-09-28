@@ -1,17 +1,16 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentType } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentType, type MouseEvent } from "react";
 import { Link, Route, Routes, useLocation } from "react-router-dom";
 import AccountButton from "./components/AccountButton";
 import CmdK from "./components/CmdK";
 import SearchGlyph from "./components/SearchGlyph";
 import LiveMatchup from "./components/LiveMatchup";
 import { segmentedIdle, segmentedSelected } from "./components/segmented";
-import { Moon, ShieldCheck, Sun } from "lucide-react";
-import { accountsEnabled, useAccount } from "./auth";
-import { useAdminResource, type AdminSession } from "./admin";
+import { ChevronDown, Moon, Sun } from "lucide-react";
+import { accountsEnabled } from "./auth";
+import { inMore, MORE_HOME, MoreGroups, MoreLayout } from "./components/MoreNav";
 import { useSettings, withRanking } from "./settings";
 import { prefetch } from "./api";
 import { useLinkPrefetch, warmSections } from "./useLinkPrefetch";
-import { DEFAULT_STATS_REQUEST } from "./statsDefaults";
 import { pages, type PageLoader } from "./pages";
 import RouteErrorBoundary from "./components/RouteErrorBoundary";
 import ParlaySlip from "./components/ParlaySlip";
@@ -44,20 +43,65 @@ const VenuePage = page(pages.venue, module => module.default);
 const OfficialsPage = page(pages.directories, module => module.OfficialsPage);
 const VenuesPage = page(pages.directories, module => module.VenuesPage);
 const InfoPage = page(pages.info, module => module.default);
+const RosterPage = page(pages.roster, module => module.default);
+const MatchmakingPage = page(pages.matchmaking, module => module.default);
+const NewsPage = page(pages.news, module => module.default);
+const LeaderboardsPage = page(pages.leaderboards, module => module.default);
+const ReportPage = page(pages.report, module => module.default);
+const GraphicPage = page(pages.graphic, module => module.default);
 
 const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
 
-/** Admin is a fourth pill only for the few who have it. On a phone it is the
- *  shield alone, so the row still fits beside the account picture. */
-function AdminNavItem({ active }: { active: boolean }) {
-  const { isLoaded, user } = useAccount();
-  const { data } = useAdminResource<AdminSession>(isLoaded && user ? "/api/admin/session" : null);
-  if (!data?.admin) return null;
-  return <Link to="/admin" aria-current={active ? "page" : undefined} aria-label="Admin" title="Admin"
-    className={`${NAV_ITEM} flex items-center ${active ? segmentedSelected : segmentedIdle}`}>
-    <ShieldCheck className="h-4 w-4 sm:hidden" aria-hidden="true" />
-    <span className="hidden sm:inline">Admin</span>
-  </Link>;
+/** The rest of the site, one pill after the sections. From `md` up a mouse
+ *  opens its groups on hover and a press opens Stats; a tap or a key opens
+ *  them. On a phone they open as a panel across the width of the header. */
+function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const escape = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
+  }, [open]);
+  const wide = () => window.matchMedia("(min-width: 768px)").matches;
+  const press = (e: MouseEvent<HTMLAnchorElement>) => {
+    const pointer = (e.nativeEvent as PointerEvent).pointerType;
+    if (!wide() || pointer !== "mouse") { e.preventDefault(); setOpen(v => !v); }
+    else if (active) e.preventDefault();
+  };
+  return <div ref={ref} className="md:relative"
+    onPointerEnter={(e) => { if (e.pointerType === "mouse" && wide()) setOpen(true); }}
+    onPointerLeave={(e) => { if (e.pointerType === "mouse") setOpen(false); }}>
+    <Link to={MORE_HOME} onClick={press} aria-expanded={open} aria-haspopup="true"
+      aria-current={active ? "page" : undefined}
+      className={`${NAV_ITEM} flex items-center gap-0.5 ${active ? segmentedSelected : segmentedIdle}`}>
+      More
+      <ChevronDown className={`hidden h-3.5 w-3.5 transition-transform md:block ${open ? "rotate-180" : ""}`} aria-hidden="true" />
+    </Link>
+    {/* The top padding bridges the gap to the button, so a pointer moving
+        down onto the menu never leaves it. */}
+    {open ? <div className="absolute inset-x-2 top-full z-50 pt-1.5 md:inset-x-auto md:left-0">
+      <div className="grid grid-cols-2 gap-x-2 gap-y-3 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg md:w-max lg:grid-cols-4">
+        <MoreGroups group={(label, links) => (
+          <div key={label} className="md:min-w-36">
+            <p className="mx-3 mb-1 border-b border-zinc-200 pb-1.5 pt-1 text-xs font-bold uppercase tracking-[0.08em] text-zinc-900">{label}</p>
+            <ul>{links}</ul>
+          </div>
+        )} item={(section, current) => (
+          <li key={section.href}>
+            <Link to={section.href} aria-current={current ? "page" : undefined}
+              className={`block rounded-lg px-3 py-2 text-sm transition-colors ${current ? "bg-zinc-100 font-medium text-zinc-900" : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"}`}>
+              {section.label}
+            </Link>
+          </li>
+        )} />
+      </div>
+    </div> : null}
+  </div>;
 }
 
 function Header({ onSearch }: { onSearch: () => void }) {
@@ -80,23 +124,18 @@ function Header({ onSearch }: { onSearch: () => void }) {
     return () => observer.disconnect();
   }, []);
   const isRankings = pathname.startsWith("/rankings");
-  const isStats = pathname.startsWith("/stats");
-  // Labs is a mode of Statistics rather than a top-level destination, so the
-  // Stats pill stays lit while it is open and the switch lives on the page.
-  const isLabs = pathname.startsWith("/labs");
-  const isAdmin = pathname.startsWith("/admin");
+  const isMore = inMore(pathname);
   // A profile belongs to no section of the nav, so none of them is lit.
   const isProfile = pathname.startsWith("/profiles");
   const links = [
     // Pointing at a section starts its code and its first data, so a tap
     // lands on it loaded.
-    { href: "/", label: "Events", active: !isRankings && !isStats && !isLabs && !isProfile && !isAdmin, load: () => { warmSections(settings.rankingSource); return pages.events(); } },
+    { href: "/", label: "Events", active: !isRankings && !isProfile && !isMore, load: () => { warmSections(settings.rankingSource); return pages.events(); } },
     { href: "/rankings", label: "Rankings", active: isRankings, load: () => { prefetch(withRanking("/api/rankings", settings.rankingSource)); return pages.rankings(); } },
-    { href: "/stats", label: "Stats", active: isStats || isLabs, load: () => { prefetch(DEFAULT_STATS_REQUEST); return pages.stats(); } },
   ];
 
   return (
-    <header className="shrink-0 border-b border-zinc-200 bg-white">
+    <header className="relative shrink-0 border-b border-zinc-200 bg-white">
       {/* One row, everything in normal flow: the logo and the nav on the left,
           the actions on the right, and the bout on now taking whatever is
           between them. Nothing is positioned over anything else, so no width
@@ -121,7 +160,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
               {link.label}
             </Link>
           ))}
-          {accountsEnabled ? <AdminNavItem active={isAdmin} /> : null}
+          <MoreMenu pathname={pathname} active={isMore} />
         </nav>
 
         {/* The middle of the row from `md` up, and its own line below that —
@@ -235,16 +274,25 @@ export default function App() {
           <Route path="/fights/:fightId" element={<EventsPage />} />
           <Route path="/fighters/:fighterId" element={<FighterPage />} />
           <Route path="/rankings" element={<RankingsPage />} />
-          <Route path="/stats" element={<StatsPage />} />
-          <Route path="/labs" element={<LabsPage />} />
-          <Route path="/admin" element={<AdminPage />} />
-          <Route path="/admin/bugs" element={<AdminPage />} />
+          <Route element={<MoreLayout />}>
+            <Route path="/stats" element={<StatsPage />} />
+            <Route path="/labs" element={<LabsPage />} />
+            <Route path="/roster" element={<RosterPage />} />
+            <Route path="/favorites" element={null} />
+            <Route path="/officials" element={<OfficialsPage />} />
+            <Route path="/judges/:slug" element={<JudgePage />} />
+            <Route path="/referees/:slug" element={<RefereePage />} />
+            <Route path="/venues" element={<VenuesPage />} />
+            <Route path="/venues/:slug" element={<VenuePage />} />
+            <Route path="/matchmaking" element={<MatchmakingPage />} />
+            <Route path="/news" element={<NewsPage />} />
+            <Route path="/leaderboards" element={<LeaderboardsPage />} />
+            <Route path="/report" element={<ReportPage />} />
+            <Route path="/graphic" element={<GraphicPage />} />
+            <Route path="/admin" element={<AdminPage />} />
+            <Route path="/admin/bugs" element={<AdminPage />} />
+          </Route>
           <Route path="/profiles/:handle" element={<ProfilePage />} />
-          <Route path="/judges/:slug" element={<JudgePage />} />
-          <Route path="/referees/:slug" element={<RefereePage />} />
-          <Route path="/officials" element={<OfficialsPage />} />
-          <Route path="/venues" element={<VenuesPage />} />
-          <Route path="/venues/:slug" element={<VenuePage />} />
           <Route path="/info" element={<InfoPage />} />
           <Route path="/sign-in/*" element={<AuthPage mode="sign-in" />} />
           <Route path="/sign-up/*" element={<AuthPage mode="sign-up" />} />

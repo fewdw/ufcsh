@@ -21,6 +21,7 @@ const stats = (query: string) => getStats(new URLSearchParams(query)) as {
     rows: {
       fighter_id: string; name: string; value: number; detail: string; rank: number | null;
       chips: { label: string; outcome: string | null; fight_id: string; note?: string }[];
+      href?: string; opponent?: { name: string; verb: string };
     }[];
   }[];
   divisions: string[];
@@ -257,6 +258,10 @@ test("every board returns ranked, ordered rows and a description", () => {
     "bettingMode=avgLine", "bettingMode=favorite&favoriteMetric=losses",
     "roundFinishMetric=percent&roundFinishPercentOf=allResults",
     "boutType=title", "cardPosition=main", "scheduledRounds=5", "statsUntil=2015",
+    "recordGroup=bouts&boutsMode=mainEvents", "recordGroup=bouts&boutsMode=bonuses&bonusMetric=percent",
+    "fightsMode=upsets", "fightsMode=action&fightsAction=perMinute", "fightsMode=fastest&fastestMethod=ko",
+    "fightsGroup=judges", "fightsGroup=judges&officialsOrder=low", "fightsGroup=judges&judgesMode=dissents",
+    "fightsGroup=referees&refereesMode=stoppageTime", "fightsGroup=referees&refereesMode=bouts",
   ];
   for (const query of queries) {
     for (const entry of stats(query).leaderboards) {
@@ -356,7 +361,10 @@ test("comparing named fighters returns exactly those fighters", () => {
   assert.ok(silva);
   for (const entry of stats(`fighterIds=${jones},${silva}&minimumFights=1`).leaderboards) {
     for (const row of entry.rows) {
-      assert.ok([jones, silva].includes(row.fighter_id), `${entry.key} returned ${row.name}`);
+      // The Fights card lists bouts: each must be one of theirs.
+      const fight = row.href?.startsWith("/fights/") ? index.byId.get(row.href.slice(8)) : null;
+      if (fight) assert.ok(fight.sides.some((side) => [jones, silva].includes(side.id)), `${entry.key} returned ${row.name}`);
+      else assert.ok([jones, silva].includes(row.fighter_id), `${entry.key} returned ${row.name}`);
     }
   }
 });
@@ -365,9 +373,89 @@ test("keeping full lists pins selected fighters in order above the ranking", () 
   const selected = ["07f72a2a7591b409", index.fights.flatMap((fight) => fight.sides).find((side) => side.name === "Anderson Silva")?.id].filter(Boolean) as string[];
   assert.equal(selected.length, 2);
   for (const entry of stats(`fighterIds=${selected.join(",")}&keepFullLists=1&minimumFights=1&limit=10`).leaderboards) {
+    if (entry.key === "fights") continue;
     assert.deepEqual(entry.rows.slice(0, selected.length).map((row: any) => row.fighter_id), selected, entry.key);
     assert.ok(entry.rows.length >= 10, `${entry.key} did not retain its full leaderboard`);
     assert.equal(new Set(entry.rows.map((row: any) => row.fighter_id)).size, entry.rows.length, `${entry.key} duplicated a pinned fighter`);
+  }
+});
+
+test("most main events matches a direct count", () => {
+  const top = board("minimumFights=1&recordGroup=bouts&boutsMode=mainEvents", "record").rows[0];
+  const count = index.fights.filter((fight) => fight.mainEvent && fight.sides.some((side) => side.id === top.fighter_id)).length;
+  assert.equal(top.value, count, `${top.name} main events`);
+});
+
+test("post-fight bonuses match the stored flags: performance to the winner, fight of the night to both", () => {
+  const top = board("minimumFights=1&recordGroup=bouts&boutsMode=bonuses", "record").rows[0];
+  const { c } = one<{ c: number }>(`
+    SELECT SUM(CASE WHEN f.perf_bonus > 0 AND ((f.f1_id = ? AND f.f1_outcome = 'win') OR (f.f2_id = ? AND f.f2_outcome = 'win')) THEN 1 ELSE 0 END)
+         + SUM(CASE WHEN f.fotn_bonus > 0 THEN 1 ELSE 0 END) AS c
+    FROM fights f WHERE f.f1_id = ? OR f.f2_id = ?
+  `, top.fighter_id, top.fighter_id, top.fighter_id, top.fighter_id);
+  assert.equal(top.value, c, `${top.name} bonuses`);
+});
+
+test("a disputed decision's gap is the spread of its own judges' cards, and one card named the loser", () => {
+  const rows = board("fightsMode=disputed", "fights").rows;
+  assert.ok(rows.length > 10);
+  for (const row of rows.slice(0, 20)) {
+    const fight = index.byId.get(row.href!.slice(8))!;
+    const judges = (JSON.parse(fight.row.detail_json).judges as { f1Score: number; f2Score: number }[]).map((card) => card.f1Score - card.f2Score);
+    assert.equal(row.value, Math.max(...judges) - Math.min(...judges), row.name);
+    const winner = fight.sides[0].outcome === "win" ? 1 : fight.sides[1].outcome === "win" ? -1 : 0;
+    assert.ok(judges.some((margin) => Math.sign(margin) !== winner), `${row.name}: every card agreed`);
+  }
+});
+
+test("upsets, finishes and action rank the bouts by what they name", () => {
+  for (const row of board("fightsMode=upsets", "fights").rows) {
+    const fight = index.byId.get(row.href!.slice(8))!;
+    const winner = fight.sides.find((side) => side.outcome === "win")!;
+    const loser = fight.sides.find((side) => side !== winner)!;
+    assert.equal(winner.name, row.name);
+    assert.ok(winner.prob! < loser.prob!, `${row.name} was not the underdog`);
+    assert.equal(row.value, winner.close);
+  }
+  for (const row of board("fightsMode=fastest&fastestMethod=sub", "fights").rows) {
+    const fight = index.byId.get(row.href!.slice(8))!;
+    assert.equal(fight.method, "SUB");
+    assert.equal(row.value, fight.elapsed);
+  }
+  for (const row of board("fightsMode=action", "fights").rows.slice(0, 10)) {
+    const fight = index.byId.get(row.href!.slice(8))!;
+    assert.equal(row.value, fight.sides[0].actions.significantStrikes!.scored + fight.sides[1].actions.significantStrikes!.scored);
+  }
+});
+
+test("officials' rates are recomputed from the cards and results of their own bouts", () => {
+  const judge = board("includeWomen=1&fightsGroup=judges", "fights").rows[0];
+  let compared = 0, agreed = 0;
+  for (const fight of index.fights) {
+    const cards = (fight.row.detail_json ? JSON.parse(fight.row.detail_json).judges ?? [] : []) as { judge: string; f1Score: number; f2Score: number }[];
+    const mine = cards.find((card) => card.judge?.trim() === judge.name);
+    if (!mine) continue;
+    for (const other of cards) {
+      if (other === mine) continue;
+      compared += 1;
+      if (Math.sign(other.f1Score - other.f2Score) === Math.sign(mine.f1Score - mine.f2Score)) agreed += 1;
+    }
+  }
+  assert.ok(compared > 0, judge.name);
+  assert.equal(judge.value, Math.round((agreed / compared) * 1000) / 10, judge.name);
+
+  const referee = board("includeWomen=1&fightsGroup=referees&refereesMode=bouts", "fights").rows[0];
+  const refereed = index.fights.filter((fight) => fight.row.detail_json && JSON.parse(fight.row.detail_json).methodInfo?.Referee?.trim() === referee.name);
+  assert.equal(referee.value, refereed.length, referee.name);
+});
+test("the Fights card filters like the others, and with fighters picked lists only their bouts", () => {
+  const all = board("fightsMode=fastest", "fights").rows;
+  const recent = board("fightsMode=fastest&statsSince=2020", "fights").rows;
+  for (const row of recent) assert.ok(index.byId.get(row.href!.slice(8))!.date >= "2020-01-01");
+  assert.notDeepEqual(all.map((row) => row.href), recent.map((row) => row.href));
+  const jones = "07f72a2a7591b409";
+  for (const row of board(`fightsMode=upsets&fighterIds=${jones}`, "fights").rows) {
+    assert.ok(index.byId.get(row.href!.slice(8))!.sides.some((side) => side.id === jones));
   }
 });
 
@@ -895,7 +983,7 @@ test("a record entering a bout ignores time away from the promotion", () => {
 
 test("every board key is stable and unique", () => {
   const keys = stats("").leaderboards.map((entry) => entry.key);
-  assert.deepEqual(keys, ["record", "finishing", "output", "context", "market"]);
+  assert.deepEqual(keys, ["record", "finishing", "output", "context", "market", "fights"]);
 });
 
 test("no two menu entries produce the same leaderboard", () => {
@@ -904,6 +992,9 @@ test("no two menu entries produce the same leaderboard", () => {
   const selections = [
     "recordGroup=bouts&boutsMode=total", "recordGroup=bouts&boutsMode=span",
     "recordGroup=bouts&boutsMode=titleFights", "recordGroup=bouts&boutsMode=divisions",
+    "recordGroup=bouts&boutsMode=mainEvents", "recordGroup=bouts&boutsMode=bonuses",
+    "recordGroup=bouts&boutsMode=bonuses&bonusKind=performance", "recordGroup=bouts&boutsMode=bonuses&bonusKind=fotn",
+    "recordGroup=bouts&boutsMode=bonuses&bonusMetric=percent",
     "winsMode=total", "winsMode=total&winsByMetric=percent", "winsMode=streak",
     "winsMode=streak&streakKind=unbeaten", "winsMode=titleWins", "winsMode=titleDefenses",
     "winsMode=titleDefenses&defenseScope=consecutive", "winsMode=championWins", "winsMode=championWins&championScope=current",

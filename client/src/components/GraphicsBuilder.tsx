@@ -123,7 +123,12 @@ const chipIdle = "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 h
  * drawn in the browser from data the site already serves, and every image
  * carries its source line, its date and the site's mark.
  */
-export default function GraphicsBuilder({ initial, onClose }: { initial: GraphicSubject; onClose: () => void }) {
+export default function GraphicsBuilder({ initial, onClose, inline = false }: {
+  initial: GraphicSubject;
+  /** Absent on the /graphic page, where the builder is the page. */
+  onClose?: () => void;
+  inline?: boolean;
+}) {
   const { settings } = useSettings();
   const dialog = useRef<HTMLDialogElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -149,6 +154,7 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
   const [typing, setTyping] = useState(false);
 
   useEffect(() => {
+    if (inline) return;
     const node = dialog.current;
     const trigger = document.activeElement;
     node?.showModal();
@@ -156,7 +162,7 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
       node?.close();
       if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus({ preventScroll: true });
     };
-  }, []);
+  }, [inline]);
 
   // With nothing chosen, start on the headline bout of the card the site opens on.
   const { data: events } = useApi<EventListItem[]>(subject ? null : "/api/events");
@@ -340,11 +346,8 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
   );
   const statusLine = status ? <span role="status" className={`text-xs ${status.tone === "ok" ? "text-emerald-700" : "text-rose-600"}`}>{status.text}</span> : null;
   const disclaimer = "Fighter photos belong to their owners; include them only where you are entitled to share them. Each image links back to its page on UFC.sh.";
-  return (
-    <dialog ref={dialog} aria-labelledby="graphics-title"
-      onCancel={(event) => { event.preventDefault(); onClose(); }}
-      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
-      className="search-dialog fixed inset-0 m-auto h-dvh max-h-none w-screen max-w-none overflow-hidden rounded-none border-zinc-200 bg-white p-0 text-zinc-900 shadow-2xl sm:h-[min(calc(100dvh-2rem),56rem)] sm:w-[min(calc(100vw-2rem),72rem)] sm:rounded-2xl sm:border">
+  const body = (
+    <>
       {accountsEnabled ? <AccountBridge url={mineUrl} onAccount={setAccount} onMine={setMine} /> : null}
       <div className="flex h-full min-h-0 flex-col">
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-100 px-4 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-5 sm:py-3">
@@ -352,7 +355,7 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
             <h2 id="graphics-title" className={`${DIALOG_TITLE} flex items-center gap-2`}><ImageIcon className="h-4 w-4 text-zinc-400" aria-hidden="true" />Generate graphic</h2>
             <p className="mt-0.5 hidden truncate text-xs text-zinc-500 sm:block">Choose what it shows, then copy or download. Every image carries its sources and the UFC.sh mark.</p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close graphics builder" className={`-mr-2 ${CLOSE_BUTTON}`}><X className={CLOSE_ICON} aria-hidden="true" /></button>
+          {onClose ? <button type="button" onClick={onClose} aria-label="Close graphics builder" className={`-mr-2 ${CLOSE_BUTTON}`}><X className={CLOSE_ICON} aria-hidden="true" /></button> : null}
         </div>
 
         {/* Phones: the preview stays pinned over the scrolling controls, so a
@@ -473,6 +476,15 @@ export default function GraphicsBuilder({ initial, onClose }: { initial: Graphic
           <div className="flex gap-2">{actions}</div>
         </div>
       </div>
+    </>
+  );
+  if (inline) return <section aria-labelledby="graphics-title" className="h-full overflow-hidden bg-white text-zinc-900">{body}</section>;
+  return (
+    <dialog ref={dialog} aria-labelledby="graphics-title"
+      onCancel={(event) => { event.preventDefault(); onClose?.(); }}
+      onClick={(event) => { if (event.target === event.currentTarget) onClose?.(); }}
+      className="search-dialog fixed inset-0 m-auto h-dvh max-h-none w-screen max-w-none overflow-hidden rounded-none border-zinc-200 bg-white p-0 text-zinc-900 shadow-2xl sm:h-[min(calc(100dvh-2rem),56rem)] sm:w-[min(calc(100vw-2rem),72rem)] sm:rounded-2xl sm:border">
+      {body}
     </dialog>
   );
 }

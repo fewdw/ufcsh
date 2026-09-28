@@ -130,6 +130,39 @@ stats, officials, venues, judges and profiles.
 - Every remaining loading line stays invisible for its first 350 ms
   (`.appear-late`), and a list refreshing in place dims only after 200 ms.
 
+## Roster changes (2026-09-27, `feat/nav-more-menu`)
+
+Measured on a copy of the dev archive, 5-run averages, warm fight index.
+
+- `/api/roster` build: 55 ms → 7.6 ms. Unlinked names ran a spacing-blind
+  scan of every fighter (`replace(norm_name, ' ', '')`) on each request; a
+  signee's own profile is now looked up by id first, so the scan only runs for
+  names with neither. Built at most once a minute and served from memory.
+- ufc.com status queue (sync worker, once a minute): 30 ms to pick the next
+  two fighters due. Each of the ~920 fighters with a bout in the last three
+  years is re-read every 12 hours: ~1,850 athlete pages a day (~100 KB each).
+- `/api/officials` build: 0.4 ms → 8 ms, for each judge's agreement with the
+  rest of the panel and the fans (every card, ~12,000). Built once per fight
+  index version and served from the response cache.
+- `/api/stats` (uncached, default settings): ~320 ms, unchanged in kind; the
+  Fights card (bouts, judges, referees) adds 10–15 ms, one pass over the
+  filtered bouts with each bout's officials looked up by id. Every other card's
+  cost is the shared aggregation loop, as before. Served from the response cache.
+
+- `/api/matchmaking` build: 35 ms (every division's ranked plan plus next
+  opponents for the last card), once per fight-index version, data revision and
+  day; served from the response cache and warmed with the other lists.
+- ufc.com signings: one athlete-search page (newest 21 profiles) every 5
+  minutes, plus one athlete page per new profile until it reads Active (re-read
+  at most every 30 minutes). About 290 requests a day in all.
+- News: 15 outlets every 10 minutes (8 feeds read directly, 7 through Google
+  News, spaced a second apart on that host): ~6 s in the sync worker, ~2,200
+  requests a day. The story list rebuilds in ~175 ms once per read (every item
+  of the last two weeks matched against ~1,000 fighter names, then grouped
+  into stories); each `/api/news` page (30 stories, outlet filter and search
+  applied) then takes under 5 ms and ~25 KB before compression, and is served
+  from the response cache.
+
 ## Judge baseline (2026-09-27, `feat/official-venue-pages`)
 
 Judge profiles compare each rate with every UFC judge in the same years and

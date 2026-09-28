@@ -7,7 +7,6 @@ import MatchupSearch from "../components/MatchupSearch";
 import InfoTip from "../components/InfoTip";
 import LabsCategories from "../components/LabsCategories";
 import RequestNotice from "../components/RequestNotice";
-import StatsModeSwitch from "../components/StatsModeSwitch";
 import { PANEL, compact, formatValue } from "../components/chartTokens";
 import { flagEmoji } from "../flags";
 import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
@@ -849,11 +848,6 @@ export default function LabsPage() {
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
       <main className="mx-auto max-w-[100rem] p-3 pb-8">
-        <section className={`${PANEL} relative z-30 mb-3 flex h-14 items-center gap-3 px-4`}>
-          <StatsModeSwitch />
-          <span className={`ml-auto text-[10px] font-medium text-zinc-500 ${rebuilding || error ? "visible" : "invisible"}`} role="status" aria-hidden={!rebuilding && !error}>{error ? "Previous results" : "Updating…"}</span>
-        </section>
-
         {error ? <div className="mb-3"><RequestNotice onRetry={retry}>Couldn’t update this study. The last successful results are shown.</RequestNotice></div> : null}
         <section className={`${PANEL} overflow-hidden`} aria-label="Combined record">
           <button
@@ -869,7 +863,8 @@ export default function LabsPage() {
               </span>
               <span className="mt-0.5 block truncate text-xs text-zinc-500">What happened to fighters entering matchups like these.</span>
             </span>
-            <ChevronDown className={`ml-auto h-4 w-4 shrink-0 text-zinc-400 transition-transform ${state.open ? "" : "-rotate-90"}`} aria-hidden="true" />
+            <span className={`ml-auto text-[10px] font-medium text-zinc-500 ${rebuilding || error ? "visible" : "invisible"}`} role="status" aria-hidden={!rebuilding && !error}>{error ? "Previous results" : "Updating…"}</span>
+            <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition-transform ${state.open ? "" : "-rotate-90"}`} aria-hidden="true" />
           </button>
 
           {state.open ? (

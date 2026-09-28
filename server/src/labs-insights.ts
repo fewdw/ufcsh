@@ -3,6 +3,7 @@ import { db } from "./db.ts";
 import { fightIndex, type IndexedFight, type IndexedFighter } from "./fight-index.ts";
 import { BOUT_SORTS, boutComparator, boutRow, matches, parseExclusions, parseFilters, type BoutSort, type Observation } from "./labs.ts";
 import { normName } from "./util.ts";
+import { containsTyped } from "./fuzzy.ts";
 
 /** Judges' and road-to-UFC readings of a Lab population, in one pass over
  * the selected bouts. Arrival profiles count observations (fighter-bouts);
@@ -477,7 +478,7 @@ export function getLabsJudgeBouts(params: URLSearchParams): unknown {
       : cards.some((card) => card.judge === value);
     if (!hasValue) return [];
     const searchable = normName(`${fight.sides[0].name} ${fight.sides[1].name} ${fight.eventName} ${cards.map((card) => card.judge).join(" ")}`);
-    if (q && !searchable.includes(q)) return [];
+    if (q && !containsTyped(searchable, q)) return [];
     const signedMargins = cards.map((card) => card.a - card.b);
     return [{
       fight_id: fight.id,
@@ -565,7 +566,7 @@ export function getLabsRoadBouts(params: URLSearchParams): unknown {
     const sideIndex = debut?.sides.findIndex((side) => side.id === fighterId) ?? -1;
     if (!debut || sideIndex < 0) continue;
     const o: Observation = { fight: debut, side: debut.sides[sideIndex], opponent: debut.sides[sideIndex === 0 ? 1 : 0] };
-    if (q && !normName(`${o.side.name} ${o.opponent.name} ${debut.eventName}`).includes(q)) continue;
+    if (q && !containsTyped(normName(`${o.side.name} ${o.opponent.name} ${debut.eventName}`), q)) continue;
       counts.all += 1;
       if (o.side.outcome) counts[o.side.outcome] += 1;
       if (outcome !== "all" && o.side.outcome !== outcome) continue;

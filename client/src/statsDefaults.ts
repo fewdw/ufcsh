@@ -17,7 +17,9 @@ export type StatsSettings = {
   scheduledRounds: "all" | "3" | "5";
   // Record
   recordGroup: "bouts" | "wins" | "losses";
-  boutsMode: "total" | "span" | "titleFights" | "divisions";
+  boutsMode: "total" | "span" | "titleFights" | "mainEvents" | "bonuses" | "divisions";
+  bonusKind: "all" | "performance" | "fotn";
+  bonusMetric: Metric;
   winsMode: "total" | "streak" | "titleWins" | "titleDefenses" | "championWins" | "divisions" | "ageAtWin";
   winsByMethod: Method;
   winsByMetric: Metric;
@@ -71,6 +73,14 @@ export type StatsSettings = {
   bettingMode: "underdog" | "favorite" | "aboveExpectation" | "roi" | "avgLine";
   underdogMetric: "wins" | "rate" | "biggest";
   favoriteMetric: "rate" | "losses";
+  // Fights: bouts, judges and referees
+  fightsGroup: "fights" | "judges" | "referees";
+  fightsMode: "disputed" | "upsets" | "action" | "fastest";
+  fightsAction: "total" | "perMinute";
+  fastestMethod: "finish" | "ko" | "sub";
+  judgesMode: "agreement" | "dissents" | "splits" | "cards";
+  refereesMode: "finishRate" | "stoppageTime" | "bouts";
+  officialsOrder: "high" | "low";
 };
 
 export const DEFAULT_SETTINGS: StatsSettings = {
@@ -84,6 +94,8 @@ export const DEFAULT_SETTINGS: StatsSettings = {
   scheduledRounds: "all",
   recordGroup: "bouts",
   boutsMode: "total",
+  bonusKind: "all",
+  bonusMetric: "total",
   winsMode: "total",
   winsByMethod: "all",
   winsByMetric: "total",
@@ -133,6 +145,13 @@ export const DEFAULT_SETTINGS: StatsSettings = {
   bettingMode: "underdog",
   underdogMetric: "wins",
   favoriteMetric: "rate",
+  fightsGroup: "fights",
+  fightsMode: "disputed",
+  fightsAction: "total",
+  fastestMethod: "finish",
+  judgesMode: "agreement",
+  refereesMode: "finishRate",
+  officialsOrder: "high",
 };
 
 export type StatsView = {

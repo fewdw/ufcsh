@@ -1,5 +1,6 @@
 import { fightIndex, type IndexedFight } from "./fight-index.ts";
 import { mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
+import { searchList } from "./fuzzy.ts";
 import { normName } from "./util.ts";
 
 /**
@@ -19,7 +20,7 @@ type Round = { round: number; f1: number; f2: number };
 type Card = { judge: string; key: string | null; f1: number; f2: number; rounds: Round[] };
 type FanCard = { cards: number; avg1: number; avg2: number; rounds: { round: number; avg1: number; avg2: number }[]; source: string; url: string | null };
 
-type Officiated = {
+export type Officiated = {
   fight: IndexedFight;
   referee: string | null;
   refereeKey: string | null;
@@ -94,7 +95,7 @@ function slugOf(name: string): string {
   return normName(name).replace(/\s+/g, "-") || "unknown";
 }
 
-const pick = (f1: number, f2: number) => Math.sign(f1 - f2);
+export const pick = (f1: number, f2: number) => Math.sign(f1 - f2);
 
 function parseJson(text: unknown): any {
   if (typeof text !== "string" || !text) return null;
@@ -204,15 +205,17 @@ export function parseOfficialFilters(params: URLSearchParams): OfficialFilters {
   };
 }
 
-function matchesBase(officiated: Officiated, filters: OfficialFilters): boolean {
+/** The bouts a typed search finds among these, or null when nothing is typed. */
+function searched(fights: Officiated[], q: string): Set<Officiated> | null {
+  return q ? new Set(searchList(fights, q, ({ fight }) => `${fight.eventName} ${fight.sides[0].name} ${fight.sides[1].name}`)) : null;
+}
+
+function matchesBase(officiated: Officiated, filters: OfficialFilters, found: Set<Officiated> | null = null): boolean {
   const { fight } = officiated;
   if (filters.from != null && fight.year < filters.from) return false;
   if (filters.to != null && fight.year > filters.to) return false;
   if (filters.division && fight.weightClass !== filters.division) return false;
-  if (filters.q) {
-    const haystack = normName(`${fight.eventName} ${fight.sides[0].name} ${fight.sides[1].name}`);
-    if (!haystack.includes(filters.q)) return false;
-  }
+  if (found && !found.has(officiated)) return false;
   return true;
 }
 
@@ -268,7 +271,7 @@ function verdictOf(fight: IndexedFight): Verdict {
 }
 
 /** The official result as a pick: 1 for the first corner, -1 the second, 0 a draw. */
-function resultPick(fight: IndexedFight): number | null {
+export function resultPick(fight: IndexedFight): number | null {
   const [a, b] = fight.sides;
   if (a.outcome === "win") return 1;
   if (b.outcome === "win") return -1;
@@ -293,6 +296,9 @@ type JudgeReading = {
   fanRoundsDiffer: number;
   fanPickDiffers: boolean | null;
 };
+
+/** The crowd's winner; an average gap under a tenth of a point reads as a draw. */
+export const crowdPick = (fans: FanCard) => (Math.abs(fans.avg1 - fans.avg2) < 0.1 ? 0 : Math.sign(fans.avg1 - fans.avg2));
 
 function readCard(officiated: Officiated, key: string): JudgeReading | null {
   const card = officiated.cards.find((entry) => entry.key === key);
@@ -329,7 +335,6 @@ function readCard(officiated: Officiated, key: string): JudgeReading | null {
       if (crowd !== myRound) fanRoundsDiffer += 1;
     }
   }
-  const fans = officiated.fans;
   return {
     officiated, card, others,
     verdict: verdictOf(officiated.fight),
@@ -337,7 +342,7 @@ function readCard(officiated: Officiated, key: string): JudgeReading | null {
     dissent,
     tenEights, tenTens, roundsScored: card.rounds.length, roundsCompared, roundsAgreed, loneRounds,
     fanRounds, fanRoundsDiffer,
-    fanPickDiffers: fans ? (Math.abs(fans.avg1 - fans.avg2) < 0.1 ? 0 : Math.sign(fans.avg1 - fans.avg2)) !== mine : null,
+    fanPickDiffers: officiated.fans ? crowdPick(officiated.fans) !== mine : null,
   };
 }
 
@@ -403,7 +408,8 @@ export function judgeProfile(slug: string, params: URLSearchParams): unknown | n
   if (!judge) return null;
   const filters = parseOfficialFilters(params);
   const all = judge.fights.map((officiated) => readCard(officiated, judge.key)).filter((entry): entry is JudgeReading => Boolean(entry));
-  const base = all.filter((reading) => matchesBase(reading.officiated, filters));
+  const found = searched(judge.fights, filters.q);
+  const base = all.filter((reading) => matchesBase(reading.officiated, filters, found));
   const decisions = new Map<Verdict, number>();
   for (const reading of base) decisions.set(reading.verdict, (decisions.get(reading.verdict) ?? 0) + 1);
   const inResult = (reading: JudgeReading) => !filters.result || reading.verdict === filters.result;
@@ -450,14 +456,14 @@ export function judgeProfile(slug: string, params: URLSearchParams): unknown | n
     summary: judgeSummary(readings),
     // The same figures over every UFC judge's cards in the same years and
     // divisions, so each rate reads against the field.
-    baseline: judgeSummary(allJudgeReadings().filter((reading) => matchesBase(reading.officiated, { ...filters, q: "" }) && inResult(reading))),
+    baseline: judgeSummary(allJudgeReadings().filter((reading) => matchesBase(reading.officiated, filters) && inResult(reading))),
     // The judge's cards by the decision they sat on, split by whether their
     // card went to the official winner.
     verdict_split: Object.fromEntries((["unanimous", "split", "majority", "draw"] as Verdict[]).map((verdict) => {
       const cards = readings.filter((reading) => reading.verdict === verdict && reading.agreedResult != null);
       return [verdict, { with: cards.filter((reading) => reading.agreedResult).length, against: cards.filter((reading) => !reading.agreedResult).length }];
     })),
-    by_year: byYear(all.filter((reading) => matchesBase(reading.officiated, { ...filters, from: null, to: null }) && inResult(reading)),
+    by_year: byYear(all.filter((reading) => matchesBase(reading.officiated, { ...filters, from: null, to: null }, found) && inResult(reading)),
       (reading) => reading.officiated.fight, (reading) => reading.dissent),
     score_lines: [...scores].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([score, n]) => ({ score, n })),
     colleagues: [...colleagues.values()].filter((entry) => entry.together >= 3)
@@ -488,7 +494,7 @@ export function judgeProfile(slug: string, params: URLSearchParams): unknown | n
 
 type ResultClass = "ko" | "sub" | "dec" | "dq" | "nc" | "draw" | "other";
 
-function resultClass(fight: IndexedFight): ResultClass {
+export function resultClass(fight: IndexedFight): ResultClass {
   if (fight.sides[0].outcome === "draw") return "draw";
   if (fight.sides[0].outcome === "nc" || fight.method === "CNC" || fight.method === "Overturned") return "nc";
   if (fight.method === "KO/TKO") return "ko";
@@ -499,6 +505,9 @@ function resultClass(fight: IndexedFight): ResultClass {
 }
 
 const DEDUCTION = /\b(?:point|points)\s+deducted\b|\bdeduct(?:ed|ion)\b/i;
+
+/** A disqualification or a point taken away. */
+const hadIncident = (officiated: Officiated) => resultClass(officiated.fight) === "dq" || Boolean(officiated.details && DEDUCTION.test(officiated.details));
 
 function tally(fights: Officiated[]) {
   const counts: Record<ResultClass, number> = { ko: 0, sub: 0, dec: 0, dq: 0, nc: 0, draw: 0, other: 0 };
@@ -541,11 +550,12 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
   const referee = index.refereeSlugs.get(slug);
   if (!referee) return null;
   const filters = parseOfficialFilters(params);
-  const base = referee.fights.filter((officiated) => matchesBase(officiated, filters));
+  const found = searched(referee.fights, filters.q);
+  const base = referee.fights.filter((officiated) => matchesBase(officiated, filters, found));
   const results = new Map<ResultClass, number>();
   for (const officiated of base) results.set(resultClass(officiated.fight), (results.get(resultClass(officiated.fight)) ?? 0) + 1);
   const shown = (officiated: Officiated) => (!filters.result || resultClass(officiated.fight) === filters.result)
-    && (filters.view === "incidents" ? resultClass(officiated.fight) === "dq" || Boolean(officiated.details && DEDUCTION.test(officiated.details))
+    && (filters.view === "incidents" ? hadIncident(officiated)
       : filters.view === "title" ? isTitle(officiated.fight) : true);
   // Result and view narrow the list only; the figures stay on every bout in
   // the other filters, so pressing a figure never moves it.
@@ -561,7 +571,7 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
   }
   // The same filters across every bout in the UFC with a referee named, so a
   // rate reads against the era and divisions it came from, not a bare number.
-  const baseline = index.fights.filter((officiated) => officiated.referee && matchesBase(officiated, { ...filters, q: "" }));
+  const baseline = index.fights.filter((officiated) => officiated.referee && matchesBase(officiated, filters));
   const page = fights.slice(filters.offset, filters.offset + filters.limit);
   return {
     kind: "referee",
@@ -571,11 +581,11 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
     filters: { ...filters, q: params.get("q") ?? "" },
     result_counts: Object.fromEntries(results),
     summary: tally(base),
-    by_year: byYear(referee.fights.filter((officiated) => matchesBase(officiated, { ...filters, from: null, to: null })),
+    by_year: byYear(referee.fights.filter((officiated) => matchesBase(officiated, { ...filters, from: null, to: null }, found)),
       (officiated) => officiated.fight, (officiated) => resultClass(officiated.fight) === "ko" || resultClass(officiated.fight) === "sub"),
     regulars: [...regulars.values()].filter((entry) => entry.n >= 2).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)).slice(0, 10),
     baseline: { ...tally(baseline), label: "Every UFC bout with a named referee under the same date and division filters" },
-    incidents: base.filter((officiated) => resultClass(officiated.fight) === "dq" || Boolean(officiated.details && DEDUCTION.test(officiated.details)))
+    incidents: base.filter(hadIncident)
       .slice(0, 50).map((officiated) => ({
         fight_id: officiated.fight.id, date: officiated.fight.date, event_name: officiated.fight.eventName,
         f1: fighterRef(officiated.fight, 0), f2: fighterRef(officiated.fight, 1),
@@ -601,18 +611,49 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
 // ---------------------------------------------------------------------------
 // directory
 
+// Fewer cards than these, and a judge's agreement rate is left unranked.
+const MIN_AGREEMENT_CARDS = 50;
+const MIN_FAN_CARDS = 5;
+
+/** How often a judge's winner matches each other judge on the panel, the
+ *  crowd's, and both counted together, as percentages. */
+function judgeAgreement(identity: Identity) {
+  let cards = 0, compared = 0, agreed = 0, fanCards = 0, fanAgreed = 0;
+  for (const officiated of identity.fights) {
+    const card = officiated.cards.find((entry) => entry.key === identity.key);
+    if (!card) continue;
+    const mine = pick(card.f1, card.f2);
+    const others = officiated.cards.filter((entry) => entry !== card);
+    if (others.length) cards += 1;
+    compared += others.length;
+    agreed += others.filter((other) => pick(other.f1, other.f2) === mine).length;
+    if (officiated.fans) {
+      fanCards += 1;
+      if (crowdPick(officiated.fans) === mine) fanAgreed += 1;
+    }
+  }
+  const ranked = cards >= MIN_AGREEMENT_CARDS;
+  return {
+    fan_cards: fanCards,
+    agree_all: ranked ? pct(agreed + fanAgreed, compared + fanCards) : null,
+    agree_judges: ranked ? pct(agreed, compared) : null,
+    agree_fans: fanCards >= MIN_FAN_CARDS ? pct(fanAgreed, fanCards) : null,
+  };
+}
+
 export function officialsDirectory(): unknown {
   const index = officialsIndex();
-  const list = (table: Map<string, Identity>, count: (identity: Identity) => number) => [...table.values()]
+  const list = <T>(table: Map<string, Identity>, extra: (identity: Identity) => T) => [...table.values()]
+    .filter((identity) => identity.fights.length > 0)
     .map((identity) => ({
-      slug: identity.slug, name: identity.name, n: count(identity),
+      slug: identity.slug, name: identity.name, n: identity.fights.length,
       first: identity.fights.at(-1)?.fight.date ?? null, last: identity.fights[0]?.fight.date ?? null,
+      ...extra(identity),
     }))
-    .filter((entry) => entry.n > 0)
     .sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
   return {
-    judges: list(index.judges, (identity) => identity.fights.length),
-    referees: list(index.referees, (identity) => identity.fights.length),
+    judges: list(index.judges, judgeAgreement),
+    referees: list(index.referees, () => ({})),
   };
 }
 
@@ -621,14 +662,7 @@ export function searchOfficials(query: string, limit = 4): { kind: Kind; slug: s
   const needle = normName(query);
   if (needle.length < 3) return [];
   const index = officialsIndex();
-  const found: { kind: Kind; slug: string; name: string; n: number }[] = [];
-  for (const [kind, table] of [["referee", index.referees], ["judge", index.judges]] as const) {
-    for (const identity of table.values()) {
-      const name = normName(identity.name);
-      if (name.includes(needle) || name.split(" ").some((part) => part.startsWith(needle))) {
-        found.push({ kind, slug: identity.slug, name: identity.name, n: identity.fights.length });
-      }
-    }
-  }
-  return found.sort((a, b) => b.n - a.n).slice(0, limit);
+  const everyone = ([["referee", index.referees], ["judge", index.judges]] as const)
+    .flatMap(([kind, table]) => [...table.values()].map((identity) => ({ kind, slug: identity.slug, name: identity.name, n: identity.fights.length })));
+  return searchList(everyone, needle, (official) => official.name).sort((a, b) => b.n - a.n).slice(0, limit);
 }

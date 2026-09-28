@@ -12,7 +12,9 @@ const CATEGORIES = [
   ["other", "Other"],
 ] as const;
 
-export default function ReportIssueDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+/** The report form: a dialog over the page it's about, or (`inline`) the
+ *  /report page itself, where "Send another" starts it over. */
+export default function ReportIssueDialog({ open, onClose, inline = false }: { open: boolean; onClose: () => void; inline?: boolean }) {
   const { getToken } = useAuth();
   const dialog = useRef<HTMLDialogElement>(null);
   const title = useRef<HTMLInputElement>(null);
@@ -25,15 +27,21 @@ export default function ReportIssueDialog({ open, onClose }: { open: boolean; on
 
   useEffect(() => {
     const node = dialog.current;
-    if (!node) return;
+    if (!node || inline) return;
     if (open && !node.open) {
       setCategory("problem"); setMessage(""); setSubject(""); setError(""); setSent(false);
       node.showModal();
       requestAnimationFrame(() => title.current?.focus());
     } else if (!open && node.open) node.close();
-  }, [open]);
+  }, [open, inline]);
 
-  const close = () => { if (!busy) { dialog.current?.close(); onClose(); } };
+  const reset = () => { setCategory("problem"); setMessage(""); setSubject(""); setError(""); setSent(false); };
+  const close = () => {
+    if (busy) return;
+    if (inline) { reset(); return; }
+    dialog.current?.close();
+    onClose();
+  };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (busy) return;
@@ -54,22 +62,22 @@ export default function ReportIssueDialog({ open, onClose }: { open: boolean; on
     } finally { setBusy(false); }
   };
 
-  return <dialog ref={dialog} onCancel={event => { event.preventDefault(); close(); }}
-    onClick={event => { if (event.target === event.currentTarget) close(); }}
-    className="search-dialog fixed inset-0 m-auto w-[min(32rem,calc(100%-2rem))] max-w-none rounded-2xl border border-zinc-200 bg-white p-0 text-zinc-900 shadow-2xl">
+  const body = <>
     <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4">
       <div>
-        <h2 className={DIALOG_TITLE}>Report an issue</h2>
-        <p className="mt-0.5 text-xs text-zinc-500">Tell us what needs attention on this page.</p>
+        {inline ? <h1 className={DIALOG_TITLE}>Report an issue</h1> : <h2 className={DIALOG_TITLE}>Report an issue</h2>}
+        <p className="mt-0.5 text-xs text-zinc-500">{inline ? "Something broken, wrong or missing anywhere on UFC.sh? Tell us." : "Tell us what needs attention on this page."}</p>
       </div>
-      <button type="button" onClick={close} disabled={busy} aria-label="Close report form" className={`-mr-2 ${CLOSE_BUTTON}`}>
-        <X className={CLOSE_ICON} aria-hidden="true" />
-      </button>
+      {inline ? null : (
+        <button type="button" onClick={close} disabled={busy} aria-label="Close report form" className={`-mr-2 ${CLOSE_BUTTON}`}>
+          <X className={CLOSE_ICON} aria-hidden="true" />
+        </button>
+      )}
     </div>
     {sent ? <div className="px-5 py-8 text-center">
       <p className="text-sm font-semibold text-zinc-900">Report sent</p>
       <p className="mt-1 text-sm text-zinc-500">An administrator can now review it.</p>
-      <button type="button" onClick={close} className={`mt-5 ${BUTTON_PRIMARY}`}>Close</button>
+      <button type="button" onClick={close} className={`mt-5 ${BUTTON_PRIMARY}`}>{inline ? "Send another" : "Close"}</button>
     </div> : <form onSubmit={event => void submit(event)} className="space-y-4 px-5 py-5">
       <label className="block">
         <span className="mb-1.5 block text-xs font-medium text-zinc-700">Title</span>
@@ -92,11 +100,18 @@ export default function ReportIssueDialog({ open, onClose }: { open: boolean; on
       </label>
       {error ? <p role="alert" className="text-xs text-rose-600">{error}</p> : null}
       <div className="flex items-center justify-end gap-2 border-t border-zinc-100 pt-4">
-        <button type="button" onClick={close} disabled={busy} className={BUTTON_QUIET}>Cancel</button>
+        {inline ? null : <button type="button" onClick={close} disabled={busy} className={BUTTON_QUIET}>Cancel</button>}
         <button type="submit" disabled={busy} className={BUTTON_PRIMARY}>
           {busy ? "Sending…" : "Send report"}
         </button>
       </div>
     </form>}
+  </>;
+  if (inline) return <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white text-zinc-900 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">{body}</section>;
+  return <dialog ref={dialog} onCancel={event => { event.preventDefault(); close(); }}
+    onClick={event => { if (event.target === event.currentTarget) close(); }}
+    className="search-dialog fixed inset-0 m-auto w-[min(32rem,calc(100%-2rem))] max-w-none rounded-2xl border border-zinc-200 bg-white p-0 text-zinc-900 shadow-2xl">
+    {body}
   </dialog>;
 }
+

@@ -614,11 +614,12 @@ export default function FighterPage() {
       ["Reach", fighter.reach],
       ["Stance", fighter.stance],
       ["Age", fighter.age == null ? "" : String(fighter.age)],
-      ["5-round fights", String(done.filter((h) => h.scheduled_rounds === 5).length)],
+      ["5-round fights", done.length ? String(done.filter((h) => h.scheduled_rounds === 5).length) : ""],
       ["Bonuses", fightBonuses || perfBonuses || perfAgainst ? <BonusTally fight={fightBonuses} perf={perfBonuses} against={perfAgainst} /> : ""],
       ["Born", [fighter.birthplace, fighter.country].filter(Boolean).join(", ")],
     ] as [string, ReactNode][]
   ).filter(([, v]) => v);
+  const fought = fighter.history.some((fight) => !fight.upcoming);
   const wheels = <>
     {fighter.record_verified ? <RecordWheel key={`${fighter.id}-all`} history={fighter.pro_history} scope="all" record={fighter.record} /> : null}
     <RecordWheel key={`${fighter.id}-ufc`} history={fighter.history} scope="ufc" record={fighter.ufc_record} />
@@ -679,15 +680,17 @@ export default function FighterPage() {
           {wheels}
         </section>
 
-        <ProfileTabs current={tab} onSelect={setTab} />
+        {/* Statistics rank UFC bouts, so a fighter yet to have one — booked
+            or only signed — has fights and nothing else. */}
+        {fought ? <ProfileTabs current={tab} onSelect={setTab} /> : null}
 
-        <div className={`${tab === "stats" ? "contents" : "hidden lg:contents"} [&>*]:shrink-0`}>
+        {fought ? <div className={`${tab === "stats" ? "contents" : "hidden lg:contents"} [&>*]:shrink-0`}>
           <Records records={fighter.records ?? []} />
           <FighterStatistics fighterId={fighter.id} history={fighter.history} />
-        </div>
+        </div> : null}
         </div>
 
-        <div ref={sideScroll} className={`${tab === "fights" ? "flex" : "hidden lg:flex"} min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]`}>
+        <div ref={sideScroll} className={`${tab === "fights" || !fought ? "flex" : "hidden lg:flex"} min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]`}>
 
         <section className={shell}>
           <PanelHeading title="Fights" subtitle={allFights.length.toLocaleString()} />

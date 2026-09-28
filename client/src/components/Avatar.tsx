@@ -2,11 +2,14 @@ import { useEffect, useState } from "react";
 import ProgressiveImage from "./ProgressiveImage";
 
 const SIZES = {
+  tag: "h-4 w-4 text-[6px]",
   xs: "h-7 w-7 text-[9px]",
   sm: "h-9 w-9 text-[11px]",
   md: "h-12 w-12 text-xs",
   lg: "h-20 w-20 text-lg",
   xl: "h-28 w-28 text-xl",
+  // A list row that tightens to one line on a wide screen.
+  row: "h-9 w-9 text-[11px] xl:h-6 xl:w-6 xl:text-[8px]",
   matchup: "h-13 w-13 text-xs lg:h-15 lg:w-15 lg:text-sm",
 } as const;
 

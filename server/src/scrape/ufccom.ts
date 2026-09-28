@@ -367,6 +367,77 @@ export async function scrapeFighterImages(name: string, loadHtml = fetchHtml): P
   return found;
 }
 
+export type AthleteStatus = "active" | "not_fighting";
+
+/** The name and roster status an athlete page shows. This host is served
+ *  ufc.com's French site, so both languages are read. */
+export function parseAthleteStatus(html: string): { name: string; status: AthleteStatus | null } {
+  const $ = cheerio.load(html);
+  const field = $(".c-bio__field").filter((_, element) => /^stat(us|ut)$/i.test($(element).find(".c-bio__label").text().trim())).first();
+  const text = field.find(".c-bio__text").text().trim().toLowerCase();
+  return {
+    name: $(".hero-profile__name").first().text().trim(),
+    status: /^(active|actif)$/.test(text) ? "active" : /^(not fighting|ne se bat pas)$/.test(text) ? "not_fighting" : null,
+  };
+}
+
+/** A fighter's status, from the page already found for them or else the one
+ *  their name slugs to, then ufc.com's search. A page under another name is
+ *  never read. Null when no page could be read. */
+export async function scrapeAthleteStatus(name: string, knownUrl: string | null, loadHtml = fetchHtml): Promise<{ url: string; status: AthleteStatus | null } | null> {
+  // A search hit was already matched to the name, allowing one respelling.
+  const read = async (url: string, matched = false) => {
+    try {
+      const page = parseAthleteStatus(await loadHtml(url, { timeoutMs: 30000, retries: 0 }));
+      return matched || normName(page.name) === normName(name) ? { url, status: page.status } : null;
+    } catch {
+      return null;
+    }
+  };
+  if (knownUrl) return read(knownUrl, true);
+  const direct = await read(`https://www.ufc.com/athlete/${athleteSlug(name)}`);
+  if (direct) return direct;
+  try {
+    const hit = parseSearchAthlete(await loadHtml(`https://www.ufc.com/search?query=${encodeURIComponent(name)}`, { timeoutMs: 30000, retries: 0 }), name);
+    return hit.href ? read(hit.href, true) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** An athlete page's division in English ("Poids légers Division" is
+ *  Lightweight). Null while a new profile has none yet. */
+export function parseAthleteDivision(html: string): string | null {
+  const $ = cheerio.load(html);
+  return canonicalDivision($(".hero-profile__division-title").first().text(), "") || null;
+}
+
+export type NewestAthlete = { slug: string; name: string };
+
+/** ufc.com's athlete search with no query lists every athlete profile newest
+ *  first (21 a page), so a profile made for a signing shows up on top. */
+export function parseNewestAthletes(html: string): NewestAthlete[] {
+  const $ = cheerio.load(html);
+  return $("div.solr-athlete-card").toArray().flatMap((card) => {
+    const slug = $(card).find("a[href*='/athlete/']").first().attr("href")?.split("/athlete/")[1]?.split(/[/?#]/)[0];
+    const name = cleanText($(card).find(".field--name-node-title, h2").first().text());
+    return slug && name ? [{ slug, name }] : [];
+  });
+}
+
+export async function scrapeNewestAthletes(): Promise<NewestAthlete[]> {
+  const athletes = parseNewestAthletes(await fetchHtml("https://www.ufc.com/search?type=athletes&query=", { timeoutMs: 40000 }));
+  // The page always lists someone; nobody means its layout changed.
+  if (!athletes.length) throw new Error("ufc.com athlete search listed nobody");
+  return athletes;
+}
+
+/** A new athlete's name, status and division, from their own page. */
+export async function scrapeNewAthlete(slug: string): Promise<{ name: string; status: AthleteStatus | null; division: string | null }> {
+  const html = await fetchHtml(`https://www.ufc.com/athlete/${slug}`, { timeoutMs: 30000, retries: 0 });
+  return { ...parseAthleteStatus(html), division: parseAthleteDivision(html) };
+}
+
 // ---------------------------------------------------------------------------
 // Event schedules and card segments. UFCStats supplies a date but never a
 // start time, and never says which bouts are on the main card. ufc.com carries

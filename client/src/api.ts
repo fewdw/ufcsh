@@ -473,6 +473,10 @@ export type StatsLeader = {
   rank: number | null;
   tied: boolean;
   chips: StatChip[];
+  /** Where a row leads when it is a bout or an official rather than a fighter. */
+  href?: string;
+  /** A bout's other corner: "A def. B". */
+  opponent?: { name: string; photo_url: string | null; verb: string };
 };
 
 /** A place at or near the top of the sport, shown on a fighter's profile. */
@@ -519,7 +523,7 @@ export type StatsDashboard = {
   limit: number;
   coverage: { age_percent: number; fights: number; pending_details: number; fighters: number };
   leaderboards: {
-    group: "records" | "performance" | "context" | "betting";
+    group: string;
     key: string;
     title: string;
     description: string;
@@ -960,8 +964,22 @@ export type RefereeProfile = {
   }[];
 };
 
+export type RosterMove = {
+  date: string | null;
+  name: string;
+  nickname: string | null;
+  country: string | null;
+  division: string | null;
+  reason: string | null;
+  record: string | null;
+  ufc_record: string | null;
+  photo_url: string | null;
+  fighter_id: string | null;
+};
+export type RosterMoves = { updated_at: number | null; signed: RosterMove[]; cut: RosterMove[] };
+
 export type OfficialsDirectory = {
-  judges: { slug: string; name: string; n: number; first: string | null; last: string | null }[];
+  judges: { slug: string; name: string; n: number; first: string | null; last: string | null; fan_cards: number; agree_all: number | null; agree_judges: number | null; agree_fans: number | null }[];
   referees: { slug: string; name: string; n: number; first: string | null; last: string | null }[];
 };
 
@@ -993,7 +1011,7 @@ export type VenuePage = {
 };
 
 export type VenueDirectory = {
-  venues: { slug: string; name: string; city: string | null; state: string | null; country: string | null; events: number; upcoming: number; last: string | null }[];
+  venues: { slug: string; name: string; former_names: string[]; city: string | null; state: string | null; country: string | null; events: number; upcoming: number; last: string | null }[];
   coverage: { events: number; with_venue: number };
 };
 
@@ -1047,3 +1065,42 @@ export function useApi<T>(url: string | null, pollMs?: number | ((data: T | null
   }, [url, intervalMs]);
   return { ...state, data: state.data as T | null, retry };
 }
+
+export type MatchFighter = {
+  id: string; name: string; photo_url: string | null; rank: number | null;
+  record: string; streak: number; last_date: string | null;
+};
+
+export type MatchmakingData = {
+  updated_at: number | null;
+  top15: {
+    division: string;
+    fights: { kind: "title" | "booked" | "suggested"; a: MatchFighter; b: MatchFighter; reason: string; event: { id: string; name: string; date: string } | null }[];
+    idle: { fighter: MatchFighter; reason: string }[];
+  }[];
+  last_event: {
+    id: string; name: string; date: string;
+    bouts: {
+      fight_id: string; division: string; method: string | null; title: boolean;
+      sides: { fighter: MatchFighter; outcome: "win" | "loss" | "draw" | "nc" | null; next: { kind: "suggested" | "booked" | "rematch" | "none"; opponent: MatchFighter | null; reason: string } }[];
+    }[];
+  } | null;
+};
+
+/** A story as told by the first outlet the reader keeps on; `also` are the others that ran it. */
+export type NewsStory = {
+  url: string; source: string; title: string; summary: string; published_at: number;
+  fighters: { id: string; name: string; photo_url: string | null }[];
+  event: { id: string; name: string } | null;
+  also: { source: string; url: string; title: string }[];
+};
+
+/** One page of /news; the first also carries the top stories. */
+export type NewsPage = {
+  updated_at: number | null;
+  sources: { name: string; ok: boolean }[];
+  top: NewsStory[];
+  latest: NewsStory[];
+  total: number;
+  pageSize: number;
+};

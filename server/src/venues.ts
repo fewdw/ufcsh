@@ -1,5 +1,6 @@
 import { prepared } from "./db.ts";
 import { fightIndex, type IndexedFight } from "./fight-index.ts";
+import { searchList } from "./fuzzy.ts";
 import { normName } from "./util.ts";
 
 /**
@@ -245,7 +246,7 @@ export function venuePage(slug: string): unknown | null {
 
 export function venueDirectory(): unknown {
   const venues = [...venueIndex().bySlug.values()].map((venue) => ({
-    slug: venue.slug, name: venue.name, city: venue.city, state: venue.state, country: venue.country,
+    slug: venue.slug, name: venue.name, former_names: venue.former_names, city: venue.city, state: venue.state, country: venue.country,
     events: venue.events.filter((event) => event.complete).length,
     upcoming: venue.events.filter((event) => !event.complete).length,
     last: venue.events[0]?.date ?? null,
@@ -257,8 +258,8 @@ export function venueDirectory(): unknown {
 export function searchVenues(query: string, limit = 3): { slug: string; name: string; city: string | null; events: number }[] {
   const needle = normName(query);
   if (needle.length < 3) return [];
-  return [...venueIndex().bySlug.values()]
-    .filter((venue) => normName(`${venue.name} ${venue.former_names.join(" ")} ${venue.city ?? ""}`).includes(needle))
+  const venues = [...venueIndex().bySlug.values()];
+  return searchList(venues, needle, (venue) => `${venue.name} ${venue.former_names.join(" ")} ${venue.city ?? ""}`)
     .map((venue) => ({ slug: venue.slug, name: venue.name, city: venue.city, events: venue.events.length }))
     .sort((a, b) => b.events - a.events).slice(0, limit);
 }

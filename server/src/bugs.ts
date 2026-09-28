@@ -7,6 +7,10 @@ import { hasCompleteJudgeRounds } from "./judge-scorecards.ts";
 import { importVerdictEvent } from "./verdict-import.ts";
 import { mergedByHand, officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
+import { rosterMoveFighter, storedRosterMoves, syncRosterMoves, syncUfcSignings } from "./roster-moves.ts";
+import { feedStatus, syncNews } from "./news.ts";
+import { NEWS_FEEDS } from "./scrape/news.ts";
+import { ROSTER_ARTICLE } from "./scrape/wikipedia.ts";
 import {
   fighterNames,
   forgetUfcPage,
@@ -1163,6 +1167,99 @@ function mergedOfficialSpellings(): BugCheck {
     grade: "ok",
   }, items);
 }
+function rosterMovesUnread(): BugCheck {
+  const wiki: BugLink = { label: "Wikipedia", href: `https://en.wikipedia.org/wiki/${encodeURIComponent(ROSTER_ARTICLE.replaceAll(" ", "_"))}` };
+  const reread = { id: "roster-moves" as const, label: "Re-read Wikipedia", target: "roster" };
+  const synced = Number(getMeta("roster_moves_synced_at")) || null;
+  const items: BugItem[] = [];
+  if (!synced || Date.now() - synced > 24 * 3_600_000) items.push({
+    key: "sync",
+    title: synced ? "Not read in over a day" : "Never read",
+    facts: [["Last read", ago(synced)], ["Last tried", ago(Number(getMeta("roster_moves_checked_at")) || null)]],
+    links: [wiki],
+    actions: [reread],
+  });
+  const { signed, cut } = storedRosterMoves();
+  for (const [list, moves] of [["Signed", signed], ["Cut", cut]] as const) {
+    for (const move of moves) {
+      // Anyone cut has fought for the UFC, so a release without a profile
+      // is almost always a name spelled differently from UFCStats.
+      const missing = [!move.date && "date", !move.division && "division", !move.record && "record", !move.country && "country",
+        list === "Cut" && !rosterMoveFighter(move.name) && "profile"].filter(Boolean);
+      if (missing.length) items.push({
+        key: `${list}:${move.name}`,
+        title: move.name,
+        subtitle: `${list} · missing ${missing.join(", ")}`,
+        facts: [["Date", move.date ?? "unread"], ["Division", move.division ?? "unread"], ["Record", move.record ?? "unread"]],
+        links: [wiki, { label: "UFCStats search", href: `${UFCSTATS}/statistics/fighters/search?query=${encodeURIComponent(move.name.split(" ").at(-1) ?? move.name)}` }],
+        actions: [reread],
+      });
+    }
+  }
+  // ufc.com's newest profiles are read every 5 minutes: an hour without a
+  // read means its search page changed or turned us away, and signings are
+  // only reported once Wikipedia has them.
+  const signingsRead = Number(getMeta("ufc_signings_synced_at")) || null;
+  if (!signingsRead || Date.now() - signingsRead > 3_600_000) items.push({
+    key: "ufc-signings",
+    title: signingsRead ? "ufc.com's newest athletes not read in over an hour" : "ufc.com's newest athletes never read",
+    facts: [["Last read", ago(signingsRead)], ["Last tried", ago(Number(getMeta("ufc_signings_checked_at")) || null)]],
+    links: [{ label: "ufc.com newest athletes", href: "https://www.ufc.com/search?type=athletes&query=" }],
+    actions: [{ id: "roster-moves", label: "Read again", target: "ufc" }],
+  });
+  // ufc.com: a markup change would leave every status unread, and a fighter
+  // whose page can't be found is never watched for leaving.
+  const statuses = db.prepare("SELECT COUNT(*) AS checked, COUNT(status) AS read FROM ufc_status WHERE checked_at > ?").get(Date.now() - 24 * 3_600_000) as { checked: number; read: number };
+  if (statuses.checked >= 20 && statuses.read < statuses.checked / 2) items.push({
+    key: "ufc-status",
+    title: "ufc.com statuses mostly unreadable",
+    facts: [["Read in the last day", `${statuses.read} of ${statuses.checked}`]],
+    links: [{ label: "ufc.com athletes", href: "https://www.ufc.com/athletes/all" }],
+    actions: [],
+  });
+  const unfound = db.prepare(`SELECT s.fighter_id, fr.name, s.checked_at FROM ufc_status s JOIN fighters fr ON fr.id = s.fighter_id
+    WHERE s.status IS NULL ORDER BY fr.name`).all() as { fighter_id: string; name: string; checked_at: number }[];
+  for (const fighter of unfound) items.push({
+    key: `ufc:${fighter.fighter_id}`,
+    title: fighter.name,
+    subtitle: "No ufc.com page found, so a departure can't be seen",
+    facts: [["Last tried", ago(fighter.checked_at)]],
+    links: [fighterLink(fighter.fighter_id, fighter.name), { label: "ufc.com search", href: `https://www.ufc.com/search?query=${encodeURIComponent(fighter.name)}` }],
+    actions: [{ id: "ufc-status", label: "Look again", target: fighter.fighter_id }],
+  });
+  return check({
+    id: "roster-moves",
+    group: "Fighters",
+    label: "Signings and releases not read",
+    description: "The /roster page lists Wikipedia's recent signings and releases (checked every 10 minutes), ufc.com's newest athlete profiles (every 5 minutes: a signing shows before anyone writes it up), plus fighters whose ufc.com page turned from Active to Not Fighting (each recent fighter read twice a day). A stale read means the article couldn't be reached or its tables changed shape (the last good read stays up). A row missing a field was written in a form the reader doesn't understand; a release with no profile is usually a name spelled differently from UFCStats.",
+    grade: (item) => item.key === "sync" || item.key === "ufc-status" || item.key === "ufc-signings" ? "must" : item.key.startsWith("ufc:") ? "ok" : "minor",
+  }, items);
+}
+/** /news: each outlet's feed is read every ten minutes. One unread for two
+ *  hours has moved, changed shape or started turning us away. */
+function newsFeedsUnread(): BugCheck {
+  const items: BugItem[] = [];
+  for (const feed of NEWS_FEEDS) {
+    const status = feedStatus(feed.source);
+    if (status?.ok_at && Date.now() - status.ok_at < 2 * 3_600_000) continue;
+    items.push({
+      key: feed.source,
+      title: feed.source,
+      subtitle: status?.error ?? "Never read",
+      facts: [["Last read", ago(status?.ok_at ?? null)], ["Last tried", ago(status?.tried_at ?? null)]],
+      links: [{ label: "Feed", href: feed.url }],
+      actions: [{ id: "news", label: "Read again", target: "all" }],
+    });
+  }
+  return check({
+    id: "news-feeds",
+    group: "Fights & events",
+    label: "News outlets not read",
+    description: "The /news page reads each outlet's feed every ten minutes (ESPN, MMA Junkie, UFC.com, Yahoo, CBS, talkSPORT and MMA News through Google News, which they allow; the rest directly). An outlet unread for two hours drops out of the page until it is read again: its feed moved, changed shape or turned us away.",
+    grade: "minor",
+  }, items);
+}
+
 // ---------------------------------------------------------------------------
 
 export function bugReport(): { generated_at: number; sync: { last_tick_at: string | null; last_sync_error: string | null }; checks: BugCheck[] } {
@@ -1203,6 +1300,8 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     mergedOfficialSpellings(),
     fighterGaps(active),
     duplicateFighters(),
+    rosterMovesUnread(),
+    newsFeedsUnread(),
   ];
   return {
     generated_at: Date.now(),
@@ -1211,7 +1310,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
   };
 }
 
-export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict";
+export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -1275,6 +1374,25 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
     case "event":
       await syncEventDetail(target);
       return { ok: true, message: "Event re-fetched." };
+    case "ufc-status":
+      db.prepare("UPDATE ufc_status SET url = NULL, checked_at = 0 WHERE fighter_id = ?").run(target);
+      return { ok: true, message: "Queued; ufc.com is searched again on the next pass." };
+    case "news":
+      await syncNews();
+      return { ok: true, message: "Read every outlet again." };
+    case "roster-moves": {
+      try {
+        if (target === "ufc") {
+          await syncUfcSignings();
+          return { ok: true, message: "Read ufc.com's newest athletes." };
+        }
+        await syncRosterMoves();
+      } catch (err) {
+        return { ok: false, message: `Couldn't read it (${String(err)}). The last good list stays up.` };
+      }
+      const { signed, cut } = storedRosterMoves();
+      return { ok: true, message: `Read ${signed.length} signings and ${cut.length} releases.` };
+    }
     case "birth":
       await syncFighterBirthDate(target);
       return { ok: true, message: "Birth date re-fetched." };

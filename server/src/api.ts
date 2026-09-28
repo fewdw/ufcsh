@@ -56,6 +56,10 @@ import { renderShareImage, type ShareCard, type SharePhoto } from "./og-images.t
 export { pageSeo, sitemap };
 import { judgeProfile, officialSlug, officialsDirectory, refereeProfile, searchOfficials } from "./officials.ts";
 import { searchVenues, venueDirectory, venueOfEvent, venuePage } from "./venues.ts";
+import { matchmaking } from "./matchmaking.ts";
+import { newsView } from "./news.ts";
+import { rosterMoveFighter, storedRosterMoves, ufcDepartures, ufcSignings } from "./roster-moves.ts";
+import type { RosterMove } from "./scrape/wikipedia.ts";
 
 const CLIENT_DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "client", "dist");
 const IMAGE_CACHE = path.join(DATA_DIR, "images");
@@ -1858,6 +1862,63 @@ async function renderShare(kind: string, id: string): Promise<{ body: Buffer; et
   return { body, etag: `"${createHash("sha1").update(body).digest("base64url")}"` };
 }
 
+/** /roster: Wikipedia's signings and releases, plus departures ufc.com shows
+ *  that nobody has written up yet. A fighter with a profile is shown as the
+ *  profile has them — name, records, photo — so the two never disagree. */
+function rosterView() {
+  const { signed, cut } = storedRosterMoves();
+  const index = fightIndex();
+  const view = (move: RosterMove, fighterId: string | null) => {
+    const summary = fighterId ? fighterSummary(fighterId, move.name) : null;
+    const indexed = fighterId ? index.fighters.get(fighterId) : undefined;
+    return {
+      date: move.date,
+      name: summary?.name ?? move.name,
+      nickname: move.nickname || summary?.nickname || null,
+      country: summary?.country_code ?? move.country,
+      division: move.division,
+      reason: move.reason,
+      record: summary?.record_verified ? summary.record : move.record ?? summary?.record ?? null,
+      ufc_record: indexed ? recordText(indexed.ufc) : null,
+      photo_url: summary?.photo_url ?? null,
+      fighter_id: fighterId,
+    };
+  };
+  const cuts = cut.map(move => view(move, rosterMoveFighter(move.name)));
+  const reported = new Set(cuts.map(move => move.fighter_id));
+  const lastDivision = prepared(`SELECT f.weight_class FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE (f.f1_id = ?1 OR f.f2_id = ?1) AND f.weight_class NOT LIKE '%Catch%' ORDER BY e.date DESC LIMIT 1`);
+  const divisionOf = (id: string) => (lastDivision.get(id) as { weight_class: string } | undefined)?.weight_class ?? null;
+  for (const { fighter_id, left_at } of ufcDepartures()) {
+    if (reported.has(fighter_id)) continue;
+    cuts.push(view({ date: new Date(left_at).toISOString().slice(0, 10), name: "", nickname: null, country: null, division: divisionOf(fighter_id), reason: "Off UFC roster", record: null }, fighter_id));
+  }
+  // ufc.com's signings fill in who Wikipedia hasn't listed; once it does, its
+  // entry (with record and date) is the one shown. The same person is matched
+  // by profile, by name, or by surname and first two letters ("Thomas" and
+  // "Tom Pagliarulo").
+  const signings = signed.map(move => view(move, rosterMoveFighter(move.name)));
+  const keys = (name: string) => {
+    const [first = "", ...rest] = normName(name).split(" ");
+    return rest.length ? [normName(name), `${first.slice(0, 2)} ${rest.join(" ")}`] : [normName(name)];
+  };
+  const listed = new Set<string | null>([...signed.flatMap(move => keys(move.name)), ...signings.map(move => move.fighter_id)]);
+  for (const signing of ufcSignings()) {
+    const fighterId = rosterMoveFighter(signing.name);
+    const own = [...keys(signing.name), ...(fighterId ? [fighterId] : [])];
+    if (own.some(key => listed.has(key))) continue;
+    own.forEach(key => listed.add(key));
+    signings.push(view({ date: signing.date, name: signing.name, nickname: null, country: null,
+      division: signing.division ?? (fighterId ? divisionOf(fighterId) : null), reason: null, record: null }, fighterId));
+  }
+  const newestFirst = (a: { date: string | null }, b: { date: string | null }) => (b.date ?? "").localeCompare(a.date ?? "");
+  return {
+    updated_at: syncedAt("roster_moves_synced_at"),
+    signed: signings.sort(newestFirst),
+    cut: cuts.sort(newestFirst),
+  };
+}
+
 /** The only public data dispatcher, also used inside isolated query workers. */
 export async function resolvePublicApi(url: URL): Promise<unknown> {
   const p = url.pathname;
@@ -1887,6 +1948,9 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   if (p === "/api/labs/judge-bouts") return getLabsJudgeBouts(url.searchParams);
   if (p === "/api/labs/road-bouts") return getLabsRoadBouts(url.searchParams);
   if (p === "/api/labs") return getLabs(url.searchParams);
+  if (p === "/api/roster") return rosterView();
+  if (p === "/api/matchmaking") return matchmaking();
+  if (p === "/api/news") return newsView(url.searchParams);
   if (p === "/api/search") return search(url.searchParams.get("q") ?? "");
   if (p === "/api/bugs") return bugReport();
   return undefined;
@@ -2032,7 +2096,7 @@ export function startApi(port: number): http.Server {
     clearInterval(warmLists);
     if (!queryPool) return;
     for (const path of ["/api/events", "/api/live", "/api/stats", "/api/rankings?ranking=media", "/api/rankings?ranking=meta",
-      "/api/officials", "/api/venues", "/api/labs/insights"]) {
+      "/api/officials", "/api/venues", "/api/labs/insights", "/api/matchmaking", "/api/news"]) {
       void publicAnswer(new URL(path, "http://localhost")).catch(() => {});
     }
   }, 1000);
