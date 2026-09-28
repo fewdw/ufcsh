@@ -638,7 +638,8 @@ export default function RankingsPage() {
             ))}
           </div>
           <div className="order-last flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 md:order-none md:ml-auto md:basis-auto md:whitespace-nowrap">
-            {features.hoverResults ? <OpponentKey /> : features.activityColors ? activityKey : null}
+            {features.activityColors ? activityKey : null}
+            {features.hoverResults ? <OpponentKey /> : null}
             {updated}
           </div>
           <FeaturesMenu
