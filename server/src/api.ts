@@ -1106,6 +1106,15 @@ export function oddsFreshness(eventId: string): { updated_at: number | null; fin
   };
 }
 
+function opponentResults(bouts: { opponentId?: string | null; outcome: string }[], rankedIds: Set<string>) {
+  const results: Record<string, string[]> = {};
+  for (const bout of bouts) {
+    if (!bout.opponentId || !rankedIds.has(bout.opponentId)) continue;
+    (results[bout.opponentId] ??= []).push(bout.outcome);
+  }
+  return results;
+}
+
 export function getRankings(rankingType: RankingType): unknown {
   const today = todayIso();
   const index = fightIndex();
@@ -1238,10 +1247,9 @@ export function getRankings(rankingType: RankingType): unknown {
             // The last five professional results, oldest first, drawn as the
             // card view's dots.
             form: completed.slice(-5).map((bout) => ({ outcome: bout.outcome, method: canonicalMethod(bout.method), ufc: bout.isUfc })),
-            // Oldest first: a rematch replaces the previous result, including draws/NCs.
-            opponent_results: Object.fromEntries(completed
-              .filter((bout) => bout.opponentId && rankedIds.has(bout.opponentId))
-              .map((bout) => [bout.opponentId, bout.outcome])),
+            // Each distinct result against a ranked opponent, ordered by when
+            // it last happened: a rematch moves its result to the end.
+            opponent_history: opponentResults(completed, rankedIds),
           };
         }
         return {

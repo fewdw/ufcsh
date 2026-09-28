@@ -274,14 +274,23 @@ function RankRow({
     </>
   );
 
-  const result = entry.fighter_id && highlightedFighter
-    ? highlightedFighter.activity.next_fight?.opponent_id === entry.fighter_id
-      ? "scheduled"
-      : highlightedFighter.activity.opponent_results?.[entry.fighter_id]
-    : null;
-  const resultClass = result ? `opponent-${result}` : "";
+  // One horizontal band per result against the highlighted fighter, latest
+  // at the bottom: a split rematch shows both its win and its loss.
+  const results = entry.fighter_id && highlightedFighter ? [
+    ...highlightedFighter.activity.opponent_history?.[entry.fighter_id] ?? [],
+    ...highlightedFighter.activity.next_fight?.opponent_id === entry.fighter_id ? ["scheduled"] : [],
+  ] : [];
+  const resultStyle = results.length ? {
+    backgroundImage: `linear-gradient(to bottom, ${results.map((result, i) => {
+      const start = (i * 100) / results.length;
+      const end = ((i + 1) * 100) / results.length;
+      return i === results.length - 1
+        ? `var(--opponent-${result}) ${start}% ${end}%`
+        : `var(--opponent-${result}) ${start}% calc(${end}% - 1px), var(--opponent-divider) calc(${end}% - 1px) ${end}%`;
+    }).join(", ")})`,
+  } : undefined;
   const selected = tapResults && highlightedFighter?.fighter_id === entry.fighter_id;
-  const className = `flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors ${highlightedFighter ? resultClass : features.activityColors ? meta.row : ""} ${selected ? "opponent-selected" : ""} ${
+  const className = `flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors ${!highlightedFighter && features.activityColors ? meta.row : ""} ${selected ? "opponent-selected" : ""} ${
     entry.fighter_id ? "hover:bg-zinc-100" : ""
   }`;
 
@@ -291,9 +300,14 @@ function RankRow({
       ? `${entry.name} — last fought ${entry.activity.last_fight_opponent ? `vs ${entry.activity.last_fight_opponent} ` : ""}on ${formatDateShort(entry.activity.last_fight_date)} (${division})`
       : entry.name;
 
+  // Touch: the first tap highlights opponents, a second tap opens the profile.
   if (entry.fighter_id && tapResults) {
-    return (
-      <button type="button" className={className} aria-pressed={selected}
+    return selected ? (
+      <Link to={`/fighters/${entry.fighter_id}`} className={className} style={resultStyle} title={title}>
+        {inner}
+      </Link>
+    ) : (
+      <button type="button" className={className} style={resultStyle} aria-pressed={selected}
         onClick={() => onHighlight(entry.fighter_id)}>
         {inner}
       </button>
@@ -312,6 +326,7 @@ function RankRow({
       <Link
         to={`/fighters/${entry.fighter_id}`}
         className={className}
+        style={resultStyle}
         title={title}
         onMouseEnter={(event) => {
           if (!features.hoverHistory) return;
@@ -393,14 +408,18 @@ function DivisionCard({
   );
 }
 
-function OpponentKey() {
+/** `compact` abbreviates on phones so the header key keeps to one line. */
+function OpponentKey({ compact = false }: { compact?: boolean }) {
+  const label = (short: string, full: string) => compact
+    ? <><span className="sm:hidden" title={full}>{short}</span><span className="hidden sm:inline">{full}</span></>
+    : full;
   return (
     <>
-      <span className="text-emerald-600">Won</span>
-      <span className="text-rose-500">Lost</span>
-      <span className="text-sky-600">Scheduled</span>
-      <span className="text-amber-600">Draw</span>
-      <span className="text-violet-600 dark:text-violet-400">No contest</span>
+      <span className="text-emerald-600">{label("W", "Won")}</span>
+      <span className="text-rose-500">{label("L", "Lost")}</span>
+      <span className="text-sky-600">{label("Next", "Scheduled")}</span>
+      <span className="text-amber-600">{label("D", "Draw")}</span>
+      <span className="text-violet-600 dark:text-violet-400">{label("NC", "No contest")}</span>
     </>
   );
 }
@@ -423,7 +442,7 @@ function useCanHover(wide = false): boolean {
 const FEATURE_OPTIONS: { key: Exclude<keyof RankingFeatures, "top15Scope">; label: string; hint: string }[] = [
   { key: "opponents", label: "Opponents", hint: "Next opponent or last result under each name" },
   { key: "hoverHistory", label: "Last 5 on hover", hint: "Recent and booked fights beside the pointer" },
-  { key: "hoverResults", label: "Hover fighter results", hint: "Highlight opponents by their latest result" },
+  { key: "hoverResults", label: "Hover fighter results", hint: "One horizontal band per fight, latest at the bottom" },
   { key: "top15Record", label: "Show top 15 wins/losses", hint: "Record against current champions and top 15" },
   { key: "movement", label: "Show movement", hint: "Rank changes in the latest update" },
   { key: "lastFive", label: "Show last 5", hint: "The last five results, oldest first" },
@@ -478,7 +497,7 @@ function FeaturesMenu({
               <div key={option.key} className={option.key === "top15Record" ? "my-1 rounded-xl border border-zinc-200 bg-zinc-50" : undefined}>
                 <SwitchRow
                   label={option.key === "hoverResults" && !canHover ? "Tap fighter results" : option.label}
-                  hint={option.key === "hoverResults" && !canHover ? "Tap to highlight opponents. Profile links paused." : option.hint}
+                  hint={option.key === "hoverResults" && !canHover ? "Tap to highlight opponents, again for the profile." : option.hint}
                   on={features[option.key]}
                   onChange={(on) => onChange({ ...features, [option.key]: on })} />
                 {option.key === "top15Record" ? (
@@ -585,6 +604,7 @@ export default function RankingsPage() {
   }
 
   const centerFilteredCards = view === "women" || view === "p4p";
+  const wideKey = features.activityColors && features.hoverResults;
   const activityKey = (
     <>
       <span className="flex items-center gap-1.5" title="Has a fight booked">
@@ -604,7 +624,8 @@ export default function RankingsPage() {
     <div ref={pageScroll} className="h-full overflow-y-auto">
       <div className="p-2 pb-8 sm:p-3">
         {/* Filters always last. From `md` the key sits just before it on the
-            one row; below that it takes a second row of its own, at the right. */}
+            one row (from `xl` when both keys show); below that it takes a
+            second row of its own, at the right. */}
         <div className={`${shell} mb-2 flex flex-wrap items-center gap-1.5 px-2.5 py-2 sm:mb-3 sm:gap-2 sm:px-3 lg:gap-3`}>
           <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Ranking view">
             {SOURCES.map((source) => (
@@ -622,7 +643,7 @@ export default function RankingsPage() {
               </button>
             ))}
           </div>
-          <div className={`${segmentedGroup} ml-auto shrink-0 p-0.5 sm:p-1 md:ml-0`} role="group" aria-label="Divisions shown">
+          <div className={`${segmentedGroup} ml-auto shrink-0 p-0.5 sm:p-1 ${wideKey ? "xl:ml-0" : "md:ml-0"}`} role="group" aria-label="Divisions shown">
             {FILTERS.map((f) => (
               <button
                 key={f.key}
@@ -637,9 +658,13 @@ export default function RankingsPage() {
               </button>
             ))}
           </div>
-          <div className="order-last flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 md:order-none md:ml-auto md:basis-auto md:whitespace-nowrap">
-            {features.hoverResults ? <OpponentKey /> : features.activityColors ? activityKey : null}
-            {updated}
+          <div className={`order-last flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 ${
+            wideKey ? "xl:order-none xl:ml-auto xl:basis-auto xl:whitespace-nowrap" : "md:order-none md:ml-auto md:basis-auto md:whitespace-nowrap"
+          }`}>
+            {features.activityColors ? activityKey : null}
+            {features.hoverResults ? <OpponentKey compact /> : null}
+            {/* Both keys fill a phone's row; the Filters menu still shows the time. */}
+            {wideKey ? <span className="hidden sm:inline">{updated}</span> : updated}
           </div>
           <FeaturesMenu
             features={features}
