@@ -95,10 +95,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-09-28">September 28, 2026</time></p>
             <ul>
-              <li>Fixed six cards showing another event's venue, attendance and gate.</li>
-              <li>Renamed arenas now share one venue page.</li>
-              <li>Split odds boards now fill in every bout's props.</li>
-              <li>Debut fights now land in fighters' verified histories.</li>
+              <li>Ranking rows show one band per fight against an opponent.</li>
+              <li>Activity and result keys stay visible and fit smaller screens.</li>
+              <li>Tap a highlighted fighter again to open their profile.</li>
             </ul>
           </Section>
         </div>
