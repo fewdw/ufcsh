@@ -51,6 +51,7 @@ const STATIC_PAGES: Record<string, { title: string; description: string }> = {
   "/venues": { title: "UFC Venues | ufc.sh", description: "Every arena that has hosted a UFC event, with the cards held there, attendance and upcoming events." },
   "/matchmaking": { title: "UFC Matchmaking: Fights to Make Next | ufc.sh", description: "Fights to make next in every UFC division: title fights, ranked matchups and next opponents for everyone on the last card, each with its reason." },
   "/news": { title: "UFC News: Latest from Every Outlet | ufc.sh", description: "The latest UFC news from MMA Fighting, Sherdog, BBC Sport, The Guardian and more, in one list: top stories first, every headline linked to its source." },
+  "/leaderboards": { title: "UFC Fan Leaderboards: Top Predictors & Bettors | ufc.sh", description: "The best UFC predictors and bettors on UFC.sh: prediction points, winner and method accuracy, and betting profit." },
   "/roster": { title: "UFC Roster Changes: Signings & Releases | ufc.sh", description: "Fighters the UFC has recently signed and recently released, with division, record and date." },
   "/info": { title: "About, Sources & Methods | ufc.sh", description: "About UFC.sh: an independent, fan-made UFC research tool. Data sources, definitions, community rules, privacy and changelog." },
 };
@@ -66,7 +67,7 @@ export function pageSeo(pathname: string): PageSeo {
   if (pathname === "/" || pathname === "/index.html") return home;
   const fixed = STATIC_PAGES[pathname];
   if (fixed) return { ...DEFAULT, ...fixed, canonical: `${SITE_URL}${pathname}` };
-  if (pathname === "/admin" || pathname === "/admin/bugs" || pathname === "/favorites" || /^\/sign-(in|up)(\/|$)/.test(pathname)) return { ...home, noindex: true };
+  if (pathname === "/admin" || pathname === "/admin/bugs" || pathname === "/favorites" || pathname === "/report" || pathname === "/graphic" || /^\/sign-(in|up)(\/|$)/.test(pathname)) return { ...home, noindex: true };
   const parts = pathname.split("/");
   const id = decodeURIComponent(parts[2] ?? "");
   if (parts.length !== 3 || !id) return notFound();

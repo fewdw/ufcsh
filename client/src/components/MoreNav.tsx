@@ -5,10 +5,13 @@ import { useAdminResource, type AdminSession } from "../admin";
 import { useApi, type RosterMoves } from "../api";
 import { onRosterSeen, seedRosterSeen, unseenMoves } from "../rosterSeen";
 
+type Section = { href: string; label: string; paths: string[]; access?: "accounts" | "admin" };
+
 /** The pages behind More, each with the paths that belong to it: the numbers
  *  first, then the news around the roster, the people and places behind the
- *  cards, and the reader's own. */
-const SECTIONS = [
+ *  cards, the fans, and the tools. `accounts` pages need sign-in to exist on
+ *  this deployment; `admin` ones are listed only for admins. */
+const SECTIONS: Section[] = [
   { href: "/stats", label: "Stats", paths: ["/stats"] },
   { href: "/labs", label: "Labs", paths: ["/labs"] },
   { href: "/news", label: "News", paths: ["/news"] },
@@ -16,22 +19,25 @@ const SECTIONS = [
   { href: "/matchmaking", label: "Matchmaking", paths: ["/matchmaking"] },
   { href: "/officials", label: "Officials", paths: ["/officials", "/judges", "/referees"] },
   { href: "/venues", label: "Venues", paths: ["/venues"] },
+  { href: "/leaderboards", label: "Leaderboards", paths: ["/leaderboards"], access: "accounts" },
   { href: "/favorites", label: "Favorites", paths: ["/favorites"] },
+  { href: "/report", label: "Report", paths: ["/report"], access: "accounts" },
+  { href: "/graphic", label: "Graphic", paths: ["/graphic"], access: "admin" },
+  { href: "/admin", label: "Admin", paths: ["/admin"], access: "admin" },
 ];
-const ADMIN = { href: "/admin", label: "Admin", paths: ["/admin"] };
 
 const within = (pathname: string, path: string) => pathname === path || pathname.startsWith(`${path}/`);
-const current = (pathname: string, section: typeof ADMIN) => section.paths.some((path) => within(pathname, path));
+const current = (pathname: string, section: Section) => section.paths.some((path) => within(pathname, path));
 
 /** Where the More button leads when it is pressed rather than hovered. */
 export const MORE_HOME = SECTIONS[0].href;
 
-export const inMore = (pathname: string) => [...SECTIONS, ADMIN].some((section) => current(pathname, section));
+export const inMore = (pathname: string) => SECTIONS.some((section) => current(pathname, section));
 
 // Remembered across pages, so the Admin link doesn't blink in on each one.
 let wasAdmin = false;
 
-/** Admin is listed only for the few who have it. */
+/** Admin pages are listed only for the few who have them. */
 function AdminOnly({ children }: { children: ReactNode }) {
   const { isLoaded, user } = useAccount();
   const { data } = useAdminResource<AdminSession>(isLoaded && user ? "/api/admin/session" : null);
@@ -41,11 +47,12 @@ function AdminOnly({ children }: { children: ReactNode }) {
 }
 
 /** Every More link, in order, as `item` draws it. */
-export function MoreLinks({ item }: { item: (section: typeof ADMIN, active: boolean) => ReactNode }) {
+export function MoreLinks({ item }: { item: (section: Section, active: boolean) => ReactNode }) {
   const { pathname } = useLocation();
   return <>
-    {SECTIONS.map((section) => item(section, current(pathname, section)))}
-    {accountsEnabled ? <AdminOnly>{item(ADMIN, current(pathname, ADMIN))}</AdminOnly> : null}
+    {SECTIONS.filter((section) => !section.access || accountsEnabled).map((section) => section.access === "admin"
+      ? <AdminOnly key={section.href}>{item(section, current(pathname, section))}</AdminOnly>
+      : item(section, current(pathname, section)))}
   </>;
 }
 

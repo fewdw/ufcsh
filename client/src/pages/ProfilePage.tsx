@@ -1,8 +1,8 @@
 import { useAuth } from "@clerk/react";
-import { Check, ChevronDown, Flag, ImageIcon, Info, LogOut, Pencil, Search, Settings, SquareTerminal, X } from "lucide-react";
+import { Check, ChevronDown, Flag, Info, LogOut, Pencil, Search, Settings, SquareTerminal, X } from "lucide-react";
 import { isDevSite, useDevStats } from "../devStats";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiCache, prefetch, useApi } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
 import { ConfirmRemove, RemoveX } from "../components/ConfirmRemove";
@@ -14,7 +14,6 @@ import ProfilePredictions, { predictionsList } from "../components/ProfilePredic
 import ProfileBets, { betsList } from "../components/ProfileBets";
 import ProfileComments, { commentsList } from "../components/ProfileComments";
 import ReportIssueDialog from "../components/ReportIssueDialog";
-import Leaderboards from "../components/Leaderboards";
 import { formatDateShortWithYear, formatMethod } from "../format";
 import { useRouteScrollRestoration } from "../navigationState";
 import { rememberedEmail, useMyProfile } from "../profile";
@@ -24,18 +23,15 @@ import { useSeo } from "../seo";
 import { useSettings, withRanking } from "../settings";
 import { BUTTON_PRIMARY, BUTTON_QUIET } from "../ui";
 import FanAvatar from "../components/FanAvatar";
-import { useGraphics } from "../graphicsLauncher";
-import { useAdminResource, type AdminSession } from "../admin";
 
 const FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed"];
 /** Bouts that went to the judges are the ones a card can be read against, so
  *  the list opens on them and finishes are one checkbox away. */
 const DEFAULT_FILTER: ProfileFilter = "decisions";
-/** `short` is what a phone shows, so all five fit on one line without scrolling. */
+/** `short` is what a phone shows, so all four fit on one line without scrolling. */
 const TABS = [
   { id: "scorecards", label: "Scorecards", short: "Scores" }, { id: "predictions", label: "Predictions", short: "Picks" },
   { id: "bets", label: "Bets", short: "Bets" }, { id: "comments", label: "Comments", short: "Comments" },
-  { id: "leaderboards", label: "Leaderboards", short: "Leaderboards" },
 ] as const;
 type Section = (typeof TABS)[number]["id"];
 const quiet = BUTTON_QUIET;
@@ -47,6 +43,9 @@ const primary = BUTTON_PRIMARY;
  *  username they chose, or by the one minted for them when they signed up. */
 export default function ProfilePage() {
   const { handle = "" } = useParams();
+  const [search] = useSearchParams();
+  // The leaderboards were a profile tab before they had a page of their own.
+  if (search.get("tab") === "leaderboards") return <Navigate to="/leaderboards" replace />;
   return handle === "me" ? <MyProfileRedirect /> : <Profile handle={handle} />;
 }
 
@@ -134,7 +133,6 @@ function Profile({ handle }: { handle: string }) {
       prefetchList(predictionsList(handle));
       prefetchList(betsList(handle));
       if (commentsOpen) prefetchList(commentsList(handle, "new", mine ? getToken : null));
-      prefetch("/api/leaderboards");
     }, 150);
     return () => window.clearTimeout(timer);
   }, [loaded, handle, mine, commentsOpen, getToken]);
@@ -213,7 +211,7 @@ function Profile({ handle }: { handle: string }) {
             : section === "bets" ? <ProfileBets key={handle} handle={handle} mine={mine} />
             : section === "comments" ? <ProfileComments key={handle} handle={handle} mine={mine} visible={scorer.commentsPublic}
                 visibilityControl={mine ? <CommentsVisibility visible={scorer.commentsPublic} onChanged={refresh} /> : null} />
-            : section === "leaderboards" ? <Leaderboards handle={handle} /> : <>
+            : <>
           <section className={`${PANEL_SHELL} overflow-hidden`}>
             <PanelHeading
               title="Scored fights"
@@ -345,13 +343,10 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
   const [reportOpen, setReportOpen] = useState(false);
   const { isLoaded, user, manage, signOut } = useAccount();
   const [devStats, toggleDevStats] = useDevStats();
-  // The graphics builder is still being built; admins only for now.
-  const { data: adminSession } = useAdminResource<AdminSession>(mine && isLoaded && user ? "/api/admin/session" : null);
   // The owner's row stays up while Clerk loads after a reload: `mine` already
   // comes from the identity this browser remembers, and Clerk queues a
   // "manage" or "sign out" pressed before it is ready.
   const owner = mine && (Boolean(user) || !isLoaded);
-  const openGraphics = useGraphics();
   return (
     <header className={`${PANEL_SHELL} px-4 py-3 sm:px-5`}>
       <div className="flex items-center gap-3 sm:gap-4">
@@ -385,11 +380,6 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
       </div>
       {owner ? (
         <div className="mt-3 flex flex-wrap items-center justify-center gap-1 border-t border-zinc-100 pt-2 sm:gap-1.5">
-          {adminSession?.admin ? (
-            <button type="button" onClick={() => openGraphics()} className={action} title="Make a shareable graphic">
-              <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />Graphic
-            </button>
-          ) : null}
           <button type="button" onClick={() => setReportOpen(true)} className={action} title="Report an issue">
             <Flag className="h-3.5 w-3.5" aria-hidden="true" />Report
           </button>

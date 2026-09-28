@@ -31,6 +31,9 @@ export const pages = {
   roster: loader(() => import("./pages/RosterPage")),
   matchmaking: loader(() => import("./pages/MatchmakingPage")),
   news: loader(() => import("./pages/NewsPage")),
+  leaderboards: loader(() => import("./pages/LeaderboardsPage")),
+  report: loader(() => import("./pages/ReportPage")),
+  graphic: loader(() => import("./pages/GraphicPage")),
 };
 
 /** The page a pathname opens, if it is one of ours. */
@@ -49,6 +52,9 @@ export function pageFor(pathname: string): PageLoader | null {
   if (pathname === "/roster") return pages.roster;
   if (pathname === "/matchmaking") return pages.matchmaking;
   if (pathname === "/news") return pages.news;
+  if (pathname === "/leaderboards") return pages.leaderboards;
+  if (pathname === "/report") return pages.report;
+  if (pathname === "/graphic") return pages.graphic;
   if (pathname === "/admin" || pathname.startsWith("/admin/")) return pages.admin;
   if (pathname.startsWith("/sign-in") || pathname.startsWith("/sign-up")) return pages.auth;
   return null;
