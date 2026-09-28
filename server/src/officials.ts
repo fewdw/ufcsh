@@ -62,12 +62,13 @@ for (const [full, short] of NICKNAMES) {
 }
 // One New Jersey judge is recorded under both surnames and a misspelled given name.
 // The Russian referee Kiselev under three transliterations, one of them surname
-// first; the Austin judge Stafin as Jay and as Jason.
+// first; the Austin judge Stafin as Jay and as Jason. Mike Bell and Doug
+// Crosby, listed by their full first names on cards they judged that night.
 const ALIASES = new Map([
   ["maimunah querido", "munah querido"], ["mamunah querido", "munah querido"], ["munah holland", "munah querido"],
   ["munah holland querido", "munah querido"], ["henry gueary", "henry guery"],
   ["vjacheslav kiselev", "vyacheslav kiselev"], ["viacheslav kiselev", "vyacheslav kiselev"], ["kiselev viacheslav", "vyacheslav kiselev"],
-  ["jay stafin", "jason stafin"],
+  ["jay stafin", "jason stafin"], ["michael bell", "mike bell"], ["douglas crosby", "doug crosby"],
 ]);
 
 /** A spelling merged by hand above, which needs no second review. */

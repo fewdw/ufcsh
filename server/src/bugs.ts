@@ -1,6 +1,7 @@
 import { db, getMeta } from "./db.ts";
 import { validateFightActions } from "./action-stats.ts";
 import { americanLine, fightIndex, impliedProbability } from "./fight-index.ts";
+import { ufcFightExistsSql } from "./fighter-identity.ts";
 import { pageNamesFighter } from "./scrape/odds.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { hasCompleteJudgeRounds } from "./judge-scorecards.ts";
@@ -10,7 +11,7 @@ import { venueIndex } from "./venues.ts";
 import { rosterMoveFighter, storedRosterMoves, syncRosterMoves, syncUfcSignings } from "./roster-moves.ts";
 import { feedStatus, syncNews } from "./news.ts";
 import { NEWS_FEEDS } from "./scrape/news.ts";
-import { ROSTER_ARTICLE } from "./scrape/wikipedia.ts";
+import { ROSTER_ARTICLE, samePlace } from "./scrape/wikipedia.ts";
 import {
   fighterNames,
   forgetUfcPage,
@@ -567,11 +568,15 @@ function fightsMissingFromHistory(): BugCheck {
 }
 
 function duplicateFighters(): BugCheck {
+  // Only profiles a reader can reach: booked or fought, or signed. A stray
+  // UFCStats directory entry with no bout has no page and is never searched,
+  // so it can't be confused with the one that does (often that same signee).
   const rows = db.prepare(`
+    WITH visible AS (SELECT * FROM fighters fr WHERE fr.signee = 1 OR ${ufcFightExistsSql("fr.id", "f")})
     SELECT fr.id, fr.name, fr.norm_name, fr.wins, fr.losses, fr.draws, fr.weight,
            (SELECT MAX(e.date) FROM fights f JOIN events e ON e.id = f.event_id WHERE f.f1_id = fr.id OR f.f2_id = fr.id) AS last_fight
-    FROM fighters fr
-    WHERE fr.norm_name IN (SELECT norm_name FROM fighters GROUP BY norm_name HAVING COUNT(*) > 1)
+    FROM visible fr
+    WHERE fr.norm_name IN (SELECT norm_name FROM visible GROUP BY norm_name HAVING COUNT(*) > 1)
     ORDER BY fr.norm_name, last_fight DESC
   `).all() as { id: string; name: string; norm_name: string; wins: number; losses: number; draws: number; weight: string; last_fight: string | null }[];
   const groups = new Map<string, typeof rows>();
@@ -580,7 +585,7 @@ function duplicateFighters(): BugCheck {
     id: "duplicate-fighter-names",
     group: "Fighters",
     label: "Different fighters with the same name",
-    description: "UFCStats has more than one fighter under this name. Usually they really are different people, but name-only matching (odds, rankings, search) can pick the wrong one. Check that each record and weight looks like a separate person.",
+    description: "More than one fighter with a profile (booked, fought or signed) goes by this name. Usually they really are different people, but name-only matching (odds, rankings, search) can pick the wrong one. Check that each record and weight looks like a separate person.",
     grade: "ok",
   }, [...groups.values()].map((group): BugItem => ({
     key: group[0].norm_name,
@@ -933,32 +938,40 @@ function eventsWithoutVenue(): BugCheck {
 const placeKey = (text: string | null | undefined) =>
   (text ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z]/g, "");
 
-/** The promotion's feed placing a card in another city than UFCStats does: the
- *  ufc.com page matched to the card was another event's. */
+/** The promotion's feed or the event article placing a card in another city
+ *  than UFCStats does: the page matched to the card was another event's. */
 function venueInWrongCity(): BugCheck {
   const rows = db.prepare(`
-    SELECT ${VENUE_COLUMNS}, venue_name, venue_city FROM events WHERE venue_id IS NOT NULL AND venue_city IS NOT NULL ORDER BY date DESC
-  `).all() as (EventVenueRow & { venue_name: string | null; venue_city: string })[];
-  const items = rows.filter((event) => {
+    SELECT ${VENUE_COLUMNS}, venue_name, venue_city, wiki_city FROM events
+    WHERE (venue_id IS NOT NULL AND venue_city IS NOT NULL) OR wiki_city IS NOT NULL ORDER BY date DESC
+  `).all() as (EventVenueRow & { venue_name: string | null; venue_city: string | null; wiki_city: string | null })[];
+  const feedWrong = (event: typeof rows[number]) => {
     const feed = placeKey(event.venue_city);
     const listed = event.location.split(",").map(placeKey);
-    return feed && listed[0] && !listed.includes(feed);
+    return Boolean(event.venue_id && feed && listed[0] && !listed.includes(feed));
+  };
+  const items = rows.flatMap((event): BugItem[] => {
+    const base = { title: event.name, subtitle: event.location, date: event.date, links: venueLinks(event) };
+    return [
+      ...(feedWrong(event) ? [{
+        ...base, key: event.id,
+        facts: [["Feed venue", `${event.venue_name ?? "?"}, ${event.venue_city}`], ["ufc.com slug", event.ufc_slug ?? "none"]] as [string, string][],
+        actions: [...venueActions(event).filter((action) => action.id === "segments"), { id: "forget-ufc" as const, label: "Forget ufc.com page", target: event.id }],
+      }] : []),
+      ...(!samePlace(event.wiki_city, event.location) ? [{
+        ...base, key: `${event.id}:article`,
+        facts: [["Article venue", `${event.wiki_venue ?? "?"}, ${event.wiki_city}`], ["Article", event.wiki_title ?? "?"]] as [string, string][],
+        actions: venueActions(event).filter((action) => action.id === "article"),
+      }] : []),
+    ];
   });
   return check({
     id: "venue-wrong-city",
     group: "Venues & officials",
     label: "Venue in a different city from the card",
-    description: "The promotion's feed names a venue in another city than UFCStats gives for the card, so the ufc.com page matched to it belongs to another event and its venue, broadcasters and start times are wrong. Re-reading the card rejects a page whose bouts aren't ours; a page that lists no bouts has to be forgotten, after which the archive offers the card its own page.",
+    description: "The promotion's feed or the event's Wikipedia article names a venue in another city than UFCStats gives for the card, so the page matched to it belongs to another event and its venue (and, from the feed, broadcasters and start times) are wrong. Re-reading the card rejects a page whose bouts or city aren't ours; a ufc.com page that lists no bouts has to be forgotten, after which the archive offers the card its own page.",
     grade: "must",
-  }, items.map((event): BugItem => ({
-    key: event.id,
-    title: event.name,
-    subtitle: event.location,
-    date: event.date,
-    facts: [["Feed venue", `${event.venue_name ?? "?"}, ${event.venue_city}`], ["ufc.com slug", event.ufc_slug ?? "none"]],
-    links: venueLinks(event),
-    actions: [...venueActions(event).filter((action) => action.id === "segments"), { id: "forget-ufc", label: "Forget ufc.com page", target: event.id }],
-  })));
+  }, items);
 }
 
 function venuesFromWikipediaOnly(): BugCheck {

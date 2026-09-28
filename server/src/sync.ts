@@ -26,7 +26,7 @@ import {
 } from "./scrape/odds.ts";
 import { isSummaryAgeDisagreement, validateFightActions } from "./action-stats.ts";
 import { correctOfficialJudges } from "./verified-scorecard-corrections.ts";
-import { catchweights, eventInfobox, eventSection, fetchArticleByTitle, fetchEventArticle, fetchFighterArticle, recordCatchweight, weightMisses } from "./scrape/wikipedia.ts";
+import { catchweights, eventInfobox, eventSection, fetchArticleByTitle, fetchEventArticle, fetchFighterArticle, recordCatchweight, samePlace, weightMisses } from "./scrape/wikipedia.ts";
 import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
 import { syncVerdictScorecards } from "./verdict-import.ts";
 import { syncRosterMoves, syncUfcSignings, syncUfcStatuses } from "./roster-moves.ts";
@@ -340,13 +340,13 @@ export async function syncEventWikiInfo(limit = 20): Promise<void> {
   if (wikiInfoRunning) return;
   wikiInfoRunning = true;
   try {
-    const store = db.prepare(`UPDATE events SET wiki_title = COALESCE(?, wiki_title), wiki_venue = ?, wiki_city = ?,
+    const store = db.prepare(`UPDATE events SET wiki_title = ?, wiki_venue = ?, wiki_city = ?,
       attendance = ?, gate = ?, wiki_info_checked_at = ? WHERE id = ?`);
-    const upcoming = db.prepare(`SELECT id, name, date, wiki_title FROM events WHERE complete = 0
+    const upcoming = db.prepare(`SELECT id, name, date, location, wiki_title FROM events WHERE complete = 0
       AND date >= date('now', '-1 day') AND date <= date('now', '+42 days')
       AND (wiki_info_checked_at IS NULL OR wiki_info_checked_at < ?) ORDER BY date ASC LIMIT 6`)
-      .all(Date.now() - 12 * HOUR) as { id: string; name: string; date: string; wiki_title: string | null }[];
-    const archive = db.prepare(`SELECT id, name, date, wiki_title FROM events WHERE complete = 1 AND wiki_title IS NOT NULL
+      .all(Date.now() - 12 * HOUR) as { id: string; name: string; date: string; location: string; wiki_title: string | null }[];
+    const archive = db.prepare(`SELECT id, name, date, location, wiki_title FROM events WHERE complete = 1 AND wiki_title IS NOT NULL
       AND wiki_info_checked_at IS NULL ORDER BY date DESC LIMIT ?`).all(limit) as typeof upcoming;
     const fightsOf = db.prepare("SELECT f1_name, f2_name FROM fights WHERE event_id = ? ORDER BY ord");
     let read = 0;
@@ -358,10 +358,12 @@ export async function syncEventWikiInfo(limit = 20): Promise<void> {
         if (title) {
           const article = await fetchArticleByTitle(title);
           wikitext = article && eventSection(article, event.date);
+          // A stored title from before the place check may be a same-day card elsewhere.
+          if (wikitext && !samePlace(eventInfobox(wikitext).city, event.location)) wikitext = null;
         }
         if (!wikitext) {
           const names = (fightsOf.all(event.id) as { f1_name: string; f2_name: string }[]).flatMap((f) => [f.f1_name, f.f2_name]);
-          const article = await fetchEventArticle(event.name, event.date, names);
+          const article = await fetchEventArticle(event.name, event.date, names, event.location);
           title = article?.title ?? null;
           wikitext = article?.wikitext ?? null;
         }
@@ -730,9 +732,9 @@ export async function syncWeightMisses(limit = 30): Promise<{ events: number; mi
   weightMissRunning = true;
   try {
     const events = db.prepare(`
-      SELECT id, name, date FROM events WHERE complete = 1 AND wiki_checked_at IS NULL
+      SELECT id, name, date, location FROM events WHERE complete = 1 AND wiki_checked_at IS NULL
       ORDER BY date DESC LIMIT ?
-    `).all(limit) as { id: string; name: string; date: string }[];
+    `).all(limit) as { id: string; name: string; date: string; location: string }[];
     const fightsOf = db.prepare("SELECT id, f1_name, f2_name FROM fights WHERE event_id = ? ORDER BY ord");
     const setMiss = db.prepare("UPDATE fights SET f1_weight_miss = ?, f2_weight_miss = ? WHERE id = ?");
     const markRead = db.prepare("UPDATE events SET wiki_title = ?, wiki_checked_at = ? WHERE id = ?");
@@ -740,7 +742,7 @@ export async function syncWeightMisses(limit = 30): Promise<{ events: number; mi
       const fights = fightsOf.all(event.id) as { id: string; f1_name: string; f2_name: string }[];
       let article: Awaited<ReturnType<typeof fetchEventArticle>>;
       try {
-        article = await fetchEventArticle(event.name, event.date, fights.flatMap((f) => [f.f1_name, f.f2_name]));
+        article = await fetchEventArticle(event.name, event.date, fights.flatMap((f) => [f.f1_name, f.f2_name]), event.location);
       } catch (err) {
         total.failed++;
         log(`weight misses failed [${event.name}]:`, String(err));

@@ -95,9 +95,10 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-09-28">September 28, 2026</time></p>
             <ul>
-              <li>Ranked records now follow movement arrows.</li>
-              <li>Filters grouped by default, with off first.</li>
-              <li>Ranked record controls grouped together.</li>
+              <li>Fixed six cards showing another event's venue, attendance and gate.</li>
+              <li>Renamed arenas now share one venue page.</li>
+              <li>Split odds boards now fill in every bout's props.</li>
+              <li>Debut fights now land in fighters' verified histories.</li>
             </ul>
           </Section>
         </div>

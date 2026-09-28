@@ -5,6 +5,7 @@ import {
   closingLine,
   methodOddsForFight,
   parseEventMethodOddsHtml,
+  upcomingEventBoards,
   type ScrapedOdds,
 } from "./odds.ts";
 
@@ -213,4 +214,15 @@ test("the closing line is the middle of the closing range, in win probability", 
   assert.equal(closingLine(["-150", "-150"]), "-150");
   assert.equal(closingLine(["+200"]), "+200");
   assert.equal(closingLine([]), null);
+});
+
+test("front-page boards are dated to the nearest year, including a card split over two days", () => {
+  const html = `<a href="/events/ufc-4380"><h1>UFC Odds</h1></a><span class="table-header-date">October 3rd</span>
+    <a href="/events/ufc-332-4330"><h1>UFC 332</h1></a><span class="table-header-date">October 4th</span>
+    <a href="/events/ufc-340-1"><h1>UFC 340</h1></a><span class="table-header-date">January 2nd</span>`;
+  assert.deepEqual(upcomingEventBoards(html, new Date("2026-12-20T12:00:00Z")), [
+    ["2026-10-03", "https://www.bestfightodds.com/events/ufc-4380"],
+    ["2026-10-04", "https://www.bestfightodds.com/events/ufc-332-4330"],
+    ["2027-01-02", "https://www.bestfightodds.com/events/ufc-340-1"],
+  ]);
 });
