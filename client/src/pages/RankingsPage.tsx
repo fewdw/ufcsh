@@ -393,14 +393,18 @@ function DivisionCard({
   );
 }
 
-function OpponentKey() {
+/** `compact` abbreviates on phones so the header key keeps to one line. */
+function OpponentKey({ compact = false }: { compact?: boolean }) {
+  const label = (short: string, full: string) => compact
+    ? <><span className="sm:hidden" title={full}>{short}</span><span className="hidden sm:inline">{full}</span></>
+    : full;
   return (
     <>
-      <span className="text-emerald-600">Won</span>
-      <span className="text-rose-500">Lost</span>
-      <span className="text-sky-600">Scheduled</span>
-      <span className="text-amber-600">Draw</span>
-      <span className="text-violet-600 dark:text-violet-400">No contest</span>
+      <span className="text-emerald-600">{label("W", "Won")}</span>
+      <span className="text-rose-500">{label("L", "Lost")}</span>
+      <span className="text-sky-600">{label("Next", "Scheduled")}</span>
+      <span className="text-amber-600">{label("D", "Draw")}</span>
+      <span className="text-violet-600 dark:text-violet-400">{label("NC", "No contest")}</span>
     </>
   );
 }
@@ -643,8 +647,9 @@ export default function RankingsPage() {
             wideKey ? "xl:order-none xl:ml-auto xl:basis-auto xl:whitespace-nowrap" : "md:order-none md:ml-auto md:basis-auto md:whitespace-nowrap"
           }`}>
             {features.activityColors ? activityKey : null}
-            {features.hoverResults ? <OpponentKey /> : null}
-            {updated}
+            {features.hoverResults ? <OpponentKey compact /> : null}
+            {/* Both keys fill a phone's row; the Filters menu still shows the time. */}
+            {wideKey ? <span className="hidden sm:inline">{updated}</span> : updated}
           </div>
           <FeaturesMenu
             features={features}
