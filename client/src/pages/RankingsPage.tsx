@@ -585,6 +585,7 @@ export default function RankingsPage() {
   }
 
   const centerFilteredCards = view === "women" || view === "p4p";
+  const wideKey = features.activityColors && features.hoverResults;
   const activityKey = (
     <>
       <span className="flex items-center gap-1.5" title="Has a fight booked">
@@ -604,7 +605,8 @@ export default function RankingsPage() {
     <div ref={pageScroll} className="h-full overflow-y-auto">
       <div className="p-2 pb-8 sm:p-3">
         {/* Filters always last. From `md` the key sits just before it on the
-            one row; below that it takes a second row of its own, at the right. */}
+            one row (from `xl` when both keys show); below that it takes a
+            second row of its own, at the right. */}
         <div className={`${shell} mb-2 flex flex-wrap items-center gap-1.5 px-2.5 py-2 sm:mb-3 sm:gap-2 sm:px-3 lg:gap-3`}>
           <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Ranking view">
             {SOURCES.map((source) => (
@@ -622,7 +624,7 @@ export default function RankingsPage() {
               </button>
             ))}
           </div>
-          <div className={`${segmentedGroup} ml-auto shrink-0 p-0.5 sm:p-1 md:ml-0`} role="group" aria-label="Divisions shown">
+          <div className={`${segmentedGroup} ml-auto shrink-0 p-0.5 sm:p-1 ${wideKey ? "xl:ml-0" : "md:ml-0"}`} role="group" aria-label="Divisions shown">
             {FILTERS.map((f) => (
               <button
                 key={f.key}
@@ -637,7 +639,9 @@ export default function RankingsPage() {
               </button>
             ))}
           </div>
-          <div className="order-last flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 md:order-none md:ml-auto md:basis-auto md:whitespace-nowrap">
+          <div className={`order-last flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 ${
+            wideKey ? "xl:order-none xl:ml-auto xl:basis-auto xl:whitespace-nowrap" : "md:order-none md:ml-auto md:basis-auto md:whitespace-nowrap"
+          }`}>
             {features.activityColors ? activityKey : null}
             {features.hoverResults ? <OpponentKey /> : null}
             {updated}
