@@ -1110,9 +1110,7 @@ function opponentResults(bouts: { opponentId?: string | null; outcome: string }[
   const results: Record<string, string[]> = {};
   for (const bout of bouts) {
     if (!bout.opponentId || !rankedIds.has(bout.opponentId)) continue;
-    const list = (results[bout.opponentId] ??= []).filter((outcome) => outcome !== bout.outcome);
-    list.push(bout.outcome);
-    results[bout.opponentId] = list;
+    (results[bout.opponentId] ??= []).push(bout.outcome);
   }
   return results;
 }

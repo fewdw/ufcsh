@@ -518,6 +518,7 @@ select:not([multiple]):not([size]) {
 
 /* Opponent tints, drawn as one horizontal band per result (RankingsPage). */
 :root {
+  --opponent-divider: rgb(113 113 122 / 0.2);
   --opponent-win: rgb(16 185 129 / 0.16);
   --opponent-loss: rgb(244 63 94 / 0.14);
   --opponent-scheduled: rgb(14 165 233 / 0.16);
@@ -525,6 +526,7 @@ select:not([multiple]):not([size]) {
   --opponent-nc: rgb(139 92 246 / 0.16);
 }
 .dark {
+  --opponent-divider: rgb(161 161 170 / 0.25);
   --opponent-win: rgb(16 185 129 / 0.2);
   --opponent-loss: rgb(244 63 94 / 0.2);
   --opponent-scheduled: rgb(14 165 233 / 0.2);

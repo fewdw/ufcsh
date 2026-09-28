@@ -14,8 +14,8 @@ test("rankings carry older opponents, every rematch result, and scheduled oppone
     };
     const volk = fighter("Alexander Volkanovski");
     const max = fighter("Max Holloway");
-    assert.deepEqual(volk.activity.opponent_history?.[max.fighter_id!], ["win"], "history beyond the last five is included");
-    assert.deepEqual(max.activity.opponent_history?.[volk.fighter_id!], ["loss"], "results use the hovered fighter's perspective");
+    assert.deepEqual(volk.activity.opponent_history?.[max.fighter_id!], ["win", "win", "win"], "history beyond the last five is included");
+    assert.deepEqual(max.activity.opponent_history?.[volk.fighter_id!], ["loss", "loss", "loss"], "results use the hovered fighter's perspective");
 
     const izzy = fighter("Israel Adesanya");
     const alex = fighter("Alex Pereira");

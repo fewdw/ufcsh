@@ -281,8 +281,13 @@ function RankRow({
     ...highlightedFighter.activity.next_fight?.opponent_id === entry.fighter_id ? ["scheduled"] : [],
   ] : [];
   const resultStyle = results.length ? {
-    backgroundImage: `linear-gradient(${results.map((result, i) =>
-      `var(--opponent-${result}) ${(i * 100) / results.length}% ${((i + 1) * 100) / results.length}%`).join(", ")})`,
+    backgroundImage: `linear-gradient(to bottom, ${results.map((result, i) => {
+      const start = (i * 100) / results.length;
+      const end = ((i + 1) * 100) / results.length;
+      return i === results.length - 1
+        ? `var(--opponent-${result}) ${start}% ${end}%`
+        : `var(--opponent-${result}) ${start}% calc(${end}% - 1px), var(--opponent-divider) calc(${end}% - 1px) ${end}%`;
+    }).join(", ")})`,
   } : undefined;
   const selected = tapResults && highlightedFighter?.fighter_id === entry.fighter_id;
   const className = `flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors ${!highlightedFighter && features.activityColors ? meta.row : ""} ${selected ? "opponent-selected" : ""} ${
@@ -437,7 +442,7 @@ function useCanHover(wide = false): boolean {
 const FEATURE_OPTIONS: { key: Exclude<keyof RankingFeatures, "top15Scope">; label: string; hint: string }[] = [
   { key: "opponents", label: "Opponents", hint: "Next opponent or last result under each name" },
   { key: "hoverHistory", label: "Last 5 on hover", hint: "Recent and booked fights beside the pointer" },
-  { key: "hoverResults", label: "Hover fighter results", hint: "Highlight opponents by their latest result" },
+  { key: "hoverResults", label: "Hover fighter results", hint: "One horizontal band per fight, latest at the bottom" },
   { key: "top15Record", label: "Show top 15 wins/losses", hint: "Record against current champions and top 15" },
   { key: "movement", label: "Show movement", hint: "Rank changes in the latest update" },
   { key: "lastFive", label: "Show last 5", hint: "The last five results, oldest first" },
