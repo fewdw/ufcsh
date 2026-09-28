@@ -95,10 +95,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-09-28">September 28, 2026</time></p>
             <ul>
-              <li>Fixed six cards showing another event's venue, attendance and gate.</li>
-              <li>Renamed arenas now share one venue page.</li>
-              <li>Split odds boards now fill in every bout's props.</li>
-              <li>Debut fights now land in fighters' verified histories.</li>
+              <li>The More menu stays open while you move to a far link.</li>
             </ul>
           </Section>
         </div>
