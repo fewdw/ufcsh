@@ -7,7 +7,7 @@ import LiveMatchup from "./components/LiveMatchup";
 import { segmentedIdle, segmentedSelected } from "./components/segmented";
 import { ChevronDown, Moon, Sun } from "lucide-react";
 import { accountsEnabled } from "./auth";
-import { inMore, MORE_HOME, MoreLayout, MoreLinks } from "./components/MoreNav";
+import { inMore, MORE_HEADING, MORE_HOME, MoreGroups, MoreLayout } from "./components/MoreNav";
 import { useSettings, withRanking } from "./settings";
 import { prefetch } from "./api";
 import { useLinkPrefetch, warmSections } from "./useLinkPrefetch";
@@ -53,8 +53,8 @@ const GraphicPage = page(pages.graphic, module => module.default);
 const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
 
 /** The rest of the site, one pill after the sections. From `md` up a mouse
- *  opens its list on hover and a press opens Stats; a tap or a key opens the
- *  list. Below `md` it is a plain link: the pages' own tab strip takes over. */
+ *  opens its groups on hover and a press opens Stats; a tap or a key opens
+ *  them. On a phone they open as a panel across the width of the header. */
 function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -70,10 +70,10 @@ function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
   const wide = () => window.matchMedia("(min-width: 768px)").matches;
   const press = (e: MouseEvent<HTMLAnchorElement>) => {
     const pointer = (e.nativeEvent as PointerEvent).pointerType;
-    if (wide() && pointer !== "mouse") { e.preventDefault(); setOpen(v => !v); }
+    if (!wide() || pointer !== "mouse") { e.preventDefault(); setOpen(v => !v); }
     else if (active) e.preventDefault();
   };
-  return <div ref={ref} className="relative"
+  return <div ref={ref} className="md:relative"
     onPointerEnter={(e) => { if (e.pointerType === "mouse" && wide()) setOpen(true); }}
     onPointerLeave={(e) => { if (e.pointerType === "mouse") setOpen(false); }}>
     <Link to={MORE_HOME} onClick={press} aria-expanded={open} aria-haspopup="true"
@@ -84,9 +84,14 @@ function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
     </Link>
     {/* The top padding bridges the gap to the button, so a pointer moving
         down onto the menu never leaves it. */}
-    {open ? <div className="absolute left-0 top-full z-50 pt-1.5">
-      <ul className="w-44 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg">
-        <MoreLinks item={(section, current) => (
+    {open ? <div className="absolute inset-x-2 top-full z-50 pt-1.5 md:inset-x-auto md:left-0">
+      <div className="grid grid-cols-2 gap-x-2 gap-y-3 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg md:w-max lg:grid-cols-4">
+        <MoreGroups group={(label, links) => (
+          <div key={label} className="md:min-w-36">
+            <p className={`${MORE_HEADING} pt-1`}>{label}</p>
+            <ul>{links}</ul>
+          </div>
+        )} item={(section, current) => (
           <li key={section.href}>
             <Link to={section.href} aria-current={current ? "page" : undefined}
               className={`block rounded-lg px-3 py-2 text-sm font-medium transition-colors ${current ? "bg-zinc-100 text-zinc-900" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"}`}>
@@ -94,7 +99,7 @@ function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
             </Link>
           </li>
         )} />
-      </ul>
+      </div>
     </div> : null}
   </div>;
 }
@@ -130,7 +135,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
   ];
 
   return (
-    <header className="shrink-0 border-b border-zinc-200 bg-white">
+    <header className="relative shrink-0 border-b border-zinc-200 bg-white">
       {/* One row, everything in normal flow: the logo and the nav on the left,
           the actions on the right, and the bout on now taking whatever is
           between them. Nothing is positioned over anything else, so no width

@@ -1,40 +1,53 @@
-import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useReducer, useState, type ReactNode } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { accountsEnabled, useAccount } from "../auth";
 import { useAdminResource, type AdminSession } from "../admin";
 import { useApi, type RosterMoves } from "../api";
 import { onRosterSeen, seedRosterSeen, unseenMoves } from "../rosterSeen";
 
-type Section = { href: string; label: string; paths: string[]; access?: "accounts" | "admin" };
+type Section = { href: string; label: string; paths: string[]; accounts?: true };
+type Group = { label: string; sections: Section[]; admin?: true };
 
-/** The pages behind More, each with the paths that belong to it: the numbers
- *  first, then the news around the roster, the people and places behind the
- *  cards, the fans, and the tools. `accounts` pages need sign-in to exist on
- *  this deployment; `admin` ones are listed only for admins. */
-const SECTIONS: Section[] = [
-  { href: "/stats", label: "Stats", paths: ["/stats"] },
-  { href: "/labs", label: "Labs", paths: ["/labs"] },
-  { href: "/news", label: "News", paths: ["/news"] },
-  { href: "/roster", label: "Roster", paths: ["/roster"] },
-  { href: "/matchmaking", label: "Matchmaking", paths: ["/matchmaking"] },
-  { href: "/officials", label: "Officials", paths: ["/officials", "/judges", "/referees"] },
-  { href: "/venues", label: "Venues", paths: ["/venues"] },
-  { href: "/leaderboards", label: "Leaderboards", paths: ["/leaderboards"], access: "accounts" },
-  { href: "/favorites", label: "Favorites", paths: ["/favorites"] },
-  { href: "/report", label: "Report", paths: ["/report"], access: "accounts" },
-  { href: "/graphic", label: "Graphic", paths: ["/graphic"], access: "admin" },
-  { href: "/admin", label: "Admin", paths: ["/admin"], access: "admin" },
+/** The pages behind More, in groups: the numbers, the news around the
+ *  roster, the people and places behind the cards, the fans, and the admin
+ *  tools. `accounts` pages need sign-in to exist on this deployment; the
+ *  admin group needs it too, and is listed only for admins. */
+const GROUPS: Group[] = [
+  { label: "Data", sections: [
+    { href: "/stats", label: "Stats", paths: ["/stats"] },
+    { href: "/labs", label: "Labs", paths: ["/labs"] },
+    { href: "/matchmaking", label: "Matchmaking", paths: ["/matchmaking"] },
+  ] },
+  { label: "News", sections: [
+    { href: "/news", label: "News", paths: ["/news"] },
+    { href: "/roster", label: "Roster", paths: ["/roster"] },
+  ] },
+  { label: "Directory", sections: [
+    { href: "/officials", label: "Officials", paths: ["/officials", "/judges", "/referees"] },
+    { href: "/venues", label: "Venues", paths: ["/venues"] },
+  ] },
+  { label: "Community", sections: [
+    { href: "/leaderboards", label: "Leaderboards", paths: ["/leaderboards"], accounts: true },
+    { href: "/favorites", label: "Favorites", paths: ["/favorites"] },
+    { href: "/report", label: "Report", paths: ["/report"], accounts: true },
+  ] },
+  { label: "Admin", admin: true, sections: [
+    { href: "/graphic", label: "Graphic", paths: ["/graphic"] },
+    { href: "/admin", label: "Admin", paths: ["/admin"] },
+  ] },
 ];
 
 const within = (pathname: string, path: string) => pathname === path || pathname.startsWith(`${path}/`);
 const current = (pathname: string, section: Section) => section.paths.some((path) => within(pathname, path));
+const shown = (group: Group) => group.sections.filter((section) => !section.accounts || accountsEnabled);
+const groupOf = (pathname: string) => GROUPS.find((group) => group.sections.some((section) => current(pathname, section)));
 
-/** Where the More button leads when it is pressed rather than hovered. */
-export const MORE_HOME = SECTIONS[0].href;
+/** Where the More button leads when it is pressed rather than opened. */
+export const MORE_HOME = GROUPS[0].sections[0].href;
 
-export const inMore = (pathname: string) => SECTIONS.some((section) => current(pathname, section));
+export const inMore = (pathname: string) => groupOf(pathname) !== undefined;
 
-// Remembered across pages, so the Admin link doesn't blink in on each one.
+// Remembered across pages, so the Admin links don't blink in on each one.
 let wasAdmin = false;
 
 /** Admin pages are listed only for the few who have them. */
@@ -46,13 +59,19 @@ function AdminOnly({ children }: { children: ReactNode }) {
   return wasAdmin ? children : null;
 }
 
-/** Every More link, in order, as `item` draws it. */
-export function MoreLinks({ item }: { item: (section: Section, active: boolean) => ReactNode }) {
+/** A group's name above its links, in the menu and the sidebar alike. */
+export const MORE_HEADING = "px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400";
+
+type Item = (section: Section, active: boolean) => ReactNode;
+
+/** Every More group, in order, as `group` and `item` draw them. */
+export function MoreGroups({ group, item }: { group: (label: string, links: ReactNode) => ReactNode; item: Item }) {
   const { pathname } = useLocation();
   return <>
-    {SECTIONS.filter((section) => !section.access || accountsEnabled).map((section) => section.access === "admin"
-      ? <AdminOnly key={section.href}>{item(section, current(pathname, section))}</AdminOnly>
-      : item(section, current(pathname, section)))}
+    {GROUPS.filter((each) => !each.admin || accountsEnabled).map((each) => {
+      const drawn = <Fragment key={each.label}>{group(each.label, shown(each).map((section) => item(section, current(pathname, section))))}</Fragment>;
+      return each.admin ? <AdminOnly key={each.label}>{drawn}</AdminOnly> : drawn;
+    })}
   </>;
 }
 
@@ -78,40 +97,42 @@ function RosterNews() {
   );
 }
 
-/** The More pages: a sidebar from `md` up, a strip of tabs above the page on
- *  a phone. Each page keeps its own scrolling. */
+/** The More pages: a grouped sidebar from `md` up; on a phone, a strip of
+ *  the current group's pages above the page (the header's More opens the
+ *  rest). Each page keeps its own scrolling. */
 export function MoreLayout() {
-  const strip = useRef<HTMLElement>(null);
   const { pathname } = useLocation();
-  useEffect(() => {
-    strip.current?.querySelector("[aria-current=page]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [pathname]);
+  const group = groupOf(pathname);
   return (
     <div className="flex h-full min-h-0 flex-col md:flex-row">
-      <nav ref={strip} aria-label="More" className="shrink-0 overflow-x-auto border-b border-zinc-200 bg-white [scrollbar-width:none] md:hidden">
+      {group && shown(group).length > 1 ? <nav aria-label={group.label} className="shrink-0 overflow-x-auto border-b border-zinc-200 bg-white [scrollbar-width:none] md:hidden">
         <ul className="flex w-max gap-1 px-2 py-1.5">
-          <MoreLinks item={(section, active) => (
-            <li key={section.href}>
+          {shown(group).map((section) => {
+            const active = current(pathname, section);
+            return <li key={section.href}>
               <Link to={section.href} aria-current={active ? "page" : undefined}
                 className={`block whitespace-nowrap rounded-full px-3 py-1.5 text-[13px] font-medium transition-colors ${active ? "bg-zinc-100 text-zinc-900" : "text-zinc-500 hover:text-zinc-900"}`}>
                 {section.label}
               </Link>
-            </li>
-          )} />
+            </li>;
+          })}
         </ul>
-      </nav>
-      <nav aria-label="More" className="hidden w-48 shrink-0 overflow-y-auto border-r border-zinc-200 bg-white p-2 md:block lg:w-52 lg:p-3">
-        <ul className="flex flex-col gap-0.5">
-          <MoreLinks item={(section, active) => (
-            <li key={section.href}>
-              <Link to={section.href} aria-current={active ? "page" : undefined}
-                className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${active ? "bg-zinc-100 text-zinc-900" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"}`}>
-                {section.label}
-                {section.href === "/roster" ? <RosterNews /> : null}
-              </Link>
-            </li>
-          )} />
-        </ul>
+      </nav> : null}
+      <nav aria-label="More" className="hidden w-48 shrink-0 space-y-3 overflow-y-auto border-r border-zinc-200 bg-white p-2 md:block lg:w-52 lg:p-3">
+        <MoreGroups group={(label, links) => (
+          <div key={label}>
+            <p className={MORE_HEADING}>{label}</p>
+            <ul className="flex flex-col gap-0.5">{links}</ul>
+          </div>
+        )} item={(section, active) => (
+          <li key={section.href}>
+            <Link to={section.href} aria-current={active ? "page" : undefined}
+              className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${active ? "bg-zinc-100 text-zinc-900" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"}`}>
+              {section.label}
+              {section.href === "/roster" ? <RosterNews /> : null}
+            </Link>
+          </li>
+        )} />
       </nav>
       <div className="min-h-0 min-w-0 flex-1">
         <Outlet />
