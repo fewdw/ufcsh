@@ -24,6 +24,7 @@ type RankingFeatures = {
   hoverResults: boolean;
   top15Record: boolean;
   top15Scope: "division" | "all";
+  movement: boolean;
   streaks: boolean;
   lastFive: boolean;
   activityColors: boolean;
@@ -35,6 +36,7 @@ const DEFAULT_FEATURES: RankingFeatures = {
   hoverResults: false,
   top15Record: false,
   top15Scope: "division",
+  movement: true,
   streaks: true,
   lastFive: true,
   activityColors: true,
@@ -54,6 +56,7 @@ function loadFeatures(): RankingFeatures {
       hoverResults: typeof saved.hoverResults === "boolean" ? saved.hoverResults : DEFAULT_FEATURES.hoverResults,
       top15Record: typeof saved.top15Record === "boolean" ? saved.top15Record : DEFAULT_FEATURES.top15Record,
       top15Scope: saved.top15Scope === "all" ? "all" : DEFAULT_FEATURES.top15Scope,
+      movement: typeof saved.movement === "boolean" ? saved.movement : DEFAULT_FEATURES.movement,
       streaks: typeof saved.streaks === "boolean" ? saved.streaks : DEFAULT_FEATURES.streaks,
       lastFive: typeof saved.lastFive === "boolean" ? saved.lastFive : DEFAULT_FEATURES.lastFive,
       activityColors: typeof saved.activityColors === "boolean" ? saved.activityColors : DEFAULT_FEATURES.activityColors,
@@ -255,7 +258,7 @@ function RankRow({
       ) : null}
       <span className="ml-auto flex shrink-0 items-center gap-1.5">
         {/* The card view's form: the last five, oldest first, then the run. */}
-        {mv || !features.top15Record ? <span className={`w-7 text-center text-[11px] font-semibold tabular-nums ${mv?.cls ?? ""}`}>
+        {features.movement ? <span className={`w-7 text-center text-[11px] font-semibold tabular-nums ${mv?.cls ?? ""}`}>
           {mv?.label ?? ""}
         </span> : null}
         {features.lastFive ? <ResultDots results={entry.activity.form ?? []} label="Last 5 professional results, oldest first" /> : null}
@@ -422,6 +425,7 @@ const FEATURE_OPTIONS: { key: Exclude<keyof RankingFeatures, "top15Scope">; labe
   { key: "hoverHistory", label: "Last 5 on hover", hint: "Recent and booked fights beside the pointer" },
   { key: "hoverResults", label: "Hover fighter results", hint: "Highlight opponents by their latest result" },
   { key: "top15Record", label: "Show top 15 wins/losses", hint: "Record against current champions and top 15" },
+  { key: "movement", label: "Show movement", hint: "Rank changes in the latest update" },
   { key: "lastFive", label: "Show last 5", hint: "The last five results, oldest first" },
   { key: "streaks", label: "Streaks", hint: "4W, 2L, 1D, 1NC" },
   { key: "activityColors", label: "Activity colours", hint: "Booked and recently active fighters" },

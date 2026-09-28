@@ -95,8 +95,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-09-28">September 28, 2026</time></p>
             <ul>
-              <li>Shorter info page, updated menu and support details.</li>
-              <li>Removed the navbar shortcut button; ? still works.</li>
+              <li>Added Show movement to rankings filters, on by default.</li>
+              <li>Movement visibility is saved independently of ranked records.</li>
             </ul>
           </Section>
         </div>
