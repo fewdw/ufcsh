@@ -169,6 +169,20 @@ export function namesCard(wikitext: string, fighters: string[]): boolean {
   return named.length * 2 >= people.length;
 }
 
+// Words too common in place names to tie two places together.
+const PLACE_FILLER = new Set(["united", "states", "kingdom", "new", "city", "of", "the", "de", "do", "da", "san", "sao", "santa", "saint", "st", "north", "south", "east", "west", "sar"]);
+const placeWords = (text: string) => new Set(normName(text).split(" ").filter((word) => word.length > 1 && !PLACE_FILLER.has(word)));
+
+/** Whether an infobox city and a card's listed location can be the same place:
+ *  they share a city, state or country ("Enterprise, Nevada" and "Las Vegas,
+ *  Nevada, USA"). Same-day cards on two continents are told apart this way.
+ *  Either side unknown passes. */
+export function samePlace(city: string | null | undefined, location: string | null | undefined): boolean {
+  if (!city || !location) return true;
+  const listed = placeWords(location);
+  return [...placeWords(city)].some((word) => listed.has(word));
+}
+
 // Search hits worth opening: event and season pages, and old cards titled only
 // by their bout ("Ortiz vs. Shamrock 3"). Fighter biographies are never read.
 const EVENT_TITLE = /\b(?:UFC|Ultimate Fight(?:ing|er)|Ultimate Ultimate)\b|\bvs\b/i;
@@ -177,9 +191,10 @@ const EVENT_TITLE = /\b(?:UFC|Ultimate Fight(?:ing|er)|Ultimate Ultimate)\b|\bvs
  * The article for a UFC event: its exact name, the numbered short form
  * ("UFC 297"), the TUF season page a finale is written up in, then searches
  * by name and by main event, then the year summary. Every candidate must
- * carry the event's date and name the card (`fighters`, main event first).
+ * carry the event's date, name the card (`fighters`, main event first) and
+ * be held in the card's `location`.
  */
-export async function fetchEventArticle(name: string, date: string, fighters: string[] = []): Promise<{ title: string; wikitext: string } | null> {
+export async function fetchEventArticle(name: string, date: string, fighters: string[] = [], location?: string): Promise<{ title: string; wikitext: string } | null> {
   const year = date.slice(0, 4);
   const titles = [name];
   const numbered = name.match(/^(UFC \d+)\b/);
@@ -194,7 +209,9 @@ export async function fetchEventArticle(name: string, date: string, fighters: st
     const wikitext: string | undefined = body?.parse?.wikitext?.["*"];
     if (!wikitext) return null;
     const section = eventSection(wikitext, date);
-    return section && namesCard(section, fighters) ? { title: body.parse.title as string, wikitext: section } : null;
+    return section && namesCard(section, fighters) && samePlace(eventInfobox(section).city, location)
+      ? { title: body.parse.title as string, wikitext: section }
+      : null;
   };
   for (const title of titles) {
     const article = await load(title);
@@ -230,7 +247,7 @@ function infoboxField(wikitext: string, name: string): string | null {
   if (scope == null) return null;
   const match = new RegExp(`\\n\\s*\\|\\s*${name}\\s*=([^\\n]*)`, "i").exec(scope);
   if (!match) return null;
-  const text = plainText(match[1]).replace(/<br\s*\/?>/gi, ", ").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+  const text = plainText(match[1]).replace(/<br\s*\/?>/gi, ", ").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
   return text || null;
 }
 

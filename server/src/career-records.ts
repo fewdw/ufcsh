@@ -279,7 +279,7 @@ async function bookedOpponentCandidates(local: LocalFighter): Promise<SherdogCan
   return [...found.values()];
 }
 
-async function resolve(local: LocalFighter, knownUrl = ""): Promise<{ state: "verified"; value: VerifiedCandidate } | { state: "not_found" | "ambiguous"; reason: string }> {
+async function resolve(local: LocalFighter, knownUrl = "", verified = false): Promise<{ state: "verified"; value: VerifiedCandidate } | { state: "not_found" | "ambiguous"; reason: string }> {
   let searched: SherdogCandidate[] = [];
   if (!knownUrl) {
     let searchError: unknown = null;
@@ -309,7 +309,11 @@ async function resolve(local: LocalFighter, knownUrl = ""): Promise<{ state: "ve
       continue;
     }
     const bouts = reconcileCareerBouts(profile.bouts, known);
-    if (!isVerifiedIdentity(local, candidates.length, profile, bouts, known)) continue;
+    // A page verified before stays verified while it carries every UFC bout we
+    // have: its headline record drifts from UFCStats as a debut lands, and a
+    // failed refresh would otherwise keep the old history, short that bout.
+    const stillReconciles = verified && bouts.filter((bout) => bout.ufcFightId).length === known.length;
+    if (!stillReconciles && !isVerifiedIdentity(local, candidates.length, profile, bouts, known)) continue;
     const matchedUfc = bouts.filter((bout) => bout.ufcFightId).length;
     const bioScore = (local.birth_date && profile.birthDate === local.birth_date ? 20 : 0)
       + (local.nickname && normName(profile.nickname) === normName(local.nickname) ? 10 : 0);
@@ -417,8 +421,8 @@ export async function syncCareerRecord(fighterId: string): Promise<boolean> {
   `).get(fighterId) as LocalFighter | undefined;
   if (!local) return false;
   try {
-    const existing = db.prepare("SELECT source_url FROM career_profiles WHERE fighter_id = ?").get(fighterId) as { source_url: string | null } | undefined;
-    const resolved = await resolve(local, existing?.source_url ?? "");
+    const existing = db.prepare("SELECT source_url, status FROM career_profiles WHERE fighter_id = ?").get(fighterId) as { source_url: string | null; status: string } | undefined;
+    const resolved = await resolve(local, existing?.source_url ?? "", existing?.status === "verified");
     if (resolved.state !== "verified") {
       storeUnresolved(fighterId, resolved.state, resolved.reason);
       return false;

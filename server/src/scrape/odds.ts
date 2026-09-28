@@ -158,18 +158,38 @@ async function fighterIndex(): Promise<Map<string, string[]>> {
   return fighterIndexPromise;
 }
 
+/** The front page's upcoming boards by date ("October 3rd"), which reach it
+ *  before the sitemap: a card split across two boards gets its second one late.
+ *  The year is the one that puts the date nearest `today`. */
+export function upcomingEventBoards(html: string, today = new Date()): [date: string, url: string][] {
+  const boards: [string, string][] = [];
+  for (const match of html.matchAll(/<a href="(\/events\/[^"]+)"><h1>[^<]*<\/h1><\/a><span class="table-header-date">([A-Za-z]{3})[a-z]* (\d{1,2})(?:st|nd|rd|th)</gi)) {
+    const month = MONTHS3[match[2].toLowerCase()];
+    if (!month) continue;
+    const dates = [-1, 0, 1].map((shift) => `${today.getUTCFullYear() + shift}-${String(month).padStart(2, "0")}-${match[3].padStart(2, "0")}`);
+    const nearest = dates.sort((a, b) => Math.abs(Date.parse(a) - today.getTime()) - Math.abs(Date.parse(b) - today.getTime()))[0];
+    boards.push([nearest, `${BASE}${match[1]}`]);
+  }
+  return boards;
+}
+
 async function eventIndex(): Promise<Map<string, string[]>> {
   if (Date.now() - eventIndexLoadedAt > 60 * 60 * 1000) eventIndexPromise = null;
   if (!eventIndexPromise) {
     eventIndexLoadedAt = Date.now();
+    const front = fetchHtml(`${BASE}/`, { timeoutMs: 60_000, retries: 1 }).catch(() => "");
     eventIndexPromise = fetchHtml(EVENT_SITEMAP, { timeoutMs: 90_000, retries: 1 })
-      .then((xml) => {
+      .then(async (xml) => {
         const index = new Map<string, string[]>();
+        const add = (date: string, url: string) => {
+          const urls = index.get(date) ?? [];
+          if (!urls.includes(url)) urls.push(url);
+          index.set(date, urls);
+        };
         for (const match of xml.matchAll(/<url>\s*<loc>(https:\/\/www\.bestfightodds\.com\/events\/[^<]+)<\/loc>\s*<lastmod>(\d{4}-\d{2}-\d{2})<\/lastmod>\s*<\/url>/gi)) {
-          const urls = index.get(match[2]) ?? [];
-          if (!urls.includes(match[1])) urls.push(match[1]);
-          index.set(match[2], urls);
+          add(match[2], match[1]);
         }
+        for (const [date, url] of upcomingEventBoards(await front)) add(date, url);
         return index;
       })
       .catch((err) => {

@@ -32,6 +32,10 @@ test("an absent or malformed field is null rather than guessed", () => {
   assert.deepEqual(eventInfobox("{{Infobox MMA event\n|venue=\n|attendance= TBA\n}}"), { venue: null, city: null, attendance: null, gate: null });
 });
 
+test("a non-breaking space reads as a space", () => {
+  assert.equal(eventInfobox("{{Infobox MMA event\n| venue = [[The O2 Arena|The O2&nbsp;Arena]]\n}}").venue, "The O2 Arena");
+});
+
 test("a wrapped venue and a multi-line citation don't hide fields", () => {
   const ufc74 = `{{Infobox MMA event
 | name = UFC 74: Respect

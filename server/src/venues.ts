@@ -63,6 +63,29 @@ const HIGH_CITIES: Record<string, { metres: number }> = {
   "calgary": { metres: 1045 },
 };
 
+/** Renamed buildings no card links to the promotion's venue id under their old
+ *  name: "old name|city" → the name ufc.com uses now. Same building only. */
+const FORMER_NAMES: Record<string, string> = {
+  "mgm grand arena|las vegas": "MGM Grand Garden Arena",
+  "arrowhead pond|anaheim": "Honda Center",
+  "arco arena|sacramento": "Sleep Train Arena",
+  "conseco fieldhouse|indianapolis": "Bankers Life Fieldhouse",
+  "general motors place|vancouver": "Rogers Arena",
+  "rose garden|portland": "Moda Center",
+  "wachovia center|philadelphia": "Xfinity Mobile Arena",
+  "sommet center|nashville": "Bridgestone Arena",
+  "the o2|dublin": "3Arena",
+  "evening news arena|manchester": "Manchester Arena",
+  "manchester evening news arena|manchester": "Manchester Arena",
+  "phones 4u arena|manchester": "Manchester Arena",
+  "vector arena|auckland": "Spark Arena",
+  "broomfield event center|broomfield": "1stBank Center",
+  "san diego sports arena|san diego": "Pechanga Arena",
+  "american airlines arena|miami": "Kaseya Center",
+  "continental airlines arena|east rutherford": "Meadowlands Arena",
+  "o2 arena|london": "The O2 Arena",
+};
+
 const slugify = (text: string) => normName(text).replace(/\s+/g, "-");
 
 function cityOf(row: EventVenueRow): { city: string | null; state: string | null; country: string | null } {
@@ -106,7 +129,8 @@ function build(): VenueIndex {
   const keyOf = (row: EventVenueRow): string | null => {
     if (row.venue_id) return `u${row.venue_id}`;
     if (!row.wiki_venue) return null;
-    const known = aliases.get(aliasKey(row.wiki_venue, city(row)));
+    const renamed = FORMER_NAMES[aliasKey(row.wiki_venue, city(row))];
+    const known = aliases.get(aliasKey(renamed ?? row.wiki_venue, city(row)));
     return known ? `u${known}` : `w${aliasKey(row.wiki_venue, city(row))}`;
   };
   for (const row of rows) {

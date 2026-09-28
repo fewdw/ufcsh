@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { catchweights, eventSection, infoboxDate, namesCard, plainText, recordCatchweight, rosterChanges, weightMisses } from "./wikipedia.ts";
+import { catchweights, eventSection, infoboxDate, namesCard, plainText, recordCatchweight, rosterChanges, samePlace, weightMisses } from "./wikipedia.ts";
 
 const article = (background: string, results = "") =>
   `{{Infobox MMA event\n| date = {{start date|2024|01|20}}\n}}\n==Background==\n${background}\n==Results==\n${results}`;
@@ -75,6 +75,17 @@ test("an article must name most of the card", () => {
   assert.ok(namesCard(text, ["Thiago Santos", "Eryk Anders", "Alex Oliveira", "Carlo Pedersoli Jr."]));
   assert.ok(!namesCard(text, ["Thiago Santos", "Conor McGregor", "Nate Diaz", "Jose Aldo"]));
   assert.ok(namesCard(text, []));
+});
+
+test("an article must be held where the card was", () => {
+  assert.ok(samePlace("Enterprise, Nevada United States", "Las Vegas, Nevada, USA"));
+  assert.ok(samePlace("Al Rayyan, Qatar", "Doha, Qatar"));
+  assert.ok(samePlace("Gdańsk/Sopot, Poland", "Gdansk, Poland"));
+  assert.ok(samePlace(null, "Belfast, Northern Ireland, United Kingdom"));
+  // Same night, another continent; a year summary's first card.
+  assert.ok(!samePlace("São Paulo, Brazil", "Belfast, Northern Ireland, United Kingdom"));
+  assert.ok(!samePlace("Chicago, Illinois", "Calgary, Alberta, Canada"));
+  assert.ok(!samePlace("London, United Kingdom", "Dallas, Texas, United States"));
 });
 
 test("a follow-up sentence belongs to the fighter named first, not the first on the card", () => {
