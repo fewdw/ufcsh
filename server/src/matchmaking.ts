@@ -8,7 +8,7 @@ import { log, todayIso } from "./util.ts";
  *  - `top15`: per division, a title fight (the booked one, or the champion
  *    against the best available contender), then the remaining unbooked
  *    ranked fighters paired by rank and form.
- *  - `last_event`: for everyone on the most recent completed card, a next
+ *  - `recent_events`: for everyone on the four most recent completed cards, a next
  *    opponent of similar standing coming off a similar result.
  * The rules are pure functions over `Fighter` snapshots, so they are tested on
  * synthetic divisions; `matchmaking()` reads the data once per revision.
@@ -403,10 +403,10 @@ function divisionOf(fights: IndexedFight[]): string | null {
 type Matchmaking = {
   updated_at: number | null;
   top15: { division: string; fights: { kind: Plan["fights"][number]["kind"]; a: MatchFighter; b: MatchFighter; reason: string; event: { id: string; name: string; date: string } | null }[]; idle: { fighter: MatchFighter; reason: string }[] }[];
-  last_event: {
+  recent_events: {
     id: string; name: string; date: string;
     bouts: { fight_id: string; division: string; method: string | null; title: boolean; sides: { fighter: MatchFighter; outcome: Result | null; next: { kind: Next["kind"]; opponent: MatchFighter | null; reason: string } }[] }[];
-  } | null;
+  }[];
 };
 
 let cached: { key: string; data: Matchmaking } | null = null;
@@ -462,10 +462,12 @@ export function matchmaking(): Matchmaking {
     };
   });
 
-  let lastEvent: Matchmaking["last_event"] = null;
-  const event = prepared("SELECT id, name, date FROM events WHERE complete = 1 AND date <= ? ORDER BY date DESC LIMIT 1").get(today) as { id: string; name: string; date: string } | undefined;
-  const card = event ? index.fights.filter((fight) => fight.eventId === event.id).sort((a, b) => a.ord - b.ord) : [];
-  if (event && card.length) {
+  const recentEvents: Matchmaking["recent_events"] = [];
+  // Four cards even across holiday breaks; never include an upcoming or live card.
+  const events = prepared("SELECT id, name, date FROM events WHERE complete = 1 AND date <= ? ORDER BY date DESC, id DESC LIMIT 4").all(today) as { id: string; name: string; date: string }[];
+  for (const event of events) {
+    const card = index.fights.filter((fight) => fight.eventId === event.id).sort((a, b) => a.ord - b.ord);
+    if (!card.length) continue;
     // The pool: whoever fought in the last three months, and everyone ranked.
     const since = new Date(Date.parse(event.date) - POOL_DAYS * 86400000).toISOString().slice(0, 10);
     const byDivision = new Map<string, Fighter[]>();
@@ -494,7 +496,7 @@ export function matchmaking(): Matchmaking {
       }) as [CardSide, CardSide],
     }));
     const next = nextOpponents(bouts, (division) => byDivision.get(division) ?? [], person, event.id, today);
-    lastEvent = {
+    recentEvents.push({
       ...event,
       bouts: bouts.map((bout, i) => {
         const fight = card[i];
@@ -507,10 +509,10 @@ export function matchmaking(): Matchmaking {
           }),
         };
       }),
-    };
+    });
   }
 
-  const data: Matchmaking = { updated_at: Number(getMeta("rankings_synced_at")) || null, top15, last_event: lastEvent };
+  const data: Matchmaking = { updated_at: Number(getMeta("rankings_synced_at")) || null, top15, recent_events: recentEvents };
   cached = { key, data };
   if (process.env.NODE_ENV !== "test") log(`matchmaking built in ${Math.round(performance.now() - started)}ms`);
   return data;
