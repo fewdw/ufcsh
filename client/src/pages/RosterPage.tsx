@@ -38,10 +38,10 @@ function Move({ move, cut, fresh }: { move: RosterMove; cut: boolean; fresh: boo
       <span className={`block truncate text-[11px] tabular-nums text-zinc-500 ${cut ? "" : "xl:shrink-0"}`}>{detail}</span>
     </span>
     <span className="shrink-0 text-right text-[11px] leading-4">
-      {move.date ? <span className="block tabular-nums text-zinc-400">
+      {move.date ? <span className="block tabular-nums text-zinc-400" title={!cut && move.reason ? move.reason : undefined}>
         {move.date.startsWith(thisYear) ? formatDateShort(move.date) : formatDateShortWithYear(move.date)}
       </span> : null}
-      {cut && move.reason ? <span className="block text-zinc-500">{move.reason}</span> : null}
+      {move.reason ? <span className="block text-zinc-500">{move.reason}</span> : null}
     </span>
   </>;
   return (
@@ -54,7 +54,7 @@ function Move({ move, cut, fresh }: { move: RosterMove; cut: boolean; fresh: boo
 const NONE: ReadonlySet<string> = new Set();
 
 const NOTES = {
-  signed: "Signed or returning, and yet to fight on a UFC card.",
+  signed: "Signings, returns and newly published active UFC profiles.",
   cut: "Released, not renewed, retired or taken off the UFC roster in the last month.",
 };
 

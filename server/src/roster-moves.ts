@@ -164,7 +164,7 @@ export function ufcDepartures(): { fighter_id: string; left_at: number }[] {
 }
 
 /** A signing ufc.com showed us, dated the day we first saw it. */
-export type UfcSigning = { name: string; division: string | null; date: string };
+export type UfcSigning = { name: string; division: string | null; date: string; source?: "profile" };
 /** Every profile slug seen at the top of the newest-first list (newest last),
  *  new ones not yet reading Active with when they were last read, and the
  *  signings found. */
@@ -229,4 +229,28 @@ export async function syncUfcSignings(readNewest = scrapeNewestAthletes, readAth
 export function ufcSignings(): UfcSigning[] {
   const since = new Date(Date.now() - DEPARTURE_DAYS * 86_400_000).toISOString().slice(0, 10);
   return storedUfcSignings().signed.filter(signing => signing.date >= since);
+}
+
+/** Catch up the initial baseline using dated profiles, never today's date.
+ * Existing active athletes with old or undated profiles are not new signings. */
+export async function backfillUfcProfiles(readNewest = scrapeNewestAthletes, readAthlete = scrapeNewAthlete): Promise<void> {
+  if (getMeta("ufc_profiles_backfilled_at")) return;
+  const newest = await readNewest();
+  if (!newest.length) throw new Error("ufc.com profile catch-up listed nobody");
+  const state = storedUfcSignings();
+  const since = Date.now() - DEPARTURE_DAYS * 86_400_000;
+  const listed = new Set(state.signed.map(signing => normName(signing.name)));
+  let failed = false;
+  for (const { slug } of newest) {
+    const athlete = await readAthlete(slug).catch(() => null);
+    if (!athlete) { failed = true; continue; }
+    if (athlete.status !== "active" || !athlete.name || !athlete.publishedAt
+      || athlete.publishedAt < since || athlete.publishedAt > Date.now() || listed.has(normName(athlete.name))) continue;
+    state.signed.push({ name: athlete.name, division: athlete.division,
+      date: new Date(athlete.publishedAt).toISOString().slice(0, 10), source: "profile" });
+    listed.add(normName(athlete.name));
+  }
+  setMeta("ufc_signings", JSON.stringify(state));
+  if (failed) throw new Error("Some UFC profiles could not be read; catch-up will retry");
+  touchMeta("ufc_profiles_backfilled_at");
 }

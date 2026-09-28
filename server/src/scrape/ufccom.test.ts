@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { athleteSlug, parseAthleteDivision, parseAthleteImages, parseAthleteStatus, parseCardRounds, parseFightIds, parseNewestAthletes, parseRankingsHtml, parseSearchAthlete, scrapeFighterImages } from "./ufccom.ts";
+import { parseAthletePublishedAt, athleteSlug, parseAthleteDivision, parseAthleteImages, parseAthleteStatus, parseCardRounds, parseFightIds, parseNewestAthletes, parseRankingsHtml, parseSearchAthlete, scrapeFighterImages } from "./ufccom.ts";
 
 const MEDIA_LABELS = [
   "Men's Pound-for-Pound",
@@ -333,4 +333,11 @@ test("reads a new athlete's division in English, or none yet", () => {
   assert.equal(parseAthleteDivision(hero("Poids mi-lourds Division")), "Light Heavyweight");
   assert.equal(parseAthleteDivision(hero("Women's Strawweight Division")), "Women's Strawweight");
   assert.equal(parseAthleteDivision(hero("")), null);
+});
+
+
+test("athlete publication dates must be present and valid", () => {
+  assert.equal(parseAthletePublishedAt('<meta property="article:published_time" content="2026-09-16T14:11:55-0500">'), Date.parse("2026-09-16T19:11:55Z"));
+  assert.equal(parseAthletePublishedAt('<meta property="article:published_time" content="unknown">'), null);
+  assert.equal(parseAthletePublishedAt("<html></html>"), null);
 });

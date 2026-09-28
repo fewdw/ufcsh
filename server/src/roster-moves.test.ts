@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { db, getMeta, setMeta } from "./db.ts";
 import { resolvePublicApi } from "./api.ts";
-import { storedRosterMoves, syncUfcSignings, ufcSignings } from "./roster-moves.ts";
+import { backfillUfcProfiles, storedRosterMoves, syncUfcSignings, ufcSignings } from "./roster-moves.ts";
 import type { NewestAthlete } from "./scrape/ufccom.ts";
 
 const listed = (...slugs: string[]) => async (): Promise<NewestAthlete[]> => slugs.map(slug => ({ slug, name: slug }));
@@ -74,5 +74,33 @@ test("the roster shows ufc.com's signings Wikipedia hasn't listed, once", async 
   } finally {
     if (saved === null) db.prepare("DELETE FROM meta WHERE key = 'ufc_signings'").run();
     else setMeta("ufc_signings", saved);
+  }
+});
+
+
+test("profile catch-up uses only recent active dated profiles and retries without duplicates", async () => {
+  const keys = ["ufc_signings", "ufc_profiles_backfilled_at"];
+  const saved = keys.map(getMeta);
+  try {
+    for (const key of keys) db.prepare("DELETE FROM meta WHERE key = ?").run(key);
+    const recent = Date.now() - 86_400_000;
+    let unavailable = true;
+    const read = async (slug: string) => {
+      if (slug === "unavailable" && unavailable) throw new Error("503");
+      return { name: slug, division: "Flyweight", status: slug === "inactive" ? "not_fighting" as const : "active" as const,
+        publishedAt: slug === "undated" ? null : slug === "old" ? 1 : slug === "future" ? Date.now() + 86_400_000 : recent };
+    };
+    const newest = listed("recent", "old", "undated", "inactive", "future", "unavailable");
+    await assert.rejects(backfillUfcProfiles(newest, read));
+    assert.deepEqual(ufcSignings().map(s => s.name), ["recent"]);
+    assert.equal(ufcSignings()[0].date, new Date(recent).toISOString().slice(0, 10));
+    assert.equal(ufcSignings()[0].source, "profile");
+    assert.equal(getMeta("ufc_profiles_backfilled_at"), null);
+    unavailable = false;
+    await backfillUfcProfiles(newest, read);
+    assert.deepEqual(ufcSignings().map(s => s.name), ["recent", "unavailable"]);
+    await backfillUfcProfiles(async () => { throw new Error("Already complete"); }, read);
+  } finally {
+    keys.forEach((key, i) => saved[i] === null ? db.prepare("DELETE FROM meta WHERE key = ?").run(key) : setMeta(key, saved[i]!));
   }
 });

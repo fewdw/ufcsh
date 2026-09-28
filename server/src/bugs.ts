@@ -7,7 +7,7 @@ import { hasCompleteJudgeRounds } from "./judge-scorecards.ts";
 import { importVerdictEvent } from "./verdict-import.ts";
 import { mergedByHand, officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
-import { rosterMoveFighter, storedRosterMoves, syncRosterMoves, syncUfcSignings } from "./roster-moves.ts";
+import { backfillUfcProfiles, rosterMoveFighter, storedRosterMoves, syncRosterMoves, syncUfcSignings } from "./roster-moves.ts";
 import { feedStatus, syncNews } from "./news.ts";
 import { NEWS_FEEDS } from "./scrape/news.ts";
 import { ROSTER_ARTICLE } from "./scrape/wikipedia.ts";
@@ -1183,6 +1183,11 @@ function rosterMovesUnread(): BugCheck {
     links: [{ label: "ufc.com newest athletes", href: "https://www.ufc.com/search?type=athletes&query=" }],
     actions: [{ id: "roster-moves", label: "Read again", target: "ufc" }],
   });
+  if (!getMeta("ufc_profiles_backfilled_at")) items.push({
+    key: "ufc-profile-catchup", title: "Recent UFC profiles have not finished catching up",
+    facts: [], links: [{ label: "UFC athletes", href: "https://www.ufc.com/search?type=athletes&query=" }],
+    actions: [{ id: "roster-moves", label: "Read again", target: "ufc" }],
+  });
   // ufc.com: a markup change would leave every status unread, and a fighter
   // whose page can't be found is never watched for leaving.
   const statuses = db.prepare("SELECT COUNT(*) AS checked, COUNT(status) AS read FROM ufc_status WHERE checked_at > ?").get(Date.now() - 24 * 3_600_000) as { checked: number; read: number };
@@ -1359,6 +1364,7 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
       try {
         if (target === "ufc") {
           await syncUfcSignings();
+          await backfillUfcProfiles();
           return { ok: true, message: "Read ufc.com's newest athletes." };
         }
         await syncRosterMoves();

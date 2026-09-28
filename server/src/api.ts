@@ -1886,7 +1886,7 @@ function rosterView() {
     if (own.some(key => listed.has(key))) continue;
     own.forEach(key => listed.add(key));
     signings.push(view({ date: signing.date, name: signing.name, nickname: null, country: null,
-      division: signing.division ?? (fighterId ? divisionOf(fighterId) : null), reason: null, record: null }, fighterId));
+      division: signing.division ?? (fighterId ? divisionOf(fighterId) : null), reason: signing.source === "profile" ? "UFC profile published" : null, record: null }, fighterId));
   }
   const newestFirst = (a: { date: string | null }, b: { date: string | null }) => (b.date ?? "").localeCompare(a.date ?? "");
   return {

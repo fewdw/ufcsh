@@ -432,10 +432,17 @@ export async function scrapeNewestAthletes(): Promise<NewestAthlete[]> {
   return athletes;
 }
 
+/** Publication time dates the profile, not the fighter's contract. */
+export function parseAthletePublishedAt(html: string): number | null {
+  const $ = cheerio.load(html);
+  const value = Date.parse($("meta[property='article:published_time']").attr("content") ?? "");
+  return Number.isFinite(value) ? value : null;
+}
+
 /** A new athlete's name, status and division, from their own page. */
-export async function scrapeNewAthlete(slug: string): Promise<{ name: string; status: AthleteStatus | null; division: string | null }> {
+export async function scrapeNewAthlete(slug: string): Promise<{ name: string; status: AthleteStatus | null; division: string | null; publishedAt?: number | null }> {
   const html = await fetchHtml(`https://www.ufc.com/athlete/${slug}`, { timeoutMs: 30000, retries: 0 });
-  return { ...parseAthleteStatus(html), division: parseAthleteDivision(html) };
+  return { ...parseAthleteStatus(html), division: parseAthleteDivision(html), publishedAt: parseAthletePublishedAt(html) };
 }
 
 // ---------------------------------------------------------------------------

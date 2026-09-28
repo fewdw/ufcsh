@@ -59,8 +59,14 @@ export function MoreLinks({ item }: { item: (section: Section, active: boolean) 
 /** Signings (green) and releases (red) since Roster was last opened, beside
  *  its name in the sidebar. Read only where the sidebar shows. */
 function RosterNews() {
-  const [wide] = useState(() => window.matchMedia("(min-width: 768px)").matches);
-  const { data } = useApi<RosterMoves>(wide ? "/api/roster" : null);
+  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 768px)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 768px)");
+    const resize = () => setWide(media.matches);
+    media.addEventListener("change", resize);
+    return () => media.removeEventListener("change", resize);
+  }, []);
+  const { data } = useApi<RosterMoves>(wide ? "/api/roster" : null, 60_000);
   const [, refresh] = useReducer((turn: number) => turn + 1, 0);
   useEffect(() => onRosterSeen(refresh), []);
   useEffect(() => { if (data) seedRosterSeen(data); }, [data]);
