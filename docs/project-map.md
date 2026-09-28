@@ -13,7 +13,7 @@ client (`client/`) renders every page.
 | Link-preview images (`/og/*.jpg`) | `og-images.ts` (drawing); data lookup in `api.ts` (`shareCardData`) |
 | Fighter identity, records, photo URLs | `fighter-identity.ts` |
 | In-memory analytics index | `fight-index.ts` (every completed bout, state entering it) |
-| Leaderboards / Labs | `stats.ts`, `labs.ts`, `labs-insights.ts`, `labs-explore.ts` |
+| Leaderboards / Labs | `stats.ts` (fighter cards), `stats-fights.ts` (Fights card: bouts, judges, referees), `labs.ts`, `labs-insights.ts`, `labs-explore.ts` |
 | Profile records and full stat rankings | `records.ts` (`fighterRecords`, `fighterBoard`, `milestonesWithinReach`) |
 | Judges and referees | `officials.ts` (name merging, profiles, directory, search) |
 | Venues | `venues.ts` (identity from ufc.com venue ids + Wikipedia names) |

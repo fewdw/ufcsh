@@ -471,6 +471,10 @@ export type StatsLeader = {
   rank: number | null;
   tied: boolean;
   chips: StatChip[];
+  /** Where a row leads when it is a bout or an official rather than a fighter. */
+  href?: string;
+  /** A bout's other corner: "A def. B". */
+  opponent?: { name: string; photo_url: string | null; verb: string };
 };
 
 /** A place at or near the top of the sport, shown on a fighter's profile. */
@@ -517,7 +521,7 @@ export type StatsDashboard = {
   limit: number;
   coverage: { age_percent: number; fights: number; pending_details: number; fighters: number };
   leaderboards: {
-    group: "records" | "performance" | "context" | "betting";
+    group: string;
     key: string;
     title: string;
     description: string;

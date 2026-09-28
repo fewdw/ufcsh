@@ -3,9 +3,10 @@ import { todayIso } from "./util.ts";
 import { ACTION_TYPES, actionPercentage, type ActionType } from "./action-stats.ts";
 import { completeRecordBefore, divisionSort, fightIndex, winProfit, type IndexedSide } from "./fight-index.ts";
 import { titleNarratives, type TitleRow } from "./titles.ts";
+import { fightsBoard } from "./stats-fights.ts";
 
-/** Leaderboards in five cards (Record, Finishing, Output, Context, Market),
- * each a single pass over the shared fight index plus a sort. */
+/** Leaderboards in six cards (Record, Finishing, Output, Context, Market,
+ * Fights), each a single pass over the shared fight index plus a sort. */
 
 type Method = "all" | "ko" | "sub" | "finish" | "decision" | "unanimous" | "majority" | "split" | "dq";
 const METHODS: readonly Method[] = ["all", "ko", "sub", "finish", "decision", "unanimous", "majority", "split", "dq"];
@@ -181,6 +182,12 @@ type Aggregate = {
   layoffWins: number;
   layoffOpportunities: number;
   titleFights: number;
+  mainEvents: number;
+  mainEventWins: number;
+  mainEventLosses: number;
+  performanceBonuses: number;
+  fotnBonuses: number;
+  bonusBouts: number;
   titleWins: number;
   titleMethodWins: number;
   titleLosses: number;
@@ -263,7 +270,7 @@ function emptyAggregate(id: string, name: string, photoUrl: string | null): Aggr
     streakBreakers: 0, longestStreakBroken: 0, longestStreakBrokenDetail: "",
     bounceBackWins: 0, bounceBackOpportunities: 0, rematchWins: 0, rematchOpportunities: 0, revengeWins: 0,
     quickReturnWins: 0, quickReturnOpportunities: 0, layoffWins: 0, layoffOpportunities: 0,
-    titleFights: 0, titleWins: 0, titleMethodWins: 0, titleLosses: 0, titleMethodLosses: 0,
+    titleFights: 0, mainEvents: 0, mainEventWins: 0, mainEventLosses: 0, performanceBonuses: 0, fotnBonuses: 0, bonusBouts: 0, titleWins: 0, titleMethodWins: 0, titleLosses: 0, titleMethodLosses: 0,
     filteredTitleDefenses: 0, filteredTitleMethodDefenses: 0, longestFilteredTitleDefenseStreak: 0,
     failedTitleDefenses: 0, failedMethodTitleDefenses: 0,
     divisionWins: new Map(), divisionLosses: new Map(), divisions: new Map(), division: "",
@@ -299,6 +306,10 @@ export type LeaderRow = {
   tied: boolean;
   /** The named bouts, opponents or divisions this row's number is made of. */
   chips: Chip[];
+  /** Where the row leads when it is not a fighter: a bout or an official. */
+  href?: string;
+  /** A bout's other corner: "A def. B". */
+  opponent?: { name: string; photo_url: string | null; verb: string };
 };
 
 export type Leaderboard = {
@@ -309,6 +320,10 @@ export type Leaderboard = {
   format: "number" | "percent" | "decimal" | "signed" | "time" | "signedTime" | "currency" | "odds" | "years";
   rows: LeaderRow[];
 };
+
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+const PERFORMANCE_BONUS: Record<number, string> = { 1: "Performance", 2: "Knockout", 3: "Submission" };
 
 const rounded = (value: number) => Math.round(value * 10) / 10;
 const clock = (value: number) => {
@@ -365,7 +380,9 @@ export function getStats(params: URLSearchParams): unknown {
   // one card and one toggle rather than three entries in a menu.
   const divisionLocked = selectedDivision !== "all";
   const recordGroup = mode("recordGroup", ["bouts", "wins", "losses"] as const, "wins");
-  const requestedBoutsMode = mode("boutsMode", ["total", "span", "titleFights", "divisions"] as const, "total");
+  const requestedBoutsMode = mode("boutsMode", ["total", "span", "titleFights", "mainEvents", "bonuses", "divisions"] as const, "total");
+  const bonusKind = mode("bonusKind", ["all", "performance", "fotn"] as const, "all");
+  const bonusMetric = mode("bonusMetric", ["total", "percent"] as const, "total");
   const boutsMode = divisionLocked && requestedBoutsMode === "divisions" ? "total" : requestedBoutsMode;
   const requestedWinsMode = mode("winsMode", ["total", "streak", "titleWins", "titleDefenses", "championWins", "divisions", "ageAtWin"] as const, "total");
   const winsMode = divisionLocked && requestedWinsMode === "divisions" ? "total" : requestedWinsMode;
@@ -469,7 +486,9 @@ export function getStats(params: URLSearchParams): unknown {
             : lossesMode === "total" ? "methodLosses" : "none")
         : (boutsMode === "divisions" ? "divisions"
           : boutsMode === "titleFights" ? "titleBouts"
-            : boutsMode === "span" ? "span" : "none");
+            : boutsMode === "mainEvents" ? "mainEvents"
+              : boutsMode === "bonuses" ? "bonuses"
+                : boutsMode === "span" ? "span" : "none");
   const collectsRun = recordChipMode === "streak";
   const finishChipsOn = moreInfo && finishMode === "count";
   const finishTimeChips = moreInfo && finishMode !== "count";
@@ -503,7 +522,8 @@ export function getStats(params: URLSearchParams): unknown {
   const divisions = index.divisions.filter((division) => division !== "Super Heavyweight" && (includeWomen || !division.startsWith("Women's ")));
   const rows = index.fights.filter((fight) => {
     if (fight.date < from || fight.date > to) return false;
-    if (!includeWomen && !comparingFighters && fight.women) return false;
+    // A picked fighter's own bouts always count, whatever their division.
+    if (!includeWomen && fight.women && !(comparingFighters && fight.sides.some((side) => fighterIdSet.has(side.id)))) return false;
     if (!comparingFighters && selectedDivision !== "all" && fight.weightClass !== selectedDivision) return false;
     const championship = fight.titleFight && (fight.titleType === "title" || fight.titleType === "interim");
     if (boutType === "title" && !championship) return false;
@@ -812,6 +832,22 @@ export function getStats(params: URLSearchParams): unknown {
       if (recordChipMode === "titleBouts" && fight.titleFight && fight.titleType !== "tuf" && fight.titleType !== "tournament") {
         addChip(stats.recordChips, { ...opponentChip, note: fight.titleType === "interim" ? "interim title" : "title" });
       }
+      if (fight.mainEvent) {
+        stats.mainEvents += 1;
+        if (outcome === "win") stats.mainEventWins += 1;
+        if (outcome === "loss") stats.mainEventLosses += 1;
+        if (recordChipMode === "mainEvents") addChip(stats.recordChips, { ...opponentChip, note: fight.date.slice(0, 4) });
+      }
+      // A performance bonus goes to the winner; Fight of the Night to both.
+      const performanceBonus = outcome === "win" && fight.row.perf_bonus ? PERFORMANCE_BONUS[fight.row.perf_bonus] ?? "Performance" : null;
+      const fotnBonus = Boolean(fight.row.fotn_bonus);
+      if (performanceBonus) stats.performanceBonuses += 1;
+      if (fotnBonus) stats.fotnBonuses += 1;
+      if (performanceBonus || fotnBonus) stats.bonusBouts += 1;
+      if (recordChipMode === "bonuses") {
+        if (performanceBonus && bonusKind !== "fotn") addChip(stats.recordChips, { ...opponentChip, note: `${performanceBonus} of the Night` });
+        if (fotnBonus && bonusKind !== "performance") addChip(stats.recordChips, { ...opponentChip, note: "Fight of the Night" });
+      }
       if (finishTimeChips && fight.elapsed != null) {
         const finished = fight.method === "KO/TKO" || fight.method === "SUB";
         const wanted = finishMode !== "speed"
@@ -1115,14 +1151,6 @@ export function getStats(params: URLSearchParams): unknown {
     }));
   };
 
-  const scopeParts = [statsSince === "all" ? "All-time" : `Since ${statsSince}`];
-  if (statsUntil !== "all") scopeParts.push(`to ${statsUntil}`);
-  if (boutType === "title") scopeParts.push("championship bouts only");
-  if (boutType === "nonTitle") scopeParts.push("non-title bouts only");
-  if (cardPosition === "main") scopeParts.push("main events only");
-  if (cardPosition === "undercard") scopeParts.push("undercard only");
-  if (scheduledRounds !== "all") scopeParts.push(`${scheduledRounds}-round bouts`);
-  const scope = scopeParts.join(" · ");
   const percent = (count: number, total: number) => (total > 0 ? rounded((count / total) * 100) : 0);
   const divisionList = (entries: Map<string, number>, totals: Map<string, number>) => [...entries.entries()]
     .sort((a, b) => divisionSort(a[0], b[0]))
@@ -1136,11 +1164,18 @@ export function getStats(params: URLSearchParams): unknown {
   const spanYears = (f: Aggregate) => (f.firstDate && f.lastDate ? Math.round(((Date.parse(f.lastDate) - Date.parse(f.firstDate)) / (365.25 * 86400000)) * 10) / 10 : 0);
   const yearRange = (f: Aggregate) => (f.firstDate ? `${f.firstDate.slice(0, 4)}–${f.lastDate.slice(0, 4)}` : "");
 
+  const bonusCount = (f: Aggregate) => (bonusKind === "performance" ? f.performanceBonuses : bonusKind === "fotn" ? f.fotnBonuses : f.performanceBonuses + f.fotnBonuses);
+  // A share counts bouts, so one bout with two bonuses is not counted twice.
+  const bonusShare = (f: Aggregate) => (bonusKind === "all" ? f.bonusBouts : bonusCount(f));
+  const bonusPercent = boutsMode === "bonuses" && bonusMetric === "percent";
+  const bonusNoun = bonusKind === "performance" ? "Performance of the Night bonuses" : bonusKind === "fotn" ? "Fight of the Night bonuses" : "post-fight bonuses";
   const boutsValue = (f: Aggregate): number => {
     switch (boutsMode) {
       case "total": return f.fights;
       case "span": return spanYears(f);
       case "titleFights": return f.titleFights;
+      case "mainEvents": return f.mainEvents;
+      case "bonuses": return bonusPercent ? percent(bonusShare(f), f.fights) : bonusCount(f);
       case "divisions": return f.divisions.size;
     }
   };
@@ -1149,19 +1184,27 @@ export function getStats(params: URLSearchParams): unknown {
       case "total": return `${recordText(f.wins, f.losses, f.draws)} · ${yearRange(f)} · ${f.events.size} events`;
       case "span": return `${f.fights} bouts · ${yearRange(f)}`;
       case "titleFights": return `${recordText(f.titleWins, f.titleLosses)} in championship bouts`;
+      case "mainEvents": return `${recordText(f.mainEventWins, f.mainEventLosses)} in main events · ${f.fights} bouts`;
+      case "bonuses": return bonusPercent
+        ? `${bonusShare(f)}/${f.fights} bouts with a bonus`
+        : `${f.performanceBonuses} performance · ${f.fotnBonuses} fight of the night · ${f.fights} bouts`;
       case "divisions": return [...f.divisions.entries()].sort((a, b) => divisionSort(a[0], b[0])).map(([division, count]) => `${count} ${division}`).join(" · ");
     }
   };
   const boutsDescription = (): string => {
     switch (boutsMode) {
-      case "total": return `${scope} · completed UFC bouts`;
-      case "span": return `${scope} · years between a fighter's first and most recent UFC bout`;
-      case "titleFights": return `${scope} · undisputed and interim championship bouts`;
-      case "divisions": return `${scope} · weight classes competed in`;
+      case "total": return "completed UFC bouts";
+      case "span": return "years between a fighter's first and most recent UFC bout";
+      case "titleFights": return "undisputed and interim championship bouts";
+      case "mainEvents": return "bouts in the main event slot";
+      case "bonuses": return `${bonusNoun}${bonusPercent ? ` as a share of bouts · ${minimumSample}+ bouts` : ""} · awarded since 2006; performance bonuses go to the winner`;
+      case "divisions": return "weight classes competed in";
     }
   };
-  const boutsEligible = (f: Aggregate) => (boutsMode === "divisions" ? f.divisions.size > 1 : boutsValue(f) > 0);
-  const boutsFormat: Leaderboard["format"] = boutsMode === "span" ? "years" : "number";
+  const boutsEligible = (f: Aggregate) => (boutsMode === "divisions" ? f.divisions.size > 1
+    : boutsMode === "bonuses" ? bonusCount(f) > 0 && (!bonusPercent || f.fights >= minimumSample)
+      : boutsValue(f) > 0);
+  const boutsFormat: Leaderboard["format"] = boutsMode === "span" ? "years" : bonusPercent ? "percent" : "number";
 
   const winsCount = (f: Aggregate) => ({
     all: f.wins, ko: f.kos, sub: f.subs, finish: f.finishes, decision: f.decisionWins,
@@ -1222,13 +1265,13 @@ export function getStats(params: URLSearchParams): unknown {
   };
   const winsDescription = (): string => {
     switch (winsMode) {
-      case "total": return `${scope} · ${winsByMethod === "all" ? "UFC wins" : `${METHOD_LABELS[winsByMethod]} wins`}${winsByPercent ? ` as a share of ${percentOfLabel[winsPercentOf]}${winsPercentOf === "allFights" ? " (no contests excluded)" : ""}` : ""}`;
-      case "streak": return `${scope} · ${streakWhen === "current" ? "current" : "longest"} run ${streakKind === "unbeaten" ? "without a loss · draws and no contests do not end it" : `of consecutive ${selectedDivision === "all" ? "UFC wins" : "wins in this division"}${streakByMethod === "all" ? "" : ` by ${METHOD_LABELS[streakByMethod]}`} · no contests ignored, draws end a run`}`;
-      case "titleWins": return `${scope} · ${titleWinsMetric === "percent" ? (titleWinMethod === "all" ? "championship-bout win rate" : `${METHOD_LABELS[titleWinMethod]} share of championship wins`) : `championship-bout wins${titleWinMethod === "all" ? "" : ` by ${METHOD_LABELS[titleWinMethod]}`}`} · undisputed and interim · tournament and TUF finals excluded`;
-      case "titleDefenses": return `${scope} · ${defenseScope === "consecutive" ? "longest uninterrupted run of successful title defenses" : "successful title defenses"}${titleDefenseMethod === "all" ? "" : ` by ${METHOD_LABELS[titleDefenseMethod]}`}${titleDefensePercent ? " · share of defenses" : ""} · entered as recognized champion and won`;
-      case "championWins": return `${scope} · ${championPercent ? "win rate against" : "wins over"} opponents who ${championScope === "current" ? "held a UFC undisputed or interim belt that night, in any division" : "had already held a UFC undisputed or interim belt"}${championWinMethod === "all" || championPercent ? "" : ` · by ${METHOD_LABELS[championWinMethod]}`}`;
-      case "divisions": return `${scope} · divisions with a win${divisionWinMethod === "all" ? "" : ` by ${METHOD_LABELS[divisionWinMethod]}`}`;
-      case "ageAtWin": return `${scope} · ${ageEnd === "youngest" ? "youngest" : "oldest"} age at any UFC win · birth dates known for ${ageCoverage}% of bouts`;
+      case "total": return `${winsByMethod === "all" ? "wins in UFC bouts" : `${METHOD_LABELS[winsByMethod]} wins`}${winsByPercent ? ` as a share of ${percentOfLabel[winsPercentOf]}${winsPercentOf === "allFights" ? " (no contests excluded)" : ""}` : ""}`;
+      case "streak": return `${streakWhen === "current" ? "current" : "longest"} run ${streakKind === "unbeaten" ? "without a loss · draws and no contests do not end it" : `of consecutive ${selectedDivision === "all" ? "UFC wins" : "wins in this division"}${streakByMethod === "all" ? "" : ` by ${METHOD_LABELS[streakByMethod]}`} · no contests ignored, draws end a run`}`;
+      case "titleWins": return `${titleWinsMetric === "percent" ? (titleWinMethod === "all" ? "championship-bout win rate" : `${METHOD_LABELS[titleWinMethod]} share of championship wins`) : `championship-bout wins${titleWinMethod === "all" ? "" : ` by ${METHOD_LABELS[titleWinMethod]}`}`} · undisputed and interim · tournament and TUF finals excluded`;
+      case "titleDefenses": return `${defenseScope === "consecutive" ? "longest uninterrupted run of successful title defenses" : "successful title defenses"}${titleDefenseMethod === "all" ? "" : ` by ${METHOD_LABELS[titleDefenseMethod]}`}${titleDefensePercent ? " · share of defenses" : ""} · entered as recognized champion and won`;
+      case "championWins": return `${championPercent ? "win rate against" : "wins over"} opponents who ${championScope === "current" ? "held a UFC undisputed or interim belt that night, in any division" : "had already held a UFC undisputed or interim belt"}${championWinMethod === "all" || championPercent ? "" : ` · by ${METHOD_LABELS[championWinMethod]}`}`;
+      case "divisions": return `divisions with a win${divisionWinMethod === "all" ? "" : ` by ${METHOD_LABELS[divisionWinMethod]}`}`;
+      case "ageAtWin": return `${ageEnd === "youngest" ? "youngest" : "oldest"} age at any UFC win · birth dates known for ${ageCoverage}% of bouts`;
     }
   };
   const winsEligible = (f: Aggregate) => {
@@ -1292,11 +1335,11 @@ export function getStats(params: URLSearchParams): unknown {
   };
   const lossesDescription = (): string => {
     switch (lossesMode) {
-      case "total": return `${scope} · ${lossesByMethod === "all" ? "UFC losses" : `${METHOD_LABELS[lossesByMethod]} losses`}${lossesByPercent ? ` as a share of ${percentOfLabel[lossesPercentOf]}${lossesPercentOf === "allFights" ? " (no contests excluded)" : ""}` : ""}`;
-      case "streak": return `${scope} · ${streakWhen === "current" ? "current" : "longest"} run of consecutive ${selectedDivision === "all" ? "UFC losses" : "losses in this division"}${lossStreakMethod === "all" ? "" : ` by ${METHOD_LABELS[lossStreakMethod]}`} · no contests ignored, draws end a run`;
-      case "titleLosses": return `${scope} · ${titleLossesMetric === "percent" ? (titleLossMethod === "all" ? "championship-bout loss rate" : `${METHOD_LABELS[titleLossMethod]} share of championship losses`) : `championship-bout losses${titleLossMethod === "all" ? "" : ` by ${METHOD_LABELS[titleLossMethod]}`}`} · tournament and TUF finals excluded`;
-      case "failedTitleDefenses": return `${scope} · belts lost while entering as undisputed or interim champion${failedDefenseMethod === "all" ? "" : ` by ${METHOD_LABELS[failedDefenseMethod]}`}${failedDefensePercent ? " · share of failed defenses" : ""}`;
-      case "divisions": return `${scope} · divisions with a loss${divisionLossMethod === "all" ? "" : ` by ${METHOD_LABELS[divisionLossMethod]}`}`;
+      case "total": return `${lossesByMethod === "all" ? "losses in UFC bouts" : `${METHOD_LABELS[lossesByMethod]} losses`}${lossesByPercent ? ` as a share of ${percentOfLabel[lossesPercentOf]}${lossesPercentOf === "allFights" ? " (no contests excluded)" : ""}` : ""}`;
+      case "streak": return `${streakWhen === "current" ? "current" : "longest"} run of consecutive ${selectedDivision === "all" ? "UFC losses" : "losses in this division"}${lossStreakMethod === "all" ? "" : ` by ${METHOD_LABELS[lossStreakMethod]}`} · no contests ignored, draws end a run`;
+      case "titleLosses": return `${titleLossesMetric === "percent" ? (titleLossMethod === "all" ? "championship-bout loss rate" : `${METHOD_LABELS[titleLossMethod]} share of championship losses`) : `championship-bout losses${titleLossMethod === "all" ? "" : ` by ${METHOD_LABELS[titleLossMethod]}`}`} · tournament and TUF finals excluded`;
+      case "failedTitleDefenses": return `belts lost while entering as undisputed or interim champion${failedDefenseMethod === "all" ? "" : ` by ${METHOD_LABELS[failedDefenseMethod]}`}${failedDefensePercent ? " · share of failed defenses" : ""}`;
+      case "divisions": return `divisions with a loss${divisionLossMethod === "all" ? "" : ` by ${METHOD_LABELS[divisionLossMethod]}`}`;
     }
   };
   const lossesEligible = (f: Aggregate) => {
@@ -1373,12 +1416,12 @@ export function getStats(params: URLSearchParams): unknown {
   };
   const finishDescription = (): string => {
     switch (finishMode) {
-      case "count": return `${scope} · ${noun} in ${roundLabel}${roundFinishMetric === "percent" ? ` as a share of ${finishShareLabel}` : ""}`;
+      case "count": return `${noun} in ${roundLabel}${roundFinishMetric === "percent" ? ` as a share of ${finishShareLabel}` : ""}`;
       case "speed": return finishDirection === "given"
-        ? (speedScope === "single" ? `${scope} · quickest KO/TKO or submission win` : `${scope} · average time of KO/TKO and submission wins · ${minimumSample}+ finishes`)
-        : (speedScope === "single" ? `${scope} · quickest KO/TKO or submission loss` : `${scope} · average time when stopped by KO/TKO or submission · ${minimumSample}+ finish losses`);
-      case "fightTime": return `${scope} · ${fightTimeOrder} average elapsed fight time, every result included`;
-      case "cageTime": return `${scope} · total elapsed UFC fight time`;
+        ? (speedScope === "single" ? `quickest KO/TKO or submission win` : `average time of KO/TKO and submission wins · ${minimumSample}+ finishes`)
+        : (speedScope === "single" ? `quickest KO/TKO or submission loss` : `average time when stopped by KO/TKO or submission · ${minimumSample}+ finish losses`);
+      case "fightTime": return `${fightTimeOrder} average elapsed fight time, every result included`;
+      case "cageTime": return `total elapsed UFC fight time`;
     }
   };
   const finishEligible = (f: Aggregate): boolean => {
@@ -1642,7 +1685,7 @@ export function getStats(params: URLSearchParams): unknown {
     },
     {
       group: "output", key: "output", title: "Output",
-      description: `${scope} · ${actionLabel} ${actionModeLabel}${actionUsesDifferential && actionDirection === "taken" ? " · largest deficit first" : ""}${actionIsPercent ? ` · minimum ${actionMinimumAttempts} attempt${actionMinimumAttempts === 1 ? "" : "s"}` : ""}${actionCoverageSuffix}`,
+      description: `${actionLabel} ${actionModeLabel}${actionUsesDifferential && actionDirection === "taken" ? " · largest deficit first" : ""}${actionIsPercent ? ` · minimum ${actionMinimumAttempts} attempt${actionMinimumAttempts === 1 ? "" : "s"}` : ""}${actionCoverageSuffix}`,
       format: actionFormat,
       rows: leaders(
         actionValue, actionDetail, actionEligible,
@@ -1655,17 +1698,21 @@ export function getStats(params: URLSearchParams): unknown {
     },
     {
       group: "context", key: "context", title: contextTitles[contextMode],
-      description: `${scope} · ${contextDescriptions[contextMode]}`,
+      description: `${contextDescriptions[contextMode]}`,
       format: contextFormat,
       rows: leaders(contextValue, contextDetail, contextEligible, false, contextTieBreaker, (f) => f.contextChips),
     },
     {
       group: "market", key: "market", title: bettingTitles[bettingMode],
-      description: `${scope} · closing odds only · ${bettingDescriptions[bettingMode]}`,
+      description: `closing odds only · ${bettingDescriptions[bettingMode]}`,
       format: bettingFormat,
       rows: leaders(bettingValue, bettingDetail, bettingEligible, bettingMode === "avgLine", bettingTieBreaker, (f) => f.marketChips),
     },
+    // Bouts and officials rather than fighters: with fighters picked, only
+    // the bouts they were in.
+    fightsBoard(comparingFighters ? rows.filter((fight) => fight.sides.some((side) => fighterIdSet.has(side.id))) : rows, params, limit, moreInfo),
   ];
+  for (const board of leaderboards) board.description = sentence(board.description);
 
   return {
     division: selectedDivision,

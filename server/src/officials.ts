@@ -19,7 +19,7 @@ type Round = { round: number; f1: number; f2: number };
 type Card = { judge: string; key: string | null; f1: number; f2: number; rounds: Round[] };
 type FanCard = { cards: number; avg1: number; avg2: number; rounds: { round: number; avg1: number; avg2: number }[]; source: string; url: string | null };
 
-type Officiated = {
+export type Officiated = {
   fight: IndexedFight;
   referee: string | null;
   refereeKey: string | null;
@@ -94,7 +94,7 @@ function slugOf(name: string): string {
   return normName(name).replace(/\s+/g, "-") || "unknown";
 }
 
-const pick = (f1: number, f2: number) => Math.sign(f1 - f2);
+export const pick = (f1: number, f2: number) => Math.sign(f1 - f2);
 
 function parseJson(text: unknown): any {
   if (typeof text !== "string" || !text) return null;
@@ -268,7 +268,7 @@ function verdictOf(fight: IndexedFight): Verdict {
 }
 
 /** The official result as a pick: 1 for the first corner, -1 the second, 0 a draw. */
-function resultPick(fight: IndexedFight): number | null {
+export function resultPick(fight: IndexedFight): number | null {
   const [a, b] = fight.sides;
   if (a.outcome === "win") return 1;
   if (b.outcome === "win") return -1;
@@ -295,7 +295,7 @@ type JudgeReading = {
 };
 
 /** The crowd's winner; an average gap under a tenth of a point reads as a draw. */
-const crowdPick = (fans: FanCard) => (Math.abs(fans.avg1 - fans.avg2) < 0.1 ? 0 : Math.sign(fans.avg1 - fans.avg2));
+export const crowdPick = (fans: FanCard) => (Math.abs(fans.avg1 - fans.avg2) < 0.1 ? 0 : Math.sign(fans.avg1 - fans.avg2));
 
 function readCard(officiated: Officiated, key: string): JudgeReading | null {
   const card = officiated.cards.find((entry) => entry.key === key);
@@ -490,7 +490,7 @@ export function judgeProfile(slug: string, params: URLSearchParams): unknown | n
 
 type ResultClass = "ko" | "sub" | "dec" | "dq" | "nc" | "draw" | "other";
 
-function resultClass(fight: IndexedFight): ResultClass {
+export function resultClass(fight: IndexedFight): ResultClass {
   if (fight.sides[0].outcome === "draw") return "draw";
   if (fight.sides[0].outcome === "nc" || fight.method === "CNC" || fight.method === "Overturned") return "nc";
   if (fight.method === "KO/TKO") return "ko";
@@ -501,6 +501,9 @@ function resultClass(fight: IndexedFight): ResultClass {
 }
 
 const DEDUCTION = /\b(?:point|points)\s+deducted\b|\bdeduct(?:ed|ion)\b/i;
+
+/** A disqualification or a point taken away. */
+const hadIncident = (officiated: Officiated) => resultClass(officiated.fight) === "dq" || Boolean(officiated.details && DEDUCTION.test(officiated.details));
 
 function tally(fights: Officiated[]) {
   const counts: Record<ResultClass, number> = { ko: 0, sub: 0, dec: 0, dq: 0, nc: 0, draw: 0, other: 0 };
@@ -547,7 +550,7 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
   const results = new Map<ResultClass, number>();
   for (const officiated of base) results.set(resultClass(officiated.fight), (results.get(resultClass(officiated.fight)) ?? 0) + 1);
   const shown = (officiated: Officiated) => (!filters.result || resultClass(officiated.fight) === filters.result)
-    && (filters.view === "incidents" ? resultClass(officiated.fight) === "dq" || Boolean(officiated.details && DEDUCTION.test(officiated.details))
+    && (filters.view === "incidents" ? hadIncident(officiated)
       : filters.view === "title" ? isTitle(officiated.fight) : true);
   // Result and view narrow the list only; the figures stay on every bout in
   // the other filters, so pressing a figure never moves it.
@@ -577,7 +580,7 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
       (officiated) => officiated.fight, (officiated) => resultClass(officiated.fight) === "ko" || resultClass(officiated.fight) === "sub"),
     regulars: [...regulars.values()].filter((entry) => entry.n >= 2).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)).slice(0, 10),
     baseline: { ...tally(baseline), label: "Every UFC bout with a named referee under the same date and division filters" },
-    incidents: base.filter((officiated) => resultClass(officiated.fight) === "dq" || Boolean(officiated.details && DEDUCTION.test(officiated.details)))
+    incidents: base.filter(hadIncident)
       .slice(0, 50).map((officiated) => ({
         fight_id: officiated.fight.id, date: officiated.fight.date, event_name: officiated.fight.eventName,
         f1: fighterRef(officiated.fight, 0), f2: fighterRef(officiated.fight, 1),

@@ -144,6 +144,10 @@ Measured on a copy of the dev archive, 5-run averages, warm fight index.
 - `/api/officials` build: 0.4 ms → 8 ms, for each judge's agreement with the
   rest of the panel and the fans (every card, ~12,000). Built once per fight
   index version and served from the response cache.
+- `/api/stats` (uncached, default settings): ~320 ms, unchanged in kind; the
+  Fights card (bouts, judges, referees) adds 10–15 ms, one pass over the
+  filtered bouts with each bout's officials looked up by id. Every other card's
+  cost is the shared aggregation loop, as before. Served from the response cache.
 
 ## Judge baseline (2026-09-27, `feat/official-venue-pages`)
 
