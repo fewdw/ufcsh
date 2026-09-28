@@ -291,8 +291,13 @@ function RankRow({
       ? `${entry.name} — last fought ${entry.activity.last_fight_opponent ? `vs ${entry.activity.last_fight_opponent} ` : ""}on ${formatDateShort(entry.activity.last_fight_date)} (${division})`
       : entry.name;
 
+  // Touch: the first tap highlights opponents, a second tap opens the profile.
   if (entry.fighter_id && tapResults) {
-    return (
+    return selected ? (
+      <Link to={`/fighters/${entry.fighter_id}`} className={className} title={title}>
+        {inner}
+      </Link>
+    ) : (
       <button type="button" className={className} aria-pressed={selected}
         onClick={() => onHighlight(entry.fighter_id)}>
         {inner}
@@ -482,7 +487,7 @@ function FeaturesMenu({
               <div key={option.key} className={option.key === "top15Record" ? "my-1 rounded-xl border border-zinc-200 bg-zinc-50" : undefined}>
                 <SwitchRow
                   label={option.key === "hoverResults" && !canHover ? "Tap fighter results" : option.label}
-                  hint={option.key === "hoverResults" && !canHover ? "Tap to highlight opponents. Profile links paused." : option.hint}
+                  hint={option.key === "hoverResults" && !canHover ? "Tap to highlight opponents, again for the profile." : option.hint}
                   on={features[option.key]}
                   onChange={(on) => onChange({ ...features, [option.key]: on })} />
                 {option.key === "top15Record" ? (
