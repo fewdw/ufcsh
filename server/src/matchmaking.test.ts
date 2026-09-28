@@ -2,6 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { matchmaking, nextOpponents, pairUp, planDivision, titleChallenger, type Booking, type Fighter, type Result } from "./matchmaking.ts";
 
+import { prepared } from "./db.ts";
+import { todayIso } from "./util.ts";
+
 const TODAY = "2026-09-28";
 const DIV = "Lightweight";
 
@@ -107,11 +110,12 @@ test("after a card, winners meet winners, a draw is run back and nobody is sugge
   assert.equal(next.get("w1")?.opponent?.id, "w2");
   assert.equal(next.get("w2")?.opponent?.id, "w1");
   assert.match(next.get("w1")!.reason, /also won on this card/);
-  assert.equal(next.get("l1")?.opponent?.id, "r2");
+  assert.equal(next.get("l1")?.opponent?.id, "l2");
+  assert.equal(next.get("l2")?.opponent?.id, "l1");
   assert.equal(next.get("d1")?.kind, "rematch");
   assert.equal(next.get("d1")?.opponent?.id, "d2");
   const picked = [...next.values()].filter((pick) => pick.kind === "suggested").map((pick) => pick.opponent!.id);
-  assert.equal(picked.filter((id) => id === "r2").length, 1);
+  assert.equal(new Set(picked).size, picked.length);
 });
 
 test("the matchmaking view uses each fighter once per division and suggests no one booked", () => {
@@ -121,8 +125,87 @@ test("the matchmaking view uses each fighter once per division and suggests no o
     assert.equal(new Set(ids).size, ids.length, division.division);
     for (const idle of division.idle) assert.ok(!ids.includes(idle.fighter.id));
   }
-  for (const bout of view.last_event?.bouts ?? []) {
+  for (const bout of view.recent_events.flatMap((event) => event.bouts)) {
     assert.equal(bout.sides.length, 2);
     for (const side of bout.sides) assert.ok(side.next.reason);
   }
+});
+
+
+test("recent cards show four completed events, newest first, including breaks in the schedule", () => {
+  const events = matchmaking().recent_events;
+  assert.equal(events.length, 4);
+  assert.equal(new Set(events.map((event) => event.id)).size, 4);
+  for (const [i, event] of events.entries()) {
+    assert.ok(event.bouts.length > 0);
+    assert.ok(event.date <= todayIso());
+    if (i) assert.ok(events[i - 1].date >= event.date);
+    const row = prepared("SELECT complete FROM events WHERE id = ?").get(event.id) as { complete: number };
+    assert.equal(row.complete, 1);
+  }
+  // No completed card has been skipped, even when its date is over four weeks ago.
+  const latest = prepared("SELECT id FROM events WHERE complete = 1 AND date <= ? ORDER BY date DESC, id DESC").all(todayIso()) as { id: string }[];
+  assert.deepEqual(events.map((event) => event.id), latest.slice(0, 4).map((event) => event.id));
+});
+
+
+test("the optional pool is optimized together with ranked pairings, with no duplicate opponents", () => {
+  const costs = new Map([["a:b", 2], ["a:c", 4], ["b:c", 4], ["a:x", 1]]);
+  const pairs = pairUp(["a", "b", "c"], (a, b) => costs.get(`${a}:${b}`) ?? null, () => 1000, ["x"]);
+  assert.deepEqual(new Set(pairs.map((pair) => pair.join(":"))), new Set(["b:c", "a:x"]));
+  assert.equal(new Set(pairs.flat()).size, 4);
+});
+
+test("pool matching agrees with exhaustive search on small, sparse match graphs", () => {
+  // Independent exhaustive oracle: choose each required fighter's opponent in turn.
+  for (let seed = 1; seed <= 25; seed++) {
+    let state = seed;
+    const random = () => (state = (Math.imul(state, 1664525) + 1013904223) >>> 0);
+    const matrix = Array.from({ length: 7 }, () => Array<number | null>(7).fill(null));
+    for (let i = 0; i < 7; i++) for (let j = i + 1; j < 7; j++) matrix[i][j] = matrix[j][i] = random() % 4 ? random() % 20 : null;
+    const cost = (a: number, b: number) => matrix[a][b];
+    const exact = (required: number[], optional: number[]): number => {
+      if (!required.length) return 0;
+      const [a, ...rest] = required;
+      let best = 1000 + exact(rest, optional);
+      for (const b of [...rest, ...optional]) {
+        const c = cost(a, b);
+        if (c != null) best = Math.min(best, c + exact(rest.filter((id) => id !== b), optional.filter((id) => id !== b)));
+      }
+      return best;
+    };
+    const pairs = pairUp([0, 1, 2, 3], cost, () => 1000, [4, 5, 6]);
+    const ids = pairs.flat();
+    assert.equal(new Set(ids).size, ids.length);
+    const total = pairs.reduce((sum, [a, b]) => sum + cost(a, b)!, 0) + [0, 1, 2, 3].filter((id) => !ids.includes(id)).length * 1000;
+    assert.equal(total, exact([0, 1, 2, 3], [4, 5, 6]), `seed ${seed}`);
+  }
+});
+
+test("an odd ranked division uses an eligible unranked opponent and keeps every ranked fighter", () => {
+  const ranked = [fighter("1", 11), fighter("2", 12), fighter("3", 13)];
+  const pool = [fighter("booked", null, { booked: booking("x") }), fighter("retired", null, { offRoster: true }), fighter("inactive", null, { lastDate: "2022-01-01" }), fighter("prospect", null, { streak: 4, ufcNet: 4 })];
+  const plan = planDivision(DIV, ranked, person([...ranked, ...pool]), TODAY, null, pool);
+  assert.equal(plan.idle.length, 0);
+  const ids = plan.fights.flatMap((fight) => [fight.a.id, fight.b.id]);
+  assert.deepEqual(new Set(ids), new Set(["1", "2", "3", "prospect"]));
+  assert.equal(ids.length, 4);
+});
+
+test("a title booking without the listed champion does not leave the champion unmatched", () => {
+  const people = [fighter("c", 0), fighter("1", 1, { booked: booking("2", true) }), fighter("2", 2, { booked: booking("1", true) }), fighter("3", 3)];
+  const plan = planDivision(DIV, people, person(people), TODAY);
+  assert.equal(plan.idle.length, 0);
+  assert.equal(plan.fights[0].kind, "booked");
+  assert.deepEqual(plan.fights.slice(1).map((fight) => [fight.a.id, fight.b.id]), [["c", "3"]]);
+});
+
+test("a draw does not rematch an opponent who has already booked another fight", () => {
+  const a = fighter("a", 10, { last: "draw" });
+  const b = fighter("b", 11, { last: "draw", booked: booking("x") });
+  const c = fighter("c", 12);
+  const next = nextOpponents([{ fightId: "f", sides: [{ fighter: a, outcome: "draw", division: DIV }, { fighter: b, outcome: "draw", division: DIV }] }], () => [a, b, c], person([a, b, c]), "ev", TODAY);
+  assert.equal(next.get("a")?.opponent?.id, "c");
+  assert.equal(next.get("b")?.kind, "booked");
+  assert.equal(next.get("b")?.opponent?.id, "x");
 });

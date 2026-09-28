@@ -9,6 +9,7 @@ import { importVerdictEvent } from "./verdict-import.ts";
 import { mergedByHand, officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
 import { rosterMoveFighter, storedRosterMoves, syncRosterMoves, syncUfcSignings } from "./roster-moves.ts";
+import { matchmaking } from "./matchmaking.ts";
 import { feedStatus, syncNews } from "./news.ts";
 import { NEWS_FEEDS } from "./scrape/news.ts";
 import { ROSTER_ARTICLE, samePlace } from "./scrape/wikipedia.ts";
@@ -1275,6 +1276,19 @@ function newsFeedsUnread(): BugCheck {
 
 // ---------------------------------------------------------------------------
 
+function matchmakingGaps(): BugCheck {
+  return check({
+    id: "matchmaking-coverage", group: "Fighters", label: "Ranked fighters without a matchup",
+    description: "Ranked fighters left without a booking or suggested opponent. Review roster availability and recent history; retired fighters and recent rematches are deliberately excluded.",
+    grade: "minor",
+  }, matchmaking().top15.flatMap((division) => division.idle.map(({ fighter, reason }) => ({
+    key: `${division.division}:${fighter.id}`, title: fighter.name, subtitle: division.division,
+    facts: [["Reason", reason], ["Last fight", fighter.last_date ?? "Unknown"]] as [string, string][],
+    links: [fighterLink(fighter.id, fighter.name), { label: "Matchmaking", href: "/matchmaking", internal: true }],
+    actions: fighter.last_date ? [] : [{ id: "career" as const, label: "Re-read career", target: fighter.id }],
+  }))));
+}
+
 export function bugReport(): { generated_at: number; sync: { last_tick_at: string | null; last_sync_error: string | null }; checks: BugCheck[] } {
   const active = activeFighterIds();
   // Most important first within each group: wrong data on screen, then data
@@ -1292,6 +1306,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     oddsMissingByRound(),
     unverifiedRecords(active),
     rankedRecordGaps(),
+    matchmakingGaps(),
     fightsMissingFromHistory(),
     unlinkedUfcBouts(),
     recordMismatch(active),

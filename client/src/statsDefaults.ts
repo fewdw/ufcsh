@@ -81,6 +81,12 @@ export type StatsSettings = {
   judgesMode: "agreement" | "dissents" | "splits" | "cards";
   refereesMode: "finishRate" | "stoppageTime" | "bouts";
   officialsOrder: "high" | "low";
+  // Fighter cards read either way where the server offers it
+  recordOrder: "high" | "low";
+  finishingOrder: "high" | "low";
+  outputOrder: "high" | "low";
+  contextOrder: "high" | "low";
+  marketOrder: "high" | "low";
 };
 
 export const DEFAULT_SETTINGS: StatsSettings = {
@@ -152,6 +158,11 @@ export const DEFAULT_SETTINGS: StatsSettings = {
   judgesMode: "agreement",
   refereesMode: "finishRate",
   officialsOrder: "high",
+  recordOrder: "high",
+  finishingOrder: "high",
+  outputOrder: "high",
+  contextOrder: "high",
+  marketOrder: "high",
 };
 
 export type StatsView = {

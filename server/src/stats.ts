@@ -319,6 +319,8 @@ export type Leaderboard = {
   description: string;
   format: "number" | "percent" | "decimal" | "signed" | "time" | "signedTime" | "currency" | "odds" | "years";
   rows: LeaderRow[];
+  /** Present on cards the reader can sort either way. */
+  order?: "high" | "low";
 };
 
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -423,6 +425,10 @@ export function getStats(params: URLSearchParams): unknown {
   const failedDefenseMethod = mode("failedDefenseMethod", METHODS, "all");
   const failedDefenseMetric = mode("failedDefenseMetric", ["total", "percent"] as const, "total");
   const divisionLossMethod = mode("divisionLossMethod", METHODS, "all");
+  // Any fighter card can be read lowest first. Low lists admit fighters with
+  // none of a thing, since "fewest" is only true once the zeros are counted.
+  const lowFirst = (key: string) => mode(`${key}Order`, ["high", "low"] as const, "high") === "low";
+  const lowRecord = lowFirst("record");
 
   // -- Finishing -------------------------------------------------------------
   // Finishing someone and being finished take exactly the same qualifiers, so
@@ -1201,9 +1207,9 @@ export function getStats(params: URLSearchParams): unknown {
       case "divisions": return "weight classes competed in";
     }
   };
-  const boutsEligible = (f: Aggregate) => (boutsMode === "divisions" ? f.divisions.size > 1
-    : boutsMode === "bonuses" ? bonusCount(f) > 0 && (!bonusPercent || f.fights >= minimumSample)
-      : boutsValue(f) > 0);
+  const boutsEligible = (f: Aggregate) => (boutsMode === "divisions" ? f.divisions.size > (lowRecord ? 0 : 1)
+    : boutsMode === "bonuses" ? (lowRecord || bonusCount(f) > 0) && (!bonusPercent || f.fights >= minimumSample)
+      : lowRecord || boutsValue(f) > 0);
   const boutsFormat: Leaderboard["format"] = boutsMode === "span" ? "years" : bonusPercent ? "percent" : "number";
 
   const winsCount = (f: Aggregate) => ({
@@ -1276,17 +1282,17 @@ export function getStats(params: URLSearchParams): unknown {
   };
   const winsEligible = (f: Aggregate) => {
     switch (winsMode) {
-      case "total": return winsCount(f) > 0 && (!winsByPercent || winsDenominator(f) >= minimumSample);
-      case "titleWins": return titleWinCount(f) > 0 && (titleWinsMetric === "total" || titleWinDenominator(f) > 0);
-      case "titleDefenses": return defenseScope === "consecutive" ? f.longestFilteredTitleDefenseStreak > 0 : titleDefenseCount(f) > 0;
+      case "total": return (lowRecord || winsCount(f) > 0) && (!winsByPercent || winsDenominator(f) >= minimumSample);
+      case "titleWins": return (lowRecord || titleWinCount(f) > 0) && (titleWinsMetric === "total" || titleWinDenominator(f) > 0);
+      case "titleDefenses": return lowRecord || (defenseScope === "consecutive" ? f.longestFilteredTitleDefenseStreak > 0 : titleDefenseCount(f) > 0);
       case "championWins": return championPercent
         ? (championScope === "current" ? f.reigningBouts : f.championBouts) >= minimumSample
-        : (championWinMethod === "all"
+        : lowRecord || (championWinMethod === "all"
           ? (championScope === "current" ? f.reigningWins : f.championWins)
           : (championScope === "current" ? f.reigningMethodWins : f.championMethodWins)) > 0;
-      case "divisions": return f.divisionWins.size > 1;
+      case "divisions": return f.divisionWins.size > (lowRecord ? 0 : 1);
       case "ageAtWin": return Number.isFinite(ageEnd === "youngest" ? f.youngestWinAge : f.oldestWinAge);
-      default: return winsValue(f) > 0;
+      default: return lowRecord || winsValue(f) > 0;
     }
   };
   const winsTieBreaker = winsMode === "total" && winsByPercent ? winsDenominator
@@ -1344,11 +1350,11 @@ export function getStats(params: URLSearchParams): unknown {
   };
   const lossesEligible = (f: Aggregate) => {
     switch (lossesMode) {
-      case "total": return lossesCount(f) > 0 && (!lossesByPercent || lossesDenominator(f) >= minimumSample);
-      case "titleLosses": return titleLossCount(f) > 0 && (titleLossesMetric === "total" || titleLossDenominator(f) > 0);
-      case "failedTitleDefenses": return failedDefenseCount(f) > 0;
-      case "divisions": return f.divisionLosses.size > 1;
-      default: return lossesValue(f) > 0;
+      case "total": return (lowRecord || lossesCount(f) > 0) && (!lossesByPercent || lossesDenominator(f) >= minimumSample);
+      case "titleLosses": return (lowRecord || titleLossCount(f) > 0) && (titleLossesMetric === "total" || titleLossDenominator(f) > 0);
+      case "failedTitleDefenses": return lowRecord || failedDefenseCount(f) > 0;
+      case "divisions": return f.divisionLosses.size > (lowRecord ? 0 : 1);
+      default: return lowRecord || lossesValue(f) > 0;
     }
   };
   const lossesTieBreaker = lossesMode === "total" && lossesByPercent ? lossesDenominator
@@ -1424,16 +1430,19 @@ export function getStats(params: URLSearchParams): unknown {
       case "cageTime": return `total elapsed UFC fight time`;
     }
   };
+  // Speed and fight time already carry their own direction.
+  const finishingOrdered = finishMode === "count" || finishMode === "cageTime";
+  const lowFinishing = finishingOrdered && lowFirst("finishing");
   const finishEligible = (f: Aggregate): boolean => {
     switch (finishMode) {
-      case "count": return finishCount(f) > 0 && (roundFinishMetric === "total" || finishDenominator(f) >= minimumSample);
+      case "count": return (lowFinishing || finishCount(f) > 0) && (roundFinishMetric === "total" || finishDenominator(f) >= minimumSample);
       case "speed": return finishDirection === "given"
         ? (speedScope === "single" ? Number.isFinite(f.fastestFinishSeconds) : f.finishWins >= minimumSample)
         : (speedScope === "single" ? Number.isFinite(f.fastestFinishedSeconds) : f.finishedLosses >= minimumSample);
       default: return f.timedFights > 0 && f.totalSeconds > 0;
     }
   };
-  const finishAscending = finishMode === "speed" || (finishMode === "fightTime" && fightTimeOrder === "shortest");
+  const finishAscending = lowFinishing || finishMode === "speed" || (finishMode === "fightTime" && fightTimeOrder === "shortest");
   const finishFormat: Leaderboard["format"] = finishMode === "count" ? (roundFinishMetric === "percent" ? "percent" : "number") : "time";
   const finishTieBreaker = finishMode === "count" && roundFinishMetric === "percent" ? finishDenominator
     : finishMode === "speed" ? (f: Aggregate) => (finishDirection === "given" ? f.finishWins : f.finishedLosses)
@@ -1492,13 +1501,17 @@ export function getStats(params: URLSearchParams): unknown {
     const time = actionSeconds(f) > 0 && actionMode !== "total" && actionMode !== "perFight" ? ` · ${clock(actionSeconds(f))} fight time` : "";
     return `${actionCountText(actionType, actionGivenTotal(f))} given · ${actionCountText(actionType, actionTakenTotal(f))} taken · ${actionBouts(f)} bouts${time}`;
   };
+  // A deficit already reads lowest first.
+  const outputOrdered = !(actionUsesDifferential && actionDirection === "taken");
+  const lowOutput = outputOrdered && lowFirst("output");
+  const actionAscending = lowOutput || !outputOrdered;
   const actionEligible = (f: Aggregate) => {
     if (actionIsPercent) {
       const attempts = actionDirection === "given" ? f.action.givenAttempts : f.action.takenAttempts;
       return f.action.attemptBouts >= minimumFights && (actionMode === "single" ? Number.isFinite(actionValue(f)) : attempts >= actionMinimumAttempts);
     }
     if (actionUsesDifferential) return actionBouts(f) >= minimumFights && Number.isFinite(actionValue(f)) && (["total", "single", "perFight"].includes(actionMode) || actionSeconds(f) > 0);
-    return actionBouts(f) >= minimumFights && actionValue(f) > 0;
+    return actionBouts(f) >= minimumFights && (lowOutput || actionValue(f) > 0);
   };
   const actionScoredLabel = actionType === "takedowns" ? (actionDirection === "given" ? "takedowns landed" : "takedowns conceded")
     : actionType === "knockdowns" ? (actionDirection === "given" ? "knockdowns scored" : "knockdowns absorbed")
@@ -1581,17 +1594,18 @@ export function getStats(params: URLSearchParams): unknown {
       : `win rate when returning within 120 days · ${minimumSample}+ returns`,
     durability: "longest run of consecutive bouts without a KO/TKO or submission loss",
   };
+  const lowContext = lowFirst("context");
   const contextEligible = (f: Aggregate): boolean => {
     switch (contextMode) {
       case "opposition": return oppositionScope === "beaten"
         ? f.beatenSamples >= minimumSample && f.beatenResults >= minimumSample * 5
         : f.opponentSamples >= minimumSample && f.opponentResults >= minimumSample * 5;
-      case "championsFaced": return (championScope === "current" ? f.reigningBouts : f.championBouts) > 0;
+      case "championsFaced": return lowContext || (championScope === "current" ? f.reigningBouts : f.championBouts) > 0;
       case "streakBreakers": return f.longestStreakBroken >= 3;
       case "bounceBack": return f.bounceBackOpportunities >= minimumSample;
-      case "rematches": return rematchMetric === "revenge" ? f.revengeWins > 0 : f.rematchOpportunities >= minimumSample;
+      case "rematches": return rematchMetric === "revenge" ? lowContext || f.revengeWins > 0 : f.rematchOpportunities >= minimumSample;
       case "returns": return returnChances(f) >= minimumSample;
-      case "durability": return f.longestDurabilityStreak > 0;
+      case "durability": return lowContext || f.longestDurabilityStreak > 0;
     }
   };
   const contextTieBreaker = (f: Aggregate): number => {
@@ -1638,11 +1652,14 @@ export function getStats(params: URLSearchParams): unknown {
       case "avgLine": return `${f.pricedBouts} priced bouts · ${recordText(f.pricedWins, f.pricedBouts - f.pricedWins)}`;
     }
   };
+  // The average line already reads longest price first.
+  const marketOrdered = bettingMode !== "avgLine";
+  const lowMarket = marketOrdered && lowFirst("market");
   const bettingEligible = (f: Aggregate): boolean => {
     switch (bettingMode) {
       case "underdog": return underdogMetric === "rate" ? f.underdogOpportunities >= minimumSample
-        : underdogMetric === "biggest" ? Number.isFinite(f.biggestUpsetLine) : f.underdogWins > 0;
-      case "favorite": return favoriteMetric === "losses" ? f.favoriteLosses > 0 : f.favoriteOpportunities >= minimumSample;
+        : underdogMetric === "biggest" ? Number.isFinite(f.biggestUpsetLine) : lowMarket || f.underdogWins > 0;
+      case "favorite": return favoriteMetric === "losses" ? lowMarket || f.favoriteLosses > 0 : f.favoriteOpportunities >= minimumSample;
       case "aboveExpectation": return f.pricedBouts >= minimumSample;
       case "roi": return f.oddsBets >= minimumSample;
       case "avgLine": return f.pricedBouts >= minimumSample;
@@ -1666,9 +1683,12 @@ export function getStats(params: URLSearchParams): unknown {
 
   const recordTitle = recordGroup === "bouts" ? "Bouts" : recordGroup === "losses" ? "Losses" : "Wins";
   const recordChips = (f: Aggregate) => f.recordChips;
-  const recordRows = recordGroup === "bouts" ? leaders(boutsValue, boutsDetail, boutsEligible, false, (f) => f.fights, recordChips)
-    : recordGroup === "losses" ? leaders(lossesValue, lossesDetail, lossesEligible, false, lossesTieBreaker, recordChips)
-      : leaders(winsValue, winsDetail, winsEligible, winsMode === "ageAtWin" && ageEnd === "youngest", winsTieBreaker, recordChips);
+  // Age at a win already carries its own direction.
+  const recordOrdered = !(recordGroup === "wins" && winsMode === "ageAtWin");
+  const recordRows = recordGroup === "bouts" ? leaders(boutsValue, boutsDetail, boutsEligible, lowRecord, (f) => f.fights, recordChips)
+    : recordGroup === "losses" ? leaders(lossesValue, lossesDetail, lossesEligible, lowRecord, lossesTieBreaker, recordChips)
+      : leaders(winsValue, winsDetail, winsEligible, recordOrdered ? lowRecord : ageEnd === "youngest", winsTieBreaker, recordChips);
+  const order = (ordered: boolean, low: boolean) => (ordered ? { order: low ? "low" as const : "high" as const } : {});
 
   const leaderboards: Leaderboard[] = [
     {
@@ -1676,12 +1696,14 @@ export function getStats(params: URLSearchParams): unknown {
       description: recordGroup === "bouts" ? boutsDescription() : recordGroup === "losses" ? lossesDescription() : winsDescription(),
       format: recordGroup === "bouts" ? boutsFormat : recordGroup === "losses" ? (lossesIsPercent ? "percent" : "number") : winsFormat,
       rows: recordRows,
+      ...order(recordOrdered, lowRecord),
     },
     {
       group: "finishing", key: "finishing", title: finishTitle,
       description: finishDescription(),
       format: finishFormat,
       rows: leaders(finishValue, finishDetail, finishEligible, finishAscending, finishTieBreaker, (f) => f.finishChips),
+      ...order(finishingOrdered, lowFinishing),
     },
     {
       group: "output", key: "output", title: "Output",
@@ -1689,24 +1711,27 @@ export function getStats(params: URLSearchParams): unknown {
       format: actionFormat,
       rows: leaders(
         actionValue, actionDetail, actionEligible,
-        actionUsesDifferential && actionDirection === "taken",
+        actionAscending,
         actionTieBreaker,
         // Ranked here rather than for every fighter, since only the rows that
         // are actually shown need their contributions ordered.
-        (f) => (outputChipsOn ? rankChips(f.outputChips, actionUsesDifferential && actionDirection === "taken") : []),
+        (f) => (outputChipsOn ? rankChips(f.outputChips, actionAscending) : []),
       ),
+      ...order(outputOrdered, lowOutput),
     },
     {
       group: "context", key: "context", title: contextTitles[contextMode],
       description: `${contextDescriptions[contextMode]}`,
       format: contextFormat,
-      rows: leaders(contextValue, contextDetail, contextEligible, false, contextTieBreaker, (f) => f.contextChips),
+      rows: leaders(contextValue, contextDetail, contextEligible, lowContext, contextTieBreaker, (f) => f.contextChips),
+      ...order(true, lowContext),
     },
     {
       group: "market", key: "market", title: bettingTitles[bettingMode],
       description: `closing odds only · ${bettingDescriptions[bettingMode]}`,
       format: bettingFormat,
-      rows: leaders(bettingValue, bettingDetail, bettingEligible, bettingMode === "avgLine", bettingTieBreaker, (f) => f.marketChips),
+      rows: leaders(bettingValue, bettingDetail, bettingEligible, lowMarket || !marketOrdered, bettingTieBreaker, (f) => f.marketChips),
+      ...order(marketOrdered, lowMarket),
     },
     // Bouts and officials rather than fighters: with fighters picked, only
     // the bouts they were in.

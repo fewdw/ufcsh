@@ -530,6 +530,7 @@ export type StatsDashboard = {
     description: string;
     format: "number" | "percent" | "decimal" | "signed" | "time" | "signedTime" | "currency" | "odds" | "years";
     rows: StatsLeader[];
+    order?: "high" | "low";
   }[];
 };
 
@@ -1079,13 +1080,13 @@ export type MatchmakingData = {
     fights: { kind: "title" | "booked" | "suggested"; a: MatchFighter; b: MatchFighter; reason: string; event: { id: string; name: string; date: string } | null }[];
     idle: { fighter: MatchFighter; reason: string }[];
   }[];
-  last_event: {
+  recent_events: {
     id: string; name: string; date: string;
     bouts: {
       fight_id: string; division: string; method: string | null; title: boolean;
       sides: { fighter: MatchFighter; outcome: "win" | "loss" | "draw" | "nc" | null; next: { kind: "suggested" | "booked" | "rematch" | "none"; opponent: MatchFighter | null; reason: string } }[];
     }[];
-  } | null;
+  }[];
 };
 
 /** A story as told by the first outlet the reader keeps on; `also` are the others that ran it. */

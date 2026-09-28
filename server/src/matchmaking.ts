@@ -8,7 +8,7 @@ import { log, todayIso } from "./util.ts";
  *  - `top15`: per division, a title fight (the booked one, or the champion
  *    against the best available contender), then the remaining unbooked
  *    ranked fighters paired by rank and form.
- *  - `last_event`: for everyone on the most recent completed card, a next
+ *  - `recent_events`: for everyone on the four most recent completed cards, a next
  *    opponent of similar standing coming off a similar result.
  * The rules are pure functions over `Fighter` snapshots, so they are tested on
  * synthetic divisions; `matchmaking()` reads the data once per revision.
@@ -43,6 +43,7 @@ export type Fighter = {
   /** Everyone they have met, with the latest meeting's date and their result. */
   met: Map<string, { date: string; outcome: Result | null }>;
   booked: Booking | null;
+  offRoster?: boolean;
 };
 
 /** Meeting again inside this is a rematch too soon, bar a clear title rematch. */
@@ -51,12 +52,10 @@ const RECENT_MEETING_DAYS = 3 * 365;
 const INACTIVE_DAYS = 2 * 365;
 /** Out this long and it is a layoff worth saying. */
 const LAYOFF_DAYS = 400;
-/** "Recent cards" for next opponents after the last event. */
-const POOL_DAYS = 90;
-/** What leaving the No. 15 unpaired costs, against a pairing's cost; more higher up. */
-const UNPAIRED = 6;
-/** Beyond this a next-opponent pick is not close enough to suggest. */
-const MAX_NEXT_COST = 9;
+/** Active UFC opponents, including fighters between camps or returning from a layoff. */
+const POOL_DAYS = 730;
+/** Cover every eligible fighter before minimizing the cost of their matchups. */
+const UNPAIRED = 1000;
 
 export const rankIn = (fighter: Fighter, division: string) => fighter.ranks.get(division) ?? null;
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
@@ -66,10 +65,6 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const monthYear = (date: string) => `${MONTHS[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}`;
 const rankText = (rank: number | null) => (rank === 0 ? "the champion" : rank == null ? "unranked" : `No. ${rank}`);
 const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
-const run = (fighter: Fighter) => {
-  const n = Math.abs(fighter.streak);
-  return fighter.streak > 0 ? `${n} straight win${n === 1 ? "" : "s"}` : `${n} straight loss${n === 1 ? "" : "es"}`;
-};
 const metWithin = (a: Fighter, b: Fighter, today: string, days: number) => {
   const meeting = a.met.get(b.id) ?? b.met.get(a.id);
   return Boolean(meeting && daysBetween(meeting.date, today) <= days);
@@ -78,6 +73,7 @@ const metWithin = (a: Fighter, b: Fighter, today: string, days: number) => {
 /** Why a fighter can't be matched right now, or null. */
 function unavailable(fighter: Fighter, today: string): string | null {
   if (fighter.booked) return "booked";
+  if (fighter.offRoster) return "No longer on the UFC roster";
   if (daysOff(fighter, today) > INACTIVE_DAYS) return fighter.lastDate ? `inactive since ${monthYear(fighter.lastDate)}` : "no recent fights";
   return null;
 }
@@ -134,68 +130,94 @@ export function titleChallenger(champion: Fighter, contenders: Fighter[], divisi
  *  a winner against someone coming off a loss, different runs, and an older
  *  rematch. A meeting inside three years rules it out. */
 export function pairCost(a: Fighter, b: Fighter, division: string, today: string): number | null {
-  if (metWithin(a, b, today, RECENT_MEETING_DAYS)) return null;
-  const gap = Math.abs(rankIn(a, division)! - rankIn(b, division)!);
+  if (a.id === b.id || metWithin(a, b, today, RECENT_MEETING_DAYS)) return null;
+  const gap = Math.abs(standing(a, division) - standing(b, division));
   let cost = gap + Math.max(0, gap - 4) * 1.5;
   const ma = momentum(a), mb = momentum(b);
   if (ma && mb && ma !== mb) cost += 3;
   cost += Math.abs(clamp(a.streak, -3, 5) - clamp(b.streak, -3, 5)) * 0.25;
-  if (a.met.has(b.id)) cost += 3;
+  if (rankIn(a, division) == null || rankIn(b, division) == null) cost += 4;
+  if (daysOff(a, today) > LAYOFF_DAYS || daysOff(b, today) > LAYOFF_DAYS) cost += 2;
+  if (a.met.has(b.id) || b.met.has(a.id)) cost += 3;
   return cost;
 }
 
-/** The cheapest way to pair up a small group, each at most once; leaving one
- *  out costs `unpaired`. Exact over every pairing (a ranked division is at
- *  most sixteen people, so 2^16 states). */
-export function pairUp<T>(items: T[], cost: (a: T, b: T) => number | null, unpaired: (item: T) => number): [T, T][] {
-  const n = Math.min(items.length, 20);
-  const costs = items.slice(0, n).map((a, i) => items.slice(0, n).map((b, j) => (i < j ? cost(a, b) : null)));
-  const best = new Float64Array(1 << n).fill(NaN);
-  const choice = new Int8Array(1 << n).fill(-1);
+/** Exact matching for a small set of required fighters and a larger optional
+ * pool. The mask covers only required fighters, so adding unranked opponents
+ * does not grow the exponential part. Each optional fighter is used once. */
+export function pairUp<T>(items: T[], cost: (a: T, b: T) => number | null, unpaired: (item: T) => number, pool: T[] = []): [T, T][] {
+  const n = items.length;
+  if (n > 20) throw new Error("Too many required fighters in one division");
+  const size = 1 << n;
+  const outside = new Float64Array(size);
+  for (let mask = 1; mask < size; mask++) {
+    const bit = mask & -mask;
+    outside[mask] = outside[mask ^ bit] + unpaired(items[31 - Math.clz32(bit)]);
+  }
+  const choices: Int8Array[] = [];
+  for (const opponent of pool) {
+    const costs = items.map((fighter) => cost(fighter, opponent));
+    const choice = new Int8Array(size).fill(-1);
+    // Descending masks read the previous layer: no opponent can be used twice.
+    for (let mask = size - 1; mask > 0; mask--) {
+      for (let bits = mask; bits; bits &= bits - 1) {
+        const bit = bits & -bits;
+        const i = 31 - Math.clz32(bit);
+        const c = costs[i];
+        if (c != null && outside[mask ^ bit] + c < outside[mask]) {
+          outside[mask] = outside[mask ^ bit] + c;
+          choice[mask] = i;
+        }
+      }
+    }
+    choices.push(choice);
+  }
+  const costs = items.map((a, i) => items.map((b, j) => i < j ? cost(a, b) : null));
+  const best = new Float64Array(size).fill(NaN);
+  const choice = new Int16Array(size).fill(-1);
   best[0] = 0;
   const solve = (mask: number): number => {
     if (!Number.isNaN(best[mask])) return best[mask];
-    const i = 31 - Math.clz32(mask & -mask);
-    const rest = mask & ~(1 << i);
-    let value = unpaired(items[i]) + solve(rest);
-    let pick = -1;
-    for (let j = i + 1; j < n; j++) {
-      const c = costs[i][j];
-      if (!(mask & (1 << j)) || c == null) continue;
-      const total = c + solve(rest & ~(1 << j));
-      if (total < value) { value = total; pick = j; }
+    let value = outside[mask];
+    // A required fighter can go outside while two other required fighters pair.
+    for (let i = 0; i < n; i++) {
+      if (!(mask & (1 << i))) continue;
+      for (let j = i + 1; j < n; j++) {
+        const c = costs[i][j];
+        if (!(mask & (1 << j)) || c == null) continue;
+        const total = c + solve(mask ^ (1 << i) ^ (1 << j));
+        if (total < value) { value = total; choice[mask] = i * n + j; }
+      }
     }
     best[mask] = value;
-    choice[mask] = pick;
     return value;
   };
-  let mask = (1 << n) - 1;
+  let mask = size - 1;
   solve(mask);
   const pairs: [T, T][] = [];
-  while (mask) {
-    const i = 31 - Math.clz32(mask & -mask);
-    const j = choice[mask];
-    mask &= ~(1 << i);
-    if (j >= 0) { pairs.push([items[i], items[j]]); mask &= ~(1 << j); }
+  while (choice[mask] >= 0) {
+    const i = Math.floor(choice[mask] / n), j = choice[mask] % n;
+    pairs.push([items[i], items[j]]);
+    mask ^= (1 << i) | (1 << j);
+  }
+  for (let k = pool.length - 1; k >= 0; k--) {
+    const i = choices[k][mask];
+    if (i >= 0) { pairs.push([items[i], pool[k]]); mask ^= 1 << i; }
   }
   return pairs;
 }
 
 function pairReason(a: Fighter, b: Fighter, division: string, today: string): string {
-  const parts = [`No. ${rankIn(a, division)} vs No. ${rankIn(b, division)}`];
+  const parts: string[] = [];
   const ma = momentum(a), mb = momentum(b);
-  if (ma && ma === mb) parts.push(`both coming off ${ma === "win" ? "wins" : "losses"}`);
-  else if (ma && mb) {
-    const [winner, loser] = ma === "win" ? [a, b] : [b, a];
-    parts.push(`${winner.name} off a win, ${loser.name} off a loss`);
-  }
-  const hot = [a, b].filter((fighter) => Math.abs(fighter.streak) >= 3).sort((x, y) => Math.abs(y.streak) - Math.abs(x.streak))[0];
-  if (hot) parts.push(`${hot.name} on ${run(hot)}`);
+  if (rankIn(a, division) == null || rankIn(b, division) == null) parts.push("Chance to enter the rankings");
+  if (ma && ma === mb) parts.push(ma === "win" ? "Both coming off wins" : "Both coming off losses");
+  else if (ma && mb) parts.push("Different recent results");
   const away = [a, b].find((fighter) => daysOff(fighter, today) > LAYOFF_DAYS);
-  if (away?.lastDate) parts.push(`${away.name} out since ${monthYear(away.lastDate)}`);
-  const meeting = a.met.get(b.id);
-  if (meeting) parts.push(`rematch of their ${meeting.date.slice(0, 4)} fight`);
-  return parts.slice(0, 3).join(" · ");
+  if (away?.lastDate) parts.push("Return from a layoff");
+  const meeting = a.met.get(b.id) ?? b.met.get(a.id);
+  if (meeting) parts.push(`Rematch from ${meeting.date.slice(0, 4)}`);
+  return parts.join(" · ") || "Similar standing in the division";
 }
 
 export type Plan = {
@@ -208,10 +230,9 @@ export type Plan = {
  * first (booked, or the champion against `titleChallenger`), then everyone
  * unbooked and active paired as cheaply as possible (`pairCost`), then the
  * fights already booked. Each fighter appears once. Leaving someone unpaired
- * costs more the higher they are ranked, so the top of a division is matched
- * before its tail.
+ * is heavily penalized; unranked opponents fill gaps without duplicating anyone.
  */
-export function planDivision(division: string, ranked: Fighter[], person: (id: string | null, name: string) => Fighter, today: string, interimId: string | null = null): Plan {
+export function planDivision(division: string, ranked: Fighter[], person: (id: string | null, name: string) => Fighter, today: string, interimId: string | null = null, pool: Fighter[] = []): Plan {
   const ordered = [...ranked].sort((a, b) => rankIn(a, division)! - rankIn(b, division)!);
   const used = new Set<string>();
   const fights: Plan["fights"] = [];
@@ -228,8 +249,8 @@ export function planDivision(division: string, ranked: Fighter[], person: (id: s
   if (champion?.booked) book(champion);
   else if (titleBooked) {
     book(titleBooked);
-    if (champion) { idle.push({ fighter: champion, reason: "Title fight booked without the champion" }); used.add(champion.id); }
-  } else if (champion) {
+    // Still find the listed champion a next opponent; do not invent another title fight.
+  } else if (champion && !unavailable(champion, today)) {
     const challenger = titleChallenger(champion, ordered, division, today, interimId);
     if (challenger) {
       fights.push({ kind: "title", a: champion, b: challenger.fighter, reason: challenger.reason });
@@ -247,9 +268,12 @@ export function planDivision(division: string, ranked: Fighter[], person: (id: s
     if (why) idle.push({ fighter, reason: capital(why) });
     else open.push(fighter);
   }
-  const pairs = pairUp(open, (a, b) => pairCost(a, b, division, today), (fighter) => UNPAIRED + (16 - rankIn(fighter, division)!) * 0.8);
+  const rankedIds = new Set(ordered.map((fighter) => fighter.id));
+  const outside = [...new Map(pool.map((fighter) => [fighter.id, fighter])).values()]
+    .filter((fighter) => fighter.id && !rankedIds.has(fighter.id) && !used.has(fighter.id) && !unavailable(fighter, today));
+  const pairs = pairUp(open, (a, b) => pairCost(a, b, division, today), () => UNPAIRED, outside);
   const paired = new Set(pairs.flat());
-  for (const fighter of open) if (!paired.has(fighter)) idle.push({ fighter, reason: "No close ranked match left" });
+  for (const fighter of open) if (!paired.has(fighter)) idle.push({ fighter, reason: "No available opponent without a recent rematch" });
   const top = (fight: Plan["fights"][number]) => Math.min(rankIn(fight.a, division) ?? 99, rankIn(fight.b, division) ?? 99);
   const suggested = pairs.map(([a, b]) => ({ kind: "suggested" as const, a, b, reason: pairReason(a, b, division, today) }))
     .sort((x, y) => top(x) - top(y));
@@ -276,7 +300,7 @@ export type Next = { kind: "suggested" | "booked" | "rematch"; opponent: Fighter
  *  then standing, then run, then how long the opponent has been out. Anyone
  *  booked, inactive, or met inside three years is ruled out. */
 export function nextCost(a: Fighter, b: Fighter, division: string, eventId: string, today: string): number | null {
-  if (a.id === b.id || b.booked || !b.id || daysOff(b, today) > INACTIVE_DAYS || metWithin(a, b, today, RECENT_MEETING_DAYS)) return null;
+  if (a.id === b.id || unavailable(b, today) || !b.id || metWithin(a, b, today, RECENT_MEETING_DAYS)) return null;
   const ma = momentum(a), mb = momentum(b);
   let cost = Math.abs(standing(a, division) - standing(b, division)) * 0.8;
   if (ma && mb && ma !== mb) cost += 4;
@@ -306,8 +330,7 @@ function nextReason(a: Fighter, b: Fighter, division: string, eventId: string): 
  * A next opponent for everyone on a card. A draw or no contest runs it back;
  * a booked fighter keeps their booking; everyone else gets the cheapest
  * available opponent by `nextCost` from `pool` (their division's recent and
- * ranked fighters, the card itself included). Picks are made cheapest first
- * across the card, so nobody is suggested twice and two fighters from the
+ * ranked fighters, the card itself included). Picks are optimized together within each division, so nobody is suggested twice and two fighters from the
  * card suggested for each other agree.
  */
 export function nextOpponents(bouts: CardBout[], pool: (division: string) => Fighter[], person: (id: string | null, name: string) => Fighter, eventId: string, today: string): Map<string, Next> {
@@ -317,35 +340,33 @@ export function nextOpponents(bouts: CardBout[], pool: (division: string) => Fig
     for (const side of bout.sides) {
       const booking = side.fighter.booked;
       if (booking) next.set(side.fighter.id, { kind: "booked", opponent: person(booking.opponent_id, booking.opponent_name), reason: `Booked for ${booking.event_name}` });
-      else if (side.outcome === "draw" || side.outcome === "nc") {
+      else if ((side.outcome === "draw" || side.outcome === "nc") && !unavailable(side.fighter, today)) {
         const other = bout.sides[0] === side ? bout.sides[1] : bout.sides[0];
-        next.set(side.fighter.id, { kind: "rematch", opponent: other.fighter, reason: `Run it back after the ${side.outcome === "draw" ? "draw" : "no contest"}` });
+        if (!unavailable(other.fighter, today)) next.set(side.fighter.id, { kind: "rematch", opponent: other.fighter, reason: `Run it back after the ${side.outcome === "draw" ? "draw" : "no contest"}` });
       }
     }
   }
-  const edges: { a: Fighter; b: Fighter; division: string; cost: number; order: number }[] = [];
-  bouts.forEach((bout, order) => {
-    for (const side of bout.sides) {
-      if (next.has(side.fighter.id)) continue;
-      for (const candidate of pool(side.division)) {
-        const cost = nextCost(side.fighter, candidate, side.division, eventId, today);
-        if (cost != null && cost <= MAX_NEXT_COST) edges.push({ a: side.fighter, b: candidate, division: side.division, cost, order });
-      }
+  const reserved = new Set([...next.values()].flatMap((pick) => pick.opponent ? [pick.opponent.id] : []));
+  const divisions = new Map<string, Fighter[]>();
+  for (const bout of bouts) for (const side of bout.sides) {
+    if (next.has(side.fighter.id) || reserved.has(side.fighter.id) || unavailable(side.fighter, today)) continue;
+    const list = divisions.get(side.division) ?? [];
+    if (!list.some((fighter) => fighter.id === side.fighter.id)) list.push(side.fighter);
+    divisions.set(side.division, list);
+  }
+  for (const [division, fighters] of divisions) {
+    const outside = [...new Map(pool(division).map((fighter) => [fighter.id, fighter])).values()]
+      .filter((fighter) => !onCard.has(fighter.id) && !reserved.has(fighter.id) && !unavailable(fighter, today));
+    const pairs = pairUp(fighters, (a, b) => nextCost(a, b, division, eventId, today), () => UNPAIRED, outside);
+    for (const [a, b] of pairs) {
+      reserved.add(a.id).add(b.id);
+      next.set(a.id, { kind: "suggested", opponent: b, reason: nextReason(a, b, division, eventId) });
+      if (onCard.has(b.id)) next.set(b.id, { kind: "suggested", opponent: a, reason: nextReason(b, a, division, eventId) });
     }
-  });
-  edges.sort((x, y) => x.cost - y.cost || x.order - y.order);
-  const taken = new Set<string>();
-  for (const { a, b, division } of edges) {
-    if (taken.has(a.id) || taken.has(b.id) || next.has(a.id)) continue;
-    // A card fighter picked as an opponent must be free and in the same division.
-    if (onCard.has(b.id) && (next.has(b.id) || onCard.get(b.id) !== division)) continue;
-    taken.add(a.id).add(b.id);
-    next.set(a.id, { kind: "suggested", opponent: b, reason: nextReason(a, b, division, eventId) });
-    if (onCard.has(b.id)) next.set(b.id, { kind: "suggested", opponent: a, reason: nextReason(b, a, division, eventId) });
   }
   for (const bout of bouts) {
     for (const side of bout.sides) {
-      if (!next.has(side.fighter.id)) next.set(side.fighter.id, { kind: "none", opponent: null, reason: "No close match available right now" });
+      if (!next.has(side.fighter.id)) next.set(side.fighter.id, { kind: "none", opponent: null, reason: capital(unavailable(side.fighter, today) ?? "no available opponent without a recent rematch") });
     }
   }
   return next;
@@ -403,10 +424,10 @@ function divisionOf(fights: IndexedFight[]): string | null {
 type Matchmaking = {
   updated_at: number | null;
   top15: { division: string; fights: { kind: Plan["fights"][number]["kind"]; a: MatchFighter; b: MatchFighter; reason: string; event: { id: string; name: string; date: string } | null }[]; idle: { fighter: MatchFighter; reason: string }[] }[];
-  last_event: {
+  recent_events: {
     id: string; name: string; date: string;
     bouts: { fight_id: string; division: string; method: string | null; title: boolean; sides: { fighter: MatchFighter; outcome: Result | null; next: { kind: Next["kind"]; opponent: MatchFighter | null; reason: string } }[] }[];
-  } | null;
+  }[];
 };
 
 let cached: { key: string; data: Matchmaking } | null = null;
@@ -414,7 +435,8 @@ let cached: { key: string; data: Matchmaking } | null = null;
 export function matchmaking(): Matchmaking {
   const index = fightIndex();
   const today = todayIso();
-  const key = `${index.version}:${dataRevision("profiles")}:${today}`;
+  const offRoster = new Set((prepared("SELECT fighter_id FROM ufc_status WHERE status = 'not_fighting' ORDER BY fighter_id").all() as { fighter_id: string }[]).map((row) => row.fighter_id));
+  const key = `${index.version}:${dataRevision("profiles")}:${today}:${[...offRoster].join(",")}`;
   if (cached?.key === key) return cached.data;
   const started = performance.now();
 
@@ -443,15 +465,33 @@ export function matchmaking(): Matchmaking {
   const people = new Map<string, Fighter>();
   const person = (id: string | null, name: string): Fighter => {
     const known = id ? people.get(id) ?? snapshot(index, id, today, ranks, bookings) : null;
-    if (known) { people.set(known.id, known); return known; }
+    if (known) { known.offRoster = offRoster.has(known.id); people.set(known.id, known); return known; }
     return { id: id ?? "", name, photo_url: null, record: "", ufcRecord: "", ufcNet: 0, ranks: new Map(), streak: 0, last: null, lastDate: null, lastEventId: null, lastBout: null, met: new Map(), booked: null };
   };
+
+  // One current opponent pool shared by ranked suggestions and recent cards.
+  const since = new Date(Date.parse(today) - POOL_DAYS * 86400000).toISOString().slice(0, 10);
+  const byDivision = new Map<string, Fighter[]>();
+  const add = (division: string | null, fighter: Fighter) => {
+    if (!division || unavailable(fighter, today)) return;
+    const list = byDivision.get(division) ?? [];
+    if (!list.includes(fighter)) list.push(fighter);
+    byDivision.set(division, list);
+  };
+  const recent = new Set<string>();
+  for (let i = index.fights.length - 1; i >= 0 && index.fights[i].date >= since; i--) for (const side of index.fights[i].sides) recent.add(side.id);
+  for (const id of recent) {
+    const fighter = person(id, "");
+    // Rankings are the current division for ranked fighters, not a one-off bout elsewhere.
+    if (fighter.name && !fighter.ranks.size) add(divisionOf(index.fighters.get(id)?.fights ?? []), fighter);
+  }
+  for (const [division, ids] of rankedBy) for (const id of ids) add(division, person(id, ""));
 
   const top15 = [...rankedBy.keys()].sort(divisionSort).map((division) => {
     const ranked = rankedBy.get(division)!.map((id) => person(id, "")).filter((fighter) => fighter.name);
     const champion = ranked.find((fighter) => rankIn(fighter, division) === 0);
     const interim = index.holdersBefore(division, today).interim;
-    const plan = planDivision(division, ranked, person, today, interim && interim !== champion?.id ? interim : null);
+    const plan = planDivision(division, ranked, person, today, interim && interim !== champion?.id ? interim : null, byDivision.get(division) ?? []);
     return {
       division,
       fights: plan.fights.map((fight) => ({
@@ -462,26 +502,12 @@ export function matchmaking(): Matchmaking {
     };
   });
 
-  let lastEvent: Matchmaking["last_event"] = null;
-  const event = prepared("SELECT id, name, date FROM events WHERE complete = 1 AND date <= ? ORDER BY date DESC LIMIT 1").get(today) as { id: string; name: string; date: string } | undefined;
-  const card = event ? index.fights.filter((fight) => fight.eventId === event.id).sort((a, b) => a.ord - b.ord) : [];
-  if (event && card.length) {
-    // The pool: whoever fought in the last three months, and everyone ranked.
-    const since = new Date(Date.parse(event.date) - POOL_DAYS * 86400000).toISOString().slice(0, 10);
-    const byDivision = new Map<string, Fighter[]>();
-    const add = (division: string | null, fighter: Fighter) => {
-      if (!division || fighter.booked) return;
-      const list = byDivision.get(division) ?? [];
-      if (!list.includes(fighter)) list.push(fighter);
-      byDivision.set(division, list);
-    };
-    const recent = new Set<string>();
-    for (let i = index.fights.length - 1; i >= 0 && index.fights[i].date >= since; i--) for (const side of index.fights[i].sides) recent.add(side.id);
-    for (const id of recent) {
-      const fighter = person(id, "");
-      if (fighter.name) add(divisionOf(index.fighters.get(id)?.fights ?? []), fighter);
-    }
-    for (const [division, ids] of rankedBy) for (const id of ids) add(division, person(id, ""));
+  const recentEvents: Matchmaking["recent_events"] = [];
+  // Four cards even across holiday breaks; never include an upcoming or live card.
+  const events = prepared("SELECT id, name, date FROM events WHERE complete = 1 AND date <= ? ORDER BY date DESC, id DESC LIMIT 4").all(today) as { id: string; name: string; date: string }[];
+  for (const event of events) {
+    const card = index.fights.filter((fight) => fight.eventId === event.id).sort((a, b) => a.ord - b.ord);
+    if (!card.length) continue;
     const sideDivision = (fighter: Fighter, fight: IndexedFight) => {
       if (fight.weightClass !== "Catch Weight" && fight.weightClass !== "Open Weight") return fight.weightClass;
       return [...fighter.ranks.keys()][0] ?? divisionOf(index.fighters.get(fighter.id)?.fights ?? []) ?? fight.weightClass;
@@ -494,7 +520,7 @@ export function matchmaking(): Matchmaking {
       }) as [CardSide, CardSide],
     }));
     const next = nextOpponents(bouts, (division) => byDivision.get(division) ?? [], person, event.id, today);
-    lastEvent = {
+    recentEvents.push({
       ...event,
       bouts: bouts.map((bout, i) => {
         const fight = card[i];
@@ -507,10 +533,10 @@ export function matchmaking(): Matchmaking {
           }),
         };
       }),
-    };
+    });
   }
 
-  const data: Matchmaking = { updated_at: Number(getMeta("rankings_synced_at")) || null, top15, last_event: lastEvent };
+  const data: Matchmaking = { updated_at: Number(getMeta("rankings_synced_at")) || null, top15, recent_events: recentEvents };
   cached = { key, data };
   if (process.env.NODE_ENV !== "test") log(`matchmaking built in ${Math.round(performance.now() - started)}ms`);
   return data;
