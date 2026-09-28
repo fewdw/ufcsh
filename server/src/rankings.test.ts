@@ -4,7 +4,7 @@ import { db } from "./db.ts";
 import { getRankings } from "./api.ts";
 import { fightIndex } from "./fight-index.ts";
 
-test("rankings carry older opponents, the latest rematch result, and scheduled opponent IDs", () => {
+test("rankings carry older opponents, every rematch result, and scheduled opponent IDs", () => {
   for (const source of ["media", "meta"] as const) {
     const entries = (getRankings(source) as { entries: any[] }[]).flatMap((division) => division.entries);
     const fighter = (name: string) => {
@@ -14,13 +14,13 @@ test("rankings carry older opponents, the latest rematch result, and scheduled o
     };
     const volk = fighter("Alexander Volkanovski");
     const max = fighter("Max Holloway");
-    assert.equal(volk.activity.opponent_results?.[max.fighter_id!], "win", "history beyond the last five is included");
-    assert.equal(max.activity.opponent_results?.[volk.fighter_id!], "loss", "results use the hovered fighter's perspective");
+    assert.deepEqual(volk.activity.opponent_results?.[max.fighter_id!], ["win"], "history beyond the last five is included");
+    assert.deepEqual(max.activity.opponent_results?.[volk.fighter_id!], ["loss"], "results use the hovered fighter's perspective");
 
     const izzy = fighter("Israel Adesanya");
     const alex = fighter("Alex Pereira");
-    assert.equal(izzy.activity.opponent_results?.[alex.fighter_id!], "win", "the latest result replaces an earlier loss");
-    assert.equal(alex.activity.opponent_results?.[izzy.fighter_id!], "loss", "the latest result replaces an earlier win");
+    assert.deepEqual(izzy.activity.opponent_results?.[alex.fighter_id!], ["loss", "win"], "a split rematch keeps both results, latest last");
+    assert.deepEqual(alex.activity.opponent_results?.[izzy.fighter_id!], ["win", "loss"], "a split rematch keeps both results, latest last");
 
     let bookings = 0;
     for (const entry of entries) {

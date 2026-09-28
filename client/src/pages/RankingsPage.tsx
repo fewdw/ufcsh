@@ -274,14 +274,18 @@ function RankRow({
     </>
   );
 
-  const result = entry.fighter_id && highlightedFighter
-    ? highlightedFighter.activity.next_fight?.opponent_id === entry.fighter_id
-      ? "scheduled"
-      : highlightedFighter.activity.opponent_results?.[entry.fighter_id]
-    : null;
-  const resultClass = result ? `opponent-${result}` : "";
+  // One horizontal band per result against the highlighted fighter, latest
+  // at the bottom: a split rematch shows both its win and its loss.
+  const results = entry.fighter_id && highlightedFighter ? [
+    ...highlightedFighter.activity.opponent_results?.[entry.fighter_id] ?? [],
+    ...highlightedFighter.activity.next_fight?.opponent_id === entry.fighter_id ? ["scheduled"] : [],
+  ] : [];
+  const resultStyle = results.length ? {
+    backgroundImage: `linear-gradient(${results.map((result, i) =>
+      `var(--opponent-${result}) ${(i * 100) / results.length}% ${((i + 1) * 100) / results.length}%`).join(", ")})`,
+  } : undefined;
   const selected = tapResults && highlightedFighter?.fighter_id === entry.fighter_id;
-  const className = `flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors ${highlightedFighter ? resultClass : features.activityColors ? meta.row : ""} ${selected ? "opponent-selected" : ""} ${
+  const className = `flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors ${!highlightedFighter && features.activityColors ? meta.row : ""} ${selected ? "opponent-selected" : ""} ${
     entry.fighter_id ? "hover:bg-zinc-100" : ""
   }`;
 
@@ -294,11 +298,11 @@ function RankRow({
   // Touch: the first tap highlights opponents, a second tap opens the profile.
   if (entry.fighter_id && tapResults) {
     return selected ? (
-      <Link to={`/fighters/${entry.fighter_id}`} className={className} title={title}>
+      <Link to={`/fighters/${entry.fighter_id}`} className={className} style={resultStyle} title={title}>
         {inner}
       </Link>
     ) : (
-      <button type="button" className={className} aria-pressed={selected}
+      <button type="button" className={className} style={resultStyle} aria-pressed={selected}
         onClick={() => onHighlight(entry.fighter_id)}>
         {inner}
       </button>
@@ -317,6 +321,7 @@ function RankRow({
       <Link
         to={`/fighters/${entry.fighter_id}`}
         className={className}
+        style={resultStyle}
         title={title}
         onMouseEnter={(event) => {
           if (!features.hoverHistory) return;
