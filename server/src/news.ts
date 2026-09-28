@@ -1,6 +1,7 @@
 import { db, getMeta, prepared, setMeta, touchMeta } from "./db.ts";
 import { fightIndex } from "./fight-index.ts";
 import { fetchFeed, NEWS_FEEDS, type FeedItem } from "./scrape/news.ts";
+import { searchList } from "./fuzzy.ts";
 import { log, normName } from "./util.ts";
 
 /**
@@ -20,9 +21,9 @@ const KEEP_DAYS = 21;
 const SHOWN_DAYS = 14;
 const TOP_HOURS = 72;
 const TOP_STORIES = 5;
-const LATEST_STORIES = 150;
+const PAGE_SIZE = 30;
 
-type Stored = { url: string; source: string; title: string; summary: string; image: string | null; categories: string; published_at: number };
+type Stored = { url: string; source: string; title: string; summary: string; categories: string; published_at: number };
 
 // ---------------------------------------------------------------------------
 // Reading the feeds
@@ -40,9 +41,8 @@ export async function syncNews(read: (url: string) => Promise<FeedItem[]> = fetc
   touchMeta("news_checked_at");
   const now = Date.now();
   const upsert = db.prepare(`
-    INSERT INTO news (url, source, title, summary, image, categories, published_at, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(url) DO UPDATE SET title = excluded.title, summary = excluded.summary,
-      image = coalesce(excluded.image, image), categories = excluded.categories
+    INSERT INTO news (url, source, title, summary, categories, published_at, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(url) DO UPDATE SET title = excluded.title, summary = excluded.summary, categories = excluded.categories
   `);
   // Google News lists an outlet's other editions too (jp.ufc.com): only the site asked for.
   const results = await Promise.allSettled(NEWS_FEEDS.map(async (feed) => (await read(feed.url)).filter((item) => !feed.site || item.site === feed.site)));
@@ -62,7 +62,7 @@ export async function syncNews(read: (url: string) => Promise<FeedItem[]> = fetc
         // A date ahead of now is a scheduled post; it's news when we see it.
         const published = item.published && item.published <= now + 10 * 60_000 ? item.published : now;
         if (published < now - KEEP_DAYS * 86_400_000) continue;
-        upsert.run(item.url, source, item.title, item.summary, item.image, JSON.stringify(item.categories), published, now);
+        upsert.run(item.url, source, item.title, item.summary, JSON.stringify(item.categories), published, now);
       }
       db.exec("COMMIT");
     } catch (error) {
@@ -216,12 +216,18 @@ export function sameStory(a: Item, b: Item, common: ReadonlySet<string>): boolea
   return shared >= 2 || (shared === 1 && overlap(a.topic, b.topic, common) >= 0.3);
 }
 
+type Outlet = { source: string; url: string; title: string };
+
+/** A story as a reader gets it: told by the first outlet they keep on. */
 export type NewsStory = {
-  url: string; source: string; title: string; summary: string; image: string | null; published_at: number;
+  url: string; source: string; title: string; summary: string; published_at: number;
   fighters: { id: string; name: string; photo_url: string | null }[];
   event: { id: string; name: string } | null;
-  also: { source: string; url: string; title: string }[];
+  also: Outlet[];
 };
+
+/** A story as built: every outlet that ran it, the first report first. */
+type Story = Omit<NewsStory, "url" | "source" | "title" | "also"> & { outlets: Outlet[]; score: number };
 
 /** Which card a story is about: a numbered card it names ("UFC 331"), or the
  *  card its fighters were on or are booked for, from a week before the story
@@ -262,9 +268,10 @@ function eventFinder() {
 
 const LIVE = /\blive (?:blog|results|updates|coverage)\b|\bplay-by-play\b|\bresults\b/i;
 
-let cached: { key: string; data: unknown } | null = null;
+let cached: { key: string; data: { updated_at: number | null; sources: { name: string; ok: boolean }[]; stories: Story[] } } | null = null;
 
-export function newsView(): unknown {
+/** Every story of the last two weeks, newest first, rebuilt once per read of the feeds. */
+function newsStories() {
   const index = fightIndex();
   const key = `${getMeta("news_synced_at")}:${index.version}`;
   if (cached?.key === key) return cached.data;
@@ -272,7 +279,7 @@ export function newsView(): unknown {
   const findEvent = eventFinder();
   const now = Date.now();
   const ufcFeeds = new Set(NEWS_FEEDS.filter((feed) => feed.ufc).map((feed) => feed.source));
-  const rows = prepared("SELECT url, source, title, summary, image, categories, published_at FROM news WHERE published_at >= ? ORDER BY published_at ASC")
+  const rows = prepared("SELECT url, source, title, summary, categories, published_at FROM news WHERE published_at >= ? ORDER BY published_at ASC")
     .all(now - SHOWN_DAYS * 86_400_000) as Stored[];
   // An article one outlet republishes from another (Yahoo carries many)
   // keeps its headline: the first copy stands for both.
@@ -299,43 +306,32 @@ export function newsView(): unknown {
   // Oldest first, so each story is credited to whoever had it first. Each is
   // matched against a story's first report only, so a week of coverage of
   // one fight doesn't chain into a single story.
-  const stories: Item[][] = [];
+  const groups: Item[][] = [];
   for (const item of items) {
-    const story = stories.find((group) => group[0].source !== item.source && sameStory(group[0], item, common));
-    if (story) story.push(item);
-    else stories.push([item]);
+    const group = groups.find((candidate) => candidate[0].source !== item.source && sameStory(candidate[0], item, common));
+    if (group) group.push(item);
+    else groups.push([item]);
   }
-  const shape = (story: Item[]): NewsStory => {
-    // The first report, unless a later one has a picture and it doesn't; a
-    // live blog or results page only when nothing else covers it.
-    const reports = story.filter((item) => !LIVE.test(item.title));
-    const pool = reports.length ? reports : story;
-    const lead = pool.find((item) => item.image) ?? pool[0];
+  const stories = groups.map((group): Story => {
+    // The first report leads; a live blog or results page only when nothing else covers it.
+    const reports = group.filter((item) => !LIVE.test(item.title));
+    const lead = (reports.length ? reports : group)[0];
     const fighters = new Map<string, Named>();
-    for (const item of [lead, ...story]) for (const fighter of item.named) if (item === lead || item.titleNamed.has(fighter.id)) fighters.set(fighter.id, fighter);
-    const outlets = new Set([lead.source]);
+    for (const item of [lead, ...group]) for (const fighter of item.named) if (item === lead || item.titleNamed.has(fighter.id)) fighters.set(fighter.id, fighter);
+    const outlets = new Set<string>();
+    const prominence = Math.max(0, ...group.flatMap((item) => item.named.filter((fighter) => item.titleNamed.has(fighter.id)).map((fighter) => fighter.weight)));
+    const hours = (now - group[0].published_at) / 3_600_000;
     return {
-      url: lead.url, source: lead.source, title: lead.title, summary: lead.summary || story.find((item) => item.summary)?.summary || "",
-      image: lead.image, published_at: story[0].published_at,
+      outlets: [lead, ...group.filter((item) => item !== lead)].filter((item) => !outlets.has(item.source) && outlets.add(item.source))
+        .map(({ source, url, title }) => ({ source, url, title })),
+      summary: lead.summary,
+      published_at: group[0].published_at,
       fighters: [...fighters.values()].slice(0, 4).map(({ id, name }) => ({ id, name, photo_url: index.fighters.get(id)?.photoUrl ?? null })),
-      event: findEvent(story.map((item) => item.title), story.flatMap((item) => [...item.titleNamed]), story[0].published_at),
-      also: story.filter((item) => item !== lead && !outlets.has(item.source) && outlets.add(item.source)).map(({ source, url, title }) => ({ source, url, title })),
+      event: findEvent(group.map((item) => item.title), group.flatMap((item) => [...item.titleNamed]), group[0].published_at),
+      // Top stories: how many outlets ran it, how prominent its fighters are, how new it is.
+      score: hours <= TOP_HOURS ? (1 + (outlets.size - 1) * 1.5) * (1 + prominence) * 0.5 ** (hours / 18) : 0,
     };
-  };
-  const score = (story: Item[]) => {
-    const sources = new Set(story.map((item) => item.source)).size;
-    const prominence = Math.max(0, ...story.flatMap((item) => item.named.filter((fighter) => item.titleNamed.has(fighter.id)).map((fighter) => fighter.weight)));
-    const hours = (now - story[0].published_at) / 3_600_000;
-    return (1 + (sources - 1) * 1.5) * (1 + prominence) * 0.5 ** (hours / 18);
-  };
-  const top = stories.filter((story) => now - story[0].published_at <= TOP_HOURS * 3_600_000)
-    .map((story) => ({ story, score: score(story) }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, TOP_STORIES)
-    .map(({ story }) => story);
-  const latest = stories.filter((story) => !top.includes(story))
-    .sort((a, b) => b[0].published_at - a[0].published_at)
-    .slice(0, LATEST_STORIES);
+  }).sort((a, b) => b.published_at - a.published_at);
 
   const data = {
     updated_at: Number(getMeta("news_synced_at")) || null,
@@ -343,9 +339,39 @@ export function newsView(): unknown {
       const status = feedStatus(source);
       return { name: source, ok: Boolean(status?.ok_at) && !status?.error };
     }),
-    top: top.map(shape),
-    latest: latest.map(shape),
+    stories,
   };
   cached = { key, data };
   return data;
+}
+
+/**
+ * One page of /news: `off` lists outlets the reader switched off (a story
+ * stays if another outlet that ran it is on, told by that one), `q` searches
+ * headlines, fighters and cards, `offset` pages through the latest. The first
+ * page also carries the top stories, which a search has none of.
+ */
+export function newsView(params: URLSearchParams = new URLSearchParams()): unknown {
+  const { updated_at, sources, stories } = newsStories();
+  const off = new Set((params.get("off") ?? "").split(",").filter(Boolean));
+  const q = params.get("q")?.slice(0, 80) ?? "";
+  const offset = Math.max(0, Math.min(10_000, Math.floor(Number(params.get("offset")) || 0)));
+  const shown = stories.flatMap((story) => {
+    const outlets = story.outlets.filter((outlet) => !off.has(outlet.source));
+    if (!outlets.length) return [];
+    const [first, ...also] = outlets;
+    // The summary is the first report's own; another outlet's headline goes without it.
+    return [{ story, view: { ...first, also, summary: first === story.outlets[0] ? story.summary : "", published_at: story.published_at, fighters: story.fighters, event: story.event } }];
+  });
+  const top = q ? [] : shown.filter(({ story }) => story.score > 0).sort((a, b) => b.story.score - a.story.score).slice(0, TOP_STORIES);
+  const latest = q
+    ? searchList(shown, q, ({ story }) => [...story.outlets.map((outlet) => outlet.title), ...story.fighters.map((fighter) => fighter.name), story.event?.name ?? ""].join(" "))
+    : shown.filter((entry) => !top.includes(entry));
+  return {
+    updated_at, sources,
+    top: offset ? [] : top.map(({ view }) => view),
+    latest: latest.slice(offset, offset + PAGE_SIZE).map(({ view }) => view),
+    total: latest.length,
+    pageSize: PAGE_SIZE,
+  };
 }

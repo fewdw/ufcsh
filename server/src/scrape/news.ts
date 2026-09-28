@@ -34,7 +34,6 @@ export type FeedItem = {
   url: string;
   title: string;
   summary: string;
-  image: string | null;
   categories: string[];
   /** Milliseconds, or null when the feed gave no readable date. */
   published: number | null;
@@ -57,11 +56,6 @@ function summarize(text: string): string {
   return `${cut.slice(0, cut.lastIndexOf(" ")).replace(/[\s,;:.–-]+$/, "")}…`;
 }
 
-function firstImage(html: string): string | null {
-  const src = cheerio.load(html)("img").first().attr("src");
-  return src && /^https:\/\//.test(src) ? src : null;
-}
-
 /** The items of an RSS 2.0 or Atom feed, newest as the feed orders them. */
 export function parseFeed(xml: string): FeedItem[] {
   const $ = cheerio.load(xml, { xml: true });
@@ -74,12 +68,6 @@ export function parseFeed(xml: string): FeedItem[] {
     if (!title || !/^https?:\/\//.test(url)) return [];
     const content = item.children("content\\:encoded, content").first().text();
     const description = item.children("description, summary").first().text();
-    // The largest listed image that isn't a thumbnail strip; then any in the body.
-    const media = item.find("media\\:content, media\\:thumbnail").toArray()
-      .map((entry) => ({ url: $(entry).attr("url") ?? "", width: Number($(entry).attr("width")) || 0, medium: $(entry).attr("medium") }))
-      .filter((entry) => /^https:\/\//.test(entry.url) && (!entry.medium || entry.medium === "image"))
-      .sort((a, b) => b.width - a.width)[0]?.url;
-    const enclosure = item.children("enclosure").toArray().map((entry) => $(entry).attr("url") ?? "").find((src) => /^https:\/\/.+\.(?:jpe?g|png|webp)/i.test(src));
     const stamp = ["pubDate", "published", "updated"].map((tag) => item.children(tag).first().text().trim()).find(Boolean) ?? "";
     const date = Date.parse(stamp);
     // Google News names the outlet after the headline, and its summary is
@@ -94,8 +82,6 @@ export function parseFeed(xml: string): FeedItem[] {
       title: headline,
       summary: site ? "" : summarize(plain(description || content)),
       site,
-      // BBC lists a 240px thumbnail; the same image is served at any width.
-      image: (media ?? enclosure ?? firstImage(content) ?? firstImage(description))?.replace(/(ichef\.bbci\.co\.uk\/ace\/standard)\/240\//, "$1/480/") ?? null,
       categories: item.children("category").toArray().map((entry) => cleanText($(entry).attr("term") ?? $(entry).text())).filter(Boolean),
       published: Number.isFinite(date) ? date : null,
     }];

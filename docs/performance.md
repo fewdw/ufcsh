@@ -157,9 +157,11 @@ Measured on a copy of the dev archive, 5-run averages, warm fight index.
   at most every 30 minutes). About 290 requests a day in all.
 - News: 15 outlets every 10 minutes (8 feeds read directly, 7 through Google
   News, spaced a second apart on that host): ~6 s in the sync worker, ~2,200
-  requests a day. `/api/news` rebuilds in ~140 ms once per read (every item of
-  the last two weeks matched against ~1,000 fighter names, then grouped into
-  stories), ~120 KB before compression, served from the response cache.
+  requests a day. The story list rebuilds in ~175 ms once per read (every item
+  of the last two weeks matched against ~1,000 fighter names, then grouped
+  into stories); each `/api/news` page (30 stories, outlet filter and search
+  applied) then takes under 5 ms and ~25 KB before compression, and is served
+  from the response cache.
 
 ## Judge baseline (2026-09-27, `feat/official-venue-pages`)
 

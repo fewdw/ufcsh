@@ -1927,7 +1927,7 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   if (p === "/api/labs") return getLabs(url.searchParams);
   if (p === "/api/roster") return rosterView();
   if (p === "/api/matchmaking") return matchmaking();
-  if (p === "/api/news") return newsView();
+  if (p === "/api/news") return newsView(url.searchParams);
   if (p === "/api/search") return search(url.searchParams.get("q") ?? "");
   if (p === "/api/bugs") return bugReport();
   return undefined;

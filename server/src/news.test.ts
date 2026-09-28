@@ -9,10 +9,9 @@ test("RSS, Atom and Google News items read the same way", () => {
     <title><![CDATA[Strickland confirms Imavov fight]]></title><link>https://example.com/a</link>
     <description><![CDATA[<ul><li>First line</li><li>Second line</li></ul>]]></description>
     <pubDate>Mon, 28 Sep 2026 04:00:00 +0000</pubDate><category>UFC</category>
-    <media:content url="https://example.com/small.jpg" width="140"/><media:content url="https://example.com/big.jpg" width="460"/>
   </item></channel></rss>`);
-  assert.deepEqual(rss.map(({ title, summary, image, categories }) => ({ title, summary, image, categories })),
-    [{ title: "Strickland confirms Imavov fight", summary: "First line Second line", image: "https://example.com/big.jpg", categories: ["UFC"] }]);
+  assert.deepEqual(rss.map(({ title, summary, categories }) => ({ title, summary, categories })),
+    [{ title: "Strickland confirms Imavov fight", summary: "First line Second line", categories: ["UFC"] }]);
   assert.equal(rss[0].published, Date.parse("2026-09-28T04:00:00Z"));
 
   const atom = parseFeed(`<feed><entry><title type="html">Gaethje: Topuria didn't quit</title>
@@ -20,7 +19,6 @@ test("RSS, Atom and Google News items read the same way", () => {
     <category term="UFC News"/><content type="html">&lt;img src="https://example.com/c.jpg"/&gt;&lt;p&gt;Body&lt;/p&gt;</content></entry></feed>`);
   assert.equal(atom[0].url, "https://example.com/b");
   assert.equal(atom[0].published, Date.parse("2026-09-27T13:00:00-04:00"));
-  assert.equal(atom[0].image, "https://example.com/c.jpg");
 
   // Google News repeats the outlet after the headline, sometimes twice.
   const google = parseFeed(`<rss><channel><item><title>Channel finder - UFC.com - UFC.com</title><link>https://news.google.com/rss/articles/x</link>
@@ -46,7 +44,7 @@ test("a read keeps each outlet's own items, survives a failed feed and dates sch
   try {
     db.exec("DELETE FROM news");
     const now = Date.now();
-    const item = (url: string, extra: Partial<FeedItem> = {}): FeedItem => ({ url, title: `UFC story ${url}`, summary: "", image: null, categories: [], published: now - 3_600_000, ...extra });
+    const item = (url: string, extra: Partial<FeedItem> = {}): FeedItem => ({ url, title: `UFC story ${url}`, summary: "", categories: [], published: now - 3_600_000, ...extra });
     await syncNews(async (url) => {
       if (url.includes("sherdog")) throw new Error("HTTP 503");
       if (url.includes("site:ufc.com")) return [item("https://ufc.com/1", { site: "ufc.com", title: "UFC 333 bout order announced tonight" }), item("https://jp.ufc.com/1", { site: "jp.ufc.com" })];
@@ -61,9 +59,18 @@ test("a read keeps each outlet's own items, survives a failed feed and dates sch
     assert.equal(view.sources.length, NEWS_FEEDS.length);
     assert.equal(view.sources.find((source) => source.name === "Sherdog")!.ok, false);
     assert.equal(view.top.length + view.latest.length, 2);
+
+    // An outlet switched off takes its stories with it; a search finds by headline.
+    const page = (query: string) => newsView(new URLSearchParams(query)) as { top: NewsStory[]; latest: NewsStory[]; total: number };
+    const without = page("off=UFC.com");
+    assert.deepEqual([...without.top, ...without.latest].map((story) => story.source), ["MMA Fighting"]);
+    const found = page("q=oblique kick");
+    assert.deepEqual(found.top, []);
+    assert.deepEqual(found.latest.map((story) => story.url), ["https://mmafighting.com/later"]);
+    assert.equal(page("offset=30").latest.length, 0);
   } finally {
     db.exec("DELETE FROM news");
-    const insert = db.prepare("INSERT INTO news (url, source, title, summary, image, categories, published_at, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-    for (const row of saved.rows as any[]) insert.run(row.url, row.source, row.title, row.summary, row.image, row.categories, row.published_at, row.seen_at);
+    const insert = db.prepare("INSERT INTO news (url, source, title, summary, categories, published_at, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    for (const row of saved.rows as any[]) insert.run(row.url, row.source, row.title, row.summary, row.categories, row.published_at, row.seen_at);
   }
 });

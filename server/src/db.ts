@@ -530,12 +530,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS news (
   source       TEXT NOT NULL,
   title        TEXT NOT NULL,
   summary      TEXT NOT NULL DEFAULT '',
-  image        TEXT,
   categories   TEXT NOT NULL DEFAULT '[]',
   published_at INTEGER NOT NULL,
   seen_at      INTEGER NOT NULL
 )`);
 db.exec("CREATE INDEX IF NOT EXISTS idx_news_published ON news(published_at)");
+// Outlets' pictures were kept at first and are no longer shown.
+if (db.prepare("SELECT 1 FROM pragma_table_info('news') WHERE name = 'image'").get()) db.exec("ALTER TABLE news DROP COLUMN image");
 db.exec("CREATE TABLE IF NOT EXISTS data_revisions (key TEXT PRIMARY KEY, value INTEGER NOT NULL)");
 for (const key of ["analytics", "profiles", "search"]) {
   db.prepare("INSERT OR IGNORE INTO data_revisions VALUES (?, 0)").run(key);

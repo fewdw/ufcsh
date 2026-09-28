@@ -1085,16 +1085,20 @@ export type MatchmakingData = {
   } | null;
 };
 
+/** A story as told by the first outlet the reader keeps on; `also` are the others that ran it. */
 export type NewsStory = {
-  url: string; source: string; title: string; summary: string; image: string | null; published_at: number;
+  url: string; source: string; title: string; summary: string; published_at: number;
   fighters: { id: string; name: string; photo_url: string | null }[];
   event: { id: string; name: string } | null;
   also: { source: string; url: string; title: string }[];
 };
 
-export type NewsData = {
+/** One page of /news; the first also carries the top stories. */
+export type NewsPage = {
   updated_at: number | null;
   sources: { name: string; ok: boolean }[];
   top: NewsStory[];
   latest: NewsStory[];
+  total: number;
+  pageSize: number;
 };
