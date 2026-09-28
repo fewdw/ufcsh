@@ -59,9 +59,6 @@ function AdminOnly({ children }: { children: ReactNode }) {
   return wasAdmin ? children : null;
 }
 
-/** A group's name above its links, in the menu and the sidebar alike. */
-export const MORE_HEADING = "px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400";
-
 type Item = (section: Section, active: boolean) => ReactNode;
 
 /** Every More group, in order, as `group` and `item` draw them. */
@@ -97,7 +94,7 @@ function RosterNews() {
   );
 }
 
-/** The More pages: a grouped sidebar from `md` up; on a phone, a strip of
+/** The More pages: a sidebar from `md` up; on a phone, a strip of
  *  the current group's pages above the page (the header's More opens the
  *  rest). Each page keeps its own scrolling. */
 export function MoreLayout() {
@@ -118,21 +115,18 @@ export function MoreLayout() {
           })}
         </ul>
       </nav> : null}
-      <nav aria-label="More" className="hidden w-48 shrink-0 space-y-3 overflow-y-auto border-r border-zinc-200 bg-white p-2 md:block lg:w-52 lg:p-3">
-        <MoreGroups group={(label, links) => (
-          <div key={label}>
-            <p className={MORE_HEADING}>{label}</p>
-            <ul className="flex flex-col gap-0.5">{links}</ul>
-          </div>
-        )} item={(section, active) => (
-          <li key={section.href}>
-            <Link to={section.href} aria-current={active ? "page" : undefined}
-              className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${active ? "bg-zinc-100 text-zinc-900" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"}`}>
-              {section.label}
-              {section.href === "/roster" ? <RosterNews /> : null}
-            </Link>
-          </li>
-        )} />
+      <nav aria-label="More" className="hidden w-48 shrink-0 overflow-y-auto border-r border-zinc-200 bg-white p-2 md:block lg:w-52 lg:p-3">
+        <ul className="flex flex-col gap-0.5">
+          <MoreGroups group={(label, links) => <Fragment key={label}>{links}</Fragment>} item={(section, active) => (
+            <li key={section.href}>
+              <Link to={section.href} aria-current={active ? "page" : undefined}
+                className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${active ? "bg-zinc-100 text-zinc-900" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"}`}>
+                {section.label}
+                {section.href === "/roster" ? <RosterNews /> : null}
+              </Link>
+            </li>
+          )} />
+        </ul>
       </nav>
       <div className="min-h-0 min-w-0 flex-1">
         <Outlet />

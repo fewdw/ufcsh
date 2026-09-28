@@ -7,7 +7,7 @@ import LiveMatchup from "./components/LiveMatchup";
 import { segmentedIdle, segmentedSelected } from "./components/segmented";
 import { ChevronDown, Moon, Sun } from "lucide-react";
 import { accountsEnabled } from "./auth";
-import { inMore, MORE_HEADING, MORE_HOME, MoreGroups, MoreLayout } from "./components/MoreNav";
+import { inMore, MORE_HOME, MoreGroups, MoreLayout } from "./components/MoreNav";
 import { useSettings, withRanking } from "./settings";
 import { prefetch } from "./api";
 import { useLinkPrefetch, warmSections } from "./useLinkPrefetch";
@@ -88,13 +88,13 @@ function MoreMenu({ pathname, active }: { pathname: string; active: boolean }) {
       <div className="grid grid-cols-2 gap-x-2 gap-y-3 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg md:w-max lg:grid-cols-4">
         <MoreGroups group={(label, links) => (
           <div key={label} className="md:min-w-36">
-            <p className={`${MORE_HEADING} pt-1`}>{label}</p>
+            <p className="mx-3 mb-1 border-b border-zinc-200 pb-1.5 pt-1 text-xs font-bold uppercase tracking-[0.08em] text-zinc-900">{label}</p>
             <ul>{links}</ul>
           </div>
         )} item={(section, current) => (
           <li key={section.href}>
             <Link to={section.href} aria-current={current ? "page" : undefined}
-              className={`block rounded-lg px-3 py-2 text-sm font-medium transition-colors ${current ? "bg-zinc-100 text-zinc-900" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"}`}>
+              className={`block rounded-lg px-3 py-2 text-sm transition-colors ${current ? "bg-zinc-100 font-medium text-zinc-900" : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"}`}>
               {section.label}
             </Link>
           </li>
