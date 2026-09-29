@@ -1,5 +1,5 @@
 import { PANEL } from "../components/chartTokens";
-import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useApi } from "../api";
 import type { Division, FighterPreview, FighterPreviewFight, RankingEntry } from "../api";
@@ -132,59 +132,42 @@ function lastFightTone(outcome: RankingEntry["activity"]["last_fight_outcome"]):
   }
 }
 
-function previewFightTone(fight: FighterPreviewFight): string {
-  if (fight.upcoming) return "bg-sky-50 text-sky-700";
-  if (fight.outcome === "win") return "bg-emerald-50 text-emerald-700";
-  if (fight.outcome === "loss") return "bg-rose-50 text-rose-700";
-  if (fight.outcome === "draw") return "bg-amber-50 text-amber-700";
-  return "bg-zinc-100 text-zinc-600";
-}
-
-function previewFightLabel(fight: FighterPreviewFight): string {
-  if (fight.upcoming) return "Upcoming";
-  if (fight.outcome === "win") return "Win";
-  if (fight.outcome === "loss") return "Loss";
-  if (fight.outcome === "draw") return "Draw";
-  return "NC";
+function previewFightLabel(fight: FighterPreviewFight): { label: string; cls: string } {
+  if (fight.upcoming) return { label: "Next", cls: "text-sky-600" };
+  if (fight.outcome === "win") return { label: "W", cls: streakTone("win") };
+  if (fight.outcome === "loss") return { label: "L", cls: streakTone("loss") };
+  if (fight.outcome === "draw") return { label: "D", cls: streakTone("draw") };
+  return { label: "NC", cls: "text-zinc-400" };
 }
 
 function FighterHoverPreview({ fighterId, point }: { fighterId: string; point: { x: number; y: number } }) {
   const { data, loading } = useApi<FighterPreview>(`/api/previews/${fighterId}`);
-  const width = Math.min(430, window.innerWidth - 24);
-  const estimatedHeight = 220;
-  const left = Math.max(12, Math.min(point.x + 14, window.innerWidth - width - 12));
-  const top = Math.max(12, Math.min(point.y + 14, window.innerHeight - estimatedHeight - 12));
+  // Opens away from the nearer edges, so its size never needs measuring.
+  const flipX = point.x > window.innerWidth / 2;
+  const flipY = point.y > window.innerHeight / 2;
+  const style = {
+    ...(flipX ? { right: window.innerWidth - point.x + 14 } : { left: point.x + 14 }),
+    ...(flipY ? { bottom: window.innerHeight - point.y + 14 } : { top: point.y + 14 }),
+    maxWidth: (flipX ? point.x : window.innerWidth - point.x) - 26,
+  };
   return (
-    <aside
-      className="pointer-events-none fixed z-[100] overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl"
-      style={{ left, top, width }}
-      aria-live="polite"
-    >
+    <aside className="pointer-events-none fixed z-[100] rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-[11px] leading-4 shadow-lg" style={style} aria-live="polite">
       {loading || !data ? (
-        <div className="appear-late px-4 py-5 text-xs text-zinc-400">Loading fighter preview…</div>
+        <span className="appear-late text-zinc-400">Loading…</span>
       ) : (
-        <>
-          <div className="flex items-center gap-3 border-b border-zinc-100 px-3 py-2.5">
-            <Avatar src={data.photo_url} name={data.name} size="sm" />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-semibold text-zinc-950">{data.name}</span>
-              <span className="block truncate text-[10px] text-zinc-400">{data.nickname ? `“${data.nickname}” · ` : ""}{data.record}</span>
-            </span>
-            <span className="text-[9px] font-semibold uppercase tracking-wider text-zinc-400">Last 5 · All promotions</span>
-          </div>
-          <div className="space-y-1 p-2">
-            {[...data.upcoming, ...data.recent].map((fight, index) => (
-              <div key={fight.fight_id ?? `${fight.date}-${fight.opponent.name}-${index}`} className={`flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-[10px] ${previewFightTone(fight)}`}>
-                {!fight.upcoming ? <ResultDots results={[fight]} /> : <span className="w-2" />}
-                <span className="w-14 shrink-0 font-bold uppercase">{previewFightLabel(fight)}</span>
-                <span className="w-14 shrink-0 truncate font-semibold" title={fight.method ?? undefined}>{fight.upcoming ? "—" : resultDot(fight).shortMethod || "Result"}</span>
-                <span className="min-w-0 flex-1 truncate font-medium">vs {fight.opponent.name}</span>
-                <span className="max-w-24 shrink-0 truncate opacity-70">{fight.weight_class}</span>
-                <span className="max-w-28 shrink-0 truncate opacity-70" title={`${fight.event_name} · ${formatDateShort(fight.date)}`}>{fight.event_name}</span>
-              </div>
-            ))}
-          </div>
-        </>
+        <div className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-baseline gap-x-2.5 gap-y-0.5 whitespace-nowrap">
+          {[...data.upcoming, ...data.recent].map((fight, index) => {
+            const result = previewFightLabel(fight);
+            return (
+              <Fragment key={fight.fight_id ?? `${fight.date}-${fight.opponent.name}-${index}`}>
+                <span className={`font-bold ${result.cls}`}>{result.label}</span>
+                <span className="font-medium text-zinc-600" title={fight.method ?? undefined}>{fight.upcoming ? "" : resultDot(fight).shortMethod}</span>
+                <span className="truncate text-zinc-900">{fight.opponent.name}</span>
+                <span className="text-zinc-400">{fight.weight_class}</span>
+              </Fragment>
+            );
+          })}
+        </div>
       )}
     </aside>
   );
@@ -284,7 +267,8 @@ function RankRow({
     backgroundImage: `linear-gradient(to bottom, ${results.map((result, i) => {
       const start = (i * 100) / results.length;
       const end = ((i + 1) * 100) / results.length;
-      return i === results.length - 1
+      // Repeats of one result read as a single band.
+      return i === results.length - 1 || results[i + 1] === result
         ? `var(--opponent-${result}) ${start}% ${end}%`
         : `var(--opponent-${result}) ${start}% calc(${end}% - 1px), var(--opponent-divider) calc(${end}% - 1px) ${end}%`;
     }).join(", ")})`,
