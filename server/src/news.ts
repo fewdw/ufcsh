@@ -6,7 +6,7 @@ import { log, normName } from "./util.ts";
 
 /**
  * /news: the latest UFC news from the outlets that report it, in one list.
- * Each outlet's feed is read every ten minutes and kept for six months: /news
+ * Each outlet's feed is read every ten minutes and kept for a month: /news
  * shows the last two weeks, a fighter's page all of it. What is shown is
  * decided when the page is built, against today's roster:
  *  - relevant: a UFC-only feed, an outlet's own UFC tag, or "UFC" (the
@@ -18,7 +18,7 @@ import { log, normName } from "./util.ts";
  *    carried them, how prominent the fighters are, and how new they are.
  */
 
-const KEEP_DAYS = 182;
+const KEEP_DAYS = 30;
 const SHOWN_DAYS = 14;
 const TOP_HOURS = 72;
 const TOP_STORIES = 5;
@@ -139,7 +139,7 @@ export function nameIndex() {
 
 type NameIndex = ReturnType<typeof nameIndex>;
 
-/** Months of headlines are read again on every rebuild, in much the same words. */
+/** A month of headlines is read again on every rebuild, in much the same words. */
 const normalized = new Map<string, string>();
 function normWord(word: string): string {
   let norm = normalized.get(word);
@@ -308,8 +308,8 @@ function readItem(row: Stored, names: NameIndex, ufcFeed: boolean): Item | null 
   return { ...row, categoryList, named, titleNamed: new Set(titleNamed.map((fighter) => fighter.id)), words, topic: new Set([...words].filter((word) => !nameWords.has(word))) };
 }
 
-/** Every item kept, as read against the fight index of the time. Six months of
- *  them take most of a second to read, so each is read once and kept until the
+/** Every item kept, as read against the fight index of the time. Reading them
+ *  is most of a rebuild, so each is read once and kept until the
  *  index changes (a query worker holds its index for life): a read of the
  *  feeds costs only what it brought. */
 let reading: { version: string; names: NameIndex; items: Map<string, { row: Stored; headline: string; item: Item | null }> } | null = null;

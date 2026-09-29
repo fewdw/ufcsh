@@ -160,16 +160,16 @@ Measured on a copy of the dev archive, 5-run averages, warm fight index.
   requests a day. Each `/api/news` page (30 stories, outlet filter and search
   applied) then takes under 5 ms and ~25 KB before compression, and is served
   from the response cache.
-- Fighter news (2026-09-29, `feat/fighter-news`): items are kept six months
-  instead of three weeks so a fighter's News tab has history, and the story
-  list is built over all of them. Measured on six months made from the dev
-  copy's three weeks (11,300 items): a cold build 670 ms, now done in each
-  query worker's warm-up; a rebuild after a feed read 250 ms (was ~175 ms for
-  three weeks), since each item is read against the fighter names once and
-  kept while the worker's index stands, and stories are only matched within a
-  day of each other. ~22 MB more per query worker (a year measured 400 ms and
-  43 MB, hence six months). A fighter's page of news is a filter over the
-  built list: ~2 ms.
+- Fighter news (2026-09-29, `feat/fighter-news`): items are kept a month
+  instead of three weeks so a fighter's News tab has a month of history, and
+  the story list is built over all of them. Measured on a month made from the
+  dev copy (2,500 items): a cold build 270 ms, now done in each query worker's
+  warm-up; a rebuild after a feed read 85 ms (was ~175 ms for three weeks),
+  since each item is read against the fighter names once and kept while the
+  worker's index stands, and stories are only matched within a day of each
+  other. A fighter's page of news is a filter over the built list: ~2 ms. (Six
+  months measured 250 ms a rebuild and 22 MB per worker; a year 400 ms and
+  43 MB.)
 
 ## Judge baseline (2026-09-27, `feat/official-venue-pages`)
 

@@ -523,7 +523,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS ufc_status (
   checked_at INTEGER NOT NULL,
   left_at    INTEGER
 )`);
-// The news feeds' items, kept six months (news.ts). Not a revision table:
+// The news feeds' items, kept a month (news.ts). Not a revision table:
 // news arriving must not rebuild the fight index.
 db.exec(`CREATE TABLE IF NOT EXISTS news (
   url          TEXT PRIMARY KEY,

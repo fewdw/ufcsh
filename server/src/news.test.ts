@@ -75,7 +75,7 @@ test("a read keeps each outlet's own items, survives a failed feed and dates sch
   }
 });
 
-test("a fighter's news reaches past the fortnight /news shows", async () => {
+test("a fighter's news reaches past the fortnight /news shows, up to a month", async () => {
   const saved = { rows: db.prepare("SELECT * FROM news").all() };
   try {
     db.exec("DELETE FROM news");
@@ -84,7 +84,8 @@ test("a fighter's news reaches past the fortnight /news shows", async () => {
     const item = (url: string, title: string, days: number): FeedItem => ({ url, title, summary: "", categories: [], published: now - days * 86_400_000 });
     await syncNews(async (url) => url.includes("mmafighting") ? [
       item("https://mmafighting.com/new", `${fighter.name} books next UFC fight`, 1),
-      item("https://mmafighting.com/old", `${fighter.name} wins at UFC event tonight`, 40),
+      item("https://mmafighting.com/old", `${fighter.name} wins at UFC event tonight`, 20),
+      item("https://mmafighting.com/stale", `${fighter.name} signs new UFC contract`, 40),
       item("https://mmafighting.com/other", "UFC announces new broadcast partner deal", 2),
     ] : []);
     const page = (query: string) => newsView(new URLSearchParams(query)) as { top: NewsStory[]; latest: NewsStory[]; total: number };
