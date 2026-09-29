@@ -28,33 +28,9 @@ fresh in the background.
   Turning on **Show more info** makes every row also name the bouts behind its number: the champions faced, the run of opponents in a streak, the belts defended, the fights each knockdown or takedown came from with its own count, the prices taken as an underdog, the two ends of a career. Names are coloured by how the bout went, with the outcome spelled out on hover so colour never carries it alone.
 - **Labs**, a mode of Statistics: build a population of fighter-bouts from any combination of age, streak, layoff, experience, previous result, belt status, stance, reach, division, card position and closing odds. The interface focuses on Combined Record and its source bout list. Excluding a bout updates the study; restoring it is available even when all observations have been excluded.
 
-  A study can also be filled from any announced matchup. That matchup implies
-  one list of conditions — both ages narrowed to within two years of each
-  fighter, experience, prices, layoffs and streaks tightened around their
-  actual values, the reach, height and age edges with the size of each, and the
-  bout's own shape stated either way (a three-round non-title undercard bout is
-  as much a condition as a five-round title fight). Every one of them is a
-  switch, named after the fighter whose fact it is, showing the population it
-  leaves once it and everything above it has been applied.
-
-  **Basic, Normal and Advanced are three selections over that one list, not
-  three lists**: Basic applies only what makes the matchup itself — its
-  division, both ages, belts and market role — Normal adds every condition that
-  still leaves a sample worth reading, and Advanced adds every one with any
-  precedent. So switching every box on by hand lands on exactly the Advanced
-  study. Advanced can narrow all the way to no bouts at all; that is what
-  asking for every condition at once means, and the running counts show which
-  condition emptied it, with the list opening itself when that happens.
-  **Switching one off keeps the matchup** and every other condition, and
-  choices made by hand survive a change of corner. Conditions with no
-  precedent are listed struck through and cannot be switched on.
-
-  Conditions asked of both fighters are decided as one, and what belongs to the
-  bout is decided before either corner, so reading the fight from the other
-  side gives the mirror study: the same divisions, ages, stances, experience
-  and prices, swapped. The exceptions are a fighter's previous result, streak
-  and layoff — there is no opponent-side filter for those, so they follow the
-  corner the record is read from, which is why they are named after them.
+  Filters sit on two tabs: **Fighter Record** (the bout, betting, form,
+  profile and edges over the opponent) and an optional **Opponent** tab
+  (their age, experience, belt, stance, nationality and price).
 
   Below the board, **two interactive explorers read the same population**.
   **The judges’ room** lets you filter verdicts and individual judges, compare

@@ -3,7 +3,7 @@ import type { IncomingMessage } from "node:http";
 
 const listRoutes = new Set([
   "/api/events", "/api/live", "/api/rankings", "/api/stats", "/api/labs",
-  "/api/labs/bouts", "/api/labs/matchups", "/api/labs/fill", "/api/labs/insights",
+  "/api/labs/bouts", "/api/labs/insights",
   "/api/labs/judges", "/api/labs/judge-bouts", "/api/labs/road-bouts", "/api/search",
   "/api/officials", "/api/venues", "/api/roster", "/api/matchmaking", "/api/news",
 ]);

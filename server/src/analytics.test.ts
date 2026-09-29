@@ -4,7 +4,7 @@ import { db } from "./db.ts";
 import { careerBefore, completeRecordBefore, fightIndex, impliedProbability, opponentOf, sideOf, winProfit } from "./fight-index.ts";
 import { getRankings } from "./api.ts";
 import { getStats } from "./stats.ts";
-import { getLabs, getLabsBouts, getLabsFill, getLabsMatchups } from "./labs.ts";
+import { getLabs, getLabsBouts } from "./labs.ts";
 import { fighterRecords, fighterStats } from "./records.ts";
 
 /**
@@ -34,14 +34,6 @@ const board = (query: string, key: string) => {
 };
 const labs = (query: string) => getLabs(new URLSearchParams(query)) as any;
 const bouts = (query: string) => getLabsBouts(new URLSearchParams(query)) as any;
-const matchups = (query = "") => getLabsMatchups(new URLSearchParams(query)) as any;
-const fill = (fightId: string, pov: "a" | "b", mode: "basic" | "normal" | "advanced") =>
-  getLabsFill(new URLSearchParams(`fight=${fightId}&pov=${pov}&mode=${mode}`)) as any;
-const asQuery = (values: Record<string, string | string[]>) => {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(values)) params.set(key, Array.isArray(value) ? value.join(",") : value);
-  return params.toString();
-};
 const one = <T>(sql: string, ...params: unknown[]): T => db.prepare(sql).get(...(params as never[])) as T;
 
 // ---------------------------------------------------------------------------
@@ -692,174 +684,6 @@ test("striking bouts off moves every counter by exactly what those bouts held", 
   );
   assert.equal(after.outcomes.win_ko, before.outcomes.win_ko - sum((row) => (row.outcome === "win" && row.method === "KO/TKO" ? 1 : 0)));
   assert.equal(after.outcomes.loss_dec, before.outcomes.loss_dec - sum((row) => (row.outcome === "loss" && String(row.method).endsWith("-DEC") ? 1 : 0)));
-});
-
-test("an announced matchup carries filter-ready state for both corners", () => {
-  const all = matchups();
-  assert.ok(all.matchups.length > 0, "no announced bout to fill from");
-  const today = new Date().toISOString().slice(0, 10);
-  const beltStatuses = ["champion", "formerChampion", "neverChampion"];
-  const prevResults = ["debut", "win", "finishWin", "loss", "koLoss", "subLoss", "decisionLoss", "drawOrNc"];
-
-  for (const m of all.matchups) {
-    assert.ok(m.date >= today, `${m.event_name} has already happened`);
-    // Nothing announced has been fought, so it must not be in the index.
-    assert.equal(index.byId.has(m.fight_id), false, `${m.fight_id} is already a completed bout`);
-    // The booked length is whatever ufc.com published, or unknown. It is never
-    // derived from title status or card position: a non-title co-main event
-    // can be booked for five rounds.
-    assert.ok(m.scheduled_rounds === null || (Number.isInteger(m.scheduled_rounds) && m.scheduled_rounds > 0));
-    for (const corner of [m.a, m.b]) {
-      assert.ok(corner.name, "a corner is missing a name");
-      // Every categorical value must already be a filter option, because the
-      // panel writes it straight into a filter without translating.
-      if (corner.status != null) assert.ok(beltStatuses.includes(corner.status), `bad status ${corner.status}`);
-      if (corner.prev != null) assert.ok(prevResults.includes(corner.prev), `bad prev ${corner.prev}`);
-      if (corner.prev === "debut") assert.equal(corner.ufc_bouts, 0, `${corner.name} debuts with bouts behind them`);
-      if (corner.ufc_bouts === 0) assert.equal(corner.layoff_days, null);
-      if (corner.prob != null) assert.ok(corner.prob > 0 && corner.prob < 100, `bad implied ${corner.prob}`);
-    }
-  }
-
-  // The search narrows to the same rows rather than reaching past them.
-  const one = all.matchups[0];
-  const found = matchups(`q=${encodeURIComponent(one.a.name)}`);
-  assert.ok(found.matchups.some((m: any) => m.fight_id === one.fight_id), "search lost its own matchup");
-  assert.ok(found.matchups.length <= all.matchups.length);
-  assert.equal(matchups("q=zzzznotafighter").matchups.length, 0);
-});
-
-test("filling from a matchup reads the same fight from either corner", () => {
-  const sample = matchups().matchups.slice(0, 25);
-  assert.ok(sample.length > 0);
-  const invert: Record<string, string> = { favorite: "underdog", underdog: "favorite", pickem: "pickem" };
-
-  for (const m of sample) {
-    for (const mode of ["basic", "normal", "advanced"] as const) {
-      const a = fill(m.fight_id, "a", mode).filters;
-      const b = fill(m.fight_id, "b", mode).filters;
-      // Paired conditions belong to a corner, so they must swap together —
-      // a record built half from one fighter and half from the other is a lie.
-      assert.deepEqual(a.ageMin, b.oppAgeMin, `${m.a.name}: age not mirrored`);
-      assert.deepEqual(a.oppAgeMin, b.ageMin, `${m.a.name}: opponent age not mirrored`);
-      assert.deepEqual(a.status, b.oppStatus, `${m.a.name}: belt not mirrored`);
-      assert.deepEqual(a.oppStatus, b.status, `${m.a.name}: opponent belt not mirrored`);
-      // Conditions asked of both fighters are decided as one, so they swap
-      // together too: stance, experience and price all belong to the pairing.
-      for (const [mine, theirs] of [["stance", "oppStance"], ["expMin", "oppExpMin"], ["expMax", "oppExpMax"], ["probMin", "oppProbMin"], ["probMax", "oppProbMax"]] as const) {
-        assert.deepEqual(a[mine], b[theirs], `${m.a.name}: ${mine} not mirrored`);
-        assert.deepEqual(a[theirs], b[mine], `${m.a.name}: ${theirs} not mirrored`);
-      }
-      // The market role has to flip; both corners cannot be the favourite.
-      if (a.odds) assert.equal(b.odds, invert[a.odds], `${m.a.name}: ${a.odds} did not flip`);
-      // The shape of the bout belongs to neither corner and must not move.
-      for (const key of ["division", "title", "rounds", "mainEvent", "gender"]) {
-        assert.deepEqual(a[key], b[key], `${m.a.name}: ${key} changed with the corner`);
-      }
-      // Filling is deterministic, so the same request twice is the same answer.
-      assert.deepEqual(fill(m.fight_id, "a", mode).filters, a);
-    }
-  }
-});
-
-test("the three modes are three selections over one list of conditions", () => {
-  const sample = matchups().matchups.slice(0, 25);
-  for (const m of sample) {
-    for (const pov of ["a", "b"] as const) {
-      const basic = fill(m.fight_id, pov, "basic");
-      const normal = fill(m.fight_id, pov, "normal");
-      const advanced = fill(m.fight_id, pov, "advanced");
-      const offered = (result: any) => [...result.conditions.map((c: any) => c.id), ...result.dropped.map((c: any) => c.id)].sort();
-      const on = (result: any) => result.conditions.filter((c: any) => c.on);
-      const where = `${m.a.name}/${pov}`;
-
-      // The list is the matchup's, not the mode's: switching mode changes what
-      // is switched on, never what there is to switch. So checking every box
-      // by hand lands on exactly the advanced study.
-      assert.deepEqual(offered(normal), offered(basic), `${where}: the modes offered different conditions`);
-      assert.deepEqual(offered(advanced), offered(basic), `${where}: the modes offered different conditions`);
-      assert.equal(on(advanced).length, advanced.conditions.length, "advanced switches on everything with any precedent");
-
-      // Each step up applies more of the matchup and reads a narrower
-      // population. Basic is the matchup's own identity and nothing else.
-      assert.ok(on(basic).every((c: any) => c.base), `${where}: basic applied an extra condition`);
-      assert.ok(on(basic).length <= on(normal).length, `${where}: basic applied more than normal`);
-      assert.ok(on(normal).length <= on(advanced).length, `${where}: normal applied more than advanced`);
-      assert.ok(basic.n >= normal.n && normal.n >= advanced.n, `${where}: ${basic.n} → ${normal.n} → ${advanced.n} is not narrowing`);
-      for (const condition of on(normal)) {
-        assert.ok(on(advanced).some((c: any) => c.id === condition.id), `${where}: advanced lost ${condition.id}`);
-      }
-
-      // Advanced may narrow all the way to nothing — that is what asking for
-      // every condition at once means, and the reader switches one back off.
-      for (const [wider, narrower] of [[basic, normal], [normal, advanced]] as const) {
-        for (const [key, value] of Object.entries(wider.filters)) {
-          const mine = (narrower.filters as Record<string, unknown>)[key];
-          assert.notEqual(mine, undefined, `${where}: a narrower mode dropped ${key}`);
-          if (key.endsWith("Min")) assert.ok(Number(mine) >= Number(value), `${where}: ${key} loosened ${value} to ${mine}`);
-          else if (key.endsWith("Max")) assert.ok(Number(mine) <= Number(value), `${where}: ${key} loosened ${value} to ${mine}`);
-          else assert.deepEqual(mine, value, `${where}: a narrower mode changed ${key}`);
-        }
-      }
-
-      // Normal holds out for a readable sample while it has anything to add.
-      if (on(normal).some((c: any) => !c.base)) assert.ok(normal.n >= normal.floor, `${where}: normal kept a condition at ${normal.n} observations`);
-      assert.ok(normal.floor > advanced.floor, "normal must hold out for a larger sample than advanced");
-
-      // The reported count must be what the filters actually select.
-      for (const result of [basic, normal, advanced]) assert.equal(labs(asQuery(result.filters)).summary.n, result.n);
-    }
-  }
-});
-
-test("a filled gap keeps the sign of the corner it was read from", () => {
-  // The bug this guards: the reach gap used to be a magnitude, so a fighter
-  // with the shorter reach and one with the longer both filled in as "1".
-  const gaps = [
-    ["reachGapMin", "reachGapMax", "reach_in"],
-    ["heightGapMin", "heightGapMax", "height_in"],
-    ["ageGapMin", "ageGapMax", "age"],
-  ] as const;
-  let checked = 0;
-
-  for (const m of matchups().matchups) {
-    const filled = { a: fill(m.fight_id, "a", "advanced"), b: fill(m.fight_id, "b", "advanced") };
-    for (const [minKey, maxKey, field] of gaps) {
-      for (const pov of ["a", "b"] as const) {
-        const me = pov === "a" ? m.a : m.b;
-        const them = pov === "a" ? m.b : m.a;
-        if (me[field] == null || them[field] == null) continue;
-        const values = filled[pov].filters;
-        if (values[minKey] === undefined && values[maxKey] === undefined) continue;
-        checked += 1;
-        const actual = me[field] - them[field];
-        const min = values[minKey] === undefined ? -Infinity : Number(values[minKey]);
-        const max = values[maxKey] === undefined ? Infinity : Number(values[maxKey]);
-        // A population filled from a bout must be one that bout belongs to.
-        assert.ok(actual >= min && actual <= max, `${m.a.name}/${pov}: ${field} gap ${actual} outside its own ${min}..${max}`);
-        // And the band must stay on the real gap's side of zero, or a fighter
-        // who is shorter reads as one who is longer.
-        if (actual > 0) assert.ok(min >= 1, `${m.a.name}/${pov}: positive ${field} gap allows ${min}`);
-        if (actual < 0) assert.ok(max <= -1, `${m.a.name}/${pov}: negative ${field} gap allows ${max}`);
-        if (actual === 0) assert.ok(min === 0 && max === 0, `${m.a.name}/${pov}: level ${field} allows ${min}..${max}`);
-      }
-      // Whichever way a gap leans, it must lean the other way from the other
-      // corner — the two of them cannot both be the longer-reaching fighter.
-      const lean = (values: Record<string, string | string[]>) =>
-        values[minKey] !== undefined && Number(values[minKey]) >= 1 ? 1
-          : values[maxKey] !== undefined && Number(values[maxKey]) <= -1 ? -1 : 0;
-      const a = lean(filled.a.filters);
-      const b = lean(filled.b.filters);
-      if (a !== 0 && b !== 0) assert.notEqual(a, b, `${m.a.name}: ${minKey} leans the same way from both corners`);
-    }
-  }
-  assert.ok(checked > 50, `only ${checked} gap constraints were exercised`);
-});
-
-test("an unknown or already-fought bout cannot be filled from", () => {
-  assert.deepEqual(fill("deadbeef", "a", "basic"), { error: "not found" });
-  const fought = index.fights.at(-1)!.id;
-  assert.deepEqual(fill(fought, "a", "advanced"), { error: "not found" });
 });
 
 test("every filter constrains exactly what it names, on both sides of the cage", () => {

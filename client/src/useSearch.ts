@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { LabsMatchups, SearchResults } from "./api";
+import type { SearchResults } from "./api";
 import { startSearch } from "./searchRequest";
 
 export function parseSearch(data: unknown): SearchResults {
@@ -7,12 +7,6 @@ export function parseSearch(data: unknown): SearchResults {
   if (!result || !Array.isArray(result.fighters) || !Array.isArray(result.events) || !Array.isArray(result.fights)) {
     throw new Error("Invalid search response");
   }
-  return result;
-}
-
-export function parseMatchups(data: unknown): LabsMatchups {
-  const result = data as LabsMatchups | null;
-  if (!result || !Array.isArray(result.matchups)) throw new Error("Invalid matchup response");
   return result;
 }
 

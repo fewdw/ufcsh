@@ -41,7 +41,7 @@ import { VersionCache } from "./version-cache.ts";
 import { fuzzyScore, fuzzyTarget, splitMatchup, type FuzzyTarget } from "./fuzzy.ts";
 import type { RankingType } from "./scrape/ufccom.ts";
 import { getStats } from "./stats.ts";
-import { getLabs, getLabsBouts, getLabsFill, getLabsMatchups } from "./labs.ts";
+import { getLabs, getLabsBouts } from "./labs.ts";
 import { getLabsInsights, getLabsJudgeBouts, getLabsJudges, getLabsRoadBouts } from "./labs-insights.ts";
 import { titleNarratives } from "./titles.ts";
 import { fighterBoard, fighterRecords } from "./records.ts";
@@ -1949,8 +1949,6 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   if (p === "/api/rankings") return { updated_at: syncedAt("rankings_synced_at"), divisions: getRankings(rankingType) };
   if (p === "/api/stats") return getStats(url.searchParams);
   if (p === "/api/labs/bouts") return getLabsBouts(url.searchParams);
-  if (p === "/api/labs/matchups") return getLabsMatchups(url.searchParams);
-  if (p === "/api/labs/fill") return getLabsFill(url.searchParams);
   if (p === "/api/labs/insights") return getLabsInsights(url.searchParams);
   if (p === "/api/labs/judges") return getLabsJudges(url.searchParams);
   if (p === "/api/labs/judge-bouts") return getLabsJudgeBouts(url.searchParams);
