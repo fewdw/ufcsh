@@ -94,27 +94,11 @@ function RosterNews() {
   );
 }
 
-/** The More pages: a sidebar from `md` up; on a phone, a strip of
- *  the current group's pages above the page (the header's More opens the
- *  rest). Each page keeps its own scrolling. */
+/** The More pages: a sidebar from `md` up; on a phone the header's More
+ *  opens the rest. Each page keeps its own scrolling. */
 export function MoreLayout() {
-  const { pathname } = useLocation();
-  const group = groupOf(pathname);
   return (
     <div className="flex h-full min-h-0 flex-col md:flex-row">
-      {group && shown(group).length > 1 ? <nav aria-label={group.label} className="shrink-0 overflow-x-auto border-b border-zinc-200 bg-white [scrollbar-width:none] md:hidden">
-        <ul className="flex w-max gap-1 px-2 py-1.5">
-          {shown(group).map((section) => {
-            const active = current(pathname, section);
-            return <li key={section.href}>
-              <Link to={section.href} aria-current={active ? "page" : undefined}
-                className={`block whitespace-nowrap rounded-full px-3 py-1.5 text-[13px] font-medium transition-colors ${active ? "bg-zinc-100 text-zinc-900" : "text-zinc-500 hover:text-zinc-900"}`}>
-                {section.label}
-              </Link>
-            </li>;
-          })}
-        </ul>
-      </nav> : null}
       <nav aria-label="More" className="hidden w-48 shrink-0 overflow-y-auto border-r border-zinc-200 bg-white p-2 md:block lg:w-52 lg:p-3">
         <ul className="flex flex-col gap-0.5">
           <MoreGroups group={(label, links) => (
