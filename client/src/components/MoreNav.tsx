@@ -5,13 +5,12 @@ import { useAdminResource, type AdminSession } from "../admin";
 import { useApi, type RosterMoves } from "../api";
 import { onRosterSeen, seedRosterSeen, unseenMoves } from "../rosterSeen";
 
-type Section = { href: string; label: string; paths: string[]; accounts?: true };
+type Section = { href: string; label: string; paths: string[] };
 type Group = { label: string; sections: Section[]; admin?: true };
 
-/** The pages behind More, in groups of three: the numbers, the people and
- *  places behind the cards, following along, then help and the admin
- *  tools. `accounts` pages need sign-in to exist on this deployment; the
- *  admin group needs it too, and is listed only for admins. */
+/** The pages behind More, in groups: the numbers, the people and places
+ *  behind the cards, following along, then the admin tools. The admin group
+ *  needs sign-in to exist on this deployment, and is listed only for admins. */
 const GROUPS: Group[] = [
   { label: "Data", sections: [
     { href: "/stats", label: "Stats", paths: ["/stats"] },
@@ -25,11 +24,7 @@ const GROUPS: Group[] = [
   ] },
   { label: "Community", sections: [
     { href: "/news", label: "News", paths: ["/news"] },
-    { href: "/leaderboards", label: "Leaderboards", paths: ["/leaderboards"], accounts: true },
     { href: "/favorites", label: "Favorites", paths: ["/favorites"] },
-  ] },
-  { label: "Help", sections: [
-    { href: "/report", label: "Report an issue", paths: ["/report"], accounts: true },
   ] },
   { label: "Admin", admin: true, sections: [
     { href: "/graphic", label: "Graphic", paths: ["/graphic"] },
@@ -39,7 +34,6 @@ const GROUPS: Group[] = [
 
 const within = (pathname: string, path: string) => pathname === path || pathname.startsWith(`${path}/`);
 const current = (pathname: string, section: Section) => section.paths.some((path) => within(pathname, path));
-const shown = (group: Group) => group.sections.filter((section) => !section.accounts || accountsEnabled);
 const groupOf = (pathname: string) => GROUPS.find((group) => group.sections.some((section) => current(pathname, section)));
 
 /** Where the More button leads when it is pressed rather than opened. */
@@ -66,7 +60,7 @@ export function MoreGroups({ group, item }: { group: (label: string, links: Reac
   const { pathname } = useLocation();
   return <>
     {GROUPS.filter((each) => !each.admin || accountsEnabled).map((each) => {
-      const drawn = <Fragment key={each.label}>{group(each.label, shown(each).map((section) => item(section, current(pathname, section))))}</Fragment>;
+      const drawn = <Fragment key={each.label}>{group(each.label, each.sections.map((section) => item(section, current(pathname, section))))}</Fragment>;
       return each.admin ? <AdminOnly key={each.label}>{drawn}</AdminOnly> : drawn;
     })}
   </>;
