@@ -46,8 +46,12 @@ function Corner({ fighter, big, onPick, onClear }: { fighter: Slot; big: boolean
     <div className="flex min-w-0 flex-1 flex-col items-center gap-2">
       {fighter ? (
         <button type="button" onClick={onClear} aria-label={`Remove ${fighter.name}`} title="Remove"
-          className="rounded-full transition hover:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">
+          className="group relative rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">
           <Avatar src={fighter.photo_url} name={fighter.name} size={big ? "lg" : "md"} />
+          {/* Shown on hover only: a tap anywhere on the photo removes the fighter. */}
+          <span aria-hidden="true" className={`absolute grid place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 opacity-0 shadow-sm transition group-hover:opacity-100 group-hover:text-zinc-900 group-focus-visible:opacity-100 ${big ? "-right-1 -top-1 h-7 w-7" : "-right-1.5 -top-1.5 h-6 w-6"}`}>
+            <X className={big ? "h-3.5 w-3.5" : "h-3 w-3"} />
+          </span>
         </button>
       ) : (
         <button type="button" onClick={onPick} aria-label="Add a fighter"
@@ -167,12 +171,12 @@ function Streak({ streak }: { streak: number }) {
   );
 }
 
-/** A fighter's photo, rank, name, record and run. */
-function Fighter({ fighter, align = "left" }: { fighter: MatchFighter; align?: "left" | "right" | "responsive" }) {
+/** A fighter in a suggested bout: photo, rank, name, record and run. */
+function Side({ fighter, align = "left" }: { fighter: MatchFighter; align?: "left" | "right" | "responsive" }) {
+  const rank = rankLabel(fighter.rank);
   const right = align === "right";
   const responsive = align === "responsive";
-  const rank = rankLabel(fighter.rank);
-  return (
+  const body = (
     <>
       <Avatar src={fighter.photo_url} name={fighter.name} size="xs" />
       <span className={`min-w-0 ${right ? "text-right" : responsive ? "@min-[420px]:text-right" : ""}`}>
@@ -186,109 +190,20 @@ function Fighter({ fighter, align = "left" }: { fighter: MatchFighter; align?: "
       </span>
     </>
   );
-}
-
-/** A fighter in a suggested bout, linking to their profile. */
-function Side({ fighter, align = "left" }: { fighter: MatchFighter; align?: "left" | "right" | "responsive" }) {
-  const className = `flex min-w-0 flex-1 items-center gap-2 ${align === "right" ? "flex-row-reverse" : align === "responsive" ? "@min-[420px]:flex-row-reverse" : ""}`;
-  const body = <Fighter fighter={fighter} align={align} />;
+  const className = `flex min-w-0 flex-1 items-center gap-2 ${right ? "flex-row-reverse" : responsive ? "@min-[420px]:flex-row-reverse" : ""}`;
   return fighter.id ? <Link to={`/fighters/${fighter.id}`} title={fighter.name} className={`${className} rounded-lg hover:opacity-80`}>{body}</Link> : <span className={className}>{body}</span>;
-}
-
-// ---------------------------------------------------------------------------
-// Matchmake it yourself
-
-const PAIRS_KEY = "ufcsh:matchmaker:v1:";
-const fighterKey = (fighter: MatchFighter) => fighter.id ?? fighter.name;
-type Pair = [string, string];
-
-function savedPairs(id: string, pool: MatchFighter[]): Pair[] {
-  try {
-    const saved = JSON.parse(localStorage.getItem(PAIRS_KEY + id) ?? "[]") as Pair[];
-    const known = new Set(pool.map(fighterKey));
-    if (Array.isArray(saved)) return saved.filter((pair) => Array.isArray(pair) && known.has(pair[0]) && known.has(pair[1]));
-  } catch {
-    // Unreadable pairings start over.
-  }
-  return [];
-}
-
-/** The reader's own fights from a division or a card: tap two fighters to
- *  pair them, tap a fight to split it. The pairings stay in this browser. */
-function Matchmaker({ id, pool }: { id: string; pool: MatchFighter[] }) {
-  const [pairs, setPairs] = useState(() => savedPairs(id, pool));
-  const [picked, setPicked] = useState<string | null>(null);
-  useEffect(() => {
-    try { localStorage.setItem(PAIRS_KEY + id, JSON.stringify(pairs)); } catch { /* private mode: the pairings last the visit */ }
-  }, [id, pairs]);
-  const byKey = new Map(pool.map((fighter) => [fighterKey(fighter), fighter]));
-  const paired = new Set(pairs.flat());
-  const open = pool.filter((fighter) => !paired.has(fighterKey(fighter)));
-  const pick = (key: string) => {
-    if (!picked || picked === key) return setPicked(picked ? null : key);
-    setPairs((current) => [...current, [picked, key]]);
-    setPicked(null);
-  };
-  return (
-    <div className="flex flex-1 flex-col">
-      {pairs.length ? (
-        <ul>
-          {pairs.map(([a, b]) => (
-            <li key={`${a}-${b}`} className="border-b border-zinc-100">
-              <button type="button" title="Split this fight" aria-label={`Split ${byKey.get(a)!.name} vs ${byKey.get(b)!.name}`}
-                onClick={() => setPairs((current) => current.filter((pair) => pair[0] !== a || pair[1] !== b))}
-                className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left transition hover:bg-zinc-50">
-                <span className="flex min-w-0 flex-1 items-center gap-2"><Fighter fighter={byKey.get(a)!} /></span>
-                <span className="shrink-0 text-[10px] uppercase text-zinc-400">vs</span>
-                <span className="flex min-w-0 flex-1 flex-row-reverse items-center gap-2"><Fighter fighter={byKey.get(b)!} align="right" /></span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {open.length ? (
-        <>
-          <p className="px-3 pt-2.5 text-[11px] leading-4 text-zinc-500">
-            {picked ? `Pick an opponent for ${byKey.get(picked)?.name}.` : "Tap two fighters to make a fight. Tap a fight to split it."}
-          </p>
-          <ul className="grid grid-cols-2 gap-1.5 p-3 @min-[420px]:grid-cols-3">
-            {open.map((fighter) => {
-              const key = fighterKey(fighter);
-              return (
-                <li key={key} className="min-w-0">
-                  <button type="button" aria-pressed={picked === key} onClick={() => pick(key)}
-                    className={`flex w-full min-w-0 items-center gap-2 rounded-xl border px-2 py-1.5 text-left transition ${picked === key ? "border-zinc-400 bg-zinc-100" : "border-zinc-200 hover:bg-zinc-50"}`}>
-                    <Fighter fighter={fighter} />
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </>
-      ) : <p className="px-3 py-2.5 text-[11px] text-zinc-500">Everyone has a fight.</p>}
-      {pairs.length ? (
-        <button type="button" onClick={() => { setPairs([]); setPicked(null); }}
-          className="mx-3 mb-3 mt-auto self-start rounded-full border border-zinc-200 px-3 py-1 text-xs font-medium text-zinc-600 transition hover:bg-zinc-50 hover:text-zinc-900">
-          Start over
-        </button>
-      ) : null}
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
 // Panels
 
 /** A division's or a card's heading. A phone shows one at a time, so there the
- *  name is a picker for the others; the button swaps the suggestions for the
- *  reader's own matchmaking. */
-function PanelHeader({ title, label, options, value, onPick, matchmaking, onMatchmake, children }: {
-  title: ReactNode; label: string; options: { value: string; label: string }[]; value: string; onPick: (value: string) => void;
-  matchmaking: boolean; onMatchmake: () => void; children?: ReactNode;
+ *  name is a picker for the others. */
+function PanelHeader({ title, label, options, value, onPick, children }: {
+  title: ReactNode; label: string; options: { value: string; label: string }[]; value: string; onPick: (value: string) => void; children?: ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-3 border-b border-zinc-200 px-3 py-2">
-      <div className="min-w-0 flex-1">
+    <div className="border-b border-zinc-200 px-3 py-2">
         <label className="block md:hidden">
           <span className="sr-only">{label}</span>
           <select value={value} onChange={(event) => onPick(event.target.value)}
@@ -297,57 +212,44 @@ function PanelHeader({ title, label, options, value, onPick, matchmaking, onMatc
           </select>
         </label>
         <h2 className="hidden truncate text-sm font-semibold text-zinc-900 md:block">{title}</h2>
-        {children}
-      </div>
-      <button type="button" aria-pressed={matchmaking} onClick={onMatchmake}
-        className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition ${matchmaking ? "border-zinc-300 bg-zinc-100 text-zinc-900" : "border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"}`}>
-        {matchmaking ? "Done" : "Matchmake"}
-      </button>
+      {children}
     </div>
   );
 }
 
-const unique = (fighters: MatchFighter[]) => [...new Map(fighters.map((fighter) => [fighterKey(fighter), fighter])).values()];
-
 type Division = MatchmakingData["top15"][number];
 
 function DivisionPanel({ entry, shown, options, onPick }: { entry: Division; shown: boolean; options: { value: string; label: string }[]; onPick: (value: string) => void }) {
-  const [matchmaking, setMatchmaking] = useState(false);
-  const pool = unique([...entry.fights.flatMap((fight) => [fight.a, fight.b]), ...entry.idle.map((idle) => idle.fighter)])
-    .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
   return (
     <section className={`${PANEL} @container min-w-0 flex-col overflow-hidden ${shown ? "flex" : "hidden md:flex"}`}>
-      <PanelHeader title={entry.division} label="Division" options={options} value={entry.division} onPick={onPick}
-        matchmaking={matchmaking} onMatchmake={() => setMatchmaking(!matchmaking)} />
-      {matchmaking ? <Matchmaker id={`division:${entry.division}`} pool={pool} /> : (
-        <ul className="grid flex-1 auto-rows-fr">
-          {entry.fights.map((fight) => (
-            <li key={`${fight.a.id}-${fight.b.id}`} className="flex min-w-0 flex-col justify-center gap-1 border-b border-zinc-100 px-3 py-2 last:border-0">
-              <div className="flex flex-col gap-1 @min-[420px]:flex-row @min-[420px]:items-center @min-[420px]:gap-2">
-                <Side fighter={fight.a} />
-                <span className="hidden shrink-0 text-[10px] uppercase text-zinc-400 @min-[420px]:block">vs</span>
-                <Side fighter={fight.b} align="responsive" />
-              </div>
-              <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-zinc-500">
-                {fight.kind !== "suggested" ? (
-                  <span className={`shrink-0 rounded px-1.5 text-[10px] font-semibold ${fight.kind === "title" || fight.reason.startsWith("Title") ? "bg-amber-50 text-amber-800" : "bg-zinc-100 text-zinc-600"}`}>
-                    {fight.kind === "title" ? "Title" : fight.reason.startsWith("Title") ? "Title · booked" : "Booked"}
-                  </span>
-                ) : null}
-                {fight.event
-                  ? <Link to={`/events/${fight.event.id}`} title={`${fight.event.name} · ${formatDate(fight.event.date)}`} className="truncate hover:text-zinc-900">{fight.event.name} · {formatDate(fight.event.date)}</Link>
-                  : <span className="truncate" title={fight.reason}>{fight.reason}</span>}
-              </div>
-            </li>
-          ))}
-          {entry.idle.map(({ fighter, reason }) => (
-            <li key={fighter.id} className="flex flex-col justify-center gap-1 border-b border-zinc-100 px-3 py-2 last:border-0">
-              <Side fighter={fighter} />
-              <p className="text-[11px] leading-4 text-zinc-500">{reason}</p>
-            </li>
-          ))}
-        </ul>
-      )}
+      <PanelHeader title={entry.division} label="Division" options={options} value={entry.division} onPick={onPick} />
+      <ul className="grid flex-1 auto-rows-fr">
+        {entry.fights.map((fight) => (
+          <li key={`${fight.a.id}-${fight.b.id}`} className="flex min-w-0 flex-col justify-center gap-1 border-b border-zinc-100 px-3 py-2 last:border-0">
+            <div className="flex flex-col gap-1 @min-[420px]:flex-row @min-[420px]:items-center @min-[420px]:gap-2">
+              <Side fighter={fight.a} />
+              <span className="hidden shrink-0 text-[10px] uppercase text-zinc-400 @min-[420px]:block">vs</span>
+              <Side fighter={fight.b} align="responsive" />
+            </div>
+            <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-zinc-500">
+              {fight.kind !== "suggested" ? (
+                <span className={`shrink-0 rounded px-1.5 text-[10px] font-semibold ${fight.kind === "title" || fight.reason.startsWith("Title") ? "bg-amber-50 text-amber-800" : "bg-zinc-100 text-zinc-600"}`}>
+                  {fight.kind === "title" ? "Title" : fight.reason.startsWith("Title") ? "Title · booked" : "Booked"}
+                </span>
+              ) : null}
+              {fight.event
+                ? <Link to={`/events/${fight.event.id}`} title={`${fight.event.name} · ${formatDate(fight.event.date)}`} className="truncate hover:text-zinc-900">{fight.event.name} · {formatDate(fight.event.date)}</Link>
+                : <span className="truncate" title={fight.reason}>{fight.reason}</span>}
+            </div>
+          </li>
+        ))}
+        {entry.idle.map(({ fighter, reason }) => (
+          <li key={fighter.id} className="flex flex-col justify-center gap-1 border-b border-zinc-100 px-3 py-2 last:border-0">
+            <Side fighter={fighter} />
+            <p className="text-[11px] leading-4 text-zinc-500">{reason}</p>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -357,45 +259,40 @@ const OUTCOME = { win: "Won", loss: "Lost", draw: "Drew", nc: "No contest" } as 
 type RecentEvent = MatchmakingData["recent_events"][number];
 
 function EventPanel({ event, shown, options, onPick }: { event: RecentEvent; shown: boolean; options: { value: string; label: string }[]; onPick: (value: string) => void }) {
-  const [matchmaking, setMatchmaking] = useState(false);
-  const pool = unique(event.bouts.flatMap((bout) => bout.sides.map((side) => side.fighter)));
   return (
     <section className={`${PANEL} @container min-w-0 flex-col overflow-hidden ${shown ? "flex" : "hidden md:flex"}`}>
-      <PanelHeader title={<Link to={`/events/${event.id}`} className="hover:underline">{event.name}</Link>} label="Card" options={options} value={event.id} onPick={onPick}
-        matchmaking={matchmaking} onMatchmake={() => setMatchmaking(!matchmaking)}>
+      <PanelHeader title={<Link to={`/events/${event.id}`} className="hover:underline">{event.name}</Link>} label="Card" options={options} value={event.id} onPick={onPick}>
         <p className="text-[11px] text-zinc-500">
           {formatDate(event.date)}<Link to={`/events/${event.id}`} className="hover:text-zinc-900 md:hidden"> · Full card</Link>
         </p>
       </PanelHeader>
-      {matchmaking ? <Matchmaker id={`event:${event.id}`} pool={pool} /> : (
-        <ul>
-          {event.bouts.map((bout) => (
-            <li key={bout.fight_id} className="border-b border-zinc-100 px-3 py-3 last:border-0">
-              <p className="mb-2 text-[11px] text-zinc-400">
-                {bout.division}{bout.title ? " · title fight" : ""}{bout.method ? ` · ${bout.method}` : ""}
-              </p>
-              <div className="flex flex-col gap-2.5">
-                {bout.sides.map((side) => (
-                  <div key={side.fighter.id} className="grid grid-cols-1 gap-1.5 @min-[560px]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] @min-[560px]:items-center @min-[560px]:gap-3">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className={`w-16 shrink-0 text-[11px] font-semibold ${side.outcome === "win" ? "text-emerald-700" : side.outcome === "loss" ? "text-rose-700" : "text-zinc-500"}`}>
-                        {side.outcome ? OUTCOME[side.outcome] : "—"}
-                      </span>
-                      <Side fighter={side.fighter} />
-                    </div>
-                    <span className="hidden text-zinc-300 @min-[560px]:block" aria-hidden="true">→</span>
-                    <div className="min-w-0 pl-[4.5rem] @min-[560px]:pl-0">
-                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 @min-[560px]:hidden">Next</p>
-                      {side.next.opponent ? <Side fighter={side.next.opponent} /> : null}
-                      <p className="mt-0.5 text-[11px] leading-4 text-zinc-500">{side.next.reason}</p>
-                    </div>
+      <ul>
+        {event.bouts.map((bout) => (
+          <li key={bout.fight_id} className="border-b border-zinc-100 px-3 py-3 last:border-0">
+            <p className="mb-2 text-[11px] text-zinc-400">
+              {bout.division}{bout.title ? " · title fight" : ""}{bout.method ? ` · ${bout.method}` : ""}
+            </p>
+            <div className="flex flex-col gap-2.5">
+              {bout.sides.map((side) => (
+                <div key={side.fighter.id} className="grid grid-cols-1 gap-1.5 @min-[560px]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] @min-[560px]:items-center @min-[560px]:gap-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className={`w-16 shrink-0 text-[11px] font-semibold ${side.outcome === "win" ? "text-emerald-700" : side.outcome === "loss" ? "text-rose-700" : "text-zinc-500"}`}>
+                      {side.outcome ? OUTCOME[side.outcome] : "—"}
+                    </span>
+                    <Side fighter={side.fighter} />
                   </div>
-                ))}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+                  <span className="hidden text-zinc-300 @min-[560px]:block" aria-hidden="true">→</span>
+                  <div className="min-w-0 pl-[4.5rem] @min-[560px]:pl-0">
+                    <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 @min-[560px]:hidden">Next</p>
+                    {side.next.opponent ? <Side fighter={side.next.opponent} /> : null}
+                    <p className="mt-0.5 text-[11px] leading-4 text-zinc-500">{side.next.reason}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -444,8 +341,11 @@ export default function MatchmakingPage() {
   return (
     <div ref={scroll} className={PAGE}>
       <div className={PAGE_BODY.replace("max-w-5xl", "max-w-[1600px]")}>
-        {/* On a phone the tabs are the bar across the top of the page. */}
-        <header className="-mx-2 -mt-2 flex justify-center border-b border-zinc-200 bg-white px-2 py-1.5 sm:m-0 sm:border-0 sm:bg-transparent sm:p-0">
+        {/* On a phone the tabs are the bar across the top of the page. The
+            bar is its own layer: the dark theme's forced panel colour would
+            otherwise outlast a wider screen's transparent one. */}
+        <header className="relative isolate flex justify-center max-sm:-mx-2 max-sm:-mt-2 max-sm:px-2 max-sm:py-1.5">
+          <div aria-hidden="true" className="absolute inset-0 -z-10 border-b border-zinc-200 bg-white sm:hidden" />
           <h1 className="sr-only">Matchmaking</h1>
           <div className={`${segmentedGroup} w-full max-w-md`} role="group" aria-label="Matchmaking">
             {TABS.map((option) => (
