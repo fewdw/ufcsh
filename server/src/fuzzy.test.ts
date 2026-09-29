@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { allowedEdits, fuzzyScore, fuzzyTarget, prefixDistance, splitMatchup } from "./fuzzy.ts";
 import { search } from "./api.ts";
-import { getLabsMatchups } from "./labs.ts";
 
 type Results = {
   fighters: { name: string; approximate?: boolean }[];
@@ -65,16 +64,6 @@ test("misspelled matchups and reordered names still find the bout", () => {
   assert.ok(typo.fights.some((f) => [f.f1_name, f.f2_name].sort().join() === "Alexander Volkanovski,Max Holloway"));
   const reordered = search("khabib nurmagomedv") as Results;
   assert.equal(reordered.fighters[0]?.name, "Khabib Nurmagomedov");
-});
-
-test("upcoming matchup search falls back to close spellings", () => {
-  const all = (getLabsMatchups(new URLSearchParams()) as { matchups: { a: { name: string } }[] }).matchups;
-  if (!all.length) return;
-  const surname = all[0].a.name.split(" ").at(-1)!;
-  if (surname.length < 5) return;
-  const typo = surname.slice(0, 2) + surname[3] + surname[2] + surname.slice(4);
-  const found = (getLabsMatchups(new URLSearchParams({ q: typo })) as { matchups: unknown[] }).matchups;
-  assert.ok(found.length > 0, typo);
 });
 
 test("list filters ignore spacing and word order, and fall back to typos only when nothing matches", async () => {

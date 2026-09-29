@@ -10,17 +10,15 @@ import RoadToUFC from "./RoadToUFC";
  * open and fold away individually. */
 type CategoryKey = "judges" | "road";
 
-const CATEGORIES: { key: CategoryKey; title: string; purpose: string; tip: string }[] = [
+const CATEGORIES: { key: CategoryKey; title: string; tip: string }[] = [
   {
     key: "judges",
     title: "The judges' room",
-    purpose: "How the decisions in this study were scored, and by whom.",
     tip: "Only the final card is recorded at the source — there are no round-by-round scores. A card that reads against the statistics is not a wrong card: a round can be won without landing more or holding position longer.",
   },
   {
     key: "road",
     title: "The road to the UFC",
-    purpose: "What fighters brought to their UFC debut.",
     tip: "Fighters without an identity-verified professional history are left out rather than counted as having no prior bouts.",
   },
 ];
@@ -45,12 +43,9 @@ export default function LabsCategories({ data, loading, error, onRetry, studyQue
               aria-expanded={open}
               className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-zinc-50/70 sm:px-5"
             >
-              <span className="min-w-0">
-                <span className="flex items-center gap-1.5">
-                  <span className="text-sm font-semibold text-zinc-900">{category.title}</span>
-                  <InfoTip>{category.tip}</InfoTip>
-                </span>
-                <span className="mt-0.5 block text-xs text-zinc-500">{category.purpose}</span>
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="text-sm font-semibold text-zinc-900">{category.title}</span>
+                <InfoTip>{category.tip}</InfoTip>
               </span>
               <ChevronDown className={`ml-auto h-4 w-4 shrink-0 text-zinc-400 transition-transform ${open ? "" : "-rotate-90"}`} aria-hidden="true" />
             </button>
