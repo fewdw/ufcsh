@@ -42,7 +42,6 @@ import { fuzzyScore, fuzzyTarget, splitMatchup, type FuzzyTarget } from "./fuzzy
 import type { RankingType } from "./scrape/ufccom.ts";
 import { getStats } from "./stats.ts";
 import { getLabs, getLabsBouts } from "./labs.ts";
-import { getLabsInsights, getLabsJudgeBouts, getLabsJudges, getLabsRoadBouts } from "./labs-insights.ts";
 import { titleNarratives } from "./titles.ts";
 import { fighterBoard, fighterRecords } from "./records.ts";
 import { ufcFightExistsSql, hasUfcFight, recordText, currentRecord, cachedPhotoUrl, cachedFullPhotoUrl, photoVersion } from "./fighter-identity.ts";
@@ -1949,10 +1948,6 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   if (p === "/api/rankings") return { updated_at: syncedAt("rankings_synced_at"), divisions: getRankings(rankingType) };
   if (p === "/api/stats") return getStats(url.searchParams);
   if (p === "/api/labs/bouts") return getLabsBouts(url.searchParams);
-  if (p === "/api/labs/insights") return getLabsInsights(url.searchParams);
-  if (p === "/api/labs/judges") return getLabsJudges(url.searchParams);
-  if (p === "/api/labs/judge-bouts") return getLabsJudgeBouts(url.searchParams);
-  if (p === "/api/labs/road-bouts") return getLabsRoadBouts(url.searchParams);
   if (p === "/api/labs") return getLabs(url.searchParams);
   if (p === "/api/roster") return rosterView();
   if (p === "/api/matchmaking") return matchmaking();
@@ -2102,7 +2097,7 @@ export function startApi(port: number): http.Server {
     clearInterval(warmLists);
     if (!queryPool) return;
     for (const path of ["/api/events", "/api/live", "/api/stats", "/api/rankings?ranking=media", "/api/rankings?ranking=meta",
-      "/api/officials", "/api/venues", "/api/labs/insights", "/api/matchmaking", "/api/news"]) {
+      "/api/officials", "/api/venues", "/api/labs", "/api/matchmaking", "/api/news"]) {
       void publicAnswer(new URL(path, "http://localhost")).catch(() => {});
     }
   }, 1000);

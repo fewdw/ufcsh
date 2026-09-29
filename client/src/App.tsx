@@ -33,7 +33,7 @@ const EventsPage = page(pages.events, module => module.default);
 const FighterPage = page(pages.fighter, module => module.default);
 const RankingsPage = page(pages.rankings, module => module.default);
 const StatsPage = page(pages.stats, module => module.default);
-const LabsPage = page(pages.labs, module => module.default);
+const CombinedRecordsPage = page(pages.combinedRecords, module => module.default);
 const AdminPage = page(pages.admin, module => module.default);
 const ProfilePage = page(pages.profile, module => module.default);
 const AuthPage = page(pages.auth, module => module.default);
@@ -273,7 +273,8 @@ export default function App() {
           <Route path="/rankings" element={<RankingsPage />} />
           <Route element={<MoreLayout />}>
             <Route path="/stats" element={<StatsPage />} />
-            <Route path="/labs" element={<LabsPage />} />
+            <Route path="/combined-records" element={<CombinedRecordsPage />} />
+            <Route path="/labs" element={<Navigate to="/combined-records" replace />} />
             <Route path="/roster" element={<RosterPage />} />
             <Route path="/favorites" element={null} />
             <Route path="/officials" element={<OfficialsPage />} />

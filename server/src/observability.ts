@@ -7,7 +7,7 @@ export function pageRouteGroup(pathname: string): string | null {
   if (/^\/profiles\/[^/]+$/.test(pathname)) return "page_profile";
   if (pathname === "/rankings") return "page_rankings";
   if (pathname === "/stats") return "page_stats";
-  if (pathname === "/labs") return "page_labs";
+  if (pathname === "/combined-records") return "page_combined_records";
   if (/^\/judges\/[^/]+$/.test(pathname)) return "page_judge";
   if (/^\/referees\/[^/]+$/.test(pathname)) return "page_referee";
   if (pathname === "/officials") return "page_officials";

@@ -97,6 +97,7 @@ export default function InfoPage() {
             <ul>
               <li>Leaderboards are now a tab on your profile.</li>
               <li>Report an issue lives only on your profile.</li>
+              <li>Labs is now Combined records: the whole page is the study.</li>
             </ul>
           </Section>
         </div>

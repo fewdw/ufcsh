@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronDown, RotateCcw, X } from "lucide-react";
+import { RotateCcw, X } from "lucide-react";
 import { useApi } from "../api";
-import type { LabsBout, LabsBouts, LabsInsightsResponse, LabsResponse, LabsSummary } from "../api";
+import type { LabsBout, LabsBouts, LabsResponse, LabsSummary } from "../api";
 import InfoTip from "../components/InfoTip";
-import LabsCategories from "../components/LabsCategories";
 import { SHEET_SELECT } from "../components/OptionsSheet";
 import RequestNotice from "../components/RequestNotice";
 import { PANEL, compact, formatValue } from "../components/chartTokens";
@@ -27,8 +26,8 @@ import {
   type LabFilters,
 } from "./labFilters";
 
-/** Combined record, its source bouts and filters share a population with the
- * insight cards below. Server summaries keep all denominators synchronized. */
+/** Combined record, its source bouts and filters share one population. Server
+ * summaries keep all denominators synchronized. */
 
 /** Drawn like the app's other filter sheets (see OptionsSheet). */
 const inputClass = "h-8 w-full min-w-0 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 text-xs tabular-nums text-zinc-700 outline-none transition [appearance:textfield] placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
@@ -73,7 +72,6 @@ type Struck = {
 
 type LabState = {
   filters: LabFilters;
-  open: boolean;
   outcome: Outcome;
   sort: string;
   /** Bouts struck off by hand, keyed `fightId:fighterId`. */
@@ -82,7 +80,6 @@ type LabState = {
 
 const DEFAULT_STATE: LabState = {
   filters: emptyFilters(),
-  open: true,
   outcome: "all",
   sort: "recent",
   struck: {},
@@ -616,7 +613,7 @@ function FilterTabPanel({ tab, filters, result, set }: {
 
 // ---------------------------------------------------------------------------
 
-export default function LabsPage() {
+export default function CombinedRecordsPage() {
   const [state, setState] = useHistoryState<LabState>("labs:combined-record", DEFAULT_STATE);
   const [tabId, setTabId] = useHistoryState<FilterTab["id"]>("labs:filter-tab", "fighter");
 
@@ -626,9 +623,6 @@ export default function LabsPage() {
   const exclude = useDebounced(struckKeys.join(","), 250);
   const url = `/api/labs?${query}${exclude ? `&exclude=${exclude}` : ""}`;
   const { data, loading, error, retry } = useApi<LabsResponse>(url);
-  // Both explorers read the same filtered study. Closing both suspends their request.
-  const insightsUrl = `/api/labs/insights?${query}${exclude ? `&exclude=${exclude}` : ""}`;
-  const insights = useApi<LabsInsightsResponse>(insightsUrl);
 
   // Keep response identity with its data. Every panel uses one server summary,
   // including distinct fights/fighters and metrics affected by exclusions.
@@ -638,9 +632,9 @@ export default function LabsPage() {
   const pageScroll = useRouteScrollRestoration<HTMLDivElement>("labs:page", Boolean(shown));
 
   useSeo({
-    title: "UFC Labs — Combined Record",
+    title: "UFC Combined Records",
     description: "Build a UFC fight cohort from market role, layoffs, form, age, experience and matchup context, then read its combined record and every bout behind it.",
-    path: "/labs",
+    path: "/combined-records",
   });
 
   // A new population starts with nothing struck off.
@@ -667,137 +661,122 @@ export default function LabsPage() {
 
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
-      <main className="mx-auto max-w-[100rem] p-3 pb-8">
+      {/* The study is the whole page: from `lg` it fills the window, and its
+          bout list and filters scroll inside it. */}
+      <main className="mx-auto flex max-w-[100rem] flex-col p-3 pb-8 lg:min-h-full lg:pb-3">
         {error ? <div className="mb-3"><RequestNotice onRetry={retry}>Couldn’t update this study. The last successful results are shown.</RequestNotice></div> : null}
-        <section className={`${PANEL} overflow-hidden`} aria-label="Combined record">
-          <button
-            type="button"
-            onClick={() => patch({ open: !state.open })}
-            aria-expanded={state.open}
-            className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-zinc-50/70 sm:px-5"
-          >
+        <section className={`${PANEL} flex flex-col overflow-hidden lg:flex-1`} aria-label="Combined record">
+          <div className="flex items-center gap-3 px-4 py-3 sm:px-5">
             <span className="flex min-w-0 items-center gap-1.5">
               <span className="text-sm font-semibold text-zinc-900">Combined record</span>
               <InfoTip>Every fighter-bout the filters select, added up: one observation is one fighter in one bout, so both corners of a bout can qualify. Win rate counts draws and leaves out no contests, and a bout struck off the list below is already out of these totals.</InfoTip>
             </span>
             <span className={`ml-auto text-[10px] font-medium text-zinc-500 ${rebuilding || error ? "visible" : "invisible"}`} role="status" aria-hidden={!rebuilding && !error}>{error ? "Previous results" : "Updating…"}</span>
-            <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition-transform ${state.open ? "" : "-rotate-90"}`} aria-hidden="true" />
-          </button>
+          </div>
 
-          {state.open ? (
-            <div className={`grid min-h-0 grid-cols-1 border-t border-zinc-200 transition-opacity lg:min-h-[clamp(26rem,56vh,40rem)] lg:grid-cols-3 ${rebuilding ? "opacity-60" : ""}`} aria-busy={rebuilding}>
-              <div className="flex flex-col border-b border-zinc-200 px-5 py-5 lg:border-b-0 lg:border-r">
-                <div className="flex justify-center">
-                  <Dial s={s} />
-                </div>
-                <div className="mt-4">
-                  <RecordLegend s={s} />
-                </div>
-                <div className="mt-3 text-center text-[10px] tabular-nums text-zinc-400">
-                  {formatValue(s.n)} observations · {formatValue(s.fights)} fights · {formatValue(s.fighters)} fighters
-                  {struckCount ? <span className="text-zinc-500"> · {compact(struckCount)} struck off</span> : null}
-                </div>
-                <div className="mt-4">
-                  <KeyStats s={s} />
-                </div>
+          <div className={`grid min-h-0 grid-cols-1 border-t border-zinc-200 transition-opacity lg:min-h-[26rem] lg:flex-1 lg:grid-cols-3 ${rebuilding ? "opacity-60" : ""}`} aria-busy={rebuilding}>
+            <div className="flex flex-col border-b border-zinc-200 px-5 py-5 lg:border-b-0 lg:border-r">
+              <div className="flex justify-center">
+                <Dial s={s} />
               </div>
-
-              {/* The bout list and the filters fill the height the record column
-                  sets rather than adding to it: absolutely positioned, their
-                  content scrolls inside the row instead of growing the page. */}
-              <div className="relative h-[28rem] min-h-0 border-b border-zinc-200 lg:h-auto lg:border-b-0 lg:border-r">
-                <div className="absolute inset-0 flex flex-col">
-                  <BoutsTab key={query} query={query} state={state} summary={s} onState={patch} />
-                </div>
+              <div className="mt-4">
+                <RecordLegend s={s} />
               </div>
+              <div className="mt-3 text-center text-[10px] tabular-nums text-zinc-400">
+                {formatValue(s.n)} observations · {formatValue(s.fights)} fights · {formatValue(s.fighters)} fighters
+                {struckCount ? <span className="text-zinc-500"> · {compact(struckCount)} struck off</span> : null}
+              </div>
+              <div className="mt-4">
+                <KeyStats s={s} />
+              </div>
+            </div>
 
-              <div className="relative order-first h-[30rem] min-h-0 border-b border-zinc-200 lg:order-none lg:h-auto lg:border-b-0">
-                <div className="absolute inset-0 flex flex-col">
-                  <div className="shrink-0 space-y-2.5 border-b border-zinc-200 px-4 py-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className={EYEBROW}>
-                        Filters{active ? ` · ${active}` : ""}
-                        <InfoTip className="ml-1">Every filter narrows the population and they all apply at once. One observation is one fighter in one bout, so both corners of a bout can qualify. A filter needing data a bout lacks drops that bout rather than guessing.</InfoTip>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={reset}
-                        disabled={active === 0 && struckCount === 0}
-                        className="flex items-center gap-1 text-[11px] font-medium text-zinc-500 transition hover:text-zinc-900 disabled:cursor-default disabled:opacity-40"
-                      >
-                        <RotateCcw className="h-3 w-3" aria-hidden="true" /> Reset
-                      </button>
-                    </div>
-                    <div role="tablist" aria-label="Filter by" className={`${segmentedGroup} w-full`}>
-                      {FILTER_TABS.map((entry) => {
-                        const selected = entry.id === tab.id;
-                        const count = tabActiveCount(entry, state.filters);
-                        return (
-                          <button
-                            key={entry.id}
-                            type="button"
-                            role="tab"
-                            aria-selected={selected}
-                            onClick={() => setTabId(entry.id)}
-                            className={`${segmentedOption} flex-1 ${selected ? segmentedSelected : segmentedIdle}`}
-                          >
-                            {entry.label}
-                            {count ? <span className="ml-1.5 tabular-nums text-zinc-400">{count}</span> : null}
-                          </button>
-                        );
-                      })}
-                    </div>
+            {/* The bout list and the filters fill the height the record column
+                sets rather than adding to it: absolutely positioned, their
+                content scrolls inside the row instead of growing the page. */}
+            <div className="relative h-[28rem] min-h-0 border-b border-zinc-200 lg:h-auto lg:border-b-0 lg:border-r">
+              <div className="absolute inset-0 flex flex-col">
+                <BoutsTab key={query} query={query} state={state} summary={s} onState={patch} />
+              </div>
+            </div>
+
+            <div className="relative order-first h-[30rem] min-h-0 border-b border-zinc-200 lg:order-none lg:h-auto lg:border-b-0">
+              <div className="absolute inset-0 flex flex-col">
+                <div className="shrink-0 space-y-2.5 border-b border-zinc-200 px-4 py-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={EYEBROW}>
+                      Filters{active ? ` · ${active}` : ""}
+                      <InfoTip className="ml-1">Every filter narrows the population and they all apply at once. One observation is one fighter in one bout, so both corners of a bout can qualify. A filter needing data a bout lacks drops that bout rather than guessing.</InfoTip>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={reset}
+                      disabled={active === 0 && struckCount === 0}
+                      className="flex items-center gap-1 text-[11px] font-medium text-zinc-500 transition hover:text-zinc-900 disabled:cursor-default disabled:opacity-40"
+                    >
+                      <RotateCcw className="h-3 w-3" aria-hidden="true" /> Reset
+                    </button>
                   </div>
-
-                  <div className="min-h-0 flex-1 overflow-y-auto" role="tabpanel" aria-label={tab.label}>
-                    {chips.length ? (
-                      <div className="flex flex-wrap gap-1 border-b border-zinc-100 px-4 py-2.5">
-                        {chips.map((chip) => (
-                          <button
-                            key={chip.id}
-                            type="button"
-                            onClick={() => clearFilters(chip.keys)}
-                            title={`Remove ${chip.label}`}
-                            className="group flex items-center gap-1 rounded-full border border-zinc-200 bg-zinc-50 py-1 pl-2.5 pr-1.5 text-[11px] font-medium text-zinc-700 transition hover:border-zinc-400"
-                          >
-                            {chip.label}<X className="h-3 w-3 text-zinc-400 transition group-hover:text-zinc-900" aria-hidden="true" />
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-
-                    {tab.id === "fighter" ? (
-                      <div className="border-b border-zinc-100 px-4 py-3">
-                        <h3 className={EYEBROW}>Quick filters</h3>
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {QUICK_FILTERS.map((quick) => {
-                            const selected = quick.keys.every((key) => sameValue(state.filters[key], quick.patch[key]));
-                            return (
-                              <button key={quick.id} type="button" aria-pressed={selected} onClick={() => applyQuick(quick)} className={pillClass(selected)}>
-                                {quick.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    <FilterTabPanel key={`${tab.id}:${resets}`} tab={tab} filters={state.filters} result={result} set={set} />
+                  <div role="tablist" aria-label="Filter by" className={`${segmentedGroup} w-full`}>
+                    {FILTER_TABS.map((entry) => {
+                      const selected = entry.id === tab.id;
+                      const count = tabActiveCount(entry, state.filters);
+                      return (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={selected}
+                          onClick={() => setTabId(entry.id)}
+                          className={`${segmentedOption} flex-1 ${selected ? segmentedSelected : segmentedIdle}`}
+                        >
+                          {entry.label}
+                          {count ? <span className="ml-1.5 tabular-nums text-zinc-400">{count}</span> : null}
+                        </button>
+                      );
+                    })}
                   </div>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto" role="tabpanel" aria-label={tab.label}>
+                  {chips.length ? (
+                    <div className="flex flex-wrap gap-1 border-b border-zinc-100 px-4 py-2.5">
+                      {chips.map((chip) => (
+                        <button
+                          key={chip.id}
+                          type="button"
+                          onClick={() => clearFilters(chip.keys)}
+                          title={`Remove ${chip.label}`}
+                          className="group flex items-center gap-1 rounded-full border border-zinc-200 bg-zinc-50 py-1 pl-2.5 pr-1.5 text-[11px] font-medium text-zinc-700 transition hover:border-zinc-400"
+                        >
+                          {chip.label}<X className="h-3 w-3 text-zinc-400 transition group-hover:text-zinc-900" aria-hidden="true" />
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {tab.id === "fighter" ? (
+                    <div className="border-b border-zinc-100 px-4 py-3">
+                      <h3 className={EYEBROW}>Quick filters</h3>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {QUICK_FILTERS.map((quick) => {
+                          const selected = quick.keys.every((key) => sameValue(state.filters[key], quick.patch[key]));
+                          return (
+                            <button key={quick.id} type="button" aria-pressed={selected} onClick={() => applyQuick(quick)} className={pillClass(selected)}>
+                              {quick.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <FilterTabPanel key={`${tab.id}:${resets}`} tab={tab} filters={state.filters} result={result} set={set} />
                 </div>
               </div>
             </div>
-          ) : null}
+          </div>
         </section>
-
-        {/* Two readings of the same study, both open. */}
-        <LabsCategories
-          data={insights.data}
-          loading={insights.loading || insights.refreshing}
-          error={insights.error}
-          onRetry={insights.retry}
-          studyQuery={`${query}${exclude ? `&exclude=${exclude}` : ""}`}
-        />
       </main>
     </div>
   );

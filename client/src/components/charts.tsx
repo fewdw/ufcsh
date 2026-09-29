@@ -3,7 +3,7 @@ import { PANEL, SERIES, compact, formatValue, type Format } from "./chartTokens"
 import { Tooltip } from "./Tooltip";
 import { useTooltip } from "../tooltip";
 
-/** Chart primitives for Labs and Statistics: one set of bar, gap, axis,
+/** Chart primitives for Combined records and Statistics: one set of bar, gap, axis,
  * tooltip and table-twin decisions. Marks carry series colour, text never. */
 
 const AXIS_TEXT = "text-[10px] tabular-nums text-zinc-400";
