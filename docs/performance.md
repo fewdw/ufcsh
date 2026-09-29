@@ -157,11 +157,19 @@ Measured on a copy of the dev archive, 5-run averages, warm fight index.
   at most every 30 minutes). About 290 requests a day in all.
 - News: 15 outlets every 10 minutes (8 feeds read directly, 7 through Google
   News, spaced a second apart on that host): ~6 s in the sync worker, ~2,200
-  requests a day. The story list rebuilds in ~175 ms once per read (every item
-  of the last two weeks matched against ~1,000 fighter names, then grouped
-  into stories); each `/api/news` page (30 stories, outlet filter and search
+  requests a day. Each `/api/news` page (30 stories, outlet filter and search
   applied) then takes under 5 ms and ~25 KB before compression, and is served
   from the response cache.
+- Fighter news (2026-09-29, `feat/fighter-news`): items are kept a month
+  instead of three weeks so a fighter's News tab has a month of history, and
+  the story list is built over all of them. Measured on a month made from the
+  dev copy (2,500 items): a cold build 270 ms, now done in each query worker's
+  warm-up; a rebuild after a feed read 85 ms (was ~175 ms for three weeks),
+  since each item is read against the fighter names once and kept while the
+  worker's index stands, and stories are only matched within a day of each
+  other. A fighter's page of news is a filter over the built list: ~2 ms. (Six
+  months measured 250 ms a rebuild and 22 MB per worker; a year 400 ms and
+  43 MB.)
 
 ## Judge baseline (2026-09-27, `feat/official-venue-pages`)
 

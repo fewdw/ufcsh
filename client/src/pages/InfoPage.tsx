@@ -98,6 +98,7 @@ export default function InfoPage() {
               <li>Leaderboards are now a tab on your profile.</li>
               <li>Report an issue lives only on your profile.</li>
               <li>Labs is now Combined records: the whole page is the study.</li>
+              <li>Fighter pages have a News tab with the last month of news about them.</li>
             </ul>
           </Section>
         </div>
