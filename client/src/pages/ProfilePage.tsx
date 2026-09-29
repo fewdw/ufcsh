@@ -2,7 +2,7 @@ import { useAuth } from "@clerk/react";
 import { Check, ChevronDown, Flag, Info, LogOut, Pencil, Search, Settings, SquareTerminal, X } from "lucide-react";
 import { isDevSite, useDevStats } from "../devStats";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiCache, prefetch, useApi } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
 import { ConfirmRemove, RemoveX } from "../components/ConfirmRemove";
@@ -14,6 +14,7 @@ import ProfilePredictions, { predictionsList } from "../components/ProfilePredic
 import ProfileBets, { betsList } from "../components/ProfileBets";
 import ProfileComments, { commentsList } from "../components/ProfileComments";
 import ReportIssueDialog from "../components/ReportIssueDialog";
+import Leaderboards from "../components/Leaderboards";
 import { formatDateShortWithYear, formatMethod } from "../format";
 import { useRouteScrollRestoration } from "../navigationState";
 import { rememberedEmail, useMyProfile } from "../profile";
@@ -28,10 +29,11 @@ const FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed"];
 /** Bouts that went to the judges are the ones a card can be read against, so
  *  the list opens on them and finishes are one checkbox away. */
 const DEFAULT_FILTER: ProfileFilter = "decisions";
-/** `short` is what a phone shows, so all four fit on one line without scrolling. */
+/** `short` is what a phone shows, so all five fit on one line without scrolling. */
 const TABS = [
   { id: "scorecards", label: "Scorecards", short: "Scores" }, { id: "predictions", label: "Predictions", short: "Picks" },
   { id: "bets", label: "Bets", short: "Bets" }, { id: "comments", label: "Comments", short: "Comments" },
+  { id: "leaderboards", label: "Leaderboards", short: "Ranks" },
 ] as const;
 type Section = (typeof TABS)[number]["id"];
 const quiet = BUTTON_QUIET;
@@ -43,9 +45,6 @@ const primary = BUTTON_PRIMARY;
  *  username they chose, or by the one minted for them when they signed up. */
 export default function ProfilePage() {
   const { handle = "" } = useParams();
-  const [search] = useSearchParams();
-  // The leaderboards were a profile tab before they had a page of their own.
-  if (search.get("tab") === "leaderboards") return <Navigate to="/leaderboards" replace />;
   return handle === "me" ? <MyProfileRedirect /> : <Profile handle={handle} />;
 }
 
@@ -133,6 +132,7 @@ function Profile({ handle }: { handle: string }) {
       prefetchList(predictionsList(handle));
       prefetchList(betsList(handle));
       if (commentsOpen) prefetchList(commentsList(handle, "new", mine ? getToken : null));
+      prefetch("/api/leaderboards");
     }, 150);
     return () => window.clearTimeout(timer);
   }, [loaded, handle, mine, commentsOpen, getToken]);
@@ -209,6 +209,7 @@ function Profile({ handle }: { handle: string }) {
         <div id="profile-tabpanel" role="tabpanel" aria-labelledby={`profile-tab-${section}`} className="flex flex-col gap-3">
           {section === "predictions" ? <ProfilePredictions key={handle} handle={handle} mine={mine} />
             : section === "bets" ? <ProfileBets key={handle} handle={handle} mine={mine} />
+            : section === "leaderboards" ? <Leaderboards handle={identity?.publicId ?? ""} />
             : section === "comments" ? <ProfileComments key={handle} handle={handle} mine={mine} visible={scorer.commentsPublic}
                 visibilityControl={mine ? <CommentsVisibility visible={scorer.commentsPublic} onChanged={refresh} /> : null} />
             : <>
