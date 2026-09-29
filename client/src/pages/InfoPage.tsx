@@ -95,9 +95,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-09-29">September 29, 2026</time></p>
             <ul>
-              <li>Rankings hover shows a compact last five: result, method, opponent, weight class.</li>
-              <li>Repeat results against a highlighted fighter read as one band.</li>
-              <li>Event results tally matches the start times layout.</li>
+              <li>Matchmaking only suggests a cut after five or more straight UFC losses.</li>
             </ul>
           </Section>
         </div>

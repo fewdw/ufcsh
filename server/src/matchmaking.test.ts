@@ -57,12 +57,11 @@ test("a close title fight is run back straight away, and an interim champion uni
 });
 
 test("unranked fighters the UFC would release are cut; ranked fighters never are", () => {
-  assert.equal(cutReason(loser("a", null, { ufcStreak: -3 })), "3 straight UFC losses");
-  assert.equal(cutReason(loser("b", null, { ufcWins: 0, ufcLosses: 2, ufcStreak: -2 })), "Winless in the UFC: 0-2");
-  assert.equal(cutReason(loser("c", null, { ufcWins: 1, ufcLosses: 3, ufcStreak: -2 })), "1-3 in the UFC, 2 straight losses");
-  assert.equal(cutReason(loser("d", null, { ufcWins: 6, ufcLosses: 4, ufcStreak: -2, age: 38 })), "38 and on a 2-fight skid");
-  assert.equal(cutReason(loser("e", null, { ufcWins: 6, ufcLosses: 4, ufcStreak: -2 })), null);
-  assert.equal(cutReason(loser("f", 14, { ufcStreak: -4 })), null);
+  assert.equal(cutReason(loser("a", null, { ufcStreak: -5 })), "5 straight UFC losses");
+  assert.equal(cutReason(loser("b", null, { ufcStreak: -8 })), "8 straight UFC losses");
+  assert.equal(cutReason(loser("c", null, { ufcStreak: -4 })), null);
+  assert.equal(cutReason(loser("d", null, { ufcWins: 0, ufcLosses: 3, ufcStreak: -3, age: 40 })), null);
+  assert.equal(cutReason(loser("f", 14, { ufcStreak: -6 })), null);
 });
 
 test("pairings stay within reach, never rematch too soon, and run back a draw", () => {
@@ -122,7 +121,7 @@ test("after the cards, ranked fighters keep their plan, the rest pair up or are 
   const w1 = fighter("w1", null, { lastEventId: "ev", ufcStreak: 2, ufcWins: 4 });
   const l1 = loser("l1", null, { lastEventId: "ev" });
   const w2 = fighter("w2", null, { lastEventId: "ev", ufcStreak: 2, ufcWins: 4 });
-  const l2 = loser("l2", null, { lastEventId: "ev", ufcStreak: -3 });
+  const l2 = loser("l2", null, { lastEventId: "ev", ufcStreak: -5 });
   const drew = { outcome: "draw" as const, method: "S-DEC", title: false };
   const d1 = fighter("d1", null, { last: "draw", met: [["d2", "2026-09-20", "draw"]], lastBout: { ...drew, opponentId: "d2" } });
   const d2 = fighter("d2", null, { last: "draw", met: [["d1", "2026-09-20", "draw"]], lastBout: { ...drew, opponentId: "d1" } });
@@ -138,7 +137,7 @@ test("after the cards, ranked fighters keep their plan, the rest pair up or are 
   assert.equal(next.get("2")?.opponent?.id, planned.a.id === "2" ? planned.b.id : planned.a.id);
   assert.equal(next.get("w1")?.opponent?.id, "w2");
   assert.match(next.get("w1")!.reason, /Both won on this card/);
-  assert.deepEqual([next.get("l2")?.kind, next.get("l2")?.reason], ["cut", "3 straight UFC losses"]);
+  assert.deepEqual([next.get("l2")?.kind, next.get("l2")?.reason], ["cut", "5 straight UFC losses"]);
   assert.equal(next.get("d1")?.opponent?.id, "d2");
   assert.match(next.get("d1")!.reason, /Run it back after the draw/);
   assert.equal(next.get("b1")?.kind, "booked");
