@@ -95,7 +95,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-09-29">September 29, 2026</time></p>
             <ul>
-              <li>Matchmaking only suggests a cut after five or more straight UFC losses.</li>
+              <li>Leaderboards are now a tab on your profile.</li>
+              <li>Report an issue lives only on your profile.</li>
             </ul>
           </Section>
         </div>
