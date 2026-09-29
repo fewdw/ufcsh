@@ -1,6 +1,6 @@
 import { PANEL } from "../components/chartTokens";
 import { isFightDay, landingEvent, liveFightId, taggedEvent } from "../liveEvent";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
@@ -862,8 +862,8 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   const underdogWins = Number.isFinite(event.card_stats.underdog_wins) ? event.card_stats.underdog_wins : 0;
   const results = event.card_stats.completed_fights ? [
     { label: kos === 1 ? "KO" : "KOs", count: kos },
-    { label: subs === 1 ? "submission" : "submissions", count: subs },
-    { label: underdogWins === 1 ? "underdog win" : "underdog wins", count: underdogWins },
+    { label: subs === 1 ? "Submission" : "Submissions", count: subs },
+    { label: underdogWins === 1 ? "Underdog win" : "Underdog wins", count: underdogWins },
   ].filter((entry) => entry.count > 0) : [];
 
   return (
@@ -925,14 +925,14 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
               </dl>
             ) : null}
             {results.length ? (
-              <div className="grid grid-cols-[auto_auto] items-baseline gap-x-1.5 gap-y-0.5 text-xs leading-4 text-zinc-500 @[34rem]:text-[13px] @[34rem]:leading-5">
+              <dl className="grid grid-cols-[auto_auto] items-baseline gap-x-3 gap-y-0.5 text-xs leading-4 @[34rem]:text-[13px] @[34rem]:leading-5 @[48rem]:gap-x-4">
                 {results.map(({ label, count }) => (
-                  <Fragment key={label}>
-                    <span className="text-right font-semibold tabular-nums text-zinc-800">{count}</span>
-                    <span className="text-left">{label}</span>
-                  </Fragment>
+                  <div key={label} className="contents text-zinc-500">
+                    <dt className="text-left">{label}</dt>
+                    <dd className="text-right font-semibold tabular-nums text-zinc-800">{count}</dd>
+                  </div>
                 ))}
-              </div>
+              </dl>
             ) : null}
             {isLive && error ? <span role="status" className="text-[11px] text-zinc-500">Connection interrupted; retrying…</span> : null}
           </div>
