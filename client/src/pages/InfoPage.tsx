@@ -93,13 +93,14 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-09-28">September 28, 2026</time></p>
+            <p><time dateTime="2026-09-29">September 29, 2026</time></p>
             <ul>
-              <li>Stats cards can be sorted highest or lowest first.</li>
-              <li>Cleaner stats rows without bars.</li>
-              <li>Matchmaking is more compact and matches every ranked fighter.</li>
-              <li>Matchmaking shows the four latest cards.</li>
-              <li>News dividers are visible in light mode.</li>
+              <li>Rebuilt matchmaking: smarter title shots, fairer pairings, and a Cut call.</li>
+              <li>Top 15 and Last card agree on every fighter’s next fight.</li>
+              <li>Phones pick a division or card from a dropdown.</li>
+              <li>Back returns you to where you were on Matchmaking.</li>
+              <li>Create a card: tap a fighter to remove them.</li>
+              <li>Tidier More menu, and Roster without the extra notes.</li>
             </ul>
           </Section>
         </div>

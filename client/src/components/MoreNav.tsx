@@ -8,8 +8,8 @@ import { onRosterSeen, seedRosterSeen, unseenMoves } from "../rosterSeen";
 type Section = { href: string; label: string; paths: string[]; accounts?: true };
 type Group = { label: string; sections: Section[]; admin?: true };
 
-/** The pages behind More, in groups: the numbers, the news around the
- *  roster, the people and places behind the cards, the fans, and the admin
+/** The pages behind More, in groups of three: the numbers, the people and
+ *  places behind the cards, following along, then help and the admin
  *  tools. `accounts` pages need sign-in to exist on this deployment; the
  *  admin group needs it too, and is listed only for admins. */
 const GROUPS: Group[] = [
@@ -18,18 +18,18 @@ const GROUPS: Group[] = [
     { href: "/labs", label: "Labs", paths: ["/labs"] },
     { href: "/matchmaking", label: "Matchmaking", paths: ["/matchmaking"] },
   ] },
-  { label: "News", sections: [
-    { href: "/news", label: "News", paths: ["/news"] },
-    { href: "/roster", label: "Roster", paths: ["/roster"] },
-  ] },
   { label: "Directory", sections: [
+    { href: "/roster", label: "Roster", paths: ["/roster"] },
     { href: "/officials", label: "Officials", paths: ["/officials", "/judges", "/referees"] },
     { href: "/venues", label: "Venues", paths: ["/venues"] },
   ] },
   { label: "Community", sections: [
+    { href: "/news", label: "News", paths: ["/news"] },
     { href: "/leaderboards", label: "Leaderboards", paths: ["/leaderboards"], accounts: true },
     { href: "/favorites", label: "Favorites", paths: ["/favorites"] },
-    { href: "/report", label: "Report", paths: ["/report"], accounts: true },
+  ] },
+  { label: "Help", sections: [
+    { href: "/report", label: "Report an issue", paths: ["/report"], accounts: true },
   ] },
   { label: "Admin", admin: true, sections: [
     { href: "/graphic", label: "Graphic", paths: ["/graphic"] },
@@ -94,30 +94,18 @@ function RosterNews() {
   );
 }
 
-/** The More pages: a sidebar from `md` up; on a phone, a strip of
- *  the current group's pages above the page (the header's More opens the
- *  rest). Each page keeps its own scrolling. */
+/** The More pages: a sidebar from `md` up; on a phone the header's More
+ *  opens the rest. Each page keeps its own scrolling. */
 export function MoreLayout() {
-  const { pathname } = useLocation();
-  const group = groupOf(pathname);
   return (
     <div className="flex h-full min-h-0 flex-col md:flex-row">
-      {group && shown(group).length > 1 ? <nav aria-label={group.label} className="shrink-0 overflow-x-auto border-b border-zinc-200 bg-white [scrollbar-width:none] md:hidden">
-        <ul className="flex w-max gap-1 px-2 py-1.5">
-          {shown(group).map((section) => {
-            const active = current(pathname, section);
-            return <li key={section.href}>
-              <Link to={section.href} aria-current={active ? "page" : undefined}
-                className={`block whitespace-nowrap rounded-full px-3 py-1.5 text-[13px] font-medium transition-colors ${active ? "bg-zinc-100 text-zinc-900" : "text-zinc-500 hover:text-zinc-900"}`}>
-                {section.label}
-              </Link>
-            </li>;
-          })}
-        </ul>
-      </nav> : null}
       <nav aria-label="More" className="hidden w-48 shrink-0 overflow-y-auto border-r border-zinc-200 bg-white p-2 md:block lg:w-52 lg:p-3">
         <ul className="flex flex-col gap-0.5">
-          <MoreGroups group={(label, links) => <Fragment key={label}>{links}</Fragment>} item={(section, active) => (
+          <MoreGroups group={(label, links) => (
+            <li key={label} className="border-t border-zinc-100 pt-1 first:border-0 first:pt-0 [&:not(:last-child)]:pb-1">
+              <ul aria-label={label} className="flex flex-col gap-0.5">{links}</ul>
+            </li>
+          )} item={(section, active) => (
             <li key={section.href}>
               <Link to={section.href} aria-current={active ? "page" : undefined}
                 className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${active ? "bg-zinc-100 text-zinc-900" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"}`}>

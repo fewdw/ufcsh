@@ -53,11 +53,6 @@ function Move({ move, cut, fresh }: { move: RosterMove; cut: boolean; fresh: boo
 
 const NONE: ReadonlySet<string> = new Set();
 
-const NOTES = {
-  signed: "Signed or returning, and yet to fight on a UFC card.",
-  cut: "Released, not renewed, retired or taken off the UFC roster in the last month.",
-};
-
 /** One list: its heading on a wide screen, where both lists sit side by side;
  *  hidden on a narrow one unless its tab is picked. */
 function MoveList({ kind, moves, shown, fresh }: { kind: "signed" | "cut"; moves: RosterMove[]; shown: boolean; fresh: ReadonlySet<string> }) {
@@ -66,9 +61,7 @@ function MoveList({ kind, moves, shown, fresh }: { kind: "signed" | "cut"; moves
     <div className={`${shown ? "" : "hidden"} min-w-0 xl:block ${cut ? "border-zinc-100 xl:border-l" : "xl:col-span-2"}`}>
       <div className="hidden items-baseline gap-2 border-b border-zinc-100 px-4 py-2 sm:px-5 xl:flex">
         <h2 className="shrink-0 text-sm font-semibold text-zinc-900">{cut ? "Cut" : "Signed"} <span className="tabular-nums text-zinc-400">{moves.length}</span></h2>
-        <p className="min-w-0 text-[11px] leading-4 text-zinc-500">{NOTES[kind]}</p>
       </div>
-      <p className="border-b border-zinc-100 px-4 py-2 text-[11px] leading-4 text-zinc-500 sm:px-5 xl:hidden">{NOTES[kind]}</p>
       <ul className={`grid grid-cols-1 ${cut ? "" : "sm:grid-cols-2"}`}>
         {moves.map((move) => <Move key={`${move.fighter_id ?? move.name}-${move.date}`} move={move} cut={cut} fresh={fresh.has(moveKey(kind, move))} />)}
       </ul>
