@@ -113,8 +113,7 @@ function CardBuilder() {
   let bout = 0;
   return (
     <section className="mx-auto w-full max-w-6xl">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-1">
-        <p className="text-[12px] text-zinc-500">Pick any fighters. Your card stays in this browser.</p>
+      <div className="mb-4 flex min-h-7 flex-wrap items-center justify-end gap-3 px-1">
         {taken.length ? (
           <button type="button" onClick={() => setSlots(Array(BOUTS * 2).fill(null))}
             className="shrink-0 rounded-full border border-zinc-200 px-3 py-1 text-xs font-medium text-zinc-600 transition hover:bg-zinc-50 hover:text-zinc-900">
@@ -219,6 +218,17 @@ function PanelHeader({ title, label, options, value, onPick, children }: {
 
 type Division = MatchmakingData["top15"][number];
 
+/** "Title", "Title · booked" or "Booked"; nothing for a suggested fight. */
+function FightTag({ fight }: { fight: Division["fights"][number] }) {
+  if (fight.kind === "suggested") return null;
+  const title = fight.kind === "title" || fight.reason.startsWith("Title");
+  return (
+    <span className={`shrink-0 rounded px-1.5 text-[10px] font-semibold ${title ? "bg-amber-50 text-amber-800" : "bg-zinc-100 text-zinc-600"}`}>
+      {fight.kind === "title" ? "Title" : title ? "Title · booked" : "Booked"}
+    </span>
+  );
+}
+
 function DivisionPanel({ entry, shown, options, onPick }: { entry: Division; shown: boolean; options: { value: string; label: string }[]; onPick: (value: string) => void }) {
   return (
     <section className={`${PANEL} @container min-w-0 flex-col overflow-hidden ${shown ? "flex" : "hidden md:flex"}`}>
@@ -228,15 +238,15 @@ function DivisionPanel({ entry, shown, options, onPick }: { entry: Division; sho
           <li key={`${fight.a.id}-${fight.b.id}`} className="flex min-w-0 flex-col justify-center gap-1 border-b border-zinc-100 px-3 py-2 last:border-0">
             <div className="flex flex-col gap-1 @min-[420px]:flex-row @min-[420px]:items-center @min-[420px]:gap-2">
               <Side fighter={fight.a} />
-              <span className="hidden shrink-0 text-[10px] uppercase text-zinc-400 @min-[420px]:block">vs</span>
+              {/* A wide row carries the fight's tag over the "vs"; a narrow one beside its reason. */}
+              <span className="hidden shrink-0 flex-col items-center gap-1 @min-[420px]:flex">
+                <FightTag fight={fight} />
+                <span className="text-[10px] uppercase text-zinc-400">vs</span>
+              </span>
               <Side fighter={fight.b} align="responsive" />
             </div>
             <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-zinc-500">
-              {fight.kind !== "suggested" ? (
-                <span className={`shrink-0 rounded px-1.5 text-[10px] font-semibold ${fight.kind === "title" || fight.reason.startsWith("Title") ? "bg-amber-50 text-amber-800" : "bg-zinc-100 text-zinc-600"}`}>
-                  {fight.kind === "title" ? "Title" : fight.reason.startsWith("Title") ? "Title · booked" : "Booked"}
-                </span>
-              ) : null}
+              <span className="contents @min-[420px]:hidden"><FightTag fight={fight} /></span>
               {fight.event
                 ? <Link to={`/events/${fight.event.id}`} title={`${fight.event.name} · ${formatDate(fight.event.date)}`} className="truncate hover:text-zinc-900">{fight.event.name} · {formatDate(fight.event.date)}</Link>
                 : <span className="truncate" title={fight.reason}>{fight.reason}</span>}
@@ -254,7 +264,13 @@ function DivisionPanel({ entry, shown, options, onPick }: { entry: Division; sho
   );
 }
 
-const OUTCOME = { win: "Won", loss: "Lost", draw: "Drew", nc: "No contest" } as const;
+const OUTCOME = {
+  win: ["W", "Won", "bg-emerald-50 text-emerald-700"],
+  loss: ["L", "Lost", "bg-rose-50 text-rose-700"],
+  draw: ["D", "Drew", "bg-zinc-100 text-zinc-600"],
+  nc: ["NC", "No contest", "bg-zinc-100 text-zinc-600"],
+} as const;
+const NEXT_TAG = { title: ["Title", "bg-amber-50 text-amber-800"], booked: ["Booked", "bg-zinc-100 text-zinc-600"], cut: ["Cut", "bg-rose-50 text-rose-700"] } as const;
 
 type RecentEvent = MatchmakingData["recent_events"][number];
 
@@ -273,22 +289,29 @@ function EventPanel({ event, shown, options, onPick }: { event: RecentEvent; sho
               {bout.division}{bout.title ? " · title fight" : ""}{bout.method ? ` · ${bout.method}` : ""}
             </p>
             <div className="flex flex-col gap-2.5">
-              {bout.sides.map((side) => (
-                <div key={side.fighter.id} className="grid grid-cols-1 gap-1.5 @min-[560px]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] @min-[560px]:items-center @min-[560px]:gap-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className={`w-16 shrink-0 text-[11px] font-semibold ${side.outcome === "win" ? "text-emerald-700" : side.outcome === "loss" ? "text-rose-700" : "text-zinc-500"}`}>
-                      {side.outcome ? OUTCOME[side.outcome] : "—"}
-                    </span>
-                    <Side fighter={side.fighter} />
+              {bout.sides.map((side) => {
+                const [letter, word, tone] = side.outcome ? OUTCOME[side.outcome] : ["–", "No result", "bg-zinc-100 text-zinc-500"];
+                const tag = side.next.kind === "suggested" || side.next.kind === "none" ? null : NEXT_TAG[side.next.kind];
+                return (
+                  <div key={side.fighter.id} className="grid grid-cols-1 gap-1.5 @min-[560px]:grid-cols-[minmax(0,1fr)_1rem_minmax(0,1.3fr)] @min-[560px]:items-start @min-[560px]:gap-4">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span title={word} className={`grid h-5 min-w-5 shrink-0 place-items-center rounded px-1 text-[10px] font-bold ${tone}`}>
+                        {letter}<span className="sr-only"> {word}</span>
+                      </span>
+                      <Side fighter={side.fighter} />
+                    </div>
+                    <span className="hidden pt-1 text-center text-zinc-300 @min-[560px]:block" aria-hidden="true">→</span>
+                    <div className="min-w-0 pl-7 @min-[560px]:pl-0">
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 @min-[560px]:hidden">Next</p>
+                      {side.next.opponent ? <Side fighter={side.next.opponent} /> : null}
+                      <p className={`flex min-w-0 items-start gap-1.5 text-[11px] leading-4 text-zinc-500 ${side.next.opponent ? "mt-1 @min-[560px]:pl-9" : "@min-[560px]:pt-1"}`}>
+                        {tag ? <span className={`shrink-0 rounded px-1.5 text-[10px] font-semibold ${tag[1]}`}>{tag[0]}</span> : null}
+                        <span className="min-w-0">{side.next.reason}</span>
+                      </p>
+                    </div>
                   </div>
-                  <span className="hidden text-zinc-300 @min-[560px]:block" aria-hidden="true">→</span>
-                  <div className="min-w-0 pl-[4.5rem] @min-[560px]:pl-0">
-                    <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 @min-[560px]:hidden">Next</p>
-                    {side.next.opponent ? <Side fighter={side.next.opponent} /> : null}
-                    <p className="mt-0.5 text-[11px] leading-4 text-zinc-500">{side.next.reason}</p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </li>
         ))}
