@@ -34,7 +34,7 @@ copy of the local archive (`DATA_DIR`).
 | Area | Files |
 | --- | --- |
 | Shell, routes, header | `App.tsx`, `main.tsx` |
-| More menu and sidebar (Stats, Combined records, News, Roster, Matchmaking, Officials, Venues, Leaderboards, Favorites, Report; Graphic and Admin for admins) | `components/MoreNav.tsx`; pages `LeaderboardsPage.tsx`, `ReportPage.tsx`, `GraphicPage.tsx` |
+| More menu and sidebar (Stats, Combined records, Matchmaking, Roster, Officials, Venues, News, Favorites; Graphic and Admin for admins) | `components/MoreNav.tsx`; page `GraphicPage.tsx` |
 | Matchmaking page (Top 15, recent cards, card builder) | `pages/MatchmakingPage.tsx` |
 | News page (top stories, latest by day, outlet toggles) | `pages/NewsPage.tsx` |
 | Data fetching and polling | `api.ts` (types + `useApi`), `requestCache.ts`, `polling.ts`; early data in `index.html`, link prefetch in `useLinkPrefetch.ts` + `pageRequests.ts`, page chunks in `pages.ts`, answers kept across reloads in `snapshots.ts` |
