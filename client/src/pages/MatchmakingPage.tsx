@@ -5,6 +5,7 @@ import { useApi, type MatchFighter, type MatchmakingData } from "../api";
 import { formatDate } from "../format";
 import { PAGE, PAGE_BODY } from "../research";
 import { useSeo } from "../seo";
+import { useRouteScrollRestoration } from "../navigationState";
 import Avatar from "../components/Avatar";
 import FighterSearch, { type PickedFighter } from "../components/FighterSearch";
 import Freshness from "../components/Freshness";
@@ -44,24 +45,19 @@ function Corner({ fighter, big, onPick, onClear }: { fighter: Slot; big: boolean
   return (
     <div className="flex min-w-0 flex-1 flex-col items-center gap-2">
       {fighter ? (
-        <div className="relative">
-          <Link to={`/fighters/${fighter.id}`} title={fighter.name} className="rounded-full focus-visible:outline-2 focus-visible:outline-zinc-900">
-            <Avatar src={fighter.photo_url} name={fighter.name} size={big ? "lg" : "md"} />
-          </Link>
-          <button type="button" onClick={onClear} aria-label={`Remove ${fighter.name}`}
-            className="absolute -right-2 -top-2 grid h-8 w-8 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 shadow-sm transition hover:text-zinc-900">
-            <X className="h-3.5 w-3.5" aria-hidden="true" />
-          </button>
-        </div>
+        <button type="button" onClick={onClear} aria-label={`Remove ${fighter.name}`} title="Remove"
+          className="rounded-full transition hover:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">
+          <Avatar src={fighter.photo_url} name={fighter.name} size={big ? "lg" : "md"} />
+        </button>
       ) : (
         <button type="button" onClick={onPick} aria-label="Add a fighter"
           className={`grid shrink-0 place-items-center rounded-full border border-dashed border-zinc-300 bg-zinc-50 text-zinc-500 transition hover:border-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${big ? "h-20 w-20" : "h-12 w-12"}`}>
           <Plus className={big ? "h-6 w-6" : "h-5 w-5"} aria-hidden="true" />
         </button>
       )}
-      <span className={`w-full text-center text-xs leading-4 ${fighter ? "font-semibold text-zinc-900" : "text-zinc-500"}`}>
-        {fighter?.name ?? "Add fighter"}
-      </span>
+      {fighter ? (
+        <Link to={`/fighters/${fighter.id}`} className="w-full text-center text-xs font-semibold leading-4 text-zinc-900 hover:underline">{fighter.name}</Link>
+      ) : <span className="w-full text-center text-xs leading-4 text-zinc-500">Add fighter</span>}
     </div>
   );
 }
@@ -133,11 +129,12 @@ function CardBuilder() {
                 <h2 className="mt-3 px-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">Prelims</h2>
               ) : null}
               {rowIndex === 0 ? <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">Main card</h2> : null}
-              <div className={`grid gap-3 ${big ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 min-[400px]:grid-cols-2 lg:grid-cols-4"}`}>
+              {/* A wrapping row rather than a grid, so an odd bout left over sits centered. */}
+              <div className="flex flex-wrap justify-center gap-3">
                 {Array.from({ length: row.bouts }, (_, i) => {
                   const index = first + i;
                   return (
-                    <div key={index} className="min-w-0">
+                    <div key={index} className={`min-w-0 basis-full ${big ? "sm:basis-[calc(50%-0.375rem)]" : "min-[400px]:basis-[calc(50%-0.375rem)] lg:basis-[calc(25%-0.5625rem)]"}`}>
                       <Bout corners={[slots[index * 2], slots[index * 2 + 1]]} big={big}
                         onPick={(corner) => setPicking(index * 2 + corner)} onClear={(corner) => set(index * 2 + corner, null)} />
                     </div>
@@ -193,41 +190,80 @@ function Side({ fighter, align = "left" }: { fighter: MatchFighter; align?: "lef
   return fighter.id ? <Link to={`/fighters/${fighter.id}`} title={fighter.name} className={`${className} rounded-lg hover:opacity-80`}>{body}</Link> : <span className={className}>{body}</span>;
 }
 
+const SHORT: Record<string, string> = {
+  Flyweight: "FLY", Bantamweight: "BW", Featherweight: "FW", Lightweight: "LW", Welterweight: "WW",
+  Middleweight: "MW", "Light Heavyweight": "LHW", Heavyweight: "HW", Strawweight: "SW",
+};
+const shortDivision = (division: string) => {
+  const women = division.startsWith("Women's ");
+  const name = division.replace(/^Women's /, "");
+  return `${women ? "W" : ""}${SHORT[name] ?? name.slice(0, 3).toUpperCase()}`;
+};
+const divisionAnchor = (division: string) => `mm-${division.toLowerCase().replace(/[^a-z]+/g, "-")}`;
+
+/** A phone's one-column list is long, so a thin index down the side jumps to a
+ *  division: tap a label, or drag along it like a contacts list. */
+function DivisionIndex({ divisions }: { divisions: string[] }) {
+  const current = useRef<string | null>(null);
+  const jump = (x: number, y: number) => {
+    const division = (document.elementFromPoint(x, y) as HTMLElement | null)?.closest<HTMLElement>("[data-division]")?.dataset.division;
+    if (!division || division === current.current) return;
+    current.current = division;
+    document.getElementById(divisionAnchor(division))?.scrollIntoView({ block: "start" });
+  };
+  return (
+    <nav aria-label="Jump to division" className="sticky top-1/2 flex -translate-y-1/2 touch-none select-none flex-col self-start md:hidden"
+      onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); current.current = null; jump(event.clientX, event.clientY); }}
+      onPointerMove={(event) => { if (event.buttons) jump(event.clientX, event.clientY); }}>
+      {divisions.map((division) => (
+        <a key={division} href={`#${divisionAnchor(division)}`} data-division={division} aria-label={division}
+          onClick={(event) => event.preventDefault()}
+          className="px-1 py-1 text-center text-[10px] font-semibold leading-3 text-zinc-400 transition active:text-zinc-900">
+          {shortDivision(division)}
+        </a>
+      ))}
+    </nav>
+  );
+}
+
 function Top15({ data }: { data: MatchmakingData }) {
   return (
-    <div className="grid grid-cols-1 gap-2 md:auto-rows-fr md:grid-cols-2 2xl:grid-cols-3">
-      {data.top15.map((entry) => (
-        <section key={entry.division} className={`${PANEL} @container flex min-w-0 flex-col overflow-hidden`}>
-          <h2 className="border-b border-zinc-200 px-3 py-2 text-sm font-semibold text-zinc-900">{entry.division}</h2>
-          <ul className="grid flex-1 auto-rows-fr">
-            {entry.fights.map((fight) => (
-              <li key={`${fight.a.id}-${fight.b.id}`} className="flex min-w-0 flex-col justify-center gap-1 border-b border-zinc-100 px-3 py-2 last:border-0">
-                <div className="flex flex-col gap-1 @min-[420px]:flex-row @min-[420px]:items-center @min-[420px]:gap-2">
-                  <Side fighter={fight.a} />
-                  <span className="hidden shrink-0 text-[10px] uppercase text-zinc-400 @min-[420px]:block">vs</span>
-                  <Side fighter={fight.b} align="responsive" />
-                </div>
-                <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-zinc-500">
-                  {fight.kind !== "suggested" ? (
-                    <span className={`shrink-0 rounded px-1.5 text-[10px] font-semibold ${fight.kind === "title" || fight.reason.startsWith("Title") ? "bg-amber-50 text-amber-800" : "bg-zinc-100 text-zinc-600"}`}>
-                      {fight.kind === "title" ? "Title" : fight.reason.startsWith("Title") ? "Title · booked" : "Booked"}
-                    </span>
-                  ) : null}
-                  {fight.event
-                    ? <Link to={`/events/${fight.event.id}`} title={`${fight.event.name} · ${formatDate(fight.event.date)}`} className="truncate hover:text-zinc-900">{fight.event.name} · {formatDate(fight.event.date)}</Link>
-                    : <span className="truncate" title={fight.reason}>{fight.reason}</span>}
-                </div>
-              </li>
-            ))}
-            {entry.idle.map(({ fighter, reason }) => (
-              <li key={fighter.id} className="flex flex-col justify-center gap-1 border-b border-zinc-100 px-3 py-2 last:border-0">
-                <Side fighter={fighter} />
-                <p className="text-[11px] leading-4 text-zinc-500">{reason}</p>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+    <div className="flex gap-1 md:block">
+      <div className="grid min-w-0 flex-1 grid-cols-1 gap-2 md:auto-rows-fr md:grid-cols-2 2xl:grid-cols-3">
+        {data.top15.map((entry) => (
+          <section key={entry.division} id={divisionAnchor(entry.division)} className={`${PANEL} @container flex min-w-0 scroll-mt-2 flex-col overflow-hidden`}>
+            <h2 className="border-b border-zinc-200 px-3 py-2 text-sm font-semibold text-zinc-900">{entry.division}</h2>
+            <ul className="grid flex-1 auto-rows-fr">
+              {entry.fights.map((fight) => (
+                <li key={`${fight.a.id}-${fight.b.id}`} className="flex min-w-0 flex-col justify-center gap-1 border-b border-zinc-100 px-3 py-2 last:border-0">
+                  <div className="flex flex-col gap-1 @min-[420px]:flex-row @min-[420px]:items-center @min-[420px]:gap-2">
+                    <Side fighter={fight.a} />
+                    <span className="hidden shrink-0 text-[10px] uppercase text-zinc-400 @min-[420px]:block">vs</span>
+                    <Side fighter={fight.b} align="responsive" />
+                  </div>
+                  <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-zinc-500">
+                    {fight.kind !== "suggested" ? (
+                      <span className={`shrink-0 rounded px-1.5 text-[10px] font-semibold ${fight.kind === "title" || fight.reason.startsWith("Title") ? "bg-amber-50 text-amber-800" : "bg-zinc-100 text-zinc-600"}`}>
+                        {fight.kind === "title" ? "Title" : fight.reason.startsWith("Title") ? "Title · booked" : "Booked"}
+                      </span>
+                    ) : null}
+                    {fight.event
+                      ? <Link to={`/events/${fight.event.id}`} title={`${fight.event.name} · ${formatDate(fight.event.date)}`} className="truncate hover:text-zinc-900">{fight.event.name} · {formatDate(fight.event.date)}</Link>
+                      : <span className="truncate" title={fight.reason}>{fight.reason}</span>}
+                  </div>
+                </li>
+              ))}
+              {entry.idle.map(({ fighter, reason }) => (
+                <li key={fighter.id} className="flex flex-col justify-center gap-1 border-b border-zinc-100 px-3 py-2 last:border-0">
+                  <Side fighter={fighter} />
+                  <p className="text-[11px] leading-4 text-zinc-500">{reason}</p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+      <DivisionIndex divisions={data.top15.map((entry) => entry.division)} />
     </div>
   );
 }
@@ -272,8 +308,7 @@ function LastCard({ event }: { event: MatchmakingData["recent_events"][number] }
   );
 }
 
-function Suggestions({ tab }: { tab: Tab }) {
-  const { data, error, retry } = useApi<MatchmakingData>("/api/matchmaking");
+function Suggestions({ tab, data, error, retry }: { tab: Tab; data: MatchmakingData | null; error: unknown; retry: () => void }) {
   if (error && !data) return <RequestNotice onRetry={retry}>Couldn’t load the matchups.</RequestNotice>;
   if (!data) return <PageState>Working out matchups…</PageState>;
   return (
@@ -293,9 +328,11 @@ function Suggestions({ tab }: { tab: Tab }) {
 export default function MatchmakingPage() {
   const [params, setParams] = useSearchParams();
   const tab: Tab = TABS.some((option) => option.key === params.get("tab")) ? params.get("tab") as Tab : "top15";
+  const { data, error, retry } = useApi<MatchmakingData>(tab === "card" ? null : "/api/matchmaking");
+  const scroll = useRouteScrollRestoration<HTMLDivElement>("matchmaking", tab === "card" || Boolean(data));
   useSeo({ title: "UFC Matchmaking", description: "Build your own UFC card, and see the fights to make next: title fights, ranked matchups and next opponents for the fighters on recent cards.", path: "/matchmaking" });
   return (
-    <div className={PAGE}>
+    <div ref={scroll} className={PAGE}>
       <div className={PAGE_BODY.replace("max-w-5xl", "max-w-[1600px]")}>
         <header className="flex justify-center">
           <h1 className="sr-only">Matchmaking</h1>
@@ -303,13 +340,13 @@ export default function MatchmakingPage() {
             {TABS.map((option) => (
               <button key={option.key} type="button" aria-pressed={tab === option.key}
                 onClick={() => setParams(option.key === "top15" ? {} : { tab: option.key }, { replace: true })}
-                className={`${segmentedTab} ${tab === option.key ? segmentedSelected : segmentedIdle}`}>
+                className={`${segmentedTab.replace("flex-auto", "flex-1")} ${tab === option.key ? segmentedSelected : segmentedIdle}`}>
                 {option.label}
               </button>
             ))}
           </div>
         </header>
-        {tab === "card" ? <CardBuilder /> : <Suggestions tab={tab} />}
+        {tab === "card" ? <CardBuilder /> : <Suggestions tab={tab} data={data} error={error} retry={retry} />}
       </div>
     </div>
   );

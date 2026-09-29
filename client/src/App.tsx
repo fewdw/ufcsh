@@ -85,12 +85,10 @@ function MoreMenu({ pathname, active, open, setOpen }: { pathname: string; activ
         to a far link; the top padding bridges the gap below it. */}
     {open ? <div aria-hidden="true" className="absolute left-full top-0 hidden h-full w-56 [clip-path:polygon(0_0,100%_100%,0_100%)] md:block" /> : null}
     {open ? <div className="absolute inset-x-2 top-full z-50 pt-1.5 md:inset-x-auto md:left-0">
-      <div className="grid grid-cols-2 gap-x-2 gap-y-3 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg md:w-max lg:grid-cols-4">
+      {/* Groups sit apart on a hairline: stacked rows on a phone, columns on a wide screen. */}
+      <div className="flex flex-col divide-y divide-zinc-100 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg md:w-80 lg:w-max lg:flex-row lg:divide-x lg:divide-y-0">
         <MoreGroups group={(label, links) => (
-          <div key={label} className="md:min-w-36">
-            <p className="mx-3 mb-1 border-b border-zinc-200 pb-1.5 pt-1 text-xs font-bold uppercase tracking-[0.08em] text-zinc-900">{label}</p>
-            <ul>{links}</ul>
-          </div>
+          <ul key={label} aria-label={label} className="grid grid-cols-2 gap-0.5 py-1 first:pt-0 last:pb-0 lg:min-w-36 lg:grid-cols-1 lg:content-start lg:px-1 lg:py-0 lg:first:pl-0 lg:last:pr-0">{links}</ul>
         )} item={(section, current) => (
           <li key={section.href}>
             <Link to={section.href} aria-current={current ? "page" : undefined}

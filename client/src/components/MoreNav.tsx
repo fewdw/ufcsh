@@ -117,7 +117,11 @@ export function MoreLayout() {
       </nav> : null}
       <nav aria-label="More" className="hidden w-48 shrink-0 overflow-y-auto border-r border-zinc-200 bg-white p-2 md:block lg:w-52 lg:p-3">
         <ul className="flex flex-col gap-0.5">
-          <MoreGroups group={(label, links) => <Fragment key={label}>{links}</Fragment>} item={(section, active) => (
+          <MoreGroups group={(label, links) => (
+            <li key={label} className="border-t border-zinc-100 pt-1 first:border-0 first:pt-0 [&:not(:last-child)]:pb-1">
+              <ul aria-label={label} className="flex flex-col gap-0.5">{links}</ul>
+            </li>
+          )} item={(section, active) => (
             <li key={section.href}>
               <Link to={section.href} aria-current={active ? "page" : undefined}
                 className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${active ? "bg-zinc-100 text-zinc-900" : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"}`}>
