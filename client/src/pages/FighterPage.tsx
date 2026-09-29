@@ -1,7 +1,7 @@
-import { Children, type ReactNode } from "react";
+import { Children, useEffect, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useApi } from "../api";
-import type { CompleteRecordBefore, FighterProfile, FighterRecord, HistoryRow, ProfessionalHistoryRow } from "../api";
+import type { CompleteRecordBefore, FighterProfile, FighterRecord, HistoryRow, NewsPage, ProfessionalHistoryRow } from "../api";
 import { divisionName, formatDateShortWithYear, formatLine, formatMethod, lastName } from "../format";
 import { formatValue, PANEL } from "../components/chartTokens";
 import FighterPortrait from "../components/FighterPortrait";
@@ -11,6 +11,8 @@ import { divisionMoves, type DivisionMove } from "../weightJourney";
 import RequestNotice from "../components/RequestNotice";
 import { BONUS_AGAINST_TAG, BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
 import FighterStatistics from "../components/FighterStatistics";
+import { fetchPage, LoadMore, prefetchList, useInfiniteList, type ListSource } from "../components/InfiniteList";
+import NewsRow, { savedOff } from "../components/NewsRow";
 import { PanelHeading } from "../components/FightStats";
 import { SITE_URL, useSeo } from "../seo";
 import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
@@ -538,22 +540,54 @@ function BonusTally({ fight, perf, against }: { fight: number; perf: number; aga
   );
 }
 
-type ProfileTab = "fights" | "stats";
-const PROFILE_TABS: { key: ProfileTab; label: string }[] = [{ key: "fights", label: "Fights" }, { key: "stats", label: "Stats" }];
+type ProfileTab = "fights" | "stats" | "news";
+const TAB_LABELS: Record<ProfileTab, string> = { fights: "Fights", stats: "Stats", news: "News" };
 
-/** The Fights / Stats switch on a narrow window, styled like the matchup tabs. */
-function ProfileTabs({ current, onSelect }: { current: ProfileTab; onSelect: (tab: ProfileTab) => void }) {
+/** The section switch, styled like the matchup tabs: every section on a
+ *  narrow window; on a wide one the stats have a column of their own, so it
+ *  only switches the other column between fights and news. */
+function ProfileTabs({ tabs, current, onSelect, className }: { tabs: ProfileTab[]; current: ProfileTab; onSelect: (tab: ProfileTab) => void; className: string }) {
   return (
-    <div className={`${shell} p-1.5 lg:hidden`}>
+    <div className={`${shell} p-1.5 ${className}`}>
       <div role="tablist" aria-label="Fighter sections" className={`${segmentedGroup} w-full`}>
-        {PROFILE_TABS.map(({ key, label }) => (
+        {tabs.map((key) => (
           <button key={key} type="button" role="tab" aria-selected={key === current} onClick={() => onSelect(key)}
             className={`${segmentedTab} ${key === current ? segmentedSelected : segmentedIdle}`}>
-            {label}
+            {TAB_LABELS[key]}
           </button>
         ))}
       </div>
     </div>
+  );
+}
+
+/** A fighter's news, newest first, from the outlets the reader keeps on at /news. */
+function newsList(fighterId: string): ListSource<NewsPage> {
+  const off = savedOff().sort().join(",");
+  const query = `fighter=${fighterId}${off ? `&off=${encodeURIComponent(off)}` : ""}`;
+  return {
+    key: `news:${query}`,
+    load: (offset) => fetchPage<NewsPage>(`/api/news?${query}${offset ? `&offset=${offset}` : ""}`, {}, "The news could not be loaded."),
+  };
+}
+
+function FighterNews({ fighterId, name }: { fighterId: string; name: string }) {
+  const source = newsList(fighterId);
+  const list = useInfiniteList({ source, resetKey: source.key, items: (page) => page.latest, itemKey: (story) => story.url });
+  return (
+    <section className={shell}>
+      <PanelHeading title="News" subtitle={list.first ? list.first.total.toLocaleString() : undefined} />
+      {!list.first ? (
+        list.error
+          ? <div className="p-4"><RequestNotice onRetry={() => void list.retry()}>Couldn’t load the news.</RequestNotice></div>
+          : <div role="status" className="appear-late px-5 py-6 text-sm text-zinc-400">Loading the news…</div>
+      ) : list.items.length ? (
+        <div className="px-4 sm:px-5">{list.items.map((story) => <NewsRow key={story.url} story={story} fighterId={fighterId} />)}</div>
+      ) : (
+        <div className="px-5 py-6 text-sm text-zinc-400">No recent news about {name}.</div>
+      )}
+      <LoadMore list={list} />
+    </section>
   );
 }
 
@@ -568,6 +602,13 @@ export default function FighterPage() {
   const sideScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:side", Boolean(fighter));
   // Below `lg` the two columns become two tabs under the fighter.
   const [tab, setTab] = useHistoryState<ProfileTab>("fighter:tab", "fights");
+  // The news is read while the fighter is, so its tab opens at once.
+  const loaded = Boolean(fighter);
+  useEffect(() => {
+    if (!loaded || !fighterId) return;
+    const timer = window.setTimeout(() => prefetchList(newsList(fighterId)), 150);
+    return () => window.clearTimeout(timer);
+  }, [loaded, fighterId]);
   useSeo({
     title: fighter ? `${fighter.name} — Record & Fight History` : "UFC Fighter Profile",
     description: fighter
@@ -681,8 +722,8 @@ export default function FighterPage() {
         </section>
 
         {/* Statistics rank UFC bouts, so a fighter yet to have one — booked
-            or only signed — has fights and nothing else. */}
-        {fought ? <ProfileTabs current={tab} onSelect={setTab} /> : null}
+            or only signed — has fights and news and nothing else. */}
+        <ProfileTabs tabs={fought ? ["fights", "stats", "news"] : ["fights", "news"]} current={tab} onSelect={setTab} className="lg:hidden" />
 
         {fought ? <div className={`${tab === "stats" ? "contents" : "hidden lg:contents"} [&>*]:shrink-0`}>
           <Records records={fighter.records ?? []} />
@@ -690,9 +731,10 @@ export default function FighterPage() {
         </div> : null}
         </div>
 
-        <div ref={sideScroll} className={`${tab === "fights" || !fought ? "flex" : "hidden lg:flex"} min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]`}>
+        <div ref={sideScroll} className={`${tab !== "stats" || !fought ? "flex" : "hidden lg:flex"} min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]`}>
+        <ProfileTabs tabs={["fights", "news"]} current={tab === "news" ? "news" : "fights"} onSelect={setTab} className="hidden lg:block" />
 
-        <section className={shell}>
+        {tab === "news" ? <FighterNews key={fighter.id} fighterId={fighter.id} name={fighter.name} /> : <section className={shell}>
           <PanelHeading title="Fights" subtitle={allFights.length.toLocaleString()} />
           {!fighter.record_verified ? (
             <div className="px-4 pb-1 pt-3 text-xs text-zinc-500 sm:px-5">Outside-UFC history is still syncing; UFC bouts are shown now.</div>
@@ -707,7 +749,7 @@ export default function FighterPage() {
               <div className="px-5 py-6 text-sm text-zinc-400">No fights on record.</div>
             )}
           </div>
-        </section>
+        </section>}
         </div>
         </div>
       </div>

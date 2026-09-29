@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { db, getMeta } from "./db.ts";
-import { isUfcNews, newsView, syncNews, type NewsStory } from "./news.ts";
+import { isUfcNews, nameIndex, newsView, syncNews, type NewsStory } from "./news.ts";
 import { NEWS_FEEDS, parseFeed, type FeedItem } from "./scrape/news.ts";
 
 test("RSS, Atom and Google News items read the same way", () => {
@@ -68,6 +68,31 @@ test("a read keeps each outlet's own items, survives a failed feed and dates sch
     assert.deepEqual(found.top, []);
     assert.deepEqual(found.latest.map((story) => story.url), ["https://mmafighting.com/later"]);
     assert.equal(page("offset=30").latest.length, 0);
+  } finally {
+    db.exec("DELETE FROM news");
+    const insert = db.prepare("INSERT INTO news (url, source, title, summary, categories, published_at, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    for (const row of saved.rows as any[]) insert.run(row.url, row.source, row.title, row.summary, row.categories, row.published_at, row.seen_at);
+  }
+});
+
+test("a fighter's news reaches past the fortnight /news shows", async () => {
+  const saved = { rows: db.prepare("SELECT * FROM news").all() };
+  try {
+    db.exec("DELETE FROM news");
+    const fighter = [...nameIndex().full.values()].find((named) => named !== null)!;
+    const now = Date.now();
+    const item = (url: string, title: string, days: number): FeedItem => ({ url, title, summary: "", categories: [], published: now - days * 86_400_000 });
+    await syncNews(async (url) => url.includes("mmafighting") ? [
+      item("https://mmafighting.com/new", `${fighter.name} books next UFC fight`, 1),
+      item("https://mmafighting.com/old", `${fighter.name} wins at UFC event tonight`, 40),
+      item("https://mmafighting.com/other", "UFC announces new broadcast partner deal", 2),
+    ] : []);
+    const page = (query: string) => newsView(new URLSearchParams(query)) as { top: NewsStory[]; latest: NewsStory[]; total: number };
+    const theirs = page(`fighter=${fighter.id}`);
+    assert.deepEqual(theirs.top, []);
+    assert.deepEqual(theirs.latest.map((story) => story.url), ["https://mmafighting.com/new", "https://mmafighting.com/old"]);
+    const all = page("");
+    assert.deepEqual([...all.top, ...all.latest].map((story) => story.url).sort(), ["https://mmafighting.com/new", "https://mmafighting.com/other"]);
   } finally {
     db.exec("DELETE FROM news");
     const insert = db.prepare("INSERT INTO news (url, source, title, summary, categories, published_at, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)");
