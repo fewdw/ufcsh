@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentType, type MouseEvent } from "react";
-import { Link, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import AccountButton from "./components/AccountButton";
 import CmdK from "./components/CmdK";
 import SearchGlyph from "./components/SearchGlyph";
@@ -33,7 +33,7 @@ const EventsPage = page(pages.events, module => module.default);
 const FighterPage = page(pages.fighter, module => module.default);
 const RankingsPage = page(pages.rankings, module => module.default);
 const StatsPage = page(pages.stats, module => module.default);
-const LabsPage = page(pages.labs, module => module.default);
+const CombinedRecordsPage = page(pages.combinedRecords, module => module.default);
 const AdminPage = page(pages.admin, module => module.default);
 const ProfilePage = page(pages.profile, module => module.default);
 const AuthPage = page(pages.auth, module => module.default);
@@ -46,8 +46,6 @@ const InfoPage = page(pages.info, module => module.default);
 const RosterPage = page(pages.roster, module => module.default);
 const MatchmakingPage = page(pages.matchmaking, module => module.default);
 const NewsPage = page(pages.news, module => module.default);
-const LeaderboardsPage = page(pages.leaderboards, module => module.default);
-const ReportPage = page(pages.report, module => module.default);
 const GraphicPage = page(pages.graphic, module => module.default);
 
 const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
@@ -275,7 +273,8 @@ export default function App() {
           <Route path="/rankings" element={<RankingsPage />} />
           <Route element={<MoreLayout />}>
             <Route path="/stats" element={<StatsPage />} />
-            <Route path="/labs" element={<LabsPage />} />
+            <Route path="/combined-records" element={<CombinedRecordsPage />} />
+            <Route path="/labs" element={<Navigate to="/combined-records" replace />} />
             <Route path="/roster" element={<RosterPage />} />
             <Route path="/favorites" element={null} />
             <Route path="/officials" element={<OfficialsPage />} />
@@ -285,13 +284,14 @@ export default function App() {
             <Route path="/venues/:slug" element={<VenuePage />} />
             <Route path="/matchmaking" element={<MatchmakingPage />} />
             <Route path="/news" element={<NewsPage />} />
-            <Route path="/leaderboards" element={<LeaderboardsPage />} />
-            <Route path="/report" element={<ReportPage />} />
             <Route path="/graphic" element={<GraphicPage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="/admin/bugs" element={<AdminPage />} />
           </Route>
           <Route path="/profiles/:handle" element={<ProfilePage />} />
+          {/* Both moved into the profile. */}
+          <Route path="/leaderboards" element={<Navigate to="/profiles/me?tab=leaderboards" replace />} />
+          <Route path="/report" element={<Navigate to="/profiles/me" replace />} />
           <Route path="/info" element={<InfoPage />} />
           <Route path="/sign-in/*" element={<AuthPage mode="sign-in" />} />
           <Route path="/sign-up/*" element={<AuthPage mode="sign-up" />} />

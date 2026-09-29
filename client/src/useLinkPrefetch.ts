@@ -74,7 +74,7 @@ export function useLinkPrefetch(ranking: RankingSource) {
     const idle = (callback: () => void) => typeof window.requestIdleCallback === "function"
       ? window.requestIdleCallback(callback, { timeout: 5000 }) : setTimeout(callback, 300);
     // The header's three sections first, then the pages their links open.
-    const order = ["events", "rankings", "stats", "fighter", "profile", "directories", "judge", "referee", "venue", "labs", "info"] as const;
+    const order = ["events", "rankings", "stats", "fighter", "profile", "directories", "judge", "referee", "venue", "combinedRecords", "info"] as const;
     const loaders = order.map(name => pages[name]);
     let stopped = false;
     // One at a time, each when the page is idle, after the first page settles;

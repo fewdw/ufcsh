@@ -13,7 +13,7 @@ client (`client/`) renders every page.
 | Link-preview images (`/og/*.jpg`) | `og-images.ts` (drawing); data lookup in `api.ts` (`shareCardData`) |
 | Fighter identity, records, photo URLs | `fighter-identity.ts` |
 | In-memory analytics index | `fight-index.ts` (every completed bout, state entering it) |
-| Leaderboards / Labs | `stats.ts` (fighter cards), `stats-fights.ts` (Fights card: bouts, judges, referees), `labs.ts`, `labs-insights.ts`, `labs-explore.ts` |
+| Leaderboards / Combined records | `stats.ts` (fighter cards), `stats-fights.ts` (Fights card: bouts, judges, referees), `labs.ts` (`/api/labs`, the combined records study) |
 | Matchmaking (title fights, ranked pairings, next opponents after recent cards) | `matchmaking.ts` |
 | News (outlets, relevance, fighter/event tags, story grouping, top stories, `?fighter=` for one fighter) | `news.ts`; feeds read in `scrape/news.ts` (`NEWS_FEEDS`) |
 | Profile records and full stat rankings | `records.ts` (`fighterRecords`, `fighterBoard`, `milestonesWithinReach`) |
@@ -34,7 +34,7 @@ copy of the local archive (`DATA_DIR`).
 | Area | Files |
 | --- | --- |
 | Shell, routes, header | `App.tsx`, `main.tsx` |
-| More menu and sidebar (Stats, Labs, News, Roster, Matchmaking, Officials, Venues, Leaderboards, Favorites, Report; Graphic and Admin for admins) | `components/MoreNav.tsx`; pages `LeaderboardsPage.tsx`, `ReportPage.tsx`, `GraphicPage.tsx` |
+| More menu and sidebar (Stats, Combined records, Matchmaking, Roster, Officials, Venues, News, Favorites; Graphic and Admin for admins) | `components/MoreNav.tsx`; page `GraphicPage.tsx` |
 | Matchmaking page (Top 15, recent cards, card builder) | `pages/MatchmakingPage.tsx` |
 | News page (top stories, latest by day, outlet toggles); a fighter's News tab | `pages/NewsPage.tsx`, `components/NewsRow.tsx`; `FighterNews` in `pages/FighterPage.tsx` |
 | Data fetching and polling | `api.ts` (types + `useApi`), `requestCache.ts`, `polling.ts`; early data in `index.html`, link prefetch in `useLinkPrefetch.ts` + `pageRequests.ts`, page chunks in `pages.ts`, answers kept across reloads in `snapshots.ts` |
@@ -53,4 +53,4 @@ copy of the local archive (`DATA_DIR`).
 
 `production.md` (hosting, backups, health), `launch.md` (new host),
 `dev-environment.md`, `performance.md`, `scoring.md`, `discussions.md`,
-`predictions.md`, `labs-categories.md`, `data-repairs/` (dated repair records).
+`predictions.md`, `data-repairs/` (dated repair records).

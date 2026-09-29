@@ -19,7 +19,7 @@ export const pages = {
   fighter: loader(() => import("./pages/FighterPage")),
   rankings: loader(() => import("./pages/RankingsPage")),
   stats: loader(() => import("./pages/StatsPage")),
-  labs: loader(() => import("./pages/LabsPage")),
+  combinedRecords: loader(() => import("./pages/CombinedRecordsPage")),
   admin: loader(() => import("./pages/AdminPage")),
   profile: loader(() => import("./pages/ProfilePage")),
   auth: loader(() => import("./pages/AuthPage")),
@@ -31,8 +31,6 @@ export const pages = {
   roster: loader(() => import("./pages/RosterPage")),
   matchmaking: loader(() => import("./pages/MatchmakingPage")),
   news: loader(() => import("./pages/NewsPage")),
-  leaderboards: loader(() => import("./pages/LeaderboardsPage")),
-  report: loader(() => import("./pages/ReportPage")),
   graphic: loader(() => import("./pages/GraphicPage")),
 };
 
@@ -42,7 +40,7 @@ export function pageFor(pathname: string): PageLoader | null {
   if (pathname.startsWith("/fighters/")) return pages.fighter;
   if (pathname === "/rankings") return pages.rankings;
   if (pathname === "/stats") return pages.stats;
-  if (pathname === "/labs") return pages.labs;
+  if (pathname === "/combined-records") return pages.combinedRecords;
   if (pathname.startsWith("/profiles/")) return pages.profile;
   if (pathname.startsWith("/judges/")) return pages.judge;
   if (pathname.startsWith("/referees/")) return pages.referee;
@@ -52,8 +50,6 @@ export function pageFor(pathname: string): PageLoader | null {
   if (pathname === "/roster") return pages.roster;
   if (pathname === "/matchmaking") return pages.matchmaking;
   if (pathname === "/news") return pages.news;
-  if (pathname === "/leaderboards") return pages.leaderboards;
-  if (pathname === "/report") return pages.report;
   if (pathname === "/graphic") return pages.graphic;
   if (pathname === "/admin" || pathname.startsWith("/admin/")) return pages.admin;
   if (pathname.startsWith("/sign-in") || pathname.startsWith("/sign-up")) return pages.auth;
