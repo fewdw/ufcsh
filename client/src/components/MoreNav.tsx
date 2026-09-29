@@ -8,8 +8,9 @@ import { onRosterSeen, seedRosterSeen, unseenMoves } from "../rosterSeen";
 type Section = { href: string; label: string; paths: string[]; accounts?: true };
 type Group = { label: string; sections: Section[]; admin?: true };
 
-/** The pages behind More, in groups: the numbers, the news and the people
- *  and places behind the cards, the fans, and the admin tools. `accounts` pages need sign-in to exist on this deployment; the
+/** The pages behind More, in groups of three: the numbers, the people and
+ *  places behind the cards, following along, then help and the admin
+ *  tools. `accounts` pages need sign-in to exist on this deployment; the
  *  admin group needs it too, and is listed only for admins. */
 const GROUPS: Group[] = [
   { label: "Data", sections: [
@@ -17,16 +18,18 @@ const GROUPS: Group[] = [
     { href: "/labs", label: "Labs", paths: ["/labs"] },
     { href: "/matchmaking", label: "Matchmaking", paths: ["/matchmaking"] },
   ] },
-  { label: "News and directory", sections: [
-    { href: "/news", label: "News", paths: ["/news"] },
+  { label: "Directory", sections: [
     { href: "/roster", label: "Roster", paths: ["/roster"] },
     { href: "/officials", label: "Officials", paths: ["/officials", "/judges", "/referees"] },
     { href: "/venues", label: "Venues", paths: ["/venues"] },
   ] },
   { label: "Community", sections: [
+    { href: "/news", label: "News", paths: ["/news"] },
     { href: "/leaderboards", label: "Leaderboards", paths: ["/leaderboards"], accounts: true },
     { href: "/favorites", label: "Favorites", paths: ["/favorites"] },
-    { href: "/report", label: "Report", paths: ["/report"], accounts: true },
+  ] },
+  { label: "Help", sections: [
+    { href: "/report", label: "Report an issue", paths: ["/report"], accounts: true },
   ] },
   { label: "Admin", admin: true, sections: [
     { href: "/graphic", label: "Graphic", paths: ["/graphic"] },
