@@ -661,9 +661,11 @@ export default function CombinedRecordsPage() {
 
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
-      <main className="mx-auto max-w-[100rem] p-3 pb-8">
+      {/* The study is the whole page: from `lg` it fills the window, and its
+          bout list and filters scroll inside it. */}
+      <main className="mx-auto flex max-w-[100rem] flex-col p-3 pb-8 lg:min-h-full lg:pb-3">
         {error ? <div className="mb-3"><RequestNotice onRetry={retry}>Couldn’t update this study. The last successful results are shown.</RequestNotice></div> : null}
-        <section className={`${PANEL} overflow-hidden`} aria-label="Combined record">
+        <section className={`${PANEL} flex flex-col overflow-hidden lg:flex-1`} aria-label="Combined record">
           <div className="flex items-center gap-3 px-4 py-3 sm:px-5">
             <span className="flex min-w-0 items-center gap-1.5">
               <span className="text-sm font-semibold text-zinc-900">Combined record</span>
@@ -672,7 +674,7 @@ export default function CombinedRecordsPage() {
             <span className={`ml-auto text-[10px] font-medium text-zinc-500 ${rebuilding || error ? "visible" : "invisible"}`} role="status" aria-hidden={!rebuilding && !error}>{error ? "Previous results" : "Updating…"}</span>
           </div>
 
-          <div className={`grid min-h-0 grid-cols-1 border-t border-zinc-200 transition-opacity lg:min-h-[clamp(26rem,56vh,40rem)] lg:grid-cols-3 ${rebuilding ? "opacity-60" : ""}`} aria-busy={rebuilding}>
+          <div className={`grid min-h-0 grid-cols-1 border-t border-zinc-200 transition-opacity lg:min-h-[26rem] lg:flex-1 lg:grid-cols-3 ${rebuilding ? "opacity-60" : ""}`} aria-busy={rebuilding}>
             <div className="flex flex-col border-b border-zinc-200 px-5 py-5 lg:border-b-0 lg:border-r">
               <div className="flex justify-center">
                 <Dial s={s} />
