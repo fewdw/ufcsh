@@ -6,7 +6,7 @@ import { type FightIndex, type IndexedFight, type IndexedSide, fightIndex, winPr
 
 export type Observation = { fight: IndexedFight; side: IndexedSide; opponent: IndexedSide };
 
-export type LabsFilters = {
+type LabsFilters = {
   from: number | null;
   to: number | null;
   divisions: string[];
@@ -59,12 +59,12 @@ export type LabsFilters = {
   method: "any" | "ko" | "sub" | "finish" | "decision";
 };
 
-export const GROUP_DIMENSIONS = [
+const GROUP_DIMENSIONS = [
   "none", "year", "era", "age", "oppAge", "ageGap", "winStreak", "lossStreak", "layoff", "prob", "line",
   "experience", "division", "rounds", "stance", "stanceMatchup", "prev", "reachGap", "heightGap", "title", "mainEvent", "gender", "month",
   "country", "countryMatchup",
 ] as const;
-export type GroupDimension = typeof GROUP_DIMENSIONS[number];
+type GroupDimension = typeof GROUP_DIMENSIONS[number];
 
 function int(value: string | null): number | null {
   if (value == null || value === "") return null;
@@ -76,7 +76,7 @@ function choice<T extends string>(value: string | null, allowed: readonly T[], f
   return value && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
 }
 
-export function parseFilters(params: URLSearchParams): LabsFilters {
+function parseFilters(params: URLSearchParams): LabsFilters {
   const list = (key: string) => (params.get(key) ?? "").split(",").map((v) => v.trim()).filter(Boolean);
   return {
     from: int(params.get("from")),
@@ -378,7 +378,7 @@ const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 1000) / 10 :
 const r1 = (v: number) => Math.round(v * 10) / 10;
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
-export type TallySummary = ReturnType<typeof summarize>;
+type TallySummary = ReturnType<typeof summarize>;
 
 function summarize(t: Tally) {
   const decided = t.wins + t.losses + t.draws;
@@ -608,7 +608,7 @@ const DIMENSION_LABELS: Record<GroupDimension, string> = {
  * only the dashboard honours them — the bout list keeps showing a struck row
  * so it can be put back.
  */
-export function parseExclusions(params: URLSearchParams): Set<string> {
+function parseExclusions(params: URLSearchParams): Set<string> {
   return new Set(
     (params.get("exclude") ?? "")
       .split(",")
@@ -754,8 +754,8 @@ export function getLabs(params: URLSearchParams): unknown {
 // paging or switching outcome tabs never re-runs the whole aggregation, and
 // so the summary above the list never flickers while the list turns over.
 
-export const BOUT_SORTS = ["recent", "oldest", "win", "loss", "draw", "upset", "chalk", "quick", "long"] as const;
-export type BoutSort = typeof BOUT_SORTS[number];
+const BOUT_SORTS = ["recent", "oldest", "win", "loss", "draw", "upset", "chalk", "quick", "long"] as const;
+type BoutSort = typeof BOUT_SORTS[number];
 
 const OUTCOME_ORDER = ["win", "loss", "draw", "nc"] as const;
 
@@ -780,7 +780,7 @@ function byValue(get: (o: Observation) => number | null, direction: 1 | -1) {
 const newestFirst = (a: Observation, b: Observation) => b.fight.date.localeCompare(a.fight.date) || a.fight.ord - b.fight.ord;
 const oldestFirst = (a: Observation, b: Observation) => a.fight.date.localeCompare(b.fight.date) || a.fight.ord - b.fight.ord;
 
-export function boutComparator(sort: BoutSort): (a: Observation, b: Observation) => number {
+function boutComparator(sort: BoutSort): (a: Observation, b: Observation) => number {
   switch (sort) {
     case "oldest": return oldestFirst;
     case "win": case "loss": case "draw": {
@@ -795,7 +795,7 @@ export function boutComparator(sort: BoutSort): (a: Observation, b: Observation)
   }
 }
 
-export function boutRow({ fight, side, opponent }: Observation, index: FightIndex) {
+function boutRow({ fight, side, opponent }: Observation, index: FightIndex) {
   return {
     fight_id: fight.id,
     event_id: fight.eventId,

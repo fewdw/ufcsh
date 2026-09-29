@@ -15,7 +15,7 @@ type Group = { label: string; sections: Section[]; admin?: true };
 const GROUPS: Group[] = [
   { label: "Data", sections: [
     { href: "/stats", label: "Stats", paths: ["/stats"] },
-    { href: "/labs", label: "Labs", paths: ["/labs"] },
+    { href: "/combined-records", label: "Combined records", paths: ["/combined-records"] },
     { href: "/matchmaking", label: "Matchmaking", paths: ["/matchmaking"] },
   ] },
   { label: "Directory", sections: [

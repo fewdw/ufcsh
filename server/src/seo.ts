@@ -46,7 +46,7 @@ const DEFAULT: Omit<PageSeo, "canonical"> = {
 const STATIC_PAGES: Record<string, { title: string; description: string }> = {
   "/rankings": { title: "UFC Rankings by Division | ufc.sh", description: "Current UFC rankings by division, including champions, activity and each fighter's next booking." },
   "/stats": { title: "UFC Statistics Leaderboards | ufc.sh", description: "All-time UFC leaderboards for records, finishes, output, opposition and the betting market, plus the most disputed decisions, biggest upsets, judges and referees." },
-  "/labs": { title: "UFC Labs — Fighter-Bout Studies | ufc.sh", description: "Build a population of UFC fighter-bouts by age, streak, layoff, odds and more, and read its combined record." },
+  "/combined-records": { title: "UFC Combined Records — Fighter-Bout Studies | ufc.sh", description: "Build a population of UFC fighter-bouts by age, streak, layoff, odds and more, and read its combined record." },
   "/officials": { title: "UFC Judges & Referees | ufc.sh", description: "Every UFC judge and referee on record: scorecards, agreement, dissents, stoppages and the bouts behind each number." },
   "/venues": { title: "UFC Venues | ufc.sh", description: "Every arena that has hosted a UFC event, with the cards held there, attendance and upcoming events." },
   "/matchmaking": { title: "UFC Matchmaking: Fights to Make Next | ufc.sh", description: "Fights to make next in every UFC division: title fights, ranked matchups and next opponents for everyone on the last card, each with its reason." },
