@@ -95,12 +95,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-09-29">September 29, 2026</time></p>
             <ul>
-              <li>Rebuilt matchmaking: smarter title shots, fairer pairings, and a Cut call.</li>
-              <li>Top 15 and Last card agree on every fighter’s next fight.</li>
-              <li>Phones pick a division or card from a dropdown.</li>
-              <li>Back returns you to where you were on Matchmaking.</li>
-              <li>Create a card: tap a fighter to remove them.</li>
-              <li>Tidier More menu, and Roster without the extra notes.</li>
+              <li>Rankings hover shows a compact last five: result, method, opponent, weight class.</li>
+              <li>Repeat results against a highlighted fighter read as one band.</li>
+              <li>Event results tally matches the start times layout.</li>
             </ul>
           </Section>
         </div>
