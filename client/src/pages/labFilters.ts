@@ -66,9 +66,14 @@ export const emptyFilters = (): LabFilters => ({ ...EMPTY_FILTERS, division: [] 
 
 export type SelectOption = { value: string; label: string };
 
+/** A common band for a range, so most studies take one pick instead of two
+ * typed numbers. Bounds are inclusive, like the filters themselves. */
+export type RangePreset = { label: string; min?: string; max?: string };
+
 export type FilterField =
   | { kind: "select"; key: keyof LabFilters; label: string; options: SelectOption[]; hint?: string }
-  | { kind: "range"; minKey: keyof LabFilters; maxKey: keyof LabFilters; label: string; unit?: string; hint?: string; placeholderMin?: string; placeholderMax?: string }
+  /** Picked from `presets`; "Custom" opens the exact min and max. */
+  | { kind: "range"; minKey: keyof LabFilters; maxKey: keyof LabFilters; label: string; presets: RangePreset[]; unit?: string; hint?: string; placeholderMin?: string; placeholderMax?: string }
   | { kind: "divisions"; key: "division"; label: string }
   /** Options are the nationalities the archive holds, known once the study has been read. */
   | { kind: "country"; key: "country" | "oppCountry"; label: string; hint?: string };
@@ -80,6 +85,17 @@ const ANY = { value: "any", label: "Any" };
 
 const BELT_OPTIONS: SelectOption[] = [ANY, { value: "champion", label: "Reigning champion" }, { value: "formerChampion", label: "Former champion" }, { value: "everChampion", label: "Has held a belt" }, { value: "neverChampion", label: "Never held a belt" }];
 const STANCE_OPTIONS: SelectOption[] = [ANY, { value: "Orthodox", label: "Orthodox" }, { value: "Southpaw", label: "Southpaw" }, { value: "Switch", label: "Switch" }];
+const AGE: RangePreset[] = [{ label: "Under 25", max: "24" }, { label: "25–29", min: "25", max: "29" }, { label: "30–34", min: "30", max: "34" }, { label: "35 or older", min: "35" }];
+const EXPERIENCE: RangePreset[] = [{ label: "None (UFC debut)", max: "0" }, { label: "1–3", min: "1", max: "3" }, { label: "4–9", min: "4", max: "9" }, { label: "10 or more", min: "10" }];
+const PROB: RangePreset[] = [{ label: "30% or less", max: "30" }, { label: "30–50%", min: "30", max: "50" }, { label: "50–70%", min: "50", max: "70" }, { label: "70% or more", min: "70" }];
+const LINE: RangePreset[] = [{ label: "+300 or longer", min: "300" }, { label: "+100 to +299", min: "100", max: "299" }, { label: "−100 to −299", min: "-299", max: "-100" }, { label: "−300 or shorter", max: "-300" }];
+const edge = (shorter: string, longer: string): RangePreset[] => [
+  { label: `${shorter} by 3+ in`, max: "-3" },
+  { label: `${shorter} by 1+ in`, max: "-1" },
+  { label: "Within 1 in", min: "-1", max: "1" },
+  { label: `${longer} by 1+ in`, min: "1" },
+  { label: `${longer} by 3+ in`, min: "3" },
+];
 const NATIONALITY_HINT = "From the verified professional history. A fighter whose nationality was never stated is left out once this is set.";
 
 /** The fighter whose record is read, and the bout they walked into. The
@@ -92,7 +108,7 @@ export const FILTER_TABS: FilterTab[] = [
       {
         title: "Bout",
         fields: [
-          { kind: "range", minKey: "from", maxKey: "to", label: "Years" },
+          { kind: "range", minKey: "from", maxKey: "to", presets: [{ label: "Since 2020", min: "2020" }, { label: "Since 2015", min: "2015" }, { label: "Since 2010", min: "2010" }, { label: "Before 2010", max: "2009" }], label: "Years" },
           { kind: "select", key: "gender", label: "Roster", options: [{ value: "all", label: "Everyone" }, { value: "men", label: "Men" }, { value: "women", label: "Women" }] },
           { kind: "divisions", key: "division", label: "Divisions" },
           { kind: "select", key: "title", label: "Championship", options: [ANY, { value: "only", label: "Title bouts only" }, { value: "none", label: "No title bouts" }] },
@@ -105,24 +121,24 @@ export const FILTER_TABS: FilterTab[] = [
         title: "Betting",
         fields: [
           { kind: "select", key: "odds", label: "Market role", options: [ANY, { value: "priced", label: "Any priced bout" }, { value: "underdog", label: "Underdog" }, { value: "favorite", label: "Favorite" }, { value: "pickem", label: "Pick'em (within 3%)" }] },
-          { kind: "range", minKey: "probMin", maxKey: "probMax", label: "Implied win chance", unit: "%" },
-          { kind: "range", minKey: "lineMin", maxKey: "lineMax", label: "Closing line", placeholderMin: "−500", placeholderMax: "+500", hint: "American odds. Type a minus sign for a favorite. A bout without a closing price drops out." },
+          { kind: "range", minKey: "probMin", maxKey: "probMax", presets: PROB, label: "Implied win chance", unit: "%" },
+          { kind: "range", minKey: "lineMin", maxKey: "lineMax", presets: LINE, label: "Closing line", placeholderMin: "−500", placeholderMax: "+500", hint: "American odds. Type a minus sign for a favorite. A bout without a closing price drops out." },
         ],
       },
       {
         title: "Form",
         fields: [
           { kind: "select", key: "prev", label: "Previous result", options: [ANY, { value: "debut", label: "UFC debut" }, { value: "win", label: "Win" }, { value: "finishWin", label: "Finish win" }, { value: "loss", label: "Loss" }, { value: "koLoss", label: "KO/TKO loss" }, { value: "subLoss", label: "Submission loss" }, { value: "finishLoss", label: "Any finish loss" }, { value: "decisionLoss", label: "Decision loss" }, { value: "drawOrNc", label: "Draw or NC" }] },
-          { kind: "range", minKey: "layoffMin", maxKey: "layoffMax", label: "Days since last bout", hint: "Debuts have no previous bout and are excluded once this is set." },
-          { kind: "range", minKey: "winStreakMin", maxKey: "winStreakMax", label: "UFC win streak" },
-          { kind: "range", minKey: "lossStreakMin", maxKey: "lossStreakMax", label: "UFC losing streak" },
+          { kind: "range", minKey: "layoffMin", maxKey: "layoffMax", presets: [{ label: "60 days or less", max: "60" }, { label: "61–180 days", min: "61", max: "180" }, { label: "181–364 days", min: "181", max: "364" }, { label: "A year or more", min: "365" }], label: "Days since last bout", hint: "Debuts have no previous bout and are excluded once this is set." },
+          { kind: "range", minKey: "winStreakMin", maxKey: "winStreakMax", presets: [{ label: "None", max: "0" }, { label: "1 or more", min: "1" }, { label: "2 or more", min: "2" }, { label: "3 or more", min: "3" }, { label: "5 or more", min: "5" }], label: "UFC win streak" },
+          { kind: "range", minKey: "lossStreakMin", maxKey: "lossStreakMax", presets: [{ label: "None", max: "0" }, { label: "1 or more", min: "1" }, { label: "2 or more", min: "2" }, { label: "3 or more", min: "3" }], label: "UFC losing streak" },
         ],
       },
       {
         title: "Profile",
         fields: [
-          { kind: "range", minKey: "ageMin", maxKey: "ageMax", label: "Age", hint: "On fight night. Only bouts with a known birth date qualify." },
-          { kind: "range", minKey: "expMin", maxKey: "expMax", label: "UFC bouts already had" },
+          { kind: "range", minKey: "ageMin", maxKey: "ageMax", presets: AGE, label: "Age", hint: "On fight night. Only bouts with a known birth date qualify." },
+          { kind: "range", minKey: "expMin", maxKey: "expMax", presets: EXPERIENCE, label: "UFC bouts already had" },
           { kind: "select", key: "status", label: "Belt status", hint: "Reconstructed from results across all divisions; vacancies are not dated.", options: BELT_OPTIONS },
           { kind: "select", key: "stance", label: "Stance", hint: "Listed stance. Historical changes are not tracked.", options: STANCE_OPTIONS },
           { kind: "country", key: "country", label: "Nationality", hint: NATIONALITY_HINT },
@@ -131,9 +147,9 @@ export const FILTER_TABS: FilterTab[] = [
       {
         title: "Edge over opponent",
         fields: [
-          { kind: "range", minKey: "ageGapMin", maxKey: "ageGapMax", label: "Age gap", unit: "yrs", placeholderMin: "−15", placeholderMax: "+15", hint: "Fighter's age minus the opponent's. Negative means the fighter was younger." },
-          { kind: "range", minKey: "reachGapMin", maxKey: "reachGapMax", label: "Reach advantage", unit: "in", placeholderMin: "−8", placeholderMax: "+8", hint: "Fighter's reach minus the opponent's. Negative means the shorter reach." },
-          { kind: "range", minKey: "heightGapMin", maxKey: "heightGapMax", label: "Height advantage", unit: "in", placeholderMin: "−8", placeholderMax: "+8", hint: "Fighter's height minus the opponent's. Negative means shorter." },
+          { kind: "range", minKey: "ageGapMin", maxKey: "ageGapMax", presets: [{ label: "Younger by 5+ yrs", max: "-5" }, { label: "Younger by 1+ yrs", max: "-1" }, { label: "Within 1 yr", min: "-1", max: "1" }, { label: "Older by 1+ yrs", min: "1" }, { label: "Older by 5+ yrs", min: "5" }], label: "Age gap", unit: "yrs", placeholderMin: "−15", placeholderMax: "+15", hint: "Fighter's age minus the opponent's. Negative means the fighter was younger." },
+          { kind: "range", minKey: "reachGapMin", maxKey: "reachGapMax", presets: edge("Shorter", "Longer"), label: "Reach advantage", unit: "in", placeholderMin: "−8", placeholderMax: "+8", hint: "Fighter's reach minus the opponent's. Negative means the shorter reach." },
+          { kind: "range", minKey: "heightGapMin", maxKey: "heightGapMax", presets: edge("Shorter", "Taller"), label: "Height advantage", unit: "in", placeholderMin: "−8", placeholderMax: "+8", hint: "Fighter's height minus the opponent's. Negative means shorter." },
         ],
       },
     ],
@@ -145,8 +161,8 @@ export const FILTER_TABS: FilterTab[] = [
       {
         title: "Profile",
         fields: [
-          { kind: "range", minKey: "oppAgeMin", maxKey: "oppAgeMax", label: "Age", hint: "On fight night. Only bouts with a known birth date qualify." },
-          { kind: "range", minKey: "oppExpMin", maxKey: "oppExpMax", label: "UFC bouts already had" },
+          { kind: "range", minKey: "oppAgeMin", maxKey: "oppAgeMax", presets: AGE, label: "Age", hint: "On fight night. Only bouts with a known birth date qualify." },
+          { kind: "range", minKey: "oppExpMin", maxKey: "oppExpMax", presets: EXPERIENCE, label: "UFC bouts already had" },
           { kind: "select", key: "oppStatus", label: "Belt status", hint: "Reconstructed from results across all divisions; vacancies are not dated.", options: BELT_OPTIONS },
           { kind: "select", key: "oppStance", label: "Stance", hint: "Listed stance. Historical changes are not tracked.", options: STANCE_OPTIONS },
           { kind: "country", key: "oppCountry", label: "Nationality", hint: NATIONALITY_HINT },
@@ -155,8 +171,8 @@ export const FILTER_TABS: FilterTab[] = [
       {
         title: "Betting",
         fields: [
-          { kind: "range", minKey: "oppProbMin", maxKey: "oppProbMax", label: "Implied win chance", unit: "%" },
-          { kind: "range", minKey: "oppLineMin", maxKey: "oppLineMax", label: "Closing line", placeholderMin: "−500", placeholderMax: "+500", hint: "American odds. Type a minus sign for a favorite. A bout without a closing price drops out." },
+          { kind: "range", minKey: "oppProbMin", maxKey: "oppProbMax", presets: PROB, label: "Implied win chance", unit: "%" },
+          { kind: "range", minKey: "oppLineMin", maxKey: "oppLineMax", presets: LINE, label: "Closing line", placeholderMin: "−500", placeholderMax: "+500", hint: "American odds. Type a minus sign for a favorite. A bout without a closing price drops out." },
         ],
       },
     ],

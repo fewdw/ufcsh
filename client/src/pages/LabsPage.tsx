@@ -102,7 +102,7 @@ const QUICK_FILTERS: QuickFilter[] = [
   { id: "ko-return", label: "After a KO loss", patch: { prev: "koLoss" }, keys: ["prev"] },
   { id: "debut", label: "UFC debuts", patch: { prev: "debut" }, keys: ["prev"] },
   { id: "veteran", label: "Age 35+", patch: { ageMin: "35" }, keys: ["ageMin"] },
-  { id: "young", label: "Under 26", patch: { ageMax: "25" }, keys: ["ageMax"] },
+  { id: "young", label: "Under 25", patch: { ageMax: "24" }, keys: ["ageMax"] },
   { id: "champions", label: "Reigning champs", patch: { status: "champion" }, keys: ["status"] },
   { id: "women", label: "Women's bouts", patch: { gender: "women" }, keys: ["gender"] },
 ];
@@ -489,13 +489,57 @@ function FieldLabel({ field }: { field: FilterField }) {
   );
 }
 
+/** One pick from common bands. "Custom" opens the exact min and max, and
+ * stays open for any values that are not one of the bands. */
+function RangeControl({ field, filters, years, set }: {
+  field: Extract<FilterField, { kind: "range" }>;
+  filters: LabFilters;
+  years: { first: number; last: number };
+  set: (patch: Partial<LabFilters>) => void;
+}) {
+  const min = filters[field.minKey] as string;
+  const max = filters[field.maxKey] as string;
+  const preset = field.presets.findIndex((entry) => (entry.min ?? "") === min && (entry.max ?? "") === max);
+  const [customPicked, setCustomPicked] = useState(false);
+  const custom = customPicked || (preset < 0 && Boolean(min || max));
+  const pick = (value: string) => {
+    setCustomPicked(value === "custom");
+    if (value === "custom") return;
+    const chosen = field.presets[Number(value)];
+    set({ [field.minKey]: chosen?.min ?? "", [field.maxKey]: chosen?.max ?? "" });
+  };
+  return (
+    <div className={`flex min-w-0 flex-col gap-1 ${custom ? "col-span-2" : ""}`}>
+      <FieldLabel field={field} />
+      <div className={custom ? "grid grid-cols-2 gap-2" : ""}>
+        <select value={custom ? "custom" : preset < 0 ? "" : String(preset)} onChange={(event) => pick(event.target.value)} className={SHEET_SELECT} aria-label={field.label}>
+          <option value="">Any</option>
+          {field.presets.map((entry, index) => <option key={entry.label} value={index}>{entry.label}</option>)}
+          <option value="custom">Custom…</option>
+        </select>
+        {custom ? (
+          <RangePair
+            min={min}
+            max={max}
+            onMin={(value) => set({ [field.minKey]: value })}
+            onMax={(value) => set({ [field.maxKey]: value })}
+            placeholderMin={field.placeholderMin ?? (field.minKey === "from" ? String(years.first) : "Min")}
+            placeholderMax={field.placeholderMax ?? (field.maxKey === "to" ? String(years.last) : "Max")}
+            label={field.label}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function FilterControl({ field, filters, divisions, countries, years, set }: {
   field: FilterField;
   filters: LabFilters;
   divisions: string[];
   countries: LabsResponse["countries"];
   years: { first: number; last: number };
-  set: (key: keyof LabFilters, value: string | string[]) => void;
+  set: (patch: Partial<LabFilters>) => void;
 }) {
   if (field.kind === "divisions") {
     return (
@@ -509,7 +553,7 @@ function FilterControl({ field, filters, divisions, countries, years, set }: {
                 key={division}
                 type="button"
                 aria-pressed={selected}
-                onClick={() => set("division", selected ? filters.division.filter((entry) => entry !== division) : [...filters.division, division])}
+                onClick={() => set({ division: selected ? filters.division.filter((entry) => entry !== division) : [...filters.division, division] })}
                 className={pillClass(selected)}
               >
                 {division.replace("Women's ", "W ")}
@@ -520,26 +564,11 @@ function FilterControl({ field, filters, divisions, countries, years, set }: {
       </div>
     );
   }
-  if (field.kind === "range") {
-    return (
-      <div className="flex min-w-0 flex-col gap-1">
-        <FieldLabel field={field} />
-        <RangePair
-          min={filters[field.minKey] as string}
-          max={filters[field.maxKey] as string}
-          onMin={(value) => set(field.minKey, value)}
-          onMax={(value) => set(field.maxKey, value)}
-          placeholderMin={field.placeholderMin ?? (field.minKey === "from" ? String(years.first) : "Min")}
-          placeholderMax={field.placeholderMax ?? (field.maxKey === "to" ? String(years.last) : "Max")}
-          label={field.label}
-        />
-      </div>
-    );
-  }
+  if (field.kind === "range") return <RangeControl field={field} filters={filters} years={years} set={set} />;
   return (
     <label className="flex min-w-0 flex-col gap-1">
       <FieldLabel field={field} />
-      <select value={filters[field.key] as string} onChange={(event) => set(field.key, event.target.value)} className={SHEET_SELECT}>
+      <select value={filters[field.key] as string} onChange={(event) => set({ [field.key]: event.target.value })} className={SHEET_SELECT}>
         {field.kind === "country" ? (
           <>
             <option value="">Any</option>
@@ -559,7 +588,7 @@ function FilterTabPanel({ tab, filters, result, set }: {
   tab: FilterTab;
   filters: LabFilters;
   result: LabsResponse;
-  set: (key: keyof LabFilters, value: string | string[]) => void;
+  set: (patch: Partial<LabFilters>) => void;
 }) {
   return (
     <>
@@ -616,9 +645,11 @@ export default function LabsPage() {
 
   // A new population starts with nothing struck off.
   const patch = (next: Partial<LabState>) => setState((current) => ({ ...current, ...(next.filters ? { struck: {} } : {}), ...next }));
-  const reset = () => patch({ filters: emptyFilters(), struck: {} });
+  // Remounting the tab on reset also closes any empty Custom range.
+  const [resets, setResets] = useState(0);
+  const reset = () => { patch({ filters: emptyFilters(), struck: {} }); setResets((count) => count + 1); };
   const clearFilters = (keys: (keyof LabFilters)[]) => patch({ filters: clearKeys(state.filters, keys) });
-  const set = (key: keyof LabFilters, value: string | string[]) => patch({ filters: { ...state.filters, [key]: value } as LabFilters });
+  const set = (next: Partial<LabFilters>) => patch({ filters: { ...state.filters, ...next } });
   const applyQuick = (quick: QuickFilter) => {
     const selected = quick.keys.every((key) => sameValue(state.filters[key], quick.patch[key]));
     patch({ filters: selected ? clearKeys(state.filters, quick.keys) : { ...state.filters, ...quick.patch } });
@@ -751,7 +782,7 @@ export default function LabsPage() {
                       </div>
                     ) : null}
 
-                    <FilterTabPanel tab={tab} filters={state.filters} result={result} set={set} />
+                    <FilterTabPanel key={`${tab.id}:${resets}`} tab={tab} filters={state.filters} result={result} set={set} />
                   </div>
                 </div>
               </div>
