@@ -11,8 +11,7 @@ import { log, todayIso } from "./util.ts";
  * fighter; the recent cards read their ranked fighters' next fights from it,
  * so a fighter never has two different "next" opponents on the page. Unranked
  * fighters from those cards are then paired among themselves and the
- * division's active roster, or cut when their UFC run says the promotion would
- * let them go.
+ * division's active roster, or cut after a long UFC losing streak.
  *
  * Pairings minimize a cost (`pairCost`) over the whole division at once, so
  * one good fight never forces two bad ones. The rules are pure functions over
@@ -65,6 +64,8 @@ const INACTIVE_DAYS = 2 * 365;
 const LAYOFF_DAYS = 400;
 /** Active UFC opponents, including fighters between camps or returning from a layoff. */
 const POOL_DAYS = 730;
+/** Straight UFC losses before an unranked fighter is cut. */
+const CUT_SKID = 5;
 /** Standing places two fighters can be apart and still make sense. */
 const MAX_GAP = 7;
 /** Cover every eligible fighter before minimizing the cost of their matchups. */
@@ -95,18 +96,12 @@ export function unavailable(fighter: Fighter, today: string): string | null {
   return null;
 }
 
-/** Why the UFC would likely release an unranked fighter, or null: three
- *  straight UFC losses, no UFC win in two or more tries, a deep losing UFC
- *  record on a skid, or a veteran on a skid. Ranked fighters are never cut. */
+/** Why the UFC would surely release an unranked fighter, or null. Reserved
+ *  for the rare, obvious case: a long UFC losing streak. Ranked fighters are
+ *  never cut. */
 export function cutReason(fighter: Fighter): string | null {
-  if (fighter.ranks.size) return null;
   const skid = -fighter.ufcStreak;
-  const record = `${fighter.ufcWins}-${fighter.ufcLosses} in the UFC`;
-  if (skid >= 3) return `${skid} straight UFC losses`;
-  if (fighter.ufcWins === 0 && fighter.ufcLosses >= 2) return `Winless in the UFC: ${fighter.ufcWins}-${fighter.ufcLosses}`;
-  if (skid >= 2 && fighter.ufcLosses - fighter.ufcWins >= 2) return `${record}, ${skid} straight losses`;
-  if (skid >= 2 && (fighter.age ?? 0) >= 37) return `${fighter.age} and on a ${skid}-fight skid`;
-  return null;
+  return !fighter.ranks.size && skid >= CUT_SKID ? `${skid} straight UFC losses` : null;
 }
 
 /** An immediate title rematch: the champion's last fight was a title fight
