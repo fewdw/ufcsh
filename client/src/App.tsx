@@ -85,14 +85,15 @@ function MoreMenu({ pathname, active, open, setOpen }: { pathname: string; activ
         to a far link; the top padding bridges the gap below it. */}
     {open ? <div aria-hidden="true" className="absolute left-full top-0 hidden h-full w-56 [clip-path:polygon(0_0,100%_100%,0_100%)] md:block" /> : null}
     {open ? <div className="absolute inset-x-2 top-full z-50 pt-1.5 md:inset-x-auto md:left-0">
-      {/* Groups sit apart on a hairline: stacked rows on a phone, columns on a wide screen. */}
-      <div className="flex flex-col divide-y divide-zinc-100 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg md:w-80 lg:w-max lg:flex-row lg:divide-x lg:divide-y-0">
+      {/* Groups sit apart on a hairline: a row each on a phone, its pages
+          sharing the width evenly; columns on a wide screen. */}
+      <div className="flex flex-col divide-y divide-zinc-100 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg md:w-96 lg:w-max lg:flex-row lg:divide-x lg:divide-y-0">
         <MoreGroups group={(label, links) => (
-          <ul key={label} aria-label={label} className="grid grid-cols-2 gap-0.5 py-1 first:pt-0 last:pb-0 lg:min-w-36 lg:grid-cols-1 lg:content-start lg:px-1 lg:py-0 lg:first:pl-0 lg:last:pr-0">{links}</ul>
+          <ul key={label} aria-label={label} className="grid auto-cols-fr grid-flow-col gap-0.5 py-1 first:pt-0 last:pb-0 lg:min-w-36 lg:auto-cols-auto lg:grid-flow-row lg:content-start lg:px-1 lg:py-0 lg:first:pl-0 lg:last:pr-0">{links}</ul>
         )} item={(section, current) => (
           <li key={section.href}>
             <Link to={section.href} aria-current={current ? "page" : undefined}
-              className={`block rounded-lg px-3 py-2 text-sm transition-colors ${current ? "bg-zinc-100 font-medium text-zinc-900" : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"}`}>
+              className={`block whitespace-nowrap rounded-lg px-1 py-2 text-center text-sm transition-colors lg:px-3 lg:text-left ${current ? "bg-zinc-100 font-medium text-zinc-900" : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"}`}>
               {section.label}
             </Link>
           </li>
