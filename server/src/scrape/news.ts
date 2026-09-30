@@ -34,6 +34,8 @@ export type FeedItem = {
   url: string;
   title: string;
   summary: string;
+  /** The article, where the feed carries it whole. */
+  body?: string;
   categories: string[];
   /** Milliseconds, or null when the feed gave no readable date. */
   published: number | null;
@@ -42,6 +44,8 @@ export type FeedItem = {
 };
 
 const SUMMARY_LENGTH = 240;
+/** As much of an article as Gemini reads. */
+export const ARTICLE_CHARS = 5000;
 
 /** Plain text from a feed field that may hold HTML (escaped or not). */
 function plain(html: string): string {
@@ -81,6 +85,7 @@ export function parseFeed(xml: string): FeedItem[] {
       url,
       title: headline,
       summary: site ? "" : summarize(plain(description || content)),
+      body: plain(content).slice(0, ARTICLE_CHARS),
       site,
       categories: item.children("category").toArray().map((entry) => cleanText($(entry).attr("term") ?? $(entry).text())).filter(Boolean),
       published: Number.isFinite(date) ? date : null,

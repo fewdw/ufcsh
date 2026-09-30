@@ -10,7 +10,8 @@ import { mergedByHand, officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
 import { rosterMoveFighter, storedRosterMoves, syncRosterMoves, syncUfcSignings } from "./roster-moves.ts";
 import { matchmaking } from "./matchmaking.ts";
-import { feedStatus, syncNews } from "./news.ts";
+import { feedStatus, newsAiOff, newsToJudge, syncNews } from "./news.ts";
+import { judgeNews } from "./news-ai.ts";
 import { NEWS_FEEDS } from "./scrape/news.ts";
 import { ROSTER_ARTICLE, samePlace } from "./scrape/wikipedia.ts";
 import {
@@ -1330,6 +1331,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     duplicateFighters(),
     rosterMovesUnread(),
     newsFeedsUnread(),
+    newsUnjudged(),
   ];
   return {
     generated_at: Date.now(),
@@ -1338,7 +1340,31 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
   };
 }
 
-export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news";
+/** /news: Gemini reads each new story within ten minutes. Stories unread for
+ *  two hours mean it's failing: out of credit, a changed API, a bad answer. */
+function newsUnjudged(): BugCheck {
+  const items: BugItem[] = [];
+  const unread = process.env.GEMINI_API_KEY && !newsAiOff() ? newsToJudge().pending.filter((story) => Date.now() - story.published_at > 2 * 3_600_000) : [];
+  if (unread.length) {
+    items.push({
+      key: "gemini",
+      title: `${unread.length} ${unread.length === 1 ? "story" : "stories"} not read by Gemini`,
+      subtitle: getMeta("news_ai_error") || "Waiting for the next pass",
+      facts: [["Last read", ago(Number(getMeta("news_ai_at")) || null)], ["Tokens used", Number(getMeta("news_ai_tokens") ?? 0).toLocaleString("en-US")]],
+      links: [{ label: "AI Studio", href: "https://aistudio.google.com/usage" }],
+      actions: [{ id: "news-ai", label: "Read now", target: "all" }],
+    });
+  }
+  return check({
+    id: "news-ai",
+    group: "Fights & events",
+    label: "News not read by Gemini",
+    description: "Every ten minutes Gemini reads the new /news stories: it drops what isn't news (ads, betting codes, galleries, streams), folds a story into another outlet's report of the same news, and summarizes the article (not for ESPN, MMA Junkie and the other outlets read through Google News, whose links can't be followed from the server unless another outlet ran it too). An unread story shows as the feeds built it.",
+    grade: "minor",
+  }, items);
+}
+
+export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -1408,6 +1434,12 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
     case "news":
       await syncNews();
       return { ok: true, message: "Read every outlet again." };
+    case "news-ai":
+      if (!process.env.GEMINI_API_KEY) return { ok: false, message: "GEMINI_API_KEY isn't set." };
+      if (newsAiOff()) return { ok: false, message: "Gemini is switched off on the Health tab." };
+      // Flex can take minutes: the pass runs on, its outcome on this board.
+      void judgeNews();
+      return { ok: true, message: "Gemini is reading; reload the board in a few minutes." };
     case "roster-moves": {
       try {
         if (target === "ufc") {

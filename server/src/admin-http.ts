@@ -23,6 +23,8 @@ export type AdminHandlerOptions = {
   /** Live server health and traffic for the dashboard. */
   metrics?: () => unknown;
   canAct: () => boolean;
+  /** Gemini on /news: its state, and the switch that turns it off. */
+  newsAi?: { status: () => unknown; set: (on: boolean) => unknown };
   liveFights: () => AdminLiveFight[];
   /** The bout on now — the one the site's LIVE tag names — and whether it has
    *  started. Defaults to the first bout without a result. */
@@ -53,7 +55,7 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
  * whenever a token happens to expire.
  */
 export function createAdminHandler(options: AdminHandlerOptions) {
-  const { admins, scores, reports, comments, report, runAction, canAct, liveFights, metrics } = options;
+  const { admins, scores, reports, comments, report, runAction, canAct, liveFights, metrics, newsAi } = options;
   const currentBout = options.currentBout ?? (() => {
     const bout = liveFights().find(fight => fight.f1_outcome == null && fight.f2_outcome == null);
     return bout ? { id: bout.id, live: false } : null;
@@ -112,6 +114,7 @@ export function createAdminHandler(options: AdminHandlerOptions) {
         : liveFight ? ["PUT"]
         : flag || moderated || commenter ? ["PUT"]
         : route === "bugs/action" ? ["POST"]
+        : route === "news-ai" ? ["GET", "HEAD", "PUT"]
         : ["GET", "HEAD"];
       if (!allowed.includes(req.method ?? "")) {
         res.setHeader("Allow", allowed.join(", "));
@@ -146,6 +149,14 @@ export function createAdminHandler(options: AdminHandlerOptions) {
           if (!limiter.allow(`admins:${email}`, 20, 0.2)) throw new ScoringError(429, "Too many changes. Try again shortly.");
           send({ admins: admins.remove(url.searchParams.get("email")) });
         } else send({ admins: admins.list() });
+      }
+      else if (route === "news-ai") {
+        if (!newsAi) throw new ScoringError(404, "Not found.");
+        if (req.method === "PUT") {
+          const body = await readBody(req) as { on?: unknown };
+          if (typeof body?.on !== "boolean") throw new ScoringError(400, "Send { on: true | false }.");
+          send(newsAi.set(body.on));
+        } else send(newsAi.status());
       }
       else if (route === "flags") send(reports.list());
       else if (flag) send(reports.update(flag[1], await readBody(req), email ?? ""));

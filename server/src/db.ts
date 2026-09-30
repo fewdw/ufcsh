@@ -537,6 +537,15 @@ db.exec(`CREATE TABLE IF NOT EXISTS news (
 db.exec("CREATE INDEX IF NOT EXISTS idx_news_published ON news(published_at)");
 // Outlets' pictures were kept at first and are no longer shown.
 if (db.prepare("SELECT 1 FROM pragma_table_info('news') WHERE name = 'image'").get()) db.exec("ALTER TABLE news DROP COLUMN image");
+// The article as the feed gives it, for Gemini to read (news-ai.ts), and its
+// reading, kept on the story's first report: whether it is news (NULL until
+// read), the story it repeats, and what it says.
+if (!db.prepare("SELECT 1 FROM pragma_table_info('news') WHERE name = 'ai_keep'").get()) {
+  db.exec("ALTER TABLE news ADD COLUMN body TEXT NOT NULL DEFAULT ''");
+  db.exec("ALTER TABLE news ADD COLUMN ai_keep INTEGER");
+  db.exec("ALTER TABLE news ADD COLUMN ai_same TEXT");
+  db.exec("ALTER TABLE news ADD COLUMN ai_summary TEXT NOT NULL DEFAULT ''");
+}
 db.exec("CREATE TABLE IF NOT EXISTS data_revisions (key TEXT PRIMARY KEY, value INTEGER NOT NULL)");
 for (const key of ["analytics", "profiles", "search"]) {
   db.prepare("INSERT OR IGNORE INTO data_revisions VALUES (?, 0)").run(key);

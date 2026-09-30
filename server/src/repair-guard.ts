@@ -5,7 +5,7 @@ import type { BugActionId } from "./bugs.ts";
 const ACTIONS: Record<BugActionId, true> = {
   odds: true, props: true, career: true, detail: true, segments: true, event: true,
   "clear-bfo": true, birth: true, wiki: true, article: true, catchweight: true, "forget-ufc": true, verdict: true,
-  "roster-moves": true, "ufc-status": true, news: true,
+  "roster-moves": true, "ufc-status": true, news: true, "news-ai": true,
 };
 
 /** One concurrent repair per API process, with a verified snapshot before the day's first change. */
@@ -18,7 +18,7 @@ export function createRepairRunner<T>(
   let running = false;
   let backedUpDay = "";
   return async (action: string, target: string, actor: string): Promise<T> => {
-    if (!Object.hasOwn(ACTIONS, action) || !(/^[a-f0-9]{16}$/i.test(target) || (action === "verdict" && /^card:\d{1,7}$/.test(target)) || (action === "roster-moves" && target === "roster"))) throw new ScoringError(400, "Unknown repair or target.");
+    if (!Object.hasOwn(ACTIONS, action) || !(/^[a-f0-9]{16}$/i.test(target) || (action === "verdict" && /^card:\d{1,7}$/.test(target)) || (action === "roster-moves" && target === "roster") || (action.startsWith("news") && target === "all"))) throw new ScoringError(400, "Unknown repair or target.");
     if (running) throw new ScoringError(503, "Another repair is running. Retry shortly.");
     running = true;
     const started = now();

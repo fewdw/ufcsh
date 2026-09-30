@@ -58,6 +58,7 @@ import { judgeProfile, officialSlug, officialsDirectory, refereeProfile, searchO
 import { searchVenues, venueDirectory, venueOfEvent, venuePage } from "./venues.ts";
 import { matchmaking } from "./matchmaking.ts";
 import { newsView } from "./news.ts";
+import { newsAiStatus, setNewsAi, startNewsReader } from "./news-ai.ts";
 import { rosterMoveFighter, storedRosterMoves, ufcDepartures, ufcSignings } from "./roster-moves.ts";
 import type { RosterMove } from "./scrape/wikipedia.ts";
 
@@ -2046,6 +2047,7 @@ export function startApi(port: number): http.Server {
       : runBugAction(action, target),
     // Administrators may pause online repairs without disabling the report.
     canAct: () => process.env.DISABLE_REPAIRS !== "1",
+    newsAi: { status: newsAiStatus, set: setNewsAi },
     liveFights,
     currentBout: () => {
       const current = currentBout();
@@ -2087,6 +2089,10 @@ export function startApi(port: number): http.Server {
     }, 5_000);
     refresher.unref();
   }
+  if (process.env.NO_SYNC !== "1") {
+    const pool = queryPool;
+    startNewsReader(pool ? async () => JSON.parse((await pool.run("/_news-judge")).json) : undefined);
+  }
   const cacheMb = Number(process.env.RESPONSE_CACHE_MB ?? 128);
   const cache = new ResponseCache((Number.isFinite(cacheMb) && cacheMb > 0 ? cacheMb : 128) * 1024 * 1024);
   const limiter = new RateLimiter();
@@ -2094,7 +2100,9 @@ export function startApi(port: number): http.Server {
   const publicAnswer = (url: URL) => {
     const policy = cachePolicy(url);
     const key = canonicalApiKey(url);
-    return cache.get(key, policy.ttl, async () => {
+    // Switching AI off must also bypass any already-cached AI news response.
+    const cacheKey = url.pathname === "/api/news" ? `${key}:ai-off=${getMeta("news_ai_off")}` : key;
+    return cache.get(cacheKey, policy.ttl, async () => {
       if (queryPool) return queryPool.run(key);
       const data = await resolvePublicApi(url);
       return { json: JSON.stringify(data === undefined ? { error: "not found" } : data), status: data === undefined ? 404 : 200 };

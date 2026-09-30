@@ -5,6 +5,7 @@ import { fighterRecords } from "./records.ts";
 import { officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
 import { db } from "./db.ts";
+import { newsToJudge } from "./news.ts";
 
 // A worker keeps the indexes it built at startup, so no request waits on a
 // rebuild; when the data changes the pool starts a fresh worker and retires
@@ -48,7 +49,8 @@ parentPort!.on("message", async ({ id, url }: { id: number; url: string }) => {
     const data = parsed.pathname === "/_seo" ? pageSeo(parsed.searchParams.get("path") ?? "/")
       : parsed.pathname === "/_sitemap" ? sitemap()
         : parsed.pathname === "/_share" ? shareCardData(parsed.searchParams.get("kind") ?? "", parsed.searchParams.get("id") ?? "")
-          : await resolvePublicApi(parsed);
+          : parsed.pathname === "/_news-judge" ? newsToJudge()
+            : await resolvePublicApi(parsed);
     parentPort!.postMessage({ id, result: { json: JSON.stringify(data === undefined ? { error: "not found" } : data), status: data === undefined ? 404 : 200 } });
   } catch (error) {
     console.error("query failed:", String(error));

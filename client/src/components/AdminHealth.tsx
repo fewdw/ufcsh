@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAdminResource } from "../admin";
+import AdminNewsAi from "./AdminNewsAi";
 import { relativeAge } from "../format";
 import { BUTTON_PRIMARY } from "../ui";
 
@@ -252,6 +253,8 @@ export default function AdminHealth() {
           ))}
         </ul>
       </section>
+
+      <AdminNewsAi />
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Card label="Visitor IPs" value={whole(recent.visitors)} hint={`distinct in 5 min · ${whole(data.http.lastHour.visitors)} this hour`} />

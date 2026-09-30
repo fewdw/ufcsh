@@ -12,7 +12,7 @@ import RequestNotice from "../components/RequestNotice";
 import { BONUS_AGAINST_TAG, BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
 import FighterStatistics from "../components/FighterStatistics";
 import { fetchPage, LoadMore, useInfiniteList } from "../components/InfiniteList";
-import NewsRow, { savedOff } from "../components/NewsRow";
+import NewsRow, { savedOff, savedSummaries } from "../components/NewsRow";
 import { PanelHeading } from "../components/FightStats";
 import { SITE_URL, useSeo } from "../seo";
 import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
@@ -578,6 +578,7 @@ function FighterNews({ fighterId, name, first }: { fighterId: string; name: stri
     items: (page) => page.latest,
     itemKey: (story) => story.url,
   });
+  const summaries = savedSummaries();
   return (
     <section className={shell}>
       {!list.first ? (
@@ -585,7 +586,7 @@ function FighterNews({ fighterId, name, first }: { fighterId: string; name: stri
           ? <div className="p-4"><RequestNotice onRetry={() => void list.retry()}>Couldn’t load the news.</RequestNotice></div>
           : <div role="status" className="appear-late px-5 py-6 text-sm text-zinc-400">Loading the news…</div>
       ) : list.items.length ? (
-        <div className="px-4 sm:px-5">{list.items.map((story) => <NewsRow key={story.url} story={story} fighterId={fighterId} />)}</div>
+        <div className="px-4 sm:px-5">{list.items.map((story) => <NewsRow key={story.url} story={story} fighterId={fighterId} summaries={summaries} />)}</div>
       ) : (
         <div className="px-5 py-6 text-sm text-zinc-400">No news about {name} in the last month.</div>
       )}
