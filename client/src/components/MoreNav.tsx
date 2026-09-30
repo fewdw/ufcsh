@@ -4,16 +4,13 @@ import { useLocation } from "react-router-dom";
 type Section = { href: string; label: string; paths: string[] };
 type Group = { label: string; sections: Section[] };
 
-/** The pages behind More, in groups: the numbers and the people and places
- *  behind the cards, then the news and graphics. */
+/** The pages behind More, in one column. */
 const GROUPS: Group[] = [
-  { label: "Data", sections: [
+  { label: "More", sections: [
     { href: "/stats", label: "Stats", paths: ["/stats"] },
     { href: "/matchmaking", label: "Matchmaking", paths: ["/matchmaking"] },
     // Officials, Venues and Roster, tabbed in `BrowseLayout`.
     { href: "/officials", label: "Browse", paths: ["/officials", "/judges", "/referees", "/venues", "/roster"] },
-  ] },
-  { label: "Community", sections: [
     { href: "/news", label: "News", paths: ["/news"] },
     { href: "/graphic", label: "Graphic", paths: ["/graphic"] },
   ] },
