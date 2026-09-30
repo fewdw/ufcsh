@@ -55,7 +55,7 @@ import { injectPageSeo, pageSeo, SITE_URL, sitemap, type PageSeo } from "./seo.t
 import { renderShareImage, type ShareCard, type SharePhoto } from "./og-images.ts";
 export { pageSeo, sitemap };
 import { judgeProfile, officialSlug, officialsDirectory, refereeProfile, searchOfficials } from "./officials.ts";
-import { searchVenues, venueDirectory, venueOfEvent, venuePage } from "./venues.ts";
+import { locationDirectory, locationOfEvent, locationPage, searchVenues, venueDirectory, venueOfEvent, venuePage } from "./venues.ts";
 import { matchmaking } from "./matchmaking.ts";
 import { newsView } from "./news.ts";
 import { newsAiStatus, setNewsAi, startNewsReader } from "./news-ai.ts";
@@ -463,6 +463,7 @@ async function getEvent(id: string, rankingType: RankingType): Promise<unknown |
     refreshing,
     date: e.date,
     location: e.location,
+    location_slug: locationOfEvent(e.id),
     venue: venueOfEvent(e.id),
     broadcasters: (() => { try { return (e as any).broadcast_json ? JSON.parse((e as any).broadcast_json) : null; } catch { return null; } })(),
     status: eventStatus(e, nextEventDate()),
@@ -928,7 +929,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
   const referee: string | null = detail?.methodInfo?.Referee || f.referee_assigned || null;
   return {
     id: f.id,
-    event: { id: f.event_id, name: f.event_name, date: f.event_date, location: f.event_location, venue: venueOfEvent(f.event_id) },
+    event: { id: f.event_id, name: f.event_name, date: f.event_date, location: f.event_location, location_slug: locationOfEvent(f.event_id), venue: venueOfEvent(f.event_id) },
     /** Profile addresses for the officials the card names; judges in card order. */
     officials: {
       referee: referee ? { name: referee, slug: officialSlug("referee", referee), assigned: !detail?.methodInfo?.Referee } : null,
@@ -1949,6 +1950,8 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   if (p.startsWith("/api/referees/")) return refereeProfile(id, url.searchParams) ?? undefined;
   if (p === "/api/venues") return venueDirectory();
   if (p.startsWith("/api/venues/")) return venuePage(id) ?? undefined;
+  if (p === "/api/locations") return locationDirectory();
+  if (p.startsWith("/api/locations/")) return locationPage(id) ?? undefined;
   if (/^\/api\/fighters\/[a-f0-9]{16}\/stats$/i.test(p)) {
     return hasUfcFight(id) ? fighterBoard(id, url.searchParams.get("scope") ?? "ufc", Number(url.searchParams.get("minBouts") ?? 0)) ?? undefined : undefined;
   }
@@ -2122,7 +2125,7 @@ export function startApi(port: number): http.Server {
     clearInterval(warmLists);
     if (!queryPool) return;
     for (const path of ["/api/events", "/api/live", "/api/stats", "/api/rankings?ranking=media", "/api/rankings?ranking=meta",
-      "/api/officials", "/api/venues", "/api/matchmaking", "/api/news"]) {
+      "/api/officials", "/api/venues", "/api/locations", "/api/matchmaking", "/api/news"]) {
       void publicAnswer(new URL(path, "http://localhost")).catch(() => {});
     }
   }, 1000);

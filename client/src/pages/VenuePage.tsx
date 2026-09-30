@@ -1,5 +1,5 @@
 import { Link, useParams } from "react-router-dom";
-import { useApi, type VenuePage as VenueData } from "../api";
+import { useApi, type LocationPage as LocationData, type VenuePage as VenueData } from "../api";
 import { clockTimeWithZone, formatDate, formatDateShort, formatMethod, offsetLabel, venueClock } from "../format";
 import { PANEL } from "../components/chartTokens";
 import { gapChip, pct, useUrlFilters } from "../research";
@@ -38,7 +38,8 @@ const TOP = (index: number) => index < 3 ? "bg-zinc-900 text-white" : "bg-zinc-1
 type Event = VenueData["events"][number];
 
 /** A card in the fighter list's shape: the date where a result would be, the
- *  card, then its title bouts and crowd against the right edge. */
+ *  card, then its title bouts and crowd against the right edge. A city's card
+ *  names its venue; a venue's card, the name it had that night. */
 function EventRow({ event, record }: { event: Event; record: number }) {
   return (
     <Link to={`/events/${event.id}`} className="grid grid-cols-[3.25rem_minmax(0,1fr)_auto] items-center gap-x-3 px-4 py-2.5 transition-colors hover:bg-zinc-50 sm:px-5">
@@ -51,7 +52,7 @@ function EventRow({ event, record }: { event: Event; record: number }) {
         <span className="block truncate text-[11px] leading-4 text-zinc-500">
           {event.fights} bouts{event.finishes != null && event.fights ? ` · ${event.finishes} finished` : ""}
           {event.title_fights ? <> · <span className="font-semibold text-belt">{event.title_fights > 1 ? `${event.title_fights} title bouts` : "Title bout"}</span></> : null}
-          {event.name_then ? ` · as ${event.name_then}` : ""}
+          {event.venue ? ` · ${event.venue.name}` : event.name_then ? ` · as ${event.name_then}` : ""}
         </span>
       </span>
       <span className="text-right text-[11px] tabular-nums text-zinc-500" title={event.attendance ? "Attendance" : undefined}>
@@ -62,25 +63,42 @@ function EventRow({ event, record }: { event: Event; record: number }) {
 }
 
 export default function VenuePage() {
+  return <PlacePage kind="venue" />;
+}
+
+export function LocationPage() {
+  return <PlacePage kind="location" />;
+}
+
+/** A venue or a city: every card held there, and what happened at them. */
+function PlacePage({ kind }: { kind: "venue" | "location" }) {
   const { slug = "" } = useParams();
-  const { data, error, loading, retry } = useApi<VenueData>(`/api/venues/${encodeURIComponent(slug)}`);
+  const path = `/${kind === "venue" ? "venues" : "locations"}/${slug}`;
+  const { data, error, loading, retry } = useApi<VenueData | LocationData>(`/api${path}`);
   const filters = useUrlFilters();
-  const place = data ? [data.city, data.state, data.country].filter(Boolean).join(", ") : "";
+  const venue = data && "former_names" in data ? data : null;
+  const location = data && "venues" in data ? data : null;
+  // A venue's full address; a city is titled by name, so the rest is its region.
+  const place = data ? [venue ? data.city : null, data.state, data.country].filter(Boolean).join(", ") : "";
+  const title = location ? location.city : data?.name ?? "";
+  const at = location ? `in ${[location.city, place].filter(Boolean).join(", ")}` : `at ${title}${place ? `, ${place}` : ""}`;
   useSeo({
-    title: data ? `${data.name} — UFC Events & Title Fights` : "UFC Venue",
+    title: data ? (location ? `UFC in ${title} — Events, Venues & Title Fights` : `${title} — UFC Events & Title Fights`) : kind === "venue" ? "UFC Venue" : "UFC Location",
     description: data
-      ? `Every UFC event at ${data.name}${place ? `, ${place}` : ""}: ${data.summary.events} ${data.summary.events === 1 ? "card" : "cards"}, ${data.summary.fights.toLocaleString("en-US")} bouts, ${data.summary.title_fights} title fights${data.summary.attendance_record && data.summary.attendance_known >= 3 ? `, a record crowd of ${data.summary.attendance_record.attendance.toLocaleString("en-US")}` : ""} and upcoming events.`
-      : "UFC venue history, events and attendance.",
-    path: `/venues/${slug}`,
+      ? `Every UFC event ${at}: ${data.summary.events} ${data.summary.events === 1 ? "card" : "cards"}, ${data.summary.fights.toLocaleString("en-US")} bouts, ${data.summary.title_fights} title fights${data.summary.attendance_record && data.summary.attendance_known >= 3 ? `, a record crowd of ${data.summary.attendance_record.attendance.toLocaleString("en-US")}` : ""} and upcoming events.`
+      : `UFC ${kind} history, events and attendance.`,
+    path,
     structuredData: data ? {
-      "@context": "https://schema.org", "@type": "StadiumOrArena", name: data.name, url: `${SITE_URL}/venues/${slug}`,
+      "@context": "https://schema.org", "@type": location ? "City" : "StadiumOrArena", name: title, url: `${SITE_URL}${path}`,
       ...(place ? { address: { "@type": "PostalAddress", addressLocality: data.city ?? undefined, addressRegion: data.state ?? undefined, addressCountry: data.country ?? undefined } } : {}),
     } : undefined,
   });
 
-  if (loading && !data) return <PageState>Loading venue…</PageState>;
-  if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load this venue.</RequestNotice></div>;
-  if (!data) return <NotFound what="This venue" back={{ to: "/venues", label: "All venues" }} />;
+  if (loading && !data) return <PageState>Loading {kind}…</PageState>;
+  if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load this {kind}.</RequestNotice></div>;
+  if (!data) return kind === "venue"
+    ? <NotFound what="This venue" back={{ to: "/venues", label: "All venues" }} />
+    : <NotFound what="This location" back={{ to: "/locations", label: "All locations" }} />;
 
   const s = data.summary;
   const upcoming = data.events.filter((event) => !event.complete).reverse();
@@ -90,17 +108,17 @@ export default function VenuePage() {
 
   const from = filters.params.get("from");
   const to = filters.params.get("to");
-  const kind = filters.params.get("kind");
+  const cards = filters.params.get("kind");
   const division = filters.params.get("division");
   const q = filters.params.get("q") ?? "";
   const titles = filters.params.get("show") === "titles";
   const inYears = (date: string) => (!from || date.slice(0, 4) >= from) && (!to || date.slice(0, 4) <= to);
   const events = searchList(past, q, (event) => event.name).filter((event) => inYears(event.date)
-    && (kind === "title" ? event.title_fights > 0 : kind === "numbered" ? /^UFC \d+/.test(event.name) : kind === "fight-night" ? !/^UFC \d+/.test(event.name) : true));
+    && (cards === "title" ? event.title_fights > 0 : cards === "numbered" ? /^UFC \d+/.test(event.name) : cards === "fight-night" ? !/^UFC \d+/.test(event.name) : true));
   const titleBouts = searchList(data.title_bouts, q, (bout) => `${bout.event_name} ${bout.f1.name} ${bout.f2.name}`)
     .filter((bout) => inYears(bout.date) && (!division || bout.division === division));
   const divisions = [...data.title_bouts.reduce((counts, bout) => counts.set(bout.division, (counts.get(bout.division) ?? 0) + 1), new Map<string, number>())];
-  const narrowing = [from, to, titles ? division : kind].filter(Boolean).length;
+  const narrowing = [from, to, titles ? division : cards].filter(Boolean).length;
   const byYear = past.reduce((counts, event) => {
     const year = Number(event.date.slice(0, 4));
     const entry = counts.get(year) ?? { year, n: 0, marked: 0 };
@@ -118,8 +136,11 @@ export default function VenuePage() {
   };
 
   const identity = (
-    <IdentityCard title={data.name} subtitle={place || "Location not recorded"}
-      badge={data.former_names.length ? <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-[11px] font-semibold text-zinc-600">Formerly {data.former_names.join(", ")}</span> : null}
+    <IdentityCard title={title}
+      subtitle={venue?.location_slug && place
+        ? <Link to={`/locations/${venue.location_slug}`} title={`${place}: every card held here`} className="transition hover:text-zinc-900 dark:hover:text-zinc-100">{place} <span aria-hidden="true">↗</span></Link>
+        : place || (venue ? "Location not recorded" : null)}
+      badge={venue?.former_names.length ? <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-[11px] font-semibold text-zinc-600">Formerly {venue.former_names.join(", ")}</span> : null}
       facts={[
         ["Events", s.events.toLocaleString()],
         ["Bouts", s.fights.toLocaleString()],
@@ -143,6 +164,10 @@ export default function VenuePage() {
     ]} />
     <YearBars title="Cards by year" data={[...byYear.values()].sort((a, b) => a.year - b.year)} unit="cards" marked="with a title bout"
       from={from} to={to} onPick={filters.pickYear} />
+    {location?.venues.length ? <RankRows title="Venues" rows={location.venues.map((entry) => ({
+      key: entry.slug, title: entry.name, to: `/venues/${entry.slug}`,
+      detail: entry.upcoming ? `${entry.upcoming} upcoming` : "", value: entry.events,
+    }))} /> : null}
     <RankRows title="Most wins here" rows={data.top_winners.map((fighter, index) => ({
       key: fighter.id, chip: index + 1, chipClass: TOP(index),
       title: fighter.name, to: `/fighters/${fighter.id}`,
@@ -187,7 +212,7 @@ export default function VenuePage() {
         {titles
           ? <FilterSelect label="Division" value={division} all="All divisions" onChange={(value) => filters.set("division", value)}
             options={divisions.map(([name, n]) => ({ value: name, label: `${name} (${n})` }))} />
-          : <FilterSelect label="Cards" value={kind} all="All cards" onChange={(value) => filters.set("kind", value)} options={EVENT_KINDS} />}
+          : <FilterSelect label="Cards" value={cards} all="All cards" onChange={(value) => filters.set("kind", value)} options={EVENT_KINDS} />}
       </ListHeading>
       {titles ? (
         titleBouts.length ? (
@@ -209,7 +234,7 @@ export default function VenuePage() {
   </>;
 
   return (
-    <ProfileColumns scope="venue" ready={Boolean(data)} identity={identity} stats={stats} list={lists} listLabel="Events"
+    <ProfileColumns scope={kind} ready={Boolean(data)} identity={identity} stats={stats} list={lists} listLabel="Events"
       tab={tab} onTab={(next) => filters.set("tab", next === "stats" ? "stats" : null)} />
   );
 }

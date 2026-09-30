@@ -12,6 +12,8 @@ export function pageRouteGroup(pathname: string): string | null {
   if (pathname === "/officials") return "page_officials";
   if (pathname === "/venues") return "page_venues";
   if (/^\/venues\/[^/]+$/.test(pathname)) return "page_venue";
+  if (pathname === "/locations") return "page_locations";
+  if (/^\/locations\/[^/]+$/.test(pathname)) return "page_location";
   if (pathname === "/info") return "page_info";
   if (pathname === "/admin" || pathname === "/admin/bugs") return "page_admin";
   if (pathname === "/sign-in" || pathname.startsWith("/sign-in/")) return "page_sign_in";
@@ -41,6 +43,7 @@ export function routeGroup(pathname: string): string {
   if (/^\/api\/fighters\/[a-f0-9]{16}\/stats$/i.test(pathname)) return "fighter_stats";
   if (pathname === "/api/officials" || /^\/api\/(judges|referees)\//.test(pathname)) return "officials";
   if (pathname === "/api/venues" || pathname.startsWith("/api/venues/")) return "venues";
+  if (pathname === "/api/locations" || pathname.startsWith("/api/locations/")) return "locations";
   if (pathname.startsWith("/og/")) return "share_images";
   if (/^\/api\/fights\/[a-f0-9]{16}$/i.test(pathname)) return "fight_detail";
   if (/^\/api\/fighters\/[a-f0-9]{16}$/i.test(pathname)) return "fighter_detail";

@@ -907,7 +907,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
                     <span className="hidden @[48rem]:inline">{formatDate(event.date)}</span>
                   </span>
                 ) : null}
-                <EventPlace venue={event.venue} location={event.location} leading={Boolean(event.date)} />
+                <EventPlace venue={event.venue} location={event.location} locationSlug={event.location_slug} leading={Boolean(event.date)} />
               </div>
             ) : null}
           </div>

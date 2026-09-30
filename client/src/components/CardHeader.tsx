@@ -7,20 +7,31 @@ import { formatDate, formatDateShort } from "../format";
 
 const DOT = <span aria-hidden="true" className="text-zinc-300">·</span>;
 
-/** Date · venue · city. The venue opens its history, so it reads as a link
- *  the way the rest of the app's links do: a trailing arrow and a hover. */
-export function EventPlace({ venue, location, leading = true }: { venue?: VenueRef | null; location: string | null | undefined; leading?: boolean }) {
+const PLACE_LINK = "min-w-0 rounded text-zinc-500 transition hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 dark:hover:text-zinc-100";
+
+/** Date · venue · city. The venue and the city open their history, so they
+ *  read as links the way the rest of the app's do: a trailing arrow and a hover. */
+export function EventPlace({ venue, location, locationSlug, leading = true }: {
+  venue?: VenueRef | null; location: string | null | undefined; locationSlug?: string | null; leading?: boolean;
+}) {
   if (!venue && !location) return null;
   return (
     <>
       {venue ? <>
         {leading ? DOT : null}
         <Link to={`/venues/${venue.slug}`} title={`${venue.name}: every card held here`}
-          className="min-w-0 rounded text-zinc-500 transition hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 dark:hover:text-zinc-100">
+          className={PLACE_LINK}>
           {venue.name} <span aria-hidden="true">↗</span>
         </Link>
       </> : null}
-      {location ? <>{leading || venue ? DOT : null}<span className="min-w-0">{location}</span></> : null}
+      {location ? <>
+        {leading || venue ? DOT : null}
+        {locationSlug ? (
+          <Link to={`/locations/${locationSlug}`} title={`${location}: every card held here`} className={PLACE_LINK}>
+            {location} <span aria-hidden="true">↗</span>
+          </Link>
+        ) : <span className="min-w-0">{location}</span>}
+      </> : null}
     </>
   );
 }
@@ -71,10 +82,11 @@ export function CardNavigation({ label, previous, center, next, className = "" }
   );
 }
 
-export function CardEventTitle({ name, date, location, venue, children }: {
+export function CardEventTitle({ name, date, location, locationSlug, venue, children }: {
   name: string;
   date: string;
   location: string | null | undefined;
+  locationSlug?: string | null;
   venue?: VenueRef | null;
   children?: ReactNode;
 }) {
@@ -87,7 +99,7 @@ export function CardEventTitle({ name, date, location, venue, children }: {
             <span className="@[48rem]:hidden">{formatDateShort(date)}</span>
             <span className="hidden @[48rem]:inline">{formatDate(date)}</span>
           </span>
-          <EventPlace venue={venue} location={location} />
+          <EventPlace venue={venue} location={location} locationSlug={locationSlug} />
         </div>
       </div>
       {children ? <div className="flex shrink-0 flex-col items-end gap-1 text-right @[48rem]:max-w-[45%]">{children}</div> : null}

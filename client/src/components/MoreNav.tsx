@@ -9,8 +9,8 @@ const GROUPS: Group[] = [
   { label: "More", sections: [
     { href: "/stats", label: "Stats", paths: ["/stats"] },
     { href: "/matchmaking", label: "Matchmaking", paths: ["/matchmaking"] },
-    // Officials, Venues and Roster, tabbed by `BrowseTabs`.
-    { href: "/officials", label: "Browse", paths: ["/officials", "/judges", "/referees", "/venues", "/roster"] },
+    // Roster, Officials, Venues and Locations, tabbed by `BrowseTabs`.
+    { href: "/roster", label: "Browse", paths: ["/roster", "/officials", "/judges", "/referees", "/venues", "/locations"] },
     { href: "/news", label: "News", paths: ["/news"] },
     { href: "/graphic", label: "Graphic", paths: ["/graphic"] },
   ] },

@@ -48,7 +48,25 @@ export type Venue = {
   notes: { label: string; detail: string }[];
 };
 
-type VenueIndex = { version: string; bySlug: Map<string, Venue>; byEvent: Map<string, Venue> };
+/** A city with a UFC card, grouped by city and country so "Abu Dhabi, United
+ *  Arab Emirates" and "Abu Dhabi, Abu Dhabi, United Arab Emirates" are one. */
+export type Location = {
+  slug: string;
+  /** As UFCStats bills its most recent card here ("Las Vegas, Nevada, USA"). */
+  name: string;
+  city: string;
+  state: string | null;
+  country: string | null;
+  time_zone: string | null;
+  map_url: string;
+  events: (VenueEventRef & { venue: { slug: string; name: string } | null })[];
+  notes: { label: string; detail: string }[];
+};
+
+type VenueIndex = {
+  version: string; bySlug: Map<string, Venue>; byEvent: Map<string, Venue>;
+  locations: Map<string, Location>; locationOfEvent: Map<string, Location>;
+};
 
 /**
  * Facts that hold for a venue whatever the card, published by the promotion or
@@ -94,6 +112,20 @@ function cityOf(row: EventVenueRow): { city: string | null; state: string | null
   if (!parts.length) return { city: null, state: null, country: null };
   return { city: parts[0], state: parts.length > 2 ? parts[1] : null, country: parts.at(-1) ?? null };
 }
+
+/** A card's billed location split into its parts; a middle part is the state or region. */
+function placeOf(location: string): { city: string; state: string | null; country: string | null } | null {
+  const parts = location.split(",").map((part) => part.trim()).filter(Boolean);
+  if (!parts.length) return null;
+  return { city: parts[0], state: parts.length > 2 ? parts.slice(1, -1).join(", ") : null, country: parts.length > 1 ? parts.at(-1)! : null };
+}
+
+function altitude(city: string | null): { label: string; detail: string }[] {
+  const high = HIGH_CITIES[normName(city ?? "")];
+  return high ? [{ label: "Altitude", detail: `About ${high.metres.toLocaleString("en-US")} m (${Math.round(high.metres * 3.281).toLocaleString("en-US")} ft) above sea level — the city's elevation.` }] : [];
+}
+
+const mapUrl = (query: string) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 
 function parse<T>(text: string | null): T | null {
   if (!text) return null;
@@ -141,6 +173,16 @@ function build(): VenueIndex {
     groups.set(key, group);
   }
 
+  const eventRef = (row: EventVenueRow, name: string | null): VenueEventRef => ({
+    id: row.id, name: row.name, date: row.date, complete: Boolean(row.complete),
+    starts_at: row.early_prelims_at ?? row.prelims_at ?? row.main_card_at ?? null,
+    name_then: name && row.wiki_venue && normName(row.wiki_venue) !== normName(name) ? row.wiki_venue : null,
+    attendance: row.attendance, gate: row.gate,
+    broadcasters: parse<Record<string, string>>(row.broadcast_json),
+    time_zone: row.venue_tz,
+    fights: row.fights, title_fights: row.titles,
+  });
+
   const bySlug = new Map<string, Venue>();
   const byEvent = new Map<string, Venue>();
   const ordered = [...groups.values()].sort((a, b) => b.rows.length - a.rows.length || a.key.localeCompare(b.key));
@@ -158,29 +200,51 @@ function build(): VenueIndex {
     if (official?.venue_id === APEX_VENUE_ID) {
       notes.push({ label: "Octagon", detail: "The promotion's own studio venue. Most cards here use the smaller 25-ft Octagon; arena cards use the 30-ft cage." });
     }
-    const high = HIGH_CITIES[normName(place.city ?? "")];
-    if (high) notes.push({ label: "Altitude", detail: `About ${high.metres.toLocaleString("en-US")} m (${Math.round(high.metres * 3.281).toLocaleString("en-US")} ft) above sea level — the city's elevation.` });
+    notes.push(...altitude(place.city));
     const query = [name, place.city, place.state, place.country].filter(Boolean).join(", ");
     const venue: Venue = {
       slug, name, former_names: former,
       city: place.city, state: place.state, country: place.country,
       time_zone: [...group.rows].reverse().find((row) => row.venue_tz)?.venue_tz ?? null,
-      map_url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`,
-      events: [...group.rows].reverse().map((row) => ({
-        id: row.id, name: row.name, date: row.date, complete: Boolean(row.complete),
-        starts_at: row.early_prelims_at ?? row.prelims_at ?? row.main_card_at ?? null,
-        name_then: row.wiki_venue && normName(row.wiki_venue) !== normName(name) ? row.wiki_venue : null,
-        attendance: row.attendance, gate: row.gate,
-        broadcasters: parse<Record<string, string>>(row.broadcast_json),
-        time_zone: row.venue_tz,
-        fights: row.fights, title_fights: row.titles,
-      })),
+      map_url: mapUrl(query),
+      events: [...group.rows].reverse().map((row) => eventRef(row, name)),
       notes,
     };
     bySlug.set(slug, venue);
     for (const row of group.rows) byEvent.set(row.id, venue);
   }
-  return { version: "", bySlug, byEvent };
+
+  const cities = new Map<string, EventVenueRow[]>();
+  for (const row of rows) {
+    const place = placeOf(row.location);
+    if (!place) continue;
+    const key = `${normName(place.city)}|${normName(place.country)}`;
+    cities.set(key, [...cities.get(key) ?? [], row]);
+  }
+  const locations = new Map<string, Location>();
+  const locationOfEvent = new Map<string, Location>();
+  for (const cityRows of [...cities.values()].sort((a, b) => b.length - a.length)) {
+    const newest = [...cityRows].reverse();
+    // The fullest billing names the page: a state where any card gives one.
+    const billed = newest.find((row) => placeOf(row.location)!.state) ?? newest[0];
+    const place = placeOf(billed.location)!;
+    let slug = slugify([place.city, place.country].filter(Boolean).join(" "));
+    for (let n = 2; locations.has(slug); n++) slug = `${slugify([place.city, place.country].filter(Boolean).join(" "))}-${n}`;
+    const location: Location = {
+      slug, name: billed.location, ...place,
+      time_zone: newest.find((row) => row.venue_tz)?.venue_tz ?? null,
+      map_url: mapUrl(billed.location),
+      events: newest.map((row) => {
+        const venue = byEvent.get(row.id);
+        const ref = eventRef(row, venue?.name ?? null);
+        return { ...ref, venue: venue ? { slug: venue.slug, name: ref.name_then ?? venue.name } : null };
+      }),
+      notes: altitude(place.city),
+    };
+    locations.set(slug, location);
+    for (const row of cityRows) locationOfEvent.set(row.id, location);
+  }
+  return { version: "", bySlug, byEvent, locations, locationOfEvent };
 }
 
 /** Rebuilt when any card's venue data or its fights change. */
@@ -191,6 +255,10 @@ export function venueIndex(): VenueIndex {
   if (cached?.version === version) return cached;
   cached = { ...build(), version };
   return cached;
+}
+
+export function locationOfEvent(eventId: string): string | null {
+  return venueIndex().locationOfEvent.get(eventId)?.slug ?? null;
 }
 
 export function venueOfEvent(eventId: string): { slug: string; name: string; city: string | null; country: string | null; time_zone: string | null } | null {
@@ -219,11 +287,11 @@ function methodCounts(fights: IndexedFight[]): Record<Method, number> {
   return counts;
 }
 
-export function venuePage(slug: string): unknown | null {
-  const venue = venueIndex().bySlug.get(slug);
-  if (!venue) return null;
+/** What happened at a set of cards, newest first: how bouts ended, title
+ *  bouts, the fighters who won most, and crowds. */
+function placeStats(events: VenueEventRef[]) {
   const index = fightIndex();
-  const eventIds = new Set(venue.events.map((event) => event.id));
+  const eventIds = new Set(events.map((event) => event.id));
   const fights = index.fights.filter((fight) => eventIds.has(fight.eventId));
   const finishes = new Map<string, number>();
   const fighters = new Map<string, { id: string; name: string; wins: number; losses: number; draws: number }>();
@@ -238,12 +306,11 @@ export function venuePage(slug: string): unknown | null {
       fighters.set(entry.id, record);
     }
   }
-  const held = venue.events.filter((event) => event.complete).map((event) => ({ ...event, finishes: finishes.get(event.id) ?? 0 }));
+  const held = events.filter((event) => event.complete).map((event) => ({ ...event, finishes: finishes.get(event.id) ?? 0 }));
   const attendance = held.filter((event) => event.attendance != null);
   const record = attendance.reduce<VenueEventRef | null>((best, event) => (!best || event.attendance! > best.attendance! ? event : best), null);
   return {
-    ...venue,
-    events: [...venue.events.filter((event) => !event.complete), ...held],
+    events: [...events.filter((event) => !event.complete), ...held],
     results: methodCounts(fights),
     ufc_results: methodCounts(index.fights),
     title_bouts: fights.filter(isTitle).sort((a, b) => b.date.localeCompare(a.date) || a.ord - b.ord).map((fight) => ({
@@ -256,7 +323,7 @@ export function venuePage(slug: string): unknown | null {
       .sort((a, b) => b.wins - a.wins || a.losses - b.losses || a.name.localeCompare(b.name)).slice(0, 10),
     summary: {
       events: held.length,
-      upcoming: venue.events.length - held.length,
+      upcoming: events.length - held.length,
       fights: held.reduce((total, event) => total + event.fights, 0),
       title_fights: held.reduce((total, event) => total + event.title_fights, 0),
       first: held.at(-1)?.date ?? null,
@@ -266,6 +333,42 @@ export function venuePage(slug: string): unknown | null {
       average_attendance: attendance.length ? Math.round(attendance.reduce((total, event) => total + event.attendance!, 0) / attendance.length) : null,
     },
   };
+}
+
+export function venuePage(slug: string): unknown | null {
+  const index = venueIndex();
+  const venue = index.bySlug.get(slug);
+  if (!venue) return null;
+  // The city of its latest card, so a venue links to where it stands now.
+  const location = venue.events[0] ? index.locationOfEvent.get(venue.events[0].id) : undefined;
+  return { ...venue, location_slug: location?.slug ?? null, ...placeStats(venue.events) };
+}
+
+export function locationPage(slug: string): unknown | null {
+  const location = venueIndex().locations.get(slug);
+  if (!location) return null;
+  const venues = new Map<string, { slug: string; name: string; events: number; upcoming: number }>();
+  for (const event of location.events) {
+    if (!event.venue) continue;
+    const venue = venueIndex().bySlug.get(event.venue.slug)!;
+    const entry = venues.get(venue.slug) ?? { slug: venue.slug, name: venue.name, events: 0, upcoming: 0 };
+    if (event.complete) entry.events += 1; else entry.upcoming += 1;
+    venues.set(venue.slug, entry);
+  }
+  return {
+    ...location, ...placeStats(location.events),
+    venues: [...venues.values()].sort((a, b) => b.events - a.events || b.upcoming - a.upcoming || a.name.localeCompare(b.name)),
+  };
+}
+
+export function locationDirectory(): unknown {
+  const locations = [...venueIndex().locations.values()].map((location) => ({
+    slug: location.slug, name: location.name, city: location.city, state: location.state, country: location.country,
+    events: location.events.filter((event) => event.complete).length,
+    upcoming: location.events.filter((event) => !event.complete).length,
+    last: location.events[0]?.date ?? null,
+  }));
+  return { locations: locations.sort((a, b) => b.events - a.events || a.name.localeCompare(b.name)) };
 }
 
 export function venueDirectory(): unknown {

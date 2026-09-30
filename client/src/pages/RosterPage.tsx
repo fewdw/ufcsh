@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useApi, type RosterMove, type RosterMoves } from "../api";
-import { formatDateShort, formatDateShortWithYear } from "../format";
+import { daysUntil, formatDateShort, formatDateShortWithYear } from "../format";
 import { useRouteScrollRestoration } from "../navigationState";
-import { PAGE, PAGE_BODY } from "../research";
+import { PAGE, FULL_PAGE_BODY } from "../research";
+import PageToolbar, { FilterSelect, ToolbarSearch } from "../components/PageToolbar";
+import OptionsSheet, { SwitchRow } from "../components/OptionsSheet";
+import { searchList } from "../search";
 import BrowseTabs from "../components/BrowseTabs";
 import { markRosterSeen, moveKey, unseenMoves } from "../rosterSeen";
 import { useSeo } from "../seo";
@@ -21,22 +24,23 @@ const countryName = (code: string) => HOME_NATIONS[code] ?? regions.of(code) ?? 
 const thisYear = String(new Date().getFullYear());
 
 /** One fighter. A signing tightens to a single line on a wide screen, so the
- *  whole list fits on one; a cut keeps its two lines for both records. */
-function Move({ move, cut, fresh }: { move: RosterMove; cut: boolean; fresh: boolean }) {
+ *  whole list fits on one; a cut, and a signing of the last few days, keeps
+ *  two lines and a bigger photo. */
+function Move({ move, cut, big, fresh }: { move: RosterMove; cut: boolean; big: boolean; fresh: boolean }) {
   const records = cut
     ? [move.record && `${move.record} pro`, move.ufc_record && `${move.ufc_record} UFC`]
     : [move.record];
   const detail = [move.division, ...records].filter(Boolean).join(" · ");
-  const row = `flex items-center gap-3 px-4 sm:px-5 ${cut ? "py-2" : "py-2 xl:gap-2 xl:py-0.5"}`;
+  const row = `flex items-center gap-3 px-4 sm:px-5 ${big ? "py-2" : "py-2 xl:gap-2 xl:py-0.5"}`;
   const content = <>
-    <Avatar src={move.photo_url} name={move.name} size={cut ? "sm" : "row"} />
-    <span className={`min-w-0 flex-1 ${cut ? "" : "xl:flex xl:items-baseline xl:justify-between xl:gap-2"}`}>
+    <Avatar src={move.photo_url} name={move.name} size={big ? "sm" : "row"} />
+    <span className={`min-w-0 flex-1 ${big ? "" : "xl:flex xl:items-baseline xl:justify-between xl:gap-2"}`}>
       <span className="flex min-w-0 items-center gap-1.5">
         {fresh ? <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${cut ? "bg-rose-500" : "bg-emerald-500"}`} title="New since your last visit"><span className="sr-only">New:</span></span> : null}
         <span className="truncate text-[13px] font-medium text-zinc-900">{move.name}</span>
         {move.country ? <Flag code={move.country} name={countryName(move.country)} className="text-xs" /> : null}
       </span>
-      <span className={`block truncate text-[11px] tabular-nums text-zinc-500 ${cut ? "" : "xl:shrink-0"}`}>{detail}</span>
+      <span className={`block truncate text-[11px] tabular-nums text-zinc-500 ${big ? "" : "xl:shrink-0"}`}>{detail}</span>
     </span>
     <span className="shrink-0 text-right text-[11px] leading-4">
       {move.date ? <span className="block tabular-nums text-zinc-400">
@@ -54,30 +58,44 @@ function Move({ move, cut, fresh }: { move: RosterMove; cut: boolean; fresh: boo
 
 const NONE: ReadonlySet<string> = new Set();
 
-/** One list: its heading on a wide screen, where both lists sit side by side;
- *  hidden on a narrow one unless its tab is picked. */
-function MoveList({ kind, moves, shown, fresh }: { kind: "signed" | "cut"; moves: RosterMove[]; shown: boolean; fresh: ReadonlySet<string> }) {
+// Signings this recent stand out at a cut's size.
+const RECENT_DAYS = 3;
+const recent = (move: RosterMove) => (daysUntil(move.date ?? "") ?? -Infinity) >= -RECENT_DAYS;
+
+/** Signed and released fighters, with counts for the filtered list. */
+function MoveList({ kind, moves, fresh, both }: { kind: "signed" | "cut"; moves: RosterMove[]; fresh: ReadonlySet<string>; both: boolean }) {
   const cut = kind === "cut";
+  // Recent signings get their own rows, so a big row never pairs with a small one.
+  const groups = cut ? [moves] : [moves.filter(recent), moves.filter((move) => !recent(move))];
   return (
-    <div className={`${shown ? "" : "hidden"} min-w-0 xl:block ${cut ? "border-zinc-100 xl:border-l" : "xl:col-span-2"}`}>
-      <div className="hidden items-baseline gap-2 border-b border-zinc-100 px-4 py-2 sm:px-5 xl:flex">
+    <div className={`min-w-0 ${both ? cut ? "border-zinc-100 xl:border-l" : "xl:col-span-2" : ""}`}>
+      <div className="flex items-baseline gap-2 border-b border-zinc-100 px-4 py-2 sm:px-5">
         <h2 className="shrink-0 text-sm font-semibold text-zinc-900">{cut ? "Cut" : "Signed"} <span className="tabular-nums text-zinc-400">{moves.length}</span></h2>
       </div>
-      <ul className={`grid grid-cols-1 ${cut ? "" : "sm:grid-cols-2"}`}>
-        {moves.map((move) => <Move key={`${move.fighter_id ?? move.name}-${move.date}`} move={move} cut={cut} fresh={fresh.has(moveKey(kind, move))} />)}
-      </ul>
+      {groups.map((group, index) => group.length ? (
+        <ul key={index} className={`grid grid-cols-1 ${cut ? "" : "sm:grid-cols-2"}`}>
+          {group.map((move) => <Move key={`${move.fighter_id ?? move.name}-${move.date}`} move={move} cut={cut} big={cut || index === 0} fresh={fresh.has(moveKey(kind, move))} />)}
+        </ul>
+      ) : null)}
       {!moves.length ? <p className="px-5 py-8 text-center text-sm text-zinc-500">No one right now.</p> : null}
     </div>
   );
 }
 
-/** Who the UFC has just signed and just let go: side by side on a wide screen,
- *  a tab each on a narrow one. The tab lives in the address, so coming back
- *  from a profile returns to it. */
+/** Roster filters work at every screen size and stay in the address. */
 export default function RosterPage() {
   const { data, error, retry } = useApi<RosterMoves>("/api/roster");
   const [params, setParams] = useSearchParams();
-  const list = params.get("tab") === "cut" ? "cut" : "signed";
+  const list = params.get("tab") === "cut" ? "cut" : params.get("tab") === "signed" ? "signed" : "all";
+  const [query, setQuery] = useState("");
+  const division = params.get("division") ?? "all";
+  const country = params.get("country") ?? "all";
+  const onlyNew = params.get("new") === "1";
+  const set = (key: string, value: string) => setParams((current) => {
+    const next = new URLSearchParams(current);
+    if (value === "all" || !value) next.delete(key); else next.set(key, value);
+    return next;
+  }, { replace: true });
   const scroll = useRouteScrollRestoration<HTMLDivElement>("roster", Boolean(data));
   // What was new when the page opened keeps its dot for this visit.
   const [fresh, setFresh] = useState<ReadonlySet<string> | null>(null);
@@ -89,29 +107,42 @@ export default function RosterPage() {
   useSeo({ title: "UFC Roster Changes", description: "Fighters the UFC has recently signed and recently released, with division, record and date.", path: "/roster" });
   if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the roster changes.</RequestNotice></div>;
   if (!data) return <PageState>Loading roster changes…</PageState>;
-  const show = (next: "signed" | "cut") => setParams(next === "cut" ? { tab: "cut" } : {}, { replace: true });
+  const moves = [...data.signed, ...data.cut];
+  const filtered = (kind: "signed" | "cut") => searchList(data[kind], query, (move) => [move.name, move.nickname, move.division, move.country ? countryName(move.country) : null].filter(Boolean).join(" "))
+    .filter((move) => (division === "all" || move.division === division) && (country === "all" || move.country === country) && (!onlyNew || fresh?.has(moveKey(kind, move))));
   return (
     <div ref={scroll} className={PAGE}>
-      <div className={`${PAGE_BODY} xl:max-w-7xl`}>
-        <BrowseTabs />
-        <section className={`${PANEL} overflow-hidden`}>
-          <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-zinc-100 px-4 py-4 sm:px-5 xl:py-3">
-            <div className="flex min-w-0 flex-col gap-1 xl:flex-row xl:items-baseline xl:gap-3">
-              <h1 className="text-xl font-semibold tracking-tight text-zinc-950 sm:text-2xl xl:text-xl">Roster changes</h1>
-              <Freshness label="Updated" at={data.updated_at} staleAfterHours={24} />
-            </div>
-            <div className={`${segmentedGroup} xl:hidden`} role="group" aria-label="Roster changes">
-              {(["signed", "cut"] as const).map((option) => (
-                <button key={option} type="button" aria-pressed={list === option} onClick={() => show(option)}
-                  className={`${segmentedOption} ${list === option ? segmentedSelected : segmentedIdle}`}>
-                  {option === "signed" ? "Signed" : "Cut"} <span className="tabular-nums text-zinc-400">{data[option].length}</span>
-                </button>
-              ))}
-            </div>
-          </header>
-          <div className="xl:grid xl:grid-cols-3">
-            <MoveList kind="signed" moves={data.signed} shown={list === "signed"} fresh={fresh ?? NONE} />
-            <MoveList kind="cut" moves={data.cut} shown={list === "cut"} fresh={fresh ?? NONE} />
+      <div className={FULL_PAGE_BODY}>
+        <h1 className="sr-only">Roster changes</h1>
+        <PageToolbar>
+          <BrowseTabs />
+          <div className={segmentedGroup} role="group" aria-label="Roster changes">
+            {(["all", "signed", "cut"] as const).map((option) => (
+              <button key={option} type="button" aria-pressed={list === option} onClick={() => set("tab", option)}
+                className={`${segmentedOption} ${list === option ? segmentedSelected : segmentedIdle}`}>
+                {option === "all" ? "All" : option === "signed" ? "Signed" : "Cut"}
+              </button>
+            ))}
+          </div>
+          <div className="ml-auto flex min-w-0 flex-1 basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
+            <ToolbarSearch value={query} onChange={setQuery} label="Find a fighter" />
+            <OptionsSheet label="Filters" count={Number(division !== "all") + Number(country !== "all") + Number(onlyNew) || undefined}
+              onReset={() => { setQuery(""); setParams(list === "all" ? {} : { tab: list }, { replace: true }); }}>
+              <div className="space-y-3 p-4">
+                <FilterSelect label="Division" value={division} onChange={(value) => set("division", value)}
+                  options={[{ value: "all", label: "All divisions" }, ...[...new Set(moves.map((move) => move.division).filter((value): value is string => Boolean(value)))].sort().map((value) => ({ value, label: value }))]} />
+                <FilterSelect label="Country" value={country} onChange={(value) => set("country", value)}
+                  options={[{ value: "all", label: "All countries" }, ...[...new Set(moves.map((move) => move.country).filter((value): value is string => Boolean(value)))].map((value) => ({ value, label: countryName(value) })).sort((a, b) => a.label.localeCompare(b.label))]} />
+                <SwitchRow label="New since last visit" on={onlyNew} onChange={(on) => set("new", on ? "1" : "")} />
+                <Freshness label="Updated" at={data.updated_at} staleAfterHours={24} />
+              </div>
+            </OptionsSheet>
+          </div>
+        </PageToolbar>
+        <section aria-label="Roster changes" className={`${PANEL} overflow-hidden`}>
+          <div className={list === "all" ? "xl:grid xl:grid-cols-3" : ""}>
+            {list !== "cut" ? <MoveList kind="signed" moves={filtered("signed")} both={list === "all"} fresh={fresh ?? NONE} /> : null}
+            {list !== "signed" ? <MoveList kind="cut" moves={filtered("cut")} both={list === "all"} fresh={fresh ?? NONE} /> : null}
           </div>
         </section>
       </div>

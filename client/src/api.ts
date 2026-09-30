@@ -233,6 +233,8 @@ export type EventDetail = {
   name: string;
   date: string;
   location: string;
+  /** The location's page, grouping every card in its city. */
+  location_slug?: string | null;
   venue?: VenueRef | null;
   /** Broadcaster per card segment, as the promotion lists them. */
   broadcasters?: Partial<Record<CardSegment, string>> | null;
@@ -335,7 +337,7 @@ export type OfficialRef = { name: string; slug: string | null };
 export type Matchup = {
   refreshing?: boolean;
   id: string;
-  event: { id: string; name: string; date: string; location: string; venue?: VenueRef | null };
+  event: { id: string; name: string; date: string; location: string; location_slug?: string | null; venue?: VenueRef | null };
   /** Profile addresses for the named officials; judges in scorecard order. */
   officials?: { referee: (OfficialRef & { assigned: boolean }) | null; judges: (string | null)[] };
   status: "past" | "upcoming";
@@ -649,10 +651,14 @@ export type VenueEvent = {
   broadcasters: Record<string, string> | null; time_zone: string | null; fights: number; title_fights: number;
   /** KO/TKO and submissions; only on completed cards. */
   finishes?: number;
+  /** On a location's cards: the venue, by its name that night. */
+  venue?: { slug: string; name: string } | null;
 };
 
 export type VenuePage = {
   slug: string; name: string; former_names: string[];
+  /** The city of its latest card. */
+  location_slug: string | null;
   city: string | null; state: string | null; country: string | null; time_zone: string | null; map_url: string;
   events: VenueEvent[];
   notes: { label: string; detail: string }[];
@@ -668,6 +674,15 @@ export type VenuePage = {
     attendance_known: number; average_attendance: number | null;
     attendance_record: { event_id: string; event_name: string; date: string; attendance: number } | null;
   };
+};
+
+export type LocationPage = Omit<VenuePage, "former_names" | "location_slug"> & {
+  city: string;
+  venues: { slug: string; name: string; events: number; upcoming: number }[];
+};
+
+export type LocationDirectory = {
+  locations: { slug: string; name: string; city: string; state: string | null; country: string | null; events: number; upcoming: number; last: string | null }[];
 };
 
 export type VenueDirectory = {
