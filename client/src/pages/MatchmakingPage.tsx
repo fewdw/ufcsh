@@ -408,14 +408,13 @@ function CardBuilder({ account, navigation }: { account: CardAccount | null; nav
 // Suggestions
 
 // Set like the Rankings page: a panel per division or card, rows of rank,
-// photo, name and a small line under it. A booked title fight is yellow and
-// any other booked fight blue, as a booked fighter is there.
+// photo, name and a small line under it. A title fight, booked or not, is
+// yellow and any other booked fight blue, as a booked fighter is there.
 
 const rankLabel = (rank: number | null) => (rank === 0 ? "C" : rank == null ? "" : String(rank));
 const BOOKED = { title: "activity-booked", fight: "activity-recent" } as const;
-const booked = (kind: string, title: boolean) => (kind === "booked" ? (title ? BOOKED.title : BOOKED.fight) : "");
+const tint = (kind: string, title: boolean) => (kind === "title" || title ? BOOKED.title : kind === "booked" ? BOOKED.fight : "");
 const TAG = "shrink-0 rounded-full px-1.5 text-[10px] font-semibold ring-1 ring-inset";
-const TITLE_TAG = `${TAG} bg-amber-50 text-amber-700 ring-amber-200`;
 
 function Streak({ streak }: { streak: number }) {
   if (!streak) return null;
@@ -471,14 +470,13 @@ function DivisionPanel({ entry }: { entry: Division }) {
   return (
     <Panel title={entry.division}>
       {entry.fights.map((fight) => (
-        <li key={`${fight.a.id}-${fight.b.id}`} className={`px-2.5 py-1.5 ${booked(fight.kind, fight.reason.startsWith("Title"))}`}>
+        <li key={`${fight.a.id}-${fight.b.id}`} className={`px-2.5 py-1.5 ${tint(fight.kind, fight.reason.startsWith("Title"))}`}>
           <div className="flex flex-col gap-1 @min-[420px]:flex-row @min-[420px]:items-center @min-[420px]:gap-2">
             <Side fighter={fight.a} />
             <span className="hidden shrink-0 text-[10px] uppercase text-zinc-400 @min-[420px]:block">vs</span>
             <Side fighter={fight.b} align="responsive" />
           </div>
           <p className={NOTE}>
-            {fight.kind === "title" ? <span className={TITLE_TAG}>Title</span> : null}
             {fight.event
               ? <Link to={`/events/${fight.event.id}`} title={`${fight.event.name} · ${formatDate(fight.event.date)}`} className="truncate hover:text-zinc-900">{fight.event.name} · {formatDate(fight.event.date)}</Link>
               : <span className="truncate" title={fight.reason}>{fight.reason}</span>}
@@ -519,12 +517,11 @@ function EventPanel({ event }: { event: RecentEvent }) {
             // Wide: result, fighter, arrow, next fight, and why across the row
             // below. Narrow, the next fight wraps under the fighter.
             const why = <>
-              {next.kind === "title" ? <span className={TITLE_TAG}>Title</span> : null}
               {next.kind === "cut" ? <span className={`${TAG} bg-rose-50 text-rose-700 ring-rose-200`}>Cut</span> : null}
               <span className="min-w-0">{next.reason}</span>
             </>;
             return (
-              <div key={side.fighter.id} className={`grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-1.5 gap-y-1 px-2.5 py-1 @min-[400px]:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] ${booked(next.kind, next.title)}`}>
+              <div key={side.fighter.id} className={`grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-1.5 gap-y-1 px-2.5 py-1 @min-[400px]:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] ${tint(next.kind, next.title)}`}>
                 <span title={word} className={`mt-1 grid h-5 min-w-5 place-items-center rounded px-1 text-[10px] font-bold ${tone}`}>
                   {letter}<span className="sr-only"> {word}</span>
                 </span>
@@ -582,7 +579,7 @@ function Suggestions({ tab, data, error, retry, navigation }: { tab: Tab; data: 
       </div> : null}
       <div className="ml-auto flex min-w-0 flex-1 basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
         <span className="hidden items-center gap-3 text-[11px] text-zinc-500 md:flex">
-          <span className="flex items-center gap-1.5"><span className={`${BOOKED.title} activity-swatch h-2.5 w-2.5 rounded-sm border`} />Title booked</span>
+          <span className="flex items-center gap-1.5"><span className={`${BOOKED.title} activity-swatch h-2.5 w-2.5 rounded-sm border`} />Title fight</span>
           <span className="flex items-center gap-1.5"><span className={`${BOOKED.fight} activity-swatch h-2.5 w-2.5 rounded-sm border`} />Booked</span>
         </span>
         <OptionsSheet label="Filters" count={count || undefined} onReset={() => { setParams(top ? {} : { tab: "last" }, { replace: true }); }}>
