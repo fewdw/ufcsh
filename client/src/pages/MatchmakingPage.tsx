@@ -534,7 +534,7 @@ function EventPanel({ event }: { event: RecentEvent }) {
                   <span className="sr-only">Next: </span>
                   {next.opponent ? <Side fighter={next.opponent} compact /> : <p className="flex min-w-0 items-start gap-1.5 pt-1.5 text-[10px] leading-3.5 text-zinc-500">{why}</p>}
                 </div>
-                {next.opponent ? <p className="col-start-2 -mt-0.5 flex min-w-0 items-start gap-1.5 pl-[3.75rem] text-[10px] leading-3.5 text-zinc-500 @min-[400px]:col-span-3">{why}</p> : null}
+                {next.opponent ? <p className="col-[2/-1] -mt-0.5 flex min-w-0 items-start gap-1.5 pl-[3.75rem] text-[10px] leading-3.5 text-zinc-500">{why}</p> : null}
               </div>
             );
           })}
