@@ -30,7 +30,7 @@ fresh in the background.
   (not only top-50 places), across the whole UFC or within one weight class
   counting only bouts fought there, grouped by category or best place first,
   with the field size, share of the field ahead and an optional bout floor.
-- **Graphics builder** (from your profile): matchup,
+- **Graphics builder** (`/graphic`, under More): matchup,
   result, fighter and card templates in square, portrait and landscape, dark
   or light, with each line chosen by checkbox; copy, download or share. Every
   image carries the UFC.sh mark, its page address and its sources and dates.

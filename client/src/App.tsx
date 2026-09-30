@@ -5,8 +5,9 @@ import CmdK from "./components/CmdK";
 import SearchGlyph from "./components/SearchGlyph";
 import LiveMatchup from "./components/LiveMatchup";
 import { segmentedIdle, segmentedSelected } from "./components/segmented";
-import { ChevronDown, Moon, Sun } from "lucide-react";
-import { accountsEnabled } from "./auth";
+import { ChevronDown, Moon, Shield, Sun } from "lucide-react";
+import { accountsEnabled, useAccount } from "./auth";
+import { useAdminResource, type AdminSession } from "./admin";
 import { inMore, MORE_HOME, MoreGroups } from "./components/MoreNav";
 import { useSettings, withRanking } from "./settings";
 import { prefetch } from "./api";
@@ -48,6 +49,27 @@ const NewsPage = page(pages.news, module => module.default);
 const GraphicPage = page(pages.graphic, module => module.default);
 
 const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
+
+// Remembered across pages, so the Admin link doesn't blink in on each one.
+let wasAdmin = false;
+
+/** Admin, just before More, listed only for the few who have it. A shield
+ *  alone on a phone, so the row still fits a 320px screen. */
+function AdminLink({ active }: { active: boolean }) {
+  const { isLoaded, user } = useAccount();
+  const { data } = useAdminResource<AdminSession>(isLoaded && user ? "/api/admin/session" : null);
+  if (data) wasAdmin = data.admin;
+  else if (isLoaded && !user) wasAdmin = false;
+  if (!wasAdmin) return null;
+  const load = () => { void pages.admin().catch(() => {}); };
+  return (
+    <Link to="/admin" aria-label="Admin" aria-current={active ? "page" : undefined} onPointerEnter={load} onFocus={load} onTouchStart={load}
+      className={`${NAV_ITEM} flex items-center gap-1 ${active ? segmentedSelected : segmentedIdle}`}>
+      <Shield className="h-3.5 w-3.5" aria-hidden="true" />
+      <span className="hidden sm:inline">Admin</span>
+    </Link>
+  );
+}
 
 /** The rest of the site, one pill after the sections. From `md` up a mouse
  *  opens its groups on hover and a press opens Stats; a tap or a key opens
@@ -121,12 +143,13 @@ function Header({ onSearch }: { onSearch: () => void }) {
   }, []);
   const isRankings = pathname.startsWith("/rankings");
   const isMore = inMore(pathname);
+  const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
   // A profile belongs to no section of the nav, so none of them is lit.
   const isProfile = pathname.startsWith("/profiles");
   const links = [
     // Pointing at a section starts its code and its first data, so a tap
     // lands on it loaded.
-    { href: "/", label: "Events", active: !isRankings && !isProfile && !isMore, load: () => { warmSections(settings.rankingSource); return pages.events(); } },
+    { href: "/", label: "Events", active: !isRankings && !isProfile && !isMore && !isAdmin, load: () => { warmSections(settings.rankingSource); return pages.events(); } },
     { href: "/rankings", label: "Rankings", active: isRankings, load: () => { prefetch(withRanking("/api/rankings", settings.rankingSource)); return pages.rankings(); } },
   ];
 
@@ -156,6 +179,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
               {link.label}
             </Link>
           ))}
+          {accountsEnabled ? <AdminLink active={isAdmin && !moreOpen} /> : null}
           <MoreMenu pathname={pathname} active={isMore} open={moreOpen} setOpen={setMoreOpen} />
         </nav>
 

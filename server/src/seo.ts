@@ -46,6 +46,7 @@ const DEFAULT: Omit<PageSeo, "canonical"> = {
 const STATIC_PAGES: Record<string, { title: string; description: string }> = {
   "/rankings": { title: "UFC Rankings by Division | ufc.sh", description: "Current UFC rankings by division, including champions, activity and each fighter's next booking." },
   "/stats": { title: "UFC Statistics Leaderboards | ufc.sh", description: "All-time UFC leaderboards for records, finishes, output, opposition and the betting market, plus the most disputed decisions, biggest upsets, judges and referees." },
+  "/graphic": { title: "UFC Graphics Maker | ufc.sh", description: "Make shareable UFC graphics: matchups, results, fighters and full cards, in square, portrait or landscape, dark or light." },
   "/officials": { title: "UFC Judges & Referees | ufc.sh", description: "Every UFC judge and referee on record: scorecards, agreement, dissents, stoppages and the bouts behind each number." },
   "/venues": { title: "UFC Venues | ufc.sh", description: "Every arena that has hosted a UFC event, with the cards held there, attendance and upcoming events." },
   "/matchmaking": { title: "UFC Matchmaking: Fights to Make Next | ufc.sh", description: "Fights to make next in every UFC division: title fights, ranked matchups and next opponents for everyone on the last card, each with its reason." },
@@ -65,7 +66,7 @@ export function pageSeo(pathname: string): PageSeo {
   if (pathname === "/" || pathname === "/index.html") return home;
   const fixed = STATIC_PAGES[pathname];
   if (fixed) return { ...DEFAULT, ...fixed, canonical: `${SITE_URL}${pathname}` };
-  if (pathname === "/admin" || pathname === "/admin/bugs" || pathname === "/graphic" || /^\/sign-(in|up)(\/|$)/.test(pathname)) return { ...home, noindex: true };
+  if (pathname === "/admin" || pathname === "/admin/bugs" || /^\/sign-(in|up)(\/|$)/.test(pathname)) return { ...home, noindex: true };
   const parts = pathname.split("/");
   const id = decodeURIComponent(parts[2] ?? "");
   if (parts.length !== 3 || !id) return notFound();
