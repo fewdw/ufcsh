@@ -408,84 +408,90 @@ function CardBuilder({ account, navigation }: { account: CardAccount | null; nav
 // ---------------------------------------------------------------------------
 // Suggestions
 
-const rankLabel = (rank: number | null) => (rank === 0 ? "C" : rank == null ? null : `#${rank}`);
+// Set like the Rankings page: a panel per division or card, rows of rank,
+// photo, name and a small line under it. A booked title fight is yellow and
+// any other booked fight blue, as a booked fighter is there.
+
+const rankLabel = (rank: number | null) => (rank === 0 ? "C" : rank == null ? "" : String(rank));
+const BOOKED = { title: "activity-booked", fight: "activity-recent" } as const;
+const booked = (kind: string, title: boolean) => (kind === "booked" ? (title ? BOOKED.title : BOOKED.fight) : "");
+const TAG = "shrink-0 rounded-full px-1.5 text-[10px] font-semibold ring-1 ring-inset";
+const TITLE_TAG = `${TAG} bg-amber-50 text-amber-700 ring-amber-200`;
 
 function Streak({ streak }: { streak: number }) {
   if (!streak) return null;
   return (
-    <span className={`text-[10px] font-semibold tabular-nums ${streak > 0 ? "text-emerald-700" : "text-rose-700"}`}
+    <span className={`font-bold ${streak > 0 ? "text-emerald-600" : "text-rose-500"}`}
       title={`${Math.abs(streak)} straight ${streak > 0 ? "wins" : "losses"}`}>
       {Math.abs(streak)}{streak > 0 ? "W" : "L"}
     </span>
   );
 }
 
-/** A fighter in a suggested bout, on one line: photo, rank, name, record and run. */
+/** A fighter as a ranking row has them: rank, photo, name, and their record
+ *  and run under it. `responsive` mirrors them once the row is wide. */
 function Side({ fighter, align = "left" }: { fighter: MatchFighter; align?: "left" | "responsive" }) {
   const rank = rankLabel(fighter.rank);
-  const className = `flex min-w-0 flex-1 items-center gap-2 ${align === "responsive" ? "@min-[420px]:flex-row-reverse" : ""}`;
+  const flip = align === "responsive" ? "@min-[420px]:flex-row-reverse" : "";
+  const className = `flex min-w-0 flex-1 items-center gap-2 ${flip}`;
   const body = (
     <>
+      <span className={`flex h-5 w-7 shrink-0 items-center justify-center text-[12px] tabular-nums ${rank === "C" ? "font-bold text-amber-500" : "font-semibold text-zinc-800"}`}
+        title={rank === "C" ? "Champion" : undefined}>{rank}</span>
       <Avatar src={fighter.photo_url} name={fighter.name} size="xs" />
-      <span className={`flex min-w-0 items-baseline gap-1.5 ${align === "responsive" ? "@min-[420px]:flex-row-reverse" : ""}`}>
-        {rank ? <span className="shrink-0 text-[11px] font-semibold tabular-nums text-zinc-400">{rank}</span> : null}
-        <span className="truncate text-[13px] font-medium text-zinc-900">{fighter.name}</span>
-        <span className="shrink-0 text-[11px] tabular-nums text-zinc-500">{fighter.record}</span>
-        <Streak streak={fighter.streak} />
+      <span className={`min-w-0 ${align === "responsive" ? "@min-[420px]:text-right" : ""}`}>
+        <span className="block truncate text-[13px] font-medium leading-4 text-zinc-900">{fighter.name}</span>
+        <span className={`flex gap-1.5 text-[10px] leading-3.5 tabular-nums text-zinc-400 ${align === "responsive" ? "@min-[420px]:justify-end" : ""}`}>
+          {fighter.record}<Streak streak={fighter.streak} />
+        </span>
       </span>
     </>
   );
   return fighter.id ? <Link to={`/fighters/${fighter.id}`} title={fighter.name} className={`${className} hover:opacity-80`}>{body}</Link> : <span className={className}>{body}</span>;
 }
 
-// ---------------------------------------------------------------------------
-// Lists, set like the news: a heading, then rows between hairlines.
+/** Under a row, lined up with the first name. */
+const NOTE = "mt-0.5 flex min-w-0 items-center gap-1.5 pl-[4.5rem] text-[10px] leading-3.5 text-zinc-500";
 
-const HEADING = "flex flex-wrap items-baseline gap-x-3 py-2 text-[12px] font-bold uppercase tracking-[0.12em] text-zinc-900";
-const ROW = "border-t border-zinc-100 py-2 not-dark:border-zinc-200";
-const TAG = "shrink-0 rounded-sm px-1.5 py-px text-[10px] font-semibold";
-
-type Division = MatchmakingData["top15"][number];
-
-/** "Title", "Title · booked" or "Booked"; nothing for a suggested fight. */
-function FightTag({ fight }: { fight: Division["fights"][number] }) {
-  if (fight.kind === "suggested") return null;
-  const title = fight.kind === "title" || fight.reason.startsWith("Title");
+function Panel({ title, chip, children }: { title: ReactNode; chip?: ReactNode; children: ReactNode }) {
   return (
-    <span className={`${TAG} ${title ? "bg-amber-50 text-amber-800" : "bg-zinc-100 text-zinc-600"}`}>
-      {fight.kind === "title" ? "Title" : title ? "Title · booked" : "Booked"}
-    </span>
+    <section className={`${PANEL} @container min-w-0 overflow-hidden`}>
+      <div className="flex items-center justify-between gap-2 border-b border-zinc-200 px-3.5 py-2.5">
+        <h2 className="truncate text-sm font-semibold text-zinc-900">{title}</h2>
+        {chip ? <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500">{chip}</span> : null}
+      </div>
+      <ul className="divide-y divide-zinc-50">{children}</ul>
+    </section>
   );
 }
 
-function DivisionList({ entry }: { entry: Division }) {
+type Division = MatchmakingData["top15"][number];
+
+function DivisionPanel({ entry }: { entry: Division }) {
   return (
-    <section className="@container min-w-0">
-      <h2 className={HEADING}>{entry.division}</h2>
-      <ul>
-        {entry.fights.map((fight) => (
-          <li key={`${fight.a.id}-${fight.b.id}`} className={ROW}>
-            <div className="flex flex-col gap-1 @min-[420px]:flex-row @min-[420px]:items-center @min-[420px]:gap-2">
-              <Side fighter={fight.a} />
-              <span className="hidden shrink-0 text-[10px] uppercase text-zinc-400 @min-[420px]:block">vs</span>
-              <Side fighter={fight.b} align="responsive" />
-            </div>
-            <p className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-zinc-500">
-              <FightTag fight={fight} />
-              {fight.event
-                ? <Link to={`/events/${fight.event.id}`} title={`${fight.event.name} · ${formatDate(fight.event.date)}`} className="truncate hover:text-zinc-900">{fight.event.name} · {formatDate(fight.event.date)}</Link>
-                : <span className="truncate" title={fight.reason}>{fight.reason}</span>}
-            </p>
-          </li>
-        ))}
-        {entry.idle.map(({ fighter, reason }) => (
-          <li key={fighter.id} className={ROW}>
-            <Side fighter={fighter} />
-            <p className="mt-1 text-[11px] leading-4 text-zinc-500">{reason}</p>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <Panel title={entry.division}>
+      {entry.fights.map((fight) => (
+        <li key={`${fight.a.id}-${fight.b.id}`} className={`px-2.5 py-1.5 ${booked(fight.kind, fight.reason.startsWith("Title"))}`}>
+          <div className="flex flex-col gap-1 @min-[420px]:flex-row @min-[420px]:items-center @min-[420px]:gap-2">
+            <Side fighter={fight.a} />
+            <span className="hidden shrink-0 text-[10px] uppercase text-zinc-400 @min-[420px]:block">vs</span>
+            <Side fighter={fight.b} align="responsive" />
+          </div>
+          <p className={NOTE}>
+            {fight.kind === "title" ? <span className={TITLE_TAG}>Title</span> : null}
+            {fight.event
+              ? <Link to={`/events/${fight.event.id}`} title={`${fight.event.name} · ${formatDate(fight.event.date)}`} className="truncate hover:text-zinc-900">{fight.event.name} · {formatDate(fight.event.date)}</Link>
+              : <span className="truncate" title={fight.reason}>{fight.reason}</span>}
+          </p>
+        </li>
+      ))}
+      {entry.idle.map(({ fighter, reason }) => (
+        <li key={fighter.id} className="px-2.5 py-1.5">
+          <Side fighter={fighter} />
+          <p className={NOTE}>{reason}</p>
+        </li>
+      ))}
+    </Panel>
   );
 }
 
@@ -495,57 +501,49 @@ const OUTCOME = {
   draw: ["D", "Drew", "bg-zinc-100 text-zinc-600"],
   nc: ["NC", "No contest", "bg-zinc-100 text-zinc-600"],
 } as const;
-const NEXT_TAG = { title: ["Title", "bg-amber-50 text-amber-800"], booked: ["Booked", "bg-zinc-100 text-zinc-600"], cut: ["Cut", "bg-rose-50 text-rose-700"] } as const;
 
 type RecentEvent = MatchmakingData["recent_events"][number];
 
 /** Each bout's two fighters, what they did and who they fight next. */
-function EventList({ event }: { event: RecentEvent }) {
+function EventPanel({ event }: { event: RecentEvent }) {
   return (
-    <section className="@container min-w-0">
-      <h2 className={HEADING}>
-        <Link to={`/events/${event.id}`} className="hover:underline">{event.name}</Link>
-        <span className="text-[12px] font-normal normal-case tracking-normal text-zinc-400">{formatDate(event.date)}</span>
-      </h2>
-      <ul>
-        {event.bouts.map((bout) => (
-          <li key={bout.fight_id} className={ROW}>
-            <p className="mb-1.5 text-[11px] text-zinc-400">
-              {bout.division}{bout.title ? " · title fight" : ""}{bout.method ? ` · ${bout.method}` : ""}
-            </p>
-            <div className="flex flex-col gap-2">
-              {bout.sides.map((side) => {
-                const [letter, word, tone] = side.outcome ? OUTCOME[side.outcome] : ["–", "No result", "bg-zinc-100 text-zinc-500"];
-                const tag = side.next.kind === "suggested" || side.next.kind === "none" ? null : NEXT_TAG[side.next.kind];
-                return (
-                  <div key={side.fighter.id} className="grid grid-cols-1 gap-1 @min-[560px]:grid-cols-[minmax(0,1fr)_1rem_minmax(0,1.3fr)] @min-[560px]:items-start @min-[560px]:gap-4">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span title={word} className={`grid h-5 min-w-5 shrink-0 place-items-center rounded px-1 text-[10px] font-bold ${tone}`}>
-                        {letter}<span className="sr-only"> {word}</span>
-                      </span>
-                      <Side fighter={side.fighter} />
-                    </div>
-                    <span className="hidden pt-1 text-center text-zinc-300 @min-[560px]:block" aria-hidden="true">→</span>
-                    {/* Narrow, the next fight sits under the fighter, led by its arrow. */}
-                    <div className="flex min-w-0 gap-2 pl-7 @min-[560px]:pl-0">
-                      <span className="pt-1 text-zinc-300 @min-[560px]:hidden" aria-hidden="true">→</span>
-                      <div className="min-w-0 flex-1">
-                        <span className="sr-only">Next: </span>
-                        {side.next.opponent ? <Side fighter={side.next.opponent} /> : null}
-                        <p className={`flex min-w-0 items-start gap-1.5 text-[11px] leading-4 text-zinc-500 ${side.next.opponent ? "mt-0.5 pl-9" : "pt-1"}`}>
-                          {tag ? <span className={`${TAG} ${tag[1]}`}>{tag[0]}</span> : null}
-                          <span className="min-w-0">{side.next.reason}</span>
-                        </p>
-                      </div>
-                    </div>
+    <Panel title={<Link to={`/events/${event.id}`} className="hover:underline">{event.name}</Link>} chip={formatDate(event.date)}>
+      {event.bouts.map((bout) => (
+        <li key={bout.fight_id}>
+          <p className="px-2.5 pt-1.5 text-[10px] leading-3.5 text-zinc-400">
+            {bout.division}{bout.title ? " · title fight" : ""}{bout.method ? ` · ${bout.method}` : ""}
+          </p>
+          {bout.sides.map((side) => {
+            const [letter, word, tone] = side.outcome ? OUTCOME[side.outcome] : ["–", "No result", "bg-zinc-100 text-zinc-500"];
+            const { next } = side;
+            return (
+              <div key={side.fighter.id} className={`grid grid-cols-1 gap-1 px-2.5 py-1.5 @min-[560px]:grid-cols-[minmax(0,1fr)_1rem_minmax(0,1.3fr)] @min-[560px]:items-center @min-[560px]:gap-2 ${booked(next.kind, next.title)}`}>
+                <div className="flex min-w-0 items-center gap-1">
+                  <span title={word} className={`grid h-5 min-w-5 shrink-0 place-items-center rounded px-1 text-[10px] font-bold ${tone}`}>
+                    {letter}<span className="sr-only"> {word}</span>
+                  </span>
+                  <Side fighter={side.fighter} />
+                </div>
+                <span className="hidden text-center text-zinc-300 @min-[560px]:block" aria-hidden="true">→</span>
+                {/* Narrow, the next fight sits under the fighter, led by its arrow. */}
+                <div className="flex min-w-0 items-start gap-1 pl-6 @min-[560px]:pl-0">
+                  <span className="pt-1 text-zinc-300 @min-[560px]:hidden" aria-hidden="true">→</span>
+                  <div className="min-w-0 flex-1">
+                    <span className="sr-only">Next: </span>
+                    {next.opponent ? <Side fighter={next.opponent} /> : null}
+                    <p className={next.opponent ? NOTE : "flex min-w-0 items-center gap-1.5 text-[10px] leading-3.5 text-zinc-500"}>
+                      {next.kind === "title" ? <span className={TITLE_TAG}>Title</span> : null}
+                      {next.kind === "cut" ? <span className={`${TAG} bg-rose-50 text-rose-700 ring-rose-200`}>Cut</span> : null}
+                      <span className="min-w-0">{next.reason}</span>
+                    </p>
                   </div>
-                );
-              })}
-            </div>
-          </li>
-        ))}
-      </ul>
-    </section>
+                </div>
+              </div>
+            );
+          })}
+        </li>
+      ))}
+    </Panel>
   );
 }
 
@@ -591,6 +589,10 @@ function Suggestions({ tab, data, error, retry, navigation }: { tab: Tab; data: 
           className={`${segmentedOption} ${gender === value ? segmentedSelected : segmentedIdle}`}>{value === "men" ? "Men" : value === "women" ? "Women" : "All"}</button>)}
       </div> : null}
       <div className="ml-auto flex min-w-0 flex-1 basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
+        <span className="hidden items-center gap-3 text-[11px] text-zinc-500 md:flex">
+          <span className="flex items-center gap-1.5"><span className={`${BOOKED.title} activity-swatch h-2.5 w-2.5 rounded-sm border`} />Title booked</span>
+          <span className="flex items-center gap-1.5"><span className={`${BOOKED.fight} activity-swatch h-2.5 w-2.5 rounded-sm border`} />Booked</span>
+        </span>
         <ToolbarSearch value={query} onChange={setQuery} label="Find a fighter" />
         <OptionsSheet label="Filters" count={count || undefined} onReset={() => { setQuery(""); setParams(top ? {} : { tab: "last" }, { replace: true }); }}>
           <div className="space-y-3 p-4">
@@ -610,9 +612,9 @@ function Suggestions({ tab, data, error, retry, navigation }: { tab: Tab; data: 
       </div>
     </PageToolbar>
     {error && !data ? <RequestNotice onRetry={retry}>Couldn’t load the matchups.</RequestNotice> : !data ? <PageState>Working out matchups…</PageState> : top ?
-      top15.length ? <div className="grid grid-cols-1 gap-x-10 gap-y-5 md:grid-cols-2 2xl:grid-cols-3">{top15.map((entry) => <DivisionList key={entry.division} entry={entry} />)}</div>
+      top15.length ? <div className="grid grid-cols-1 gap-2 sm:gap-3 md:grid-cols-2 2xl:grid-cols-3">{top15.map((entry) => <DivisionPanel key={entry.division} entry={entry} />)}</div>
         : <p className="py-8 text-center text-sm text-zinc-500">No matchups match these filters.</p>
-      : events.length ? <div className="grid grid-cols-1 gap-x-10 gap-y-5 lg:grid-cols-2">{events.map((event) => <EventList key={event.id} event={event} />)}</div>
+      : events.length ? <div className="grid grid-cols-1 gap-2 sm:gap-3 lg:grid-cols-2">{events.map((event) => <EventPanel key={event.id} event={event} />)}</div>
         : <p className="py-8 text-center text-sm text-zinc-500">{data.recent_events.length ? "No fighters match these filters." : "No completed card yet."}</p>}
   </>;
 }

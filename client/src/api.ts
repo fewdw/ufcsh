@@ -757,7 +757,7 @@ export type MatchmakingData = {
     id: string; name: string; date: string;
     bouts: {
       fight_id: string; division: string; method: string | null; title: boolean;
-      sides: { fighter: MatchFighter; outcome: "win" | "loss" | "draw" | "nc" | null; next: { kind: "suggested" | "booked" | "title" | "cut" | "none"; opponent: MatchFighter | null; reason: string } }[];
+      sides: { fighter: MatchFighter; outcome: "win" | "loss" | "draw" | "nc" | null; next: { kind: "suggested" | "booked" | "title" | "cut" | "none"; opponent: MatchFighter | null; reason: string; title: boolean } }[];
     }[];
   }[];
 };
