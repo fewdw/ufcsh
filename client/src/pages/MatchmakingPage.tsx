@@ -29,8 +29,10 @@ type Tab = (typeof TABS)[number]["key"];
 // Create a card
 
 /** Keep the saved card’s 13 bouts in order: six main-card fights, seven prelims. */
-const ROWS = [{ bouts: 2, big: true }, { bouts: 4 }, { bouts: 7, prelims: true }] as const;
-const BOUTS = ROWS.reduce((total, row) => total + row.bouts, 0);
+const SECTIONS = [{ title: "Main card", first: 0, bouts: 6 }, { title: "Prelims", first: 6, bouts: 7 }] as const;
+const BOUTS = SECTIONS.reduce((total, section) => total + section.bouts, 0);
+/** The first two bouts are billed, and drawn a size up. */
+const BILLING = ["Main event", "Co-main event"];
 const CARD_KEY = "ufcsh:matchmaking-card:v1";
 /** Which saved card the one being built came from, so saving updates it. */
 const OPEN_KEY = "ufcsh:matchmaking-open:v1";
@@ -69,42 +71,49 @@ function draftCard(): Slot[] {
   return isCard(draft) ? draft : emptyCard();
 }
 
-function Corner({ fighter, big, onPick, onClear }: { fighter: Slot; big: boolean; onPick: () => void; onClear: () => void }) {
+/** One side of a bout row: photo, name and record, mirrored on the right,
+ *  with the photo above the name on a phone so the name has the width.
+ *  Tapping a photo takes the fighter off; an empty side adds one. */
+function Corner({ fighter, big, right, onPick, onClear }: { fighter: Slot; big: boolean; right: boolean; onPick: () => void; onClear: () => void }) {
+  const layout = `flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3 ${right ? "items-end text-right sm:flex-row-reverse" : "items-start"}`;
+  if (!fighter) {
+    return (
+      <button type="button" onClick={onPick}
+        className={`group ${layout} rounded-lg text-zinc-400 transition hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900`}>
+        <span className={`grid shrink-0 place-items-center rounded-full border border-dashed border-zinc-300 transition group-hover:border-zinc-500 group-hover:bg-zinc-100 ${big ? "h-13 w-13 lg:h-15 lg:w-15" : "h-12 w-12"}`}>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+        </span>
+        <span className="text-sm">Add fighter</span>
+      </button>
+    );
+  }
   return (
-    <div className="flex min-w-0 flex-1 flex-col items-center gap-2">
-      {/* The photo grows with its corner up to a modest cap. */}
-      <div className={`relative aspect-square w-4/5 ${big ? "max-w-28" : "max-w-20"}`}>
-        {fighter ? (
-          <button type="button" onClick={onClear} aria-label={`Remove ${fighter.name}`} title="Remove"
-            className="group block h-full w-full rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">
-            <Avatar src={fighter.photo_url} name={fighter.name} size="fill" />
-            {/* Shown on hover only: a tap anywhere on the photo removes the fighter. */}
-            <span aria-hidden="true" className={`absolute right-[4%] top-[4%] grid place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 opacity-0 shadow-sm transition group-hover:opacity-100 group-hover:text-zinc-900 group-focus-visible:opacity-100 ${big ? "h-7 w-7" : "h-6 w-6"}`}>
-              <X className={big ? "h-3.5 w-3.5" : "h-3 w-3"} />
-            </span>
-          </button>
-        ) : (
-          <button type="button" onClick={onPick} aria-label="Add a fighter"
-            className="grid h-full w-full place-items-center rounded-full border border-dashed border-zinc-300 text-zinc-400 transition hover:border-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">
-            <Plus className={big ? "h-5 w-5" : "h-4 w-4"} aria-hidden="true" />
-          </button>
-        )}
-      </div>
-      {fighter ? (
-        <Link to={`/fighters/${fighter.id}`} className={`w-full text-center font-semibold text-zinc-900 hover:underline ${big ? "text-sm sm:text-base" : "text-xs leading-4 sm:text-sm"}`}>{fighter.name}</Link>
-      ) : <span className={`w-full text-center text-zinc-400 ${big ? "text-sm" : "text-xs leading-4"}`}>Add fighter</span>}
+    <div className={layout}>
+      <button type="button" onClick={onClear} aria-label={`Remove ${fighter.name}`} title="Remove"
+        className="group relative shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">
+        <Avatar src={fighter.photo_url} name={fighter.name} size={big ? "matchup" : "md"} />
+        <span aria-hidden="true" className={`absolute -top-1 grid h-5 w-5 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 opacity-0 shadow-sm transition group-hover:opacity-100 group-hover:text-zinc-900 group-focus-visible:opacity-100 ${right ? "-left-1" : "-right-1"}`}>
+          <X className="h-3 w-3" />
+        </span>
+      </button>
+      <span className="min-w-0">
+        <Link to={`/fighters/${fighter.id}`} className={`line-clamp-2 font-semibold leading-tight text-zinc-900 hover:underline ${big ? "text-sm sm:text-base" : "text-sm"}`}>{fighter.name}</Link>
+        {fighter.record ? <span className="mt-0.5 block text-xs tabular-nums text-zinc-500">{fighter.record}</span> : null}
+      </span>
     </div>
   );
 }
 
-function Bout({ corners, big, onPick, onClear }: { corners: [Slot, Slot]; big: boolean; onPick: (corner: 0 | 1) => void; onClear: (corner: 0 | 1) => void }) {
+function Bout({ corners, big, billing, onPick, onClear }: { corners: [Slot, Slot]; big: boolean; billing?: string; onPick: (corner: 0 | 1) => void; onClear: (corner: 0 | 1) => void }) {
   return (
-    <div className={`flex h-full min-w-0 items-start gap-2 rounded-xl border border-zinc-200 bg-white ${big ? "p-4 sm:p-5" : "px-3 py-4"}`}>
-      <Corner fighter={corners[0]} big={big} onPick={() => onPick(0)} onClear={() => onClear(0)} />
-      {/* Level with the photos rather than the names below them. */}
-      <span className="-mt-6 shrink-0 self-center text-[10px] font-medium uppercase text-zinc-400 sm:text-xs">vs</span>
-      <Corner fighter={corners[1]} big={big} onPick={() => onPick(1)} onClear={() => onClear(1)} />
-    </div>
+    <li className={`px-3 sm:px-4 ${big ? "py-3.5" : "py-2.5"}`}>
+      {billing ? <p className={`${EYEBROW} mb-2 text-center`}>{billing}</p> : null}
+      <div className="flex items-center gap-2">
+        <Corner fighter={corners[0]} big={big} right={false} onPick={() => onPick(0)} onClear={() => onClear(0)} />
+        <span className="shrink-0 px-1 text-[10px] font-medium uppercase text-zinc-400">vs</span>
+        <Corner fighter={corners[1]} big={big} right onPick={() => onPick(1)} onClear={() => onClear(1)} />
+      </div>
+    </li>
   );
 }
 
@@ -296,7 +305,6 @@ function CardBuilder({ account }: { account: CardAccount | null }) {
       setRemoval({ busy: false, error: problem instanceof Error ? problem.message : "That card could not be deleted." });
     }
   };
-  let bout = 0;
   return (
     <section className="flex w-full flex-col gap-3 lg:flex-row lg:items-start lg:gap-4">
       {cards.length ? <SavedCards cards={cards} open={open} draft={taken.length > 0} onOpen={openCard} onNew={startNew} onRemove={setRemoving} /> : null}
@@ -320,30 +328,26 @@ function CardBuilder({ account }: { account: CardAccount | null }) {
             </button>
           ) : null}
         </header>
-        <div className="flex flex-col gap-3">
-          {ROWS.map((row, rowIndex) => {
-            const first = bout;
-            bout += row.bouts;
-            const big = "big" in row && row.big;
+        {/* The site's own fight-card panels: main card and prelims side by side on a wide screen. */}
+        <div className="grid items-start gap-3 xl:grid-cols-2 xl:gap-4">
+          {SECTIONS.map((section) => {
+            const corners = slots.slice(section.first * 2, (section.first + section.bouts) * 2);
             return (
-              <div key={rowIndex} className="flex flex-col gap-3">
-                {"prelims" in row && row.prelims ? (
-                  <h2 className="mt-3 px-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">Prelims</h2>
-                ) : null}
-                {rowIndex === 0 ? <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">Main card</h2> : null}
-                {/* A wrapping row rather than a grid, so an odd bout left over sits centered. */}
-                <div className="flex flex-wrap justify-center gap-3">
-                  {Array.from({ length: row.bouts }, (_, i) => {
-                    const index = first + i;
+              <section key={section.title} className={PANEL}>
+                <header className="flex items-baseline justify-between gap-3 border-b border-zinc-100 px-4 py-3">
+                  <h3 className="text-sm font-semibold text-zinc-900">{section.title}</h3>
+                  <span className="text-xs tabular-nums text-zinc-500">{corners.filter(Boolean).length} of {corners.length}</span>
+                </header>
+                <ol className="divide-y divide-zinc-100">
+                  {Array.from({ length: section.bouts }, (_, i) => {
+                    const index = section.first + i;
                     return (
-                      <div key={index} className={`min-w-0 basis-full ${big ? "sm:basis-[calc(50%-0.375rem)]" : "min-[400px]:basis-[calc(50%-0.375rem)] xl:basis-[calc(25%-0.5625rem)]"}`}>
-                        <Bout corners={[slots[index * 2], slots[index * 2 + 1]]} big={big}
-                          onPick={(corner) => setPicking(index * 2 + corner)} onClear={(corner) => set(index * 2 + corner, null)} />
-                      </div>
+                      <Bout key={index} corners={[slots[index * 2], slots[index * 2 + 1]]} big={index < BILLING.length} billing={BILLING[index]}
+                        onPick={(corner) => setPicking(index * 2 + corner)} onClear={(corner) => set(index * 2 + corner, null)} />
                     );
                   })}
-                </div>
-              </div>
+                </ol>
+              </section>
             );
           })}
         </div>
@@ -568,15 +572,13 @@ export default function MatchmakingPage() {
   useSeo({ title: "UFC Matchmaking", description: "Build your own UFC card, and see the fights to make next: title fights, ranked matchups and next opponents for the fighters on recent cards.", path: "/matchmaking" });
   return (
     <div ref={scroll} className={PAGE}>
-      {/* A built card takes the whole width; the suggestions stop at a readable one. */}
-      <div className={PAGE_BODY.replace("max-w-5xl", tab === "card" ? "max-w-none" : "max-w-[1600px]")}>
-        {/* On a phone the tabs are the bar across the top of the page. The
-            bar is its own layer: the dark theme's forced panel colour would
-            otherwise outlast a wider screen's transparent one. */}
-        <header className="relative isolate flex justify-center max-sm:-mx-2 max-sm:-mt-2 max-sm:px-2 max-sm:py-1.5">
-          <div aria-hidden="true" className="absolute inset-0 -z-10 border-b border-zinc-200 bg-white sm:hidden" />
+      <div className={PAGE_BODY.replace("max-w-5xl", "max-w-[1600px]")}>
+        {/* The tabs sit on a white card, as on a profile: on the bare page
+            the dark theme's track would be the page's own colour. */}
+        <header className="flex justify-center">
           <h1 className="sr-only">Matchmaking</h1>
-          <div className={`${segmentedGroup} w-full max-w-md`} role="group" aria-label="Matchmaking">
+          <div className={`${PANEL} w-full p-1.5 sm:max-w-md`}>
+          <div className={`${segmentedGroup} w-full`} role="group" aria-label="Matchmaking">
             {TABS.map((option) => (
               <button key={option.key} type="button" aria-pressed={tab === option.key}
                 onClick={() => setParams(option.key === "top15" ? {} : { tab: option.key }, { replace: true })}
@@ -584,6 +586,7 @@ export default function MatchmakingPage() {
                 {option.label}
               </button>
             ))}
+          </div>
           </div>
         </header>
         {tab === "card" ? accountsEnabled ? <AccountCardBuilder /> : <CardBuilder account={null} /> : <Suggestions tab={tab} data={data} error={error} retry={retry} />}
