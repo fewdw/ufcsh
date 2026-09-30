@@ -476,7 +476,7 @@ function rosterMoves(wikitext: string, heading: RegExp): RosterMove[] {
   const rows = sectionRows(wikitext, heading);
   const column = (row: Record<string, string>, pattern: RegExp) => Object.entries(row).find(([key]) => pattern.test(key))?.[1] ?? "";
   return rows.map(row => {
-    const flag = column(row, /country|iso|nation/).match(/\{\{\s*flag(?:icon)?\s*\|\s*([A-Za-z]{3})\s*[|}]/)?.[1].toUpperCase();
+    const flag = column(row, /country|iso|nation/).match(/\{\{\s*(?:flag(?:icon)?\s*\||#invoke\s*:\s*flag\s*\|\s*icon\s*\|)\s*([A-Za-z]{3})\s*[|}]/i)?.[1].toUpperCase();
     return {
       date: moveDate(column(row, /^date$/)),
       // Footnote marks ("Amanda Nunes *") are the key's, not the name's.

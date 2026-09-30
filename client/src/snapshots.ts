@@ -31,7 +31,12 @@ function loadIndex(store: Storage): Index {
   if (index) return index;
   const build = currentBuild();
   let saved: Index | null = null;
-  try { saved = JSON.parse(store.getItem(INDEX) ?? "null") as Index | null; } catch { /* rebuilt below */ }
+  try {
+    const parsed = JSON.parse(store.getItem(INDEX) ?? "null") as Index | null;
+    if (parsed && typeof parsed.build === "string" && Array.isArray(parsed.entries)
+      && parsed.entries.every(entry => Array.isArray(entry) && entry.length === 3
+        && typeof entry[0] === "string" && Number.isFinite(entry[1]) && entry[1] >= 0 && Number.isFinite(entry[2]))) saved = parsed;
+  } catch { /* rebuilt below */ }
   if (saved?.build === build && Array.isArray(saved.entries)) index = saved;
   else {
     for (const [key] of saved?.entries ?? []) store.removeItem(PREFIX + key);
@@ -84,6 +89,12 @@ function flush() {
   const batch = queued;
   queued = new Map();
   if (!store) return;
+  // Storage access can be revoked after the page loads (private mode, quota
+  // or browser settings). Background persistence must never throw globally.
+  try { flushBatch(store, batch); } catch { /* the in-memory answer remains available */ }
+}
+
+function flushBatch(store: Storage, batch: Map<string, string>) {
   const current = loadIndex(store);
   for (const [name, value] of batch) {
     current.entries = current.entries.filter(([other]) => other !== name);

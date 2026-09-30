@@ -12,6 +12,9 @@ if [[ -n "$(git -C "$repo_dir" status --porcelain)" ]]; then
   echo 'Production checkout has uncommitted changes.' >&2
   exit 2
 fi
-git -C "$repo_dir" fetch origin main
-git -C "$repo_dir" merge --ff-only origin/main
+{
+  flock -w 600 8
+  git -C "$repo_dir" fetch origin main
+  git -C "$repo_dir" merge --ff-only origin/main
+} 8>/tmp/ufcsh-git-fetch.lock
 exec "$repo_dir/deploy/remote-deploy.sh"

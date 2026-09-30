@@ -27,7 +27,8 @@ export class RequestCache {
     if (entry || !this.persistence || this.restored.has(url)) return entry ?? EMPTY;
     if (this.restored.size > 2000) this.restored.clear();
     this.restored.add(url);
-    const saved = this.persistence.read(url);
+    let saved: { data: unknown } | null;
+    try { saved = this.persistence.read(url); } catch { return EMPTY; }
     if (!saved) return EMPTY;
     const snapshot = { data: saved.data, loading: false, refreshing: false, error: false };
     this.entries.set(url, snapshot);
@@ -75,7 +76,7 @@ export class RequestCache {
       })
       .then((text) => {
         const result = JSON.parse(text);
-        this.persistence?.write(url, text);
+        try { this.persistence?.write(url, text); } catch { /* storage must not fail a successful request */ }
         this.fetchedAt.set(url, Date.now());
         this.publish(url, { data: result, loading: false, refreshing: false, error: false });
       })

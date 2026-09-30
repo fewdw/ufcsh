@@ -45,3 +45,16 @@ export function meanPrices(history: unknown): { open: string; close: string } | 
 export function closingMeanPrice(history: unknown): string | null {
   return meanPrices(history)?.close ?? null;
 }
+
+/** Mean two-way lines must describe the same market. Some source charts
+ * keep a late quote for only one corner, even after the bout starts. */
+export function consistentMoneyline(a: string | null, b: string | null): boolean {
+  const probability = (text: string | null): number | null => {
+    if (!text || !/^[+−–-]?\d+$/.test(text)) return null;
+    const line = Number(text.replace(/[−–]/g, "-"));
+    if (!Number.isFinite(line) || Math.abs(line) < 100) return null;
+    return line < 0 ? -line / (100 - line) : 100 / (100 + line);
+  };
+  const p = probability(a), q = probability(b);
+  return p != null && q != null && p + q >= 0.94 && p + q <= 1.12;
+}

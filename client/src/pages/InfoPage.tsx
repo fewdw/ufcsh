@@ -92,10 +92,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-09-30">September 30, 2026</time></p>
             <ul>
-              <li>Optional AI news filtering, duplicate grouping and summaries.</li>
-              <li>News settings include a summaries toggle.</li>
-              <li>AI starts off. Admins can enable or stop it from Health.</li>
-              <li>News keeps working when AI is unavailable.</li>
+              <li>Prevent production and dev deployments from colliding during Git updates.</li>
+              <li>Keep both environments aligned after a release.</li>
             </ul>
           </Section>
         </div>

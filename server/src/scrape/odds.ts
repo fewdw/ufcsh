@@ -1,7 +1,7 @@
 import * as cheerio from "cheerio";
 import { fetchHtml } from "../http.ts";
 import { cleanText, normName } from "../util.ts";
-import { closingMeanPrice, decodePriceHistory, meanPrices } from "../method-odds.ts";
+import { closingMeanPrice, consistentMoneyline, decodePriceHistory, meanPrices } from "../method-odds.ts";
 
 const BASE = "https://www.bestfightodds.com";
 const FIGHTER_SITEMAP = `${BASE}/sitemap-teams.xml`;
@@ -618,7 +618,7 @@ export async function fetchMeanMoneyline(keys: { f1: number[]; f2: number[] }): 
   };
   const f1 = await side(keys.f1);
   const f2 = f1 ? await side(keys.f2) : null;
-  return f1 && f2 ? { f1, f2 } : null;
+  return f1 && f2 && consistentMoneyline(f1.close, f2.close) ? { f1, f2 } : null;
 }
 
 export async function scrapeEventMethodOdds(sourceUrl: string): Promise<EventMethodMatchup[]> {
