@@ -14,7 +14,7 @@ if [[ "$(git -C "$repo_dir" branch --show-current)" != main ]]; then
   exit 2
 fi
 
-git -C "$repo_dir" fetch origin --prune
+flock -w 600 /tmp/ufcsh-git-fetch.lock git -C "$repo_dir" fetch origin --prune
 remote_ref="refs/remotes/origin/$branch"
 if ! git -C "$repo_dir" show-ref --verify --quiet "$remote_ref"; then
   echo "No pushed branch named $branch exists on origin." >&2

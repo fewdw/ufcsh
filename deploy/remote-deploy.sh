@@ -8,7 +8,7 @@ if [[ "$request" =~ ^prod[[:space:]]([0-9a-f]{40})$ ]]; then
   requested_sha="${BASH_REMATCH[1]}"
   exec 9>/tmp/ufcsh-production-deploy.lock
   flock -w 600 9
-  git -C "$repo_dir" fetch origin main
+  flock -w 600 /tmp/ufcsh-git-fetch.lock git -C "$repo_dir" fetch origin main
   current_sha="$(git -C "$repo_dir" rev-parse refs/remotes/origin/main)"
   if [[ "$requested_sha" != "$current_sha" ]]; then
     echo "Skipping superseded push $requested_sha; current main is $current_sha."
