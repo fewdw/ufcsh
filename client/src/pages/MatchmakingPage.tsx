@@ -8,9 +8,8 @@ import { formatDate } from "../format";
 import { PAGE, FULL_PAGE_BODY } from "../research";
 import { useSeo } from "../seo";
 import { useRouteScrollRestoration } from "../navigationState";
-import PageToolbar, { FilterSelect, ToolbarSearch } from "../components/PageToolbar";
+import PageToolbar, { FilterSelect } from "../components/PageToolbar";
 import OptionsSheet, { SwitchRow } from "../components/OptionsSheet";
-import { searchList } from "../search";
 import Avatar from "../components/Avatar";
 import FighterSearch, { type PickedFighter } from "../components/FighterSearch";
 import Freshness from "../components/Freshness";
@@ -429,14 +428,15 @@ function Streak({ streak }: { streak: number }) {
 }
 
 /** A fighter as a ranking row has them: rank, photo, name, and their record
- *  and run under it. `responsive` mirrors them once the row is wide. */
-function Side({ fighter, align = "left" }: { fighter: MatchFighter; align?: "left" | "responsive" }) {
+ *  and run under it. `responsive` mirrors them once the row is wide;
+ *  `compact` narrows the rank for the recent cards' two fighters a row. */
+function Side({ fighter, align = "left", compact = false }: { fighter: MatchFighter; align?: "left" | "responsive"; compact?: boolean }) {
   const rank = rankLabel(fighter.rank);
   const flip = align === "responsive" ? "@min-[420px]:flex-row-reverse" : "";
-  const className = `flex min-w-0 flex-1 items-center gap-2 ${flip}`;
+  const className = `flex min-w-0 flex-1 items-center ${compact ? "gap-1.5" : "gap-2"} ${flip}`;
   const body = (
     <>
-      <span className={`flex h-5 w-7 shrink-0 items-center justify-center text-[12px] tabular-nums ${rank === "C" ? "font-bold text-amber-500" : "font-semibold text-zinc-800"}`}
+      <span className={`flex h-5 ${compact ? "w-5" : "w-7"} shrink-0 items-center justify-center text-[12px] tabular-nums ${rank === "C" ? "font-bold text-amber-500" : "font-semibold text-zinc-800"}`}
         title={rank === "C" ? "Champion" : undefined}>{rank}</span>
       <Avatar src={fighter.photo_url} name={fighter.name} size="xs" />
       <span className={`min-w-0 ${align === "responsive" ? "@min-[420px]:text-right" : ""}`}>
@@ -516,27 +516,22 @@ function EventPanel({ event }: { event: RecentEvent }) {
           {bout.sides.map((side) => {
             const [letter, word, tone] = side.outcome ? OUTCOME[side.outcome] : ["–", "No result", "bg-zinc-100 text-zinc-500"];
             const { next } = side;
+            // Wide: result, fighter, arrow, next fight. Narrow, the next fight wraps under the fighter.
             return (
-              <div key={side.fighter.id} className={`grid grid-cols-1 gap-1 px-2.5 py-1.5 @min-[560px]:grid-cols-[minmax(0,1fr)_1rem_minmax(0,1.3fr)] @min-[560px]:items-center @min-[560px]:gap-2 ${booked(next.kind, next.title)}`}>
-                <div className="flex min-w-0 items-center gap-1">
-                  <span title={word} className={`grid h-5 min-w-5 shrink-0 place-items-center rounded px-1 text-[10px] font-bold ${tone}`}>
-                    {letter}<span className="sr-only"> {word}</span>
-                  </span>
-                  <Side fighter={side.fighter} />
-                </div>
-                <span className="hidden text-center text-zinc-300 @min-[560px]:block" aria-hidden="true">→</span>
-                {/* Narrow, the next fight sits under the fighter, led by its arrow. */}
-                <div className="flex min-w-0 items-start gap-1 pl-6 @min-[560px]:pl-0">
-                  <span className="pt-1 text-zinc-300 @min-[560px]:hidden" aria-hidden="true">→</span>
-                  <div className="min-w-0 flex-1">
-                    <span className="sr-only">Next: </span>
-                    {next.opponent ? <Side fighter={next.opponent} /> : null}
-                    <p className={next.opponent ? NOTE : "flex min-w-0 items-center gap-1.5 text-[10px] leading-3.5 text-zinc-500"}>
-                      {next.kind === "title" ? <span className={TITLE_TAG}>Title</span> : null}
-                      {next.kind === "cut" ? <span className={`${TAG} bg-rose-50 text-rose-700 ring-rose-200`}>Cut</span> : null}
-                      <span className="min-w-0">{next.reason}</span>
-                    </p>
-                  </div>
+              <div key={side.fighter.id} className={`grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-1.5 gap-y-1 px-2.5 py-1 @min-[400px]:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] ${booked(next.kind, next.title)}`}>
+                <span title={word} className={`mt-1 grid h-5 min-w-5 place-items-center rounded px-1 text-[10px] font-bold ${tone}`}>
+                  {letter}<span className="sr-only"> {word}</span>
+                </span>
+                <Side fighter={side.fighter} compact />
+                <span className="mt-1.5 text-center text-[11px] leading-4 text-zinc-300" aria-hidden="true">→</span>
+                <div className="min-w-0">
+                  <span className="sr-only">Next: </span>
+                  {next.opponent ? <Side fighter={next.opponent} compact /> : null}
+                  <p className={`flex min-w-0 items-start gap-1.5 text-[10px] leading-3.5 text-zinc-500 ${next.opponent ? "mt-0.5 pl-[3.75rem]" : "pt-1.5"}`}>
+                    {next.kind === "title" ? <span className={TITLE_TAG}>Title</span> : null}
+                    {next.kind === "cut" ? <span className={`${TAG} bg-rose-50 text-rose-700 ring-rose-200`}>Cut</span> : null}
+                    <span className="min-w-0">{next.reason}</span>
+                  </p>
                 </div>
               </div>
             );
@@ -549,8 +544,6 @@ function EventPanel({ event }: { event: RecentEvent }) {
 
 function Suggestions({ tab, data, error, retry, navigation }: { tab: Tab; data: MatchmakingData | null; error: unknown; retry: () => void; navigation: ReactNode }) {
   const [params, setParams] = useSearchParams();
-  const [query, setQuery] = useState("");
-  const division = params.get("division") ?? "all";
   const gender = params.get("gender") ?? "all";
   const kind = params.get("kind") ?? "all";
   const card = params.get("card") ?? "all";
@@ -564,28 +557,25 @@ function Suggestions({ tab, data, error, retry, navigation }: { tab: Tab; data: 
     return next;
   }, { replace: true });
   const top = tab === "top15";
-  const divisions = top ? (data?.top15 ?? []).filter((entry) => gender === "all" || entry.division.startsWith("Women") === (gender === "women")).map((entry) => entry.division)
-    : [...new Set((data?.recent_events ?? []).flatMap((event) => event.bouts.map((bout) => bout.division)))].sort();
-  const names = (fighters: MatchFighter[]) => fighters.map((fighter) => fighter.name).join(" ");
-  const top15 = (data?.top15 ?? []).filter((entry) => divisions.includes(entry.division) && (division === "all" || entry.division === division)).map((entry) => ({
+  const top15 = (data?.top15 ?? []).filter((entry) => gender === "all" || entry.division.startsWith("Women") === (gender === "women")).map((entry) => ({
     ...entry,
-    fights: searchList(entry.fights.filter((fight) => kind === "all" || fight.kind === kind), query, (fight) => names([fight.a, fight.b])),
-    idle: idle && kind === "all" ? searchList(entry.idle, query, (item) => item.fighter.name) : [],
+    fights: entry.fights.filter((fight) => kind === "all" || fight.kind === kind),
+    idle: idle && kind === "all" ? entry.idle : [],
   })).filter((entry) => entry.fights.length || entry.idle.length);
   const events = (data?.recent_events ?? []).filter((event) => card === "all" || event.id === card).map((event) => ({
     ...event,
-    bouts: event.bouts.filter((bout) => (division === "all" || bout.division === division) && (!titlesOnly || bout.title)).map((bout) => ({
+    bouts: event.bouts.filter((bout) => !titlesOnly || bout.title).map((bout) => ({
       ...bout,
-      sides: searchList(bout.sides.filter((side) => (outcome === "all" || side.outcome === outcome) && (nextKind === "all" || side.next.kind === nextKind)), query, (side) => names([side.fighter, ...(side.next.opponent ? [side.next.opponent] : [])])),
+      sides: bout.sides.filter((side) => (outcome === "all" || side.outcome === outcome) && (nextKind === "all" || side.next.kind === nextKind)),
     })).filter((bout) => bout.sides.length),
   })).filter((event) => event.bouts.length);
-  const count = Number(division !== "all") + (top ? Number(kind !== "all") + Number(!idle) : Number(card !== "all") + Number(outcome !== "all") + Number(nextKind !== "all") + Number(titlesOnly));
+  const count = top ? Number(kind !== "all") + Number(!idle) : Number(card !== "all") + Number(outcome !== "all") + Number(nextKind !== "all") + Number(titlesOnly);
   return <>
     <PageToolbar>
       {navigation}
       {top ? <div className={segmentedGroup} role="group" aria-label="Divisions shown">
         {(["men", "women", "all"] as const).map((value) => <button key={value} type="button" aria-pressed={gender === value}
-          onClick={() => setParams((current) => { const next = new URLSearchParams(current); next.delete("division"); if (value === "all") next.delete("gender"); else next.set("gender", value); return next; }, { replace: true })}
+          onClick={() => setParams((current) => { const next = new URLSearchParams(current); if (value === "all") next.delete("gender"); else next.set("gender", value); return next; }, { replace: true })}
           className={`${segmentedOption} ${gender === value ? segmentedSelected : segmentedIdle}`}>{value === "men" ? "Men" : value === "women" ? "Women" : "All"}</button>)}
       </div> : null}
       <div className="ml-auto flex min-w-0 flex-1 basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
@@ -593,11 +583,9 @@ function Suggestions({ tab, data, error, retry, navigation }: { tab: Tab; data: 
           <span className="flex items-center gap-1.5"><span className={`${BOOKED.title} activity-swatch h-2.5 w-2.5 rounded-sm border`} />Title booked</span>
           <span className="flex items-center gap-1.5"><span className={`${BOOKED.fight} activity-swatch h-2.5 w-2.5 rounded-sm border`} />Booked</span>
         </span>
-        <ToolbarSearch value={query} onChange={setQuery} label="Find a fighter" />
-        <OptionsSheet label="Filters" count={count || undefined} onReset={() => { setQuery(""); setParams(top ? {} : { tab: "last" }, { replace: true }); }}>
+        <OptionsSheet label="Filters" count={count || undefined} onReset={() => { setParams(top ? {} : { tab: "last" }, { replace: true }); }}>
           <div className="space-y-3 p-4">
             {!top ? <FilterSelect label="Card" value={card} onChange={(value) => set("card", value)} options={[{ value: "all", label: "Recent cards" }, ...(data?.recent_events ?? []).map((event) => ({ value: event.id, label: event.name }))]} /> : null}
-            <FilterSelect label="Division" value={division} onChange={(value) => set("division", value)} options={[{ value: "all", label: "All divisions" }, ...divisions.map((value) => ({ value, label: value }))]} />
             {top ? <>
               <FilterSelect label="Matchups" value={kind} onChange={(value) => set("kind", value)} options={[{ value: "all", label: "All matchups" }, { value: "title", label: "Suggested title fights" }, { value: "suggested", label: "Suggested ranked fights" }, { value: "booked", label: "Booked fights" }]} />
               <SwitchRow label="Show unpaired fighters" on={idle} onChange={(on) => set("idle", on ? "" : "0")} />
@@ -614,7 +602,7 @@ function Suggestions({ tab, data, error, retry, navigation }: { tab: Tab; data: 
     {error && !data ? <RequestNotice onRetry={retry}>Couldn’t load the matchups.</RequestNotice> : !data ? <PageState>Working out matchups…</PageState> : top ?
       top15.length ? <div className="grid grid-cols-1 gap-2 sm:gap-3 md:grid-cols-2 2xl:grid-cols-3">{top15.map((entry) => <DivisionPanel key={entry.division} entry={entry} />)}</div>
         : <p className="py-8 text-center text-sm text-zinc-500">No matchups match these filters.</p>
-      : events.length ? <div className="grid grid-cols-1 gap-2 sm:gap-3 lg:grid-cols-2">{events.map((event) => <EventPanel key={event.id} event={event} />)}</div>
+      : events.length ? <div className="grid grid-cols-1 gap-2 sm:gap-3 md:grid-cols-2 xl:grid-cols-3 min-[1800px]:grid-cols-4">{events.map((event) => <EventPanel key={event.id} event={event} />)}</div>
         : <p className="py-8 text-center text-sm text-zinc-500">{data.recent_events.length ? "No fighters match these filters." : "No completed card yet."}</p>}
   </>;
 }
