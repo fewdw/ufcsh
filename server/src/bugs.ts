@@ -788,13 +788,14 @@ function staleEvents(): BugCheck {
     WHERE (e.complete = 0 AND e.date < date('now', '-2 day'))
        OR (e.complete = 1 AND EXISTS (SELECT 1 FROM fights f WHERE f.event_id = e.id AND f.f1_outcome IS NULL AND f.f2_outcome IS NULL AND f.method IS NULL))
        OR NOT EXISTS (SELECT 1 FROM fights f WHERE f.event_id = e.id)
+       OR (e.complete = 0 AND e.date >= date('now') AND COALESCE(e.detail_fetched_at, 0) < ?)
     ORDER BY e.date DESC
-  `).all() as { id: string; name: string; date: string; detail_fetched_at: number | null; bouts: number; open: number }[];
+  `).all(Date.now() - 60 * 60_000) as { id: string; name: string; date: string; detail_fetched_at: number | null; bouts: number; open: number }[];
   return check({
     id: "event-stale",
     group: "Fights & events",
-    label: "Events with missing results or no bouts",
-    description: "Either a past event still isn't marked complete, a completed event has bouts without a result, or an event has no bouts at all.",
+    label: "Events with missing results, no bouts or a stale card",
+    description: "A past event still isn't marked complete, a completed event has bouts without a result, an event has no bouts at all, or an upcoming card hasn't been read from UFCStats in over an hour.",
     grade: (item) => { const days = daysFrom(item.date) ?? 0; return Math.abs(days) <= 7 ? "critical" : days > 7 ? "minor" : "must"; },
   }, rows.map((event): BugItem => ({
     key: event.id,

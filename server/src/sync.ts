@@ -36,6 +36,7 @@ import { consistentMoneyline } from "./method-odds.ts";
 
 const HOUR = 3600_000;
 const DAY = 24 * HOUR;
+const CARD_INTERVAL = 10 * 60_000;
 
 // ---------------------------------------------------------------------------
 // events list
@@ -66,7 +67,15 @@ function upsertFighterStub(id: string, name: string): void {
 export const PERF_BONUS_CODE = { perf: 1, ko: 2, sub: 3 } as const;
 
 export function storeEventDetail(detail: ScrapedEventDetail): void {
-  if (!detail.date || !detail.name || !detail.fights.length) throw new Error("Incomplete event page; keeping the last good card");
+  if (!detail.date || !detail.name) throw new Error("Incomplete event page; keeping the last good card");
+  if (!detail.fights.length) {
+    // A card announced before its bouts: note the read so it waits its turn
+    // like any other, rather than being fetched again every tick.
+    const stored = db.prepare("SELECT 1 FROM fights WHERE event_id = ? LIMIT 1").get(detail.id);
+    if (stored) throw new Error("Incomplete event page; keeping the last good card");
+    db.prepare("UPDATE events SET detail_fetched_at = ? WHERE id = ?").run(Date.now(), detail.id);
+    return;
+  }
   const complete =
     detail.fights.length > 0 && detail.fights.every((f) => f.f1.outcome !== null);
 
@@ -1533,8 +1542,8 @@ export async function tick(): Promise<void> {
 
     await syncLiveEvents();
 
-    // 1. Events list: hourly (cheap; catches newly announced events fast).
-    if (metaAgeMs("events_list_synced_at") > HOUR) await guarded("events_list", syncEventsList);
+    // 1. Events list: every 10 minutes, so a new card appears almost at once.
+    if (metaAgeMs("events_list_synced_at") > CARD_INTERVAL) await guarded("events_list", syncEventsList);
 
     // 1b. Card schedules: one page for every announced card. Hourly is enough
     //     for a time that rarely moves, but a card being fought re-checks
@@ -1563,11 +1572,11 @@ export async function tick(): Promise<void> {
     const events = db.prepare("SELECT id, name, date, complete, detail_fetched_at FROM events ORDER BY date DESC").all() as EventRow[];
     const now = Date.now();
 
-    // 4. Upcoming events: hourly for the next event, every 6h for the rest (card changes).
+    // 4. Upcoming events: every card every 10 minutes. Bouts are added and
+    //    changed weeks out, and a dozen pages is nothing for the source.
     const upcoming = events.filter((e) => e.date > today).sort((a, b) => a.date.localeCompare(b.date));
-    for (const [i, e] of upcoming.entries()) {
-      const interval = i === 0 ? HOUR : 6 * HOUR;
-      if (!e.detail_fetched_at || now - e.detail_fetched_at > interval) {
+    for (const e of upcoming) {
+      if (!e.detail_fetched_at || now - e.detail_fetched_at > CARD_INTERVAL) {
         await guarded(`upcoming_event ${e.name}`, () => syncEventDetail(e.id));
       }
     }
