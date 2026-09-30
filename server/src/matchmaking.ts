@@ -356,7 +356,7 @@ export function planDivision(division: string, ranked: Fighter[], person: (id: s
 export type CardSide = { fighter: Fighter; outcome: Result | null; division: string };
 export type CardBout = { fightId: string; sides: [CardSide, CardSide] };
 export type Next =
-  | { kind: "suggested" | "booked" | "title"; opponent: Fighter; reason: string }
+  | { kind: "suggested" | "booked" | "title"; opponent: Fighter; reason: string; title?: boolean }
   | { kind: "cut" | "none"; opponent: null; reason: string };
 
 /**
@@ -374,7 +374,7 @@ export function nextFights(cards: { eventId: string; bouts: CardBout[] }[], plan
       for (const [me, them] of [[fight.a, fight.b], [fight.b, fight.a]]) {
         taken.add(me.id);
         const reason = fight.booking ? fight.booking.event_name : fight.kind === "title" && rankIn(me, division) === 0 ? `Defends against ${rankText(rankIn(them, division))}` : fight.reason;
-        if (!next.has(me.id) || fight.booking) next.set(me.id, { kind: fight.kind, opponent: them, reason });
+        if (!next.has(me.id) || fight.booking) next.set(me.id, { kind: fight.kind, opponent: them, reason, title: fight.kind === "title" || fight.booking?.title });
       }
     }
     for (const { fighter, reason } of plan.idle) if (!next.has(fighter.id)) next.set(fighter.id, { kind: "none", opponent: null, reason });
@@ -388,7 +388,7 @@ export function nextFights(cards: { eventId: string; bouts: CardBout[] }[], plan
     const booking = fighter.booked;
     const cut = cutReason(fighter);
     const away = unavailable(fighter, today);
-    if (booking) next.set(fighter.id, { kind: "booked", opponent: person(booking.opponent_id, booking.opponent_name), reason: booking.event_name });
+    if (booking) next.set(fighter.id, { kind: "booked", opponent: person(booking.opponent_id, booking.opponent_name), reason: booking.event_name, title: booking.title });
     else if (cut) next.set(fighter.id, { kind: "cut", opponent: null, reason: cut });
     else if (away) next.set(fighter.id, { kind: "none", opponent: null, reason: away });
     else {
@@ -473,10 +473,10 @@ function divisionOf(fights: IndexedFight[]): string | null {
 
 type Matchmaking = {
   updated_at: number | null;
-  top15: { division: string; fights: { kind: Plan["fights"][number]["kind"]; a: MatchFighter; b: MatchFighter; reason: string; event: { id: string; name: string; date: string } | null }[]; idle: { fighter: MatchFighter; reason: string }[] }[];
+  top15: { division: string; fights: { kind: Plan["fights"][number]["kind"]; title: boolean; a: MatchFighter; b: MatchFighter; reason: string; event: { id: string; name: string; date: string } | null }[]; idle: { fighter: MatchFighter; reason: string }[] }[];
   recent_events: {
     id: string; name: string; date: string;
-    bouts: { fight_id: string; division: string; method: string | null; title: boolean; sides: { fighter: MatchFighter; outcome: Result | null; next: { kind: Next["kind"]; opponent: MatchFighter | null; reason: string } }[] }[];
+    bouts: { fight_id: string; division: string; method: string | null; title: boolean; sides: { fighter: MatchFighter; outcome: Result | null; next: { kind: Next["kind"]; opponent: MatchFighter | null; reason: string; title: boolean } }[] }[];
   }[];
 };
 
@@ -550,7 +550,7 @@ export function matchmaking(): Matchmaking {
     return {
       division,
       fights: plan.fights.map((fight) => ({
-        kind: fight.kind, a: view(fight.a, division), b: view(fight.b, division), reason: fight.reason,
+        kind: fight.kind, title: fight.kind === "title" || Boolean(fight.booking?.title), a: view(fight.a, division), b: view(fight.b, division), reason: fight.reason,
         event: fight.booking ? { id: fight.booking.event_id, name: fight.booking.event_name, date: fight.booking.date } : null,
       })),
       idle: plan.idle.map((entry) => ({ fighter: view(entry.fighter, division), reason: entry.reason })),
@@ -584,7 +584,7 @@ export function matchmaking(): Matchmaking {
         fight_id: bout.fightId, division: fight.weightClass, method: fight.method, title: fight.titleFight && (fight.titleType === "title" || fight.titleType === "interim"),
         sides: sides.map((side) => {
           const pick = next.get(side.fighter.id)!;
-          return { fighter: view(side.fighter, side.division), outcome: side.outcome, next: { kind: pick.kind, opponent: pick.opponent && view(pick.opponent, side.division), reason: pick.reason } };
+          return { fighter: view(side.fighter, side.division), outcome: side.outcome, next: { kind: pick.kind, opponent: pick.opponent && view(pick.opponent, side.division), reason: pick.reason, title: Boolean(pick.opponent && pick.title) } };
         }),
       };
     }),

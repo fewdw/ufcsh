@@ -8,9 +8,8 @@ import { formatDate } from "../format";
 import { PAGE, FULL_PAGE_BODY } from "../research";
 import { useSeo } from "../seo";
 import { useRouteScrollRestoration } from "../navigationState";
-import PageToolbar, { FilterSelect, ToolbarSearch } from "../components/PageToolbar";
+import PageToolbar, { FilterSelect } from "../components/PageToolbar";
 import OptionsSheet, { SwitchRow } from "../components/OptionsSheet";
-import { searchList } from "../search";
 import Avatar from "../components/Avatar";
 import FighterSearch, { type PickedFighter } from "../components/FighterSearch";
 import Freshness from "../components/Freshness";
@@ -341,9 +340,6 @@ function CardBuilder({ account, navigation }: { account: CardAccount | null; nav
         <div className="min-w-0 flex-1 basis-32">
           {/* Below `lg` the saved-cards dropdown already names it. */}
           <h2 className={`truncate text-base font-semibold text-zinc-900 ${cards.length ? "max-lg:hidden" : ""}`}>{open?.name ?? "New card"}</h2>
-          <p className="text-xs tabular-nums text-zinc-500">
-            {taken.length} of {BOUTS * 2} fighters{saved ? " · saved" : open ? " · unsaved changes" : ""}
-          </p>
         </div>
         {taken.length || open ? (
           <button type="button" onClick={startNew} className={BUTTON_SECONDARY}>{open ? "New card" : "Clear card"}</button>
@@ -411,96 +407,89 @@ function CardBuilder({ account, navigation }: { account: CardAccount | null; nav
 // ---------------------------------------------------------------------------
 // Suggestions
 
-const rankLabel = (rank: number | null) => (rank === 0 ? "C" : rank == null ? null : `#${rank}`);
+// Set like the Rankings page: a panel per division or card, rows of rank,
+// photo, name and a small line under it. A title fight, booked or not, is
+// yellow and any other booked fight blue, as a booked fighter is there.
+
+const rankLabel = (rank: number | null) => (rank === 0 ? "C" : rank == null ? "" : String(rank));
+const BOOKED = { title: "activity-booked", fight: "activity-recent" } as const;
+const tint = (kind: string, title: boolean) => (title ? BOOKED.title : kind === "booked" ? BOOKED.fight : "");
+const TAG = "shrink-0 rounded-full px-1.5 text-[10px] font-semibold ring-1 ring-inset";
 
 function Streak({ streak }: { streak: number }) {
   if (!streak) return null;
   return (
-    <span className={`text-[10px] font-semibold tabular-nums ${streak > 0 ? "text-emerald-700" : "text-rose-700"}`}
+    <span className={`font-bold ${streak > 0 ? "text-emerald-600" : "text-rose-500"}`}
       title={`${Math.abs(streak)} straight ${streak > 0 ? "wins" : "losses"}`}>
       {Math.abs(streak)}{streak > 0 ? "W" : "L"}
     </span>
   );
 }
 
-/** A fighter in a suggested bout: photo, rank, name, record and run. */
-function Side({ fighter, align = "left" }: { fighter: MatchFighter; align?: "left" | "right" | "responsive" }) {
+/** A fighter as a ranking row has them: rank, photo, name, and their record
+ *  and run under it. `responsive` mirrors them once the row is wide;
+ *  `compact` narrows the rank for the recent cards' two fighters a row. */
+function Side({ fighter, align = "left", compact = false }: { fighter: MatchFighter; align?: "left" | "responsive"; compact?: boolean }) {
   const rank = rankLabel(fighter.rank);
-  const right = align === "right";
-  const responsive = align === "responsive";
+  const flip = align === "responsive" ? "@min-[420px]:flex-row-reverse" : "";
+  const className = `flex min-w-0 flex-1 items-center ${compact ? "gap-1.5" : "gap-2"} ${flip}`;
   const body = (
     <>
+      <span className={`flex h-5 ${compact ? "w-5" : "w-7"} shrink-0 items-center justify-center text-[12px] tabular-nums ${rank === "C" ? "font-bold text-amber-500" : "font-semibold text-zinc-800"}`}
+        title={rank === "C" ? "Champion" : undefined}>{rank}</span>
       <Avatar src={fighter.photo_url} name={fighter.name} size="xs" />
-      <span className={`min-w-0 ${right ? "text-right" : responsive ? "@min-[420px]:text-right" : ""}`}>
-        <span className={`flex min-w-0 items-center gap-1 ${right ? "flex-row-reverse" : responsive ? "@min-[420px]:flex-row-reverse" : ""}`}>
-          {rank ? <span className="shrink-0 text-[11px] font-semibold tabular-nums text-zinc-400">{rank}</span> : null}
-          <span className="truncate text-[13px] font-medium text-zinc-900">{fighter.name}</span>
-        </span>
-        <span className={`flex items-center gap-1 text-[11px] tabular-nums text-zinc-500 ${right ? "flex-row-reverse" : responsive ? "@min-[420px]:flex-row-reverse" : ""}`}>
+      <span className={`min-w-0 ${align === "responsive" ? "@min-[420px]:text-right" : ""}`}>
+        <span className="block truncate text-[13px] font-medium leading-4 text-zinc-900">{fighter.name}</span>
+        <span className={`flex gap-1.5 text-[10px] leading-3.5 tabular-nums text-zinc-400 ${align === "responsive" ? "@min-[420px]:justify-end" : ""}`}>
           {fighter.record}<Streak streak={fighter.streak} />
         </span>
       </span>
     </>
   );
-  const className = `flex min-w-0 flex-1 items-center gap-2 ${right ? "flex-row-reverse" : responsive ? "@min-[420px]:flex-row-reverse" : ""}`;
-  return fighter.id ? <Link to={`/fighters/${fighter.id}`} title={fighter.name} className={`${className} rounded-lg hover:opacity-80`}>{body}</Link> : <span className={className}>{body}</span>;
+  return fighter.id ? <Link to={`/fighters/${fighter.id}`} title={fighter.name} className={`${className} hover:opacity-80`}>{body}</Link> : <span className={className}>{body}</span>;
 }
 
-// ---------------------------------------------------------------------------
-// Panels
+/** Under a row, lined up with the first name. */
+const NOTE = "mt-0.5 flex min-w-0 items-center gap-1.5 pl-[4.5rem] text-[10px] leading-3.5 text-zinc-500";
 
-function PanelHeader({ title, children }: { title: ReactNode; children?: ReactNode }) {
-  return <div className="border-b border-zinc-200 px-3 py-2">
-    <h2 className="text-sm font-semibold text-zinc-900">{title}</h2>
-    {children}
-  </div>;
+function Panel({ title, chip, children }: { title: ReactNode; chip?: ReactNode; children: ReactNode }) {
+  return (
+    <section className={`${PANEL} @container min-w-0 overflow-hidden`}>
+      <div className="flex items-center justify-between gap-2 border-b border-zinc-200 px-3.5 py-2.5">
+        <h2 className="truncate text-sm font-semibold text-zinc-900">{title}</h2>
+        {chip ? <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500">{chip}</span> : null}
+      </div>
+      <ul className="divide-y divide-zinc-50">{children}</ul>
+    </section>
+  );
 }
 
 type Division = MatchmakingData["top15"][number];
 
-/** "Title", "Title · booked" or "Booked"; nothing for a suggested fight. */
-function FightTag({ fight }: { fight: Division["fights"][number] }) {
-  if (fight.kind === "suggested") return null;
-  const title = fight.kind === "title" || fight.reason.startsWith("Title");
-  return (
-    <span className={`shrink-0 rounded px-1.5 text-[10px] font-semibold ${title ? "bg-amber-50 text-amber-800" : "bg-zinc-100 text-zinc-600"}`}>
-      {fight.kind === "title" ? "Title" : title ? "Title · booked" : "Booked"}
-    </span>
-  );
-}
-
 function DivisionPanel({ entry }: { entry: Division }) {
   return (
-    <section className={`${PANEL} @container min-w-0 flex-col overflow-hidden flex`}>
-      <PanelHeader title={entry.division} />
-      <ul className="grid flex-1 auto-rows-fr">
-        {entry.fights.map((fight) => (
-          <li key={`${fight.a.id}-${fight.b.id}`} className="flex min-w-0 flex-col justify-center gap-1 border-b border-zinc-100 px-3 py-2 last:border-0">
-            <div className="flex flex-col gap-1 @min-[420px]:flex-row @min-[420px]:items-center @min-[420px]:gap-2">
-              <Side fighter={fight.a} />
-              {/* A wide row carries the fight's tag over the "vs"; a narrow one beside its reason. */}
-              <span className="hidden shrink-0 flex-col items-center gap-1 @min-[420px]:flex">
-                <FightTag fight={fight} />
-                <span className="text-[10px] uppercase text-zinc-400">vs</span>
-              </span>
-              <Side fighter={fight.b} align="responsive" />
-            </div>
-            <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-zinc-500">
-              <span className="contents @min-[420px]:hidden"><FightTag fight={fight} /></span>
-              {fight.event
-                ? <Link to={`/events/${fight.event.id}`} title={`${fight.event.name} · ${formatDate(fight.event.date)}`} className="truncate hover:text-zinc-900">{fight.event.name} · {formatDate(fight.event.date)}</Link>
-                : <span className="truncate" title={fight.reason}>{fight.reason}</span>}
-            </div>
-          </li>
-        ))}
-        {entry.idle.map(({ fighter, reason }) => (
-          <li key={fighter.id} className="flex flex-col justify-center gap-1 border-b border-zinc-100 px-3 py-2 last:border-0">
-            <Side fighter={fighter} />
-            <p className="text-[11px] leading-4 text-zinc-500">{reason}</p>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <Panel title={entry.division}>
+      {entry.fights.map((fight) => (
+        <li key={`${fight.a.id}-${fight.b.id}`} className={`px-2.5 py-1.5 ${tint(fight.kind, fight.title)}`}>
+          <div className="flex flex-col gap-1 @min-[420px]:flex-row @min-[420px]:items-center @min-[420px]:gap-2">
+            <Side fighter={fight.a} />
+            <span className="hidden shrink-0 text-[10px] uppercase text-zinc-400 @min-[420px]:block">vs</span>
+            <Side fighter={fight.b} align="responsive" />
+          </div>
+          <p className={NOTE}>
+            {fight.event
+              ? <Link to={`/events/${fight.event.id}`} title={`${fight.event.name} · ${formatDate(fight.event.date)}`} className="truncate hover:text-zinc-900">{fight.event.name} · {formatDate(fight.event.date)}</Link>
+              : <span className="truncate" title={fight.reason}>{fight.reason}</span>}
+          </p>
+        </li>
+      ))}
+      {entry.idle.map(({ fighter, reason }) => (
+        <li key={fighter.id} className="px-2.5 py-1.5">
+          <Side fighter={fighter} />
+          <p className={NOTE}>{reason}</p>
+        </li>
+      ))}
+    </Panel>
   );
 }
 
@@ -510,60 +499,47 @@ const OUTCOME = {
   draw: ["D", "Drew", "bg-zinc-100 text-zinc-600"],
   nc: ["NC", "No contest", "bg-zinc-100 text-zinc-600"],
 } as const;
-const NEXT_TAG = { title: ["Title", "bg-amber-50 text-amber-800"], booked: ["Booked", "bg-zinc-100 text-zinc-600"], cut: ["Cut", "bg-rose-50 text-rose-700"] } as const;
 
 type RecentEvent = MatchmakingData["recent_events"][number];
 
+/** Each bout's two fighters, what they did and who they fight next. */
 function EventPanel({ event }: { event: RecentEvent }) {
   return (
-    <section className={`${PANEL} @container min-w-0 flex-col overflow-hidden flex`}>
-      <PanelHeader title={<Link to={`/events/${event.id}`} className="hover:underline">{event.name}</Link>}>
-        <p className="text-[11px] text-zinc-500">
-          {formatDate(event.date)}<Link to={`/events/${event.id}`} className="hover:text-zinc-900 md:hidden"> · Full card</Link>
-        </p>
-      </PanelHeader>
-      <ul>
-        {event.bouts.map((bout) => (
-          <li key={bout.fight_id} className="border-b border-zinc-100 px-3 py-3 last:border-0">
-            <p className="mb-2 text-[11px] text-zinc-400">
-              {bout.division}{bout.title ? " · title fight" : ""}{bout.method ? ` · ${bout.method}` : ""}
-            </p>
-            <div className="flex flex-col gap-2.5">
-              {bout.sides.map((side) => {
-                const [letter, word, tone] = side.outcome ? OUTCOME[side.outcome] : ["–", "No result", "bg-zinc-100 text-zinc-500"];
-                const tag = side.next.kind === "suggested" || side.next.kind === "none" ? null : NEXT_TAG[side.next.kind];
-                return (
-                  <div key={side.fighter.id} className="grid grid-cols-1 gap-1.5 @min-[560px]:grid-cols-[minmax(0,1fr)_1rem_minmax(0,1.3fr)] @min-[560px]:items-start @min-[560px]:gap-4">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span title={word} className={`grid h-5 min-w-5 shrink-0 place-items-center rounded px-1 text-[10px] font-bold ${tone}`}>
-                        {letter}<span className="sr-only"> {word}</span>
-                      </span>
-                      <Side fighter={side.fighter} />
-                    </div>
-                    <span className="hidden pt-1 text-center text-zinc-300 @min-[560px]:block" aria-hidden="true">→</span>
-                    <div className="min-w-0 pl-7 @min-[560px]:pl-0">
-                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 @min-[560px]:hidden">Next</p>
-                      {side.next.opponent ? <Side fighter={side.next.opponent} /> : null}
-                      <p className={`flex min-w-0 items-start gap-1.5 text-[11px] leading-4 text-zinc-500 ${side.next.opponent ? "mt-1 @min-[560px]:pl-9" : "@min-[560px]:pt-1"}`}>
-                        {tag ? <span className={`shrink-0 rounded px-1.5 text-[10px] font-semibold ${tag[1]}`}>{tag[0]}</span> : null}
-                        <span className="min-w-0">{side.next.reason}</span>
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <Panel title={<Link to={`/events/${event.id}`} className="hover:underline">{event.name}</Link>} chip={formatDate(event.date)}>
+      {event.bouts.map((bout) => (
+        <li key={bout.fight_id} className="py-0.5">
+          {bout.sides.map((side) => {
+            const [letter, word, tone] = side.outcome ? OUTCOME[side.outcome] : ["–", "No result", "bg-zinc-100 text-zinc-500"];
+            const { next } = side;
+            // Wide: result, fighter, arrow, next fight, and why across the row
+            // below. Narrow, the next fight wraps under the fighter.
+            const why = <>
+              {next.kind === "cut" ? <span className={`${TAG} bg-rose-50 text-rose-700 ring-rose-200`}>Cut</span> : null}
+              <span className="min-w-0">{next.reason}</span>
+            </>;
+            return (
+              <div key={side.fighter.id} className={`grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-1.5 gap-y-1 px-2.5 py-1 @min-[400px]:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] ${tint(next.kind, next.title)}`}>
+                <span title={word} className={`mt-1 grid h-5 min-w-5 place-items-center rounded px-1 text-[10px] font-bold ${tone}`}>
+                  {letter}<span className="sr-only"> {word}</span>
+                </span>
+                <Side fighter={side.fighter} compact />
+                <span className="mt-1.5 text-center text-[11px] leading-4 text-zinc-300" aria-hidden="true">→</span>
+                <div className="min-w-0">
+                  <span className="sr-only">Next: </span>
+                  {next.opponent ? <Side fighter={next.opponent} compact /> : <p className="flex min-w-0 items-start gap-1.5 pt-1.5 text-[10px] leading-3.5 text-zinc-500">{why}</p>}
+                </div>
+                {next.opponent ? <p className="col-[2/-1] -mt-0.5 flex min-w-0 items-start gap-1.5 pl-[3.75rem] text-[10px] leading-3.5 text-zinc-500">{why}</p> : null}
+              </div>
+            );
+          })}
+        </li>
+      ))}
+    </Panel>
   );
 }
 
 function Suggestions({ tab, data, error, retry, navigation }: { tab: Tab; data: MatchmakingData | null; error: unknown; retry: () => void; navigation: ReactNode }) {
   const [params, setParams] = useSearchParams();
-  const [query, setQuery] = useState("");
-  const division = params.get("division") ?? "all";
   const gender = params.get("gender") ?? "all";
   const kind = params.get("kind") ?? "all";
   const card = params.get("card") ?? "all";
@@ -577,36 +553,35 @@ function Suggestions({ tab, data, error, retry, navigation }: { tab: Tab; data: 
     return next;
   }, { replace: true });
   const top = tab === "top15";
-  const divisions = top ? (data?.top15 ?? []).filter((entry) => gender === "all" || entry.division.startsWith("Women") === (gender === "women")).map((entry) => entry.division)
-    : [...new Set((data?.recent_events ?? []).flatMap((event) => event.bouts.map((bout) => bout.division)))].sort();
-  const names = (fighters: MatchFighter[]) => fighters.map((fighter) => fighter.name).join(" ");
-  const top15 = (data?.top15 ?? []).filter((entry) => divisions.includes(entry.division) && (division === "all" || entry.division === division)).map((entry) => ({
+  const top15 = (data?.top15 ?? []).filter((entry) => gender === "all" || entry.division.startsWith("Women") === (gender === "women")).map((entry) => ({
     ...entry,
-    fights: searchList(entry.fights.filter((fight) => kind === "all" || fight.kind === kind), query, (fight) => names([fight.a, fight.b])),
-    idle: idle && kind === "all" ? searchList(entry.idle, query, (item) => item.fighter.name) : [],
+    fights: entry.fights.filter((fight) => kind === "all" || fight.kind === kind),
+    idle: idle && kind === "all" ? entry.idle : [],
   })).filter((entry) => entry.fights.length || entry.idle.length);
   const events = (data?.recent_events ?? []).filter((event) => card === "all" || event.id === card).map((event) => ({
     ...event,
-    bouts: event.bouts.filter((bout) => (division === "all" || bout.division === division) && (!titlesOnly || bout.title)).map((bout) => ({
+    bouts: event.bouts.filter((bout) => !titlesOnly || bout.title).map((bout) => ({
       ...bout,
-      sides: searchList(bout.sides.filter((side) => (outcome === "all" || side.outcome === outcome) && (nextKind === "all" || side.next.kind === nextKind)), query, (side) => names([side.fighter, ...(side.next.opponent ? [side.next.opponent] : [])])),
+      sides: bout.sides.filter((side) => (outcome === "all" || side.outcome === outcome) && (nextKind === "all" || side.next.kind === nextKind)),
     })).filter((bout) => bout.sides.length),
   })).filter((event) => event.bouts.length);
-  const count = Number(division !== "all") + (top ? Number(kind !== "all") + Number(!idle) : Number(card !== "all") + Number(outcome !== "all") + Number(nextKind !== "all") + Number(titlesOnly));
+  const count = top ? Number(kind !== "all") + Number(!idle) : Number(card !== "all") + Number(outcome !== "all") + Number(nextKind !== "all") + Number(titlesOnly);
   return <>
     <PageToolbar>
       {navigation}
       {top ? <div className={segmentedGroup} role="group" aria-label="Divisions shown">
         {(["men", "women", "all"] as const).map((value) => <button key={value} type="button" aria-pressed={gender === value}
-          onClick={() => setParams((current) => { const next = new URLSearchParams(current); next.delete("division"); if (value === "all") next.delete("gender"); else next.set("gender", value); return next; }, { replace: true })}
+          onClick={() => setParams((current) => { const next = new URLSearchParams(current); if (value === "all") next.delete("gender"); else next.set("gender", value); return next; }, { replace: true })}
           className={`${segmentedOption} ${gender === value ? segmentedSelected : segmentedIdle}`}>{value === "men" ? "Men" : value === "women" ? "Women" : "All"}</button>)}
       </div> : null}
       <div className="ml-auto flex min-w-0 flex-1 basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
-        <ToolbarSearch value={query} onChange={setQuery} label="Find a fighter" />
-        <OptionsSheet label="Filters" count={count || undefined} onReset={() => { setQuery(""); setParams(top ? {} : { tab: "last" }, { replace: true }); }}>
+        <span className="hidden items-center gap-3 text-[11px] text-zinc-500 md:flex">
+          <span className="flex items-center gap-1.5"><span className={`${BOOKED.title} activity-swatch h-2.5 w-2.5 rounded-sm border`} />Title fight</span>
+          <span className="flex items-center gap-1.5"><span className={`${BOOKED.fight} activity-swatch h-2.5 w-2.5 rounded-sm border`} />Booked</span>
+        </span>
+        <OptionsSheet label="Filters" count={count || undefined} onReset={() => { setParams(top ? {} : { tab: "last" }, { replace: true }); }}>
           <div className="space-y-3 p-4">
             {!top ? <FilterSelect label="Card" value={card} onChange={(value) => set("card", value)} options={[{ value: "all", label: "Recent cards" }, ...(data?.recent_events ?? []).map((event) => ({ value: event.id, label: event.name }))]} /> : null}
-            <FilterSelect label="Division" value={division} onChange={(value) => set("division", value)} options={[{ value: "all", label: "All divisions" }, ...divisions.map((value) => ({ value, label: value }))]} />
             {top ? <>
               <FilterSelect label="Matchups" value={kind} onChange={(value) => set("kind", value)} options={[{ value: "all", label: "All matchups" }, { value: "title", label: "Suggested title fights" }, { value: "suggested", label: "Suggested ranked fights" }, { value: "booked", label: "Booked fights" }]} />
               <SwitchRow label="Show unpaired fighters" on={idle} onChange={(on) => set("idle", on ? "" : "0")} />
@@ -621,9 +596,9 @@ function Suggestions({ tab, data, error, retry, navigation }: { tab: Tab; data: 
       </div>
     </PageToolbar>
     {error && !data ? <RequestNotice onRetry={retry}>Couldn’t load the matchups.</RequestNotice> : !data ? <PageState>Working out matchups…</PageState> : top ?
-      top15.length ? <div className="grid grid-cols-1 gap-2 md:grid-cols-2 2xl:grid-cols-3">{top15.map((entry) => <DivisionPanel key={entry.division} entry={entry} />)}</div>
+      top15.length ? <div className="grid grid-cols-1 gap-2 sm:gap-3 md:grid-cols-2 2xl:grid-cols-3">{top15.map((entry) => <DivisionPanel key={entry.division} entry={entry} />)}</div>
         : <p className="py-8 text-center text-sm text-zinc-500">No matchups match these filters.</p>
-      : events.length ? <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">{events.map((event) => <EventPanel key={event.id} event={event} />)}</div>
+      : events.length ? <div className="grid grid-cols-1 gap-2 sm:gap-3 min-[768px]:grid-cols-2 min-[1400px]:grid-cols-3 min-[1800px]:grid-cols-4">{events.map((event) => <EventPanel key={event.id} event={event} />)}</div>
         : <p className="py-8 text-center text-sm text-zinc-500">{data.recent_events.length ? "No fighters match these filters." : "No completed card yet."}</p>}
   </>;
 }

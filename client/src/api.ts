@@ -750,14 +750,14 @@ export type MatchmakingData = {
   updated_at: number | null;
   top15: {
     division: string;
-    fights: { kind: "title" | "booked" | "suggested"; a: MatchFighter; b: MatchFighter; reason: string; event: { id: string; name: string; date: string } | null }[];
+    fights: { kind: "title" | "booked" | "suggested"; title: boolean; a: MatchFighter; b: MatchFighter; reason: string; event: { id: string; name: string; date: string } | null }[];
     idle: { fighter: MatchFighter; reason: string }[];
   }[];
   recent_events: {
     id: string; name: string; date: string;
     bouts: {
       fight_id: string; division: string; method: string | null; title: boolean;
-      sides: { fighter: MatchFighter; outcome: "win" | "loss" | "draw" | "nc" | null; next: { kind: "suggested" | "booked" | "title" | "cut" | "none"; opponent: MatchFighter | null; reason: string } }[];
+      sides: { fighter: MatchFighter; outcome: "win" | "loss" | "draw" | "nc" | null; next: { kind: "suggested" | "booked" | "title" | "cut" | "none"; opponent: MatchFighter | null; reason: string; title: boolean } }[];
     }[];
   }[];
 };
