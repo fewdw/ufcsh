@@ -507,10 +507,7 @@ function EventPanel({ event }: { event: RecentEvent }) {
   return (
     <Panel title={<Link to={`/events/${event.id}`} className="hover:underline">{event.name}</Link>} chip={formatDate(event.date)}>
       {event.bouts.map((bout) => (
-        <li key={bout.fight_id}>
-          <p className="px-2.5 pt-1.5 text-[10px] leading-3.5 text-zinc-400">
-            {bout.division}{bout.title ? " · title fight" : ""}{bout.method ? ` · ${bout.method}` : ""}
-          </p>
+        <li key={bout.fight_id} className="py-0.5">
           {bout.sides.map((side) => {
             const [letter, word, tone] = side.outcome ? OUTCOME[side.outcome] : ["–", "No result", "bg-zinc-100 text-zinc-500"];
             const { next } = side;
