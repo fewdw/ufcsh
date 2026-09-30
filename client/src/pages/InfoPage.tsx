@@ -92,10 +92,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-09-30">September 30, 2026</time></p>
             <ul>
-              <li>New Locations browser: every city with its cards, venues and title fights.</li>
-              <li>Event, fight and venue pages link to their city.</li>
-              <li>Browse opens on Roster; recent signings are shown larger.</li>
-              <li>Browse and Matchmaking share one toolbar and filters.</li>
+              <li>Search finds fighters by other names: GSP, Aljo, Izzy, real and maiden names.</li>
             </ul>
           </Section>
         </div>
