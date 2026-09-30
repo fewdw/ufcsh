@@ -5,6 +5,7 @@ import { useApi, type OfficialsDirectory, type VenueDirectory } from "../api";
 import { searchList } from "../search";
 import { useRouteScrollRestoration } from "../navigationState";
 import { PAGE, PAGE_BODY } from "../research";
+import BrowseTabs from "../components/BrowseTabs";
 import { useSeo } from "../seo";
 import RequestNotice from "../components/RequestNotice";
 import { PageHeader, PageState, Panel } from "../components/ResearchKit";
@@ -122,6 +123,7 @@ export function OfficialsPage() {
   return (
     <div ref={scroll} className={PAGE}>
       <div className={`${PAGE_BODY} lg:max-w-7xl`}>
+        <BrowseTabs />
         <PageHeader title="Judges & referees" meta={[`${data.judges.length} judges`, `${data.referees.length} referees`]} />
         <Panel title={kind === "referees" ? "Referees" : "Judges"} subtitle={`${list.length}`}
           aside={<div className={segmentedGroup} role="group" aria-label="Officials">
@@ -183,6 +185,7 @@ export function VenuesPage() {
   return (
     <div ref={scroll} className={PAGE}>
       <div className={`${PAGE_BODY} lg:max-w-7xl`}>
+        <BrowseTabs />
         <PageHeader title="Venues" meta={[`${data.venues.length} venues`, data.coverage.with_venue < data.coverage.events ? `${data.coverage.with_venue.toLocaleString()} of ${data.coverage.events.toLocaleString()} events placed so far` : null]} />
         <Panel title="All venues" subtitle={`${list.length}`}>
           <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-2.5 sm:px-5">

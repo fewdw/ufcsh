@@ -14,7 +14,6 @@ import { prefetch } from "./api";
 import { useLinkPrefetch, warmSections } from "./useLinkPrefetch";
 import { pages, type PageLoader } from "./pages";
 import RouteErrorBoundary from "./components/RouteErrorBoundary";
-import BrowseLayout from "./components/BrowseLayout";
 import ParlaySlip from "./components/ParlaySlip";
 import { ShortcutProvider } from "./shortcuts";
 import { DevStatsOverlay, isDevSite } from "./devStats";
@@ -294,11 +293,9 @@ export default function App() {
           <Route path="/fighters/:fighterId" element={<FighterPage />} />
           <Route path="/rankings" element={<RankingsPage />} />
           <Route path="/stats" element={<StatsPage />} />
-          <Route element={<BrowseLayout />}>
-            <Route path="/officials" element={<OfficialsPage />} />
-            <Route path="/venues" element={<VenuesPage />} />
-            <Route path="/roster" element={<RosterPage />} />
-          </Route>
+          <Route path="/officials" element={<OfficialsPage />} />
+          <Route path="/venues" element={<VenuesPage />} />
+          <Route path="/roster" element={<RosterPage />} />
           <Route path="/judges/:slug" element={<JudgePage />} />
           <Route path="/referees/:slug" element={<RefereePage />} />
           <Route path="/venues/:slug" element={<VenuePage />} />

@@ -4,6 +4,7 @@ import { useApi, type RosterMove, type RosterMoves } from "../api";
 import { formatDateShort, formatDateShortWithYear } from "../format";
 import { useRouteScrollRestoration } from "../navigationState";
 import { PAGE, PAGE_BODY } from "../research";
+import BrowseTabs from "../components/BrowseTabs";
 import { markRosterSeen, moveKey, unseenMoves } from "../rosterSeen";
 import { useSeo } from "../seo";
 import Avatar from "../components/Avatar";
@@ -92,6 +93,7 @@ export default function RosterPage() {
   return (
     <div ref={scroll} className={PAGE}>
       <div className={`${PAGE_BODY} xl:max-w-7xl`}>
+        <BrowseTabs />
         <section className={`${PANEL} overflow-hidden`}>
           <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-zinc-100 px-4 py-4 sm:px-5 xl:py-3">
             <div className="flex min-w-0 flex-col gap-1 xl:flex-row xl:items-baseline xl:gap-3">
