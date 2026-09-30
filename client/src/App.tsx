@@ -50,15 +50,22 @@ const GraphicPage = page(pages.graphic, module => module.default);
 
 const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
 
-// Remembered across pages, so the Admin link doesn't blink in on each one.
-let wasAdmin = false;
+// Remembered across pages and reloads, so the Admin link doesn't blink in on
+// each one. Only a hint for drawing it: the admin pages check on the server.
+const ADMIN_KEY = "ufcsh:admin:v1";
+let wasAdmin = (() => { try { return localStorage.getItem(ADMIN_KEY) === "1"; } catch { return false; } })();
+function rememberAdmin(admin: boolean) {
+  if (admin === wasAdmin) return;
+  wasAdmin = admin;
+  try { if (admin) localStorage.setItem(ADMIN_KEY, "1"); else localStorage.removeItem(ADMIN_KEY); } catch { /* private mode: this visit only */ }
+}
 
 /** Admin, just before More, as a shield: listed only for the few who have it. */
 function AdminLink({ active }: { active: boolean }) {
   const { isLoaded, user } = useAccount();
   const { data } = useAdminResource<AdminSession>(isLoaded && user ? "/api/admin/session" : null);
-  if (data) wasAdmin = data.admin;
-  else if (isLoaded && !user) wasAdmin = false;
+  if (data) rememberAdmin(data.admin);
+  else if (isLoaded && !user) rememberAdmin(false);
   if (!wasAdmin) return null;
   const load = () => { void pages.admin().catch(() => {}); };
   return (

@@ -755,11 +755,10 @@ export type NewsStory = {
   also: { source: string; url: string; title: string }[];
 };
 
-/** One page of /news; the first also carries the top stories. */
+/** One page of /news, newest first. */
 export type NewsPage = {
   updated_at: number | null;
   sources: { name: string; ok: boolean }[];
-  top: NewsStory[];
   latest: NewsStory[];
   total: number;
   pageSize: number;
