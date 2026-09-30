@@ -52,10 +52,7 @@ export default function InfoPage() {
         </nav>
 
         <div className="flex min-w-0 flex-col gap-3">
-          <header className={`${PANEL} px-4 py-5 sm:px-6`}>
-            <p className={EYEBROW}>Information</p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-950">Built by a fan, for fans</h1>
-          </header>
+          <h1 className="sr-only">Information</h1>
 
           <Section id="about">
             <p>Hey! I’m a software developer building the #1 UFC data platform for hardcore fans—all the best features in one place.</p>

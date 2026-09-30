@@ -53,8 +53,7 @@ const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition 
 // Remembered across pages, so the Admin link doesn't blink in on each one.
 let wasAdmin = false;
 
-/** Admin, just before More, listed only for the few who have it. A shield
- *  alone on a phone, so the row still fits a 320px screen. */
+/** Admin, just before More, as a shield: listed only for the few who have it. */
 function AdminLink({ active }: { active: boolean }) {
   const { isLoaded, user } = useAccount();
   const { data } = useAdminResource<AdminSession>(isLoaded && user ? "/api/admin/session" : null);
@@ -63,10 +62,9 @@ function AdminLink({ active }: { active: boolean }) {
   if (!wasAdmin) return null;
   const load = () => { void pages.admin().catch(() => {}); };
   return (
-    <Link to="/admin" aria-label="Admin" aria-current={active ? "page" : undefined} onPointerEnter={load} onFocus={load} onTouchStart={load}
-      className={`${NAV_ITEM} flex items-center gap-1 ${active ? segmentedSelected : segmentedIdle}`}>
-      <Shield className="h-3.5 w-3.5" aria-hidden="true" />
-      <span className="hidden sm:inline">Admin</span>
+    <Link to="/admin" aria-label="Admin" title="Admin" aria-current={active ? "page" : undefined} onPointerEnter={load} onFocus={load} onTouchStart={load}
+      className={`${NAV_ITEM} flex items-center self-stretch ${active ? segmentedSelected : segmentedIdle}`}>
+      <Shield className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden="true" />
     </Link>
   );
 }
