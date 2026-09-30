@@ -14,14 +14,11 @@ import { log, normName } from "./util.ts";
  *    a headline about another promotion is left out unless it names the UFC;
  *  - grouped: the same story from several outlets is one story, credited to
  *    whoever reported it first, with the others listed;
- *  - top stories: the last three days' stories ranked by how many outlets
- *    carried them, how prominent the fighters are, and how new they are.
+ *  - ordered: newest first, by the first report.
  */
 
 const KEEP_DAYS = 30;
 const SHOWN_DAYS = 14;
-const TOP_HOURS = 72;
-const TOP_STORIES = 5;
 const PAGE_SIZE = 30;
 
 type Stored = { url: string; source: string; title: string; summary: string; categories: string; published_at: number };
@@ -252,7 +249,7 @@ export type NewsStory = {
 
 /** A story as built: every outlet that ran it, the first report first, and
  *  every fighter it is about (`fighters` shows the first four). */
-type Story = Omit<NewsStory, "url" | "source" | "title" | "also"> & { outlets: Outlet[]; ids: Set<string>; score: number };
+type Story = Omit<NewsStory, "url" | "source" | "title" | "also"> & { outlets: Outlet[]; ids: Set<string> };
 
 /** Which card a story is about: a numbered card it names ("UFC 331"), or the
  *  card its fighters were on or are booked for, from a week before the story
@@ -378,8 +375,6 @@ function newsStories() {
     const fighters = new Map<string, Named>();
     for (const item of [lead, ...group]) for (const fighter of item.named) if (item === lead || item.titleNamed.has(fighter.id)) fighters.set(fighter.id, fighter);
     const outlets = new Set<string>();
-    const prominence = Math.max(0, ...group.flatMap((item) => item.named.filter((fighter) => item.titleNamed.has(fighter.id)).map((fighter) => fighter.weight)));
-    const hours = (now - group[0].published_at) / 3_600_000;
     return {
       outlets: [lead, ...group.filter((item) => item !== lead)].filter((item) => !outlets.has(item.source) && outlets.add(item.source))
         .map(({ source, url, title }) => ({ source, url, title })),
@@ -388,8 +383,6 @@ function newsStories() {
       fighters: [...fighters.values()].slice(0, 4).map(({ id, name }) => ({ id, name, photo_url: index.fighters.get(id)?.photoUrl ?? null })),
       ids: new Set(fighters.keys()),
       event: findEvent(group.map((item) => item.title), group.flatMap((item) => [...item.titleNamed]), group[0].published_at),
-      // Top stories: how many outlets ran it, how prominent its fighters are, how new it is.
-      score: hours <= TOP_HOURS ? (1 + (outlets.size - 1) * 1.5) * (1 + prominence) * 0.5 ** (hours / 18) : 0,
     };
   }).sort((a, b) => b.published_at - a.published_at);
 
@@ -408,9 +401,9 @@ function newsStories() {
 /**
  * One page of /news: `off` lists outlets the reader switched off (a story
  * stays if another outlet that ran it is on, told by that one), `q` searches
- * headlines, fighters and cards, `offset` pages through the latest. The first
- * page also carries the top stories, which a search has none of. `fighter`
- * is one fighter's news instead: every story kept that is about them.
+ * headlines, fighters and cards, `offset` pages through the latest, newest
+ * first. `fighter` is one fighter's news instead: every story kept that is
+ * about them.
  */
 export function newsView(params: URLSearchParams = new URLSearchParams()): unknown {
   const { updated_at, sources, stories } = newsStories();
@@ -427,13 +420,11 @@ export function newsView(params: URLSearchParams = new URLSearchParams()): unkno
     // The summary is the first report's own; another outlet's headline goes without it.
     return [{ story, view: { ...first, also, summary: first === story.outlets[0] ? story.summary : "", published_at: story.published_at, fighters: story.fighters, event: story.event } }];
   });
-  const top = q || fighter ? [] : shown.filter(({ story }) => story.score > 0).sort((a, b) => b.story.score - a.story.score).slice(0, TOP_STORIES);
   const latest = q
     ? searchList(shown, q, ({ story }) => [...story.outlets.map((outlet) => outlet.title), ...story.fighters.map((fighter) => fighter.name), story.event?.name ?? ""].join(" "))
-    : shown.filter((entry) => !top.includes(entry));
+    : shown;
   return {
     updated_at, sources,
-    top: offset ? [] : top.map(({ view }) => view),
     latest: latest.slice(offset, offset + PAGE_SIZE).map(({ view }) => view),
     total: latest.length,
     pageSize: PAGE_SIZE,

@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useAuth } from "@clerk/react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Plus, X } from "lucide-react";
+import { Check, Plus, Save, Trash2, X } from "lucide-react";
 import { useApi, type MatchFighter, type MatchmakingData } from "../api";
+import { accountsEnabled, useAccount } from "../auth";
 import { formatDate } from "../format";
 import { PAGE, PAGE_BODY } from "../research";
 import { useSeo } from "../seo";
@@ -12,6 +14,8 @@ import Freshness from "../components/Freshness";
 import RequestNotice from "../components/RequestNotice";
 import { PageState } from "../components/ResearchKit";
 import { PANEL } from "../components/chartTokens";
+import { ConfirmRemove } from "../components/ConfirmRemove";
+import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../ui";
 import { segmentedGroup, segmentedIdle, segmentedTab, segmentedSelected } from "../components/segmented";
 
 const TABS = [
@@ -28,40 +32,67 @@ type Tab = (typeof TABS)[number]["key"];
 const ROWS = [{ bouts: 2, big: true }, { bouts: 4 }, { bouts: 7, prelims: true }] as const;
 const BOUTS = ROWS.reduce((total, row) => total + row.bouts, 0);
 const CARD_KEY = "ufcsh:matchmaking-card:v1";
+/** Which saved card the one being built came from, so saving updates it. */
+const OPEN_KEY = "ufcsh:matchmaking-open:v1";
 
 type Slot = PickedFighter | null;
+/** A fighter no longer on record comes back as an empty corner. */
+type SavedCard = { id: string; name: string; updatedAt: number; slots: Slot[] };
+/** Saved cards live with the account, so they follow the reader to every device. */
+type CardAccount = {
+  signedIn: boolean; cards: SavedCard[]; signIn: () => void;
+  save: (name: string, slots: PickedFighter[], id?: string) => Promise<SavedCard>;
+  remove: (id: string) => Promise<void>;
+};
 
-function savedCard(): Slot[] {
+const emptyCard = (): Slot[] => Array(BOUTS * 2).fill(null);
+const isCard = (value: unknown): value is Slot[] => Array.isArray(value) && value.length === BOUTS * 2;
+const isFull = (slots: Slot[]): slots is PickedFighter[] => slots.every(Boolean);
+const sameCard = (a: Slot[], b: Slot[]) => a.every((slot, i) => slot?.id === b[i]?.id);
+const lastName = (fighter: Slot) => fighter?.name.split(" ").at(-1) ?? "TBD";
+const headline = (card: SavedCard) => `${lastName(card.slots[0])} vs ${lastName(card.slots[1])}`;
+
+function stored(key: string): unknown {
   try {
-    const saved = JSON.parse(localStorage.getItem(CARD_KEY) ?? "null") as Slot[] | null;
-    if (Array.isArray(saved) && saved.length === BOUTS * 2) return saved;
+    return JSON.parse(localStorage.getItem(key) ?? "null");
   } catch {
-    // An unreadable card starts empty.
+    return null; // Unreadable starts empty.
   }
-  return Array(BOUTS * 2).fill(null);
+}
+
+function store(key: string, value: unknown) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode: it lasts the visit */ }
+}
+
+function draftCard(): Slot[] {
+  const draft = stored(CARD_KEY);
+  return isCard(draft) ? draft : emptyCard();
 }
 
 function Corner({ fighter, big, onPick, onClear }: { fighter: Slot; big: boolean; onPick: () => void; onClear: () => void }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col items-center gap-2">
+      {/* The photo grows with its corner up to a modest cap. */}
+      <div className={`relative aspect-square w-4/5 ${big ? "max-w-28" : "max-w-20"}`}>
+        {fighter ? (
+          <button type="button" onClick={onClear} aria-label={`Remove ${fighter.name}`} title="Remove"
+            className="group block h-full w-full rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">
+            <Avatar src={fighter.photo_url} name={fighter.name} size="fill" />
+            {/* Shown on hover only: a tap anywhere on the photo removes the fighter. */}
+            <span aria-hidden="true" className={`absolute right-[4%] top-[4%] grid place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 opacity-0 shadow-sm transition group-hover:opacity-100 group-hover:text-zinc-900 group-focus-visible:opacity-100 ${big ? "h-7 w-7" : "h-6 w-6"}`}>
+              <X className={big ? "h-3.5 w-3.5" : "h-3 w-3"} />
+            </span>
+          </button>
+        ) : (
+          <button type="button" onClick={onPick} aria-label="Add a fighter"
+            className="grid h-full w-full place-items-center rounded-full border border-dashed border-zinc-300 text-zinc-400 transition hover:border-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">
+            <Plus className={big ? "h-5 w-5" : "h-4 w-4"} aria-hidden="true" />
+          </button>
+        )}
+      </div>
       {fighter ? (
-        <button type="button" onClick={onClear} aria-label={`Remove ${fighter.name}`} title="Remove"
-          className="group relative rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">
-          <Avatar src={fighter.photo_url} name={fighter.name} size={big ? "lg" : "md"} />
-          {/* Shown on hover only: a tap anywhere on the photo removes the fighter. */}
-          <span aria-hidden="true" className={`absolute grid place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 opacity-0 shadow-sm transition group-hover:opacity-100 group-hover:text-zinc-900 group-focus-visible:opacity-100 ${big ? "-right-1 -top-1 h-7 w-7" : "-right-1.5 -top-1.5 h-6 w-6"}`}>
-            <X className={big ? "h-3.5 w-3.5" : "h-3 w-3"} />
-          </span>
-        </button>
-      ) : (
-        <button type="button" onClick={onPick} aria-label="Add a fighter"
-          className={`grid shrink-0 place-items-center rounded-full border border-dashed border-zinc-300 bg-zinc-50 text-zinc-500 transition hover:border-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${big ? "h-20 w-20" : "h-12 w-12"}`}>
-          <Plus className={big ? "h-6 w-6" : "h-5 w-5"} aria-hidden="true" />
-        </button>
-      )}
-      {fighter ? (
-        <Link to={`/fighters/${fighter.id}`} className="w-full text-center text-xs font-semibold leading-4 text-zinc-900 hover:underline">{fighter.name}</Link>
-      ) : <span className="w-full text-center text-xs leading-4 text-zinc-500">Add fighter</span>}
+        <Link to={`/fighters/${fighter.id}`} className={`w-full text-center font-semibold text-zinc-900 hover:underline ${big ? "text-sm sm:text-base" : "text-xs leading-4 sm:text-sm"}`}>{fighter.name}</Link>
+      ) : <span className={`w-full text-center text-zinc-400 ${big ? "text-sm" : "text-xs leading-4"}`}>Add fighter</span>}
     </div>
   );
 }
@@ -70,14 +101,16 @@ function Bout({ corners, big, onPick, onClear }: { corners: [Slot, Slot]; big: b
   return (
     <div className={`flex h-full min-w-0 items-start gap-2 rounded-xl border border-zinc-200 bg-white ${big ? "p-4 sm:p-5" : "px-3 py-4"}`}>
       <Corner fighter={corners[0]} big={big} onPick={() => onPick(0)} onClear={() => onClear(0)} />
-      <span className={`shrink-0 text-[10px] font-medium uppercase text-zinc-400 ${big ? "mt-8" : "mt-4"}`}>vs</span>
+      {/* Level with the photos rather than the names below them. */}
+      <span className="-mt-6 shrink-0 self-center text-[10px] font-medium uppercase text-zinc-400 sm:text-xs">vs</span>
       <Corner fighter={corners[1]} big={big} onPick={() => onPick(1)} onClear={() => onClear(1)} />
     </div>
   );
 }
 
-/** A dialog with the site's fighter search; the chosen fighter fills the slot. */
-function Picker({ taken, onPick, onClose }: { taken: PickedFighter[]; onPick: (fighter: PickedFighter) => void; onClose: () => void }) {
+/** A small dialog: a title, a close ✕ and what it holds. Escape or a click
+ *  outside closes it; its first field takes the focus. */
+function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     panel.current?.querySelector("input")?.focus();
@@ -87,69 +120,269 @@ function Picker({ taken, onPick, onClose }: { taken: PickedFighter[]; onPick: (f
   }, [onClose]);
   return (
     <div className="fixed inset-0 z-[70] flex items-start justify-center bg-zinc-950/40 p-3 pt-[15vh] backdrop-blur-[2px]" onClick={onClose}>
-      <div ref={panel} role="dialog" aria-label="Pick a fighter" className={`${PANEL} w-full max-w-md p-3`} onClick={(event) => event.stopPropagation()}>
+      <div ref={panel} role="dialog" aria-modal="true" aria-label={title} className={`${PANEL} w-full max-w-md p-3`} onClick={(event) => event.stopPropagation()}>
         <div className="mb-2 flex items-center justify-between px-1">
-          <h2 className="text-sm font-semibold text-zinc-900">Pick a fighter</h2>
+          <h2 className="text-sm font-semibold text-zinc-900">{title}</h2>
           <button type="button" onClick={onClose} aria-label="Close" className="grid h-7 w-7 place-items-center rounded-full text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900">
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
-        {/* Everyone already on the card is "selected", so the search leaves them out. */}
-        <FighterSearch selected={taken} showSelected={false} max={BOUTS * 2} emptyPlaceholder="Search any fighter…"
-          onChange={(fighters) => { const chosen = fighters.at(-1); if (chosen && !taken.includes(chosen)) onPick(chosen); }} />
+        {children}
       </div>
     </div>
   );
 }
 
-function CardBuilder() {
-  const [slots, setSlots] = useState<Slot[]>(savedCard);
-  const [picking, setPicking] = useState<number | null>(null);
-  useEffect(() => {
-    try { localStorage.setItem(CARD_KEY, JSON.stringify(slots)); } catch { /* private mode: the card lasts the visit */ }
-  }, [slots]);
-  const set = (index: number, fighter: Slot) => setSlots((current) => current.map((slot, i) => (i === index ? fighter : slot)));
-  const taken = slots.filter((slot): slot is PickedFighter => Boolean(slot));
-  let bout = 0;
+/** The site's fighter search; the chosen fighter fills the slot. */
+function Picker({ taken, onPick, onClose }: { taken: PickedFighter[]; onPick: (fighter: PickedFighter) => void; onClose: () => void }) {
   return (
-    <section className="mx-auto w-full max-w-6xl">
-      <div className="mb-4 flex min-h-7 flex-wrap items-center justify-end gap-3 px-1">
-        {taken.length ? (
-          <button type="button" onClick={() => setSlots(Array(BOUTS * 2).fill(null))}
-            className="shrink-0 rounded-full border border-zinc-200 px-3 py-1 text-xs font-medium text-zinc-600 transition hover:bg-zinc-50 hover:text-zinc-900">
-            Clear card
-          </button>
-        ) : null}
-      </div>
-      <div className="flex flex-col gap-3">
-        {ROWS.map((row, rowIndex) => {
-          const first = bout;
-          bout += row.bouts;
-          const big = "big" in row && row.big;
+    <Dialog title="Pick a fighter" onClose={onClose}>
+      {/* Everyone already on the card is "selected", so the search leaves them out. */}
+      <FighterSearch selected={taken} showSelected={false} max={BOUTS * 2} emptyPlaceholder="Search any fighter…"
+        onChange={(fighters) => { const chosen = fighters.at(-1); if (chosen && !taken.includes(chosen)) onPick(chosen); }} />
+    </Dialog>
+  );
+}
+
+function SaveDialog({ initial, onSave, onClose }: { initial: string; onSave: (name: string) => Promise<void>; onClose: () => void }) {
+  const [name, setName] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const trimmed = name.trim();
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    setError("");
+    // On success the dialog closes; only a failure is shown here.
+    try { await onSave(trimmed); }
+    catch (problem) { setError(problem instanceof Error ? problem.message : "That card could not be saved."); setBusy(false); }
+  };
+  return (
+    <Dialog title="Save card" onClose={onClose}>
+      <form className="flex gap-2 px-1 pb-1" onSubmit={(event) => void submit(event)}>
+        {/* 16px on a phone, so iOS doesn't zoom in on focus. */}
+        <input value={name} onChange={(event) => setName(event.target.value)} maxLength={60} placeholder="Name this card" aria-label="Card name"
+          className="h-9 min-w-0 flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-base text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-400 sm:text-sm" />
+        <button type="submit" disabled={!trimmed || busy} className={BUTTON_PRIMARY}>{busy ? "Saving…" : "Save"}</button>
+      </form>
+      {error ? <p role="alert" className="px-1 pt-1 text-xs text-rose-600">{error}</p> : null}
+    </Dialog>
+  );
+}
+
+/** Saved cards: a list beside the card from `lg` up, a dropdown above it
+ *  below that. Not drawn at all until a card has been saved. */
+function SavedCards({ cards, open, draft, onOpen, onNew, onRemove }: {
+  cards: SavedCard[]; open: SavedCard | null; draft: boolean;
+  onOpen: (card: SavedCard) => void; onNew: () => void; onRemove: (card: SavedCard) => void;
+}) {
+  return <>
+    <div className="flex items-center gap-2 lg:hidden">
+      <select value={open?.id ?? ""} aria-label="Saved cards"
+        onChange={(event) => { const card = cards.find((each) => each.id === event.target.value); if (card) onOpen(card); else onNew(); }}
+        className="h-10 min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-3 text-base font-medium text-zinc-900 outline-none transition focus:border-zinc-400 sm:text-sm">
+        <option value="">{draft && !open ? "Unsaved card" : "New card"}</option>
+        {cards.map((card) => <option key={card.id} value={card.id}>{card.name}</option>)}
+      </select>
+      {open ? (
+        <button type="button" onClick={() => onRemove(open)} aria-label={`Delete ${open.name}`} title="Delete card"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition hover:bg-zinc-50 hover:text-zinc-900">
+          <Trash2 className="h-4 w-4" aria-hidden="true" />
+        </button>
+      ) : null}
+    </div>
+    {/* Each saved card is a tile like the bouts beside it; the open one is outlined. */}
+    <aside aria-label="Saved cards" className="sticky top-0 hidden max-h-[calc(100dvh-7rem)] w-64 shrink-0 overflow-y-auto lg:block">
+      <h2 className="flex min-h-10 items-center justify-between px-1 pb-2 text-sm font-semibold text-zinc-900">
+        Saved cards<span className="text-xs font-normal tabular-nums text-zinc-500">{cards.length}</span>
+      </h2>
+      <ul className="flex flex-col gap-2">
+        {cards.map((card) => {
+          const current = card.id === open?.id;
           return (
-            <div key={rowIndex} className="flex flex-col gap-3">
-              {"prelims" in row && row.prelims ? (
-                <h2 className="mt-3 px-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">Prelims</h2>
-              ) : null}
-              {rowIndex === 0 ? <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">Main card</h2> : null}
-              {/* A wrapping row rather than a grid, so an odd bout left over sits centered. */}
-              <div className="flex flex-wrap justify-center gap-3">
-                {Array.from({ length: row.bouts }, (_, i) => {
-                  const index = first + i;
-                  return (
-                    <div key={index} className={`min-w-0 basis-full ${big ? "sm:basis-[calc(50%-0.375rem)]" : "min-[400px]:basis-[calc(50%-0.375rem)] lg:basis-[calc(25%-0.5625rem)]"}`}>
-                      <Bout corners={[slots[index * 2], slots[index * 2 + 1]]} big={big}
-                        onPick={(corner) => setPicking(index * 2 + corner)} onClear={(corner) => set(index * 2 + corner, null)} />
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <li key={card.id} className="group relative">
+              <button type="button" onClick={() => onOpen(card)} aria-current={current ? "true" : undefined}
+                className={`flex w-full items-center gap-3 rounded-xl border bg-white p-2.5 pr-8 text-left transition-colors ${current ? "border-zinc-400 ring-1 ring-inset ring-zinc-200" : "border-zinc-200 hover:border-zinc-300"}`}>
+                {/* The main event's two faces, overlapping. */}
+                <span className="flex shrink-0 -space-x-2.5">
+                  {card.slots.slice(0, 2).map((fighter, index) => <Avatar key={index} src={fighter?.photo_url} name={fighter?.name ?? "TBD"} size="sm" />)}
+                </span>
+                <span className="min-w-0">
+                  <span className="line-clamp-2 text-sm font-semibold leading-tight text-zinc-900">{card.name}</span>
+                  <span className="mt-0.5 block truncate text-xs text-zinc-500">{headline(card)}</span>
+                </span>
+              </button>
+              {/* Always there on a touch screen, where nothing hovers. */}
+              <button type="button" onClick={() => onRemove(card)} aria-label={`Delete ${card.name}`} title="Delete card"
+                className="absolute right-1 top-1 grid h-7 w-7 place-items-center rounded-full text-zinc-400 opacity-0 transition hover:bg-zinc-100 hover:text-zinc-900 focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            </li>
           );
         })}
+      </ul>
+    </aside>
+  </>;
+}
+
+/** The last list read for an account, shown at once on the next visit while
+ *  it is read again, so a reload never flashes an empty sidebar. */
+const CARDS_CACHE_KEY = "ufcsh:matchmaking-saved-cache:v1";
+function cachedCards(userId: string | null): SavedCard[] {
+  const cache = stored(CARDS_CACHE_KEY) as { userId?: unknown; cards?: unknown } | null;
+  return cache && cache.userId === userId && Array.isArray(cache.cards) ? cache.cards as SavedCard[] : [];
+}
+
+/** The account's saved cards, read again whenever the tab comes back into
+ *  view so a card saved on another device shows up. Mounted only where
+ *  sign-in exists, since Clerk's hooks need it. */
+function AccountCardBuilder() {
+  const { getToken } = useAuth();
+  const { isLoaded, user, signIn } = useAccount();
+  const userId = user?.id ?? null;
+  // Before Clerk has loaded, the last account's list stands in.
+  const [cards, setCards] = useState<SavedCard[]>(() => { const cache = stored(CARDS_CACHE_KEY) as { cards?: unknown } | null; return Array.isArray(cache?.cards) ? cache.cards as SavedCard[] : []; });
+  // Every change to the list is also kept for the next visit.
+  const update = useCallback((change: (current: SavedCard[]) => SavedCard[]) => setCards((current) => {
+    const next = change(current);
+    store(CARDS_CACHE_KEY, { userId, cards: next });
+    return next;
+  }), [userId]);
+  const request = useCallback(async (path: string, init: RequestInit = {}) => {
+    const token = await getToken();
+    if (!token) throw new Error("Your session expired. Sign in again.");
+    const response = await fetch(path, { ...init, cache: "no-store", signal: AbortSignal.timeout(20_000),
+      headers: { Authorization: `Bearer ${token}`, ...(init.body ? { "Content-Type": "application/json" } : {}) } });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error ?? "Something went wrong. Please retry.");
+    return data;
+  }, [getToken]);
+  useEffect(() => {
+    if (!isLoaded) return;
+    setCards(cachedCards(userId));
+    if (!userId) return;
+    let live = true;
+    let retry: number | undefined;
+    // A session still starting up can briefly have no token: try again shortly.
+    const load = (attempt = 0) => {
+      request("/api/cards")
+        .then((data: { cards: SavedCard[] }) => { if (live) update(() => data.cards); })
+        .catch(() => { if (live && attempt < 3) retry = window.setTimeout(() => load(attempt + 1), 1_000 * 2 ** attempt); });
+    };
+    const visible = () => { if (document.visibilityState === "visible") load(); };
+    load();
+    document.addEventListener("visibilitychange", visible);
+    return () => { live = false; window.clearTimeout(retry); document.removeEventListener("visibilitychange", visible); };
+  }, [isLoaded, userId, request, update]);
+  const save = async (name: string, slots: PickedFighter[], id?: string) => {
+    const card = await request("/api/cards", { method: "POST", body: JSON.stringify({ id, name, fighters: slots.map((slot) => slot.id) }) }) as SavedCard;
+    update((current) => [card, ...current.filter((each) => each.id !== card.id)]);
+    return card;
+  };
+  const remove = async (id: string) => {
+    await request(`/api/cards/${encodeURIComponent(id)}`, { method: "DELETE" });
+    update((current) => current.filter((each) => each.id !== id));
+  };
+  return <CardBuilder account={{ signedIn: isLoaded && Boolean(user), cards, signIn, save, remove }} />;
+}
+
+/** `account` is null where this deployment has no sign-in: the card is built
+ *  but not saved. */
+function CardBuilder({ account }: { account: CardAccount | null }) {
+  const [slots, setSlots] = useState<Slot[]>(draftCard);
+  const [openId, setOpenId] = useState<string | null>(() => { const id = stored(OPEN_KEY); return typeof id === "string" ? id : null; });
+  const [picking, setPicking] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState<SavedCard | null>(null);
+  const [removal, setRemoval] = useState({ busy: false, error: "" });
+  useEffect(() => store(CARD_KEY, slots), [slots]);
+  useEffect(() => store(OPEN_KEY, openId), [openId]);
+  const cards = account?.cards ?? [];
+  const set = (index: number, fighter: Slot) => setSlots((current) => current.map((slot, i) => (i === index ? fighter : slot)));
+  const taken = slots.filter((slot): slot is PickedFighter => Boolean(slot));
+  // Saving an opened card updates it; anything else is saved as a new one.
+  const open = cards.find((card) => card.id === openId) ?? null;
+  const saved = open !== null && sameCard(open.slots, slots);
+  const startNew = () => { setSlots(emptyCard()); setOpenId(null); };
+  const openCard = (card: SavedCard) => { setSlots(card.slots); setOpenId(card.id); };
+  const save = async (name: string) => {
+    if (!account || !isFull(slots)) return;
+    const card = await account.save(name, slots, open?.id);
+    setOpenId(card.id);
+    setSaving(false);
+  };
+  const remove = async (card: SavedCard) => {
+    if (!account || removal.busy) return;
+    setRemoval({ busy: true, error: "" });
+    try {
+      await account.remove(card.id);
+      if (card.id === openId) setOpenId(null);
+      setRemoving(null);
+      setRemoval({ busy: false, error: "" });
+    } catch (problem) {
+      setRemoval({ busy: false, error: problem instanceof Error ? problem.message : "That card could not be deleted." });
+    }
+  };
+  let bout = 0;
+  return (
+    <section className="flex w-full flex-col gap-3 lg:flex-row lg:items-start lg:gap-4">
+      {cards.length ? <SavedCards cards={cards} open={open} draft={taken.length > 0} onOpen={openCard} onNew={startNew} onRemove={setRemoving} /> : null}
+      <div className="min-w-0 flex-1">
+        <header className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 px-1">
+          <div className="min-w-0 flex-1">
+            {/* Below `lg` the saved-cards dropdown already names it. */}
+            <h2 className={`truncate text-base font-semibold text-zinc-900 ${cards.length ? "max-lg:hidden" : ""}`}>{open?.name ?? "New card"}</h2>
+            <p className="text-xs tabular-nums text-zinc-500">
+              {taken.length} of {BOUTS * 2} fighters{saved ? " · saved" : open ? " · unsaved changes" : ""}
+            </p>
+          </div>
+          {taken.length || open ? (
+            <button type="button" onClick={startNew} className={BUTTON_SECONDARY}>{open ? "New card" : "Clear card"}</button>
+          ) : null}
+          {account && isFull(slots) ? (
+            <button type="button" onClick={() => (account.signedIn ? setSaving(true) : account.signIn())} disabled={saved}
+              title={account.signedIn ? undefined : "Sign in to save cards to your account"} className={`${BUTTON_PRIMARY} !py-1.5`}>
+              {saved ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Save className="h-3.5 w-3.5" aria-hidden="true" />}
+              {saved ? "Saved" : "Save card"}
+            </button>
+          ) : null}
+        </header>
+        <div className="flex flex-col gap-3">
+          {ROWS.map((row, rowIndex) => {
+            const first = bout;
+            bout += row.bouts;
+            const big = "big" in row && row.big;
+            return (
+              <div key={rowIndex} className="flex flex-col gap-3">
+                {"prelims" in row && row.prelims ? (
+                  <h2 className="mt-3 px-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">Prelims</h2>
+                ) : null}
+                {rowIndex === 0 ? <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">Main card</h2> : null}
+                {/* A wrapping row rather than a grid, so an odd bout left over sits centered. */}
+                <div className="flex flex-wrap justify-center gap-3">
+                  {Array.from({ length: row.bouts }, (_, i) => {
+                    const index = first + i;
+                    return (
+                      <div key={index} className={`min-w-0 basis-full ${big ? "sm:basis-[calc(50%-0.375rem)]" : "min-[400px]:basis-[calc(50%-0.375rem)] xl:basis-[calc(25%-0.5625rem)]"}`}>
+                        <Bout corners={[slots[index * 2], slots[index * 2 + 1]]} big={big}
+                          onPick={(corner) => setPicking(index * 2 + corner)} onClear={(corner) => set(index * 2 + corner, null)} />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
       {picking != null ? (
         <Picker taken={taken} onClose={() => setPicking(null)} onPick={(fighter) => { set(picking, fighter); setPicking(null); }} />
+      ) : null}
+      {saving ? <SaveDialog initial={open?.name ?? ""} onSave={save} onClose={() => setSaving(false)} /> : null}
+      {removing ? (
+        <ConfirmRemove title="Delete this saved card?" detail={removing.name} busy={removal.busy} error={removal.error}
+          onCancel={() => { setRemoving(null); setRemoval({ busy: false, error: "" }); }} onConfirm={() => void remove(removing)} />
       ) : null}
     </section>
   );
@@ -363,14 +596,14 @@ export default function MatchmakingPage() {
   useSeo({ title: "UFC Matchmaking", description: "Build your own UFC card, and see the fights to make next: title fights, ranked matchups and next opponents for the fighters on recent cards.", path: "/matchmaking" });
   return (
     <div ref={scroll} className={PAGE}>
-      <div className={PAGE_BODY.replace("max-w-5xl", "max-w-[1600px]")}>
-        {/* On a phone the tabs are the bar across the top of the page. The
-            bar is its own layer: the dark theme's forced panel colour would
-            otherwise outlast a wider screen's transparent one. */}
-        <header className="relative isolate flex justify-center max-sm:-mx-2 max-sm:-mt-2 max-sm:px-2 max-sm:py-1.5">
-          <div aria-hidden="true" className="absolute inset-0 -z-10 border-b border-zinc-200 bg-white sm:hidden" />
+      {/* A built card takes the whole width; the suggestions stop at a readable one. */}
+      <div className={PAGE_BODY.replace("max-w-5xl", tab === "card" ? "max-w-none" : "max-w-[1600px]")}>
+        {/* The tabs sit on a white card, as on a profile: on the bare page
+            the dark theme's track would be the page's own colour. */}
+        <header className="flex justify-center">
           <h1 className="sr-only">Matchmaking</h1>
-          <div className={`${segmentedGroup} w-full max-w-md`} role="group" aria-label="Matchmaking">
+          <div className={`${PANEL} w-full p-1.5 sm:max-w-md`}>
+          <div className={`${segmentedGroup} w-full`} role="group" aria-label="Matchmaking">
             {TABS.map((option) => (
               <button key={option.key} type="button" aria-pressed={tab === option.key}
                 onClick={() => setParams(option.key === "top15" ? {} : { tab: option.key }, { replace: true })}
@@ -379,8 +612,9 @@ export default function MatchmakingPage() {
               </button>
             ))}
           </div>
+          </div>
         </header>
-        {tab === "card" ? <CardBuilder /> : <Suggestions tab={tab} data={data} error={error} retry={retry} />}
+        {tab === "card" ? accountsEnabled ? <AccountCardBuilder /> : <CardBuilder account={null} /> : <Suggestions tab={tab} data={data} error={error} retry={retry} />}
       </div>
     </div>
   );

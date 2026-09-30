@@ -52,10 +52,7 @@ export default function InfoPage() {
         </nav>
 
         <div className="flex min-w-0 flex-col gap-3">
-          <header className={`${PANEL} px-4 py-5 sm:px-6`}>
-            <p className={EYEBROW}>Information</p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-950">Built by a fan, for fans</h1>
-          </header>
+          <h1 className="sr-only">Information</h1>
 
           <Section id="about">
             <p>Hey! I’m a software developer building the #1 UFC data platform for hardcore fans—all the best features in one place.</p>
@@ -93,12 +90,14 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-09-29">September 29, 2026</time></p>
+            <p><time dateTime="2026-09-30">September 30, 2026</time></p>
             <ul>
-              <li>Leaderboards are now a tab on your profile.</li>
-              <li>Report an issue lives only on your profile.</li>
-              <li>Labs is now Combined records: the whole page is the study.</li>
-              <li>Fighter pages have a News tab with the last month of news about them.</li>
+              <li>Combined records, Favorites and the More sidebar are gone.</li>
+              <li>More is one menu: Stats, Matchmaking, Browse, News and Graphic.</li>
+              <li>Browse holds Officials, Venues and Roster as tabs.</li>
+              <li>Anyone can make a graphic.</li>
+              <li>Save your created cards to your account and open them on any device.</li>
+              <li>News is newest first.</li>
             </ul>
           </Section>
         </div>

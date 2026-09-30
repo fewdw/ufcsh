@@ -5,9 +5,10 @@ import CmdK from "./components/CmdK";
 import SearchGlyph from "./components/SearchGlyph";
 import LiveMatchup from "./components/LiveMatchup";
 import { segmentedIdle, segmentedSelected } from "./components/segmented";
-import { ChevronDown, Moon, Sun } from "lucide-react";
-import { accountsEnabled } from "./auth";
-import { inMore, MORE_HOME, MoreGroups, MoreLayout } from "./components/MoreNav";
+import { ChevronDown, Moon, Shield, Sun } from "lucide-react";
+import { accountsEnabled, useAccount } from "./auth";
+import { useAdminResource, type AdminSession } from "./admin";
+import { inMore, MORE_HOME, MoreGroups } from "./components/MoreNav";
 import { useSettings, withRanking } from "./settings";
 import { prefetch } from "./api";
 import { useLinkPrefetch, warmSections } from "./useLinkPrefetch";
@@ -33,7 +34,6 @@ const EventsPage = page(pages.events, module => module.default);
 const FighterPage = page(pages.fighter, module => module.default);
 const RankingsPage = page(pages.rankings, module => module.default);
 const StatsPage = page(pages.stats, module => module.default);
-const CombinedRecordsPage = page(pages.combinedRecords, module => module.default);
 const AdminPage = page(pages.admin, module => module.default);
 const ProfilePage = page(pages.profile, module => module.default);
 const AuthPage = page(pages.auth, module => module.default);
@@ -49,6 +49,32 @@ const NewsPage = page(pages.news, module => module.default);
 const GraphicPage = page(pages.graphic, module => module.default);
 
 const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
+
+// Remembered across pages and reloads, so the Admin link doesn't blink in on
+// each one. Only a hint for drawing it: the admin pages check on the server.
+const ADMIN_KEY = "ufcsh:admin:v1";
+let wasAdmin = (() => { try { return localStorage.getItem(ADMIN_KEY) === "1"; } catch { return false; } })();
+function rememberAdmin(admin: boolean) {
+  if (admin === wasAdmin) return;
+  wasAdmin = admin;
+  try { if (admin) localStorage.setItem(ADMIN_KEY, "1"); else localStorage.removeItem(ADMIN_KEY); } catch { /* private mode: this visit only */ }
+}
+
+/** Admin, just before More, as a shield: listed only for the few who have it. */
+function AdminLink({ active }: { active: boolean }) {
+  const { isLoaded, user } = useAccount();
+  const { data } = useAdminResource<AdminSession>(isLoaded && user ? "/api/admin/session" : null);
+  if (data) rememberAdmin(data.admin);
+  else if (isLoaded && !user) rememberAdmin(false);
+  if (!wasAdmin) return null;
+  const load = () => { void pages.admin().catch(() => {}); };
+  return (
+    <Link to="/admin" aria-label="Admin" title="Admin" aria-current={active ? "page" : undefined} onPointerEnter={load} onFocus={load} onTouchStart={load}
+      className={`${NAV_ITEM} flex items-center self-stretch ${active ? segmentedSelected : segmentedIdle}`}>
+      <Shield className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden="true" />
+    </Link>
+  );
+}
 
 /** The rest of the site, one pill after the sections. From `md` up a mouse
  *  opens its groups on hover and a press opens Stats; a tap or a key opens
@@ -83,10 +109,10 @@ function MoreMenu({ pathname, active, open, setOpen }: { pathname: string; activ
         to a far link; the top padding bridges the gap below it. */}
     {open ? <div aria-hidden="true" className="absolute left-full top-0 hidden h-full w-56 [clip-path:polygon(0_0,100%_100%,0_100%)] md:block" /> : null}
     {open ? <div className="absolute inset-x-2 top-full z-50 pt-1.5 md:inset-x-auto md:left-0">
-      {/* Groups sit apart on a hairline: rows of three on a phone, columns on a wide screen. */}
-      <div className="flex flex-col divide-y divide-zinc-100 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg md:w-96 lg:w-max lg:flex-row lg:divide-x lg:divide-y-0">
+      {/* One column: across the header on a phone, under the button above that. */}
+      <div className="rounded-xl border border-zinc-200 bg-white p-2 shadow-lg md:w-max md:min-w-44">
         <MoreGroups group={(label, links) => (
-          <ul key={label} aria-label={label} className="grid grid-cols-3 gap-0.5 py-1 first:pt-0 [&>li:only-child]:col-span-full last:pb-0 lg:min-w-36 lg:grid-cols-1 lg:content-start lg:px-1 lg:py-0 lg:first:pl-0 lg:last:pr-0">{links}</ul>
+          <ul key={label} aria-label={label} className="flex flex-col gap-0.5">{links}</ul>
         )} item={(section, current) => (
           <li key={section.href}>
             <Link to={section.href} aria-current={current ? "page" : undefined}
@@ -122,12 +148,13 @@ function Header({ onSearch }: { onSearch: () => void }) {
   }, []);
   const isRankings = pathname.startsWith("/rankings");
   const isMore = inMore(pathname);
+  const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
   // A profile belongs to no section of the nav, so none of them is lit.
   const isProfile = pathname.startsWith("/profiles");
   const links = [
     // Pointing at a section starts its code and its first data, so a tap
     // lands on it loaded.
-    { href: "/", label: "Events", active: !isRankings && !isProfile && !isMore, load: () => { warmSections(settings.rankingSource); return pages.events(); } },
+    { href: "/", label: "Events", active: !isRankings && !isProfile && !isMore && !isAdmin, load: () => { warmSections(settings.rankingSource); return pages.events(); } },
     { href: "/rankings", label: "Rankings", active: isRankings, load: () => { prefetch(withRanking("/api/rankings", settings.rankingSource)); return pages.rankings(); } },
   ];
 
@@ -157,6 +184,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
               {link.label}
             </Link>
           ))}
+          {accountsEnabled ? <AdminLink active={isAdmin && !moreOpen} /> : null}
           <MoreMenu pathname={pathname} active={isMore} open={moreOpen} setOpen={setMoreOpen} />
         </nav>
 
@@ -271,23 +299,18 @@ export default function App() {
           <Route path="/fights/:fightId" element={<EventsPage />} />
           <Route path="/fighters/:fighterId" element={<FighterPage />} />
           <Route path="/rankings" element={<RankingsPage />} />
-          <Route element={<MoreLayout />}>
-            <Route path="/stats" element={<StatsPage />} />
-            <Route path="/combined-records" element={<CombinedRecordsPage />} />
-            <Route path="/labs" element={<Navigate to="/combined-records" replace />} />
-            <Route path="/roster" element={<RosterPage />} />
-            <Route path="/favorites" element={null} />
-            <Route path="/officials" element={<OfficialsPage />} />
-            <Route path="/judges/:slug" element={<JudgePage />} />
-            <Route path="/referees/:slug" element={<RefereePage />} />
-            <Route path="/venues" element={<VenuesPage />} />
-            <Route path="/venues/:slug" element={<VenuePage />} />
-            <Route path="/matchmaking" element={<MatchmakingPage />} />
-            <Route path="/news" element={<NewsPage />} />
-            <Route path="/graphic" element={<GraphicPage />} />
-            <Route path="/admin" element={<AdminPage />} />
-            <Route path="/admin/bugs" element={<AdminPage />} />
-          </Route>
+          <Route path="/stats" element={<StatsPage />} />
+          <Route path="/officials" element={<OfficialsPage />} />
+          <Route path="/venues" element={<VenuesPage />} />
+          <Route path="/roster" element={<RosterPage />} />
+          <Route path="/judges/:slug" element={<JudgePage />} />
+          <Route path="/referees/:slug" element={<RefereePage />} />
+          <Route path="/venues/:slug" element={<VenuePage />} />
+          <Route path="/matchmaking" element={<MatchmakingPage />} />
+          <Route path="/news" element={<NewsPage />} />
+          <Route path="/graphic" element={<GraphicPage />} />
+          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/admin/bugs" element={<AdminPage />} />
           <Route path="/profiles/:handle" element={<ProfilePage />} />
           {/* Both moved into the profile. */}
           <Route path="/leaderboards" element={<Navigate to="/profiles/me?tab=leaderboards" replace />} />

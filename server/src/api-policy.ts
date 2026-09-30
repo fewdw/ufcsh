@@ -2,8 +2,7 @@ import { isIP } from "node:net";
 import type { IncomingMessage } from "node:http";
 
 const listRoutes = new Set([
-  "/api/events", "/api/live", "/api/rankings", "/api/stats", "/api/labs",
-  "/api/labs/bouts", "/api/search",
+  "/api/events", "/api/live", "/api/rankings", "/api/stats", "/api/search",
   "/api/officials", "/api/venues", "/api/roster", "/api/matchmaking", "/api/news",
 ]);
 export function publicApi(path: string): boolean {

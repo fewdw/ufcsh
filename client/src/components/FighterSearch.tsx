@@ -9,7 +9,7 @@ import SearchFeedback from "./SearchFeedback";
 export type PickedFighter = SearchResults["fighters"][number];
 
 /**
- * Type-to-add fighter picker, shared by Statistics and Combined records so both pages
+ * Type-to-add fighter picker, shared by Statistics
  * select fighters the same way: results on every keystroke, arrow keys and
  * Enter to choose, Backspace to remove the last one, and the current
  * selection listed above the input rather than hidden behind a count.

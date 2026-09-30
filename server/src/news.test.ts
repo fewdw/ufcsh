@@ -55,17 +55,18 @@ test("a read keeps each outlet's own items, survives a failed feed and dates sch
     assert.deepEqual(stored.map((row) => row.url).sort(), ["https://mmafighting.com/later", "https://ufc.com/1"]);
     assert.ok(stored.find((row) => row.url.includes("later"))!.published_at <= Date.now());
     assert.match(getMeta("news_feed:Sherdog") ?? "", /HTTP 503/);
-    const view = newsView() as { sources: { name: string; ok: boolean }[]; top: NewsStory[]; latest: NewsStory[] };
+    const view = newsView() as { sources: { name: string; ok: boolean }[]; latest: NewsStory[] };
     assert.equal(view.sources.length, NEWS_FEEDS.length);
     assert.equal(view.sources.find((source) => source.name === "Sherdog")!.ok, false);
-    assert.equal(view.top.length + view.latest.length, 2);
+    assert.equal(view.latest.length, 2);
+    // Newest first, always: the later report leads.
+    assert.ok(view.latest[0].published_at >= view.latest[1].published_at);
 
     // An outlet switched off takes its stories with it; a search finds by headline.
-    const page = (query: string) => newsView(new URLSearchParams(query)) as { top: NewsStory[]; latest: NewsStory[]; total: number };
+    const page = (query: string) => newsView(new URLSearchParams(query)) as { latest: NewsStory[]; total: number };
     const without = page("off=UFC.com");
-    assert.deepEqual([...without.top, ...without.latest].map((story) => story.source), ["MMA Fighting"]);
+    assert.deepEqual(without.latest.map((story) => story.source), ["MMA Fighting"]);
     const found = page("q=oblique kick");
-    assert.deepEqual(found.top, []);
     assert.deepEqual(found.latest.map((story) => story.url), ["https://mmafighting.com/later"]);
     assert.equal(page("offset=30").latest.length, 0);
   } finally {
@@ -88,12 +89,11 @@ test("a fighter's news reaches past the fortnight /news shows, up to a month", a
       item("https://mmafighting.com/stale", `${fighter.name} signs new UFC contract`, 40),
       item("https://mmafighting.com/other", "UFC announces new broadcast partner deal", 2),
     ] : []);
-    const page = (query: string) => newsView(new URLSearchParams(query)) as { top: NewsStory[]; latest: NewsStory[]; total: number };
+    const page = (query: string) => newsView(new URLSearchParams(query)) as { latest: NewsStory[]; total: number };
     const theirs = page(`fighter=${fighter.id}`);
-    assert.deepEqual(theirs.top, []);
     assert.deepEqual(theirs.latest.map((story) => story.url), ["https://mmafighting.com/new", "https://mmafighting.com/old"]);
     const all = page("");
-    assert.deepEqual([...all.top, ...all.latest].map((story) => story.url).sort(), ["https://mmafighting.com/new", "https://mmafighting.com/other"]);
+    assert.deepEqual(all.latest.map((story) => story.url), ["https://mmafighting.com/new", "https://mmafighting.com/other"]);
   } finally {
     db.exec("DELETE FROM news");
     const insert = db.prepare("INSERT INTO news (url, source, title, summary, categories, published_at, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)");

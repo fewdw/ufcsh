@@ -26,7 +26,7 @@ function Sources({ sources, off, setOff }: { sources: NewsData["sources"]; off: 
 export default function NewsPage() {
   const [offList, setOffList] = useState<string[]>(savedOff);
   const [query, setQuery] = useState("");
-  useSeo({ title: "UFC News", description: "The latest UFC news from every major outlet in one list: top stories first, every headline linked to its source.", path: "/news" });
+  useSeo({ title: "UFC News", description: "The latest UFC news from every major outlet in one list, newest first, every headline linked to its source.", path: "/news" });
   const off = useMemo(() => new Set(offList), [offList]);
   const setOff = (next: string[]) => {
     setOffList(next);
@@ -54,7 +54,7 @@ export default function NewsPage() {
       ? <div className="p-4"><RequestNotice onRetry={() => void list.retry()}>Couldn’t load the news.</RequestNotice></div>
       : <PageState>Loading the news…</PageState>;
   }
-  const stories = [...first.top, ...list.items];
+  const stories = list.items;
   return (
     <div className={PAGE}>
       <div className="mx-auto w-full max-w-5xl px-4 pb-16 pt-4 sm:px-6 lg:px-8">
