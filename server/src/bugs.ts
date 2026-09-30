@@ -2,6 +2,8 @@ import { db, getMeta } from "./db.ts";
 import { validateFightActions } from "./action-stats.ts";
 import { americanLine, fightIndex, impliedProbability } from "./fight-index.ts";
 import { ufcFightExistsSql } from "./fighter-identity.ts";
+import { SEARCH_ALIASES } from "./search-aliases.ts";
+import { normName } from "./util.ts";
 import { pageNamesFighter } from "./scrape/odds.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { hasCompleteJudgeRounds } from "./judge-scorecards.ts";
@@ -600,6 +602,30 @@ function duplicateFighters(): BugCheck {
     ]),
     actions: [],
   })));
+}
+
+function searchAliasMisses(): BugCheck {
+  // The same fighters search indexes: those with a UFC bout.
+  const counts = new Map((db.prepare(`
+    SELECT fr.norm_name, COUNT(*) AS n FROM fighters fr WHERE ${ufcFightExistsSql("fr.id", "f")} GROUP BY fr.norm_name
+  `).all() as { norm_name: string; n: number }[]).map((row) => [row.norm_name, row.n]));
+  return check({
+    id: "search-alias-misses",
+    group: "Fighters",
+    label: "Search aliases that miss",
+    description: "A name in server/src/search-aliases.ts no longer matches exactly one fighter with a UFC bout, so its aliases find nobody or more than one fighter. Fix the name in the file.",
+    grade: "minor",
+  }, Object.keys(SEARCH_ALIASES).flatMap((name): BugItem[] => {
+    const found = counts.get(normName(name)) ?? 0;
+    return found === 1 ? [] : [{
+      key: name,
+      title: name,
+      subtitle: found ? `${found} fighters share this name` : "No fighter with this name",
+      facts: [["Aliases", SEARCH_ALIASES[name].join(", ")]],
+      links: [],
+      actions: [],
+    }];
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -1329,6 +1355,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     mergedOfficialSpellings(),
     fighterGaps(active),
     duplicateFighters(),
+    searchAliasMisses(),
     rosterMovesUnread(),
     newsFeedsUnread(),
     newsUnjudged(),
