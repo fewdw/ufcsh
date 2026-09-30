@@ -16,7 +16,7 @@ client (`client/`) renders every page.
 | Leaderboards | `stats.ts` (fighter cards), `stats-fights.ts` (Fights card: bouts, judges, referees) |
 | Matchmaking (title fights, ranked pairings, next opponents after recent cards) | `matchmaking.ts` |
 | News (outlets, relevance, fighter/event tags, story grouping, newest first, `?fighter=` for one fighter) | `news.ts`; feeds read in `scrape/news.ts` (`NEWS_FEEDS`) |
-| News read by Gemini (drops non-news, folds repeats, summaries; `GEMINI_API_KEY`) | `news-ai.ts`, run from the API process every 10 minutes |
+| News read by Gemini (off by default; enabled in Admin → Health; `GEMINI_API_KEY`) | `news-ai.ts`, run from the API process every 10 minutes |
 | Profile records and full stat rankings | `records.ts` (`fighterRecords`, `fighterBoard`, `milestonesWithinReach`) |
 | Judges and referees | `officials.ts` (name merging, profiles, directory, search) |
 | Venues | `venues.ts` (identity from ufc.com venue ids + Wikipedia names) |

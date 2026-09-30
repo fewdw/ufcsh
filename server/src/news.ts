@@ -410,10 +410,10 @@ function newsStories() {
   return data;
 }
 
-/** The admin panel's switch for Gemini: off, nothing is sent and the page
+/** Off until an administrator explicitly enables Gemini: nothing is sent and the page
  *  stands as the feeds built it, as if it had never read a story. */
 export function newsAiOff(): boolean {
-  return getMeta("news_ai_off") === "1";
+  return getMeta("news_ai_off") !== "0";
 }
 
 /** Gemini's reading of each story (news-ai.ts): one that isn't news goes, one

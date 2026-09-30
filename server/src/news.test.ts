@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { db, getMeta, setMeta } from "./db.ts";
 import { isUfcNews, nameIndex, newsToJudge, newsView, syncNews, type NewsStory } from "./news.ts";
-import { articleText, judgeNews, setNewsAi } from "./news-ai.ts";
+import { articleText, judgeNews, newsAiStatus, setNewsAi } from "./news-ai.ts";
 import { NEWS_FEEDS, parseFeed, type FeedItem } from "./scrape/news.ts";
 
 function restore(rows: unknown[]) {
@@ -105,11 +105,39 @@ test("a fighter's news reaches past the fortnight /news shows, up to a month", a
   }
 });
 
+test("AI starts off even with a key until an administrator enables it", async () => {
+  const off = getMeta("news_ai_off");
+  const key = process.env.GEMINI_API_KEY;
+  const realFetch = globalThis.fetch;
+  try {
+    db.prepare("DELETE FROM meta WHERE key = ?").run("news_ai_off");
+    process.env.GEMINI_API_KEY = "test";
+    let requests = 0;
+    globalThis.fetch = (async () => { requests++; throw new Error("Unexpected AI request"); }) as typeof fetch;
+    assert.equal(newsAiStatus().on, false);
+    await judgeNews();
+    assert.equal(requests, 0);
+    // Enabling is persisted even when a key has not been configured yet.
+    delete process.env.GEMINI_API_KEY;
+    assert.equal(setNewsAi(true).on, true);
+    assert.equal(getMeta("news_ai_off"), "0");
+    assert.equal(setNewsAi(false).on, false);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (key === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = key;
+    if (off === null) db.prepare("DELETE FROM meta WHERE key = ?").run("news_ai_off");
+    else setMeta("news_ai_off", off);
+  }
+});
+
 test("Gemini's reading drops what isn't news, folds a repeat into its story and summarizes it", async () => {
   const saved = { rows: db.prepare("SELECT * FROM news").all() };
   const realFetch = globalThis.fetch;
   const key = process.env.GEMINI_API_KEY;
+  const off = getMeta("news_ai_off") ?? "1";
   try {
+    setMeta("news_ai_off", "0");
     db.exec("DELETE FROM news");
     const now = Date.now();
     const item = (url: string, title: string, hours: number): FeedItem => ({ url, title, summary: "", categories: [], published: now - hours * 3_600_000 });
@@ -172,6 +200,7 @@ test("Gemini's reading drops what isn't news, folds a repeat into its story and 
     else process.env.GEMINI_API_KEY = key;
     db.exec("DELETE FROM news");
     restore(saved.rows);
+    setMeta("news_ai_off", off);
   }
 });
 
@@ -179,7 +208,9 @@ test("news stands as the feeds built it when Gemini fails, and the stories wait 
   const saved = { rows: db.prepare("SELECT * FROM news").all() };
   const realFetch = globalThis.fetch;
   const key = process.env.GEMINI_API_KEY;
+  const off = getMeta("news_ai_off") ?? "1";
   try {
+    setMeta("news_ai_off", "0");
     db.exec("DELETE FROM news");
     await syncNews(async (url) => url.includes("mmafighting") ? [{ url: "https://mmafighting.com/a", title: "UFC books a new main event for December", summary: "", categories: [], published: Date.now() - 3_600_000 }] : []);
     const original = newsView();
@@ -222,6 +253,7 @@ test("news stands as the feeds built it when Gemini fails, and the stories wait 
     else process.env.GEMINI_API_KEY = key;
     db.exec("DELETE FROM news");
     restore(saved.rows);
+    setMeta("news_ai_off", off);
   }
 });
 
@@ -229,7 +261,7 @@ test("switching AI off stops an active pass before sending or saving more judgme
   const rows = db.prepare("SELECT * FROM news").all();
   const realFetch = globalThis.fetch;
   const key = process.env.GEMINI_API_KEY;
-  const off = getMeta("news_ai_off") ?? "0";
+  const off = getMeta("news_ai_off") ?? "1";
   try {
     process.env.GEMINI_API_KEY = "test";
     for (const phase of ["article", "gemini"] as const) {

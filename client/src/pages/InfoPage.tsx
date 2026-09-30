@@ -92,12 +92,10 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-09-30">September 30, 2026</time></p>
             <ul>
-              <li>Combined records, Favorites and the More sidebar are gone.</li>
-              <li>More is one menu: Stats, Matchmaking, Browse, News and Graphic.</li>
-              <li>Browse holds Officials, Venues and Roster as tabs.</li>
-              <li>Anyone can make a graphic.</li>
-              <li>Save your created cards to your account and open them on any device.</li>
-              <li>News is newest first.</li>
+              <li>Optional AI news filtering, duplicate grouping and summaries.</li>
+              <li>News settings include a summaries toggle.</li>
+              <li>AI starts off. Admins can enable or stop it from Health.</li>
+              <li>News keeps working when AI is unavailable.</li>
             </ul>
           </Section>
         </div>
