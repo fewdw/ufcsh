@@ -2,6 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { RequestCache } from "../src/requestCache.ts";
 
+test("unavailable persistence cannot break loading or turn fresh data into an error", async () => {
+  const cache = new RequestCache(2, async () => Response.json({ fresh: true }), {
+    read() { throw new Error("storage access denied"); },
+    write() { throw new Error("quota exceeded"); },
+  });
+  assert.equal(cache.read("/a").loading, true);
+  await cache.load("/a");
+  assert.deepEqual(cache.read("/a"), { data: { fresh: true }, loading: false, refreshing: false, error: false });
+});
+
 test("concurrent subscribers share one request", async () => {
   let calls = 0;
   const cache = new RequestCache(2, async () => { calls++; return Response.json({ n: 1 }); });

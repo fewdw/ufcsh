@@ -9,7 +9,11 @@ const SCROLL_KEY = "ufcsh:scroll:v1";
  *  sessionStorage as the page goes away, so a reload (whose history entry keeps
  *  its key) returns every region to where it was. */
 const scrollPositions = new Map<string, Position>((() => {
-  try { return JSON.parse(sessionStorage.getItem(SCROLL_KEY) ?? "[]") as [string, Position][]; } catch { return []; }
+  try {
+    const saved: unknown = JSON.parse(sessionStorage.getItem(SCROLL_KEY) ?? "[]");
+    return Array.isArray(saved) ? saved.filter((entry): entry is [string, Position] => Array.isArray(entry)
+      && typeof entry[0] === "string" && entry[1] && Number.isFinite(entry[1].top) && Number.isFinite(entry[1].left)) : [];
+  } catch { return []; }
 })());
 function rememberScroll(key: string, position: Position) {
   scrollPositions.delete(key);
@@ -30,20 +34,28 @@ const historyState = new Map<string, unknown>();
 export function useHistoryState<T>(id: string, initial: T | (() => T)): [T, Dispatch<SetStateAction<T>>] {
   const { key } = useLocation();
   const cacheKey = `${key}:${id}`;
-  const [value, setValue] = useState<T>(() => {
+  const read = (): T => {
     if (historyState.has(cacheKey)) return historyState.get(cacheKey) as T;
     return typeof initial === "function" ? (initial as () => T)() : initial;
-  });
+  };
+  const [state, setState] = useState(() => ({ key: cacheKey, value: read() }));
+  let value = state.value;
+  // React keeps the component mounted when a fighter or history entry changes.
+  // Restore that entry before its old controls can overwrite the saved state.
+  if (state.key !== cacheKey) {
+    value = read();
+    setState({ key: cacheKey, value });
+  }
 
   useEffect(() => {
     historyState.set(cacheKey, value);
   }, [cacheKey, value]);
 
   const setAndStore = useCallback<Dispatch<SetStateAction<T>>>((update) => {
-    setValue((current) => {
-      const next = typeof update === "function" ? (update as (value: T) => T)(current) : update;
+    setState((current) => {
+      const next = typeof update === "function" ? (update as (value: T) => T)(current.value) : update;
       historyState.set(cacheKey, next);
-      return next;
+      return { key: cacheKey, value: next };
     });
   }, [cacheKey]);
 

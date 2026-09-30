@@ -160,6 +160,7 @@ test("Gemini's reading drops what isn't news, folds a repeat into its story and 
         { id: `N${id("UFC books Jones")}`, keep: true, same: "", summary: "Jones meets Aspinall in November." },
         { id: `N${id("Promo code")}`, keep: false, same: "", summary: "" },
         { id: `N${id("Heavyweight title")}`, keep: true, same: `N${id("UFC books Jones")}`, summary: "The title fight is official." },
+        { id: `N${id("UFC women's flyweight")}`, keep: true, same: "", summary: "" },
       ];
       return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify({ stories }) }] } }], usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 10 } });
     }) as typeof fetch;
@@ -169,7 +170,7 @@ test("Gemini's reading drops what isn't news, folds a repeat into its story and 
 
     const view = newsView() as { latest: NewsStory[] };
     assert.deepEqual(view.latest.map((story) => [story.url, story.also.map((outlet) => outlet.url), story.summary]), [
-      // A story Gemini skipped stands as built, with no summary.
+      // A kept story without a summary stands as built.
       ["https://cagesidepress.com/later", [], ""],
       ["https://mmafighting.com/booked", ["https://bloodyelbow.com/heavy"], "Jones meets Aspinall in November."],
     ]);
@@ -229,7 +230,11 @@ test("news stands as the feeds built it when Gemini fails, and the stories wait 
       () => new Response("Unavailable", { status: 503 }),
       () => Response.json({ candidates: [] }),
       () => Response.json({ candidates: [{ content: { parts: [{ text: "not json" }] } }] }),
-      ...[null, {}, { stories: [null] }, { stories: [{ id: "N1", keep: "false", same: "", summary: "" }] }]
+      ...[null, {}, { stories: [null] }, { stories: [] },
+        { stories: [{ id: "N2", keep: true, same: "", summary: "" }] },
+        { stories: [{ id: "N1", keep: true, same: "K99", summary: "" }] },
+        { stories: Array.from({ length: 2 }, () => ({ id: "N1", keep: true, same: "", summary: "" })) },
+        { stories: [{ id: "N1", keep: "false", same: "", summary: "" }] }]
         .map((result) => () => Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify(result) }] } }] })),
       () => { throw new TypeError("fetch failed"); },
       () => { throw new DOMException("Timed out", "TimeoutError"); },
@@ -317,4 +322,23 @@ test("an article's text is its paragraphs, or the page's when the article holds 
   const long = "A paragraph long enough to count as the story's own words, not a caption. ".repeat(2);
   assert.equal(articleText(`<body><nav><p>${long}menu</p></nav><article><p>${long}</p><p>Short</p></article></body>`), long.trim());
   assert.equal(articleText(`<body><article><p>Embed</p></article><div><p>${long}</p></div></body>`), long.trim());
+});
+
+test("a changed headline resets its AI judgment while an unchanged feed item keeps it", async () => {
+  const saved = db.prepare("SELECT * FROM news").all();
+  try {
+    db.exec("DELETE FROM news");
+    const item: FeedItem = { url: "https://mmafighting.com/updated", title: "UFC books a title fight", summary: "", categories: [], published: Date.now() };
+    const read = async (url: string) => url.includes("mmafighting") ? [item] : [];
+    await syncNews(read);
+    db.prepare("UPDATE news SET ai_keep = 0, ai_same = 'old', ai_summary = 'Old summary'").run();
+    await syncNews(read);
+    assert.equal(db.prepare("SELECT ai_keep FROM news").get()!.ai_keep, 0);
+    item.title = "UFC cancels the title fight after an injury";
+    await syncNews(read);
+    const changed = db.prepare("SELECT ai_keep, ai_same, ai_summary FROM news").get()!;
+    assert.equal(changed.ai_keep, null);
+    assert.equal(changed.ai_same, null);
+    assert.equal(changed.ai_summary, "");
+  } finally { db.exec("DELETE FROM news"); restore(saved); }
 });

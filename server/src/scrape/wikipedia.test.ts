@@ -210,3 +210,23 @@ Fighters released over the last month.
     { date: "2024-12-13", name: "Kennedy Freeman", nickname: "The Machine 2.0", country: "CL", division: "Women's Flyweight", reason: null, record: "6–0" },
   ]);
 });
+
+test("roster flags read Wikipedia's Lua icon syntax and template syntax", () => {
+  const table = (flag: string) => `{| class="wikitable"
+! Date
+! Country
+! Name
+! Division
+! MMA record
+|-
+|September 16, 2026
+|${flag}
+|Example Fighter
+|Bantamweight
+|7–0
+|}`;
+  const text = `\n== Recent signings ==\n${table("{{#invoke:flag|icon|CAN}}")}\n== Recent releases and retirements ==\n${table("{{FLAGICON|USA}}")}\n`;
+  const moves = rosterChanges(text);
+  assert.equal(moves.signed[0].country, "CA");
+  assert.equal(moves.cut[0].country, "US");
+});

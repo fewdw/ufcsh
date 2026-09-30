@@ -45,7 +45,10 @@ function imageLevels(src: string): Level[] {
  *  climbing up from the placeholder again. */
 const DECODED_KEY = "ufcsh:decoded-images:v1";
 const decoded = new Set<string>((() => {
-  try { return JSON.parse(localStorage.getItem(DECODED_KEY) ?? "[]") as string[]; } catch { return []; }
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(DECODED_KEY) ?? "[]");
+    return Array.isArray(saved) ? saved.filter((value): value is string => typeof value === "string") : [];
+  } catch { return []; }
 })());
 let saving = 0;
 function markDecoded(url: string) {

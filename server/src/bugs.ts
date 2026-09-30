@@ -315,14 +315,14 @@ function suspiciousOdds(): BugCheck {
         [fight.f2_name, `${fight.f2_open ?? "–"} → ${fight.f2_close ?? "–"}`],
       ],
       links: fight.source_url ? [{ label: "Odds source", href: fight.source_url }] : [],
-      actions: [],
+      actions: [{ id: "odds", label: "Re-fetch odds", target: fight.id }],
     }));
   }
   return check({
     id: "odds-suspicious",
     group: "Odds",
     label: "Prices that don't add up",
-    description: "Stored lines that contradict themselves: implied probabilities far outside a normal 100–110% book, one corner priced without the other, an unreadable price, or a huge open-to-close swing. Known cause: BestFightOdds shows each side's closing range across sportsbooks, and we store the top of it (the best price). When the books disagree, the two best prices add up to under 100%. Every case checked on 2026-09-13 matched the source exactly, and the midpoints of the ranges added up to 102–107%, so these are not scraping errors.",
+    description: "Stored lines that contradict themselves: implied probabilities outside a normal book, one corner priced without the other, an unreadable price, or a huge open-to-close swing. Old range prices and mismatched mean charts can cause this. Re-fetch from the fighter pages to verify both corners; a large move alone can be legitimate.",
     grade: (item) => (daysFrom(item.date) ?? -Infinity) >= -30 ? "critical" : "must",
   }, items);
 }

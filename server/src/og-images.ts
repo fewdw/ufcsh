@@ -1,4 +1,4 @@
-import sharp from "sharp";
+import sharp, { type OverlayOptions } from "sharp";
 
 /**
  * Link-preview images, 1200×630, drawn on the server so a shared fighter,
@@ -60,7 +60,7 @@ async function photoLayer(photo: SharePhoto, width: number, height: number): Pro
 }
 
 export async function renderShareImage(card: ShareCard): Promise<Buffer> {
-  const overlays: sharp.OverlayOptions[] = [];
+  const overlays: OverlayOptions[] = [];
   let inner = "";
   if (card.kind === "versus") {
     const photoW = 330;

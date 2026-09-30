@@ -40,7 +40,14 @@ export async function syncNews(read: (url: string) => Promise<FeedItem[]> = fetc
   const now = Date.now();
   const upsert = db.prepare(`
     INSERT INTO news (url, source, title, summary, body, categories, published_at, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(url) DO UPDATE SET title = excluded.title, summary = excluded.summary, body = excluded.body, categories = excluded.categories
+    ON CONFLICT(url) DO UPDATE SET
+      ai_keep = CASE WHEN news.title IS NOT excluded.title OR news.summary IS NOT excluded.summary
+        OR (excluded.body != '' AND news.body IS NOT excluded.body) THEN NULL ELSE news.ai_keep END,
+      ai_same = CASE WHEN news.title IS NOT excluded.title OR news.summary IS NOT excluded.summary
+        OR (excluded.body != '' AND news.body IS NOT excluded.body) THEN NULL ELSE news.ai_same END,
+      ai_summary = CASE WHEN news.title IS NOT excluded.title OR news.summary IS NOT excluded.summary
+        OR (excluded.body != '' AND news.body IS NOT excluded.body) THEN '' ELSE news.ai_summary END,
+      title = excluded.title, summary = excluded.summary, body = excluded.body, categories = excluded.categories
   `);
   // Google News lists an outlet's other editions too (jp.ufc.com): only the site asked for.
   const results = await Promise.allSettled(NEWS_FEEDS.map(async (feed) => (await read(feed.url)).filter((item) => !feed.site || item.site === feed.site)));
