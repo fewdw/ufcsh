@@ -92,7 +92,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-09-30">September 30, 2026</time></p>
             <ul>
-              <li>Search finds fighters by other names: GSP, Aljo, Izzy, real and maiden names.</li>
+              <li>Matchmaking Top 15 and Last card look like Rankings and fit far more on screen.</li>
+              <li>Title fights are yellow, other booked fights blue.</li>
+              <li>Last card shows three or four cards a row on wide screens.</li>
             </ul>
           </Section>
         </div>
