@@ -516,7 +516,13 @@ function EventPanel({ event }: { event: RecentEvent }) {
           {bout.sides.map((side) => {
             const [letter, word, tone] = side.outcome ? OUTCOME[side.outcome] : ["–", "No result", "bg-zinc-100 text-zinc-500"];
             const { next } = side;
-            // Wide: result, fighter, arrow, next fight. Narrow, the next fight wraps under the fighter.
+            // Wide: result, fighter, arrow, next fight, and why across the row
+            // below. Narrow, the next fight wraps under the fighter.
+            const why = <>
+              {next.kind === "title" ? <span className={TITLE_TAG}>Title</span> : null}
+              {next.kind === "cut" ? <span className={`${TAG} bg-rose-50 text-rose-700 ring-rose-200`}>Cut</span> : null}
+              <span className="min-w-0">{next.reason}</span>
+            </>;
             return (
               <div key={side.fighter.id} className={`grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-1.5 gap-y-1 px-2.5 py-1 @min-[400px]:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] ${booked(next.kind, next.title)}`}>
                 <span title={word} className={`mt-1 grid h-5 min-w-5 place-items-center rounded px-1 text-[10px] font-bold ${tone}`}>
@@ -526,13 +532,9 @@ function EventPanel({ event }: { event: RecentEvent }) {
                 <span className="mt-1.5 text-center text-[11px] leading-4 text-zinc-300" aria-hidden="true">→</span>
                 <div className="min-w-0">
                   <span className="sr-only">Next: </span>
-                  {next.opponent ? <Side fighter={next.opponent} compact /> : null}
-                  <p className={`flex min-w-0 items-start gap-1.5 text-[10px] leading-3.5 text-zinc-500 ${next.opponent ? "mt-0.5 pl-[3.75rem]" : "pt-1.5"}`}>
-                    {next.kind === "title" ? <span className={TITLE_TAG}>Title</span> : null}
-                    {next.kind === "cut" ? <span className={`${TAG} bg-rose-50 text-rose-700 ring-rose-200`}>Cut</span> : null}
-                    <span className="min-w-0">{next.reason}</span>
-                  </p>
+                  {next.opponent ? <Side fighter={next.opponent} compact /> : <p className="flex min-w-0 items-start gap-1.5 pt-1.5 text-[10px] leading-3.5 text-zinc-500">{why}</p>}
                 </div>
+                {next.opponent ? <p className="col-start-2 -mt-0.5 flex min-w-0 items-start gap-1.5 pl-[3.75rem] text-[10px] leading-3.5 text-zinc-500 @min-[400px]:col-span-3">{why}</p> : null}
               </div>
             );
           })}
@@ -602,7 +604,7 @@ function Suggestions({ tab, data, error, retry, navigation }: { tab: Tab; data: 
     {error && !data ? <RequestNotice onRetry={retry}>Couldn’t load the matchups.</RequestNotice> : !data ? <PageState>Working out matchups…</PageState> : top ?
       top15.length ? <div className="grid grid-cols-1 gap-2 sm:gap-3 md:grid-cols-2 2xl:grid-cols-3">{top15.map((entry) => <DivisionPanel key={entry.division} entry={entry} />)}</div>
         : <p className="py-8 text-center text-sm text-zinc-500">No matchups match these filters.</p>
-      : events.length ? <div className="grid grid-cols-1 gap-2 sm:gap-3 md:grid-cols-2 xl:grid-cols-3 min-[1800px]:grid-cols-4">{events.map((event) => <EventPanel key={event.id} event={event} />)}</div>
+      : events.length ? <div className="grid grid-cols-1 gap-2 sm:gap-3 md:grid-cols-2 min-[1400px]:grid-cols-3 min-[1800px]:grid-cols-4">{events.map((event) => <EventPanel key={event.id} event={event} />)}</div>
         : <p className="py-8 text-center text-sm text-zinc-500">{data.recent_events.length ? "No fighters match these filters." : "No completed card yet."}</p>}
   </>;
 }
