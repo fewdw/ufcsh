@@ -90,12 +90,14 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-09-29">September 29, 2026</time></p>
+            <p><time dateTime="2026-09-30">September 30, 2026</time></p>
             <ul>
-              <li>Leaderboards are now a tab on your profile.</li>
-              <li>Report an issue lives only on your profile.</li>
-              <li>Labs is now Combined records: the whole page is the study.</li>
-              <li>Fighter pages have a News tab with the last month of news about them.</li>
+              <li>Combined records, Favorites and the More sidebar are gone.</li>
+              <li>More is one menu: Stats, Matchmaking, Browse, News and Graphic.</li>
+              <li>Browse holds Officials, Venues and Roster as tabs.</li>
+              <li>Anyone can make a graphic.</li>
+              <li>Save your created cards to your account and open them on any device.</li>
+              <li>News is newest first.</li>
             </ul>
           </Section>
         </div>
