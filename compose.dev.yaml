@@ -26,6 +26,7 @@ services:
       CLERK_PUBLISHABLE_KEY: ${DEV_CLERK_PUBLISHABLE_KEY:?Set a separate Clerk development publishable key in .env.dev}
       CLERK_SECRET_KEY: ${DEV_CLERK_SECRET_KEY:?Set a separate Clerk development secret key in .env.dev}
       CLERK_PROXY_URL: ""
+      GEMINI_API_KEY: ${DEV_GEMINI_API_KEY:-}
       CLERK_AUTHORIZED_PARTIES: https://dev.ufc.sh
       METRICS_PORT: 9091
       # The tunnel does not overwrite X-Real-IP; do not trust client-supplied values.

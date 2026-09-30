@@ -39,8 +39,8 @@ export async function syncNews(read: (url: string) => Promise<FeedItem[]> = fetc
   touchMeta("news_checked_at");
   const now = Date.now();
   const upsert = db.prepare(`
-    INSERT INTO news (url, source, title, summary, categories, published_at, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(url) DO UPDATE SET title = excluded.title, summary = excluded.summary, categories = excluded.categories
+    INSERT INTO news (url, source, title, summary, body, categories, published_at, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(url) DO UPDATE SET title = excluded.title, summary = excluded.summary, body = excluded.body, categories = excluded.categories
   `);
   // Google News lists an outlet's other editions too (jp.ufc.com): only the site asked for.
   const results = await Promise.allSettled(NEWS_FEEDS.map(async (feed) => (await read(feed.url)).filter((item) => !feed.site || item.site === feed.site)));
@@ -60,7 +60,7 @@ export async function syncNews(read: (url: string) => Promise<FeedItem[]> = fetc
         // A date ahead of now is a scheduled post; it's news when we see it.
         const published = item.published && item.published <= now + 10 * 60_000 ? item.published : now;
         if (published < now - KEEP_DAYS * 86_400_000) continue;
-        upsert.run(item.url, source, item.title, item.summary, JSON.stringify(item.categories), published, now);
+        upsert.run(item.url, source, item.title, item.summary, item.body ?? "", JSON.stringify(item.categories), published, now);
       }
       db.exec("COMMIT");
     } catch (error) {
@@ -71,6 +71,8 @@ export async function syncNews(read: (url: string) => Promise<FeedItem[]> = fetc
   });
   const added = count() - before;
   db.prepare("DELETE FROM news WHERE published_at < ?").run(now - KEEP_DAYS * 86_400_000);
+  // An article is kept only while Gemini may still read it.
+  db.prepare("UPDATE news SET body = '' WHERE body != '' AND published_at < ?").run(now - SHOWN_DAYS * 86_400_000);
   touchMeta("news_synced_at");
   if (added > 0) log(`news: ${added} new items`);
 }
@@ -248,8 +250,12 @@ export type NewsStory = {
 };
 
 /** A story as built: every outlet that ran it, the first report first, and
- *  every fighter it is about (`fighters` shows the first four). */
-type Story = Omit<NewsStory, "url" | "source" | "title" | "also"> & { outlets: Outlet[]; ids: Set<string> };
+ *  every fighter it is about (`fighters` shows the first four). `key` is the
+ *  first report's url, where Gemini's reading of it is kept; `judged` once it
+ *  has one. */
+type Story = Omit<NewsStory, "url" | "source" | "title" | "also"> & { outlets: Outlet[]; ids: Set<string>; key: string; urls: string[]; judged: boolean };
+
+type Judgment = { ai_keep: number | null; ai_same: string | null; ai_summary: string };
 
 /** Which card a story is about: a numbered card it names ("UFC 331"), or the
  *  card its fighters were on or are booked for, from a week before the story
@@ -314,14 +320,15 @@ let reading: { version: string; names: NameIndex; items: Map<string, { row: Stor
 /** Every story kept, newest first, rebuilt once per read of the feeds. */
 function newsStories() {
   const index = fightIndex();
-  const key = `${getMeta("news_synced_at")}:${index.version}`;
+  const key = `${getMeta("news_synced_at")}:${getMeta("news_ai_at")}:${index.version}`;
   if (cached?.key === key) return cached.data;
   if (reading?.version !== index.version) reading = { version: index.version, names: nameIndex(), items: new Map() };
   const findEvent = eventFinder();
   const now = Date.now();
   const ufcFeeds = new Set(NEWS_FEEDS.filter((feed) => feed.ufc).map((feed) => feed.source));
-  const rows = prepared("SELECT url, source, title, summary, categories, published_at FROM news WHERE published_at >= ? ORDER BY published_at ASC")
-    .all(now - KEEP_DAYS * 86_400_000) as Stored[];
+  const rows = prepared("SELECT url, source, title, summary, categories, published_at, ai_keep, ai_same, ai_summary FROM news WHERE published_at >= ? ORDER BY published_at ASC")
+    .all(now - KEEP_DAYS * 86_400_000) as (Stored & Judgment)[];
+  const judgments = new Map(rows.filter((row) => row.ai_keep != null).map((row) => [row.url, row]));
   // An article one outlet republishes from another (Yahoo carries many)
   // keeps its headline: the first copy stands for both.
   const headlines = new Set<string>();
@@ -368,7 +375,7 @@ function newsStories() {
     if (group) group.push(item);
     else groups.push([item]);
   }
-  const stories = groups.map((group): Story => {
+  const built = groups.map((group): Story => {
     // The first report leads; a live blog or results page only when nothing else covers it.
     const reports = group.filter((item) => !LIVE.test(item.title));
     const lead = (reports.length ? reports : group)[0];
@@ -378,13 +385,17 @@ function newsStories() {
     return {
       outlets: [lead, ...group.filter((item) => item !== lead)].filter((item) => !outlets.has(item.source) && outlets.add(item.source))
         .map(({ source, url, title }) => ({ source, url, title })),
-      summary: lead.summary,
+      summary: "",
       published_at: group[0].published_at,
       fighters: [...fighters.values()].slice(0, 4).map(({ id, name }) => ({ id, name, photo_url: index.fighters.get(id)?.photoUrl ?? null })),
       ids: new Set(fighters.keys()),
       event: findEvent(group.map((item) => item.title), group.flatMap((item) => [...item.titleNamed]), group[0].published_at),
+      key: group[0].url,
+      urls: group.map((item) => item.url),
+      judged: false,
     };
-  }).sort((a, b) => b.published_at - a.published_at);
+  });
+  const stories = judge(built, judgments);
 
   const data = {
     updated_at: Number(getMeta("news_synced_at")) || null,
@@ -396,6 +407,48 @@ function newsStories() {
   };
   cached = { key, data };
   return data;
+}
+
+/** Gemini's reading of each story (news-ai.ts): one that isn't news goes, one
+ *  that repeats another joins it as another outlet, and the rest get its
+ *  summary. A story not read yet stands as built. Newest first. */
+function judge(built: Story[], judgments: ReadonlyMap<string, Judgment>): Story[] {
+  const byUrl = new Map(built.flatMap((story) => story.urls.map((url) => [url, story] as const)));
+  const read = new Map<Story, Judgment>();
+  for (const story of built) {
+    const judgment = story.urls.map((url) => judgments.get(url)).find(Boolean);
+    if (judgment) read.set(story, judgment);
+  }
+  for (const [story, judgment] of read) {
+    story.judged = true;
+    story.summary = judgment.ai_summary;
+  }
+  const into = new Map<Story, Story>();
+  const home = (story: Story) => { while (into.has(story)) story = into.get(story)!; return story; };
+  for (const [story, judgment] of read) {
+    const same = judgment.ai_same && byUrl.get(judgment.ai_same);
+    if (!judgment.ai_keep || !same || read.get(same)?.ai_keep === 0) continue;
+    const target = home(same);
+    if (target === story) continue;
+    into.set(story, target);
+    const sources = new Set(target.outlets.map((outlet) => outlet.source));
+    target.outlets.push(...story.outlets.filter((outlet) => !sources.has(outlet.source) && sources.add(outlet.source)));
+    for (const fighter of story.fighters) if (target.fighters.length < 4 && !target.ids.has(fighter.id)) target.fighters.push(fighter);
+    for (const id of story.ids) target.ids.add(id);
+    target.summary ||= story.summary;
+    target.event ??= story.event;
+    target.published_at = Math.min(target.published_at, story.published_at);
+  }
+  return built.filter((story) => read.get(story)?.ai_keep !== 0 && !into.has(story)).sort((a, b) => b.published_at - a.published_at);
+}
+
+/** What Gemini has to read: the stories of the last two weeks it hasn't,
+ *  newest first, and those it kept, a repeat of which it can name. */
+export function newsToJudge() {
+  const since = Date.now() - SHOWN_DAYS * 86_400_000;
+  const shown = newsStories().stories.filter((story) => story.published_at >= since)
+    .map(({ key, outlets, published_at, judged }) => ({ key, outlets, published_at, judged }));
+  return { pending: shown.filter((story) => !story.judged), kept: shown.filter((story) => story.judged) };
 }
 
 /**
@@ -417,8 +470,7 @@ export function newsView(params: URLSearchParams = new URLSearchParams()): unkno
     const outlets = story.outlets.filter((outlet) => !off.has(outlet.source));
     if (!outlets.length) return [];
     const [first, ...also] = outlets;
-    // The summary is the first report's own; another outlet's headline goes without it.
-    return [{ story, view: { ...first, also, summary: first === story.outlets[0] ? story.summary : "", published_at: story.published_at, fighters: story.fighters, event: story.event } }];
+    return [{ story, view: { ...first, also, summary: story.summary, published_at: story.published_at, fighters: story.fighters, event: story.event } }];
   });
   const latest = q
     ? searchList(shown, q, ({ story }) => [...story.outlets.map((outlet) => outlet.title), ...story.fighters.map((fighter) => fighter.name), story.event?.name ?? ""].join(" "))

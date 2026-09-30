@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { NewsStory } from "../api";
 import { exactTime } from "../format";
@@ -8,6 +9,13 @@ export const OFF_KEY = "ufcsh:news-off:v1";
 
 export function savedOff(): string[] {
   try { return JSON.parse(localStorage.getItem(OFF_KEY) ?? "[]") as string[]; } catch { return []; }
+}
+
+/** Summaries shown or not: on unless switched off. */
+export const SUMMARIES_KEY = "ufcsh:news-summaries:v1";
+
+export function savedSummaries(): boolean {
+  try { return localStorage.getItem(SUMMARIES_KEY) !== "0"; } catch { return true; }
 }
 
 /** "12m", "5h", then the day, and the year once it isn't this one. */
@@ -21,10 +29,26 @@ function age(at: number, now = Date.now()): string {
 
 const external = { target: "_blank", rel: "noopener noreferrer" } as const;
 
+/** What the story says, two lines of it until it's opened. */
+function Summary({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      onClick={() => setOpen(!open)}
+      className={`mt-1 block max-w-3xl cursor-pointer text-left text-[13px] leading-5 text-zinc-500 transition-colors hover:text-zinc-700 ${open ? "" : "line-clamp-2"}`}
+    >
+      {text}
+    </button>
+  );
+}
+
 /** One story, the same for every story: the outlet, who and what it is about
- *  and when on the first line; the headline, linked to the outlet, below. On
- *  a fighter's page (`fighterId`) their own name is left out. */
-export default function NewsRow({ story, fighterId }: { story: NewsStory; fighterId?: string }) {
+ *  and when on the first line; the headline, linked to the outlet, below, and
+ *  what it says (`summaries`). On a fighter's page (`fighterId`) their own
+ *  name is left out. */
+export default function NewsRow({ story, fighterId, summaries }: { story: NewsStory; fighterId?: string; summaries?: boolean }) {
   const also = story.also.map((other) => other.source).join(", ");
   return (
     <article className="border-t border-zinc-100 py-3.5 first:border-t-0 not-dark:border-zinc-200">
@@ -51,6 +75,7 @@ export default function NewsRow({ story, fighterId }: { story: NewsStory; fighte
       <h3 className="mt-1.5 text-[15px] font-semibold leading-snug sm:text-[16px]">
         <a href={story.url} {...external} className="text-zinc-950 decoration-zinc-400 decoration-1 underline-offset-[5px] hover:underline">{story.title}</a>
       </h3>
+      {summaries && story.summary ? <Summary text={story.summary} /> : null}
     </article>
   );
 }

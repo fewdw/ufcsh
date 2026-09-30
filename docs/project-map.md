@@ -16,6 +16,7 @@ client (`client/`) renders every page.
 | Leaderboards | `stats.ts` (fighter cards), `stats-fights.ts` (Fights card: bouts, judges, referees) |
 | Matchmaking (title fights, ranked pairings, next opponents after recent cards) | `matchmaking.ts` |
 | News (outlets, relevance, fighter/event tags, story grouping, newest first, `?fighter=` for one fighter) | `news.ts`; feeds read in `scrape/news.ts` (`NEWS_FEEDS`) |
+| News read by Gemini (drops non-news, folds repeats, summaries; `GEMINI_API_KEY`) | `news-ai.ts`, run from the API process every 10 minutes |
 | Profile records and full stat rankings | `records.ts` (`fighterRecords`, `fighterBoard`, `milestonesWithinReach`) |
 | Judges and referees | `officials.ts` (name merging, profiles, directory, search) |
 | Venues | `venues.ts` (identity from ufc.com venue ids + Wikipedia names) |
@@ -37,7 +38,7 @@ copy of the local archive (`DATA_DIR`).
 | More menu, one column (Stats, Matchmaking, Browse, News, Graphic); Browse tabs Officials, Venues, Roster | `components/MoreNav.tsx`, `components/BrowseTabs.tsx`; page `GraphicPage.tsx` |
 | Admin link in the header (admins only) | `App.tsx` (`AdminLink`) |
 | Matchmaking page (Top 15, recent cards, card builder) | `pages/MatchmakingPage.tsx` |
-| News page (newest first, outlet toggles); a fighter's News tab | `pages/NewsPage.tsx`, `components/NewsRow.tsx`; `FighterNews` in `pages/FighterPage.tsx` |
+| News page (newest first, Settings: summaries and outlet toggles); a fighter's News tab | `pages/NewsPage.tsx`, `components/NewsRow.tsx`; `FighterNews` in `pages/FighterPage.tsx` |
 | Data fetching and polling | `api.ts` (types + `useApi`), `requestCache.ts`, `polling.ts`; early data in `index.html`, link prefetch in `useLinkPrefetch.ts` + `pageRequests.ts`, page chunks in `pages.ts`, answers kept across reloads in `snapshots.ts` |
 | Events and matchups | `pages/EventsPage.tsx`, `pages/FightPage.tsx`, `components/FightRail.tsx`, `components/FightStats.tsx` |
 | Fighter profiles | `pages/FighterPage.tsx`, `components/FighterStatistics.tsx` |

@@ -58,6 +58,7 @@ import { judgeProfile, officialSlug, officialsDirectory, refereeProfile, searchO
 import { searchVenues, venueDirectory, venueOfEvent, venuePage } from "./venues.ts";
 import { matchmaking } from "./matchmaking.ts";
 import { newsView } from "./news.ts";
+import { startNewsReader } from "./news-ai.ts";
 import { rosterMoveFighter, storedRosterMoves, ufcDepartures, ufcSignings } from "./roster-moves.ts";
 import type { RosterMove } from "./scrape/wikipedia.ts";
 
@@ -2086,6 +2087,10 @@ export function startApi(port: number): http.Server {
       void pool.refresh().catch(error => log("index refresh failed:", String(error)));
     }, 5_000);
     refresher.unref();
+  }
+  if (process.env.NO_SYNC !== "1") {
+    const pool = queryPool;
+    startNewsReader(pool ? async () => JSON.parse((await pool.run("/_news-judge")).json) : undefined);
   }
   const cacheMb = Number(process.env.RESPONSE_CACHE_MB ?? 128);
   const cache = new ResponseCache((Number.isFinite(cacheMb) && cacheMb > 0 ? cacheMb : 128) * 1024 * 1024);
