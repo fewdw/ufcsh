@@ -11,6 +11,8 @@ const SIZES = {
   // A list row that tightens to one line on a wide screen.
   row: "h-9 w-9 text-[11px] xl:h-6 xl:w-6 xl:text-[8px]",
   matchup: "h-13 w-13 text-xs lg:h-15 lg:w-15 lg:text-sm",
+  // As large as its container, which sets the size.
+  fill: "h-full w-full text-lg",
 } as const;
 
 const UFC_EMPTY_AVATAR = "/fighter-placeholder.png";
