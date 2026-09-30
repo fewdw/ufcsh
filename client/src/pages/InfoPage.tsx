@@ -92,11 +92,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-09-30">September 30, 2026</time></p>
             <ul>
-              <li>Correct stale venues, roster flags and missing fighter histories.</li>
-              <li>Repair inconsistent odds and reject mismatched source prices.</li>
-              <li>Restore profile tabs and filters correctly with Back and Forward.</li>
-              <li>Recover from damaged browser storage and incomplete news AI responses.</li>
-              <li>Refresh AI summaries when stories change. Update vulnerable dependencies.</li>
+              <li>Prevent production and dev deployments from colliding during Git updates.</li>
+              <li>Keep both environments aligned after a release.</li>
             </ul>
           </Section>
         </div>
