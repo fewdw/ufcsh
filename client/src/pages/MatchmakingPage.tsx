@@ -5,9 +5,12 @@ import { Check, Plus, Save, Trash2, X } from "lucide-react";
 import { useApi, type MatchFighter, type MatchmakingData } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
 import { formatDate } from "../format";
-import { PAGE, PAGE_BODY } from "../research";
+import { PAGE, FULL_PAGE_BODY } from "../research";
 import { useSeo } from "../seo";
 import { useRouteScrollRestoration } from "../navigationState";
+import PageToolbar, { FilterSelect, ToolbarSearch } from "../components/PageToolbar";
+import OptionsSheet, { SwitchRow } from "../components/OptionsSheet";
+import { searchList } from "../search";
 import Avatar from "../components/Avatar";
 import FighterSearch, { type PickedFighter } from "../components/FighterSearch";
 import Freshness from "../components/Freshness";
@@ -16,7 +19,7 @@ import { PageState } from "../components/ResearchKit";
 import { PANEL } from "../components/chartTokens";
 import { ConfirmRemove } from "../components/ConfirmRemove";
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../ui";
-import { segmentedGroup, segmentedIdle, segmentedTab, segmentedSelected } from "../components/segmented";
+import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "../components/segmented";
 
 const TABS = [
   { key: "top15", label: "Top 15" },
@@ -237,7 +240,7 @@ function cachedCards(userId: string | null): SavedCard[] {
 /** The account's saved cards, read again whenever the tab comes back into
  *  view so a card saved on another device shows up. Mounted only where
  *  sign-in exists, since Clerk's hooks need it. */
-function AccountCardBuilder() {
+function AccountCardBuilder({ navigation }: { navigation: ReactNode }) {
   const { getToken } = useAuth();
   const { isLoaded, user, signIn } = useAccount();
   const userId = user?.id ?? null;
@@ -284,12 +287,14 @@ function AccountCardBuilder() {
     await request(`/api/cards/${encodeURIComponent(id)}`, { method: "DELETE" });
     update((current) => current.filter((each) => each.id !== id));
   };
-  return <CardBuilder account={{ signedIn: isLoaded && Boolean(user), cards, signIn, save, remove }} />;
+  return <CardBuilder navigation={navigation} account={{ signedIn: isLoaded && Boolean(user), cards, signIn, save, remove }} />;
 }
 
 /** `account` is null where this deployment has no sign-in: the card is built
  *  but not saved. */
-function CardBuilder({ account }: { account: CardAccount | null }) {
+function CardBuilder({ account, navigation }: { account: CardAccount | null; navigation: ReactNode }) {
+  const [section, setSection] = useState("all");
+  const [filled, setFilled] = useState("all");
   const [slots, setSlots] = useState<Slot[]>(draftCard);
   const [openId, setOpenId] = useState<string | null>(() => { const id = stored(OPEN_KEY); return typeof id === "string" ? id : null; });
   const [picking, setPicking] = useState<number | null>(null);
@@ -324,45 +329,59 @@ function CardBuilder({ account }: { account: CardAccount | null }) {
       setRemoval({ busy: false, error: problem instanceof Error ? problem.message : "That card could not be deleted." });
     }
   };
+  const visibleBout = (index: number) => {
+    const complete = Boolean(slots[index * 2] && slots[index * 2 + 1]);
+    return (section === "all" || (section === "prelims") === (index >= 6)) && (filled === "all" || (filled === "complete" ? complete : !complete));
+  };
   let bout = 0;
   return (
-    <section className="flex w-full flex-col gap-3 lg:flex-row lg:items-start lg:gap-4">
-      {cards.length ? <SavedCards cards={cards} open={open} draft={taken.length > 0} onOpen={openCard} onNew={startNew} onRemove={setRemoving} /> : null}
-      <div className="min-w-0 flex-1">
-        <header className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 px-1">
-          <div className="min-w-0 flex-1">
-            {/* Below `lg` the saved-cards dropdown already names it. */}
-            <h2 className={`truncate text-base font-semibold text-zinc-900 ${cards.length ? "max-lg:hidden" : ""}`}>{open?.name ?? "New card"}</h2>
-            <p className="text-xs tabular-nums text-zinc-500">
-              {taken.length} of {BOUTS * 2} fighters{saved ? " · saved" : open ? " · unsaved changes" : ""}
-            </p>
+    <>
+      <PageToolbar>
+        {navigation}
+        <div className="min-w-0 flex-1 basis-32">
+          {/* Below `lg` the saved-cards dropdown already names it. */}
+          <h2 className={`truncate text-base font-semibold text-zinc-900 ${cards.length ? "max-lg:hidden" : ""}`}>{open?.name ?? "New card"}</h2>
+          <p className="text-xs tabular-nums text-zinc-500">
+            {taken.length} of {BOUTS * 2} fighters{saved ? " · saved" : open ? " · unsaved changes" : ""}
+          </p>
+        </div>
+        {taken.length || open ? (
+          <button type="button" onClick={startNew} className={BUTTON_SECONDARY}>{open ? "New card" : "Clear card"}</button>
+        ) : null}
+        {account && isFull(slots) ? (
+          <button type="button" onClick={() => (account.signedIn ? setSaving(true) : account.signIn())} disabled={saved}
+            title={account.signedIn ? undefined : "Sign in to save cards to your account"} className={`${BUTTON_PRIMARY} !py-1.5`}>
+            {saved ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Save className="h-3.5 w-3.5" aria-hidden="true" />}
+            {saved ? "Saved" : "Save card"}
+          </button>
+        ) : null}
+        <OptionsSheet label="Filters" count={Number(section !== "all") + Number(filled !== "all") || undefined} onReset={() => { setSection("all"); setFilled("all"); }}>
+          <div className="space-y-3 p-4">
+            <FilterSelect label="Card section" value={section} onChange={setSection} options={[{ value: "all", label: "Full card" }, { value: "main", label: "Main card" }, { value: "prelims", label: "Prelims" }]} />
+            <FilterSelect label="Bouts" value={filled} onChange={setFilled} options={[{ value: "all", label: "All bouts" }, { value: "complete", label: "Both fighters picked" }, { value: "open", label: "Open slots" }]} />
           </div>
-          {taken.length || open ? (
-            <button type="button" onClick={startNew} className={BUTTON_SECONDARY}>{open ? "New card" : "Clear card"}</button>
-          ) : null}
-          {account && isFull(slots) ? (
-            <button type="button" onClick={() => (account.signedIn ? setSaving(true) : account.signIn())} disabled={saved}
-              title={account.signedIn ? undefined : "Sign in to save cards to your account"} className={`${BUTTON_PRIMARY} !py-1.5`}>
-              {saved ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Save className="h-3.5 w-3.5" aria-hidden="true" />}
-              {saved ? "Saved" : "Save card"}
-            </button>
-          ) : null}
-        </header>
+        </OptionsSheet>
+      </PageToolbar>
+      <section className="flex w-full flex-col gap-3 lg:flex-row lg:items-start lg:gap-4">
+        {cards.length ? <SavedCards cards={cards} open={open} draft={taken.length > 0} onOpen={openCard} onNew={startNew} onRemove={setRemoving} /> : null}
+        <div className="min-w-0 flex-1">
         <div className="flex flex-col gap-3">
+          {!Array.from({ length: BOUTS }, (_, index) => index).some(visibleBout) ? <p className="py-8 text-center text-sm text-zinc-500">No bouts match these filters.</p> : null}
           {ROWS.map((row, rowIndex) => {
             const first = bout;
             bout += row.bouts;
             const big = "big" in row && row.big;
+            const indices = Array.from({ length: row.bouts }, (_, i) => first + i).filter(visibleBout);
+            if (!indices.length) return null;
             return (
               <div key={rowIndex} className="flex flex-col gap-3">
                 {"prelims" in row && row.prelims ? (
                   <h2 className="mt-3 px-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">Prelims</h2>
                 ) : null}
-                {rowIndex === 0 ? <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">Main card</h2> : null}
+                {(rowIndex === 0 || rowIndex === 1 && ![0, 1].some(visibleBout)) ? <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">Main card</h2> : null}
                 {/* A wrapping row rather than a grid, so an odd bout left over sits centered. */}
                 <div className="flex flex-wrap justify-center gap-3">
-                  {Array.from({ length: row.bouts }, (_, i) => {
-                    const index = first + i;
+                  {indices.map((index) => {
                     return (
                       <div key={index} className={`min-w-0 basis-full ${big ? "sm:basis-[calc(50%-0.375rem)]" : "min-[400px]:basis-[calc(50%-0.375rem)] xl:basis-[calc(25%-0.5625rem)]"}`}>
                         <Bout corners={[slots[index * 2], slots[index * 2 + 1]]} big={big}
@@ -384,7 +403,8 @@ function CardBuilder({ account }: { account: CardAccount | null }) {
         <ConfirmRemove title="Delete this saved card?" detail={removing.name} busy={removal.busy} error={removal.error}
           onCancel={() => { setRemoving(null); setRemoval({ busy: false, error: "" }); }} onConfirm={() => void remove(removing)} />
       ) : null}
-    </section>
+      </section>
+    </>
   );
 }
 
@@ -429,24 +449,11 @@ function Side({ fighter, align = "left" }: { fighter: MatchFighter; align?: "lef
 // ---------------------------------------------------------------------------
 // Panels
 
-/** A division's or a card's heading. A phone shows one at a time, so there the
- *  name is a picker for the others. */
-function PanelHeader({ title, label, options, value, onPick, children }: {
-  title: ReactNode; label: string; options: { value: string; label: string }[]; value: string; onPick: (value: string) => void; children?: ReactNode;
-}) {
-  return (
-    <div className="border-b border-zinc-200 px-3 py-2">
-        <label className="block md:hidden">
-          <span className="sr-only">{label}</span>
-          <select value={value} onChange={(event) => onPick(event.target.value)}
-            className="w-full min-w-0 cursor-pointer truncate bg-transparent py-0.5 pr-6 text-sm font-semibold text-zinc-900 outline-none">
-            {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
-        </label>
-        <h2 className="hidden truncate text-sm font-semibold text-zinc-900 md:block">{title}</h2>
-      {children}
-    </div>
-  );
+function PanelHeader({ title, children }: { title: ReactNode; children?: ReactNode }) {
+  return <div className="border-b border-zinc-200 px-3 py-2">
+    <h2 className="text-sm font-semibold text-zinc-900">{title}</h2>
+    {children}
+  </div>;
 }
 
 type Division = MatchmakingData["top15"][number];
@@ -462,10 +469,10 @@ function FightTag({ fight }: { fight: Division["fights"][number] }) {
   );
 }
 
-function DivisionPanel({ entry, shown, options, onPick }: { entry: Division; shown: boolean; options: { value: string; label: string }[]; onPick: (value: string) => void }) {
+function DivisionPanel({ entry }: { entry: Division }) {
   return (
-    <section className={`${PANEL} @container min-w-0 flex-col overflow-hidden ${shown ? "flex" : "hidden md:flex"}`}>
-      <PanelHeader title={entry.division} label="Division" options={options} value={entry.division} onPick={onPick} />
+    <section className={`${PANEL} @container min-w-0 flex-col overflow-hidden flex`}>
+      <PanelHeader title={entry.division} />
       <ul className="grid flex-1 auto-rows-fr">
         {entry.fights.map((fight) => (
           <li key={`${fight.a.id}-${fight.b.id}`} className="flex min-w-0 flex-col justify-center gap-1 border-b border-zinc-100 px-3 py-2 last:border-0">
@@ -507,10 +514,10 @@ const NEXT_TAG = { title: ["Title", "bg-amber-50 text-amber-800"], booked: ["Boo
 
 type RecentEvent = MatchmakingData["recent_events"][number];
 
-function EventPanel({ event, shown, options, onPick }: { event: RecentEvent; shown: boolean; options: { value: string; label: string }[]; onPick: (value: string) => void }) {
+function EventPanel({ event }: { event: RecentEvent }) {
   return (
-    <section className={`${PANEL} @container min-w-0 flex-col overflow-hidden ${shown ? "flex" : "hidden md:flex"}`}>
-      <PanelHeader title={<Link to={`/events/${event.id}`} className="hover:underline">{event.name}</Link>} label="Card" options={options} value={event.id} onPick={onPick}>
+    <section className={`${PANEL} @container min-w-0 flex-col overflow-hidden flex`}>
+      <PanelHeader title={<Link to={`/events/${event.id}`} className="hover:underline">{event.name}</Link>}>
         <p className="text-[11px] text-zinc-500">
           {formatDate(event.date)}<Link to={`/events/${event.id}`} className="hover:text-zinc-900 md:hidden"> · Full card</Link>
         </p>
@@ -553,39 +560,72 @@ function EventPanel({ event, shown, options, onPick }: { event: RecentEvent; sho
   );
 }
 
-function Suggestions({ tab, data, error, retry }: { tab: Tab; data: MatchmakingData | null; error: unknown; retry: () => void }) {
+function Suggestions({ tab, data, error, retry, navigation }: { tab: Tab; data: MatchmakingData | null; error: unknown; retry: () => void; navigation: ReactNode }) {
   const [params, setParams] = useSearchParams();
-  if (error && !data) return <RequestNotice onRetry={retry}>Couldn’t load the matchups.</RequestNotice>;
-  if (!data) return <PageState>Working out matchups…</PageState>;
-  // The division or card a phone shows lives in the address, so Back returns to it.
-  const param = tab === "top15" ? "division" : "card";
-  const show = (value: string) => { const next = new URLSearchParams(params); next.set(param, value); setParams(next, { replace: true }); };
-  const wanted = params.get(param);
-  let panels: ReactNode;
-  if (tab === "top15") {
-    const options = data.top15.map((entry) => ({ value: entry.division, label: entry.division }));
-    const shown = options.some((option) => option.value === wanted) ? wanted : options[0]?.value;
-    panels = (
-      <div className="grid grid-cols-1 gap-2 md:auto-rows-fr md:grid-cols-2 2xl:grid-cols-3">
-        {data.top15.map((entry) => <DivisionPanel key={entry.division} entry={entry} shown={entry.division === shown} options={options} onPick={show} />)}
+  const [query, setQuery] = useState("");
+  const division = params.get("division") ?? "all";
+  const gender = params.get("gender") ?? "all";
+  const kind = params.get("kind") ?? "all";
+  const card = params.get("card") ?? "all";
+  const outcome = params.get("outcome") ?? "all";
+  const nextKind = params.get("next") ?? "all";
+  const idle = params.get("idle") !== "0";
+  const titlesOnly = params.get("titles") === "1";
+  const set = (key: string, value: string) => setParams((current) => {
+    const next = new URLSearchParams(current);
+    if (value === "all" || !value) next.delete(key); else next.set(key, value);
+    return next;
+  }, { replace: true });
+  const top = tab === "top15";
+  const divisions = top ? (data?.top15 ?? []).filter((entry) => gender === "all" || entry.division.startsWith("Women") === (gender === "women")).map((entry) => entry.division)
+    : [...new Set((data?.recent_events ?? []).flatMap((event) => event.bouts.map((bout) => bout.division)))].sort();
+  const names = (fighters: MatchFighter[]) => fighters.map((fighter) => fighter.name).join(" ");
+  const top15 = (data?.top15 ?? []).filter((entry) => divisions.includes(entry.division) && (division === "all" || entry.division === division)).map((entry) => ({
+    ...entry,
+    fights: searchList(entry.fights.filter((fight) => kind === "all" || fight.kind === kind), query, (fight) => names([fight.a, fight.b])),
+    idle: idle && kind === "all" ? searchList(entry.idle, query, (item) => item.fighter.name) : [],
+  })).filter((entry) => entry.fights.length || entry.idle.length);
+  const events = (data?.recent_events ?? []).filter((event) => card === "all" || event.id === card).map((event) => ({
+    ...event,
+    bouts: event.bouts.filter((bout) => (division === "all" || bout.division === division) && (!titlesOnly || bout.title)).map((bout) => ({
+      ...bout,
+      sides: searchList(bout.sides.filter((side) => (outcome === "all" || side.outcome === outcome) && (nextKind === "all" || side.next.kind === nextKind)), query, (side) => names([side.fighter, ...(side.next.opponent ? [side.next.opponent] : [])])),
+    })).filter((bout) => bout.sides.length),
+  })).filter((event) => event.bouts.length);
+  const count = Number(division !== "all") + (top ? Number(kind !== "all") + Number(!idle) : Number(card !== "all") + Number(outcome !== "all") + Number(nextKind !== "all") + Number(titlesOnly));
+  return <>
+    <PageToolbar>
+      {navigation}
+      {top ? <div className={segmentedGroup} role="group" aria-label="Divisions shown">
+        {(["men", "women", "all"] as const).map((value) => <button key={value} type="button" aria-pressed={gender === value}
+          onClick={() => setParams((current) => { const next = new URLSearchParams(current); next.delete("division"); if (value === "all") next.delete("gender"); else next.set("gender", value); return next; }, { replace: true })}
+          className={`${segmentedOption} ${gender === value ? segmentedSelected : segmentedIdle}`}>{value === "men" ? "Men" : value === "women" ? "Women" : "All"}</button>)}
+      </div> : null}
+      <div className="ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+        <ToolbarSearch value={query} onChange={setQuery} label="Find a fighter" />
+        <OptionsSheet label="Filters" count={count || undefined} onReset={() => { setQuery(""); setParams(top ? {} : { tab: "last" }, { replace: true }); }}>
+          <div className="space-y-3 p-4">
+            {!top ? <FilterSelect label="Card" value={card} onChange={(value) => set("card", value)} options={[{ value: "all", label: "Recent cards" }, ...(data?.recent_events ?? []).map((event) => ({ value: event.id, label: event.name }))]} /> : null}
+            <FilterSelect label="Division" value={division} onChange={(value) => set("division", value)} options={[{ value: "all", label: "All divisions" }, ...divisions.map((value) => ({ value, label: value }))]} />
+            {top ? <>
+              <FilterSelect label="Matchups" value={kind} onChange={(value) => set("kind", value)} options={[{ value: "all", label: "All matchups" }, { value: "title", label: "Suggested title fights" }, { value: "suggested", label: "Suggested ranked fights" }, { value: "booked", label: "Booked fights" }]} />
+              <SwitchRow label="Show unpaired fighters" on={idle} onChange={(on) => set("idle", on ? "" : "0")} />
+            </> : <>
+              <FilterSelect label="Result" value={outcome} onChange={(value) => set("outcome", value)} options={[{ value: "all", label: "All results" }, { value: "win", label: "Winners" }, { value: "loss", label: "Losers" }, { value: "draw", label: "Draws" }, { value: "nc", label: "No contests" }]} />
+              <FilterSelect label="Next fight" value={nextKind} onChange={(value) => set("next", value)} options={[{ value: "all", label: "All fighters" }, { value: "suggested", label: "Suggested opponent" }, { value: "booked", label: "Already booked" }, { value: "title", label: "Title opportunity" }, { value: "cut", label: "Released" }, { value: "none", label: "No opponent yet" }]} />
+              <SwitchRow label="Title bouts only" on={titlesOnly} onChange={(on) => set("titles", on ? "1" : "")} />
+            </>}
+            <Freshness label="Rankings updated" at={data?.updated_at} staleAfterHours={24 * 8} />
+          </div>
+        </OptionsSheet>
       </div>
-    );
-  } else {
-    const events = data.recent_events ?? [];
-    const options = events.map((event) => ({ value: event.id, label: event.name }));
-    const shown = options.some((option) => option.value === wanted) ? wanted : options[0]?.value;
-    panels = events.length ? (
-      <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
-        {events.map((event) => <EventPanel key={event.id} event={event} shown={event.id === shown} options={options} onPick={show} />)}
-      </div>
-    ) : <section className={`${PANEL} px-4 py-8 text-center text-sm text-zinc-500`}>No completed card yet.</section>;
-  }
-  return (
-    <>
-      {panels}
-      <div className="px-1"><Freshness label="Rankings updated" at={data.updated_at} staleAfterHours={24 * 8} /></div>
-    </>
-  );
+    </PageToolbar>
+    {error && !data ? <RequestNotice onRetry={retry}>Couldn’t load the matchups.</RequestNotice> : !data ? <PageState>Working out matchups…</PageState> : top ?
+      top15.length ? <div className="grid grid-cols-1 gap-2 md:grid-cols-2 2xl:grid-cols-3">{top15.map((entry) => <DivisionPanel key={entry.division} entry={entry} />)}</div>
+        : <p className="py-8 text-center text-sm text-zinc-500">No matchups match these filters.</p>
+      : events.length ? <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">{events.map((event) => <EventPanel key={event.id} event={event} />)}</div>
+        : <p className="py-8 text-center text-sm text-zinc-500">{data.recent_events.length ? "No fighters match these filters." : "No completed card yet."}</p>}
+  </>;
 }
 
 export default function MatchmakingPage() {
@@ -594,28 +634,16 @@ export default function MatchmakingPage() {
   const { data, error, retry } = useApi<MatchmakingData>(tab === "card" ? null : "/api/matchmaking");
   const scroll = useRouteScrollRestoration<HTMLDivElement>("matchmaking", tab === "card" || Boolean(data));
   useSeo({ title: "UFC Matchmaking", description: "Build your own UFC card, and see the fights to make next: title fights, ranked matchups and next opponents for the fighters on recent cards.", path: "/matchmaking" });
-  return (
-    <div ref={scroll} className={PAGE}>
-      {/* A built card takes the whole width; the suggestions stop at a readable one. */}
-      <div className={PAGE_BODY.replace("max-w-5xl", tab === "card" ? "max-w-none" : "max-w-[1600px]")}>
-        {/* The tabs sit on a white card, as on a profile: on the bare page
-            the dark theme's track would be the page's own colour. */}
-        <header className="flex justify-center">
-          <h1 className="sr-only">Matchmaking</h1>
-          <div className={`${PANEL} w-full p-1.5 sm:max-w-md`}>
-          <div className={`${segmentedGroup} w-full`} role="group" aria-label="Matchmaking">
-            {TABS.map((option) => (
-              <button key={option.key} type="button" aria-pressed={tab === option.key}
-                onClick={() => setParams(option.key === "top15" ? {} : { tab: option.key }, { replace: true })}
-                className={`${segmentedTab.replace("flex-auto", "flex-1")} ${tab === option.key ? segmentedSelected : segmentedIdle}`}>
-                {option.label}
-              </button>
-            ))}
-          </div>
-          </div>
-        </header>
-        {tab === "card" ? accountsEnabled ? <AccountCardBuilder /> : <CardBuilder account={null} /> : <Suggestions tab={tab} data={data} error={error} retry={retry} />}
-      </div>
+  const navigation = <div className={`${segmentedGroup} shrink-0`} role="group" aria-label="Matchmaking">
+    {TABS.map((option) => <button key={option.key} type="button" aria-pressed={tab === option.key}
+      onClick={() => setParams(option.key === "top15" ? {} : { tab: option.key }, { replace: true })}
+      className={`${segmentedOption} ${tab === option.key ? segmentedSelected : segmentedIdle}`}>{option.label}</button>)}
+  </div>;
+  return <div ref={scroll} className={PAGE}>
+    <div className={FULL_PAGE_BODY}>
+      <h1 className="sr-only">Matchmaking</h1>
+      {tab === "card" ? accountsEnabled ? <AccountCardBuilder navigation={navigation} /> : <CardBuilder navigation={navigation} account={null} />
+        : <Suggestions key={tab} navigation={navigation} tab={tab} data={data} error={error} retry={retry} />}
     </div>
-  );
+  </div>;
 }

@@ -1,26 +1,18 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowDown, ArrowUp, Search } from "lucide-react";
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { useApi, type OfficialsDirectory, type VenueDirectory } from "../api";
 import { searchList } from "../search";
 import { useRouteScrollRestoration } from "../navigationState";
-import { PAGE, PAGE_BODY } from "../research";
+import { PAGE, FULL_PAGE_BODY } from "../research";
+import PageToolbar, { FilterSelect, ToolbarSearch } from "../components/PageToolbar";
+import OptionsSheet, { SheetField, SwitchRow } from "../components/OptionsSheet";
+import { PANEL } from "../components/chartTokens";
 import BrowseTabs from "../components/BrowseTabs";
 import { useSeo } from "../seo";
 import RequestNotice from "../components/RequestNotice";
-import { PageHeader, PageState, Panel } from "../components/ResearchKit";
+import { PageState } from "../components/ResearchKit";
 import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "../components/segmented";
-
-function Filter({ value, onChange, label }: { value: string; onChange: (value: string) => void; label: string }) {
-  return (
-    <label className="relative block w-full sm:w-64">
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
-      <input type="search" value={value} onChange={(event) => onChange(event.target.value.slice(0, 40))} placeholder={label} aria-label={label}
-        autoComplete="off" spellCheck={false}
-        className="h-8 w-full rounded-full border border-zinc-200 bg-zinc-50 pl-8 pr-3 text-[13px] text-zinc-900 outline-none placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:text-xs" />
-    </label>
-  );
-}
 
 const years = (first: string | null, last: string | null) => first && last ? `${first.slice(0, 4)}–${last.slice(0, 4)}` : "";
 
@@ -107,38 +99,51 @@ export function OfficialsPage() {
   const judgeOrder = useOrder(JUDGE_ORDERS);
   const refereeOrder = useOrder(REFEREE_ORDERS);
   const [query, setQuery] = useState("");
+  const minimum = ["10", "50", "100"].includes(params.get("minimum") ?? "") ? params.get("minimum")! : "0";
+  const since = ["1", "5"].includes(params.get("since") ?? "") ? params.get("since")! : "all";
   const scroll = useRouteScrollRestoration<HTMLDivElement>("officials", Boolean(data));
   useSeo({ title: "UFC Judges & Referees", description: "Every UFC judge and referee on record: scorecards, agreement, stoppages and the bouts behind each number.", path: "/officials" });
   const rate = kind === "judges" && judgeOrder.sort !== "name" ? JUDGE_RATE[judgeOrder.sort] : null;
   const list = useMemo(() => {
-    const matches = <T extends { name: string }>(entries: T[]) => searchList(entries, query, (entry) => entry.name);
+    const matches = <T extends { name: string; n: number; last: string | null }>(entries: T[]) => searchList(entries, query, (entry) => entry.name)
+      .filter((entry) => entry.n >= Number(minimum) && (since === "all" || Boolean(entry.last && entry.last >= `${new Date().getFullYear() - Number(since) + 1}-01-01`)));
     if (!data) return [];
     if (kind === "referees") {
       return ordered(matches(data.referees), (entry) => refereeOrder.sort === "name" ? entry.name : entry.n, refereeOrder.reversed, byBouts);
     }
     return ordered(matches(data.judges), (entry) => rate ? rate(entry) : entry.name, judgeOrder.reversed, byBouts);
-  }, [data, kind, query, rate, judgeOrder.reversed, refereeOrder.sort, refereeOrder.reversed]);
+  }, [data, kind, query, minimum, since, rate, judgeOrder.reversed, refereeOrder.sort, refereeOrder.reversed]);
   if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the officials.</RequestNotice></div>;
   if (!data) return <PageState>Loading officials…</PageState>;
   return (
     <div ref={scroll} className={PAGE}>
-      <div className={`${PAGE_BODY} lg:max-w-7xl`}>
-        <BrowseTabs />
-        <PageHeader title="Judges & referees" meta={[`${data.judges.length} judges`, `${data.referees.length} referees`]} />
-        <Panel title={kind === "referees" ? "Referees" : "Judges"} subtitle={`${list.length}`}
-          aside={<div className={segmentedGroup} role="group" aria-label="Officials">
+      <div className={FULL_PAGE_BODY}>
+        <h1 className="sr-only">Judges & referees</h1>
+        <PageToolbar>
+          <BrowseTabs />
+          <div className={segmentedGroup} role="group" aria-label="Officials">
             {(["judges", "referees"] as const).map((option) => (
               <button key={option} type="button" aria-pressed={kind === option} onClick={() => judgeOrder.set({ kind: option === "judges" ? null : option, sort: null, order: null })}
                 className={`${segmentedOption} ${kind === option ? segmentedSelected : segmentedIdle}`}>{option === "referees" ? "Referees" : "Judges"}</button>
             ))}
-          </div>}>
-          <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-2.5 sm:px-5">
-            <div className="min-w-40 flex-1"><Filter value={query} onChange={setQuery} label={`Find a ${kind === "referees" ? "referee" : "judge"}`} /></div>
-            {kind === "judges"
-              ? <OrderControl options={JUDGE_ORDERS} order={judgeOrder} label="Order judges" />
-              : <OrderControl options={REFEREE_ORDERS} order={refereeOrder} label="Order referees" />}
           </div>
-          <ul className="grid grid-cols-1 border-t border-zinc-100 lg:grid-cols-3">
+          <div className="ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+            <ToolbarSearch value={query} onChange={setQuery} label={`Find a ${kind === "referees" ? "referee" : "judge"}`} />
+            <OptionsSheet label="Filters" count={Number(minimum !== "0") + Number(since !== "all") || undefined} onReset={() => { setQuery(""); judgeOrder.set({ sort: null, order: null, minimum: null, since: null }); }}>
+              <div className="space-y-3 p-4">
+                <SheetField label="Sort">
+                  {kind === "judges" ? <OrderControl options={JUDGE_ORDERS} order={judgeOrder} label="Order judges" /> : <OrderControl options={REFEREE_ORDERS} order={refereeOrder} label="Order referees" />}
+                </SheetField>
+                <FilterSelect label="Minimum bouts" value={minimum} onChange={(value) => judgeOrder.set({ minimum: value === "0" ? null : value })}
+                  options={[{ value: "0", label: "Any experience" }, ...[10, 50, 100].map((n) => ({ value: String(n), label: `${n}+ bouts` }))]} />
+                <FilterSelect label="Active" value={since} onChange={(value) => judgeOrder.set({ since: value === "all" ? null : value })}
+                  options={[{ value: "all", label: "Any time" }, { value: "1", label: "This year" }, { value: "5", label: "Last 5 calendar years" }]} />
+              </div>
+            </OptionsSheet>
+          </div>
+        </PageToolbar>
+        <section aria-label={kind === "referees" ? "Referees" : "Judges"} className={`${PANEL} overflow-hidden`}>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {list.map((entry) => {
               const shown = rate ? rate(entry as Judge) : null;
               return (
@@ -154,8 +159,8 @@ export function OfficialsPage() {
               );
             })}
           </ul>
-          {!list.length ? <p className="px-5 py-8 text-center text-sm text-zinc-500">No one by that name.</p> : null}
-        </Panel>
+          {!list.length ? <p className="px-5 py-8 text-center text-sm text-zinc-500">No officials match these filters.</p> : null}
+        </section>
       </div>
     </div>
   );
@@ -172,27 +177,40 @@ const busiest = (a: VenueDirectory["venues"][number], b: VenueDirectory["venues"
 export function VenuesPage() {
   const { data, error, retry } = useApi<VenueDirectory>("/api/venues");
   const order = useOrder(VENUE_ORDERS);
+  const [params] = useSearchParams();
+  const country = params.get("country") ?? "all";
+  const upcoming = params.get("upcoming") === "1";
   const [query, setQuery] = useState("");
   const scroll = useRouteScrollRestoration<HTMLDivElement>("venues", Boolean(data));
   useSeo({ title: "UFC Venues", description: "Every arena and venue that has hosted a UFC event, with the cards held there and attendance.", path: "/venues" });
   const list = useMemo(() => {
     const found = searchList(data?.venues ?? [], query, (venue) => [venue.name, ...venue.former_names, venue.city, venue.state, venue.country].filter(Boolean).join(" "));
-    const sorted = found.sort(order.sort === "name" ? byName : busiest);
+    const filtered = found.filter((venue) => (country === "all" || venue.country === country) && (!upcoming || venue.upcoming > 0));
+    const sorted = filtered.sort(order.sort === "name" ? byName : busiest);
     return order.reversed ? sorted.reverse() : sorted;
-  }, [data, query, order.sort, order.reversed]);
+  }, [data, query, country, upcoming, order.sort, order.reversed]);
   if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the venues.</RequestNotice></div>;
   if (!data) return <PageState>Loading venues…</PageState>;
   return (
     <div ref={scroll} className={PAGE}>
-      <div className={`${PAGE_BODY} lg:max-w-7xl`}>
-        <BrowseTabs />
-        <PageHeader title="Venues" meta={[`${data.venues.length} venues`, data.coverage.with_venue < data.coverage.events ? `${data.coverage.with_venue.toLocaleString()} of ${data.coverage.events.toLocaleString()} events placed so far` : null]} />
-        <Panel title="All venues" subtitle={`${list.length}`}>
-          <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-2.5 sm:px-5">
-            <div className="min-w-40 flex-1"><Filter value={query} onChange={setQuery} label="Find a venue, city or country" /></div>
-            <OrderControl options={VENUE_ORDERS} order={order} label="Order venues" />
+      <div className={FULL_PAGE_BODY}>
+        <h1 className="sr-only">Venues</h1>
+        <PageToolbar>
+          <BrowseTabs />
+          <div className="ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+            <ToolbarSearch value={query} onChange={setQuery} label="Find a venue, city or country" />
+            <OptionsSheet label="Filters" count={Number(country !== "all") + Number(upcoming) || undefined} onReset={() => { setQuery(""); order.set({ sort: null, order: null, country: null, upcoming: null }); }}>
+              <div className="space-y-3 p-4">
+                <SheetField label="Sort"><OrderControl options={VENUE_ORDERS} order={order} label="Order venues" /></SheetField>
+                <FilterSelect label="Country" value={country} onChange={(value) => order.set({ country: value === "all" ? null : value })}
+                  options={[{ value: "all", label: "All countries" }, ...[...new Set(data.venues.map((venue) => venue.country).filter((value): value is string => Boolean(value)))].sort().map((value) => ({ value, label: value }))]} />
+                <SwitchRow label="Upcoming cards only" on={upcoming} onChange={(on) => order.set({ upcoming: on ? "1" : null })} />
+              </div>
+            </OptionsSheet>
           </div>
-          <ul className="grid grid-cols-1 border-t border-zinc-100 sm:grid-cols-2 lg:grid-cols-3">
+        </PageToolbar>
+        <section aria-label="Venues" className={`${PANEL} overflow-hidden`}>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {list.map((venue) => (
               <li key={venue.slug} className="border-b border-zinc-100">
                 <Link to={`/venues/${venue.slug}`} className="flex items-baseline justify-between gap-2 px-4 py-2 hover:bg-zinc-50 sm:px-5">
@@ -205,8 +223,8 @@ export function VenuesPage() {
               </li>
             ))}
           </ul>
-          {!list.length ? <p className="px-5 py-8 text-center text-sm text-zinc-500">No venue matches.</p> : null}
-        </Panel>
+          {!list.length ? <p className="px-5 py-8 text-center text-sm text-zinc-500">No venues match these filters.</p> : null}
+        </section>
       </div>
     </div>
   );
