@@ -424,18 +424,18 @@ function Side({ fighter, align = "left" }: { fighter: MatchFighter; align?: "lef
   const body = (
     <>
       <Avatar src={fighter.photo_url} name={fighter.name} size="xs" />
-      <span className={`min-w-0 ${right ? "text-right" : responsive ? "@min-[360px]:text-right" : ""}`}>
-        <span className={`flex min-w-0 items-center gap-1 ${right ? "flex-row-reverse" : responsive ? "@min-[360px]:flex-row-reverse" : ""}`}>
+      <span className={`min-w-0 ${right ? "text-right" : responsive ? "@min-[320px]:text-right" : ""}`}>
+        <span className={`flex min-w-0 items-center gap-1 ${right ? "flex-row-reverse" : responsive ? "@min-[320px]:flex-row-reverse" : ""}`}>
           {rank ? <span className="shrink-0 text-[11px] font-semibold tabular-nums text-zinc-400">{rank}</span> : null}
-          <span className="truncate text-[13px] font-medium text-zinc-900">{fighter.name}</span>
+          <span className="line-clamp-2 text-[13px] font-medium leading-4 text-zinc-900">{fighter.name}</span>
         </span>
-        <span className={`flex items-center gap-1 text-[11px] tabular-nums text-zinc-500 ${right ? "flex-row-reverse" : responsive ? "@min-[360px]:flex-row-reverse" : ""}`}>
+        <span className={`flex items-center gap-1 text-[11px] tabular-nums text-zinc-500 ${right ? "flex-row-reverse" : responsive ? "@min-[320px]:flex-row-reverse" : ""}`}>
           {fighter.record}<Streak streak={fighter.streak} />
         </span>
       </span>
     </>
   );
-  const className = `flex min-w-0 flex-1 items-center gap-2 ${right ? "flex-row-reverse" : responsive ? "@min-[360px]:flex-row-reverse" : ""}`;
+  const className = `flex min-w-0 flex-1 items-center gap-2 ${right ? "flex-row-reverse" : responsive ? "@min-[320px]:flex-row-reverse" : ""}`;
   return fighter.id ? <Link to={`/fighters/${fighter.id}`} title={fighter.name} className={`${className} rounded-lg hover:opacity-80`}>{body}</Link> : <span className={className}>{body}</span>;
 }
 
@@ -469,17 +469,17 @@ function DivisionPanel({ entry }: { entry: Division }) {
       <ul>
         {entry.fights.map((fight) => (
           <li key={`${fight.a.id}-${fight.b.id}`} className="flex min-w-0 flex-col gap-0.5 border-t border-zinc-100 py-1.5 first:border-t-0 not-dark:border-zinc-200">
-            <div className="flex flex-col gap-1 @min-[360px]:flex-row @min-[360px]:items-center @min-[360px]:gap-2">
+            <div className="flex flex-col gap-1 @min-[320px]:flex-row @min-[320px]:items-center @min-[320px]:gap-2">
               <Side fighter={fight.a} />
               {/* A wide row carries the fight's tag over the "vs"; a narrow one beside its reason. */}
-              <span className="hidden shrink-0 flex-col items-center gap-1 @min-[360px]:flex">
+              <span className="hidden shrink-0 flex-col items-center gap-1 @min-[320px]:flex">
                 <FightTag fight={fight} />
                 <span className="text-[10px] uppercase text-zinc-400">vs</span>
               </span>
               <Side fighter={fight.b} align="responsive" />
             </div>
             <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-zinc-500">
-              <span className="contents @min-[360px]:hidden"><FightTag fight={fight} /></span>
+              <span className="contents @min-[320px]:hidden"><FightTag fight={fight} /></span>
               {fight.event
                 ? <Link to={`/events/${fight.event.id}`} title={`${fight.event.name} · ${formatDate(fight.event.date)}`} className="truncate hover:text-zinc-900">{fight.event.name} · {formatDate(fight.event.date)}</Link>
                 : <span className="truncate" title={fight.reason}>{fight.reason}</span>}
@@ -526,16 +526,16 @@ function EventPanel({ event }: { event: RecentEvent }) {
                 const [letter, word, tone] = side.outcome ? OUTCOME[side.outcome] : ["–", "No result", "bg-zinc-100 text-zinc-500"];
                 const tag = side.next.kind === "suggested" || side.next.kind === "none" ? null : NEXT_TAG[side.next.kind];
                 return (
-                  <div key={side.fighter.id} className="grid grid-cols-1 gap-x-2 gap-y-0.5 @min-[360px]:grid-cols-[minmax(0,1fr)_0.75rem_minmax(0,1fr)] @min-[360px]:items-center">
+                  <div key={side.fighter.id} className="grid grid-cols-1 gap-x-2 gap-y-0.5 @min-[320px]:grid-cols-[minmax(0,1fr)_0.75rem_minmax(0,1fr)] @min-[320px]:items-center">
                     <div className="flex min-w-0 items-center gap-2">
                       <span title={word} className={`grid h-5 min-w-5 shrink-0 place-items-center rounded px-1 text-[10px] font-bold ${tone}`}>
                         {letter}<span className="sr-only"> {word}</span>
                       </span>
                       <Side fighter={side.fighter} />
                     </div>
-                    <span className="hidden text-center text-zinc-400 @min-[360px]:block" aria-hidden="true">→</span>
-                    <div className="min-w-0 pl-7 @min-[360px]:pl-0">
-                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 @min-[360px]:hidden">Next</p>
+                    <span className="hidden text-center text-zinc-400 @min-[320px]:block" aria-hidden="true">→</span>
+                    <div className="min-w-0 pl-7 @min-[320px]:pl-0">
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 @min-[320px]:hidden">Next</p>
                       {side.next.opponent ? <Side fighter={side.next.opponent} /> : null}
                     </div>
                     <p className="col-span-full flex min-w-0 items-start gap-1.5 pl-7 text-[11px] leading-4 text-zinc-500">
