@@ -2,9 +2,10 @@ import { Link, useLocation } from "react-router-dom";
 import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedOption } from "./segmented";
 
 const TABS = [
+  { href: "/roster", label: "Roster" },
   { href: "/officials", label: "Officials" },
   { href: "/venues", label: "Venues" },
-  { href: "/roster", label: "Roster" },
+  { href: "/locations", label: "Locations" },
 ] as const;
 
 /** Browse navigation inside each directory's toolbar. */

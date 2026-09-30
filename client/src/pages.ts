@@ -42,8 +42,8 @@ export function pageFor(pathname: string): PageLoader | null {
   if (pathname.startsWith("/profiles/")) return pages.profile;
   if (pathname.startsWith("/judges/")) return pages.judge;
   if (pathname.startsWith("/referees/")) return pages.referee;
-  if (pathname.startsWith("/venues/")) return pages.venue;
-  if (pathname === "/officials" || pathname === "/venues") return pages.directories;
+  if (pathname.startsWith("/venues/") || pathname.startsWith("/locations/")) return pages.venue;
+  if (pathname === "/officials" || pathname === "/venues" || pathname === "/locations") return pages.directories;
   if (pathname === "/info") return pages.info;
   if (pathname === "/roster") return pages.roster;
   if (pathname === "/matchmaking") return pages.matchmaking;

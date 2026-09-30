@@ -915,6 +915,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 name={fight.event.name}
                 date={fight.event.date}
                 location={fight.event.location}
+                locationSlug={fight.event.location_slug}
                 venue={fight.event.venue}
               >
                 {isFightDay(fight.event.date) && error && !changingMatchup ? <span role="status" className="text-xs text-zinc-500">Connection interrupted; retrying…</span> : null}

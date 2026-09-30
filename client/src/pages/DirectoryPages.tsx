@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ArrowDown, ArrowUp } from "lucide-react";
-import { useApi, type OfficialsDirectory, type VenueDirectory } from "../api";
+import { useApi, type LocationDirectory, type OfficialsDirectory, type VenueDirectory } from "../api";
 import { searchList } from "../search";
 import { useRouteScrollRestoration } from "../navigationState";
 import { PAGE, FULL_PAGE_BODY } from "../research";
@@ -166,29 +166,63 @@ export function OfficialsPage() {
   );
 }
 
-const VENUE_ORDERS = [
+const PLACE_ORDERS = [
   { key: "busiest", label: "Most cards" },
   { key: "name", label: "A–Z" },
 ] as const;
+type Place = { name: string; events: number; upcoming: number; country: string | null };
 // Upcoming cards first, then the most held there.
-const busiest = (a: VenueDirectory["venues"][number], b: VenueDirectory["venues"][number]) => b.upcoming - a.upcoming || b.events - a.events || byName(a, b);
+const busiest = (a: Place, b: Place) => b.upcoming - a.upcoming || b.events - a.events || byName(a, b);
 
-/** Every venue with a UFC card on record, most-used first. */
-export function VenuesPage() {
-  const { data, error, retry } = useApi<VenueDirectory>("/api/venues");
-  const order = useOrder(VENUE_ORDERS);
+/** Filters and order shared by venues and locations. */
+function usePlaces<T extends Place>(places: T[] | undefined, text: (place: T) => string) {
+  const order = useOrder(PLACE_ORDERS);
   const [params] = useSearchParams();
   const country = params.get("country") ?? "all";
   const upcoming = params.get("upcoming") === "1";
   const [query, setQuery] = useState("");
-  const scroll = useRouteScrollRestoration<HTMLDivElement>("venues", Boolean(data));
-  useSeo({ title: "UFC Venues", description: "Every arena and venue that has hosted a UFC event, with the cards held there and attendance.", path: "/venues" });
   const list = useMemo(() => {
-    const found = searchList(data?.venues ?? [], query, (venue) => [venue.name, ...venue.former_names, venue.city, venue.state, venue.country].filter(Boolean).join(" "));
-    const filtered = found.filter((venue) => (country === "all" || venue.country === country) && (!upcoming || venue.upcoming > 0));
+    const filtered = searchList(places ?? [], query, text).filter((place) => (country === "all" || place.country === country) && (!upcoming || place.upcoming > 0));
     const sorted = filtered.sort(order.sort === "name" ? byName : busiest);
     return order.reversed ? sorted.reverse() : sorted;
-  }, [data, query, country, upcoming, order.sort, order.reversed]);
+  }, [places, text, query, country, upcoming, order.sort, order.reversed]);
+  const countries = useMemo(() => [...new Set((places ?? []).map((place) => place.country).filter((value): value is string => Boolean(value)))].sort(), [places]);
+  return { list, query, setQuery, filters: (label: string) => (
+    <OptionsSheet label="Filters" count={Number(country !== "all") + Number(upcoming) || undefined} onReset={() => { setQuery(""); order.set({ sort: null, order: null, country: null, upcoming: null }); }}>
+      <div className="space-y-3 p-4">
+        <SheetField label="Sort"><OrderControl options={PLACE_ORDERS} order={order} label={label} /></SheetField>
+        <FilterSelect label="Country" value={country} onChange={(value) => order.set({ country: value === "all" ? null : value })}
+          options={[{ value: "all", label: "All countries" }, ...countries.map((value) => ({ value, label: value }))]} />
+        <SwitchRow label="Upcoming cards only" on={upcoming} onChange={(on) => order.set({ upcoming: on ? "1" : null })} />
+      </div>
+    </OptionsSheet>
+  ) };
+}
+
+/** A venue or a city: its name, where it is, and its cards. */
+function PlaceRow({ to, name, detail, events, upcoming }: { to: string; name: string; detail: string; events: number; upcoming: number }) {
+  return (
+    <li className="border-b border-zinc-100">
+      <Link to={to} className="flex items-baseline justify-between gap-2 px-4 py-2 hover:bg-zinc-50 sm:px-5">
+        <span className="min-w-0">
+          <span className="block truncate text-[13px] font-medium text-zinc-900">{name}</span>
+          <span className="block truncate text-[11px] text-zinc-400">{detail}</span>
+        </span>
+        <span className="shrink-0 text-[11px] tabular-nums text-zinc-500">{events}{upcoming ? ` + ${upcoming} upcoming` : ""}</span>
+      </Link>
+    </li>
+  );
+}
+
+const venueText = (venue: VenueDirectory["venues"][number]) => [venue.name, ...venue.former_names, venue.city, venue.state, venue.country].filter(Boolean).join(" ");
+const locationText = (location: LocationDirectory["locations"][number]) => location.name;
+
+/** Every venue with a UFC card on record, most-used first. */
+export function VenuesPage() {
+  const { data, error, retry } = useApi<VenueDirectory>("/api/venues");
+  const places = usePlaces(data?.venues, venueText);
+  const scroll = useRouteScrollRestoration<HTMLDivElement>("venues", Boolean(data));
+  useSeo({ title: "UFC Venues", description: "Every arena and venue that has hosted a UFC event, with the cards held there and attendance.", path: "/venues" });
   if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the venues.</RequestNotice></div>;
   if (!data) return <PageState>Loading venues…</PageState>;
   return (
@@ -198,32 +232,49 @@ export function VenuesPage() {
         <PageToolbar>
           <BrowseTabs />
           <div className="ml-auto flex min-w-0 flex-1 basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
-            <ToolbarSearch value={query} onChange={setQuery} label="Find a venue, city or country" />
-            <OptionsSheet label="Filters" count={Number(country !== "all") + Number(upcoming) || undefined} onReset={() => { setQuery(""); order.set({ sort: null, order: null, country: null, upcoming: null }); }}>
-              <div className="space-y-3 p-4">
-                <SheetField label="Sort"><OrderControl options={VENUE_ORDERS} order={order} label="Order venues" /></SheetField>
-                <FilterSelect label="Country" value={country} onChange={(value) => order.set({ country: value === "all" ? null : value })}
-                  options={[{ value: "all", label: "All countries" }, ...[...new Set(data.venues.map((venue) => venue.country).filter((value): value is string => Boolean(value)))].sort().map((value) => ({ value, label: value }))]} />
-                <SwitchRow label="Upcoming cards only" on={upcoming} onChange={(on) => order.set({ upcoming: on ? "1" : null })} />
-              </div>
-            </OptionsSheet>
+            <ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a venue, city or country" />
+            {places.filters("Order venues")}
           </div>
         </PageToolbar>
         <section aria-label="Venues" className={`${PANEL} overflow-hidden`}>
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-            {list.map((venue) => (
-              <li key={venue.slug} className="border-b border-zinc-100">
-                <Link to={`/venues/${venue.slug}`} className="flex items-baseline justify-between gap-2 px-4 py-2 hover:bg-zinc-50 sm:px-5">
-                  <span className="min-w-0">
-                    <span className="block truncate text-[13px] font-medium text-zinc-900">{venue.name}</span>
-                    <span className="block truncate text-[11px] text-zinc-400">{[venue.city, venue.country].filter(Boolean).join(", ")}</span>
-                  </span>
-                  <span className="shrink-0 text-[11px] tabular-nums text-zinc-500">{venue.events}{venue.upcoming ? ` + ${venue.upcoming} upcoming` : ""}</span>
-                </Link>
-              </li>
+            {places.list.map((venue) => (
+              <PlaceRow key={venue.slug} to={`/venues/${venue.slug}`} name={venue.name} detail={[venue.city, venue.country].filter(Boolean).join(", ")} events={venue.events} upcoming={venue.upcoming} />
             ))}
           </ul>
-          {!list.length ? <p className="px-5 py-8 text-center text-sm text-zinc-500">No venues match these filters.</p> : null}
+          {!places.list.length ? <p className="px-5 py-8 text-center text-sm text-zinc-500">No venues match these filters.</p> : null}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+/** Every city with a UFC card on record, most-used first. */
+export function LocationsPage() {
+  const { data, error, retry } = useApi<LocationDirectory>("/api/locations");
+  const places = usePlaces(data?.locations, locationText);
+  const scroll = useRouteScrollRestoration<HTMLDivElement>("locations", Boolean(data));
+  useSeo({ title: "UFC Locations", description: "Every city that has hosted a UFC event, with the cards held there, the venues, title fights and upcoming events.", path: "/locations" });
+  if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the locations.</RequestNotice></div>;
+  if (!data) return <PageState>Loading locations…</PageState>;
+  return (
+    <div ref={scroll} className={PAGE}>
+      <div className={FULL_PAGE_BODY}>
+        <h1 className="sr-only">Locations</h1>
+        <PageToolbar>
+          <BrowseTabs />
+          <div className="ml-auto flex min-w-0 flex-1 basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
+            <ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a city, state or country" />
+            {places.filters("Order locations")}
+          </div>
+        </PageToolbar>
+        <section aria-label="Locations" className={`${PANEL} overflow-hidden`}>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+            {places.list.map((location) => (
+              <PlaceRow key={location.slug} to={`/locations/${location.slug}`} name={location.city} detail={[location.state, location.country].filter(Boolean).join(", ")} events={location.events} upcoming={location.upcoming} />
+            ))}
+          </ul>
+          {!places.list.length ? <p className="px-5 py-8 text-center text-sm text-zinc-500">No locations match these filters.</p> : null}
         </section>
       </div>
     </div>

@@ -42,6 +42,8 @@ const RefereePage = page(pages.referee, module => module.default);
 const VenuePage = page(pages.venue, module => module.default);
 const OfficialsPage = page(pages.directories, module => module.OfficialsPage);
 const VenuesPage = page(pages.directories, module => module.VenuesPage);
+const LocationsPage = page(pages.directories, module => module.LocationsPage);
+const LocationPage = page(pages.venue, module => module.LocationPage);
 const InfoPage = page(pages.info, module => module.default);
 const RosterPage = page(pages.roster, module => module.default);
 const MatchmakingPage = page(pages.matchmaking, module => module.default);
@@ -302,10 +304,12 @@ export default function App() {
           <Route path="/stats" element={<StatsPage />} />
           <Route path="/officials" element={<OfficialsPage />} />
           <Route path="/venues" element={<VenuesPage />} />
+          <Route path="/locations" element={<LocationsPage />} />
           <Route path="/roster" element={<RosterPage />} />
           <Route path="/judges/:slug" element={<JudgePage />} />
           <Route path="/referees/:slug" element={<RefereePage />} />
           <Route path="/venues/:slug" element={<VenuePage />} />
+          <Route path="/locations/:slug" element={<LocationPage />} />
           <Route path="/matchmaking" element={<MatchmakingPage />} />
           <Route path="/news" element={<NewsPage />} />
           <Route path="/graphic" element={<GraphicPage />} />

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, CalendarDays, ChartNoAxesColumn, Gavel, Info, MapPin, Search, Trophy, X } from "lucide-react";
+import { ArrowRight, Building2, CalendarDays, ChartNoAxesColumn, Gavel, Info, MapPin, Search, Trophy, X } from "lucide-react";
 import { formatDateShortWithYear } from "../format";
 import { parseSearch, useSearch } from "../useSearch";
 import Avatar from "./Avatar";
@@ -13,7 +13,8 @@ const destinations = [
   { to: "/rankings", label: "Rankings", description: "Explore every division", icon: Trophy },
   { to: "/stats", label: "Statistics", description: "Find records and compare fighters", icon: ChartNoAxesColumn },
   { to: "/officials", label: "Judges & referees", description: "Scorecards, dissents and stoppages", icon: Gavel },
-  { to: "/venues", label: "Venues", description: "Every arena and the cards held there", icon: MapPin },
+  { to: "/venues", label: "Venues", description: "Every arena and the cards held there", icon: Building2 },
+  { to: "/locations", label: "Locations", description: "Every city and the cards held there", icon: MapPin },
   { to: "/info", label: "About UFC.sh", description: "Sources, definitions, shortcuts and changelog", icon: Info },
 ];
 

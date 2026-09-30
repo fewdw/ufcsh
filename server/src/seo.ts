@@ -1,7 +1,7 @@
 import { prepared } from "./db.ts";
 import { ufcFightExistsSql, currentRecord, hasUfcFight, recordText } from "./fighter-identity.ts";
 import { judgeProfile, officialsIndex, refereeProfile } from "./officials.ts";
-import { venueIndex, venuePage } from "./venues.ts";
+import { locationPage, venueIndex, venuePage } from "./venues.ts";
 
 /**
  * What a page is called before any script runs: the title, description,
@@ -49,6 +49,7 @@ const STATIC_PAGES: Record<string, { title: string; description: string }> = {
   "/graphic": { title: "UFC Graphics Maker | ufc.sh", description: "Make shareable UFC graphics: matchups, results, fighters and full cards, in square, portrait or landscape, dark or light." },
   "/officials": { title: "UFC Judges & Referees | ufc.sh", description: "Every UFC judge and referee on record: scorecards, agreement, dissents, stoppages and the bouts behind each number." },
   "/venues": { title: "UFC Venues | ufc.sh", description: "Every arena that has hosted a UFC event, with the cards held there, attendance and upcoming events." },
+  "/locations": { title: "UFC Locations | ufc.sh", description: "Every city that has hosted a UFC event, with the cards held there, the venues, title fights and upcoming events." },
   "/matchmaking": { title: "UFC Matchmaking: Fights to Make Next | ufc.sh", description: "Fights to make next in every UFC division: title fights, ranked matchups and next opponents for everyone on the last card, each with its reason." },
   "/news": { title: "UFC News: Latest from Every Outlet | ufc.sh", description: "The latest UFC news from MMA Fighting, Sherdog, BBC Sport, The Guardian and more, in one list: top stories first, every headline linked to its source." },
   "/roster": { title: "UFC Roster Changes: Signings & Releases | ufc.sh", description: "Fighters the UFC has recently signed and recently released, with division, record and date." },
@@ -217,6 +218,34 @@ export function pageSeo(pathname: string): PageSeo {
         + `<h2>Events</h2><ul>${venue.events.slice(0, 60).map((event) => `<li>${link(`/events/${event.id}`, event.name)} (${htmlEscape(event.date)})</li>`).join("")}</ul>`,
     };
   }
+  if (parts[1] === "locations") {
+    const location = venueIndex().locations.get(id);
+    if (!location) return notFound();
+    const page = locationPage(location.slug) as any;
+    const held = page.summary.events as number;
+    const url = `${SITE_URL}/locations/${location.slug}`;
+    const span = page.summary.first ? `${page.summary.first.slice(0, 4)}–${page.summary.last.slice(0, 4)}` : "";
+    const venues = page.venues as { slug: string; name: string }[];
+    return {
+      ...DEFAULT,
+      title: `UFC in ${location.city} — Events, Venues & Title Fights | ufc.sh`,
+      description: `Every UFC event in ${location.name}${span ? ` (${span})` : ""}: ${held} ${held === 1 ? "card" : "cards"}, ${page.summary.fights.toLocaleString("en-US")} bouts, ${page.summary.title_fights} title fights and upcoming events.`,
+      canonical: url,
+      structuredData: {
+        "@context": "https://schema.org",
+        "@graph": [
+          { "@type": "City", name: location.city, url, address: { "@type": "PostalAddress", addressLocality: location.city, addressRegion: location.state ?? undefined, addressCountry: location.country ?? undefined } },
+          { "@type": "BreadcrumbList", itemListElement: [
+            { "@type": "ListItem", position: 1, name: "Locations", item: `${SITE_URL}/locations` },
+            { "@type": "ListItem", position: 2, name: location.city, item: url },
+          ] },
+        ],
+      },
+      summary: `<h1>UFC in ${htmlEscape(location.name)}</h1><p>${held} UFC cards${span ? ` · ${span}` : ""}, ${page.summary.title_fights} title fights. ${link("/locations", "All locations")}</p>`
+        + (venues.length ? `<h2>Venues</h2><ul>${venues.map((venue) => `<li>${link(`/venues/${venue.slug}`, venue.name)}</li>`).join("")}</ul>` : "")
+        + `<h2>Events</h2><ul>${location.events.slice(0, 60).map((event) => `<li>${link(`/events/${event.id}`, event.name)} (${htmlEscape(event.date)})</li>`).join("")}</ul>`,
+    };
+  }
   return notFound();
 }
 
@@ -278,6 +307,7 @@ export function sitemap(): string {
     ...[...officials.judgeSlugs.values()].map((judge) => entry(`/judges/${judge.slug}`, judge.fights[0]?.fight.date)),
     ...[...officials.refereeSlugs.values()].map((referee) => entry(`/referees/${referee.slug}`, referee.fights[0]?.fight.date)),
     ...[...venues.bySlug.values()].map((venue) => entry(`/venues/${venue.slug}`, venue.events.find((event) => event.complete)?.date)),
+    ...[...venues.locations.values()].map((location) => entry(`/locations/${location.slug}`, location.events.find((event) => event.complete)?.date)),
     "</urlset>",
   ].join("");
 }

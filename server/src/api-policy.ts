@@ -3,12 +3,12 @@ import type { IncomingMessage } from "node:http";
 
 const listRoutes = new Set([
   "/api/events", "/api/live", "/api/rankings", "/api/stats", "/api/search",
-  "/api/officials", "/api/venues", "/api/roster", "/api/matchmaking", "/api/news",
+  "/api/officials", "/api/venues", "/api/locations", "/api/roster", "/api/matchmaking", "/api/news",
 ]);
 export function publicApi(path: string): boolean {
   return listRoutes.has(path) || /^\/api\/(events|fights|fighters|previews)\/[a-f0-9]{16}$/i.test(path)
     || /^\/api\/fighters\/[a-f0-9]{16}\/stats$/i.test(path)
-    || /^\/api\/(judges|referees|venues)\/[a-z0-9-]{1,80}$/.test(path);
+    || /^\/api\/(judges|referees|venues|locations)\/[a-z0-9-]{1,80}$/.test(path);
 }
 
 /** Lists that change a few times a day at most: a reader is always answered
