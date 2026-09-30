@@ -68,8 +68,8 @@ function startingState() {
 function Corner({ fighter, big, onPick, onClear }: { fighter: Slot; big: boolean; onPick: () => void; onClear: () => void }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col items-center gap-2">
-      {/* The photo takes most of its corner, so it grows with the screen. */}
-      <div className={`relative aspect-square w-4/5 ${big ? "max-w-64" : "max-w-44"}`}>
+      {/* The photo grows with its corner up to a modest cap. */}
+      <div className={`relative aspect-square w-4/5 ${big ? "max-w-28" : "max-w-20"}`}>
         {fighter ? (
           <button type="button" onClick={onClear} aria-label={`Remove ${fighter.name}`} title="Remove"
             className="group block h-full w-full rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">
@@ -95,7 +95,7 @@ function Corner({ fighter, big, onPick, onClear }: { fighter: Slot; big: boolean
 
 function Bout({ corners, big, onPick, onClear }: { corners: [Slot, Slot]; big: boolean; onPick: (corner: 0 | 1) => void; onClear: (corner: 0 | 1) => void }) {
   return (
-    <div className={`flex h-full min-w-0 items-start gap-2 rounded-xl border border-zinc-200 bg-white ${big ? "p-4 sm:p-6" : "px-3 py-4"}`}>
+    <div className={`flex h-full min-w-0 items-start gap-2 rounded-xl border border-zinc-200 bg-white ${big ? "p-4 sm:p-5" : "px-3 py-4"}`}>
       <Corner fighter={corners[0]} big={big} onPick={() => onPick(0)} onClear={() => onClear(0)} />
       {/* Level with the photos rather than the names below them. */}
       <span className="-mt-6 shrink-0 self-center text-[10px] font-medium uppercase text-zinc-400 sm:text-xs">vs</span>
