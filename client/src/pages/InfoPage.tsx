@@ -92,10 +92,11 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-09-30">September 30, 2026</time></p>
             <ul>
-              <li>Optional AI news filtering, duplicate grouping and summaries.</li>
-              <li>News settings include a summaries toggle.</li>
-              <li>AI starts off. Admins can enable or stop it from Health.</li>
-              <li>News keeps working when AI is unavailable.</li>
+              <li>Correct stale venues, roster flags and missing fighter histories.</li>
+              <li>Repair inconsistent odds and reject mismatched source prices.</li>
+              <li>Restore profile tabs and filters correctly with Back and Forward.</li>
+              <li>Recover from damaged browser storage and incomplete news AI responses.</li>
+              <li>Refresh AI summaries when stories change. Update vulnerable dependencies.</li>
             </ul>
           </Section>
         </div>

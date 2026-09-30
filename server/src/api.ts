@@ -37,7 +37,7 @@ import { createCommentsHandler } from "./comments-http.ts";
 import { ACCOUNT_SYNC_MS, accountSyncCheck, syncAccounts } from "./accounts.ts";
 import { releasedRounds } from "./live-rounds.ts";
 import { ensureImageVariant, variantPath, type ImageSize } from "./image-variants.ts";
-import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds } from "./sync.ts";
+import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds, syncOddsForFight } from "./sync.ts";
 import { BackgroundRefresh } from "./background-refresh.ts";
 import { VersionCache } from "./version-cache.ts";
 import { fuzzyScore, fuzzyTarget, splitMatchup, type FuzzyTarget } from "./fuzzy.ts";
@@ -797,6 +797,13 @@ export async function runRefreshJob(key: string): Promise<unknown> {
     case "event-detail": return syncEventDetailOnce(id);
     case "detail": return syncFightDetail(id);
     case "odds": return ensureFightMethodOdds(id);
+    case "moneyline": {
+      const fight = db.prepare(`SELECT f.id, f.f1_id, f.f2_id, f.f1_name, f.f2_name, e.date
+        FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?`).get(id) as
+        { id: string; f1_id: string; f2_id: string; f1_name: string; f2_name: string; date: string } | undefined;
+      if (fight && !await syncOddsForFight(fight)) throw new Error("Moneyline source not available yet");
+      return;
+    }
     case "birth": return syncFighterBirthDateOnce(id);
     case "career": return syncFighterCareerOnce(id);
     case "titles": return ensureFighterTitleTypes(id);

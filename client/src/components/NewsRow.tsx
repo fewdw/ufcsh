@@ -8,7 +8,10 @@ import Avatar from "./Avatar";
 export const OFF_KEY = "ufcsh:news-off:v1";
 
 export function savedOff(): string[] {
-  try { return JSON.parse(localStorage.getItem(OFF_KEY) ?? "[]") as string[]; } catch { return []; }
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(OFF_KEY) ?? "[]");
+    return Array.isArray(saved) ? saved.filter((value): value is string => typeof value === "string") : [];
+  } catch { return []; }
 }
 
 /** Summaries shown or not: on unless switched off. */

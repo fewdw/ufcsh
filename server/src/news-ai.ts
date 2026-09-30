@@ -125,8 +125,7 @@ async function ask(key: string, input: string, signal: AbortSignal): Promise<Ans
 }
 
 /** One batch, oldest context first: the kept stories near it as K1…, the new
- *  ones as N1…. Every story sent gets a reading, even one Gemini skipped
- *  (then it stands as built, and isn't sent again). */
+ *  ones as N1…. An incomplete answer is retried without marking stories read. */
 async function judgeBatch(key: string, batch: Pending[], kept: { key: string; outlets: { title: string }[]; published_at: number }[], signal: AbortSignal): Promise<void> {
   const from = Math.min(...batch.map((story) => story.published_at)) - NEAR_MS;
   const to = Math.max(...batch.map((story) => story.published_at)) + NEAR_MS;
@@ -144,9 +143,13 @@ async function judgeBatch(key: string, batch: Pending[], kept: { key: string; ou
       articles[i] ? `ARTICLE:\n${articles[i]}` : "No article.",
     ]),
   ].join("\n");
-  const answers = new Map((await ask(key, input, signal)).map((answer) => [answer.id, answer]));
+  const received = await ask(key, input, signal);
+  const answers = new Map(received.map((answer) => [answer.id, answer]));
+  if (received.length !== batch.length || answers.size !== batch.length
+    || batch.some((_, i) => !answers.has(`N${i + 1}`))) throw new Error("Gemini returned incomplete or duplicate story IDs");
   signal.throwIfAborted();
   const url = (id: string) => /^K\d+$/.test(id) ? near[Number(id.slice(1)) - 1]?.key : /^N\d+$/.test(id) ? batch[Number(id.slice(1)) - 1]?.key : undefined;
+  if (received.some(answer => answer.same && !url(answer.same))) throw new Error("Gemini returned an unknown duplicate story ID");
   const save = db.prepare("UPDATE news SET ai_keep = ?, ai_same = ?, ai_summary = ? WHERE url = ?");
   db.exec("BEGIN");
   try {

@@ -32,6 +32,7 @@ import { syncVerdictScorecards } from "./verdict-import.ts";
 import { syncRosterMoves, syncUfcSignings, syncUfcStatuses } from "./roster-moves.ts";
 import { syncNews } from "./news.ts";
 import { americanLine, impliedProbability } from "./fight-index.ts";
+import { consistentMoneyline } from "./method-odds.ts";
 
 const HOUR = 3600_000;
 const DAY = 24 * HOUR;
@@ -251,7 +252,7 @@ export async function syncScheduleArchive(): Promise<void> {
 }
 
 export async function syncEventSegments(eventId: string): Promise<void> {
-  const event = db.prepare("SELECT ufc_slug FROM events WHERE id = ?").get(eventId) as { ufc_slug: string | null } | undefined;
+  const event = db.prepare("SELECT ufc_slug, location FROM events WHERE id = ?").get(eventId) as { ufc_slug: string | null; location: string } | undefined;
   if (!event?.ufc_slug) return;
   const card = await scrapeEventCard(event.ufc_slug);
   const fights = db.prepare("SELECT id, ord, f1_name, f2_name FROM fights WHERE event_id = ?")
@@ -270,7 +271,8 @@ export async function syncEventSegments(eventId: string): Promise<void> {
   // The feed is reached through the page's first fight, and ufc.com has linked
   // fights to another event's feed (UFC 239's under the Minneapolis card). A
   // feed that shares no bout with ours says nothing about this card.
-  const foreign = Boolean(card.info?.bouts.length && fights.length && !sharesBout(fights, card.info.bouts));
+  const foreign = Boolean(card.info && (!samePlace(card.info.city, event.location.split(",")[0])
+    || (card.info.bouts.length && fights.length && !sharesBout(fights, card.info.bouts))));
   // A bout the feed no longer identifies loses its length: a booking that
   // changed or a bout that moved must not keep a stale number.
   let booked = 0;
@@ -283,7 +285,7 @@ export async function syncEventSegments(eventId: string): Promise<void> {
   if (foreign) {
     db.prepare(`UPDATE events SET ufc_event_id = NULL, venue_id = NULL, venue_name = NULL, venue_city = NULL,
       venue_state = NULL, venue_country = NULL, venue_tz = NULL, broadcast_json = NULL WHERE id = ?`).run(eventId);
-    db.prepare("UPDATE fights SET referee_assigned = NULL WHERE event_id = ?").run(eventId);
+    db.prepare("UPDATE fights SET referee_assigned = NULL, scheduled_rounds = NULL WHERE event_id = ?").run(eventId);
     log(`card segments: ${event.ufc_slug} links to another event's feed; its venue and officials are ignored`);
   } else if (card.info) {
     const info = card.info;
@@ -929,6 +931,7 @@ export async function syncOddsForFight(fight: { id: string; f1_id?: string | nul
     { f1_name: string; f2_name: string } | undefined;
   if (!current) return false;
   const result = alignScrapedOdds(scraped, fight, current);
+  if (!consistentMoneyline(result.f1.close, result.f2.close)) return false;
   // An open the board chart already corrected is not put back by a fighter
   // page still carrying the reversed first quote.
   const stored = db.prepare("SELECT f1_open FROM odds WHERE fight_id = ?").get(fight.id) as { f1_open: string | null } | undefined;
@@ -1290,6 +1293,7 @@ export async function syncOddsBackfill(limit: number): Promise<OddsBackfillResul
 
       const oppOfFight = (f: (typeof ourFights)[number]) => normName(f.f1_id === fighter.id ? f.f2_name : f.f1_name);
       for (const row of history.rows) {
+        if (!consistentMoneyline(row.self.close, row.opp.close)) continue;
         const oppKey = normName(row.opponent);
         if (!row.date) {
           // An undated row identifies a bout only when it is the source's one

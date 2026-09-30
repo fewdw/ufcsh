@@ -2,6 +2,8 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { mkdirSync } from "node:fs";
+import { samePlace } from "./scrape/wikipedia.ts";
+import { consistentMoneyline } from "./method-odds.ts";
 
 export const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data"));
 mkdirSync(DATA_DIR, { recursive: true });
@@ -430,6 +432,36 @@ if (getMeta("migration_career_identity_and_unlinked_bouts") !== "1") {
 if (getMeta("migration_ring_names") !== "1") {
   db.exec("UPDATE career_profiles SET checked_at = 0 WHERE status IN ('not_found', 'ambiguous')");
   setMeta("migration_ring_names", "1");
+}
+
+// Old reads can outlive fixes to the source parsers. Remove only metadata
+// contradicted by the card's location, then let the normal sync fill it again.
+if (getMeta("migration_stale_source_metadata") !== "1") {
+  const events = db.prepare("SELECT id, location, venue_city, wiki_city FROM events").all() as
+    { id: string; location: string; venue_city: string | null; wiki_city: string | null }[];
+  const clearFeed = db.prepare(`UPDATE events SET ufc_event_id = NULL, venue_id = NULL, venue_name = NULL,
+    venue_city = NULL, venue_state = NULL, venue_country = NULL, venue_tz = NULL, broadcast_json = NULL,
+    venue_checked_at = NULL WHERE id = ?`);
+  const clearOfficials = db.prepare("UPDATE fights SET referee_assigned = NULL, scheduled_rounds = NULL WHERE event_id = ?");
+  const clearArticle = db.prepare(`UPDATE events SET wiki_venue = NULL, wiki_city = NULL, attendance = NULL,
+    gate = NULL, wiki_background = NULL, wiki_info_checked_at = NULL WHERE id = ?`);
+  for (const event of events) {
+    if (!samePlace(event.venue_city, event.location.split(",")[0])) {
+      clearFeed.run(event.id);
+      clearOfficials.run(event.id);
+    }
+    if (!samePlace(event.wiki_city, event.location)) clearArticle.run(event.id);
+  }
+  db.exec("UPDATE career_profiles SET checked_at = 0 WHERE status IN ('not_found', 'ambiguous') AND source_url IS NOT NULL");
+  db.exec("DELETE FROM meta WHERE key = 'roster_moves_checked_at'");
+  // Repair legacy chart/range prices through the source queue, retaining the
+  // existing values until a fighter-page read supplies their replacement.
+  const odds = db.prepare("SELECT fight_id, f1_close, f2_close FROM odds WHERE f1_close IS NOT NULL OR f2_close IS NOT NULL").all() as
+    { fight_id: string; f1_close: string | null; f2_close: string | null }[];
+  const queue = db.prepare(`INSERT INTO refresh_jobs (key, available_at, cooldown_ms) VALUES (?, ?, 86400000)
+    ON CONFLICT(key) DO UPDATE SET state = 'queued', available_at = excluded.available_at, attempts = 0, error = ''`);
+  for (const row of odds) if (!consistentMoneyline(row.f1_close, row.f2_close)) queue.run(`moneyline:${row.fight_id}`, Date.now());
+  setMeta("migration_stale_source_metadata", "1");
 }
 
 }

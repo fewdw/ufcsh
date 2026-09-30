@@ -18,7 +18,9 @@ try {
   db.close();
   const files = (await readdir(path.join(serverDir, "src"), { recursive: true }))
     .filter(file => file.endsWith(".test.ts")).map(file => path.join(serverDir, "src", file));
-  const child = spawn(process.execPath, ["--test", "--test-concurrency=2", ...files], {
+  // Several files hold write transactions across awaits. One archive copy
+  // cannot be safely shared by concurrent writers, even with WAL enabled.
+  const child = spawn(process.execPath, ["--test", "--test-concurrency=1", ...files], {
     cwd: serverDir, stdio: "inherit",
     env: { ...process.env, NODE_ENV: "test", DB_INIT: "0", NO_SYNC: "1", API_WORKERS: "0" },
   });

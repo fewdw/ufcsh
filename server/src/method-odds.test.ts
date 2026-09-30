@@ -1,6 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { closingMeanPrice, decodePriceHistory, meanPrices } from "./method-odds.ts";
+import { closingMeanPrice, consistentMoneyline, decodePriceHistory, meanPrices } from "./method-odds.ts";
+
+test("two-way mean prices reject mismatched corners without rejecting normal markets", () => {
+  assert.equal(consistentMoneyline("+144", "+195"), false);
+  assert.equal(consistentMoneyline("+127", "+201"), false);
+  assert.equal(consistentMoneyline("+166", "-204"), true);
+  assert.equal(consistentMoneyline("−200", "+170"), true);
+  assert.equal(consistentMoneyline("+100", "+100"), true);
+  assert.equal(consistentMoneyline(null, "-200"), false);
+  assert.equal(consistentMoneyline("+0", "+100"), false);
+});
 
 const encode = (value: unknown) => Buffer.from([...JSON.stringify(value)].map((c) => {
   const n = c.charCodeAt(0);
