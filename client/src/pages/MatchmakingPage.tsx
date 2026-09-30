@@ -5,10 +5,10 @@ import { Check, Plus, Save, Trash2, X } from "lucide-react";
 import { useApi, type MatchFighter, type MatchmakingData } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
 import { formatDate } from "../format";
-import { PAGE, FULL_PAGE_BODY } from "../research";
+import { PAGE } from "../research";
 import { useSeo } from "../seo";
 import { useRouteScrollRestoration } from "../navigationState";
-import PageToolbar, { FilterSelect, ToolbarSearch } from "../components/PageToolbar";
+import { FilterSelect, ToolbarSearch } from "../components/PageToolbar";
 import OptionsSheet, { SwitchRow } from "../components/OptionsSheet";
 import { searchList } from "../search";
 import Avatar from "../components/Avatar";
@@ -336,15 +336,8 @@ function CardBuilder({ account, navigation }: { account: CardAccount | null; nav
   let bout = 0;
   return (
     <>
-      <PageToolbar>
+      <header className="flex flex-wrap items-center gap-2 pb-1 lg:gap-3">
         {navigation}
-        <div className="min-w-0 flex-1 basis-32">
-          {/* Below `lg` the saved-cards dropdown already names it. */}
-          <h2 className={`truncate text-base font-semibold text-zinc-900 ${cards.length ? "max-lg:hidden" : ""}`}>{open?.name ?? "New card"}</h2>
-          <p className="text-xs tabular-nums text-zinc-500">
-            {taken.length} of {BOUTS * 2} fighters{saved ? " · saved" : open ? " · unsaved changes" : ""}
-          </p>
-        </div>
         {taken.length || open ? (
           <button type="button" onClick={startNew} className={BUTTON_SECONDARY}>{open ? "New card" : "Clear card"}</button>
         ) : null}
@@ -361,7 +354,7 @@ function CardBuilder({ account, navigation }: { account: CardAccount | null; nav
             <FilterSelect label="Bouts" value={filled} onChange={setFilled} options={[{ value: "all", label: "All bouts" }, { value: "complete", label: "Both fighters picked" }, { value: "open", label: "Open slots" }]} />
           </div>
         </OptionsSheet>
-      </PageToolbar>
+      </header>
       <section className="flex w-full flex-col gap-3 lg:flex-row lg:items-start lg:gap-4">
         {cards.length ? <SavedCards cards={cards} open={open} draft={taken.length > 0} onOpen={openCard} onNew={startNew} onRemove={setRemoving} /> : null}
         <div className="min-w-0 flex-1">
@@ -431,18 +424,18 @@ function Side({ fighter, align = "left" }: { fighter: MatchFighter; align?: "lef
   const body = (
     <>
       <Avatar src={fighter.photo_url} name={fighter.name} size="xs" />
-      <span className={`min-w-0 ${right ? "text-right" : responsive ? "@min-[420px]:text-right" : ""}`}>
-        <span className={`flex min-w-0 items-center gap-1 ${right ? "flex-row-reverse" : responsive ? "@min-[420px]:flex-row-reverse" : ""}`}>
+      <span className={`min-w-0 ${right ? "text-right" : responsive ? "@min-[360px]:text-right" : ""}`}>
+        <span className={`flex min-w-0 items-center gap-1 ${right ? "flex-row-reverse" : responsive ? "@min-[360px]:flex-row-reverse" : ""}`}>
           {rank ? <span className="shrink-0 text-[11px] font-semibold tabular-nums text-zinc-400">{rank}</span> : null}
           <span className="truncate text-[13px] font-medium text-zinc-900">{fighter.name}</span>
         </span>
-        <span className={`flex items-center gap-1 text-[11px] tabular-nums text-zinc-500 ${right ? "flex-row-reverse" : responsive ? "@min-[420px]:flex-row-reverse" : ""}`}>
+        <span className={`flex items-center gap-1 text-[11px] tabular-nums text-zinc-500 ${right ? "flex-row-reverse" : responsive ? "@min-[360px]:flex-row-reverse" : ""}`}>
           {fighter.record}<Streak streak={fighter.streak} />
         </span>
       </span>
     </>
   );
-  const className = `flex min-w-0 flex-1 items-center gap-2 ${right ? "flex-row-reverse" : responsive ? "@min-[420px]:flex-row-reverse" : ""}`;
+  const className = `flex min-w-0 flex-1 items-center gap-2 ${right ? "flex-row-reverse" : responsive ? "@min-[360px]:flex-row-reverse" : ""}`;
   return fighter.id ? <Link to={`/fighters/${fighter.id}`} title={fighter.name} className={`${className} rounded-lg hover:opacity-80`}>{body}</Link> : <span className={className}>{body}</span>;
 }
 
@@ -450,8 +443,8 @@ function Side({ fighter, align = "left" }: { fighter: MatchFighter; align?: "lef
 // Panels
 
 function PanelHeader({ title, children }: { title: ReactNode; children?: ReactNode }) {
-  return <div className="border-b border-zinc-200 px-3 py-2">
-    <h2 className="text-sm font-semibold text-zinc-900">{title}</h2>
+  return <div className="border-b border-zinc-200 py-2">
+    <h2 className="text-[11px] font-bold uppercase tracking-[0.06em] text-zinc-900">{title}</h2>
     {children}
   </div>;
 }
@@ -471,22 +464,22 @@ function FightTag({ fight }: { fight: Division["fights"][number] }) {
 
 function DivisionPanel({ entry }: { entry: Division }) {
   return (
-    <section className={`${PANEL} @container min-w-0 flex-col overflow-hidden flex`}>
+    <section className="@container min-w-0">
       <PanelHeader title={entry.division} />
-      <ul className="grid flex-1 auto-rows-fr">
+      <ul>
         {entry.fights.map((fight) => (
-          <li key={`${fight.a.id}-${fight.b.id}`} className="flex min-w-0 flex-col justify-center gap-1 border-b border-zinc-100 px-3 py-2 last:border-0">
-            <div className="flex flex-col gap-1 @min-[420px]:flex-row @min-[420px]:items-center @min-[420px]:gap-2">
+          <li key={`${fight.a.id}-${fight.b.id}`} className="flex min-w-0 flex-col gap-0.5 border-t border-zinc-100 py-1.5 first:border-t-0 not-dark:border-zinc-200">
+            <div className="flex flex-col gap-1 @min-[360px]:flex-row @min-[360px]:items-center @min-[360px]:gap-2">
               <Side fighter={fight.a} />
               {/* A wide row carries the fight's tag over the "vs"; a narrow one beside its reason. */}
-              <span className="hidden shrink-0 flex-col items-center gap-1 @min-[420px]:flex">
+              <span className="hidden shrink-0 flex-col items-center gap-1 @min-[360px]:flex">
                 <FightTag fight={fight} />
                 <span className="text-[10px] uppercase text-zinc-400">vs</span>
               </span>
               <Side fighter={fight.b} align="responsive" />
             </div>
             <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-zinc-500">
-              <span className="contents @min-[420px]:hidden"><FightTag fight={fight} /></span>
+              <span className="contents @min-[360px]:hidden"><FightTag fight={fight} /></span>
               {fight.event
                 ? <Link to={`/events/${fight.event.id}`} title={`${fight.event.name} · ${formatDate(fight.event.date)}`} className="truncate hover:text-zinc-900">{fight.event.name} · {formatDate(fight.event.date)}</Link>
                 : <span className="truncate" title={fight.reason}>{fight.reason}</span>}
@@ -494,7 +487,7 @@ function DivisionPanel({ entry }: { entry: Division }) {
           </li>
         ))}
         {entry.idle.map(({ fighter, reason }) => (
-          <li key={fighter.id} className="flex flex-col justify-center gap-1 border-b border-zinc-100 px-3 py-2 last:border-0">
+          <li key={fighter.id} className="flex flex-col gap-0.5 border-t border-zinc-100 py-1.5 first:border-t-0 not-dark:border-zinc-200">
             <Side fighter={fighter} />
             <p className="text-[11px] leading-4 text-zinc-500">{reason}</p>
           </li>
@@ -516,7 +509,7 @@ type RecentEvent = MatchmakingData["recent_events"][number];
 
 function EventPanel({ event }: { event: RecentEvent }) {
   return (
-    <section className={`${PANEL} @container min-w-0 flex-col overflow-hidden flex`}>
+    <section className="@container min-w-0">
       <PanelHeader title={<Link to={`/events/${event.id}`} className="hover:underline">{event.name}</Link>}>
         <p className="text-[11px] text-zinc-500">
           {formatDate(event.date)}<Link to={`/events/${event.id}`} className="hover:text-zinc-900 md:hidden"> · Full card</Link>
@@ -524,31 +517,31 @@ function EventPanel({ event }: { event: RecentEvent }) {
       </PanelHeader>
       <ul>
         {event.bouts.map((bout) => (
-          <li key={bout.fight_id} className="border-b border-zinc-100 px-3 py-3 last:border-0">
-            <p className="mb-2 text-[11px] text-zinc-400">
+          <li key={bout.fight_id} className="border-t border-zinc-100 py-2 first:border-t-0 not-dark:border-zinc-200">
+            <p className="mb-1 text-[11px] text-zinc-400">
               {bout.division}{bout.title ? " · title fight" : ""}{bout.method ? ` · ${bout.method}` : ""}
             </p>
-            <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col gap-1.5">
               {bout.sides.map((side) => {
                 const [letter, word, tone] = side.outcome ? OUTCOME[side.outcome] : ["–", "No result", "bg-zinc-100 text-zinc-500"];
                 const tag = side.next.kind === "suggested" || side.next.kind === "none" ? null : NEXT_TAG[side.next.kind];
                 return (
-                  <div key={side.fighter.id} className="grid grid-cols-1 gap-1.5 @min-[560px]:grid-cols-[minmax(0,1fr)_1rem_minmax(0,1.3fr)] @min-[560px]:items-start @min-[560px]:gap-4">
+                  <div key={side.fighter.id} className="grid grid-cols-1 gap-x-2 gap-y-0.5 @min-[360px]:grid-cols-[minmax(0,1fr)_0.75rem_minmax(0,1fr)] @min-[360px]:items-center">
                     <div className="flex min-w-0 items-center gap-2">
                       <span title={word} className={`grid h-5 min-w-5 shrink-0 place-items-center rounded px-1 text-[10px] font-bold ${tone}`}>
                         {letter}<span className="sr-only"> {word}</span>
                       </span>
                       <Side fighter={side.fighter} />
                     </div>
-                    <span className="hidden pt-1 text-center text-zinc-300 @min-[560px]:block" aria-hidden="true">→</span>
-                    <div className="min-w-0 pl-7 @min-[560px]:pl-0">
-                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 @min-[560px]:hidden">Next</p>
+                    <span className="hidden text-center text-zinc-400 @min-[360px]:block" aria-hidden="true">→</span>
+                    <div className="min-w-0 pl-7 @min-[360px]:pl-0">
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 @min-[360px]:hidden">Next</p>
                       {side.next.opponent ? <Side fighter={side.next.opponent} /> : null}
-                      <p className={`flex min-w-0 items-start gap-1.5 text-[11px] leading-4 text-zinc-500 ${side.next.opponent ? "mt-1 @min-[560px]:pl-9" : "@min-[560px]:pt-1"}`}>
-                        {tag ? <span className={`shrink-0 rounded px-1.5 text-[10px] font-semibold ${tag[1]}`}>{tag[0]}</span> : null}
-                        <span className="min-w-0">{side.next.reason}</span>
-                      </p>
                     </div>
+                    <p className="col-span-full flex min-w-0 items-start gap-1.5 pl-7 text-[11px] leading-4 text-zinc-500">
+                      {tag ? <span className={`shrink-0 rounded px-1.5 text-[10px] font-semibold ${tag[1]}`}>{tag[0]}</span> : null}
+                      <span className="min-w-0">{side.next.reason}</span>
+                    </p>
                   </div>
                 );
               })}
@@ -594,7 +587,7 @@ function Suggestions({ tab, data, error, retry, navigation }: { tab: Tab; data: 
   })).filter((event) => event.bouts.length);
   const count = Number(division !== "all") + (top ? Number(kind !== "all") + Number(!idle) : Number(card !== "all") + Number(outcome !== "all") + Number(nextKind !== "all") + Number(titlesOnly));
   return <>
-    <PageToolbar>
+    <header className="flex flex-wrap items-center gap-2 pb-1 lg:gap-3">
       {navigation}
       {top ? <div className={segmentedGroup} role="group" aria-label="Divisions shown">
         {(["men", "women", "all"] as const).map((value) => <button key={value} type="button" aria-pressed={gender === value}
@@ -619,11 +612,11 @@ function Suggestions({ tab, data, error, retry, navigation }: { tab: Tab; data: 
           </div>
         </OptionsSheet>
       </div>
-    </PageToolbar>
+    </header>
     {error && !data ? <RequestNotice onRetry={retry}>Couldn’t load the matchups.</RequestNotice> : !data ? <PageState>Working out matchups…</PageState> : top ?
-      top15.length ? <div className="grid grid-cols-1 gap-2 md:grid-cols-2 2xl:grid-cols-3">{top15.map((entry) => <DivisionPanel key={entry.division} entry={entry} />)}</div>
+      top15.length ? <div className="grid grid-cols-1 items-start gap-x-6 gap-y-4 md:grid-cols-2 2xl:grid-cols-3">{top15.map((entry) => <DivisionPanel key={entry.division} entry={entry} />)}</div>
         : <p className="py-8 text-center text-sm text-zinc-500">No matchups match these filters.</p>
-      : events.length ? <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">{events.map((event) => <EventPanel key={event.id} event={event} />)}</div>
+      : events.length ? <div className="grid grid-cols-1 items-start gap-x-6 gap-y-4 lg:grid-cols-2">{events.map((event) => <EventPanel key={event.id} event={event} />)}</div>
         : <p className="py-8 text-center text-sm text-zinc-500">{data.recent_events.length ? "No fighters match these filters." : "No completed card yet."}</p>}
   </>;
 }
@@ -640,7 +633,7 @@ export default function MatchmakingPage() {
       className={`${segmentedOption} ${tab === option.key ? segmentedSelected : segmentedIdle}`}>{option.label}</button>)}
   </div>;
   return <div ref={scroll} className={PAGE}>
-    <div className={FULL_PAGE_BODY}>
+    <div className="flex w-full flex-col gap-3 px-4 pb-16 pt-4 sm:px-6 lg:px-8">
       <h1 className="sr-only">Matchmaking</h1>
       {tab === "card" ? accountsEnabled ? <AccountCardBuilder navigation={navigation} /> : <CardBuilder navigation={navigation} account={null} />
         : <Suggestions key={tab} navigation={navigation} tab={tab} data={data} error={error} retry={retry} />}
