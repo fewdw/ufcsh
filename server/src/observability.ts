@@ -7,6 +7,7 @@ export function pageRouteGroup(pathname: string): string | null {
   if (/^\/profiles\/[^/]+$/.test(pathname)) return "page_profile";
   if (pathname === "/rankings") return "page_rankings";
   if (pathname === "/stats") return "page_stats";
+  if (pathname === "/charts") return "page_charts";
   if (/^\/judges\/[^/]+$/.test(pathname)) return "page_judge";
   if (/^\/referees\/[^/]+$/.test(pathname)) return "page_referee";
   if (pathname === "/officials") return "page_officials";
@@ -40,6 +41,7 @@ export function routeGroup(pathname: string): string {
   if (pathname === "/api/pageview") return "pageview_beacon";
   if (pathname.startsWith("/api/previews/")) return "previews";
   if (pathname === "/api/stats") return "stats";
+  if (pathname === "/api/charts") return "charts";
   if (/^\/api\/fighters\/[a-f0-9]{16}\/stats$/i.test(pathname)) return "fighter_stats";
   if (pathname === "/api/officials" || /^\/api\/(judges|referees)\//.test(pathname)) return "officials";
   if (pathname === "/api/venues" || pathname.startsWith("/api/venues/")) return "venues";

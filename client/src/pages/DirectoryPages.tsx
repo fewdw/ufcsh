@@ -8,7 +8,7 @@ import { PAGE, FULL_PAGE_BODY } from "../research";
 import PageToolbar, { FilterSelect, ToolbarSearch } from "../components/PageToolbar";
 import OptionsSheet, { SheetField, SwitchRow } from "../components/OptionsSheet";
 import { PANEL } from "../components/chartTokens";
-import BrowseTabs from "../components/BrowseTabs";
+import { BrowseTabs } from "../components/SectionTabs";
 import { useSeo } from "../seo";
 import RequestNotice from "../components/RequestNotice";
 import { PageState } from "../components/ResearchKit";

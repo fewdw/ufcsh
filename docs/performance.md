@@ -209,3 +209,12 @@ On the dev archive, linked opponent results and scheduled opponent IDs add
 with the same response without those fields. The response includes only
 currently ranked opponents. Hover highlighting reads that response in memory
 and introduces no per-hover data request.
+
+## Charts tab (2026-09-30)
+
+`/api/charts` is one pass over the shared fight index: 25 ms for a new
+division and year filter on the dev archive (8,909 bouts), then served from
+memory (per index version) and the response cache. The default answer is
+16,269 bytes of JSON, 4,510 with gzip, and is warmed at start-up with the other
+lists. The page chunk is 29.6 kB (9.5 kB gzip) and draws its own SVG, so no
+chart library is loaded.

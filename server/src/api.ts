@@ -43,6 +43,7 @@ import { VersionCache } from "./version-cache.ts";
 import { fuzzyScore, fuzzyTarget, splitMatchup, type FuzzyTarget } from "./fuzzy.ts";
 import type { RankingType } from "./scrape/ufccom.ts";
 import { getStats } from "./stats.ts";
+import { getStatsCharts } from "./stats-charts.ts";
 import { titleNarratives } from "./titles.ts";
 import { fighterBoard, fighterRecords } from "./records.ts";
 import { ufcFightExistsSql, hasUfcFight, recordText, currentRecord, cachedPhotoUrl, cachedFullPhotoUrl, photoVersion } from "./fighter-identity.ts";
@@ -1959,6 +1960,7 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   if (p.startsWith("/api/previews/")) return getFighterPreview(id) ?? undefined;
   if (p === "/api/rankings") return { updated_at: syncedAt("rankings_synced_at"), divisions: getRankings(rankingType) };
   if (p === "/api/stats") return getStats(url.searchParams);
+  if (p === "/api/charts") return getStatsCharts(url.searchParams);
   if (p === "/api/roster") return rosterView();
   if (p === "/api/matchmaking") return matchmaking();
   if (p === "/api/news") return newsView(url.searchParams);
@@ -2124,7 +2126,7 @@ export function startApi(port: number): http.Server {
     if (queryPool && !queryPool.ready) return;
     clearInterval(warmLists);
     if (!queryPool) return;
-    for (const path of ["/api/events", "/api/live", "/api/stats", "/api/rankings?ranking=media", "/api/rankings?ranking=meta",
+    for (const path of ["/api/events", "/api/live", "/api/stats", "/api/charts", "/api/rankings?ranking=media", "/api/rankings?ranking=meta",
       "/api/officials", "/api/venues", "/api/locations", "/api/matchmaking", "/api/news"]) {
       void publicAnswer(new URL(path, "http://localhost")).catch(() => {});
     }

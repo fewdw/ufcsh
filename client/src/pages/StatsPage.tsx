@@ -7,6 +7,7 @@ import type { StatChip, StatsDashboard, StatsLeader } from "../api";
 import Avatar from "../components/Avatar";
 import FighterSearch, { type PickedFighter } from "../components/FighterSearch";
 import RequestNotice from "../components/RequestNotice";
+import { StatsTabs } from "../components/SectionTabs";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { formatValue, PANEL } from "../components/chartTokens";
 import { useSeo } from "../seo";
@@ -935,60 +936,63 @@ export default function StatsPage() {
     <div ref={pageScroll} className="h-full overflow-y-auto">
       <main className="mx-auto max-w-[100rem] p-2 pb-8 sm:p-3">
         <section className={`${shell} relative z-30 mb-2 px-2.5 py-2 sm:mb-3 sm:px-3`}>
-          <div className="flex items-center gap-2">
-            <div className="min-w-0 flex-1 sm:max-w-80">
-              <FighterSearch
-                selected={selectedFighters}
-                showSelected={false}
-                emptyPlaceholder="Compare fighters…"
-                onChange={(fighters) => {
-                  setSelectedFighters(fighters);
-                  if (fighters.length) setDivision("all");
-                }}
-              />
-            </div>
-            <div className="flex shrink-0 items-center gap-1.5 sm:ml-auto sm:gap-2">
-              <span className={`text-[10px] font-medium text-zinc-400 max-sm:sr-only ${loading ? "visible" : "invisible"}`} role="status" aria-hidden={!loading}>Updating…</span>
-              <select
-                aria-label="Division"
-                value={division}
-                onChange={(event) => pickDivision(event.target.value)}
-                className="hidden h-8 max-w-44 rounded-full border border-zinc-200 bg-white pl-3 pr-7 text-xs font-medium text-zinc-700 outline-none transition hover:border-zinc-300 hover:bg-zinc-50 focus:border-zinc-400 sm:block"
-              >
-                <option value="all">All divisions</option>
-                {dashboard.divisions.map((name) => <option key={name} value={name}>{name}</option>)}
-              </select>
-              <FiltersMenu
-                years={dashboard.years}
-                divisions={dashboard.divisions}
-                settings={settings}
-                update={update}
-                includeWomen={includeWomen}
-                setIncludeWomen={setIncludeWomen}
-                includeInactiveFighters={includeInactiveFighters}
-                setIncludeInactiveFighters={setIncludeInactiveFighters}
-                showMoreInfo={showMoreInfo}
-                setShowMoreInfo={setShowMoreInfo}
-                keepFullLists={keepFullLists}
-                setKeepFullLists={setKeepFullLists}
-                division={division}
-                setDivision={pickDivision}
-                count={active.length}
-                onReset={reset}
-              />
-              <button
-                type="button"
-                onClick={reset}
-                aria-label="Reset all statistics filters"
-                title="Reset all filters"
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
-              >
-                <RotateCcw
-                  className="h-3.5 w-3.5 transition-transform duration-500 ease-out"
-                  style={{ transform: `rotate(${-resetTurns * 360}deg)` }}
-                  aria-hidden="true"
+          <div className="flex flex-wrap items-center gap-2 lg:gap-3">
+            <StatsTabs />
+            <div className="flex min-w-0 flex-1 basis-full items-center gap-2 sm:basis-auto">
+              <div className="min-w-0 flex-1 sm:max-w-80">
+                <FighterSearch
+                  selected={selectedFighters}
+                  showSelected={false}
+                  emptyPlaceholder="Compare fighters…"
+                  onChange={(fighters) => {
+                    setSelectedFighters(fighters);
+                    if (fighters.length) setDivision("all");
+                  }}
                 />
-              </button>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5 sm:ml-auto sm:gap-2">
+                <span className={`text-[10px] font-medium text-zinc-400 max-sm:sr-only ${loading ? "visible" : "invisible"}`} role="status" aria-hidden={!loading}>Updating…</span>
+                <select
+                  aria-label="Division"
+                  value={division}
+                  onChange={(event) => pickDivision(event.target.value)}
+                  className="hidden h-8 max-w-44 rounded-full border border-zinc-200 bg-white pl-3 pr-7 text-xs font-medium text-zinc-700 outline-none transition hover:border-zinc-300 hover:bg-zinc-50 focus:border-zinc-400 sm:block"
+                >
+                  <option value="all">All divisions</option>
+                  {dashboard.divisions.map((name) => <option key={name} value={name}>{name}</option>)}
+                </select>
+                <FiltersMenu
+                  years={dashboard.years}
+                  divisions={dashboard.divisions}
+                  settings={settings}
+                  update={update}
+                  includeWomen={includeWomen}
+                  setIncludeWomen={setIncludeWomen}
+                  includeInactiveFighters={includeInactiveFighters}
+                  setIncludeInactiveFighters={setIncludeInactiveFighters}
+                  showMoreInfo={showMoreInfo}
+                  setShowMoreInfo={setShowMoreInfo}
+                  keepFullLists={keepFullLists}
+                  setKeepFullLists={setKeepFullLists}
+                  division={division}
+                  setDivision={pickDivision}
+                  count={active.length}
+                  onReset={reset}
+                />
+                <button
+                  type="button"
+                  onClick={reset}
+                  aria-label="Reset all statistics filters"
+                  title="Reset all filters"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+                >
+                  <RotateCcw
+                    className="h-3.5 w-3.5 transition-transform duration-500 ease-out"
+                    style={{ transform: `rotate(${-resetTurns * 360}deg)` }}
+                    aria-hidden="true"
+                  />
+                </button>
+              </div>
             </div>
           </div>
           {selectedFighters.length || active.length ? (

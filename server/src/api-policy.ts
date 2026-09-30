@@ -2,7 +2,7 @@ import { isIP } from "node:net";
 import type { IncomingMessage } from "node:http";
 
 const listRoutes = new Set([
-  "/api/events", "/api/live", "/api/rankings", "/api/stats", "/api/search",
+  "/api/events", "/api/live", "/api/rankings", "/api/stats", "/api/charts", "/api/search",
   "/api/officials", "/api/venues", "/api/locations", "/api/roster", "/api/matchmaking", "/api/news",
 ]);
 export function publicApi(path: string): boolean {
@@ -13,7 +13,7 @@ export function publicApi(path: string): boolean {
 
 /** Lists that change a few times a day at most: a reader is always answered
  *  from memory, and the first one past expiry triggers the rebuild. */
-const slowRoutes = new Set(["/api/rankings", "/api/stats"]);
+const slowRoutes = new Set(["/api/rankings", "/api/stats", "/api/charts"]);
 
 /** How long past its lifetime a copy is still served while a fresh one is
  *  built behind it. A reader is answered from memory unless nobody has asked

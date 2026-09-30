@@ -19,6 +19,7 @@ export const pages = {
   fighter: loader(() => import("./pages/FighterPage")),
   rankings: loader(() => import("./pages/RankingsPage")),
   stats: loader(() => import("./pages/StatsPage")),
+  charts: loader(() => import("./pages/ChartsPage")),
   admin: loader(() => import("./pages/AdminPage")),
   profile: loader(() => import("./pages/ProfilePage")),
   auth: loader(() => import("./pages/AuthPage")),
@@ -39,6 +40,7 @@ export function pageFor(pathname: string): PageLoader | null {
   if (pathname.startsWith("/fighters/")) return pages.fighter;
   if (pathname === "/rankings") return pages.rankings;
   if (pathname === "/stats") return pages.stats;
+  if (pathname === "/charts") return pages.charts;
   if (pathname.startsWith("/profiles/")) return pages.profile;
   if (pathname.startsWith("/judges/")) return pages.judge;
   if (pathname.startsWith("/referees/")) return pages.referee;

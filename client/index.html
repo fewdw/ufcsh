@@ -24,6 +24,7 @@
         else if ((m = /^\/fights\/([a-f0-9]{16})$/.exec(path))) urls.push("/api/events", ranked("/api/fights/" + m[1]));
         else if ((m = /^\/fighters\/([a-f0-9]{16})$/.exec(path))) urls.push(ranked("/api/fighters/" + m[1]), "/api/fighters/" + m[1] + "/stats?scope=ufc&minBouts=0");
         else if (path === "/rankings") urls.push(ranked("/api/rankings"));
+        else if (path === "/charts" && !location.search) urls.push("/api/charts");
         else if (path === "/officials" || path === "/venues" || path === "/locations") urls.push("/api" + path);
         else if (!location.search && (m = /^\/(judges|referees|venues|locations)\/([a-z0-9-]{1,80})$/.exec(path))) urls.push("/api/" + m[1] + "/" + m[2]);
         var responses = {};

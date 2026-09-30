@@ -23,6 +23,8 @@
 
   --color-plot-track: #f4f4f5;
   --color-plot-axis: #e4e4e7;
+  /* The panel behind a chart: the 2px gap between neighbouring fills. */
+  --color-plot-surface: #ffffff;
 
   /* Championship bouts. Gold for the undisputed belt, steel for the interim
      one — both clear 4.5:1 on white (4.9:1 and 7.6:1). The label also spells
@@ -167,6 +169,7 @@ select:not([multiple]):not([size]) {
   --color-f2-soft: #450a0a;
   --color-plot-track: #27272a;
   --color-plot-axis: #3f3f46;
+  --color-plot-surface: #18181b;
   --color-belt: #fbbf24;
   --color-belt-interim: #cbd5e1;
   /* The ordered round ramp runs the other way on a dark surface so its steps

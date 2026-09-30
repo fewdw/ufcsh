@@ -14,6 +14,7 @@ client (`client/`) renders every page.
 | Fighter identity, records, photo URLs | `fighter-identity.ts` |
 | In-memory analytics index | `fight-index.ts` (every completed bout, state entering it) |
 | Leaderboards | `stats.ts` (fighter cards), `stats-fights.ts` (Fights card: bouts, judges, referees) |
+| Charts (how fights end, edges, odds, pace) | `stats-charts.ts` |
 | Matchmaking (title fights, ranked pairings, next opponents after recent cards) | `matchmaking.ts` |
 | News (outlets, relevance, fighter/event tags, story grouping, newest first, `?fighter=` for one fighter) | `news.ts`; feeds read in `scrape/news.ts` (`NEWS_FEEDS`) |
 | News read by Gemini (off by default; enabled in Admin → Health; `GEMINI_API_KEY`) | `news-ai.ts`, run from the API process every 10 minutes |
@@ -35,7 +36,7 @@ copy of the local archive (`DATA_DIR`).
 | Area | Files |
 | --- | --- |
 | Shell, routes, header | `App.tsx`, `main.tsx` |
-| More menu, one column (Stats, Matchmaking, Browse, News, Graphic); Browse tabs Roster, Officials, Venues, Locations | `components/MoreNav.tsx`, `components/BrowseTabs.tsx`; page `GraphicPage.tsx` |
+| More menu, one column (Stats, Matchmaking, Browse, News, Graphic); Stats tabs Leaderboards, Charts; Browse tabs Roster, Officials, Venues, Locations | `components/MoreNav.tsx`, `components/SectionTabs.tsx`; page `GraphicPage.tsx` |
 | Admin link in the header (admins only) | `App.tsx` (`AdminLink`) |
 | Matchmaking page (Top 15, recent cards, card builder) | `pages/MatchmakingPage.tsx` |
 | News page (newest first, Settings: summaries and outlet toggles); a fighter's News tab | `pages/NewsPage.tsx`, `components/NewsRow.tsx`; `FighterNews` in `pages/FighterPage.tsx` |
@@ -45,6 +46,7 @@ copy of the local archive (`DATA_DIR`).
 | Officials, venues and locations | `pages/JudgePage.tsx`, `pages/RefereePage.tsx`, `pages/VenuePage.tsx` (venue and location pages), `pages/DirectoryPages.tsx`, shared pieces in `components/ResearchKit.tsx` and `research.ts` |
 | Typed list filters (spacing, word order and typos forgiven), Roster "new since last visit" | `search.ts` (server twin: `searchList` in `server/src/fuzzy.ts`), `rosterSeen.ts` |
 | Graphics builder | `graphicsLauncher.tsx` (open from anywhere), `components/GraphicsBuilder.tsx` (dialog), `graphics/presets.ts` (the starting points), `graphics/build.ts` (data and picks → graphic), `graphics/render.ts` (templates), `graphics/draw.ts` (themes, texture, type and shared marks), `graphics/fonts.ts` (Barlow Condensed, self-hosted in `public/fonts`), `graphics/export.ts` |
+| Stats charts (Charts tab) | `pages/ChartsPage.tsx` (the ten charts), `components/StatCharts.tsx` (SVG line, area and bubble plots, tooltip) |
 | Keyboard shortcuts | `shortcuts.tsx` |
 | Roster changes | `pages/RosterPage.tsx` |
 | About / support / changelog | `pages/InfoPage.tsx` |

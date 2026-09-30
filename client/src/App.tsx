@@ -34,6 +34,7 @@ const EventsPage = page(pages.events, module => module.default);
 const FighterPage = page(pages.fighter, module => module.default);
 const RankingsPage = page(pages.rankings, module => module.default);
 const StatsPage = page(pages.stats, module => module.default);
+const ChartsPage = page(pages.charts, module => module.default);
 const AdminPage = page(pages.admin, module => module.default);
 const ProfilePage = page(pages.profile, module => module.default);
 const AuthPage = page(pages.auth, module => module.default);
@@ -302,6 +303,7 @@ export default function App() {
           <Route path="/fighters/:fighterId" element={<FighterPage />} />
           <Route path="/rankings" element={<RankingsPage />} />
           <Route path="/stats" element={<StatsPage />} />
+          <Route path="/charts" element={<ChartsPage />} />
           <Route path="/officials" element={<OfficialsPage />} />
           <Route path="/venues" element={<VenuesPage />} />
           <Route path="/locations" element={<LocationsPage />} />

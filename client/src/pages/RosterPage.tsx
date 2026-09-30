@@ -7,7 +7,7 @@ import { PAGE, FULL_PAGE_BODY } from "../research";
 import PageToolbar, { FilterSelect, ToolbarSearch } from "../components/PageToolbar";
 import OptionsSheet, { SwitchRow } from "../components/OptionsSheet";
 import { searchList } from "../search";
-import BrowseTabs from "../components/BrowseTabs";
+import { BrowseTabs } from "../components/SectionTabs";
 import { markRosterSeen, moveKey, unseenMoves } from "../rosterSeen";
 import { useSeo } from "../seo";
 import Avatar from "../components/Avatar";

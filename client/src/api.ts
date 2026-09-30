@@ -519,6 +519,28 @@ export type FighterBoard = {
   unqualified: { key: string; label: string; category: string }[];
 };
 
+/** Counts behind a rate, so a chart can say how many bouts it rests on. */
+export type ChartTally = { key: string; label: string; wins: number; bouts: number };
+
+export type StatsCharts = {
+  divisions: string[];
+  years: number[];
+  division: string;
+  since: string;
+  bouts: number;
+  endings: { year: number; ko: number; sub: number; unanimous: number; split: number }[];
+  divisionEndings: { division: string; ko: number; sub: number; decision: number }[];
+  finishClock: { round: number; minute: number; reached: number; ko: number; sub: number }[];
+  odds: { predicted: number; wins: number; bouts: number }[];
+  edges: ChartTally[];
+  age: { age: number; bouts: number; wins: number; knockedOut: number }[];
+  gaps: { key: string; label: string; unit: string; steps: ChartTally[] }[];
+  streaks: ChartTally[];
+  layoffs: ChartTally[];
+  pace: { year: number; bouts: number; sigPerMinute: number; accuracy: number | null; takedownsPer15: number; control: number | null }[];
+  decisions: { all: ChartTally[]; split: ChartTally[] };
+};
+
 export type StatsDashboard = {
   division: string;
   divisions: string[];

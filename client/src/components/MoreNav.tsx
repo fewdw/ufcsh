@@ -7,7 +7,8 @@ type Group = { label: string; sections: Section[] };
 /** The pages behind More, in one column. */
 const GROUPS: Group[] = [
   { label: "More", sections: [
-    { href: "/stats", label: "Stats", paths: ["/stats"] },
+    // Leaderboards and Charts, tabbed by `StatsTabs`.
+    { href: "/stats", label: "Stats", paths: ["/stats", "/charts"] },
     { href: "/matchmaking", label: "Matchmaking", paths: ["/matchmaking"] },
     // Roster, Officials, Venues and Locations, tabbed by `BrowseTabs`.
     { href: "/roster", label: "Browse", paths: ["/roster", "/officials", "/judges", "/referees", "/venues", "/locations"] },
