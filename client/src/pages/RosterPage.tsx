@@ -115,7 +115,7 @@ export default function RosterPage() {
               </button>
             ))}
           </div>
-          <div className="ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+          <div className="ml-auto flex min-w-0 flex-1 basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
             <ToolbarSearch value={query} onChange={setQuery} label="Find a fighter" />
             <OptionsSheet label="Filters" count={Number(division !== "all") + Number(country !== "all") + Number(onlyNew) || undefined}
               onReset={() => { setQuery(""); setParams(list === "all" ? {} : { tab: list }, { replace: true }); }}>

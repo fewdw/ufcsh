@@ -601,7 +601,7 @@ function Suggestions({ tab, data, error, retry, navigation }: { tab: Tab; data: 
           onClick={() => setParams((current) => { const next = new URLSearchParams(current); next.delete("division"); if (value === "all") next.delete("gender"); else next.set("gender", value); return next; }, { replace: true })}
           className={`${segmentedOption} ${gender === value ? segmentedSelected : segmentedIdle}`}>{value === "men" ? "Men" : value === "women" ? "Women" : "All"}</button>)}
       </div> : null}
-      <div className="ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+      <div className="ml-auto flex min-w-0 flex-1 basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
         <ToolbarSearch value={query} onChange={setQuery} label="Find a fighter" />
         <OptionsSheet label="Filters" count={count || undefined} onReset={() => { setQuery(""); setParams(top ? {} : { tab: "last" }, { replace: true }); }}>
           <div className="space-y-3 p-4">

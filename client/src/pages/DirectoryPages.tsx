@@ -127,7 +127,7 @@ export function OfficialsPage() {
                 className={`${segmentedOption} ${kind === option ? segmentedSelected : segmentedIdle}`}>{option === "referees" ? "Referees" : "Judges"}</button>
             ))}
           </div>
-          <div className="ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+          <div className="ml-auto flex min-w-0 flex-1 basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
             <ToolbarSearch value={query} onChange={setQuery} label={`Find a ${kind === "referees" ? "referee" : "judge"}`} />
             <OptionsSheet label="Filters" count={Number(minimum !== "0") + Number(since !== "all") || undefined} onReset={() => { setQuery(""); judgeOrder.set({ sort: null, order: null, minimum: null, since: null }); }}>
               <div className="space-y-3 p-4">
@@ -197,7 +197,7 @@ export function VenuesPage() {
         <h1 className="sr-only">Venues</h1>
         <PageToolbar>
           <BrowseTabs />
-          <div className="ml-auto flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+          <div className="ml-auto flex min-w-0 flex-1 basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
             <ToolbarSearch value={query} onChange={setQuery} label="Find a venue, city or country" />
             <OptionsSheet label="Filters" count={Number(country !== "all") + Number(upcoming) || undefined} onReset={() => { setQuery(""); order.set({ sort: null, order: null, country: null, upcoming: null }); }}>
               <div className="space-y-3 p-4">
