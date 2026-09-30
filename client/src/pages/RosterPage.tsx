@@ -78,8 +78,7 @@ export default function RosterPage() {
   const [params, setParams] = useSearchParams();
   const list = params.get("tab") === "cut" ? "cut" : "signed";
   const scroll = useRouteScrollRestoration<HTMLDivElement>("roster", Boolean(data));
-  // What was new when the page opened keeps its dot for this visit; the
-  // sidebar's counts clear at once.
+  // What was new when the page opened keeps its dot for this visit.
   const [fresh, setFresh] = useState<ReadonlySet<string> | null>(null);
   useEffect(() => {
     if (!data) return;

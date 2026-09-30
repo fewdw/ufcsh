@@ -1,12 +1,11 @@
 import type { RosterMove, RosterMoves } from "./api";
 import { normalizeSearch } from "./format.ts";
 
-/** Which roster moves this browser has already been shown, so the More
- *  sidebar can count only what is new since Roster was last opened. The first
- *  time, everything on the list counts as seen: a first visit isn't news. */
+/** Which roster moves this browser has already been shown, so Roster can
+ *  mark only what is new since it was last opened. The first time,
+ *  everything on the list counts as seen: a first visit isn't news. */
 
 const KEY = "ufcsh:roster-seen:v1";
-const EVENT = "ufcsh:roster-seen";
 
 export type RosterKind = "signed" | "cut";
 
@@ -35,27 +34,10 @@ export function unseenMoves(data: RosterMoves): Set<string> {
   return seen ? new Set(everyKey(data).filter((key) => !seen.has(key))) : new Set();
 }
 
-/** Record the list as it stands if nothing has been recorded yet. */
-export function seedRosterSeen(data: RosterMoves): void {
-  if (!stored()) markRosterSeen(data);
-}
-
 export function markRosterSeen(data: RosterMoves): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(everyKey(data)));
-    window.dispatchEvent(new Event(EVENT));
   } catch {
-    // Private mode: the counts just never clear.
+    // Private mode: nothing is ever marked new.
   }
-}
-
-/** Called whenever the seen list changes, here or in another tab. */
-export function onRosterSeen(listener: () => void): () => void {
-  const fromStorage = (event: StorageEvent) => { if (event.key === KEY) listener(); };
-  window.addEventListener(EVENT, listener);
-  window.addEventListener("storage", fromStorage);
-  return () => {
-    window.removeEventListener(EVENT, listener);
-    window.removeEventListener("storage", fromStorage);
-  };
 }

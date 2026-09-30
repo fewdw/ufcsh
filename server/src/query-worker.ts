@@ -23,7 +23,7 @@ async function warm() {
   // and enough of them that the code for each kind of page is compiled.
   const recent = db.prepare(`SELECT f.id, f.f1_id, f.f2_id, f.event_id FROM fights f JOIN events e ON e.id = f.event_id
     WHERE e.date <= date('now', '+30 days') ORDER BY e.date DESC, f.ord DESC LIMIT 40`).all() as { id: string; f1_id: string; f2_id: string; event_id: string }[];
-  const urls = new Set(["/api/search?q=a", "/api/stats", "/api/events", "/api/live", "/api/rankings", "/api/labs", "/api/officials", "/api/venues", "/api/news"]);
+  const urls = new Set(["/api/search?q=a", "/api/stats", "/api/events", "/api/live", "/api/rankings", "/api/officials", "/api/venues", "/api/news"]);
   for (const fight of recent) {
     for (const ranking of ["media", "meta"]) {
       urls.add(`/api/events/${fight.event_id}?ranking=${ranking}`);

@@ -41,7 +41,6 @@ import { VersionCache } from "./version-cache.ts";
 import { fuzzyScore, fuzzyTarget, splitMatchup, type FuzzyTarget } from "./fuzzy.ts";
 import type { RankingType } from "./scrape/ufccom.ts";
 import { getStats } from "./stats.ts";
-import { getLabs, getLabsBouts } from "./labs.ts";
 import { titleNarratives } from "./titles.ts";
 import { fighterBoard, fighterRecords } from "./records.ts";
 import { ufcFightExistsSql, hasUfcFight, recordText, currentRecord, cachedPhotoUrl, cachedFullPhotoUrl, photoVersion } from "./fighter-identity.ts";
@@ -1947,8 +1946,6 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   if (p.startsWith("/api/previews/")) return getFighterPreview(id) ?? undefined;
   if (p === "/api/rankings") return { updated_at: syncedAt("rankings_synced_at"), divisions: getRankings(rankingType) };
   if (p === "/api/stats") return getStats(url.searchParams);
-  if (p === "/api/labs/bouts") return getLabsBouts(url.searchParams);
-  if (p === "/api/labs") return getLabs(url.searchParams);
   if (p === "/api/roster") return rosterView();
   if (p === "/api/matchmaking") return matchmaking();
   if (p === "/api/news") return newsView(url.searchParams);
@@ -2097,7 +2094,7 @@ export function startApi(port: number): http.Server {
     clearInterval(warmLists);
     if (!queryPool) return;
     for (const path of ["/api/events", "/api/live", "/api/stats", "/api/rankings?ranking=media", "/api/rankings?ranking=meta",
-      "/api/officials", "/api/venues", "/api/labs", "/api/matchmaking", "/api/news"]) {
+      "/api/officials", "/api/venues", "/api/matchmaking", "/api/news"]) {
       void publicAnswer(new URL(path, "http://localhost")).catch(() => {});
     }
   }, 1000);
@@ -2231,7 +2228,7 @@ export function startApi(port: number): http.Server {
       }
       if (stopping) return await sendJson(req, res, { error: "server is stopping" }, 503);
       const address = clientAddress(req);
-      const expensive = p === "/api/search" || p === "/api/stats" || p.startsWith("/api/labs");
+      const expensive = p === "/api/search" || p === "/api/stats";
       const imageRequest = p.startsWith("/api/images/");
       // The application's own files (scripts, styles, icons) are served from
       // memory and a page load asks for a couple of dozen of them, so they have

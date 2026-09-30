@@ -7,7 +7,6 @@ export function pageRouteGroup(pathname: string): string | null {
   if (/^\/profiles\/[^/]+$/.test(pathname)) return "page_profile";
   if (pathname === "/rankings") return "page_rankings";
   if (pathname === "/stats") return "page_stats";
-  if (pathname === "/combined-records") return "page_combined_records";
   if (/^\/judges\/[^/]+$/.test(pathname)) return "page_judge";
   if (/^\/referees\/[^/]+$/.test(pathname)) return "page_referee";
   if (pathname === "/officials") return "page_officials";
@@ -49,7 +48,6 @@ export function routeGroup(pathname: string): string {
   if (pathname === "/api/live") return "live";
   if (pathname === "/api/rankings") return "rankings";
   if (pathname === "/api/search") return "search";
-  if (pathname.startsWith("/api/labs")) return "labs";
   if (pathname === "/healthz" || pathname === "/readyz") return "health";
   if (pathname === "/api/status" || pathname === "/api/metrics") return "monitoring";
   if (pathname.startsWith("/api/")) return "api_other";

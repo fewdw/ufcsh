@@ -7,7 +7,7 @@ import LiveMatchup from "./components/LiveMatchup";
 import { segmentedIdle, segmentedSelected } from "./components/segmented";
 import { ChevronDown, Moon, Sun } from "lucide-react";
 import { accountsEnabled } from "./auth";
-import { inMore, MORE_HOME, MoreGroups, MoreLayout } from "./components/MoreNav";
+import { inMore, MORE_HOME, MoreGroups } from "./components/MoreNav";
 import { useSettings, withRanking } from "./settings";
 import { prefetch } from "./api";
 import { useLinkPrefetch, warmSections } from "./useLinkPrefetch";
@@ -33,7 +33,6 @@ const EventsPage = page(pages.events, module => module.default);
 const FighterPage = page(pages.fighter, module => module.default);
 const RankingsPage = page(pages.rankings, module => module.default);
 const StatsPage = page(pages.stats, module => module.default);
-const CombinedRecordsPage = page(pages.combinedRecords, module => module.default);
 const AdminPage = page(pages.admin, module => module.default);
 const ProfilePage = page(pages.profile, module => module.default);
 const AuthPage = page(pages.auth, module => module.default);
@@ -271,23 +270,18 @@ export default function App() {
           <Route path="/fights/:fightId" element={<EventsPage />} />
           <Route path="/fighters/:fighterId" element={<FighterPage />} />
           <Route path="/rankings" element={<RankingsPage />} />
-          <Route element={<MoreLayout />}>
-            <Route path="/stats" element={<StatsPage />} />
-            <Route path="/combined-records" element={<CombinedRecordsPage />} />
-            <Route path="/labs" element={<Navigate to="/combined-records" replace />} />
-            <Route path="/roster" element={<RosterPage />} />
-            <Route path="/favorites" element={null} />
-            <Route path="/officials" element={<OfficialsPage />} />
-            <Route path="/judges/:slug" element={<JudgePage />} />
-            <Route path="/referees/:slug" element={<RefereePage />} />
-            <Route path="/venues" element={<VenuesPage />} />
-            <Route path="/venues/:slug" element={<VenuePage />} />
-            <Route path="/matchmaking" element={<MatchmakingPage />} />
-            <Route path="/news" element={<NewsPage />} />
-            <Route path="/graphic" element={<GraphicPage />} />
-            <Route path="/admin" element={<AdminPage />} />
-            <Route path="/admin/bugs" element={<AdminPage />} />
-          </Route>
+          <Route path="/stats" element={<StatsPage />} />
+          <Route path="/roster" element={<RosterPage />} />
+          <Route path="/officials" element={<OfficialsPage />} />
+          <Route path="/judges/:slug" element={<JudgePage />} />
+          <Route path="/referees/:slug" element={<RefereePage />} />
+          <Route path="/venues" element={<VenuesPage />} />
+          <Route path="/venues/:slug" element={<VenuePage />} />
+          <Route path="/matchmaking" element={<MatchmakingPage />} />
+          <Route path="/news" element={<NewsPage />} />
+          <Route path="/graphic" element={<GraphicPage />} />
+          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/admin/bugs" element={<AdminPage />} />
           <Route path="/profiles/:handle" element={<ProfilePage />} />
           {/* Both moved into the profile. */}
           <Route path="/leaderboards" element={<Navigate to="/profiles/me?tab=leaderboards" replace />} />

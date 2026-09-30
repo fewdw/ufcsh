@@ -216,7 +216,7 @@ function pastMoneyline(): BugCheck {
     id: "odds-past-moneyline",
     group: "Odds",
     label: "Completed bouts without a closing line",
-    description: "Completed UFC bouts since 2008 with no price, which leaves them out of Market stats and the Labs odds filters. Late replacements often never got a line. The rest are usually a name mismatch on the fighter's BFO page.",
+    description: "Completed UFC bouts since 2008 with no price, which leaves them out of Market stats. Late replacements often never got a line. The rest are usually a name mismatch on the fighter's BFO page.",
     grade: recent([[30, "must"], [730, "minor"]]),
   }, rows.map((fight) => fightItem(fight, {
     facts: [["Last checked", ago(fight.fetched_at)], ...aliasFact(fight)],
@@ -867,7 +867,7 @@ function fighterGaps(active: Set<string>): BugCheck {
     id: "fighter-profile-gaps",
     group: "Fighters",
     label: "Active fighters with profile gaps",
-    description: "Fighters with a bout since the start of last year, or one booked, who are missing a photo, birth date (which drives age and Labs age filters), country, height, reach or stance.",
+    description: "Fighters with a bout since the start of last year, or one booked, who are missing a photo, birth date (which drives age), country, height, reach or stance.",
     grade: "minor",
   }, items);
 }

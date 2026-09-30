@@ -4,8 +4,6 @@
  * home. The hex values themselves live in index.css as CSS custom properties.
  */
 
-export const SERIES = ["var(--color-series-1)", "var(--color-series-2)", "var(--color-series-3)", "var(--color-series-4)"] as const;
-
 export type Format = "number" | "percent" | "decimal" | "signed" | "time" | "signedTime" | "currency" | "odds" | "years" | "age";
 
 export function formatDuration(value: number): string {

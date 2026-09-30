@@ -26,11 +26,6 @@ fresh in the background.
   Every statistic is reachable from exactly one menu entry, and a test asserts that no two entries produce the same ranking. Any fighter can be pinned into every card to see where they place. The five cards keep one fixed order and one width — three on top, two centred beneath them. Cards on the same row share their title, definition and control rows, so every list on a row starts on the same line whether a card takes one qualifier or five.
 
   Turning on **Show more info** makes every row also name the bouts behind its number: the champions faced, the run of opponents in a streak, the belts defended, the fights each knockdown or takedown came from with its own count, the prices taken as an underdog, the two ends of a career. Names are coloured by how the bout went, with the outcome spelled out on hover so colour never carries it alone.
-- **Combined records** (`/combined-records`): build a population of fighter-bouts from any combination of age, streak, layoff, experience, previous result, belt status, stance, reach, division, card position and closing odds, and read its combined record and the bouts behind it. Excluding a bout updates the study; restoring it is available even when all observations have been excluded.
-
-  Filters sit on two tabs: **Fighter Record** (the bout, betting, form,
-  profile and edges over the opponent) and an optional **Opponent** tab
-  (their age, experience, belt, stance, nationality and price).
 - **Full statistic rankings** on every fighter profile: every ranked reading
   (not only top-50 places), across the whole UFC or within one weight class
   counting only bouts fought there, grouped by category or best place first,
@@ -165,9 +160,6 @@ GET /api/fights/:id          full matchup: tale of the tape, totals, judges,
 GET /api/fighters/:id        bio, REC + UFC records, verified professional history
 GET /api/rankings            selected UFC ranking feed with activity status
 GET /api/stats?...           five leaderboards; every control is a query parameter
-GET /api/labs?...            one fighter-bout population: combined record, outcome
-                             mix, per-round output, yearly trend, breakdown by any
-                             dimension, its leaders, and the bouts behind it
 GET /api/search?q=...        fighters + events + fights ("x vs y" works) + officials + venues
 GET /api/fighters/:id/stats  every ranked statistic; ?scope=ufc|<division>&minBouts=
 GET /api/officials           every judge and referee
@@ -184,8 +176,8 @@ Both analytics endpoints read one in-memory index of every completed fight
 (`server/src/fight-index.ts`), rebuilt only when the underlying tables change.
 The index carries each fighter's state *entering* every bout — record, streaks,
 layoff, age, belt status, prior output — so a query costs one pass over the
-fights rather than per-fighter SQL. A full leaderboard or combined records request answers
-in well under a tenth of a second.
+fights rather than per-fighter SQL. A full leaderboard request answers in
+well under a tenth of a second.
 
 ## How the numbers are defined
 
@@ -193,9 +185,6 @@ The rules that decide what a figure means, in one place:
 
 - **Win rate** is wins over bouts with an official result. A draw sits in the
   denominator; a no contest is left out entirely.
-- **A combined records observation is a fighter-bout**, so one fight contributes up to two.
-  A population with no filters has equal wins and losses. Its win rate is
-  slightly below 50% when draws are present, because draws stay in the denominator.
 - **Every "entering" figure is as of that night**, reconstructed from earlier
   bouts, never a career total projected backwards. That includes the whole
   matchup profile: there is one source for a fighter's rates, computed here,
@@ -203,14 +192,9 @@ The rules that decide what a figure means, in one place:
 - **Accuracy and defence come from matched pairs.** A bout only contributes to
   a percentage when the source recorded both the landed count and the attempts,
   so the numerator and denominator always describe the same fights.
-- **Missing action data is unknown, never zero.** Combined records compute given/taken
-  rates from paired observations for each action, with its own timed sample.
-  Control shares in combined records, matchup profiles and profile records use only the
+- **Missing action data is unknown, never zero.** Control shares in matchup
+  profiles and profile records use only the
   elapsed time of bouts contributing recorded control. Sample sizes are displayed.
-- **Probability filters use unrounded prices.** Rounding is for display only;
-  decimal bounds constrain the underlying implied probability. Market calibration
-  displays margin-free implied probability alongside actual wins from the same
-  priced win/loss/draw sample. Draws return the stake; no contests are excluded.
 - **A title defense** counts only when the athlete entered as the recognized
   undisputed or interim champion of that division and won. The lineage is
   rebuilt from the division's complete belt sequence, so tournament and TUF
