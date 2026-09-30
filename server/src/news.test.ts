@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { db, getMeta } from "./db.ts";
 import { isUfcNews, nameIndex, newsToJudge, newsView, syncNews, type NewsStory } from "./news.ts";
-import { articleText, judgeNews } from "./news-ai.ts";
+import { articleText, judgeNews, setNewsAi } from "./news-ai.ts";
 import { NEWS_FEEDS, parseFeed, type FeedItem } from "./scrape/news.ts";
 
 function restore(rows: unknown[]) {
@@ -147,6 +147,46 @@ test("Gemini's reading drops what isn't news, folds a repeat into its story and 
     ]);
     assert.equal(newsToJudge().pending.length, 0);
     assert.equal(Number(getMeta("news_ai_tokens")) - tokens, 110);
+
+    // Switched off in the admin panel: nothing is sent, and the page is as the feeds built it.
+    setNewsAi(false);
+    db.prepare("UPDATE news SET ai_keep = NULL WHERE url = 'https://cagesidepress.com/later'").run();
+    await judgeNews();
+    assert.equal(asked.length, 1);
+    assert.deepEqual((newsView() as { latest: NewsStory[] }).latest.map((story) => [story.url, story.summary]), [
+      ["https://cagesidepress.com/later", ""], ["https://bloodyelbow.com/heavy", ""], ["https://sherdog.com/promo", ""], ["https://mmafighting.com/booked", ""],
+    ]);
+    setNewsAi(true);
+    await judgeNews();
+    assert.equal(asked.length, 2);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (key === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = key;
+    db.exec("DELETE FROM news");
+    restore(saved.rows);
+  }
+});
+
+test("news stands as the feeds built it when Gemini fails, and the stories wait for the next pass", async () => {
+  const saved = { rows: db.prepare("SELECT * FROM news").all() };
+  const realFetch = globalThis.fetch;
+  const key = process.env.GEMINI_API_KEY;
+  try {
+    db.exec("DELETE FROM news");
+    await syncNews(async (url) => url.includes("mmafighting") ? [{ url: "https://mmafighting.com/a", title: "UFC books a new main event for December", summary: "", categories: [], published: Date.now() - 3_600_000 }] : []);
+    process.env.GEMINI_API_KEY = "test";
+    for (const answer of [
+      () => Response.json({ error: { message: "Your prepayment credits are depleted." } }, { status: 402 }),
+      () => Response.json({ candidates: [{ content: { parts: [{ text: "not json" }] } }] }),
+      () => { throw new TypeError("fetch failed"); },
+    ]) {
+      globalThis.fetch = (async (input: string | URL | Request) => String(input).includes("generativelanguage") ? answer() : new Response("<p>x</p>")) as typeof fetch;
+      await judgeNews();
+      assert.ok(getMeta("news_ai_error"));
+      assert.deepEqual((newsView() as { latest: NewsStory[] }).latest.map((story) => story.url), ["https://mmafighting.com/a"]);
+      assert.equal(newsToJudge().pending.length, 1);
+    }
   } finally {
     globalThis.fetch = realFetch;
     if (key === undefined) delete process.env.GEMINI_API_KEY;

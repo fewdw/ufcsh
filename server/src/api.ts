@@ -58,7 +58,7 @@ import { judgeProfile, officialSlug, officialsDirectory, refereeProfile, searchO
 import { searchVenues, venueDirectory, venueOfEvent, venuePage } from "./venues.ts";
 import { matchmaking } from "./matchmaking.ts";
 import { newsView } from "./news.ts";
-import { startNewsReader } from "./news-ai.ts";
+import { newsAiStatus, setNewsAi, startNewsReader } from "./news-ai.ts";
 import { rosterMoveFighter, storedRosterMoves, ufcDepartures, ufcSignings } from "./roster-moves.ts";
 import type { RosterMove } from "./scrape/wikipedia.ts";
 
@@ -2047,6 +2047,7 @@ export function startApi(port: number): http.Server {
       : runBugAction(action, target),
     // Administrators may pause online repairs without disabling the report.
     canAct: () => process.env.DISABLE_REPAIRS !== "1",
+    newsAi: { status: newsAiStatus, set: setNewsAi },
     liveFights,
     currentBout: () => {
       const current = currentBout();

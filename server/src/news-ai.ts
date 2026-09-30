@@ -1,7 +1,7 @@
 import * as cheerio from "cheerio";
 import { db, getMeta, setMeta, touchMeta } from "./db.ts";
 import { fetchHtml } from "./http.ts";
-import { newsToJudge } from "./news.ts";
+import { newsAiOff, newsToJudge } from "./news.ts";
 import { ARTICLE_CHARS } from "./scrape/news.ts";
 import { log } from "./util.ts";
 
@@ -15,8 +15,10 @@ import { log } from "./util.ts";
  * one can be read: Google News links can't be followed from here).
  *
  * Cost: the cheapest model, Flex tier (half price; answers can take minutes),
- * no thinking, a short fixed answer. Nothing when GEMINI_API_KEY isn't set: the
- * page stands as the feeds built it.
+ * no thinking, a short fixed answer. Nothing when GEMINI_API_KEY isn't set or
+ * the admin panel has switched it off, and nothing lost when a request fails
+ * (no credit, a bad key, an outage): the page stands as the feeds built it, and
+ * the stories wait for the next pass.
  */
 
 const MODEL = "gemini-3.1-flash-lite";
@@ -162,7 +164,7 @@ export function startNewsReader(fromWorker?: () => Promise<ToJudge>): void {
  *  pass at a time. A failed batch ends the pass: it's tried again on the next. */
 export function judgeNews(): Promise<void> {
   const key = process.env.GEMINI_API_KEY;
-  if (!key) return Promise.resolve();
+  if (!key || newsAiOff()) return Promise.resolve();
   running ??= (async () => {
     try {
       for (let i = 0; i < BATCHES; i++) {
@@ -180,4 +182,21 @@ export function judgeNews(): Promise<void> {
     }
   })();
   return running;
+}
+
+/** The admin panel's view of Gemini, and its switch. */
+export function newsAiStatus() {
+  return {
+    on: !newsAiOff(),
+    configured: Boolean(process.env.GEMINI_API_KEY),
+    read_at: Number(getMeta("news_ai_at")) || null,
+    error: getMeta("news_ai_error") || null,
+    tokens: Number(getMeta("news_ai_tokens") ?? 0),
+  };
+}
+
+export function setNewsAi(on: boolean) {
+  setMeta("news_ai_off", on ? "0" : "1");
+  if (on) void judgeNews();
+  return newsAiStatus();
 }

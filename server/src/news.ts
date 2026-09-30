@@ -320,7 +320,8 @@ let reading: { version: string; names: NameIndex; items: Map<string, { row: Stor
 /** Every story kept, newest first, rebuilt once per read of the feeds. */
 function newsStories() {
   const index = fightIndex();
-  const key = `${getMeta("news_synced_at")}:${getMeta("news_ai_at")}:${index.version}`;
+  const aiOff = newsAiOff();
+  const key = `${getMeta("news_synced_at")}:${getMeta("news_ai_at")}:${aiOff}:${index.version}`;
   if (cached?.key === key) return cached.data;
   if (reading?.version !== index.version) reading = { version: index.version, names: nameIndex(), items: new Map() };
   const findEvent = eventFinder();
@@ -395,7 +396,7 @@ function newsStories() {
       judged: false,
     };
   });
-  const stories = judge(built, judgments);
+  const stories = aiOff ? built.sort((a, b) => b.published_at - a.published_at) : judge(built, judgments);
 
   const data = {
     updated_at: Number(getMeta("news_synced_at")) || null,
@@ -407,6 +408,12 @@ function newsStories() {
   };
   cached = { key, data };
   return data;
+}
+
+/** The admin panel's switch for Gemini: off, nothing is sent and the page
+ *  stands as the feeds built it, as if it had never read a story. */
+export function newsAiOff(): boolean {
+  return getMeta("news_ai_off") === "1";
 }
 
 /** Gemini's reading of each story (news-ai.ts): one that isn't news goes, one

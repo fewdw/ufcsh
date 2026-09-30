@@ -10,7 +10,7 @@ import { mergedByHand, officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
 import { rosterMoveFighter, storedRosterMoves, syncRosterMoves, syncUfcSignings } from "./roster-moves.ts";
 import { matchmaking } from "./matchmaking.ts";
-import { feedStatus, newsToJudge, syncNews } from "./news.ts";
+import { feedStatus, newsAiOff, newsToJudge, syncNews } from "./news.ts";
 import { judgeNews } from "./news-ai.ts";
 import { NEWS_FEEDS } from "./scrape/news.ts";
 import { ROSTER_ARTICLE, samePlace } from "./scrape/wikipedia.ts";
@@ -1344,7 +1344,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
  *  two hours mean it's failing: out of credit, a changed API, a bad answer. */
 function newsUnjudged(): BugCheck {
   const items: BugItem[] = [];
-  const unread = process.env.GEMINI_API_KEY ? newsToJudge().pending.filter((story) => Date.now() - story.published_at > 2 * 3_600_000) : [];
+  const unread = process.env.GEMINI_API_KEY && !newsAiOff() ? newsToJudge().pending.filter((story) => Date.now() - story.published_at > 2 * 3_600_000) : [];
   if (unread.length) {
     items.push({
       key: "gemini",
@@ -1436,6 +1436,7 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
       return { ok: true, message: "Read every outlet again." };
     case "news-ai":
       if (!process.env.GEMINI_API_KEY) return { ok: false, message: "GEMINI_API_KEY isn't set." };
+      if (newsAiOff()) return { ok: false, message: "Gemini is switched off on the Health tab." };
       // Flex can take minutes: the pass runs on, its outcome on this board.
       void judgeNews();
       return { ok: true, message: "Gemini is reading; reload the board in a few minutes." };
