@@ -66,6 +66,14 @@ test("misspelled matchups and reordered names still find the bout", () => {
   assert.equal(reordered.fighters[0]?.name, "Khabib Nurmagomedov");
 });
 
+test("search aliases find a fighter and their bouts", () => {
+  assert.equal((search("gsp") as Results).fighters[0]?.name, "Georges St-Pierre");
+  assert.equal((search("aljo") as Results).fighters[0]?.name, "Aljamain Sterling");
+  assert.equal((search("bobby green") as Results).fighters[0]?.name, "King Green");
+  const bout = search("gsp vs hughes") as Results;
+  assert.ok(bout.fights.some((f) => [f.f1_name, f.f2_name].sort().join() === "Georges St-Pierre,Matt Hughes"));
+});
+
 test("list filters ignore spacing and word order, and fall back to typos only when nothing matches", async () => {
   const { searchList } = await import("./fuzzy.ts");
   const venues = ["T-Mobile Arena Las Vegas", "UFC APEX Las Vegas", "Madison Square Garden New York"];

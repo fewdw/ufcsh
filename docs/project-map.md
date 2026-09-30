@@ -12,6 +12,7 @@ client (`client/`) renders every page.
 | Page metadata, sitemap, 404s | `seo.ts` |
 | Link-preview images (`/og/*.jpg`) | `og-images.ts` (drawing); data lookup in `api.ts` (`shareCardData`) |
 | Fighter identity, records, photo URLs | `fighter-identity.ts` |
+| Search aliases (GSP, Aljo, real and maiden names; search only, never shown) | `search-aliases.ts` |
 | In-memory analytics index | `fight-index.ts` (every completed bout, state entering it) |
 | Leaderboards | `stats.ts` (fighter cards), `stats-fights.ts` (Fights card: bouts, judges, referees) |
 | Matchmaking (title fights, ranked pairings, next opponents after recent cards) | `matchmaking.ts` |
