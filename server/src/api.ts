@@ -55,6 +55,7 @@ import { injectPageSeo, pageSeo, SITE_URL, sitemap, type PageSeo } from "./seo.t
 import { renderShareImage, type ShareCard, type SharePhoto } from "./og-images.ts";
 export { pageSeo, sitemap };
 import { judgeProfile, officialSlug, officialsDirectory, refereeProfile, searchOfficials } from "./officials.ts";
+import { searchAliases } from "./search-aliases.ts";
 import { locationDirectory, locationOfEvent, locationPage, searchVenues, venueDirectory, venueOfEvent, venuePage } from "./venues.ts";
 import { matchmaking } from "./matchmaking.ts";
 import { newsView } from "./news.ts";
@@ -1281,7 +1282,8 @@ const SEARCH_LIMIT = 8;
 type SearchIndex = {
   fighters: { id: string; name: string; nickname: string; wins: number; losses: number; draws: number; photo_url: string | null; ufc_fights: number; names: string; target: FuzzyTarget }[];
   events: { id: string; name: string; date: string; target: FuzzyTarget }[];
-  // `names` is "a vs b" and "b vs a" lowercased, one per line, for the exact match.
+  // `names` is "a vs b" and "b vs a" lowercased, one per line, for the exact match,
+  // with each side also written as each of its search aliases.
   fights: { id: string; date: string; names: string; target: FuzzyTarget }[];
 };
 const searchIndexCache = new VersionCache<SearchIndex>(1);
@@ -1302,16 +1304,20 @@ function searchIndex(): SearchIndex {
     FROM fighters fr
     WHERE ${ufcFightExistsSql("fr.id", "fought")}
   `).all() as any[]).map(({ norm_name, ...f }) => ({
-    ...f, target: fuzzyTarget(f.name, f.nickname), names: `${norm_name}\n${(f.nickname ?? "").toLowerCase()}`,
+    ...f, target: fuzzyTarget(f.name, f.nickname, ...searchAliases(f.name)),
+    names: [norm_name, (f.nickname ?? "").toLowerCase(), ...searchAliases(f.name)].join("\n"),
   }));
   const events = (prepared("SELECT id, name, date FROM events").all() as any[])
     .map((e) => ({ ...e, target: fuzzyTarget(e.name) }));
   const fights = (prepared(`
     SELECT f.id, f.f1_name, f.f2_name, e.date FROM fights f JOIN events e ON e.id = f.event_id
-  `).all() as any[]).map((f) => ({
-    id: f.id, date: f.date, target: fuzzyTarget(`${f.f1_name} ${f.f2_name}`),
-    names: `${f.f1_name} vs ${f.f2_name}\n${f.f2_name} vs ${f.f1_name}`.toLowerCase(),
-  }));
+  `).all() as any[]).map((f) => {
+    const [a, b] = [f.f1_name, f.f2_name].map((name: string) => [name.toLowerCase(), ...searchAliases(name)]);
+    return {
+      id: f.id, date: f.date, target: fuzzyTarget(`${f.f1_name} ${f.f2_name}`, ...a.slice(1), ...b.slice(1)),
+      names: a.flatMap((x) => b.flatMap((y) => [`${x} vs ${y}`, `${y} vs ${x}`])).join("\n"),
+    };
+  });
   const index = { fighters, events, fights };
   searchIndexCache.set("index", index);
   if (indexesHeld()) heldSearchIndex = index;
