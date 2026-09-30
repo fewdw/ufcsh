@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentType, type MouseEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore, type ComponentType, type Dispatch, type MouseEvent, type SetStateAction } from "react";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import AccountButton from "./components/AccountButton";
 import CmdK from "./components/CmdK";
@@ -8,7 +8,7 @@ import { segmentedIdle, segmentedSelected } from "./components/segmented";
 import { ChevronDown, Moon, Shield, Sun } from "lucide-react";
 import { accountsEnabled, useAccount } from "./auth";
 import { useAdminResource, type AdminSession } from "./admin";
-import { inMore, MORE_HOME, MoreGroups } from "./components/MoreNav";
+import { inMenu, MenuGroups, menuHome, MENUS, PHONE_MENU, type Menu } from "./components/MoreNav";
 import { useSettings, withRanking } from "./settings";
 import { prefetch } from "./api";
 import { useLinkPrefetch, warmSections } from "./useLinkPrefetch";
@@ -50,6 +50,15 @@ const GraphicPage = page(pages.graphic, module => module.default);
 
 const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
 
+const PHONE = "(max-width: 767px)";
+function usePhone() {
+  return useSyncExternalStore((change) => {
+    const query = window.matchMedia(PHONE);
+    query.addEventListener("change", change);
+    return () => query.removeEventListener("change", change);
+  }, () => window.matchMedia(PHONE).matches);
+}
+
 // Remembered across pages, so the Admin link doesn't blink in on each one.
 let wasAdmin = false;
 
@@ -69,11 +78,15 @@ function AdminLink({ active }: { active: boolean }) {
   );
 }
 
-/** The rest of the site, one pill after the sections. From `md` up a mouse
- *  opens its groups on hover and a press opens Stats; a tap or a key opens
+/** A menu pill after the sections (Browse, More). From `md` up a mouse opens
+ *  its groups on hover and a press opens its first page; a tap or a key opens
  *  them. On a phone they open as a panel across the width of the header. */
-function MoreMenu({ pathname, active, open, setOpen }: { pathname: string; active: boolean; open: boolean; setOpen: (open: boolean) => void }) {
+function NavMenu({ menu, pathname, openMenu, setOpenMenu }: { menu: Menu; pathname: string; openMenu: string | null; setOpenMenu: Dispatch<SetStateAction<string | null>> }) {
+  const active = inMenu(menu, pathname);
+  const open = openMenu === menu.label;
   const ref = useRef<HTMLDivElement>(null);
+  // Closing leaves another menu alone if the pointer has already opened it.
+  const setOpen = useCallback((next: boolean) => setOpenMenu((current) => (next ? menu.label : current === menu.label ? null : current)), [menu.label, setOpenMenu]);
   useEffect(() => setOpen(false), [pathname, setOpen]);
   useEffect(() => {
     if (!open) return;
@@ -92,10 +105,10 @@ function MoreMenu({ pathname, active, open, setOpen }: { pathname: string; activ
   return <div ref={ref} className="md:relative"
     onPointerEnter={(e) => { if (e.pointerType === "mouse" && wide()) setOpen(true); }}
     onPointerLeave={(e) => { if (e.pointerType === "mouse") setOpen(false); }}>
-    <Link to={MORE_HOME} onClick={press} aria-expanded={open} aria-haspopup="true"
+    <Link to={menuHome(menu)} onClick={press} aria-expanded={open} aria-haspopup="true"
       aria-current={active ? "page" : undefined}
       className={`${NAV_ITEM} flex items-center gap-0.5 ${open || active ? segmentedSelected : segmentedIdle}`}>
-      More
+      {menu.label}
       <ChevronDown className={`hidden h-3.5 w-3.5 transition-transform md:block ${open ? "rotate-180" : ""}`} aria-hidden="true" />
     </Link>
     {/* A thin triangle beside the button catches a pointer cutting across
@@ -104,7 +117,7 @@ function MoreMenu({ pathname, active, open, setOpen }: { pathname: string; activ
     {open ? <div className="absolute inset-x-2 top-full z-50 pt-1.5 md:inset-x-auto md:left-0">
       {/* Groups sit apart on a hairline: rows of three on a phone, columns on a wide screen. */}
       <div className="flex flex-col divide-y divide-zinc-100 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg md:w-96 lg:w-max lg:flex-row lg:divide-x lg:divide-y-0">
-        <MoreGroups group={(label, links) => (
+        <MenuGroups menu={menu} group={(label, links) => (
           <ul key={label} aria-label={label} className="grid grid-cols-3 gap-0.5 py-1 first:pt-0 [&>li:only-child]:col-span-full last:pb-0 lg:min-w-36 lg:grid-cols-1 lg:content-start lg:px-1 lg:py-0 lg:first:pl-0 lg:last:pr-0">{links}</ul>
         )} item={(section, current) => (
           <li key={section.href}>
@@ -123,7 +136,9 @@ function Header({ onSearch }: { onSearch: () => void }) {
   const { pathname } = useLocation();
   const { settings, update } = useSettings();
   const dark = settings.theme === "dark";
-  const [moreOpen, setMoreOpen] = useState(false);
+  // One menu open at a time, by label.
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const phone = usePhone();
   // The bout on now sits mid-row only while it fits whole; the moment its
   // names would be cut, it drops to its own line instead.
   const slotRef = useRef<HTMLDivElement>(null);
@@ -140,14 +155,14 @@ function Header({ onSearch }: { onSearch: () => void }) {
     return () => observer.disconnect();
   }, []);
   const isRankings = pathname.startsWith("/rankings");
-  const isMore = inMore(pathname);
+  const inMenus = MENUS.some((menu) => inMenu(menu, pathname));
   const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
   // A profile belongs to no section of the nav, so none of them is lit.
   const isProfile = pathname.startsWith("/profiles");
   const links = [
     // Pointing at a section starts its code and its first data, so a tap
     // lands on it loaded.
-    { href: "/", label: "Events", active: !isRankings && !isProfile && !isMore && !isAdmin, load: () => { warmSections(settings.rankingSource); return pages.events(); } },
+    { href: "/", label: "Events", active: !isRankings && !isProfile && !inMenus && !isAdmin, load: () => { warmSections(settings.rankingSource); return pages.events(); } },
     { href: "/rankings", label: "Rankings", active: isRankings, load: () => { prefetch(withRanking("/api/rankings", settings.rankingSource)); return pages.rankings(); } },
   ];
 
@@ -172,13 +187,14 @@ function Header({ onSearch }: { onSearch: () => void }) {
               onFocus={() => { void link.load().catch(() => {}); }}
               onTouchStart={() => { void link.load().catch(() => {}); }}
               aria-current={link.active ? "page" : undefined}
-              className={`${NAV_ITEM} ${link.active && !moreOpen ? segmentedSelected : segmentedIdle}`}
+              className={`${NAV_ITEM} ${link.active && !openMenu ? segmentedSelected : segmentedIdle}`}
             >
               {link.label}
             </Link>
           ))}
-          {accountsEnabled ? <AdminLink active={isAdmin && !moreOpen} /> : null}
-          <MoreMenu pathname={pathname} active={isMore} open={moreOpen} setOpen={setMoreOpen} />
+          {phone ? null : <NavMenu menu={MENUS[0]} pathname={pathname} openMenu={openMenu} setOpenMenu={setOpenMenu} />}
+          {accountsEnabled ? <AdminLink active={isAdmin && !openMenu} /> : null}
+          <NavMenu menu={phone ? PHONE_MENU : MENUS[1]} pathname={pathname} openMenu={openMenu} setOpenMenu={setOpenMenu} />
         </nav>
 
         {/* The middle of the row from `md` up, and its own line below that —

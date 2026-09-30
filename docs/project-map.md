@@ -34,7 +34,7 @@ copy of the local archive (`DATA_DIR`).
 | Area | Files |
 | --- | --- |
 | Shell, routes, header | `App.tsx`, `main.tsx` |
-| More menu (Stats, Matchmaking, Roster, Officials, Venues, News, Graphic) | `components/MoreNav.tsx`; page `GraphicPage.tsx` |
+| Header menus: Browse (Officials, Venues, Roster) and More (Stats, Matchmaking, News, Graphic) | `components/MoreNav.tsx`; page `GraphicPage.tsx` |
 | Admin link in the header (admins only) | `App.tsx` (`AdminLink`) |
 | Matchmaking page (Top 15, recent cards, card builder) | `pages/MatchmakingPage.tsx` |
 | News page (top stories, latest by day, outlet toggles); a fighter's News tab | `pages/NewsPage.tsx`, `components/NewsRow.tsx`; `FighterNews` in `pages/FighterPage.tsx` |
