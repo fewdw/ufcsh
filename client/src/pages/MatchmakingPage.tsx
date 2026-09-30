@@ -85,14 +85,14 @@ function Corner({ fighter, big, onPick, onClear }: { fighter: Slot; big: boolean
           </button>
         ) : (
           <button type="button" onClick={onPick} aria-label="Add a fighter"
-            className="grid h-full w-full place-items-center rounded-full border border-dashed border-zinc-300 bg-zinc-50 text-zinc-500 transition hover:border-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">
-            <Plus className={big ? "h-7 w-7" : "h-5 w-5"} aria-hidden="true" />
+            className="grid h-full w-full place-items-center rounded-full border border-dashed border-zinc-300 text-zinc-400 transition hover:border-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">
+            <Plus className={big ? "h-5 w-5" : "h-4 w-4"} aria-hidden="true" />
           </button>
         )}
       </div>
       {fighter ? (
         <Link to={`/fighters/${fighter.id}`} className={`w-full text-center font-semibold text-zinc-900 hover:underline ${big ? "text-sm sm:text-base" : "text-xs leading-4 sm:text-sm"}`}>{fighter.name}</Link>
-      ) : <span className={`w-full text-center text-zinc-500 ${big ? "text-sm sm:text-base" : "text-xs leading-4 sm:text-sm"}`}>Add fighter</span>}
+      ) : <span className={`w-full text-center text-zinc-400 ${big ? "text-sm" : "text-xs leading-4"}`}>Add fighter</span>}
     </div>
   );
 }
@@ -193,14 +193,20 @@ function SavedCards({ cards, open, draft, onOpen, onNew, onRemove }: {
       ) : null}
     </div>
     <aside aria-label="Saved cards" className={`${PANEL} sticky top-0 hidden max-h-[calc(100dvh-7rem)] w-60 shrink-0 overflow-y-auto p-2 lg:block xl:w-64`}>
-      <h2 className={`${EYEBROW} px-2 pb-1.5 pt-1`}>Saved cards</h2>
+      <h2 className={`${EYEBROW} flex items-baseline justify-between px-2 pb-2 pt-1`}>Saved cards<span className="tabular-nums">{cards.length}</span></h2>
       <ul className="flex flex-col gap-0.5">
         {cards.map((card) => (
           <li key={card.id} className="group relative">
             <button type="button" onClick={() => onOpen(card)} aria-current={card.id === open?.id ? "true" : undefined}
-              className={`block w-full rounded-lg py-2 pl-3 pr-9 text-left transition-colors ${card.id === open?.id ? "bg-zinc-100" : "hover:bg-zinc-50"}`}>
-              <span className="block truncate text-sm font-medium text-zinc-900">{card.name}</span>
-              <span className="block truncate text-xs text-zinc-500">{headline(card)}</span>
+              className={`flex w-full items-center gap-2.5 rounded-lg py-2 pl-2 pr-9 text-left transition-colors ${card.id === open?.id ? "bg-zinc-100" : "hover:bg-zinc-50"}`}>
+              {/* The main event's two faces, overlapping. */}
+              <span className="flex shrink-0 -space-x-2.5">
+                {card.slots.slice(0, 2).map((fighter, index) => <Avatar key={index} src={fighter?.photo_url} name={fighter?.name ?? "TBD"} size="sm" />)}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium text-zinc-900">{card.name}</span>
+                <span className="block truncate text-xs text-zinc-500">{headline(card)}</span>
+              </span>
             </button>
             {/* Always there on a touch screen, where nothing hovers. */}
             <button type="button" onClick={() => onRemove(card)} aria-label={`Delete ${card.name}`} title="Delete card"
@@ -295,7 +301,14 @@ function CardBuilder({ account }: { account: CardAccount | null }) {
     <section className="flex w-full flex-col gap-3 lg:flex-row lg:items-start lg:gap-4">
       {cards.length ? <SavedCards cards={cards} open={open} draft={taken.length > 0} onOpen={openCard} onNew={startNew} onRemove={setRemoving} /> : null}
       <div className="min-w-0 flex-1">
-        <div className="mb-3 flex min-h-8 flex-wrap items-center justify-end gap-2 px-1">
+        <header className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 px-1">
+          <div className="min-w-0 flex-1">
+            {/* Below `lg` the saved-cards dropdown already names it. */}
+            <h2 className={`truncate text-base font-semibold text-zinc-900 ${cards.length ? "max-lg:hidden" : ""}`}>{open?.name ?? "New card"}</h2>
+            <p className="text-xs tabular-nums text-zinc-500">
+              {taken.length} of {BOUTS * 2} fighters{saved ? " · saved" : open ? " · unsaved changes" : ""}
+            </p>
+          </div>
           {taken.length || open ? (
             <button type="button" onClick={startNew} className={BUTTON_SECONDARY}>{open ? "New card" : "Clear card"}</button>
           ) : null}
@@ -306,7 +319,7 @@ function CardBuilder({ account }: { account: CardAccount | null }) {
               {saved ? "Saved" : "Save card"}
             </button>
           ) : null}
-        </div>
+        </header>
         <div className="flex flex-col gap-3">
           {ROWS.map((row, rowIndex) => {
             const first = bout;
