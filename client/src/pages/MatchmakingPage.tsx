@@ -413,7 +413,7 @@ function CardBuilder({ account, navigation }: { account: CardAccount | null; nav
 
 const rankLabel = (rank: number | null) => (rank === 0 ? "C" : rank == null ? "" : String(rank));
 const BOOKED = { title: "activity-booked", fight: "activity-recent" } as const;
-const tint = (kind: string, title: boolean) => (kind === "title" || title ? BOOKED.title : kind === "booked" ? BOOKED.fight : "");
+const tint = (kind: string, title: boolean) => (title ? BOOKED.title : kind === "booked" ? BOOKED.fight : "");
 const TAG = "shrink-0 rounded-full px-1.5 text-[10px] font-semibold ring-1 ring-inset";
 
 function Streak({ streak }: { streak: number }) {
@@ -470,7 +470,7 @@ function DivisionPanel({ entry }: { entry: Division }) {
   return (
     <Panel title={entry.division}>
       {entry.fights.map((fight) => (
-        <li key={`${fight.a.id}-${fight.b.id}`} className={`px-2.5 py-1.5 ${tint(fight.kind, fight.reason.startsWith("Title"))}`}>
+        <li key={`${fight.a.id}-${fight.b.id}`} className={`px-2.5 py-1.5 ${tint(fight.kind, fight.title)}`}>
           <div className="flex flex-col gap-1 @min-[420px]:flex-row @min-[420px]:items-center @min-[420px]:gap-2">
             <Side fighter={fight.a} />
             <span className="hidden shrink-0 text-[10px] uppercase text-zinc-400 @min-[420px]:block">vs</span>

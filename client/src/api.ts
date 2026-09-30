@@ -750,7 +750,7 @@ export type MatchmakingData = {
   updated_at: number | null;
   top15: {
     division: string;
-    fights: { kind: "title" | "booked" | "suggested"; a: MatchFighter; b: MatchFighter; reason: string; event: { id: string; name: string; date: string } | null }[];
+    fights: { kind: "title" | "booked" | "suggested"; title: boolean; a: MatchFighter; b: MatchFighter; reason: string; event: { id: string; name: string; date: string } | null }[];
     idle: { fighter: MatchFighter; reason: string }[];
   }[];
   recent_events: {

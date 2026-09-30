@@ -473,7 +473,7 @@ function divisionOf(fights: IndexedFight[]): string | null {
 
 type Matchmaking = {
   updated_at: number | null;
-  top15: { division: string; fights: { kind: Plan["fights"][number]["kind"]; a: MatchFighter; b: MatchFighter; reason: string; event: { id: string; name: string; date: string } | null }[]; idle: { fighter: MatchFighter; reason: string }[] }[];
+  top15: { division: string; fights: { kind: Plan["fights"][number]["kind"]; title: boolean; a: MatchFighter; b: MatchFighter; reason: string; event: { id: string; name: string; date: string } | null }[]; idle: { fighter: MatchFighter; reason: string }[] }[];
   recent_events: {
     id: string; name: string; date: string;
     bouts: { fight_id: string; division: string; method: string | null; title: boolean; sides: { fighter: MatchFighter; outcome: Result | null; next: { kind: Next["kind"]; opponent: MatchFighter | null; reason: string; title: boolean } }[] }[];
@@ -550,7 +550,7 @@ export function matchmaking(): Matchmaking {
     return {
       division,
       fights: plan.fights.map((fight) => ({
-        kind: fight.kind, a: view(fight.a, division), b: view(fight.b, division), reason: fight.reason,
+        kind: fight.kind, title: fight.kind === "title" || Boolean(fight.booking?.title), a: view(fight.a, division), b: view(fight.b, division), reason: fight.reason,
         event: fight.booking ? { id: fight.booking.event_id, name: fight.booking.event_name, date: fight.booking.date } : null,
       })),
       idle: plan.idle.map((entry) => ({ fighter: view(entry.fighter, division), reason: entry.reason })),
