@@ -604,7 +604,7 @@ function Suggestions({ tab, data, error, retry, navigation }: { tab: Tab; data: 
     {error && !data ? <RequestNotice onRetry={retry}>Couldn’t load the matchups.</RequestNotice> : !data ? <PageState>Working out matchups…</PageState> : top ?
       top15.length ? <div className="grid grid-cols-1 gap-2 sm:gap-3 md:grid-cols-2 2xl:grid-cols-3">{top15.map((entry) => <DivisionPanel key={entry.division} entry={entry} />)}</div>
         : <p className="py-8 text-center text-sm text-zinc-500">No matchups match these filters.</p>
-      : events.length ? <div className="grid grid-cols-1 gap-2 sm:gap-3 md:grid-cols-2 min-[1400px]:grid-cols-3 min-[1800px]:grid-cols-4">{events.map((event) => <EventPanel key={event.id} event={event} />)}</div>
+      : events.length ? <div className="grid grid-cols-1 gap-2 sm:gap-3 min-[768px]:grid-cols-2 min-[1400px]:grid-cols-3 min-[1800px]:grid-cols-4">{events.map((event) => <EventPanel key={event.id} event={event} />)}</div>
         : <p className="py-8 text-center text-sm text-zinc-500">{data.recent_events.length ? "No fighters match these filters." : "No completed card yet."}</p>}
   </>;
 }
