@@ -21,7 +21,7 @@ client (`client/`) renders every page.
 | Venues | `venues.ts` (identity from ufc.com venue ids + Wikipedia names) |
 | Roster changes (signings, releases) | `roster-moves.ts` (stored read + profile links, ufc.com newest-profile watch); parsed in `scrape/wikipedia.ts` (`rosterChanges`) and `scrape/ufccom.ts` (`parseNewestAthletes`) |
 | Admin data-quality board | `bugs.ts` (checks and repair actions), `admin-http.ts`, `repair-guard.ts` |
-| Accounts, scoring, predictions, bets, comments | `accounts.ts` (Clerk deletions and picture sync), `scoring*.ts`, `predictions*.ts`, `bets*.ts`, `comments*.ts`, `moderation.ts` |
+| Accounts, scoring, predictions, bets, saved matchmaking cards, comments | `accounts.ts` (Clerk deletions and picture sync), `scoring*.ts`, `predictions*.ts`, `bets*.ts`, `cards*.ts`, `comments*.ts`, `moderation.ts` |
 | Background sync | `sync.ts` (scheduler `tick`), `sync-worker.ts`, `career-records.ts`, `verdict-import.ts` |
 | Scrapers | `scrape/ufcstats.ts`, `scrape/ufccom.ts` (schedules, segments, venue/broadcast/referee feed), `scrape/wikipedia.ts` (weigh-ins, infobox, background), `scrape/odds.ts`, `scrape/sherdog.ts`, `scrape/verdict.ts`, `scrape/mmadecisions.ts` |
 | Database schema and migrations | `db.ts` |

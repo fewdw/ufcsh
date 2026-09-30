@@ -29,6 +29,7 @@ export function routeGroup(pathname: string): string {
   if (/^\/api\/comments\/[0-9a-f-]{36}\/thread$/i.test(pathname)) return "comments_thread";
   if (pathname.startsWith("/api/comments/")) return "comments_actions";
   if (pathname === "/api/bets" || pathname.startsWith("/api/bets/")) return "bets";
+  if (pathname === "/api/cards" || pathname.startsWith("/api/cards/")) return "cards";
   if (pathname === "/api/leaderboards") return "leaderboards";
   if (pathname === "/api/reports") return "issue_reports";
   if (pathname.startsWith("/api/admin/")) return "admin";

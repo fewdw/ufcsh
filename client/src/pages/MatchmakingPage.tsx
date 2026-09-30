@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useAuth } from "@clerk/react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Check, Plus, Save, Trash2, X } from "lucide-react";
 import { useApi, type MatchFighter, type MatchmakingData } from "../api";
+import { accountsEnabled, useAccount } from "../auth";
 import { formatDate } from "../format";
 import { PAGE, PAGE_BODY } from "../research";
 import { useSeo } from "../seo";
@@ -30,16 +32,24 @@ type Tab = (typeof TABS)[number]["key"];
 const ROWS = [{ bouts: 2, big: true }, { bouts: 4 }, { bouts: 7, prelims: true }] as const;
 const BOUTS = ROWS.reduce((total, row) => total + row.bouts, 0);
 const CARD_KEY = "ufcsh:matchmaking-card:v1";
-const SAVED_KEY = "ufcsh:matchmaking-saved:v1";
+/** Which saved card the one being built came from, so saving updates it. */
+const OPEN_KEY = "ufcsh:matchmaking-open:v1";
 
 type Slot = PickedFighter | null;
-type SavedCard = { id: string; name: string; slots: PickedFighter[] };
+/** A fighter no longer on record comes back as an empty corner. */
+type SavedCard = { id: string; name: string; updatedAt: number; slots: Slot[] };
+/** Saved cards live with the account, so they follow the reader to every device. */
+type CardAccount = {
+  signedIn: boolean; cards: SavedCard[]; signIn: () => void;
+  save: (name: string, slots: PickedFighter[], id?: string) => Promise<SavedCard>;
+  remove: (id: string) => Promise<void>;
+};
 
 const emptyCard = (): Slot[] => Array(BOUTS * 2).fill(null);
 const isCard = (value: unknown): value is Slot[] => Array.isArray(value) && value.length === BOUTS * 2;
 const isFull = (slots: Slot[]): slots is PickedFighter[] => slots.every(Boolean);
 const sameCard = (a: Slot[], b: Slot[]) => a.every((slot, i) => slot?.id === b[i]?.id);
-const lastName = (fighter: PickedFighter) => fighter.name.split(" ").at(-1);
+const lastName = (fighter: Slot) => fighter?.name.split(" ").at(-1) ?? "TBD";
 const headline = (card: SavedCard) => `${lastName(card.slots[0])} vs ${lastName(card.slots[1])}`;
 
 function stored(key: string): unknown {
@@ -54,15 +64,9 @@ function store(key: string, value: unknown) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode: it lasts the visit */ }
 }
 
-/** The card being built, the saved ones, and which saved one it is, if any. */
-function startingState() {
+function draftCard(): Slot[] {
   const draft = stored(CARD_KEY);
-  const slots = isCard(draft) ? draft : emptyCard();
-  const saved = stored(SAVED_KEY);
-  const cards = Array.isArray(saved)
-    ? saved.filter((card): card is SavedCard => typeof card?.id === "string" && typeof card.name === "string" && isCard(card.slots) && isFull(card.slots))
-    : [];
-  return { slots, cards, openId: cards.find((card) => sameCard(card.slots, slots))?.id ?? null };
+  return isCard(draft) ? draft : emptyCard();
 }
 
 function Corner({ fighter, big, onPick, onClear }: { fighter: Slot; big: boolean; onPick: () => void; onClear: () => void }) {
@@ -140,17 +144,29 @@ function Picker({ taken, onPick, onClose }: { taken: PickedFighter[]; onPick: (f
   );
 }
 
-function SaveDialog({ initial, onSave, onClose }: { initial: string; onSave: (name: string) => void; onClose: () => void }) {
+function SaveDialog({ initial, onSave, onClose }: { initial: string; onSave: (name: string) => Promise<void>; onClose: () => void }) {
   const [name, setName] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const trimmed = name.trim();
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    setError("");
+    // On success the dialog closes; only a failure is shown here.
+    try { await onSave(trimmed); }
+    catch (problem) { setError(problem instanceof Error ? problem.message : "That card could not be saved."); setBusy(false); }
+  };
   return (
     <Dialog title="Save card" onClose={onClose}>
-      <form className="flex gap-2 px-1 pb-1" onSubmit={(event) => { event.preventDefault(); if (trimmed) onSave(trimmed); }}>
+      <form className="flex gap-2 px-1 pb-1" onSubmit={(event) => void submit(event)}>
         {/* 16px on a phone, so iOS doesn't zoom in on focus. */}
         <input value={name} onChange={(event) => setName(event.target.value)} maxLength={60} placeholder="Name this card" aria-label="Card name"
           className="h-9 min-w-0 flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-base text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-400 sm:text-sm" />
-        <button type="submit" disabled={!trimmed} className={BUTTON_PRIMARY}>Save</button>
+        <button type="submit" disabled={!trimmed || busy} className={BUTTON_PRIMARY}>{busy ? "Saving…" : "Save"}</button>
       </form>
+      {error ? <p role="alert" className="px-1 pt-1 text-xs text-rose-600">{error}</p> : null}
     </Dialog>
   );
 }
@@ -198,16 +214,57 @@ function SavedCards({ cards, open, draft, onOpen, onNew, onRemove }: {
   </>;
 }
 
-function CardBuilder() {
-  const [start] = useState(startingState);
-  const [slots, setSlots] = useState<Slot[]>(start.slots);
-  const [cards, setCards] = useState<SavedCard[]>(start.cards);
-  const [openId, setOpenId] = useState<string | null>(start.openId);
+/** The account's saved cards, read again whenever the tab comes back into
+ *  view so a card saved on another device shows up. Mounted only where
+ *  sign-in exists, since Clerk's hooks need it. */
+function AccountCardBuilder() {
+  const { getToken } = useAuth();
+  const { isLoaded, user, signIn } = useAccount();
+  const [cards, setCards] = useState<SavedCard[]>([]);
+  const userId = user?.id ?? null;
+  const request = useCallback(async (path: string, init: RequestInit = {}) => {
+    const token = await getToken();
+    if (!token) throw new Error("Your session expired. Sign in again.");
+    const response = await fetch(path, { ...init, cache: "no-store", signal: AbortSignal.timeout(20_000),
+      headers: { Authorization: `Bearer ${token}`, ...(init.body ? { "Content-Type": "application/json" } : {}) } });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error ?? "Something went wrong. Please retry.");
+    return data;
+  }, [getToken]);
+  useEffect(() => {
+    setCards([]);
+    if (!userId) return;
+    let live = true;
+    const load = () => { request("/api/cards").then((data: { cards: SavedCard[] }) => { if (live) setCards(data.cards); }).catch(() => {}); };
+    const visible = () => { if (document.visibilityState === "visible") load(); };
+    load();
+    document.addEventListener("visibilitychange", visible);
+    return () => { live = false; document.removeEventListener("visibilitychange", visible); };
+  }, [userId, request]);
+  const save = async (name: string, slots: PickedFighter[], id?: string) => {
+    const card = await request("/api/cards", { method: "POST", body: JSON.stringify({ id, name, fighters: slots.map((slot) => slot.id) }) }) as SavedCard;
+    setCards((current) => [card, ...current.filter((each) => each.id !== card.id)]);
+    return card;
+  };
+  const remove = async (id: string) => {
+    await request(`/api/cards/${encodeURIComponent(id)}`, { method: "DELETE" });
+    setCards((current) => current.filter((each) => each.id !== id));
+  };
+  return <CardBuilder account={{ signedIn: isLoaded && Boolean(user), cards, signIn, save, remove }} />;
+}
+
+/** `account` is null where this deployment has no sign-in: the card is built
+ *  but not saved. */
+function CardBuilder({ account }: { account: CardAccount | null }) {
+  const [slots, setSlots] = useState<Slot[]>(draftCard);
+  const [openId, setOpenId] = useState<string | null>(() => { const id = stored(OPEN_KEY); return typeof id === "string" ? id : null; });
   const [picking, setPicking] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState<SavedCard | null>(null);
+  const [removal, setRemoval] = useState({ busy: false, error: "" });
   useEffect(() => store(CARD_KEY, slots), [slots]);
-  useEffect(() => store(SAVED_KEY, cards), [cards]);
+  useEffect(() => store(OPEN_KEY, openId), [openId]);
+  const cards = account?.cards ?? [];
   const set = (index: number, fighter: Slot) => setSlots((current) => current.map((slot, i) => (i === index ? fighter : slot)));
   const taken = slots.filter((slot): slot is PickedFighter => Boolean(slot));
   // Saving an opened card updates it; anything else is saved as a new one.
@@ -215,17 +272,23 @@ function CardBuilder() {
   const saved = open !== null && sameCard(open.slots, slots);
   const startNew = () => { setSlots(emptyCard()); setOpenId(null); };
   const openCard = (card: SavedCard) => { setSlots(card.slots); setOpenId(card.id); };
-  const save = (name: string) => {
-    if (!isFull(slots)) return;
-    const card = { id: open?.id ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, slots };
-    setCards((current) => (open ? current.map((each) => (each.id === card.id ? card : each)) : [card, ...current]));
+  const save = async (name: string) => {
+    if (!account || !isFull(slots)) return;
+    const card = await account.save(name, slots, open?.id);
     setOpenId(card.id);
     setSaving(false);
   };
-  const remove = (card: SavedCard) => {
-    setCards((current) => current.filter((each) => each.id !== card.id));
-    if (card.id === openId) setOpenId(null);
-    setRemoving(null);
+  const remove = async (card: SavedCard) => {
+    if (!account || removal.busy) return;
+    setRemoval({ busy: true, error: "" });
+    try {
+      await account.remove(card.id);
+      if (card.id === openId) setOpenId(null);
+      setRemoving(null);
+      setRemoval({ busy: false, error: "" });
+    } catch (problem) {
+      setRemoval({ busy: false, error: problem instanceof Error ? problem.message : "That card could not be deleted." });
+    }
   };
   let bout = 0;
   return (
@@ -236,8 +299,9 @@ function CardBuilder() {
           {taken.length || open ? (
             <button type="button" onClick={startNew} className={BUTTON_SECONDARY}>{open ? "New card" : "Clear card"}</button>
           ) : null}
-          {isFull(slots) ? (
-            <button type="button" onClick={() => setSaving(true)} disabled={saved} className={`${BUTTON_PRIMARY} !py-1.5`}>
+          {account && isFull(slots) ? (
+            <button type="button" onClick={() => (account.signedIn ? setSaving(true) : account.signIn())} disabled={saved}
+              title={account.signedIn ? undefined : "Sign in to save cards to your account"} className={`${BUTTON_PRIMARY} !py-1.5`}>
               {saved ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Save className="h-3.5 w-3.5" aria-hidden="true" />}
               {saved ? "Saved" : "Save card"}
             </button>
@@ -275,7 +339,10 @@ function CardBuilder() {
         <Picker taken={taken} onClose={() => setPicking(null)} onPick={(fighter) => { set(picking, fighter); setPicking(null); }} />
       ) : null}
       {saving ? <SaveDialog initial={open?.name ?? ""} onSave={save} onClose={() => setSaving(false)} /> : null}
-      {removing ? <ConfirmRemove title="Delete this saved card?" detail={removing.name} busy={false} onCancel={() => setRemoving(null)} onConfirm={() => remove(removing)} /> : null}
+      {removing ? (
+        <ConfirmRemove title="Delete this saved card?" detail={removing.name} busy={removal.busy} error={removal.error}
+          onCancel={() => { setRemoving(null); setRemoval({ busy: false, error: "" }); }} onConfirm={() => void remove(removing)} />
+      ) : null}
     </section>
   );
 }
@@ -506,7 +573,7 @@ export default function MatchmakingPage() {
             ))}
           </div>
         </header>
-        {tab === "card" ? <CardBuilder /> : <Suggestions tab={tab} data={data} error={error} retry={retry} />}
+        {tab === "card" ? accountsEnabled ? <AccountCardBuilder /> : <CardBuilder account={null} /> : <Suggestions tab={tab} data={data} error={error} retry={retry} />}
       </div>
     </div>
   );

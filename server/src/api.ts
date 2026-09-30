@@ -6,6 +6,8 @@ import { createPredictionsHandler } from "./predictions-http.ts";
 import { betContext, eventFightIds, predictionContext, predictionFights } from "./predictions-data.ts";
 import { BetStore } from "./bets.ts";
 import { createBetsHandler } from "./bets-http.ts";
+import { CardStore, type CardFighter } from "./cards.ts";
+import { createCardsHandler } from "./cards-http.ts";
 import { createLeaderboards } from "./leaderboards.ts";
 import { estimatedStart, type SegmentTimes } from "./card-schedule.ts";
 import http from "node:http";
@@ -2011,6 +2013,17 @@ export function startApi(port: number): http.Server {
   const predictions = createPredictionsHandler(predictionStore, undefined, eventFightIds);
   const betStore = new BetStore(scoreStore, betContext, predictionFights);
   const bets = createBetsHandler(betStore, createLeaderboards(scoreStore, predictionStore, betStore));
+  // A saved card keeps fighter ids; names, records and photos are read here,
+  // in one statement whatever the count.
+  const cardFighters = (ids: string[]) => new Map(ids.length ? (prepared(`
+    SELECT fr.id, fr.name, fr.nickname, fr.wins, fr.losses, fr.draws, fr.photo_url,
+           (SELECT COUNT(*) FROM fights WHERE f1_id = fr.id AND (f1_outcome IS NOT NULL OR f2_outcome IS NOT NULL))
+         + (SELECT COUNT(*) FROM fights WHERE f2_id = fr.id AND (f1_outcome IS NOT NULL OR f2_outcome IS NOT NULL)) AS ufc_fights
+    FROM fighters fr WHERE fr.id IN (SELECT value FROM json_each(?))`).all(JSON.stringify(ids)) as any[])
+    .map((f): [string, CardFighter] => [f.id, { id: f.id, name: f.name, nickname: f.nickname ?? "", record: recordText(currentRecord(f.id, f).value),
+      photo_url: cachedPhotoUrl(f.id, f.photo_url), ufc_fights: f.ufc_fights }]) : []);
+  const cardStore = new CardStore(scoreStore, cardFighters);
+  const cards = createCardsHandler(cardStore);
   const reportStore = new ReportStore(scoreStore);
   const reports = createReportsHandler(reportStore);
   const commentStore = new CommentStore(scoreStore, scoringFights);
@@ -2047,7 +2060,7 @@ export function startApi(port: number): http.Server {
   }, 15_000);
   settler.unref();
   // Accounts deleted or changed at Clerk are caught up here.
-  const accountStores = { scores: scoreStore, comments: commentStore, predictions: predictionStore, bets: betStore };
+  const accountStores = { scores: scoreStore, comments: commentStore, predictions: predictionStore, bets: betStore, cards: cardStore };
   const accountSync = setInterval(() => {
     void syncAccounts(accountStores)
       .then(({ forgotten }) => { if (forgotten) log(`forgot ${forgotten} deleted account(s)`); })
@@ -2214,6 +2227,7 @@ export function startApi(port: number): http.Server {
       if (!stopping && await scoring(req, res, url)) return;
       if (!stopping && await predictions(req, res, url)) return;
       if (!stopping && await bets(req, res, url)) return;
+      if (!stopping && await cards(req, res, url)) return;
       if (!stopping && await reports(req, res, url)) return;
       if (!stopping && await comments(req, res, url)) return;
       if (!stopping && await admin(req, res, url)) return;
