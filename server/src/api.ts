@@ -2100,7 +2100,9 @@ export function startApi(port: number): http.Server {
   const publicAnswer = (url: URL) => {
     const policy = cachePolicy(url);
     const key = canonicalApiKey(url);
-    return cache.get(key, policy.ttl, async () => {
+    // Switching AI off must also bypass any already-cached AI news response.
+    const cacheKey = url.pathname === "/api/news" ? `${key}:ai-off=${getMeta("news_ai_off")}` : key;
+    return cache.get(cacheKey, policy.ttl, async () => {
       if (queryPool) return queryPool.run(key);
       const data = await resolvePublicApi(url);
       return { json: JSON.stringify(data === undefined ? { error: "not found" } : data), status: data === undefined ? 404 : 200 };

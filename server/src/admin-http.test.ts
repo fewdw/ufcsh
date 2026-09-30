@@ -33,6 +33,7 @@ async function fixture(t: any, options: { user?: string; email?: string | null }
   const reports = new ReportStore(scores);
   let identity = { user: options.user ?? "user_owner", email: options.email === undefined ? OWNER : options.email };
   const actions: string[] = [];
+  let aiOn = true;
   const handler = createAdminHandler({
     admins, scores, reports,
     report: async () => ({ checks: [], generated_at: 1, sync: { last_tick_at: null, last_sync_error: null } }),
@@ -40,6 +41,7 @@ async function fixture(t: any, options: { user?: string; email?: string | null }
     canAct: () => true,
     liveFights: () => [liveFight()],
     metrics: () => ({ ready: true, http: { routes: [] } }),
+    newsAi: { status: () => ({ on: aiOn }), set: on => ({ on: aiOn = on }) },
   // The signed-in account, resolved the way Clerk would.
     authenticate: async req => {
       if (!req.headers.authorization?.startsWith("Bearer ")) throw new ScoringError(401, "Sign in to continue.");
@@ -74,7 +76,8 @@ test("every admin route is closed to accounts that are not administrators", asyn
   as("stranger@example.com");
   for (const [route, init] of [
     ["bugs", {}], ["admins", {}], ["live", {}],
-    ["flags", {}], ["metrics", {}],
+    ["flags", {}], ["metrics", {}], ["news-ai", {}],
+    ["news-ai", { method: "PUT", headers: { "Content-Type": "application/json" }, body: '{"on":false}' }],
     ["flags/00000000-0000-4000-8000-000000000000", { method: "PUT", headers: { "Content-Type": "application/json" }, body: '{"status":"resolved"}' }],
     ["admins", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"email":"x@y.com"}' }],
     ["admins?email=x@y.com", { method: "DELETE" }],
@@ -179,4 +182,22 @@ test("administrators can read live server metrics, uncached", async t => {
   assert.equal(response.headers.get("cache-control"), "private, no-store");
   assert.deepEqual(await response.json(), { ready: true, http: { routes: [] } });
   assert.equal((await request("metrics", { method: "POST" })).status, 405);
+});
+
+test("administrators can switch news AI off and on, with boolean values only", async t => {
+  const { request } = await fixture(t);
+  for (const on of [false, true]) {
+    const response = await request("news-ai", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on }) });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { on });
+    const status = await request("news-ai");
+    assert.equal(status.headers.get("cache-control"), "private, no-store");
+    assert.deepEqual(await status.json(), { on });
+  }
+  for (const on of ["false", 0, null]) {
+    const response = await request("news-ai", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on }) });
+    assert.equal(response.status, 400);
+    assert.deepEqual(await (await request("news-ai")).json(), { on: true });
+  }
+  assert.equal((await request("news-ai", { anonymous: true })).status, 401);
 });

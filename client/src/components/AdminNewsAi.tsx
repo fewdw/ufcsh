@@ -17,9 +17,9 @@ export default function AdminNewsAi() {
     try { setData(await request<NewsAi>("/api/admin/news-ai", { method: "PUT", body: { on } })); }
     catch (err) { setFailed(err instanceof Error ? err.message : String(err)); }
   };
-  const state = !data.configured ? "No GEMINI_API_KEY on this server: news shows without it."
-    : !data.on ? "Off: news shows every story as the feeds built it, without summaries."
-      : data.error ? `Failing, news shows without it: ${data.error}`
+  const state = !data.on ? "Off: no AI requests. News uses the feeds, without AI filtering or summaries."
+    : !data.configured ? "No AI key configured. News keeps updating from feeds."
+      : data.error ? `AI unavailable. News keeps updating from feeds; previous AI results are retained. ${data.error}`
         : data.read_at ? `Last read ${relativeAge(data.read_at)} · ${data.tokens.toLocaleString()} tokens so far` : "Waiting for its first pass.";
   return (
     <section className="rounded-xl border border-zinc-200 bg-white px-1.5 py-1.5">

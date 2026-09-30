@@ -68,9 +68,10 @@ export function articleText(html: string): string {
 
 /** The first outlet's article that can be read: as its feed carried it, or
  *  from its page. Google News links can't be followed. */
-async function readArticle(story: Pending): Promise<string> {
+async function readArticle(story: Pending, signal: AbortSignal): Promise<string> {
   const body = db.prepare("SELECT body FROM news WHERE url = ?");
   for (const outlet of story.outlets) {
+    signal.throwIfAborted();
     const fed = (body.get(outlet.url) as { body: string } | undefined)?.body ?? "";
     if (fed.length >= 200) return fed;
     if (new URL(outlet.url).hostname === "news.google.com") continue;
@@ -84,7 +85,8 @@ async function readArticle(story: Pending): Promise<string> {
 
 type Answer = { id: string; keep: boolean; same: string; summary: string };
 
-async function ask(key: string, input: string): Promise<Answer[]> {
+async function ask(key: string, input: string, signal: AbortSignal): Promise<Answer[]> {
+  signal.throwIfAborted();
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-goog-api-key": key },
@@ -101,28 +103,36 @@ async function ask(key: string, input: string): Promise<Answer[]> {
       store: false,
     }),
     // Flex answers within minutes, or not at all.
-    signal: AbortSignal.timeout(20 * 60_000),
+    signal: AbortSignal.any([signal, AbortSignal.timeout(20 * 60_000)]),
   });
   const body = await response.json() as {
     error?: { message: string };
     candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[];
     usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number };
   };
+  signal.throwIfAborted();
   if (!response.ok) throw new Error(`Gemini ${response.status}: ${body.error?.message ?? "no answer"}`);
   const text = body.candidates?.[0]?.content?.parts?.filter((part) => !part.thought).map((part) => part.text ?? "").join("") ?? "";
   const usage = body.usageMetadata;
   setMeta("news_ai_tokens", String(Number(getMeta("news_ai_tokens") ?? 0) + (usage?.promptTokenCount ?? 0) + (usage?.candidatesTokenCount ?? 0) + (usage?.thoughtsTokenCount ?? 0)));
-  return (JSON.parse(text) as { stories: Answer[] }).stories;
+  const parsed = JSON.parse(text) as { stories?: unknown } | null;
+  if (!Array.isArray(parsed?.stories) || !parsed.stories.every((answer) => answer
+    && typeof answer.id === "string" && typeof answer.keep === "boolean"
+    && typeof answer.same === "string" && typeof answer.summary === "string")) {
+    throw new Error("Gemini returned invalid stories");
+  }
+  return parsed.stories;
 }
 
 /** One batch, oldest context first: the kept stories near it as K1…, the new
  *  ones as N1…. Every story sent gets a reading, even one Gemini skipped
  *  (then it stands as built, and isn't sent again). */
-async function judgeBatch(key: string, batch: Pending[], kept: { key: string; outlets: { title: string }[]; published_at: number }[]): Promise<void> {
+async function judgeBatch(key: string, batch: Pending[], kept: { key: string; outlets: { title: string }[]; published_at: number }[], signal: AbortSignal): Promise<void> {
   const from = Math.min(...batch.map((story) => story.published_at)) - NEAR_MS;
   const to = Math.max(...batch.map((story) => story.published_at)) + NEAR_MS;
   const near = kept.filter((story) => story.published_at >= from && story.published_at <= to).slice(0, 200);
-  const articles = await Promise.all(batch.map(readArticle));
+  const articles = await Promise.all(batch.map((story) => readArticle(story, signal)));
+  signal.throwIfAborted();
   const input = [
     "KEPT STORIES:",
     ...near.map((story, i) => `K${i + 1}: ${story.outlets[0].title}`),
@@ -134,7 +144,8 @@ async function judgeBatch(key: string, batch: Pending[], kept: { key: string; ou
       articles[i] ? `ARTICLE:\n${articles[i]}` : "No article.",
     ]),
   ].join("\n");
-  const answers = new Map((await ask(key, input)).map((answer) => [answer.id, answer]));
+  const answers = new Map((await ask(key, input, signal)).map((answer) => [answer.id, answer]));
+  signal.throwIfAborted();
   const url = (id: string) => /^K\d+$/.test(id) ? near[Number(id.slice(1)) - 1]?.key : /^N\d+$/.test(id) ? batch[Number(id.slice(1)) - 1]?.key : undefined;
   const save = db.prepare("UPDATE news SET ai_keep = ?, ai_same = ?, ai_summary = ? WHERE url = ?");
   db.exec("BEGIN");
@@ -152,6 +163,7 @@ async function judgeBatch(key: string, batch: Pending[], kept: { key: string; ou
 }
 
 let running: Promise<void> | null = null;
+let active: AbortController | null = null;
 let stories = async (): Promise<ToJudge> => newsToJudge();
 
 /** Reads the news every ten minutes, the stories from `fromWorker` if given. */
@@ -165,19 +177,28 @@ export function startNewsReader(fromWorker?: () => Promise<ToJudge>): void {
 export function judgeNews(): Promise<void> {
   const key = process.env.GEMINI_API_KEY;
   if (!key || newsAiOff()) return Promise.resolve();
-  running ??= (async () => {
+  if (running) return running;
+  const controller = new AbortController();
+  active = controller;
+  running = (async () => {
     try {
       for (let i = 0; i < BATCHES; i++) {
+        controller.signal.throwIfAborted();
+        if (newsAiOff()) break;
         const { pending, kept } = await stories();
+        controller.signal.throwIfAborted();
         if (!pending.length) break;
-        await judgeBatch(key, pending.slice(0, BATCH), kept);
+        await judgeBatch(key, pending.slice(0, BATCH), kept, controller.signal);
         touchMeta("news_ai_at");
         setMeta("news_ai_error", "");
       }
     } catch (error) {
-      setMeta("news_ai_error", `${new Date().toISOString()} ${String(error)}`);
-      log(`news: Gemini failed (${String(error)})`);
+      if (!controller.signal.aborted) {
+        setMeta("news_ai_error", `${new Date().toISOString()} ${String(error)}`);
+        log(`news: Gemini failed (${String(error)})`);
+      }
     } finally {
+      active = null;
       running = null;
     }
   })();
@@ -196,7 +217,13 @@ export function newsAiStatus() {
 }
 
 export function setNewsAi(on: boolean) {
+  const wasOff = newsAiOff();
   setMeta("news_ai_off", on ? "0" : "1");
-  if (on) void judgeNews();
+  if (!on) active?.abort();
+  else if (wasOff) {
+    // If switched back on while a cancelled pass is unwinding, wait for it.
+    if (running) void running.then(() => judgeNews());
+    else void judgeNews();
+  }
   return newsAiStatus();
 }
