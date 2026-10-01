@@ -92,7 +92,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-01">October 1, 2026</time></p>
             <ul>
-              <li>The weight class, referee and odds now sit at the top of each matchup.</li>
+              <li>Closing odds for bouts BestFightOdds never listed, including UFC 318's undercard.</li>
+              <li>Heights and reaches from ufc.com for debutants UFCStats hasn't measured.</li>
+              <li>Fixed Gabriel Lorenco's career record.</li>
             </ul>
           </Section>
         </div>

@@ -284,10 +284,17 @@ test("reads an athlete's roster status in English or French", () => {
   const page = (name: string, label: string, status: string) =>
     `<h1 class="hero-profile__name">${name}</h1><div class="c-bio__field"><div class="c-bio__label">Lieu de naissance</div><div class="c-bio__text">Kazakhstan</div></div>
      <div class="c-bio__field"><div class="c-bio__label">${label}</div><div class="c-bio__text">${status}</div></div>`;
-  assert.deepEqual(parseAthleteStatus(page("Lyman Good", "Status", "Ne se bat pas")), { name: "Lyman Good", status: "not_fighting" });
-  assert.deepEqual(parseAthleteStatus(page("Lyman Good", "Status", "Not Fighting")), { name: "Lyman Good", status: "not_fighting" });
-  assert.deepEqual(parseAthleteStatus(page("Islam Makhachev", "Statut", "Actif")), { name: "Islam Makhachev", status: "active" });
-  assert.deepEqual(parseAthleteStatus(page("Mariya Agapova", "Status", "Retired")), { name: "Mariya Agapova", status: null });
+  assert.deepEqual(parseAthleteStatus(page("Lyman Good", "Status", "Ne se bat pas")), { name: "Lyman Good", status: "not_fighting", height: null, reach: null });
+  assert.deepEqual(parseAthleteStatus(page("Lyman Good", "Status", "Not Fighting")), { name: "Lyman Good", status: "not_fighting", height: null, reach: null });
+  assert.deepEqual(parseAthleteStatus(page("Islam Makhachev", "Statut", "Actif")), { name: "Islam Makhachev", status: "active", height: null, reach: null });
+  assert.deepEqual(parseAthleteStatus(page("Mariya Agapova", "Status", "Retired")), { name: "Mariya Agapova", status: null, height: null, reach: null });
+});
+
+test("reads an athlete's height and reach, not leg reach", () => {
+  const field = (label: string, text: string) => `<div class="c-bio__field"><div class="c-bio__label">${label}</div><div class="c-bio__text">${text}</div></div>`;
+  const html = `<h1 class="hero-profile__name">Bruce Whitehead</h1>${field("Taille", "70.50")}${field("Portée des jambes", "41.00")}${field("Portée", "73.50")}`;
+  assert.deepEqual(parseAthleteStatus(html), { name: "Bruce Whitehead", status: null, height: 70.5, reach: 73.5 });
+  assert.equal(parseAthleteStatus(`<h1 class="hero-profile__name">X</h1>${field("Height", "0")}`).height, null);
 });
 
 // Trimmed from https://www.ufc.com/search?type=athletes&query= (2026-09-28).

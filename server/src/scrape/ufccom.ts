@@ -369,27 +369,34 @@ export async function scrapeFighterImages(name: string, loadHtml = fetchHtml): P
 
 export type AthleteStatus = "active" | "not_fighting";
 
-/** The name and roster status an athlete page shows. This host is served
- *  ufc.com's French site, so both languages are read. */
-export function parseAthleteStatus(html: string): { name: string; status: AthleteStatus | null } {
+export type AthletePage = { name: string; status: AthleteStatus | null; height: number | null; reach: number | null };
+
+/** The name, roster status, height and reach (inches) an athlete page shows.
+ *  This host is served ufc.com's French site, so both languages are read. */
+export function parseAthleteStatus(html: string): AthletePage {
   const $ = cheerio.load(html);
-  const field = $(".c-bio__field").filter((_, element) => /^stat(us|ut)$/i.test($(element).find(".c-bio__label").text().trim())).first();
-  const text = field.find(".c-bio__text").text().trim().toLowerCase();
+  const bio = (label: RegExp) => $(".c-bio__field")
+    .filter((_, element) => label.test($(element).find(".c-bio__label").text().trim())).first()
+    .find(".c-bio__text").text().trim();
+  const text = bio(/^stat(us|ut)$/i).toLowerCase();
+  const inches = (value: string) => (Number(value) > 0 ? Number(value) : null);
   return {
     name: $(".hero-profile__name").first().text().trim(),
     status: /^(active|actif)$/.test(text) ? "active" : /^(not fighting|ne se bat pas)$/.test(text) ? "not_fighting" : null,
+    height: inches(bio(/^(height|taille)$/i)),
+    reach: inches(bio(/^(reach|portée)$/i)),
   };
 }
 
 /** A fighter's status, from the page already found for them or else the one
  *  their name slugs to, then ufc.com's search. A page under another name is
  *  never read. Null when no page could be read. */
-export async function scrapeAthleteStatus(name: string, knownUrl: string | null, loadHtml = fetchHtml): Promise<{ url: string; status: AthleteStatus | null } | null> {
+export async function scrapeAthleteStatus(name: string, knownUrl: string | null, loadHtml = fetchHtml): Promise<(Omit<AthletePage, "name"> & { url: string }) | null> {
   // A search hit was already matched to the name, allowing one respelling.
   const read = async (url: string, matched = false) => {
     try {
-      const page = parseAthleteStatus(await loadHtml(url, { timeoutMs: 30000, retries: 0 }));
-      return matched || normName(page.name) === normName(name) ? { url, status: page.status } : null;
+      const { name: shown, ...page } = parseAthleteStatus(await loadHtml(url, { timeoutMs: 30000, retries: 0 }));
+      return matched || normName(shown) === normName(name) ? { url, ...page } : null;
     } catch {
       return null;
     }

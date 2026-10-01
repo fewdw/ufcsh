@@ -274,7 +274,8 @@ async function bookedOpponentCandidates(local: LocalFighter): Promise<SherdogCan
   const found = new Map<string, SherdogCandidate>();
   for (const page of pages) {
     const named = await sherdogUpcomingOpponents(page.source_url).catch(() => []);
-    for (const candidate of named) if (samePersonName(local.name, candidate.name)) found.set(candidate.url, candidate);
+    // The opponent's page may spell the name a letter differently (Lorenco, Lourenco).
+    for (const candidate of named) if (closeName(local.name, candidate.name)) found.set(candidate.url, candidate);
   }
   return [...found.values()];
 }
