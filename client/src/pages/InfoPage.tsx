@@ -90,9 +90,10 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-09-30">September 30, 2026</time></p>
+            <p><time dateTime="2026-10-01">October 1, 2026</time></p>
             <ul>
-              <li>Every upcoming card refreshes every 10 minutes, so new bouts show up fast.</li>
+              <li>On phones, Prev, Events and Next always sit at the bottom of the screen.</li>
+              <li>Bigger, easier-to-tap bottom buttons, and Top centered at the bottom of the events list.</li>
             </ul>
           </Section>
         </div>
