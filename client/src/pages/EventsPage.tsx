@@ -869,8 +869,8 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   return (
     <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+4rem)] sm:gap-3 sm:pb-0 sm:pr-1">
       {/* On a phone the list folds away, so its button and the step to
-          either neighbour head the card, and so do they wherever the card
-          is narrow enough to stack its bouts. */}
+          either neighbour float at the bottom; they head the card wherever
+          else it is narrow enough to stack its bouts. */}
       <CardNavigation label="Event navigation" className="@3xl:hidden"
         previous={<StepLink event={nav.prev} direction="prev" className={NAV_STEP} />}
         // Reading the whole card's odds, the way out is back to the card.
