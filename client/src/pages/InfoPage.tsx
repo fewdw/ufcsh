@@ -92,8 +92,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-01">October 1, 2026</time></p>
             <ul>
-              <li>Upcoming odds now refresh every few minutes from about two dozen sportsbooks.</li>
-              <li>More sportsbooks behind every prop, from method to round-by-round.</li>
+              <li>The weight class, referee and odds now sit at the top of each matchup.</li>
             </ul>
           </Section>
         </div>
