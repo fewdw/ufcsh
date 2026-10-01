@@ -219,8 +219,9 @@ function EventSidebar({
           onScroll={(e) => setShowTop(e.currentTarget.scrollTop > 320)}
           // Every list on the page — this one, the card, the fight rail —
           // shares the panel's white surface, so a row is told apart by its
-          // ring and shadow rather than by the tone it happens to sit on.
-          className="h-full overflow-y-auto bg-white px-2 pb-2"
+          // ring and shadow rather than by the tone it happens to sit on. A
+          // phone keeps Top at the bottom, so the last card scrolls clear of it.
+          className="h-full overflow-y-auto bg-white px-2 pb-14 sm:pb-2"
         >
           {groups.map(([yearMonth, list]) => (
             <div key={yearMonth}>
@@ -301,7 +302,7 @@ function EventSidebar({
             // "auto" so a page-level scroll-behavior can never reintroduce it.
             onClick={() => listRef.current?.scrollTo({ top: 0, behavior: "instant" })}
             aria-label="Scroll events to top"
-            className="absolute right-3 top-3 z-20 inline-flex h-8 items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 text-[11px] font-semibold text-zinc-600 shadow-md transition hover:border-zinc-300 hover:text-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+            className="absolute bottom-3 left-1/2 z-20 inline-flex -translate-x-1/2 sm:bottom-auto sm:left-auto sm:right-3 sm:top-3 sm:translate-x-0 h-8 items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 text-[11px] font-semibold text-zinc-600 shadow-md transition hover:border-zinc-300 hover:text-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
           >
             <svg aria-hidden="true" className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none">
               <path d="M8 12V4m0 0L4.5 7.5M8 4l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
