@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 
 /** Tooltip positioning and open/close events, measured from the trigger in
  * viewport coordinates so the body-level bubble can't be clipped. */
@@ -18,9 +18,15 @@ export function anchorFrom(box: DOMRect): TipAnchor {
   };
 }
 
+/** Closes whichever tooltip is open, so only one shows at a time. */
+let closeOpen: (() => void) | null = null;
+
 export function useTooltip() {
   const [at, setAt] = useState<TipAnchor | null>(null);
   const id = useId();
+  const hide = useCallback(() => setAt(null), []);
+
+  useEffect(() => () => { if (closeOpen === hide) closeOpen = null; }, [hide]);
 
   useEffect(() => {
     if (!at) return;
@@ -33,15 +39,21 @@ export function useTooltip() {
     };
   }, [at]);
 
-  const show = (event: React.SyntheticEvent<HTMLElement>) => setAt(anchorFrom(event.currentTarget.getBoundingClientRect()));
-  const hide = () => setAt(null);
+  // Measured now: React clears currentTarget once the handler returns.
+  const show = (event: React.SyntheticEvent<HTMLElement>) => {
+    const anchor = anchorFrom(event.currentTarget.getBoundingClientRect());
+    if (closeOpen !== hide) closeOpen?.();
+    closeOpen = hide;
+    setAt(anchor);
+  };
 
   const handlers = {
     onPointerEnter: (event: React.PointerEvent<HTMLElement>) => { if (event.pointerType === "mouse") show(event); },
     onPointerLeave: (event: React.PointerEvent<HTMLElement>) => { if (event.pointerType === "mouse") hide(); },
     onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
       if (event.pointerType === "mouse") return;
-      setAt((current) => (current ? null : anchorFrom(event.currentTarget.getBoundingClientRect())));
+      if (at) hide();
+      else show(event);
     },
     onFocus: show,
     onBlur: hide,
