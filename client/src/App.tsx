@@ -80,7 +80,7 @@ function AdminLink({ active }: { active: boolean }) {
 
 /** The rest of the site, one pill after the sections. From `md` up a mouse
  *  opens its groups on hover and a press opens Stats; a tap or a key opens
- *  them. On a phone they open as a panel across the width of the header. */
+ *  them. On a phone they open under the button, flush with its right edge. */
 function MoreMenu({ pathname, active, open, setOpen }: { pathname: string; active: boolean; open: boolean; setOpen: (open: boolean) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => setOpen(false), [pathname, setOpen]);
@@ -98,7 +98,7 @@ function MoreMenu({ pathname, active, open, setOpen }: { pathname: string; activ
     if (!wide() || pointer !== "mouse") { e.preventDefault(); setOpen(!open); }
     else if (active) e.preventDefault();
   };
-  return <div ref={ref} className="md:relative"
+  return <div ref={ref} className="relative"
     onPointerEnter={(e) => { if (e.pointerType === "mouse" && wide()) setOpen(true); }}
     onPointerLeave={(e) => { if (e.pointerType === "mouse") setOpen(false); }}>
     <Link to={MORE_HOME} onClick={press} aria-expanded={open} aria-haspopup="true"
@@ -110,9 +110,8 @@ function MoreMenu({ pathname, active, open, setOpen }: { pathname: string; activ
     {/* A thin triangle beside the button catches a pointer cutting across
         to a far link; the top padding bridges the gap below it. */}
     {open ? <div aria-hidden="true" className="absolute left-full top-0 hidden h-full w-56 [clip-path:polygon(0_0,100%_100%,0_100%)] md:block" /> : null}
-    {open ? <div className="absolute inset-x-2 top-full z-50 pt-1.5 md:inset-x-auto md:left-0">
-      {/* One column: across the header on a phone, under the button above that. */}
-      <div className="rounded-xl border border-zinc-200 bg-white p-2 shadow-lg md:w-max md:min-w-44">
+    {open ? <div className="absolute right-0 top-full z-50 pt-1.5 md:left-0 md:right-auto">
+      <div className="w-max min-w-44 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg">
         <MoreGroups group={(label, links) => (
           <ul key={label} aria-label={label} className="flex flex-col gap-0.5">{links}</ul>
         )} item={(section, current) => (
@@ -151,8 +150,9 @@ function Header({ onSearch }: { onSearch: () => void }) {
   const isRankings = pathname.startsWith("/rankings");
   const isMore = inMore(pathname);
   const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
-  // A profile belongs to no section of the nav, so none of them is lit.
-  const isProfile = pathname.startsWith("/profiles");
+  // A profile, and the graphic builder opened from one, belong to no section
+  // of the nav, so none of them is lit.
+  const isProfile = pathname.startsWith("/profiles") || pathname === "/graphic";
   const links = [
     // Pointing at a section starts its code and its first data, so a tap
     // lands on it loaded.
