@@ -948,10 +948,10 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                   {/* The weight class, the referee and the price are one block
                       in the middle column, centred across it and pinned to
                       the top of the card at every width. */}
-                  <div className="matchup-market col-start-2 row-start-1 flex w-auto max-w-[8.5rem] flex-col items-center self-start text-center @[30rem]:max-w-[16rem] @[58rem]:max-w-[19rem]">
+                  <div className="matchup-market col-start-2 row-start-1 flex w-auto max-w-[8.5rem] -mt-2 flex-col items-center self-start text-center @[30rem]:max-w-[16rem] @[58rem]:max-w-[19rem]">
                     <div><WeightClassLabel fight={fight} /></div>
                     {referee ? (
-                      <div className="mt-1 text-[10px] text-zinc-500" title="Referee">
+                      <div className="mt-2 text-[10px] text-zinc-500" title="Referee">
                         {fight.officials?.referee?.slug
                           ? <Link to={`/referees/${fight.officials.referee.slug}`} title="Referee: every bout they have worked" className="transition hover:text-zinc-900 dark:hover:text-zinc-100">{referee} <span aria-hidden="true">↗</span></Link>
                           : referee}
@@ -959,7 +959,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     ) : null}
                     {/* .matchup-prices zeroes its own margin, so the gap
                         under the weight class (and referee) is padding here. */}
-                    <div className="pt-3">
+                    <div className="pt-2">
                     <div className="matchup-prices">
                       <MatchupOdds key={fight.id} f1={fight.odds?.f1.close} f2={fight.odds?.f2.close}
                         f1Open={fight.odds?.f1.open} f2Open={fight.odds?.f2.open}
