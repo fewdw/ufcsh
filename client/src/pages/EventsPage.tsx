@@ -867,7 +867,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   ].filter((entry) => entry.count > 0) : [];
 
   return (
-    <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+4rem)] sm:gap-3 sm:pb-0 sm:pr-1">
+    <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+3rem)] sm:gap-3 sm:pb-0 sm:pr-1">
       {/* On a phone the list folds away, so its button and the step to
           either neighbour float at the bottom; they head the card wherever
           else it is narrow enough to stack its bouts. */}
