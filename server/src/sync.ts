@@ -399,7 +399,10 @@ export async function syncRoster(): Promise<void> {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       name = excluded.name, norm_name = excluded.norm_name, nickname = excluded.nickname,
-      height = excluded.height, weight = excluded.weight, reach = excluded.reach,
+      -- A blank on UFCStats keeps the height or reach ufc.com gave (roster-moves.ts).
+      height = CASE WHEN excluded.height IN ('', '--') THEN fighters.height ELSE excluded.height END,
+      weight = excluded.weight,
+      reach = CASE WHEN excluded.reach IN ('', '--') THEN fighters.reach ELSE excluded.reach END,
       stance = excluded.stance, wins = excluded.wins, losses = excluded.losses,
       draws = excluded.draws, belt = excluded.belt
   `);
@@ -1339,6 +1342,50 @@ export async function syncFightOdds({ props = false }: { props?: boolean } = {})
   return total;
 }
 
+/** Closing lines for completed bouts BestFightOdds never priced (a missing
+ *  undercard, a board filed under another card), from FightOdds.io's board for
+ *  the same date. A completed board holds each bout's last pre-fight quote.
+ *  Existing prices are never replaced. */
+export async function syncPastFightOdds(eventId?: string): Promise<number> {
+  const dates = (db.prepare(`
+    SELECT DISTINCT e.date FROM fights f JOIN events e ON e.id = f.event_id LEFT JOIN odds o ON o.fight_id = f.id
+    WHERE e.complete = 1 AND e.date >= '2008-01-01' AND o.f1_close IS NULL AND (? IS NULL OR e.id = ?)
+    ORDER BY e.date DESC
+  `).all(eventId ?? null, eventId ?? null) as { date: string }[]).map((row) => row.date);
+  const selectFights = db.prepare(`
+    SELECT f.id, f.f1_id, f.f2_id, f.f1_name, f.f2_name FROM fights f
+    JOIN events e ON e.id = f.event_id LEFT JOIN odds o ON o.fight_id = f.id
+    WHERE e.complete = 1 AND e.date = ? AND o.f1_close IS NULL
+  `);
+  const upsert = db.prepare(`
+    INSERT INTO odds (fight_id, f1_open, f1_close, f2_open, f2_close, source_url, final, checked_at, fetched_at)
+    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+    ON CONFLICT(fight_id) DO UPDATE SET
+      f1_open = excluded.f1_open, f1_close = excluded.f1_close, f2_open = excluded.f2_open, f2_close = excluded.f2_close,
+      source_url = excluded.source_url, final = 1, checked_at = excluded.checked_at, fetched_at = excluded.fetched_at
+    WHERE odds.f1_close IS NULL
+  `);
+  let stored = 0;
+  for (const date of dates) {
+    const boards = (await fightOddsEvents(date)).filter((event) => event.date === date);
+    for (const board of boards) {
+      const bouts = await fightOddsBoard(board.pk);
+      const fights = (selectFights.all(date) as { id: string; f1_id: string; f2_id: string; f1_name: string; f2_name: string }[])
+        .map((row) => ({ ...row, names1: oddsNames(row.f1_id, row.f1_name), names2: oddsNames(row.f2_id, row.f2_name) }));
+      const now = Date.now();
+      for (const bout of bouts) {
+        const match = matchBout(bout, fights);
+        const lines = match ? boutLines(bout) : null;
+        if (!match || !lines) continue;
+        const [open1, open2] = match.reversed ? [lines.open[1], lines.open[0]] : lines.open;
+        const [close1, close2] = match.reversed ? [lines.close[1], lines.close[0]] : lines.close;
+        stored += Number(upsert.run(match.fight.id, open1, close1, open2, close2, bout.url, now, now).changes);
+      }
+    }
+  }
+  return stored;
+}
+
 /**
  * Odds backfill. BestFightOdds keeps a fighter's whole career on one page, so
  * we harvest per fighter (2 requests) instead of per fight (3+), and match each
@@ -1807,6 +1854,10 @@ export async function tick(): Promise<void> {
     //     hold up results or rankings.
     if (!oddsBackfillRunning) {
       void guarded("odds_backfill", async () => { await syncOddsBackfill(200); });
+    }
+    if (metaAgeMs("fightodds_past_at") > DAY) {
+      touchMeta("fightodds_past_at");
+      void guarded("fightodds_past", async () => { await syncPastFightOdds(); });
     }
     if (!methodOddsBackfillRunning) {
       void guarded("method_odds_backfill", async () => { await syncMethodOddsBackfill(20); });

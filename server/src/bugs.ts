@@ -27,6 +27,7 @@ import {
   syncOddsForFight,
   syncCatchWeights,
   syncFightOdds,
+  syncPastFightOdds,
 } from "./sync.ts";
 
 /** The data-quality board behind /admin?tab=bugs. Checks only read; repair
@@ -167,19 +168,27 @@ function fighterBfoLinks(fight: FightRow): BugLink[] {
 
 function upcomingMoneyline(): BugCheck {
   const rows = db.prepare(`
-    SELECT ${FIGHT_COLUMNS}, e.bfo_url, MAX(COALESCE(o.fetched_at, 0), COALESCE(o.checked_at, 0)) AS fetched_at, o.source_url
+    SELECT ${FIGHT_COLUMNS}, e.bfo_url, MAX(COALESCE(o.fetched_at, 0), COALESCE(o.checked_at, 0)) AS fetched_at, o.source_url,
+      (SELECT COUNT(*) FROM fights g JOIN odds p ON p.fight_id = g.id WHERE g.event_id = f.event_id AND p.f1_close IS NOT NULL) AS card_priced
     FROM fights f JOIN events e ON e.id = f.event_id LEFT JOIN odds o ON o.fight_id = f.id
     WHERE e.complete = 0 AND o.f1_close IS NULL
     ORDER BY e.date ASC, f.ord ASC
-  `).all() as (FightRow & { bfo_url: string | null; fetched_at: number | null; source_url: string | null })[];
+  `).all() as (FightRow & { bfo_url: string | null; fetched_at: number | null; source_url: string | null; card_priced: number })[];
+  // A card no source has priced at all is waiting on the books, not on us,
+  // until fight week.
+  const unopened = new Set(rows.filter((fight) => !fight.card_priced).map((fight) => fight.id));
+  const soon = ahead([[1, "critical"], [7, "must"], [21, "minor"]]);
   return check({
     id: "odds-upcoming-moneyline",
     group: "Odds",
     label: "Upcoming bouts without a moneyline",
-    description: "Announced bouts with no price stored. Usually no book has posted a line yet. FightOdds.io matches bouts by UFCStats id, so a bout it lists but we don't price is one it filed under another fighter. If a BestFightOdds board or fighter page lists the bout, the names don't match: check the aliases, then add a fix to the name matching.",
-    grade: ahead([[1, "critical"], [7, "must"], [21, "minor"]]),
+    description: "Announced bouts with no price stored. Usually no book has posted a line yet; a card with no lines at all stays OK until fight week. FightOdds.io matches bouts by UFCStats id, so a bout it lists but we don't price is one it filed under another fighter. If a BestFightOdds board or fighter page lists the bout, the names don't match: check the aliases, then add a fix to the name matching.",
+    grade: (item) => {
+      const level = soon(item);
+      return level === "minor" && unopened.has(item.key) ? "ok" : level;
+    },
   }, rows.map((fight) => fightItem(fight, {
-    facts: [["Last checked", ago(fight.fetched_at)], ...aliasFact(fight)],
+    facts: [["Last checked", ago(fight.fetched_at)], ["Card has lines", fight.card_priced ? "yes" : "not yet"], ...aliasFact(fight)],
     links: [
       ...(fight.bfo_url ? [{ label: "BFO event board", href: fight.bfo_url }] : []),
       ...fighterBfoLinks(fight),
@@ -792,12 +801,18 @@ function staleEvents(): BugCheck {
        OR (e.complete = 0 AND e.date >= date('now') AND COALESCE(e.detail_fetched_at, 0) < ?)
     ORDER BY e.date DESC
   `).all(Date.now() - 60 * 60_000) as { id: string; name: string; date: string; detail_fetched_at: number | null; bouts: number; open: number }[];
+  const fresh = new Set(rows.filter((event) => !event.bouts && (event.detail_fetched_at ?? 0) > Date.now() - 86_400_000).map((event) => event.id));
   return check({
     id: "event-stale",
     group: "Fights & events",
     label: "Events with missing results, no bouts or a stale card",
     description: "A past event still isn't marked complete, a completed event has bouts without a result, an event has no bouts at all, or an upcoming card hasn't been read from UFCStats in over an hour.",
-    grade: (item) => { const days = daysFrom(item.date) ?? 0; return Math.abs(days) <= 7 ? "critical" : days > 7 ? "minor" : "must"; },
+    grade: (item) => {
+      const days = daysFrom(item.date) ?? 0;
+      // A card announced weeks out, freshly read, that UFCStats lists no bouts for yet.
+      if (days > 21 && fresh.has(item.key)) return "ok";
+      return Math.abs(days) <= 7 ? "critical" : days > 7 ? "minor" : "must";
+    },
   }, rows.map((event): BugItem => ({
     key: event.id,
     title: event.name,
@@ -1435,6 +1450,8 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
         if (row.date >= new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)) await syncFightOdds().catch(() => null);
         const fresh = db.prepare("SELECT 1 FROM odds WHERE fight_id = ? AND f1_close IS NOT NULL AND fetched_at > ?").get(row.id, Date.now() - 60_000);
         stored = Boolean(fresh) || await syncOddsForFight(row);
+        // A completed bout BestFightOdds never priced: FightOdds.io's board for the date.
+        if (!stored && row.date < new Date().toISOString().slice(0, 10)) stored = await syncPastFightOdds(row.event_id) > 0;
       } catch (err) {
         return { ok: false, message: `Couldn't reach the odds source (${String(err)}). Nothing was changed.` };
       }

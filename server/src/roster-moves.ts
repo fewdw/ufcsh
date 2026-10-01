@@ -149,6 +149,17 @@ export async function syncUfcStatuses(batch = 2): Promise<void> {
         left_at = CASE WHEN ?3 = 'active' THEN NULL WHEN ?5 IS NOT NULL THEN ?5 ELSE left_at END
     `).run(fighter.id, found?.url ?? null, status, Date.now(), left ? Date.now() : null);
     if (left) log(`roster: ${fighter.name} left the UFC roster (ufc.com)`);
+    // UFCStats has no height or reach for many debutants; ufc.com often does.
+    if (found?.height || found?.reach) {
+      db.prepare(`UPDATE fighters SET
+        height = CASE WHEN height IN ('', '--') AND ?1 IS NOT NULL THEN ?1 ELSE height END,
+        reach = CASE WHEN reach IN ('', '--') AND ?2 IS NOT NULL THEN ?2 ELSE reach END
+        WHERE id = ?3`).run(
+        found.height ? `${Math.floor(Math.round(found.height) / 12)}' ${Math.round(found.height) % 12}"` : null,
+        found.reach ? `${found.reach.toFixed(1)}"` : null,
+        fighter.id,
+      );
+    }
     // A fighter we saw leave whose page reads Active again has come back.
     if (fighter.status === "not_fighting" && status === "active") {
       const state = storedUfcSignings();
