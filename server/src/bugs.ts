@@ -26,6 +26,7 @@ import {
   syncMethodOddsForEvent,
   syncOddsForFight,
   syncCatchWeights,
+  syncFightOdds,
 } from "./sync.ts";
 
 /** The data-quality board behind /admin?tab=bugs. Checks only read; repair
@@ -175,7 +176,7 @@ function upcomingMoneyline(): BugCheck {
     id: "odds-upcoming-moneyline",
     group: "Odds",
     label: "Upcoming bouts without a moneyline",
-    description: "Announced bouts with no price stored. Usually the source hasn't posted a line yet. If the event board or a fighter page already lists the bout, the names don't match. Check the aliases, then add a fix to the name matching.",
+    description: "Announced bouts with no price stored. Usually no book has posted a line yet. FightOdds.io matches bouts by UFCStats id, so a bout it lists but we don't price is one it filed under another fighter. If a BestFightOdds board or fighter page lists the bout, the names don't match: check the aliases, then add a fix to the name matching.",
     grade: ahead([[1, "critical"], [7, "must"], [21, "minor"]]),
   }, rows.map((fight) => fightItem(fight, {
     facts: [["Last checked", ago(fight.fetched_at)], ...aliasFact(fight)],
@@ -1279,6 +1280,28 @@ function rosterMovesUnread(): BugCheck {
 }
 /** /news: each outlet's feed is read every ten minutes. One unread for two
  *  hours has moved, changed shape or started turning us away. */
+/** FightOdds.io prices upcoming bouts every five minutes. Unread for half an
+ *  hour, lines fall back to BestFightOdds' slower pass: the app's API moved,
+ *  changed shape, or started asking for its bot check. */
+function fightOddsUnread(): BugCheck {
+  const readAt = Number(getMeta("fightodds_read_at")) || null;
+  const items: BugItem[] = readAt && Date.now() - readAt < 30 * 60_000 ? [] : [{
+    key: "fightodds",
+    title: "FightOdds.io",
+    subtitle: getMeta("fightodds_error") || "Never read",
+    facts: [["Last read", ago(readAt)], ["Last tried", ago(Number(getMeta("fightodds_tried_at")) || null)]],
+    links: [{ label: "FightOdds.io", href: "https://fightodds.io" }],
+    actions: [],
+  }];
+  return check({
+    id: "odds-fightodds-unread",
+    group: "Odds",
+    label: "FightOdds.io not read",
+    description: "Upcoming moneylines come from FightOdds.io's event boards every five minutes, matched by UFCStats id; BestFightOdds fills anything they miss every few hours. While FightOdds.io is unread, lines only move at BestFightOdds' pace. Check the error: a changed GraphQL field, or the API now requiring its Cloudflare Turnstile token.",
+    grade: "must",
+  }, items);
+}
+
 function newsFeedsUnread(): BugCheck {
   const items: BugItem[] = [];
   for (const feed of NEWS_FEEDS) {
@@ -1327,6 +1350,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     verdictImportErrors(),
     suspiciousOdds(),
     wrongFighterPages(),
+    fightOddsUnread(),
     upcomingMoneyline(),
     pastMoneyline(),
     upcomingProps(),
@@ -1405,9 +1429,12 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
     case "odds": {
       const row = fight();
       if (!row) return { ok: false, message: "Fight not found." };
-      let stored: boolean;
+      let stored = false;
       try {
-        stored = await syncOddsForFight(row);
+        // FightOdds.io's boards first: they hold the freshest upcoming lines.
+        if (row.date >= new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)) await syncFightOdds().catch(() => null);
+        const fresh = db.prepare("SELECT 1 FROM odds WHERE fight_id = ? AND f1_close IS NOT NULL AND fetched_at > ?").get(row.id, Date.now() - 60_000);
+        stored = Boolean(fresh) || await syncOddsForFight(row);
       } catch (err) {
         return { ok: false, message: `Couldn't reach the odds source (${String(err)}). Nothing was changed.` };
       }
@@ -1424,6 +1451,12 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
     case "props": {
       const row = fight();
       if (!row) return { ok: false, message: "Fight not found." };
+      if (row.date >= new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)) {
+        await syncFightOdds({ props: true }).catch(() => null);
+        if (db.prepare("SELECT 1 FROM method_odds WHERE fight_id = ? AND fetched_at > ?").get(row.id, Date.now() - 60_000)) {
+          return { ok: true, message: "Props stored from FightOdds.io." };
+        }
+      }
       const result = await syncMethodOddsForEvent(row.event_id, row.id);
       return { ok: result.fights > 0, message: result.fights ? "Props stored." : result.failed ? "The board couldn't be read." : "The board has no props for this bout." };
     }

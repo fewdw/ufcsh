@@ -38,5 +38,5 @@ test("an event's price age is the newest fetch, and frozen only when every price
 
 test("an unpriced or unknown card reports no price age rather than a stale one", () => {
   const empty = oddsFreshness("no-such-event");
-  assert.deepEqual(empty, { updated_at: null, final: false, priced: 0 });
+  assert.deepEqual(empty, { updated_at: null, final: false, priced: 0, sources: [] });
 });

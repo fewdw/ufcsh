@@ -244,7 +244,7 @@ export type EventDetail = {
   schedule?: CardSchedule;
   card_stats: CardStats;
   /** When this card's prices last reached the local database. */
-  odds_freshness?: { updated_at: number | null; final: boolean; priced: number };
+  odds_freshness?: { updated_at: number | null; final: boolean; priced: number; sources?: string[] };
   fights: EventFight[];
 };
 

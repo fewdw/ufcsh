@@ -107,6 +107,24 @@ async function fetchOnce(state: HostState, url: string, timeoutMs: number): Prom
 
 /** Throttled, retrying, challenge-aware page fetch. All scraping goes through here. */
 export function fetchHtml(url: string, { timeoutMs = 25000, retries = 2 } = {}): Promise<string> {
+  return throttled(url, retries, (state) => fetchOnce(state, url, timeoutMs));
+}
+
+/** A JSON POST (a GraphQL query) on the same per-host queue as page fetches. */
+export function postJson(url: string, body: unknown, { timeoutMs = 25000, retries = 1 } = {}): Promise<unknown> {
+  return throttled(url, retries, async () => {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "User-Agent": userAgent(url), "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+    return res.json();
+  });
+}
+
+function throttled<T>(url: string, retries: number, run: (state: HostState) => Promise<T>): Promise<T> {
   const host = new URL(url).host;
   const state = hostState(host);
   const gap = HOST_GAP_MS[host] ?? DEFAULT_GAP_MS;
@@ -118,7 +136,7 @@ export function fetchHtml(url: string, { timeoutMs = 25000, retries = 2 } = {}):
     for (let attempt = 0; attempt <= retries; attempt++) {
       state.lastAt = Date.now();
       try {
-        return await fetchOnce(state, url, timeoutMs);
+        return await run(state);
       } catch (err) {
         lastError = err;
         if (attempt < retries) {

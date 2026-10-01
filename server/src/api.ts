@@ -1101,18 +1101,22 @@ export function syncedAt(key: string): number | null {
 /** When this event's prices were last fetched, and whether they are frozen.
  * Odds stop being refreshed once an event is over, so a completed card reports
  * final prices rather than an ever-growing age. */
-export function oddsFreshness(eventId: string): { updated_at: number | null; final: boolean; priced: number } {
+export function oddsFreshness(eventId: string): { updated_at: number | null; final: boolean; priced: number; sources: string[] } {
   const row = prepared(`
     SELECT MAX(o.fetched_at) AS updated_at,
            COUNT(o.fight_id) AS priced,
-           SUM(CASE WHEN o.final = 1 THEN 1 ELSE 0 END) AS frozen
+           SUM(CASE WHEN o.final = 1 THEN 1 ELSE 0 END) AS frozen,
+           MAX(o.source_url LIKE 'https://fightodds.io/%') AS fightodds,
+           MAX(o.source_url IS NULL OR o.source_url NOT LIKE 'https://fightodds.io/%') AS bestfightodds
     FROM odds o JOIN fights f ON f.id = o.fight_id
     WHERE f.event_id = ? AND o.f1_close IS NOT NULL
-  `).get(eventId) as { updated_at: number | null; priced: number; frozen: number | null };
+  `).get(eventId) as { updated_at: number | null; priced: number; frozen: number | null; fightodds: number | null; bestfightodds: number | null };
   return {
     updated_at: row.updated_at ?? null,
     final: Boolean(row.priced) && row.frozen === row.priced,
     priced: row.priced ?? 0,
+    // Who a graphic credits for the card's lines.
+    sources: [...(row.fightodds ? ["FightOdds.io"] : []), ...(row.bestfightodds ? ["BestFightOdds"] : [])],
   };
 }
 
