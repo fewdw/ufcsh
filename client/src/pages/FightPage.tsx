@@ -946,9 +946,9 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} reserveRank={reserveRank} />
                   </div>
                   {/* The weight class, the referee and the price are one block
-                      in the middle column, centred both ways against the two
-                      fighters at every width. */}
-                  <div className="matchup-market col-start-2 row-start-1 flex w-auto max-w-[8.5rem] flex-col items-center self-center text-center @[30rem]:max-w-[16rem] @[58rem]:max-w-[19rem]">
+                      in the middle column, centred across it and pinned to
+                      the top of the card at every width. */}
+                  <div className="matchup-market col-start-2 row-start-1 flex w-auto max-w-[8.5rem] flex-col items-center self-start text-center @[30rem]:max-w-[16rem] @[58rem]:max-w-[19rem]">
                     <div><WeightClassLabel fight={fight} /></div>
                     {referee ? (
                       <div className="mt-1 text-[10px] text-zinc-500" title="Referee">
