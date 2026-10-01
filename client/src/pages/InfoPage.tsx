@@ -92,9 +92,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-01">October 1, 2026</time></p>
             <ul>
-              <li>More menu reordered: Stats, News, Browse, Matchmaking.</li>
-              <li>On phones, the More menu no longer spans the screen.</li>
-              <li>Graphic (Beta) moved to your profile.</li>
+              <li>Fight stat tooltips open one at a time.</li>
+              <li>Fixed a crash when tapping fight stats quickly.</li>
             </ul>
           </Section>
         </div>
