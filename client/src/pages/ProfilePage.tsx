@@ -1,5 +1,5 @@
 import { useAuth } from "@clerk/react";
-import { Check, ChevronDown, Flag, Info, LogOut, Pencil, Search, Settings, SquareTerminal, X } from "lucide-react";
+import { Check, ChevronDown, Flag, ImageIcon, Info, LogOut, Pencil, Search, Settings, SquareTerminal, X } from "lucide-react";
 import { isDevSite, useDevStats } from "../devStats";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -389,6 +389,9 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
           </button>
           <Link to="/info" className={action} title="About UFC.sh, sources, rules and shortcuts">
             <Info className="h-3.5 w-3.5" aria-hidden="true" />Information
+          </Link>
+          <Link to="/graphic" className={action} title="Build a shareable graphic">
+            <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />Graphic (Beta)
           </Link>
           {isDevSite ? (
             <button type="button" onClick={toggleDevStats} aria-pressed={devStats} className={`${action} ${devStats ? "!text-sky-600" : ""}`} title="Show screen size, URL and more; tap the overlay to copy it">

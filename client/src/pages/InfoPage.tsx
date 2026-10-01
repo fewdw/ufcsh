@@ -92,8 +92,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-01">October 1, 2026</time></p>
             <ul>
-              <li>On phones, Prev, Events and Next always sit at the bottom of the screen.</li>
-              <li>Bigger, easier-to-tap bottom buttons, and Top centered at the bottom of the events list.</li>
+              <li>More menu reordered: Stats, News, Browse, Matchmaking.</li>
+              <li>On phones, the More menu no longer spans the screen.</li>
+              <li>Graphic (Beta) moved to your profile.</li>
             </ul>
           </Section>
         </div>
