@@ -39,7 +39,7 @@ export function EventPlace({ venue, location, locationSlug, leading = true }: {
 export const CARD_STEP = "inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
 
 /** A step inside the card navigation: larger in the phone's pill, thin in the bar. */
-export const NAV_STEP = "inline-flex h-9 items-center gap-1 rounded-full px-3 text-sm font-semibold transition sm:h-7 sm:px-2.5 sm:text-xs";
+export const NAV_STEP = "inline-flex h-8 items-center gap-1 rounded-full px-3 text-[13px] font-semibold transition sm:h-7 sm:px-2.5 sm:text-xs";
 
 /** Prev, the list and Next: a thin bar heading the card from a tablet up, and
  *  a pill always floating at the bottom of a phone's screen. */
@@ -70,7 +70,7 @@ export function CardNavigation({ label, previous, center, next, className = "" }
       </nav>
       {createPortal(
         <nav aria-label={label} inert={!shown}
-          className={`fixed bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full border border-zinc-200 bg-white/95 p-1 shadow-lg backdrop-blur sm:hidden [&_[data-nav-extra]]:static [&_[data-nav-extra]]:translate-y-0 [&_[data-nav-extra]]:h-9 [&_[data-nav-extra]]:w-10 ${
+          className={`fixed bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full border border-zinc-200 bg-white/95 p-1 shadow-lg backdrop-blur sm:hidden [&_[data-nav-extra]]:static [&_[data-nav-extra]]:translate-y-0 [&_[data-nav-extra]]:h-8 [&_[data-nav-extra]]:w-10 ${
             shown ? "" : "invisible"}`}>
           {previous}{center}{next}
         </nav>,

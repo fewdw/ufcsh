@@ -302,7 +302,7 @@ function EventSidebar({
             // "auto" so a page-level scroll-behavior can never reintroduce it.
             onClick={() => listRef.current?.scrollTo({ top: 0, behavior: "instant" })}
             aria-label="Scroll events to top"
-            className="absolute bottom-3 left-1/2 z-20 inline-flex -translate-x-1/2 sm:bottom-auto sm:left-auto sm:right-3 sm:top-3 sm:translate-x-0 h-10 items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-4 text-sm font-semibold sm:h-8 sm:px-3 sm:text-[11px] text-zinc-600 shadow-md transition hover:border-zinc-300 hover:text-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+            className="absolute bottom-3 left-1/2 z-20 inline-flex -translate-x-1/2 sm:bottom-auto sm:left-auto sm:right-3 sm:top-3 sm:translate-x-0 h-9 items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 text-[13px] font-semibold sm:h-8 sm:px-3 sm:text-[11px] text-zinc-600 shadow-md transition hover:border-zinc-300 hover:text-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
           >
             <svg aria-hidden="true" className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none">
               <path d="M8 12V4m0 0L4.5 7.5M8 4l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -868,7 +868,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   ].filter((entry) => entry.count > 0) : [];
 
   return (
-    <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+3.5rem)] sm:gap-3 sm:pb-0 sm:pr-1">
+    <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+3.25rem)] sm:gap-3 sm:pb-0 sm:pr-1">
       {/* On a phone the list folds away, so its button and the step to
           either neighbour float at the bottom; they head the card wherever
           else it is narrow enough to stack its bouts. */}
