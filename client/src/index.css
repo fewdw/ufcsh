@@ -442,7 +442,7 @@ select:not([multiple]):not([size]) {
 }
 @container (max-width: 57.99rem) {
   .matchup-top-card .matchup-body { padding: 0 12px; }
-  .matchup-top-card .matchup-hero { padding: 16px 0; gap: 12px; }
+  .matchup-top-card .matchup-hero { padding: 8px 0 16px; gap: 12px; }
   .matchup-top-card .matchup-name { font-size: 15px; }
   .matchup-top-card .matchup-fighter > div:first-child > img { width: 44px; height: 44px; }
   .matchup-top-card .matchup-fighter > div:first-child > span { width: 53px; height: 80px; }
