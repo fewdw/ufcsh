@@ -92,8 +92,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-01">October 1, 2026</time></p>
             <ul>
-              <li>Fight stat tooltips open one at a time.</li>
-              <li>Fixed a crash when tapping fight stats quickly.</li>
+              <li>Upcoming odds now refresh every few minutes from about two dozen sportsbooks.</li>
+              <li>More sportsbooks behind every prop, from method to round-by-round.</li>
             </ul>
           </Section>
         </div>
