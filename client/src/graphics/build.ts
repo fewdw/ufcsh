@@ -118,10 +118,14 @@ export function surname(name: string): string {
   return suffix && !last.endsWith(suffix) ? `${last} ${suffix}` : last;
 }
 
+/** Where a card's lines came from, for the credit line. */
+const oddsSources = (event: EventDetail | null | undefined) => event?.odds_freshness?.sources?.join(", ") || "BestFightOdds";
+const lineSource = (url: string | null | undefined) => url?.startsWith("https://fightodds.io/") ? "FightOdds.io" : "BestFightOdds";
+
 function oddsTime(event: EventDetail | null | undefined, past: boolean): string {
-  if (past || event?.odds_freshness?.final) return "Odds: final stored prices · BestFightOdds";
+  if (past || event?.odds_freshness?.final) return `Odds: final stored prices · ${oddsSources(event)}`;
   const at = event?.odds_freshness?.updated_at;
-  return `Odds as of ${at ? stamp(at) : "unknown time"} · BestFightOdds`;
+  return `Odds as of ${at ? stamp(at) : "unknown time"} · ${oddsSources(event)}`;
 }
 
 /** "Sep 24, 1:31 PM EDT" — the moment a price was read, in the reader's zone. */
@@ -329,7 +333,7 @@ export function buildResult(fight: Matchup, toggles: Toggle[], photos: [Photo, P
     judges,
     footer: footerFor(`/fights/${fight.id}`, [
       ["Official totals and scorecards · UFCStats", splits.length || pick ? "picks · UFC.sh" : null].filter(Boolean).join(" · "),
-      ...(closing ? ["Odds: closing line, BestFightOdds"] : []),
+      ...(closing ? [`Odds: closing line, ${lineSource(fight.odds?.source_url)}`] : []),
     ]),
   };
 }
@@ -443,7 +447,7 @@ export function buildEvent(event: EventDetail, toggles: Toggle[], layout: "list"
     rows,
     footer: footerFor(`/events/${event.id}`, [
       [on(toggles, "records") ? "Records · UFCStats, verified pro histories" : "Card · UFCStats and ufc.com", mine || community ? "picks · UFC.sh" : null].filter(Boolean).join(" · "),
-      ...(anyOdds ? [past || event.odds_freshness?.final ? "Odds: closing line, BestFightOdds" : `Odds as of ${event.odds_freshness?.updated_at ? stamp(event.odds_freshness.updated_at) : "unknown time"} · BestFightOdds`] : []),
+      ...(anyOdds ? [past || event.odds_freshness?.final ? `Odds: closing line, ${oddsSources(event)}` : `Odds as of ${event.odds_freshness?.updated_at ? stamp(event.odds_freshness.updated_at) : "unknown time"} · ${oddsSources(event)}`] : []),
     ]),
   };
 }
@@ -471,7 +475,7 @@ export function buildParlay(bet: Bet, owner: PickOwner, handle: string | null): 
       state: leg.state,
     })),
     footer: footerFor(handle ? `/profiles/${handle}?tab=bets` : "/", [
-      "Prices as placed · BestFightOdds lines",
+      "Prices as placed · FightOdds.io and BestFightOdds lines",
       "Results · UFCStats",
     ]),
   };
