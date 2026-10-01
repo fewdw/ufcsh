@@ -905,8 +905,8 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
           </div>
         ) : null}
         <div ref={detailScroll} inert={changingMatchup} className="h-full overflow-y-auto" aria-busy={changingMatchup}>
-          <div className="@container flex min-h-full w-full flex-col gap-2 pb-[calc(env(safe-area-inset-bottom)+4rem)] sm:gap-3 sm:pb-8">
-            {/* The steps along the card head it, and scroll away with it. */}
+          <div className="@container flex min-h-full w-full flex-col gap-2 pb-[calc(env(safe-area-inset-bottom)+3.25rem)] sm:gap-3 sm:pb-8">
+            {/* The steps along the card head it; a phone keeps them at the bottom. */}
             <CardNavigation label="Card navigation"
               previous={cardSteps.previous} center={cardSteps.center} next={cardSteps.next} />
             <div className="flex shrink-0 flex-col gap-2 sm:gap-3">

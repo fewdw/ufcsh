@@ -38,10 +38,11 @@ export function EventPlace({ venue, location, locationSlug, leading = true }: {
 
 export const CARD_STEP = "inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
 
-/** A step inside the card navigation bar. */
-export const NAV_STEP = "inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
+/** A step inside the card navigation: larger in the phone's pill, thin in the bar. */
+export const NAV_STEP = "inline-flex h-8 items-center gap-1 rounded-full px-3 text-[13px] font-semibold transition sm:h-7 sm:px-2.5 sm:text-xs";
 
-/** Prev, the list and Next in one thin bar, heading the card. */
+/** Prev, the list and Next: a thin bar heading the card from a tablet up, and
+ *  a pill always floating at the bottom of a phone's screen. */
 export function CardNavigation({ label, previous, center, next, className = "" }: {
   label: string;
   previous: ReactNode;
@@ -50,30 +51,27 @@ export function CardNavigation({ label, previous, center, next, className = "" }
   className?: string;
 }) {
   const bar = useRef<HTMLElement>(null);
-  const [scrolledPast, setScrolledPast] = useState(false);
-  // Once the bar has scrolled up out of view, a phone gets the same three
-  // steps as a pill floating at the bottom of the screen.
+  const [shown, setShown] = useState(false);
+  // The pill shows while the card it steps through does, so it leaves with
+  // the card when the phone swaps in the events list.
   useEffect(() => {
-    const element = bar.current;
-    if (!element) return;
-    const observer = new IntersectionObserver(([entry]) => {
-      const box = entry.boundingClientRect;
-      setScrolledPast(!entry.isIntersecting && box.height > 0 && box.top < window.innerHeight / 2);
-    });
-    observer.observe(element);
+    const card = bar.current?.parentElement;
+    if (!card) return;
+    const observer = new IntersectionObserver(([entry]) => setShown(entry.isIntersecting));
+    observer.observe(card);
     return () => observer.disconnect();
   }, []);
   return (
     <>
-      <nav ref={bar} aria-label={label} className={`${PANEL} grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-1 p-1 ${className}`}>
+      <nav ref={bar} aria-label={label} className={`${PANEL} hidden shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-1 p-1 sm:grid ${className}`}>
         <div className="min-w-0 justify-self-start">{previous}</div>
         <div className="min-w-0">{center}</div>
         <div className="min-w-0 justify-self-end">{next}</div>
       </nav>
       {createPortal(
-        <nav aria-label={label} inert={!scrolledPast}
-          className={`fixed bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full border border-zinc-200 bg-white/95 p-1 shadow-lg backdrop-blur transition duration-200 ease-out sm:hidden [&_[data-nav-extra]]:hidden ${
-            scrolledPast ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-4 opacity-0"}`}>
+        <nav aria-label={label} inert={!shown}
+          className={`fixed bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full border border-zinc-200 bg-white/95 p-1 shadow-lg backdrop-blur sm:hidden [&_[data-nav-extra]]:static [&_[data-nav-extra]]:translate-y-0 [&_[data-nav-extra]]:h-8 [&_[data-nav-extra]]:w-10 ${
+            shown ? "" : "invisible"}`}>
           {previous}{center}{next}
         </nav>,
         document.body,
