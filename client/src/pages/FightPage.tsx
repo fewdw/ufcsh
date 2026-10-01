@@ -948,7 +948,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                   {/* In the stacked layout, keep the details level with the tops of
                       the portraits; longer names and badges shouldn't lower them. */}
                   <div className="matchup-market col-start-2 row-start-1 flex w-auto max-w-[8.5rem] flex-col items-center self-start text-center @[30rem]:max-w-[16rem] @[58rem]:self-center @[58rem]:max-w-[19rem]">
-                    <div><WeightClassLabel fight={fight} /></div>
+                    <div className="flex"><WeightClassLabel fight={fight} /></div>
                     {referee ? (
                       <div className="mt-1 text-[10px] text-zinc-500" title="Referee">
                         {fight.officials?.referee?.slug
