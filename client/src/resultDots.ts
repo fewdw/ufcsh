@@ -1,3 +1,5 @@
+import { noContestReason } from "../../server/src/no-contest.ts";
+
 export type FormResult = {
   outcome: "win" | "loss" | "draw" | "nc" | null;
   method: string | null;
@@ -20,7 +22,7 @@ export function resultDot(result: FormResult) {
   const shape = outside ? "rounded-[3px]" : "rounded-full";
   const unknown = !finish && !decision && result.outcome !== "draw" && result.outcome !== "nc";
   return {
-    shortMethod: decision ? (/^(?:U|S|M)-DEC$/.test(method) ? method : "DEC")
+    shortMethod: result.outcome === "nc" ? noContestReason(result.method) : decision ? (/^(?:U|S|M)-DEC$/.test(method) ? method : "DEC")
       : finish ? (/SUB/.test(method) ? "SUB" : "KO/TKO") : result.method,
     label: `${label}${result.method ? ` · ${result.method}` : " · method unknown"}${outside ? " · outside the UFC" : ""}`,
     className: `shrink-0 border-[1.5px] ${color} ${decision ? "!bg-transparent" : ""} ${unknown ? "opacity-60" : ""} ${shape}`,

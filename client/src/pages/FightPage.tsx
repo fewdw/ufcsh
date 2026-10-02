@@ -290,6 +290,11 @@ function FormTarget({ row, className, children }: { row: UfcHistoryRow; classNam
   return <div title={title} className={className}>{children}</div>;
 }
 
+/** Marks a bout fought outside the UFC, in the violet the fighter page uses. */
+function OutsideTag() {
+  return <span className="text-[9px] font-semibold uppercase leading-3 tracking-[0.04em] text-violet-500">Outside UFC</span>;
+}
+
 /** First name over everything after it, so "Rafael dos Anjos" keeps its
  *  particle with the surname. A single-word name sits on the surname line. */
 function splitName(name: string): [string, string] {
@@ -323,6 +328,7 @@ function FormBout({ row }: { row: UfcHistoryRow }) {
       <span className={`block whitespace-nowrap leading-3 ${metaText}`}>
         {formatDateShortWithYear(row.date)}
       </span>
+      {row.promotion === "outside" ? <OutsideTag /> : null}
     </FormTarget>
   );
 }
@@ -341,6 +347,7 @@ function FormListBout({ row }: { row: UfcHistoryRow }) {
         <span className={`block truncate ${CHART_TEXT} font-semibold leading-4 text-zinc-800`}>{row.opponent.name}</span>
         <span className="block truncate text-[10px] leading-3 text-zinc-400">
           <span className="font-semibold uppercase text-zinc-500">{method || "—"}</span> · {formatDateShortWithYear(row.date)}
+          {row.promotion === "outside" ? <> · <OutsideTag /></> : null}
         </span>
       </span>
     </FormTarget>
