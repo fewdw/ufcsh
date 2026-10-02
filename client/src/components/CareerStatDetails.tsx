@@ -55,9 +55,11 @@ const OUTCOME_WORD: Record<string, string> = { win: "Win", loss: "Loss", draw: "
 const careerStatsUrl = (fighter: Fighter | undefined, before?: string) => fighter ? `/api/fighters/${fighter.id}/career-stats${before ? `?before=${before}` : ""}` : null;
 
 /** Interactive evidence: hover on a mouse, tap to pin, with reachable fight links.
- *  A matchup passes both fighters and opens on the side that was tapped. */
-export default function CareerStatDetails({ fighters, initial = 0, before, view, children, className = "" }: {
-  fighters: Fighter[]; initial?: number; before?: string; view: EvidenceView; children: ReactNode; className?: string;
+ *  A matchup passes both fighters and opens on the side that was tapped.
+ *  `available` marks which fighters have any bout to list; an empty one
+ *  cannot be opened or switched to. */
+export default function CareerStatDetails({ fighters, available, initial = 0, before, view, children, className = "" }: {
+  fighters: Fighter[]; available?: boolean[]; initial?: number; before?: string; view: EvidenceView; children: ReactNode; className?: string;
 }) {
   const [mode, setMode] = useState<"hover" | "pinned" | null>(null);
   const [position, setPosition] = useState<{ left: number; top: number; width: number; height: number; above: boolean } | null>(null);
@@ -185,6 +187,7 @@ export default function CareerStatDetails({ fighters, initial = 0, before, view,
     };
   }, [open, touch, close]);
 
+  if (available?.[initial] === false) return <div className={className}>{children}</div>;
   return <>
     <button ref={trigger} type="button" aria-label={`${fighters[initial].name}: ${view.label} — view opponents and fights`} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
       onPointerEnter={event => { if (event.pointerType === "mouse" && mode !== "pinned") show("hover"); }}
@@ -212,8 +215,8 @@ export default function CareerStatDetails({ fighters, initial = 0, before, view,
           </div>
           <div className="flex items-center gap-2">
             {fighters.length > 1 ? <div role="tablist" aria-label="Fighter" className={`${segmentedGroup} min-w-0 flex-1`}>
-              {fighters.map((option, index) => <button key={option.id} type="button" role="tab" aria-selected={index === selected} onClick={() => setSelected(index)}
-                className={`min-h-9 min-w-0 flex-1 truncate rounded-full px-2 py-2 text-[13px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 sm:px-3 sm:text-sm ${index === selected ? segmentedSelected : segmentedIdle}`}>{option.name}</button>)}
+              {fighters.map((option, index) => <button key={option.id} type="button" role="tab" aria-selected={index === selected} disabled={available?.[index] === false} onClick={() => setSelected(index)}
+                className={`min-h-9 min-w-0 flex-1 truncate rounded-full px-2 py-2 text-[13px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-zinc-500 sm:px-3 sm:text-sm ${index === selected ? segmentedSelected : segmentedIdle}`}>{option.name}</button>)}
             </div> : null}
             {view.columns.some(column => column.value) ? <label className="ml-auto shrink-0">
               <span className="sr-only">Sort opponents</span>

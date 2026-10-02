@@ -1006,6 +1006,7 @@ function ProfileRow({
             </span>
           );
           return <CareerStatDetails key={side} fighters={[fight.f1, fight.f2]} initial={side === "f1" ? 0 : 1} before={fight.id} view={metricView(metric)}
+            available={SIDES.map((each) => (careers[each] ? metric.sample(careers[each]).total : 0) > 0)}
             className={`grid w-full items-center gap-x-1 @[40rem]:gap-x-1.5 ${side === "f1" ? "grid-cols-[2.25rem_minmax(0,1fr)] @[40rem]:grid-cols-[3rem_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)_2.25rem] @[40rem]:grid-cols-[minmax(0,1fr)_3rem]"}`}>
             {side === "f1" ? [figure, bar] : [bar, figure]}
           </CareerStatDetails>;
@@ -1061,6 +1062,7 @@ function MethodProfile({ fight, careers }: { fight: Matchup; careers: Record<Sid
               const counts = split(careers[side], row.key);
               return (
                 <CareerStatDetails key={side} fighters={[fight.f1, fight.f2]} initial={side === "f1" ? 0 : 1} before={fight.id} view={row.view}
+                  available={SIDES.map((each) => (careers[each]?.[row.key] ?? 0) > 0)}
                   className={`block w-full min-w-0 text-left ${side === "f1" ? "@[36rem]:text-right" : ""}`}>
                   <MethodBar side={side} counts={counts} total={counts.total} />
                 </CareerStatDetails>
