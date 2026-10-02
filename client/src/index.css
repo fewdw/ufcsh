@@ -264,6 +264,8 @@ select:not([multiple]):not([size]) {
 /* A black button on a near-black panel disappears; on the dark theme the
    primary action inverts to a light pill instead (see ui.ts). */
 .dark .ui-primary { background-color: #f4f4f5 !important; color: #18181b !important; }
+/* A press, for the touch screens the hover rules below leave out. */
+.dark .active\:bg-zinc-100:active { background-color: #27272a !important; }
 /* Like Tailwind's own hover: variant, only where a pointer can hover. A touch
    screen fires :hover on whatever a scrolling finger lands on. */
 @media (hover: hover) {

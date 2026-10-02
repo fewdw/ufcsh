@@ -16,7 +16,7 @@ import ProfileComments, { commentsList } from "../components/ProfileComments";
 import ReportIssueDialog from "../components/ReportIssueDialog";
 import Leaderboards from "../components/Leaderboards";
 import { formatDateShortWithYear, formatMethod } from "../format";
-import { useRouteScrollRestoration } from "../navigationState";
+import { useRouteScrollRestoration, useTabBarAnchor } from "../navigationState";
 import { rememberedEmail, useMyProfile } from "../profile";
 import { cardWinner, usernameProblem } from "../scoring";
 import type { ProfileFilter, ScorerCard, ScorerIdentity, ScorerProfile } from "../scoring";
@@ -108,6 +108,7 @@ function Profile({ handle }: { handle: string }) {
   const tabs = TABS.filter(tab => tab.id !== "comments" || mine || view?.scorer.commentsPublic);
   const section: Section = tabs.find(tab => tab.id === search.get("tab"))?.id ?? "scorecards";
   const scroll = useRouteScrollRestoration<HTMLDivElement>("profile", Boolean(view));
+  const tabAnchor = useTabBarAnchor(handle, section);
   const sentinel = useRef<HTMLDivElement>(null);
 
   const name = view?.scorer.displayName;
@@ -187,13 +188,14 @@ function Profile({ handle }: { handle: string }) {
               aria-controls="profile-tabpanel"
               aria-selected={section === tab.id}
               tabIndex={section === tab.id ? 0 : -1}
-              onClick={() => { const params = new URLSearchParams(search); params.set("tab", tab.id); setSearch(params, { replace: true }); }}
+              onClick={event => { tabAnchor.keep(event.currentTarget); const params = new URLSearchParams(search); params.set("tab", tab.id); setSearch(params, { replace: true }); }}
               onKeyDown={event => {
                 const next = event.key === "ArrowRight" ? (index + 1) % tabs.length
                   : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length
                     : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : null;
                 if (next == null) return;
                 event.preventDefault();
+                tabAnchor.keep(event.currentTarget);
                 const params = new URLSearchParams(search); params.set("tab", tabs[next].id); setSearch(params, { replace: true });
                 event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
               }}

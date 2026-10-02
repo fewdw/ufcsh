@@ -1,7 +1,7 @@
 import { List, X } from "lucide-react";
 import Flag from "../components/Flag";
 import { isFightDay } from "../liveEvent";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useApi } from "../api";
 import type { EventDetail, EventFight, FightDetailBlock, HistoryRow, Matchup, MatchupSide, ProfessionalHistoryRow } from "../api";
@@ -44,7 +44,7 @@ import {
   metaText,
   sectionLabel,
 } from "../components/FightStats";
-import { cardFightSearch, useRouteScrollRestoration } from "../navigationState";
+import { cardFightSearch, useRouteScrollRestoration, useTabBarAnchor } from "../navigationState";
 import { SITE_URL, useSeo } from "../seo";
 import { useSettings, withRanking } from "../settings";
 import { scoreableRoundCount } from "../scoring";
@@ -719,41 +719,10 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   // URL's `?tab=` search param, which mints a new location key and would
   // otherwise read as a brand-new page and reset the scroll to the top.
   const detailScroll = useRouteScrollRestoration<HTMLDivElement>("fight:detail", Boolean(fight), fightId);
-  // Switching tabs keeps the tab bar where the reader had it. A shorter tab
-  // can't always allow that, so the bar goes as near as the page lets it, and
-  // back to the place it was asked for once a tab (or its late-loading
-  // content) is tall enough again. Scrolling by hand sets a new place.
+  // Switching tabs keeps the tab bar where the reader had it.
   const tabBar = useRef<HTMLDivElement>(null);
-  const tabAnchor = useRef<{ fightId: string; top: number; until: number } | null>(null);
-  const toTop = () => { tabAnchor.current = null; detailScroll.current?.scrollTo({ top: 0 }); };
-  const hasFight = fight != null;
-  useLayoutEffect(() => {
-    const scroller = detailScroll.current;
-    const bar = tabBar.current;
-    const content = scroller?.firstElementChild;
-    if (!scroller || !bar || !content) return;
-    const hold = () => {
-      const anchor = tabAnchor.current;
-      if (!anchor || anchor.fightId !== fightId || performance.now() > anchor.until) return;
-      scroller.scrollTop += bar.getBoundingClientRect().top - anchor.top;
-    };
-    const release = () => { tabAnchor.current = null; };
-    const releaseOnBar = (event: PointerEvent) => { if (event.target === scroller) release(); };
-    hold();
-    const observer = new ResizeObserver(hold);
-    observer.observe(content);
-    scroller.addEventListener("wheel", release, { passive: true });
-    scroller.addEventListener("touchmove", release, { passive: true });
-    scroller.addEventListener("keydown", release);
-    scroller.addEventListener("pointerdown", releaseOnBar);
-    return () => {
-      observer.disconnect();
-      scroller.removeEventListener("wheel", release);
-      scroller.removeEventListener("touchmove", release);
-      scroller.removeEventListener("keydown", release);
-      scroller.removeEventListener("pointerdown", releaseOnBar);
-    };
-  }, [detailScroll, fightId, location.search, hasFight]);
+  const tabAnchor = useTabBarAnchor(fightId, location.search);
+  const toTop = () => { tabAnchor.release(); detailScroll.current?.scrollTo({ top: 0 }); };
   const eventId = loadedFight?.event.id ?? eventIdHint ?? previousFight.current?.event.id;
   const { data: cardEvent } = useApi<EventDetail>(eventId ? withRanking(`/api/events/${eventId}`, settings.rankingSource) : null,
     data => data?.refreshing ? 5_000 : isFightDay(data?.date) ? 15_000 : data?.status === "past" ? 0 : 5 * 60_000);
@@ -882,15 +851,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   const tab = tabs.find((candidate) => candidate === requestedTab) ?? tabs[0];
   // Only the tab panel below should change; the tab bar holds its place.
   const selectTab = (next: MatchupTab) => {
-    const bar = tabBar.current;
-    if (bar) {
-      const anchor = tabAnchor.current;
-      tabAnchor.current = {
-        fightId,
-        top: anchor && anchor.fightId === fightId ? anchor.top : bar.getBoundingClientRect().top,
-        until: performance.now() + 3_000,
-      };
-    }
+    if (tabBar.current) tabAnchor.keep(tabBar.current);
     navigate({ search: `?tab=${next}` }, { replace: true, state: location.state });
   };
 
