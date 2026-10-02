@@ -15,7 +15,7 @@ import { fetchPage, LoadMore, useInfiniteList } from "../components/InfiniteList
 import NewsRow, { savedOff, savedSummaries } from "../components/NewsRow";
 import { PanelHeading } from "../components/FightStats";
 import { SITE_URL, useSeo } from "../seo";
-import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
+import { useHistoryState, useRouteScrollRestoration, useTabBarAnchor } from "../navigationState";
 import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedTab } from "../components/segmented";
 import { outsideFighterUrl, useSettings, withRanking } from "../settings";
 
@@ -549,13 +549,13 @@ const TAB_LABELS: Record<ProfileTab, string> = { fights: "Fights", stats: "Stats
  *  narrow window; on a wide one the stats have a column of their own, so it
  *  only switches the other column between fights and news. */
 function ProfileTabs({ tabs, current, onSelect, news, className }: {
-  tabs: ProfileTab[]; current: ProfileTab; onSelect: (tab: ProfileTab) => void; news: number | null; className: string;
+  tabs: ProfileTab[]; current: ProfileTab; onSelect: (tab: ProfileTab, button: HTMLElement) => void; news: number | null; className: string;
 }) {
   return (
     <div className={`${shell} p-1.5 ${className}`}>
       <div role="tablist" aria-label="Fighter sections" className={`${segmentedGroup} w-full`}>
         {tabs.map((key) => (
-          <button key={key} type="button" role="tab" aria-selected={key === current} onClick={() => onSelect(key)}
+          <button key={key} type="button" role="tab" aria-selected={key === current} onClick={(event) => onSelect(key, event.currentTarget)}
             className={`${segmentedTab} ${key === current ? segmentedSelected : segmentedIdle}`}>
             {TAB_LABELS[key]}{key === "news" && news != null ? ` (${news.toLocaleString()})` : ""}
           </button>
@@ -608,6 +608,8 @@ export default function FighterPage() {
   const sideScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:side", Boolean(fighter));
   // Below `lg` the two columns become two tabs under the fighter.
   const [tab, setTab] = useHistoryState<ProfileTab>("fighter:tab", "fights");
+  const tabAnchor = useTabBarAnchor(fighterId ?? "", tab);
+  const selectTab = (next: ProfileTab, button: HTMLElement) => { tabAnchor.keep(button); setTab(next); };
   // Read with the fighter: the tab shows how many stories there are.
   const { data: news } = useApi<NewsPage>(fighterId ? newsUrl(fighterId) : null);
   useSeo({
@@ -724,7 +726,7 @@ export default function FighterPage() {
 
         {/* Statistics rank UFC bouts, so a fighter yet to have one — booked
             or only signed — has fights and news and nothing else. */}
-        <ProfileTabs tabs={fought ? ["fights", "stats", "news"] : ["fights", "news"]} current={tab} onSelect={setTab} news={news?.total ?? null} className="lg:hidden" />
+        <ProfileTabs tabs={fought ? ["fights", "stats", "news"] : ["fights", "news"]} current={tab} onSelect={selectTab} news={news?.total ?? null} className="lg:hidden" />
 
         {fought ? <div className={`${tab === "stats" ? "contents" : "hidden lg:contents"} [&>*]:shrink-0`}>
           <Records records={fighter.records ?? []} />
@@ -733,7 +735,7 @@ export default function FighterPage() {
         </div>
 
         <div ref={sideScroll} className={`${tab !== "stats" || !fought ? "flex" : "hidden lg:flex"} min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]`}>
-        <ProfileTabs tabs={["fights", "news"]} current={tab === "news" ? "news" : "fights"} onSelect={setTab} news={news?.total ?? null} className="hidden lg:block" />
+        <ProfileTabs tabs={["fights", "news"]} current={tab === "news" ? "news" : "fights"} onSelect={selectTab} news={news?.total ?? null} className="hidden lg:block" />
 
         {tab === "news" ? <FighterNews key={fighter.id} fighterId={fighter.id} name={fighter.name} first={news ?? null} /> : <section className={shell}>
           <PanelHeading title="Fights" subtitle={allFights.length.toLocaleString()} />
