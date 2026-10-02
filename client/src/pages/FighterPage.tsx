@@ -290,58 +290,71 @@ function DivisionLabel({ division, move }: { division: string; move?: DivisionMo
 
 const HIT = "transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900";
 
-/** A bout packed into three lines (who, how, where) for narrow screens,
- * where the full table would not fit. */
+/** A bout packed into three bands (who, how, where) for narrow screens, where
+ *  the full table would not fit. Each band is its own target and runs the full
+ *  width of the row, edge to edge with its neighbours, so a thumb anywhere on
+ *  the row lands on one of the three and never in a gap between them. The
+ *  lower two are indented past the result badge, lining their text up under
+ *  the opponent's name. */
+const BAND = "flex min-w-0 px-4 transition-colors hover:bg-zinc-50 active:bg-zinc-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-zinc-900";
+const BAND_INDENT = "pl-[3.125rem]";
+
 function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHistoryRow; fighterName: string; move?: DivisionMove }) {
   const bout = boutFields(row);
   return (
-    <div className={`grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 px-4 py-2.5 @3xl:hidden`}>
-      <span
-        className={`col-start-1 row-start-1 grid h-6 min-w-6 shrink-0 place-items-center self-center rounded-full px-1 text-[10px] font-bold leading-none ${resultBadgeClasses(row.outcome, row.upcoming)}`}
-        title={bout.result}
-        aria-hidden="true"
-      >
-        {resultBadgeLetter(row.outcome, row.upcoming)}
-      </span>
-
+    <div className="flex flex-col py-1.5 @3xl:hidden">
       <BoutLink
         to={bout.opponentTo}
         href={bout.opponentHref}
         label={`Open ${row.opponent.name} profile`}
-        className={`col-start-2 row-start-1 -mx-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 rounded px-1 py-0.5 ${HIT}`}
+        className={`${BAND} items-center gap-2.5 py-1.5`}
       >
-        <span className="min-w-0 break-words text-[13px] font-semibold leading-5 text-zinc-900">{row.opponent.name}</span>
-        {/* Both closing lines are here, and position is what says whose is
-            whose: the opponent's sits against their name, the fighter's on the
-            line about their own result. Neither number can be read off as the
-            other's, so each also carries the name in a tooltip and spells the
-            whole thing out for a screen reader. */}
-        {bout.opponentOdds ? (
-          <span className="shrink-0 text-[10px] font-semibold tabular-nums text-zinc-400" title={`${row.opponent.name} closing odds`}>
-            <span className="sr-only">{row.opponent.name} closing odds </span>{bout.opponentOdds}
-          </span>
-        ) : null}
-        {row.opponent_form ? <OpponentForm form={row.opponent_form} /> : null}
+        <span
+          className={`grid h-6 min-w-6 shrink-0 place-items-center rounded-full px-1 text-[10px] font-bold leading-none ${resultBadgeClasses(row.outcome, row.upcoming)}`}
+          title={bout.result}
+          aria-hidden="true"
+        >
+          {resultBadgeLetter(row.outcome, row.upcoming)}
+        </span>
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="min-w-0 break-words text-[15px] font-semibold leading-6 text-zinc-900">{row.opponent.name}</span>
+          {/* Both closing lines are here, and position is what says whose is
+              whose: the opponent's sits against their name, the fighter's on the
+              line about their own result. Neither number can be read off as the
+              other's, so each also carries the name in a tooltip and spells the
+              whole thing out for a screen reader. */}
+          {bout.opponentOdds ? (
+            <span className="shrink-0 text-[11px] font-semibold tabular-nums text-zinc-400" title={`${row.opponent.name} closing odds`}>
+              <span className="sr-only">{row.opponent.name} closing odds </span>{bout.opponentOdds}
+            </span>
+          ) : null}
+          {row.opponent_form ? <OpponentForm form={row.opponent_form} /> : null}
+        </span>
       </BoutLink>
 
       <BoutLink
         to={bout.fightTo}
         href={bout.fightHref}
         label={`Open ${row.opponent.name} matchup`}
-        className={`col-start-2 -mx-1 flex min-w-0 flex-wrap items-center rounded px-1 py-0.5 text-[11px] leading-4 text-zinc-500 ${HIT}`}
+        className={`${BAND} ${BAND_INDENT} items-baseline py-1.5 text-xs leading-5 text-zinc-500`}
       >
         <span className="sr-only">{bout.result}</span>
-        <FactRun>
-          <span className="font-medium">{bout.method}</span>
-          {bout.outside ? <span className="font-semibold text-violet-500">Outside UFC</span> : <DivisionLabel division={divisionName(row.weight_class, "catch_weight" in row ? row.catch_weight : null)} move={move} />}
-          {row.title_narrative ? <span className={`font-semibold ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
-          {weightMisses(row)}
-        </FactRun>
+        <span className="flex min-w-0 flex-1 flex-wrap items-center">
+          <FactRun>
+            <span className="font-medium">{bout.method}</span>
+            {bout.outside ? <span className="font-semibold text-violet-500">Outside UFC</span> : <DivisionLabel division={divisionName(row.weight_class, "catch_weight" in row ? row.catch_weight : null)} move={move} />}
+            {row.title_narrative ? <span className={`font-semibold ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
+            {weightMisses(row)}
+            {/* The awards belong to the fight, so they close its run rather
+                than take a line of their own that no tap would reach. */}
+            {row.bonuses?.fotn || row.bonuses?.perf || row.bonuses?.perf_against ? <BoutNotes row={row} className="inline-flex align-middle" /> : null}
+          </FactRun>
+        </span>
         {/* Out of the run and against the right edge, where it lines up with
             the date below and with every other price down the list — and where
             a long run wrapping cannot strand it alone on a line of its own. */}
         {bout.fighterOdds ? (
-          <span className="ml-auto shrink-0 pl-2 font-semibold tabular-nums text-zinc-400" title={`${fighterName} closing odds`}>
+          <span className="shrink-0 pl-2 font-semibold tabular-nums text-zinc-400" title={`${fighterName} closing odds`}>
             <span className="sr-only">{fighterName} closing odds </span>{bout.fighterOdds}
           </span>
         ) : null}
@@ -351,15 +364,13 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
         to={bout.eventTo}
         href={bout.eventHref}
         label={`Open ${row.event_name}`}
-        className={`col-start-2 -mx-1 flex min-w-0 items-baseline gap-x-2 rounded px-1 py-0.5 ${HIT}`}
+        className={`${BAND} ${BAND_INDENT} items-baseline gap-x-2 py-1.5`}
       >
         {/* The name takes the slack, so every date in the list lands on the
             same right edge and the column of dates can be read straight down. */}
-        <span className="min-w-0 flex-1 truncate text-[11px] leading-4 text-zinc-600">{row.event_name}</span>
-        <span className="shrink-0 text-[10px] leading-4 tabular-nums text-zinc-400">{formatDateShortWithYear(row.date)}</span>
+        <span className="min-w-0 flex-1 truncate text-xs leading-5 text-zinc-600">{row.event_name}</span>
+        <span className="shrink-0 text-[11px] leading-5 tabular-nums text-zinc-400">{formatDateShortWithYear(row.date)}</span>
       </BoutLink>
-
-      <BoutNotes row={row} className="col-start-2 mt-1.5" />
     </div>
   );
 }
