@@ -1,3 +1,4 @@
+import type { CareerTotals } from "./careerMetrics";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { RequestCache } from "./requestCache";
 import { readSnapshot, writeSnapshot } from "./snapshots";
@@ -117,7 +118,7 @@ export type CompleteRecordBefore = {
 };
 
 /** A fighter's career totals as they stood entering a given bout. */
-export type CareerBefore = {
+export type CareerBefore = CareerTotals & {
   bouts: number;
   wins: number;
   losses: number;
@@ -140,30 +141,16 @@ export type CareerBefore = {
   champion: boolean;
   interimChampion: boolean;
   formerChampion: boolean;
-  sigLanded: number;
-  sigAbsorbed: number;
-  seconds: number;
-  statBouts: number;
-  sigAccuracyLanded: number;
-  sigAttempted: number;
-  sigDefenseAbsorbed: number;
-  sigFacedAttempted: number;
-  takedowns: number;
-  takedownsTaken: number;
-  takedownAccuracyLanded: number;
-  takedownAttempts: number;
-  takedownDefenseConceded: number;
-  takedownsFacedAttempts: number;
-  submissionAttempts: number;
-  knockdowns: number;
-  knockdownsTaken: number;
-  controlSeconds: number;
-  controlledSeconds: number;
-  controlBouts: number;
-  controlTrackedSeconds: number;
   meetings: number;
   meetingWins: number;
   meetingLosses: number;
+};
+
+export type CareerStatistics = {
+  fighter_id: string; name: string;
+  before: { fight_id: string; date: string } | null;
+  bouts: number; totals: CareerTotals;
+  rows: { fight_id: string; date: string; event_name: string; opponent: { id: string | null; name: string }; outcome: "win" | "loss" | "draw" | "nc" | null; totals: CareerTotals; takedowns: { scored: number; attempted: number | null } | null; control_seconds: number | null }[];
 };
 
 export type FightOdds = {
@@ -395,6 +382,7 @@ export type FighterProfile = {
   photo_full_url: string | null;
   ranking: { division: string; rank: string; rank_change: string | null } | null;
   records: FighterRecord[];
+  career_stats: CareerTotals;
   /** Every verified professional bout; UFC rows retain their richer local data. */
   pro_history: ProfessionalHistoryRow[];
   /** UFC-only history, including verified source-only UFC rows. */

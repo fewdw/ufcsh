@@ -13,6 +13,7 @@ client (`client/`) renders every page.
 | Link-preview images (`/og/*.jpg`) | `og-images.ts` (drawing); data lookup in `api.ts` (`shareCardData`) |
 | Fighter identity, records, photo URLs | `fighter-identity.ts` |
 | Search aliases (GSP, Aljo, real and maiden names; search only, never shown) | `search-aliases.ts` |
+| Career averages and opponent evidence | `career-metrics.ts` (shared formulas and recorded samples), `career-statistics.ts` (current career or cutoff before a matchup); missing samples in Admin → Bugs |
 | In-memory analytics index | `fight-index.ts` (every completed bout, state entering it) |
 | Leaderboards | `stats.ts` (fighter cards), `stats-fights.ts` (Fights card: bouts, judges, referees) |
 | Matchmaking (title fights, ranked pairings, next opponents after recent cards) | `matchmaking.ts` |
@@ -42,7 +43,7 @@ copy of the local archive (`DATA_DIR`).
 | News page (newest first, Settings: summaries and outlet toggles); a fighter's News tab | `pages/NewsPage.tsx`, `components/NewsRow.tsx`; `FighterNews` in `pages/FighterPage.tsx` |
 | Data fetching and polling | `api.ts` (types + `useApi`), `requestCache.ts`, `polling.ts`; early data in `index.html`, link prefetch in `useLinkPrefetch.ts` + `pageRequests.ts`, page chunks in `pages.ts`, answers kept across reloads in `snapshots.ts` |
 | Events and matchups | `pages/EventsPage.tsx`, `pages/FightPage.tsx`, `components/FightRail.tsx`, `components/FightStats.tsx` |
-| Fighter profiles | `pages/FighterPage.tsx`, `components/FighterStatistics.tsx` |
+| Fighter profiles | `pages/FighterPage.tsx`, `components/FighterStatistics.tsx`, `components/FighterCareerStats.tsx`; shared hover/tap evidence in `components/CareerStatDetails.tsx` |
 | Officials, venues and locations | `pages/JudgePage.tsx`, `pages/RefereePage.tsx`, `pages/VenuePage.tsx` (venue and location pages), `pages/DirectoryPages.tsx`, shared pieces in `components/ResearchKit.tsx` and `research.ts` |
 | Typed list filters (spacing, word order and typos forgiven), Roster "new since last visit" | `search.ts` (server twin: `searchList` in `server/src/fuzzy.ts`), `rosterSeen.ts` |
 | Graphics builder | `graphicsLauncher.tsx` (open from anywhere), `components/GraphicsBuilder.tsx` (dialog), `graphics/presets.ts` (the starting points), `graphics/build.ts` (data and picks → graphic), `graphics/render.ts` (templates), `graphics/draw.ts` (themes, texture, type and shared marks), `graphics/fonts.ts` (Barlow Condensed, self-hosted in `public/fonts`), `graphics/export.ts` |

@@ -1,3 +1,4 @@
+import { careerStatistics } from "./career-statistics.ts";
 import { eventStatus, fightIsComplete, fightIsUnderway, isFightDay, liveDetailDue } from "./live-state.ts";
 import { ScoringStore, type ScoringFight } from "./scoring.ts";
 import { createScoringHandler, scoringOrigins } from "./scoring-http.ts";
@@ -996,12 +997,13 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
   refreshing = matchupRefresh.request(`titles:${id}`, () => ensureFighterTitleTypes(id),
     err => log("lazy fighter titles failed:", String(err)), 5 * 60_000) || refreshing;
   requestPhoto(id);
-  const version = `${dataRevision("profiles")}:${todayIso()}`;
+  const index = fightIndex();
+  const version = `${dataRevision("profiles")}:${index.version}:${todayIso()}`;
   const cacheKey = `${id}:${rankingType}`;
   const cachedProfile = profileCache.get(cacheKey, version);
   if (cachedProfile) return { ...cachedProfile, refreshing };
   const summary = fighterSummary(fr.id, fr.name, rankingType);
-  const indexedFighter = fightIndex().fighters.get(fr.id);
+  const indexedFighter = index.fighters.get(fr.id);
   const history = fighterHistory(id, true) as any[];
   const proHistory = professionalHistory(id, history);
   const mergedUfcHistory = [
@@ -1042,6 +1044,7 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     // Where this fighter sits at the top of the sport, recomputed from the
     // same index the leaderboards use, so it moves the moment a result lands.
     records,
+    career_stats: careerStatistics(index, fr.id)?.totals,
     history: mergedUfcHistory,
     pro_history: proHistory,
   };
@@ -1962,6 +1965,18 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   if (p.startsWith("/api/venues/")) return venuePage(id) ?? undefined;
   if (p === "/api/locations") return locationDirectory();
   if (p.startsWith("/api/locations/")) return locationPage(id) ?? undefined;
+  if (/^\/api\/fighters\/[a-f0-9]{16}\/career-stats$/i.test(p)) {
+    if (!hasUfcFight(id)) return undefined;
+    const beforeId = url.searchParams.get("before");
+    let before: { id: string; date: string; ord: number } | undefined;
+    if (beforeId !== null) {
+      if (!/^[a-f0-9]{16}$/i.test(beforeId)) return undefined;
+      before = prepared(`SELECT f.id, e.date, f.ord FROM fights f JOIN events e ON e.id = f.event_id
+        WHERE f.id = ? AND (f.f1_id = ? OR f.f2_id = ?)`).get(beforeId, id, id) as typeof before;
+      if (!before) return undefined;
+    }
+    return careerStatistics(fightIndex(), id, before) ?? undefined;
+  }
   if (/^\/api\/fighters\/[a-f0-9]{16}\/stats$/i.test(p)) {
     return hasUfcFight(id) ? fighterBoard(id, url.searchParams.get("scope") ?? "ufc", Number(url.searchParams.get("minBouts") ?? 0)) ?? undefined : undefined;
   }

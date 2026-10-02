@@ -209,3 +209,22 @@ On the dev archive, linked opponent results and scheduled opponent IDs add
 with the same response without those fields. The response includes only
 currently ranked opponents. Hover highlighting reads that response in memory
 and introduces no per-hover data request.
+
+## Career-stat evidence (2026-10-02)
+
+Opponent evidence loads only when a stat opens, sharing one response per fighter
+and matchup cutoff through the existing bounded caches. Profile averages use
+normalized fight actions already held by the index; there is no new persisted
+average or separate career index.
+
+Opening a matchup category loads both fighters through those same caches;
+changing the sort or opening another category adds no endpoint or per-sort
+request. Numeric sorting runs locally on each fighter's small recorded list.
+
+On a private development archive of 8,909 fights, 1,000 uncached calculations
+for Jim Miller's 47-bout career measured 0.073 ms p50 and 0.273 ms p95. The full
+evidence response was 35,842 bytes, 5,518 bytes gzipped, including raw takedown
+attempts and control time for the compact opponent rows. Index heap retained after
+GC was 117.00 MiB before and 117.76 MiB with this feature (about 0.76 MiB added
+per query worker in this sample). The extra retained fields track time only for
+bouts with recorded takedowns, knockdowns and submission attempts.

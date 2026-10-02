@@ -92,7 +92,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-02">October 2, 2026</time></p>
             <ul>
-              <li>Fight history on phones is easier to tap: the opponent, the fight and the event each get their own full-width row.</li>
+              <li>Career stats now show on fighter profiles.</li>
+              <li>Tap any career stat to see each fight behind it, with the result, and sort by any column.</li>
+              <li>On a matchup, tap either fighter’s side to open their stats, and switch between the two.</li>
             </ul>
           </Section>
         </div>
