@@ -48,7 +48,7 @@ import { titleNarratives } from "./titles.ts";
 import { fighterBoard, fighterRecords } from "./records.ts";
 import { ufcFightExistsSql, hasUfcFight, recordText, currentRecord, cachedPhotoUrl, cachedFullPhotoUrl, photoVersion } from "./fighter-identity.ts";
 export { hasUfcFight };
-import { careerBefore, completeRecordBefore, fightIndex, indexesHeld, ageOn, parseScheduledRounds, professionalBouts, professionalBoutsBefore, sideOf, ufcBoutsBefore, type FightRecord } from "./fight-index.ts";
+import { careerBefore, completeRecordBefore, fightIndex, indexesHeld, ageOn, opponentsRecordBefore, parseScheduledRounds, professionalBouts, professionalBoutsBefore, sideOf, ufcBoutsBefore, type FightRecord } from "./fight-index.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { summarizeCard } from "./card-stats.ts";
 import { mergeJudgeRounds } from "./judge-scorecards.ts";
@@ -871,6 +871,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     const birthDate: string = bio?.birth_date ?? "";
     const completeRecord = fid ? completeRecordBefore(index, fid, f.event_date, Number(f.ord) || 0) : null;
     const context = sideContext(fid, f.event_date, Number(f.ord) || 0);
+    const opponentsRecord = fid ? opponentsRecordBefore(index, fid, f.event_date, Number(f.ord) || 0) : null;
     return {
       ...summary,
       // A matchup is a historical snapshot. Never show today's fallback total
@@ -887,6 +888,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
       career_before: fid ? careerBefore(index, fid, f.event_date, f.weight_class ?? "", Number(f.ord) || 0, opponentId) : null,
       ufc_record_before: context.ufc_record ?? null,
       ufc_days_since_before: context.days_since ?? null,
+      ufc_opponents_record_before: opponentsRecord ? recordText(opponentsRecord) : null,
       streak: context.streak ?? null,
       form_details: context.form_details ?? [],
       run_form: context.run_form ?? [],

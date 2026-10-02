@@ -46,3 +46,29 @@ export function evidenceColumns(metric: ProfileMetric): EvidenceColumn[] {
     { heading: "Time", title: "Fight time", value: total, text: row => clock(total(row)) },
   ];
 }
+
+type EvidenceRow = CareerStatistics["rows"][number];
+
+/** What the evidence popup lists: which bouts, under which columns, with what
+ *  headline figure. Columns without a `value` cannot be sorted. */
+export type EvidenceView = {
+  label: string;
+  columns: { heading: string; title: string; value?: (row: EvidenceRow) => number | null; text: (row: EvidenceRow) => string }[];
+  include: (row: EvidenceRow) => boolean;
+  headline: (data: CareerStatistics) => string;
+};
+
+export const metricView = (metric: ProfileMetric): EvidenceView => ({
+  label: metric.label,
+  columns: evidenceColumns(metric),
+  include: row => metric.sample(row.totals).total > 0,
+  headline: data => profileText(metric.value(data.totals), metric.format),
+});
+
+/** Every UFC win, or loss, and how it ended. */
+export const resultView = (outcome: "win" | "loss"): EvidenceView => ({
+  label: outcome === "win" ? "Wins" : "Losses",
+  columns: [{ heading: "Method", title: "How it ended", text: row => row.method ?? "—" }],
+  include: row => row.outcome === outcome,
+  headline: data => String(data.rows.filter(row => row.outcome === outcome).length),
+});

@@ -41,7 +41,8 @@ function OrderControl<K extends string>({ options, order, label }: {
 }) {
   const alphabetical = order.sort === ("name" as K);
   // Descending is the natural read for a count or a rate, ascending for names.
-  const down = alphabetical ? order.reversed : !order.reversed;
+  // The arrow points up for highest (or Z) first, down for lowest (or A) first.
+  const up = alphabetical ? order.reversed : !order.reversed;
   const title = alphabetical ? (order.reversed ? "Z to A" : "A to Z") : (order.reversed ? "Lowest first" : "Highest first");
   return (
     <div className="flex shrink-0 items-center gap-0.5">
@@ -51,7 +52,7 @@ function OrderControl<K extends string>({ options, order, label }: {
       </select>
       <button type="button" onClick={order.flip} title={title} aria-label={`${title}; reverse the order`}
         className="inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950">
-        {down ? <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}
+        {up ? <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />}
       </button>
     </div>
   );
