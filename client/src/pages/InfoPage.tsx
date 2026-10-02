@@ -92,7 +92,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-02">October 2, 2026</time></p>
             <ul>
-              <li>Switching tabs on fighter and fan profiles keeps the tab bar where it was, like on fights.</li>
+              <li>Fight history on phones is easier to tap: the opponent, the fight and the event each get their own full-width row.</li>
             </ul>
           </Section>
         </div>
