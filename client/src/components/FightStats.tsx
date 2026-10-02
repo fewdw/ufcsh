@@ -973,7 +973,7 @@ function ProfileRow({
       : (values.f1! < values.f2! ? "f1" : "f2");
 
   return (
-    <CareerStatDetails fighterId={fight.f1.id} fighterName={fight.f1.name} compareWith={{ id: fight.f2.id, name: fight.f2.name }} before={fight.id} metric={metric} className="block w-full py-1">
+    <div className="py-1">
       <span className={`block text-center text-[10px] leading-4 text-zinc-500 @[40rem]:text-[11px]`}>
         <span className="@[40rem]:hidden">{metric.short}</span>
         <span className="hidden @[40rem]:inline">{metric.label}</span>
@@ -1005,13 +1005,13 @@ function ProfileRow({
               {profileText(value, metric.format)}
             </span>
           );
-          return <span key={side}
+          return <CareerStatDetails key={side} fighters={[fight.f1, fight.f2]} initial={side === "f1" ? 0 : 1} before={fight.id} metric={metric}
             className={`grid w-full items-center gap-x-1 @[40rem]:gap-x-1.5 ${side === "f1" ? "grid-cols-[2.25rem_minmax(0,1fr)] @[40rem]:grid-cols-[3rem_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)_2.25rem] @[40rem]:grid-cols-[minmax(0,1fr)_3rem]"}`}>
             {side === "f1" ? [figure, bar] : [bar, figure]}
-          </span>;
+          </CareerStatDetails>;
         })}
       </span>
-    </CareerStatDetails>
+    </div>
   );
 }
 
