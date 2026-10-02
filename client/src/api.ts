@@ -291,7 +291,7 @@ export type MatchupSide = FightSide & {
   ufc_record_before: string | null;
   /** Days since the previous merged UFC-history bout. */
   ufc_days_since_before: number | null;
-  /** UFC opponents' complete pro records on the nights they met, summed; null when any is unverified. */
+  /** UFC opponents' UFC records on the nights they met, summed; null before a UFC bout. */
   ufc_opponents_record_before: string | null;
   complete_record_before: CompleteRecordBefore | null;
   history: (HistoryRow | ProfessionalHistoryRow)[];

@@ -820,22 +820,14 @@ export function completeRecordBefore(index: FightIndex, fighterId: string, date:
   return recordFromOutcomes(outcomes);
 }
 
-/** Every UFC opponent's complete pro record on the night they met, summed over
- *  the fighter's UFC bouts before `date`. Null when any of those records is
- *  unverified, so a partial sum never passes for the whole. */
+/** Every UFC opponent's UFC record on the night they met, summed over the
+ *  fighter's UFC bouts before `date`. Each record is counted the way the
+ *  matchup's own UFC record is, as it stood entering that bout. */
 export function opponentsRecordBefore(index: FightIndex, fighterId: string, date: string, ord?: number): FightRecord | null {
   const bouts = boutsBefore(index, fighterId, date, ord);
   if (!bouts.length) return null;
-  const total: FightRecord = { wins: 0, losses: 0, draws: 0, ncs: 0 };
-  for (const fight of bouts) {
-    const record = completeRecordBefore(index, opponentOf(fight, fighterId).id, fight.date, fight.ord);
-    if (!record) return null;
-    total.wins += record.wins;
-    total.losses += record.losses;
-    total.draws += record.draws;
-    total.ncs += record.ncs;
-  }
-  return total;
+  return recordFromOutcomes(bouts.flatMap((fight) =>
+    ufcBoutsBefore(index, opponentOf(fight, fighterId).id, fight.date, fight.ord).map((bout) => bout.outcome)));
 }
 
 /**
