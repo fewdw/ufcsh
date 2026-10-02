@@ -92,8 +92,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-02">October 2, 2026</time></p>
             <ul>
-              <li>Fights outside the UFC are marked in violet on fighter pages and in Last five.</li>
-              <li>No contests now say why in a few words, like "Groin strike" or "Result overturned".</li>
+              <li>Switching tabs on fighter and fan profiles keeps the tab bar where it was, like on fights.</li>
             </ul>
           </Section>
         </div>
