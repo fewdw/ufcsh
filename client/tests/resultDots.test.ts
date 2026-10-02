@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { resultDot } from "../src/resultDots.ts";
+import { noContestUnexplained } from "../../server/src/no-contest.ts";
 
 test("KO and submission results are solid dots in the outcome color", () => {
   for (const method of ["KO/TKO", "SUB", "TKO (Punches)", "KO (Knee and Punch)", "Submission (Armbar)"]) for (const outcome of ["win", "loss"] as const) {
@@ -36,15 +37,22 @@ test("a decision fought outside the UFC keeps both distinctions", () => {
   assert.equal(dot.kind, "decision");
   assert.ok(dot.className.includes("!bg-transparent") && dot.className.includes("rounded-[3px]"));
 });
-test("a no contest's method shortens to one word and keeps the full text in its label", () => {
+test("a no contest's method shortens to a plain reason and keeps the full text in its label", () => {
   const nc = (method: string | null) => resultDot({ method, outcome: "nc", ufc: false });
-  assert.equal(nc("No Contest (Accidental Knee to Groin)").shortMethod, "Groin");
-  assert.equal(nc("NC (Yoshioka Cut by Accidental Headbutt)").shortMethod, "Headbutt");
-  assert.equal(nc("No Contest (Fitch Cut by Illegal Kick)").shortMethod, "Foul");
-  assert.equal(nc("NC (Rainfall)").shortMethod, "Rain", "rainfall is not a fall");
-  assert.equal(nc("ND (Decision Overturned by NSAC)").shortMethod, "Overturned");
+  assert.equal(nc("No Contest (Accidental Knee to Groin)").shortMethod, "Groin strike");
+  assert.equal(nc("NC (Yoshioka Cut by Accidental Headbutt)").shortMethod, "Clash of heads");
+  assert.equal(nc("No Contest (Fitch Cut by Illegal Kick)").shortMethod, "Illegal strike");
+  assert.equal(nc("NC (Rainfall)").shortMethod, "Stopped by rain", "rainfall is not a fall");
+  assert.equal(nc("ND (Decision Overturned by NSAC)").shortMethod, "Result overturned");
   assert.equal(nc("No Contest").shortMethod, null, "the NC mark already says it");
   assert.equal(nc("No Contest (Nakao KO'd Prior to Bout)").shortMethod, null);
   assert.equal(resultDot({ method: "CNC", outcome: "nc" }).shortMethod, "CNC");
   assert.match(nc("No Contest (Accidental Knee to Groin)").label, /Accidental Knee to Groin/);
+});
+
+test("only a cause no rule knows is unexplained", () => {
+  assert.equal(noContestUnexplained("No Contest (Nakao KO'd Prior to Bout)"), true);
+  assert.equal(noContestUnexplained("No Contest"), false, "no cause given, nothing to explain");
+  assert.equal(noContestUnexplained("NC (Accidental Eye Poke)"), false);
+  assert.equal(noContestUnexplained("CNC"), false);
 });

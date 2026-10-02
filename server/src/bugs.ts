@@ -4,6 +4,7 @@ import { americanLine, fightIndex, impliedProbability } from "./fight-index.ts";
 import { ufcFightExistsSql } from "./fighter-identity.ts";
 import { SEARCH_ALIASES } from "./search-aliases.ts";
 import { normName } from "./util.ts";
+import { noContestUnexplained } from "./no-contest.ts";
 import { pageNamesFighter } from "./scrape/odds.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { hasCompleteJudgeRounds } from "./judge-scorecards.ts";
@@ -551,6 +552,30 @@ function unlinkedUfcBouts(): BugCheck {
         ...(row.event_url ? [{ label: "Sherdog event", href: row.event_url }] : []),
       ],
       actions: [{ id: "career", label: "Re-verify record", target: row.fighter_id }],
+    };
+  }));
+}
+
+function unexplainedNoContests(): BugCheck {
+  const rows = db.prepare(`
+    SELECT b.method, COUNT(*) AS bouts, MIN(b.fighter_id) AS fighter_id
+    FROM career_bouts b WHERE b.outcome = 'nc' AND b.method IS NOT NULL GROUP BY b.method
+  `).all() as { method: string; bouts: number; fighter_id: string }[];
+  const name = db.prepare("SELECT name FROM fighters WHERE id = ?");
+  return check({
+    id: "nc-reason-unknown",
+    group: "Records",
+    label: "No contests with no short reason",
+    description: "Compact results (Last five, rankings) shorten a no contest's method to a few words, like \"Groin strike\" or \"Result overturned\". These methods name a cause no rule in server/src/no-contest.ts recognises, so they show only the NC mark. Add a rule if the cause can be said plainly.",
+    grade: "minor",
+  }, rows.filter((row) => noContestUnexplained(row.method)).map((row): BugItem => {
+    const fighter = (name.get(row.fighter_id) as { name: string } | undefined)?.name ?? row.fighter_id;
+    return {
+      key: row.method,
+      title: row.method,
+      facts: [["Bouts", String(row.bouts)]],
+      links: [fighterLink(row.fighter_id, fighter)],
+      actions: [],
     };
   }));
 }
@@ -1376,6 +1401,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     matchmakingGaps(),
     fightsMissingFromHistory(),
     unlinkedUfcBouts(),
+    unexplainedNoContests(),
     recordMismatch(active),
     staleEvents(),
     untrustworthyFightStats(),
