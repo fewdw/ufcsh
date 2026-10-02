@@ -26,7 +26,7 @@ groups:
         annotations:
           summary: The scraper has recorded an upstream sync error.
       - alert: ElevatedServerErrors
-        expr: sum(rate(ufc_http_requests_total{code=~"5.."}[5m])) > 1
+        expr: sum(rate(ufc_http_requests_total{code=~"5..",route!~"admin|page_admin"}[5m])) > 1
         for: 5m
         labels: {severity: warning}
         annotations:

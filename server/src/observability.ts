@@ -79,6 +79,9 @@ type Minute = { at: number; traffic: Latency; routes: Map<string, Latency>; view
 const TIMELINE_MINUTES = 60;
 /** Distinct visitors are counted per minute up to this many, then capped. */
 const VISITORS_PER_MINUTE = 100_000;
+/** Admin traffic keeps its own route rows but stays out of the site-wide
+ *  totals, so the admin dashboard's own slow queries never look like an outage. */
+const ADMIN_ROUTES = new Set(["admin", "page_admin"]);
 
 function addLatency(entry: Latency, status: number, ms: number) {
   entry.count++;
@@ -168,11 +171,12 @@ export class HttpObservability {
     addLatency(perRoute, status, ms);
     this.routes.set(route, perRoute);
     const minute = this.minute();
-    addLatency(minute.traffic, status, ms);
+    const admin = ADMIN_ROUTES.has(route);
+    if (!admin) addLatency(minute.traffic, status, ms);
     const minuteRoute = minute.routes.get(route) ?? emptyLatency();
     addLatency(minuteRoute, status, ms);
     minute.routes.set(route, minuteRoute);
-    if (visitor && route !== "health" && route !== "monitoring" && minute.visitors.size < VISITORS_PER_MINUTE) minute.visitors.add(visitor);
+    if (visitor && !admin && route !== "health" && route !== "monitoring" && minute.visitors.size < VISITORS_PER_MINUTE) minute.visitors.add(visitor);
     const verb = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(method) ? method : "OTHER";
     const code = Number.isInteger(status) && status >= 100 && status <= 599 ? String(status) : "0";
     const key = `${route}|${verb}|${code}`;
@@ -213,7 +217,7 @@ export class HttpObservability {
       return { ...summarise(traffic), visitors: visitors.size };
     };
     const total = emptyLatency();
-    for (const entry of this.routes.values()) mergeLatency(total, entry);
+    for (const [route, entry] of this.routes) if (!ADMIN_ROUTES.has(route)) mergeLatency(total, entry);
     const lastFiveMinutes = this.minutes.filter(minute => minute.at >= current - 4 * 60_000);
     const lastHourMinutes = this.minutes.filter(minute => minute.at >= current - 59 * 60_000);
     const windowRoutes = (window: Minute[]) => {

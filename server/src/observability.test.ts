@@ -28,6 +28,7 @@ test("the dashboard snapshot keeps an hour by the minute and estimates latency p
   metrics.record("PUT", "/api/comments/0e55d8a3-d7a7-4912-9c3d-23c9a524ddb4/vote", 503, 0.01, "10.0.0.1");
   metrics.record("GET", "/api/fights/aaaaaaaaaaaaaaaa", 429, 0.001, "10.0.0.2");
   metrics.record("GET", "/healthz", 200, 0.001, "10.9.9.9");
+  metrics.record("GET", "/api/admin/metrics", 503, 9, "10.8.8.8");
   metrics.sample({ eventLoopP95Ms: 12, cpuPercent: 30, memoryBytes: 1024 });
   clock += 5 * 60_000;
   metrics.record("GET", "/api/events", 200, 0.02, "10.0.0.4");
@@ -51,7 +52,9 @@ test("the dashboard snapshot keeps an hour by the minute and estimates latency p
   assert.equal(snapshot.lastFiveMinutes.requests, 1);
   assert.equal(snapshot.lastHour.requests, 104);
   assert.equal(snapshot.lastHour.visitors, 5);
-  assert.equal(snapshot.sinceStart.errors, 1);
+  assert.equal(snapshot.sinceStart.errors, 1, "admin errors stay out of the site-wide totals");
+  assert.equal(snapshot.lastHour.maxMs, 200, "admin latency stays out of the site-wide totals");
+  assert.equal(snapshot.routes.find(route => route.route === "admin")!.errors, 1);
 });
 
 test("page views and recent route health use fixed patterns and rolling windows", () => {
