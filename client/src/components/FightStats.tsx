@@ -973,13 +973,13 @@ function ProfileRow({
       : (values.f1! < values.f2! ? "f1" : "f2");
 
   return (
-    <div className="py-1">
-      <div className={`text-center text-[10px] leading-4 text-zinc-500 @[40rem]:text-[11px]`}>
+    <CareerStatDetails fighterId={fight.f1.id} fighterName={fight.f1.name} compareWith={{ id: fight.f2.id, name: fight.f2.name }} before={fight.id} metric={metric} className="block w-full py-1">
+      <span className={`block text-center text-[10px] leading-4 text-zinc-500 @[40rem]:text-[11px]`}>
         <span className="@[40rem]:hidden">{metric.short}</span>
         <span className="hidden @[40rem]:inline">{metric.label}</span>
         {metric.better === "low" ? <span className="text-zinc-400"> ↓</span> : null}
-      </div>
-      <div className="grid grid-cols-2 items-center gap-x-1 @[40rem]:gap-x-1.5">
+      </span>
+      <span className="grid grid-cols-2 items-center gap-x-1 @[40rem]:gap-x-1.5">
         {SIDES.map((side) => {
           const value = values[side];
           const width = value == null ? 3 : Math.max(3, (value / scale) * 100);
@@ -1005,13 +1005,13 @@ function ProfileRow({
               {profileText(value, metric.format)}
             </span>
           );
-          return <CareerStatDetails key={side} fighterId={fight[side].id} fighterName={fight[side].name} before={fight.id} metric={metric}
+          return <span key={side}
             className={`grid w-full items-center gap-x-1 @[40rem]:gap-x-1.5 ${side === "f1" ? "grid-cols-[2.25rem_minmax(0,1fr)] @[40rem]:grid-cols-[3rem_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)_2.25rem] @[40rem]:grid-cols-[minmax(0,1fr)_3rem]"}`}>
             {side === "f1" ? [figure, bar] : [bar, figure]}
-          </CareerStatDetails>;
+          </span>;
         })}
-      </div>
-    </div>
+      </span>
+    </CareerStatDetails>
   );
 }
 

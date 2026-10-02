@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evidenceFigures, GRAPPLING_METRICS } from "../src/careerMetrics.ts";
+import { evidenceFigures, evidenceValue, orderEvidence, GRAPPLING_METRICS } from "../src/careerMetrics.ts";
 import { fightCareerTotals } from "../../server/src/career-metrics.ts";
 import type { CareerStatistics } from "../src/api.ts";
 
@@ -29,4 +29,14 @@ test("unknown attempts or control stay unknown; recorded zero control is shown",
 
 test("defense evidence shows stopped attempts and the defender's control time", () => {
   assert.deepEqual(evidenceFigures(metric("tddef"), row(6, 197)), ["4/6", "67%", "3:17"]);
+});
+
+test("column sorting uses numeric values, keeps unknowns last and restores recency", () => {
+  const rows = [row(12, null), row(6, 600), row(6, 90), row(6, 90)];
+  const value = (sample: typeof rows[number]) => evidenceValue(metric("td"), sample, 2);
+  assert.deepEqual(orderEvidence(rows, "ascending", value), [rows[2], rows[3], rows[1], rows[0]]);
+  assert.deepEqual(orderEvidence(rows, "descending", value), [rows[1], rows[2], rows[3], rows[0]]);
+  assert.deepEqual(orderEvidence(rows, "recent", value), rows);
+  assert.deepEqual(orderEvidence(rows, "ascending", sample => evidenceValue(metric("td"), sample, 1)), rows);
+  assert.deepEqual(rows.map(value), [null, 600, 90, 90]);
 });

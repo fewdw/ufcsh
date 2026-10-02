@@ -217,6 +217,10 @@ and matchup cutoff through the existing bounded caches. Profile averages use
 normalized fight actions already held by the index; there is no new persisted
 average or separate career index.
 
+Opening a matchup category loads both fighters through those same caches;
+changing the sort or opening another category adds no endpoint or per-sort
+request. Numeric sorting runs locally on each fighter's small recorded list.
+
 On a private development archive of 8,909 fights, 1,000 uncached calculations
 for Jim Miller's 47-bout career measured 0.073 ms p50 and 0.273 ms p95. The full
 evidence response was 35,842 bytes, 5,518 bytes gzipped, including raw takedown

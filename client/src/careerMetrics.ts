@@ -7,8 +7,31 @@ import { profileText, type ProfileMetric } from "../../server/src/career-metrics
 
 const clock = (seconds: number | null | undefined) => seconds == null ? "—" : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
+export type EvidenceSample = Pick<CareerStatistics["rows"][number], "totals" | "takedowns" | "control_seconds">;
+export type EvidenceOrder = "recent" | "ascending" | "descending";
+
+export function evidenceValue(metric: ProfileMetric, row: EvidenceSample, column: number): number | null {
+  if (metric.key === "td" || metric.key === "tdacc") {
+    const td = row.takedowns;
+    return [td?.scored ?? null, td?.attempted ? td.scored / td.attempted * 100 : null, row.control_seconds][column] ?? null;
+  }
+  const { count, total } = metric.sample(row.totals);
+  if (column === 2) return metric.key === "tddef" ? row.control_seconds : metric.format === "rate" && total > 0 ? total : null;
+  return column === 0 ? total > 0 ? count : null : metric.value(row.totals);
+}
+
+/** Numeric ordering, unknowns last either way; stable ties retain bout recency. */
+export function orderEvidence<T>(rows: T[], order: EvidenceOrder, value: (row: T) => number | null): T[] {
+  if (order === "recent") return rows;
+  return [...rows].sort((a, b) => {
+    const x = value(a), y = value(b);
+    if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
+    return order === "ascending" ? x - y : y - x;
+  });
+}
+
 /** Compact bout figures; takedown offense shows accuracy rather than a per-time rate. */
-export function evidenceFigures(metric: ProfileMetric, row: CareerStatistics["rows"][number]): string[] {
+export function evidenceFigures(metric: ProfileMetric, row: EvidenceSample): string[] {
   if (metric.key === "td" || metric.key === "tdacc") {
     const td = row.takedowns;
     const accuracy = td?.attempted ? td.scored / td.attempted * 100 : null;
