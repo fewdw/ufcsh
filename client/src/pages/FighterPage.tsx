@@ -449,7 +449,9 @@ function HistoryRowView({ row, fighterName, move }: { row: HistoryRow | Professi
     // why it appeared at 40rem and ran straight out of the card. The result
     // track is sized to hold "KO/TKO · R5 · 1:32" and a four-figure price on
     // one line at that narrowest width, since it is the first thing read.
-    <div className="grid grid-cols-1 items-stretch @3xl:grid-cols-[13rem_minmax(11rem,1.1fr)_7rem_minmax(12rem,1.3fr)]">
+    // An outside bout carries a violet edge, the colour its "Outside UFC" label
+    // is set in, so the run of non-UFC fights reads at a glance down the list.
+    <div className={`grid grid-cols-1 items-stretch @3xl:grid-cols-[13rem_minmax(11rem,1.1fr)_7rem_minmax(12rem,1.3fr)] ${row.promotion === "outside" ? "relative before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-violet-500" : ""}`}>
       <BoutCard row={row} fighterName={fighterName} move={move} />
       <BoutTableRow row={row} fighterName={fighterName} move={move} />
     </div>
