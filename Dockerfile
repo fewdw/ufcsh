@@ -4,7 +4,7 @@ COPY client/package*.json ./
 RUN npm ci
 COPY client/ ./
 # The client shares this one rule file with the server.
-COPY server/src/no-contest.ts /app/server/src/no-contest.ts
+COPY server/src/no-contest.ts server/src/career-metrics.ts server/src/action-stats.ts /app/server/src/
 ARG VITE_CLERK_PUBLISHABLE_KEY
 ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
 ARG VITE_CLERK_PROXY_URL

@@ -1,3 +1,4 @@
+import { addCareerTotals, emptyCareerTotals, fightCareerTotals, type CareerTotals } from "./career-metrics.ts";
 import { db, dataRevision } from "./db.ts";
 import { cachedFightActions, type FightActionSide } from "./action-stats.ts";
 import { log, normName } from "./util.ts";
@@ -8,7 +9,7 @@ import { log, normName } from "./util.ts";
 
 export type Outcome = "win" | "loss" | "draw" | "nc";
 
-export type PriorState = {
+export type PriorState = CareerTotals & {
   /** Completed UFC bouts before this one (no contests included). */
   bouts: number;
   wins: number;
@@ -41,35 +42,6 @@ export type PriorState = {
   reigningChampion: boolean;
   /** Has held a UFC undisputed or interim belt at any point before this bout. */
   formerChampion: boolean;
-  /** Career totals before this bout, from official fight stats where cached. */
-  sigLanded: number;
-  sigAbsorbed: number;
-  seconds: number;
-  /** Bouts contributing to the striking totals above. */
-  statBouts: number;
-  /**
-   * Landed-and-attempted pairs, counted only from bouts where the source
-   * recorded both. Keeping each pair together is what makes accuracy and
-   * defence exact rather than a landed count over a partial denominator.
-   */
-  sigAccuracyLanded: number;
-  sigAttempted: number;
-  sigDefenseAbsorbed: number;
-  sigFacedAttempted: number;
-  takedowns: number;
-  takedownsTaken: number;
-  takedownAccuracyLanded: number;
-  takedownAttempts: number;
-  takedownDefenseConceded: number;
-  takedownsFacedAttempts: number;
-  submissionAttempts: number;
-  knockdowns: number;
-  knockdownsTaken: number;
-  controlSeconds: number;
-  controlledSeconds: number;
-  controlBouts: number;
-  /** Elapsed time only from bouts where both control totals were recorded. */
-  controlTrackedSeconds: number;
   /** How many times these two had met before. */
   meetings: number;
   meetingWins: number;
@@ -385,12 +357,7 @@ function emptyPrior(): PriorState {
     lastOutcome: null, lastMethod: null, lastDate: null, daysSince: null,
     finishes: 0, koWins: 0, subWins: 0, koLosses: 0, subLosses: 0, titleFights: 0, titleWins: 0,
     champion: false, interimChampion: false, reigningChampion: false, formerChampion: false,
-    sigLanded: 0, sigAbsorbed: 0, seconds: 0, statBouts: 0,
-    sigAccuracyLanded: 0, sigAttempted: 0, sigDefenseAbsorbed: 0, sigFacedAttempted: 0,
-    takedowns: 0, takedownsTaken: 0,
-    takedownAccuracyLanded: 0, takedownAttempts: 0, takedownDefenseConceded: 0, takedownsFacedAttempts: 0,
-    submissionAttempts: 0, knockdowns: 0, knockdownsTaken: 0,
-    controlSeconds: 0, controlledSeconds: 0, controlBouts: 0, controlTrackedSeconds: 0,
+    ...emptyCareerTotals(),
     meetings: 0, meetingWins: 0, meetingLosses: 0,
   };
 }
@@ -435,43 +402,7 @@ function advance(s: MutableState, fight: IndexedFight, side: IndexedSide, oppone
     s.titleFights += 1;
     if (side.outcome === "win") s.titleWins += 1;
   }
-  const sig = side.actions.significantStrikes;
-  const sigTaken = opponent.actions.significantStrikes;
-  if (sig && sigTaken && elapsed != null) {
-    s.sigLanded += sig.scored;
-    s.sigAbsorbed += sigTaken.scored;
-    s.seconds += elapsed;
-    s.statBouts += 1;
-    if (sig.attempted != null) {
-      s.sigAccuracyLanded += sig.scored;
-      s.sigAttempted += sig.attempted;
-    }
-    if (sigTaken.attempted != null) {
-      s.sigDefenseAbsorbed += sigTaken.scored;
-      s.sigFacedAttempted += sigTaken.attempted;
-    }
-    const ownTakedowns = side.actions.takedowns;
-    const facedTakedowns = opponent.actions.takedowns;
-    s.takedowns += ownTakedowns?.scored ?? 0;
-    s.takedownsTaken += facedTakedowns?.scored ?? 0;
-    if (ownTakedowns?.attempted != null) {
-      s.takedownAccuracyLanded += ownTakedowns.scored;
-      s.takedownAttempts += ownTakedowns.attempted;
-    }
-    if (facedTakedowns?.attempted != null) {
-      s.takedownDefenseConceded += facedTakedowns.scored;
-      s.takedownsFacedAttempts += facedTakedowns.attempted;
-    }
-    s.submissionAttempts += side.actions.submissions?.scored ?? 0;
-    s.knockdowns += side.actions.knockdowns?.scored ?? 0;
-    s.knockdownsTaken += opponent.actions.knockdowns?.scored ?? 0;
-    if (side.actions.control && opponent.actions.control) {
-      s.controlSeconds += side.actions.control.scored;
-      s.controlledSeconds += opponent.actions.control.scored;
-      s.controlBouts += 1;
-      s.controlTrackedSeconds += elapsed;
-    }
-  }
+  addCareerTotals(s, fightCareerTotals(elapsed, side.actions, opponent.actions));
   const meeting = s.meetingsBy.get(opponent.id) ?? { wins: 0, losses: 0, total: 0 };
   meeting.total += 1;
   if (side.outcome === "win") meeting.wins += 1;

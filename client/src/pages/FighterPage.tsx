@@ -1,3 +1,4 @@
+import FighterCareerStats from "../components/FighterCareerStats";
 import { Children, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useApi } from "../api";
@@ -727,6 +728,7 @@ export default function FighterPage() {
         <ProfileTabs tabs={fought ? ["fights", "stats", "news"] : ["fights", "news"]} current={tab} onSelect={setTab} news={news?.total ?? null} className="lg:hidden" />
 
         {fought ? <div className={`${tab === "stats" ? "contents" : "hidden lg:contents"} [&>*]:shrink-0`}>
+          <FighterCareerStats fighterId={fighter.id} name={fighter.name} totals={fighter.career_stats} />
           <Records records={fighter.records ?? []} />
           <FighterStatistics fighterId={fighter.id} history={fighter.history} />
         </div> : null}

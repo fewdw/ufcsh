@@ -790,6 +790,30 @@ function untrustworthyFightStats(): BugCheck {
   }, items);
 }
 
+/** Missing samples remain visible here rather than silently becoming zero rates. */
+function careerStatGaps(): BugCheck {
+  const items = fightIndex().fights.flatMap(fight => {
+    const gaps = new Set<string>();
+    if (fight.elapsed == null) gaps.add("Fight time");
+    for (const side of fight.sides) {
+      if (side.actions.significantStrikes?.attempted == null) gaps.add("Significant strike attempts");
+      if (side.actions.takedowns?.attempted == null) gaps.add("Takedown attempts");
+      if (!side.actions.knockdowns) gaps.add("Knockdowns");
+      if (!side.actions.submissions) gaps.add("Submission attempts");
+    }
+    if (fight.sides.some(side => side.actions.control) && fight.sides.some(side => !side.actions.control)) gaps.add("Paired control time");
+    return gaps.size ? [fightItem({ ...fight.row, event_name: fight.eventName, date: fight.date }, {
+      facts: [["Missing samples", [...gaps].join("; ")]],
+      actions: [{ id: "event", label: "Re-fetch event", target: fight.eventId }, { id: "detail", label: "Re-fetch fight detail", target: fight.id }],
+    })] : [];
+  }).reverse();
+  return check({
+    id: "career-stat-gaps", group: "Fighters", label: "Career statistics missing samples",
+    description: "Completed bouts missing attempt counts, recorded actions or fight time. Those samples are excluded from the corresponding career averages. Re-fetch the event and fight detail when the source has the data; some older bouts never recorded every statistic.",
+    grade: "minor",
+  }, items);
+}
+
 function upcomingWithoutSegment(): BugCheck {
   const rows = db.prepare(`
     SELECT ${FIGHT_COLUMNS}, e.ufc_slug, e.segments_fetched_at
@@ -1405,6 +1429,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     recordMismatch(active),
     staleEvents(),
     untrustworthyFightStats(),
+    careerStatGaps(),
     upcomingWithoutSegment(),
     decisionsWithoutJudges(),
     eventsWithoutWiki(),

@@ -1,3 +1,4 @@
+import CareerStatDetails from "./CareerStatDetails";
 import { PANEL } from "./chartTokens";
 import { Fragment } from "react";
 import { Link, useLocation } from "react-router-dom";
@@ -972,13 +973,13 @@ function ProfileRow({
       : (values.f1! < values.f2! ? "f1" : "f2");
 
   return (
-    <div className="py-1" title={`${metric.label}${metric.better === "low" ? " — less is better" : ""}`}>
+    <div className="py-1">
       <div className={`text-center text-[10px] leading-4 text-zinc-500 @[40rem]:text-[11px]`}>
         <span className="@[40rem]:hidden">{metric.short}</span>
         <span className="hidden @[40rem]:inline">{metric.label}</span>
         {metric.better === "low" ? <span className="text-zinc-400"> ↓</span> : null}
       </div>
-      <div className="grid grid-cols-[2.25rem_minmax(0,1fr)_minmax(0,1fr)_2.25rem] items-center gap-x-1 @[40rem]:grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)_3rem] @[40rem]:gap-x-1.5">
+      <div className="grid grid-cols-2 items-center gap-x-1 @[40rem]:gap-x-1.5">
         {SIDES.map((side) => {
           const value = values[side];
           const width = value == null ? 3 : Math.max(3, (value / scale) * 100);
@@ -1000,12 +1001,14 @@ function ProfileRow({
               key={`${side}-value`}
               className={`${CHART_TEXT} tabular-nums ${side === "f1" ? "text-right" : "text-left"} ${ahead === side ? "font-bold" : "font-medium"}`}
               style={{ color: value == null ? "var(--color-zinc-400)" : SIDE[side].ink }}
-              title={ahead === side ? `${fight[side].name} holds the edge here` : undefined}
             >
               {profileText(value, metric.format)}
             </span>
           );
-          return side === "f1" ? [figure, bar] : [bar, figure];
+          return <CareerStatDetails key={side} fighterId={fight[side].id} fighterName={fight[side].name} before={fight.id} metric={metric}
+            className={`grid w-full items-center gap-x-1 @[40rem]:gap-x-1.5 ${side === "f1" ? "grid-cols-[2.25rem_minmax(0,1fr)] @[40rem]:grid-cols-[3rem_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)_2.25rem] @[40rem]:grid-cols-[minmax(0,1fr)_3rem]"}`}>
+            {side === "f1" ? [figure, bar] : [bar, figure]}
+          </CareerStatDetails>;
         })}
       </div>
     </div>
@@ -1082,7 +1085,7 @@ export function CareerProfile({ fight }: { fight: Matchup }) {
 
   return (
     <section className={`${shell} @container overflow-hidden`}>
-      <PanelHeading title="Fight stats" />
+      <PanelHeading title="Career stats" subtitle="UFC · Before this fight" />
       <div className="grid grid-cols-2 gap-x-4 px-3 pb-1 pt-1.5 @[40rem]:gap-x-8 @[40rem]:px-4 @[40rem]:pt-2">
         {groups.map((group) => (
           <div key={group.key} className="min-w-0">
@@ -1094,6 +1097,7 @@ export function CareerProfile({ fight }: { fight: Matchup }) {
         ))}
       </div>
       <MethodProfile careers={careers} />
+      <p className="border-t border-zinc-100 px-4 py-2 text-[10px] leading-4 text-zinc-400">Hover or tap a figure to see its opponents and fights.</p>
     </section>
   );
 }
