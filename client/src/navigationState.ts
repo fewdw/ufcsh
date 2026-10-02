@@ -131,6 +131,59 @@ export function useRouteScrollRestoration<T extends HTMLElement>(id: string, rea
   return ref;
 }
 
+/** Switching tabs keeps the tab bar where the reader had it. A shorter tab
+ *  can't always allow that, so the bar goes as near as the page lets it, and
+ *  back to the place it was asked for once a tab (or its late-loading
+ *  content) is tall enough again. Scrolling by hand sets a new place.
+ *  Call `keep` with the tab bar (or a tab in it) just before `tab` changes;
+ *  `scope` is what the tabs belong to, so another fight or profile opening
+ *  isn't held. */
+export function useTabBarAnchor(scope: string, tab: string) {
+  const anchor = useRef<{ scope: string; bar: HTMLElement; scroller: HTMLElement; top: number; until: number } | null>(null);
+  const release = useCallback(() => { anchor.current = null; }, []);
+  const keep = useCallback((element: HTMLElement) => {
+    const bar = element.closest<HTMLElement>('[role="tablist"]') ?? element;
+    let scroller = bar.parentElement;
+    while (scroller && !/auto|scroll/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+    if (!scroller) return;
+    const held = anchor.current;
+    anchor.current = {
+      scope, bar, scroller,
+      top: held && held.scope === scope && held.bar === bar ? held.top : bar.getBoundingClientRect().top,
+      until: performance.now() + 3_000,
+    };
+  }, [scope]);
+
+  useLayoutEffect(() => {
+    const held = anchor.current;
+    if (held && held.scope !== scope) anchor.current = null;
+    if (!held || held.scope !== scope) return;
+    const { scroller } = held;
+    const hold = () => {
+      const current = anchor.current;
+      if (!current || current.scroller !== scroller || performance.now() > current.until) return;
+      scroller.scrollTop += current.bar.getBoundingClientRect().top - current.top;
+    };
+    const releaseOnBar = (event: PointerEvent) => { if (event.target === scroller) release(); };
+    hold();
+    const observer = new ResizeObserver(hold);
+    for (const child of scroller.children) observer.observe(child);
+    scroller.addEventListener("wheel", release, { passive: true });
+    scroller.addEventListener("touchmove", release, { passive: true });
+    scroller.addEventListener("keydown", release);
+    scroller.addEventListener("pointerdown", releaseOnBar);
+    return () => {
+      observer.disconnect();
+      scroller.removeEventListener("wheel", release);
+      scroller.removeEventListener("touchmove", release);
+      scroller.removeEventListener("keydown", release);
+      scroller.removeEventListener("pointerdown", releaseOnBar);
+    };
+  }, [scope, tab, release]);
+
+  return { keep, release };
+}
+
 /** A comment permalink belongs to one fight; the selected tab carries over. */
 export function cardFightSearch(search: string): string {
   const params = new URLSearchParams(search);
