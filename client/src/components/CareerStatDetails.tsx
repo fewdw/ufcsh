@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { ArrowDown, ArrowUp, ChevronDown, X } from "lucide-react";
+import { ArrowDown, ArrowUp, X } from "lucide-react";
 import { useApi, type CareerStatistics } from "../api";
 import { evidenceColumns, orderEvidence, profileText, type EvidenceOrder, type ProfileMetric } from "../careerMetrics";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
@@ -210,13 +210,12 @@ export default function CareerStatDetails({ fighters, initial = 0, before, metri
               {fighters.map((option, index) => <button key={option.id} type="button" role="tab" aria-selected={index === selected} onClick={() => setSelected(index)}
                 className={`min-h-9 min-w-0 flex-1 truncate rounded-full px-2 py-2 text-[13px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 sm:px-3 sm:text-sm ${index === selected ? segmentedSelected : segmentedIdle}`}>{option.name}</button>)}
             </div> : null}
-            <label className="relative ml-auto inline-flex shrink-0 items-center">
+            <label className="ml-auto shrink-0">
               <span className="sr-only">Sort opponents</span>
               <select value={sort.order} onChange={event => setSort({ ...sort, order: event.target.value as EvidenceOrder })}
-                className="h-11 cursor-pointer appearance-none rounded-full border border-zinc-200 bg-transparent pl-3 pr-7 text-[13px] font-medium text-zinc-700 outline-none transition-colors hover:border-zinc-300 focus-visible:ring-2 focus-visible:ring-zinc-300 sm:text-sm">
+                className="h-11 cursor-pointer rounded-full border border-zinc-200 bg-transparent pl-3.5 pr-8 text-[13px] font-medium text-zinc-700 outline-none transition-colors hover:border-zinc-300 focus-visible:ring-2 focus-visible:ring-zinc-300 sm:text-sm">
                 <option value="recent">Recent</option><option value="descending">Highest</option><option value="ascending">Lowest</option>
               </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 h-3.5 w-3.5 text-zinc-500" aria-hidden="true" />
             </label>
           </div>
         </div>
