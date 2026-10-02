@@ -36,3 +36,15 @@ test("a decision fought outside the UFC keeps both distinctions", () => {
   assert.equal(dot.kind, "decision");
   assert.ok(dot.className.includes("!bg-transparent") && dot.className.includes("rounded-[3px]"));
 });
+test("a no contest's method shortens to one word and keeps the full text in its label", () => {
+  const nc = (method: string | null) => resultDot({ method, outcome: "nc", ufc: false });
+  assert.equal(nc("No Contest (Accidental Knee to Groin)").shortMethod, "Groin");
+  assert.equal(nc("NC (Yoshioka Cut by Accidental Headbutt)").shortMethod, "Headbutt");
+  assert.equal(nc("No Contest (Fitch Cut by Illegal Kick)").shortMethod, "Foul");
+  assert.equal(nc("NC (Rainfall)").shortMethod, "Rain", "rainfall is not a fall");
+  assert.equal(nc("ND (Decision Overturned by NSAC)").shortMethod, "Overturned");
+  assert.equal(nc("No Contest").shortMethod, null, "the NC mark already says it");
+  assert.equal(nc("No Contest (Nakao KO'd Prior to Bout)").shortMethod, null);
+  assert.equal(resultDot({ method: "CNC", outcome: "nc" }).shortMethod, "CNC");
+  assert.match(nc("No Contest (Accidental Knee to Groin)").label, /Accidental Knee to Groin/);
+});
