@@ -92,9 +92,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-02">October 2, 2026</time></p>
             <ul>
-              <li>Career stats now show on fighter profiles.</li>
-              <li>Tap any career stat to see each fight behind it, with the result, and sort by any column.</li>
-              <li>On a matchup, tap either fighter’s side to open their stats, and switch between the two.</li>
+              <li>The admin health check no longer counts admin pages in site speed and errors.</li>
             </ul>
           </Section>
         </div>
