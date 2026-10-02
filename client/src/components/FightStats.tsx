@@ -1097,7 +1097,6 @@ export function CareerProfile({ fight }: { fight: Matchup }) {
         ))}
       </div>
       <MethodProfile careers={careers} />
-      <p className="border-t border-zinc-100 px-4 py-2 text-[10px] leading-4 text-zinc-400">Hover or tap a figure to see its opponents and fights.</p>
     </section>
   );
 }

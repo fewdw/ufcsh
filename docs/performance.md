@@ -219,7 +219,8 @@ average or separate career index.
 
 On a private development archive of 8,909 fights, 1,000 uncached calculations
 for Jim Miller's 47-bout career measured 0.073 ms p50 and 0.273 ms p95. The full
-evidence response was 33,012 bytes, 5,226 bytes gzipped. Index heap retained after
+evidence response was 35,842 bytes, 5,518 bytes gzipped, including raw takedown
+attempts and control time for the compact opponent rows. Index heap retained after
 GC was 117.00 MiB before and 117.76 MiB with this feature (about 0.76 MiB added
 per query worker in this sample). The extra retained fields track time only for
 bouts with recorded takedowns, knockdowns and submission attempts.

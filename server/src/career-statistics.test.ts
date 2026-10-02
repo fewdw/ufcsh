@@ -83,6 +83,11 @@ test("career endpoint validates fighter-specific cutoffs and current profiles ex
   assert(publicApi(path));
   const current: any = await resolvePublicApi(new URL(`http://localhost${path}`));
   assert.equal(current.rows.length, fighter.fights.length);
+  for (const row of current.rows) {
+    const own = fighter.fights.find(fight => fight.id === row.fight_id)!.sides.find(side => side.id === fighter.id)!;
+    assert.deepEqual(row.takedowns, own.actions.takedowns ?? null);
+    assert.equal(row.control_seconds, own.actions.control?.scored ?? null);
+  }
   const profile: any = await resolvePublicApi(new URL(`http://localhost/api/fighters/${fighter.id}`));
   assert.deepEqual(profile.career_stats, current.totals);
   const last = fighter.fights.at(-1)!;
