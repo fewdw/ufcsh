@@ -1,63 +1,43 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { ArrowDown, ArrowUp, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, X } from "lucide-react";
 import { useApi, type CareerStatistics } from "../api";
-import { evidenceFigures, evidenceValue, orderEvidence, profileText, type EvidenceOrder, type ProfileMetric } from "../careerMetrics";
+import { evidenceColumns, orderEvidence, profileText, type EvidenceColumn, type EvidenceOrder, type ProfileMetric } from "../careerMetrics";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import RequestNotice from "./RequestNotice";
 
 let closeOpen: (() => void) | null = null;
-function Evidence({ data, name, error, retry, metric, side, close, paired }: {
-  data: CareerStatistics | null; name: string; error: boolean; retry: () => void; metric: ProfileMetric; side: "f1" | "f2"; close: () => void; paired: boolean;
+type Sort = { order: EvidenceOrder; column: number };
+
+function Evidence({ data, name, error, retry, metric, columns, sort, onSort, close, paired }: {
+  data: CareerStatistics | null; name: string; error: boolean; retry: () => void; metric: ProfileMetric;
+  columns: EvidenceColumn[]; sort: Sort; onSort: (column: number) => void; close: () => void; paired: boolean;
 }) {
-  const [order, setOrder] = useState<EvidenceOrder>("recent");
-  const [column, setColumn] = useState(1);
-  const rows = orderEvidence(data?.rows.filter(row => metric.sample(row.totals).total > 0) ?? [], order, row => evidenceValue(metric, row, column));
-  const takedowns = metric.key === "td" || metric.key === "tdacc";
-  const headings = takedowns ? ["TD", "Acc.", "Ctrl"]
-    : metric.key === "tddef" ? ["Stop", "Def.", "Ctrl"]
-    : metric.format === "share" ? ["Control", "%"]
-    : metric.format === "percent" ? [metric.key === "accuracy" ? "Landed" : "Avoided", "%"]
-    : [metric.key === "slpm" ? "Landed" : metric.key === "sapm" ? "Taken" : metric.key === "subs" ? "Subs" : "KD", metric.factor === 60 ? "/ min" : "/ 15m", "Time"];
-  const titles = takedowns ? ["Takedowns landed / attempted", "Takedown accuracy", "Control time"]
-    : metric.key === "tddef" ? ["Takedowns stopped / attempted", "Takedown defense", "Control time"]
-    : metric.format === "share" ? ["Control time", "Share of fight time"]
-    : metric.format === "percent" ? [metric.counted + " / attempts", metric.label]
-    : [metric.counted, metric.label, "Fight time"];
-  const ink = side === "f1" ? "text-f1-ink" : "text-f2-ink";
-  const stacked = paired ? "block sm:table-row" : "";
+  const sorted = sort.order !== "recent" ? sort.column : -1;
+  const rows = orderEvidence(data?.rows.filter(row => metric.sample(row.totals).total > 0) ?? [], sort.order, columns[sort.column].value);
   return <section aria-label={`${name} opponents`} className="flex min-h-0 min-w-0 flex-col">
-    <div className={`shrink-0 border-b border-zinc-100 px-2.5 py-2 sm:px-3 ${side === "f1" ? "bg-f1-soft/30" : "bg-f2-soft/30"}`}>
-      <h4 className={`truncate text-xs font-semibold ${ink}`} title={name}>{name}</h4>
-      <div className="mt-1 flex items-center justify-between gap-1">
-        <span className={`text-xs font-semibold tabular-nums ${ink}`}>{data ? profileText(metric.value(data.totals), metric.format) : "—"}</span>
-        <select aria-label={`${name} sort order`} value={order} onChange={event => setOrder(event.target.value as EvidenceOrder)}
-          className="h-7 min-w-0 rounded-full border border-zinc-200 bg-white pl-2 pr-5 text-[10px] text-zinc-600 outline-none focus-visible:outline-2 focus-visible:outline-zinc-900">
-          <option value="recent">Recent</option><option value="descending">Descending</option><option value="ascending">Ascending</option>
-        </select>
-      </div>
+    <div className="shrink-0 px-3 pt-3 sm:px-4">
+      <h4 className="truncate text-[11px] font-medium text-zinc-500" title={name}>{name}</h4>
+      <p className="text-lg font-semibold leading-6 tabular-nums text-zinc-900">{data ? profileText(metric.value(data.totals), metric.format) : "—"}</p>
     </div>
-    <div className="min-h-0 overflow-y-auto overscroll-contain px-2.5 pb-1 sm:px-3">
+    <div className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-2 sm:px-4">
     {error ? <div className="py-2"><RequestNotice onRetry={retry}>Couldn’t load stats.</RequestNotice></div> : null}
     {!data ? !error ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null : !rows.length ? <p className="py-3 text-xs text-zinc-500">No data</p> : <table className={`w-full table-fixed text-left text-[11px] tabular-nums ${paired ? "block sm:table" : ""}`}>
-      <colgroup className={paired ? "hidden sm:table-column-group" : ""}><col />{headings.map((_, index) => <col key={index} className="w-12" />)}</colgroup>
+      <colgroup className={paired ? "hidden sm:table-column-group" : ""}><col />{columns.map((_, index) => <col key={index} className="w-12" />)}</colgroup>
       <thead className={`sticky top-0 z-10 bg-white ${paired ? "block sm:table-header-group" : ""}`}><tr className={paired ? "flex sm:table-row" : ""}>
         <th scope="col" className={`${paired ? "sr-only sm:not-sr-only sm:table-cell" : ""} text-[10px] font-medium text-zinc-400`}>Opponent</th>
-        {headings.map((heading, index) => <th scope="col" key={heading} aria-sort={order !== "recent" && column === index ? order : "none"} className={paired ? "min-w-0 flex-1 sm:table-cell" : ""}>
-          <button type="button" title={titles[index]} aria-label={`Sort ${name} by ${titles[index]}`} onClick={() => { setColumn(index); setOrder(column === index && order === "descending" ? "ascending" : "descending"); }}
-            className={`flex h-7 w-full items-center justify-end gap-0.5 whitespace-nowrap text-[10px] font-medium ${order !== "recent" && column === index ? ink : "text-zinc-500"}`}>
-            {heading}{order !== "recent" && column === index ? order === "ascending" ? <ArrowUp className="h-2.5 w-2.5 shrink-0" aria-hidden="true" /> : <ArrowDown className="h-2.5 w-2.5 shrink-0" aria-hidden="true" /> : null}
+        {columns.map((column, index) => <th scope="col" key={column.heading} aria-sort={sorted === index && sort.order !== "recent" ? sort.order : "none"} className={paired ? "min-w-0 flex-1 sm:table-cell" : ""}>
+          <button type="button" title={column.title} aria-label={`Sort by ${column.title}`} onClick={() => onSort(index)}
+            className={`flex h-8 w-full items-center justify-end gap-0.5 whitespace-nowrap text-[10px] font-medium ${sorted === index ? "text-zinc-900" : "text-zinc-400 hover:text-zinc-700"}`}>
+            {column.heading}{sorted === index ? sort.order === "ascending" ? <ArrowUp className="h-2.5 w-2.5 shrink-0" aria-hidden="true" /> : <ArrowDown className="h-2.5 w-2.5 shrink-0" aria-hidden="true" /> : null}
           </button>
         </th>)}
       </tr></thead>
-      <tbody className={`divide-y divide-zinc-100 ${paired ? "block sm:table-row-group" : ""}`}>{rows.map(row => {
-        const figures = evidenceFigures(metric, row);
-        return <tr key={row.fight_id} className={stacked}>
-          <td className={`${paired ? "block pb-0 pt-1.5 sm:table-cell sm:py-1.5" : "py-1.5"} pr-2`}><Link to={`/fights/${row.fight_id}`} onClick={close} className="block truncate font-semibold text-zinc-900 underline decoration-zinc-400 underline-offset-2" title={row.opponent.name}>{row.opponent.name}</Link></td>
-          {headings.map((_, index) => <td key={index} style={paired ? { width: `${100 / headings.length}%` } : undefined} className={`${paired ? "inline-block pb-1.5 pt-0.5 sm:table-cell sm:!w-auto sm:py-1.5" : "py-1.5"} whitespace-nowrap text-right text-zinc-600`}>{figures[index]}</td>)}
-        </tr>;
-      })}</tbody>
+      <tbody className={`divide-y divide-zinc-100 ${paired ? "block sm:table-row-group" : ""}`}>{rows.map(row => <tr key={row.fight_id} className={paired ? "block sm:table-row" : ""}>
+        <td className={`${paired ? "block pb-0 pt-2 sm:table-cell sm:py-2" : "py-2"} pr-2`}><Link to={`/fights/${row.fight_id}`} onClick={close} className="block truncate font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-2 hover:decoration-zinc-500" title={row.opponent.name}>{row.opponent.name}</Link></td>
+        {columns.map((column, index) => <td key={index} style={paired ? { width: `${100 / columns.length}%` } : undefined} className={`${paired ? "inline-block pb-2 pt-0.5 sm:table-cell sm:!w-auto sm:py-2" : "py-2"} whitespace-nowrap text-right ${sorted === index ? "font-medium text-zinc-900" : "text-zinc-500"}`}>{column.text(row)}</td>)}
+      </tr>)}</tbody>
     </table>}
     </div>
   </section>;
@@ -72,6 +52,7 @@ export default function CareerStatDetails({ fighterId, fighterName, compareWith,
   const [touch, setTouch] = useState(false);
   const [dragY, setDragY] = useState(0);
   const [dismissing, setDismissing] = useState(false);
+  const [sort, setSort] = useState<Sort>({ order: "recent", column: 1 });
   const drag = useRef<{ id: number; startY: number; lastY: number; lastAt: number; velocity: number } | null>(null);
   const dragged = useRef(false);
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -86,6 +67,10 @@ export default function CareerStatDetails({ fighterId, fighterName, compareWith,
   const otherUrl = compareWith ? `/api/fighters/${compareWith.id}/career-stats${before ? `?before=${before}` : ""}` : null;
   const other = useApi<CareerStatistics>(open ? otherUrl : null, open && otherUrl ? 30_000 : undefined);
   const names = compareWith ? `${fighterName} & ${compareWith.name}` : fighterName;
+  const table = {
+    columns: evidenceColumns(metric), sort,
+    onSort: (column: number) => setSort({ column, order: sort.column === column && sort.order === "descending" ? "ascending" : "descending" }),
+  };
   const clearTimer = () => { if (timer.current) clearTimeout(timer.current); timer.current = null; };
   const hide = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
@@ -109,12 +94,13 @@ export default function CareerStatDetails({ fighterId, fighterName, compareWith,
     const above = box.top > below && below < 300;
     setPosition({ left: Math.max(12, Math.min(box.left + box.width / 2 - width / 2, window.innerWidth - width - 12)), top: above ? box.top - 6 : box.bottom + 6, width, height: Math.min(480, Math.max(120, above ? box.top - 18 : below)), above });
     setTouch(window.matchMedia("(hover: none)").matches);
+    if (!open) setSort({ order: "recent", column: 1 });
     setMode(next);
   };
   const leave = () => { if (mode === "hover") timer.current = setTimeout(hide, 180); };
 
   const onDragStart = (event: ReactPointerEvent<HTMLElement>) => {
-    if (!touch || dismissing) return;
+    if (!touch || dismissing || (event.target as HTMLElement).closest("select")) return;
     const target = (event.target as HTMLElement).closest<HTMLElement>("[data-drag-handle]") ?? event.currentTarget;
     target.setPointerCapture(event.pointerId);
     dragged.current = false;
@@ -199,19 +185,27 @@ export default function CareerStatDetails({ fighterId, fighterName, compareWith,
       <div ref={panel} id={id} role="dialog" aria-modal={touch || undefined} aria-label={`${names}: ${metric.label}`} onPointerEnter={clearTimer} onPointerLeave={leave}
         style={touch ? { left: 0, right: 0, bottom: 0, maxHeight: "80dvh", transform: dragY ? `translateY(${dragY}px)` : undefined, transition: drag.current ? "none" : undefined } : { left: position.left, top: position.top, width: position.width, maxHeight: position.height, transform: position.above ? "translateY(-100%)" : undefined }}
         className={`fixed z-[101] flex flex-col overflow-hidden border-zinc-200 bg-white text-zinc-900 shadow-xl ${touch ? "rounded-t-2xl border-t pb-[env(safe-area-inset-bottom)] transition-transform duration-200 ease-out motion-reduce:transition-none" : "rounded-xl border"}`}>
-        <div className={`shrink-0 border-b border-zinc-100 px-4 ${touch ? "touch-none pb-2" : "py-2"}`}
+        <div className={`shrink-0 border-b border-zinc-100 px-4 ${touch ? "touch-none pb-3" : "py-2"}`}
           onPointerDown={onDragStart} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragEnd}>
           {touch ? <button type="button" data-drag-handle aria-label="Close statistic details" onClick={() => { if (!dragged.current) close(); }} className="flex h-6 w-full items-center justify-center touch-none">
             <span className="h-1 w-9 rounded-full bg-zinc-300" aria-hidden="true" />
           </button> : null}
           <div className="flex items-center justify-between gap-2">
-            <h3 className="min-w-0 truncate text-xs font-semibold">{metric.label}</h3>
+            <h3 className="min-w-0 truncate text-sm font-semibold">{metric.label}</h3>
+            <label className="relative ml-auto inline-flex shrink-0 items-center">
+              <span className="sr-only">Sort opponents</span>
+              <select value={sort.order} onChange={event => setSort({ ...sort, order: event.target.value as EvidenceOrder })}
+                className="h-8 cursor-pointer appearance-none rounded-full border border-zinc-200 bg-transparent pl-3 pr-7 text-xs font-medium text-zinc-700 outline-none transition-colors hover:border-zinc-300 focus-visible:ring-2 focus-visible:ring-zinc-300">
+                <option value="recent">Recent</option><option value="descending">Highest</option><option value="ascending">Lowest</option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2 h-3.5 w-3.5 text-zinc-500" aria-hidden="true" />
+            </label>
             {!touch ? <button type="button" aria-label="Close statistic details" onClick={close} className={CLOSE_BUTTON}><X className={CLOSE_ICON} aria-hidden="true" /></button> : null}
           </div>
         </div>
-        <div className={`grid min-h-0 overflow-hidden ${compareWith ? "grid-cols-2 divide-x divide-zinc-200" : "grid-cols-1"}`}>
-          <Evidence data={data} name={fighterName} error={error} retry={retry} metric={metric} side="f1" close={hide} paired={!!compareWith} />
-          {compareWith ? <Evidence data={other.data} name={compareWith.name} error={other.error} retry={other.retry} metric={metric} side="f2" close={hide} paired /> : null}
+        <div className={`grid min-h-0 overflow-hidden ${compareWith ? "grid-cols-2" : "grid-cols-1"}`}>
+          <Evidence data={data} name={fighterName} error={error} retry={retry} metric={metric} close={hide} paired={!!compareWith} {...table} />
+          {compareWith ? <Evidence data={other.data} name={compareWith.name} error={other.error} retry={other.retry} metric={metric} close={hide} paired {...table} /> : null}
         </div>
       </div>
     </>, document.body) : null}

@@ -10,16 +10,6 @@ const clock = (seconds: number | null | undefined) => seconds == null ? "—" : 
 export type EvidenceSample = Pick<CareerStatistics["rows"][number], "totals" | "takedowns" | "control_seconds">;
 export type EvidenceOrder = "recent" | "ascending" | "descending";
 
-export function evidenceValue(metric: ProfileMetric, row: EvidenceSample, column: number): number | null {
-  if (metric.key === "td" || metric.key === "tdacc") {
-    const td = row.takedowns;
-    return [td?.scored ?? null, td?.attempted ? td.scored / td.attempted * 100 : null, row.control_seconds][column] ?? null;
-  }
-  const { count, total } = metric.sample(row.totals);
-  if (column === 2) return metric.key === "tddef" ? row.control_seconds : metric.format === "rate" && total > 0 ? total : null;
-  return column === 0 ? total > 0 ? count : null : metric.value(row.totals);
-}
-
 /** Numeric ordering, unknowns last either way; stable ties retain bout recency. */
 export function orderEvidence<T>(rows: T[], order: EvidenceOrder, value: (row: T) => number | null): T[] {
   if (order === "recent") return rows;
@@ -30,17 +20,29 @@ export function orderEvidence<T>(rows: T[], order: EvidenceOrder, value: (row: T
   });
 }
 
-/** Compact bout figures; takedown offense shows accuracy rather than a per-time rate. */
-export function evidenceFigures(metric: ProfileMetric, row: EvidenceSample): string[] {
-  if (metric.key === "td" || metric.key === "tdacc") {
-    const td = row.takedowns;
-    const accuracy = td?.attempted ? td.scored / td.attempted * 100 : null;
-    return [td ? `${td.scored}/${td.attempted ?? "—"}` : "—", profileText(accuracy, "percent"), clock(row.control_seconds)];
-  }
-  const { count, total } = metric.sample(row.totals);
-  const value = profileText(metric.value(row.totals), metric.format);
-  if (metric.key === "tddef") return [`${count}/${total}`, value, clock(row.control_seconds)];
-  if (metric.format === "share") return [clock(count), value];
-  if (metric.format === "percent") return [`${count}/${total}`, value];
-  return [String(count), value, clock(total)];
+export type EvidenceColumn = { heading: string; title: string; value: (row: EvidenceSample) => number | null; text: (row: EvidenceSample) => string };
+
+const COUNT_HEADINGS: Record<string, string> = { slpm: "Landed", sapm: "Taken", subs: "Subs", knockdowns: "KD", accuracy: "Landed", defense: "Avoided" };
+const tdAccuracy = ({ takedowns: td }: EvidenceSample) => td?.attempted ? td.scored / td.attempted * 100 : null;
+const control: EvidenceColumn = { heading: "Ctrl", title: "Control time", value: row => row.control_seconds, text: row => clock(row.control_seconds) };
+
+/** One bout's figures per column; takedown offense shows accuracy rather than a per-time rate. */
+export function evidenceColumns(metric: ProfileMetric): EvidenceColumn[] {
+  const count = (row: EvidenceSample) => metric.sample(row.totals).count;
+  const total = (row: EvidenceSample) => metric.sample(row.totals).total;
+  const fraction = (row: EvidenceSample) => `${count(row)}/${total(row)}`;
+  const value = (heading: string, title = metric.label): EvidenceColumn => ({ heading, title, value: row => metric.value(row.totals), text: row => profileText(metric.value(row.totals), metric.format) });
+  if (metric.key === "td" || metric.key === "tdacc") return [
+    { heading: "TD", title: "Takedowns landed / attempted", value: row => row.takedowns?.scored ?? null, text: ({ takedowns: td }) => td ? `${td.scored}/${td.attempted ?? "—"}` : "—" },
+    { heading: "Acc.", title: "Takedown accuracy", value: tdAccuracy, text: row => profileText(tdAccuracy(row), "percent") },
+    control,
+  ];
+  if (metric.key === "tddef") return [{ heading: "Stop", title: "Takedowns stopped / attempted", value: count, text: fraction }, value("Def."), control];
+  if (metric.format === "share") return [{ heading: "Control", title: "Control time", value: count, text: row => clock(count(row)) }, value("%", "Share of fight time")];
+  if (metric.format === "percent") return [{ heading: COUNT_HEADINGS[metric.key], title: `${metric.counted} / attempts`, value: count, text: fraction }, value("%")];
+  return [
+    { heading: COUNT_HEADINGS[metric.key], title: metric.counted, value: count, text: row => String(count(row)) },
+    value(metric.factor === 60 ? "/ min" : "/ 15m"),
+    { heading: "Time", title: "Fight time", value: total, text: row => clock(total(row)) },
+  ];
 }

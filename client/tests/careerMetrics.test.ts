@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evidenceFigures, evidenceValue, orderEvidence, GRAPPLING_METRICS } from "../src/careerMetrics.ts";
+import { evidenceColumns, orderEvidence, GRAPPLING_METRICS } from "../src/careerMetrics.ts";
 import { fightCareerTotals } from "../../server/src/career-metrics.ts";
 import type { CareerStatistics } from "../src/api.ts";
 
 const metric = (key: string) => GRAPPLING_METRICS.find(metric => metric.key === key)!;
+const evidenceFigures = (m: ReturnType<typeof metric>, sample: ReturnType<typeof row>) => evidenceColumns(m).map(column => column.text(sample));
+const evidenceValue = (m: ReturnType<typeof metric>, sample: ReturnType<typeof row>, index: number) => evidenceColumns(m)[index].value(sample);
 function row(attempted: number | null, control: number | null): CareerStatistics["rows"][number] {
   const takedowns = { scored: 3, attempted };
   const sig = { significantStrikes: { scored: 10, attempted: 20 } };
