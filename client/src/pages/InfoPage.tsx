@@ -90,11 +90,10 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-01">October 1, 2026</time></p>
+            <p><time dateTime="2026-10-02">October 2, 2026</time></p>
             <ul>
-              <li>Closing odds for bouts BestFightOdds never listed, including UFC 318's undercard.</li>
-              <li>Heights and reaches from ufc.com for debutants UFCStats hasn't measured.</li>
-              <li>Fixed Gabriel Lorenco's career record.</li>
+              <li>Fights outside the UFC are marked in violet on fighter pages and in Last five.</li>
+              <li>No contests now say why in a few words, like "Groin strike" or "Result overturned".</li>
             </ul>
           </Section>
         </div>
