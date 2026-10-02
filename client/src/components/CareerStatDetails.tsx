@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, ChevronDown, X } from "lucide-react";
 import { useApi, type CareerStatistics } from "../api";
 import { evidenceColumns, orderEvidence, profileText, type EvidenceOrder, type ProfileMetric } from "../careerMetrics";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
+import { outcomeClasses, outcomeLabel } from "../format";
 import RequestNotice from "./RequestNotice";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "./segmented";
 
@@ -18,18 +19,7 @@ function Evidence({ data, error, retry, metric, sort, setSort, close }: {
   const sorted = sort.order !== "recent" ? sort.column : -1;
   const rows = orderEvidence(data?.rows.filter(row => metric.sample(row.totals).total > 0) ?? [], sort.order, columns[sort.column].value);
   return <>
-    <div className="flex shrink-0 items-center justify-between gap-2 px-4 pt-3">
-      <p className="text-xl font-semibold tabular-nums text-zinc-900">{data ? profileText(metric.value(data.totals), metric.format) : "—"}</p>
-      <label className="relative inline-flex shrink-0 items-center">
-        <span className="sr-only">Sort opponents</span>
-        <select value={sort.order} onChange={event => setSort({ ...sort, order: event.target.value as EvidenceOrder })}
-          className="h-8 cursor-pointer appearance-none rounded-full border border-zinc-200 bg-transparent pl-3 pr-7 text-xs font-medium text-zinc-700 outline-none transition-colors hover:border-zinc-300 focus-visible:ring-2 focus-visible:ring-zinc-300">
-          <option value="recent">Recent</option><option value="descending">Highest</option><option value="ascending">Lowest</option>
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-2 h-3.5 w-3.5 text-zinc-500" aria-hidden="true" />
-      </label>
-    </div>
-    <div data-sheet-scroll className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-2">
+    <div data-sheet-scroll className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-2 pt-1">
     {error ? <div className="py-2"><RequestNotice onRetry={retry}>Couldn’t load stats.</RequestNotice></div> : null}
     {!data ? !error ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null : !rows.length ? <p className="py-3 text-xs text-zinc-500">No data</p> : <table className="w-full table-fixed text-left text-xs tabular-nums">
       <colgroup><col />{columns.map((_, index) => <col key={index} className="w-14" />)}</colgroup>
@@ -44,7 +34,10 @@ function Evidence({ data, error, retry, metric, sort, setSort, close }: {
         </th>)}
       </tr></thead>
       <tbody className="divide-y divide-zinc-100">{rows.map(row => <tr key={row.fight_id}>
-        <td className="py-2.5 pr-2"><Link to={`/fights/${row.fight_id}`} onClick={close} className="block truncate font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-2 hover:decoration-zinc-500" title={row.opponent.name}>{row.opponent.name}</Link></td>
+        <td className="py-2.5 pr-2"><span className="flex min-w-0 items-center gap-2">
+          <span title={OUTCOME_WORD[row.outcome ?? ""] ?? "Result unknown"} className={`inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded px-1 text-[9px] font-bold leading-none ${outcomeClasses(row.outcome)}`}>{outcomeLabel(row.outcome) || "?"}</span>
+          <Link to={`/fights/${row.fight_id}`} onClick={close} className="min-w-0 truncate font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-2 hover:decoration-zinc-500" title={row.opponent.name}>{row.opponent.name}</Link>
+        </span></td>
         {columns.map((column, index) => <td key={index} className={`whitespace-nowrap py-2.5 text-right ${sorted === index ? "font-medium text-zinc-900" : "text-zinc-500"}`}>{column.text(row)}</td>)}
       </tr>)}</tbody>
     </table>}
@@ -53,6 +46,7 @@ function Evidence({ data, error, retry, metric, sort, setSort, close }: {
 }
 
 type Fighter = { id: string; name: string };
+const OUTCOME_WORD: Record<string, string> = { win: "Win", loss: "Loss", draw: "Draw", nc: "No contest" };
 const careerStatsUrl = (fighter: Fighter | undefined, before?: string) => fighter ? `/api/fighters/${fighter.id}/career-stats${before ? `?before=${before}` : ""}` : null;
 
 /** Interactive evidence: hover on a mouse, tap to pin, with reachable fight links.
@@ -80,6 +74,7 @@ export default function CareerStatDetails({ fighters, initial = 0, before, metri
     useApi<CareerStatistics>(open ? careerStatsUrl(fighters[1], before) : null, open && fighters[1] ? 30_000 : undefined),
   ];
   const fighter = fighters[selected] ?? fighters[0];
+  const current = sides[fighters.indexOf(fighter)];
   const clearTimer = () => { if (timer.current) clearTimeout(timer.current); timer.current = null; };
   const hide = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
@@ -205,16 +200,27 @@ export default function CareerStatDetails({ fighters, initial = 0, before, metri
           {touch ? <button type="button" aria-label="Close statistic details" onClick={close} className="flex h-6 w-full items-center justify-center">
             <span className="h-1 w-9 rounded-full bg-zinc-300" aria-hidden="true" />
           </button> : null}
-          <div className="flex min-h-9 items-center justify-between gap-2">
-            <h3 className="min-w-0 truncate text-sm font-semibold">{metric.label}</h3>
+          <div className="flex min-h-9 items-center gap-2">
+            <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{metric.label}</h3>
+            <span className="shrink-0 text-lg font-semibold tabular-nums">{current.data ? profileText(metric.value(current.data.totals), metric.format) : "—"}</span>
             {!touch ? <button type="button" aria-label="Close statistic details" onClick={close} className={CLOSE_BUTTON}><X className={CLOSE_ICON} aria-hidden="true" /></button> : null}
           </div>
-          {fighters.length > 1 ? <div role="tablist" aria-label="Fighter" className={`${segmentedGroup} w-full`}>
-            {fighters.map((option, index) => <button key={option.id} type="button" role="tab" aria-selected={index === selected} onClick={() => setSelected(index)}
-              className={`min-h-9 min-w-0 flex-1 truncate rounded-full px-3 py-2 text-[13px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 sm:text-sm ${index === selected ? segmentedSelected : segmentedIdle}`}>{option.name}</button>)}
-          </div> : null}
+          <div className="flex items-center gap-2">
+            {fighters.length > 1 ? <div role="tablist" aria-label="Fighter" className={`${segmentedGroup} min-w-0 flex-1`}>
+              {fighters.map((option, index) => <button key={option.id} type="button" role="tab" aria-selected={index === selected} onClick={() => setSelected(index)}
+                className={`min-h-9 min-w-0 flex-1 truncate rounded-full px-2 py-2 text-[13px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 sm:px-3 sm:text-sm ${index === selected ? segmentedSelected : segmentedIdle}`}>{option.name}</button>)}
+            </div> : null}
+            <label className="relative ml-auto inline-flex shrink-0 items-center">
+              <span className="sr-only">Sort opponents</span>
+              <select value={sort.order} onChange={event => setSort({ ...sort, order: event.target.value as EvidenceOrder })}
+                className="h-11 cursor-pointer appearance-none rounded-full border border-zinc-200 bg-transparent pl-3 pr-7 text-[13px] font-medium text-zinc-700 outline-none transition-colors hover:border-zinc-300 focus-visible:ring-2 focus-visible:ring-zinc-300 sm:text-sm">
+                <option value="recent">Recent</option><option value="descending">Highest</option><option value="ascending">Lowest</option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 h-3.5 w-3.5 text-zinc-500" aria-hidden="true" />
+            </label>
+          </div>
         </div>
-        <Evidence {...sides[fighters.indexOf(fighter)]} metric={metric} sort={sort} setSort={setSort} close={hide} />
+        <Evidence {...current} metric={metric} sort={sort} setSort={setSort} close={hide} />
       </div>
     </>, document.body) : null}
   </>;

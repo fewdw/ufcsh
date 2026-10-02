@@ -150,7 +150,7 @@ export type CareerStatistics = {
   fighter_id: string; name: string;
   before: { fight_id: string; date: string } | null;
   bouts: number; totals: CareerTotals;
-  rows: { fight_id: string; date: string; event_name: string; opponent: { id: string | null; name: string }; totals: CareerTotals; takedowns: { scored: number; attempted: number | null } | null; control_seconds: number | null }[];
+  rows: { fight_id: string; date: string; event_name: string; opponent: { id: string | null; name: string }; outcome: "win" | "loss" | "draw" | "nc" | null; totals: CareerTotals; takedowns: { scored: number; attempted: number | null } | null; control_seconds: number | null }[];
 };
 
 export type FightOdds = {

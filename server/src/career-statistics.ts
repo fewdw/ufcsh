@@ -14,7 +14,7 @@ export function careerStatistics(index: FightIndex, fighterId: string, before?: 
     addCareerTotals(totals, sample);
     return {
       fight_id: fight.id, date: fight.date, event_name: fight.eventName,
-      opponent: { id: opponent.id || null, name: opponent.name },
+      opponent: { id: opponent.id || null, name: opponent.name }, outcome: own.outcome,
       totals: sample,
       takedowns: own.actions.takedowns ?? null,
       control_seconds: own.actions.control?.scored ?? null,
