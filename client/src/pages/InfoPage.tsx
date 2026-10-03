@@ -90,9 +90,14 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-02">October 2, 2026</time></p>
+            <p><time dateTime="2026-10-03">October 3, 2026</time></p>
             <ul>
-              <li>The admin health check no longer counts admin pages in site speed and errors.</li>
+              <li>Tale of the tape shows the combined UFC record of each fighter's UFC opponents when they fought.</li>
+              <li>Tap Wins or Losses in career stats to see those fights.</li>
+              <li>Career stats lists show each fight's date.</li>
+              <li>Empty stats can no longer be opened.</li>
+              <li>Sort arrows point up for highest first and down for lowest first.</li>
+              <li>On phones, each fight in a profile shows both fighters' records going in.</li>
             </ul>
           </Section>
         </div>
