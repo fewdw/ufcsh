@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useApi } from "../api";
 import type { EventDetail, EventFight, FightDetailBlock, HistoryRow, Matchup, MatchupSide, ProfessionalHistoryRow } from "../api";
-import {
+import { boutChange,
   formatDate,
   formatDateShortWithYear,
   formatMethod,
@@ -165,6 +165,7 @@ function FighterHero({
   const rank = side.ranking?.rank === "IC" || side.ranking?.rank === "I" ? "I" : rankLabel(side.ranking) || "NR";
   const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title={rankingTitle(side.ranking, past)}>{rank}</span>;
   const showResult = side.outcome ? RESULT_PREFIX[side.outcome] : undefined;
+  const change = boutChange(side);
   const compactResult = result?.replace(/^(UNANIMOUS|SPLIT|MAJORITY)\b/, (word) => `${word[0]}-DEC`);
   const fotn = !!bonuses?.fotn;
   const perf = bonuses?.perf && side.outcome === "win" ? bonuses.perf_kind ?? "perf" : null;
@@ -200,6 +201,7 @@ function FighterHero({
           {side.country_code || side.country ? <Flag code={side.country_code} name={side.country} className="ml-1.5 inline-block align-[-0.05em] text-[0.85em]" /> : null}
         </div>
         {side.nickname ? <div className="mt-0.5 text-xs text-zinc-400">“{side.nickname}”</div> : null}
+        {change ? <div className="mt-1 text-balance text-xs font-medium text-sky-700">{change.full}</div> : null}
         {(result && showResult) || fotn || perf || side.weight_miss != null ? (
           <div className={`mt-2 flex flex-wrap items-center justify-center gap-1 ${align === "right" ? "@[58rem]:justify-end" : "@[58rem]:justify-start"}`}>
             {result && showResult ? (

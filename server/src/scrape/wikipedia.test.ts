@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { catchweights, eventSection, infoboxDate, namesCard, plainText, recordCatchweight, rosterChanges, samePlace, weightMisses } from "./wikipedia.ts";
+import { boutChanges, catchweights, eventSection, infoboxDate, namesCard, plainText, recordCatchweight, rosterChanges, samePlace, weightMisses } from "./wikipedia.ts";
 
 const article = (background: string, results = "") =>
   `{{Infobox MMA event\n| date = {{start date|2024|01|20}}\n}}\n==Background==\n${background}\n==Results==\n${results}`;
@@ -229,4 +229,59 @@ test("roster flags read Wikipedia's Lua icon syntax and template syntax", () => 
   const moves = rosterChanges(text);
   assert.equal(moves.signed[0].country, "CA");
   assert.equal(moves.cut[0].country, "US");
+});
+
+test("replacements name whom they replaced, completing surnames from earlier prose", () => {
+  const text = article([
+    "A light heavyweight bout between former champion [[Jamahal Hill]] and [[Khalil Rountree Jr.]] was expected to serve as the co-headliner for this event.",
+    "However, Rountree withdrew from the event after unintentionally ingesting [[DHEA]].",
+    "He was replaced by [[Carlos Ulberg]].",
+    "In turn, Hill pulled out due to injury and was replaced by former title challenger [[Anthony Smith (fighter)|Anthony Smith]].",
+    "Subsequently, for unknown reasons, Ulberg pulled out and was replaced by [[Roman Dolidze]].",
+    "A flyweight bout between [[Matt Schnell]] and Alessandro Costa was expected to take place at the event.",
+    "However, Costa withdrew from the bout due to a shoulder injury and was replaced by [[Cody Durden]] in a bantamweight bout.",
+    "However, Walker withdrew from the fight due to an injury and was replaced by promotional newcomer Billy Elekana.",
+  ].join(" ").replace("Walker withdrew", "[[Johnny Walker (fighter)|Johnny Walker]] was set for [[UFC Fight Night: Santos vs. Walker]]. However, Walker withdrew"));
+  assert.deepEqual(boutChanges(text, [["Anthony Smith", "Roman Dolidze"], ["Matt Schnell", "Cody Durden"], ["Billy Elekana", "Rodolfo Bellato"]]), [
+    { name: "Anthony Smith", replaced: "Jamahal Hill", shortNotice: false },
+    { name: "Roman Dolidze", replaced: "Carlos Ulberg", shortNotice: false },
+    { name: "Cody Durden", replaced: "Alessandro Costa", shortNotice: false },
+    { name: "Billy Elekana", replaced: "Johnny Walker", shortNotice: false },
+  ]);
+});
+
+test("short notice is what the article says, or a fight-week withdrawal", () => {
+  const text = article([
+    "A UFC Lightweight Championship bout between current lightweight champion [[Islam Makhachev]] and [[Arman Tsarukyan]] was originally scheduled to headline the event.",
+    "One day before the event, it was reported that Tsarukyan suffered an injury that forced him to pull out of the fight.",
+    "[[Renato Moicano]], who was originally set to face [[Beneil Dariush]] at the same event, stepped in as a replacement for Tsarukyan.",
+    "A day before the event, the bout between Brian Ortega and [[Diego Lopes]] was changed to a lightweight bout.",
+    "Subsequently, on the day of the event, Ortega withdrew from the bout due to an illness.",
+    "He was replaced by [[Dan Ige]] just hours before the bout took place.",
+    "[[Jai Herbert]] will make his debut on short notice.",
+  ].join(" "));
+  assert.deepEqual(boutChanges(text, [["Islam Makhachev", "Renato Moicano"], ["Diego Lopes", "Dan Ige"], ["Jai Herbert", "Someone Else"]]), [
+    { name: "Renato Moicano", replaced: "Arman Tsarukyan", shortNotice: true },
+    { name: "Dan Ige", replaced: "Brian Ortega", shortNotice: true },
+    { name: "Jai Herbert", replaced: null, shortNotice: true },
+  ]);
+});
+
+test("a change at another card is history, and nobody replaces their own opponent", () => {
+  const text = article("They were originally expected to face each other at [[UFC 307]], but [[Aljamain Sterling]] withdrew due to an injury and was replaced by [[Movsar Evloev]]. Evloev stepped in for Sterling against him.");
+  assert.deepEqual(boutChanges(text, [["Movsar Evloev", "Aljamain Sterling"]]), [{ name: "Movsar Evloev", replaced: "", shortNotice: false }]);
+});
+
+test("backups, other cards' history and partial names are read with care", () => {
+  const text = article([
+    "Former champion [[Jiří Procházka]], who met [[Khalil Rountree Jr.]] at the event, served as backup and potential replacement for this fight.",
+    "Holland was expected to face [[Gilbert Burns]] at [[UFC 279: Chimaev vs. Diaz]], but the promotion opted to book them on short notice against different opponents.",
+    "A women's bantamweight bout between [[Mayra Bueno Silva]] and [[Priscila Cachoeira]] was scheduled.",
+    "However, Bueno Silva withdrew and was replaced by [[Joselyne Edwards]].",
+    "However, Haddon withdrew and was replaced by [[Colby Thicknesse]].",
+  ].join(" ").replace("Holland was", "[[Kevin Holland]] was"));
+  assert.deepEqual(boutChanges(text, [["Jiri Prochazka", "Khalil Rountree Jr."], ["Kevin Holland", "Daniel Rodriguez"], ["Joselyne Edwards", "Priscila Cachoeira"], ["Aleksandre Topuria", "Colby Thicknesse"]]), [
+    { name: "Joselyne Edwards", replaced: "Mayra Bueno Silva", shortNotice: false },
+    { name: "Colby Thicknesse", replaced: "Haddon", shortNotice: false },
+  ]);
 });

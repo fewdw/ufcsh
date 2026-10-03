@@ -59,6 +59,9 @@ export type LiveCard = {
 export type FightSide = {
   /** Pounds as text, empty when unknown, null when made or unread. */
   weight_miss?: string | null;
+  /** Whom this fighter replaced; "" when the source doesn't say, null when booked from the start. */
+  replaced?: string | null;
+  short_notice?: boolean;
   id: string;
   name: string;
   /** False for a booked debutant who does not have a UFC profile yet. */
