@@ -792,7 +792,7 @@ function SegmentBreak({ segment, at }: { segment: CardSegment; at: number | null
  *  that did. A fighter links to their profile when they have one. */
 function CancelledBouts({ bouts }: { bouts: CancelledBout[] }) {
   const name = (side: CancelledBout["f1"]) => side.id
-    ? <Link to={`/fighters/${side.id}`} className="underline decoration-zinc-300 underline-offset-2 hover:decoration-zinc-500">{side.name}</Link>
+    ? <Link to={`/fighters/${side.id}`} className="transition hover:text-zinc-900 dark:hover:text-zinc-100">{side.name}{"\u00a0"}<span aria-hidden="true">↗</span></Link>
     : side.name;
   return (
     <div className="border-t border-zinc-200">

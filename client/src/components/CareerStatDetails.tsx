@@ -210,8 +210,10 @@ export default function CareerStatDetails({ fighters, available, initial = 0, be
           </button> : null}
           {/* One line: what, how much, the order, and close. */}
           <div className="flex min-h-9 items-center gap-2">
-            <h3 className="min-w-0 truncate text-sm font-semibold" title={view.label}>{view.label}</h3>
-            <span className="shrink-0 text-lg font-semibold tabular-nums">{current.data ? view.headline(current.data) : "—"}</span>
+            {/* "0.66 Knockdowns / 15 min": the figure leads, at the label's size. */}
+            <h3 className="min-w-0 truncate text-sm font-semibold" title={view.label}>
+              <span className="tabular-nums">{current.data ? view.headline(current.data) : "—"}</span> {view.label}
+            </h3>
             <span className="flex-1" aria-hidden="true" />
             {view.columns.some(column => column.value) ? <label className="shrink-0">
               <span className="sr-only">Sort opponents</span>

@@ -203,7 +203,7 @@ function FighterHero({
         {side.nickname ? <div className="mt-0.5 text-xs text-zinc-400">“{side.nickname}”</div> : null}
         {change ? <div className="mt-1 text-balance text-xs font-medium text-sky-700">
           {change.lead}{" "}
-          {change.name && change.id ? <Link to={`/fighters/${change.id}`} className="pointer-events-auto relative underline decoration-sky-300 underline-offset-2 hover:decoration-sky-700">{change.name}</Link> : change.name}
+          {change.name && change.id ? <Link to={`/fighters/${change.id}`} className="pointer-events-auto relative transition hover:text-sky-900 dark:hover:text-sky-200">{change.name}{"\u00a0"}<span aria-hidden="true">↗</span></Link> : change.name}
           {change.tail ? ` ${change.tail}` : null}
         </div> : null}
         {(result && showResult) || fotn || perf || side.weight_miss != null ? (
