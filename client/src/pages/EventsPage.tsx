@@ -97,7 +97,12 @@ const DOCK = {
 function settleOn(list: HTMLElement | null, card: Element | null | undefined) {
   if (!list || !card) return;
   const below = card.getBoundingClientRect().bottom - list.getBoundingClientRect().bottom;
+  // A touch flick still coasting carries on from wherever it is sent, so on a
+  // touch screen the list stops scrolling for a frame, which ends the flick.
+  const coasting = window.matchMedia("(pointer: coarse)").matches;
+  if (coasting) list.style.overflowY = "hidden";
   list.scrollTo({ top: list.scrollTop + below + 8, behavior: "instant" });
+  if (coasting) requestAnimationFrame(() => { list.style.overflowY = ""; });
 }
 
 function EventSidebar({
