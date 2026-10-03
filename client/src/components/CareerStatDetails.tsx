@@ -38,7 +38,7 @@ function Evidence({ data, error, retry, view, sort, setSort, close }: {
       <tbody className="divide-y divide-zinc-100">{rows.map(row => <tr key={row.fight_id}>
         <td className="py-2.5 pr-2"><span className="flex min-w-0 items-center gap-2">
           <span title={OUTCOME_WORD[row.outcome ?? ""] ?? "Result unknown"} className={`inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded px-1 text-[9px] font-bold leading-none ${outcomeClasses(row.outcome)}`}>{outcomeLabel(row.outcome) || "?"}</span>
-          <Link to={`/fights/${row.fight_id}`} onClick={close} className="min-w-0 truncate font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-2 hover:decoration-zinc-500" title={row.opponent.name}>{row.opponent.name}</Link>
+          <Link to={`/fights/${row.fight_id}`} onClick={close} className="line-clamp-2 min-w-0 break-words font-medium leading-4 text-zinc-900 underline decoration-zinc-300 underline-offset-2 hover:decoration-zinc-500" title={row.opponent.name}>{row.opponent.name}</Link>
         </span></td>
         <td className="whitespace-nowrap py-2.5 text-right text-zinc-500" title={formatDate(row.date)}>{shortDate(row.date)}</td>
         {columns.map((column, index) => <td key={index} className={`whitespace-nowrap py-2.5 text-right ${sorted === index ? "font-medium text-zinc-900" : "text-zinc-500"}`}>{column.text(row)}</td>)}
@@ -99,7 +99,7 @@ export default function CareerStatDetails({ fighters, available, initial = 0, be
     if (closeOpen !== hide) closeOpen?.();
     closeOpen = hide;
     const box = trigger.current!.getBoundingClientRect();
-    const width = Math.min(384, window.innerWidth - 24);
+    const width = Math.min(440, window.innerWidth - 24);
     const below = window.innerHeight - box.bottom - 16;
     const above = box.top > below && below < 300;
     setPosition({ left: Math.max(12, Math.min(box.left + box.width / 2 - width / 2, window.innerWidth - width - 12)), top: above ? box.top - 6 : box.bottom + 6, width, height: Math.min(480, Math.max(120, above ? box.top - 18 : below)), above });
@@ -208,24 +208,24 @@ export default function CareerStatDetails({ fighters, available, initial = 0, be
           {touch ? <button type="button" aria-label="Close statistic details" onClick={close} className="flex h-6 w-full items-center justify-center">
             <span className="h-1 w-9 rounded-full bg-zinc-300" aria-hidden="true" />
           </button> : null}
+          {/* One line: what, how much, the order, and close. */}
           <div className="flex min-h-9 items-center gap-2">
-            <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{view.label}</h3>
+            <h3 className="min-w-0 flex-1 truncate text-sm font-semibold" title={view.label}>{view.label}</h3>
             <span className="shrink-0 text-lg font-semibold tabular-nums">{current.data ? view.headline(current.data) : "—"}</span>
-            {!touch ? <button type="button" aria-label="Close statistic details" onClick={close} className={CLOSE_BUTTON}><X className={CLOSE_ICON} aria-hidden="true" /></button> : null}
-          </div>
-          <div className="flex items-center gap-2">
-            {fighters.length > 1 ? <div role="tablist" aria-label="Fighter" className={`${segmentedGroup} min-w-0 flex-1`}>
-              {fighters.map((option, index) => <button key={option.id} type="button" role="tab" aria-selected={index === selected} disabled={available?.[index] === false} onClick={() => setSelected(index)}
-                className={`min-h-9 min-w-0 flex-1 truncate rounded-full px-2 py-2 text-[13px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-zinc-500 sm:px-3 sm:text-sm ${index === selected ? segmentedSelected : segmentedIdle}`}>{option.name}</button>)}
-            </div> : null}
-            {view.columns.some(column => column.value) ? <label className="ml-auto shrink-0">
+            {view.columns.some(column => column.value) ? <label className="shrink-0">
               <span className="sr-only">Sort opponents</span>
               <select value={sort.order} onChange={event => setSort({ ...sort, order: event.target.value as EvidenceOrder })}
-                className="h-11 cursor-pointer rounded-full border border-zinc-200 bg-transparent pl-3.5 pr-8 text-[13px] font-medium text-zinc-700 outline-none transition-colors hover:border-zinc-300 focus-visible:ring-2 focus-visible:ring-zinc-300 sm:text-sm">
+                className={`${touch ? "h-11" : "h-8"} cursor-pointer rounded-full border border-zinc-200 bg-transparent pl-3 pr-7 text-xs font-medium text-zinc-700 outline-none transition-colors hover:border-zinc-300 focus-visible:ring-2 focus-visible:ring-zinc-300`}>
                 <option value="recent">Recent</option><option value="descending">Highest</option><option value="ascending">Lowest</option>
               </select>
             </label> : null}
+            {!touch ? <button type="button" aria-label="Close statistic details" onClick={close} className={CLOSE_BUTTON}><X className={CLOSE_ICON} aria-hidden="true" /></button> : null}
           </div>
+          {/* A mouse switches fighter by pointing at the other bar; a phone needs the tabs. */}
+          {touch && fighters.length > 1 ? <div role="tablist" aria-label="Fighter" className={segmentedGroup}>
+            {fighters.map((option, index) => <button key={option.id} type="button" role="tab" aria-selected={index === selected} disabled={available?.[index] === false} onClick={() => setSelected(index)}
+              className={`min-h-9 min-w-0 flex-1 truncate rounded-full px-2 py-2 text-[13px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-zinc-500 ${index === selected ? segmentedSelected : segmentedIdle}`}>{option.name}</button>)}
+          </div> : null}
         </div>
         <Evidence {...current} view={view} sort={sort} setSort={setSort} close={hide} />
       </div>
