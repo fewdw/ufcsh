@@ -78,6 +78,14 @@ body,
   height: 100%;
 }
 
+/* The page itself never scrolls; every list scrolls inside it. Without this,
+   a phone flick that runs past a list's end bounces the whole page, header
+   and all. */
+html,
+body {
+  overscroll-behavior: none;
+}
+
 body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
