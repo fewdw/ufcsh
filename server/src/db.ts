@@ -4,6 +4,8 @@ import path from "node:path";
 import { mkdirSync } from "node:fs";
 import { samePlace } from "./scrape/wikipedia.ts";
 import { consistentMoneyline } from "./method-odds.ts";
+import { decisionFromCards } from "./judge-scorecards.ts";
+import { flaglessCountryCode } from "./util.ts";
 
 export const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data"));
 mkdirSync(DATA_DIR, { recursive: true });
@@ -542,6 +544,30 @@ if (getMeta("migration_board_moneyline") !== "2") {
 if (getMeta("migration_bonus_kinds") !== "1") {
   db.exec("UPDATE fights SET perf_bonus = NULL WHERE event_id IN (SELECT id FROM events WHERE date < '2014-07-01')");
   setMeta("migration_bonus_kinds", "1");
+}
+
+// A decision's kind now follows its three cards when UFCStats' label
+// contradicts them (judge-scorecards.ts, decisionFromCards).
+if (getMeta("migration_decision_kinds") !== "1") {
+  const fix = db.prepare("UPDATE fights SET method = ? WHERE id = ?");
+  for (const row of db.prepare("SELECT id, method, f1_outcome, detail_json FROM fights WHERE method IN ('U-DEC', 'S-DEC', 'M-DEC') AND detail_json LIKE '%\"judges\"%'").all() as
+    { id: string; method: string; f1_outcome: string | null; detail_json: string }[]) {
+    let judges: unknown = null;
+    try { judges = JSON.parse(row.detail_json).judges; } catch { /* unreadable: keep */ }
+    const method = decisionFromCards(row.method, row.f1_outcome, judges);
+    if (method !== row.method) fix.run(method, row.id);
+  }
+  setMeta("migration_decision_kinds", "1");
+}
+
+// Sherdog profiles without a flag image left their fighters without a code.
+if (getMeta("migration_flagless_countries") !== "1") {
+  const fix = db.prepare("UPDATE fighters SET country_code = ? WHERE id = ?");
+  for (const row of db.prepare("SELECT id, country FROM fighters WHERE country != '' AND (country_code IS NULL OR country_code = '')").all() as { id: string; country: string }[]) {
+    const code = flaglessCountryCode(row.country);
+    if (code) fix.run(code, row.id);
+  }
+  setMeta("migration_flagless_countries", "1");
 }
 
 // Data revisions survive process boundaries without invalidating analytics on

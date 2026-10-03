@@ -10,6 +10,8 @@ const SUBDIVISIONS: Record<string, string> = {
   SC: "\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}",
   WA: "\u{1F3F4}\u{E0067}\u{E0062}\u{E0077}\u{E006C}\u{E0073}\u{E007F}",
   UK: "\u{1F1EC}\u{1F1E7}",
+  // Northern Ireland has no flag emoji of its own.
+  NB: "\u{1F1EC}\u{1F1E7}",
 };
 
 export function flagEmoji(code: string | null | undefined): string | null {

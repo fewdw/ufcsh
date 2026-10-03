@@ -43,6 +43,13 @@ export function givenName(first: string): string {
   return FIRST_NAME.get(first) ?? first;
 }
 
+// Sherdog's codes for nationalities it sometimes prints without a flag image.
+const FLAGLESS: Record<string, string> = { "USA": "US", "England": "EN", "Scotland": "SC", "Wales": "WA", "Northern Ireland": "NB" };
+/** A country code from a Sherdog nationality, for a profile with no flag. */
+export function flaglessCountryCode(country: string): string {
+  return FLAGLESS[country] ?? "";
+}
+
 /** Lowercase, accent-stripped, alphanumeric words only — used to match names across sources. */
 export function normName(name: string | null | undefined): string {
   return (name ?? "")
