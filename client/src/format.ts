@@ -60,7 +60,7 @@ export function formatMethod(method: string | null, round: string | null, time: 
 }
 
 export function isDecision(method: string | null | undefined): boolean {
-  return /dec$/i.test((method ?? "").trim());
+  return /dec$|decision/i.test((method ?? "").trim());
 }
 
 /** "3 Rounds" — how long a bout is booked for; empty when that is unknown. */
