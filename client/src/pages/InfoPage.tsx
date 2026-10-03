@@ -92,11 +92,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-03">October 3, 2026</time></p>
             <ul>
-              <li>A fight-day card reads Next, not Live, until it starts.</li>
-              <li>Upcoming bouts count Road to UFC and Contender Series bouts in UFC records, as profiles do.</li>
-              <li>Fixed a career win counted twice when one fighter had two profiles.</li>
-              <li>Weigh-in misses show during fight week.</li>
-              <li>Overtime-format bouts show their rounds; small label fixes.</li>
+              <li>Decisions UFCStats mislabeled now match their judges' cards (split, majority, unanimous).</li>
+              <li>Scottish, Northern Irish and some American fighters show their flag.</li>
             </ul>
           </Section>
         </div>
