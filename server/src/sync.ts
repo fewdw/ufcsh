@@ -740,16 +740,23 @@ async function syncMissingBonuses(limit = 30): Promise<void> {
 let weightMissRunning = false;
 
 /** Weigh-in misses for completed cards, newest first, from each card's
- * Wikipedia article. A card with no matching article is still marked read. */
+ * Wikipedia article. A card with no matching article is still marked read.
+ * A card in fight week is re-read every 20 minutes without being marked, so a
+ * miss shows from the weigh-ins on and the finished card still gets its read. */
 export async function syncWeightMisses(limit = 30): Promise<{ events: number; misses: number; failed: number }> {
   const total = { events: 0, misses: 0, failed: 0 };
   if (weightMissRunning) return total;
   weightMissRunning = true;
   try {
+    const fightWeek = metaAgeMs("weight_misses_fight_week_at") > 20 * 60_000;
+    if (fightWeek) touchMeta("weight_misses_fight_week_at");
     const events = db.prepare(`
-      SELECT id, name, date, location FROM events WHERE complete = 1 AND wiki_checked_at IS NULL
+      SELECT id, name, date, location, complete FROM events WHERE complete = 1 AND wiki_checked_at IS NULL
+      UNION ALL
+      SELECT id, name, date, location, complete FROM events
+      WHERE ? AND complete = 0 AND date BETWEEN date('now', '-1 day') AND date('now', '+1 day')
       ORDER BY date DESC LIMIT ?
-    `).all(limit) as { id: string; name: string; date: string; location: string }[];
+    `).all(fightWeek ? 1 : 0, limit) as { id: string; name: string; date: string; location: string; complete: number }[];
     const fightsOf = db.prepare("SELECT id, f1_name, f2_name FROM fights WHERE event_id = ? ORDER BY ord");
     const setMiss = db.prepare("UPDATE fights SET f1_weight_miss = ?, f2_weight_miss = ? WHERE id = ?");
     const markRead = db.prepare("UPDATE events SET wiki_title = ?, wiki_checked_at = ? WHERE id = ?");
@@ -771,7 +778,7 @@ export async function syncWeightMisses(limit = 30): Promise<{ events: number; mi
       db.exec("BEGIN");
       try {
         for (const fight of fights) setMiss.run(value(fight.f1_name), value(fight.f2_name), fight.id);
-        markRead.run(article?.title ?? null, Date.now(), event.id);
+        if (event.complete) markRead.run(article?.title ?? null, Date.now(), event.id);
         db.exec("COMMIT");
       } catch (err) {
         db.exec("ROLLBACK");
