@@ -18,7 +18,8 @@ export type EventListItem = {
   starts_at?: number | null;
 };
 
-export type FighterRanking = { division: string; rank: string } | null;
+/** `as_of` is set on a past bout: the date of the UFC list the rank comes from. */
+export type FighterRanking = { division: string; rank: string; as_of?: string } | null;
 
 type LiveFighter = {
   id: string;
@@ -362,6 +363,15 @@ export type Matchup = {
   head_to_head: HistoryRow[];
 };
 
+/** A fighter's official rank on every list where it changed, per division;
+ *  a null rank is a stretch off the list. `through` is the newest list. */
+export type RankingTimeline = {
+  divisions: { division: string; points: { date: string; rank: string | null }[] }[];
+  through: string | null;
+  /** The first meta list when meta was asked for; media lists stand in before it. */
+  meta_since: string | null;
+};
+
 export type FighterProfile = {
   refreshing?: boolean;
   id: string;
@@ -385,6 +395,7 @@ export type FighterProfile = {
   photo_url: string | null;
   photo_full_url: string | null;
   ranking: { division: string; rank: string; rank_change: string | null } | null;
+  ranking_history?: RankingTimeline;
   records: FighterRecord[];
   career_stats: CareerTotals;
   /** Every verified professional bout; UFC rows retain their richer local data. */

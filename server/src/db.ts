@@ -121,6 +121,19 @@ CREATE TABLE IF NOT EXISTS rankings (
   PRIMARY KEY (ranking_type, division, div_pos)
 );
 
+-- Every official list we know of, one snapshot per date it changed. 'C' and
+-- 'IC' for champions, '1'..'15' otherwise. See ranking-history.ts.
+CREATE TABLE IF NOT EXISTS ranking_history (
+  ranking_type TEXT NOT NULL CHECK (ranking_type IN ('meta', 'media')),
+  date         TEXT NOT NULL,
+  division     TEXT NOT NULL,
+  rank         TEXT NOT NULL,
+  fighter_name TEXT NOT NULL,
+  fighter_id   TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (ranking_type, date, division, fighter_name)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_ranking_history_fighter ON ranking_history(fighter_id, ranking_type, date, division, rank);
+
 CREATE TABLE IF NOT EXISTS image_queue (
   fighter_id   TEXT PRIMARY KEY,
   requested_at INTEGER NOT NULL
@@ -617,6 +630,7 @@ const revisionTables: Record<string, string[]> = {
   career_profiles: ["analytics", "profiles"],
   career_bouts: ["analytics", "profiles"],
   rankings: ["profiles"],
+  ranking_history: ["profiles"],
 };
 for (const [table, revisions] of Object.entries(revisionTables)) {
   const checkTimestamps = new Set(["detail_fetched_at", "birth_fetched_at", "photo_checked_at", "bfo_checked_at", "bfo_final_at",
