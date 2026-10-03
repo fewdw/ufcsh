@@ -230,18 +230,14 @@ export function divisionName(weightClass: string, catchWeight?: number | null): 
   return catchWeight && /catch/i.test(weightClass) ? `${weightClass} (${catchWeight} lbs)` : weightClass;
 }
 
-/** How much notice a replacement had, as a phrase: "on 10 days' notice",
- *  "on under 2 weeks' notice", "in fight week", "on short notice". */
+/** How much notice a replacement had, briefly: "3 days notice", "2 weeks
+ *  notice", "fight week", "short notice". */
 export function noticePhrase(notice: string | null | undefined, short: boolean | undefined): string {
-  const amount = notice?.match(/^(under )?(\d+) (day|week)s?$/);
-  if (amount) {
-    const n = Number(amount[2]);
-    const unit = `${n} ${amount[3]}${n === 1 ? "'s" : "s'"}`;
-    return `on ${amount[1] ? "under " : ""}${unit} notice`;
-  }
-  if (notice === "fight week") return "in fight week";
-  if (notice === "hours") return "hours before the fight";
-  return short ? "on short notice" : "";
+  const amount = notice?.match(/^(?:under )?(\d+) (day|week)s?$/);
+  if (amount) return `${amount[1]} ${amount[2]}${amount[1] === "1" ? "" : "s"} notice`;
+  if (notice === "fight week") return "fight week";
+  if (notice === "hours") return "hours notice";
+  return short ? "short notice" : "";
 }
 
 /** A late change to a fighter's booking: a tag, its full sentence, and the
@@ -254,7 +250,7 @@ export function boutChange(side: { replaced?: string | null; replaced_id?: strin
   const name = side.replaced || null;
   return {
     short: side.short_notice ? "Short notice" : "Replacement",
-    full: [lead, name, notice].filter(Boolean).join(" "),
+    full: [[lead, name].filter(Boolean).join(" "), notice].filter(Boolean).join(" · "),
     lead, name, id: name ? side.replaced_id ?? null : null, tail: notice,
   };
 }

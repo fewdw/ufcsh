@@ -201,10 +201,11 @@ function FighterHero({
           {side.country_code || side.country ? <Flag code={side.country_code} name={side.country} className="ml-1.5 inline-block align-[-0.05em] text-[0.85em]" /> : null}
         </div>
         {side.nickname ? <div className="mt-0.5 text-xs text-zinc-400">“{side.nickname}”</div> : null}
+        {/* The whole note opens the replaced fighter's profile, when they have one. */}
         {change ? <div className="mt-1 text-balance text-xs font-medium text-sky-700">
-          {change.lead}{" "}
-          {change.name && change.id ? <Link to={`/fighters/${change.id}`} className="pointer-events-auto relative transition hover:text-sky-900 dark:hover:text-sky-200">{change.name}{"\u00a0"}<span aria-hidden="true">↗</span></Link> : change.name}
-          {change.tail ? ` ${change.tail}` : null}
+          {change.id ? <Link to={`/fighters/${change.id}`} className="pointer-events-auto relative transition hover:text-sky-900 dark:hover:text-sky-200">
+            {change.full}{"\u00a0"}<span aria-hidden="true">↗</span>
+          </Link> : change.full}
         </div> : null}
         {(result && showResult) || fotn || perf || side.weight_miss != null ? (
           <div className={`mt-2 flex flex-wrap items-center justify-center gap-1 ${align === "right" ? "@[58rem]:justify-end" : "@[58rem]:justify-start"}`}>
