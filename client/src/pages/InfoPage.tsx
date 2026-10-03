@@ -92,12 +92,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-03">October 3, 2026</time></p>
             <ul>
-              <li>Tale of the tape shows the combined UFC record of each fighter's UFC opponents when they fought.</li>
-              <li>Tap Wins or Losses in career stats to see those fights.</li>
-              <li>Career stats lists show each fight's date.</li>
-              <li>Empty stats can no longer be opened.</li>
-              <li>Sort arrows point up for highest first and down for lowest first.</li>
-              <li>On phones, each fight in a profile shows both fighters' records going in.</li>
+              <li>The Next fight countdown in the header shows up 12 hours before the fight.</li>
             </ul>
           </Section>
         </div>

@@ -4,6 +4,9 @@ import type { LiveCard } from "../api";
 import { clockTime, countdown, lastName } from "../format";
 import { useNow } from "../useNow";
 
+/** Up next shows only inside this window; further out, a countdown is noise. */
+const NEXT_WINDOW_MS = 12 * 3_600_000;
+
 /** The bout on now while a card runs, nothing otherwise. The countdown is
  * computed locally from the server's absolute start time. */
 export default function LiveMatchup() {
@@ -12,6 +15,7 @@ export default function LiveMatchup() {
   const now = useNow(Boolean(data && !data.live && startsAt != null));
 
   if (!data) return null;
+  if (!data.live && startsAt != null && startsAt - now > NEXT_WINDOW_MS) return null;
   const { fight } = data;
   const names = `${lastName(fight.f1.name)} vs ${lastName(fight.f2.name)}`;
   const away = countdown(startsAt, now);
