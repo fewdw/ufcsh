@@ -14,6 +14,10 @@ export function pageRouteGroup(pathname: string): string | null {
   if (/^\/venues\/[^/]+$/.test(pathname)) return "page_venue";
   if (pathname === "/locations") return "page_locations";
   if (/^\/locations\/[^/]+$/.test(pathname)) return "page_location";
+  if (pathname === "/roster") return "page_roster";
+  if (pathname === "/matchmaking") return "page_matchmaking";
+  if (pathname === "/news") return "page_news";
+  if (pathname === "/graphic") return "page_graphic";
   if (pathname === "/info") return "page_info";
   if (pathname === "/admin" || pathname === "/admin/bugs") return "page_admin";
   if (pathname === "/sign-in" || pathname.startsWith("/sign-in/")) return "page_sign_in";

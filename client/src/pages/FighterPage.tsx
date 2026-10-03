@@ -88,8 +88,8 @@ function RecordWheel({ history, scope, record }: { history: (HistoryRow | Profes
     { key: "win-OTHER", label: "Other", color: "#6ee7b7", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "win" && methodGroup(fight.method) === "OTHER" },
   ];
   const extraDefinitions = [
-    { key: "draw", label: "Draws", color: "#f59e0b", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "draw" },
-    { key: "nc", label: "No contests", color: "#71717a", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "nc" },
+    { key: "draw", label: "Draws", one: "Draw", color: "#f59e0b", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "draw" },
+    { key: "nc", label: "No contests", one: "No contest", color: "#71717a", match: (fight: HistoryRow | ProfessionalHistoryRow) => fight.outcome === "nc" },
   ];
   const count = <T extends { match: (fight: HistoryRow | ProfessionalHistoryRow) => boolean }>(definitions: T[]) =>
     definitions.map((definition) => ({ ...definition, count: bouts.filter(definition.match).length }));
@@ -156,7 +156,7 @@ function RecordWheel({ history, scope, record }: { history: (HistoryRow | Profes
               {extras.filter((segment) => segment.count > 0).map((segment) => (
                 <div key={segment.key} className="flex items-center gap-1.5 text-[9px] text-zinc-500">
                   <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: segment.color }} />
-                  <span>{segment.count} {segment.label}</span>
+                  <span>{segment.count} {segment.count === 1 ? segment.one : segment.label}</span>
                 </div>
               ))}
             </div>

@@ -45,13 +45,15 @@ test("a no contest's method shortens to a plain reason and keeps the full text i
   assert.equal(nc("NC (Rainfall)").shortMethod, "Stopped by rain", "rainfall is not a fall");
   assert.equal(nc("ND (Decision Overturned by NSAC)").shortMethod, "Result overturned");
   assert.equal(nc("No Contest").shortMethod, null, "the NC mark already says it");
-  assert.equal(nc("No Contest (Nakao KO'd Prior to Bout)").shortMethod, null);
+  assert.equal(nc("No Contest (Nakao KO'd Prior to Bout)").shortMethod, "Pre-fight strike");
+  assert.equal(nc("No Contest (Promoter Dispute)").shortMethod, null, "a cause no rule knows shows only the mark");
   assert.equal(resultDot({ method: "CNC", outcome: "nc" }).shortMethod, "CNC");
   assert.match(nc("No Contest (Accidental Knee to Groin)").label, /Accidental Knee to Groin/);
 });
 
 test("only a cause no rule knows is unexplained", () => {
-  assert.equal(noContestUnexplained("No Contest (Nakao KO'd Prior to Bout)"), true);
+  assert.equal(noContestUnexplained("No Contest (Promoter Dispute)"), true);
+  assert.equal(noContestUnexplained("No Contest (Nakao KO'd Prior to Bout)"), false);
   assert.equal(noContestUnexplained("No Contest"), false, "no cause given, nothing to explain");
   assert.equal(noContestUnexplained("NC (Accidental Eye Poke)"), false);
   assert.equal(noContestUnexplained("CNC"), false);
