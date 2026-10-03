@@ -2,7 +2,8 @@ import { db, getMeta, metaAgeMs, setMeta, touchMeta } from "./db.ts";
 import { fetchHtml } from "./http.ts";
 import { parseRankingsHtml, type RankingType, type ScrapedRankings } from "./scrape/ufccom.ts";
 import type { TitleHolders } from "./fight-index.ts";
-import { firstLastName, log, normName, todayIso } from "./util.ts";
+import { fighterNamed } from "./fighter-identity.ts";
+import { log, normName, todayIso } from "./util.ts";
 
 /**
  * Every official UFC ranking by date, so a past matchup shows the ranks its
@@ -40,30 +41,10 @@ const ARCHIVE_NAMES: Record<string, string> = {
 
 const RANK_ORDER = "CASE rank WHEN 'C' THEN 0 WHEN 'IC' THEN 1 ELSE CAST(rank AS INTEGER) + 2 END";
 
-/** The fighter a ranked name means. Two fighters can share a name, so the one
- *  who fought in that division nearest the date wins. Empty when unknown. */
+/** The fighter a ranked name means, through the archive's own spellings. */
 export function resolveRankedFighter(name: string, division: string, date: string): string {
   const key = normName(name);
-  let ids = (db.prepare("SELECT id FROM fighters WHERE norm_name = ?").all(ARCHIVE_NAMES[key] ?? key) as { id: string }[]).map((row) => row.id);
-  if (!ids.length) {
-    // ufc.com sometimes adds a nickname ("Michael Venom Page").
-    const short = firstLastName(name);
-    const [first, last] = short.split(" ");
-    if (first && last) {
-      ids = (db.prepare("SELECT id, norm_name FROM fighters WHERE norm_name LIKE ? AND norm_name LIKE ?")
-        .all(`${first}%`, `%${last}`) as { id: string; norm_name: string }[])
-        .filter((row) => firstLastName(row.norm_name) === short).map((row) => row.id);
-    }
-  }
-  if (ids.length <= 1) return ids[0] ?? "";
-  const best = db.prepare(`
-    SELECT fr.id FROM fighters fr
-    JOIN fights f ON f.f1_id = fr.id OR f.f2_id = fr.id
-    JOIN events e ON e.id = f.event_id
-    WHERE fr.id IN (${ids.map(() => "?").join(",")})
-    ORDER BY f.weight_class = ? DESC, ABS(julianday(e.date) - julianday(?)) ASC LIMIT 1
-  `).get(...ids, division, date) as { id: string } | undefined;
-  return best?.id ?? "";
+  return fighterNamed(ARCHIVE_NAMES[key] ?? name, division, date);
 }
 
 const listKey = (entries: { division: string; rank: string; name: string }[]) =>

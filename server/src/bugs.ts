@@ -1024,6 +1024,35 @@ function replacementsUnnamed(): BugCheck {
   })));
 }
 
+function replacementsWithoutNotice(): BugCheck {
+  const rows = db.prepare(`
+    SELECT f.id, f.event_id, e.name AS event_name, e.date, e.wiki_title, f.f1_name AS name, f.f1_replaced AS replaced
+    FROM fights f JOIN events e ON e.id = f.event_id WHERE f.f1_replaced IS NOT NULL AND f.f1_notice IS NULL
+    UNION ALL
+    SELECT f.id, f.event_id, e.name, e.date, e.wiki_title, f.f2_name, f.f2_replaced
+    FROM fights f JOIN events e ON e.id = f.event_id WHERE f.f2_replaced IS NOT NULL AND f.f2_notice IS NULL
+    ORDER BY date DESC
+  `).all() as { id: string; event_id: string; event_name: string; date: string; wiki_title: string | null; name: string; replaced: string }[];
+  return check({
+    id: "replacement-no-notice",
+    group: "Fights & events",
+    label: "Replacements without their days' notice",
+    description: "A replacement whose notice the event article doesn't state, so the matchup says \"Replaced X\" (or \"on short notice\") without how many days. Stated notice (\"on 10 days' notice\", \"less than two weeks before\", \"during fight week\") is read with the article; the rest wait for another source.",
+    grade: ahead([[14, "minor"]]),
+  }, rows.map((row): BugItem => ({
+    key: `${row.id}:${row.name}`,
+    title: row.name,
+    subtitle: row.event_name,
+    date: row.date,
+    facts: [["Replaced", row.replaced || "not named"]],
+    links: [
+      ...fightLinks(row.id),
+      ...(row.wiki_title ? [{ label: "Event article", href: `https://en.wikipedia.org/wiki/${encodeURIComponent(row.wiki_title.replace(/ /g, "_"))}` }] : []),
+    ],
+    actions: [{ id: "article", label: "Re-read event article", target: row.event_id }],
+  })));
+}
+
 function fighterGaps(active: Set<string>): BugCheck {
   const rows = db.prepare(`
     SELECT id, name, photo_url, photo_checked_at, birth_date, birth_fetched_at, country, height, reach, stance
@@ -1534,6 +1563,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     eventsWithoutWiki(),
     catchweightsWithoutLimit(),
     replacementsUnnamed(),
+    replacementsWithoutNotice(),
     venueInWrongCity(),
     eventsWithoutVenue(),
     venuesFromWikipediaOnly(),

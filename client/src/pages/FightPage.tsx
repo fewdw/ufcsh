@@ -175,7 +175,7 @@ function FighterHero({
       : "@[58rem]:flex-row @[58rem]:text-left"
   }`;
   const content = <>
-      <div className="flex shrink-0 flex-col items-center gap-1.5">
+      <div className="matchup-portrait flex shrink-0 flex-col items-center gap-1.5">
         {portrait ? (
           <FighterPortrait
             src={side.photo_full_url}
@@ -201,7 +201,11 @@ function FighterHero({
           {side.country_code || side.country ? <Flag code={side.country_code} name={side.country} className="ml-1.5 inline-block align-[-0.05em] text-[0.85em]" /> : null}
         </div>
         {side.nickname ? <div className="mt-0.5 text-xs text-zinc-400">“{side.nickname}”</div> : null}
-        {change ? <div className="mt-1 text-balance text-xs font-medium text-sky-700">{change.full}</div> : null}
+        {change ? <div className="mt-1 text-balance text-xs font-medium text-sky-700">
+          {change.lead}{" "}
+          {change.name && change.id ? <Link to={`/fighters/${change.id}`} className="pointer-events-auto relative underline decoration-sky-300 underline-offset-2 hover:decoration-sky-700">{change.name}</Link> : change.name}
+          {change.tail ? ` ${change.tail}` : null}
+        </div> : null}
         {(result && showResult) || fotn || perf || side.weight_miss != null ? (
           <div className={`mt-2 flex flex-wrap items-center justify-center gap-1 ${align === "right" ? "@[58rem]:justify-end" : "@[58rem]:justify-start"}`}>
             {result && showResult ? (
@@ -227,8 +231,13 @@ function FighterHero({
         ) : null}
       </div>
     </>;
+  // The profile link covers the whole corner from underneath, so a link inside
+  // it (the fighter they replaced) can sit on top without nesting links.
   return side.profile_eligible
-    ? <Link to={`/fighters/${side.id}`} aria-label={`View ${side.name}’s fighter profile`} className={className}>{content}</Link>
+    ? <div className={`${className} relative`}>
+      <Link to={`/fighters/${side.id}`} aria-label={`View ${side.name}’s fighter profile`} className="absolute inset-0 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900" />
+      <div className="pointer-events-none contents">{content}</div>
+    </div>
     : <div className={className}>{content}</div>;
 }
 

@@ -353,7 +353,9 @@ function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingTy
       ...fighterSummary(f.f1_id, f.f1_name, rankingType, at),
       weight_miss: f.f1_weight_miss,
       replaced: f.f1_replaced ?? null,
+      replaced_id: f.f1_replaced_id && hasUfcFight(f.f1_replaced_id) ? f.f1_replaced_id : null,
       short_notice: !!f.f1_short_notice,
+      notice: f.f1_notice ?? null,
       outcome: f.f1_outcome,
       stats: { kd: f.f1_kd, str: f.f1_str, td: f.f1_td, sub: f.f1_sub },
       ...(eventDate ? sideContext(f.f1_id, eventDate, Number(f.ord) || 0) : {}),
@@ -362,7 +364,9 @@ function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingTy
       ...fighterSummary(f.f2_id, f.f2_name, rankingType, at),
       weight_miss: f.f2_weight_miss,
       replaced: f.f2_replaced ?? null,
+      replaced_id: f.f2_replaced_id && hasUfcFight(f.f2_replaced_id) ? f.f2_replaced_id : null,
       short_notice: !!f.f2_short_notice,
+      notice: f.f2_notice ?? null,
       outcome: f.f2_outcome,
       stats: { kd: f.f2_kd, str: f.f2_str, td: f.f2_td, sub: f.f2_sub },
       ...(eventDate ? sideContext(f.f2_id, eventDate, Number(f.ord) || 0) : {}),
@@ -457,6 +461,15 @@ function liveCard(rankingType: RankingType): unknown | null {
   };
 }
 
+/** Bouts announced for the card that never happened on it, from the event
+ *  article; a fighter links only when they have a profile. */
+function cancelledBouts(e: EventRow): unknown[] {
+  let bouts: { f1: string; f2: string; f1_id: string | null; f2_id: string | null; division: string | null; reason: string | null }[] = [];
+  try { bouts = JSON.parse((e as any).cancelled_json ?? "[]"); } catch { /* unread */ }
+  const side = (name: string, id: string | null) => ({ name, id: id && hasUfcFight(id) ? id : null });
+  return bouts.map((bout) => ({ f1: side(bout.f1, bout.f1_id), f2: side(bout.f2, bout.f2_id), division: bout.division, reason: bout.reason }));
+}
+
 async function getEvent(id: string, rankingType: RankingType): Promise<unknown | null> {
   const e = prepared("SELECT * FROM events WHERE id = ?").get(id) as EventRow | undefined;
   if (!e) return null;
@@ -494,6 +507,7 @@ async function getEvent(id: string, rankingType: RankingType): Promise<unknown |
     card_stats: summarizeCard(fights),
     odds_freshness: oddsFreshness(e.id),
     fights: fights.map((f) => ({ ...fightRowToJson(f, false, e.date, rankingType), starts_at: startsAt(f) })),
+    cancelled: cancelledBouts(e),
   };
 }
 
@@ -990,8 +1004,10 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     method_details: f.method_details,
     round: f.round,
     time: f.time,
-    f1: { ...f1, weight_miss: f.f1_weight_miss, replaced: f.f1_replaced ?? null, short_notice: !!f.f1_short_notice, outcome: f.f1_outcome, stats: { kd: f.f1_kd, str: f.f1_str, td: f.f1_td, sub: f.f1_sub } },
-    f2: { ...f2, weight_miss: f.f2_weight_miss, replaced: f.f2_replaced ?? null, short_notice: !!f.f2_short_notice, outcome: f.f2_outcome, stats: { kd: f.f2_kd, str: f.f2_str, td: f.f2_td, sub: f.f2_sub } },
+    f1: { ...f1, weight_miss: f.f1_weight_miss, replaced: f.f1_replaced ?? null, replaced_id: f.f1_replaced_id && hasUfcFight(f.f1_replaced_id) ? f.f1_replaced_id : null,
+      short_notice: !!f.f1_short_notice, notice: f.f1_notice ?? null, outcome: f.f1_outcome, stats: { kd: f.f1_kd, str: f.f1_str, td: f.f1_td, sub: f.f1_sub } },
+    f2: { ...f2, weight_miss: f.f2_weight_miss, replaced: f.f2_replaced ?? null, replaced_id: f.f2_replaced_id && hasUfcFight(f.f2_replaced_id) ? f.f2_replaced_id : null,
+      short_notice: !!f.f2_short_notice, notice: f.f2_notice ?? null, outcome: f.f2_outcome, stats: { kd: f.f2_kd, str: f.f2_str, td: f.f2_td, sub: f.f2_sub } },
     odds: fightOdds(f.id, true),
     bonuses: {
       perf: !!f.perf_bonus || !!(f.detail_json && JSON.parse(f.detail_json)?.bonuses?.perf),
