@@ -820,6 +820,16 @@ export function completeRecordBefore(index: FightIndex, fighterId: string, date:
   return recordFromOutcomes(outcomes);
 }
 
+/** Every UFC opponent's UFC record on the night they met, summed over the
+ *  fighter's UFC bouts before `date`. Each record is counted the way the
+ *  matchup's own UFC record is, as it stood entering that bout. */
+export function opponentsRecordBefore(index: FightIndex, fighterId: string, date: string, ord?: number): FightRecord | null {
+  const bouts = boutsBefore(index, fighterId, date, ord);
+  if (!bouts.length) return null;
+  return recordFromOutcomes(bouts.flatMap((fight) =>
+    ufcBoutsBefore(index, opponentOf(fight, fighterId).id, fight.date, fight.ord).map((bout) => bout.outcome)));
+}
+
 /**
  * A fighter's career state entering a bout on `date` (or entering their next
  * bout when the date is in the future), computed from the same rules the

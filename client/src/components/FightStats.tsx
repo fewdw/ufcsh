@@ -8,7 +8,7 @@ import { decimalScore, type ScoreSummary } from "../scoring";
 import { lastName } from "../format";
 import { Tooltip as TipBubble } from "./Tooltip";
 import { useTooltip } from "../tooltip";
-import { GRAPPLING_METRICS, profileText, STRIKING_METRICS, type ProfileMetric } from "../careerMetrics";
+import { GRAPPLING_METRICS, metricView, profileText, resultView, STRIKING_METRICS, type ProfileMetric } from "../careerMetrics";
 
 // ---------------------------------------------------------------------------
 // Tokens. Colours are referenced by name (defined in index.css @theme) rather
@@ -1005,7 +1005,8 @@ function ProfileRow({
               {profileText(value, metric.format)}
             </span>
           );
-          return <CareerStatDetails key={side} fighters={[fight.f1, fight.f2]} initial={side === "f1" ? 0 : 1} before={fight.id} metric={metric}
+          return <CareerStatDetails key={side} fighters={[fight.f1, fight.f2]} initial={side === "f1" ? 0 : 1} before={fight.id} view={metricView(metric)}
+            available={SIDES.map((each) => (careers[each] ? metric.sample(careers[each]).total : 0) > 0)}
             className={`grid w-full items-center gap-x-1 @[40rem]:gap-x-1.5 ${side === "f1" ? "grid-cols-[2.25rem_minmax(0,1fr)] @[40rem]:grid-cols-[3rem_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)_2.25rem] @[40rem]:grid-cols-[minmax(0,1fr)_3rem]"}`}>
             {side === "f1" ? [figure, bar] : [bar, figure]}
           </CareerStatDetails>;
@@ -1039,7 +1040,7 @@ function MethodBar({ side, counts, total }: { side: Side; counts: { ko: number; 
 
 /** Wins beside losses. Wide, each is a mirrored pair like the rows above;
  *  on a phone each half stacks its two fighters, first over second. */
-function MethodProfile({ careers }: { careers: Record<Side, CareerBefore | null> }) {
+function MethodProfile({ fight, careers }: { fight: Matchup; careers: Record<Side, CareerBefore | null> }) {
   const split = (career: CareerBefore | null, kind: "wins" | "losses") => {
     if (!career) return { ko: 0, sub: 0, decision: 0, total: 0 };
     const total = kind === "wins" ? career.wins : career.losses;
@@ -1048,8 +1049,8 @@ function MethodProfile({ careers }: { careers: Record<Side, CareerBefore | null>
     return { ko, sub, decision: Math.max(0, total - ko - sub), total };
   };
   const rows = [
-    { key: "wins", label: "Wins" },
-    { key: "losses", label: "Losses" },
+    { key: "wins", label: "Wins", view: resultView("win") },
+    { key: "losses", label: "Losses", view: resultView("loss") },
   ] as const;
   return (
     <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-zinc-100 px-3 py-2.5 @[36rem]:gap-x-6 @[36rem]:px-4 @[36rem]:py-3">
@@ -1060,9 +1061,11 @@ function MethodProfile({ careers }: { careers: Record<Side, CareerBefore | null>
             {SIDES.map((side) => {
               const counts = split(careers[side], row.key);
               return (
-                <div key={side} className={`min-w-0 ${side === "f1" ? "@[36rem]:text-right" : "@[36rem]:text-left"}`}>
+                <CareerStatDetails key={side} fighters={[fight.f1, fight.f2]} initial={side === "f1" ? 0 : 1} before={fight.id} view={row.view}
+                  available={SIDES.map((each) => (careers[each]?.[row.key] ?? 0) > 0)}
+                  className={`block w-full min-w-0 text-left ${side === "f1" ? "@[36rem]:text-right" : ""}`}>
                   <MethodBar side={side} counts={counts} total={counts.total} />
-                </div>
+                </CareerStatDetails>
               );
             })}
           </div>
@@ -1096,7 +1099,7 @@ export function CareerProfile({ fight }: { fight: Matchup }) {
           </div>
         ))}
       </div>
-      <MethodProfile careers={careers} />
+      <MethodProfile fight={fight} careers={careers} />
     </section>
   );
 }

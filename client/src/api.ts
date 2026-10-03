@@ -150,7 +150,7 @@ export type CareerStatistics = {
   fighter_id: string; name: string;
   before: { fight_id: string; date: string } | null;
   bouts: number; totals: CareerTotals;
-  rows: { fight_id: string; date: string; event_name: string; opponent: { id: string | null; name: string }; outcome: "win" | "loss" | "draw" | "nc" | null; totals: CareerTotals; takedowns: { scored: number; attempted: number | null } | null; control_seconds: number | null }[];
+  rows: { fight_id: string; date: string; event_name: string; opponent: { id: string | null; name: string }; outcome: "win" | "loss" | "draw" | "nc" | null; method: string | null; totals: CareerTotals; takedowns: { scored: number; attempted: number | null } | null; control_seconds: number | null }[];
 };
 
 export type FightOdds = {
@@ -291,6 +291,8 @@ export type MatchupSide = FightSide & {
   ufc_record_before: string | null;
   /** Days since the previous merged UFC-history bout. */
   ufc_days_since_before: number | null;
+  /** UFC opponents' UFC records on the nights they met, summed; null before a UFC bout. */
+  ufc_opponents_record_before: string | null;
   complete_record_before: CompleteRecordBefore | null;
   history: (HistoryRow | ProfessionalHistoryRow)[];
   /** Last five professional bouts before this matchup, newest first. */

@@ -330,6 +330,7 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
             </span>
           ) : null}
           {row.opponent_form ? <OpponentForm form={row.opponent_form} /> : null}
+          <EnteringRecords career={row.opponent_career_record_before} ufc={row.opponent_record_before} name={row.opponent.name} className="basis-full text-[10px] font-semibold leading-4 text-zinc-500" />
         </span>
       </BoutLink>
 
@@ -353,12 +354,16 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
         </span>
         {/* Out of the run and against the right edge, where it lines up with
             the date below and with every other price down the list — and where
-            a long run wrapping cannot strand it alone on a line of its own. */}
-        {bout.fighterOdds ? (
-          <span className="shrink-0 pl-2 font-semibold tabular-nums text-zinc-400" title={`${fighterName} closing odds`}>
-            <span className="sr-only">{fighterName} closing odds </span>{bout.fighterOdds}
-          </span>
-        ) : null}
+            a long run wrapping cannot strand it alone on a line of its own.
+            The fighter's own records entering the bout sit under the price. */}
+        <span className="flex shrink-0 flex-col items-end pl-2">
+          {bout.fighterOdds ? (
+            <span className="font-semibold tabular-nums text-zinc-400" title={`${fighterName} closing odds`}>
+              <span className="sr-only">{fighterName} closing odds </span>{bout.fighterOdds}
+            </span>
+          ) : null}
+          <EnteringRecords career={row.career_record_before} ufc={row.record_before} name={fighterName} className="justify-end text-[10px] font-medium leading-4 text-zinc-400" />
+        </span>
       </BoutLink>
 
       <BoutLink
