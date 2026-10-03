@@ -88,3 +88,10 @@ test("the tagged card is the one the promotion is on", () => {
   assert.equal(taggedEvent([], now), null);
   assert.equal(taggedEvent(list(["old", "2026-09-05", "past"]), now), null, "an archive with nothing announced tags nothing");
 });
+
+test("a fight-day card is next until its announced start, then live", () => {
+  const card = [{ id: "today", date: "2026-10-03", status: "current", starts_at: Date.parse("2026-10-03T20:00:00Z") }];
+  assert.deepEqual(taggedEvent(card, Date.parse("2026-10-03T02:00:00Z")), { id: "today", tag: "next" }, "UTC midnight is hours before a US card");
+  assert.deepEqual(taggedEvent(card, Date.parse("2026-10-03T20:00:00Z")), { id: "today", tag: "live" });
+  assert.deepEqual(taggedEvent([{ ...card[0], starts_at: null }], Date.parse("2026-10-03T02:00:00Z")), { id: "today", tag: "live" }, "with no announced time the fight day decides");
+});

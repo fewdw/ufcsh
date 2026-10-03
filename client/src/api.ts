@@ -14,6 +14,8 @@ export type EventListItem = {
   location: string;
   status: "past" | "current" | "next" | "future";
   fight_count: number;
+  /** A current card's first announced start, when known. */
+  starts_at?: number | null;
 };
 
 export type FighterRanking = { division: string; rank: string } | null;

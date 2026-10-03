@@ -639,6 +639,31 @@ function duplicateFighters(): BugCheck {
   })));
 }
 
+function sharedCareerProfiles(): BugCheck {
+  const rows = db.prepare(`
+    SELECT cp.source_url, fr.id, fr.name, fr.signee FROM career_profiles cp JOIN fighters fr ON fr.id = cp.fighter_id
+    WHERE cp.status = 'verified' AND cp.source_url IN (
+      SELECT source_url FROM career_profiles WHERE status = 'verified' GROUP BY source_url HAVING COUNT(*) > 1)
+    ORDER BY cp.source_url, fr.signee, fr.name
+  `).all() as { source_url: string; id: string; name: string; signee: number }[];
+  const groups = new Map<string, typeof rows>();
+  for (const row of rows) groups.set(row.source_url, [...(groups.get(row.source_url) ?? []), row]);
+  return check({
+    id: "career-shared-source",
+    group: "Fighters",
+    label: "One person with two profiles",
+    description: "Two fighters were verified against the same Sherdog page, so they are one person with two profiles, usually a signee whose Wikipedia name differs from UFCStats' (Joseph / Joe). Their opponents can't be linked to either. Re-read the roster moves to drop the signee; if the names don't match, extend the name matching in server/src/roster-moves.ts.",
+    grade: "minor",
+  }, [...groups.entries()].map(([url, group]): BugItem => ({
+    key: url,
+    title: group.map((row) => row.name).join(" / "),
+    subtitle: `${group.length} profiles`,
+    facts: group.map((row) => [row.name, row.signee ? "signee" : "UFCStats"]),
+    links: [...group.map((row) => fighterLink(row.id, row.name)), { label: "Sherdog", href: url }],
+    actions: group.some((row) => row.signee) ? [{ id: "roster-moves", label: "Re-read roster moves", target: "wikipedia" }] : [],
+  })));
+}
+
 function searchAliasMisses(): BugCheck {
   // The same fighters search indexes: those with a UFC bout.
   const counts = new Map((db.prepare(`
@@ -1446,6 +1471,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     mergedOfficialSpellings(),
     fighterGaps(active),
     duplicateFighters(),
+    sharedCareerProfiles(),
     searchAliasMisses(),
     rosterMovesUnread(),
     newsFeedsUnread(),

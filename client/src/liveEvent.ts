@@ -9,7 +9,7 @@ export function isFightDay(date: string | undefined, now = Date.now()): boolean 
  * list is pointing — the live card, the card that just finished tonight, or
  * the next one announced.
  */
-export function landingEvent<T extends { id: string; date: string; status: string }>(events: T[], now = Date.now()): T | undefined {
+export function landingEvent<T extends { id: string; date: string; status: string; starts_at?: number | null }>(events: T[], now = Date.now()): T | undefined {
   const tagged = taggedEvent(events, now);
   return (tagged && events.find(e => e.id === tagged.id)) || events[0];
 }
@@ -31,10 +31,11 @@ export function liveFightId(event: Pick<EventDetail, "status" | "card_stats" | "
 
 /** The single tag in the event list: a card being fought outranks one
  * finished earlier the same fight day ("done", held for the rest of that day),
- * which outranks the next announced card. */
+ * which outranks the next announced card. A fight-day card whose announced
+ * start is still ahead is the next card, not a live one. */
 export type EventTag = "live" | "done" | "next";
 
-export function taggedEvent<T extends { id: string; date: string; status: string }>(
+export function taggedEvent<T extends { id: string; date: string; status: string; starts_at?: number | null }>(
   events: T[],
   now = Date.now(),
 ): { id: string; tag: EventTag } | null {
@@ -52,7 +53,7 @@ export function taggedEvent<T extends { id: string; date: string; status: string
       if (!next || event.date < next.date) next = event;
     }
   }
-  if (live) return { id: live.id, tag: "live" };
+  if (live) return { id: live.id, tag: live.starts_at != null && now < live.starts_at ? "next" : "live" };
   if (done) return { id: done.id, tag: "done" };
   return next ? { id: next.id, tag: "next" } : null;
 }

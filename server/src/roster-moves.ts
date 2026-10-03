@@ -3,7 +3,7 @@ import { db, getMeta, prepared, setMeta, touchMeta } from "./db.ts";
 import { hasUfcFight } from "./fighter-identity.ts";
 import { scrapeAthleteStatus, scrapeNewAthlete, scrapeNewestAthletes } from "./scrape/ufccom.ts";
 import { articleRevision, fetchArticleByTitle, ROSTER_ARTICLE, rosterChanges, type RosterMove } from "./scrape/wikipedia.ts";
-import { log, normName } from "./util.ts";
+import { givenName, log, normName } from "./util.ts";
 
 /** Who the UFC has just signed and just let go. Two sources: Wikipedia's
  *  current-roster article (signings, and releases with their reason), and
@@ -49,18 +49,32 @@ export function storedRosterMoves(): RosterChanges {
 
 const realByName = prepared("SELECT id FROM fighters WHERE norm_name = ? AND signee = 0");
 const realBySpacelessName = prepared("SELECT id FROM fighters WHERE replace(norm_name, ' ', '') = ? AND signee = 0");
+const realBySurname = prepared("SELECT id, norm_name FROM fighters WHERE norm_name LIKE ? AND signee = 0");
+
+/** "Joseph Kropschot" for UFCStats' "Joe Kropschot": same surname, the long
+ *  and short form of one first name. */
+function realByGivenName(norm: string): string[] {
+  const [first, ...rest] = norm.split(" ");
+  if (!rest.length) return [];
+  const key = `${givenName(first)} ${rest.join(" ")}`;
+  return (realBySurname.all(`% ${rest.join(" ")}`) as { id: string; norm_name: string }[])
+    .filter((row) => { const [f, ...r] = row.norm_name.split(" "); return `${givenName(f)} ${r.join(" ")}` === key; })
+    .map((row) => row.id);
+}
 
 const ufcIds = (rows: unknown[]) => (rows as { id: string }[]).map(row => row.id).filter(hasUfcFight);
 const unique = (ids: string[]) => ids.length === 1 ? ids[0] : null;
 
 /** The UFCStats fighter with this name, only when exactly one UFC fighter
- *  carries it, so a namesake is never linked. Spacing is ignored only when the
- *  name as written finds nobody: Wikipedia's "Aori Qileng" is UFCStats'
- *  "Aoriqileng". */
+ *  carries it, so a namesake is never linked. Spacing, then the short form of
+ *  a first name, are ignored only when the name as written finds nobody:
+ *  Wikipedia's "Aori Qileng" is UFCStats' "Aoriqileng". */
 function realFighter(name: string): string | null {
   const norm = normName(name);
   const exact = ufcIds(realByName.all(norm));
-  return unique(exact.length ? exact : ufcIds(realBySpacelessName.all(norm.replaceAll(" ", ""))));
+  if (exact.length) return unique(exact);
+  const spaceless = ufcIds(realBySpacelessName.all(norm.replaceAll(" ", "")));
+  return unique(spaceless.length ? spaceless : realByGivenName(norm).filter(hasUfcFight));
 }
 
 /** A signee's own id: stable across reads, shaped like a UFCStats id. */

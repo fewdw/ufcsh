@@ -9,6 +9,7 @@ const NC_REASONS: [RegExp, string][] = [
   [/groin/i, "Groin strike"],
   [/\beye\b|thumb/i, "Eye poke"],
   [/illegal|soccer|back of (?:the )?head|spine|after (?:the )?bell|grounded/i, "Illegal strike"],
+  [/prior to (?:the )?bout|before (?:the )?(?:bout|fight)/i, "Pre-fight strike"],
   [/head\s?butt|clash of heads/i, "Clash of heads"],
   [/rain/i, "Stopped by rain"],
   [/\bfell\b/i, "Fell from ring"],

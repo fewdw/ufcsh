@@ -20,6 +20,29 @@ const LETTER_MAP: Record<string, string> = {
   "ß": "ss",
 };
 
+// Short and long forms of the same first name, as one person is listed under
+// both: Mike/Michael, Joe/Joseph.
+const NICKNAMES: [string, string[]][] = [
+  ["michael", ["mike", "mick"]], ["salvatore", ["sal"]], ["christopher", ["chris"]], ["anthony", ["tony"]],
+  ["richard", ["rick", "rich", "richie"]], ["david", ["dave"]], ["douglas", ["doug"]], ["daniel", ["dan", "danny"]],
+  ["robert", ["rob", "bob", "bobby"]], ["william", ["will", "bill", "billy"]], ["james", ["jim", "jimmy"]],
+  ["joseph", ["joe"]], ["edward", ["ed", "eddie"]], ["thomas", ["tom"]], ["gerald", ["jerry"]],
+  ["lawrence", ["larry"]], ["benjamin", ["ben"]], ["matthew", ["matt"]], ["steven", ["steve"]], ["stephen", ["steve"]],
+  ["kenneth", ["ken", "kenny"]], ["ronald", ["ron"]], ["nicholas", ["nick"]], ["patrick", ["pat"]],
+  ["gregory", ["greg"]], ["timothy", ["tim"]], ["andrew", ["andy", "drew"]], ["samuel", ["sam"]],
+  ["alexander", ["alex"]], ["frederick", ["fred"]], ["charles", ["chuck", "charlie"]], ["jeffrey", ["jeff"]],
+  ["herbert", ["herb"]], ["vincent", ["vince"]], ["jonathan", ["jon"]], ["joshua", ["josh"]], ["zachary", ["zach"]],
+];
+const FIRST_NAME = new Map<string, string>();
+for (const [full, short] of NICKNAMES) {
+  FIRST_NAME.set(full, full);
+  for (const name of short) if (!FIRST_NAME.has(name)) FIRST_NAME.set(name, full);
+}
+/** The long form of a normalized first name: "joe" reads "joseph". */
+export function givenName(first: string): string {
+  return FIRST_NAME.get(first) ?? first;
+}
+
 /** Lowercase, accent-stripped, alphanumeric words only — used to match names across sources. */
 export function normName(name: string | null | undefined): string {
   return (name ?? "")

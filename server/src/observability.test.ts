@@ -65,6 +65,7 @@ test("page views and recent route health use fixed patterns and rolling windows"
   assert.equal(routeGroup("/profiles/fewdw"), "page_profile");
   assert.equal(routeGroup("/fights/aaaaaaaaaaaaaaaa"), "page_fight");
   assert.equal(pageRouteGroup("/api/admin/metrics"), null);
+  for (const page of ["/roster", "/matchmaking", "/news", "/graphic"]) assert.ok(pageRouteGroup(page), `${page} is a page`);
   assert.equal(metrics.recordPageView("/profiles/fewdw"), true);
   assert.equal(metrics.recordPageView("/profiles/another-person"), true);
   assert.equal(metrics.recordPageView("/not-a-page"), false);

@@ -295,7 +295,7 @@ function parseSeconds(round: number | null, time: string | null, detail: any): n
 export function parseScheduledRounds(row: any, detail: any): number {
   const timeFormat = detail?.methodInfo?.["Time format"];
   if (timeFormat) {
-    const match = String(timeFormat).match(/^(\d+)\s+Rnd\s*\(/i);
+    const match = String(timeFormat).match(/^(\d+)\s+Rnd\b/i);
     return match ? Number(match[1]) : 0;
   }
   const booked = Number(row.scheduled_rounds);
