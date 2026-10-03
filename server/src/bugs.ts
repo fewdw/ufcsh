@@ -1,4 +1,5 @@
-import { db, getMeta } from "./db.ts";
+import { db, getMeta, setMeta } from "./db.ts";
+import { relinkRankingHistory } from "./ranking-history.ts";
 import { validateFightActions } from "./action-stats.ts";
 import { americanLine, fightIndex, impliedProbability } from "./fight-index.ts";
 import { ufcFightExistsSql } from "./fighter-identity.ts";
@@ -462,6 +463,49 @@ function rankedRecordGaps(): BugCheck {
     links: [{ label: "Rankings", href: "/rankings", internal: true }, ...(row.id ? [fighterLink(row.id, row.fighter_name)] : [])],
     actions: row.id ? [{ id: "career", label: "Re-verify history", target: row.id }] : [],
   })));
+}
+
+function rankingHistoryGaps(): BugCheck {
+  const rows = db.prepare(`
+    SELECT fighter_name, division, MIN(date) AS first, MAX(date) AS last, COUNT(*) AS lists
+    FROM ranking_history WHERE fighter_id = '' GROUP BY fighter_name, division ORDER BY last DESC
+  `).all() as { fighter_name: string; division: string; first: string; last: string; lists: number }[];
+  const backfill = getMeta("ranking_history_backfill");
+  // Lists change most weeks; three weeks without a new one means the sync
+  // or ufc.com's page has broken, and every card since shows today's ranks.
+  const newest = (db.prepare("SELECT MAX(date) AS date FROM ranking_history").get() as { date: string | null }).date;
+  const stale = newest != null && Date.now() - Date.parse(`${newest}T00:00:00Z`) > 21 * 86_400_000;
+  const relink = { id: "ranking-history" as const, label: "Link and load again", target: "all" };
+  return check({
+    id: "ranking-history",
+    group: "Records",
+    label: "Past rankings incomplete",
+    description: "Past matchups show the rank each fighter held going in, and profiles chart it, from a list stored each time the rankings sync sees ufc.com's change. A ranked name without a fighter loses that rank everywhere; an unfinished backfill leaves weeks since June 2026 out. Linking retries every unmatched name (add a spelling to ARCHIVE_NAMES in ranking-history.ts if it still misses); loading again re-reads Wayback on the next sync pass.",
+    grade: (item) => item.key === "backfill" ? "minor" : "must",
+  }, [
+    ...(stale ? [{
+      key: "stale",
+      title: "No new rankings list in three weeks",
+      facts: [["Newest list", newest!], ["Last sync error", getMeta("last_sync_error") || "none"]] as [string, string][],
+      links: [{ label: "ufc.com rankings", href: "https://www.ufc.com/rankings" }],
+      actions: [],
+    }] : []),
+    ...(backfill === "done" ? [] : [{
+      key: "backfill",
+      title: "Past rankings still loading",
+      facts: [["Stage", backfill === "archive" ? "archive loaded, Wayback pending" : "not started"]] as [string, string][],
+      links: [],
+      actions: [relink],
+    }]),
+    ...rows.map((row) => ({
+      key: `${row.fighter_name}:${row.division}`,
+      title: row.fighter_name,
+      subtitle: `${row.division} · ${row.first} to ${row.last}`,
+      facts: [["Lists", String(row.lists)]] as [string, string][],
+      links: [{ label: "Rankings", href: "/rankings", internal: true }],
+      actions: [relink],
+    })),
+  ]);
 }
 
 function unverifiedRecords(active: Set<string>): BugCheck {
@@ -1447,6 +1491,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     oddsMissingByRound(),
     unverifiedRecords(active),
     rankedRecordGaps(),
+    rankingHistoryGaps(),
     matchmakingGaps(),
     fightsMissingFromHistory(),
     unlinkedUfcBouts(),
@@ -1508,7 +1553,7 @@ function newsUnjudged(): BugCheck {
   }, items);
 }
 
-export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai";
+export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -1607,6 +1652,12 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
       }
       const { signed, cut } = storedRosterMoves();
       return { ok: true, message: `Read ${signed.length} signings and ${cut.length} releases.` };
+    }
+    case "ranking-history": {
+      const linked = relinkRankingHistory();
+      // The sync worker owns the backfill; clearing its clock retries it next pass.
+      setMeta("ranking_history_tried_at", "0");
+      return { ok: true, message: `Linked ${linked} ranked rows. Wayback is re-read on the next sync pass if anything is missing.` };
     }
     case "birth":
       await syncFighterBirthDate(target);

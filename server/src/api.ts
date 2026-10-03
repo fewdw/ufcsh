@@ -28,6 +28,7 @@ import { HttpObservability } from "./observability.ts";
 import { createRepairRunner } from "./repair-guard.ts";
 import { publicApi, cachePolicy, canonicalApiKey, clientAddress, RateLimiter } from "./api-policy.ts";
 import { canonicalMethod, log, normName, todayIso } from "./util.ts";
+import { rankingEntering, rankingTimeline } from "./ranking-history.ts";
 import { bugReport, runBugAction } from "./bugs.ts";
 import { AdminStore } from "./admins.ts";
 import { createAdminHandler, type AdminLiveFight } from "./admin-http.ts";
@@ -157,7 +158,8 @@ type FighterSummary = {
   photo_url: string | null;
   /** The full-body cut-out, when ufc.com has one. Null falls back to the headshot. */
   photo_full_url: string | null;
-  ranking: { division: string; rank: string } | null;
+  /** On a past card, the rank held going in; `as_of` dates the list it came from. */
+  ranking: { division: string; rank: string; as_of?: string } | null;
   record_verified?: boolean;
   /** Nationality, and the code its flag is drawn from. Null when unknown. */
   country?: string | null;
@@ -189,7 +191,10 @@ function requestPhoto(id: string): void {
   }
 }
 
-function fighterSummary(id: string, fallbackName: string, rankingType: RankingType = "meta"): FighterSummary {
+/** Where a bout sits, so a past card shows the ranks its fighters held then. */
+type BoutMoment = { date: string; ord: number; division: string };
+
+function fighterSummary(id: string, fallbackName: string, rankingType: RankingType = "meta", at?: BoutMoment): FighterSummary {
   const row = id ? (fighterSummaryStmt().get(rankingType, id) as any) : null;
   if (!row) {
     return { id, name: fallbackName, nickname: "", record: "", profile_eligible: false, photo_url: null, photo_full_url: null, ranking: null, country: null, country_code: null };
@@ -204,7 +209,9 @@ function fighterSummary(id: string, fallbackName: string, rankingType: RankingTy
     record_verified: career.verified,
     photo_url: cachedPhotoUrl(row.id, row.photo_url),
     photo_full_url: cachedFullPhotoUrl(row.id, row.photo_full_url),
-    ranking: row.r_rank ? { division: row.r_division, rank: row.r_rank } : null,
+    ranking: at && at.date < todayIso()
+      ? rankingEntering(row.id, rankingType, at.date, at.division, fightIndex().holdersBefore(at.division, at.date, at.ord))
+      : row.r_rank ? { division: row.r_division, rank: row.r_rank } : null,
     country: row.country ?? null,
     country_code: row.country_code ?? null,
   };
@@ -325,6 +332,7 @@ function fightDetail(f: any): any {
 
 function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingType: RankingType = "meta"): Record<string, unknown> {
   const detail = fightDetail(f);
+  const at = eventDate ? { date: eventDate, ord: Number(f.ord) || 0, division: f.weight_class ?? "" } : undefined;
   const base: Record<string, unknown> = {
     id: f.id,
     ord: f.ord,
@@ -342,14 +350,14 @@ function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingTy
     round: f.round,
     time: f.time,
     f1: {
-      ...fighterSummary(f.f1_id, f.f1_name, rankingType),
+      ...fighterSummary(f.f1_id, f.f1_name, rankingType, at),
       weight_miss: f.f1_weight_miss,
       outcome: f.f1_outcome,
       stats: { kd: f.f1_kd, str: f.f1_str, td: f.f1_td, sub: f.f1_sub },
       ...(eventDate ? sideContext(f.f1_id, eventDate, Number(f.ord) || 0) : {}),
     },
     f2: {
-      ...fighterSummary(f.f2_id, f.f2_name, rankingType),
+      ...fighterSummary(f.f2_id, f.f2_name, rankingType, at),
       weight_miss: f.f2_weight_miss,
       outcome: f.f2_outcome,
       stats: { kd: f.f2_kd, str: f.f2_str, td: f.f2_td, sub: f.f2_sub },
@@ -873,7 +881,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
   const index = fightIndex();
   const fullFighter = (fid: string, fallback: string, opponentId: string) => {
     requestPhoto(fid);
-    const summary = fighterSummary(fid, fallback, rankingType);
+    const summary = fighterSummary(fid, fallback, rankingType, { date: f.event_date, ord: Number(f.ord) || 0, division: f.weight_class ?? "" });
     const bio = fid
       ? (prepared("SELECT height, weight, reach, stance, birth_date FROM fighters WHERE id = ?").get(fid) as any)
       : null;
@@ -1060,6 +1068,7 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     photo_url: cachedPhotoUrl(fr.id, fr.photo_url),
     photo_full_url: cachedFullPhotoUrl(fr.id, fr.photo_full_url),
     ranking: ranking ?? null,
+    ranking_history: rankingTimeline(fr.id, rankingType),
     // Where this fighter sits at the top of the sport, recomputed from the
     // same index the leaderboards use, so it moves the moment a result lands.
     records,
@@ -1808,8 +1817,9 @@ export function shareCardData(kind: string, id: string): ShareCardData | null {
     const f = prepared(`SELECT f.*, e.name AS event_name, e.date AS event_date, o.f1_close, o.f2_close
       FROM fights f JOIN events e ON e.id = f.event_id LEFT JOIN odds o ON o.fight_id = f.id WHERE f.id = ?`).get(id) as any;
     if (!f) return null;
-    const a = fighterSummary(f.f1_id, f.f1_name);
-    const b = fighterSummary(f.f2_id, f.f2_name);
+    const at = { date: f.event_date, ord: Number(f.ord) || 0, division: f.weight_class ?? "" };
+    const a = fighterSummary(f.f1_id, f.f1_name, "meta", at);
+    const b = fighterSummary(f.f2_id, f.f2_name, "meta", at);
     const winner = f.f1_outcome === "win" ? f.f1_name : f.f2_outcome === "win" ? f.f2_name : null;
     const center = winner && f.method ? `${winner} won · ${f.method}${f.round ? ` R${f.round}` : ""}`
       : f.f1_close && f.f2_close ? `Moneyline ${f.f1_close} / ${f.f2_close}` : f.weight_class;

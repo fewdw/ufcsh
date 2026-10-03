@@ -31,6 +31,7 @@ import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
 import { syncVerdictScorecards } from "./verdict-import.ts";
 import { syncRosterMoves, syncUfcSignings, syncUfcStatuses } from "./roster-moves.ts";
 import { syncNews } from "./news.ts";
+import { backfillRankingHistory, recordScrapedRankings } from "./ranking-history.ts";
 import { americanLine, impliedProbability } from "./fight-index.ts";
 import { consistentMoneyline } from "./method-odds.ts";
 import { decisionFromCards } from "./judge-scorecards.ts";
@@ -543,6 +544,7 @@ export async function syncRankings(): Promise<void> {
     db.exec("ROLLBACK");
     throw err;
   }
+  recordScrapedRankings(rankings);
   touchMeta("rankings_synced_at");
   setMeta("last_sync_error", "");
   log(`rankings synced (Meta ${rankings.meta.length} divisions, Media ${rankings.media.length})`);
@@ -1795,6 +1797,8 @@ export async function tick(): Promise<void> {
 
     // 6. Rankings: every 6h (UFC updates weekly).
     if (metaAgeMs("rankings_synced_at") > 6 * HOUR) await guarded("rankings", syncRankings);
+    // Past lists, once, in the background: Wayback is slow.
+    void guarded("ranking_history", backfillRankingHistory);
 
     // 7. Fight-detail pages: upcoming events within 14 days (tale of the tape)
     //    and recent past events. Recently completed stats are refreshed because

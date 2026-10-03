@@ -126,6 +126,16 @@ export function rankLabel(ranking: { division: string; rank: string } | null): s
   return ranking.rank === "C" ? "C" : ranking.rank === "IC" ? "IC" : `#${ranking.rank}`;
 }
 
+/** What a rank badge means: today's list, or the one in force before a past
+ *  bout. Before 2013 there were no lists, only champions. */
+export function rankingTitle(ranking: { division: string; rank: string; as_of?: string } | null, past: boolean): string {
+  if (!ranking) return "";
+  const held = ranking.rank === "C" ? "Champion" : ranking.rank === "IC" ? "Interim champion" : `#${ranking.rank}`;
+  if (ranking.as_of) return `${held} · ${ranking.division}, going into this fight (UFC rankings of ${formatDate(ranking.as_of)})`;
+  if (past && (ranking.rank === "C" || ranking.rank === "IC")) return `${held} · ${ranking.division}, going into this fight`;
+  return `${held} · ${ranking.division} · current ranking from the selected source`;
+}
+
 /** How long ago a synced copy of something arrived, in the coarsest unit that
  * still answers "is this current?". Null when nothing has ever been synced, so
  * a caller can say "not synced yet" rather than imply an age it does not know.

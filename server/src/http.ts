@@ -28,6 +28,8 @@ const HOST_GAP_MS: Record<string, number> = {
   // Career pages are a background import; one request at a time keeps it well
   // below ordinary browsing traffic while remaining fast enough to converge.
   "www.sherdog.com": 1200,
+  // Wayback answers 429 to anything faster than a few pages a minute.
+  "web.archive.org": 10000,
 };
 const DEFAULT_GAP_MS = 1000;
 

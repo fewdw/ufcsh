@@ -12,7 +12,7 @@ import {
   lastName,
   outcomeClasses,
   outcomeLabel,
-  rankLabel,
+  rankingTitle, rankLabel,
   roundsLabel,
   divisionName,
 } from "../format";
@@ -147,6 +147,7 @@ function FighterHero({
   portrait,
   onPortraitError,
   reserveRank = false,
+  past,
 }: {
   side: MatchupSide;
   align: "left" | "right";
@@ -158,9 +159,11 @@ function FighterHero({
   /** The other corner shows a rank badge: hold its line here too, so the two
    *  names start level when the heroes sit side by side over their pictures. */
   reserveRank?: boolean;
+  /** A past bout shows the rank held going in, not today's. */
+  past: boolean;
 }) {
   const rank = side.ranking?.rank === "IC" || side.ranking?.rank === "I" ? "I" : rankLabel(side.ranking) || "NR";
-  const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title="Current ranking from the selected source; NR means unranked">{rank}</span>;
+  const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title={rankingTitle(side.ranking, past)}>{rank}</span>;
   const showResult = side.outcome ? RESULT_PREFIX[side.outcome] : undefined;
   const compactResult = result?.replace(/^(UNANIMOUS|SPLIT|MAJORITY)\b/, (word) => `${word[0]}-DEC`);
   const fotn = !!bonuses?.fotn;
@@ -912,7 +915,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     space either side of the card goes unused. */}
                 <div className="matchup-hero grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-1.5 @[58rem]:gap-6">
                   <div className="col-start-1 row-start-1 min-w-0">
-                    <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} reserveRank={reserveRank} />
+                    <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} reserveRank={reserveRank} past={fight.status === "past"} />
                   </div>
                   {/* The weight class, the referee and the price are one block
                       in the middle column, centred across it and pinned to
@@ -939,7 +942,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     </div>
                   </div>
                   <div className="col-start-3 row-start-1 min-w-0">
-                    <FighterHero side={fight.f2} align="right" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} reserveRank={reserveRank} />
+                    <FighterHero side={fight.f2} align="right" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} reserveRank={reserveRank} past={fight.status === "past"} />
                   </div>
                 </div>
 

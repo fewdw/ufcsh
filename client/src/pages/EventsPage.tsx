@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
-import { clockTime, clockTimeWithZone, divisionName, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankLabel, roundsLabel } from "../format";
+import { clockTime, clockTimeWithZone, divisionName, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankingTitle, rankLabel, roundsLabel } from "../format";
 import { useNow } from "../useNow";
 import Avatar from "../components/Avatar";
 import ResultDots from "../components/ResultDots";
@@ -391,7 +391,7 @@ function FighterBlock({
 }) {
   const dimmed = past && side.outcome === "loss";
   const rank = side.ranking?.rank === "IC" || side.ranking?.rank === "I" ? "I" : rankLabel(side.ranking) || "NR";
-  const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title="Current ranking from the selected source; NR means unranked">{rank}</span>;
+  const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title={rankingTitle(side.ranking, past)}>{rank}</span>;
   const nameBlock = (
     <div className={`min-w-0 max-w-full ${align === "right" ? "text-right" : ""}`}>
       {/* Mirrored for the right corner: ranking outermost, then the name,
@@ -556,7 +556,7 @@ function CompactSide({ side, fight, done, other }: { side: FightSide; fight: Eve
       <Avatar src={side.photo_url} name={side.name} size="sm" outcome={side.outcome} />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-          {rank ? <span className={`text-[10px] font-semibold tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-400"}`} title="Current ranking from the selected source">{rank}</span> : null}
+          {rank ? <span className={`text-[10px] font-semibold tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-400"}`} title={rankingTitle(side.ranking, done)}>{rank}</span> : null}
           <span className={`text-[14px] font-semibold leading-5 ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>{side.name}</span>
           {tag ? (
             <span className={`${METHOD_TAG} ${outcomeClasses(side.outcome)}`}>

@@ -12,6 +12,7 @@ import { divisionMoves, type DivisionMove } from "../weightJourney";
 import RequestNotice from "../components/RequestNotice";
 import { BONUS_AGAINST_TAG, BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
 import FighterStatistics from "../components/FighterStatistics";
+import RankingHistory from "../components/RankingHistory";
 import { fetchPage, LoadMore, useInfiniteList } from "../components/InfiniteList";
 import NewsRow, { savedOff, savedSummaries } from "../components/NewsRow";
 import { PanelHeading } from "../components/FightStats";
@@ -747,6 +748,7 @@ export default function FighterPage() {
 
         {fought ? <div className={`${tab === "stats" ? "contents" : "hidden lg:contents"} [&>*]:shrink-0`}>
           <FighterCareerStats fighterId={fighter.id} name={fighter.name} totals={fighter.career_stats} />
+          <RankingHistory timeline={fighter.ranking_history} />
           <Records records={fighter.records ?? []} />
           <FighterStatistics fighterId={fighter.id} history={fighter.history} />
         </div> : null}

@@ -105,14 +105,20 @@ function validateRankingView(
     throw new Error(`${type} rankings divisions invalid: ${actualOrder.join(", ") || "none"}`);
   }
   for (const division of divisions) {
-    const expectedEntries = division.division.includes("Pound-for-Pound") ? 15 : 16;
-    if (division.entries.length !== expectedEntries) {
-      throw new Error(
-        `${type} ${division.division} rankings invalid: expected ${expectedEntries} entries, got ${division.entries.length}`,
-      );
-    }
-    if (!division.division.includes("Pound-for-Pound") && division.entries[0]?.rank !== "C") {
+    const p4p = division.division.includes("Pound-for-Pound");
+    if (!p4p && division.entries[0]?.rank !== "C") {
       throw new Error(`${type} ${division.division} rankings missing champion`);
+    }
+    // Fifteen places, which a tie can share ("15, 15" or "10, 10, 12"): ranks
+    // in order, never ahead of the fighter's place in the list, ending at 15,
+    // with at most two extra fighters. Anything else is a page caught mid-update.
+    const listed = division.entries.slice(p4p ? 0 : 1);
+    const interim = listed.filter((entry) => entry.rank === "IC").length;
+    const numbered = listed.filter((entry) => entry.rank !== "IC").map((entry) => Number(entry.rank));
+    const valid = listed.length >= 15 && listed.length <= 17 && numbered.at(-1) === 15
+      && numbered.every((rank, i) => Number.isInteger(rank) && rank >= 1 && rank <= i + 1 + interim && (i === 0 || rank >= numbered[i - 1]));
+    if (!valid) {
+      throw new Error(`${type} ${division.division} rankings invalid: ${listed.length} ranked (${numbered.join(",")})`);
     }
     const names = new Set(division.entries.map((entry) => normName(entry.name)));
     if (names.size !== division.entries.length) {
