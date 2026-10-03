@@ -471,14 +471,25 @@ function rankingHistoryGaps(): BugCheck {
     FROM ranking_history WHERE fighter_id = '' GROUP BY fighter_name, division ORDER BY last DESC
   `).all() as { fighter_name: string; division: string; first: string; last: string; lists: number }[];
   const backfill = getMeta("ranking_history_backfill");
+  // Lists change most weeks; three weeks without a new one means the sync
+  // or ufc.com's page has broken, and every card since shows today's ranks.
+  const newest = (db.prepare("SELECT MAX(date) AS date FROM ranking_history").get() as { date: string | null }).date;
+  const stale = newest != null && Date.now() - Date.parse(`${newest}T00:00:00Z`) > 21 * 86_400_000;
   const relink = { id: "ranking-history" as const, label: "Link and load again", target: "all" };
   return check({
     id: "ranking-history",
     group: "Records",
     label: "Past rankings incomplete",
-    description: "Past matchups show the rank each fighter held going in, and profiles chart it. A ranked name without a fighter loses that rank everywhere; an unfinished backfill leaves weeks since June 2026 out. Linking retries every unmatched name (add a spelling to ARCHIVE_NAMES in ranking-history.ts if it still misses); loading again re-reads Wayback on the next sync pass.",
+    description: "Past matchups show the rank each fighter held going in, and profiles chart it, from a list stored each time the rankings sync sees ufc.com's change. A ranked name without a fighter loses that rank everywhere; an unfinished backfill leaves weeks since June 2026 out. Linking retries every unmatched name (add a spelling to ARCHIVE_NAMES in ranking-history.ts if it still misses); loading again re-reads Wayback on the next sync pass.",
     grade: (item) => item.key === "backfill" ? "minor" : "must",
   }, [
+    ...(stale ? [{
+      key: "stale",
+      title: "No new rankings list in three weeks",
+      facts: [["Newest list", newest!], ["Last sync error", getMeta("last_sync_error") || "none"]] as [string, string][],
+      links: [{ label: "ufc.com rankings", href: "https://www.ufc.com/rankings" }],
+      actions: [],
+    }] : []),
     ...(backfill === "done" ? [] : [{
       key: "backfill",
       title: "Past rankings still loading",

@@ -48,13 +48,12 @@ const META_DIVISIONS = [
   "Women's Bantamweight",
 ];
 
-function group(label: string, index: number, meta: boolean, rankChange = ""): string {
+function group(label: string, index: number, meta: boolean, rankChange = "", ranks = Array.from({ length: 15 }, (_, i) => i + 1)): string {
   const prefix = meta ? "meta-weight-class" : "weight-class";
-  const rows = Array.from({ length: 15 }, (_, i) => {
-    const rank = i + 1;
+  const rows = ranks.map((rank, i) => {
     return `<tr>
       <td class="views-field-${prefix}-rank">${rank}</td>
-      <td class="views-field-title">Fighter ${index}-${rank}</td>
+      <td class="views-field-title">Fighter ${index}-${i + 1}</td>
       <td class="views-field-${prefix}-rank-change">${rank === 1 ? rankChange : ""}</td>
     </tr>`;
   }).join("");
@@ -66,11 +65,11 @@ function group(label: string, index: number, meta: boolean, rankChange = ""): st
     </div>`;
 }
 
-function page(mediaLabels = MEDIA_LABELS, metaLabels = META_DIVISIONS): string {
+function page(mediaLabels = MEDIA_LABELS, metaLabels = META_DIVISIONS, middleweight?: number[]): string {
   const increase = '<span class="athlete-rankings--rank-change athlete-rankings--rank-increase">Up</span> 2';
   return `
     <div class="view-display-id-block_1">
-      ${mediaLabels.map((label, i) => group(label, i, false)).join("")}
+      ${mediaLabels.map((label, i) => group(label, i, false, "", i === 6 && middleweight ? middleweight : undefined)).join("")}
     </div>
     <div class="view-display-id-meta_rankings">
       ${metaLabels.map((label, i) => group(label, i, true, i === 10 ? increase : "")).join("")}
@@ -105,6 +104,15 @@ test("rejects a partial ranking view instead of returning inaccurate data", () =
     () => parseRankingsHtml(page(MEDIA_LABELS.slice(0, 12))),
     /media rankings divisions invalid/,
   );
+});
+
+test("accepts a tie the UFC publishes and rejects a list caught mid-update", () => {
+  const tie = [...Array.from({ length: 15 }, (_, i) => i + 1), 15];
+  assert.equal(parseRankingsHtml(page(MEDIA_LABELS, META_DIVISIONS, tie)).media[6].entries.length, 17);
+  const shared = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 12, 13, 14, 15];
+  assert.equal(parseRankingsHtml(page(MEDIA_LABELS, META_DIVISIONS, shared)).media[6].entries.at(-1)?.rank, "15");
+  assert.throws(() => parseRankingsHtml(page(MEDIA_LABELS, META_DIVISIONS, tie.slice(0, 14))), /Middleweight rankings invalid/);
+  assert.throws(() => parseRankingsHtml(page(MEDIA_LABELS, META_DIVISIONS, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 15])), /Middleweight rankings invalid/);
 });
 
 // ---------------------------------------------------------------------------

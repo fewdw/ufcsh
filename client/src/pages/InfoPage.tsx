@@ -92,9 +92,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-03">October 3, 2026</time></p>
             <ul>
-              <li>Picking an event on a phone no longer flashes the previous card.</li>
-              <li>Top shows once the next card is out of view and brings it back to the bottom of the list.</li>
-              <li>The page no longer bounces on phones when a list is scrolled past its end.</li>
+              <li>Past fights show each fighter's ranking going into the fight, not today's.</li>
+              <li>Fighter profiles chart their ranking history since 2013.</li>
+              <li>Rankings with a tie no longer stop updating.</li>
             </ul>
           </Section>
         </div>
