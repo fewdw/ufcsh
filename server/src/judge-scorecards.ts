@@ -8,6 +8,25 @@ export type JudgeCard = {
   rounds?: JudgeRound[];
 };
 
+/** The kind of decision three complete cards make. UFCStats now and then
+ *  labels a decision unanimous when its own cards are split or majority
+ *  (Trinaldo vs. Parke, Cummins vs. Blachowicz); the cards win. Anything the
+ *  cards can't settle keeps the stated method. */
+export function decisionFromCards(method: string | null, f1Outcome: string | null, cards: unknown): string | null {
+  if (!method || !/^[USM]-DEC$/.test(method) || (f1Outcome !== "win" && f1Outcome !== "loss")) return method;
+  if (!Array.isArray(cards) || cards.length !== 3) return method;
+  let forWinner = 0, even = 0;
+  for (const card of cards as JudgeCard[]) {
+    if (!Number.isFinite(card?.f1Score) || !Number.isFinite(card?.f2Score)) return method;
+    const margin = f1Outcome === "win" ? card.f1Score - card.f2Score : card.f2Score - card.f1Score;
+    if (margin > 0) forWinner += 1;
+    else if (margin === 0) even += 1;
+  }
+  if (forWinner === 3) return "U-DEC";
+  if (forWinner === 2) return even ? "M-DEC" : "S-DEC";
+  return method;
+}
+
 const validRounds = (card: JudgeCard): JudgeRound[] => Array.isArray(card.rounds)
   ? card.rounds.filter(round => Number.isInteger(round?.round)
     && Number.isInteger(round?.f1Score) && Number.isInteger(round?.f2Score))

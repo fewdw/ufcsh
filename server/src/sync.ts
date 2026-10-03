@@ -33,6 +33,7 @@ import { syncRosterMoves, syncUfcSignings, syncUfcStatuses } from "./roster-move
 import { syncNews } from "./news.ts";
 import { americanLine, impliedProbability } from "./fight-index.ts";
 import { consistentMoneyline } from "./method-odds.ts";
+import { decisionFromCards } from "./judge-scorecards.ts";
 import { boutLines, boutProps, fightOddsBoard, fightOddsEvents, fightOddsProps, matchBout } from "./scrape/fightodds.ts";
 
 const HOUR = 3600_000;
@@ -163,7 +164,7 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
       upsert.run(
         f.id, detail.id, f.ord, f.weightClass, f.titleFight ? 1 : 0,
         f.f1.id, f.f2.id, f.f1.name, f.f2.name, f.f1.outcome, f.f2.outcome,
-        f.method, f.methodDetails, f.round, f.time,
+        decisionFromCards(f.method, f.f1.outcome, storedJudges(old?.detail_json)), f.methodDetails, f.round, f.time,
         f.f1.kd, f.f1.str, f.f1.td, f.f1.sub, f.f2.kd, f.f2.str, f.f2.td, f.f2.sub,
         f.bonuses.perf ? PERF_BONUS_CODE[f.bonuses.perfKind ?? "perf"] : 0, f.bonuses.fotn ? 1 : 0,
       );
@@ -632,6 +633,20 @@ async function storeFightDetail(fightId: string): Promise<void> {
     detail.titleBout ?? "",
     fightId,
   );
+  correctDecision(fightId);
+}
+
+const storedJudges = (detailJson: string | null | undefined): unknown => {
+  try { return detailJson ? JSON.parse(detailJson).judges : null; } catch { return null; }
+};
+
+/** Brings a stored decision's kind in line with its stored cards. */
+export function correctDecision(fightId: string): void {
+  const row = db.prepare("SELECT method, f1_outcome, detail_json FROM fights WHERE id = ?").get(fightId) as
+    { method: string | null; f1_outcome: string | null; detail_json: string | null } | undefined;
+  if (!row) return;
+  const method = decisionFromCards(row.method, row.f1_outcome, storedJudges(row.detail_json));
+  if (method !== row.method) db.prepare("UPDATE fights SET method = ? WHERE id = ?").run(method, fightId);
 }
 
 /** Completed bouts whose stored page contradicts its card (captured
