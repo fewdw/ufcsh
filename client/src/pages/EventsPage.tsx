@@ -96,14 +96,12 @@ function EventSidebar({
   events,
   selectedId,
   mobileOpen,
-  onSelect,
   onBack,
   dock,
 }: {
   events: EventListItem[];
   selectedId: string | null;
   mobileOpen: boolean;
-  onSelect: () => void;
   /** Closes the list on a phone, back to the card it was opened from. */
   onBack: () => void;
   dock: (typeof DOCK)[keyof typeof DOCK];
@@ -244,7 +242,6 @@ function EventSidebar({
                       onPointerLeave={cancelWarm}
                       onPointerDown={() => { cancelWarm(); warmEvent(event.id); }}
                       onFocus={() => warmEvent(event.id)}
-                      onClick={onSelect}
                       ref={isSelected ? selectedRef : undefined}
                       aria-current={isSelected ? "page" : undefined}
                       className={[
@@ -1004,8 +1001,9 @@ export default function EventsPage() {
     } else setMobileEventsOpen(true);
   };
   // "/", "/events/…" and "/fights/…" share this one page, so the sheet would
-  // outlive a navigation. Any navigation (the logo, the Events pill, Back)
-  // closes it, in the same render, so the card it lands on shows at once.
+  // outlive a navigation. Any navigation (a pick, the logo, the Events pill,
+  // Back) closes it in the same render as the new card, so the old one never
+  // flashes in between.
   const [sheetLocation, setSheetLocation] = useState(location.key);
   if (sheetLocation !== location.key) {
     setSheetLocation(location.key);
@@ -1064,7 +1062,6 @@ export default function EventsPage() {
         events={events}
         selectedId={selectedId}
         mobileOpen={mobileEventsOpen}
-        onSelect={() => setMobileEventsOpen(false)}
         onBack={() => setMobileEventsOpen(false)}
         dock={dock}
       />
