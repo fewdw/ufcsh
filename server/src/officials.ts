@@ -1,7 +1,7 @@
 import { fightIndex, type IndexedFight } from "./fight-index.ts";
 import { mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
 import { searchList } from "./fuzzy.ts";
-import { normName } from "./util.ts";
+import { givenName, normName } from "./util.ts";
 
 /**
  * Judges and referees as people with a record, built from the same completed
@@ -42,24 +42,9 @@ type OfficialsIndex = {
 };
 
 // Officials are listed under short and long forms of the same first name
-// (Mike/Michael Bell, Sal/Salvatore D'Amato). Only these pairs are merged:
-// two people who merely share an initial and a surname stay two people.
-const NICKNAMES: [string, string[]][] = [
-  ["michael", ["mike", "mick"]], ["salvatore", ["sal"]], ["christopher", ["chris"]], ["anthony", ["tony"]],
-  ["richard", ["rick", "rich", "richie"]], ["david", ["dave"]], ["douglas", ["doug"]], ["daniel", ["dan", "danny"]],
-  ["robert", ["rob", "bob", "bobby"]], ["william", ["will", "bill", "billy"]], ["james", ["jim", "jimmy"]],
-  ["joseph", ["joe"]], ["edward", ["ed", "eddie"]], ["thomas", ["tom"]], ["gerald", ["jerry"]],
-  ["lawrence", ["larry"]], ["benjamin", ["ben"]], ["matthew", ["matt"]], ["steven", ["steve"]], ["stephen", ["steve"]],
-  ["kenneth", ["ken", "kenny"]], ["ronald", ["ron"]], ["nicholas", ["nick"]], ["patrick", ["pat"]],
-  ["gregory", ["greg"]], ["timothy", ["tim"]], ["andrew", ["andy", "drew"]], ["samuel", ["sam"]],
-  ["alexander", ["alex"]], ["frederick", ["fred"]], ["charles", ["chuck", "charlie"]], ["jeffrey", ["jeff"]],
-  ["herbert", ["herb"]], ["vincent", ["vince"]], ["jonathan", ["jon"]], ["joshua", ["josh"]], ["zachary", ["zach"]],
-];
-const FIRST_NAME = new Map<string, string>();
-for (const [full, short] of NICKNAMES) {
-  FIRST_NAME.set(full, full);
-  for (const name of short) if (!FIRST_NAME.has(name)) FIRST_NAME.set(name, full);
-}
+// (Mike/Michael Bell, Sal/Salvatore D'Amato; `givenName`). Only these pairs are
+// merged: two people who merely share an initial and a surname stay two people.
+
 // One New Jersey judge is recorded under both surnames and a misspelled given name.
 // The Russian referee Kiselev under three transliterations, one of them surname
 // first; the Austin judge Stafin as Jay and as Jason. Mike Bell and Doug
@@ -84,7 +69,7 @@ export function officialKey(name: string | null | undefined): string | null {
   const aliased = ALIASES.get(tokens.join(" "));
   if (aliased) tokens = aliased.split(" ");
   if (tokens.length === 1) return tokens[0];
-  return `${FIRST_NAME.get(tokens[0]) ?? tokens[0]} ${tokens.slice(1).join("")}`;
+  return `${givenName(tokens[0])} ${tokens.slice(1).join("")}`;
 }
 
 /** "Sal D'amato" as UFCStats prints it reads "Sal D'Amato". */
