@@ -3,7 +3,7 @@ import { Children, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useApi } from "../api";
 import type { CompleteRecordBefore, FighterProfile, FighterRecord, HistoryRow, NewsPage, ProfessionalHistoryRow } from "../api";
-import { divisionName, formatDateShortWithYear, formatLine, formatMethod, lastName } from "../format";
+import { divisionName, formatDateShortWithYear, formatLine, formatMethod, isDecision, lastName } from "../format";
 import { formatValue, PANEL } from "../components/chartTokens";
 import FighterPortrait from "../components/FighterPortrait";
 import Flag from "../components/Flag";
@@ -33,7 +33,7 @@ function historyResultLabel(outcome: HistoryRow["outcome"]): string {
   }
 }
 
-/** The result, compressed to one letter in a small solid dot — a full "WIN"/
+/** The result, compressed to one letter in a small dot — a full "WIN"/
  *  "LOSS" word is legible from across the room this list doesn't need to be
  *  read from. The word itself survives for a screen reader and as a tooltip. */
 function resultBadgeLetter(outcome: HistoryRow["outcome"], upcoming: boolean): string {
@@ -47,8 +47,16 @@ function resultBadgeLetter(outcome: HistoryRow["outcome"], upcoming: boolean): s
   }
 }
 
-function resultBadgeClasses(outcome: HistoryRow["outcome"], upcoming: boolean): string {
+/** A finish fills the dot; a decision leaves it hollow. */
+function resultBadgeClasses(outcome: HistoryRow["outcome"], upcoming: boolean, method: string | null): string {
   if (upcoming) return "bg-sky-100 text-sky-700";
+  if (isDecision(method)) {
+    switch (outcome) {
+      case "win": return "border-2 border-emerald-500 text-emerald-600";
+      case "loss": return "border-2 border-rose-500 text-rose-600";
+      case "draw": return "border-2 border-amber-400 text-amber-500";
+    }
+  }
   switch (outcome) {
     case "win": return "bg-emerald-500 text-white";
     case "loss": return "bg-rose-500 text-white";
@@ -312,7 +320,7 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
         className={`${BAND} items-center gap-2.5 py-1.5`}
       >
         <span
-          className={`grid h-6 min-w-6 shrink-0 place-items-center rounded-full px-1 text-[10px] font-bold leading-none ${resultBadgeClasses(row.outcome, row.upcoming)}`}
+          className={`grid h-6 min-w-6 shrink-0 place-items-center rounded-full px-1 text-[10px] font-bold leading-none ${resultBadgeClasses(row.outcome, row.upcoming, row.method)}`}
           title={bout.result}
           aria-hidden="true"
         >
@@ -397,7 +405,7 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
       >
         <span className="flex w-full min-w-0 items-center gap-2.5">
           <span
-            className={`grid h-7 min-w-7 shrink-0 place-items-center self-center rounded-full px-1 text-[11px] font-bold leading-none ${resultBadgeClasses(row.outcome, row.upcoming)}`}
+            className={`grid h-7 min-w-7 shrink-0 place-items-center self-center rounded-full px-1 text-[11px] font-bold leading-none ${resultBadgeClasses(row.outcome, row.upcoming, row.method)}`}
             title={bout.result}
             aria-hidden="true"
           >
@@ -467,9 +475,7 @@ function HistoryRowView({ row, fighterName, move }: { row: HistoryRow | Professi
     // why it appeared at 40rem and ran straight out of the card. The result
     // track is sized to hold "KO/TKO · R5 · 1:32" and a four-figure price on
     // one line at that narrowest width, since it is the first thing read.
-    // An outside bout carries a violet edge, the colour its "Outside UFC" label
-    // is set in, so the run of non-UFC fights reads at a glance down the list.
-    <div className={`grid grid-cols-1 items-stretch @3xl:grid-cols-[13rem_minmax(11rem,1.1fr)_7rem_minmax(12rem,1.3fr)] ${row.promotion === "outside" ? "relative before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-violet-500" : ""}`}>
+    <div className="grid grid-cols-1 items-stretch @3xl:grid-cols-[13rem_minmax(11rem,1.1fr)_7rem_minmax(12rem,1.3fr)]">
       <BoutCard row={row} fighterName={fighterName} move={move} />
       <BoutTableRow row={row} fighterName={fighterName} move={move} />
     </div>
