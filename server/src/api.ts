@@ -374,19 +374,26 @@ function listEvents(): unknown {
   if (process.env.SYNC_MODE !== "external" && process.env.NO_SYNC !== "1") void syncLiveEvents().catch(err => log("live events refresh failed:", String(err)));
   const next = nextEventDate();
   const rows = prepared(`
-      SELECT e.id, e.name, e.date, e.location, e.complete, COUNT(f.id) AS fight_count
+      SELECT e.id, e.name, e.date, e.location, e.complete, e.main_card_at, e.prelims_at, e.early_prelims_at, COUNT(f.id) AS fight_count
       FROM events e LEFT JOIN fights f ON f.event_id = e.id
       GROUP BY e.id ORDER BY e.date DESC
     `)
     .all() as (EventRow & { fight_count: number })[];
-  return rows.map((e) => ({
-    id: e.id,
-    name: e.name,
-    date: e.date,
-    location: e.location,
-    status: eventStatus(e, next),
-    fight_count: e.fight_count,
-  }));
+  return rows.map((e) => {
+    const status = eventStatus(e, next);
+    // A fight day starts at UTC midnight, hours before the card does: the
+    // list needs the first announced start to know whether it is live yet.
+    const starts = [e.early_prelims_at, e.prelims_at, e.main_card_at].filter((at): at is number => at != null);
+    return {
+      id: e.id,
+      name: e.name,
+      date: e.date,
+      location: e.location,
+      status,
+      fight_count: e.fight_count,
+      ...(status === "current" ? { starts_at: starts.length ? Math.min(...starts) : null } : {}),
+    };
+  });
 }
 
 /** The bout on now for a running card (fought bottom-up, so the lowest one
@@ -545,6 +552,28 @@ function opponentFormBefore(opponentId: string, date: string, ord?: number): unk
   }));
 }
 
+/** A UFC record entering a bout, counted from every UFC-branded bout before
+ *  it (the same rows as the profile's UFC record), with the run it carried. */
+function ufcRecordBefore(index: ReturnType<typeof fightIndex>, id: string, date: string, ord?: number, sourceOrder?: number) {
+  const bouts = ufcBoutsBefore(index, id, date, ord, sourceOrder);
+  const result: FightRecord = { wins: 0, losses: 0, draws: 0, ncs: 0 };
+  for (const bout of bouts) {
+    if (bout.outcome === "win") result.wins += 1;
+    else if (bout.outcome === "loss") result.losses += 1;
+    else if (bout.outcome === "draw") result.draws += 1;
+    else result.ncs += 1;
+  }
+  const decided = bouts.filter((bout) => bout.outcome !== "nc");
+  const latest = decided.at(-1)?.outcome ?? null;
+  let streakCount = 0;
+  for (let i = decided.length - 1; latest && i >= 0 && decided[i].outcome === latest; i--) streakCount += 1;
+  return {
+    ...result,
+    text: recordText(result),
+    streak: latest && streakCount ? { count: streakCount, outcome: latest } : null,
+  };
+}
+
 function fighterHistory(fighterId: string, includeOpponentForm = false): unknown[] {
   const rows = prepared(`
       SELECT f.*, e.name AS event_name, e.date AS event_date, e.complete AS event_complete,
@@ -565,7 +594,10 @@ function fighterHistory(fighterId: string, includeOpponentForm = false): unknown
     const indexed = index.byId.get(fightId);
     const indexedSide = indexed ? sideOf(indexed, id) : null;
     if (indexed && indexedSide?.id !== id) return null;
-    const prior = indexedSide ? indexedSide.prior : careerBefore(index, id, date, "", ord);
+    // A bout not fought yet counts what the profile counts, so a UFC-branded
+    // bout UFCStats never listed (Road to UFC, Contender Series) is included.
+    if (!indexedSide) return ufcRecordBefore(index, id, date);
+    const prior = indexedSide.prior;
     return {
       wins: prior.wins,
       losses: prior.losses,
@@ -658,11 +690,14 @@ type SourceCareerRow = {
  */
 function professionalHistory(fighterId: string, ufcHistory: any[]): any[] {
   const rows = prepared(`
-    SELECT cb.*, source_profile.source_url AS profile_url, opponent_profile.fighter_id AS opponent_id
+    SELECT cb.*, source_profile.source_url AS profile_url,
+      -- Only an unambiguous match: two profiles on one source page must not
+      -- list the bout twice.
+      (SELECT CASE WHEN COUNT(*) = 1 THEN MIN(opponent.fighter_id) END
+       FROM career_profiles opponent
+       WHERE opponent.source_url = cb.opponent_url AND opponent.status = 'verified') AS opponent_id
     FROM career_bouts cb
     JOIN career_profiles source_profile ON source_profile.fighter_id = cb.fighter_id
-    LEFT JOIN career_profiles opponent_profile
-      ON opponent_profile.source_url = cb.opponent_url AND opponent_profile.status = 'verified'
     WHERE cb.fighter_id = ? AND source_profile.status = 'verified'
     ORDER BY cb.date ASC, cb.source_order DESC
   `).all(fighterId) as SourceCareerRow[];
@@ -697,26 +732,8 @@ function professionalHistory(fighterId: string, ufcHistory: any[]): any[] {
       && Math.abs(Date.parse(source.date) - Date.parse(historyRow.date)) <= 86_400_000
       && normName(source.opponent_name) === normName(historyRow.opponent?.name));
   };
-  const ufcRecordView = (id: string, date: string, ord?: number, sourceOrder?: number) => {
-    if (!id) return null;
-    const bouts = ufcBoutsBefore(index, id, date, ord, sourceOrder);
-    const result: FightRecord = { wins: 0, losses: 0, draws: 0, ncs: 0 };
-    for (const bout of bouts) {
-      if (bout.outcome === "win") result.wins += 1;
-      else if (bout.outcome === "loss") result.losses += 1;
-      else if (bout.outcome === "draw") result.draws += 1;
-      else result.ncs += 1;
-    }
-    const decided = bouts.filter((bout) => bout.outcome !== "nc");
-    const latest = decided.at(-1)?.outcome ?? null;
-    let streakCount = 0;
-    for (let i = decided.length - 1; latest && i >= 0 && decided[i].outcome === latest; i--) streakCount += 1;
-    return {
-      ...result,
-      text: recordText(result),
-      streak: latest && streakCount ? { count: streakCount, outcome: latest } : null,
-    };
-  };
+  const ufcRecordView = (id: string, date: string, ord?: number, sourceOrder?: number) =>
+    id ? ufcRecordBefore(index, id, date, ord, sourceOrder) : null;
   const merged: any[] = ufcHistory.filter((row) => !row.upcoming).map((row) => {
     const source = sourceForLocal(row);
     if (source) usedSourceRows.add(source.source_bout_key);
