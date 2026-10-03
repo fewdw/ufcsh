@@ -1,6 +1,6 @@
 import { PANEL } from "../components/chartTokens";
 import { Fragment, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { useApi } from "../api";
 import type { Division, FighterPreview, FighterPreviewFight, RankingEntry } from "../api";
 import { formatDateShort } from "../format";
@@ -9,7 +9,7 @@ import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/
 import { SITE_URL, useSeo } from "../seo";
 import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
 import { relativeDate, useSettings, withRanking, type DateMode, type DivisionOrder, type RankingSource } from "../settings";
-import { orderDivisions } from "../divisionOrder";
+import { isWomens, orderDivisions } from "../divisionOrder";
 import Freshness from "../components/Freshness";
 import ResultDots from "../components/ResultDots";
 import { resultDot } from "../resultDots";
@@ -347,6 +347,7 @@ function DivisionCard({
   highlightedFighter,
   onHighlight,
   tapResults,
+  targeted,
 }: {
   division: Division;
   features: RankingFeatures;
@@ -355,10 +356,12 @@ function DivisionCard({
   highlightedFighter: RankingEntry | null;
   onHighlight: (id: string | null) => void;
   tapResults: boolean;
+  /** Opened from a bout's weight class: outlined a moment so the eye finds it. */
+  targeted: boolean;
 }) {
   const borrowed = division.source !== source;
   return (
-    <section className={`${shell} overflow-hidden`}>
+    <section data-division={division.division} className={`${shell} overflow-hidden ${targeted ? "division-target" : ""}`}>
       <div className="flex items-center justify-between gap-2 border-b border-zinc-200 px-3.5 py-2.5">
         <h3 className="truncate text-sm font-semibold text-zinc-900">{division.division}</h3>
         {borrowed ? (
@@ -544,7 +547,11 @@ export default function RankingsPage() {
       url: `${SITE_URL}/rankings`,
     },
   });
-  const [view, setView] = useHistoryState<ViewFilter>("rankings:view", "men");
+  const { key: locationKey } = useLocation();
+  // A bout's weight class links here with its division, to be scrolled to.
+  const target = useSearchParams()[0].get("division");
+  const [targeted, setTargeted] = useState<string | null>(null);
+  const [view, setView] = useHistoryState<ViewFilter>("rankings:view", () => target && isWomens(target) ? "women" : "men");
   const [features, setFeatures] = useHistoryState<RankingFeatures>("rankings:features", loadFeatures);
   const canHover = useCanHover();
   const canPreview = useCanHover(true);
@@ -571,6 +578,16 @@ export default function RankingsPage() {
           : divisions;
     return orderDivisions(filtered, settings.divisionOrder);
   }, [divisions, view, settings.divisionOrder]);
+
+  // Once per visit, and not over a place Back has just restored.
+  useEffect(() => {
+    const page = pageScroll.current;
+    if (!target || loading || !divisions || !page || page.scrollTop > 0) return;
+    const card = page.querySelector(`[data-division="${CSS.escape(target)}"]`);
+    if (!card) return;
+    card.scrollIntoView({ block: "nearest" });
+    setTargeted(target);
+  }, [target, loading, divisions, locationKey, pageScroll]);
 
   const highlightedFighter = features.hoverResults && highlightedId
     ? shown.flatMap((division) => division.entries).find((entry) => entry.fighter_id === highlightedId) ?? null
@@ -677,10 +694,10 @@ export default function RankingsPage() {
                 key={d.division}
                 className="w-full sm:w-[calc(50%_-_0.375rem)] lg:w-[calc(33.333%_-_0.5rem)] 2xl:w-[calc(25%_-_0.5625rem)]"
               >
-                <DivisionCard division={d} features={activeFeatures} source={settings.rankingSource} highlightedFighter={highlightedFighter} onHighlight={setHighlightedId} tapResults={tapResults} />
+                <DivisionCard division={d} features={activeFeatures} source={settings.rankingSource} highlightedFighter={highlightedFighter} onHighlight={setHighlightedId} tapResults={tapResults} targeted={d.division === targeted} />
               </div>
             ) : (
-              <DivisionCard key={d.division} division={d} features={activeFeatures} source={settings.rankingSource} highlightedFighter={highlightedFighter} onHighlight={setHighlightedId} tapResults={tapResults} />
+              <DivisionCard key={d.division} division={d} features={activeFeatures} source={settings.rankingSource} highlightedFighter={highlightedFighter} onHighlight={setHighlightedId} tapResults={tapResults} targeted={d.division === targeted} />
             )
           ))}
         </div>

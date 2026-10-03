@@ -32,3 +32,12 @@ export function orderDivisions<T extends Division>(divisions: T[], order: Divisi
     return a.division.localeCompare(b.division);
   });
 }
+
+/** The divisions the UFC ranks, spelled as a bout's weight class spells them. */
+const RANKED = new Set([
+  "Flyweight", "Bantamweight", "Featherweight", "Lightweight", "Welterweight", "Middleweight", "Light Heavyweight", "Heavyweight",
+  "Women's Strawweight", "Women's Flyweight", "Women's Bantamweight",
+]);
+
+/** The rankings page opened at a division, or null for one with no list. */
+export const rankingsLink = (division: string) => RANKED.has(division) ? `/rankings?division=${encodeURIComponent(division)}` : null;

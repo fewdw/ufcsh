@@ -553,3 +553,13 @@ select:not([multiple]):not([size]) {
    its row, dark on the light theme and light on the dark one. */
 .pick-option-on { background-color: #18181b; border-color: #18181b; color: #fff; }
 .dark .pick-option-on { background-color: #f4f4f5; border-color: #f4f4f5; color: #18181b; }
+
+/* A rankings card opened from a bout's weight class: outlined for a moment so
+   the eye lands on it, then back to rest. The grey reads on either theme. */
+.division-target {
+  animation: division-target 2.4s ease-out;
+}
+
+@keyframes division-target {
+  from, 50% { box-shadow: 0 0 0 2px #a1a1aa; }
+}

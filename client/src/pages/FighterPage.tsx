@@ -9,6 +9,7 @@ import FighterPortrait from "../components/FighterPortrait";
 import Flag from "../components/Flag";
 import ResultDots from "../components/ResultDots";
 import { divisionMoves, type DivisionMove } from "../weightJourney";
+import { rankingsLink } from "../divisionOrder";
 import RequestNotice from "../components/RequestNotice";
 import { BONUS_AGAINST_TAG, BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
 import FighterStatistics from "../components/FighterStatistics";
@@ -298,6 +299,10 @@ function DivisionLabel({ division, move }: { division: string; move?: DivisionMo
   return <span className="font-semibold text-zinc-700">{move.direction === "up" ? "↑ Up to" : "↓ Down to"} {move.to}</span>;
 }
 
+function DivisionCell({ to, className, children }: { to: string | null; className: string; children: ReactNode }) {
+  return to ? <Link to={to} title="Open rankings" className={`${className} ${HIT}`}>{children}</Link> : <div className={className}>{children}</div>;
+}
+
 const HIT = "transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900";
 
 /** A bout packed into three bands (who, how, where) for narrow screens, where
@@ -441,13 +446,14 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
         </span>
       </BoutLink>
 
-      <div className={`${cell} flex-col justify-start border-l border-zinc-100 text-left`}>
+      {/* A ranked division opens the rankings at its list. */}
+      <DivisionCell to={bout.outside ? null : rankingsLink(row.weight_class)} className={`${cell} flex-col justify-start border-l border-zinc-100 text-left`}>
         <span className="block break-words text-[11px] leading-5 text-zinc-500">
           {bout.outside ? <span className="font-semibold text-violet-500">Outside UFC</span> : <DivisionLabel division={divisionName(row.weight_class, "catch_weight" in row ? row.catch_weight : null)} move={move} />}
           {row.title_narrative ? <span className={`block font-semibold leading-4 ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
           {weightMisses(row).map((miss) => <span key={miss.key} className="mt-1 block leading-4">{miss}</span>)}
         </span>
-      </div>
+      </DivisionCell>
 
       <BoutLink
         to={bout.eventTo}
