@@ -19,7 +19,7 @@ import { PANEL } from "../components/chartTokens";
 import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "../components/segmented";
 
 const regions = new Intl.DisplayNames(["en"], { type: "region" });
-const HOME_NATIONS: Record<string, string> = { EN: "England", SC: "Scotland", WA: "Wales" };
+const HOME_NATIONS: Record<string, string> = { EN: "England", SC: "Scotland", WA: "Wales", NB: "Northern Ireland" };
 const countryName = (code: string) => HOME_NATIONS[code] ?? regions.of(code) ?? code;
 const thisYear = String(new Date().getFullYear());
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compatibleJudgeCards, hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
+import { compatibleJudgeCards, decisionFromCards, hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
 
 const rounds = (a: number[], b: number[]) => a.map((f1Score, index) => ({ round: index + 1, f1Score, f2Score: b[index] }));
 
@@ -62,4 +62,17 @@ test("Munah Holland and Munah Querido are the same judge", () => {
   const imported: JudgeCard[] = [{ judge: "Munah Querido", f1Score: 30, f2Score: 27, rounds: rounds([10, 10, 10], [9, 9, 9]) }];
   assert.equal(hasCompleteJudgeRounds(official, imported), true);
   assert.equal(hasCompleteJudgeRounds([{ ...official[0], judge: "Another Holland" }], imported), false);
+});
+
+test("a decision's kind follows its three cards", () => {
+  const cards = (...totals: [number, number][]) => totals.map(([f1Score, f2Score], i) => ({ judge: `J${i}`, f1Score, f2Score }));
+  // Trinaldo vs. Parke and Cummins vs. Blachowicz, labeled unanimous on UFCStats.
+  assert.equal(decisionFromCards("U-DEC", "win", cards([29, 28], [28, 29], [29, 28])), "S-DEC");
+  assert.equal(decisionFromCards("U-DEC", "win", cards([29, 28], [29, 28], [28, 28])), "M-DEC");
+  assert.equal(decisionFromCards("M-DEC", "loss", cards([28, 29], [28, 29], [28, 29])), "U-DEC");
+  assert.equal(decisionFromCards("S-DEC", "win", cards([29, 28], [28, 29], [29, 28])), "S-DEC");
+  assert.equal(decisionFromCards("U-DEC", "win", cards([29, 28], [29, 28])), "U-DEC", "two cards settle nothing");
+  assert.equal(decisionFromCards("U-DEC", "win", cards([28, 29], [28, 29], [29, 28])), "U-DEC", "cards for the loser are a different error");
+  assert.equal(decisionFromCards("U-DEC", "draw", cards([28, 28], [28, 28], [28, 28])), "U-DEC");
+  assert.equal(decisionFromCards("KO/TKO", "win", cards([29, 28], [28, 29], [29, 28])), "KO/TKO");
 });

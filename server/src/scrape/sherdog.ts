@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { fetchHtml } from "../http.ts";
+import { flaglessCountryCode } from "../util.ts";
 import { cleanText, normName } from "../util.ts";
 
 const BASE = "https://www.sherdog.com";
@@ -107,8 +108,9 @@ export function parseSherdogProfile(html: string, url: string): SherdogProfile {
   const country = cleanText($("[itemprop='nationality']").first().text());
   // The flag image beside the nationality is the only place the page states a
   // country code, and a code is what a flag can be drawn from.
+  // Some profiles leave the image out; the name then settles it.
   const countryCode = ($(".fighter-nationality img[src*='/flags/']").first().attr("src") ?? "")
-    .match(/\/flags\/[^/]+\/([a-z]{2})\.[a-z]+$/i)?.[1]?.toUpperCase() ?? "";
+    .match(/\/flags\/[^/]+\/([a-z]{2})\.[a-z]+$/i)?.[1]?.toUpperCase() || flaglessCountryCode(country);
   const birthplace = cleanText($("[itemprop='addressLocality']").first().text());
   const id = url.match(/-(\d+)(?:\?.*)?$/)?.[1] ?? "";
   const history = $(".module.fight_history").first();
