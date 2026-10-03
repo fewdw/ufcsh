@@ -408,6 +408,15 @@ for (const alter of [
   "ALTER TABLE fights ADD COLUMN f2_replaced TEXT",
   "ALTER TABLE fights ADD COLUMN f1_short_notice INTEGER",
   "ALTER TABLE fights ADD COLUMN f2_short_notice INTEGER",
+  // The replaced fighter's profile, and the notice the article states
+  // ("10 days", "under 2 weeks", "fight week"); NULL when it doesn't.
+  "ALTER TABLE fights ADD COLUMN f1_replaced_id TEXT",
+  "ALTER TABLE fights ADD COLUMN f2_replaced_id TEXT",
+  "ALTER TABLE fights ADD COLUMN f1_notice TEXT",
+  "ALTER TABLE fights ADD COLUMN f2_notice TEXT",
+  // Bouts announced for the card that never happened on it, as JSON:
+  // [{ f1, f2, f1_id, f2_id, division, reason }].
+  "ALTER TABLE events ADD COLUMN cancelled_json TEXT",
 ]) {
   try {
     db.exec(alter);
@@ -448,9 +457,9 @@ if (getMeta("migration_placeholder_photos_v2") !== "1") {
 
 // Replacements and short notice are read with the rest of the event
 // article; past cards were read before that, so read them once more.
-if (getMeta("migration_bout_changes") !== "1") {
+if (getMeta("migration_bout_changes") !== "2") {
   db.exec("UPDATE events SET wiki_info_checked_at = NULL WHERE complete = 1");
-  setMeta("migration_bout_changes", "1");
+  setMeta("migration_bout_changes", "2");
 }
 
 if (getMeta("migration_career_identity_and_unlinked_bouts") !== "1") {

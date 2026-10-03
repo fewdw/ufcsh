@@ -230,13 +230,31 @@ export function divisionName(weightClass: string, catchWeight?: number | null): 
   return catchWeight && /catch/i.test(weightClass) ? `${weightClass} (${catchWeight} lbs)` : weightClass;
 }
 
-/** A late change to a fighter's booking, short for a tag and in full for its
- *  title, or null when they were booked from the start. */
-export function boutChange(side: { replaced?: string | null; short_notice?: boolean }): { short: string; full: string } | null {
+/** How much notice a replacement had, as a phrase: "on 10 days' notice",
+ *  "with under 2 weeks' notice", "in fight week", "on short notice". */
+export function noticePhrase(notice: string | null | undefined, short: boolean | undefined): string {
+  const amount = notice?.match(/^(under )?(\d+) (day|week)s?$/);
+  if (amount) {
+    const n = Number(amount[2]);
+    const unit = `${n} ${amount[3]}${n === 1 ? "'s" : "s'"}`;
+    return amount[1] ? `with under ${unit} notice` : `on ${unit} notice`;
+  }
+  if (notice === "fight week") return "in fight week";
+  if (notice === "hours") return "hours before the fight";
+  return short ? "on short notice" : "";
+}
+
+/** A late change to a fighter's booking: a tag, its full sentence, and the
+ *  replaced fighter to link. Null when they were booked from the start. */
+export function boutChange(side: { replaced?: string | null; replaced_id?: string | null; short_notice?: boolean; notice?: string | null }):
+  { short: string; full: string; lead: string; name: string | null; id: string | null; tail: string } | null {
   if (side.replaced == null && !side.short_notice) return null;
-  const notice = side.short_notice ? " on short notice" : "";
+  const notice = noticePhrase(side.notice, side.short_notice);
+  const lead = side.replaced ? "Replaced" : side.replaced === "" ? "Late replacement" : "Took this fight";
+  const name = side.replaced || null;
   return {
     short: side.short_notice ? "Short notice" : "Replacement",
-    full: side.replaced ? `Replaced ${side.replaced}${notice}` : side.replaced === "" ? `Late replacement${notice}` : "Took this fight on short notice",
+    full: [lead, name, notice].filter(Boolean).join(" "),
+    lead, name, id: name ? side.replaced_id ?? null : null, tail: notice,
   };
 }

@@ -3,7 +3,7 @@ import { isFightDay, landingEvent, liveFightId, taggedEvent } from "../liveEvent
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
-import type { CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
+import type { CancelledBout, CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
 import { boutChange, clockTime, clockTimeWithZone, divisionName, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankingTitle, rankLabel, roundsLabel } from "../format";
 import { useNow } from "../useNow";
 import Avatar from "../components/Avatar";
@@ -788,6 +788,29 @@ function SegmentBreak({ segment, at }: { segment: CardSegment; at: number | null
   );
 }
 
+/** Bouts announced for the card that never happened on it, after every bout
+ *  that did. A fighter links to their profile when they have one. */
+function CancelledBouts({ bouts }: { bouts: CancelledBout[] }) {
+  const name = (side: CancelledBout["f1"]) => side.id
+    ? <Link to={`/fighters/${side.id}`} className="underline decoration-zinc-300 underline-offset-2 hover:decoration-zinc-500">{side.name}</Link>
+    : side.name;
+  return (
+    <div className="border-t border-zinc-200">
+      <div className="border-b border-zinc-200 bg-white px-3 py-1.5 @[34rem]:px-6 @[34rem]:py-2.5">
+        <h2 className="text-sm font-semibold leading-5 tracking-tight text-zinc-900">Cancelled</h2>
+      </div>
+      <ul className="divide-y divide-zinc-100">
+        {bouts.map((bout) => (
+          <li key={`${bout.f1.name}-${bout.f2.name}`} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 px-3 py-2.5 @[34rem]:px-6">
+            <span className="min-w-0 text-sm font-medium text-zinc-600">{name(bout.f1)} <span className="font-normal text-zinc-400">vs</span> {name(bout.f2)}</span>
+            <span className="min-w-0 text-[11px] text-zinc-400">{[bout.division, bout.reason].filter(Boolean).join(" · ")}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 type EventNav = {
   prev: EventListItem | null;
   next: EventListItem | null;
@@ -1016,6 +1039,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
               );
             })
           )}
+          {event.cancelled?.length ? <CancelledBouts bouts={event.cancelled} /> : null}
         </section>
       )}
     </div>

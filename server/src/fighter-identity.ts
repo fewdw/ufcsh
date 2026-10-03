@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { prepared } from "./db.ts";
+import { firstLastName, normName } from "./util.ts";
 import { fightIndex, type FightRecord } from "./fight-index.ts";
 
 /** Who counts as a UFC fighter, what their record reads, and where their
@@ -53,3 +54,32 @@ export function cachedFullPhotoUrl(id: string, remoteUrl: string | null | undefi
   return id && remoteUrl ? `/api/images/${id}/full?v=${photoVersion(remoteUrl)}` : null;
 }
 
+
+/** The fighter a name written elsewhere (a rankings list, an article) means.
+ *  ufc.com sometimes adds a nickname ("Michael Venom Page"), so first and
+ *  last name alone are tried next. Two fighters can share a name, so the one
+ *  who fought in that division nearest the date wins. Empty when unknown. */
+export function fighterNamed(name: string, division: string, date: string): string {
+  let ids = (prepared("SELECT id FROM fighters WHERE norm_name = ?").all(normName(name)) as { id: string }[]).map((row) => row.id);
+  // Family name first or last ("Zhu Rong", "Rong Zhu").
+  const words = normName(name).split(" ");
+  if (!ids.length && words.length === 2) ids = (prepared("SELECT id FROM fighters WHERE norm_name = ?").all(`${words[1]} ${words[0]}`) as { id: string }[]).map((row) => row.id);
+  if (!ids.length) {
+    const short = firstLastName(name);
+    const [first, last] = short.split(" ");
+    if (first && last) {
+      ids = (prepared("SELECT id, norm_name FROM fighters WHERE norm_name LIKE ? AND norm_name LIKE ?")
+        .all(`${first}%`, `%${last}`) as { id: string; norm_name: string }[])
+        .filter((row) => firstLastName(row.norm_name) === short).map((row) => row.id);
+    }
+  }
+  if (ids.length <= 1) return ids[0] ?? "";
+  const best = prepared(`
+    SELECT fr.id FROM fighters fr
+    JOIN fights f ON f.f1_id = fr.id OR f.f2_id = fr.id
+    JOIN events e ON e.id = f.event_id
+    WHERE fr.id IN (${ids.map(() => "?").join(",")})
+    ORDER BY f.weight_class = ? DESC, ABS(julianday(e.date) - julianday(?)) ASC LIMIT 1
+  `).get(...ids, division, date) as { id: string } | undefined;
+  return best?.id ?? "";
+}
