@@ -92,7 +92,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-03">October 3, 2026</time></p>
             <ul>
-              <li>The Next fight countdown in the header shows up 12 hours before the fight.</li>
+              <li>UFC debutants show a 0-0 UFC record and opponent record.</li>
             </ul>
           </Section>
         </div>
