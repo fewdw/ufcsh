@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
-import { clockTime, clockTimeWithZone, divisionName, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankingTitle, rankLabel, roundsLabel } from "../format";
+import { boutChange, clockTime, clockTimeWithZone, divisionName, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankingTitle, rankLabel, roundsLabel } from "../format";
 import { useNow } from "../useNow";
 import Avatar from "../components/Avatar";
 import ResultDots from "../components/ResultDots";
@@ -376,6 +376,12 @@ function WeightMissBadge({ side }: { side: FightSide }) {
   return <span className={`${METHOD_TAG} bg-rose-100 text-rose-700 tabular-nums`} title={label} aria-label={label}>{side.weight_miss}<span className="lowercase">lbs</span></span>;
 }
 
+function BoutChangeBadge({ side }: { side: FightSide }) {
+  const change = boutChange(side);
+  if (!change) return null;
+  return <span className={`${METHOD_TAG} bg-sky-100 text-sky-700`} title={change.full} aria-label={`${side.name}: ${change.full}`}>{change.short}</span>;
+}
+
 function FighterBlock({
   side,
   align,
@@ -411,6 +417,7 @@ function FighterBlock({
             </span>
           ) : null}
           <WeightMissBadge side={side} />
+          <BoutChangeBadge side={side} />
           <BonusIcons bonuses={bonuses} outcome={side.outcome} />
         </span>
       </div>
@@ -565,6 +572,7 @@ function CompactSide({ side, fight, done, other }: { side: FightSide; fight: Eve
             </span>
           ) : null}
           <WeightMissBadge side={side} />
+          <BoutChangeBadge side={side} />
           <BonusIcons bonuses={fight.bonuses} outcome={side.outcome} />
         </div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] leading-4 tabular-nums text-zinc-500">

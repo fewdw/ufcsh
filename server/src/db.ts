@@ -401,6 +401,13 @@ for (const alter of [
   // Signed on Wikipedia's roster list but not yet on UFCStats: a profile of
   // our own until UFCStats books them, when the real one takes over.
   "ALTER TABLE fighters ADD COLUMN signee INTEGER NOT NULL DEFAULT 0",
+  // Late changes, from the event article's prose: whom a fighter replaced
+  // (their name, "" when the article does not say, NULL when the fighter was
+  // booked from the start), and 1 when they took the bout on short notice.
+  "ALTER TABLE fights ADD COLUMN f1_replaced TEXT",
+  "ALTER TABLE fights ADD COLUMN f2_replaced TEXT",
+  "ALTER TABLE fights ADD COLUMN f1_short_notice INTEGER",
+  "ALTER TABLE fights ADD COLUMN f2_short_notice INTEGER",
 ]) {
   try {
     db.exec(alter);
@@ -437,6 +444,13 @@ if (getMeta("migration_placeholder_photos_v2") !== "1") {
        OR photo_full_url LIKE '%no-profile-image%' OR photo_full_url LIKE '%silhouette%' OR photo_full_url LIKE '%shadow%'
   `);
   setMeta("migration_placeholder_photos_v2", "1");
+}
+
+// Replacements and short notice are read with the rest of the event
+// article; past cards were read before that, so read them once more.
+if (getMeta("migration_bout_changes") !== "1") {
+  db.exec("UPDATE events SET wiki_info_checked_at = NULL WHERE complete = 1");
+  setMeta("migration_bout_changes", "1");
 }
 
 if (getMeta("migration_career_identity_and_unlinked_bouts") !== "1") {

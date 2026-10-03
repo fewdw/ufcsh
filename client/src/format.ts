@@ -229,3 +229,14 @@ export function normalizeSearch(value: string): string {
 export function divisionName(weightClass: string, catchWeight?: number | null): string {
   return catchWeight && /catch/i.test(weightClass) ? `${weightClass} (${catchWeight} lbs)` : weightClass;
 }
+
+/** A late change to a fighter's booking, short for a tag and in full for its
+ *  title, or null when they were booked from the start. */
+export function boutChange(side: { replaced?: string | null; short_notice?: boolean }): { short: string; full: string } | null {
+  if (side.replaced == null && !side.short_notice) return null;
+  const notice = side.short_notice ? " on short notice" : "";
+  return {
+    short: side.short_notice ? "Short notice" : "Replacement",
+    full: side.replaced ? `Replaced ${side.replaced}${notice}` : side.replaced === "" ? `Late replacement${notice}` : "Took this fight on short notice",
+  };
+}

@@ -58,6 +58,33 @@ export function infoboxDate(wikitext: string): string | null {
   return null;
 }
 
+type CardPerson = { name: string; norm: string; last: string | null };
+
+/** The card's fighters, each findable by full name or, when no one else on
+ *  the card shares it, by surname alone ("Rountree", not "Jr"). */
+function cardPeople(fighters: string[]): CardPerson[] {
+  const surname = (name: string) => normName(name).split(" ").filter((word) => !/^(?:jr|sr|ii|iii|iv)$/.test(word)).at(-1) ?? "";
+  return fighters.map((name) => {
+    const last = surname(name);
+    const shared = fighters.filter((other) => surname(other) === last).length > 1;
+    return { name, norm: normName(name), last: shared || last.length < 3 ? null : last };
+  });
+}
+
+/** Card fighters a normalized sentence names, in the order it names them. */
+function namedIn(sentence: string, people: CardPerson[]): { person: CardPerson; at: number }[] {
+  const position = (person: CardPerson) => {
+    const full = sentence.indexOf(person.norm);
+    if (full >= 0) return full;
+    if (!person.last) return -1;
+    const match = new RegExp(`(?:^| )${person.last}(?: |$)`).exec(sentence);
+    return match ? match.index : -1;
+  };
+  return people.map((person) => ({ person, at: position(person) }))
+    .filter((entry) => entry.at >= 0)
+    .sort((a, b) => a.at - b.at);
+}
+
 // A sentence says someone missed weight only with one of these phrases. The
 // fighter must be named before it: people named after it are recipients of
 // the fine or the opponent ("…half of that money went to Poirier").
@@ -73,29 +100,14 @@ export function weightMisses(wikitext: string, fighters: string[]): WeightMiss[]
   // Bullet items ("four fighters missed weight:\n*Vázquez weighed in…") are
   // sentences of their own.
   const sentences = prose.replace(/\n\*+\s*/g, ". ").replace(/\s+/g, " ").split(/(?<=[.!?:])\s+(?=[A-Z*])/);
-  const people = fighters.map((name) => {
-    const norm = normName(name);
-    const last = norm.split(" ").at(-1) ?? "";
-    const sharedLast = fighters.filter((other) => normName(other).split(" ").at(-1) === last).length > 1;
-    return { name, norm, last: sharedLast ? null : last };
-  });
+  const people = cardPeople(fighters);
   const found = new Map<string, WeightMiss>();
   let lastSubject: string | null = null;
   for (const raw of sentences) {
     const sentence = normName(raw);
     const cue = raw.match(MISS_CUE);
-    const position = (person: (typeof people)[number]) => {
-      const full = sentence.indexOf(person.norm);
-      if (full >= 0) return full;
-      if (!person.last || person.last.length < 3) return -1;
-      const match = new RegExp(`(?:^| )${person.last}(?: |$)`).exec(sentence);
-      return match ? match.index : -1;
-    };
-    const named = people
-      .map((person) => ({ person, at: position(person) }))
-      .filter((entry) => entry.at >= 0);
     // The sentence's subject is whoever it names first, not whoever the card lists first.
-    named.sort((a, b) => a.at - b.at);
+    const named = namedIn(sentence, people);
     if (!cue || OTHER_EVENT.test(raw)) {
       if (named.length) lastSubject = named[0].person.name;
       continue;
@@ -130,6 +142,136 @@ export function weightMisses(wikitext: string, fighters: string[]): WeightMiss[]
       const row = normName(plainText(match[2].split(/MMAevent bout|Catchweight/i)[0]));
       if (row.includes(normName(miss.name))) { miss.pounds = Number(match[1]); break; }
     }
+  }
+  return [...found.values()];
+}
+
+export type BoutChange = {
+  name: string;
+  /** Who this fighter replaced, as the article names them; "" when it does not say. */
+  replaced: string | null;
+  shortNotice: boolean;
+};
+
+const REPLACED_BY = /\breplaced by\b/i;
+const STEPPED_IN = /\b(?:stepped in (?:to replace|for|as (?:a|the) replacement for)|steps in for|(?:as (?:a|the) )?replacement for|replaced|replacing|in place of)\b/i;
+const WITHDREW = /\b(?:withdr[ae]w|withdrawn|pull(?:ed)? out|was pulled|was removed|was forced (?:to withdraw|out)|dropped out|was unable to compete|was released)\b/i;
+/** The article's own words for short notice; a late change is short notice
+ *  for whoever replaced the fighter who made it. */
+const SHORT_NOTICE = /short[- ]notice|\b(?:[a-z]+|\d+)[- ](?:days?|weeks?)['’]?s?['’]? notice/i;
+const LATE = /hours before|on the day of the event|during fight week|(?:a|one) day before the event|on the eve of|(?:less than|under|just|only) (?:a|one|two|three|\d+) (?:days?|weeks?) (?:before|prior|out)/i;
+/** Capitalized names, with the particles and suffixes names carry. */
+const NAME = /\p{Lu}(?:\.|[\p{L}'’-]+)(?: (?:Jr\.?|\p{Lu}(?:\.|[\p{L}'’-]+)|de|da|das|do|dos|van|von|der|del|la|le))*/gu;
+const NOT_NAMES = /^(?:However|In|Subsequently|Additionally|Also|After|Then|Later|Meanwhile|On|At|The|He|She|They|It|This|A|An|UFC|Due|Despite|As|Initially|Eventually|Shortly|Former|Promotional|Renato)$/;
+const SUFFIX = /^(?:jr|sr|ii|iii|iv)$/;
+const TITLE = /^(?:Champion|Winner|Challenger|Contender|Finalist|Veteran|Newcomer|FC|UFC|MMA|KSW|LFA|Rizin|Bellator|Invicta|PFL|ONE|Cage|Warriors|Season|Series|Road|Brazilian|Jiu-Jitsu|Olympian|Olympic|(?:Women's )?\p{L}*weight)$/u;
+const surnameOf = (name: string) => normName(name).split(" ").filter((word) => !SUFFIX.test(word)).at(-1) ?? "";
+
+/** "Herbert took the bout on short notice": the fighter named before the
+ *  words, as the one who accepted. Not "…opted to book them on short notice". */
+function tookIt(raw: string, sentence: string, at: number): boolean {
+  const cue = normName(raw.slice(0, raw.match(SHORT_NOTICE)!.index)).length;
+  return at < cue && /\b(?:took|takes|accepted|accepts|stepped in|steps in|agreed|agrees|will make|made|makes|filled in|fills in)\b/.test(sentence.slice(at, cue));
+}
+
+/** The last person a stretch of prose names, without a leading "However". */
+function lastPerson(text: string): string | null {
+  const names = [...text.matchAll(NAME)].map((match) => match[0].split(" ").filter((word, index, words) => index > 0 || words.length === 1 || !NOT_NAMES.test(word)).join(" "))
+    .filter((name) => !NOT_NAMES.test(name));
+  return names.at(-1) ?? null;
+}
+
+/**
+ * Which fighters on this card replaced someone, and who took a bout on short
+ * notice, from the article's prose ("However, Rountree withdrew … and was
+ * replaced by Carlos Ulberg"; "He was replaced by Dan Ige just hours before").
+ * Only the card's own fighters can be the replacement, so a fighter swapped
+ * out again before fight night is never named. Short notice is only what the
+ * article says: a withdrawal in fight week, or the words themselves. A
+ * surname is completed from the people the article names before it
+ * ("Rountree" → "Khalil Rountree Jr.").
+ */
+export function boutChanges(wikitext: string, bouts: [string, string][]): BoutChange[] {
+  const background = wikitext.split(/==\s*Results\s*==/i)[0];
+  // People only: not "UFC Fight Night: Santos vs. Walker".
+  const linked = [...withoutRefs(background).matchAll(/\[\[(?:[^|\]]*\|)?([^\]]*)\]\]/g)].map((match) => match[1].trim())
+    .filter((text) => /^[\p{L}'’. -]+$/u.test(text) && text.split(" ").length <= 4 && !/\b(?:UFC|Championship|Champion|Bellator|Fight|Event|Season)\b/.test(text));
+  // "UFC 279: Chimaev vs. Diaz" stays in one sentence.
+  const prose = plainText(background).replace(/\n\*+\s*/g, ". ").replace(/\s+/g, " ");
+  const sentences = prose.split(/(?<=[.!?])(?<!\bvs\.)\s+(?=[A-Z])/);
+  const people = cardPeople(bouts.flat());
+  const opponent = new Map(bouts.flatMap(([a, b]) => [[a, b], [b, a]] as const));
+  const found = new Map<string, BoutChange>();
+  let withdrawn: { name: string; late: boolean } | null = null;
+  let earlier = "";
+  const fullName = (written: string) => {
+    const name = written.replace(/(?<!\bJr)\.$/, "");
+    // "Bueno Silva" is Mayra Bueno Silva; "Rountree" is Khalil Rountree Jr.
+    const tail = ` ${normName(name).split(" ").filter((word) => !SUFFIX.test(word)).join(" ")}`;
+    const links = [...new Set(linked.filter((link) => ` ${normName(link).split(" ").filter((word) => !SUFFIX.test(word)).join(" ")}`.endsWith(tail)))];
+    if (links.length === 1) return links[0];
+    if (tail.trim().includes(" ")) return name;
+    const surname = tail.trim();
+    // Unlinked: the nearest earlier "First Last" ending in the surname (or
+    // starting with it, "Song Yadong"), else the first one anywhere.
+    const find = (text: string) => {
+      for (const match of [...text.matchAll(NAME)].reverse()) {
+        const words = match[0].replace(/(?<!\bJr)\.$/, "").split(" ");
+        const at = words.findIndex((word, index) => index > 0 && normName(word) === surname);
+        if (at > 0 && !NOT_NAMES.test(words[at - 1]) && !TITLE.test(words[at - 1])) {
+          // Up to two given names ("Jesús Santos Aguilar"), never a title ("Champion Michelle …").
+          const from = at >= 2 && !NOT_NAMES.test(words[at - 2]) && !TITLE.test(words[at - 2]) ? at - 2 : at - 1;
+          return words.slice(from, at + 1 + Number(SUFFIX.test(normName(words[at + 1] ?? "")))).join(" ");
+        }
+        if (words.length === 2 && normName(words[0]) === surname && !NOT_NAMES.test(words[1])) return words.join(" ");
+      }
+      return null;
+    };
+    return find(earlier) ?? find(prose) ?? name;
+  };
+  for (const raw of sentences) {
+    const sentence = normName(raw);
+    // A sentence about another card's booking is history, not this card's change.
+    const elsewhere = OTHER_EVENT.test(raw) && !/this event|the event/i.test(raw);
+    const named = namedIn(sentence, people);
+    const out = raw.match(WITHDREW);
+    let replacement: string | null = null;
+    let replaced: string | null = null;
+    const by = raw.match(REPLACED_BY);
+    // A backup who never fought for the spot replaced no one.
+    const step = by || /\bbackup\b|potential replacement|alternate\b/i.test(raw) ? null : raw.match(STEPPED_IN);
+    if (by) {
+      const cueAt = normName(raw.slice(0, by.index)).length;
+      replacement = named.find((entry) => entry.at >= cueAt)?.person.name ?? null;
+      // "X withdrew and was replaced by Z", or "He was replaced by Z" after the withdrawal.
+      replaced = out && out.index! < by.index! ? lastPerson(raw.slice(0, out.index))
+        : /^(?:He|She)\b/.test(raw.trim()) ? withdrawn?.name ?? null : lastPerson(raw.slice(0, by.index));
+    } else if (step) {
+      const cueAt = normName(raw.slice(0, step.index)).length;
+      replacement = named.find((entry) => entry.at < cueAt)?.person.name ?? null;
+      const after = raw.slice(step.index! + step[0].length);
+      replaced = /^\s*(?:him|her)\b/.test(after) ? withdrawn?.name ?? null
+        : [...after.matchAll(NAME)].map((match) => match[0]).find((name) => !NOT_NAMES.test(name)) ?? null;
+    }
+    const notice = SHORT_NOTICE.test(raw);
+    const late = notice || LATE.test(raw);
+    if (replacement && !elsewhere) {
+      const person = replacement;
+      const name = replaced ? fullName(replaced) : "";
+      // Never "replaced" themselves or the fighter they end up facing.
+      const wrong = [person, opponent.get(person) ?? ""].some((other) => normName(other) === normName(name) || (!name.includes(" ") && surnameOf(other) === normName(name)));
+      const lateWithdrawal = !!withdrawn?.late && !!name && surnameOf(withdrawn.name) === surnameOf(name);
+      const previous = found.get(person);
+      found.set(person, { name: person, replaced: wrong ? "" : name, shortNotice: !!previous?.shortNotice || late || lateWithdrawal });
+    } else if (notice && !elsewhere && named.length === 1 && !out && tookIt(raw, sentence, named[0].at)) {
+      const person = named[0].person.name;
+      found.set(person, { name: person, replaced: found.get(person)?.replaced ?? null, shortNotice: true });
+    }
+    if (out && !by && !elsewhere) {
+      const name = lastPerson(raw.slice(0, out.index));
+      if (name) withdrawn = { name, late };
+    }
+    earlier += ` ${raw}`;
   }
   return [...found.values()];
 }

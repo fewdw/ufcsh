@@ -995,6 +995,35 @@ function catchweightsWithoutLimit(): BugCheck {
   })));
 }
 
+function replacementsUnnamed(): BugCheck {
+  const rows = db.prepare(`
+    SELECT f.id, f.event_id, e.name AS event_name, e.date, e.wiki_title, f.f1_name AS name, f.f1_replaced AS replaced
+    FROM fights f JOIN events e ON e.id = f.event_id WHERE f.f1_replaced = '' OR f.f1_replaced NOT LIKE '% %'
+    UNION ALL
+    SELECT f.id, f.event_id, e.name, e.date, e.wiki_title, f.f2_name, f.f2_replaced
+    FROM fights f JOIN events e ON e.id = f.event_id WHERE f.f2_replaced = '' OR f.f2_replaced NOT LIKE '% %'
+    ORDER BY date DESC
+  `).all() as { id: string; event_id: string; event_name: string; date: string; wiki_title: string | null; name: string; replaced: string }[];
+  return check({
+    id: "replacement-unnamed",
+    group: "Fights & events",
+    label: "Replacements without the fighter they replaced",
+    description: "The event article says this fighter came in as a replacement, but not in a way we could read whom they replaced in full, so the matchup says \"Late replacement\" or a surname alone. Read from the article's Background prose (boutChanges in scrape/wikipedia.ts); re-reading picks up a later edit.",
+    grade: ahead([[7, "minor"]]),
+  }, rows.map((row): BugItem => ({
+    key: `${row.id}:${row.name}`,
+    title: row.name,
+    subtitle: row.event_name,
+    date: row.date,
+    facts: [["Replaced", row.replaced || "not named"]],
+    links: [
+      ...fightLinks(row.id),
+      ...(row.wiki_title ? [{ label: "Event article", href: `https://en.wikipedia.org/wiki/${encodeURIComponent(row.wiki_title.replace(/ /g, "_"))}` }] : []),
+    ],
+    actions: [{ id: "article", label: "Re-read event article", target: row.event_id }],
+  })));
+}
+
 function fighterGaps(active: Set<string>): BugCheck {
   const rows = db.prepare(`
     SELECT id, name, photo_url, photo_checked_at, birth_date, birth_fetched_at, country, height, reach, stance
@@ -1504,6 +1533,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     decisionsWithoutJudges(),
     eventsWithoutWiki(),
     catchweightsWithoutLimit(),
+    replacementsUnnamed(),
     venueInWrongCity(),
     eventsWithoutVenue(),
     venuesFromWikipediaOnly(),

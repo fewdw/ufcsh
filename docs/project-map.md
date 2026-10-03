@@ -27,7 +27,7 @@ client (`client/`) renders every page.
 | Admin data-quality board | `bugs.ts` (checks and repair actions), `admin-http.ts`, `repair-guard.ts` |
 | Accounts, scoring, predictions, bets, saved matchmaking cards, comments | `accounts.ts` (Clerk deletions and picture sync), `scoring*.ts`, `predictions*.ts`, `bets*.ts`, `cards*.ts`, `comments*.ts`, `moderation.ts` |
 | Background sync | `sync.ts` (scheduler `tick`), `sync-worker.ts`, `career-records.ts`, `verdict-import.ts` |
-| Scrapers | `scrape/ufcstats.ts`, `scrape/ufccom.ts` (schedules, segments, venue/broadcast/referee feed), `scrape/wikipedia.ts` (weigh-ins, infobox, background), `scrape/fightodds.ts` (upcoming moneylines and props, matched by UFCStats id; every 5 and 30 min), `scrape/odds.ts` (BestFightOdds: fallback, archive), `scrape/sherdog.ts`, `scrape/verdict.ts`, `scrape/mmadecisions.ts` |
+| Scrapers | `scrape/ufcstats.ts`, `scrape/ufccom.ts` (schedules, segments, venue/broadcast/referee feed), `scrape/wikipedia.ts` (weigh-ins, infobox, background, replacements and short notice via `boutChanges`, stored by `syncEventWikiInfo`), `scrape/fightodds.ts` (upcoming moneylines and props, matched by UFCStats id; every 5 and 30 min), `scrape/odds.ts` (BestFightOdds: fallback, archive), `scrape/sherdog.ts`, `scrape/verdict.ts`, `scrape/mmadecisions.ts` |
 | Database schema and migrations | `db.ts` |
 
 Tests sit beside their module as `*.test.ts`; `npm test` runs them against a
