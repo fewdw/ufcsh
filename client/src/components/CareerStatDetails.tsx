@@ -20,7 +20,7 @@ function Evidence({ data, error, retry, view, sort, setSort, close }: {
   const sorted = sort.order !== "recent" && order ? sort.column : -1;
   const rows = orderEvidence(data?.rows.filter(view.include) ?? [], order ? sort.order : "recent", order ?? (() => null));
   return <>
-    <div data-sheet-scroll className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-2 pt-1">
+    <div data-sheet-scroll className="min-h-0 overflow-y-auto overscroll-y-contain px-4 pb-2 pt-1">
     {error ? <div className="py-2"><RequestNotice onRetry={retry}>Couldn’t load stats.</RequestNotice></div> : null}
     {!data ? !error ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null : !rows.length ? <p className="py-3 text-xs text-zinc-500">No data</p> : <table className="w-full table-fixed text-left text-xs tabular-nums">
       <colgroup><col /><col className="w-16" />{columns.map((_, index) => <col key={index} className="w-14" />)}</colgroup>
@@ -210,8 +210,9 @@ export default function CareerStatDetails({ fighters, available, initial = 0, be
           </button> : null}
           {/* One line: what, how much, the order, and close. */}
           <div className="flex min-h-9 items-center gap-2">
-            <h3 className="min-w-0 flex-1 truncate text-sm font-semibold" title={view.label}>{view.label}</h3>
+            <h3 className="min-w-0 truncate text-sm font-semibold" title={view.label}>{view.label}</h3>
             <span className="shrink-0 text-lg font-semibold tabular-nums">{current.data ? view.headline(current.data) : "—"}</span>
+            <span className="flex-1" aria-hidden="true" />
             {view.columns.some(column => column.value) ? <label className="shrink-0">
               <span className="sr-only">Sort opponents</span>
               <select value={sort.order} onChange={event => setSort({ ...sort, order: event.target.value as EvidenceOrder })}

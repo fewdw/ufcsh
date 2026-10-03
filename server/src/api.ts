@@ -47,7 +47,7 @@ import type { RankingType } from "./scrape/ufccom.ts";
 import { getStats } from "./stats.ts";
 import { titleNarratives } from "./titles.ts";
 import { fighterBoard, fighterRecords } from "./records.ts";
-import { ufcFightExistsSql, hasUfcFight, recordText, currentRecord, cachedPhotoUrl, cachedFullPhotoUrl, photoVersion } from "./fighter-identity.ts";
+import { ufcFightExistsSql, fighterNamed, hasUfcFight, recordText, currentRecord, cachedPhotoUrl, cachedFullPhotoUrl, photoVersion } from "./fighter-identity.ts";
 export { hasUfcFight };
 import { careerBefore, completeRecordBefore, fightIndex, indexesHeld, ageOn, opponentsRecordBefore, parseScheduledRounds, professionalBouts, professionalBoutsBefore, sideOf, ufcBoutsBefore, type FightRecord } from "./fight-index.ts";
 import { syncCareerRecord } from "./career-records.ts";
@@ -330,6 +330,13 @@ function fightDetail(f: any): any {
   }
 }
 
+/** The replaced fighter's profile: the one stored with the article read, or
+ *  looked up by name for a read made before profiles were stored. */
+function replacedProfile(name: string | null, stored: string | null, division: string, date: string): string | null {
+  const id = stored || (name ? fighterNamed(name, division ?? "", date || todayIso()) : "");
+  return id && hasUfcFight(id) ? id : null;
+}
+
 function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingType: RankingType = "meta"): Record<string, unknown> {
   const detail = fightDetail(f);
   const at = eventDate ? { date: eventDate, ord: Number(f.ord) || 0, division: f.weight_class ?? "" } : undefined;
@@ -353,7 +360,7 @@ function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingTy
       ...fighterSummary(f.f1_id, f.f1_name, rankingType, at),
       weight_miss: f.f1_weight_miss,
       replaced: f.f1_replaced ?? null,
-      replaced_id: f.f1_replaced_id && hasUfcFight(f.f1_replaced_id) ? f.f1_replaced_id : null,
+      replaced_id: replacedProfile(f.f1_replaced, f.f1_replaced_id, f.weight_class, eventDate),
       short_notice: !!f.f1_short_notice,
       notice: f.f1_notice ?? null,
       outcome: f.f1_outcome,
@@ -364,7 +371,7 @@ function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingTy
       ...fighterSummary(f.f2_id, f.f2_name, rankingType, at),
       weight_miss: f.f2_weight_miss,
       replaced: f.f2_replaced ?? null,
-      replaced_id: f.f2_replaced_id && hasUfcFight(f.f2_replaced_id) ? f.f2_replaced_id : null,
+      replaced_id: replacedProfile(f.f2_replaced, f.f2_replaced_id, f.weight_class, eventDate),
       short_notice: !!f.f2_short_notice,
       notice: f.f2_notice ?? null,
       outcome: f.f2_outcome,
@@ -1004,9 +1011,9 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     method_details: f.method_details,
     round: f.round,
     time: f.time,
-    f1: { ...f1, weight_miss: f.f1_weight_miss, replaced: f.f1_replaced ?? null, replaced_id: f.f1_replaced_id && hasUfcFight(f.f1_replaced_id) ? f.f1_replaced_id : null,
+    f1: { ...f1, weight_miss: f.f1_weight_miss, replaced: f.f1_replaced ?? null, replaced_id: replacedProfile(f.f1_replaced, f.f1_replaced_id, f.weight_class, f.event_date),
       short_notice: !!f.f1_short_notice, notice: f.f1_notice ?? null, outcome: f.f1_outcome, stats: { kd: f.f1_kd, str: f.f1_str, td: f.f1_td, sub: f.f1_sub } },
-    f2: { ...f2, weight_miss: f.f2_weight_miss, replaced: f.f2_replaced ?? null, replaced_id: f.f2_replaced_id && hasUfcFight(f.f2_replaced_id) ? f.f2_replaced_id : null,
+    f2: { ...f2, weight_miss: f.f2_weight_miss, replaced: f.f2_replaced ?? null, replaced_id: replacedProfile(f.f2_replaced, f.f2_replaced_id, f.weight_class, f.event_date),
       short_notice: !!f.f2_short_notice, notice: f.f2_notice ?? null, outcome: f.f2_outcome, stats: { kd: f.f2_kd, str: f.f2_str, td: f.f2_td, sub: f.f2_sub } },
     odds: fightOdds(f.id, true),
     bonuses: {

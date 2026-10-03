@@ -86,7 +86,7 @@ export default function FighterSearch({
     }}>
       <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition focus-within:border-zinc-400">
         {showSelected && selected.length ? (
-          <div ref={listRef} className={`space-y-1 overflow-y-auto overscroll-contain border-b border-zinc-100 p-1 pr-2 [scrollbar-gutter:stable] ${compact ? "max-h-24" : "max-h-[4.25rem]"}`}>
+          <div ref={listRef} className={`space-y-1 overflow-y-auto overscroll-y-contain border-b border-zinc-100 p-1 pr-2 [scrollbar-gutter:stable] ${compact ? "max-h-24" : "max-h-[4.25rem]"}`}>
             {selected.map((fighter) => (
               <span key={fighter.id} className="flex min-h-8 w-full items-center gap-2 rounded-xl bg-zinc-100 py-0.5 pl-0.5 pr-1 text-[10px] font-medium text-zinc-700">
                 <Avatar src={fighter.photo_url} name={fighter.name} size="xs" />
@@ -150,7 +150,7 @@ export default function FighterSearch({
         </div>
       </div>
       {expanded ? (
-        <div ref={selection.listRef} tabIndex={-1} className="absolute left-0 right-0 z-50 mt-2 max-h-80 overflow-y-auto overscroll-contain rounded-2xl border border-zinc-200 bg-white p-2 shadow-xl">
+        <div ref={selection.listRef} tabIndex={-1} className="absolute left-0 right-0 z-50 mt-2 max-h-80 overflow-y-auto overscroll-y-contain rounded-2xl border border-zinc-200 bg-white p-2 shadow-xl">
           <div id={selection.listId} role="listbox" aria-label="Fighters" aria-busy={searching}>
           {results[0]?.approximate ? <div role="presentation" className="px-3 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-widest text-zinc-400">Did you mean</div> : null}
           {results.length ? (

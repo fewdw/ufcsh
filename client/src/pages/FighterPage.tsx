@@ -48,14 +48,14 @@ function resultBadgeLetter(outcome: HistoryRow["outcome"], upcoming: boolean): s
   }
 }
 
-/** A finish fills the dot; a decision leaves it hollow. */
+/** A finish is the full colour; a decision the same hue, light. */
 function resultBadgeClasses(outcome: HistoryRow["outcome"], upcoming: boolean, method: string | null): string {
   if (upcoming) return "bg-sky-100 text-sky-700";
   if (isDecision(method)) {
     switch (outcome) {
-      case "win": return "border-2 border-emerald-500 text-emerald-600";
-      case "loss": return "border-2 border-rose-500 text-rose-600";
-      case "draw": return "border-2 border-amber-400 text-amber-500";
+      case "win": return "bg-emerald-100 text-emerald-700";
+      case "loss": return "bg-rose-100 text-rose-700";
+      case "draw": return "bg-amber-100 text-amber-700";
     }
   }
   switch (outcome) {

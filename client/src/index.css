@@ -80,10 +80,11 @@ body,
 
 /* The page itself never scrolls; every list scrolls inside it. Without this,
    a phone flick that runs past a list's end bounces the whole page, header
-   and all. */
+   and all. Vertical only: sideways overscroll is the trackpad's swipe back
+   and forward, which "none" would switch off. */
 html,
 body {
-  overscroll-behavior: none;
+  overscroll-behavior-y: none;
 }
 
 body {
