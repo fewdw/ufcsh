@@ -1,6 +1,6 @@
 import { PANEL } from "../components/chartTokens";
 import { isFightDay, landingEvent, liveFightId, taggedEvent } from "../liveEvent";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
@@ -92,6 +92,14 @@ const DOCK = {
     list: "xl:rounded-none xl:border-0 xl:shadow-none" },
 } as const;
 
+/** Scrolls a card as low as it goes while still on screen, so everything still
+ *  to come sits above it; a list too short for that simply stops at the top. */
+function settleOn(list: HTMLElement | null, card: Element | null | undefined) {
+  if (!list || !card) return;
+  const below = card.getBoundingClientRect().bottom - list.getBoundingClientRect().bottom;
+  list.scrollTo({ top: list.scrollTop + below + 8, behavior: "instant" });
+}
+
 function EventSidebar({
   events,
   selectedId,
@@ -166,6 +174,24 @@ function EventSidebar({
     selectedRef.current?.scrollIntoView({ block: "nearest" });
   }, [selectedId, events.length]);
 
+  // Top leads back to the tagged card (live or next), or to the head of the
+  // list when a filter hides it, and only shows once that card is out of view.
+  const anchorId = (tagged && filtered.some((e) => e.id === tagged.id) ? tagged.id : filtered[0]?.id) ?? null;
+  useEffect(() => {
+    const list = listRef.current;
+    const anchor = list?.querySelector("[data-anchor]");
+    if (!list || !anchor) return;
+    // The top margin is the sticky month heading, which hides what is under it.
+    const observer = new IntersectionObserver(([entry]) => setShowTop(!entry.isIntersecting), { root: list, rootMargin: "-40px 0px 0px 0px" });
+    observer.observe(anchor);
+    return () => observer.disconnect();
+  }, [anchorId, filtered]);
+  const backToAnchor = () => settleOn(listRef.current, listRef.current?.querySelector("[data-anchor]"));
+  // The phone's sheet opens where Top would take it, or on the card being read.
+  useLayoutEffect(() => {
+    if (mobileOpen) settleOn(listRef.current, selectedRef.current ?? listRef.current?.querySelector("[data-anchor]"));
+  }, [mobileOpen]);
+
   return (
     <aside id="events-sidebar" className={`${mobileOpen ? "flex" : "hidden"} min-h-0 w-full flex-1 flex-col overflow-hidden ${dock.sidebar} ${dock.aside}`}>
       <div className={`${shell} space-y-2 p-3 ${dock.head}`}>
@@ -214,7 +240,6 @@ function EventSidebar({
       <div className={`relative min-h-0 flex-1 overflow-hidden ${shell} ${dock.list}`}>
         <div
           ref={listRef}
-          onScroll={(e) => setShowTop(e.currentTarget.scrollTop > 320)}
           // Every list on the page — this one, the card, the fight rail —
           // shares the panel's white surface, so a row is told apart by its
           // ring and shadow rather than by the tone it happens to sit on. A
@@ -243,9 +268,10 @@ function EventSidebar({
                       onPointerDown={() => { cancelWarm(); warmEvent(event.id); }}
                       onFocus={() => warmEvent(event.id)}
                       ref={isSelected ? selectedRef : undefined}
+                      data-anchor={event.id === anchorId ? "" : undefined}
                       aria-current={isSelected ? "page" : undefined}
                       className={[
-                        "rounded-xl border border-transparent px-3 py-2 transition-colors",
+                        "scroll-mt-10 rounded-xl border border-transparent px-3 py-2 transition-colors",
                         // Selection borrows the header nav's token outright: a
                         // clean surface inside a hairline ring with a soft
                         // shadow, rather than inverting to a solid block.
@@ -290,15 +316,15 @@ function EventSidebar({
           ) : null}
         </div>
 
-        {showTop ? (
+        {showTop && anchorId ? (
           <button
             type="button"
             // Instant, not smooth: the list is eight hundred events deep, and
             // animating that distance means watching thirty years of cards fly
             // past before the top arrives. "instant" rather than the default
             // "auto" so a page-level scroll-behavior can never reintroduce it.
-            onClick={() => listRef.current?.scrollTo({ top: 0, behavior: "instant" })}
-            aria-label="Scroll events to top"
+            onClick={backToAnchor}
+            aria-label="Scroll events back to the next card"
             className="absolute bottom-3 left-1/2 z-20 inline-flex -translate-x-1/2 sm:bottom-auto sm:left-auto sm:right-3 sm:top-3 sm:translate-x-0 h-9 items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 text-[13px] font-semibold sm:h-8 sm:px-3 sm:text-[11px] text-zinc-600 shadow-md transition hover:border-zinc-300 hover:text-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
           >
             <svg aria-hidden="true" className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none">
