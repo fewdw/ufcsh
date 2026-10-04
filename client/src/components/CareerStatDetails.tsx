@@ -12,6 +12,10 @@ import { segmentedGroup, segmentedIdle, segmentedSelected } from "./segmented";
 type Fighter = { id: string; name: string };
 type Sort = EvidenceSort;
 const OUTCOME_WORD: Record<string, string> = { win: "Win", loss: "Loss", draw: "Draw", nc: "No contest" };
+const COMPACT_STAT_LABELS: Record<string, string> = {
+  slpm: "Landed/min", sapm: "Taken/min", accuracy: "Acc.", defense: "Avoided", knockdowns: "KD/15m",
+  td: "TD/15m", tdacc: "TD acc.", tddef: "TD def.", subs: "Subs/15m", control: "Control",
+};
 const careerStatsUrl = (fighter: Fighter | undefined, before?: string) => fighter ? `/api/fighters/${fighter.id}/career-stats${before ? `?before=${before}` : ""}` : null;
 
 function useCareerStatLocation(matchup: boolean) {
@@ -41,29 +45,31 @@ function Evidence({ fighter, side, data, error, retry, view, sort, setSort, clos
     </div>
     <div className="min-h-0 flex-1 overflow-auto overscroll-x-contain overscroll-y-none pr-3 [scrollbar-gutter:stable]">
     {error ? <div className="py-2"><RequestNotice onRetry={retry}>Couldn’t load stats.</RequestNotice></div> : null}
-    {!data ? !error ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null : !rows.length ? <p className="py-3 text-xs text-zinc-500">No data</p> : <table className="w-full whitespace-nowrap text-left text-xs tabular-nums">
-      <colgroup><col /><col className="w-16" />{columns.map((_, index) => <col key={index} className="w-12" />)}</colgroup>
+    {!data ? !error ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null : !rows.length ? <p className="py-3 text-xs text-zinc-500">No data</p> : <table className="w-full table-fixed text-left text-[11px] tabular-nums sm:text-xs">
+      <colgroup><col /><col className="w-12 min-[375px]:w-14 sm:w-20" />{columns.map((_, index) => <col key={index} className={index === 0 ? "w-12 sm:w-16" : "w-9 min-[375px]:w-10 sm:w-12"} />)}</colgroup>
       <thead className="sticky top-0 z-10 bg-white"><tr>
-        <th scope="col" className="text-[11px] font-medium text-zinc-400">Opponent</th>
-        <th scope="col" className="text-right text-[11px] font-medium text-zinc-400">Date</th>
+        <th scope="col" className="text-[10px] font-medium text-zinc-400 sm:text-[11px]">Opponent</th>
+        <th scope="col" className="text-right text-[10px] font-medium text-zinc-400 sm:text-[11px]">Date</th>
         {columns.map((column, index) => <th scope="col" key={column.heading} aria-sort={sorted === index && sort.order !== "recent" ? sort.order : "none"}>
-          {!column.value ? <span title={column.title} className="flex min-h-7 items-center justify-end text-[11px] font-medium text-zinc-400">{column.heading}</span> : <button type="button" title={column.title} aria-label={`Sort by ${column.title}`}
+          {!column.value ? <span title={column.title} className="flex min-h-7 items-center justify-end text-[10px] font-medium text-zinc-400 sm:text-[11px]">{column.heading}</span> : <button type="button" title={column.title} aria-label={`Sort by ${column.title}`}
             onClick={() => setSort({ column: index, order: sort.column === index && sort.order === "descending" ? "ascending" : "descending" })}
-            className={`flex min-h-7 w-full items-center justify-end gap-0.5 text-[11px] font-medium ${sorted === index ? "text-zinc-900" : "text-zinc-400 hover:text-zinc-700"}`}>
-            {column.heading}{sorted === index ? sort.order === "ascending" ? <ArrowUp className="h-3 w-3 shrink-0" aria-hidden="true" /> : <ArrowDown className="h-3 w-3 shrink-0" aria-hidden="true" /> : null}
+            className={`flex min-h-7 w-full items-center justify-end gap-0.5 text-[10px] font-medium sm:text-[11px] ${sorted === index ? "text-zinc-900" : "text-zinc-400 hover:text-zinc-700"}`}>
+            {column.heading}{sorted === index ? sort.order === "ascending" ? <ArrowUp className="h-2.5 w-2.5 shrink-0 sm:h-3 sm:w-3" aria-hidden="true" /> : <ArrowDown className="h-2.5 w-2.5 shrink-0 sm:h-3 sm:w-3" aria-hidden="true" /> : null}
           </button>}
         </th>)}
       </tr></thead>
       <tbody>{rows.map(row => <tr key={row.fight_id} className="hover:bg-zinc-50">
-        <td className="py-1.5 pr-3">
-          <span className="flex items-center gap-1.5">
+        <td className="py-1.5 pr-1 sm:pr-3">
+          <span className="flex items-start gap-1.5 sm:items-center">
             <span title={OUTCOME_WORD[row.outcome ?? ""] ?? "Result unknown"} className={`inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded px-1 text-[9px] font-bold leading-none ${outcomeClasses(row.outcome)}`}>{outcomeLabel(row.outcome) || "?"}</span>
-            <Link to={`/fights/${row.fight_id}`} onClick={close} className="font-medium text-zinc-900 hover:underline">{row.opponent.name}</Link>
-            {row.method ? <span className="text-[10px] text-zinc-400">· {row.method}</span> : null}
+            <span className="min-w-0 break-words">
+              <Link to={`/fights/${row.fight_id}`} onClick={close} className="font-medium text-zinc-900 hover:underline">{row.opponent.name}</Link>
+              {row.method ? <span className="block text-[10px] text-zinc-400 sm:inline"> · {row.method}</span> : null}
+            </span>
           </span>
         </td>
-        <td className="py-1.5 pl-2 text-right text-[11px] text-zinc-500" title={formatDate(row.date)}>{formatDateShortWithYear(row.date)}</td>
-        {columns.map((column, index) => <td key={index} className={`py-1.5 pl-2 text-right ${sorted === index ? "font-medium text-zinc-900" : "text-zinc-500"}`}>{column.text(row)}</td>)}
+        <td className="py-1.5 pl-1 text-right text-[11px] text-zinc-500 sm:whitespace-nowrap sm:pl-2" title={formatDate(row.date)}>{formatDateShortWithYear(row.date)}</td>
+        {columns.map((column, index) => <td key={index} className={`whitespace-nowrap py-1.5 pl-1 text-right sm:pl-2 ${sorted === index ? "font-medium text-zinc-900" : "text-zinc-500"}`}>{column.text(row)}</td>)}
       </tr>)}</tbody>
     </table>}
     </div>
@@ -121,9 +127,11 @@ function StatModal({ id, fighters, before, selection, update }: {
           </div>
         </div>
         <div role="group" aria-label="Statistic category" className="mt-2 flex flex-wrap items-center gap-2">
-          {EVIDENCE_CATEGORIES.filter(group => matchup || group.label !== "Results").map(group => <div key={group.label} role="group" aria-label={group.label} className={`${segmentedGroup} max-w-full flex-wrap rounded-2xl`}>
+          {EVIDENCE_CATEGORIES.filter(group => matchup || group.label !== "Results").map(group => <div key={group.label} role="group" aria-label={group.label} className={`flex max-w-full items-center justify-between gap-0.5 rounded-full bg-zinc-100 p-1 sm:w-auto sm:gap-1 ${group.label === "Results" ? "w-auto" : "w-full"}`}>
             {group.views.map(option => <button key={option.key} type="button" aria-pressed={currentView.label === option.view.label} aria-label={option.view.label} title={option.view.label} onClick={() => changeView(option.view)}
-              className={`min-h-7 whitespace-nowrap rounded-full px-2 text-[11px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${currentView.label === option.view.label ? segmentedSelected : segmentedIdle}`}>{option.label}</button>)}
+              className={`min-h-7 shrink-0 whitespace-nowrap rounded-full px-1 text-[10px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 min-[375px]:px-1.5 min-[375px]:text-[11px] sm:px-2 ${currentView.label === option.view.label ? segmentedSelected : segmentedIdle}`}>
+              <span className="sm:hidden">{COMPACT_STAT_LABELS[option.key] ?? option.label}</span><span className="hidden sm:inline">{option.label}</span>
+            </button>)}
           </div>)}
         </div>
         {matchup ? <div role="group" aria-label="Fighter" className={`${segmentedGroup} mt-3 h-10 lg:hidden`}>
