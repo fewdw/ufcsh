@@ -92,9 +92,11 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-04">October 4, 2026</time></p>
             <ul>
-              <li>Development reviews now wait their turn.</li>
-              <li>Deployments verify the running version.</li>
-              <li>Reduced repeated checks and memory usage.</li>
+              <li>Fixed stats scrollbars and pinned column titles.</li>
+              <li>Mobile stats fit with single-row category pills.</li>
+              <li>Drag down to close mobile stats, without dropdown autofocus.</li>
+              <li>Separate wins/losses popup shows both fighters.</li>
+              <li>Fixed app startup after development builds.</li>
             </ul>
           </Section>
         </div>
