@@ -92,7 +92,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-04">October 4, 2026</time></p>
             <ul>
-              <li>Added hover room after the latest ranking result.</li>
+              <li>Added potential matchups with odds and fighter comparisons.</li>
+              <li>Prices refresh from BestFightOdds and FightOdds.io.</li>
+              <li>Potential matchups stay first, with a No date label.</li>
             </ul>
           </Section>
         </div>
