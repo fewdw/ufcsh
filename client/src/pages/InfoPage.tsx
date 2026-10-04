@@ -92,9 +92,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-04">October 4, 2026</time></p>
             <ul>
-              <li>Confirmed title wins update champion badges sooner.</li>
-              <li>Ranking history shows title wins from fight day.</li>
-              <li>Missing title evidence appears in Admin Bugs.</li>
+              <li>Fixed Jon Jones’s profile photo.</li>
+              <li>Corrected padded headshots and refreshed cached photos.</li>
             </ul>
           </Section>
         </div>
