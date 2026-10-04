@@ -1,6 +1,7 @@
 # Fight predictions
 
-Upcoming matchups have a **Predict** tab. A signed-in fan can choose a winner,
+Matchups keep their **Predict** tab after completion so fan predictions remain
+visible. A signed-in fan can choose a winner before predictions close,
 optionally KO/TKO, submission or decision, and optionally a finish round for
 KO/TKO or submission. Round choices require a confirmed three- or five-round
 format. The app shows each fighter's current odds and potential points before
@@ -62,7 +63,7 @@ official results immediately change the calculated points.
 **Predictions** appears beside **Scorecards** on public profiles, with cumulative
 points, right/wrong/pending/void counts and every saved pick. The list pages 25
 at a time; the totals include the whole history. Each row links back to its
-fight's Predict view, which remains readable after completion through that link.
+fight's Predict view, which also remains available in the fight's tabs after completion.
 The account menu also links directly to **My predictions**.
 
 ```
