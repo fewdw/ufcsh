@@ -11,6 +11,8 @@ test("a page is warmed with the requests it makes itself", () => {
   assert.deepEqual(pageRequests("/events/potential-matchups", "", "meta"), ["/api/events/potential-matchups?ranking=meta"]);
   assert.deepEqual(pageRequests("/fights/potential-jon-jones-vs-tom-aspinall-57626", "", "media"), ["/api/fights/potential-jon-jones-vs-tom-aspinall-57626?ranking=media"]);
   assert.deepEqual(pageRequests("/rankings", "", "media"), ["/api/rankings?ranking=media"]);
+  assert.deepEqual(pageRequests("/rankings", "?date=2016-07-10&division=Lightweight", "meta"),
+    ["/api/rankings?ranking=meta&date=2016-07-10"]);
   assert.deepEqual(pageRequests("/judges/sal-d-amato", "", "media"), ["/api/judges/sal-d-amato"]);
   assert.deepEqual(pageRequests("/profiles/fan", "?tab=bets", "media"), ["/api/profiles/fan?filter=decisions&q=&offset=0"]);
 });

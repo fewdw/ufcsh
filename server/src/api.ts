@@ -29,7 +29,7 @@ import { HttpObservability } from "./observability.ts";
 import { createRepairRunner } from "./repair-guard.ts";
 import { publicApi, cachePolicy, canonicalApiKey, clientAddress, RateLimiter } from "./api-policy.ts";
 import { canonicalMethod, log, normName, todayIso } from "./util.ts";
-import { currentRanking, currentRankings, rankingEntering, rankingTimeline } from "./ranking-history.ts";
+import { currentRanking, currentRankings, rankingEntering, rankingSnapshot, rankingTimeline } from "./ranking-history.ts";
 import { bugReport, runBugAction } from "./bugs.ts";
 import { AdminStore } from "./admins.ts";
 import { createAdminHandler, type AdminLiveFight } from "./admin-http.ts";
@@ -44,7 +44,7 @@ import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEven
 import { BackgroundRefresh } from "./background-refresh.ts";
 import { VersionCache } from "./version-cache.ts";
 import { fuzzyScore, fuzzyTarget, splitMatchup, type FuzzyTarget } from "./fuzzy.ts";
-import type { RankingType } from "./scrape/ufccom.ts";
+import { WEIGHT_LIMITS, type RankingType } from "./scrape/ufccom.ts";
 import { getStats } from "./stats.ts";
 import { titleNarratives } from "./titles.ts";
 import { fighterBoard, fighterRecords } from "./records.ts";
@@ -1207,6 +1207,31 @@ function opponentResults(bouts: { opponentId?: string | null; outcome: string }[
   return results;
 }
 
+export function getHistoricalRankings(rankingType: RankingType, date: string) {
+  const snapshot = rankingSnapshot(rankingType, date);
+  const lists = [snapshot];
+  // Keep the current view's Media P4P fallback, using its own dated snapshot.
+  if (snapshot.source === "meta") {
+    const media = rankingSnapshot("media", date);
+    lists.push({ ...media, rows: media.rows.filter(row => row.division.includes("Pound-for-Pound")
+      && !snapshot.rows.some(own => own.division === row.division)) });
+  }
+  return {
+    updated_at: null, as_of: snapshot.as_of, source: snapshot.source,
+    divisions: lists.flatMap(list => [...new Set(list.rows.map(row => row.division))].map(division => ({
+      division, weight_limit: WEIGHT_LIMITS[division.replace(/^Women's /, "")] ?? "",
+      source: list.source, as_of: list.as_of,
+      entries: list.rows.filter(row => row.division === division).map(row => ({
+        rank: row.rank, name: row.fighter_name,
+        fighter_id: row.profile_eligible ? row.fighter_id : null,
+        photo_url: cachedPhotoUrl(row.fighter_id, row.photo_url),
+        is_interim_champion: row.rank === "IC", rank_change: null, record: "",
+        activity: { status: "unknown" },
+      })),
+    }))),
+  };
+}
+
 export function getRankings(rankingType: RankingType): unknown {
   const today = todayIso();
   const index = fightIndex();
@@ -2077,7 +2102,15 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   }
   if (p.startsWith("/api/fighters/")) return await getFighter(id, rankingType) ?? undefined;
   if (p.startsWith("/api/previews/")) return getFighterPreview(id) ?? undefined;
-  if (p === "/api/rankings") return { updated_at: syncedAt("rankings_synced_at"), divisions: getRankings(rankingType) };
+  if (p === "/api/rankings") {
+    const date = url.searchParams.get("date");
+    if (date !== null) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date))
+        || new Date(date).toISOString().slice(0, 10) !== date || date > todayIso()) return undefined;
+      return getHistoricalRankings(rankingType, date);
+    }
+    return { updated_at: syncedAt("rankings_synced_at"), divisions: getRankings(rankingType) };
+  }
   if (p === "/api/stats") return getStats(url.searchParams);
   if (p === "/api/roster") return rosterView();
   if (p === "/api/matchmaking") return matchmaking();

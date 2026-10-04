@@ -3,7 +3,7 @@ import { Fragment, useEffect, useMemo, useState, useSyncExternalStore, type Reac
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { useApi } from "../api";
 import type { Division, FighterPreview, FighterPreviewFight, RankingEntry } from "../api";
-import { formatDateShort } from "../format";
+import { formatDate, formatDateShort, formatDateShortWithYear } from "../format";
 import Avatar from "../components/Avatar";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { SITE_URL, useSeo } from "../seo";
@@ -40,6 +40,14 @@ const DEFAULT_FEATURES: RankingFeatures = {
   streaks: true,
   lastFive: true,
   activityColors: true,
+};
+
+// Archive rows describe the published list; today's activity is not evidence
+// of what was known on the selected date.
+const ARCHIVE_FEATURES: RankingFeatures = {
+  opponents: false, hoverHistory: false, hoverResults: false,
+  top15Record: false, top15Scope: "division", movement: false,
+  streaks: false, lastFive: false, activityColors: false,
 };
 
 /** v3 switches hover previews off while keeping the other v2 choices. */
@@ -367,12 +375,15 @@ function DivisionCard({
         {borrowed ? (
           <span
             className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200"
-            title="The meta view publishes no pound-for-pound list, so this one is the media list."
+            title={division.division.includes("Pound-for-Pound")
+              ? "The meta view publishes no pound-for-pound list, so this one is the media list."
+              : "Media rankings are used before the first Meta list."}
           >
             Media
           </span>
         ) : null}
-        {division.weight_limit ? (
+        {division.as_of ? <span className="shrink-0 text-[10px] text-zinc-500" title="Published list date">{formatDateShortWithYear(division.as_of)}</span> : null}
+        {!division.as_of && division.weight_limit ? (
           <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500">
             {division.weight_limit}
           </span>
@@ -536,29 +547,48 @@ const FILTERS: { key: ViewFilter; label: string }[] = [
 
 export default function RankingsPage() {
   const { settings, update } = useSettings();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { key: locationKey, state: locationState } = useLocation();
+  const selectedDate = searchParams.get("date");
+  const historical = selectedDate !== null;
+  const today = new Date().toISOString().slice(0, 10);
+  const selectDate = (date: string | null) => {
+    setHighlightedId(null);
+    setSearchParams(previous => {
+      const next = new URLSearchParams(previous);
+      if (date) next.set("date", date);
+      else next.delete("date");
+      return next;
+    }, { state: { ...locationState, rankingsView: view } });
+  };
   useSeo({
-    title: `UFC ${settings.rankingSource === "meta" ? "Meta" : "Media"} Rankings`,
-    description: `Current UFC ${settings.rankingSource === "meta" ? "Meta" : "Media"} rankings by division, including champions and fighter activity.`,
+    title: `UFC ${settings.rankingSource === "meta" ? "Meta" : "Media"} Rankings${historical ? ` · ${selectedDate}` : ""}`,
+    description: historical ? `UFC rankings as of ${selectedDate}, by division.`
+      : `Current UFC ${settings.rankingSource === "meta" ? "Meta" : "Media"} rankings by division, including champions and fighter activity.`,
     path: "/rankings",
     structuredData: {
       "@context": "https://schema.org",
       "@type": "CollectionPage",
-      name: "Current UFC Rankings",
+      name: historical ? `UFC Rankings as of ${selectedDate}` : "Current UFC Rankings",
       url: `${SITE_URL}/rankings`,
     },
   });
-  const { key: locationKey } = useLocation();
   // A bout's weight class links here with its division, to be scrolled to.
-  const target = useSearchParams()[0].get("division");
+  const target = searchParams.get("division");
   const [targeted, setTargeted] = useState<string | null>(null);
-  const [view, setView] = useHistoryState<ViewFilter>("rankings:view", () => target && isWomens(target) ? "women" : "men");
+  const historyView = locationState?.rankingsView as ViewFilter | undefined;
+  const [view, setView] = useHistoryState<ViewFilter>("rankings:view", () => historyView && FILTERS.some(filter => filter.key === historyView)
+    ? historyView : target && isWomens(target) ? "women" : "men");
   const [features, setFeatures] = useHistoryState<RankingFeatures>("rankings:features", loadFeatures);
   const canHover = useCanHover();
   const canPreview = useCanHover(true);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
-  const activeFeatures = useMemo(() => ({ ...features, hoverHistory: features.hoverHistory && canPreview }), [canPreview, features]);
-  const tapResults = features.hoverResults && !canHover;
-  const { data, loading, error } = useApi<{ updated_at: number | null; divisions: Division[] }>(withRanking("/api/rankings", settings.rankingSource));
+  const activeFeatures = useMemo(() => historical ? ARCHIVE_FEATURES
+    : ({ ...features, hoverHistory: features.hoverHistory && canPreview }), [canPreview, features, historical]);
+  const tapResults = activeFeatures.hoverResults && !canHover;
+  const { data, loading, error } = useApi<{
+    updated_at: number | null; divisions: Division[]; as_of?: string | null; source?: RankingSource;
+  }>(withRanking("/api/rankings", settings.rankingSource) + (historical ? `&date=${encodeURIComponent(selectedDate)}` : ""));
   const divisions = data?.divisions ?? null;
   const pageScroll = useRouteScrollRestoration<HTMLDivElement>("rankings:page", Boolean(divisions?.length));
 
@@ -589,23 +619,12 @@ export default function RankingsPage() {
     setTargeted(target);
   }, [target, loading, divisions, locationKey, pageScroll]);
 
-  const highlightedFighter = features.hoverResults && highlightedId
+  const highlightedFighter = activeFeatures.hoverResults && highlightedId
     ? shown.flatMap((division) => division.entries).find((entry) => entry.fighter_id === highlightedId) ?? null
     : null;
 
-  if (loading) {
-    return <div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading rankings…</div>;
-  }
-  if (error || !divisions || divisions.length === 0) {
-    return (
-      <div className="flex h-full items-center justify-center text-sm text-zinc-400">
-        Rankings not available yet — first sync may still be running.
-      </div>
-    );
-  }
-
   const centerFilteredCards = view === "women" || view === "p4p";
-  const wideKey = features.activityColors && features.hoverResults;
+  const wideKey = activeFeatures.activityColors && activeFeatures.hoverResults;
   const activityKey = (
     <>
       <span className="flex items-center gap-1.5" title="Has a fight booked">
@@ -619,7 +638,7 @@ export default function RankingsPage() {
     </>
   );
   // ufc.com is read every six hours; a day without one is worth saying.
-  const updated = <Freshness label="Updated" at={data?.updated_at} staleAfterHours={24} />;
+  const updated = historical ? null : <Freshness label="Updated" at={data?.updated_at} staleAfterHours={24} />;
 
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
@@ -659,15 +678,15 @@ export default function RankingsPage() {
               </button>
             ))}
           </div>
-          <div className={`order-last flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 ${
+          {!historical ? <div className={`order-last flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 ${
             wideKey ? "xl:order-none xl:ml-auto xl:basis-auto xl:whitespace-nowrap" : "md:order-none md:ml-auto md:basis-auto md:whitespace-nowrap"
           }`}>
-            {features.activityColors ? activityKey : null}
-            {features.hoverResults ? <OpponentKey compact /> : null}
+            {activeFeatures.activityColors ? activityKey : null}
+            {activeFeatures.hoverResults ? <OpponentKey compact /> : null}
             {/* Both keys fill a phone's row; the Filters menu still shows the time. */}
             {wideKey ? <span className="hidden sm:inline">{updated}</span> : updated}
-          </div>
-          <FeaturesMenu
+          </div> : null}
+          {!historical ? <FeaturesMenu
             features={features}
             onChange={(next) => {
               if (!next.hoverResults) setHighlightedId(null);
@@ -678,10 +697,35 @@ export default function RankingsPage() {
             divisionOrder={settings.divisionOrder}
             onDivisionOrder={(order) => update("divisionOrder", order)}
             legend={<>{activityKey}{features.hoverResults ? <OpponentKey /> : null}{updated}</>}
-          />
+          /> : null}
+          <form className="flex basis-full flex-wrap items-center gap-2 border-t border-zinc-200 pt-2" onSubmit={event => {
+            event.preventDefault();
+            const date = new FormData(event.currentTarget).get("date");
+            if (typeof date === "string" && date) selectDate(date);
+          }}>
+            <label htmlFor="rankings-date" className="text-xs font-medium text-zinc-600">As of</label>
+            <input key={selectedDate ?? "today"} id="rankings-date" name="date" type="date" required
+              min="2013-02-04" max={today} defaultValue={selectedDate ?? ""}
+              className="min-w-0 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-900" />
+            <button type="submit" className="rounded-md bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-200">View</button>
+            {historical ? <button type="button" onClick={() => selectDate(null)}
+              className="rounded-md px-2 py-1.5 text-xs font-medium text-sky-600 hover:bg-zinc-100">Today</button> : null}
+            <span className="basis-full text-[11px] text-zinc-500 sm:basis-auto" aria-live="polite">
+              {historical ? data?.as_of
+                ? `Published ${formatDate(data.as_of)} · ${data.source === "media" ? "Media" : "Meta"}${data.source !== settings.rankingSource ? " (before Meta rankings began)" : ""}`
+                : "Latest published list on or before your date."
+                : "Browse published rankings since February 2013."}
+            </span>
+          </form>
         </div>
 
-        <div
+        {loading ? <div role="status" className="appear-late p-8 text-center text-sm text-zinc-400">Loading rankings…</div>
+          : error ? <div role="alert" className="p-8 text-center text-sm text-zinc-500">Could not load rankings. Try another date or reload.</div>
+          : !divisions?.length ? <div className="p-8 text-center text-sm text-zinc-500">{historical
+            ? "No published rankings are available on or before this date."
+            : "Rankings not available yet — first sync may still be running."}</div>
+          : !shown.length ? <div className="p-8 text-center text-sm text-zinc-500">No rankings for these divisions on this date.</div>
+          : <div
           className={
             centerFilteredCards
               ? "flex flex-wrap justify-center gap-2 sm:gap-3"
@@ -700,7 +744,7 @@ export default function RankingsPage() {
               <DivisionCard key={d.division} division={d} features={activeFeatures} source={settings.rankingSource} highlightedFighter={highlightedFighter} onHighlight={setHighlightedId} tapResults={tapResults} targeted={d.division === targeted} />
             )
           ))}
-        </div>
+        </div>}
       </div>
     </div>
   );

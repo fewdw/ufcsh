@@ -2,7 +2,7 @@ import * as cheerio from "cheerio";
 import { fetchHtml } from "../http.ts";
 import { cleanText, normName } from "../util.ts";
 
-const WEIGHT_LIMITS: Record<string, string> = {
+export const WEIGHT_LIMITS: Record<string, string> = {
   Strawweight: "115 lbs",
   Flyweight: "125 lbs",
   Bantamweight: "135 lbs",
