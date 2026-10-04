@@ -49,10 +49,11 @@ export function evidenceColumns(metric: ProfileMetric): EvidenceColumn[] {
 
 type EvidenceRow = CareerStatistics["rows"][number];
 
-/** What the evidence popup lists: which bouts, under which columns, with what
+/** What the evidence modal lists: which bouts, under which columns, with what
  *  headline figure. Columns without a `value` cannot be sorted. */
 export type EvidenceView = {
   label: string;
+  description?: string;
   columns: { heading: string; title: string; value?: (row: EvidenceRow) => number | null; text: (row: EvidenceRow) => string }[];
   include: (row: EvidenceRow) => boolean;
   headline: (data: CareerStatistics) => string;
@@ -60,6 +61,7 @@ export type EvidenceView = {
 
 export const metricView = (metric: ProfileMetric): EvidenceView => ({
   label: metric.label,
+  description: metric.explanation,
   columns: evidenceColumns(metric),
   include: row => metric.sample(row.totals).total > 0,
   headline: data => profileText(metric.value(data.totals), metric.format),
