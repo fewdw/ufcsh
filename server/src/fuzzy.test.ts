@@ -6,7 +6,7 @@ import { search } from "./api.ts";
 type Results = {
   fighters: { name: string; approximate?: boolean }[];
   events: { name: string; approximate?: boolean }[];
-  fights: { f1_name: string; f2_name: string; approximate?: boolean }[];
+  fights: { id: string; f1_name: string; f2_name: string; meeting: number; approximate?: boolean }[];
 };
 
 test("prefix distance tolerates typos against the start of a word", () => {
@@ -72,6 +72,31 @@ test("search aliases find a fighter and their bouts", () => {
   assert.equal((search("bobby green") as Results).fighters[0]?.name, "King Green");
   const bout = search("gsp vs hughes") as Results;
   assert.ok(bout.fights.some((f) => [f.f1_name, f.f2_name].sort().join() === "Georges St-Pierre,Matt Hughes"));
+});
+
+test("a matchup's trailing number selects that meeting", () => {
+  const all = (search("usman vs cov") as Results).fights;
+  assert.equal(all.length, 2);
+  for (const meeting of [1, 2]) {
+    const expected = all.filter((fight) => fight.meeting === meeting);
+    assert.equal(expected.length, 1);
+    for (const query of [`usman vs cov ${meeting}`, `cov v usman ${meeting}`]) {
+      assert.deepEqual((search(query) as Results).fights, expected, query);
+    }
+  }
+  assert.deepEqual((search("usman vs cov 99") as Results).fights, []);
+  assert.deepEqual((search("usman vs cov 0") as Results).fights, []);
+});
+
+test("numbered matchups still accept aliases and spelling mistakes", () => {
+  const aliases = (search("hughes versus gsp 3") as Results).fights;
+  assert.equal(aliases.length, 1);
+  assert.equal(aliases[0].meeting, 3);
+  const typo = (search("volkanovsky vs holoway 2") as Results).fights;
+  assert.equal(typo.length, 1);
+  assert.equal(typo[0].meeting, 2);
+  assert.ok(typo[0].approximate);
+  assert.ok((search("ufc 268") as Results).events.some((event) => event.name.startsWith("UFC 268:")));
 });
 
 test("list filters ignore spacing and word order, and fall back to typos only when nothing matches", async () => {

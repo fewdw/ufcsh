@@ -31,20 +31,17 @@ function relevance(item: Item, query: string): number {
   return query.split(" ").every((word) => words.some((part) => part.startsWith(word))) ? 2 : 1;
 }
 
-/** Groups keep their usual order unless another holds a closer match: an
- *  official or venue named exactly rises above loose fighter and fight hits. */
+/** Keep category priority fixed; rank closer names within each group. */
 function byRelevance(items: Item[], raw: string): Item[] {
   const query = normalize(raw);
-  const groups = new Map<string, { order: number; best: number }>();
+  const groups = new Map<string, number>();
   const scored = items.map((item, index) => {
     const score = relevance(item, query);
-    const group = groups.get(item.group) ?? { order: groups.size, best: 0 };
-    group.best = Math.max(group.best, score);
-    groups.set(item.group, group);
+    if (!groups.has(item.group)) groups.set(item.group, groups.size);
     return { item, index, score };
   });
   const rank = (entry: typeof scored[number]) => groups.get(entry.item.group)!;
-  return scored.sort((a, b) => rank(b).best - rank(a).best || rank(a).order - rank(b).order
+  return scored.sort((a, b) => rank(a) - rank(b)
     || b.score - a.score || a.index - b.index).map((entry) => entry.item);
 }
 
@@ -103,19 +100,19 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
         <span className="shrink-0 text-xs tabular-nums text-zinc-500">{fighter.record}</span>
       </>,
     })),
+    ...(data?.fights ?? []).map((fight) => ({
+      key: `fight-${fight.id}`, to: `/fights/${fight.id}`, group: fight.approximate ? "Fights · did you mean" : "Fights", approximate: fight.approximate, label: `${fight.f1_name} vs ${fight.f2_name}`,
+      render: () => <>
+        <span className="min-w-0 flex-1"><span className="flex min-w-0 items-center gap-2"><span className="truncate font-medium text-zinc-900">{fight.f1_name} <span className="text-zinc-400">vs</span> {fight.f2_name}</span>{fight.meetings > 1 ? <span className="shrink-0 rounded-full bg-zinc-100 px-1.5 py-px text-[10px] font-semibold tabular-nums text-zinc-600" title={`Meeting ${fight.meeting} of ${fight.meetings}`}>Fight {fight.meeting}</span> : null}</span><span className="block truncate text-xs text-zinc-500">{fight.event_name}</span></span>
+        <span className="shrink-0 text-xs tabular-nums text-zinc-500">{formatDateShortWithYear(fight.date)}</span>
+      </>,
+    })),
     ...(data?.events ?? []).map((event) => ({
       key: `event-${event.id}`, to: `/events/${event.id}`, group: event.approximate ? "Events · did you mean" : "Events", approximate: event.approximate, label: event.name,
       render: () => <>
         <CalendarDays className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />
         <span className="min-w-0 flex-1 truncate font-medium text-zinc-900">{event.name}</span>
         <span className="shrink-0 text-xs tabular-nums text-zinc-500">{formatDateShortWithYear(event.date)}</span>
-      </>,
-    })),
-    ...(data?.fights ?? []).map((fight) => ({
-      key: `fight-${fight.id}`, to: `/fights/${fight.id}`, group: fight.approximate ? "Fights · did you mean" : "Fights", approximate: fight.approximate, label: `${fight.f1_name} vs ${fight.f2_name}`,
-      render: () => <>
-        <span className="min-w-0 flex-1"><span className="flex min-w-0 items-center gap-2"><span className="truncate font-medium text-zinc-900">{fight.f1_name} <span className="text-zinc-400">vs</span> {fight.f2_name}</span>{fight.meetings > 1 ? <span className="shrink-0 rounded-full bg-zinc-100 px-1.5 py-px text-[10px] font-semibold tabular-nums text-zinc-600" title={`Meeting ${fight.meeting} of ${fight.meetings}`}>Fight {fight.meeting}</span> : null}</span><span className="block truncate text-xs text-zinc-500">{fight.event_name}</span></span>
-        <span className="shrink-0 text-xs tabular-nums text-zinc-500">{formatDateShortWithYear(fight.date)}</span>
       </>,
     })),
     ...(data?.officials ?? []).map((official) => ({

@@ -92,9 +92,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-04">October 4, 2026</time></p>
             <ul>
-              <li>Sign-in sits near the center of the screen.</li>
-              <li>Account dialogs dim the entire screen.</li>
-              <li>Search shortcuts pause during sign-in and sign-up.</li>
+              <li>Search shows fighters first, then fights, then events.</li>
+              <li>Find a rematch by adding its fight number.</li>
             </ul>
           </Section>
         </div>
