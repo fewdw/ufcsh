@@ -1,5 +1,5 @@
 import { PANEL } from "../components/chartTokens";
-import { Fragment, lazy, Suspense, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { useApi } from "../api";
 import type { Division, FighterPreview, FighterPreviewFight, RankingEntry } from "../api";
@@ -14,9 +14,9 @@ import Freshness from "../components/Freshness";
 import ResultDots from "../components/ResultDots";
 import { resultDot } from "../resultDots";
 import OptionsSheet, { SHEET_SELECT, SheetField, SwitchRow } from "../components/OptionsSheet";
+import RankingsDateControl from "../components/RankingsDateControl";
 
 const shell = PANEL;
-const RankingsDatePicker = lazy(() => import("../components/RankingsDatePicker"));
 
 type ViewFilter = "men" | "women" | "p4p" | "all";
 type RankingsData = {
@@ -458,11 +458,9 @@ function FeaturesMenu({
   divisionOrder,
   onDivisionOrder,
   legend,
-  dateControls,
   historical,
 }: {
   legend: ReactNode;
-  dateControls: ReactNode;
   historical: boolean;
   features: RankingFeatures;
   onChange: (features: RankingFeatures) => void;
@@ -476,7 +474,7 @@ function FeaturesMenu({
   const options = FEATURE_OPTIONS.filter((option) => option.key !== "hoverHistory" || canPreview);
   const enabledCount = options.filter((option) => features[option.key]).length;
   return (
-    <OptionsSheet label="Filters" count={`${enabledCount}/${options.length}`} onReset={() => onChange(DEFAULT_FEATURES)} iconOnlyOnPhone="lg" closeOnSubmit>
+    <OptionsSheet label="Filters" count={`${enabledCount}/${options.length}`} onReset={() => onChange(DEFAULT_FEATURES)} iconOnlyOnPhone="lg">
       {/* The key to every mark in the lists, whichever are switched on. */}
       <div className="mb-1 space-y-1.5 border-b border-zinc-100 px-4 pb-3 pt-3 text-[11px] text-zinc-500">
         {/* Last 5: shape is where, fill how it ended, colour the result. */}
@@ -538,7 +536,6 @@ function FeaturesMenu({
           </select>
         </SheetField>
       </div>
-      <div className="border-t border-zinc-100 px-4 py-3">{dateControls}</div>
     </OptionsSheet>
   );
 }
@@ -664,9 +661,8 @@ export default function RankingsPage() {
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto" aria-busy={loading}>
       <div className="p-2 pb-8 sm:p-3">
-        {/* Filters always last. From `md` the key sits just before it on the
-            one row (from `xl` when both keys show); below that it takes a
-            second row of its own, at the right. */}
+        {/* Keep Filters and date controls together. On small screens they
+            share the source row; divisions and the key get their own rows. */}
         <div className={`${shell} mb-2 flex flex-wrap items-center gap-1.5 px-2.5 py-2 sm:mb-3 sm:gap-2 sm:px-3 lg:gap-3`}>
           <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Ranking view">
             {SOURCES.map((source) => (
@@ -684,20 +680,22 @@ export default function RankingsPage() {
               </button>
             ))}
           </div>
-          <div className={`${segmentedGroup} ml-auto shrink-0 p-0.5 sm:p-1 ${wideKey ? "xl:ml-0" : "md:ml-0"}`} role="group" aria-label="Divisions shown">
-            {FILTERS.map((f) => (
-              <button
-                key={f.key}
-                type="button"
-                aria-pressed={view === f.key}
-                onClick={() => { setHighlightedId(null); setView(f.key); }}
-                className={`rounded-full px-2.5 py-1 text-xs font-medium transition sm:px-3.5 md:px-2.5 lg:px-3.5 ${
-                  view === f.key ? segmentedSelected : segmentedIdle
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
+          <div className={`order-2 flex basis-full justify-end ${wideKey ? "xl:order-none xl:basis-auto" : "md:order-none md:basis-auto"}`}>
+            <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Divisions shown">
+              {FILTERS.map((f) => (
+                <button
+                  key={f.key}
+                  type="button"
+                  aria-pressed={view === f.key}
+                  onClick={() => { setHighlightedId(null); setView(f.key); }}
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition sm:px-3.5 md:px-2.5 lg:px-3.5 ${
+                    view === f.key ? segmentedSelected : segmentedIdle
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
           </div>
           <div className={`order-last flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 ${
             wideKey ? "xl:order-none xl:ml-auto xl:basis-auto xl:whitespace-nowrap" : "md:order-none md:ml-auto md:basis-auto md:whitespace-nowrap"
@@ -711,22 +709,22 @@ export default function RankingsPage() {
               {data.source !== displayedSource ? " (before Meta rankings began)" : ""}
             </span> : null}
           </div>
-          <FeaturesMenu
-            features={features}
-            onChange={(next) => {
-              if (!next.hoverResults) setHighlightedId(null);
-              setFeatures(next);
-            }}
-            dateMode={settings.dateMode}
-            onDateMode={(mode) => update("dateMode", mode)}
-            divisionOrder={settings.divisionOrder}
-            onDivisionOrder={(order) => update("divisionOrder", order)}
-            legend={<>{activityKey}{features.hoverResults ? <OpponentKey /> : null}{updated}</>}
-            historical={historical}
-            dateControls={<Suspense fallback={<div role="status" className="flex h-11 items-center text-xs text-zinc-500">Loading date picker…</div>}>
-              <RankingsDatePicker key={selectedDate ?? "today"} selectedDate={selectedDate} today={today} onView={selectDate} />
-            </Suspense>}
-          />
+          <div className="order-1 ml-auto flex shrink-0 items-center gap-1.5 md:order-none md:ml-0 sm:gap-2">
+            <FeaturesMenu
+              features={features}
+              onChange={(next) => {
+                if (!next.hoverResults) setHighlightedId(null);
+                setFeatures(next);
+              }}
+              dateMode={settings.dateMode}
+              onDateMode={(mode) => update("dateMode", mode)}
+              divisionOrder={settings.divisionOrder}
+              onDivisionOrder={(order) => update("divisionOrder", order)}
+              legend={<>{activityKey}{features.hoverResults ? <OpponentKey /> : null}{updated}</>}
+              historical={historical}
+            />
+            <RankingsDateControl selectedDate={selectedDate} today={today} onView={selectDate} />
+          </div>
         </div>
 
         {error && divisions ? <div role="alert" className="mb-2 text-xs text-zinc-500">Could not update rankings. Showing the last loaded list.</div> : null}
