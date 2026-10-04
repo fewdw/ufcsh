@@ -69,7 +69,9 @@ small/large screens. Prefer the smallest maintainable solution.
 ## Checks and production releases
 
 - GitHub CI runs when a draft PR is marked ready, and on `main` releases.
-  Before requesting CI, finish the batch of edits. To check a new revision,
+  Before requesting CI, finish the batch of edits. After pushing, confirm
+  GitHub's PR `headRefOid` matches local `HEAD` before marking it ready.
+  To check a new revision,
   `gh pr ready --undo` then `gh pr ready`; rerunning an old run checks old code.
   Keep unchanged passing checks. Required `checks` and up-to-date protection stay.
 - Merge/push to `main` only with explicit user authorization. Before that merge,

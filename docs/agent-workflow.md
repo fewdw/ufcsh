@@ -56,6 +56,10 @@ ordinary pushes don't rerun it. Required `checks` must still pass on the latest
 revision, and the branch must include current main. Re-running an old Actions run
 does not verify a newer commit.
 
+After pushing, check `gh pr view --json headRefOid --jq .headRefOid` against
+`git rev-parse HEAD` before marking ready. GitHub can briefly report the old PR
+head immediately after a push; a ready transition then checks that old revision.
+
 Before an authorized merge, update against main and prepare the release changelog
 in the same batch, then push and request final CI. Main CI still gates production.
 Production releases leave the selected dev branch alone. Perform the owner's
