@@ -28,7 +28,7 @@ import { HttpObservability } from "./observability.ts";
 import { createRepairRunner } from "./repair-guard.ts";
 import { publicApi, cachePolicy, canonicalApiKey, clientAddress, RateLimiter } from "./api-policy.ts";
 import { canonicalMethod, log, normName, todayIso } from "./util.ts";
-import { rankingEntering, rankingTimeline } from "./ranking-history.ts";
+import { currentRanking, currentRankings, rankingEntering, rankingTimeline } from "./ranking-history.ts";
 import { bugReport, runBugAction } from "./bugs.ts";
 import { AdminStore } from "./admins.ts";
 import { createAdminHandler, type AdminLiveFight } from "./admin-http.ts";
@@ -169,16 +169,8 @@ type FighterSummary = {
 const fighterSummaryStmt = () =>
   prepared(`
     SELECT fr.id, fr.name, fr.nickname, fr.wins, fr.losses, fr.draws, fr.photo_url, fr.photo_full_url,
-           fr.country, fr.country_code,
-           r.division AS r_division, r.rank AS r_rank
+           fr.country, fr.country_code
     FROM fighters fr
-    LEFT JOIN rankings r ON r.rowid = (
-      SELECT rr.rowid FROM rankings rr
-      WHERE rr.fighter_id = fr.id AND rr.ranking_type = ?
-        AND rr.division NOT LIKE '%Pound-for-Pound%'
-      ORDER BY CASE rr.rank WHEN 'C' THEN 0 WHEN 'IC' THEN 1 ELSE CAST(rr.rank AS INTEGER) + 2 END
-      LIMIT 1
-    )
     WHERE fr.id = ?
   `);
 
@@ -195,7 +187,7 @@ function requestPhoto(id: string): void {
 type BoutMoment = { date: string; ord: number; division: string };
 
 function fighterSummary(id: string, fallbackName: string, rankingType: RankingType = "meta", at?: BoutMoment): FighterSummary {
-  const row = id ? (fighterSummaryStmt().get(rankingType, id) as any) : null;
+  const row = id ? (fighterSummaryStmt().get(id) as any) : null;
   if (!row) {
     return { id, name: fallbackName, nickname: "", record: "", profile_eligible: false, photo_url: null, photo_full_url: null, ranking: null, country: null, country_code: null };
   }
@@ -211,7 +203,7 @@ function fighterSummary(id: string, fallbackName: string, rankingType: RankingTy
     photo_full_url: cachedFullPhotoUrl(row.id, row.photo_full_url),
     ranking: at && at.date < todayIso()
       ? rankingEntering(row.id, rankingType, at.date, at.division, fightIndex().holdersBefore(at.division, at.date, at.ord))
-      : row.r_rank ? { division: row.r_division, rank: row.r_rank } : null,
+      : currentRanking(row.id, rankingType),
     country: row.country ?? null,
     country_code: row.country_code ?? null,
   };
@@ -1076,14 +1068,7 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
       opponent_rank: rankingEntering(row.opponent.id, rankingType, row.date, row.weight_class ?? "", holders),
     };
   });
-  const ranking = prepared(`
-      SELECT division, rank, rank_change FROM rankings
-      WHERE fighter_id = ? AND ranking_type = ?
-        AND division NOT LIKE '%Pound-for-Pound%'
-      ORDER BY CASE rank WHEN 'C' THEN 0 WHEN 'IC' THEN 1 ELSE CAST(rank AS INTEGER) + 2 END
-      LIMIT 1
-    `)
-    .get(id, rankingType) as any;
+  const ranking = currentRanking(id, rankingType);
   const records = fighterRecords(id);
   const profile = {
     id: fr.id,
@@ -1268,15 +1253,8 @@ export function getRankings(rankingType: RankingType): unknown {
     ORDER BY e.date ASC LIMIT 1
   `);
   return divisions.map((d) => {
-    const entries = prepared(`
-        SELECT r.rank, r.fighter_name,
-               r.fighter_id, r.rank_change, fr.photo_url, fr.nickname,
-               fr.wins, fr.losses, fr.draws,
-               ${ufcFightExistsSql("r.fighter_id", "fought")} AS profile_eligible
-        FROM rankings r LEFT JOIN fighters fr ON fr.id = r.fighter_id
-        WHERE r.ranking_type = ? AND r.division = ? ORDER BY r.div_pos ASC
-      `)
-      .all(d.source, d.division) as any[];
+    const entries = currentRankings(d.source).filter(row => row.division === d.division)
+      .sort((a, b) => a.div_pos - b.div_pos);
     // Membership comes from this published division today, not a fighter's
     // historic rank or another weight class. Include the champion and ties.
     const divisionOpponentIds = new Set<string>(entries

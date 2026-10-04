@@ -1,5 +1,5 @@
 import { db, getMeta, setMeta } from "./db.ts";
-import { missingCurrentRankingHistory, relinkRankingHistory } from "./ranking-history.ts";
+import { confirmedTitleResults, missingCurrentRankingHistory, relinkRankingHistory } from "./ranking-history.ts";
 import { validateFightActions } from "./action-stats.ts";
 import { americanLine, fightIndex, impliedProbability } from "./fight-index.ts";
 import { fighterNamed, hasUfcFight, ufcFightExistsSql } from "./fighter-identity.ts";
@@ -480,6 +480,39 @@ function rankedHistoryGaps(): BugCheck {
     facts: [["Latest stored list", row.as_of ?? "none"], ["Missing", row.fighter_id ? "linked ranking entry" : "fighter identity"]],
     links: [{ label: "Rankings", href: "/rankings", internal: true }, ...(row.fighter_id ? [fighterLink(row.fighter_id, row.fighter_name)] : [])],
     actions: [{ id: "rankings", label: "Re-read rankings", target: "all" }],
+  })));
+}
+
+function titleRankingEvidenceGaps(): BugCheck {
+  const confirmed = new Set(confirmedTitleResults().map(result => result.id));
+  const rows = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, f.title_type, f.f1_outcome, f.f2_outcome, e.wiki_title, e.wiki_checked_at,
+      f1.id AS linked_f1, f2.id AS linked_f2
+    FROM fights f JOIN events e ON e.id = f.event_id
+    LEFT JOIN fighters f1 ON f1.id = f.f1_id LEFT JOIN fighters f2 ON f2.id = f.f2_id
+    WHERE f.title_fight = 1 AND f.title_type IN ('title', '') AND e.date <= date('now')
+      AND e.date > (SELECT MIN(date) FROM (SELECT MAX(date) AS date FROM ranking_history GROUP BY ranking_type))
+      AND (f.f1_outcome = 'win' OR f.f2_outcome = 'win')
+      AND CASE WHEN f.f1_outcome = 'win' THEN f.f1_weight_miss ELSE f.f2_weight_miss END IS NULL
+  `).all() as (FightRow & { title_type: string; f1_outcome: string | null; f2_outcome: string | null;
+    wiki_title: string | null; wiki_checked_at: number | null; linked_f1: string | null; linked_f2: string | null })[];
+  return check({
+    id: "title-ranking-evidence",
+    group: "Records",
+    label: "Title results awaiting ranking confirmation",
+    description: "An early champion update needs an identified undisputed title bout, linked fighters, matching win/loss outcomes and a successful weigh-in read after the event date. Missing evidence keeps the official ranking in place. A winner who missed weight is never promoted. Re-read the fight, event or weigh-ins to fill the gap.",
+    grade: "must",
+  }, rows.filter(row => !confirmed.has(row.id)).map(row => ({
+    key: row.id,
+    title: `${row.f1_name} vs ${row.f2_name}`,
+    subtitle: `${row.event_name} · ${row.date}`,
+    facts: [["Title type", row.title_type || "unknown"], ["Outcomes", `${row.f1_outcome ?? "unknown"} / ${row.f2_outcome ?? "unknown"}`],
+      ["Fighter identities", row.linked_f1 && row.linked_f2 && row.f1_id !== row.f2_id ? "linked" : "missing or conflicting"],
+      ["Weigh-ins", row.wiki_title && row.wiki_checked_at && row.wiki_checked_at >= Date.parse(row.date) ? "read" : "not confirmed"]],
+    links: [{ label: "Fight", href: `/fights/${row.id}`, internal: true }],
+    actions: [{ id: "detail", label: "Re-read fight", target: row.id },
+      { id: "event", label: "Re-read event", target: row.event_id },
+      { id: "wiki", label: "Re-read weigh-ins", target: row.event_id }],
   })));
 }
 
@@ -1598,6 +1631,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     rankedRecordGaps(),
     rankedHistoryGaps(),
     rankingHistoryGaps(),
+    titleRankingEvidenceGaps(),
     matchmakingGaps(),
     fightsMissingFromHistory(),
     unlinkedUfcBouts(),

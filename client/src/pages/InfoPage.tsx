@@ -92,8 +92,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-04">October 4, 2026</time></p>
             <ul>
-              <li>Fighter names stay level at every screen size.</li>
-              <li>Missing details no longer shift either name.</li>
+              <li>Confirmed title wins update champion badges sooner.</li>
+              <li>Ranking history shows title wins from fight day.</li>
+              <li>Missing title evidence appears in Admin Bugs.</li>
             </ul>
           </Section>
         </div>

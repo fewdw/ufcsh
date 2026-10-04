@@ -228,3 +228,16 @@ attempts and control time for the compact opponent rows. Index heap retained aft
 GC was 117.00 MiB before and 117.76 MiB with this feature (about 0.76 MiB added
 per query worker in this sample). The extra retained fields track time only for
 bouts with recorded takedowns, knockdowns and submission attempts.
+
+## Confirmed title updates (2026-10-04)
+
+Confirmed undisputed results overlay the published rankings at read time;
+there is no new polling, source request or stored rankings list. Result evidence
+and current rankings are cached per profile revision and UTC day. Finishing a
+weigh-in read invalidates the cache even when everyone made weight.
+
+On a private development archive, the first current-rankings read took 11.1 ms;
+1,000 cached fighter-rank lookups averaged 0.073 ms. Natalia Silva's timeline
+over 200 reads measured 6.3 ms p50 and 9.6 ms p95. The initial mean comparison
+was 6.4 ms before the title overlay and 7.0 ms after it. Existing API response
+caches still reuse those results across visitors.
