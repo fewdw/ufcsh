@@ -94,8 +94,8 @@ export function CardEventTitle({ name, date, location, locationSlug, venue, chil
         <h1 className="text-balance text-sm font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-2xl">{name}</h1>
         <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[48rem]:mt-1 @[48rem]:gap-x-2 @[48rem]:text-xs @[48rem]:leading-relaxed">
           <span className="whitespace-nowrap font-medium text-zinc-600">
-            <span className="@[48rem]:hidden">{formatDateShort(date)}</span>
-            <span className="hidden @[48rem]:inline">{formatDate(date)}</span>
+            <span className="@[48rem]:hidden">{date ? formatDateShort(date) : "No date"}</span>
+            <span className="hidden @[48rem]:inline">{date ? formatDate(date) : "No date"}</span>
           </span>
           <EventPlace venue={venue} location={location} locationSlug={locationSlug} />
         </div>

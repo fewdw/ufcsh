@@ -171,7 +171,8 @@ function EventSidebar({
   const groups = useMemo(() => {
     const byMonth = new Map<string, EventListItem[]>();
     for (const e of filtered) {
-      const month = e.date.slice(0, 7);
+      // Keep this row separate from announced cards whose date is still unknown.
+      const month = e.potential ? "potential" : e.date.slice(0, 7);
       const list = byMonth.get(month) ?? [];
       list.push(e);
       byMonth.set(month, list);
@@ -258,7 +259,7 @@ function EventSidebar({
         >
           {groups.map(([yearMonth, list]) => (
             <div key={yearMonth}>
-              {yearMonth ? <div className="sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-white px-4 py-2 text-[13px] font-bold uppercase tracking-[0.1em] text-zinc-700">
+              {yearMonth && yearMonth !== "potential" ? <div className="sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-white px-4 py-2 text-[13px] font-bold uppercase tracking-[0.1em] text-zinc-700">
                 <span>{yearMonth.slice(0, 4)}</span>
                 <span>{MONTHS[Number(yearMonth.slice(5, 7)) - 1]}</span>
               </div> : null}
@@ -309,10 +310,10 @@ function EventSidebar({
                           </span>
                         ) : null}
                       </div>
-                      {event.date || event.location ? <div className={`mt-0.5 text-xs ${isSelected ? "text-zinc-500" : "text-zinc-400"}`}>
-                        {formatDateShort(event.date)}
+                      <div className={`mt-0.5 text-xs ${isSelected ? "text-zinc-500" : "text-zinc-400"}`}>
+                        {event.date ? formatDateShort(event.date) : "No date"}
                         {event.location ? ` · ${event.location.split(",")[0]}` : ""}
-                      </div> : null}
+                      </div>
                     </Link>
                   );
                 })}
@@ -964,17 +965,15 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
         <div className="flex items-center justify-between gap-3 px-3 py-2.5 @[34rem]:gap-5 @[34rem]:px-5 @[34rem]:py-3.5">
           <div className="min-w-0">
             <h1 className="text-balance text-base font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-xl @[64rem]:text-2xl">{event.name}</h1>
-            {event.date || event.venue || event.location ? (
-              <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[34rem]:gap-x-2 @[34rem]:text-xs">
-                {event.date ? (
-                  <span className="whitespace-nowrap font-medium text-zinc-600">
-                    <span className="@[48rem]:hidden">{formatDateShort(event.date)}</span>
-                    <span className="hidden @[48rem]:inline">{formatDate(event.date)}</span>
-                  </span>
-                ) : null}
-                <EventPlace venue={event.venue} location={event.location} locationSlug={event.location_slug} leading={Boolean(event.date)} />
-              </div>
-            ) : null}
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[34rem]:gap-x-2 @[34rem]:text-xs">
+              {event.date ? (
+                <span className="whitespace-nowrap font-medium text-zinc-600">
+                  <span className="@[48rem]:hidden">{formatDateShort(event.date)}</span>
+                  <span className="hidden @[48rem]:inline">{formatDate(event.date)}</span>
+                </span>
+              ) : <span className="whitespace-nowrap font-medium text-zinc-600">No date</span>}
+              <EventPlace venue={event.venue} location={event.location} locationSlug={event.location_slug} />
+            </div>
           </div>
           <div className="flex shrink-0 flex-col items-end justify-center gap-1 text-right empty:hidden">
             {schedule.length ? (
