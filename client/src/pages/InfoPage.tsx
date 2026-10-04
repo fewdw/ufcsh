@@ -92,8 +92,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-04">October 4, 2026</time></p>
             <ul>
-              <li>Search shows fighters first, then fights, then events.</li>
-              <li>Find a rematch by adding its fight number.</li>
+              <li>Fighter names stay level at every screen size.</li>
+              <li>Missing details no longer shift either name.</li>
             </ul>
           </Section>
         </div>
