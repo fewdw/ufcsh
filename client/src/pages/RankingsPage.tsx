@@ -1,5 +1,5 @@
 import { PANEL } from "../components/chartTokens";
-import { Fragment, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Fragment, lazy, Suspense, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { useApi } from "../api";
 import type { Division, FighterPreview, FighterPreviewFight, RankingEntry } from "../api";
@@ -16,8 +16,12 @@ import { resultDot } from "../resultDots";
 import OptionsSheet, { SHEET_SELECT, SheetField, SwitchRow } from "../components/OptionsSheet";
 
 const shell = PANEL;
+const RankingsDatePicker = lazy(() => import("../components/RankingsDatePicker"));
 
 type ViewFilter = "men" | "women" | "p4p" | "all";
+type RankingsData = {
+  updated_at: number | null; divisions: Division[]; as_of?: string | null; source?: RankingSource;
+};
 type RankingFeatures = {
   opponents: boolean;
   hoverHistory: boolean;
@@ -556,7 +560,8 @@ export default function RankingsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { key: locationKey, state: locationState } = useLocation();
   const selectedDate = searchParams.get("date");
-  const historical = selectedDate !== null;
+  const requestedHistorical = selectedDate !== null;
+  const rankingsScrollKey = typeof locationState?.rankingsScrollKey === "string" ? locationState.rankingsScrollKey : locationKey;
   const today = new Date().toISOString().slice(0, 10);
   const selectDate = (date: string | null) => {
     setHighlightedId(null);
@@ -565,17 +570,17 @@ export default function RankingsPage() {
       if (date) next.set("date", date);
       else next.delete("date");
       return next;
-    }, { state: { ...locationState, rankingsView: view } });
+    }, { state: { ...locationState, rankingsView: view, rankingsScrollKey } });
   };
   useSeo({
-    title: `UFC ${settings.rankingSource === "meta" ? "Meta" : "Media"} Rankings${historical ? ` · ${selectedDate}` : ""}`,
-    description: historical ? `UFC rankings as of ${selectedDate}, by division.`
+    title: `UFC ${settings.rankingSource === "meta" ? "Meta" : "Media"} Rankings${requestedHistorical ? ` · ${selectedDate}` : ""}`,
+    description: requestedHistorical ? `UFC rankings as of ${selectedDate}, by division.`
       : `Current UFC ${settings.rankingSource === "meta" ? "Meta" : "Media"} rankings by division, including champions and fighter activity.`,
     path: "/rankings",
     structuredData: {
       "@context": "https://schema.org",
       "@type": "CollectionPage",
-      name: historical ? `UFC Rankings as of ${selectedDate}` : "Current UFC Rankings",
+      name: requestedHistorical ? `UFC Rankings as of ${selectedDate}` : "Current UFC Rankings",
       url: `${SITE_URL}/rankings`,
     },
   });
@@ -591,11 +596,22 @@ export default function RankingsPage() {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const activeFeatures = useMemo(() => ({ ...features, hoverHistory: features.hoverHistory && canPreview }), [canPreview, features]);
   const tapResults = activeFeatures.hoverResults && !canHover;
-  const { data, loading, error } = useApi<{
-    updated_at: number | null; divisions: Division[]; as_of?: string | null; source?: RankingSource;
-  }>(withRanking("/api/rankings", settings.rankingSource) + (historical ? `&date=${encodeURIComponent(selectedDate)}` : ""));
+  const { data: requestedData, loading, error } = useApi<RankingsData>(withRanking("/api/rankings", settings.rankingSource)
+    + (requestedHistorical ? `&date=${encodeURIComponent(selectedDate)}` : ""));
+  // Retain the whole visible view while a different date/source loads. Its
+  // date must stay attached so relative activity and previews remain correct.
+  const [displayed, setDisplayed] = useState<{
+    data: RankingsData; date: string | null; source: RankingSource;
+  } | null>(null);
+  if (requestedData && (requestedData !== displayed?.data || selectedDate !== displayed.date || settings.rankingSource !== displayed.source)) {
+    setDisplayed({ data: requestedData, date: selectedDate, source: settings.rankingSource });
+  }
+  const data = displayed?.data ?? requestedData;
+  const displayedDate = displayed ? displayed.date : selectedDate;
+  const displayedSource = displayed?.source ?? settings.rankingSource;
+  const historical = displayedDate !== null;
   const divisions = data?.divisions ?? null;
-  const pageScroll = useRouteScrollRestoration<HTMLDivElement>("rankings:page", Boolean(divisions?.length));
+  const pageScroll = useRouteScrollRestoration<HTMLDivElement>("rankings:page", Boolean(divisions?.length), rankingsScrollKey);
 
   useEffect(() => {
     try {
@@ -646,7 +662,7 @@ export default function RankingsPage() {
   const updated = historical ? null : <Freshness label="Updated" at={data?.updated_at} staleAfterHours={24} />;
 
   return (
-    <div ref={pageScroll} className="h-full overflow-y-auto">
+    <div ref={pageScroll} className="h-full overflow-y-auto" aria-busy={loading}>
       <div className="p-2 pb-8 sm:p-3">
         {/* Filters always last. From `md` the key sits just before it on the
             one row (from `xl` when both keys show); below that it takes a
@@ -692,7 +708,7 @@ export default function RankingsPage() {
             {wideKey ? <span className="hidden sm:inline">{updated}</span> : updated}
             {historical && data?.as_of ? <span aria-live="polite">
               Published {formatDate(data.as_of)} · {data.source === "media" ? "Media" : "Meta"}
-              {data.source !== settings.rankingSource ? " (before Meta rankings began)" : ""}
+              {data.source !== displayedSource ? " (before Meta rankings began)" : ""}
             </span> : null}
           </div>
           <FeaturesMenu
@@ -707,24 +723,16 @@ export default function RankingsPage() {
             onDivisionOrder={(order) => update("divisionOrder", order)}
             legend={<>{activityKey}{features.hoverResults ? <OpponentKey /> : null}{updated}</>}
             historical={historical}
-            dateControls={<form aria-label="View rankings by date" className="flex items-center gap-1.5 text-[11px]"
-              onReset={() => selectDate(null)} onSubmit={event => {
-                event.preventDefault();
-                const date = new FormData(event.currentTarget).get("date");
-                if (typeof date === "string" && date) selectDate(date);
-              }}>
-              <label htmlFor="rankings-date" className="shrink-0 whitespace-nowrap font-medium text-zinc-600">View date</label>
-              <input key={selectedDate ?? "today"} id="rankings-date" name="date" type="date" required
-                min="2013-02-04" max={today} defaultValue={selectedDate ?? ""}
-                className="w-0 min-w-0 flex-1 rounded-md border border-zinc-200 bg-white px-1.5 py-1.5 text-zinc-900" />
-              <button type="submit" className="shrink-0 rounded-md bg-zinc-100 px-2 py-1.5 font-medium text-zinc-700 hover:bg-zinc-200">View</button>
-              <button type="reset" className="shrink-0 rounded-md px-2 py-1.5 font-medium text-sky-600 hover:bg-zinc-100">Reset</button>
-            </form>}
+            dateControls={<Suspense fallback={<div role="status" className="flex h-11 items-center text-xs text-zinc-500">Loading date picker…</div>}>
+              <RankingsDatePicker key={selectedDate ?? "today"} selectedDate={selectedDate} today={today} onView={selectDate} />
+            </Suspense>}
           />
         </div>
 
-        {loading ? <div role="status" className="appear-late p-8 text-center text-sm text-zinc-400">Loading rankings…</div>
-          : error ? <div role="alert" className="p-8 text-center text-sm text-zinc-500">Could not load rankings. Try another date or reload.</div>
+        {error && divisions ? <div role="alert" className="mb-2 text-xs text-zinc-500">Could not update rankings. Showing the last loaded list.</div> : null}
+        {loading && divisions ? <span role="status" className="sr-only">Loading rankings…</span> : null}
+        {loading && !divisions ? <div role="status" className="appear-late p-8 text-center text-sm text-zinc-400">Loading rankings…</div>
+          : error && !divisions ? <div role="alert" className="p-8 text-center text-sm text-zinc-500">Could not load rankings. Try another date or reload.</div>
           : !divisions?.length ? <div className="p-8 text-center text-sm text-zinc-500">{historical
             ? "No published rankings are available on or before this date."
             : "Rankings not available yet — first sync may still be running."}</div>
@@ -742,10 +750,10 @@ export default function RankingsPage() {
                 key={d.division}
                 className="w-full sm:w-[calc(50%_-_0.375rem)] lg:w-[calc(33.333%_-_0.5rem)] 2xl:w-[calc(25%_-_0.5625rem)]"
               >
-                <DivisionCard division={d} features={activeFeatures} source={settings.rankingSource} highlightedFighter={highlightedFighter} onHighlight={setHighlightedId} tapResults={tapResults} targeted={d.division === targeted} at={selectedDate ?? undefined} />
+                <DivisionCard division={d} features={activeFeatures} source={displayedSource} highlightedFighter={highlightedFighter} onHighlight={setHighlightedId} tapResults={tapResults} targeted={d.division === targeted} at={displayedDate ?? undefined} />
               </div>
             ) : (
-              <DivisionCard key={d.division} division={d} features={activeFeatures} source={settings.rankingSource} highlightedFighter={highlightedFighter} onHighlight={setHighlightedId} tapResults={tapResults} targeted={d.division === targeted} at={selectedDate ?? undefined} />
+              <DivisionCard key={d.division} division={d} features={activeFeatures} source={displayedSource} highlightedFighter={highlightedFighter} onHighlight={setHighlightedId} tapResults={tapResults} targeted={d.division === targeted} at={displayedDate ?? undefined} />
             )
           ))}
         </div>}

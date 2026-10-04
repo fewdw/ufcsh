@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { SlidersHorizontal, X } from "lucide-react";
 import { CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
+import { OptionsSheetOwner } from "./optionsSheetOwner";
 
 /** A page's options. A popover under its button on a wide screen; on a phone
  *  a sheet from the bottom edge, where a thumb can reach every control. A
@@ -30,6 +31,7 @@ export default function OptionsSheet({
   closeOnSubmit?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const owner = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -37,6 +39,7 @@ export default function OptionsSheet({
    *  covers the button, so the tap that closes it lands, as a click, on the
    *  button underneath once the backdrop is gone — and would reopen it. */
   const closedAt = useRef(0);
+  const backdropHadChild = useRef(false);
   const [phone, setPhone] = useState(() => typeof window !== "undefined" && !window.matchMedia("(min-width: 640px)").matches);
   useEffect(() => {
     const query = window.matchMedia("(min-width: 640px)");
@@ -53,11 +56,14 @@ export default function OptionsSheet({
     setDragY(0);
     setDismissing(false);
     drag.current = null;
-    if (returnFocus) buttonRef.current?.focus();
+    if (returnFocus) buttonRef.current?.focus({ preventScroll: true });
   };
   useEffect(() => {
     if (!open) return;
+    const childOverlay = () => document.querySelector(`[data-options-sheet-owner="${CSS.escape(owner)}"]`);
     const onPointerDown = (event: PointerEvent) => {
+      // The first outside press dismisses the child overlay itself.
+      if (childOverlay()) return;
       const target = event.target as Node;
       if (sheetRef.current?.contains(target)) return;
       // On a phone the backdrop covers everything else, and its own click
@@ -71,9 +77,10 @@ export default function OptionsSheet({
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      if (event.defaultPrevented || childOverlay()) return;
       event.preventDefault();
       setOpen(false);
-      buttonRef.current?.focus();
+      buttonRef.current?.focus({ preventScroll: true });
     };
     document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("keydown", onKeyDown);
@@ -81,7 +88,7 @@ export default function OptionsSheet({
       document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [open, phone]);
+  }, [open, phone, owner]);
 
   const onDragStart = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!phone || dismissing) return;
@@ -123,14 +130,15 @@ export default function OptionsSheet({
     const previous = root.style.overflow;
     root.style.overflow = "hidden";
     const block = (event: TouchEvent) => {
-      if (!sheetRef.current?.contains(event.target as Node)) event.preventDefault();
+      const overlay = document.querySelector(`[data-options-sheet-owner="${CSS.escape(owner)}"]`);
+      if (!sheetRef.current?.contains(event.target as Node) && !overlay?.contains(event.target as Node)) event.preventDefault();
     };
     document.addEventListener("touchmove", block, { passive: false });
     return () => {
       root.style.overflow = previous;
       document.removeEventListener("touchmove", block);
     };
-  }, [open, phone]);
+  }, [open, phone, owner]);
 
   const phoneHidden = iconOnlyOnPhone === "lg" ? "hidden lg:inline" : iconOnlyOnPhone ? "hidden sm:inline" : "";
   return (
@@ -157,7 +165,12 @@ export default function OptionsSheet({
             className="fixed inset-0 z-[60] bg-zinc-950/40 backdrop-blur-[3px] sm:hidden"
             style={phone && dragY ? { opacity: Math.max(0, 1 - dragY / (sheetRef.current?.offsetHeight || 400)), transition: drag.current ? "none" : "opacity 200ms ease-out" } : undefined}
             aria-hidden="true"
-            onClick={(event) => { event.preventDefault(); event.stopPropagation(); closedAt.current = Date.now(); close(); }}
+            onPointerDown={() => { backdropHadChild.current = Boolean(document.querySelector(`[data-options-sheet-owner="${CSS.escape(owner)}"]`)); }}
+            onClick={(event) => {
+              event.preventDefault(); event.stopPropagation();
+              if (backdropHadChild.current) { backdropHadChild.current = false; return; }
+              closedAt.current = Date.now(); close();
+            }}
           />
           <div
             ref={sheetRef}
@@ -189,7 +202,7 @@ export default function OptionsSheet({
                 </div>
               </div>
             </div>
-            {children}
+            <OptionsSheetOwner.Provider value={owner}>{children}</OptionsSheetOwner.Provider>
           </div>
         </>;
         return phone ? createPortal(sheet, document.body) : sheet;

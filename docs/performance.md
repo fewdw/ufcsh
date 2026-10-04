@@ -276,3 +276,14 @@ On a private development archive, the first current-rankings read took 11.1 ms;
 over 200 reads measured 6.3 ms p50 and 9.6 ms p95. The initial mean comparison
 was 6.4 ms before the title overlay and 7.0 ms after it. Existing API response
 caches still reuse those results across visitors.
+
+## Rankings date picker (2026-10-04)
+
+The first React Aria implementation loaded its calendar with the rankings page:
+the production page chunk measured 266.99 kB (84.43 kB gzipped). Loading the
+picker when Filters opens keeps the rankings chunk at 22.36 kB (7.51 kB
+gzipped), with a separate 245.27 kB (77.85 kB gzipped) picker chunk. These are
+Vite build measurements with the committed dependency lockfile; they measure
+transfer size, not elapsed load time. Date changes retain the displayed list
+and its date/source context until the replacement response arrives, avoiding a
+blank loading state and preserving the existing cards and scroll position.
