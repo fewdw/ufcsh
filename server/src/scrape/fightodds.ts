@@ -54,7 +54,8 @@ export async function fightOddsBoard(pk: number): Promise<FightOddsBout[]> {
         outcome2 { odds oddsOpen fighter { id } } } } } } } } } }`,
     { pk },
   );
-  return (data.board?.fightOffers.edges ?? []).map((edge) => edge.node)
+  if (!data.board) throw new Error(`FightOdds.io board ${pk} is missing`);
+  return data.board.fightOffers.edges.map((edge) => edge.node)
     .filter((bout) => !bout.isCancelled)
     .map(parseBout);
 }

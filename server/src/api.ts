@@ -483,7 +483,7 @@ async function getEvent(id: string, rankingType: RankingType): Promise<unknown |
     return { id, name: POTENTIAL_EVENT_NAME, date: "", location: "", status: "future", potential: true,
       live: false, card_stats: summarizeCard(fights),
       odds_freshness: { updated_at: rows.length ? Math.min(...rows.map(row => row.fetched_at)) : null,
-        final: false, priced: rows.length, sources: ["FightOdds.io"] },
+        final: false, priced: rows.length, sources: [...new Set(rows.map(row => JSON.parse(row.odds_json).source_url.startsWith("https://fightodds.io/") ? "FightOdds.io" : "BestFightOdds"))] },
       fights: fights.map(f => ({ ...fightRowToJson(f, false, f.event_date, rankingType), potential: true, scheduled_rounds: null })),
     };
   }

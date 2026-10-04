@@ -1,4 +1,4 @@
-import { potentialMatchups } from "./potential-matchups.ts";
+import { potentialMatchups, syncPotentialMatchups } from "./potential-matchups.ts";
 import { db, getMeta, setMeta } from "./db.ts";
 import { confirmedTitleResults, missingCurrentRankingHistory, relinkRankingHistory } from "./ranking-history.ts";
 import { validateFightActions } from "./action-stats.ts";
@@ -1550,19 +1550,18 @@ function rosterMovesUnread(): BugCheck {
     grade: (item) => item.key === "sync" || item.key === "ufc-status" || item.key === "ufc-signings" ? "must" : item.key.startsWith("ufc:") ? "ok" : "minor",
   }, items);
 }
-/** /news: each outlet's feed is read every ten minutes. One unread for two
- *  hours has moved, changed shape or started turning us away. */
-/** FightOdds.io prices upcoming bouts every five minutes. Unread for half an
- *  hour, lines fall back to BestFightOdds' slower pass: the app's API moved,
- *  changed shape, or started asking for its bot check. */
 function potentialMatchupGaps(): BugCheck {
-  const readAt = Number(getMeta("potential_matchups_read_at")) || null;
   const items: BugItem[] = [];
-  if (!readAt || Date.now() - readAt > 30 * 60_000) items.push({
-    key: "board", title: "Potential matchups board is stale", facts: [["Last read", ago(readAt)]],
-    links: [{ label: "Future fights", href: "https://fightodds.io" }],
-    actions: [{ id: "potential-odds", label: "Re-read board", target: "all" }],
-  });
+  for (const [source, label, url] of [["fightodds", "FightOdds.io", "https://fightodds.io"],
+    ["bestfightodds", "BestFightOdds", "https://www.bestfightodds.com/events/future-events-197"]]) {
+    const readAt = Number(getMeta(`potential_${source}_read_at`)) || null;
+    if (!readAt || Date.now() - readAt > 30 * 60_000) items.push({
+      key: `board:${source}`, title: `${label} potential matchups are stale`,
+      subtitle: getMeta(`potential_${source}_error`) || undefined,
+      facts: [["Last read", ago(readAt)]], links: [{ label: "Future fights", href: url }],
+      actions: [{ id: "potential-odds", label: "Re-read boards", target: "all" }],
+    });
+  }
   for (const row of potentialMatchups()) {
     const missing = [row.f1_id, row.f2_id].some(id => !id || !db.prepare("SELECT 1 FROM fighters WHERE id = ?").get(id));
     if (!missing) continue;
@@ -1572,11 +1571,14 @@ function potentialMatchupGaps(): BugCheck {
     });
   }
   return check({ id: "odds-potential-matchups", group: "Odds", label: "Potential matchup coverage",
-    description: "The future-fights board supplies unconfirmed matchup prices every five minutes. Stale reads preserve the last snapshot. Missing fighter identities leave career comparisons incomplete; re-reading retries identity matching.",
-    grade: item => item.key === "board" ? "must" : "minor",
+    description: "The BestFightOdds and FightOdds.io future boards supply unconfirmed matchup prices at startup and every five minutes. Stale reads preserve the last snapshot. Missing fighter identities leave career comparisons incomplete; re-reading retries identity matching.",
+    grade: item => item.key.startsWith("board:") ? "must" : "minor",
   }, items);
 }
 
+/** FightOdds.io prices upcoming bouts every five minutes. Unread for half an
+ *  hour, lines fall back to BestFightOdds' slower pass: the app's API moved,
+ *  changed shape, or started asking for its bot check. */
 function fightOddsUnread(): BugCheck {
   const readAt = Number(getMeta("fightodds_read_at")) || null;
   const items: BugItem[] = readAt && Date.now() - readAt < 30 * 60_000 ? [] : [{
@@ -1731,8 +1733,8 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
 
   switch (action) {
     case "potential-odds": {
-      await syncFightOdds({ props: true });
-      return { ok: true, message: `${potentialMatchups().length} potential matchups with odds.` };
+      const result = await syncPotentialMatchups({ props: true });
+      return { ok: result.failed < 2, message: `${potentialMatchups().length} potential matchups with odds.${result.failed ? ` ${result.failed} source(s) could not be read; stored prices were kept.` : ""}` };
     }
     case "odds": {
       const row = fight();

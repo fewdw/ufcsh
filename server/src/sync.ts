@@ -1,4 +1,4 @@
-import { storePotentialBoard } from "./potential-matchups.ts";
+import { startPotentialMatchupSync } from "./potential-matchups.ts";
 import { isFightDay, LIVE_EVENT_INTERVAL, liveDetailDue, fightIsComplete, fightIsUnderway } from "./live-state.ts";
 import { db, getMeta, metaAgeMs, setMeta, touchMeta } from "./db.ts";
 import { daysBetween, firstLastName, log, normName, todayIso } from "./util.ts";
@@ -1361,11 +1361,7 @@ export async function syncFightOdds({ props = false }: { props?: boolean } = {})
 
   const total = { events: 0, lines: 0, props: 0 };
   for (const event of events) {
-    if (event.slug === "future-fights") {
-      await storePotentialBoard(await fightOddsBoard(event.pk), props);
-      total.events++;
-      continue;
-    }
+    if (event.slug === "future-fights") continue;
     // Only cards we list, so a far-off or unannounced board costs nothing.
     if (!(selectFights.all(event.date, event.date) as unknown[]).length) continue;
     const bouts = await fightOddsBoard(event.pk);
@@ -1943,6 +1939,7 @@ export async function tick(): Promise<void> {
 }
 
 export function startScheduler(): void {
+  startPotentialMatchupSync();
   void syncLiveEvents();
   setInterval(() => void syncLiveEvents().catch(err => log("live refresh failed:", String(err))), 10_000);
   // Verdict MMA round cards and community scorecards, on their own clock so a

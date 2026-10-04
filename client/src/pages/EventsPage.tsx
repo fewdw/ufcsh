@@ -22,7 +22,7 @@ import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
 import { useSettings, withRanking, type OddsFormat } from "../settings";
 import { eventKind, type EventKind } from "../eventKind";
 import SearchGlyph from "../components/SearchGlyph";
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, List, Pin, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { searchList } from "../search";
@@ -164,8 +164,9 @@ function EventSidebar({
   );
 
   const filtered = useMemo(() => {
-    return searchList(scoped, filter, (e) => `${e.name} ${e.location} ${e.date}`);
-  }, [scoped, filter]);
+    const matches = searchList(scoped, filter, (e) => `${e.name} ${e.location} ${e.date}`);
+    return potential ? [potential, ...matches] : matches;
+  }, [scoped, filter, potential]);
 
   const groups = useMemo(() => {
     const byMonth = new Map<string, EventListItem[]>();
@@ -246,15 +247,6 @@ function EventSidebar({
         </div>
       </div>
 
-      {potential ? (
-        <Link to={`/events/${potential.id}`} aria-current={selectedId === potential.id ? "page" : undefined}
-          onPointerEnter={() => warmEvent(potential.id)} onFocus={() => warmEvent(potential.id)}
-          className={`${shell} mx-2 my-2 flex shrink-0 items-center gap-2 px-3 py-2.5 transition-colors ${selectedId === potential.id ? segmentedSelected : "hover:bg-zinc-50"}`}>
-          <Pin className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden="true" />
-          <span className="flex-1 text-[13px] font-semibold text-zinc-900">{potential.name}</span>
-          <span className="text-xs tabular-nums text-zinc-500">{potential.fight_count}</span>
-        </Link>
-      ) : null}
       <div className={`relative min-h-0 flex-1 overflow-hidden ${shell} ${dock.list}`}>
         <div
           ref={listRef}
@@ -266,10 +258,10 @@ function EventSidebar({
         >
           {groups.map(([yearMonth, list]) => (
             <div key={yearMonth}>
-              <div className="sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-white px-4 py-2 text-[13px] font-bold uppercase tracking-[0.1em] text-zinc-700">
+              {yearMonth ? <div className="sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-white px-4 py-2 text-[13px] font-bold uppercase tracking-[0.1em] text-zinc-700">
                 <span>{yearMonth.slice(0, 4)}</span>
                 <span>{MONTHS[Number(yearMonth.slice(5, 7)) - 1]}</span>
-              </div>
+              </div> : null}
               <div className="flex flex-col gap-1 pb-2">
                 {list.map((event) => {
                   const isSelected = event.id === selectedId;
@@ -317,10 +309,10 @@ function EventSidebar({
                           </span>
                         ) : null}
                       </div>
-                      <div className={`mt-0.5 text-xs ${isSelected ? "text-zinc-500" : "text-zinc-400"}`}>
+                      {event.date || event.location ? <div className={`mt-0.5 text-xs ${isSelected ? "text-zinc-500" : "text-zinc-400"}`}>
                         {formatDateShort(event.date)}
                         {event.location ? ` · ${event.location.split(",")[0]}` : ""}
-                      </div>
+                      </div> : null}
                     </Link>
                   );
                 })}
@@ -479,7 +471,7 @@ function CenterBlock({ fight, past }: { fight: EventFight; past: boolean }) {
     <div className="flex w-full flex-col items-center">
       <OddsPair f1={f1Odds} f2={f2Odds}
         f1Name={fight.f1.name} f2Name={fight.f2.name}
-        fightId={past ? undefined : fight.id} />
+        fightId={past || fight.potential ? undefined : fight.id} />
       {/* The result wraps rather than truncating: the round and the clock are
           the point of the line, and the centre column is narrow enough that
           "KO/TKO · R1 · 2:54" would lose its tail to an ellipsis. */}
@@ -598,7 +590,7 @@ function CompactSide({ side, fight, done, other }: { side: FightSide; fight: Eve
       {/* A bout with no line yet keeps the same box, holding a dash, so
           every row on the card lines up. */}
       <Moneyline
-        leg={moneylineLeg(done ? undefined : fight.id, fightLabel, corner, side.name, price)}
+        leg={moneylineLeg(done || fight.potential ? undefined : fight.id, fightLabel, corner, side.name, price)}
         value={price || "-"}
         name={side.name}
         className={`odds-pair w-14 shrink-0 rounded-md border py-0.5 text-center text-[12px] font-semibold tabular-nums ${price ? "" : "text-zinc-300"} ${other.outcome === "win" ? "opacity-60" : ""}`}
@@ -947,7 +939,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
       <CardNavigation label="Event navigation" className="@3xl:hidden"
         previous={<StepLink event={nav.prev} direction="prev" className={NAV_STEP} />}
         // Reading the whole card's odds, the way out is back to the card.
-        center={oddsMode && hasAnyOdds && !event.potential
+        center={oddsMode && hasAnyOdds
           ? <Link to={`/events/${event.id}`} className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
             <List className="h-3.5 w-3.5" aria-hidden="true" />Card
           </Link>
@@ -957,12 +949,12 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
               className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
               <List className="h-3.5 w-3.5" aria-hidden="true" />Events
             </button>
-            {!event.potential ? <button type="button" data-nav-extra onClick={() => update("cardOrder", openerFirst ? "main" : "opener")}
+            <button type="button" data-nav-extra onClick={() => update("cardOrder", openerFirst ? "main" : "opener")}
               aria-label={openerFirst ? "Opener first; show the main event first" : "Main event first; show the opener first"}
               title={openerFirst ? "Opener first" : "Main event first"}
               className="absolute left-full top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950">
               {openerFirst ? <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}
-            </button> : null}
+            </button>
           </span>}
         next={<StepLink event={nav.next} direction="next" className={NAV_STEP} />}
       />
@@ -972,7 +964,6 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
         <div className="flex items-center justify-between gap-3 px-3 py-2.5 @[34rem]:gap-5 @[34rem]:px-5 @[34rem]:py-3.5">
           <div className="min-w-0">
             <h1 className="text-balance text-base font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-xl @[64rem]:text-2xl">{event.name}</h1>
-            {event.potential ? <p className="mt-1 text-xs text-zinc-500">{event.fights.length} matchups with odds · Unconfirmed fights</p> : null}
             {event.date || event.venue || event.location ? (
               <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[34rem]:gap-x-2 @[34rem]:text-xs">
                 {event.date ? (
@@ -1013,7 +1004,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
         </div>
       </section>
 
-      {(oddsMode || event.potential) && hasAnyOdds ? (
+      {oddsMode && hasAnyOdds ? (
         // Its own height, not the pane's: squeezed to fit, the list would run
         // out past the pane.
         <div className="flex shrink-0 flex-col gap-3">
