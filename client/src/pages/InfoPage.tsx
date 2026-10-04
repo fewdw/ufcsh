@@ -92,7 +92,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-04">October 4, 2026</time></p>
             <ul>
-              <li>Pound-for-pound ranking lines are solid purple.</li>
+              <li>Fighter names stay level at every screen size.</li>
+              <li>Missing details no longer shift either name.</li>
             </ul>
           </Section>
         </div>
