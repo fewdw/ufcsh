@@ -665,6 +665,7 @@ for (const [table, revisions] of Object.entries(revisionTables)) {
   for (const operation of ["INSERT", "UPDATE", "DELETE"]) {
     const changed = columns.map(name => `OLD.${name} IS NOT NEW.${name}`);
     if (table === "fights") changed.push("(OLD.detail_fetched_at IS NULL) != (NEW.detail_fetched_at IS NULL)");
+    if (table === "events") changed.push("(OLD.wiki_checked_at >= unixepoch(OLD.date) * 1000) IS NOT (NEW.wiki_checked_at >= unixepoch(NEW.date) * 1000)");
     const condition = operation === "UPDATE" ? `WHEN ${changed.join(" OR ")}` : "";
     // A trigger lists the columns it watches, so one created before a column
     // was added would miss changes to it: rebuild any whose text differs.
