@@ -269,8 +269,10 @@ export default function App() {
     const previous = window.history.scrollRestoration;
     window.history.scrollRestoration = "manual";
     const handler = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.isComposing) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
+        if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
         setSearchOpen((v) => !v);
       }
     };

@@ -92,11 +92,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-04">October 4, 2026</time></p>
             <ul>
-              <li>Short-notice replacements and cancelled bouts on event cards.</li>
-              <li>Shareable career-stat modals on profiles and matchups.</li>
-              <li>Cleaner ranking history with pound-for-pound and unranked fights.</li>
-              <li>Clearer fight results, control-time bars and ranking links.</li>
-              <li>Swipe navigation fixes and more missing-data checks.</li>
+              <li>Sign-in sits near the center of the screen.</li>
+              <li>Account dialogs dim the entire screen.</li>
+              <li>Search shortcuts pause during sign-in and sign-up.</li>
             </ul>
           </Section>
         </div>

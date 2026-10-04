@@ -39,7 +39,7 @@ function ownsKeys(target: EventTarget | null, key: string): boolean {
 }
 
 /** An open dialog is the reader's focus; the page underneath takes no keys. */
-const dialogOpen = () => Boolean(document.querySelector("dialog[open]"));
+const dialogOpen = () => Boolean(document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]'));
 
 export function ShortcutProvider({ children, onSearch }: { children: ReactNode; onSearch: () => void }) {
   const navigate = useNavigate();

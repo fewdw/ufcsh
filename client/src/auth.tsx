@@ -36,7 +36,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAccount() {
   const clerk = useClerk();
   const { isLoaded, user } = useUser();
-  const signIn = useCallback(() => { void clerk.openSignIn({ fallbackRedirectUrl: here(), signUpFallbackRedirectUrl: here() }); }, [clerk]);
+  const signIn = useCallback(() => {
+    void clerk.openSignIn({
+      fallbackRedirectUrl: here(), signUpFallbackRedirectUrl: here(),
+      appearance: { elements: {
+        // Center slightly above the viewport midpoint; tall forms can still scroll from the top.
+        modalBackdrop: { height: "100dvh", boxSizing: "border-box", alignItems: "safe center", paddingBlock: "1rem calc(1rem + 8dvh)" },
+        modalContent: { margin: "0" },
+      } },
+    });
+  }, [clerk]);
   const signOut = useCallback(() => { void clerk.signOut({ redirectUrl: "/" }); }, [clerk]);
   const manage = useCallback(() => { void clerk.openUserProfile(); }, [clerk]);
   return { isLoaded, user, signIn, signOut, manage };
