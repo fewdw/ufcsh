@@ -8,6 +8,7 @@ import { PollCoordinator } from "./polling";
 // types (mirror the server's JSON)
 
 export type EventListItem = {
+  potential?: boolean;
   id: string;
   name: string;
   date: string;
@@ -197,6 +198,7 @@ export type CardSchedule = {
 };
 
 export type EventFight = {
+  potential?: boolean;
   id: string;
   ord: number;
   /** Which part of the card, once ufc.com has grouped it. */
@@ -225,6 +227,7 @@ export type EventFight = {
 export type VenueRef = { slug: string; name: string; city: string | null; country: string | null; time_zone: string | null };
 
 export type EventDetail = {
+  potential?: boolean;
   refreshing?: boolean;
   id: string;
   name: string;
@@ -346,6 +349,7 @@ export type FightDetailBlock = {
 export type OfficialRef = { name: string; slug: string | null };
 
 export type Matchup = {
+  potential?: boolean;
   refreshing?: boolean;
   id: string;
   event: { id: string; name: string; date: string; location: string; location_slug?: string | null; venue?: VenueRef | null };

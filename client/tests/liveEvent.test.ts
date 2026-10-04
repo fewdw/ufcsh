@@ -95,3 +95,10 @@ test("a fight-day card is next until its announced start, then live", () => {
   assert.deepEqual(taggedEvent(card, Date.parse("2026-10-03T20:00:00Z")), { id: "today", tag: "live" });
   assert.deepEqual(taggedEvent([{ ...card[0], starts_at: null }], Date.parse("2026-10-03T02:00:00Z")), { id: "today", tag: "live" }, "with no announced time the fight day decides");
 });
+
+test("the pinned potential board leaves the homepage on a dated event", () => {
+  const now = Date.parse("2026-10-01T12:00:00Z");
+  const events = [{ id: "potential-matchups", date: "", status: "future" }, { id: "card", date: "2026-09-19", status: "past" }];
+  assert.equal(landingEvent(events, now)?.id, "card");
+  assert.equal(taggedEvent(events, now), null);
+});

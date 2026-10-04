@@ -22,7 +22,7 @@ import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
 import { useSettings, withRanking, type OddsFormat } from "../settings";
 import { eventKind, type EventKind } from "../eventKind";
 import SearchGlyph from "../components/SearchGlyph";
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, List, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, List, Pin, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { searchList } from "../search";
@@ -147,17 +147,20 @@ function EventSidebar({
   // tag with it rather than promoting the next row into its place.
   const tagged = useMemo(() => taggedEvent(events), [events]);
 
+  const scheduledEvents = useMemo(() => events.filter(event => !event.potential), [events]);
+  const potential = events.find(event => event.potential);
+
   const countByKind = useMemo(() => {
-    const counts: Record<KindFilter, number> = { all: events.length, ppv: 0, fight_night: 0 };
-    for (const event of events) counts[eventKind(event.name)] += 1;
+    const counts: Record<KindFilter, number> = { all: scheduledEvents.length, ppv: 0, fight_night: 0 };
+    for (const event of scheduledEvents) counts[eventKind(event.name)] += 1;
     return counts;
-  }, [events]);
+  }, [scheduledEvents]);
 
   // Tier first, then text: the count in the placeholder and the empty state
   // both describe the tier the reader is actually looking at.
   const scoped = useMemo(
-    () => (kind === "all" ? events : events.filter((e) => eventKind(e.name) === kind)),
-    [events, kind],
+    () => (kind === "all" ? scheduledEvents : scheduledEvents.filter((e) => eventKind(e.name) === kind)),
+    [scheduledEvents, kind],
   );
 
   const filtered = useMemo(() => {
@@ -243,6 +246,15 @@ function EventSidebar({
         </div>
       </div>
 
+      {potential ? (
+        <Link to={`/events/${potential.id}`} aria-current={selectedId === potential.id ? "page" : undefined}
+          onPointerEnter={() => warmEvent(potential.id)} onFocus={() => warmEvent(potential.id)}
+          className={`${shell} mx-2 my-2 flex shrink-0 items-center gap-2 px-3 py-2.5 transition-colors ${selectedId === potential.id ? segmentedSelected : "hover:bg-zinc-50"}`}>
+          <Pin className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden="true" />
+          <span className="flex-1 text-[13px] font-semibold text-zinc-900">{potential.name}</span>
+          <span className="text-xs tabular-nums text-zinc-500">{potential.fight_count}</span>
+        </Link>
+      ) : null}
       <div className={`relative min-h-0 flex-1 overflow-hidden ${shell} ${dock.list}`}>
         <div
           ref={listRef}
@@ -716,7 +728,7 @@ function CardOddsRow({ fight, eventId, live, past, format }: { fight: EventFight
               ) : null}
             </div>
           ) : null}
-          <CardMoneyline fightId={done ? undefined : fight.id} f1={f1Odds} f2={f2Odds} f1Name={fight.f1.name} f2Name={fight.f2.name} />
+          <CardMoneyline fightId={done || fight.potential ? undefined : fight.id} f1={f1Odds} f2={f2Odds} f1Name={fight.f1.name} f2Name={fight.f2.name} />
           {fight.weight_class || expected ? (
             <span
               className="w-full whitespace-nowrap text-center text-[10px] font-medium tabular-nums text-zinc-400"
@@ -734,7 +746,7 @@ function CardOddsRow({ fight, eventId, live, past, format }: { fight: EventFight
         </span>
       </div>
       {hasProps ? (
-        <OddsMarkets odds={props!} fightId={fight.id} f1Name={fight.f1.name} f2Name={fight.f2.name} format={format} result={result} compact />
+        <OddsMarkets odds={props!} fightId={fight.potential ? undefined : fight.id} f1Name={fight.f1.name} f2Name={fight.f2.name} format={format} result={result} compact />
       ) : null}
     </div>
   );
@@ -820,7 +832,7 @@ type EventNav = {
 
 /** The events either side of this one by date, whatever the list is filtered to. */
 function eventNeighbours(events: EventListItem[], id: string): { prev: EventListItem | null; next: EventListItem | null } {
-  const byDate = [...events].sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
+  const byDate = events.filter(event => !event.potential).sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
   const at = byDate.findIndex((event) => event.id === id);
   if (at === -1) return { prev: null, next: null };
   return { prev: byDate[at - 1] ?? null, next: byDate[at + 1] ?? null };
@@ -870,7 +882,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
     title: event?.name ?? "UFC Events & Fight Cards",
     description: eventDescription,
     path: `/events/${eventId}`,
-    structuredData: event
+    structuredData: event && !event.potential
       ? {
           "@context": "https://schema.org",
           "@type": "SportsEvent",
@@ -935,7 +947,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
       <CardNavigation label="Event navigation" className="@3xl:hidden"
         previous={<StepLink event={nav.prev} direction="prev" className={NAV_STEP} />}
         // Reading the whole card's odds, the way out is back to the card.
-        center={oddsMode && hasAnyOdds
+        center={oddsMode && hasAnyOdds && !event.potential
           ? <Link to={`/events/${event.id}`} className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
             <List className="h-3.5 w-3.5" aria-hidden="true" />Card
           </Link>
@@ -945,12 +957,12 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
               className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
               <List className="h-3.5 w-3.5" aria-hidden="true" />Events
             </button>
-            <button type="button" data-nav-extra onClick={() => update("cardOrder", openerFirst ? "main" : "opener")}
+            {!event.potential ? <button type="button" data-nav-extra onClick={() => update("cardOrder", openerFirst ? "main" : "opener")}
               aria-label={openerFirst ? "Opener first; show the main event first" : "Main event first; show the opener first"}
               title={openerFirst ? "Opener first" : "Main event first"}
               className="absolute left-full top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950">
               {openerFirst ? <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}
-            </button>
+            </button> : null}
           </span>}
         next={<StepLink event={nav.next} direction="next" className={NAV_STEP} />}
       />
@@ -960,6 +972,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
         <div className="flex items-center justify-between gap-3 px-3 py-2.5 @[34rem]:gap-5 @[34rem]:px-5 @[34rem]:py-3.5">
           <div className="min-w-0">
             <h1 className="text-balance text-base font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-xl @[64rem]:text-2xl">{event.name}</h1>
+            {event.potential ? <p className="mt-1 text-xs text-zinc-500">{event.fights.length} matchups with odds · Unconfirmed fights</p> : null}
             {event.date || event.venue || event.location ? (
               <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[34rem]:gap-x-2 @[34rem]:text-xs">
                 {event.date ? (
@@ -1000,7 +1013,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
         </div>
       </section>
 
-      {oddsMode && hasAnyOdds ? (
+      {(oddsMode || event.potential) && hasAnyOdds ? (
         // Its own height, not the pane's: squeezed to fit, the list would run
         // out past the pane.
         <div className="flex shrink-0 flex-col gap-3">
@@ -1023,7 +1036,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
       ) : (
         <section className={`${shell} shrink-0 overflow-hidden`}>
           {event.fights.length === 0 ? (
-            <div className="px-6 py-10 text-center text-sm text-zinc-400">Fight card not announced yet.</div>
+            <div className="px-6 py-10 text-center text-sm text-zinc-400">{event.potential ? "No potential matchups have odds available yet." : "Fight card not announced yet."}</div>
           ) : (
             cardFights.map((fight, index) => {
               const newSegment = Boolean(fight.segment) && fight.segment !== cardFights[index - 1]?.segment;
@@ -1086,7 +1099,7 @@ export default function EventsPage() {
 
   // When a matchup is open, the sidebar highlights its event.
   const { data: openFight } = useApi<Matchup>(fightId && (!fightEventIdHint || new URLSearchParams(location.search).has("stat")) ? withRanking(`/api/fights/${fightId}`, settings.rankingSource) : null);
-  const statModal = fightId ? <CareerStatModal fighters={openFight ? [openFight.f1, openFight.f2] : []} before={fightId} /> : null;
+  const statModal = fightId ? <CareerStatModal fighters={openFight ? [openFight.f1, openFight.f2] : []} before={fightId.startsWith("potential-") ? undefined : fightId} /> : null;
   // "/" opens the tagged card (live, finished tonight, or next announced): it
   // is drawn straight away, and the address catches up behind it.
   const landingId = !eventId && !fightId && events?.length ? landingEvent(events)!.id : null;

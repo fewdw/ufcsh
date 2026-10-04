@@ -9,7 +9,7 @@ import type { MethodOddsPrice, MethodOddsQuote, MethodOddsSide, ScrapedMethodOdd
 const API = "https://api.fightodds.io/gql";
 const SITE = "https://fightodds.io";
 
-export type FightOddsEvent = { pk: number; date: string };
+export type FightOddsEvent = { pk: number; date: string; slug: string };
 export type FightOddsCorner = { id: string | null; name: string; last: string };
 /** One book's two-way price: now, and when it first posted. */
 export type FightOddsQuote = { now: [number, number]; open: [number | null, number | null] };
@@ -25,7 +25,7 @@ async function query<T>(text: string, variables: Record<string, unknown>, timeou
 export async function fightOddsEvents(from: string): Promise<FightOddsEvent[]> {
   const data = await query<{ promotion: { events: { edges: { node: FightOddsEvent }[] } } | null }>(
     `query($from: Date) { promotion: promotionBySlug(slug: "ufc") {
-      events(date_Gte: $from, first: 40, orderBy: "date") { edges { node { pk date } } } } }`,
+      events(date_Gte: $from, first: 40, orderBy: "date") { edges { node { pk date slug } } } } }`,
     { from },
   );
   return data.promotion?.events.edges.map((edge) => edge.node) ?? [];

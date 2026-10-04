@@ -489,7 +489,7 @@ function OddsPanel({ fight }: { fight: Matchup }) {
       <OddsMarkets
         odds={props}
         moneyline={fight.odds ? { f1: fight.odds.f1, f2: fight.odds.f2 } : null}
-        fightId={fight.id}
+        fightId={fight.potential ? undefined : fight.id}
         f1Name={fight.f1.name}
         f2Name={fight.f2.name}
         format={settings.oddsFormat}
@@ -525,7 +525,7 @@ function RecentForm({ fight }: { fight: Matchup }) {
  *  after it. Oldest first, so a rivalry reads left to right in order. */
 function meetingsOf(fight: Matchup, later: boolean): HistoryRow[] {
   return fight.head_to_head
-    .filter((row) => later ? row.date > fight.event.date : !row.upcoming && row.date <= fight.event.date)
+    .filter((row) => later ? row.date > fight.event.date : !row.upcoming && (fight.potential || row.date <= fight.event.date))
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
@@ -533,8 +533,8 @@ function meetingsOf(fight: Matchup, later: boolean): HistoryRow[] {
 function sharedOpponents(fight: Matchup) {
   return fight.common_opponents.map((comparison) => ({
     ...comparison,
-    f1_fights: comparison.f1_fights.filter((row) => !row.upcoming && row.date <= fight.event.date),
-    f2_fights: comparison.f2_fights.filter((row) => !row.upcoming && row.date <= fight.event.date),
+    f1_fights: comparison.f1_fights.filter((row) => !row.upcoming && (fight.potential || row.date <= fight.event.date)),
+    f2_fights: comparison.f2_fights.filter((row) => !row.upcoming && (fight.potential || row.date <= fight.event.date)),
   })).filter((comparison) => comparison.f1_fights.length && comparison.f2_fights.length);
 }
 
@@ -747,7 +747,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     title: matchupTitle,
     description: matchupDescription,
     path: `/fights/${fightId}`,
-    structuredData: loadedFight
+    structuredData: loadedFight && !loadedFight.potential
       ? {
           "@context": "https://schema.org",
           "@type": "SportsEvent",
@@ -858,7 +858,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     // locked until the feed or the admin panel opens them.
     ...(scoreableRoundCount(fight) > 0 || fight.in_progress ? ["score" as const] : []),
     ...(fight.prediction_available !== false ? ["predict" as const] : []),
-    "discussion",
+    ...(!fight.potential ? ["discussion" as const] : []),
   ];
   const tab = tabs.find((candidate) => candidate === requestedTab) ?? tabs[0];
   // Only the tab panel below should change; the tab bar holds its place.
@@ -898,6 +898,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 locationSlug={fight.event.location_slug}
                 venue={fight.event.venue}
               >
+                {fight.potential ? <span className="text-xs text-zinc-500">Unconfirmed fight</span> : null}
                 {isFightDay(fight.event.date) && error && !changingMatchup ? <span role="status" className="text-xs text-zinc-500">Connection interrupted; retrying…</span> : null}
               </CardEventTitle>
             </section>
@@ -945,7 +946,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                         f1Open={fight.odds?.f1.open} f2Open={fight.odds?.f2.open}
                         f1Name={fight.f1.name} f2Name={fight.f2.name}
                         props={fight.odds?.props}
-                        fightId={fight.status === "upcoming" ? fight.id : undefined} />
+                        fightId={fight.status === "upcoming" && !fight.potential ? fight.id : undefined} />
                     </div>
                     </div>
                   </div>
@@ -991,7 +992,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 <RecentForm fight={fight} />
                 <CareerProfile fight={fight} />
                 <HeadToHead fight={fight} />
-                <HeadToHead fight={fight} later />
+                {!fight.potential ? <HeadToHead fight={fight} later /> : null}
                 <CommonOpponents fight={fight} />
               </> : null}
               {tab === "odds" ? <OddsPanel fight={fight} /> : null}

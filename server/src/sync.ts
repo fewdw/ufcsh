@@ -1,3 +1,4 @@
+import { storePotentialBoard } from "./potential-matchups.ts";
 import { isFightDay, LIVE_EVENT_INTERVAL, liveDetailDue, fightIsComplete, fightIsUnderway } from "./live-state.ts";
 import { db, getMeta, metaAgeMs, setMeta, touchMeta } from "./db.ts";
 import { daysBetween, firstLastName, log, normName, todayIso } from "./util.ts";
@@ -1360,6 +1361,11 @@ export async function syncFightOdds({ props = false }: { props?: boolean } = {})
 
   const total = { events: 0, lines: 0, props: 0 };
   for (const event of events) {
+    if (event.slug === "future-fights") {
+      await storePotentialBoard(await fightOddsBoard(event.pk), props);
+      total.events++;
+      continue;
+    }
     // Only cards we list, so a far-off or unannounced board costs nothing.
     if (!(selectFights.all(event.date, event.date) as unknown[]).length) continue;
     const bouts = await fightOddsBoard(event.pk);

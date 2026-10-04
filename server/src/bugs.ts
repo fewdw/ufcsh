@@ -1,3 +1,4 @@
+import { potentialMatchups } from "./potential-matchups.ts";
 import { db, getMeta, setMeta } from "./db.ts";
 import { confirmedTitleResults, missingCurrentRankingHistory, relinkRankingHistory } from "./ranking-history.ts";
 import { validateFightActions } from "./action-stats.ts";
@@ -1554,6 +1555,28 @@ function rosterMovesUnread(): BugCheck {
 /** FightOdds.io prices upcoming bouts every five minutes. Unread for half an
  *  hour, lines fall back to BestFightOdds' slower pass: the app's API moved,
  *  changed shape, or started asking for its bot check. */
+function potentialMatchupGaps(): BugCheck {
+  const readAt = Number(getMeta("potential_matchups_read_at")) || null;
+  const items: BugItem[] = [];
+  if (!readAt || Date.now() - readAt > 30 * 60_000) items.push({
+    key: "board", title: "Potential matchups board is stale", facts: [["Last read", ago(readAt)]],
+    links: [{ label: "Future fights", href: "https://fightodds.io" }],
+    actions: [{ id: "potential-odds", label: "Re-read board", target: "all" }],
+  });
+  for (const row of potentialMatchups()) {
+    const missing = [row.f1_id, row.f2_id].some(id => !id || !db.prepare("SELECT 1 FROM fighters WHERE id = ?").get(id));
+    if (!missing) continue;
+    items.push({ key: row.id, title: `${row.f1_name} vs ${row.f2_name}`, facts: [["Problem", "Fighter identity missing from archive"]],
+      links: [{ label: "Odds source", href: JSON.parse(row.odds_json).source_url }],
+      actions: [{ id: "potential-odds", label: "Re-read board", target: "all" }],
+    });
+  }
+  return check({ id: "odds-potential-matchups", group: "Odds", label: "Potential matchup coverage",
+    description: "The future-fights board supplies unconfirmed matchup prices every five minutes. Stale reads preserve the last snapshot. Missing fighter identities leave career comparisons incomplete; re-reading retries identity matching.",
+    grade: item => item.key === "board" ? "must" : "minor",
+  }, items);
+}
+
 function fightOddsUnread(): BugCheck {
   const readAt = Number(getMeta("fightodds_read_at")) || null;
   const items: BugItem[] = readAt && Date.now() - readAt < 30 * 60_000 ? [] : [{
@@ -1622,6 +1645,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     suspiciousOdds(),
     wrongFighterPages(),
     fightOddsUnread(),
+    potentialMatchupGaps(),
     upcomingMoneyline(),
     pastMoneyline(),
     upcomingProps(),
@@ -1696,7 +1720,7 @@ function newsUnjudged(): BugCheck {
   }, items);
 }
 
-export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings";
+export type BugActionId = "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -1706,6 +1730,10 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
   `).get(target) as { id: string; event_id: string; f1_id: string; f2_id: string; f1_name: string; f2_name: string; date: string } | undefined;
 
   switch (action) {
+    case "potential-odds": {
+      await syncFightOdds({ props: true });
+      return { ok: true, message: `${potentialMatchups().length} potential matchups with odds.` };
+    }
     case "odds": {
       const row = fight();
       if (!row) return { ok: false, message: "Fight not found." };
