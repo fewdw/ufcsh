@@ -15,12 +15,15 @@ if [[ "$request" =~ ^prod[[:space:]]([0-9a-f]{40})$ ]]; then
     exit 0
   fi
   "$repo_dir/deploy/update.sh"
-elif [[ "$request" =~ ^dev[[:space:]]([^[:space:]]+)$ ]]; then
+  # Only the merged owner advances the review queue; other releases leave dev alone.
+  if ! "$repo_dir/deploy/dev-review.sh" merged "$requested_sha"; then
+    echo 'Production deployment completed; queued dev deployment needs attention. Check dev-review.sh status.' >&2
+  fi
+elif [[ "$request" =~ ^dev[[:space:]]([^[:space:]]+)[[:space:]]([0-9a-f]{40})$ ]]; then
   branch="${BASH_REMATCH[1]}"
-  exec 9>/tmp/ufcsh-development-deploy.lock
-  flock -w 600 9
-  "$repo_dir/deploy/select-dev-branch.sh" "$branch"
+  sha="${BASH_REMATCH[2]}"
+  "$repo_dir/deploy/dev-review.sh" priority "$branch" "$sha"
 else
-  echo 'Only production main deployments and dev branch selection are allowed.' >&2
+  echo 'Only prod SHA and explicit dev BRANCH SHA requests are allowed. Update old branches to the current workflow.' >&2
   exit 2
 fi

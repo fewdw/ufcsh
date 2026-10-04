@@ -18,7 +18,9 @@ test("production HTTP uses workers, shared responses, validators and admin autho
   const request = (path: string, init?: RequestInit) => fetch(base + path, { ...init, signal: AbortSignal.timeout(15_000) });
   assert.equal((await request("/healthz")).status, 200);
   let ready = false;
-  for (let attempt = 0; attempt < 100; attempt++) {
+  // Full-archive warm-up needs headroom on a shared development host.
+  const readyDeadline = Date.now() + 30_000;
+  while (Date.now() < readyDeadline) {
     if ((await request("/readyz")).ok) { ready = true; break; }
     await sleep(100);
   }

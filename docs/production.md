@@ -119,9 +119,10 @@ record counts, representative pages, and sync freshness before switching over.
 Keep a backup before schema upgrades; rolling the application image back alone
 does not roll the database schema back.
 
-GitHub Actions runs CI on pull requests and pushes. After a successful CI run
+GitHub Actions runs CI when a draft PR is marked ready and on pushes to main.
+Feature pushes do not run Actions or replace the dev review. After a successful CI run
 on `main`, it connects through a restricted SSH key and runs
-`deploy/update.sh` automatically. That script builds first, takes a backup,
+`deploy/update.sh` automatically. That script builds with the bounded builder and shared heavy-job lock, takes a backup,
 then runs `docker compose up -d --wait`.
 Shutdown stops accepting requests and gives active HTTP requests 10 seconds to
 drain. The supervisor terminates child processes after 12 seconds if needed.

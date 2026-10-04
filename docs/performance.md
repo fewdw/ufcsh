@@ -3,6 +3,41 @@
 Measure first, then change what the measurement points at. This page records
 the targets, how to measure against them, and the last measured results.
 
+## Agent workflow and deployment (2026-10-04)
+
+Baseline host: four CPU cores, 7.6 GiB RAM, 4 GiB swap. At inspection production
+used 1.84 GiB, dev 1.19 GiB, and each of three Codex processes plus its launcher
+used about 250 MiB before tools. This is a snapshot, not measured peak capacity.
+
+[Main release 37207825236](https://github.com/fewdw/ufcsh/actions/runs/37207825236)
+took 102 seconds: checks 43 s, host client build 24.6 s, and 16 s from container
+start to reported healthy. One manual dev selection waited about 52 s before
+its job started. The same feature commits also ran push and PR checks separately.
+
+The new workflow removes push-triggered feature checks/deploys and release-time
+dev rebuilds. Ready transitions request CI; completed tasks claim/queue dev with
+local commands, so queued tasks launch no GitHub deployment runner. Healthy
+identical deployments skip builds. Documentation/tests are excluded from the
+client Docker COPY to preserve its build cache. Startup health probing changes
+from the default 5-second start interval to 1 second; readiness criteria stay.
+
+Heavy commands share one slot and have a 2 GiB systemd scope; Docker builds have
+a separate 2 GiB/two-core builder. The optional session launcher caps three
+sessions in a shared 2 GiB slice. Verified on this host via its actual cgroup and
+systemd `MemoryHigh=1610612736`, `MemoryMax=2147483648`, `MemorySwapMax=536870912`.
+These controls require their entrypoints; they cannot intercept direct T3 launches.
+The real bounded builder reports 2,147,483,648-byte RAM/swap budgets and a
+200,000-microsecond CPU quota. A cold dev image build took 80.6 s (new builder,
+including downloads); repeating the unchanged build took 3.94 s. The resulting
+image's baked revision matched the task commit. No existing dev review was reset.
+
+The full archive suite ran in 245 s with 791,228 KiB peak RSS and no swaps.
+418/419 checks passed; the existing HTTP integration check exceeded its 10-second
+readiness window. Its deadline is now 30 seconds to accommodate full-archive
+warm-up on this shared host; the affected check passed in 11.9 s after the change.
+Do not repeat the entire suite for unrelated edits;
+rerun affected checks. No browser was launched for infrastructure verification.
+
 ## Targets
 
 | Measure | Target |

@@ -1,9 +1,12 @@
 name: Deploy dev branch
-# Called by CI: shows one pushed branch at dev.ufc.sh.
+# Explicit selection overrides the shared dev review slot.
 on:
   workflow_call:
     inputs:
       branch:
+        required: true
+        type: string
+      sha:
         required: true
         type: string
 permissions:
@@ -24,15 +27,17 @@ jobs:
           DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
           DEPLOY_HOST_KEY: ${{ vars.DEPLOY_HOST_KEY }}
           DEV_BRANCH: ${{ inputs.branch }}
+          DEV_SHA: ${{ inputs.sha }}
         run: |
           set -euo pipefail
           if ! git check-ref-format --branch "$DEV_BRANCH" >/dev/null 2>&1; then
             echo 'Invalid branch name' >&2
             exit 2
           fi
+          [[ "$DEV_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 2
           install -m 700 -d "$HOME/.ssh"
           printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/ufcsh_deploy"
           chmod 600 "$HOME/.ssh/ufcsh_deploy"
           printf '%s %s\n' "$DEPLOY_HOST" "$DEPLOY_HOST_KEY" > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i "$HOME/.ssh/ufcsh_deploy" "ubuntu@$DEPLOY_HOST" "dev $DEV_BRANCH"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i "$HOME/.ssh/ufcsh_deploy" "ubuntu@$DEPLOY_HOST" "dev $DEV_BRANCH $DEV_SHA"
