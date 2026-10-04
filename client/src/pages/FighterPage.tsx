@@ -48,15 +48,14 @@ function resultBadgeLetter(outcome: HistoryRow["outcome"], upcoming: boolean): s
   }
 }
 
-/** Every result is a solid dot with a white letter: a finish in the deep
- *  shade of its colour, a decision in the bright one. */
+/** Finishes use deep colours; decisions use light colours with a dark letter. */
 function resultBadgeClasses(outcome: HistoryRow["outcome"], upcoming: boolean, method: string | null): string {
   if (upcoming) return "bg-sky-100 text-sky-700";
   const decision = isDecision(method);
   switch (outcome) {
-    case "win": return decision ? "bg-emerald-500 text-white" : "bg-emerald-700 text-white";
-    case "loss": return decision ? "bg-rose-400 text-white" : "bg-rose-700 text-white";
-    case "draw": return decision ? "bg-amber-400 text-white" : "bg-amber-600 text-white";
+    case "win": return decision ? "bg-emerald-400 text-emerald-950" : "bg-emerald-800 text-white";
+    case "loss": return decision ? "bg-rose-300 text-rose-950" : "bg-rose-800 text-white";
+    case "draw": return decision ? "bg-amber-300 text-amber-950" : "bg-amber-700 text-white";
     case "nc": return "bg-zinc-400 text-white";
     default: return "bg-zinc-200 text-zinc-500";
   }
