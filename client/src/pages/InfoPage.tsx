@@ -92,9 +92,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-04">October 4, 2026</time></p>
             <ul>
-              <li>Added potential matchups with odds and fighter comparisons.</li>
-              <li>Prices refresh from BestFightOdds and FightOdds.io.</li>
-              <li>Potential matchups stay first, with a No date label.</li>
+              <li>Development reviews now wait their turn.</li>
+              <li>Deployments verify the running version.</li>
+              <li>Reduced repeated checks and memory usage.</li>
             </ul>
           </Section>
         </div>
