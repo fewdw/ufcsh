@@ -5,6 +5,7 @@ import { PANEL } from "./chartTokens";
 import { PanelHeading } from "./FightStats";
 import { Tooltip } from "./Tooltip";
 import type { TipAnchor } from "../tooltip";
+import { FIRST_RANKING_LIST, rankingChart, rankingTime as time, rankOn } from "../rankingHistory";
 
 /** Slots follow the division in the order the fighter was first ranked in it. */
 const SERIES = ["text-series-1", "text-series-2", "text-series-3", "text-series-4"];
@@ -12,58 +13,36 @@ const SWATCH = ["bg-series-1", "bg-series-2", "bg-series-3", "bg-series-4"];
 
 const WIDTH = 600;
 const HEIGHT = 160;
-/** Champion on top with room of its own, interim between it and #1, then 1 to 15. */
-const level = (rank: string) => rank === "C" ? -1.5 : rank === "IC" ? -0.25 : Number(rank);
-const y = (rank: string) => 6 + ((level(rank) + 1.5) / 16.5) * (HEIGHT - 12);
-const TICKS = ["C", "1", "5", "10", "15"];
-/** The first official list; a line starting here may have begun earlier. */
-const FIRST_LIST = "2013-02-04";
-const time = (date: string) => Date.parse(`${date}T00:00:00Z`);
-const held = (rank: string) => rank === "C" ? "Champion" : rank === "IC" ? "Interim champion" : `#${rank}`;
-
-/** The rank in force on a date, or null when off the list or outside the line. */
-function rankOn(points: RankingTimeline["divisions"][number]["points"], at: number): string | null {
-  let rank: string | null = null;
-  for (const point of points) {
-    if (time(point.date) > at) break;
-    rank = point.rank;
-  }
-  return rank;
-}
+/** Champion on top with room of its own, interim between it and #1, then 1 to 15 and NR. */
+const level = (rank: string) => rank === "C" ? -1.5 : rank === "IC" ? -0.25 : rank === "NR" ? 18 : Number(rank);
+const y = (rank: string) => 6 + ((level(rank) + 1.5) / 19.5) * (HEIGHT - 12);
+const TICKS = ["C", "1", "5", "10", "15", "NR"];
+const held = (rank: string) => rank === "C" ? "Champion" : rank === "IC" ? "Interim champion" : rank === "NR" ? "NR" : `#${rank}`;
+const colorSlot = (division: string, index: number) => division === "Pound-for-pound" ? 3 : index % SERIES.length;
 
 /** A fighter's official rank over time, one step line per division. Ranks
- *  change on list days, so the line holds flat between them; a gap is a
- *  stretch off the list. */
+ *  change on list days, so the line holds flat between them; NR sits below #15. */
 type Bout = HistoryRow | ProfessionalHistoryRow;
 const RESULT_WORD: Record<string, string> = { win: "Win", loss: "Loss", draw: "Draw", nc: "No contest" };
 
 export default function RankingHistory({ timeline, history = [] }: { timeline: RankingTimeline | undefined; history?: Bout[] }) {
   const tipId = useId();
   const [hover, setHover] = useState<{ at: number; anchor: TipAnchor } | null>(null);
-  const divisions = (timeline?.divisions ?? []).slice(0, SERIES.length);
-  if (!divisions.length) return null;
-
-  const start = time(divisions.map((division) => division.points[0].date).sort()[0]);
-  const end = Math.max(time(timeline!.through ?? ""), ...divisions.map((division) => time(division.points.at(-1)!.date))) || start;
+  const chart = rankingChart(timeline, history);
+  if (!chart) return null;
+  const { start, end, lines } = chart;
   const span = Math.max(end - start, 86_400_000);
   const x = (at: number) => ((at - start) / span) * WIDTH;
 
-  // Each ranked stretch is its own path: flat to the next list, then a step.
-  const paths = divisions.map((division) => {
-    const runs: string[] = [];
+  // One continuous step path per list, including stretches off the rankings.
+  const paths = lines.map((division) => {
     let run = "";
     division.points.forEach((point, index) => {
       const next = division.points[index + 1];
       const until = next ? time(next.date) : end;
-      if (point.rank == null) {
-        if (run) runs.push(run);
-        run = "";
-        return;
-      }
-      run += `${run ? "L" : "M"}${x(time(point.date)).toFixed(1)},${y(point.rank).toFixed(1)}H${x(until).toFixed(1)}`;
+      run += `${run ? "L" : "M"}${x(time(point.date)).toFixed(1)},${y(point.rank ?? "NR").toFixed(1)}H${x(until).toFixed(1)}`;
     });
-    if (run) runs.push(run);
-    return runs.join("");
+    return run;
   });
 
   const firstYear = new Date(start).getUTCFullYear();
@@ -74,25 +53,22 @@ export default function RankingHistory({ timeline, history = [] }: { timeline: R
 
   // The ranks held on the hovered date (every division ranked in, and
   // pound-for-pound), and the last fight on or before it.
-  const hovered = hover && [
-    ...divisions.map((division) => ({ division: division.division, rank: rankOn(division.points, hover.at) })),
-    { division: "Pound-for-pound", rank: rankOn(timeline!.p4p ?? [], hover.at) },
-  ].filter((row) => row.rank);
+  const hovered = hover && lines.map((division) => ({ division: division.division, rank: rankOn(division.points, hover.at) }));
   const fights = history.filter((row) => (row.promotion ?? "ufc") === "ufc" && row.outcome && !("upcoming" in row && row.upcoming))
     .map((row) => ({ row, at: time(row.date) })).filter((fight) => fight.at >= start && fight.at <= end)
     .sort((a, b) => a.at - b.at);
   const lastFight = hover ? fights.filter((fight) => fight.at <= hover.at).at(-1) : undefined;
-  // Each result sits on the line at the rank held going in; an unranked one under it.
+  // Each result sits at the divisional rank held going in, including NR.
   const marks = fights.filter((fight) => fight.row.outcome === "win" || fight.row.outcome === "loss").map((fight) => {
-    const own = divisions.find((division) => division.division === fight.row.weight_class);
-    const rank = (own && rankOn(own.points, fight.at - 1)) ?? divisions.map((division) => rankOn(division.points, fight.at - 1)).find(Boolean) ?? null;
-    return { ...fight, top: rank ? y(rank) : HEIGHT - 1 };
+    const own = lines.find((division) => division.division === fight.row.weight_class);
+    const rank = own ? rankOn(own.points, fight.at - 1) : null;
+    return { ...fight, top: y(rank ?? "NR") };
   });
-  const best = divisions.flatMap((division) => division.points.filter((point) => point.rank).map((point) => ({ ...point, division: division.division })))
+  const best = lines.flatMap((division) => division.points.filter((point) => point.rank).map((point) => ({ ...point, division: division.division })))
     .sort((a, b) => level(a.rank!) - level(b.rank!) || a.date.localeCompare(b.date))[0];
 
   const notes = [
-    start <= time(FIRST_LIST) ? "The UFC's official rankings began in February 2013." : "",
+    start <= time(FIRST_RANKING_LIST) ? "The UFC's official rankings began in February 2013." : "",
     timeline!.meta_since && start < time(timeline!.meta_since) ? `Media rankings before ${formatDate(timeline!.meta_since)}.` : "",
   ].filter(Boolean);
 
@@ -107,11 +83,11 @@ export default function RankingHistory({ timeline, history = [] }: { timeline: R
     <section className={PANEL}>
       <PanelHeading title="Ranking history" />
       <div className="px-4 pb-4 pt-3 sm:px-5">
-        {divisions.length > 1 ? (
+        {lines.length > 1 || lines[0].division === "Pound-for-pound" ? (
           <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-500">
-            {divisions.map((division, index) => (
+            {lines.map((division, index) => (
               <span key={division.division} className="inline-flex items-center gap-1.5">
-                <span aria-hidden="true" className={`h-0.5 w-3 rounded-full ${SWATCH[index]}`} />
+                <span aria-hidden="true" className={`w-3 border-t-2 ${division.division === "Pound-for-pound" ? "border-dashed" : "border-solid"} ${SERIES[colorSlot(division.division, index)]}`} />
                 {division.division}
               </span>
             ))}
@@ -125,12 +101,12 @@ export default function RankingHistory({ timeline, history = [] }: { timeline: R
           </div>
           <div className="relative h-40 touch-pan-y" onPointerMove={track} onPointerDown={track} onPointerLeave={leave} onPointerCancel={leave}>
             <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" role="img"
-              aria-label={`${divisions.map((division) => division.division).join(" and ")} ranking from ${formatDate(new Date(start).toISOString().slice(0, 10))}${best ? `; best ${held(best.rank!)} in ${best.division}` : ""}`}>
+              aria-label={`${lines.map((division) => division.division).join(" and ")} ranking from ${formatDate(new Date(start).toISOString().slice(0, 10))}${best ? `; best ${held(best.rank!)} in ${best.division}` : ""}`}>
               {TICKS.map((tick) => (
                 <line key={tick} x1="0" x2={WIDTH} y1={y(tick)} y2={y(tick)} className="stroke-plot-axis" strokeWidth="1" vectorEffect="non-scaling-stroke" />
               ))}
               {paths.map((path, index) => (
-                <path key={divisions[index].division} d={path} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" className={SERIES[index]} />
+                <path key={lines[index].division} d={path} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" strokeDasharray={lines[index].division === "Pound-for-pound" ? "5 3" : undefined} vectorEffect="non-scaling-stroke" className={SERIES[colorSlot(lines[index].division, index)]} />
               ))}
               {hover ? <line x1={x(hover.at)} x2={x(hover.at)} y1="0" y2={HEIGHT} className="stroke-zinc-400" strokeWidth="1" vectorEffect="non-scaling-stroke" /> : null}
             </svg>
@@ -140,9 +116,9 @@ export default function RankingHistory({ timeline, history = [] }: { timeline: R
                 className={`pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white dark:ring-zinc-900 ${mark.row.outcome === "win" ? "bg-emerald-500" : "bg-rose-500"}`}
                 style={{ left: `${(x(mark.at) / WIDTH) * 100}%`, top: `${(mark.top / HEIGHT) * 100}%` }} />
             ))}
-            {hover ? divisions.map((division, index) => {
+            {hover ? lines.map((division, index) => {
               const rank = rankOn(division.points, hover.at);
-              return rank ? <span key={division.division} aria-hidden="true" className={`absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white dark:ring-zinc-900 ${SWATCH[index]}`}
+              return rank ? <span key={division.division} aria-hidden="true" className={`absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white dark:ring-zinc-900 ${SWATCH[colorSlot(division.division, index)]}`}
                 style={{ left: `${(x(hover.at) / WIDTH) * 100}%`, top: `${(y(rank) / HEIGHT) * 100}%` }} /> : null;
             }) : null}
           </div>
@@ -158,7 +134,7 @@ export default function RankingHistory({ timeline, history = [] }: { timeline: R
         <table className="sr-only">
           <caption>Ranking changes</caption>
           <tbody>
-            {divisions.flatMap((division) => division.points.map((point) => (
+            {lines.flatMap((division) => division.points.map((point) => (
               <tr key={`${division.division}:${point.date}`}><td>{point.date}</td><td>{division.division}</td><td>{point.rank ? held(point.rank) : "Unranked"}</td></tr>
             )))}
           </tbody>
@@ -170,7 +146,7 @@ export default function RankingHistory({ timeline, history = [] }: { timeline: R
           {hovered.length ? hovered.map((row) => (
             <span key={row.division} className="mt-0.5 flex justify-between gap-4">
               <span>{row.division}</span>
-              <span className="font-semibold tabular-nums">{held(row.rank!)}</span>
+              <span className="font-semibold tabular-nums">{held(row.rank ?? "NR")}</span>
             </span>
           )) : <span className="mt-0.5 block font-semibold">Unranked</span>}
           {lastFight ? (
