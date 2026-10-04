@@ -41,7 +41,7 @@ export function useAccount() {
       fallbackRedirectUrl: here(), signUpFallbackRedirectUrl: here(),
       appearance: { elements: {
         // Center slightly above the viewport midpoint; tall forms can still scroll from the top.
-        modalBackdrop: { alignItems: "safe center", paddingBlock: "1rem calc(1rem + 8dvh)" },
+        modalBackdrop: { height: "100dvh", boxSizing: "border-box", alignItems: "safe center", paddingBlock: "1rem calc(1rem + 8dvh)" },
         modalContent: { margin: "0" },
       } },
     });
