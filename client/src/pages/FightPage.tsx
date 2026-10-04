@@ -849,7 +849,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     // The bout on now has its Score tab from the moment it starts, rounds
     // locked until the feed or the admin panel opens them.
     ...(scoreableRoundCount(fight) > 0 || fight.in_progress ? ["score" as const] : []),
-    ...(fight.prediction_available !== false && (fight.status !== "past" || requestedTab === "predict") ? ["predict" as const] : []),
+    ...(fight.prediction_available !== false ? ["predict" as const] : []),
     "discussion",
   ];
   const tab = tabs.find((candidate) => candidate === requestedTab) ?? tabs[0];

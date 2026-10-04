@@ -90,11 +90,9 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-03">October 3, 2026</time></p>
+            <p><time dateTime="2026-10-04">October 4, 2026</time></p>
             <ul>
-              <li>Past fights show each fighter's ranking going into the fight, not today's.</li>
-              <li>Fighter profiles chart their ranking history since 2013.</li>
-              <li>Rankings with a tie no longer stop updating.</li>
+              <li>Finished fights keep the Predict tab so fan picks remain visible.</li>
             </ul>
           </Section>
         </div>
