@@ -1,12 +1,17 @@
 name: CI
 on:
   push:
+    branches: [main]
   pull_request:
+    types: [ready_for_review]
 permissions:
   contents: read
 jobs:
   checks:
     runs-on: ubuntu-latest
+    concurrency:
+      group: checks-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,9 +24,10 @@ jobs:
       - run: npm ci --prefix server
       - run: npm ci --prefix client
       # The full server suite reads the intentionally untracked UFC archive.
-      - run: DATA_DIR=/tmp/ufcsh-ci-no-archive DB_INIT=0 NO_SYNC=1 API_WORKERS=0 node --test server/src/admin-http.test.ts server/src/observability.test.ts server/src/repair-guard.test.ts server/src/deploy-fetch-lock.test.ts
+      - run: DATA_DIR=/tmp/ufcsh-ci-no-archive DB_INIT=0 NO_SYNC=1 API_WORKERS=0 node --test server/src/admin-http.test.ts server/src/observability.test.ts server/src/repair-guard.test.ts server/src/deploy-fetch-lock.test.ts server/src/agent-workflow.test.ts
       - run: npm test --prefix client
       - run: server/node_modules/.bin/tsc --noEmit -p server/tsconfig.json
+      - run: npm run lint --prefix client
       - run: npm run build --prefix client
       - run: DOMAIN=example.test DEFAULT_ADMIN=admin@example.test ADMIN_TOKEN=test GRAFANA_ADMIN_PASSWORD=test docker compose --profile observability config --quiet
       - run: docker run --rm -e DOMAIN=example.test -e REDIRECT_DOMAIN=old.example.test -e REDIRECT_STATUS=302 -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
@@ -51,21 +57,3 @@ jobs:
           printf '%s %s\n' "$DEPLOY_HOST" "$DEPLOY_HOST_KEY" > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i "$HOME/.ssh/ufcsh_deploy" "ubuntu@$DEPLOY_HOST" "prod $DEPLOY_SHA"
-  # Every push to a branch other than main shows that branch at dev.ufc.sh
-  # straight away, without waiting for the checks. The Choose dev branch
-  # workflow still switches dev to any branch by hand.
-  deploy-dev:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/main' && !github.event.deleted
-    uses: ./.github/workflows/deploy-dev-branch.yml
-    with:
-      branch: ${{ github.ref_name }}
-    secrets: inherit
-  # A push or merge to main moves dev onto main too, once the checks pass,
-  # so production and dev show the same code.
-  sync-dev:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: checks
-    uses: ./.github/workflows/deploy-dev-branch.yml
-    with:
-      branch: main
-    secrets: inherit

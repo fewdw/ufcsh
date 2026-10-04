@@ -2,7 +2,9 @@ FROM node:26-bookworm-slim AS client-build
 WORKDIR /app/client
 COPY client/package*.json ./
 RUN npm ci
-COPY client/ ./
+COPY client/index.html client/vite.config.ts client/tsconfig*.json ./
+COPY client/src ./src
+COPY client/public ./public
 # The client shares this one rule file with the server.
 COPY server/src/no-contest.ts server/src/career-metrics.ts server/src/action-stats.ts /app/server/src/
 ARG VITE_CLERK_PUBLISHABLE_KEY
@@ -24,7 +26,9 @@ COPY server/src ./src
 COPY --from=client-build /app/client/dist /app/client/dist
 RUN mkdir -p /data && chown node:node /data
 USER node
+ARG APP_REVISION=unknown
+LABEL org.opencontainers.image.revision=$APP_REVISION
 EXPOSE 8000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --start-interval=1s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:8000/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "src/production.ts"]

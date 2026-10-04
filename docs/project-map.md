@@ -59,4 +59,13 @@ copy of the local archive (`DATA_DIR`).
 
 `production.md` (hosting, backups, health), `launch.md` (new host),
 `dev-environment.md`, `performance.md`, `scoring.md`, `discussions.md`,
-`predictions.md`, `data-repairs/` (dated repair records).
+`predictions.md`, `agent-workflow.md`, `data-repairs/` (dated repair records).
+
+## Development and deployment
+
+`AGENTS.md` owns agent rules. `deploy/dev-review.sh` + `dev-review.ts` own the
+shared dev owner/queue; `select-dev-branch.sh` pins and verifies deployments.
+`tools/heavy.sh` queues/caps heavy commands; `tools/agent-session.sh` is the optional
+bounded session launcher. `deploy/build.sh` owns the bounded Docker builder.
+`.github/workflows/ci.yml` owns explicit PR checks and production releases;
+`deploy-dev.yml` is the manual dev override.

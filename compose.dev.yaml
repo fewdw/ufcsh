@@ -1,12 +1,19 @@
 services:
   app-dev:
+    image: ufcsh-dev:${DEV_SHA:-local}
     build:
       context: ${DEV_BUILD_CONTEXT:-.}
       args:
+        APP_REVISION: ${DEV_SHA:-unknown}
         VITE_CLERK_PUBLISHABLE_KEY: ${DEV_CLERK_PUBLISHABLE_KEY:?Set a separate Clerk development publishable key in .env.dev}
         VITE_CLERK_PROXY_URL: ""
         VITE_SITE_ORIGIN: https://dev.ufc.sh
     restart: unless-stopped
+    mem_limit: ${DEV_MEMORY_LIMIT:-2g}
+    cpus: ${DEV_CPU_LIMIT:-2}
+    labels:
+      sh.ufc.dev.branch: ${DEV_BRANCH:-unknown}
+      org.opencontainers.image.revision: ${DEV_SHA:-unknown}
     logging:
       driver: json-file
       options:

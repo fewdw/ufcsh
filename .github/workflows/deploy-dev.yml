@@ -10,4 +10,5 @@ jobs:
     uses: ./.github/workflows/deploy-dev-branch.yml
     with:
       branch: ${{ github.ref_name }}
+      sha: ${{ github.sha }}
     secrets: inherit

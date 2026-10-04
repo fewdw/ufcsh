@@ -62,33 +62,25 @@ it was shared in the conversation.
 
 ## Daily workflow
 
-The production checkout is `/home/ubuntu/ufcsh` and stays on `main`. The dev
-worktree is `/home/ubuntu/ufcsh-dev`. Every push to a branch other than
-`main` deploys that branch to `dev.ufc.sh` automatically (the `deploy-dev` job
-in CI), without waiting for the checks. A push or merge to `main` deploys
-production and then moves dev onto `main` as well (the `sync-dev` job), so the
-two match until the next branch push. To show a different pushed branch by
-hand, run
-`./deploy/select-dev-branch.sh BRANCH` from the production checkout. Or in
-GitHub, open **Actions → Choose dev branch → Run workflow**, pick the branch in
-the dropdown, and click **Run workflow**. This fetches the branch, switches the
-dev worktree, rebuilds the app, and updates `dev.ufc.sh`. The worktree must be
-clean before switching branches; commit or stash unfinished changes first.
+Production stays on clean `main` in `/home/ubuntu/ufcsh`. Each task edits its own
+worktree under `/home/ubuntu/ufcsh-wt`; `/home/ubuntu/ufcsh-dev` is only the shared,
+detached deployment checkout. Never edit it or rebuild it behind another review.
 
-Edit code in the dev worktree and run `/home/ubuntu/ufcsh/dev.sh` to rebuild
-and restart dev from those changes. The browser updates after the build
-finishes. Follow startup with:
+Feature pushes save work and update draft PRs without running Actions or deploying.
+The first **finished** task claims dev through `./deploy/dev-review.sh ready BRANCH
+SHA`; later tasks queue. Explicit "put in dev" uses `priority`, and "don't deploy"
+uses `skip`. `next` shows the next queued task; releasing/merging the owner advances
+the queue. See [agent workflow](agent-workflow.md) for commands and resource limits.
 
-```sh
-cd /home/ubuntu/ufcsh
-docker compose -p ufcsh --env-file .env.dev -f compose.dev.yaml logs -f app-dev dev-tunnel
-```
+The scripts pin the pushed commit, build under a shared heavy-job lock, wait for
+readiness, and confirm the running container labels. Identical healthy deployments
+are skipped. **Actions → Choose dev branch → Run workflow** remains a manual
+priority override. `dev.sh` is for initial setup; use the coordinator afterward.
 
-When satisfied, commit and push your branch and open a PR. The push shows
-the branch at `dev.ufc.sh`, and the CI checks run on it. Once the PR reaches `main` and CI succeeds there, GitHub
-Actions deploys production to `ufc.sh` automatically. Switching dev branches
-never deploys production. `/home/ubuntu/ufcsh/deploy/update.sh` remains
-available for manual recovery.
+Mark a draft PR ready when you want CI. Ordinary pushes do not rerun it. Before an
+authorized merge, prepare the changelog and branch update, push, then request final
+CI. Successful main CI deploys production without resetting the current dev review.
+`deploy/update.sh` remains available only for explicitly requested manual recovery.
 
 To stop dev while retaining its database, run:
 
