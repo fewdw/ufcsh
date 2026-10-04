@@ -281,8 +281,8 @@ caches still reuse those results across visitors.
 
 The first React Aria implementation loaded its calendar with the rankings page:
 the production page chunk measured 266.99 kB (84.43 kB gzipped). Loading the
-picker when its calendar icon opens keeps the rankings chunk at 23.48 kB
-(7.79 kB gzipped), with a separate 240.02 kB (76.44 kB gzipped) picker chunk. These are
+picker when its calendar icon opens keeps the rankings chunk at 23.40 kB
+(7.75 kB gzipped), with a separate 240.02 kB (76.44 kB gzipped) picker chunk. These are
 Vite build measurements with the committed dependency lockfile; they measure
 transfer size, not elapsed load time. Date changes retain the displayed list
 and its date/source context until the replacement response arrives, avoiding a

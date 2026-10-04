@@ -661,44 +661,61 @@ export default function RankingsPage() {
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto" aria-busy={loading}>
       <div className="p-2 pb-8 sm:p-3">
-        {/* Keep Filters and date controls together. On small screens they
-            share the source row; divisions and the key get their own rows. */}
+        {/* Controls stay on one row; only the tabs scroll when space is tight. */}
         <div className={`${shell} mb-2 flex flex-wrap items-center gap-1.5 px-2.5 py-2 sm:mb-3 sm:gap-2 sm:px-3 lg:gap-3`}>
-          <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Ranking view">
-            {SOURCES.map((source) => (
-              <button
-                key={source.key}
-                type="button"
-                aria-pressed={settings.rankingSource === source.key}
-                onClick={() => { setHighlightedId(null); update("rankingSource", source.key); }}
-                title={source.help}
-                className={`rounded-full px-2.5 py-1 text-xs font-medium transition sm:px-3.5 md:px-2.5 lg:px-3.5 ${
-                  settings.rankingSource === source.key ? segmentedSelected : segmentedIdle
-                }`}
-              >
-                {source.label}
-              </button>
-            ))}
-          </div>
-          <div className={`order-2 flex basis-full justify-end ${wideKey ? "xl:order-none xl:basis-auto" : "md:order-none md:basis-auto"}`}>
-            <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Divisions shown">
-              {FILTERS.map((f) => (
-                <button
-                  key={f.key}
-                  type="button"
-                  aria-pressed={view === f.key}
-                  onClick={() => { setHighlightedId(null); setView(f.key); }}
-                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition sm:px-3.5 md:px-2.5 lg:px-3.5 ${
-                    view === f.key ? segmentedSelected : segmentedIdle
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto overscroll-x-contain py-1.5 sm:gap-2 [scrollbar-width:none]" aria-label="Ranking tabs">
+              <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Ranking view">
+                {SOURCES.map((source) => (
+                  <button
+                    key={source.key}
+                    type="button"
+                    aria-pressed={settings.rankingSource === source.key}
+                    onClick={() => { setHighlightedId(null); update("rankingSource", source.key); }}
+                    title={source.help}
+                    className={`rounded-full px-1.5 py-1 text-xs font-medium transition sm:px-2 lg:px-3.5 ${
+                      settings.rankingSource === source.key ? segmentedSelected : segmentedIdle
+                    }`}
+                  >
+                    {source.label}
+                  </button>
+                ))}
+              </div>
+              <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Divisions shown">
+                {FILTERS.map((f) => (
+                  <button
+                    key={f.key}
+                    type="button"
+                    aria-pressed={view === f.key}
+                    onClick={() => { setHighlightedId(null); setView(f.key); }}
+                    className={`rounded-full px-1 py-1 text-xs font-medium transition sm:px-2 lg:px-3.5 ${
+                      view === f.key ? segmentedSelected : segmentedIdle
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+              <FeaturesMenu
+                features={features}
+                onChange={(next) => {
+                  if (!next.hoverResults) setHighlightedId(null);
+                  setFeatures(next);
+                }}
+                dateMode={settings.dateMode}
+                onDateMode={(mode) => update("dateMode", mode)}
+                divisionOrder={settings.divisionOrder}
+                onDivisionOrder={(order) => update("divisionOrder", order)}
+                legend={<>{activityKey}{features.hoverResults ? <OpponentKey /> : null}{updated}</>}
+                historical={historical}
+              />
+              <RankingsDateControl selectedDate={selectedDate} today={today} onView={selectDate} />
             </div>
           </div>
-          <div className={`order-last flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 ${
-            wideKey ? "xl:order-none xl:ml-auto xl:basis-auto xl:whitespace-nowrap" : "md:order-none md:ml-auto md:basis-auto md:whitespace-nowrap"
+          <div className={`flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 ${
+            wideKey ? "xl:basis-auto" : "lg:basis-auto"
           }`}>
             {activeFeatures.activityColors ? activityKey : null}
             {activeFeatures.hoverResults ? <OpponentKey compact /> : null}
@@ -708,22 +725,6 @@ export default function RankingsPage() {
               Published {formatDate(data.as_of)} · {data.source === "media" ? "Media" : "Meta"}
               {data.source !== displayedSource ? " (before Meta rankings began)" : ""}
             </span> : null}
-          </div>
-          <div className="order-1 ml-auto flex shrink-0 items-center gap-1.5 md:order-none md:ml-0 sm:gap-2">
-            <FeaturesMenu
-              features={features}
-              onChange={(next) => {
-                if (!next.hoverResults) setHighlightedId(null);
-                setFeatures(next);
-              }}
-              dateMode={settings.dateMode}
-              onDateMode={(mode) => update("dateMode", mode)}
-              divisionOrder={settings.divisionOrder}
-              onDivisionOrder={(order) => update("divisionOrder", order)}
-              legend={<>{activityKey}{features.hoverResults ? <OpponentKey /> : null}{updated}</>}
-              historical={historical}
-            />
-            <RankingsDateControl selectedDate={selectedDate} today={today} onView={selectDate} />
           </div>
         </div>
 
