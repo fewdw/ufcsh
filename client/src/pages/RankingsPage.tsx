@@ -473,7 +473,6 @@ function FeaturesMenu({
   const enabledCount = options.filter((option) => features[option.key]).length;
   return (
     <OptionsSheet label="Filters" count={`${enabledCount}/${options.length}`} onReset={() => onChange(DEFAULT_FEATURES)} iconOnlyOnPhone="lg">
-      <div className="border-b border-zinc-100 px-4 py-3">{dateControls}</div>
       {/* The key to every mark in the lists, whichever are switched on. */}
       <div className="mb-1 space-y-1.5 border-b border-zinc-100 px-4 pb-3 pt-3 text-[11px] text-zinc-500">
         {/* Last 5: shape is where, fill how it ended, colour the result. */}
@@ -535,6 +534,7 @@ function FeaturesMenu({
           </select>
         </SheetField>
       </div>
+      <div className="border-t border-zinc-100 px-4 py-3">{dateControls}</div>
     </OptionsSheet>
   );
 }
