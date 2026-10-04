@@ -289,6 +289,25 @@ function boutFields(row: HistoryRow | ProfessionalHistoryRow) {
 }
 
 /** The bout's division, said as a move when it differs from the last one. */
+const DIVISION_SHORT: Record<string, string> = {
+  Strawweight: "SW", Flyweight: "FLW", Bantamweight: "BW", Featherweight: "FW", Lightweight: "LW",
+  Welterweight: "WW", Middleweight: "MW", "Light Heavyweight": "LHW", Heavyweight: "HW",
+};
+
+/** A rank held going into a bout: "C", "IC" or "#4", nothing when unranked.
+ *  A rank from another division names it ("C FW" on a lightweight bout). */
+function RankTag({ ranking, who, division }: { ranking: HistoryRow["rank"]; who: string; division: string }) {
+  if (!ranking) return null;
+  const elsewhere = ranking.division !== division
+    ? ` ${ranking.division.startsWith("Women's") ? "W" : ""}${DIVISION_SHORT[ranking.division.replace("Women's ", "")] ?? ranking.division}` : "";
+  const label = `${ranking.rank === "C" ? "C" : ranking.rank === "IC" ? "IC" : `#${ranking.rank}`}${elsewhere}`;
+  const held = ranking.rank === "C" ? "Champion" : ranking.rank === "IC" ? "Interim champion" : `#${ranking.rank}`;
+  return (
+    <span className={`shrink-0 whitespace-nowrap text-[11px] font-semibold tabular-nums ${ranking.rank === "C" ? "text-belt" : ranking.rank === "IC" ? "text-belt-interim" : "text-zinc-500"}`}
+      title={`${who}: ${held} · ${ranking.division}, going into this fight`}>{label}</span>
+  );
+}
+
 function DivisionLabel({ division, move }: { division: string; move?: DivisionMove }) {
   if (!move) return <span>{division}</span>;
   return <span className="font-semibold text-zinc-700">{move.direction === "up" ? "↑ Up to" : "↓ Down to"} {move.to}</span>;
@@ -328,6 +347,7 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
         </span>
         <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="min-w-0 break-words text-[15px] font-semibold leading-6 text-zinc-900">{row.opponent.name}</span>
+          {"opponent_rank" in row ? <RankTag ranking={row.opponent_rank} who={row.opponent.name} division={row.weight_class} /> : null}
           {/* Both closing lines are here, and position is what says whose is
               whose: the opponent's sits against their name, the fighter's on the
               line about their own result. Neither number can be read off as the
@@ -354,6 +374,7 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
           <FactRun>
             <span className="font-medium">{bout.method}</span>
             {bout.outside ? <span className="font-semibold text-violet-500">Outside UFC</span> : <DivisionLabel division={divisionName(row.weight_class, "catch_weight" in row ? row.catch_weight : null)} move={move} />}
+            {"rank" in row && row.rank ? <RankTag ranking={row.rank} who={fighterName} division={row.weight_class} /> : null}
             {row.title_narrative ? <span className={`font-semibold ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
             {weightMisses(row)}
             {/* The awards belong to the fight, so they close its run rather
@@ -431,6 +452,7 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
         <span className="block min-w-0">
           <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
             <span className="min-w-0 break-words text-sm font-semibold leading-5 text-zinc-900">{row.opponent.name}</span>
+            {"opponent_rank" in row ? <RankTag ranking={row.opponent_rank} who={row.opponent.name} division={row.weight_class} /> : null}
             {bout.opponentOdds ? <span className="shrink-0 text-[10px] font-semibold tabular-nums text-zinc-400" title={`${row.opponent.name} closing odds`}>{bout.opponentOdds}</span> : null}
           </span>
           <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -445,6 +467,7 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
       <DivisionCell to={bout.outside ? null : rankingsLink(row.weight_class)} className={`${cell} flex-col justify-start border-l border-zinc-100 text-left`}>
         <span className="block break-words text-[11px] leading-5 text-zinc-500">
           {bout.outside ? <span className="font-semibold text-violet-500">Outside UFC</span> : <DivisionLabel division={divisionName(row.weight_class, "catch_weight" in row ? row.catch_weight : null)} move={move} />}
+          {"rank" in row && row.rank ? <> <RankTag ranking={row.rank} who={fighterName} division={row.weight_class} /></> : null}
           {row.title_narrative ? <span className={`block font-semibold leading-4 ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
           {weightMisses(row).map((miss) => <span key={miss.key} className="mt-1 block leading-4">{miss}</span>)}
         </span>
@@ -755,7 +778,7 @@ export default function FighterPage() {
 
         {fought ? <div className={`${tab === "stats" ? "contents" : "hidden lg:contents"} [&>*]:shrink-0`}>
           <FighterCareerStats fighterId={fighter.id} name={fighter.name} totals={fighter.career_stats} />
-          <RankingHistory timeline={fighter.ranking_history} />
+          <RankingHistory timeline={fighter.ranking_history} history={fighter.history} />
           <Records records={fighter.records ?? []} />
           <FighterStatistics fighterId={fighter.id} history={fighter.history} />
         </div> : null}

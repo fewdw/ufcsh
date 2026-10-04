@@ -1060,10 +1060,22 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
   const indexedFighter = index.fighters.get(fr.id);
   const history = fighterHistory(id, true) as any[];
   const proHistory = professionalHistory(id, history);
+  // Each side's rank going into every UFC bout: the list in force before the
+  // card (the current one for a bout not yet fought), belts from the lineage.
+  const ordOf = prepared("SELECT ord FROM fights WHERE id = ?");
   const mergedUfcHistory = [
     ...history.filter((row) => row.upcoming),
     ...proHistory.filter((row) => row.promotion === "ufc"),
-  ];
+  ].map((row) => {
+    if (!row.fight_id || !row.opponent?.id) return row;
+    const ord = Number((ordOf.get(row.fight_id) as { ord: number } | undefined)?.ord) || 0;
+    const holders = index.holdersBefore(row.weight_class ?? "", row.date, ord);
+    return {
+      ...row,
+      rank: rankingEntering(fr.id, rankingType, row.date, row.weight_class ?? "", holders),
+      opponent_rank: rankingEntering(row.opponent.id, rankingType, row.date, row.weight_class ?? "", holders),
+    };
+  });
   const ranking = prepared(`
       SELECT division, rank, rank_change FROM rankings
       WHERE fighter_id = ? AND ranking_type = ?
@@ -1101,7 +1113,11 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     records,
     career_stats: careerStatistics(index, fr.id)?.totals,
     history: mergedUfcHistory,
-    pro_history: proHistory,
+    // The professional list shows the same ranks on its UFC bouts.
+    pro_history: proHistory.map((row) => {
+      const ranked = row.fight_id ? mergedUfcHistory.find((entry) => entry.fight_id === row.fight_id) : undefined;
+      return ranked && "rank" in ranked ? { ...row, rank: ranked.rank, opponent_rank: ranked.opponent_rank } : row;
+    }),
   };
   profileCache.set(cacheKey, profile);
   return profile;

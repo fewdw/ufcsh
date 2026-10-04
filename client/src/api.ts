@@ -273,6 +273,9 @@ export type HistoryRow = {
   round: string | null;
   time: string | null;
   opponent: { id: string; name: string };
+  /** Each side's rank going into the bout; null when unranked. */
+  rank?: FighterRanking;
+  opponent_rank?: FighterRanking;
   /** Both fighters' UFC records as they stood entering this bout. */
   record_before?: RecordBefore | null;
   opponent_record_before?: RecordBefore | null;
@@ -386,6 +389,8 @@ export type RankingTimeline = {
   through: string | null;
   /** The first meta list when meta was asked for; media lists stand in before it. */
   meta_since: string | null;
+  /** Pound-for-pound rank on every list where it changed. */
+  p4p?: { date: string; rank: string | null }[];
 };
 
 export type FighterProfile = {

@@ -103,9 +103,11 @@ export default function CareerStatDetails({ fighters, available, initial = 0, be
     const below = window.innerHeight - box.bottom - 16;
     // Above the stat when it fits (clear of the 64px header), so the bars
     // under it stay in view; below only when above is short and below isn't.
-    const room = box.top - 76;
+    // Above, it leaves the stat over this one showing, a pointer's move away.
+    const gap = box.height + 8;
+    const room = box.top - gap - 76;
     const above = room >= 280 || room > below;
-    setPosition({ left: Math.max(12, Math.min(box.left + box.width / 2 - width / 2, window.innerWidth - width - 12)), top: above ? box.top - 6 : box.bottom + 6, width, height: Math.min(480, Math.max(120, above ? room : below)), above });
+    setPosition({ left: Math.max(12, Math.min(box.left + box.width / 2 - width / 2, window.innerWidth - width - 12)), top: above ? box.top - gap : box.bottom + 6, width, height: Math.min(480, Math.max(120, above ? room : below)), above });
     setTouch(window.matchMedia("(hover: none)").matches);
     if (!open) { setSelected(initial); setSort({ order: "recent", column: 1 }); }
     setMode(next);

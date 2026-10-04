@@ -124,6 +124,8 @@ export type RankingTimeline = {
   through: string | null;
   /** The first meta list when meta was asked for; media lists stand in before it. */
   meta_since: string | null;
+  /** Pound-for-pound rank on every list where it changed (media lists only; meta has none). */
+  p4p: { date: string; rank: string | null }[];
 };
 
 /** Every date a list of this type was stored, oldest first. Hops the index
@@ -168,7 +170,19 @@ export function rankingTimeline(fighterId: string, type: RankingType): RankingTi
     }
     return { division, points };
   }).sort((a, b) => a.points[0].date.localeCompare(b.points[0].date));
-  return { divisions, through: lists.at(-1) ?? null, meta_since: metaStart ?? null };
+  const media = listDates("media");
+  const p4pRanks = new Map((db.prepare(`
+    SELECT date, rank FROM ranking_history WHERE fighter_id = ? AND ranking_type = 'media' AND division LIKE '%Pound-for-Pound%'
+  `).all(fighterId) as { date: string; rank: string }[]).map((row) => [row.date, row.rank]));
+  const p4p: RankingTimeline["p4p"] = [];
+  if (p4pRanks.size) {
+    const first = media.findIndex((date) => p4pRanks.has(date));
+    for (const date of media.slice(first)) {
+      const rank = p4pRanks.get(date) ?? null;
+      if (!p4p.length || p4p.at(-1)!.rank !== rank) p4p.push({ date, rank });
+    }
+  }
+  return { divisions, through: lists.at(-1) ?? null, meta_since: metaStart ?? null, p4p };
 }
 
 const ARCHIVE = "https://raw.githubusercontent.com/martj42/ufc_rankings_history/01b6e8aa45ae48ae91da2d73b46793a9da14e1eb";

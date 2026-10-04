@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import type { RankingTimeline } from "../api";
+import type { HistoryRow, ProfessionalHistoryRow, RankingTimeline } from "../api";
 import { formatDate } from "../format";
 import { PANEL } from "./chartTokens";
 import { PanelHeading } from "./FightStats";
@@ -34,7 +34,10 @@ function rankOn(points: RankingTimeline["divisions"][number]["points"], at: numb
 /** A fighter's official rank over time, one step line per division. Ranks
  *  change on list days, so the line holds flat between them; a gap is a
  *  stretch off the list. */
-export default function RankingHistory({ timeline }: { timeline: RankingTimeline | undefined }) {
+type Bout = HistoryRow | ProfessionalHistoryRow;
+const RESULT_WORD: Record<string, string> = { win: "Win", loss: "Loss", draw: "Draw", nc: "No contest" };
+
+export default function RankingHistory({ timeline, history = [] }: { timeline: RankingTimeline | undefined; history?: Bout[] }) {
   const tipId = useId();
   const [hover, setHover] = useState<{ at: number; anchor: TipAnchor } | null>(null);
   const divisions = (timeline?.divisions ?? []).slice(0, SERIES.length);
@@ -69,7 +72,22 @@ export default function RankingHistory({ timeline }: { timeline: RankingTimeline
   const years: number[] = [];
   for (let year = firstYear + 1; year <= lastYear; year += step) years.push(year);
 
-  const hovered = hover && divisions.map((division) => ({ division: division.division, rank: rankOn(division.points, hover.at) }));
+  // The ranks held on the hovered date (every division ranked in, and
+  // pound-for-pound), and the last fight on or before it.
+  const hovered = hover && [
+    ...divisions.map((division) => ({ division: division.division, rank: rankOn(division.points, hover.at) })),
+    { division: "Pound-for-pound", rank: rankOn(timeline!.p4p ?? [], hover.at) },
+  ].filter((row) => row.rank);
+  const fights = history.filter((row) => (row.promotion ?? "ufc") === "ufc" && row.outcome && !("upcoming" in row && row.upcoming))
+    .map((row) => ({ row, at: time(row.date) })).filter((fight) => fight.at >= start && fight.at <= end)
+    .sort((a, b) => a.at - b.at);
+  const lastFight = hover ? fights.filter((fight) => fight.at <= hover.at).at(-1) : undefined;
+  // Each result sits on the line at the rank held going in; an unranked one under it.
+  const marks = fights.filter((fight) => fight.row.outcome === "win" || fight.row.outcome === "loss").map((fight) => {
+    const own = divisions.find((division) => division.division === fight.row.weight_class);
+    const rank = (own && rankOn(own.points, fight.at - 1)) ?? divisions.map((division) => rankOn(division.points, fight.at - 1)).find(Boolean) ?? null;
+    return { ...fight, top: rank ? y(rank) : HEIGHT - 1 };
+  });
   const best = divisions.flatMap((division) => division.points.filter((point) => point.rank).map((point) => ({ ...point, division: division.division })))
     .sort((a, b) => level(a.rank!) - level(b.rank!) || a.date.localeCompare(b.date))[0];
 
@@ -117,6 +135,11 @@ export default function RankingHistory({ timeline }: { timeline: RankingTimeline
               {hover ? <line x1={x(hover.at)} x2={x(hover.at)} y1="0" y2={HEIGHT} className="stroke-zinc-400" strokeWidth="1" vectorEffect="non-scaling-stroke" /> : null}
             </svg>
             {/* Dots in HTML stay round however the plot is stretched. */}
+            {marks.map((mark) => (
+              <span key={`${mark.row.date}-${mark.row.opponent.name}`} aria-hidden="true"
+                className={`pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white dark:ring-zinc-900 ${mark.row.outcome === "win" ? "bg-emerald-500" : "bg-rose-500"}`}
+                style={{ left: `${(x(mark.at) / WIDTH) * 100}%`, top: `${(mark.top / HEIGHT) * 100}%` }} />
+            ))}
             {hover ? divisions.map((division, index) => {
               const rank = rankOn(division.points, hover.at);
               return rank ? <span key={division.division} aria-hidden="true" className={`absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white dark:ring-zinc-900 ${SWATCH[index]}`}
@@ -144,12 +167,20 @@ export default function RankingHistory({ timeline }: { timeline: RankingTimeline
       <Tooltip id={tipId} at={hover?.anchor ?? null}>
         {hover && hovered ? <>
           <span className="block text-zinc-400">{formatDate(new Date(hover.at).toISOString().slice(0, 10))}</span>
-          {hovered.map((row) => (
+          {hovered.length ? hovered.map((row) => (
             <span key={row.division} className="mt-0.5 flex justify-between gap-4">
               <span>{row.division}</span>
-              <span className="font-semibold tabular-nums">{row.rank ? held(row.rank) : "Unranked"}</span>
+              <span className="font-semibold tabular-nums">{held(row.rank!)}</span>
             </span>
-          ))}
+          )) : <span className="mt-0.5 block font-semibold">Unranked</span>}
+          {lastFight ? (
+            <span className="mt-1.5 block border-t border-white/10 pt-1.5">
+              <span className={`font-semibold ${lastFight.row.outcome === "win" ? "text-emerald-400" : lastFight.row.outcome === "loss" ? "text-rose-400" : "text-zinc-300"}`}>
+                {RESULT_WORD[lastFight.row.outcome ?? ""] ?? "Result"}
+              </span> vs {lastFight.row.opponent.name}
+              <span className="block text-zinc-400">{formatDate(lastFight.row.date)}{lastFight.row.method ? ` · ${lastFight.row.method}` : ""}</span>
+            </span>
+          ) : null}
         </> : null}
       </Tooltip>
     </section>
