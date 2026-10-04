@@ -1,4 +1,5 @@
 import { PANEL } from "../components/chartTokens";
+import { CareerStatModal } from "../components/CareerStatDetails";
 import { isFightDay, landingEvent, liveFightId, taggedEvent } from "../liveEvent";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -1084,7 +1085,8 @@ export default function EventsPage() {
       : null;
 
   // When a matchup is open, the sidebar highlights its event.
-  const { data: openFight } = useApi<Matchup>(fightId && !fightEventIdHint ? withRanking(`/api/fights/${fightId}`, settings.rankingSource) : null);
+  const { data: openFight } = useApi<Matchup>(fightId && (!fightEventIdHint || new URLSearchParams(location.search).has("stat")) ? withRanking(`/api/fights/${fightId}`, settings.rankingSource) : null);
+  const statModal = fightId ? <CareerStatModal fighters={openFight ? [openFight.f1, openFight.f2] : []} before={fightId} /> : null;
   // "/" opens the tagged card (live, finished tonight, or next announced): it
   // is drawn straight away, and the address catches up behind it.
   const landingId = !eventId && !fightId && events?.length ? landingEvent(events)!.id : null;
@@ -1098,16 +1100,19 @@ export default function EventsPage() {
   const dock = fightId ? DOCK.matchup : DOCK.card;
   if (error && !events) {
     return (
+      <>{statModal}
       <div className="flex h-full items-center justify-center text-sm text-zinc-500">
         Backend unreachable — is the server running on port 8000?
       </div>
+      </>
     );
   }
   if (loading || !events) {
-    return <div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading events…</div>;
+    return <>{statModal}<div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading events…</div></>;
   }
 
   return (
+    <>{statModal}
     <div className={`flex h-full min-h-0 flex-col gap-2 p-2 sm:gap-3 sm:p-3 ${dock.row}`}>
       {/* The event and matchup views have their own route back to the card. */}
       {!mobileEventsOpen && !fightId && !shownEventId ? (
@@ -1140,5 +1145,6 @@ export default function EventsPage() {
         )}
       </main>
     </div>
+    </>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useId, useLayoutEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ArrowDown, ArrowUp, X } from "lucide-react";
@@ -31,14 +31,15 @@ function Evidence({ fighter, side, data, error, retry, view, sort, setSort, clos
   const order = columns[sort.column]?.value;
   const sorted = sort.order !== "recent" && order ? sort.column : -1;
   const rows = orderEvidence(data?.rows.filter(view.include) ?? [], order ? sort.order : "recent", order ?? (() => null));
+  const name = data?.name || fighter.name;
   return <>
-    <div className="mb-1 flex items-baseline justify-between gap-3">
-      <h3 className="min-w-0 truncate text-sm font-semibold text-zinc-900" title={fighter.name}>{fighter.name}
+    <div className="mb-1 flex shrink-0 items-baseline justify-between gap-3">
+      <h3 className="min-w-0 truncate text-sm font-semibold text-zinc-900" title={name}>{name || "Loading…"}
         {data ? <span className="ml-2 text-[10px] font-normal text-zinc-400" title={`${rows.length} fights with data of ${data.bouts} UFC fights`}>{rows.length} fights</span> : null}
       </h3>
       <span className="shrink-0 text-lg font-semibold tabular-nums" style={{ color: `var(--color-f${side + 1}-ink)` }}>{data ? view.headline(data) : "—"}</span>
     </div>
-    <div className="max-h-80 overflow-auto overscroll-contain">
+    <div className="min-h-0 flex-1 overflow-auto overscroll-contain">
     {error ? <div className="py-2"><RequestNotice onRetry={retry}>Couldn’t load stats.</RequestNotice></div> : null}
     {!data ? !error ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null : !rows.length ? <p className="py-3 text-xs text-zinc-500">No data</p> : <table className="w-full whitespace-nowrap text-left text-xs tabular-nums">
       <colgroup><col /><col className="w-16" />{columns.map((_, index) => <col key={index} className="w-12" />)}</colgroup>
@@ -74,6 +75,7 @@ function StatModal({ id, fighters, before, selection, update }: {
   update: (selection: CareerStatSelection | null) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const matchup = Boolean(before) || fighters.length > 1;
   const { fighter: selected, view: currentView, sort } = selection;
   const setSort = (sort: Sort) => update({ ...selection, sort });
   const close = () => update(null);
@@ -85,7 +87,7 @@ function StatModal({ id, fighters, before, selection, update }: {
     update({ ...selection, view: next, sort: initialEvidenceSort(next) });
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const node = dialog.current!;
     const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const root = document.documentElement;
@@ -102,38 +104,39 @@ function StatModal({ id, fighters, before, selection, update }: {
   return <dialog ref={dialog} id={id} aria-labelledby={`${id}-title`}
     onCancel={event => { event.preventDefault(); close(); }}
     onClick={event => { if (event.target === event.currentTarget) close(); }}
-    className={`search-dialog fixed inset-0 m-auto w-[calc(100%-1rem)] max-h-[min(42rem,calc(100dvh-1rem))] max-w-none overflow-hidden rounded-2xl border border-zinc-200 bg-white p-0 text-zinc-900 shadow-2xl sm:w-[calc(100%-2rem)] sm:max-h-[min(42rem,calc(100dvh-2rem))] ${fighters.length > 1 ? "sm:max-w-5xl" : "sm:max-w-2xl"}`}>
-    <div className="flex max-h-[min(42rem,calc(100dvh-1rem))] flex-col sm:max-h-[min(42rem,calc(100dvh-2rem))]">
-      <div className="shrink-0 px-4 pb-1 pt-3 sm:px-5">
+    className={`search-dialog fixed inset-0 m-auto h-[min(34rem,calc(100dvh-1rem))] w-[calc(100%-1rem)] max-h-none max-w-none overflow-hidden rounded-2xl border border-zinc-200 bg-white p-0 text-zinc-900 shadow-2xl sm:h-[min(34rem,calc(100dvh-2rem))] sm:w-[calc(100%-2rem)] ${matchup ? "sm:max-w-5xl" : "sm:max-w-2xl"}`}>
+    <div className="flex h-full flex-col">
+      <div className="shrink-0 px-4 pb-3 pt-3 sm:px-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 id={`${id}-title`} className={DIALOG_TITLE}>{currentView.label}</h2>
+            <h2 id={`${id}-title`} title={currentView.label} className={`${DIALOG_TITLE} truncate`}>{currentView.label}</h2>
             <p className="mt-0.5 text-[10px] text-zinc-400">{before ? cutoff ? `Before ${formatDate(cutoff.date)}` : "Before this fight" : "UFC career"}</p>
           </div>
-          <button type="button" aria-label="Close statistic details" onClick={close} className={`-mr-1 ${CLOSE_BUTTON}`}><X className={CLOSE_ICON} aria-hidden="true" /></button>
+          <div className="flex shrink-0 items-center gap-1">
+            <select aria-label="Sort opponents" value={sort.order} onChange={event => setSort({ ...sort, order: event.target.value as EvidenceOrder })}
+              className="h-9 w-24 rounded-full border-0 bg-zinc-100 pl-3 pr-6 text-xs font-medium text-zinc-700 focus-visible:outline-2 focus-visible:outline-zinc-900">
+              {orders.map(order => <option key={order} value={order}>{order === "recent" ? "Recent" : order === "descending" ? "Highest" : "Lowest"}</option>)}
+            </select>
+            <button type="button" aria-label="Close statistic details" onClick={close} className={`-mr-1 ${CLOSE_BUTTON}`}><X className={CLOSE_ICON} aria-hidden="true" /></button>
+          </div>
         </div>
-      </div>
-      <div className="min-h-0 overflow-y-auto overscroll-y-contain px-4 pb-4 sm:px-5">
         <div role="group" aria-label="Statistic category" className="mt-2 flex flex-wrap items-center gap-2">
-          {EVIDENCE_CATEGORIES.filter(group => fighters.length > 1 || group.label !== "Results").map(group => <div key={group.label} role="group" aria-label={group.label} className={`${segmentedGroup} max-w-full flex-wrap rounded-2xl`}>
+          {EVIDENCE_CATEGORIES.filter(group => matchup || group.label !== "Results").map(group => <div key={group.label} role="group" aria-label={group.label} className={`${segmentedGroup} max-w-full flex-wrap rounded-2xl`}>
             {group.views.map(option => <button key={option.key} type="button" aria-pressed={currentView.label === option.view.label} aria-label={option.view.label} title={option.view.label} onClick={() => changeView(option.view)}
               className={`min-h-7 whitespace-nowrap rounded-full px-2 text-[11px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${currentView.label === option.view.label ? segmentedSelected : segmentedIdle}`}>{option.label}</button>)}
           </div>)}
-          <select aria-label="Sort opponents" value={sort.order} onChange={event => setSort({ ...sort, order: event.target.value as EvidenceOrder })}
-            className="h-9 shrink-0 rounded-full border-0 bg-zinc-100 pl-3 pr-7 text-xs font-medium text-zinc-700 focus-visible:outline-2 focus-visible:outline-zinc-900">
-            {orders.map(order => <option key={order} value={order}>{order === "recent" ? "Recent" : order === "descending" ? "Highest" : "Lowest"}</option>)}
-          </select>
         </div>
-        {fighters.length > 1 ? <div role="group" aria-label="Fighter" className={`${segmentedGroup} mt-3 lg:hidden`}>
+        {matchup ? <div role="group" aria-label="Fighter" className={`${segmentedGroup} mt-3 h-10 lg:hidden`}>
           {fighters.map((fighter, index) => <button key={fighter.id} type="button" aria-pressed={selected === index} onClick={() => update({ ...selection, fighter: index })}
-            className={`min-h-9 min-w-0 flex-1 rounded-full px-2 py-1.5 text-xs font-medium ${selected === index ? segmentedSelected : segmentedIdle}`}>{fighter.name}</button>)}
+            className={`min-h-8 min-w-0 flex-1 truncate rounded-full px-2 py-1.5 text-xs font-medium ${selected === index ? segmentedSelected : segmentedIdle}`}>{fighter.name}</button>)}
         </div> : null}
-        <div className={`mt-3 grid gap-4 ${fighters.length > 1 ? "lg:grid-cols-2" : ""}`}>
-          {fighters.map((fighter, index) => <section key={fighter.id} aria-label={`${fighter.name}: ${currentView.label}`}
-            className={`${fighters.length > 1 && selected !== index ? "hidden lg:block" : ""} min-w-0`}>
-            <Evidence fighter={fighter} side={index} {...sides[index]} view={currentView} sort={sort} setSort={setSort} close={close} />
-          </section>)}
-        </div>
+      </div>
+      <div className={`grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] gap-4 px-4 pb-4 sm:px-5 ${matchup ? "lg:grid-cols-2" : ""}`}>
+        {!fighters.length ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null}
+        {fighters.map((fighter, index) => <section key={fighter.id} aria-label={`${fighter.name}: ${currentView.label}`}
+          className={`${matchup && selected !== index ? "hidden lg:flex" : "flex"} min-h-0 min-w-0 flex-col`}>
+          <Evidence fighter={fighter} side={index} {...sides[index]} view={currentView} sort={sort} setSort={setSort} close={close} />
+        </section>)}
       </div>
     </div>
   </dialog>;
@@ -154,9 +157,9 @@ export default function CareerStatDetails({ fighters, available, initial = 0, be
     </button>;
 }
 
-/** One modal per career-stat section, with its view stored in the URL. */
+/** Mounted by the route even while page data loads, with its view stored in the URL. */
 export function CareerStatModal({ fighters, before }: { fighters: Fighter[]; before?: string }) {
   const id = useId();
-  const { selection, update } = useCareerStatLocation(fighters.length > 1);
-  return selection ? createPortal(<StatModal key={`${before ?? ""}:${fighters.map(fighter => fighter.id).join(":")}`} id={id} fighters={fighters} before={before} selection={selection} update={update} />, document.body) : null;
+  const { selection, update } = useCareerStatLocation(Boolean(before) || fighters.length > 1);
+  return selection ? createPortal(<StatModal key={before ?? fighters[0]?.id} id={id} fighters={fighters} before={before} selection={selection} update={update} />, document.body) : null;
 }

@@ -1,4 +1,5 @@
 import FighterCareerStats from "../components/FighterCareerStats";
+import { CareerStatModal } from "../components/CareerStatDetails";
 import { Children, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../api";
@@ -690,14 +691,16 @@ export default function FighterPage() {
       : undefined,
   });
 
-  if (loading) {
-    return <div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading fighter…</div>;
+  const statModal = <CareerStatModal fighters={fighterId ? [{ id: fighterId, name: fighter?.name ?? "" }] : []} />;
+
+  if (loading && !fighter) {
+    return <>{statModal}<div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading fighter…</div></>;
   }
   if (error && !fighter) {
-    return <div className="p-5"><RequestNotice onRetry={retry}>Couldn’t load this fighter. Please try again.</RequestNotice></div>;
+    return <>{statModal}<div className="p-5"><RequestNotice onRetry={retry}>Couldn’t load this fighter. Please try again.</RequestNotice></div></>;
   }
   if (!fighter) {
-    return <div className="flex h-full items-center justify-center text-sm text-zinc-400">Fighter not found.</div>;
+    return <>{statModal}<div className="flex h-full items-center justify-center text-sm text-zinc-400">Fighter not found.</div></>;
   }
 
   const upcoming = fighter.history.filter((h) => h.upcoming);
@@ -729,6 +732,7 @@ export default function FighterPage() {
 
 
   return (
+    <>{statModal}
     <div ref={pageScroll} className="h-full overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable] lg:overflow-hidden">
       <div className="flex flex-col gap-3 p-3 pb-8 lg:h-full lg:pb-3">
         {error ? <RequestNotice onRetry={retry}>Couldn’t refresh this profile. Showing the last loaded data.</RequestNotice> : null}
@@ -817,5 +821,6 @@ export default function FighterPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }
