@@ -38,7 +38,7 @@ import { CommentStore } from "./comments.ts";
 import { createCommentsHandler } from "./comments-http.ts";
 import { ACCOUNT_SYNC_MS, accountSyncCheck, syncAccounts } from "./accounts.ts";
 import { releasedRounds } from "./live-rounds.ts";
-import { ensureImageVariant, variantPath, type ImageSize } from "./image-variants.ts";
+import { ensureImageVariant, normalizeHeadshot, variantPath, type ImageSize } from "./image-variants.ts";
 import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds, syncOddsForFight } from "./sync.ts";
 import { BackgroundRefresh } from "./background-refresh.ts";
 import { VersionCache } from "./version-cache.ts";
@@ -1562,7 +1562,7 @@ async function adoptUnversionedPhotos(): Promise<void> {
         try {
           const stat = await fs.stat(legacy);
           if (row.photo_checked_at && stat.mtimeMs < row.photo_checked_at) await fs.rm(legacy, { force: true });
-          else await fs.rename(legacy, path.join(IMAGE_CACHE, `${row.id}${suffix}.${photoVersion(remote)}.${ext}`));
+          else await fs.rename(legacy, path.join(IMAGE_CACHE, `${row.id}${suffix}.${photoVersion(remote, "full")}.${ext}`));
         } catch {
           // Nothing cached under the old name; the next request fetches it.
         }
@@ -1585,7 +1585,7 @@ function fighterImageFile(id: string, variant: PhotoVariant) {
   const remote = variant === "full" ? row.photo_full_url ?? row.photo_url : row.photo_url;
   if (!remote) return null;
   const suffix = variant === "full" && row.photo_full_url ? ".full" : "";
-  const version = photoVersion(remote);
+  const version = photoVersion(remote, suffix ? "full" : "head");
   return {
     remote, suffix, version,
     imagePath: path.join(IMAGE_CACHE, `${id}${suffix}.${version}.img`),
@@ -1619,15 +1619,26 @@ async function loadFighterImage(id: string, variant: PhotoVariant): Promise<Cach
   if (existing) return existing;
   const request = (async () => {
     try {
-      const response = await fetch(remote, {
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; ufc.sh image cache)" },
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!response.ok) throw new Error(`photo HTTP ${response.status}`);
-      const contentType = (response.headers.get("content-type") ?? "image/jpeg").split(";")[0];
-      if (!contentType.startsWith("image/")) throw new Error(`unexpected photo type ${contentType}`);
-      const data = Buffer.from(await response.arrayBuffer());
-      if (!data.length || data.length > 10_000_000) throw new Error("invalid photo size");
+      // Reuse the pre-framing cache during upgrade, including when UFC's CDN
+      // is unavailable. Full bodies retain their original cache/version.
+      const previousPath = path.join(IMAGE_CACHE, `${id}.${photoVersion(remote, "full")}`);
+      let data: Buffer | null = !suffix ? await fs.readFile(`${previousPath}.img`).catch(() => null) : null;
+      let contentType = data ? await fs.readFile(`${previousPath}.type`, "utf8").catch(() => "image/jpeg") : "";
+      if (!data) {
+        const response = await fetch(remote, {
+          headers: { "User-Agent": "Mozilla/5.0 (compatible; ufc.sh image cache)" },
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (!response.ok) throw new Error(`photo HTTP ${response.status}`);
+        contentType = (response.headers.get("content-type") ?? "image/jpeg").split(";")[0];
+        if (!contentType.startsWith("image/")) throw new Error(`unexpected photo type ${contentType}`);
+        data = Buffer.from(await response.arrayBuffer());
+        if (!data.length || data.length > 10_000_000) throw new Error("invalid photo size");
+      }
+      if (!suffix) {
+        const framed = await normalizeHeadshot(data);
+        if (framed) { data = framed; contentType = "image/png"; }
+      }
       await fs.mkdir(IMAGE_CACHE, { recursive: true });
       await Promise.all([fs.writeFile(imagePath, data), fs.writeFile(typePath, contentType)]);
       void discardOldPhotos(id, suffix, version);

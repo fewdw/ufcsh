@@ -40,8 +40,9 @@ export function currentRecord(id: string, fallback: { wins: number; losses: numb
  * athlete the address changes with the photograph: a browser that cached the
  * old face for a day cannot go on showing it, and nothing has to be purged.
  */
-export function photoVersion(remoteUrl: string): string {
-  return createHash("sha1").update(remoteUrl).digest("hex").slice(0, 12);
+export function photoVersion(remoteUrl: string, variant: "head" | "full" = "head"): string {
+  // Framing is part of the picture too: invalidate old, padded headshots.
+  return createHash("sha1").update(variant === "head" ? `headshot-v2:${remoteUrl}` : remoteUrl).digest("hex").slice(0, 12);
 }
 
 export function cachedPhotoUrl(id: string, remoteUrl: string | null | undefined): string | null {
@@ -51,7 +52,7 @@ export function cachedPhotoUrl(id: string, remoteUrl: string | null | undefined)
 /** Only advertised once a full-body picture actually exists for the fighter,
  *  so the interface never has to probe for a 404 to find out. */
 export function cachedFullPhotoUrl(id: string, remoteUrl: string | null | undefined): string | null {
-  return id && remoteUrl ? `/api/images/${id}/full?v=${photoVersion(remoteUrl)}` : null;
+  return id && remoteUrl ? `/api/images/${id}/full?v=${photoVersion(remoteUrl, "full")}` : null;
 }
 
 
