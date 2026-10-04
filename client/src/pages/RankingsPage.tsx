@@ -472,7 +472,7 @@ function FeaturesMenu({
   const options = FEATURE_OPTIONS.filter((option) => option.key !== "hoverHistory" || canPreview);
   const enabledCount = options.filter((option) => features[option.key]).length;
   return (
-    <OptionsSheet label="Filters" count={`${enabledCount}/${options.length}`} onReset={() => onChange(DEFAULT_FEATURES)} iconOnlyOnPhone="lg">
+    <OptionsSheet label="Filters" count={`${enabledCount}/${options.length}`} onReset={() => onChange(DEFAULT_FEATURES)} iconOnlyOnPhone="lg" closeOnSubmit>
       {/* The key to every mark in the lists, whichever are switched on. */}
       <div className="mb-1 space-y-1.5 border-b border-zinc-100 px-4 pb-3 pt-3 text-[11px] text-zinc-500">
         {/* Last 5: shape is where, fill how it ended, colour the result. */}

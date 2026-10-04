@@ -17,6 +17,7 @@ export default function OptionsSheet({
   onReset,
   children,
   iconOnlyOnPhone = false,
+  closeOnSubmit = false,
 }: {
   label: string;
   /** Shown beside the label, e.g. "4/4" or the number of filters in use. */
@@ -25,6 +26,8 @@ export default function OptionsSheet({
   children: ReactNode;
   /** Show only the icon on a phone, or with "lg" below the `lg` breakpoint. */
   iconOnlyOnPhone?: boolean | "lg";
+  /** Close after a child form submits, including submissions with Enter. */
+  closeOnSubmit?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -160,6 +163,7 @@ export default function OptionsSheet({
             ref={sheetRef}
             role="dialog"
             aria-label={label}
+            onSubmit={closeOnSubmit ? () => close(true) : undefined}
             style={phone ? { transform: dragY ? `translateY(${dragY}px)` : undefined, transition: drag.current ? "none" : "transform 200ms ease-out" } : undefined}
             className="fixed inset-x-0 bottom-0 z-[70] max-h-[80vh] overflow-y-auto overscroll-y-contain rounded-t-2xl border-t border-zinc-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:z-50 sm:mt-2 sm:max-h-[32rem] sm:w-80 sm:rounded-2xl sm:border sm:pb-0 sm:shadow-xl"
           >
