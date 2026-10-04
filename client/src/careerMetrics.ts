@@ -3,7 +3,7 @@ export { STRIKING_METRICS, GRAPPLING_METRICS, profileText } from "../../server/s
 export type { ProfileMetric, CareerTotals } from "../../server/src/career-metrics.ts";
 
 import type { CareerStatistics } from "./api";
-import { profileText, type ProfileMetric } from "../../server/src/career-metrics.ts";
+import { GRAPPLING_METRICS, profileText, STRIKING_METRICS, type ProfileMetric } from "../../server/src/career-metrics.ts";
 
 const clock = (seconds: number | null | undefined) => seconds == null ? "—" : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
@@ -59,6 +59,8 @@ export type EvidenceView = {
   headline: (data: CareerStatistics) => string;
 };
 
+export type EvidenceCategory = { label: string; views: { key: string; label: string; view: EvidenceView }[] };
+
 export const metricView = (metric: ProfileMetric): EvidenceView => ({
   label: metric.label,
   description: metric.explanation,
@@ -74,3 +76,12 @@ export const resultView = (outcome: "win" | "loss"): EvidenceView => ({
   include: row => row.outcome === outcome,
   headline: data => String(data.rows.filter(row => row.outcome === outcome).length),
 });
+
+export const EVIDENCE_CATEGORIES: EvidenceCategory[] = [
+  ...[{ label: "Striking", metrics: STRIKING_METRICS }, { label: "Grappling", metrics: GRAPPLING_METRICS }]
+    .map(group => ({ label: group.label, views: group.metrics.map(metric => ({ key: metric.key, label: metric.short, view: metricView(metric) })) })),
+  { label: "Results", views: [
+    { key: "wins", label: "Wins", view: resultView("win") },
+    { key: "losses", label: "Losses", view: resultView("loss") },
+  ] },
+];

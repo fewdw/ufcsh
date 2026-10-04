@@ -976,7 +976,7 @@ function ProfileRow({
       : (values.f1! < values.f2! ? "f1" : "f2");
 
   return (
-    <div className="py-1">
+    <CareerStatDetails fighters={[fight.f1, fight.f2]} before={fight.id} view={metricView(metric)} className="block w-full py-1 text-left">
       <span className={`block text-center text-[10px] leading-4 text-zinc-500 @[40rem]:text-[11px]`}>
         <span className="@[40rem]:hidden">{metric.short}</span>
         <span className="hidden @[40rem]:inline">{metric.label}</span>
@@ -1008,14 +1008,13 @@ function ProfileRow({
               {profileText(value, metric.format)}
             </span>
           );
-          return <CareerStatDetails key={side} fighters={[fight.f1, fight.f2]} initial={side === "f1" ? 0 : 1} before={fight.id} view={metricView(metric)}
-            available={SIDES.map((each) => (careers[each] ? metric.sample(careers[each]).total : 0) > 0)}
+          return <span key={side}
             className={`grid w-full items-center gap-x-1 @[40rem]:gap-x-1.5 ${side === "f1" ? "grid-cols-[2.25rem_minmax(0,1fr)] @[40rem]:grid-cols-[3rem_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)_2.25rem] @[40rem]:grid-cols-[minmax(0,1fr)_3rem]"}`}>
             {side === "f1" ? [figure, bar] : [bar, figure]}
-          </CareerStatDetails>;
+          </span>;
         })}
       </span>
-    </div>
+    </CareerStatDetails>
   );
 }
 
@@ -1058,21 +1057,20 @@ function MethodProfile({ fight, careers }: { fight: Matchup; careers: Record<Sid
   return (
     <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-zinc-100 px-3 py-2.5 @[36rem]:gap-x-6 @[36rem]:px-4 @[36rem]:py-3">
       {rows.map((row) => (
-        <div key={row.key} className="min-w-0">
-          <div className={`mb-1 text-center ${sectionLabel}`}>{row.label}</div>
-          <div className="grid gap-1.5 @[36rem]:grid-cols-2 @[36rem]:gap-3">
+        <CareerStatDetails key={row.key} fighters={[fight.f1, fight.f2]} before={fight.id} view={row.view} className="block w-full min-w-0 py-1 text-left">
+          <span className={`mb-1 block text-center ${sectionLabel}`}>{row.label}</span>
+          <span className="grid gap-1.5 @[36rem]:grid-cols-2 @[36rem]:gap-3">
             {SIDES.map((side) => {
               const counts = split(careers[side], row.key);
               return (
-                <CareerStatDetails key={side} fighters={[fight.f1, fight.f2]} initial={side === "f1" ? 0 : 1} before={fight.id} view={row.view}
-                  available={SIDES.map((each) => (careers[each]?.[row.key] ?? 0) > 0)}
+                <span key={side}
                   className={`block w-full min-w-0 text-left ${side === "f1" ? "@[36rem]:text-right" : ""}`}>
                   <MethodBar side={side} counts={counts} total={counts.total} />
-                </CareerStatDetails>
+                </span>
               );
             })}
-          </div>
-        </div>
+          </span>
+        </CareerStatDetails>
       ))}
     </div>
   );
