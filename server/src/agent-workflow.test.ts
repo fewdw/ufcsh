@@ -117,6 +117,29 @@ test("failed deployments retain ownership and can be retried without losing queu
   } finally { await f.close(); }
 });
 
+test("a production merge advances only its owner, including when merged outside the agent chat", async () => {
+  const f = await fixture();
+  try {
+    await writeFile(path.join(f.root, "bin", "git"), `#!/usr/bin/env bash
+if [[ "\${3:-}" == merge-base ]]; then [[ "$5" == "\${TEST_MERGED_SHA:-}" ]]; exit; fi
+exec /usr/bin/git "$@"
+`, { mode: 0o755 });
+    await f.review("ready", "feat/first", shaA);
+    await f.review("ready", "feat/second", shaB);
+    await f.review("merged", shaB);
+    assert.equal((await f.state()).owner.branch, "feat/first");
+    const queuedMerge = await f.run(path.join(f.root, "deploy", "dev-review.sh"), ["merged", shaB], { TEST_MERGED_SHA: shaB });
+    assert.equal(queuedMerge.code, 0, queuedMerge.output);
+    assert.equal((await f.state()).owner.branch, "feat/first");
+    assert.deepEqual((await f.state()).queue, []);
+    await f.review("ready", "feat/second", shaB);
+    const merge = await f.run(path.join(f.root, "deploy", "dev-review.sh"), ["merged", shaB], { TEST_MERGED_SHA: shaA });
+    assert.equal(merge.code, 0, merge.output);
+    assert.equal((await f.state()).owner.branch, "feat/second");
+    assert.deepEqual(await f.calls(), [`feat/first ${shaA}`, `feat/second ${shaB}`]);
+  } finally { await f.close(); }
+});
+
 test("invalid ready requests cannot claim dev; opting out never starts a deployment", async () => {
   const f = await fixture();
   try {

@@ -32,6 +32,11 @@ does not interrupt the review. With no waiting task, release leaves the current
 container running but frees the slot. Selecting `main` explicitly also frees it.
 Don't release a live review merely because the chat ended.
 
+After a production deployment, the SSH handler checks whether the dev owner's
+commit was merged into that checked main revision and advances its queue. This
+also handles normal merges made directly on GitHub. Agent cleanup explicitly
+releases its branch as well (including squash merges); both paths are idempotent.
+
 State is private JSON under `~/.local/state/ufcsh/dev-review`; all calls hold the
 same host deployment lock, including **Choose dev branch**. Deployment failures
 retain the slot and a failed status, so another finisher cannot hide the failure.

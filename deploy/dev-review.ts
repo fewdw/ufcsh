@@ -100,6 +100,23 @@ try {
       else console.log("No finished branches are waiting. Current dev selection is unchanged.");
       break;
     }
+    case "merged": {
+      if (!branch || !/^[0-9a-f]{40}$/.test(branch)) throw new Error("A checked main SHA is required.");
+      const repo = process.env.UFC_PRODUCTION_DIR || "/home/ubuntu/ufcsh";
+      const isMerged = (item: Entry) => spawnSync("git", ["-C", repo, "merge-base", "--is-ancestor", item.sha, branch], { stdio: "ignore" }).status === 0;
+      state.queue = state.queue.filter(item => !isMerged(item));
+      save();
+      if (state.owner && isMerged(state.owner)) {
+        const released = state.owner.branch;
+        state.queue = state.queue.filter(item => item.branch !== released);
+        state.owner = null;
+        save();
+        const next = state.queue[0];
+        if (next) deploy(next);
+        else console.log(`Released merged review ${released}; the next finished task can claim dev.`);
+      }
+      break;
+    }
     case "release":
       validBranch(branch);
       state.queue = state.queue.filter(item => item.branch !== branch);
@@ -118,7 +135,7 @@ try {
       console.log(state.owner ? `Dev: ${state.owner.branch} ${state.owner.sha} (${state.owner.status})` : "Dev review slot: free");
       console.log(state.queue.length ? `Waiting: ${state.queue.map(item => `${item.branch} ${item.sha.slice(0, 7)}`).join(", ")}` : "Waiting: none");
       break;
-    default: throw new Error("Usage: dev-review.sh ready|priority BRANCH SHA | skip|release BRANCH | next|status");
+    default: throw new Error("Usage: dev-review.sh ready|priority BRANCH SHA | skip|release BRANCH | merged MAIN_SHA | next|status");
   }
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);

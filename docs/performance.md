@@ -26,6 +26,10 @@ a separate 2 GiB/two-core builder. The optional session launcher caps three
 sessions in a shared 2 GiB slice. Verified on this host via its actual cgroup and
 systemd `MemoryHigh=1610612736`, `MemoryMax=2147483648`, `MemorySwapMax=536870912`.
 These controls require their entrypoints; they cannot intercept direct T3 launches.
+The real bounded builder reports 2,147,483,648-byte RAM/swap budgets and a
+200,000-microsecond CPU quota. A cold dev image build took 80.6 s (new builder,
+including downloads); repeating the unchanged build took 3.94 s. The resulting
+image's baked revision matched the task commit. No existing dev review was reset.
 
 The full archive suite ran in 245 s with 791,228 KiB peak RSS and no swaps.
 418/419 checks passed; the existing HTTP integration check exceeded its 10-second
