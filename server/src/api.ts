@@ -1431,7 +1431,8 @@ export function search(q: string): unknown {
   const index = searchIndex();
   // The query's words in order within one line of a row's `names`, as SQL LIKE
   // '%a%b%' would match, over the in-memory index.
-  const words = new RegExp(norm.split(/\s+/).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*"));
+  const wordPattern = (query: string) => new RegExp(query.split(/\s+/).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*"));
+  const words = wordPattern(norm);
 
   const exactFighters = index.fighters.filter((fighter) => words.test(fighter.names))
     .sort((a, b) => b.ufc_fights - a.ufc_fights || b.wins - a.wins)
@@ -1463,12 +1464,17 @@ export function search(q: string): unknown {
           WHERE (g.f1_id = f.f1_id AND g.f2_id = f.f2_id) OR (g.f1_id = f.f2_id AND g.f2_id = f.f1_id)) AS meetings
       FROM fights f JOIN events e ON e.id = f.event_id`;
   // Full rows, with their meeting counts, are read only for the fights returned.
-  const exactFights = index.fights.filter((fight) => words.test(fight.names))
+  // A trailing number in a matchup refers to its meeting, not a fighter's name.
+  const numbered = norm.match(/^(.*) (\d+)$/);
+  const fightNorm = numbered && splitMatchup(numbered[1]) ? numbered[1] : norm;
+  const meeting = fightNorm !== norm ? Number(numbered![2]) : null;
+  const fightWords = wordPattern(fightNorm);
+  const exactFights = index.fights.filter((fight) => fightWords.test(fight.names))
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, SEARCH_LIMIT);
   // "a vs b" names both corners; the matcher wants just the names.
-  const sides = splitMatchup(norm);
-  const fightQuery = sides ? sides.join(" ") : norm;
+  const sides = splitMatchup(fightNorm);
+  const fightQuery = sides ? sides.join(" ") : fightNorm;
   const fuzzyFights = fuzzyMatches(index.fights, fightQuery, new Set(exactFights.map((f) => f.id)), exactFights.length,
     (a, b) => b.date.localeCompare(a.date));
   const found = [...exactFights.map((row) => ({ row, score: 0 })), ...fuzzyFights];
@@ -1477,7 +1483,8 @@ export function search(q: string): unknown {
     : []);
   const fights = found.flatMap(({ row, score }) => {
     const fight = fightRows.get(row.id);
-    return fight ? [{ ...fight, ...(score > 0 ? { approximate: true } : {}) }] : [];
+    return fight && (meeting === null || fight.meeting === meeting)
+      ? [{ ...fight, ...(score > 0 ? { approximate: true } : {}) }] : [];
   });
 
   return {
