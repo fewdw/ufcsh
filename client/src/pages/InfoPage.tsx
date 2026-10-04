@@ -92,8 +92,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-04">October 4, 2026</time></p>
             <ul>
-              <li>Fixed Jon Jones’s profile photo.</li>
-              <li>Corrected padded headshots and refreshed cached photos.</li>
+              <li>Added hover room after the latest ranking result.</li>
             </ul>
           </Section>
         </div>
