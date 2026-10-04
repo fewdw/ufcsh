@@ -92,8 +92,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-04">October 4, 2026</time></p>
             <ul>
-              <li>Search shows fighters first, then fights, then events.</li>
-              <li>Find a rematch by adding its fight number.</li>
+              <li>Pound-for-pound ranking lines are solid purple.</li>
             </ul>
           </Section>
         </div>
