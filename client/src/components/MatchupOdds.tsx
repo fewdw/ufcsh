@@ -191,7 +191,7 @@ function OddsCell({ quote, hit, favorite, live, format, bet, dense }: { quote: O
   if (!price) return <span className="text-zinc-300 dark:text-zinc-600" aria-label="No price">—</span>;
   const probability = impliedProbability(price.line);
   const move = price.move;
-  const leg: ParlayLeg | null = live && bet ? { id: outcomeId(bet.outcome), fightId: bet.fightId, fightLabel: bet.fightLabel, market: bet.market, selection: bet.selection, price: price.line, outcome: bet.outcome } : null;
+  const leg: ParlayLeg | null = live && bet?.fightId ? { id: outcomeId(bet.outcome), fightId: bet.fightId, fightLabel: bet.fightLabel, market: bet.market, selection: bet.selection, price: price.line, outcome: bet.outcome } : null;
   const selected = leg ? isSelected(leg.id) : false;
 
   // The ring sits on the price itself, not the button around it — a row with
@@ -265,7 +265,7 @@ function OddsTable({ title, columns, groups, wideLabel = true, live, format, com
 /** The full prop board under the matchup. Whole-fight markets stack on the
  * left and the round-by-round grid sits beside them once the panel is wide
  * enough; on a narrow panel everything stacks. */
-export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american", fightId, moneyline, compact = false }: { odds: MethodOdds; f1Name: string; f2Name: string; result?: FightResult; format?: OddsFormat; fightId: string; /** The fight's own price, opening and closing, when the board carries it. */ moneyline?: { f1: { open: string | null; close: string | null }; f2: { open: string | null; close: string | null } } | null; /** Denser spacing for a page that lists every matchup's board at once. */ compact?: boolean }) {
+export function OddsMarkets({ odds, f1Name, f2Name, result, format = "american", fightId = "", moneyline, compact = false }: { odds: MethodOdds; f1Name: string; f2Name: string; result?: FightResult; format?: OddsFormat; fightId?: string; /** The fight's own price, opening and closing, when the board carries it. */ moneyline?: { f1: { open: string | null; close: string | null }; f2: { open: string | null; close: string | null } } | null; /** Denser spacing for a page that lists every matchup's board at once. */ compact?: boolean }) {
   const fightLabel = `${f1Name} vs ${f2Name}`;
   const extra = organizeAdditionalOdds(odds.additional, f1Name, f2Name);
   const rounds = [...new Set([...extra.roundMethods, ...extra.roundFinishes].map(row => row.round))].sort();

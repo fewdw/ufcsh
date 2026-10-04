@@ -156,6 +156,16 @@ CREATE TABLE IF NOT EXISTS odds (
 -- markets_json holds every named sportsbook quote (or the source's mean price
 -- where no book column survives) and the fighter ids it was verified against.
 -- final = 1 once read from the completed event's board: closing prices.
+CREATE TABLE IF NOT EXISTS potential_matchups (
+  id TEXT PRIMARY KEY,
+  f1_id TEXT NOT NULL,
+  f2_id TEXT NOT NULL,
+  f1_name TEXT NOT NULL,
+  f2_name TEXT NOT NULL,
+  odds_json TEXT NOT NULL,
+  fetched_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS method_odds (
   fight_id          TEXT PRIMARY KEY,
   markets_json      TEXT NOT NULL,
@@ -650,6 +660,7 @@ const revisionTables: Record<string, string[]> = {
   fights: ["analytics", "profiles", "search"],
   odds: ["analytics", "profiles"],
   method_odds: ["profiles"],
+  potential_matchups: ["profiles"],
   career_profiles: ["analytics", "profiles"],
   career_bouts: ["analytics", "profiles"],
   rankings: ["profiles"],

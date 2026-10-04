@@ -11,7 +11,7 @@ export function isFightDay(date: string | undefined, now = Date.now()): boolean 
  */
 export function landingEvent<T extends { id: string; date: string; status: string; starts_at?: number | null }>(events: T[], now = Date.now()): T | undefined {
   const tagged = taggedEvent(events, now);
-  return (tagged && events.find(e => e.id === tagged.id)) || events[0];
+  return (tagged && events.find(e => e.id === tagged.id)) || events.find(event => event.date) || events[0];
 }
 
 /**

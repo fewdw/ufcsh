@@ -147,27 +147,32 @@ function EventSidebar({
   // tag with it rather than promoting the next row into its place.
   const tagged = useMemo(() => taggedEvent(events), [events]);
 
+  const scheduledEvents = useMemo(() => events.filter(event => !event.potential), [events]);
+  const potential = events.find(event => event.potential);
+
   const countByKind = useMemo(() => {
-    const counts: Record<KindFilter, number> = { all: events.length, ppv: 0, fight_night: 0 };
-    for (const event of events) counts[eventKind(event.name)] += 1;
+    const counts: Record<KindFilter, number> = { all: scheduledEvents.length, ppv: 0, fight_night: 0 };
+    for (const event of scheduledEvents) counts[eventKind(event.name)] += 1;
     return counts;
-  }, [events]);
+  }, [scheduledEvents]);
 
   // Tier first, then text: the count in the placeholder and the empty state
   // both describe the tier the reader is actually looking at.
   const scoped = useMemo(
-    () => (kind === "all" ? events : events.filter((e) => eventKind(e.name) === kind)),
-    [events, kind],
+    () => (kind === "all" ? scheduledEvents : scheduledEvents.filter((e) => eventKind(e.name) === kind)),
+    [scheduledEvents, kind],
   );
 
   const filtered = useMemo(() => {
-    return searchList(scoped, filter, (e) => `${e.name} ${e.location} ${e.date}`);
-  }, [scoped, filter]);
+    const matches = searchList(scoped, filter, (e) => `${e.name} ${e.location} ${e.date}`);
+    return potential ? [potential, ...matches] : matches;
+  }, [scoped, filter, potential]);
 
   const groups = useMemo(() => {
     const byMonth = new Map<string, EventListItem[]>();
     for (const e of filtered) {
-      const month = e.date.slice(0, 7);
+      // Keep this row separate from announced cards whose date is still unknown.
+      const month = e.potential ? "potential" : e.date.slice(0, 7);
       const list = byMonth.get(month) ?? [];
       list.push(e);
       byMonth.set(month, list);
@@ -254,10 +259,10 @@ function EventSidebar({
         >
           {groups.map(([yearMonth, list]) => (
             <div key={yearMonth}>
-              <div className="sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-white px-4 py-2 text-[13px] font-bold uppercase tracking-[0.1em] text-zinc-700">
+              {yearMonth && yearMonth !== "potential" ? <div className="sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-white px-4 py-2 text-[13px] font-bold uppercase tracking-[0.1em] text-zinc-700">
                 <span>{yearMonth.slice(0, 4)}</span>
                 <span>{MONTHS[Number(yearMonth.slice(5, 7)) - 1]}</span>
-              </div>
+              </div> : null}
               <div className="flex flex-col gap-1 pb-2">
                 {list.map((event) => {
                   const isSelected = event.id === selectedId;
@@ -306,7 +311,7 @@ function EventSidebar({
                         ) : null}
                       </div>
                       <div className={`mt-0.5 text-xs ${isSelected ? "text-zinc-500" : "text-zinc-400"}`}>
-                        {formatDateShort(event.date)}
+                        {event.date ? formatDateShort(event.date) : "No date"}
                         {event.location ? ` · ${event.location.split(",")[0]}` : ""}
                       </div>
                     </Link>
@@ -467,7 +472,7 @@ function CenterBlock({ fight, past }: { fight: EventFight; past: boolean }) {
     <div className="flex w-full flex-col items-center">
       <OddsPair f1={f1Odds} f2={f2Odds}
         f1Name={fight.f1.name} f2Name={fight.f2.name}
-        fightId={past ? undefined : fight.id} />
+        fightId={past || fight.potential ? undefined : fight.id} />
       {/* The result wraps rather than truncating: the round and the clock are
           the point of the line, and the centre column is narrow enough that
           "KO/TKO · R1 · 2:54" would lose its tail to an ellipsis. */}
@@ -586,7 +591,7 @@ function CompactSide({ side, fight, done, other }: { side: FightSide; fight: Eve
       {/* A bout with no line yet keeps the same box, holding a dash, so
           every row on the card lines up. */}
       <Moneyline
-        leg={moneylineLeg(done ? undefined : fight.id, fightLabel, corner, side.name, price)}
+        leg={moneylineLeg(done || fight.potential ? undefined : fight.id, fightLabel, corner, side.name, price)}
         value={price || "-"}
         name={side.name}
         className={`odds-pair w-14 shrink-0 rounded-md border py-0.5 text-center text-[12px] font-semibold tabular-nums ${price ? "" : "text-zinc-300"} ${other.outcome === "win" ? "opacity-60" : ""}`}
@@ -716,7 +721,7 @@ function CardOddsRow({ fight, eventId, live, past, format }: { fight: EventFight
               ) : null}
             </div>
           ) : null}
-          <CardMoneyline fightId={done ? undefined : fight.id} f1={f1Odds} f2={f2Odds} f1Name={fight.f1.name} f2Name={fight.f2.name} />
+          <CardMoneyline fightId={done || fight.potential ? undefined : fight.id} f1={f1Odds} f2={f2Odds} f1Name={fight.f1.name} f2Name={fight.f2.name} />
           {fight.weight_class || expected ? (
             <span
               className="w-full whitespace-nowrap text-center text-[10px] font-medium tabular-nums text-zinc-400"
@@ -734,7 +739,7 @@ function CardOddsRow({ fight, eventId, live, past, format }: { fight: EventFight
         </span>
       </div>
       {hasProps ? (
-        <OddsMarkets odds={props!} fightId={fight.id} f1Name={fight.f1.name} f2Name={fight.f2.name} format={format} result={result} compact />
+        <OddsMarkets odds={props!} fightId={fight.potential ? undefined : fight.id} f1Name={fight.f1.name} f2Name={fight.f2.name} format={format} result={result} compact />
       ) : null}
     </div>
   );
@@ -820,7 +825,7 @@ type EventNav = {
 
 /** The events either side of this one by date, whatever the list is filtered to. */
 function eventNeighbours(events: EventListItem[], id: string): { prev: EventListItem | null; next: EventListItem | null } {
-  const byDate = [...events].sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
+  const byDate = events.filter(event => !event.potential).sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
   const at = byDate.findIndex((event) => event.id === id);
   if (at === -1) return { prev: null, next: null };
   return { prev: byDate[at - 1] ?? null, next: byDate[at + 1] ?? null };
@@ -870,7 +875,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
     title: event?.name ?? "UFC Events & Fight Cards",
     description: eventDescription,
     path: `/events/${eventId}`,
-    structuredData: event
+    structuredData: event && !event.potential
       ? {
           "@context": "https://schema.org",
           "@type": "SportsEvent",
@@ -960,17 +965,15 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
         <div className="flex items-center justify-between gap-3 px-3 py-2.5 @[34rem]:gap-5 @[34rem]:px-5 @[34rem]:py-3.5">
           <div className="min-w-0">
             <h1 className="text-balance text-base font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-xl @[64rem]:text-2xl">{event.name}</h1>
-            {event.date || event.venue || event.location ? (
-              <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[34rem]:gap-x-2 @[34rem]:text-xs">
-                {event.date ? (
-                  <span className="whitespace-nowrap font-medium text-zinc-600">
-                    <span className="@[48rem]:hidden">{formatDateShort(event.date)}</span>
-                    <span className="hidden @[48rem]:inline">{formatDate(event.date)}</span>
-                  </span>
-                ) : null}
-                <EventPlace venue={event.venue} location={event.location} locationSlug={event.location_slug} leading={Boolean(event.date)} />
-              </div>
-            ) : null}
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[34rem]:gap-x-2 @[34rem]:text-xs">
+              {event.date ? (
+                <span className="whitespace-nowrap font-medium text-zinc-600">
+                  <span className="@[48rem]:hidden">{formatDateShort(event.date)}</span>
+                  <span className="hidden @[48rem]:inline">{formatDate(event.date)}</span>
+                </span>
+              ) : <span className="whitespace-nowrap font-medium text-zinc-600">No date</span>}
+              <EventPlace venue={event.venue} location={event.location} locationSlug={event.location_slug} />
+            </div>
           </div>
           <div className="flex shrink-0 flex-col items-end justify-center gap-1 text-right empty:hidden">
             {schedule.length ? (
@@ -1023,7 +1026,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
       ) : (
         <section className={`${shell} shrink-0 overflow-hidden`}>
           {event.fights.length === 0 ? (
-            <div className="px-6 py-10 text-center text-sm text-zinc-400">Fight card not announced yet.</div>
+            <div className="px-6 py-10 text-center text-sm text-zinc-400">{event.potential ? "No potential matchups have odds available yet." : "Fight card not announced yet."}</div>
           ) : (
             cardFights.map((fight, index) => {
               const newSegment = Boolean(fight.segment) && fight.segment !== cardFights[index - 1]?.segment;
@@ -1086,7 +1089,7 @@ export default function EventsPage() {
 
   // When a matchup is open, the sidebar highlights its event.
   const { data: openFight } = useApi<Matchup>(fightId && (!fightEventIdHint || new URLSearchParams(location.search).has("stat")) ? withRanking(`/api/fights/${fightId}`, settings.rankingSource) : null);
-  const statModal = fightId ? <CareerStatModal fighters={openFight ? [openFight.f1, openFight.f2] : []} before={fightId} /> : null;
+  const statModal = fightId ? <CareerStatModal fighters={openFight ? [openFight.f1, openFight.f2] : []} before={fightId.startsWith("potential-") ? undefined : fightId} /> : null;
   // "/" opens the tagged card (live, finished tonight, or next announced): it
   // is drawn straight away, and the address catches up behind it.
   const landingId = !eventId && !fightId && events?.length ? landingEvent(events)!.id : null;

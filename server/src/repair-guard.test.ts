@@ -36,3 +36,9 @@ test("production repairs take one snapshot per day, serialize changes and audit 
   assert.equal(audits.length, 3);
   await assert.rejects(run("invalid", "0123456789abcdef", "admin@example.com"), /Unknown repair/);
 });
+
+test("the potential odds board can be refreshed using its all target", async () => {
+  const run = createRepairRunner(async () => {}, async (action, target) => ({ action, target }), () => {});
+  assert.deepEqual(await run("potential-odds", "all", "admin@example.com"), { action: "potential-odds", target: "all" });
+  await assert.rejects(run("potential-odds", "invalid", "admin@example.com"), /Unknown repair/);
+});

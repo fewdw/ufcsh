@@ -1,3 +1,4 @@
+import { potentialMatchups, syncPotentialMatchups } from "./potential-matchups.ts";
 import { db, getMeta, setMeta } from "./db.ts";
 import { confirmedTitleResults, missingCurrentRankingHistory, relinkRankingHistory } from "./ranking-history.ts";
 import { validateFightActions } from "./action-stats.ts";
@@ -1549,8 +1550,32 @@ function rosterMovesUnread(): BugCheck {
     grade: (item) => item.key === "sync" || item.key === "ufc-status" || item.key === "ufc-signings" ? "must" : item.key.startsWith("ufc:") ? "ok" : "minor",
   }, items);
 }
-/** /news: each outlet's feed is read every ten minutes. One unread for two
- *  hours has moved, changed shape or started turning us away. */
+function potentialMatchupGaps(): BugCheck {
+  const items: BugItem[] = [];
+  for (const [source, label, url] of [["fightodds", "FightOdds.io", "https://fightodds.io"],
+    ["bestfightodds", "BestFightOdds", "https://www.bestfightodds.com/events/future-events-197"]]) {
+    const readAt = Number(getMeta(`potential_${source}_read_at`)) || null;
+    if (!readAt || Date.now() - readAt > 30 * 60_000) items.push({
+      key: `board:${source}`, title: `${label} potential matchups are stale`,
+      subtitle: getMeta(`potential_${source}_error`) || undefined,
+      facts: [["Last read", ago(readAt)]], links: [{ label: "Future fights", href: url }],
+      actions: [{ id: "potential-odds", label: "Re-read boards", target: "all" }],
+    });
+  }
+  for (const row of potentialMatchups()) {
+    const missing = [row.f1_id, row.f2_id].some(id => !id || !db.prepare("SELECT 1 FROM fighters WHERE id = ?").get(id));
+    if (!missing) continue;
+    items.push({ key: row.id, title: `${row.f1_name} vs ${row.f2_name}`, facts: [["Problem", "Fighter identity missing from archive"]],
+      links: [{ label: "Odds source", href: JSON.parse(row.odds_json).source_url }],
+      actions: [{ id: "potential-odds", label: "Re-read board", target: "all" }],
+    });
+  }
+  return check({ id: "odds-potential-matchups", group: "Odds", label: "Potential matchup coverage",
+    description: "The BestFightOdds and FightOdds.io future boards supply unconfirmed matchup prices at startup and every five minutes. Stale reads preserve the last snapshot. Missing fighter identities leave career comparisons incomplete; re-reading retries identity matching.",
+    grade: item => item.key.startsWith("board:") ? "must" : "minor",
+  }, items);
+}
+
 /** FightOdds.io prices upcoming bouts every five minutes. Unread for half an
  *  hour, lines fall back to BestFightOdds' slower pass: the app's API moved,
  *  changed shape, or started asking for its bot check. */
@@ -1622,6 +1647,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     suspiciousOdds(),
     wrongFighterPages(),
     fightOddsUnread(),
+    potentialMatchupGaps(),
     upcomingMoneyline(),
     pastMoneyline(),
     upcomingProps(),
@@ -1696,7 +1722,7 @@ function newsUnjudged(): BugCheck {
   }, items);
 }
 
-export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings";
+export type BugActionId = "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -1706,6 +1732,10 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
   `).get(target) as { id: string; event_id: string; f1_id: string; f2_id: string; f1_name: string; f2_name: string; date: string } | undefined;
 
   switch (action) {
+    case "potential-odds": {
+      const result = await syncPotentialMatchups({ props: true });
+      return { ok: result.failed < 2, message: `${potentialMatchups().length} potential matchups with odds.${result.failed ? ` ${result.failed} source(s) could not be read; stored prices were kept.` : ""}` };
+    }
     case "odds": {
       const row = fight();
       if (!row) return { ok: false, message: "Fight not found." };

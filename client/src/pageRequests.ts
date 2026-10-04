@@ -11,7 +11,7 @@ export function pageRequests(pathname: string, search: string, ranking: "media" 
   if ((match = /^\/fighters\/([a-f0-9]{16})\/?$/.exec(pathname))) {
     return [ranked(`/api/fighters/${match[1]}`), `/api/fighters/${match[1]}/stats?scope=ufc&minBouts=0`];
   }
-  if ((match = /^\/(fights|events)\/([a-f0-9]{16})\/?$/.exec(pathname))) return [ranked(`/api/${match[1]}/${match[2]}`)];
+  if ((match = /^\/(fights|events)\/([a-f0-9]{16}|potential-[a-z0-9-]{1,180})\/?$/.exec(pathname))) return [ranked(`/api/${match[1]}/${match[2]}`)];
   if (pathname === "/rankings") return [ranked("/api/rankings")];
   if (pathname === "/officials" || pathname === "/venues" || pathname === "/locations" || pathname === "/roster" || pathname === "/matchmaking" || pathname === "/news") return ["/api" + pathname];
   if ((match = /^\/(judges|referees|venues|locations)\/([a-z0-9-]{1,80})\/?$/.exec(pathname))) return plain ? [`/api/${match[1]}/${match[2]}`] : [];

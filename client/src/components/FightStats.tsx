@@ -976,7 +976,7 @@ function ProfileRow({
       : (values.f1! < values.f2! ? "f1" : "f2");
 
   return (
-    <CareerStatDetails fighters={[fight.f1, fight.f2]} before={fight.id} view={metricView(metric)} className="block w-full py-1 text-left">
+    <CareerStatDetails fighters={[fight.f1, fight.f2]} before={fight.potential ? undefined : fight.id} view={metricView(metric)} className="block w-full py-1 text-left">
       <span className={`block text-center text-[10px] leading-4 text-zinc-500 @[40rem]:text-[11px]`}>
         <span className="@[40rem]:hidden">{metric.short}</span>
         <span className="hidden @[40rem]:inline">{metric.label}</span>
@@ -1057,7 +1057,7 @@ function MethodProfile({ fight, careers }: { fight: Matchup; careers: Record<Sid
   return (
     <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-zinc-100 px-3 py-2.5 @[36rem]:gap-x-6 @[36rem]:px-4 @[36rem]:py-3">
       {rows.map((row) => (
-        <CareerStatDetails key={row.key} fighters={[fight.f1, fight.f2]} before={fight.id} view={row.view} className="block w-full min-w-0 py-1 text-left">
+        <CareerStatDetails key={row.key} fighters={[fight.f1, fight.f2]} before={fight.potential ? undefined : fight.id} view={row.view} className="block w-full min-w-0 py-1 text-left">
           <span className={`mb-1 block text-center ${sectionLabel}`}>{row.label}</span>
           <span className="grid gap-1.5 @[36rem]:grid-cols-2 @[36rem]:gap-3">
             {SIDES.map((side) => {

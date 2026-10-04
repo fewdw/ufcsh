@@ -6,7 +6,7 @@ const listRoutes = new Set([
   "/api/officials", "/api/venues", "/api/locations", "/api/roster", "/api/matchmaking", "/api/news",
 ]);
 export function publicApi(path: string): boolean {
-  return listRoutes.has(path) || /^\/api\/(events|fights|fighters|previews)\/[a-f0-9]{16}$/i.test(path)
+  return path === "/api/events/potential-matchups" || /^\/api\/fights\/potential-[a-z0-9-]{1,180}$/.test(path) || listRoutes.has(path) || /^\/api\/(events|fights|fighters|previews)\/[a-f0-9]{16}$/i.test(path)
     || /^\/api\/fighters\/[a-f0-9]{16}\/(stats|career-stats)$/i.test(path)
     || /^\/api\/(judges|referees|venues|locations)\/[a-z0-9-]{1,80}$/.test(path);
 }

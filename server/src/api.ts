@@ -1,3 +1,4 @@
+import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, potentialMatchups, potentialFight } from "./potential-matchups.ts";
 import { careerStatistics } from "./career-statistics.ts";
 import { eventStatus, fightIsComplete, fightIsUnderway, isFightDay, liveDetailDue } from "./live-state.ts";
 import { ScoringStore, type ScoringFight } from "./scoring.ts";
@@ -210,6 +211,10 @@ function fighterSummary(id: string, fallbackName: string, rankingType: RankingTy
 }
 
 function fightOdds(fightId: string, includeMethodOdds = false): unknown {
+  if (fightId.startsWith("potential-")) {
+    const row = prepared("SELECT odds_json FROM potential_matchups WHERE id = ?").get(fightId) as { odds_json: string } | undefined;
+    return row ? JSON.parse(row.odds_json) : null;
+  }
   const o = prepared("SELECT * FROM odds WHERE fight_id = ?").get(fightId) as any;
   const method = includeMethodOdds
     ? prepared("SELECT * FROM method_odds WHERE fight_id = ?").get(fightId) as any
@@ -331,7 +336,8 @@ function replacedProfile(name: string | null, stored: string | null, division: s
 
 function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingType: RankingType = "meta"): Record<string, unknown> {
   const detail = fightDetail(f);
-  const at = eventDate ? { date: eventDate, ord: Number(f.ord) || 0, division: f.weight_class ?? "" } : undefined;
+  const contextOrd = f.event_id === POTENTIAL_EVENT_ID ? Number.MAX_SAFE_INTEGER : Number(f.ord) || 0;
+  const at = eventDate ? { date: eventDate, ord: contextOrd, division: f.weight_class ?? "" } : undefined;
   const base: Record<string, unknown> = {
     id: f.id,
     ord: f.ord,
@@ -341,7 +347,7 @@ function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingTy
     /** Which kind: a belt, an interim belt, or a tournament/TUF final, which
      * carries the same flag at the source but is not a championship bout. */
     title_type: f.title_type || null,
-    scheduled_rounds: scheduledRounds(f, detail),
+    scheduled_rounds: f.event_id === POTENTIAL_EVENT_ID ? null : scheduledRounds(f, detail),
     /** Which part of the card: main card, prelims or early prelims. */
     segment: f.segment || null,
     method: f.method,
@@ -357,7 +363,7 @@ function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingTy
       notice: f.f1_notice ?? null,
       outcome: f.f1_outcome,
       stats: { kd: f.f1_kd, str: f.f1_str, td: f.f1_td, sub: f.f1_sub },
-      ...(eventDate ? sideContext(f.f1_id, eventDate, Number(f.ord) || 0) : {}),
+      ...(eventDate ? sideContext(f.f1_id, eventDate, contextOrd) : {}),
     },
     f2: {
       ...fighterSummary(f.f2_id, f.f2_name, rankingType, at),
@@ -368,7 +374,7 @@ function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingTy
       notice: f.f2_notice ?? null,
       outcome: f.f2_outcome,
       stats: { kd: f.f2_kd, str: f.f2_str, td: f.f2_td, sub: f.f2_sub },
-      ...(eventDate ? sideContext(f.f2_id, eventDate, Number(f.ord) || 0) : {}),
+      ...(eventDate ? sideContext(f.f2_id, eventDate, contextOrd) : {}),
     },
     // Method odds join the card's own listing (not just a single matchup) so
     // the all-odds view can show every market without a per-fight fetch.
@@ -394,7 +400,8 @@ function listEvents(): unknown {
       GROUP BY e.id ORDER BY e.date DESC
     `)
     .all() as (EventRow & { fight_count: number })[];
-  return rows.map((e) => {
+  return [{ id: POTENTIAL_EVENT_ID, name: POTENTIAL_EVENT_NAME, date: "", location: "",
+    status: "future", potential: true, fight_count: potentialMatchups().length }, ...rows.map((e) => {
     const status = eventStatus(e, next);
     // A fight day starts at UTC midnight, hours before the card does: the
     // list needs the first announced start to know whether it is live yet.
@@ -408,7 +415,7 @@ function listEvents(): unknown {
       fight_count: e.fight_count,
       ...(status === "current" ? { starts_at: starts.length ? Math.min(...starts) : null } : {}),
     };
-  });
+  })];
 }
 
 /** The bout on now for a running card (fought bottom-up, so the lowest one
@@ -470,6 +477,16 @@ function cancelledBouts(e: EventRow): unknown[] {
 }
 
 async function getEvent(id: string, rankingType: RankingType): Promise<unknown | null> {
+  if (id === POTENTIAL_EVENT_ID) {
+    const rows = potentialMatchups();
+    const fights = rows.map((row, ord) => potentialFight(row, ord));
+    return { id, name: POTENTIAL_EVENT_NAME, date: "", location: "", status: "future", potential: true,
+      live: false, card_stats: summarizeCard(fights),
+      odds_freshness: { updated_at: rows.length ? Math.min(...rows.map(row => row.fetched_at)) : null,
+        final: false, priced: rows.length, sources: [...new Set(rows.map(row => JSON.parse(row.odds_json).source_url.startsWith("https://fightodds.io/") ? "FightOdds.io" : "BestFightOdds"))] },
+      fights: fights.map(f => ({ ...fightRowToJson(f, false, f.event_date, rankingType), potential: true, scheduled_rounds: null })),
+    };
+  }
   const e = prepared("SELECT * FROM events WHERE id = ?").get(id) as EventRow | undefined;
   if (!e) return null;
   let refreshing = isFightDay(e.date) && matchupRefresh.request(`event:${id}`, () => refreshLiveEvent(id),
@@ -869,7 +886,8 @@ function fightInProgress(f: { id: string; event_date: string; f1_outcome: string
 }
 
 async function getFight(id: string, rankingType: RankingType): Promise<unknown | null> {
-  const f = prepared(`
+  const potential = id.startsWith("potential-") ? potentialMatchups().find(row => row.id === id) : null;
+  const f = potential ? potentialFight(potential) : prepared(`
       SELECT f.*, e.name AS event_name, e.date AS event_date, e.location AS event_location, e.complete AS event_complete
       FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?
     `)
@@ -877,7 +895,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
   if (!f) return null;
 
   let refreshing = false;
-  if (isFightDay(f.event_date)) refreshing = matchupRefresh.request(
+  if (!potential && isFightDay(f.event_date)) refreshing = matchupRefresh.request(
     `event:${f.event_id}`, () => refreshLiveEvent(f.event_id),
     err => log("live matchup event refresh failed:", String(err)), 10_000,
   );
@@ -885,14 +903,14 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
   // Any matchup not covered by the scheduler is fetched lazily exactly once.
   // This gives far-future fights their career comparison data on first view,
   // while old completed fights still pick up totals and strike distributions.
-  if ((!f.detail_json && !f.detail_fetched_at) || (isFightDay(f.event_date) && liveDetailDue(f))) {
+  if (!potential && ((!f.detail_json && !f.detail_fetched_at) || (isFightDay(f.event_date) && liveDetailDue(f)))) {
     refreshing = matchupRefresh.request(`detail:${id}`, () => syncFightDetail(id),
       err => log("lazy fight detail failed:", String(err))) || refreshing;
   }
 
   // Return stored odds now; recover missing quotes outside the request path.
   // Do not also scrape the entire event before recovering this one matchup.
-  refreshing = matchupRefresh.request(`odds:${id}`, () => ensureFightMethodOdds(id),
+  if (!potential) refreshing = matchupRefresh.request(`odds:${id}`, () => ensureFightMethodOdds(id),
     err => log("matchup method odds recovery failed:", String(err)), 5 * 60_000) || refreshing;
 
   const index = fightIndex();
@@ -924,7 +942,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
       reach: bio?.reach ?? "",
       stance: bio?.stance ?? "",
       birth_date: birthDate || null,
-      age: birthDate ? ageOn(birthDate, f.event_date) : null,
+      age: birthDate ? ageOn(birthDate, potential ? todayIso() : f.event_date) : null,
       // Career numbers as they stood walking into this bout, from our own
       // fight records: never today's totals projected back onto an old card.
       career_before: fid ? careerBefore(index, fid, f.event_date, f.weight_class ?? "", Number(f.ord) || 0, opponentId) : null,
@@ -975,7 +993,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
   const referee: string | null = detail?.methodInfo?.Referee || f.referee_assigned || null;
   return {
     id: f.id,
-    event: { id: f.event_id, name: f.event_name, date: f.event_date, location: f.event_location, location_slug: locationOfEvent(f.event_id), venue: venueOfEvent(f.event_id) },
+    event: { id: f.event_id, name: f.event_name, date: potential ? "" : f.event_date, location: f.event_location, location_slug: locationOfEvent(f.event_id), venue: venueOfEvent(f.event_id) },
     /** Profile addresses for the officials the card names; judges in card order. */
     officials: {
       referee: referee ? { name: referee, slug: officialSlug("referee", referee), assigned: !detail?.methodInfo?.Referee } : null,
@@ -985,9 +1003,10 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     status: fightIsComplete(f) ? "past" : "upcoming",
     // Completed picks remain readable from a profile. Upcoming fights only
     // advertise Predict while their card is inside the server's event horizon.
-    prediction_available: fightIsComplete(f) || predictionContext(f.id)?.eventOpen !== false,
-    live: isFightDay(f.event_date),
-    in_progress: fightInProgress(f),
+    potential: !!potential,
+    prediction_available: !potential && (fightIsComplete(f) || predictionContext(f.id)?.eventOpen !== false),
+    live: !potential && isFightDay(f.event_date),
+    in_progress: !potential && fightInProgress(f),
     stats_updated_at: f.detail_fetched_at,
     /** Rounds the admin panel has released for scoring, so a reader watching a
      *  live card sees the Score tab open without reloading the page. */
@@ -998,7 +1017,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     /** Which kind: a belt, an interim belt, or a tournament/TUF final, which
      * carries the same flag at the source but is not a championship bout. */
     title_type: f.title_type || null,
-    scheduled_rounds: scheduledRounds(f, detail),
+    scheduled_rounds: f.event_id === POTENTIAL_EVENT_ID ? null : scheduledRounds(f, detail),
     method: f.method,
     method_details: f.method_details,
     round: f.round,
@@ -1852,8 +1871,16 @@ export function shareCardData(kind: string, id: string): ShareCardData | null {
     return { kind: "list", eyebrow: "Independent UFC research", title: "UFC.sh", subtitle: "Cards, odds, rankings and every number behind them",
       items: ["Fight cards and live results", "Matchup context and fighter rankings", "Judges, referees and venues"], footer: SITE_URL.replace(/^https?:\/\//, "") };
   }
+  if (kind === "events" && id === POTENTIAL_EVENT_ID) {
+    const fights = potentialMatchups();
+    return { kind: "list", eyebrow: "Unconfirmed fights", title: POTENTIAL_EVENT_NAME,
+      subtitle: `${fights.length} matchups with odds`, items: fights.slice(0, 5).map(row => `${row.f1_name} vs ${row.f2_name}`),
+      footer: "Potential UFC matchups · No date announced" };
+  }
   if (kind === "fights") {
-    const f = prepared(`SELECT f.*, e.name AS event_name, e.date AS event_date, o.f1_close, o.f2_close
+    const potential = id.startsWith("potential-") ? potentialMatchups().find(row => row.id === id) : null;
+    const lines = potential ? JSON.parse(potential.odds_json) : null;
+    const f = potential ? { ...potentialFight(potential), f1_close: lines.f1.close, f2_close: lines.f2.close } : prepared(`SELECT f.*, e.name AS event_name, e.date AS event_date, o.f1_close, o.f2_close
       FROM fights f JOIN events e ON e.id = f.event_id LEFT JOIN odds o ON o.fight_id = f.id WHERE f.id = ?`).get(id) as any;
     if (!f) return null;
     const at = { date: f.event_date, ord: Number(f.ord) || 0, division: f.weight_class ?? "" };
@@ -1866,7 +1893,7 @@ export function shareCardData(kind: string, id: string): ShareCardData | null {
       kind: "versus", eyebrow: f.event_name, f1: f.f1_name, f2: f.f2_name,
       f1Line: [a.record, rankText(a.ranking)].filter(Boolean).join(" · "),
       f2Line: [b.record, rankText(b.ranking)].filter(Boolean).join(" · "),
-      center, footer: `${f.weight_class} · ${f.event_date}`, photoIds: [f.f1_id, f.f2_id],
+      center, footer: potential ? "Unconfirmed fight · No date announced" : `${f.weight_class} · ${f.event_date}`, photoIds: [f.f1_id, f.f2_id],
     };
   }
   if (kind === "fighters") {
@@ -1917,7 +1944,7 @@ async function withShareSlot<T>(work: () => Promise<T>): Promise<T> {
 }
 
 async function serveShareImage(req: http.IncomingMessage, res: http.ServerResponse, pathname: string): Promise<void> {
-  const match = /^\/og\/(?:(site)|(fights|fighters|events)\/([a-f0-9]{16}))\.jpg$/i.exec(pathname);
+  const match = /^\/og\/(?:(site)|(fights|fighters|events)\/([a-f0-9]{16}|potential-[a-z0-9-]{1,180}))\.jpg$/i.exec(pathname);
   if (!match) { res.writeHead(404, { "Cache-Control": "no-store" }); res.end(); return; }
   const kind = match[1] ? "site" : match[2];
   const id = match[3] ?? "";

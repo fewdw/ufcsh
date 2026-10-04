@@ -1,3 +1,4 @@
+import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, potentialMatchups } from "./potential-matchups.ts";
 import { prepared } from "./db.ts";
 import { ufcFightExistsSql, currentRecord, hasUfcFight, recordText } from "./fighter-identity.ts";
 import { judgeProfile, officialsIndex, refereeProfile } from "./officials.ts";
@@ -73,6 +74,16 @@ export function pageSeo(pathname: string): PageSeo {
   if (parts.length !== 3 || !id) return notFound();
   if (parts[1] === "profiles") return { ...home, canonical: `${SITE_URL}${pathname}`, title: "Fan profile | ufc.sh", description: "A fan's UFC scorecards, predictions and how often their cards matched the judges." };
 
+  if (parts[1] === "events" && id === POTENTIAL_EVENT_ID || parts[1] === "fights" && id.startsWith("potential-")) {
+    const rows = potentialMatchups();
+    const fight = parts[1] === "fights" ? rows.find(row => row.id === id) : null;
+    if (parts[1] === "fights" && !fight) return notFound();
+    const name = fight ? `${fight.f1_name} vs ${fight.f2_name}` : POTENTIAL_EVENT_NAME;
+    return { ...DEFAULT, title: `${name} | ufc.sh`, canonical: `${SITE_URL}${pathname}`, image: `${SITE_URL}/og/${parts[1]}/${id}.jpg`,
+      description: `${name}: odds for unconfirmed UFC matchups. These fights are not scheduled.`,
+      summary: `<h1>${htmlEscape(name)}</h1><p>Unconfirmed fights with odds.</p><ul>${(fight ? [fight] : rows).map(row => `<li>${link(`/fights/${row.id}`, `${row.f1_name} vs ${row.f2_name}`)}</li>`).join("")}</ul>`,
+    };
+  }
   if (parts[1] === "events") {
     const event = prepared("SELECT id, name, date, location, complete FROM events WHERE id = ?").get(id) as { id: string; name: string; date: string; location: string; complete: number } | undefined;
     if (!event) return notFound();
@@ -300,6 +311,7 @@ export function sitemap(): string {
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
     entry("/"),
+    entry(`/events/${POTENTIAL_EVENT_ID}`),
     ...Object.keys(STATIC_PAGES).map((route) => entry(route)),
     ...events.map((event) => entry(`/events/${encodeURIComponent(event.id)}`, event.date)),
     ...fights.map((fight) => entry(`/fights/${encodeURIComponent(fight.id)}`, fight.date)),
