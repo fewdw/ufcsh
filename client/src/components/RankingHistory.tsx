@@ -12,6 +12,8 @@ const SERIES = ["text-series-1", "text-series-2", "text-series-3", "text-series-
 const SWATCH = ["bg-series-1", "bg-series-2", "bg-series-3", "bg-series-4"];
 
 const WIDTH = 600;
+// Leave a little hover room after the latest result.
+const PLOT_WIDTH = WIDTH - 18;
 const HEIGHT = 160;
 /** Champion on top with room of its own, interim between it and #1, then 1 to 15 and NR. */
 const level = (rank: string) => rank === "C" ? -1.5 : rank === "IC" ? -0.25 : rank === "NR" ? 18 : Number(rank);
@@ -32,7 +34,7 @@ export default function RankingHistory({ timeline, history = [] }: { timeline: R
   if (!chart) return null;
   const { start, end, lines } = chart;
   const span = Math.max(end - start, 86_400_000);
-  const x = (at: number) => ((at - start) / span) * WIDTH;
+  const x = (at: number) => ((at - start) / span) * PLOT_WIDTH;
 
   const paths = lines.map((division) => rankingPath(division.points, end, x, y));
 
@@ -66,8 +68,8 @@ export default function RankingHistory({ timeline, history = [] }: { timeline: R
 
   const track = (event: React.PointerEvent<HTMLDivElement>) => {
     const box = event.currentTarget.getBoundingClientRect();
-    const fraction = Math.min(1, Math.max(0, (event.clientX - box.left) / box.width));
-    setHover({ at: start + fraction * span, anchor: { x: Math.min(Math.max(event.clientX, 140), window.innerWidth - 140), y: box.top - 6, above: true } });
+    const fraction = Math.min(1, Math.max(0, (event.clientX - box.left) / (box.width * PLOT_WIDTH / WIDTH)));
+    setHover({ at: Math.min(end, start + fraction * span), anchor: { x: Math.min(Math.max(event.clientX, 140), window.innerWidth - 140), y: box.top - 6, above: true } });
   };
   const leave = () => setHover(null);
 
