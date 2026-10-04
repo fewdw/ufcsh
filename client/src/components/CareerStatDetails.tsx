@@ -8,6 +8,7 @@ import { CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
 import { formatDate, formatDateShortWithYear, outcomeClasses, outcomeLabel } from "../format";
 import RequestNotice from "./RequestNotice";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "./segmented";
+import useSheetDrag from "../useSheetDrag";
 
 type Fighter = { id: string; name: string };
 type Sort = EvidenceSort;
@@ -43,7 +44,7 @@ function Evidence({ fighter, side, data, error, retry, view, sort, setSort, clos
       </h3>
       <span className="shrink-0 text-lg font-semibold tabular-nums" style={{ color: `var(--color-f${side + 1}-ink)` }}>{data ? view.headline(data) : "—"}</span>
     </div>
-    <div className="min-h-0 flex-1 overflow-auto overscroll-x-contain overscroll-y-none pr-3 [scrollbar-gutter:stable]">
+    <div data-sheet-scroll className="min-h-0 flex-1 overflow-auto overscroll-x-contain overscroll-y-none pr-3 [scrollbar-gutter:stable]">
     {error ? <div className="py-2"><RequestNotice onRetry={retry}>Couldn’t load stats.</RequestNotice></div> : null}
     {!data ? !error ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null : !rows.length ? <p className="py-3 text-xs text-zinc-500">No data</p> : <table className="w-full table-fixed text-left text-[11px] tabular-nums sm:text-xs">
       <colgroup><col /><col className="w-12 min-[375px]:w-14 sm:w-20" />{columns.map((_, index) => <col key={index} className={index === 0 ? "w-12 sm:w-16" : "w-9 min-[375px]:w-10 sm:w-12"} />)}</colgroup>
@@ -81,10 +82,13 @@ function StatModal({ id, fighters, before, selection, update }: {
   update: (selection: CareerStatSelection | null) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const title = useRef<HTMLHeadingElement>(null);
   const matchup = Boolean(before) || fighters.length > 1;
   const { fighter: selected, view: currentView, sort } = selection;
   const setSort = (sort: Sort) => update({ ...selection, sort });
   const close = () => update(null);
+  useSheetDrag(dialog, close);
+  const results = currentView.key === "wins" || currentView.key === "losses";
   const sides = [useApi<CareerStatistics>(careerStatsUrl(fighters[0], before)), useApi<CareerStatistics>(careerStatsUrl(fighters[1], before))];
   const orders: EvidenceOrder[] = currentView.columns.some(column => column.value) ? ["recent", "descending", "ascending"] : ["recent"];
   const cutoff = sides.find(side => side.data?.before)?.data?.before;
@@ -99,6 +103,7 @@ function StatModal({ id, fighters, before, selection, update }: {
     const root = document.documentElement;
     const previousOverflow = root.style.overflow;
     node.showModal();
+    title.current?.focus({ preventScroll: true });
     root.style.overflow = "hidden";
     return () => {
       node.close();
@@ -110,24 +115,25 @@ function StatModal({ id, fighters, before, selection, update }: {
   return <dialog ref={dialog} id={id} aria-labelledby={`${id}-title`}
     onCancel={event => { event.preventDefault(); close(); }}
     onClick={event => { if (event.target === event.currentTarget) close(); }}
-    className={`search-dialog fixed inset-0 m-auto h-[min(34rem,calc(100dvh-1rem))] w-[calc(100%-1rem)] max-h-none max-w-none overflow-hidden rounded-2xl border border-zinc-200 bg-white p-0 text-zinc-900 shadow-2xl sm:h-[min(34rem,calc(100dvh-2rem))] sm:w-[calc(100%-2rem)] ${matchup ? "sm:max-w-5xl" : "sm:max-w-2xl"}`}>
+    className={`search-dialog fixed inset-x-0 bottom-0 top-auto m-0 h-[80dvh] w-full max-h-none max-w-none overflow-hidden rounded-t-2xl border border-b-0 border-zinc-200 bg-white p-0 pb-[env(safe-area-inset-bottom)] text-zinc-900 shadow-2xl transition-transform duration-200 motion-reduce:transition-none sm:inset-0 sm:m-auto sm:h-[min(34rem,calc(100dvh-2rem))] sm:w-[calc(100%-2rem)] sm:rounded-2xl sm:border-b sm:pb-0 ${matchup ? "sm:max-w-5xl" : "sm:max-w-2xl"}`}>
     <div className="flex h-full flex-col">
+      <div aria-hidden="true" className="flex h-6 shrink-0 items-center justify-center sm:hidden"><span className="h-1 w-9 rounded-full bg-zinc-300" /></div>
       <div className="shrink-0 px-4 pb-3 pt-3 sm:px-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 id={`${id}-title`} title={currentView.label} className={`${DIALOG_TITLE} truncate`}>{currentView.label}</h2>
+            <h2 ref={title} id={`${id}-title`} title={currentView.label} tabIndex={-1} autoFocus style={{ outline: "none" }} className={`${DIALOG_TITLE} truncate`}>{currentView.label}</h2>
             <p className="mt-0.5 text-[10px] text-zinc-400">{before ? cutoff ? `Before ${formatDate(cutoff.date)}` : "Before this fight" : "UFC career"}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <select aria-label="Sort opponents" value={sort.order} onChange={event => setSort({ ...sort, order: event.target.value as EvidenceOrder })}
+            {orders.length > 1 ? <select aria-label="Sort opponents" value={sort.order} onChange={event => setSort({ ...sort, order: event.target.value as EvidenceOrder })}
               className="h-9 w-24 rounded-full border-0 bg-zinc-100 pl-3 pr-6 text-xs font-medium text-zinc-700 focus-visible:outline-2 focus-visible:outline-zinc-900">
               {orders.map(order => <option key={order} value={order}>{order === "recent" ? "Recent" : order === "descending" ? "Highest" : "Lowest"}</option>)}
-            </select>
+            </select> : null}
             <button type="button" aria-label="Close statistic details" onClick={close} className={`-mr-1 ${CLOSE_BUTTON}`}><X className={CLOSE_ICON} aria-hidden="true" /></button>
           </div>
         </div>
         <div role="group" aria-label="Statistic category" className="mt-2 flex flex-wrap items-center gap-2">
-          {EVIDENCE_CATEGORIES.filter(group => matchup || group.label !== "Results").map(group => <div key={group.label} role="group" aria-label={group.label} className={`flex max-w-full items-center justify-between gap-0.5 rounded-full bg-zinc-100 p-1 sm:w-auto sm:gap-1 ${group.label === "Results" ? "w-auto" : "w-full"}`}>
+          {EVIDENCE_CATEGORIES.filter(group => results ? group.label === "Results" : group.label !== "Results").map(group => <div key={group.label} role="group" aria-label={group.label} className={`flex max-w-full items-center justify-between gap-0.5 rounded-full bg-zinc-100 p-1 sm:w-auto sm:gap-1 ${group.label === "Results" ? "w-auto" : "w-full"}`}>
             {group.views.map(option => <button key={option.key} type="button" aria-pressed={currentView.label === option.view.label} aria-label={option.view.label} title={option.view.label} onClick={() => changeView(option.view)}
               className={`min-h-7 shrink-0 whitespace-nowrap rounded-full px-1 text-[10px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 min-[375px]:px-1.5 min-[375px]:text-[11px] sm:px-2 ${currentView.label === option.view.label ? segmentedSelected : segmentedIdle}`}>
               <span className="sm:hidden">{COMPACT_STAT_LABELS[option.key] ?? option.label}</span><span className="hidden sm:inline">{option.label}</span>
