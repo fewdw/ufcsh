@@ -79,7 +79,7 @@ export default function RankingHistory({ timeline, history = [] }: { timeline: R
           <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-500">
             {lines.map((division, index) => (
               <span key={division.division} className="inline-flex items-center gap-1.5">
-                <span aria-hidden="true" className={`w-3 border-t-2 ${division.division === "Pound-for-pound" ? "border-dashed" : "border-solid"} ${SERIES[colorSlot(division.division, index)]}`} />
+                <span aria-hidden="true" className={`w-3 border-t-2 border-solid ${SERIES[colorSlot(division.division, index)]}`} />
                 {division.division}
               </span>
             ))}
@@ -98,7 +98,7 @@ export default function RankingHistory({ timeline, history = [] }: { timeline: R
                 <line key={tick} x1="0" x2={WIDTH} y1={y(tick)} y2={y(tick)} className="stroke-plot-axis" strokeWidth="1" vectorEffect="non-scaling-stroke" />
               ))}
               {paths.map((path, index) => (
-                <path key={lines[index].division} d={path} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" strokeDasharray={lines[index].division === "Pound-for-pound" ? "5 3" : undefined} vectorEffect="non-scaling-stroke" className={SERIES[colorSlot(lines[index].division, index)]} />
+                <path key={lines[index].division} d={path} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" className={SERIES[colorSlot(lines[index].division, index)]} />
               ))}
               {hover ? <line x1={x(hover.at)} x2={x(hover.at)} y1="0" y2={HEIGHT} className="stroke-zinc-400" strokeWidth="1" vectorEffect="non-scaling-stroke" /> : null}
             </svg>
