@@ -59,6 +59,13 @@ export type LiveCard = {
 export type FightSide = {
   /** Pounds as text, empty when unknown, null when made or unread. */
   weight_miss?: string | null;
+  /** Whom this fighter replaced; "" when the source doesn't say, null when booked from the start. */
+  replaced?: string | null;
+  /** The replaced fighter's profile, when they have one. */
+  replaced_id?: string | null;
+  short_notice?: boolean;
+  /** Notice as the source states it: "10 days", "under 2 weeks", "fight week", "hours". */
+  notice?: string | null;
   id: string;
   name: string;
   /** False for a booked debutant who does not have a UFC profile yet. */
@@ -236,6 +243,15 @@ export type EventDetail = {
   /** When this card's prices last reached the local database. */
   odds_freshness?: { updated_at: number | null; final: boolean; priced: number; sources?: string[] };
   fights: EventFight[];
+  /** Bouts announced for this card that never happened on it. */
+  cancelled?: CancelledBout[];
+};
+
+export type CancelledBout = {
+  f1: { name: string; id: string | null };
+  f2: { name: string; id: string | null };
+  division: string | null;
+  reason: string | null;
 };
 
 export type HistoryRow = {
@@ -257,6 +273,9 @@ export type HistoryRow = {
   round: string | null;
   time: string | null;
   opponent: { id: string; name: string };
+  /** Each side's rank going into the bout; null when unranked. */
+  rank?: FighterRanking;
+  opponent_rank?: FighterRanking;
   /** Both fighters' UFC records as they stood entering this bout. */
   record_before?: RecordBefore | null;
   opponent_record_before?: RecordBefore | null;
@@ -370,6 +389,8 @@ export type RankingTimeline = {
   through: string | null;
   /** The first meta list when meta was asked for; media lists stand in before it. */
   meta_since: string | null;
+  /** Pound-for-pound rank on every list where it changed. */
+  p4p?: { date: string; rank: string | null }[];
 };
 
 export type FighterProfile = {

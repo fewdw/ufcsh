@@ -395,7 +395,7 @@ export default function AdminBugs() {
       {/* The checks and the selected list each scroll on their own inside
           the space under the tabs; the page itself never moves. */}
       <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,2fr)_minmax(0,3fr)] gap-3 md:grid-cols-[18rem_minmax(0,1fr)] md:grid-rows-1">
-        <nav className="min-h-0 overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-white p-2" aria-label="Checks">
+        <nav className="min-h-0 overflow-y-auto overscroll-y-contain rounded-xl border border-zinc-200 bg-white p-2" aria-label="Checks">
           {query && (
             <button
               type="button"
@@ -443,7 +443,7 @@ export default function AdminBugs() {
         </nav>
 
         {(selected || searchAll) && (
-          <section className="min-h-0 min-w-0 overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-white">
+          <section className="min-h-0 min-w-0 overflow-y-auto overscroll-y-contain rounded-xl border border-zinc-200 bg-white">
             <header className="sticky top-0 z-10 rounded-t-xl border-b border-zinc-200 bg-white px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="flex min-w-0 items-center gap-2 font-semibold text-zinc-900">

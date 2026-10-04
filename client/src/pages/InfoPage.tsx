@@ -92,7 +92,11 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-04">October 4, 2026</time></p>
             <ul>
-              <li>Finished fights keep the Predict tab so fan picks remain visible.</li>
+              <li>Short-notice replacements and cancelled bouts on event cards.</li>
+              <li>Shareable career-stat modals on profiles and matchups.</li>
+              <li>Cleaner ranking history with pound-for-pound and unranked fights.</li>
+              <li>Clearer fight results, control-time bars and ranking links.</li>
+              <li>Swipe navigation fixes and more missing-data checks.</li>
             </ul>
           </Section>
         </div>

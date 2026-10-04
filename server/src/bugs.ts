@@ -1,8 +1,8 @@
 import { db, getMeta, setMeta } from "./db.ts";
-import { relinkRankingHistory } from "./ranking-history.ts";
+import { missingCurrentRankingHistory, relinkRankingHistory } from "./ranking-history.ts";
 import { validateFightActions } from "./action-stats.ts";
 import { americanLine, fightIndex, impliedProbability } from "./fight-index.ts";
-import { ufcFightExistsSql } from "./fighter-identity.ts";
+import { fighterNamed, hasUfcFight, ufcFightExistsSql } from "./fighter-identity.ts";
 import { SEARCH_ALIASES } from "./search-aliases.ts";
 import { normName } from "./util.ts";
 import { noContestUnexplained } from "./no-contest.ts";
@@ -30,6 +30,7 @@ import {
   syncCatchWeights,
   syncFightOdds,
   syncPastFightOdds,
+  syncRankings,
 } from "./sync.ts";
 
 /** The data-quality board behind /admin?tab=bugs. Checks only read; repair
@@ -462,6 +463,23 @@ function rankedRecordGaps(): BugCheck {
     facts: [["History", row.id ? row.status ?? "never checked" : "fighter identity missing"]],
     links: [{ label: "Rankings", href: "/rankings", internal: true }, ...(row.id ? [fighterLink(row.id, row.fighter_name)] : [])],
     actions: row.id ? [{ id: "career", label: "Re-verify history", target: row.id }] : [],
+  })));
+}
+
+function rankedHistoryGaps(): BugCheck {
+  return check({
+    id: "ranked-history-gaps",
+    group: "Records",
+    label: "Ranked fighters missing ranking data",
+    description: "Current ranks must appear in the latest stored list for their source and division. Missing rows or fighter links leave profile charts and past matchup ranks incomplete. Re-reading rankings stores the current list and retries unmatched names.",
+    grade: "must",
+  }, missingCurrentRankingHistory().map(row => ({
+    key: `${row.ranking_type}:${row.division}:${row.rank}:${row.fighter_name}`,
+    title: row.fighter_name,
+    subtitle: `${row.ranking_type} · ${row.division} · ${row.rank}`,
+    facts: [["Latest stored list", row.as_of ?? "none"], ["Missing", row.fighter_id ? "linked ranking entry" : "fighter identity"]],
+    links: [{ label: "Rankings", href: "/rankings", internal: true }, ...(row.fighter_id ? [fighterLink(row.fighter_id, row.fighter_name)] : [])],
+    actions: [{ id: "rankings", label: "Re-read rankings", target: "all" }],
   })));
 }
 
@@ -995,6 +1013,93 @@ function catchweightsWithoutLimit(): BugCheck {
   })));
 }
 
+function replacementsUnnamed(): BugCheck {
+  const rows = db.prepare(`
+    SELECT f.id, f.event_id, e.name AS event_name, e.date, e.wiki_title, f.f1_name AS name, f.f1_replaced AS replaced
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE f.f1_replaced = '' OR f.f1_replaced NOT LIKE '% %' OR (f.f1_short_notice = 1 AND f.f1_replaced IS NULL)
+    UNION ALL
+    SELECT f.id, f.event_id, e.name, e.date, e.wiki_title, f.f2_name, f.f2_replaced
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE f.f2_replaced = '' OR f.f2_replaced NOT LIKE '% %' OR (f.f2_short_notice = 1 AND f.f2_replaced IS NULL)
+    ORDER BY date DESC
+  `).all() as { id: string; event_id: string; event_name: string; date: string; wiki_title: string | null; name: string; replaced: string }[];
+  return check({
+    id: "replacement-unnamed",
+    group: "Fights & events",
+    label: "Replacements without the fighter they replaced",
+    description: "The event article says this fighter came in as a replacement or on short notice, but not in a way we could read whom they replaced in full, so the matchup says \"Late replacement\", \"Took this fight on short notice\" or a surname alone. Read from the article's Background prose (boutChanges in scrape/wikipedia.ts); re-reading picks up a later edit.",
+    grade: ahead([[7, "minor"]]),
+  }, rows.map((row): BugItem => ({
+    key: `${row.id}:${row.name}`,
+    title: row.name,
+    subtitle: row.event_name,
+    date: row.date,
+    facts: [["Replaced", row.replaced || "not said"]],
+    links: [
+      ...fightLinks(row.id),
+      ...(row.wiki_title ? [{ label: "Event article", href: `https://en.wikipedia.org/wiki/${encodeURIComponent(row.wiki_title.replace(/ /g, "_"))}` }] : []),
+    ],
+    actions: [{ id: "article", label: "Re-read event article", target: row.event_id }],
+  })));
+}
+
+function replacedWithoutProfile(): BugCheck {
+  const rows = (db.prepare(`
+    SELECT f.id, f.event_id, e.name AS event_name, e.date, f.weight_class, f.f1_name AS name, f.f1_replaced AS replaced, f.f1_replaced_id AS replaced_id
+    FROM fights f JOIN events e ON e.id = f.event_id WHERE f.f1_replaced LIKE '% %'
+    UNION ALL
+    SELECT f.id, f.event_id, e.name, e.date, f.weight_class, f.f2_name, f.f2_replaced, f.f2_replaced_id
+    FROM fights f JOIN events e ON e.id = f.event_id WHERE f.f2_replaced LIKE '% %'
+    ORDER BY date DESC
+  `).all() as { id: string; event_id: string; event_name: string; date: string; weight_class: string; name: string; replaced: string; replaced_id: string | null }[])
+    .filter((row) => { const id = row.replaced_id || fighterNamed(row.replaced, row.weight_class, row.date); return !id || !hasUfcFight(id); });
+  return check({
+    id: "replaced-no-profile",
+    group: "Fights & events",
+    label: "Replaced fighters without a profile",
+    description: "The fighter a replacement took the place of has no UFC profile we can link, so their name shows without a link. Often right (they never fought in the UFC); otherwise the article spells them differently from UFCStats.",
+    grade: ahead([[14, "minor"]]),
+  }, rows.map((row): BugItem => ({
+    key: `${row.id}:${row.name}`,
+    title: row.replaced,
+    subtitle: `Replaced by ${row.name} · ${row.event_name}`,
+    date: row.date,
+    facts: [["Matched fighter", row.replaced_id ? "no UFC bouts" : "none"]],
+    links: fightLinks(row.id),
+    actions: [{ id: "article", label: "Re-read event article", target: row.event_id }],
+  })));
+}
+
+function replacementsWithoutNotice(): BugCheck {
+  const rows = db.prepare(`
+    SELECT f.id, f.event_id, e.name AS event_name, e.date, e.wiki_title, f.f1_name AS name, f.f1_replaced AS replaced
+    FROM fights f JOIN events e ON e.id = f.event_id WHERE f.f1_replaced IS NOT NULL AND f.f1_notice IS NULL
+    UNION ALL
+    SELECT f.id, f.event_id, e.name, e.date, e.wiki_title, f.f2_name, f.f2_replaced
+    FROM fights f JOIN events e ON e.id = f.event_id WHERE f.f2_replaced IS NOT NULL AND f.f2_notice IS NULL
+    ORDER BY date DESC
+  `).all() as { id: string; event_id: string; event_name: string; date: string; wiki_title: string | null; name: string; replaced: string }[];
+  return check({
+    id: "replacement-no-notice",
+    group: "Fights & events",
+    label: "Replacements without their days' notice",
+    description: "A replacement whose notice the event article doesn't state, so the matchup says \"Replaced X\" (or \"on short notice\") without how many days. Stated notice (\"on 10 days' notice\", \"less than two weeks before\", \"during fight week\") is read with the article; the rest wait for another source.",
+    grade: ahead([[14, "minor"]]),
+  }, rows.map((row): BugItem => ({
+    key: `${row.id}:${row.name}`,
+    title: row.name,
+    subtitle: row.event_name,
+    date: row.date,
+    facts: [["Replaced", row.replaced || "not named"]],
+    links: [
+      ...fightLinks(row.id),
+      ...(row.wiki_title ? [{ label: "Event article", href: `https://en.wikipedia.org/wiki/${encodeURIComponent(row.wiki_title.replace(/ /g, "_"))}` }] : []),
+    ],
+    actions: [{ id: "article", label: "Re-read event article", target: row.event_id }],
+  })));
+}
+
 function fighterGaps(active: Set<string>): BugCheck {
   const rows = db.prepare(`
     SELECT id, name, photo_url, photo_checked_at, birth_date, birth_fetched_at, country, height, reach, stance
@@ -1491,6 +1596,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     oddsMissingByRound(),
     unverifiedRecords(active),
     rankedRecordGaps(),
+    rankedHistoryGaps(),
     rankingHistoryGaps(),
     matchmakingGaps(),
     fightsMissingFromHistory(),
@@ -1504,6 +1610,9 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     decisionsWithoutJudges(),
     eventsWithoutWiki(),
     catchweightsWithoutLimit(),
+    replacementsUnnamed(),
+    replacementsWithoutNotice(),
+    replacedWithoutProfile(),
     venueInWrongCity(),
     eventsWithoutVenue(),
     venuesFromWikipediaOnly(),
@@ -1553,7 +1662,7 @@ function newsUnjudged(): BugCheck {
   }, items);
 }
 
-export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history";
+export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -1652,6 +1761,11 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
       }
       const { signed, cut } = storedRosterMoves();
       return { ok: true, message: `Read ${signed.length} signings and ${cut.length} releases.` };
+    }
+    case "rankings": {
+      await syncRankings();
+      const linked = relinkRankingHistory();
+      return { ok: true, message: `Re-read current rankings and linked ${linked} ranked rows.` };
     }
     case "ranking-history": {
       const linked = relinkRankingHistory();

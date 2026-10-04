@@ -361,7 +361,7 @@ export default function GraphicsBuilder({ initial, onClose, inline = false }: {
         {/* Phones: the preview stays pinned over the scrolling controls, so a
             change shows as it is made; the actions sit in a footer. Wider
             screens: controls on the left, preview and actions on the right. */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain md:grid md:grid-cols-[20rem_minmax(0,1fr)] md:overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain md:grid md:grid-cols-[20rem_minmax(0,1fr)] md:overflow-hidden">
           <div className={`${typing ? "" : "sticky top-0"} z-10 flex flex-col gap-2 border-b border-zinc-200 bg-zinc-50 px-4 py-3 sm:px-5 md:static md:col-start-2 md:row-start-1 md:min-h-0 md:gap-3 md:overflow-hidden md:border-b-0 md:py-4`}>
             {/* A size container, so the frame can fit the space in both
                 directions whatever the shape. On a phone it is no taller

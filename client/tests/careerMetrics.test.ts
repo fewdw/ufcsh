@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evidenceColumns, orderEvidence, GRAPPLING_METRICS } from "../src/careerMetrics.ts";
+import { careerStatSearch, careerStatSelection, evidenceColumns, orderEvidence, GRAPPLING_METRICS } from "../src/careerMetrics.ts";
 import { fightCareerTotals } from "../../server/src/career-metrics.ts";
 import type { CareerStatistics } from "../src/api.ts";
 
@@ -41,4 +41,26 @@ test("column sorting uses numeric values, keeps unknowns last and restores recen
   assert.deepEqual(orderEvidence(rows, "recent", value), rows);
   assert.deepEqual(orderEvidence(rows, "ascending", sample => evidenceValue(metric("td"), sample, 1)), rows);
   assert.deepEqual(rows.map(value), [null, 600, 90, 90]);
+});
+
+test("shared career-stat URLs restore the view, column sort and selected fighter", () => {
+  const selection = careerStatSelection("?stat=td&statOrder=ascending&statColumn=2&statFighter=2", true)!;
+  assert.equal(selection.view.key, "td");
+  assert.deepEqual(selection.sort, { order: "ascending", column: 2 });
+  assert.equal(selection.fighter, 1);
+  const search = careerStatSearch("?tab=fight&keep=1", selection, true);
+  assert.deepEqual(careerStatSelection(search, true), selection, "refreshing or opening the URL restores the same modal");
+  assert.equal(new URLSearchParams(search).get("tab"), "matchup");
+  assert.equal(careerStatSearch(search, null, true), "?tab=matchup&keep=1", "closing clears only modal parameters");
+  assert.equal(new URLSearchParams(careerStatSearch("", selection, false)).get("tab"), "stats");
+});
+
+test("profile links exclude results and malformed modal options fall back safely", () => {
+  assert.equal(careerStatSelection("?stat=wins", false), null);
+  assert.equal(careerStatSelection("?stat=losses", false), null);
+  assert.equal(careerStatSelection("?stat=unknown", true), null);
+  assert.equal(careerStatSelection("?stat=wins&statOrder=descending", true)?.sort.order, "recent");
+  const selection = careerStatSelection("?stat=td&statColumn=999&statOrder=bad&statFighter=invalid", true)!;
+  assert.deepEqual(selection.sort, { order: "recent", column: 1 });
+  assert.equal(selection.fighter, 0);
 });

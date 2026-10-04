@@ -60,7 +60,7 @@ export function formatMethod(method: string | null, round: string | null, time: 
 }
 
 export function isDecision(method: string | null | undefined): boolean {
-  return /dec$/i.test((method ?? "").trim());
+  return /dec$|decision/i.test((method ?? "").trim());
 }
 
 /** "3 Rounds" — how long a bout is booked for; empty when that is unknown. */
@@ -228,4 +228,29 @@ export function normalizeSearch(value: string): string {
  *  ("Catch Weight (160 lbs)"). */
 export function divisionName(weightClass: string, catchWeight?: number | null): string {
   return catchWeight && /catch/i.test(weightClass) ? `${weightClass} (${catchWeight} lbs)` : weightClass;
+}
+
+/** How much notice a replacement had, briefly: "3 days notice", "2 weeks
+ *  notice", "fight week", "short notice". */
+export function noticePhrase(notice: string | null | undefined, short: boolean | undefined): string {
+  const amount = notice?.match(/^(?:under )?(\d+) (day|week)s?$/);
+  if (amount) return `${amount[1]} ${amount[2]}${amount[1] === "1" ? "" : "s"} notice`;
+  if (notice === "fight week") return "fight week";
+  if (notice === "hours") return "hours notice";
+  return short ? "short notice" : "";
+}
+
+/** A late change to a fighter's booking: a tag, its full sentence, and the
+ *  replaced fighter to link. Null when they were booked from the start. */
+export function boutChange(side: { replaced?: string | null; replaced_id?: string | null; short_notice?: boolean; notice?: string | null }):
+  { short: string; full: string; lead: string; name: string | null; id: string | null; tail: string } | null {
+  if (side.replaced == null && !side.short_notice) return null;
+  const notice = noticePhrase(side.notice, side.short_notice);
+  const lead = side.replaced ? "Replaced" : side.replaced === "" ? "Late replacement" : "Took this fight";
+  const name = side.replaced || null;
+  return {
+    short: side.short_notice ? "Short notice" : "Replacement",
+    full: [[lead, name].filter(Boolean).join(" "), notice].filter(Boolean).join(" · "),
+    lead, name, id: name ? side.replaced_id ?? null : null, tail: notice,
+  };
 }

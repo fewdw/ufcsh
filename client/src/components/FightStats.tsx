@@ -43,8 +43,8 @@ const PLOT_HEIGHT = "h-16 @[36rem]:h-[104px]";
 /** A bar `share` (0–1) of its plot tall, but never shorter than `floor` px. */
 const barHeight = (share: number, floor: number) => `max(${floor}px, ${Math.min(1, share) * 100}%)`;
 
-/** Every bar in Fight totals and Round by round is this wide, whichever
- *  chart it belongs to, so a bar's height is the only thing that varies. */
+/** Main bars in Fight totals and Round by round share a width. Round control
+ *  bars remain thinner so they read as a supporting stat beside strikes. */
 const BAR = "w-6 shrink-0 @[36rem]:w-9";
 
 /** One text size for the content of every stats panel — figures, labels, rows.
@@ -349,16 +349,14 @@ function fightSeconds(fight: Matchup): number {
 // ---------------------------------------------------------------------------
 // Paired columns. The page's one chart idiom: two vertical bars on a shared
 // baseline, read as "who did more" before a single digit is parsed. Panels in
-// the same group share a scale so their heights are comparable. Every bar on
-// the page is the same width and a pair always stands shoulder to shoulder;
+// the same group share a scale so their heights are comparable. Main bars
+// share a width and a pair always stands shoulder to shoulder;
 // the figures stack under the pair, first fighter over second, in their inks.
 
 /** A supporting stat under a chart, both fighters on one line in their own
  *  colours: "6/11 · 0/0 TD". */
 type ChartNote = {
   label: string; f1: string; f2: string;
-  /** Each side's share of the round, 0–1, drawn as bars out from the centre. */
-  share?: Record<Side, number>;
 };
 
 function Figures({ lines, notes = [] }: { lines: Record<Side, string>; notes?: ChartNote[] }) {
@@ -378,15 +376,6 @@ function Figures({ lines, notes = [] }: { lines: Record<Side, string>; notes?: C
               <span className="text-right font-semibold" style={{ color: SIDE.f1.ink }}>{note.f1}</span>
               <span className="text-center text-[9px] uppercase tracking-wide text-zinc-400">{note.label}</span>
               <span className="text-left font-semibold" style={{ color: SIDE.f2.ink }}>{note.f2}</span>
-              {note.share ? (
-                <span className="col-span-3 mb-0.5 mt-px flex h-1.5 min-w-20 gap-px" aria-hidden="true">
-                  {SIDES.map((side) => (
-                    <span key={side} className={`flex h-full flex-1 overflow-hidden bg-zinc-100 ${side === "f1" ? "justify-end rounded-l-full" : "rounded-r-full"}`}>
-                      <span className="h-full" style={{ width: `${note.share![side] > 0 ? Math.max(4, note.share![side] * 100) : 0}%`, backgroundColor: SIDE[side].fill }} />
-                    </span>
-                  ))}
-                </span>
-              ) : null}
             </Fragment>
           ))}
         </div>
@@ -575,6 +564,7 @@ function CombinedStrikeColumns({
   notes = [],
   context = "Fight total",
   tooltipExtra,
+  controlShare,
 }: {
   fight: Matchup;
   significant: Record<Side, Attempt | null>;
@@ -585,6 +575,8 @@ function CombinedStrikeColumns({
   context?: string;
   /** Round-specific grappling and damage facts added to each side's tooltip. */
   tooltipExtra?: Record<Side, string[]>;
+  /** Thin companion bars, each scaled to a full five-minute round. */
+  controlShare?: Record<Side, number>;
 }) {
   const scale = Math.max(1, ...SIDES.map((side) => total[side]?.attempted ?? 0));
   // Clamped so the dark segment can never exceed the filled portion it sits in,
@@ -612,26 +604,37 @@ function CombinedStrikeColumns({
                 ...(tooltipExtra?.[side] ?? []),
               ]
             : ["Statistics unavailable"];
-          return (
-            <BarTooltip
-              key={side}
-              side={side}
-              ariaLabel={`${fight[side].name}, ${context}: ${lines.join(", ")}`}
-              label={<StatBarTip fight={fight} side={side} context={context} lines={lines} />}
-            >
+          const controlBar = controlShare ? (
+            <div aria-hidden="true" className="flex h-full w-1.5 shrink-0 items-end overflow-hidden rounded-t-full bg-zinc-100">
               <div
-                className="plot-grow relative w-full overflow-hidden rounded-t-md border-2 bg-white"
-                style={{ height: columnHeight, borderColor: SIDE[side].fill, visibility: attempts > 0 ? "visible" : "hidden" }}
+                className="plot-grow w-full"
+                style={{ height: controlShare[side] > 0 ? barHeight(controlShare[side], 2) : 0, backgroundColor: SIDE[side].fill }}
+              />
+            </div>
+          ) : null;
+          return (
+            <Fragment key={side}>
+              {side === "f1" ? controlBar : null}
+              <BarTooltip
+                side={side}
+                ariaLabel={`${fight[side].name}, ${context}: ${lines.join(", ")}`}
+                label={<StatBarTip fight={fight} side={side} context={context} lines={lines} />}
               >
                 <div
-                  className="absolute inset-x-0 bottom-0 flex flex-col-reverse"
-                  style={{ height: `${attempts > 0 ? (landed / attempts) * 100 : 0}%` }}
+                  className="plot-grow relative w-full overflow-hidden rounded-t-md border-2 bg-white"
+                  style={{ height: columnHeight, borderColor: SIDE[side].fill, visibility: attempts > 0 ? "visible" : "hidden" }}
                 >
-                  <span style={{ flex: significantLanded, minHeight: significantLanded > 0 ? 2 : 0, backgroundColor: SIDE[side].deep }} />
-                  <span style={{ flex: otherLanded, minHeight: otherLanded > 0 ? 2 : 0, backgroundColor: SIDE[side].fill }} />
+                  <div
+                    className="absolute inset-x-0 bottom-0 flex flex-col-reverse"
+                    style={{ height: `${attempts > 0 ? (landed / attempts) * 100 : 0}%` }}
+                  >
+                    <span style={{ flex: significantLanded, minHeight: significantLanded > 0 ? 2 : 0, backgroundColor: SIDE[side].deep }} />
+                    <span style={{ flex: otherLanded, minHeight: otherLanded > 0 ? 2 : 0, backgroundColor: SIDE[side].fill }} />
+                  </div>
                 </div>
-              </div>
-            </BarTooltip>
+              </BarTooltip>
+              {side === "f2" ? controlBar : null}
+            </Fragment>
           );
         })}
       </Plot>
@@ -826,8 +829,7 @@ export function FightTotals({ fight, grouped = false }: { fight: Matchup; groupe
 
 /** KD / TD / SUB / control for one round, both fighters to a line. Only what
  *  happened is listed: a line shows when either fighter has something, and a
- *  fighter with nothing on it (0, 0/0, 0:00) is left blank. Control also
- *  carries a bar per fighter, scaled to a full five-minute round. */
+ *  fighter with nothing on it (0, 0/0, 0:00) is left blank. */
 function roundNotes(kd: Cell, td: Cell, sub: Cell, ctrl: Cell): ChartNote[] {
   const notes: ChartNote[] = [];
   const count = (value: string | undefined) => intOf(value) ? String(intOf(value)) : "";
@@ -840,7 +842,6 @@ function roundNotes(kd: Cell, td: Cell, sub: Cell, ctrl: Cell): ChartNote[] {
   if (held.f1 || held.f2) {
     notes.push({
       label: "Ctrl", f1: held.f1 ? ctrl.f1 : "", f2: held.f2 ? ctrl.f2 : "",
-      share: { f1: Math.min(1, held.f1 / 300), f2: Math.min(1, held.f2 / 300) },
     });
   }
   return notes;
@@ -870,6 +871,7 @@ function RoundColumn({ fight, index }: { fight: Matchup; index: number }) {
   const td = at("Td");
   const sub = at("Sub. att");
   const ctrl = at("Ctrl");
+  const held = { f1: clockOf(ctrl.f1) ?? 0, f2: clockOf(ctrl.f2) ?? 0 };
 
   return (
     <ChartBlock title={`Round ${index + 1}`} fill>
@@ -883,6 +885,7 @@ function RoundColumn({ fight, index }: { fight: Matchup; index: number }) {
           f2: roundTooltipLines(kd.f2, td.f2, sub.f2, ctrl.f2),
         }}
         notes={roundNotes(kd, td, sub, ctrl)}
+        controlShare={held.f1 || held.f2 ? { f1: held.f1 / 300, f2: held.f2 / 300 } : undefined}
       />
     </ChartBlock>
   );
@@ -973,7 +976,7 @@ function ProfileRow({
       : (values.f1! < values.f2! ? "f1" : "f2");
 
   return (
-    <div className="py-1">
+    <CareerStatDetails fighters={[fight.f1, fight.f2]} before={fight.id} view={metricView(metric)} className="block w-full py-1 text-left">
       <span className={`block text-center text-[10px] leading-4 text-zinc-500 @[40rem]:text-[11px]`}>
         <span className="@[40rem]:hidden">{metric.short}</span>
         <span className="hidden @[40rem]:inline">{metric.label}</span>
@@ -1005,14 +1008,13 @@ function ProfileRow({
               {profileText(value, metric.format)}
             </span>
           );
-          return <CareerStatDetails key={side} fighters={[fight.f1, fight.f2]} initial={side === "f1" ? 0 : 1} before={fight.id} view={metricView(metric)}
-            available={SIDES.map((each) => (careers[each] ? metric.sample(careers[each]).total : 0) > 0)}
+          return <span key={side}
             className={`grid w-full items-center gap-x-1 @[40rem]:gap-x-1.5 ${side === "f1" ? "grid-cols-[2.25rem_minmax(0,1fr)] @[40rem]:grid-cols-[3rem_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)_2.25rem] @[40rem]:grid-cols-[minmax(0,1fr)_3rem]"}`}>
             {side === "f1" ? [figure, bar] : [bar, figure]}
-          </CareerStatDetails>;
+          </span>;
         })}
       </span>
-    </div>
+    </CareerStatDetails>
   );
 }
 
@@ -1055,21 +1057,20 @@ function MethodProfile({ fight, careers }: { fight: Matchup; careers: Record<Sid
   return (
     <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-zinc-100 px-3 py-2.5 @[36rem]:gap-x-6 @[36rem]:px-4 @[36rem]:py-3">
       {rows.map((row) => (
-        <div key={row.key} className="min-w-0">
-          <div className={`mb-1 text-center ${sectionLabel}`}>{row.label}</div>
-          <div className="grid gap-1.5 @[36rem]:grid-cols-2 @[36rem]:gap-3">
+        <CareerStatDetails key={row.key} fighters={[fight.f1, fight.f2]} before={fight.id} view={row.view} className="block w-full min-w-0 py-1 text-left">
+          <span className={`mb-1 block text-center ${sectionLabel}`}>{row.label}</span>
+          <span className="grid gap-1.5 @[36rem]:grid-cols-2 @[36rem]:gap-3">
             {SIDES.map((side) => {
               const counts = split(careers[side], row.key);
               return (
-                <CareerStatDetails key={side} fighters={[fight.f1, fight.f2]} initial={side === "f1" ? 0 : 1} before={fight.id} view={row.view}
-                  available={SIDES.map((each) => (careers[each]?.[row.key] ?? 0) > 0)}
+                <span key={side}
                   className={`block w-full min-w-0 text-left ${side === "f1" ? "@[36rem]:text-right" : ""}`}>
                   <MethodBar side={side} counts={counts} total={counts.total} />
-                </CareerStatDetails>
+                </span>
               );
             })}
-          </div>
-        </div>
+          </span>
+        </CareerStatDetails>
       ))}
     </div>
   );

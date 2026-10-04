@@ -1,14 +1,16 @@
 import FighterCareerStats from "../components/FighterCareerStats";
+import { CareerStatModal } from "../components/CareerStatDetails";
 import { Children, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../api";
 import type { CompleteRecordBefore, FighterProfile, FighterRecord, HistoryRow, NewsPage, ProfessionalHistoryRow } from "../api";
-import { divisionName, formatDateShortWithYear, formatLine, formatMethod, lastName } from "../format";
+import { divisionName, formatDateShortWithYear, formatLine, formatMethod, isDecision, lastName } from "../format";
 import { formatValue, PANEL } from "../components/chartTokens";
 import FighterPortrait from "../components/FighterPortrait";
 import Flag from "../components/Flag";
 import ResultDots from "../components/ResultDots";
 import { divisionMoves, type DivisionMove } from "../weightJourney";
+import { rankingsLink } from "../divisionOrder";
 import RequestNotice from "../components/RequestNotice";
 import { BONUS_AGAINST_TAG, BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
 import FighterStatistics from "../components/FighterStatistics";
@@ -33,7 +35,7 @@ function historyResultLabel(outcome: HistoryRow["outcome"]): string {
   }
 }
 
-/** The result, compressed to one letter in a small solid dot — a full "WIN"/
+/** The result, compressed to one letter in a small dot — a full "WIN"/
  *  "LOSS" word is legible from across the room this list doesn't need to be
  *  read from. The word itself survives for a screen reader and as a tooltip. */
 function resultBadgeLetter(outcome: HistoryRow["outcome"], upcoming: boolean): string {
@@ -47,13 +49,15 @@ function resultBadgeLetter(outcome: HistoryRow["outcome"], upcoming: boolean): s
   }
 }
 
-function resultBadgeClasses(outcome: HistoryRow["outcome"], upcoming: boolean): string {
+/** Finishes use deep colours; decisions use light colours, all with white letters. */
+function resultBadgeClasses(outcome: HistoryRow["outcome"], upcoming: boolean, method: string | null): string {
   if (upcoming) return "bg-sky-100 text-sky-700";
+  const decision = isDecision(method);
   switch (outcome) {
-    case "win": return "bg-emerald-500 text-white";
-    case "loss": return "bg-rose-500 text-white";
-    case "draw": return "bg-amber-400 text-white";
-    case "nc": return "bg-zinc-300 text-zinc-700";
+    case "win": return decision ? "bg-emerald-400 text-white" : "bg-emerald-800 text-white";
+    case "loss": return decision ? "bg-rose-300 text-white" : "bg-rose-800 text-white";
+    case "draw": return decision ? "bg-amber-300 text-white" : "bg-amber-700 text-white";
+    case "nc": return "bg-zinc-400 text-white";
     default: return "bg-zinc-200 text-zinc-500";
   }
 }
@@ -285,9 +289,32 @@ function boutFields(row: HistoryRow | ProfessionalHistoryRow) {
 }
 
 /** The bout's division, said as a move when it differs from the last one. */
+const DIVISION_SHORT: Record<string, string> = {
+  Strawweight: "SW", Flyweight: "FLW", Bantamweight: "BW", Featherweight: "FW", Lightweight: "LW",
+  Welterweight: "WW", Middleweight: "MW", "Light Heavyweight": "LHW", Heavyweight: "HW",
+};
+
+/** A rank held going into a bout: "C", "IC" or "#4", nothing when unranked.
+ *  A rank from another division names it ("C FW" on a lightweight bout). */
+function RankTag({ ranking, who, division }: { ranking: HistoryRow["rank"]; who: string; division: string }) {
+  if (!ranking) return null;
+  const elsewhere = ranking.division !== division
+    ? ` ${ranking.division.startsWith("Women's") ? "W" : ""}${DIVISION_SHORT[ranking.division.replace("Women's ", "")] ?? ranking.division}` : "";
+  const label = `${ranking.rank === "C" ? "C" : ranking.rank === "IC" ? "IC" : `#${ranking.rank}`}${elsewhere}`;
+  const held = ranking.rank === "C" ? "Champion" : ranking.rank === "IC" ? "Interim champion" : `#${ranking.rank}`;
+  return (
+    <span className={`shrink-0 whitespace-nowrap text-[11px] font-semibold tabular-nums ${ranking.rank === "C" ? "text-belt" : ranking.rank === "IC" ? "text-belt-interim" : "text-zinc-500"}`}
+      title={`${who}: ${held} · ${ranking.division}, going into this fight`}>{label}</span>
+  );
+}
+
 function DivisionLabel({ division, move }: { division: string; move?: DivisionMove }) {
   if (!move) return <span>{division}</span>;
   return <span className="font-semibold text-zinc-700">{move.direction === "up" ? "↑ Up to" : "↓ Down to"} {move.to}</span>;
+}
+
+function DivisionCell({ to, className, children }: { to: string | null; className: string; children: ReactNode }) {
+  return to ? <Link to={to} title="Open rankings" className={`${className} ${HIT}`}>{children}</Link> : <div className={className}>{children}</div>;
 }
 
 const HIT = "transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900";
@@ -312,7 +339,7 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
         className={`${BAND} items-center gap-2.5 py-1.5`}
       >
         <span
-          className={`grid h-6 min-w-6 shrink-0 place-items-center rounded-full px-1 text-[10px] font-bold leading-none ${resultBadgeClasses(row.outcome, row.upcoming)}`}
+          className={`grid h-6 min-w-6 shrink-0 place-items-center rounded-full px-1 text-[10px] font-bold leading-none ${resultBadgeClasses(row.outcome, row.upcoming, row.method)}`}
           title={bout.result}
           aria-hidden="true"
         >
@@ -320,6 +347,7 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
         </span>
         <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="min-w-0 break-words text-[15px] font-semibold leading-6 text-zinc-900">{row.opponent.name}</span>
+          {"opponent_rank" in row ? <RankTag ranking={row.opponent_rank} who={row.opponent.name} division={row.weight_class} /> : null}
           {/* Both closing lines are here, and position is what says whose is
               whose: the opponent's sits against their name, the fighter's on the
               line about their own result. Neither number can be read off as the
@@ -346,6 +374,7 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
           <FactRun>
             <span className="font-medium">{bout.method}</span>
             {bout.outside ? <span className="font-semibold text-violet-500">Outside UFC</span> : <DivisionLabel division={divisionName(row.weight_class, "catch_weight" in row ? row.catch_weight : null)} move={move} />}
+            {"rank" in row && row.rank ? <RankTag ranking={row.rank} who={fighterName} division={row.weight_class} /> : null}
             {row.title_narrative ? <span className={`font-semibold ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
             {weightMisses(row)}
             {/* The awards belong to the fight, so they close its run rather
@@ -397,7 +426,7 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
       >
         <span className="flex w-full min-w-0 items-center gap-2.5">
           <span
-            className={`grid h-7 min-w-7 shrink-0 place-items-center self-center rounded-full px-1 text-[11px] font-bold leading-none ${resultBadgeClasses(row.outcome, row.upcoming)}`}
+            className={`grid h-7 min-w-7 shrink-0 place-items-center self-center rounded-full px-1 text-[11px] font-bold leading-none ${resultBadgeClasses(row.outcome, row.upcoming, row.method)}`}
             title={bout.result}
             aria-hidden="true"
           >
@@ -423,6 +452,7 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
         <span className="block min-w-0">
           <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
             <span className="min-w-0 break-words text-sm font-semibold leading-5 text-zinc-900">{row.opponent.name}</span>
+            {"opponent_rank" in row ? <RankTag ranking={row.opponent_rank} who={row.opponent.name} division={row.weight_class} /> : null}
             {bout.opponentOdds ? <span className="shrink-0 text-[10px] font-semibold tabular-nums text-zinc-400" title={`${row.opponent.name} closing odds`}>{bout.opponentOdds}</span> : null}
           </span>
           <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -433,13 +463,15 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
         </span>
       </BoutLink>
 
-      <div className={`${cell} flex-col justify-start border-l border-zinc-100 text-left`}>
+      {/* A ranked division opens the rankings at its list. */}
+      <DivisionCell to={bout.outside ? null : rankingsLink(row.weight_class)} className={`${cell} flex-col justify-start border-l border-zinc-100 text-left`}>
         <span className="block break-words text-[11px] leading-5 text-zinc-500">
           {bout.outside ? <span className="font-semibold text-violet-500">Outside UFC</span> : <DivisionLabel division={divisionName(row.weight_class, "catch_weight" in row ? row.catch_weight : null)} move={move} />}
+          {"rank" in row && row.rank ? <> <RankTag ranking={row.rank} who={fighterName} division={row.weight_class} /></> : null}
           {row.title_narrative ? <span className={`block font-semibold leading-4 ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
           {weightMisses(row).map((miss) => <span key={miss.key} className="mt-1 block leading-4">{miss}</span>)}
         </span>
-      </div>
+      </DivisionCell>
 
       <BoutLink
         to={bout.eventTo}
@@ -467,9 +499,7 @@ function HistoryRowView({ row, fighterName, move }: { row: HistoryRow | Professi
     // why it appeared at 40rem and ran straight out of the card. The result
     // track is sized to hold "KO/TKO · R5 · 1:32" and a four-figure price on
     // one line at that narrowest width, since it is the first thing read.
-    // An outside bout carries a violet edge, the colour its "Outside UFC" label
-    // is set in, so the run of non-UFC fights reads at a glance down the list.
-    <div className={`grid grid-cols-1 items-stretch @3xl:grid-cols-[13rem_minmax(11rem,1.1fr)_7rem_minmax(12rem,1.3fr)] ${row.promotion === "outside" ? "relative before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-violet-500" : ""}`}>
+    <div className="grid grid-cols-1 items-stretch @3xl:grid-cols-[13rem_minmax(11rem,1.1fr)_7rem_minmax(12rem,1.3fr)]">
       <BoutCard row={row} fighterName={fighterName} move={move} />
       <BoutTableRow row={row} fighterName={fighterName} move={move} />
     </div>
@@ -617,6 +647,8 @@ function FighterNews({ fighterId, name, first }: { fighterId: string; name: stri
 
 export default function FighterPage() {
   const { fighterId } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const { settings } = useSettings();
   const { data: fighter, loading, error, retry } = useApi<FighterProfile>(fighterId ? withRanking(`/api/fighters/${fighterId}`, settings.rankingSource) : null,
     data => data?.refreshing ? 5_000 : 5 * 60_000);
@@ -625,9 +657,18 @@ export default function FighterPage() {
   const mainScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:main", Boolean(fighter));
   const sideScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:side", Boolean(fighter));
   // Below `lg` the two columns become two tabs under the fighter.
-  const [tab, setTab] = useHistoryState<ProfileTab>("fighter:tab", "fights");
+  const [savedTab, setTab] = useHistoryState<ProfileTab>("fighter:tab", "fights");
+  const requestedTab = new URLSearchParams(location.search).get("tab");
+  const tab: ProfileTab = requestedTab === "stats" || requestedTab === "news" || requestedTab === "fights" ? requestedTab : savedTab;
   const tabAnchor = useTabBarAnchor(fighterId ?? "", tab);
-  const selectTab = (next: ProfileTab, button: HTMLElement) => { tabAnchor.keep(button); setTab(next); };
+  const selectTab = (next: ProfileTab, button: HTMLElement) => {
+    tabAnchor.keep(button); setTab(next);
+    if (requestedTab) {
+      const params = new URLSearchParams(location.search);
+      params.set("tab", next);
+      navigate({ search: `?${params}` }, { replace: true, state: location.state });
+    }
+  };
   // Read with the fighter: the tab shows how many stories there are.
   const { data: news } = useApi<NewsPage>(fighterId ? newsUrl(fighterId) : null);
   useSeo({
@@ -650,14 +691,16 @@ export default function FighterPage() {
       : undefined,
   });
 
-  if (loading) {
-    return <div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading fighter…</div>;
+  const statModal = <CareerStatModal fighters={fighterId ? [{ id: fighterId, name: fighter?.name ?? "" }] : []} />;
+
+  if (loading && !fighter) {
+    return <>{statModal}<div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading fighter…</div></>;
   }
   if (error && !fighter) {
-    return <div className="p-5"><RequestNotice onRetry={retry}>Couldn’t load this fighter. Please try again.</RequestNotice></div>;
+    return <>{statModal}<div className="p-5"><RequestNotice onRetry={retry}>Couldn’t load this fighter. Please try again.</RequestNotice></div></>;
   }
   if (!fighter) {
-    return <div className="flex h-full items-center justify-center text-sm text-zinc-400">Fighter not found.</div>;
+    return <>{statModal}<div className="flex h-full items-center justify-center text-sm text-zinc-400">Fighter not found.</div></>;
   }
 
   const upcoming = fighter.history.filter((h) => h.upcoming);
@@ -689,6 +732,7 @@ export default function FighterPage() {
 
 
   return (
+    <>{statModal}
     <div ref={pageScroll} className="h-full overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable] lg:overflow-hidden">
       <div className="flex flex-col gap-3 p-3 pb-8 lg:h-full lg:pb-3">
         {error ? <RequestNotice onRetry={retry}>Couldn’t refresh this profile. Showing the last loaded data.</RequestNotice> : null}
@@ -748,7 +792,7 @@ export default function FighterPage() {
 
         {fought ? <div className={`${tab === "stats" ? "contents" : "hidden lg:contents"} [&>*]:shrink-0`}>
           <FighterCareerStats fighterId={fighter.id} name={fighter.name} totals={fighter.career_stats} />
-          <RankingHistory timeline={fighter.ranking_history} />
+          <RankingHistory timeline={fighter.ranking_history} history={fighter.history} />
           <Records records={fighter.records ?? []} />
           <FighterStatistics fighterId={fighter.id} history={fighter.history} />
         </div> : null}
@@ -777,5 +821,6 @@ export default function FighterPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }

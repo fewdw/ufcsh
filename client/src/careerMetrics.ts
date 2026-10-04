@@ -3,7 +3,7 @@ export { STRIKING_METRICS, GRAPPLING_METRICS, profileText } from "../../server/s
 export type { ProfileMetric, CareerTotals } from "../../server/src/career-metrics.ts";
 
 import type { CareerStatistics } from "./api";
-import { profileText, type ProfileMetric } from "../../server/src/career-metrics.ts";
+import { GRAPPLING_METRICS, profileText, STRIKING_METRICS, type ProfileMetric } from "../../server/src/career-metrics.ts";
 
 const clock = (seconds: number | null | undefined) => seconds == null ? "—" : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
@@ -49,17 +49,23 @@ export function evidenceColumns(metric: ProfileMetric): EvidenceColumn[] {
 
 type EvidenceRow = CareerStatistics["rows"][number];
 
-/** What the evidence popup lists: which bouts, under which columns, with what
+/** What the evidence modal lists: which bouts, under which columns, with what
  *  headline figure. Columns without a `value` cannot be sorted. */
 export type EvidenceView = {
+  key: string;
   label: string;
+  description?: string;
   columns: { heading: string; title: string; value?: (row: EvidenceRow) => number | null; text: (row: EvidenceRow) => string }[];
   include: (row: EvidenceRow) => boolean;
   headline: (data: CareerStatistics) => string;
 };
 
+export type EvidenceCategory = { label: string; views: { key: string; label: string; view: EvidenceView }[] };
+
 export const metricView = (metric: ProfileMetric): EvidenceView => ({
+  key: metric.key,
   label: metric.label,
+  description: metric.explanation,
   columns: evidenceColumns(metric),
   include: row => metric.sample(row.totals).total > 0,
   headline: data => profileText(metric.value(data.totals), metric.format),
@@ -67,8 +73,53 @@ export const metricView = (metric: ProfileMetric): EvidenceView => ({
 
 /** Every UFC win, or loss, and how it ended. */
 export const resultView = (outcome: "win" | "loss"): EvidenceView => ({
+  key: outcome === "win" ? "wins" : "losses",
   label: outcome === "win" ? "Wins" : "Losses",
   columns: [{ heading: "Method", title: "How it ended", text: row => row.method ?? "—" }],
   include: row => row.outcome === outcome,
   headline: data => String(data.rows.filter(row => row.outcome === outcome).length),
 });
+
+export const EVIDENCE_CATEGORIES: EvidenceCategory[] = [
+  ...[{ label: "Striking", metrics: STRIKING_METRICS }, { label: "Grappling", metrics: GRAPPLING_METRICS }]
+    .map(group => ({ label: group.label, views: group.metrics.map(metric => ({ key: metric.key, label: metric.short, view: metricView(metric) })) })),
+  { label: "Results", views: [
+    { key: "wins", label: "Wins", view: resultView("win") },
+    { key: "losses", label: "Losses", view: resultView("loss") },
+  ] },
+];
+
+export type EvidenceSort = { order: EvidenceOrder; column: number };
+export type CareerStatSelection = { view: EvidenceView; sort: EvidenceSort; fighter: number };
+export const initialEvidenceSort = (view: EvidenceView): EvidenceSort => ({ order: "recent", column: view.columns[1]?.value ? 1 : Math.max(0, view.columns.findIndex(column => column.value)) });
+
+/** Only known stats and valid sort columns can be opened by a shared URL. */
+export function careerStatSelection(search: string, matchup: boolean): CareerStatSelection | null {
+  const params = new URLSearchParams(search);
+  const view = EVIDENCE_CATEGORIES.filter(group => matchup || group.label !== "Results")
+    .flatMap(group => group.views).find(option => option.key === params.get("stat"))?.view;
+  if (!view) return null;
+  const sort = initialEvidenceSort(view);
+  const column = params.get("statColumn");
+  if (column !== null && /^\d+$/.test(column) && view.columns[Number(column)]?.value) sort.column = Number(column);
+  const order = params.get("statOrder");
+  if (view.columns[sort.column]?.value && (order === "ascending" || order === "descending")) sort.order = order;
+  return { view, sort, fighter: matchup && params.get("statFighter") === "2" ? 1 : 0 };
+}
+
+/** Replaces only modal controls; closing leaves the underlying tab and other filters intact. */
+export function careerStatSearch(search: string, selection: CareerStatSelection | null, matchup: boolean): string {
+  const params = new URLSearchParams(search);
+  for (const key of ["stat", "statOrder", "statColumn", "statFighter"]) params.delete(key);
+  if (selection) {
+    params.set("tab", matchup ? "matchup" : "stats");
+    params.set("stat", selection.view.key);
+    if (selection.sort.order !== "recent") {
+      params.set("statOrder", selection.sort.order);
+      params.set("statColumn", String(selection.sort.column));
+    }
+    if (matchup && selection.fighter === 1) params.set("statFighter", "2");
+  }
+  const result = params.toString();
+  return result ? `?${result}` : "";
+}

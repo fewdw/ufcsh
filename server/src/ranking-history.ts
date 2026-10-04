@@ -2,7 +2,8 @@ import { db, getMeta, metaAgeMs, setMeta, touchMeta } from "./db.ts";
 import { fetchHtml } from "./http.ts";
 import { parseRankingsHtml, type RankingType, type ScrapedRankings } from "./scrape/ufccom.ts";
 import type { TitleHolders } from "./fight-index.ts";
-import { firstLastName, log, normName, todayIso } from "./util.ts";
+import { fighterNamed } from "./fighter-identity.ts";
+import { log, normName, todayIso } from "./util.ts";
 
 /**
  * Every official UFC ranking by date, so a past matchup shows the ranks its
@@ -40,30 +41,10 @@ const ARCHIVE_NAMES: Record<string, string> = {
 
 const RANK_ORDER = "CASE rank WHEN 'C' THEN 0 WHEN 'IC' THEN 1 ELSE CAST(rank AS INTEGER) + 2 END";
 
-/** The fighter a ranked name means. Two fighters can share a name, so the one
- *  who fought in that division nearest the date wins. Empty when unknown. */
+/** The fighter a ranked name means, through the archive's own spellings. */
 export function resolveRankedFighter(name: string, division: string, date: string): string {
   const key = normName(name);
-  let ids = (db.prepare("SELECT id FROM fighters WHERE norm_name = ?").all(ARCHIVE_NAMES[key] ?? key) as { id: string }[]).map((row) => row.id);
-  if (!ids.length) {
-    // ufc.com sometimes adds a nickname ("Michael Venom Page").
-    const short = firstLastName(name);
-    const [first, last] = short.split(" ");
-    if (first && last) {
-      ids = (db.prepare("SELECT id, norm_name FROM fighters WHERE norm_name LIKE ? AND norm_name LIKE ?")
-        .all(`${first}%`, `%${last}`) as { id: string; norm_name: string }[])
-        .filter((row) => firstLastName(row.norm_name) === short).map((row) => row.id);
-    }
-  }
-  if (ids.length <= 1) return ids[0] ?? "";
-  const best = db.prepare(`
-    SELECT fr.id FROM fighters fr
-    JOIN fights f ON f.f1_id = fr.id OR f.f2_id = fr.id
-    JOIN events e ON e.id = f.event_id
-    WHERE fr.id IN (${ids.map(() => "?").join(",")})
-    ORDER BY f.weight_class = ? DESC, ABS(julianday(e.date) - julianday(?)) ASC LIMIT 1
-  `).get(...ids, division, date) as { id: string } | undefined;
-  return best?.id ?? "";
+  return fighterNamed(ARCHIVE_NAMES[key] ?? name, division, date);
 }
 
 const listKey = (entries: { division: string; rank: string; name: string }[]) =>
@@ -101,6 +82,22 @@ export function recordScrapedRankings(rankings: ScrapedRankings, date = todayIso
     recordRankingSnapshot(type, date, rankings[type].flatMap((division) =>
       division.entries.map((entry) => ({ division: division.division, rank: entry.rank, name: entry.name }))));
   }
+}
+
+/** Current entries whose rank is missing from the latest stored list of that source. */
+export function missingCurrentRankingHistory(): {
+  ranking_type: RankingType; division: string; rank: string; fighter_name: string; fighter_id: string; as_of: string | null;
+}[] {
+  return db.prepare(`
+    WITH latest AS (SELECT ranking_type, MAX(date) AS date FROM ranking_history GROUP BY ranking_type)
+    SELECT r.ranking_type, r.division, r.rank, r.fighter_name, r.fighter_id, latest.date AS as_of
+    FROM rankings r LEFT JOIN latest ON latest.ranking_type = r.ranking_type
+    WHERE r.fighter_id = '' OR NOT EXISTS (
+      SELECT 1 FROM ranking_history h WHERE h.ranking_type = r.ranking_type AND h.date = latest.date
+        AND h.fighter_id = r.fighter_id AND h.division = r.division AND h.rank = r.rank
+    )
+    ORDER BY r.ranking_type, r.division, r.div_pos
+  `).all() as ReturnType<typeof missingCurrentRankingHistory>;
 }
 
 /** The list in force the day before `date`, falling back to media before meta existed. */
@@ -143,6 +140,8 @@ export type RankingTimeline = {
   through: string | null;
   /** The first meta list when meta was asked for; media lists stand in before it. */
   meta_since: string | null;
+  /** Pound-for-pound rank on every list where it changed (media lists only; meta has none). */
+  p4p: { date: string; rank: string | null }[];
 };
 
 /** Every date a list of this type was stored, oldest first. Hops the index
@@ -187,7 +186,19 @@ export function rankingTimeline(fighterId: string, type: RankingType): RankingTi
     }
     return { division, points };
   }).sort((a, b) => a.points[0].date.localeCompare(b.points[0].date));
-  return { divisions, through: lists.at(-1) ?? null, meta_since: metaStart ?? null };
+  const media = listDates("media");
+  const p4pRanks = new Map((db.prepare(`
+    SELECT date, rank FROM ranking_history WHERE fighter_id = ? AND ranking_type = 'media' AND division LIKE '%Pound-for-Pound%'
+  `).all(fighterId) as { date: string; rank: string }[]).map((row) => [row.date, row.rank]));
+  const p4p: RankingTimeline["p4p"] = [];
+  if (p4pRanks.size) {
+    const first = media.findIndex((date) => p4pRanks.has(date));
+    for (const date of media.slice(first)) {
+      const rank = p4pRanks.get(date) ?? null;
+      if (!p4p.length || p4p.at(-1)!.rank !== rank) p4p.push({ date, rank });
+    }
+  }
+  return { divisions, through: lists.at(-1) ?? null, meta_since: metaStart ?? null, p4p };
 }
 
 const ARCHIVE = "https://raw.githubusercontent.com/martj42/ufc_rankings_history/01b6e8aa45ae48ae91da2d73b46793a9da14e1eb";

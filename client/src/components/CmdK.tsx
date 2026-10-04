@@ -204,7 +204,7 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
           />
           <button type="button" aria-label="Close search" onClick={onClose} className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-zinc-500 hover:bg-zinc-100"><X className="h-4 w-4" aria-hidden="true" /></button>
         </div>
-        <div className="min-h-0 overflow-y-auto overscroll-contain p-2" ref={selection.listRef} tabIndex={-1}>
+        <div className="min-h-0 overflow-y-auto overscroll-y-contain p-2" ref={selection.listRef} tabIndex={-1}>
           <div id={selection.listId} role="listbox" aria-label={trimmed ? "Search results" : "Quick navigation"} aria-busy={searching}>
             {items.map((item, index) => (
               <div key={item.key} role="presentation">

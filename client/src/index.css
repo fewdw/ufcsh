@@ -80,10 +80,11 @@ body,
 
 /* The page itself never scrolls; every list scrolls inside it. Without this,
    a phone flick that runs past a list's end bounces the whole page, header
-   and all. */
+   and all. Vertical only: sideways overscroll is the trackpad's swipe back
+   and forward, which "none" would switch off. */
 html,
 body {
-  overscroll-behavior: none;
+  overscroll-behavior-y: none;
 }
 
 body {
@@ -376,7 +377,7 @@ select:not([multiple]):not([size]) {
 .matchup-name { font-size: clamp(16px, 2cqi, 22px); line-height: 1.25; letter-spacing: -0.025em; }
 .matchup-fighter--left { --profile-ink: var(--color-f1-ink); }
 .matchup-fighter--right { --profile-ink: var(--color-f2-ink); }
-.matchup-fighter:is(:hover, :focus-visible) .matchup-name { color: var(--profile-ink) !important; }
+.matchup-fighter:is(:hover, :has(> a:focus-visible)) .matchup-name { color: var(--profile-ink) !important; }
 .matchup-market { gap: 8px; }
 .matchup-market > span { order: -1; font-size: 10px; font-weight: 500; letter-spacing: normal; text-transform: none; }
 .matchup-prices { margin: 0; width: 190px; max-width: 100%; }
@@ -432,8 +433,8 @@ select:not([multiple]):not([size]) {
 .matchup-top-card .matchup-body { padding: 0 20px; }
 .matchup-top-card .matchup-hero { padding: 20px 0; gap: 20px; }
 .matchup-top-card .matchup-fighter { gap: 8px; }
-.matchup-top-card .matchup-fighter > div:first-child > img { width: 56px; height: 56px; }
-.matchup-top-card .matchup-fighter > div:first-child > span { width: 74px; height: 112px; }
+.matchup-top-card .matchup-portrait > img { width: 56px; height: 56px; }
+.matchup-top-card .matchup-portrait > span { width: 74px; height: 112px; }
 .matchup-top-card .matchup-name { font-size: clamp(17px, 1.9cqi, 22px); line-height: 1.2; }
 .matchup-top-card .matchup-market { gap: 8px; }
 .matchup-top-card .matchup-prices { width: 216px; }
@@ -454,8 +455,8 @@ select:not([multiple]):not([size]) {
   .matchup-top-card .matchup-body { padding: 0 12px; }
   .matchup-top-card .matchup-hero { padding: 16px 0; gap: 12px; }
   .matchup-top-card .matchup-name { font-size: 15px; }
-  .matchup-top-card .matchup-fighter > div:first-child > img { width: 44px; height: 44px; }
-  .matchup-top-card .matchup-fighter > div:first-child > span { width: 53px; height: 80px; }
+  .matchup-top-card .matchup-portrait > img { width: 44px; height: 44px; }
+  .matchup-top-card .matchup-portrait > span { width: 53px; height: 80px; }
   .matchup-top-card .matchup-market { gap: 0; padding-top: 0; border-top: 0; }
   /* Shrink to fit the content instead of the 216px desktop price card, so it
      reads as a small badge sitting in the gap between the two portraits
@@ -471,8 +472,8 @@ select:not([multiple]):not([size]) {
   .matchup-top-card .matchup-hero { column-gap: 24px; }
   .matchup-top-card .matchup-name { font-size: 20px; }
   .matchup-top-card .matchup-prices { width: 216px; }
-  .matchup-top-card .matchup-fighter > div:first-child > img { width: 56px; height: 56px; }
-  .matchup-top-card .matchup-fighter > div:first-child > span { width: 74px; height: 112px; }
+  .matchup-top-card .matchup-portrait > img { width: 56px; height: 56px; }
+  .matchup-top-card .matchup-portrait > span { width: 74px; height: 112px; }
 }
 
 /* The billing line is the hero grid's first row. It wants far less air
@@ -484,18 +485,18 @@ select:not([multiple]):not([size]) {
   .matchup-top-card .matchup-hero { row-gap: 10px; }
 }
 
-.matchup-top-card .matchup-fighter > div:first-child > [data-fighter-portrait="full"] {
+.matchup-top-card .matchup-portrait > [data-fighter-portrait="full"] {
   width: 145px;
   height: 220px;
 }
 @container (max-width: 57.99rem) {
-  .matchup-top-card .matchup-fighter > div:first-child > [data-fighter-portrait="full"] {
+  .matchup-top-card .matchup-portrait > [data-fighter-portrait="full"] {
     width: 112px;
     height: 170px;
   }
 }
 @container (min-width: 40rem) and (max-width: 57.99rem) {
-  .matchup-top-card .matchup-fighter > div:first-child > [data-fighter-portrait="full"] {
+  .matchup-top-card .matchup-portrait > [data-fighter-portrait="full"] {
     width: 145px;
     height: 220px;
   }
@@ -553,3 +554,13 @@ select:not([multiple]):not([size]) {
    its row, dark on the light theme and light on the dark one. */
 .pick-option-on { background-color: #18181b; border-color: #18181b; color: #fff; }
 .dark .pick-option-on { background-color: #f4f4f5; border-color: #f4f4f5; color: #18181b; }
+
+/* A rankings card opened from a bout's weight class: outlined for a moment so
+   the eye lands on it, then back to rest. The grey reads on either theme. */
+.division-target {
+  animation: division-target 2.4s ease-out;
+}
+
+@keyframes division-target {
+  from, 50% { box-shadow: 0 0 0 2px #a1a1aa; }
+}

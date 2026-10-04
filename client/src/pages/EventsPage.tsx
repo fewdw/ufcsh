@@ -1,10 +1,11 @@
 import { PANEL } from "../components/chartTokens";
+import { CareerStatModal } from "../components/CareerStatDetails";
 import { isFightDay, landingEvent, liveFightId, taggedEvent } from "../liveEvent";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
-import type { CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
-import { clockTime, clockTimeWithZone, divisionName, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankingTitle, rankLabel, roundsLabel } from "../format";
+import type { CancelledBout, CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
+import { boutChange, clockTime, clockTimeWithZone, divisionName, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankingTitle, rankLabel, roundsLabel } from "../format";
 import { useNow } from "../useNow";
 import Avatar from "../components/Avatar";
 import ResultDots from "../components/ResultDots";
@@ -376,6 +377,12 @@ function WeightMissBadge({ side }: { side: FightSide }) {
   return <span className={`${METHOD_TAG} bg-rose-100 text-rose-700 tabular-nums`} title={label} aria-label={label}>{side.weight_miss}<span className="lowercase">lbs</span></span>;
 }
 
+function BoutChangeBadge({ side }: { side: FightSide }) {
+  const change = boutChange(side);
+  if (!change) return null;
+  return <span className={`${METHOD_TAG} bg-sky-100 text-sky-700`} title={change.full} aria-label={`${side.name}: ${change.full}`}>{change.short}</span>;
+}
+
 function FighterBlock({
   side,
   align,
@@ -411,6 +418,7 @@ function FighterBlock({
             </span>
           ) : null}
           <WeightMissBadge side={side} />
+          <BoutChangeBadge side={side} />
           <BonusIcons bonuses={bonuses} outcome={side.outcome} />
         </span>
       </div>
@@ -565,6 +573,7 @@ function CompactSide({ side, fight, done, other }: { side: FightSide; fight: Eve
             </span>
           ) : null}
           <WeightMissBadge side={side} />
+          <BoutChangeBadge side={side} />
           <BonusIcons bonuses={fight.bonuses} outcome={side.outcome} />
         </div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] leading-4 tabular-nums text-zinc-500">
@@ -776,6 +785,29 @@ function SegmentBreak({ segment, at }: { segment: CardSegment; at: number | null
           {clock}
         </span>
       ) : null}
+    </div>
+  );
+}
+
+/** Bouts announced for the card that never happened on it, after every bout
+ *  that did. A fighter links to their profile when they have one. */
+function CancelledBouts({ bouts }: { bouts: CancelledBout[] }) {
+  const name = (side: CancelledBout["f1"]) => side.id
+    ? <Link to={`/fighters/${side.id}`} className="transition hover:text-zinc-900 dark:hover:text-zinc-100">{side.name}{"\u00a0"}<span aria-hidden="true">↗</span></Link>
+    : side.name;
+  return (
+    <div className="border-t border-zinc-200">
+      <div className="border-b border-zinc-200 bg-white px-3 py-1.5 @[34rem]:px-6 @[34rem]:py-2.5">
+        <h2 className="text-sm font-semibold leading-5 tracking-tight text-zinc-900">Cancelled</h2>
+      </div>
+      <ul className="divide-y divide-zinc-100">
+        {bouts.map((bout) => (
+          <li key={`${bout.f1.name}-${bout.f2.name}`} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 px-3 py-2.5 @[34rem]:px-6">
+            <span className="min-w-0 text-sm font-medium text-zinc-600">{name(bout.f1)} <span className="font-normal text-zinc-400">vs</span> {name(bout.f2)}</span>
+            <span className="min-w-0 text-[11px] text-zinc-400">{[bout.division, bout.reason].filter(Boolean).join(" · ")}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -1008,6 +1040,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
               );
             })
           )}
+          {event.cancelled?.length ? <CancelledBouts bouts={event.cancelled} /> : null}
         </section>
       )}
     </div>
@@ -1052,7 +1085,8 @@ export default function EventsPage() {
       : null;
 
   // When a matchup is open, the sidebar highlights its event.
-  const { data: openFight } = useApi<Matchup>(fightId && !fightEventIdHint ? withRanking(`/api/fights/${fightId}`, settings.rankingSource) : null);
+  const { data: openFight } = useApi<Matchup>(fightId && (!fightEventIdHint || new URLSearchParams(location.search).has("stat")) ? withRanking(`/api/fights/${fightId}`, settings.rankingSource) : null);
+  const statModal = fightId ? <CareerStatModal fighters={openFight ? [openFight.f1, openFight.f2] : []} before={fightId} /> : null;
   // "/" opens the tagged card (live, finished tonight, or next announced): it
   // is drawn straight away, and the address catches up behind it.
   const landingId = !eventId && !fightId && events?.length ? landingEvent(events)!.id : null;
@@ -1066,16 +1100,19 @@ export default function EventsPage() {
   const dock = fightId ? DOCK.matchup : DOCK.card;
   if (error && !events) {
     return (
+      <>{statModal}
       <div className="flex h-full items-center justify-center text-sm text-zinc-500">
         Backend unreachable — is the server running on port 8000?
       </div>
+      </>
     );
   }
   if (loading || !events) {
-    return <div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading events…</div>;
+    return <>{statModal}<div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading events…</div></>;
   }
 
   return (
+    <>{statModal}
     <div className={`flex h-full min-h-0 flex-col gap-2 p-2 sm:gap-3 sm:p-3 ${dock.row}`}>
       {/* The event and matchup views have their own route back to the card. */}
       {!mobileEventsOpen && !fightId && !shownEventId ? (
@@ -1108,5 +1145,6 @@ export default function EventsPage() {
         )}
       </main>
     </div>
+    </>
   );
 }

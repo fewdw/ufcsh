@@ -1,7 +1,7 @@
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { db } from "./db.ts";
-import { rankingEntering, rankingTimeline, recordRankingSnapshot, resolveRankedFighter } from "./ranking-history.ts";
+import { missingCurrentRankingHistory, rankingEntering, rankingTimeline, recordRankingSnapshot, resolveRankedFighter } from "./ranking-history.ts";
 
 // Lists dated 1990 sit before every real one, so the archive copy's own
 // history (if it has any) never answers for them.
@@ -9,6 +9,31 @@ after(() => { db.prepare("DELETE FROM ranking_history WHERE date LIKE '1990-%'")
 
 const id = (name: string) => (db.prepare("SELECT id FROM fighters WHERE name = ? LIMIT 1").get(name) as { id: string }).id;
 const none = { undisputed: null, interim: null };
+
+test("current ranked fighters need a linked matching entry in their source's latest list", () => {
+  db.exec("SAVEPOINT missing_ranking_history");
+  try {
+    const division = "Test ranking coverage";
+    const current = db.prepare("INSERT INTO rankings (ranking_type, division, div_pos, rank, fighter_name, fighter_id) VALUES (?, ?, ?, ?, ?, ?)");
+    const history = db.prepare("INSERT INTO ranking_history (ranking_type, date, division, rank, fighter_name, fighter_id) VALUES (?, ?, ?, ?, ?, ?)");
+    const names = ["Complete", "Missing", "Outdated", "Wrong source", "Wrong division", "Wrong rank", "Unlinked"];
+    names.forEach((name, index) => current.run("media", division, index, "1", name, name === "Unlinked" ? "" : name));
+    history.run("media", "9998-01-02", division, "1", "Complete", "Complete");
+    history.run("media", "9998-01-01", division, "1", "Outdated", "Outdated");
+    history.run("meta", "9998-01-02", division, "1", "Wrong source", "Wrong source");
+    history.run("media", "9998-01-02", "Other division", "1", "Wrong division", "Wrong division");
+    history.run("media", "9998-01-02", division, "2", "Wrong rank", "Wrong rank");
+    history.run("media", "9998-01-02", division, "1", "Unlinked", "");
+    assert.deepEqual(missingCurrentRankingHistory().filter(row => row.division === division).map(row => row.fighter_name), names.slice(1));
+
+    db.prepare("DELETE FROM ranking_history WHERE ranking_type = 'meta'").run();
+    current.run("meta", "Test Pound-for-Pound", 0, "1", "No stored list", "Complete");
+    const missing = missingCurrentRankingHistory().find(row => row.division === "Test Pound-for-Pound");
+    assert.equal(missing?.as_of, null, "no list of that source is also a gap, including P4P");
+  } finally {
+    db.exec("ROLLBACK TO missing_ranking_history; RELEASE missing_ranking_history");
+  }
+});
 
 test("ranked names resolve through archive spellings, nicknames and shared names", () => {
   assert.equal(resolveRankedFighter("Ronaldo Souza", "Middleweight", "2016-01-01"), id("Jacare Souza"));

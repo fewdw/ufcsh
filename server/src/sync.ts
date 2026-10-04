@@ -26,12 +26,13 @@ import {
 } from "./scrape/odds.ts";
 import { isSummaryAgeDisagreement, validateFightActions } from "./action-stats.ts";
 import { correctOfficialJudges } from "./verified-scorecard-corrections.ts";
-import { catchweights, eventInfobox, eventSection, fetchArticleByTitle, fetchEventArticle, fetchFighterArticle, recordCatchweight, samePlace, weightMisses } from "./scrape/wikipedia.ts";
+import { cardChanges, catchweights, eventInfobox, eventSection, fetchArticleByTitle, fetchEventArticle, fetchFighterArticle, recordCatchweight, samePlace, weightMisses } from "./scrape/wikipedia.ts";
 import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
 import { syncVerdictScorecards } from "./verdict-import.ts";
 import { syncRosterMoves, syncUfcSignings, syncUfcStatuses } from "./roster-moves.ts";
 import { syncNews } from "./news.ts";
 import { backfillRankingHistory, recordScrapedRankings } from "./ranking-history.ts";
+import { fighterNamed } from "./fighter-identity.ts";
 import { americanLine, impliedProbability } from "./fight-index.ts";
 import { consistentMoneyline } from "./method-odds.ts";
 import { decisionFromCards } from "./judge-scorecards.ts";
@@ -155,7 +156,9 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
         let swapped: string | null = null;
         try { swapped = old.detail_json ? JSON.stringify(swapDetailCorners(JSON.parse(old.detail_json))) : null; } catch { /* refetch */ }
         db.prepare(`UPDATE fights SET detail_json = ?, detail_fetched_at = NULL,
-          f1_weight_miss = f2_weight_miss, f2_weight_miss = f1_weight_miss WHERE id = ?`).run(swapped, f.id);
+          f1_weight_miss = f2_weight_miss, f2_weight_miss = f1_weight_miss,
+          f1_replaced = f2_replaced, f2_replaced = f1_replaced, f1_replaced_id = f2_replaced_id, f2_replaced_id = f1_replaced_id,
+          f1_short_notice = f2_short_notice, f2_short_notice = f1_short_notice, f1_notice = f2_notice, f2_notice = f1_notice WHERE id = ?`).run(swapped, f.id);
         db.prepare(`UPDATE odds SET f1_open = f2_open, f2_open = f1_open,
           f1_close = f2_close, f2_close = f1_close, f1_history = f2_history, f2_history = f1_history
           WHERE fight_id = ?`).run(f.id);
@@ -347,9 +350,11 @@ export async function syncVenueArchive(limit = 8): Promise<void> {
 
 let wikiInfoRunning = false;
 
-/** The venue name as it was that night, attendance and gate from each card's
- * Wikipedia article. Completed cards are read once; cards in the next six
- * weeks are re-read twice a day while the article is still being written. */
+/** The venue name as it was that night, attendance, gate, replacements and
+ * short notice from each card's Wikipedia article. Completed cards are read
+ * once; cards in the next six weeks are re-read twice a day while the article
+ * is still being written, and every two hours in fight week, when late
+ * replacements happen. */
 export async function syncEventWikiInfo(limit = 20): Promise<void> {
   if (wikiInfoRunning) return;
   wikiInfoRunning = true;
@@ -358,11 +363,15 @@ export async function syncEventWikiInfo(limit = 20): Promise<void> {
       attendance = ?, gate = ?, wiki_info_checked_at = ? WHERE id = ?`);
     const upcoming = db.prepare(`SELECT id, name, date, location, wiki_title FROM events WHERE complete = 0
       AND date >= date('now', '-1 day') AND date <= date('now', '+42 days')
-      AND (wiki_info_checked_at IS NULL OR wiki_info_checked_at < ?) ORDER BY date ASC LIMIT 6`)
-      .all(Date.now() - 12 * HOUR) as { id: string; name: string; date: string; location: string; wiki_title: string | null }[];
+      AND (wiki_info_checked_at IS NULL OR wiki_info_checked_at < CASE WHEN date <= date('now', '+7 days') THEN ?2 ELSE ?1 END)
+      ORDER BY date ASC LIMIT 6`)
+      .all(Date.now() - 12 * HOUR, Date.now() - 2 * HOUR) as { id: string; name: string; date: string; location: string; wiki_title: string | null }[];
     const archive = db.prepare(`SELECT id, name, date, location, wiki_title FROM events WHERE complete = 1 AND wiki_title IS NOT NULL
       AND wiki_info_checked_at IS NULL ORDER BY date DESC LIMIT ?`).all(limit) as typeof upcoming;
-    const fightsOf = db.prepare("SELECT f1_name, f2_name FROM fights WHERE event_id = ? ORDER BY ord");
+    const fightsOf = db.prepare("SELECT id, f1_name, f2_name, weight_class FROM fights WHERE event_id = ? ORDER BY ord");
+    const storeChanges = db.prepare(`UPDATE fights SET f1_replaced = ?, f2_replaced = ?, f1_replaced_id = ?, f2_replaced_id = ?,
+      f1_short_notice = ?, f2_short_notice = ?, f1_notice = ?, f2_notice = ? WHERE id = ?`);
+    const storeCancelled = db.prepare("UPDATE events SET cancelled_json = ? WHERE id = ?");
     let read = 0;
     for (const event of [...upcoming, ...archive]) {
       try {
@@ -375,14 +384,38 @@ export async function syncEventWikiInfo(limit = 20): Promise<void> {
           // A stored title from before the place check may be a same-day card elsewhere.
           if (wikitext && !samePlace(eventInfobox(wikitext).city, event.location)) wikitext = null;
         }
+        const fights = fightsOf.all(event.id) as { id: string; f1_name: string; f2_name: string; weight_class: string }[];
         if (!wikitext) {
-          const names = (fightsOf.all(event.id) as { f1_name: string; f2_name: string }[]).flatMap((f) => [f.f1_name, f.f2_name]);
+          const names = fights.flatMap((f) => [f.f1_name, f.f2_name]);
           const article = await fetchEventArticle(event.name, event.date, names, event.location);
           title = article?.title ?? null;
           wikitext = article?.wikitext ?? null;
         }
         const infobox = wikitext ? eventInfobox(wikitext) : { venue: null, city: null, attendance: null, gate: null };
-        store.run(title, infobox.venue, infobox.city, infobox.attendance, infobox.gate, Date.now(), event.id);
+        const { changes, cancelled } = wikitext ? cardChanges(wikitext, fights.map((f) => [f.f1_name, f.f2_name])) : { changes: [], cancelled: [] };
+        const change = (name: string) => changes.find((entry) => entry.name === name);
+        const division = (written: string | null) => written ? written.replace(/\b\w/g, (c) => c.toUpperCase()).replace("'S", "'s") : "";
+        const linkedCancelled = cancelled.map((bout) => ({
+          ...bout,
+          division: division(bout.division) || null,
+          f1_id: fighterNamed(bout.f1, division(bout.division), event.date) || null,
+          f2_id: fighterNamed(bout.f2, division(bout.division), event.date) || null,
+        }));
+        db.exec("BEGIN");
+        try {
+          store.run(title, infobox.venue, infobox.city, infobox.attendance, infobox.gate, Date.now(), event.id);
+          for (const fight of fights) {
+            const [a, b] = [change(fight.f1_name), change(fight.f2_name)];
+            const replacedId = (entry: typeof a) => entry?.replaced ? fighterNamed(entry.replaced, fight.weight_class, event.date) || null : null;
+            storeChanges.run(a?.replaced ?? null, b?.replaced ?? null, replacedId(a), replacedId(b),
+              a?.shortNotice ? 1 : null, b?.shortNotice ? 1 : null, a?.notice ?? null, b?.notice ?? null, fight.id);
+          }
+          storeCancelled.run(linkedCancelled.length ? JSON.stringify(linkedCancelled) : null, event.id);
+          db.exec("COMMIT");
+        } catch (err) {
+          db.exec("ROLLBACK");
+          throw err;
+        }
         read++;
       } catch (err) {
         log(`event article failed [${event.name}]:`, String(err));
