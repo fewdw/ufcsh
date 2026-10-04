@@ -1,6 +1,6 @@
 import { STRIKING_METRICS, GRAPPLING_METRICS, metricView, profileText, type CareerTotals } from "../careerMetrics";
 import { PanelHeading, PANEL_SHELL, sectionLabel } from "./FightStats";
-import CareerStatDetails from "./CareerStatDetails";
+import CareerStatDetails, { CareerStatModal } from "./CareerStatDetails";
 
 const GROUPS = [{ label: "Striking", metrics: STRIKING_METRICS }, { label: "Grappling", metrics: GRAPPLING_METRICS }];
 
@@ -8,6 +8,7 @@ export default function FighterCareerStats({ fighterId, name, totals }: { fighte
   if (!totals) return null;
   return <section className={`${PANEL_SHELL} @container overflow-hidden`}>
     <PanelHeading title="Career stats" subtitle="UFC · Current" />
+    <CareerStatModal fighters={[{ id: fighterId, name }]} />
     <div className="grid grid-cols-2 gap-x-2 px-2 py-2 @[36rem]:gap-x-4 @[36rem]:px-4">
       {GROUPS.map(group => <div key={group.label} className="min-w-0">
         <h3 className={`${sectionLabel} px-2 pb-1 pt-1`}>{group.label}</h3>

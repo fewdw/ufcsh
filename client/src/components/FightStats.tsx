@@ -1,4 +1,4 @@
-import CareerStatDetails from "./CareerStatDetails";
+import CareerStatDetails, { CareerStatModal } from "./CareerStatDetails";
 import { PANEL } from "./chartTokens";
 import { Fragment } from "react";
 import { Link, useLocation } from "react-router-dom";
@@ -1090,6 +1090,7 @@ export function CareerProfile({ fight }: { fight: Matchup }) {
   return (
     <section className={`${shell} @container overflow-hidden`}>
       <PanelHeading title="Career stats" subtitle="UFC · Before this fight" />
+      <CareerStatModal fighters={[fight.f1, fight.f2]} before={fight.id} />
       <div className="grid grid-cols-2 gap-x-4 px-3 pb-1 pt-1.5 @[40rem]:gap-x-8 @[40rem]:px-4 @[40rem]:pt-2">
         {groups.map((group) => (
           <div key={group.key} className="min-w-0">

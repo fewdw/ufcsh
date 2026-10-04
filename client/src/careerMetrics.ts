@@ -52,6 +52,7 @@ type EvidenceRow = CareerStatistics["rows"][number];
 /** What the evidence modal lists: which bouts, under which columns, with what
  *  headline figure. Columns without a `value` cannot be sorted. */
 export type EvidenceView = {
+  key: string;
   label: string;
   description?: string;
   columns: { heading: string; title: string; value?: (row: EvidenceRow) => number | null; text: (row: EvidenceRow) => string }[];
@@ -62,6 +63,7 @@ export type EvidenceView = {
 export type EvidenceCategory = { label: string; views: { key: string; label: string; view: EvidenceView }[] };
 
 export const metricView = (metric: ProfileMetric): EvidenceView => ({
+  key: metric.key,
   label: metric.label,
   description: metric.explanation,
   columns: evidenceColumns(metric),
@@ -71,6 +73,7 @@ export const metricView = (metric: ProfileMetric): EvidenceView => ({
 
 /** Every UFC win, or loss, and how it ended. */
 export const resultView = (outcome: "win" | "loss"): EvidenceView => ({
+  key: outcome === "win" ? "wins" : "losses",
   label: outcome === "win" ? "Wins" : "Losses",
   columns: [{ heading: "Method", title: "How it ended", text: row => row.method ?? "—" }],
   include: row => row.outcome === outcome,
@@ -85,3 +88,38 @@ export const EVIDENCE_CATEGORIES: EvidenceCategory[] = [
     { key: "losses", label: "Losses", view: resultView("loss") },
   ] },
 ];
+
+export type EvidenceSort = { order: EvidenceOrder; column: number };
+export type CareerStatSelection = { view: EvidenceView; sort: EvidenceSort; fighter: number };
+export const initialEvidenceSort = (view: EvidenceView): EvidenceSort => ({ order: "recent", column: view.columns[1]?.value ? 1 : Math.max(0, view.columns.findIndex(column => column.value)) });
+
+/** Only known stats and valid sort columns can be opened by a shared URL. */
+export function careerStatSelection(search: string, matchup: boolean): CareerStatSelection | null {
+  const params = new URLSearchParams(search);
+  const view = EVIDENCE_CATEGORIES.filter(group => matchup || group.label !== "Results")
+    .flatMap(group => group.views).find(option => option.key === params.get("stat"))?.view;
+  if (!view) return null;
+  const sort = initialEvidenceSort(view);
+  const column = params.get("statColumn");
+  if (column !== null && /^\d+$/.test(column) && view.columns[Number(column)]?.value) sort.column = Number(column);
+  const order = params.get("statOrder");
+  if (view.columns[sort.column]?.value && (order === "ascending" || order === "descending")) sort.order = order;
+  return { view, sort, fighter: matchup && params.get("statFighter") === "2" ? 1 : 0 };
+}
+
+/** Replaces only modal controls; closing leaves the underlying tab and other filters intact. */
+export function careerStatSearch(search: string, selection: CareerStatSelection | null, matchup: boolean): string {
+  const params = new URLSearchParams(search);
+  for (const key of ["stat", "statOrder", "statColumn", "statFighter"]) params.delete(key);
+  if (selection) {
+    params.set("tab", matchup ? "matchup" : "stats");
+    params.set("stat", selection.view.key);
+    if (selection.sort.order !== "recent") {
+      params.set("statOrder", selection.sort.order);
+      params.set("statColumn", String(selection.sort.column));
+    }
+    if (matchup && selection.fighter === 1) params.set("statFighter", "2");
+  }
+  const result = params.toString();
+  return result ? `?${result}` : "";
+}

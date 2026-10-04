@@ -24,7 +24,7 @@ test("production repairs take one snapshot per day, serialize changes and audit 
   await assert.rejects(run("detail", "0123456789abcdef", "admin@example.com"), /Another repair is running/);
   await finishRepair();
   assert.deepEqual(await first, { ok: true });
-  const second = run("detail", "0123456789abcdef", "admin@example.com");
+  const second = run("rankings", "all", "admin@example.com");
   await finishRepair();
   await second;
   assert.deepEqual(snapshots, ["2026-09-22"]);

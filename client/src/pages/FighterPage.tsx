@@ -1,6 +1,6 @@
 import FighterCareerStats from "../components/FighterCareerStats";
 import { Children, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../api";
 import type { CompleteRecordBefore, FighterProfile, FighterRecord, HistoryRow, NewsPage, ProfessionalHistoryRow } from "../api";
 import { divisionName, formatDateShortWithYear, formatLine, formatMethod, isDecision, lastName } from "../format";
@@ -646,6 +646,8 @@ function FighterNews({ fighterId, name, first }: { fighterId: string; name: stri
 
 export default function FighterPage() {
   const { fighterId } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const { settings } = useSettings();
   const { data: fighter, loading, error, retry } = useApi<FighterProfile>(fighterId ? withRanking(`/api/fighters/${fighterId}`, settings.rankingSource) : null,
     data => data?.refreshing ? 5_000 : 5 * 60_000);
@@ -654,9 +656,18 @@ export default function FighterPage() {
   const mainScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:main", Boolean(fighter));
   const sideScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:side", Boolean(fighter));
   // Below `lg` the two columns become two tabs under the fighter.
-  const [tab, setTab] = useHistoryState<ProfileTab>("fighter:tab", "fights");
+  const [savedTab, setTab] = useHistoryState<ProfileTab>("fighter:tab", "fights");
+  const requestedTab = new URLSearchParams(location.search).get("tab");
+  const tab: ProfileTab = requestedTab === "stats" || requestedTab === "news" || requestedTab === "fights" ? requestedTab : savedTab;
   const tabAnchor = useTabBarAnchor(fighterId ?? "", tab);
-  const selectTab = (next: ProfileTab, button: HTMLElement) => { tabAnchor.keep(button); setTab(next); };
+  const selectTab = (next: ProfileTab, button: HTMLElement) => {
+    tabAnchor.keep(button); setTab(next);
+    if (requestedTab) {
+      const params = new URLSearchParams(location.search);
+      params.set("tab", next);
+      navigate({ search: `?${params}` }, { replace: true, state: location.state });
+    }
+  };
   // Read with the fighter: the tab shows how many stories there are.
   const { data: news } = useApi<NewsPage>(fighterId ? newsUrl(fighterId) : null);
   useSeo({

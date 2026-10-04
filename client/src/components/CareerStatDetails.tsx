@@ -1,19 +1,27 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ArrowDown, ArrowUp, X } from "lucide-react";
 import { useApi, type CareerStatistics } from "../api";
-import { EVIDENCE_CATEGORIES, orderEvidence, type EvidenceOrder, type EvidenceView } from "../careerMetrics";
+import { careerStatSearch, careerStatSelection, EVIDENCE_CATEGORIES, initialEvidenceSort, orderEvidence, type CareerStatSelection, type EvidenceOrder, type EvidenceSort, type EvidenceView } from "../careerMetrics";
 import { CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
 import { formatDate, formatDateShortWithYear, outcomeClasses, outcomeLabel } from "../format";
 import RequestNotice from "./RequestNotice";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "./segmented";
 
 type Fighter = { id: string; name: string };
-type Sort = { order: EvidenceOrder; column: number };
+type Sort = EvidenceSort;
 const OUTCOME_WORD: Record<string, string> = { win: "Win", loss: "Loss", draw: "Draw", nc: "No contest" };
 const careerStatsUrl = (fighter: Fighter | undefined, before?: string) => fighter ? `/api/fighters/${fighter.id}/career-stats${before ? `?before=${before}` : ""}` : null;
-const initialSort = (view: EvidenceView): Sort => ({ order: "recent", column: view.columns[1]?.value ? 1 : Math.max(0, view.columns.findIndex(column => column.value)) });
+
+function useCareerStatLocation(matchup: boolean) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return {
+    selection: careerStatSelection(location.search, matchup),
+    update: (selection: CareerStatSelection | null) => navigate({ pathname: location.pathname, search: careerStatSearch(location.search, selection, matchup), hash: location.hash }, { replace: true, state: location.state }),
+  };
+}
 
 function Evidence({ fighter, side, data, error, retry, view, sort, setSort, close }: {
   fighter: Fighter; side: number; data: CareerStatistics | null; error: boolean; retry: () => void;
@@ -61,25 +69,25 @@ function Evidence({ fighter, side, data, error, retry, view, sort, setSort, clos
   </>;
 }
 
-function StatModal({ id, fighters, initial, before, view, trigger, close }: {
-  id: string; fighters: Fighter[]; initial: number; before?: string; view: EvidenceView;
-  trigger: HTMLButtonElement | null; close: () => void;
+function StatModal({ id, fighters, before, selection, update }: {
+  id: string; fighters: Fighter[]; before?: string; selection: CareerStatSelection;
+  update: (selection: CareerStatSelection | null) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const categoryRow = useRef<HTMLDivElement>(null);
-  const [selected, setSelected] = useState(initial);
-  const [currentView, setCurrentView] = useState(view);
-  const [sort, setSort] = useState(() => initialSort(view));
+  const { fighter: selected, view: currentView, sort } = selection;
+  const setSort = (sort: Sort) => update({ ...selection, sort });
+  const close = () => update(null);
   const sides = [useApi<CareerStatistics>(careerStatsUrl(fighters[0], before)), useApi<CareerStatistics>(careerStatsUrl(fighters[1], before))];
   const orders: EvidenceOrder[] = currentView.columns.some(column => column.value) ? ["recent", "descending", "ascending"] : ["recent"];
   const cutoff = sides.find(side => side.data?.before)?.data?.before;
   const changeView = (next: EvidenceView) => {
     if (next.label === currentView.label) return;
-    setCurrentView(next); setSort(initialSort(next));
+    update({ ...selection, view: next, sort: initialEvidenceSort(next) });
   };
 
   useEffect(() => {
     const node = dialog.current!;
+    const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const root = document.documentElement;
     const previousOverflow = root.style.overflow;
     node.showModal();
@@ -89,11 +97,7 @@ function StatModal({ id, fighters, initial, before, view, trigger, close }: {
       root.style.overflow = previousOverflow;
       if (trigger?.isConnected) trigger.focus({ preventScroll: true });
     };
-  }, [trigger]);
-
-  useEffect(() => {
-    categoryRow.current?.querySelector<HTMLElement>('[aria-pressed="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [currentView.label]);
+  }, []);
 
   return <dialog ref={dialog} id={id} aria-labelledby={`${id}-title`}
     onCancel={event => { event.preventDefault(); close(); }}
@@ -110,22 +114,18 @@ function StatModal({ id, fighters, initial, before, view, trigger, close }: {
         </div>
       </div>
       <div className="min-h-0 overflow-y-auto overscroll-y-contain px-4 pb-4 sm:px-5">
-        <div className="mt-2 flex items-center gap-2">
-          <div ref={categoryRow} role="group" aria-label="Statistic category" className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <div className="flex w-max items-center gap-2 py-1">
-              {EVIDENCE_CATEGORIES.map(group => <div key={group.label} role="group" aria-label={group.label} className={`${segmentedGroup} shrink-0`}>
-                {group.views.map(option => <button key={option.key} type="button" aria-pressed={currentView.label === option.view.label} aria-label={option.view.label} title={option.view.label} onClick={() => changeView(option.view)}
-                  className={`min-h-7 whitespace-nowrap rounded-full px-2 text-[11px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${currentView.label === option.view.label ? segmentedSelected : segmentedIdle}`}>{option.label}</button>)}
-              </div>)}
-            </div>
-          </div>
+        <div role="group" aria-label="Statistic category" className="mt-2 flex flex-wrap items-center gap-2">
+          {EVIDENCE_CATEGORIES.filter(group => fighters.length > 1 || group.label !== "Results").map(group => <div key={group.label} role="group" aria-label={group.label} className={`${segmentedGroup} max-w-full flex-wrap rounded-2xl`}>
+            {group.views.map(option => <button key={option.key} type="button" aria-pressed={currentView.label === option.view.label} aria-label={option.view.label} title={option.view.label} onClick={() => changeView(option.view)}
+              className={`min-h-7 whitespace-nowrap rounded-full px-2 text-[11px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${currentView.label === option.view.label ? segmentedSelected : segmentedIdle}`}>{option.label}</button>)}
+          </div>)}
           <select aria-label="Sort opponents" value={sort.order} onChange={event => setSort({ ...sort, order: event.target.value as EvidenceOrder })}
             className="h-9 shrink-0 rounded-full border-0 bg-zinc-100 pl-3 pr-7 text-xs font-medium text-zinc-700 focus-visible:outline-2 focus-visible:outline-zinc-900">
             {orders.map(order => <option key={order} value={order}>{order === "recent" ? "Recent" : order === "descending" ? "Highest" : "Lowest"}</option>)}
           </select>
         </div>
         {fighters.length > 1 ? <div role="group" aria-label="Fighter" className={`${segmentedGroup} mt-3 lg:hidden`}>
-          {fighters.map((fighter, index) => <button key={fighter.id} type="button" aria-pressed={selected === index} onClick={() => setSelected(index)}
+          {fighters.map((fighter, index) => <button key={fighter.id} type="button" aria-pressed={selected === index} onClick={() => update({ ...selection, fighter: index })}
             className={`min-h-9 min-w-0 flex-1 rounded-full px-2 py-1.5 text-xs font-medium ${selected === index ? segmentedSelected : segmentedIdle}`}>{fighter.name}</button>)}
         </div> : null}
         <div className={`mt-3 grid gap-4 ${fighters.length > 1 ? "lg:grid-cols-2" : ""}`}>
@@ -144,16 +144,19 @@ function StatModal({ id, fighters, initial, before, view, trigger, close }: {
 export default function CareerStatDetails({ fighters, available, initial = 0, before, view, children, className = "" }: {
   fighters: Fighter[]; available?: boolean[]; initial?: number; before?: string; view: EvidenceView; children: ReactNode; className?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const id = useId();
+  const { selection, update } = useCareerStatLocation(fighters.length > 1);
+  const open = selection?.view.key === view.key;
   if (available?.[initial] === false) return <div className={className}>{children}</div>;
-  return <>
-    <button ref={trigger} type="button" aria-label={`${fighters.map(fighter => fighter.name).join(" and ")}: ${view.label} — view opponents and fights`} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
-      onClick={() => setOpen(true)}
+  return <button type="button" aria-label={`${fighters.map(fighter => fighter.name).join(" and ")}: ${view.label} — view opponents and fights${before ? " before this matchup" : ""}`} aria-haspopup="dialog" aria-expanded={open}
+      onClick={() => update({ view, sort: initialEvidenceSort(view), fighter: initial })}
       className={`min-h-4 cursor-pointer rounded-md transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${className}`}>
       {children}
-    </button>
-    {open ? createPortal(<StatModal id={id} fighters={fighters} initial={initial} before={before} view={view} trigger={trigger.current} close={() => setOpen(false)} />, document.body) : null}
-  </>;
+    </button>;
+}
+
+/** One modal per career-stat section, with its view stored in the URL. */
+export function CareerStatModal({ fighters, before }: { fighters: Fighter[]; before?: string }) {
+  const id = useId();
+  const { selection, update } = useCareerStatLocation(fighters.length > 1);
+  return selection ? createPortal(<StatModal key={`${before ?? ""}:${fighters.map(fighter => fighter.id).join(":")}`} id={id} fighters={fighters} before={before} selection={selection} update={update} />, document.body) : null;
 }

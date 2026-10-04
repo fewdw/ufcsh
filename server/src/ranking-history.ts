@@ -84,6 +84,22 @@ export function recordScrapedRankings(rankings: ScrapedRankings, date = todayIso
   }
 }
 
+/** Current entries whose rank is missing from the latest stored list of that source. */
+export function missingCurrentRankingHistory(): {
+  ranking_type: RankingType; division: string; rank: string; fighter_name: string; fighter_id: string; as_of: string | null;
+}[] {
+  return db.prepare(`
+    WITH latest AS (SELECT ranking_type, MAX(date) AS date FROM ranking_history GROUP BY ranking_type)
+    SELECT r.ranking_type, r.division, r.rank, r.fighter_name, r.fighter_id, latest.date AS as_of
+    FROM rankings r LEFT JOIN latest ON latest.ranking_type = r.ranking_type
+    WHERE r.fighter_id = '' OR NOT EXISTS (
+      SELECT 1 FROM ranking_history h WHERE h.ranking_type = r.ranking_type AND h.date = latest.date
+        AND h.fighter_id = r.fighter_id AND h.division = r.division AND h.rank = r.rank
+    )
+    ORDER BY r.ranking_type, r.division, r.div_pos
+  `).all() as ReturnType<typeof missingCurrentRankingHistory>;
+}
+
 /** The list in force the day before `date`, falling back to media before meta existed. */
 function listBefore(type: RankingType, date: string): { source: RankingType; date: string } | null {
   const latest = (source: RankingType) => (db.prepare("SELECT MAX(date) AS date FROM ranking_history WHERE ranking_type = ? AND date < ?")

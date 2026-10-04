@@ -1,5 +1,5 @@
 import { db, getMeta, setMeta } from "./db.ts";
-import { relinkRankingHistory } from "./ranking-history.ts";
+import { missingCurrentRankingHistory, relinkRankingHistory } from "./ranking-history.ts";
 import { validateFightActions } from "./action-stats.ts";
 import { americanLine, fightIndex, impliedProbability } from "./fight-index.ts";
 import { fighterNamed, hasUfcFight, ufcFightExistsSql } from "./fighter-identity.ts";
@@ -30,6 +30,7 @@ import {
   syncCatchWeights,
   syncFightOdds,
   syncPastFightOdds,
+  syncRankings,
 } from "./sync.ts";
 
 /** The data-quality board behind /admin?tab=bugs. Checks only read; repair
@@ -462,6 +463,23 @@ function rankedRecordGaps(): BugCheck {
     facts: [["History", row.id ? row.status ?? "never checked" : "fighter identity missing"]],
     links: [{ label: "Rankings", href: "/rankings", internal: true }, ...(row.id ? [fighterLink(row.id, row.fighter_name)] : [])],
     actions: row.id ? [{ id: "career", label: "Re-verify history", target: row.id }] : [],
+  })));
+}
+
+function rankedHistoryGaps(): BugCheck {
+  return check({
+    id: "ranked-history-gaps",
+    group: "Records",
+    label: "Ranked fighters missing ranking data",
+    description: "Current ranks must appear in the latest stored list for their source and division. Missing rows or fighter links leave profile charts and past matchup ranks incomplete. Re-reading rankings stores the current list and retries unmatched names.",
+    grade: "must",
+  }, missingCurrentRankingHistory().map(row => ({
+    key: `${row.ranking_type}:${row.division}:${row.rank}:${row.fighter_name}`,
+    title: row.fighter_name,
+    subtitle: `${row.ranking_type} · ${row.division} · ${row.rank}`,
+    facts: [["Latest stored list", row.as_of ?? "none"], ["Missing", row.fighter_id ? "linked ranking entry" : "fighter identity"]],
+    links: [{ label: "Rankings", href: "/rankings", internal: true }, ...(row.fighter_id ? [fighterLink(row.fighter_id, row.fighter_name)] : [])],
+    actions: [{ id: "rankings", label: "Re-read rankings", target: "all" }],
   })));
 }
 
@@ -1578,6 +1596,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     oddsMissingByRound(),
     unverifiedRecords(active),
     rankedRecordGaps(),
+    rankedHistoryGaps(),
     rankingHistoryGaps(),
     matchmakingGaps(),
     fightsMissingFromHistory(),
@@ -1643,7 +1662,7 @@ function newsUnjudged(): BugCheck {
   }, items);
 }
 
-export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history";
+export type BugActionId = "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -1742,6 +1761,11 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
       }
       const { signed, cut } = storedRosterMoves();
       return { ok: true, message: `Read ${signed.length} signings and ${cut.length} releases.` };
+    }
+    case "rankings": {
+      await syncRankings();
+      const linked = relinkRankingHistory();
+      return { ok: true, message: `Re-read current rankings and linked ${linked} ranked rows.` };
     }
     case "ranking-history": {
       const linked = relinkRankingHistory();
