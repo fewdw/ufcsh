@@ -446,9 +446,6 @@ select:not([multiple]):not([size]) {
   .matchup-top-card .matchup-fighter--right .matchup-identity > div:first-child { justify-content: flex-end; }
   .matchup-top-card .matchup-identity > div:first-child { flex-wrap: wrap; gap: 6px; }
   .matchup-top-card .matchup-hero > div:not(.matchup-market) { align-self: stretch; }
-  /* The name block centres on the portrait beside it rather than hanging
-     from the top edge with empty space below. */
-  .matchup-top-card .matchup-fighter { align-items: center; height: 100%; }
   .matchup-top-card .matchup-fighter--right .matchup-identity { text-align: right; }
 }
 @container (max-width: 57.99rem) {
@@ -476,13 +473,43 @@ select:not([multiple]):not([size]) {
   .matchup-top-card .matchup-portrait > span { width: 74px; height: 112px; }
 }
 
-/* The billing line is the hero grid's first row. It wants far less air
-   beneath it than the gap holding the two portraits apart, so the row gap
-   is set on its own after every rule that sets the shorthand. */
-.matchup-hero { row-gap: 14px; }
-.matchup-top-card .matchup-hero { row-gap: 14px; }
-@container (max-width: 57.99rem) {
-  .matchup-top-card .matchup-hero { row-gap: 10px; }
+/* Both corners share portrait, rank, name and detail rows. Optional details
+   and wrapped names can grow without moving either name independently. */
+.matchup-top-card .matchup-hero {
+  grid-template-rows: auto auto auto auto;
+  row-gap: 0;
+}
+.matchup-corner,
+.matchup-top-card .matchup-fighter {
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: 1 / -1;
+  row-gap: 0;
+  align-self: stretch;
+}
+.matchup-top-card .matchup-fighter { grid-template-columns: minmax(0, 1fr); }
+.matchup-top-card .matchup-portrait { margin-bottom: 8px; }
+.matchup-top-card .matchup-identity {
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: 2 / -1;
+  align-self: stretch;
+}
+.matchup-top-card .matchup-market { grid-row: 1 / -1; }
+@container (min-width: 58rem) {
+  .matchup-top-card .matchup-hero {
+    grid-template-rows: minmax(0, 1fr) auto auto auto minmax(0, 1fr);
+  }
+  .matchup-top-card .matchup-fighter--left { grid-template-columns: auto minmax(0, 1fr); }
+  .matchup-top-card .matchup-fighter--right { grid-template-columns: minmax(0, 1fr) auto; }
+  .matchup-top-card .matchup-portrait {
+    grid-row: 1 / -1;
+    margin-bottom: 0;
+  }
+  .matchup-top-card .matchup-fighter--right .matchup-portrait { grid-column: 2; }
+  .matchup-top-card .matchup-identity { grid-row: 2 / 5; }
+  .matchup-top-card .matchup-fighter--left .matchup-identity { grid-column: 2; }
+  .matchup-top-card .matchup-fighter--right .matchup-identity { grid-column: 1; }
 }
 
 .matchup-top-card .matchup-portrait > [data-fighter-portrait="full"] {

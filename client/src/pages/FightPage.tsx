@@ -146,7 +146,6 @@ function FighterHero({
   result,
   portrait,
   onPortraitError,
-  reserveRank = false,
   past,
 }: {
   side: MatchupSide;
@@ -156,9 +155,6 @@ function FighterHero({
   /** Both corners fall back together when either portrait is unavailable. */
   portrait: boolean;
   onPortraitError: () => void;
-  /** The other corner shows a rank badge: hold its line here too, so the two
-   *  names start level when the heroes sit side by side over their pictures. */
-  reserveRank?: boolean;
   /** A past bout shows the rank held going in, not today's. */
   past: boolean;
 }) {
@@ -194,42 +190,43 @@ function FighterHero({
       <div className="matchup-identity min-w-0">
         {/* Rank and awards sit on their own line above the name, so a long
             name never pushes the badge onto a line of its own. */}
-        {rankingBadge ? <div className="mb-1.5 flex items-center justify-center gap-1.5">{rankingBadge}</div>
-          : reserveRank ? <div aria-hidden="true" className="mb-1.5 h-5 @[58rem]:hidden" /> : null}
+        <div className={`flex items-center justify-center gap-1.5 ${rankingBadge ? "mb-1.5" : ""}`}>{rankingBadge}</div>
         <div className={`matchup-name text-balance font-semibold transition-[filter] ${side.outcome === "loss" ? "text-zinc-400" : align === "left" ? "text-f1 group-hover:brightness-90" : "text-f2 group-hover:brightness-90"}`}>
           {side.name}
           {side.country_code || side.country ? <Flag code={side.country_code} name={side.country} className="ml-1.5 inline-block align-[-0.05em] text-[0.85em]" /> : null}
         </div>
-        {side.nickname ? <div className="mt-0.5 text-xs text-zinc-400">“{side.nickname}”</div> : null}
-        {/* The whole note opens the replaced fighter's profile, when they have one. */}
-        {change ? <div className="mt-1 text-balance text-xs font-medium text-sky-700">
-          {change.id ? <Link to={`/fighters/${change.id}`} className="pointer-events-auto relative transition hover:text-sky-900 dark:hover:text-sky-200">
-            {change.full}{"\u00a0"}<span aria-hidden="true">↗</span>
-          </Link> : change.full}
-        </div> : null}
-        {(result && showResult) || fotn || perf || side.weight_miss != null ? (
-          <div className={`mt-2 flex flex-wrap items-center justify-center gap-1 ${align === "right" ? "@[58rem]:justify-end" : "@[58rem]:justify-start"}`}>
-            {result && showResult ? (
-              <span className={`${RESULT_PILL} max-w-full justify-center !rounded-lg text-balance tabular-nums ${outcomeClasses(side.outcome)}`}>
-                <span className="sr-only">{showResult}</span>
-                {/* A phone-width card abbreviates the decision so the result
-                    stays on one line. */}
-                {compactResult !== result ? <>
-                  <span className="@[30rem]:hidden">{compactResult}</span>
-                  <span className="hidden @[30rem]:inline">{result}</span>
-                </> : result}
-              </span>
-            ) : null}
-            {side.weight_miss != null ? (
-              <span className={`${RESULT_PILL} max-w-full justify-center !rounded-lg text-balance tabular-nums bg-rose-100 text-rose-700`}>
-                Missed weight{side.weight_miss ? ` · ${side.weight_miss} lb` : ""}
-              </span>
-            ) : null}
-            {/* Fight of the Night belongs to both corners, a performance award to the winner. */}
-            {perf ? <span className={BONUS_TAG} title={`${PERF_AWARD[perf].full} bonus`}>{PERF_AWARD[perf].short}</span> : null}
-            {fotn ? <span className={BONUS_TAG} title={`${FIGHT_BONUS.full} bonus`}>{FIGHT_BONUS.short}</span> : null}
-          </div>
-        ) : null}
+        <div className="min-w-0">
+          {side.nickname ? <div className="mt-0.5 text-xs text-zinc-400">“{side.nickname}”</div> : null}
+          {/* The whole note opens the replaced fighter's profile, when they have one. */}
+          {change ? <div className="mt-1 text-balance text-xs font-medium text-sky-700">
+            {change.id ? <Link to={`/fighters/${change.id}`} className="pointer-events-auto relative transition hover:text-sky-900 dark:hover:text-sky-200">
+              {change.full}{"\u00a0"}<span aria-hidden="true">↗</span>
+            </Link> : change.full}
+          </div> : null}
+          {(result && showResult) || fotn || perf || side.weight_miss != null ? (
+            <div className={`mt-2 flex flex-wrap items-center justify-center gap-1 ${align === "right" ? "@[58rem]:justify-end" : "@[58rem]:justify-start"}`}>
+              {result && showResult ? (
+                <span className={`${RESULT_PILL} max-w-full justify-center !rounded-lg text-balance tabular-nums ${outcomeClasses(side.outcome)}`}>
+                  <span className="sr-only">{showResult}</span>
+                  {/* A phone-width card abbreviates the decision so the result
+                      stays on one line. */}
+                  {compactResult !== result ? <>
+                    <span className="@[30rem]:hidden">{compactResult}</span>
+                    <span className="hidden @[30rem]:inline">{result}</span>
+                  </> : result}
+                </span>
+              ) : null}
+              {side.weight_miss != null ? (
+                <span className={`${RESULT_PILL} max-w-full justify-center !rounded-lg text-balance tabular-nums bg-rose-100 text-rose-700`}>
+                  Missed weight{side.weight_miss ? ` · ${side.weight_miss} lb` : ""}
+                </span>
+              ) : null}
+              {/* Fight of the Night belongs to both corners, a performance award to the winner. */}
+              {perf ? <span className={BONUS_TAG} title={`${PERF_AWARD[perf].full} bonus`}>{PERF_AWARD[perf].short}</span> : null}
+              {fotn ? <span className={BONUS_TAG} title={`${FIGHT_BONUS.full} bonus`}>{FIGHT_BONUS.short}</span> : null}
+            </div>
+          ) : null}
+        </div>
       </div>
     </>;
   // The profile link covers the whole corner from underneath, so a link inside
@@ -841,7 +838,6 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     && failedPortraitPair !== portraitPair;
   const portraitUnavailable = () => setFailedPortraitPair(portraitPair);
   const referee = fight.detail?.methodInfo?.["Referee"];
-  const reserveRank = Boolean(fight.f1.ranking || fight.f2.ranking);
   const changingMatchup = !loadedFight && fight.id !== fightId;
   const orderedFights = cardEvent?.id === fight.event.id ? cardEvent.fights : [];
   const fightIndex = orderedFights.findIndex((entry) => entry.id === fightId);
@@ -926,8 +922,8 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     name or "Former champion" from being clipped while the
                     space either side of the card goes unused. */}
                 <div className="matchup-hero grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-1.5 @[58rem]:gap-6">
-                  <div className="col-start-1 row-start-1 min-w-0">
-                    <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} reserveRank={reserveRank} past={fight.status === "past"} />
+                  <div className="matchup-corner col-start-1 min-w-0">
+                    <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} past={fight.status === "past"} />
                   </div>
                   {/* The weight class, the referee and the price are one block
                       in the middle column, centred across it and pinned to
@@ -953,8 +949,8 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     </div>
                     </div>
                   </div>
-                  <div className="col-start-3 row-start-1 min-w-0">
-                    <FighterHero side={fight.f2} align="right" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} reserveRank={reserveRank} past={fight.status === "past"} />
+                  <div className="matchup-corner col-start-3 min-w-0">
+                    <FighterHero side={fight.f2} align="right" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} past={fight.status === "past"} />
                   </div>
                 </div>
 
