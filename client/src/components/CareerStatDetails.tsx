@@ -140,15 +140,15 @@ function StatModal({ id, fighters, before, selection, update }: {
             </button>)}
           </div>)}
         </div>
-        {matchup ? <div role="group" aria-label="Fighter" className={`${segmentedGroup} mt-3 h-10 lg:hidden`}>
+        {matchup && !results ? <div role="group" aria-label="Fighter" className={`${segmentedGroup} mt-3 h-10 lg:hidden`}>
           {fighters.map((fighter, index) => <button key={fighter.id} type="button" aria-pressed={selected === index} onClick={() => update({ ...selection, fighter: index })}
             className={`min-h-8 min-w-0 flex-1 truncate rounded-full px-2 py-1.5 text-xs font-medium ${selected === index ? segmentedSelected : segmentedIdle}`}>{fighter.name}</button>)}
         </div> : null}
       </div>
-      <div className={`grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] gap-4 px-4 pb-4 sm:px-5 ${matchup ? "lg:grid-cols-2" : ""}`}>
+      <div className={`grid min-h-0 flex-1 gap-4 px-4 pb-4 sm:px-5 ${results && matchup ? "grid-rows-2 lg:grid-rows-1" : "grid-rows-[minmax(0,1fr)]"} ${matchup ? "lg:grid-cols-2" : ""}`}>
         {!fighters.length ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null}
         {fighters.map((fighter, index) => <section key={fighter.id} aria-label={`${fighter.name}: ${currentView.label}`}
-          className={`${matchup && selected !== index ? "hidden lg:flex" : "flex"} min-h-0 min-w-0 flex-col`}>
+          className={`${matchup && !results && selected !== index ? "hidden lg:flex" : "flex"} min-h-0 min-w-0 flex-col`}>
           <Evidence fighter={fighter} side={index} {...sides[index]} view={currentView} sort={sort} setSort={setSort} close={close} />
         </section>)}
       </div>
