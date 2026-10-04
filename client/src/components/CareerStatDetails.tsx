@@ -39,7 +39,7 @@ function Evidence({ fighter, side, data, error, retry, view, sort, setSort, clos
       </h3>
       <span className="shrink-0 text-lg font-semibold tabular-nums" style={{ color: `var(--color-f${side + 1}-ink)` }}>{data ? view.headline(data) : "—"}</span>
     </div>
-    <div className="min-h-0 flex-1 overflow-auto overscroll-contain pr-3 [scrollbar-gutter:stable]">
+    <div className="min-h-0 flex-1 overflow-auto overscroll-x-contain overscroll-y-none pr-3 [scrollbar-gutter:stable]">
     {error ? <div className="py-2"><RequestNotice onRetry={retry}>Couldn’t load stats.</RequestNotice></div> : null}
     {!data ? !error ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null : !rows.length ? <p className="py-3 text-xs text-zinc-500">No data</p> : <table className="w-full whitespace-nowrap text-left text-xs tabular-nums">
       <colgroup><col /><col className="w-16" />{columns.map((_, index) => <col key={index} className="w-12" />)}</colgroup>
