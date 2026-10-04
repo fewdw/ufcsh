@@ -42,14 +42,6 @@ const DEFAULT_FEATURES: RankingFeatures = {
   activityColors: true,
 };
 
-// Archive rows describe the published list; today's activity is not evidence
-// of what was known on the selected date.
-const ARCHIVE_FEATURES: RankingFeatures = {
-  opponents: false, hoverHistory: false, hoverResults: false,
-  top15Record: false, top15Scope: "division", movement: false,
-  streaks: false, lastFive: false, activityColors: false,
-};
-
 /** v3 switches hover previews off while keeping the other v2 choices. */
 const FEATURES_KEY = "rankings-features-v3";
 
@@ -81,11 +73,11 @@ function isP4P(d: Division): boolean {
   return d.division.includes("Pound-for-Pound");
 }
 
-function activityMeta(entry: RankingEntry, dateMode: "relative" | "date"): { row: string; hint: string; showsLastFight: boolean } {
+function activityMeta(entry: RankingEntry, dateMode: "relative" | "date", at?: string): { row: string; hint: string; showsLastFight: boolean } {
   const a = entry.activity;
   // "4d ago", not "4 days ago": the whole line has to fit beside the name.
-  const when = (date: string) => dateMode === "date" ? formatDateShort(date)
-    : relativeDate(date).replace(/(\d+) days?\b/, "$1d");
+  const when = (date: string) => dateMode === "date" ? (at ? formatDateShortWithYear(date) : formatDateShort(date))
+    : relativeDate(date, at ? new Date(`${at}T12:00:00`) : new Date()).replace(/(\d+) days?\b/, "$1d");
   const lastFightHint = a.last_fight_date
     ? `${a.last_fight_opponent ? `vs ${a.last_fight_opponent} · ` : ""}${when(a.last_fight_date)}`
     : "";
@@ -148,8 +140,8 @@ function previewFightLabel(fight: FighterPreviewFight): { label: string; cls: st
   return { label: "NC", cls: "text-zinc-400" };
 }
 
-function FighterHoverPreview({ fighterId, point }: { fighterId: string; point: { x: number; y: number } }) {
-  const { data, loading } = useApi<FighterPreview>(`/api/previews/${fighterId}`);
+function FighterHoverPreview({ fighterId, point, at }: { fighterId: string; point: { x: number; y: number }; at?: string }) {
+  const { data, loading } = useApi<FighterPreview>(`/api/previews/${fighterId}${at ? `?date=${encodeURIComponent(at)}` : ""}`);
   // Opens away from the nearer edges, so its size never needs measuring.
   const flipX = point.x > window.innerWidth / 2;
   const flipY = point.y > window.innerHeight / 2;
@@ -188,6 +180,7 @@ function RankRow({
   highlightedFighter,
   onHighlight,
   tapResults,
+  at,
 }: {
   entry: RankingEntry;
   division: string;
@@ -195,11 +188,12 @@ function RankRow({
   highlightedFighter: RankingEntry | null;
   onHighlight: (id: string | null) => void;
   tapResults: boolean;
+  at?: string;
 }) {
   const { settings } = useSettings();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewPoint, setPreviewPoint] = useState({ x: 0, y: 0 });
-  const meta = activityMeta(entry, settings.dateMode);
+  const meta = activityMeta(entry, settings.dateMode, at);
   const mv = move(entry.rank_change);
   const isChamp = entry.rank === "C";
   const isInterimChamp = entry.is_interim_champion || entry.rank === "IC";
@@ -246,7 +240,7 @@ function RankRow({
         {features.top15Record && top15Record ? (
           <span
             className="shrink-0 text-center text-[11px] font-semibold tabular-nums text-zinc-600"
-            title={`Record against current champions and top 15 in ${recordScope}: ${top15Record.wins} wins, ${top15Record.losses} losses, ${top15Record.draws} draws. All meetings; no contests excluded.`}
+            title={`Record against champions and top 15 in ${recordScope}${at ? ` as of ${formatDate(at)}` : " today"}: ${top15Record.wins} wins, ${top15Record.losses} losses, ${top15Record.draws} draws. All meetings; no contests excluded.`}
             aria-label={`Record in top 15 in ${recordScope}: ${top15Record.wins} wins, ${top15Record.losses} losses, ${top15Record.draws} draws`}
           >
             {top15Record.wins}-{top15Record.losses}{top15Record.draws ? `-${top15Record.draws}` : ""}
@@ -256,7 +250,7 @@ function RankRow({
         {features.streaks ? (
           <span
             className={`w-6 text-right text-[10px] font-bold tabular-nums ${entry.activity.current_streak ? streakTone(entry.activity.current_streak.outcome) : ""}`}
-            title={entry.activity.current_streak ? `Current professional streak: ${entry.activity.current_streak.label}` : undefined}
+            title={entry.activity.current_streak ? `Professional streak${at ? ` as of ${formatDate(at)}` : " today"}: ${entry.activity.current_streak.label}` : undefined}
           >
             {entry.activity.current_streak?.label ?? ""}
           </span>
@@ -339,7 +333,7 @@ function RankRow({
       >
         {inner}
       </Link>
-      {features.hoverHistory && previewOpen ? <FighterHoverPreview fighterId={entry.fighter_id} point={previewPoint} /> : null}
+      {features.hoverHistory && previewOpen ? <FighterHoverPreview fighterId={entry.fighter_id} point={previewPoint} at={at} /> : null}
     </div>
   ) : (
     <div className={className} title={title}>
@@ -356,6 +350,7 @@ function DivisionCard({
   onHighlight,
   tapResults,
   targeted,
+  at,
 }: {
   division: Division;
   features: RankingFeatures;
@@ -366,6 +361,7 @@ function DivisionCard({
   tapResults: boolean;
   /** Opened from a bout's weight class: outlined a moment so the eye finds it. */
   targeted: boolean;
+  at?: string;
 }) {
   const borrowed = division.source !== source;
   return (
@@ -399,6 +395,7 @@ function DivisionCard({
             highlightedFighter={highlightedFighter}
             onHighlight={onHighlight}
             tapResults={tapResults}
+            at={at}
           />
         ))}
       </div>
@@ -457,8 +454,12 @@ function FeaturesMenu({
   divisionOrder,
   onDivisionOrder,
   legend,
+  dateControls,
+  historical,
 }: {
   legend: ReactNode;
+  dateControls: ReactNode;
+  historical: boolean;
   features: RankingFeatures;
   onChange: (features: RankingFeatures) => void;
   dateMode: DateMode;
@@ -472,8 +473,9 @@ function FeaturesMenu({
   const enabledCount = options.filter((option) => features[option.key]).length;
   return (
     <OptionsSheet label="Filters" count={`${enabledCount}/${options.length}`} onReset={() => onChange(DEFAULT_FEATURES)} iconOnlyOnPhone="lg">
+      <div className="border-b border-zinc-100 px-4 py-3">{dateControls}</div>
       {/* The key to every mark in the lists, whichever are switched on. */}
-      <div className="mb-1 space-y-1.5 border-b border-zinc-100 px-4 pb-3 text-[11px] text-zinc-500">
+      <div className="mb-1 space-y-1.5 border-b border-zinc-100 px-4 pb-3 pt-3 text-[11px] text-zinc-500">
         {/* Last 5: shape is where, fill how it ended, colour the result. */}
         <div className="grid grid-cols-3 gap-x-3 gap-y-1">
           <span className="flex items-center gap-1.5"><span className="h-2 w-2 border-[1.5px] border-zinc-500 rounded-full bg-zinc-500" />In UFC</span>
@@ -495,7 +497,11 @@ function FeaturesMenu({
               <div key={option.key} className={option.key === "top15Record" ? "my-1 rounded-xl border border-zinc-200 bg-zinc-50" : undefined}>
                 <SwitchRow
                   label={option.key === "hoverResults" && !canHover ? "Tap fighter results" : option.label}
-                  hint={option.key === "hoverResults" && !canHover ? "Tap to highlight opponents, again for the profile." : option.hint}
+                  hint={option.key === "hoverResults" && !canHover ? "Tap to highlight opponents, again for the profile."
+                    : historical && option.key === "opponents" ? "Last result under each name as of the selected date"
+                    : historical && option.key === "top15Record" ? "Record against champions and top 15 on the selected date"
+                    : historical && option.key === "activityColors" ? "Fought within 45 days of the selected date"
+                    : option.hint}
                   on={features[option.key]}
                   onChange={(on) => onChange({ ...features, [option.key]: on })} />
                 {option.key === "top15Record" ? (
@@ -583,8 +589,7 @@ export default function RankingsPage() {
   const canHover = useCanHover();
   const canPreview = useCanHover(true);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
-  const activeFeatures = useMemo(() => historical ? ARCHIVE_FEATURES
-    : ({ ...features, hoverHistory: features.hoverHistory && canPreview }), [canPreview, features, historical]);
+  const activeFeatures = useMemo(() => ({ ...features, hoverHistory: features.hoverHistory && canPreview }), [canPreview, features]);
   const tapResults = activeFeatures.hoverResults && !canHover;
   const { data, loading, error } = useApi<{
     updated_at: number | null; divisions: Division[]; as_of?: string | null; source?: RankingSource;
@@ -627,11 +632,11 @@ export default function RankingsPage() {
   const wideKey = activeFeatures.activityColors && activeFeatures.hoverResults;
   const activityKey = (
     <>
-      <span className="flex items-center gap-1.5" title="Has a fight booked">
+      {!historical ? <span className="flex items-center gap-1.5" title="Has a fight booked">
         <span className="activity-booked activity-swatch h-2.5 w-2.5 rounded-sm border" />
         Booked
-      </span>
-      <span className="flex items-center gap-1.5" title="Fought in the last 45 days">
+      </span> : null}
+      <span className="flex items-center gap-1.5" title={historical ? "Fought within 45 days of the selected date" : "Fought in the last 45 days"}>
         <span className="activity-recent activity-swatch h-2.5 w-2.5 rounded-sm border" />
         Fought ≤45d
       </span>
@@ -678,15 +683,19 @@ export default function RankingsPage() {
               </button>
             ))}
           </div>
-          {!historical ? <div className={`order-last flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 ${
+          <div className={`order-last flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 ${
             wideKey ? "xl:order-none xl:ml-auto xl:basis-auto xl:whitespace-nowrap" : "md:order-none md:ml-auto md:basis-auto md:whitespace-nowrap"
           }`}>
             {activeFeatures.activityColors ? activityKey : null}
             {activeFeatures.hoverResults ? <OpponentKey compact /> : null}
             {/* Both keys fill a phone's row; the Filters menu still shows the time. */}
             {wideKey ? <span className="hidden sm:inline">{updated}</span> : updated}
-          </div> : null}
-          {!historical ? <FeaturesMenu
+            {historical && data?.as_of ? <span aria-live="polite">
+              Published {formatDate(data.as_of)} · {data.source === "media" ? "Media" : "Meta"}
+              {data.source !== settings.rankingSource ? " (before Meta rankings began)" : ""}
+            </span> : null}
+          </div>
+          <FeaturesMenu
             features={features}
             onChange={(next) => {
               if (!next.hoverResults) setHighlightedId(null);
@@ -697,26 +706,21 @@ export default function RankingsPage() {
             divisionOrder={settings.divisionOrder}
             onDivisionOrder={(order) => update("divisionOrder", order)}
             legend={<>{activityKey}{features.hoverResults ? <OpponentKey /> : null}{updated}</>}
-          /> : null}
-          <form className="flex basis-full flex-wrap items-center gap-2 border-t border-zinc-200 pt-2" onSubmit={event => {
-            event.preventDefault();
-            const date = new FormData(event.currentTarget).get("date");
-            if (typeof date === "string" && date) selectDate(date);
-          }}>
-            <label htmlFor="rankings-date" className="text-xs font-medium text-zinc-600">As of</label>
-            <input key={selectedDate ?? "today"} id="rankings-date" name="date" type="date" required
-              min="2013-02-04" max={today} defaultValue={selectedDate ?? ""}
-              className="min-w-0 rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-900" />
-            <button type="submit" className="rounded-md bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-200">View</button>
-            {historical ? <button type="button" onClick={() => selectDate(null)}
-              className="rounded-md px-2 py-1.5 text-xs font-medium text-sky-600 hover:bg-zinc-100">Today</button> : null}
-            <span className="basis-full text-[11px] text-zinc-500 sm:basis-auto" aria-live="polite">
-              {historical ? data?.as_of
-                ? `Published ${formatDate(data.as_of)} · ${data.source === "media" ? "Media" : "Meta"}${data.source !== settings.rankingSource ? " (before Meta rankings began)" : ""}`
-                : "Latest published list on or before your date."
-                : "Browse published rankings since February 2013."}
-            </span>
-          </form>
+            historical={historical}
+            dateControls={<form aria-label="View rankings by date" className="flex items-center gap-1.5 text-[11px]"
+              onReset={() => selectDate(null)} onSubmit={event => {
+                event.preventDefault();
+                const date = new FormData(event.currentTarget).get("date");
+                if (typeof date === "string" && date) selectDate(date);
+              }}>
+              <label htmlFor="rankings-date" className="shrink-0 whitespace-nowrap font-medium text-zinc-600">View date</label>
+              <input key={selectedDate ?? "today"} id="rankings-date" name="date" type="date" required
+                min="2013-02-04" max={today} defaultValue={selectedDate ?? ""}
+                className="w-0 min-w-0 flex-1 rounded-md border border-zinc-200 bg-white px-1.5 py-1.5 text-zinc-900" />
+              <button type="submit" className="shrink-0 rounded-md bg-zinc-100 px-2 py-1.5 font-medium text-zinc-700 hover:bg-zinc-200">View</button>
+              <button type="reset" className="shrink-0 rounded-md px-2 py-1.5 font-medium text-sky-600 hover:bg-zinc-100">Reset</button>
+            </form>}
+          />
         </div>
 
         {loading ? <div role="status" className="appear-late p-8 text-center text-sm text-zinc-400">Loading rankings…</div>
@@ -738,10 +742,10 @@ export default function RankingsPage() {
                 key={d.division}
                 className="w-full sm:w-[calc(50%_-_0.375rem)] lg:w-[calc(33.333%_-_0.5rem)] 2xl:w-[calc(25%_-_0.5625rem)]"
               >
-                <DivisionCard division={d} features={activeFeatures} source={settings.rankingSource} highlightedFighter={highlightedFighter} onHighlight={setHighlightedId} tapResults={tapResults} targeted={d.division === targeted} />
+                <DivisionCard division={d} features={activeFeatures} source={settings.rankingSource} highlightedFighter={highlightedFighter} onHighlight={setHighlightedId} tapResults={tapResults} targeted={d.division === targeted} at={selectedDate ?? undefined} />
               </div>
             ) : (
-              <DivisionCard key={d.division} division={d} features={activeFeatures} source={settings.rankingSource} highlightedFighter={highlightedFighter} onHighlight={setHighlightedId} tapResults={tapResults} targeted={d.division === targeted} />
+              <DivisionCard key={d.division} division={d} features={activeFeatures} source={settings.rankingSource} highlightedFighter={highlightedFighter} onHighlight={setHighlightedId} tapResults={tapResults} targeted={d.division === targeted} at={selectedDate ?? undefined} />
             )
           ))}
         </div>}

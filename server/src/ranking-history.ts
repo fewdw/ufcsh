@@ -139,7 +139,21 @@ export function rankingSnapshot(type: RankingType, date: string) {
     division: string; rank: string; fighter_name: string; fighter_id: string;
     photo_url: string | null; profile_eligible: number;
   }[] : [];
-  return { source, as_of: asOf, rows };
+  const previousDate = asOf ? (db.prepare(`
+    SELECT MAX(date) AS date FROM ranking_history WHERE ranking_type = ? AND date < ?
+  `).get(source, asOf) as { date: string | null }).date : null;
+  const previous = previousDate ? db.prepare(`
+    SELECT division, rank, fighter_name, fighter_id FROM ranking_history WHERE ranking_type = ? AND date = ?
+  `).all(source, previousDate) as Pick<typeof rows[number], "division" | "rank" | "fighter_name" | "fighter_id">[] : [];
+  const identity = (row: typeof previous[number]) => `${row.division}|${row.fighter_id || normName(row.fighter_name)}`;
+  const oldRanks = new Map(previous.map(row => [identity(row), row.rank]));
+  return { source, as_of: asOf, rows: rows.map(row => {
+    const old = oldRanks.get(identity(row));
+    const delta = old ? Number(old) - Number(row.rank) : NaN;
+    const rank_change = !previousDate || !Number.isFinite(Number(row.rank)) ? null
+      : !old ? "NR" : !Number.isFinite(delta) ? null : delta > 0 ? `+${delta}` : String(delta);
+    return { ...row, rank_change };
+  }) };
 }
 
 /** The fighter a ranked name means, through the archive's own spellings. */
