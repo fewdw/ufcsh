@@ -50,7 +50,7 @@ export default function OptionsSheet({
     setDragY(0);
     setDismissing(false);
     drag.current = null;
-    if (returnFocus) buttonRef.current?.focus();
+    if (returnFocus) buttonRef.current?.focus({ preventScroll: true });
   };
   useEffect(() => {
     if (!open) return;
@@ -70,7 +70,7 @@ export default function OptionsSheet({
       if (event.key !== "Escape") return;
       event.preventDefault();
       setOpen(false);
-      buttonRef.current?.focus();
+      buttonRef.current?.focus({ preventScroll: true });
     };
     document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("keydown", onKeyDown);

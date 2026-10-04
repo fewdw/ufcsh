@@ -456,8 +456,10 @@ export type RankingEntry = {
 export type Division = {
   division: string;
   weight_limit: string;
+  /** Publication date when browsing the archive. */
+  as_of?: string | null;
   /** The published view this list came from. Only a pound-for-pound list
-   * borrowed into the meta view differs from the one that was requested. */
+   * borrowed into the meta view or a list from before meta began differs. */
   source: "meta" | "media";
   entries: RankingEntry[];
 };

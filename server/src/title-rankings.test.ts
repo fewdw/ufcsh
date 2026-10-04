@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { db } from "./db.ts";
 import { confirmedTitleResults, currentRanking, currentRankings, rankingEntering, rankingTimeline } from "./ranking-history.ts";
-import { getFighter, getRankings } from "./api.ts";
+import { getFighter, getHistoricalRankings, getRankings } from "./api.ts";
 
 const division = "Women's Flyweight";
 const winner = "test-title-winner";
@@ -60,6 +60,11 @@ test("a confirmed title result updates profiles, lists and history without waiti
       .find(row => row.division === division)!.entries;
     assert.equal(entries[0].fighter_id, winner);
     assert.deepEqual(entries.map(row => row.rank), ["C"]);
+    const published = getHistoricalRankings(source, "1990-01-11").divisions.find(row => row.division === division)!;
+    assert.equal(published.as_of, "1990-01-01");
+    assert.deepEqual(published.entries.map(row => [row.rank, row.name]), [
+      ["C", "Title Champion"], ["1", "Title Winner"],
+    ], "archive browsing preserves the published list despite a later title result");
   }
   assert.equal((db.prepare("SELECT rank FROM rankings WHERE fighter_id = ? AND ranking_type = 'media' AND division = ?")
     .get(winner, division) as { rank: string }).rank, "1", "the published list is unchanged");

@@ -117,6 +117,45 @@ const ARCHIVE_NAMES: Record<string, string> = {
 
 const RANK_ORDER = "CASE rank WHEN 'C' THEN 0 WHEN 'IC' THEN 1 ELSE CAST(rank AS INTEGER) + 2 END";
 
+/** A published list in force on a calendar day, including that day's update.
+ * Unlike currentRankings, this never overlays later title results. */
+export function rankingSnapshot(type: RankingType, date: string) {
+  const latest = (source: RankingType) => (db.prepare(`
+    SELECT MAX(date) AS date FROM ranking_history WHERE ranking_type = ? AND date <= ?
+  `).get(source, date) as { date: string | null }).date;
+  let source = type;
+  let asOf = latest(source);
+  if (!asOf && type === "meta") {
+    source = "media";
+    asOf = latest(source);
+  }
+  const rows = asOf ? db.prepare(`
+    SELECT h.division, h.rank, h.fighter_name, h.fighter_id, fr.photo_url,
+      ${ufcFightExistsSql("h.fighter_id", "fought")} AS profile_eligible
+    FROM ranking_history h LEFT JOIN fighters fr ON fr.id = h.fighter_id
+    WHERE h.ranking_type = ? AND h.date = ?
+    ORDER BY h.division, ${RANK_ORDER}, h.fighter_name
+  `).all(source, asOf) as {
+    division: string; rank: string; fighter_name: string; fighter_id: string;
+    photo_url: string | null; profile_eligible: number;
+  }[] : [];
+  const previousDate = asOf ? (db.prepare(`
+    SELECT MAX(date) AS date FROM ranking_history WHERE ranking_type = ? AND date < ?
+  `).get(source, asOf) as { date: string | null }).date : null;
+  const previous = previousDate ? db.prepare(`
+    SELECT division, rank, fighter_name, fighter_id FROM ranking_history WHERE ranking_type = ? AND date = ?
+  `).all(source, previousDate) as Pick<typeof rows[number], "division" | "rank" | "fighter_name" | "fighter_id">[] : [];
+  const identity = (row: typeof previous[number]) => `${row.division}|${row.fighter_id || normName(row.fighter_name)}`;
+  const oldRanks = new Map(previous.map(row => [identity(row), row.rank]));
+  return { source, as_of: asOf, rows: rows.map(row => {
+    const old = oldRanks.get(identity(row));
+    const delta = old ? Number(old) - Number(row.rank) : NaN;
+    const rank_change = !previousDate || !Number.isFinite(Number(row.rank)) ? null
+      : !old ? "NR" : !Number.isFinite(delta) ? null : delta > 0 ? `+${delta}` : String(delta);
+    return { ...row, rank_change };
+  }) };
+}
+
 /** The fighter a ranked name means, through the archive's own spellings. */
 export function resolveRankedFighter(name: string, division: string, date: string): string {
   const key = normName(name);

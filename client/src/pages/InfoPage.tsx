@@ -92,11 +92,10 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-04">October 4, 2026</time></p>
             <ul>
-              <li>Fixed stats scrollbars and pinned column titles.</li>
-              <li>Mobile stats fit with single-row category pills.</li>
-              <li>Drag down to close mobile stats, without dropdown autofocus.</li>
-              <li>Separate wins/losses popup shows both fighters.</li>
-              <li>Fixed app startup after development builds.</li>
+              <li>Browse UFC rankings from a selected date.</li>
+              <li>Historical filters and fighter results match that date.</li>
+              <li>Pick dates with month/year dropdowns and reset to current rankings.</li>
+              <li>Rankings update in place with compact, single-row controls.</li>
             </ul>
           </Section>
         </div>

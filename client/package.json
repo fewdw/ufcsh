@@ -12,9 +12,11 @@
   },
   "dependencies": {
     "@clerk/react": "^6.16.1",
+    "@internationalized/date": "^3.12.4",
     "@tailwindcss/vite": "^4.3.3",
     "lucide-react": "^1.39.0",
     "react": "^19.2.8",
+    "react-aria-components": "^1.21.1",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.2",
     "tailwindcss": "^4.3.3"

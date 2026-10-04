@@ -3,7 +3,7 @@ import { Fragment, useEffect, useMemo, useState, useSyncExternalStore, type Reac
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { useApi } from "../api";
 import type { Division, FighterPreview, FighterPreviewFight, RankingEntry } from "../api";
-import { formatDateShort } from "../format";
+import { formatDate, formatDateShort, formatDateShortWithYear } from "../format";
 import Avatar from "../components/Avatar";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { SITE_URL, useSeo } from "../seo";
@@ -14,10 +14,14 @@ import Freshness from "../components/Freshness";
 import ResultDots from "../components/ResultDots";
 import { resultDot } from "../resultDots";
 import OptionsSheet, { SHEET_SELECT, SheetField, SwitchRow } from "../components/OptionsSheet";
+import RankingsDateControl from "../components/RankingsDateControl";
 
 const shell = PANEL;
 
 type ViewFilter = "men" | "women" | "p4p" | "all";
+type RankingsData = {
+  updated_at: number | null; divisions: Division[]; as_of?: string | null; source?: RankingSource;
+};
 type RankingFeatures = {
   opponents: boolean;
   hoverHistory: boolean;
@@ -73,11 +77,11 @@ function isP4P(d: Division): boolean {
   return d.division.includes("Pound-for-Pound");
 }
 
-function activityMeta(entry: RankingEntry, dateMode: "relative" | "date"): { row: string; hint: string; showsLastFight: boolean } {
+function activityMeta(entry: RankingEntry, dateMode: "relative" | "date", at?: string): { row: string; hint: string; showsLastFight: boolean } {
   const a = entry.activity;
   // "4d ago", not "4 days ago": the whole line has to fit beside the name.
-  const when = (date: string) => dateMode === "date" ? formatDateShort(date)
-    : relativeDate(date).replace(/(\d+) days?\b/, "$1d");
+  const when = (date: string) => dateMode === "date" ? (at ? formatDateShortWithYear(date) : formatDateShort(date))
+    : relativeDate(date, at ? new Date(`${at}T12:00:00`) : new Date()).replace(/(\d+) days?\b/, "$1d");
   const lastFightHint = a.last_fight_date
     ? `${a.last_fight_opponent ? `vs ${a.last_fight_opponent} · ` : ""}${when(a.last_fight_date)}`
     : "";
@@ -140,8 +144,8 @@ function previewFightLabel(fight: FighterPreviewFight): { label: string; cls: st
   return { label: "NC", cls: "text-zinc-400" };
 }
 
-function FighterHoverPreview({ fighterId, point }: { fighterId: string; point: { x: number; y: number } }) {
-  const { data, loading } = useApi<FighterPreview>(`/api/previews/${fighterId}`);
+function FighterHoverPreview({ fighterId, point, at }: { fighterId: string; point: { x: number; y: number }; at?: string }) {
+  const { data, loading } = useApi<FighterPreview>(`/api/previews/${fighterId}${at ? `?date=${encodeURIComponent(at)}` : ""}`);
   // Opens away from the nearer edges, so its size never needs measuring.
   const flipX = point.x > window.innerWidth / 2;
   const flipY = point.y > window.innerHeight / 2;
@@ -180,6 +184,7 @@ function RankRow({
   highlightedFighter,
   onHighlight,
   tapResults,
+  at,
 }: {
   entry: RankingEntry;
   division: string;
@@ -187,11 +192,12 @@ function RankRow({
   highlightedFighter: RankingEntry | null;
   onHighlight: (id: string | null) => void;
   tapResults: boolean;
+  at?: string;
 }) {
   const { settings } = useSettings();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewPoint, setPreviewPoint] = useState({ x: 0, y: 0 });
-  const meta = activityMeta(entry, settings.dateMode);
+  const meta = activityMeta(entry, settings.dateMode, at);
   const mv = move(entry.rank_change);
   const isChamp = entry.rank === "C";
   const isInterimChamp = entry.is_interim_champion || entry.rank === "IC";
@@ -238,7 +244,7 @@ function RankRow({
         {features.top15Record && top15Record ? (
           <span
             className="shrink-0 text-center text-[11px] font-semibold tabular-nums text-zinc-600"
-            title={`Record against current champions and top 15 in ${recordScope}: ${top15Record.wins} wins, ${top15Record.losses} losses, ${top15Record.draws} draws. All meetings; no contests excluded.`}
+            title={`Record against champions and top 15 in ${recordScope}${at ? ` as of ${formatDate(at)}` : " today"}: ${top15Record.wins} wins, ${top15Record.losses} losses, ${top15Record.draws} draws. All meetings; no contests excluded.`}
             aria-label={`Record in top 15 in ${recordScope}: ${top15Record.wins} wins, ${top15Record.losses} losses, ${top15Record.draws} draws`}
           >
             {top15Record.wins}-{top15Record.losses}{top15Record.draws ? `-${top15Record.draws}` : ""}
@@ -248,7 +254,7 @@ function RankRow({
         {features.streaks ? (
           <span
             className={`w-6 text-right text-[10px] font-bold tabular-nums ${entry.activity.current_streak ? streakTone(entry.activity.current_streak.outcome) : ""}`}
-            title={entry.activity.current_streak ? `Current professional streak: ${entry.activity.current_streak.label}` : undefined}
+            title={entry.activity.current_streak ? `Professional streak${at ? ` as of ${formatDate(at)}` : " today"}: ${entry.activity.current_streak.label}` : undefined}
           >
             {entry.activity.current_streak?.label ?? ""}
           </span>
@@ -331,7 +337,7 @@ function RankRow({
       >
         {inner}
       </Link>
-      {features.hoverHistory && previewOpen ? <FighterHoverPreview fighterId={entry.fighter_id} point={previewPoint} /> : null}
+      {features.hoverHistory && previewOpen ? <FighterHoverPreview fighterId={entry.fighter_id} point={previewPoint} at={at} /> : null}
     </div>
   ) : (
     <div className={className} title={title}>
@@ -348,6 +354,7 @@ function DivisionCard({
   onHighlight,
   tapResults,
   targeted,
+  at,
 }: {
   division: Division;
   features: RankingFeatures;
@@ -358,6 +365,7 @@ function DivisionCard({
   tapResults: boolean;
   /** Opened from a bout's weight class: outlined a moment so the eye finds it. */
   targeted: boolean;
+  at?: string;
 }) {
   const borrowed = division.source !== source;
   return (
@@ -367,12 +375,15 @@ function DivisionCard({
         {borrowed ? (
           <span
             className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200"
-            title="The meta view publishes no pound-for-pound list, so this one is the media list."
+            title={division.division.includes("Pound-for-Pound")
+              ? "The meta view publishes no pound-for-pound list, so this one is the media list."
+              : "Media rankings are used before the first Meta list."}
           >
             Media
           </span>
         ) : null}
-        {division.weight_limit ? (
+        {division.as_of ? <span className="shrink-0 text-[10px] text-zinc-500" title="Published list date">{formatDateShortWithYear(division.as_of)}</span> : null}
+        {!division.as_of && division.weight_limit ? (
           <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500">
             {division.weight_limit}
           </span>
@@ -388,6 +399,7 @@ function DivisionCard({
             highlightedFighter={highlightedFighter}
             onHighlight={onHighlight}
             tapResults={tapResults}
+            at={at}
           />
         ))}
       </div>
@@ -446,8 +458,10 @@ function FeaturesMenu({
   divisionOrder,
   onDivisionOrder,
   legend,
+  historical,
 }: {
   legend: ReactNode;
+  historical: boolean;
   features: RankingFeatures;
   onChange: (features: RankingFeatures) => void;
   dateMode: DateMode;
@@ -462,7 +476,7 @@ function FeaturesMenu({
   return (
     <OptionsSheet label="Filters" count={`${enabledCount}/${options.length}`} onReset={() => onChange(DEFAULT_FEATURES)} iconOnlyOnPhone="lg">
       {/* The key to every mark in the lists, whichever are switched on. */}
-      <div className="mb-1 space-y-1.5 border-b border-zinc-100 px-4 pb-3 text-[11px] text-zinc-500">
+      <div className="mb-1 space-y-1.5 border-b border-zinc-100 px-4 pb-3 pt-3 text-[11px] text-zinc-500">
         {/* Last 5: shape is where, fill how it ended, colour the result. */}
         <div className="grid grid-cols-3 gap-x-3 gap-y-1">
           <span className="flex items-center gap-1.5"><span className="h-2 w-2 border-[1.5px] border-zinc-500 rounded-full bg-zinc-500" />In UFC</span>
@@ -484,7 +498,11 @@ function FeaturesMenu({
               <div key={option.key} className={option.key === "top15Record" ? "my-1 rounded-xl border border-zinc-200 bg-zinc-50" : undefined}>
                 <SwitchRow
                   label={option.key === "hoverResults" && !canHover ? "Tap fighter results" : option.label}
-                  hint={option.key === "hoverResults" && !canHover ? "Tap to highlight opponents, again for the profile." : option.hint}
+                  hint={option.key === "hoverResults" && !canHover ? "Tap to highlight opponents, again for the profile."
+                    : historical && option.key === "opponents" ? "Last result under each name as of the selected date"
+                    : historical && option.key === "top15Record" ? "Record against champions and top 15 on the selected date"
+                    : historical && option.key === "activityColors" ? "Fought within 45 days of the selected date"
+                    : option.hint}
                   on={features[option.key]}
                   onChange={(on) => onChange({ ...features, [option.key]: on })} />
                 {option.key === "top15Record" ? (
@@ -536,31 +554,61 @@ const FILTERS: { key: ViewFilter; label: string }[] = [
 
 export default function RankingsPage() {
   const { settings, update } = useSettings();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { key: locationKey, state: locationState } = useLocation();
+  const selectedDate = searchParams.get("date");
+  const requestedHistorical = selectedDate !== null;
+  const rankingsScrollKey = typeof locationState?.rankingsScrollKey === "string" ? locationState.rankingsScrollKey : locationKey;
+  const today = new Date().toISOString().slice(0, 10);
+  const selectDate = (date: string | null) => {
+    setHighlightedId(null);
+    setSearchParams(previous => {
+      const next = new URLSearchParams(previous);
+      if (date) next.set("date", date);
+      else next.delete("date");
+      return next;
+    }, { state: { ...locationState, rankingsView: view, rankingsScrollKey } });
+  };
   useSeo({
-    title: `UFC ${settings.rankingSource === "meta" ? "Meta" : "Media"} Rankings`,
-    description: `Current UFC ${settings.rankingSource === "meta" ? "Meta" : "Media"} rankings by division, including champions and fighter activity.`,
+    title: `UFC ${settings.rankingSource === "meta" ? "Meta" : "Media"} Rankings${requestedHistorical ? ` · ${selectedDate}` : ""}`,
+    description: requestedHistorical ? `UFC rankings as of ${selectedDate}, by division.`
+      : `Current UFC ${settings.rankingSource === "meta" ? "Meta" : "Media"} rankings by division, including champions and fighter activity.`,
     path: "/rankings",
     structuredData: {
       "@context": "https://schema.org",
       "@type": "CollectionPage",
-      name: "Current UFC Rankings",
+      name: requestedHistorical ? `UFC Rankings as of ${selectedDate}` : "Current UFC Rankings",
       url: `${SITE_URL}/rankings`,
     },
   });
-  const { key: locationKey } = useLocation();
   // A bout's weight class links here with its division, to be scrolled to.
-  const target = useSearchParams()[0].get("division");
+  const target = searchParams.get("division");
   const [targeted, setTargeted] = useState<string | null>(null);
-  const [view, setView] = useHistoryState<ViewFilter>("rankings:view", () => target && isWomens(target) ? "women" : "men");
+  const historyView = locationState?.rankingsView as ViewFilter | undefined;
+  const [view, setView] = useHistoryState<ViewFilter>("rankings:view", () => historyView && FILTERS.some(filter => filter.key === historyView)
+    ? historyView : target && isWomens(target) ? "women" : "men");
   const [features, setFeatures] = useHistoryState<RankingFeatures>("rankings:features", loadFeatures);
   const canHover = useCanHover();
   const canPreview = useCanHover(true);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const activeFeatures = useMemo(() => ({ ...features, hoverHistory: features.hoverHistory && canPreview }), [canPreview, features]);
-  const tapResults = features.hoverResults && !canHover;
-  const { data, loading, error } = useApi<{ updated_at: number | null; divisions: Division[] }>(withRanking("/api/rankings", settings.rankingSource));
+  const tapResults = activeFeatures.hoverResults && !canHover;
+  const { data: requestedData, loading, error } = useApi<RankingsData>(withRanking("/api/rankings", settings.rankingSource)
+    + (requestedHistorical ? `&date=${encodeURIComponent(selectedDate)}` : ""));
+  // Retain the whole visible view while a different date/source loads. Its
+  // date must stay attached so relative activity and previews remain correct.
+  const [displayed, setDisplayed] = useState<{
+    data: RankingsData; date: string | null; source: RankingSource;
+  } | null>(null);
+  if (requestedData && (requestedData !== displayed?.data || selectedDate !== displayed.date || settings.rankingSource !== displayed.source)) {
+    setDisplayed({ data: requestedData, date: selectedDate, source: settings.rankingSource });
+  }
+  const data = displayed?.data ?? requestedData;
+  const displayedDate = displayed ? displayed.date : selectedDate;
+  const displayedSource = displayed?.source ?? settings.rankingSource;
+  const historical = displayedDate !== null;
   const divisions = data?.divisions ?? null;
-  const pageScroll = useRouteScrollRestoration<HTMLDivElement>("rankings:page", Boolean(divisions?.length));
+  const pageScroll = useRouteScrollRestoration<HTMLDivElement>("rankings:page", Boolean(divisions?.length), rankingsScrollKey);
 
   useEffect(() => {
     try {
@@ -589,99 +637,106 @@ export default function RankingsPage() {
     setTargeted(target);
   }, [target, loading, divisions, locationKey, pageScroll]);
 
-  const highlightedFighter = features.hoverResults && highlightedId
+  const highlightedFighter = activeFeatures.hoverResults && highlightedId
     ? shown.flatMap((division) => division.entries).find((entry) => entry.fighter_id === highlightedId) ?? null
     : null;
 
-  if (loading) {
-    return <div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading rankings…</div>;
-  }
-  if (error || !divisions || divisions.length === 0) {
-    return (
-      <div className="flex h-full items-center justify-center text-sm text-zinc-400">
-        Rankings not available yet — first sync may still be running.
-      </div>
-    );
-  }
-
   const centerFilteredCards = view === "women" || view === "p4p";
-  const wideKey = features.activityColors && features.hoverResults;
+  const wideKey = activeFeatures.activityColors && activeFeatures.hoverResults;
   const activityKey = (
     <>
-      <span className="flex items-center gap-1.5" title="Has a fight booked">
+      {!historical ? <span className="flex items-center gap-1.5" title="Has a fight booked">
         <span className="activity-booked activity-swatch h-2.5 w-2.5 rounded-sm border" />
         Booked
-      </span>
-      <span className="flex items-center gap-1.5" title="Fought in the last 45 days">
+      </span> : null}
+      <span className="flex items-center gap-1.5" title={historical ? "Fought within 45 days of the selected date" : "Fought in the last 45 days"}>
         <span className="activity-recent activity-swatch h-2.5 w-2.5 rounded-sm border" />
         Fought ≤45d
       </span>
     </>
   );
   // ufc.com is read every six hours; a day without one is worth saying.
-  const updated = <Freshness label="Updated" at={data?.updated_at} staleAfterHours={24} />;
+  const updated = historical ? null : <Freshness label="Updated" at={data?.updated_at} staleAfterHours={24} />;
 
   return (
-    <div ref={pageScroll} className="h-full overflow-y-auto">
+    <div ref={pageScroll} className="h-full overflow-y-auto" aria-busy={loading}>
       <div className="p-2 pb-8 sm:p-3">
-        {/* Filters always last. From `md` the key sits just before it on the
-            one row (from `xl` when both keys show); below that it takes a
-            second row of its own, at the right. */}
+        {/* Controls stay on one row; only the tabs scroll when space is tight. */}
         <div className={`${shell} mb-2 flex flex-wrap items-center gap-1.5 px-2.5 py-2 sm:mb-3 sm:gap-2 sm:px-3 lg:gap-3`}>
-          <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Ranking view">
-            {SOURCES.map((source) => (
-              <button
-                key={source.key}
-                type="button"
-                aria-pressed={settings.rankingSource === source.key}
-                onClick={() => { setHighlightedId(null); update("rankingSource", source.key); }}
-                title={source.help}
-                className={`rounded-full px-2.5 py-1 text-xs font-medium transition sm:px-3.5 md:px-2.5 lg:px-3.5 ${
-                  settings.rankingSource === source.key ? segmentedSelected : segmentedIdle
-                }`}
-              >
-                {source.label}
-              </button>
-            ))}
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto overscroll-x-contain py-1.5 sm:gap-2 [scrollbar-width:none]" aria-label="Ranking tabs">
+              <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Ranking view">
+                {SOURCES.map((source) => (
+                  <button
+                    key={source.key}
+                    type="button"
+                    aria-pressed={settings.rankingSource === source.key}
+                    onClick={() => { setHighlightedId(null); update("rankingSource", source.key); }}
+                    title={source.help}
+                    className={`rounded-full px-1.5 py-1 text-xs font-medium transition sm:px-2 lg:px-3.5 ${
+                      settings.rankingSource === source.key ? segmentedSelected : segmentedIdle
+                    }`}
+                  >
+                    {source.label}
+                  </button>
+                ))}
+              </div>
+              <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Divisions shown">
+                {FILTERS.map((f) => (
+                  <button
+                    key={f.key}
+                    type="button"
+                    aria-pressed={view === f.key}
+                    onClick={() => { setHighlightedId(null); setView(f.key); }}
+                    className={`rounded-full px-1 py-1 text-xs font-medium transition sm:px-2 lg:px-3.5 ${
+                      view === f.key ? segmentedSelected : segmentedIdle
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+              <FeaturesMenu
+                features={features}
+                onChange={(next) => {
+                  if (!next.hoverResults) setHighlightedId(null);
+                  setFeatures(next);
+                }}
+                dateMode={settings.dateMode}
+                onDateMode={(mode) => update("dateMode", mode)}
+                divisionOrder={settings.divisionOrder}
+                onDivisionOrder={(order) => update("divisionOrder", order)}
+                legend={<>{activityKey}{features.hoverResults ? <OpponentKey /> : null}{updated}</>}
+                historical={historical}
+              />
+              <RankingsDateControl selectedDate={selectedDate} today={today} onView={selectDate} />
+            </div>
           </div>
-          <div className={`${segmentedGroup} ml-auto shrink-0 p-0.5 sm:p-1 ${wideKey ? "xl:ml-0" : "md:ml-0"}`} role="group" aria-label="Divisions shown">
-            {FILTERS.map((f) => (
-              <button
-                key={f.key}
-                type="button"
-                aria-pressed={view === f.key}
-                onClick={() => { setHighlightedId(null); setView(f.key); }}
-                className={`rounded-full px-2.5 py-1 text-xs font-medium transition sm:px-3.5 md:px-2.5 lg:px-3.5 ${
-                  view === f.key ? segmentedSelected : segmentedIdle
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-          <div className={`order-last flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 ${
-            wideKey ? "xl:order-none xl:ml-auto xl:basis-auto xl:whitespace-nowrap" : "md:order-none md:ml-auto md:basis-auto md:whitespace-nowrap"
+          <div className={`flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 ${
+            wideKey ? "xl:basis-auto" : "lg:basis-auto"
           }`}>
-            {features.activityColors ? activityKey : null}
-            {features.hoverResults ? <OpponentKey compact /> : null}
+            {activeFeatures.activityColors ? activityKey : null}
+            {activeFeatures.hoverResults ? <OpponentKey compact /> : null}
             {/* Both keys fill a phone's row; the Filters menu still shows the time. */}
             {wideKey ? <span className="hidden sm:inline">{updated}</span> : updated}
+            {historical && data?.as_of ? <span aria-live="polite">
+              Published {formatDate(data.as_of)} · {data.source === "media" ? "Media" : "Meta"}
+              {data.source !== displayedSource ? " (before Meta rankings began)" : ""}
+            </span> : null}
           </div>
-          <FeaturesMenu
-            features={features}
-            onChange={(next) => {
-              if (!next.hoverResults) setHighlightedId(null);
-              setFeatures(next);
-            }}
-            dateMode={settings.dateMode}
-            onDateMode={(mode) => update("dateMode", mode)}
-            divisionOrder={settings.divisionOrder}
-            onDivisionOrder={(order) => update("divisionOrder", order)}
-            legend={<>{activityKey}{features.hoverResults ? <OpponentKey /> : null}{updated}</>}
-          />
         </div>
 
-        <div
+        {error && divisions ? <div role="alert" className="mb-2 text-xs text-zinc-500">Could not update rankings. Showing the last loaded list.</div> : null}
+        {loading && divisions ? <span role="status" className="sr-only">Loading rankings…</span> : null}
+        {loading && !divisions ? <div role="status" className="appear-late p-8 text-center text-sm text-zinc-400">Loading rankings…</div>
+          : error && !divisions ? <div role="alert" className="p-8 text-center text-sm text-zinc-500">Could not load rankings. Try another date or reload.</div>
+          : !divisions?.length ? <div className="p-8 text-center text-sm text-zinc-500">{historical
+            ? "No published rankings are available on or before this date."
+            : "Rankings not available yet — first sync may still be running."}</div>
+          : !shown.length ? <div className="p-8 text-center text-sm text-zinc-500">No rankings for these divisions on this date.</div>
+          : <div
           className={
             centerFilteredCards
               ? "flex flex-wrap justify-center gap-2 sm:gap-3"
@@ -694,13 +749,13 @@ export default function RankingsPage() {
                 key={d.division}
                 className="w-full sm:w-[calc(50%_-_0.375rem)] lg:w-[calc(33.333%_-_0.5rem)] 2xl:w-[calc(25%_-_0.5625rem)]"
               >
-                <DivisionCard division={d} features={activeFeatures} source={settings.rankingSource} highlightedFighter={highlightedFighter} onHighlight={setHighlightedId} tapResults={tapResults} targeted={d.division === targeted} />
+                <DivisionCard division={d} features={activeFeatures} source={displayedSource} highlightedFighter={highlightedFighter} onHighlight={setHighlightedId} tapResults={tapResults} targeted={d.division === targeted} at={displayedDate ?? undefined} />
               </div>
             ) : (
-              <DivisionCard key={d.division} division={d} features={activeFeatures} source={settings.rankingSource} highlightedFighter={highlightedFighter} onHighlight={setHighlightedId} tapResults={tapResults} targeted={d.division === targeted} />
+              <DivisionCard key={d.division} division={d} features={activeFeatures} source={displayedSource} highlightedFighter={highlightedFighter} onHighlight={setHighlightedId} tapResults={tapResults} targeted={d.division === targeted} at={displayedDate ?? undefined} />
             )
           ))}
-        </div>
+        </div>}
       </div>
     </div>
   );

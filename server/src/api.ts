@@ -29,7 +29,7 @@ import { HttpObservability } from "./observability.ts";
 import { createRepairRunner } from "./repair-guard.ts";
 import { publicApi, cachePolicy, canonicalApiKey, clientAddress, RateLimiter } from "./api-policy.ts";
 import { canonicalMethod, log, normName, todayIso } from "./util.ts";
-import { currentRanking, currentRankings, rankingEntering, rankingTimeline } from "./ranking-history.ts";
+import { currentRanking, currentRankings, rankingEntering, rankingSnapshot, rankingTimeline } from "./ranking-history.ts";
 import { bugReport, runBugAction } from "./bugs.ts";
 import { AdminStore } from "./admins.ts";
 import { createAdminHandler, type AdminLiveFight } from "./admin-http.ts";
@@ -44,7 +44,7 @@ import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEven
 import { BackgroundRefresh } from "./background-refresh.ts";
 import { VersionCache } from "./version-cache.ts";
 import { fuzzyScore, fuzzyTarget, splitMatchup, type FuzzyTarget } from "./fuzzy.ts";
-import type { RankingType } from "./scrape/ufccom.ts";
+import { WEIGHT_LIMITS, type RankingType } from "./scrape/ufccom.ts";
 import { getStats } from "./stats.ts";
 import { titleNarratives } from "./titles.ts";
 import { fighterBoard, fighterRecords } from "./records.ts";
@@ -1127,7 +1127,11 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
   return profile;
 }
 
-export function getFighterPreview(id: string): unknown | null {
+const dayAfter = (date: string) => new Date(Date.parse(date) + 86_400_000).toISOString().slice(0, 10);
+const validPastDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(date))
+  && new Date(date).toISOString().slice(0, 10) === date && date <= todayIso();
+
+export function getFighterPreview(id: string, date?: string): unknown | null {
   const fighter = prepared("SELECT id, name, nickname, wins, losses, draws, photo_url FROM fighters WHERE id = ?").get(id) as any;
   const indexed = fightIndex().fighters.get(id);
   if (!fighter || !indexed?.ufcBouts.length) return null;
@@ -1146,18 +1150,19 @@ export function getFighterPreview(id: string): unknown | null {
     source_url: fight.source_url ?? null,
     ufc: fight.promotion !== "outside",
   });
-  const upcoming = localHistory
+  const upcoming = date ? [] : localHistory
     .filter((fight) => fight.upcoming && fight.date >= todayIso())
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 1)
     .map(mapFight);
   const completed = professionalHistory(id, localHistory)
-    .filter((fight) => !fight.upcoming && fight.date <= todayIso());
+    .filter((fight) => !fight.upcoming && fight.date <= (date ?? todayIso()));
+  const historicalRecord = date ? completeRecordBefore(fightIndex(), id, dayAfter(date)) : null;
   return {
     id: fighter.id,
     name: fighter.name,
     nickname: fighter.nickname,
-    record: fighterSummary(fighter.id, fighter.name).record,
+    record: date ? (historicalRecord ? recordText(historicalRecord) : "") : fighterSummary(fighter.id, fighter.name).record,
     photo_url: cachedPhotoUrl(fighter.id, fighter.photo_url),
     upcoming,
     // A booking is separate: it must never displace one of the last five results.
@@ -1207,9 +1212,104 @@ function opponentResults(bouts: { opponentId?: string | null; outcome: string }[
   return results;
 }
 
+/** Activity and opponent records evaluated at the end of the requested day. */
+function rankingActivity(fighterId: string, date: string, division: string,
+  divisionOpponentIds: Set<string>, selectedRankedIds: Set<string>, rankedIds: Set<string>, next: any = null) {
+  if (!fighterId) return { status: "unknown" };
+  const index = fightIndex();
+  const completed = professionalBouts(index, fighterId)
+    .filter((bout) => bout.date <= date);
+  const last = completed.at(-1) ?? null;
+  const daysSince = last?.date ? Math.round((Date.parse(date) - Date.parse(last.date)) / 86400000) : null;
+  let status = "normal";
+  if (next) status = "scheduled";
+  else if (daysSince != null && daysSince <= ACTIVE_WINDOW_DAYS) status = "active";
+  // No contests do not start or end a sporting streak.
+  const decided = completed.filter((bout) => bout.outcome !== "nc");
+  const latestOutcome = decided.at(-1)?.outcome ?? null;
+  let streakCount = 0;
+  if (latestOutcome) {
+    for (let i = decided.length - 1; i >= 0; i--) {
+      if (decided[i].outcome !== latestOutcome) break;
+      streakCount += 1;
+    }
+  }
+  const streakSuffix: Record<string, string> = { win: "W", loss: "L", draw: "D", nc: "NC" };
+  const top15Record = division.includes("Pound-for-Pound") ? null : { wins: 0, losses: 0, draws: 0 };
+  const rankedRecord = { wins: 0, losses: 0, draws: 0 };
+  for (const bout of completed) {
+    if (!bout.opponentId || bout.opponentId === fighterId) continue;
+    const result = bout.outcome === "win" ? "wins" : bout.outcome === "loss" ? "losses" : bout.outcome === "draw" ? "draws" : null;
+    if (!result) continue;
+    if (top15Record && divisionOpponentIds.has(bout.opponentId)) top15Record[result]++;
+    if (selectedRankedIds.has(bout.opponentId)) rankedRecord[result]++;
+  }
+  return {
+    status,
+    top15_record: top15Record,
+    ranked_record: rankedRecord,
+    last_fight_date: last?.date ?? null,
+    last_fight_opponent: last?.opponentName ?? null,
+    last_fight_outcome: last?.outcome ?? null,
+    days_since: daysSince,
+    next_fight: next ?? null,
+    current_streak: latestOutcome && streakCount
+      ? { count: streakCount, outcome: latestOutcome, label: `${streakCount}${streakSuffix[latestOutcome] ?? ""}` }
+      : null,
+    // The last five professional results, oldest first, drawn as the
+    // card view's dots.
+    form: completed.slice(-5).map((bout) => ({ outcome: bout.outcome, method: canonicalMethod(bout.method), ufc: bout.isUfc })),
+    // Each distinct result against a ranked opponent, ordered by when
+    // it last happened: a rematch moves its result to the end.
+    opponent_history: opponentResults(completed, rankedIds),
+  };
+}
+
+export function getHistoricalRankings(rankingType: RankingType, date: string) {
+  const snapshot = rankingSnapshot(rankingType, date);
+  const lists = [snapshot];
+  // Keep the current view's Media P4P fallback, using its own dated snapshot.
+  if (snapshot.source === "meta") {
+    const media = rankingSnapshot("media", date);
+    lists.push({ ...media, rows: media.rows.filter(row => row.division.includes("Pound-for-Pound")
+      && !snapshot.rows.some(own => own.division === row.division)) });
+  }
+  const rows = lists.flatMap(list => list.rows);
+  const rankedIds = new Set(rows.filter(row => row.fighter_id).map(row => row.fighter_id));
+  const top15 = (row: typeof rows[number]) => row.fighter_id && (row.rank === "C" || row.rank === "IC"
+    || (Number(row.rank) >= 1 && Number(row.rank) <= 15));
+  const selectedRankedIds = new Set(rows.filter(top15).map(row => row.fighter_id));
+  const index = fightIndex();
+  const through = dayAfter(date);
+  return {
+    updated_at: null, as_of: snapshot.as_of, source: snapshot.source,
+    divisions: lists.flatMap(list => [...new Set(list.rows.map(row => row.division))].map(division => {
+      const entries = list.rows.filter(row => row.division === division);
+      const divisionOpponentIds = new Set(entries.filter(top15).map(row => row.fighter_id));
+      const holders = index.holdersBefore(division, through);
+      return {
+        division, weight_limit: WEIGHT_LIMITS[division.replace(/^Women's /, "")] ?? "",
+        source: list.source, as_of: list.as_of,
+        entries: entries.map(row => {
+          const record = row.fighter_id ? completeRecordBefore(index, row.fighter_id, through) : null;
+          return {
+            rank: row.rank, name: row.fighter_name,
+            fighter_id: row.profile_eligible ? row.fighter_id : null,
+            photo_url: cachedPhotoUrl(row.fighter_id, row.photo_url),
+            is_interim_champion: row.rank === "IC" || (row.rank !== "C" && holders.interim === row.fighter_id),
+            rank_change: row.rank_change, record: record ? recordText(record) : "",
+            // Bookings have no announcement-date archive, so they cannot be
+            // reconstructed safely. Results and activity use the selected day.
+            activity: rankingActivity(row.fighter_id, date, division, divisionOpponentIds, selectedRankedIds, rankedIds),
+          };
+        }),
+      };
+    })),
+  };
+}
+
 export function getRankings(rankingType: RankingType): unknown {
   const today = todayIso();
-  const index = fightIndex();
   const activeInterimChampions = new Map<string, string>();
   const completedTitleFights = prepared(`
     SELECT f.*, e.date AS event_date
@@ -1287,56 +1387,10 @@ export function getRankings(rankingType: RankingType): unknown {
        * one only for a pound-for-pound list borrowed into the meta view. */
       source: d.source,
       entries: entries.map((e) => {
-        let activity: Record<string, unknown> = { status: "unknown" };
-        if (e.fighter_id) {
-          const completed = professionalBouts(index, e.fighter_id)
-            .filter((bout) => bout.date <= today);
-          const last = completed.at(-1) ?? null;
-          const next = nextFightStmt.get(e.fighter_id, e.fighter_id, e.fighter_id, e.fighter_id, today) as any;
-          const daysSince = last?.date ? Math.round((Date.parse(today) - Date.parse(last.date)) / 86400000) : null;
-          let status = "normal";
-          if (next) status = "scheduled";
-          else if (daysSince != null && daysSince <= ACTIVE_WINDOW_DAYS) status = "active";
-          // No contests do not start or end a sporting streak.
-          const decided = completed.filter((bout) => bout.outcome !== "nc");
-          const latestOutcome = decided.at(-1)?.outcome ?? null;
-          let streakCount = 0;
-          if (latestOutcome) {
-            for (let i = decided.length - 1; i >= 0; i--) {
-              if (decided[i].outcome !== latestOutcome) break;
-              streakCount += 1;
-            }
-          }
-          const streakSuffix: Record<string, string> = { win: "W", loss: "L", draw: "D", nc: "NC" };
-          const top15Record = d.division.includes("Pound-for-Pound") ? null : { wins: 0, losses: 0, draws: 0 };
-          const rankedRecord = { wins: 0, losses: 0, draws: 0 };
-          for (const bout of completed) {
-            if (!bout.opponentId || bout.opponentId === e.fighter_id) continue;
-            const result = bout.outcome === "win" ? "wins" : bout.outcome === "loss" ? "losses" : bout.outcome === "draw" ? "draws" : null;
-            if (!result) continue;
-            if (top15Record && divisionOpponentIds.has(bout.opponentId)) top15Record[result]++;
-            if (selectedRankedIds.has(bout.opponentId)) rankedRecord[result]++;
-          }
-          activity = {
-            status,
-            top15_record: top15Record,
-            ranked_record: rankedRecord,
-            last_fight_date: last?.date ?? null,
-            last_fight_opponent: last?.opponentName ?? null,
-            last_fight_outcome: last?.outcome ?? null,
-            days_since: daysSince,
-            next_fight: next ?? null,
-            current_streak: latestOutcome && streakCount
-              ? { count: streakCount, outcome: latestOutcome, label: `${streakCount}${streakSuffix[latestOutcome] ?? ""}` }
-              : null,
-            // The last five professional results, oldest first, drawn as the
-            // card view's dots.
-            form: completed.slice(-5).map((bout) => ({ outcome: bout.outcome, method: canonicalMethod(bout.method), ufc: bout.isUfc })),
-            // Each distinct result against a ranked opponent, ordered by when
-            // it last happened: a rematch moves its result to the end.
-            opponent_history: opponentResults(completed, rankedIds),
-          };
-        }
+        const next = e.fighter_id
+          ? nextFightStmt.get(e.fighter_id, e.fighter_id, e.fighter_id, e.fighter_id, today) : null;
+        const activity = rankingActivity(e.fighter_id, today, d.division,
+          divisionOpponentIds, selectedRankedIds, rankedIds, next);
         return {
           rank: e.rank,
           is_interim_champion: e.rank === "IC"
@@ -2076,8 +2130,19 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
     return hasUfcFight(id) ? fighterBoard(id, url.searchParams.get("scope") ?? "ufc", Number(url.searchParams.get("minBouts") ?? 0)) ?? undefined : undefined;
   }
   if (p.startsWith("/api/fighters/")) return await getFighter(id, rankingType) ?? undefined;
-  if (p.startsWith("/api/previews/")) return getFighterPreview(id) ?? undefined;
-  if (p === "/api/rankings") return { updated_at: syncedAt("rankings_synced_at"), divisions: getRankings(rankingType) };
+  if (p.startsWith("/api/previews/")) {
+    const date = url.searchParams.get("date");
+    if (date !== null && !validPastDate(date)) return undefined;
+    return getFighterPreview(id, date ?? undefined) ?? undefined;
+  }
+  if (p === "/api/rankings") {
+    const date = url.searchParams.get("date");
+    if (date !== null) {
+      if (!validPastDate(date)) return undefined;
+      return getHistoricalRankings(rankingType, date);
+    }
+    return { updated_at: syncedAt("rankings_synced_at"), divisions: getRankings(rankingType) };
+  }
   if (p === "/api/stats") return getStats(url.searchParams);
   if (p === "/api/roster") return rosterView();
   if (p === "/api/matchmaking") return matchmaking();
