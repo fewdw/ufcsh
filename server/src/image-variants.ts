@@ -15,6 +15,17 @@ const QUALITY = { tiny: 40, small: 72 } as const;
 
 const pending = new Map<string, Promise<Buffer>>();
 
+/** UFC headshots normally fill a 520×325 canvas. Some originals are square,
+ * with empty space below the shoulders; keep the same top-aligned framing. */
+export async function normalizeHeadshot(source: Buffer): Promise<Buffer | null> {
+  const image = sharp(source, { limitInputPixels: 20_000_000 });
+  const { width, height } = await image.metadata();
+  if (!width || !height) return null;
+  const framedHeight = Math.round(width * 325 / 520);
+  if (height <= framedHeight) return null;
+  return image.extract({ left: 0, top: 0, width, height: framedHeight }).png().toBuffer();
+}
+
 export function variantPath(originalPath: string, size: ImageSize): string {
   if (!originalPath.endsWith(".img")) throw new Error("Expected a cached image path");
   return `${originalPath.slice(0, -4)}.${size}.webp`;
