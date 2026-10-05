@@ -459,9 +459,15 @@ function FeaturesMenu({
   onDivisionOrder,
   legend,
   historical,
+  selectedDate,
+  today,
+  onViewDate,
 }: {
   legend: ReactNode;
   historical: boolean;
+  selectedDate: string | null;
+  today: string;
+  onViewDate: (date: string | null) => void;
   features: RankingFeatures;
   onChange: (features: RankingFeatures) => void;
   dateMode: DateMode;
@@ -474,7 +480,11 @@ function FeaturesMenu({
   const options = FEATURE_OPTIONS.filter((option) => option.key !== "hoverHistory" || canPreview);
   const enabledCount = options.filter((option) => features[option.key]).length;
   return (
-    <OptionsSheet label="Filters" count={`${enabledCount}/${options.length}`} onReset={() => onChange(DEFAULT_FEATURES)} iconOnlyOnPhone="lg">
+    <OptionsSheet label="Filters" count={`${enabledCount}/${options.length}`} onReset={() => {
+      onChange(DEFAULT_FEATURES);
+      if (selectedDate !== null) onViewDate(null);
+    }} iconOnlyOnPhone="lg">
+      {close => <>
       {/* The key to every mark in the lists, whichever are switched on. */}
       <div className="mb-1 space-y-1.5 border-b border-zinc-100 px-4 pb-3 pt-3 text-[11px] text-zinc-500">
         {/* Last 5: shape is where, fill how it ended, colour the result. */}
@@ -522,7 +532,7 @@ function FeaturesMenu({
           </fieldset>
         ))}
       </div>
-      <div className="mt-1 grid grid-cols-2 gap-2 border-t border-zinc-100 px-4 py-3">
+      <div className="mt-1 grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] items-start gap-2 border-t border-zinc-100 px-4 py-3">
         <SheetField label="Division order">
           <select value={divisionOrder} onChange={(event) => onDivisionOrder(event.target.value as DivisionOrder)} className={SHEET_SELECT}>
             <option value="light">Lightest first</option>
@@ -535,7 +545,10 @@ function FeaturesMenu({
             <option value="date">Calendar</option>
           </select>
         </SheetField>
+        <RankingsDateControl variant="field" selectedDate={selectedDate} today={today}
+          onView={date => { onViewDate(date); close(); }} />
       </div>
+      </>}
     </OptionsSheet>
   );
 }
@@ -661,11 +674,11 @@ export default function RankingsPage() {
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto" aria-busy={loading}>
       <div className="p-2 pb-8 sm:p-3">
-        {/* Controls stay on one row; only the tabs scroll when space is tight. */}
-        <div className={`${shell} mb-2 flex flex-wrap items-center gap-1.5 px-2.5 py-2 sm:mb-3 sm:gap-2 sm:px-3 lg:gap-3`}>
-          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-            <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto overscroll-x-contain py-1.5 sm:gap-2 [scrollbar-width:none]" aria-label="Ranking tabs">
-              <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Ranking view">
+        {/* Division tabs sit before Filters; phone tabs scroll when space is tight. */}
+        <div className={`${shell} mb-2 flex flex-wrap items-center gap-2 px-2.5 py-2.5 sm:mb-3 sm:px-3 sm:py-3 lg:gap-3`}>
+          <div className="flex min-w-0 flex-1 items-center gap-3 lg:contents">
+            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto overscroll-x-contain py-1.5 [scrollbar-width:none] lg:contents" aria-label="Ranking tabs">
+              <div className={`${segmentedGroup} shrink-0 p-1`} role="group" aria-label="Ranking view">
                 {SOURCES.map((source) => (
                   <button
                     key={source.key}
@@ -673,7 +686,7 @@ export default function RankingsPage() {
                     aria-pressed={settings.rankingSource === source.key}
                     onClick={() => { setHighlightedId(null); update("rankingSource", source.key); }}
                     title={source.help}
-                    className={`rounded-full px-1.5 py-1 text-xs font-medium transition sm:px-2 lg:px-3.5 ${
+                    className={`rounded-full px-2 py-1 text-xs font-medium transition sm:px-3 lg:px-3.5 ${
                       settings.rankingSource === source.key ? segmentedSelected : segmentedIdle
                     }`}
                   >
@@ -681,14 +694,14 @@ export default function RankingsPage() {
                   </button>
                 ))}
               </div>
-              <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Divisions shown">
+              <div className={`${segmentedGroup} ml-auto shrink-0 p-1 lg:order-1`} role="group" aria-label="Divisions shown">
                 {FILTERS.map((f) => (
                   <button
                     key={f.key}
                     type="button"
                     aria-pressed={view === f.key}
                     onClick={() => { setHighlightedId(null); setView(f.key); }}
-                    className={`rounded-full px-1 py-1 text-xs font-medium transition sm:px-2 lg:px-3.5 ${
+                    className={`rounded-full px-1.5 py-1 text-xs font-medium transition min-[375px]:px-2 sm:px-3 lg:px-3.5 ${
                       view === f.key ? segmentedSelected : segmentedIdle
                     }`}
                   >
@@ -697,7 +710,7 @@ export default function RankingsPage() {
                 ))}
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2 lg:order-last">
               <FeaturesMenu
                 features={features}
                 onChange={(next) => {
@@ -710,13 +723,13 @@ export default function RankingsPage() {
                 onDivisionOrder={(order) => update("divisionOrder", order)}
                 legend={<>{activityKey}{features.hoverResults ? <OpponentKey /> : null}{updated}</>}
                 historical={historical}
+                selectedDate={selectedDate}
+                today={today}
+                onViewDate={selectDate}
               />
-              <RankingsDateControl selectedDate={selectedDate} today={today} onView={selectDate} />
             </div>
           </div>
-          <div className={`flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 ${
-            wideKey ? "xl:basis-auto" : "lg:basis-auto"
-          }`}>
+          <div className="flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 lg:max-w-[60%] lg:basis-auto">
             {activeFeatures.activityColors ? activityKey : null}
             {activeFeatures.hoverResults ? <OpponentKey compact /> : null}
             {/* Both keys fill a phone's row; the Filters menu still shows the time. */}
