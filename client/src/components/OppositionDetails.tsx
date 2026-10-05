@@ -40,7 +40,7 @@ function OpponentHistory({ row, close }: { row: Opposition["rows"][number]; clos
     </div>
     <p className="mb-2 text-[11px] text-zinc-500">{row.opponent.name}’s UFC opponents before {formatDate(row.date)}{row.record.ncs ? ` · ${row.record.ncs} NC` : ""}</p>
     <ResultFilter value={filter} change={setFilter} label={`${row.opponent.name}'s results`} />
-    {!history.length ? <p className="pt-3 text-xs text-zinc-500">{row.history.length ? "No fights for this result." : "No earlier UFC fights."}</p> : <ul className="mt-2 divide-y divide-zinc-200">
+    {!history.length ? <p className="pt-3 text-xs text-zinc-500">{row.history.length ? "No fights for this result." : "No earlier UFC fights."}</p> : <ul className="mt-2 divide-y divide-zinc-200 dark:divide-zinc-700">
       {history.map((bout, index) => <li key={bout.fight_id ?? `${bout.date}-${index}`} className="flex items-start gap-2 py-2 text-xs">
         <Result outcome={bout.outcome} />
         <div className="min-w-0 flex-1">
