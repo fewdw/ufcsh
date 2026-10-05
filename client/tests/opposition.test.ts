@@ -22,12 +22,31 @@ test("flat rows filter the opponents' results and retain the selected fighter's 
   ]);
   const wins = oppositionRows(opposition, "win");
   assert.deepEqual(wins.map(row => [row.bout.opponent.name, row.bout.outcome, row.meeting.opponent.name, row.meeting.outcome]), [
-    ["E", "win", "D", "win"], ["B", "win", "A", "loss"],
+    ["B", "win", "A", "loss"], ["E", "win", "D", "win"],
   ]);
-  assert.equal(wins[0].bout.fight_id, null);
+  assert.equal(wins[1].bout.fight_id, null);
   const losses = oppositionRows(opposition, "loss");
   assert.deepEqual(losses.map(row => [row.bout.opponent.name, row.bout.outcome, row.meeting.outcome]), [["C", "loss", "loss"]]);
   assert.equal(opposition.rows[0].history.length, 2);
+});
+
+test("both modes group by recent meetings before sorting each opponent's history", () => {
+  const evidence = [
+    history("early-win", "2022-01-01", "win", "B"), history("late-win", "2023-01-01", "win", "C"),
+    history("early-loss", "2022-02-01", "loss", "D"), history("late-loss", "2023-02-01", "loss", "E"),
+  ];
+  const opposition = data([
+    { ...meeting("older", "A", "win", evidence.map(bout => ({ ...bout, date: "2024-01-01" }))), date: "2024-02-01" },
+    { ...meeting("newer", "F", "loss", evidence), date: "2025-02-01" },
+    { ...meeting("same-day", "G", "win", evidence), date: "2025-02-01" },
+  ]);
+  for (const outcome of ["win", "loss"] as const) {
+    const rows = oppositionRows(opposition, outcome);
+    assert.deepEqual(rows.map(row => row.meeting.fight_id), ["newer", "newer", "same-day", "same-day", "older", "older"]);
+    assert.deepEqual(rows.slice(0, 2).map(row => row.bout.fight_id), [`late-${outcome}`, `early-${outcome}`]);
+  }
+  assert.deepEqual(opposition.rows.map(row => row.fight_id), ["older", "newer", "same-day"]);
+  assert.equal(opposition.rows[1].history[0].fight_id, "early-win");
 });
 
 test("rematches preserve both attributions and empty opposition produces an empty list", () => {
