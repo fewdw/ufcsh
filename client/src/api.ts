@@ -415,6 +415,14 @@ export type RankingArchive = {
   lists: { date: string; entries: [rank: string, fighter: number][] }[];
 };
 
+export type CareerRosterEvent = {
+  date: string;
+  kind: "signed" | "released" | "retired" | "departed";
+  reason: string | null;
+  source_url: string;
+  observed: boolean;
+};
+
 export type FighterProfile = {
   refreshing?: boolean;
   id: string;
@@ -443,6 +451,7 @@ export type FighterProfile = {
   career_stats: CareerTotals;
   /** Every verified professional bout; UFC rows retain their richer local data. */
   pro_history: ProfessionalHistoryRow[];
+  roster_events?: CareerRosterEvent[];
   /** UFC-only history, including verified source-only UFC rows. */
   history: (HistoryRow | ProfessionalHistoryRow)[];
 };
