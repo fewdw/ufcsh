@@ -78,7 +78,7 @@ function OppositionModal({ id, fighters, before, close }: { id: string; fighters
       </div>
       <div role="group" aria-label="Fighter" className={`${segmentedGroup} mt-2 w-fit max-w-full`}>
         {fighters.map((fighter, index) => <button key={fighter.id} type="button" aria-pressed={selected === index} onClick={() => setSelected(index)}
-          className={`min-h-8 min-w-0 flex-1 rounded-full px-3 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${selected === index ? segmentedSelected : segmentedIdle}`}>{fighter.name}</button>)}
+          className={`min-h-8 min-w-0 flex-auto rounded-full px-3 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${selected === index ? segmentedSelected : segmentedIdle}`}>{fighter.name}</button>)}
       </div>
     </div>
     <section aria-label={`${fighters[selected].name}: opposition`} className="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-5">
