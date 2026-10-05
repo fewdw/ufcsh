@@ -87,3 +87,16 @@ test("same-day reports place signings before a fight and releases after it", () 
   assert.equal(careerBands([bout("2024-01-01")], [report("2024-01-01", "released")])[0][0].label, "Cut from UFC");
   assert.equal(careerBands([bout("2024-01-01")], [report("2024-01-02", "signed", true)]).flat().length, 1);
 });
+
+test("the shared timeline identifies unknown fields and clears them with sourced reports", () => {
+  const rows = [bout("2025-01-01", "Bellator 1", "outside"), bout("2024-01-01"), bout("2023-01-01", "LFA 1", "outside")];
+  const unknown = careerBands(rows).flat();
+  assert.deepEqual(unknown.find(band => band.signing)?.unknown, ["signing_date"]);
+  assert.deepEqual(unknown.find(band => !band.signing)?.unknown, ["departure_date", "departure_reason"]);
+  assert.ok(careerBands(rows, [report("2023-12-01"), report("2024-12-01", "released")]).flat().every(band => !band.unknown?.length));
+  assert.deepEqual(careerBands([], [report("2024-01-01", "signed", true)])[0][0].unknown, ["signing_date"]);
+  assert.deepEqual(careerBands([], [report("2024-01-01", "departed", true)])[0][0].unknown, ["departure_date", "departure_reason"]);
+  assert.deepEqual(careerBands([], [report("2024-01-01", "departed")])[0][0].unknown, ["departure_reason"]);
+  assert.deepEqual(careerBands([], [{ ...report("2024-01-01", "departed"), reason: "Contract not renewed" }])[0][0].unknown, []);
+  assert.deepEqual(careerBands([bout("1993-01-01")])[1][0].unknown, []);
+});

@@ -56,3 +56,34 @@ test("the admin board surfaces retained evidence with a missing source or identi
     else setMeta("roster_history", saved);
   }
 });
+
+test("profile timeline unknowns appear with research context and disappear after manual evidence is added", () => {
+  const saved = getMeta("roster_history"), revision = getMeta("roster_history_revision");
+  try {
+    const initial = bugReport().checks.find(check => check.id === "roster-history")!;
+    // The backlog must stay searchable past the usual thousand-item cap.
+    assert.equal(initial.items.length, initial.total);
+    const signing = initial.items.find(item => item.title === "Charles Oliveira" && item.subtitle?.includes("unknown exact signing date"))!;
+    assert.ok(signing);
+    assert.ok(signing.facts.some(([label, value]) => label === "Next fight" && value.includes("Darren Elkins")));
+    assert.ok(signing.links.some(link => link.internal && link.href === "/fighters/07225ba28ae309b6"));
+    const departure = initial.items.find(item => item.title === "Andrei Arlovski" && item.subtitle?.startsWith("Last UFC fight"))!;
+    assert.ok(departure.facts.some(([label, value]) => label === "Previous fight" && value.includes("Jake O'Brien")));
+    assert.match(departure.subtitle!, /departure date, departure reason/);
+    assert.ok(initial.items.some(item => item.title === "Robbie Lawler" && item.subtitle?.startsWith("Returned to UFC")));
+    assert.equal(initial.items.some(item => item.title === "Yoel Romero" && item.subtitle?.startsWith("Last UFC fight")), false);
+
+    archiveRosterEvents([
+      { name: "Charles Oliveira", date: "2010-07-01", kind: "signed", reason: null, source_url: "https://www.ufc.com/test-signing-evidence", observed: false },
+      { name: "Andrei Arlovski", date: "2008-05-01", kind: "departed", reason: "Contract not renewed", source_url: "https://www.ufc.com/test-departure-evidence", observed: false },
+    ]);
+    const after = bugReport().checks.find(check => check.id === "roster-history")!;
+    assert.equal(after.items.some(item => item.key === signing.key), false);
+    assert.equal(after.items.some(item => item.key === departure.key), false);
+  } finally {
+    for (const [key, value] of [["roster_history", saved], ["roster_history_revision", revision]]) {
+      if (value === null) db.prepare("DELETE FROM meta WHERE key = ?").run(key);
+      else setMeta(key!, value!);
+    }
+  }
+});

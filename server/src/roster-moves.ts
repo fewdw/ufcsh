@@ -27,15 +27,36 @@ function reportedRosterEvents(changes: RosterChanges): RosterHistoryEvent[] {
 /** Only link evidence to an unambiguously matched profile. Current reports
  * also work before the first sync after deployment has archived them. */
 export function fighterRosterEvents(fighterId: string): RosterHistoryEvent[] {
-  return [...storedRosterHistory(), ...reportedRosterEvents(storedRosterMoves()),
+  return rosterEventsByFighter().get(fighterId) ?? [];
+}
+
+/** Resolve source names once for bulk audits, using the same profile identity
+ * matching as an individual profile. Never attach a report to a namesake. */
+export function rosterEventsByFighter(): Map<string, RosterHistoryEvent[]> {
+  const byFighter = new Map<string, RosterHistoryEvent[]>();
+  const byName = new Map<string, string | null>();
+  const add = (id: string, event: RosterHistoryEvent) => {
+    const events = byFighter.get(id) ?? [];
+    events.push(event);
+    byFighter.set(id, events);
+  };
+  const reports = [...storedRosterHistory(), ...reportedRosterEvents(storedRosterMoves()),
     ...ufcSignings().map(signing => ({ ...signing, kind: "signed" as const, reason: null,
       source_url: "https://www.ufc.com/athletes/all", observed: true })),
-  ].filter(event => rosterMoveFighter(event.name) === fighterId).concat(
-    ufcDepartures().filter(move => move.fighter_id === fighterId).map(move => ({
-      name: "", date: new Date(move.left_at).toISOString().slice(0, 10), kind: "departed" as const,
+  ];
+  for (const event of reports) {
+    const name = normName(event.name);
+    if (!byName.has(name)) byName.set(name, rosterMoveFighter(event.name));
+    const id = byName.get(name);
+    if (id) add(id, event);
+  }
+  for (const move of ufcDepartures()) {
+    add(move.fighter_id, {
+      name: "", date: new Date(move.left_at).toISOString().slice(0, 10), kind: "departed",
       reason: "Athlete status changed from Active to Not Fighting", source_url: "https://www.ufc.com/athletes/all", observed: true,
-    })),
-  );
+    });
+  }
+  return byFighter;
 }
 
 // ---------------------------------------------------------------------------
