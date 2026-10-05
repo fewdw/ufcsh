@@ -185,7 +185,7 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
               <span key={tick} className={`absolute right-0 -translate-y-1/2 ${tick === "C" ? "font-semibold text-belt" : ""}`} style={{ top: `${(y(tick) / HEIGHT) * 100}%` }}>{tick}</span>
             ))}
           </div>
-          <div ref={plotRef} className="relative h-40 touch-pan-y" onPointerMove={track} onPointerDown={track} onPointerUp={release} onPointerLeave={leave} onPointerCancel={() => { keepOpen(); setHover(null); }}>
+          <div ref={plotRef} className="relative h-40 touch-none" onPointerMove={track} onPointerDown={track} onPointerUp={release} onPointerLeave={leave} onPointerCancel={() => { keepOpen(); setHover(null); }}>
             <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" role="img"
               aria-label={`${lines.map((division) => division.division).join(" and ")} ranking from ${formatDate(new Date(start).toISOString().slice(0, 10))}${best ? `; best ${held(best.rank!)} in ${best.division}` : ""}`}>
               {TICKS.map((tick) => (
