@@ -92,8 +92,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-05">October 5, 2026</time></p>
             <ul>
-              <li>Press, hold, or drag the ranking history chart to inspect past rankings and results.</li>
-              <li>The page stays still during touch gestures on the chart.</li>
+              <li>Fighter fight histories show UFC roster changes between bouts.</li>
+              <li>Contender Series event names appear in blue and wrap in full.</li>
+              <li>Admin Bugs tracks missing roster evidence for manual review.</li>
             </ul>
           </Section>
         </div>
