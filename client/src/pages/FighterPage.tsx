@@ -277,6 +277,7 @@ function boutFields(row: HistoryRow | ProfessionalHistoryRow) {
     fighterOdds: formatLine(row.closing_odds?.fighter),
     opponentOdds: formatLine(row.closing_odds?.opponent),
     outside,
+    contender: fightProgram(row.event_name) === "Contender Series",
     fightTo: row.fight_id ? `/fights/${row.fight_id}` : null,
     fightHref: "source_url" in row ? row.source_url : null,
     opponentTo: row.opponent.id ? `/fighters/${row.opponent.id}` : null,
@@ -395,7 +396,7 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
         <span className="flex min-w-0 flex-1 flex-wrap items-center">
           <FactRun>
             <span className="font-medium">{bout.method}</span>
-            <PromotionLabel row={row} move={move} />
+            {bout.contender ? null : <PromotionLabel row={row} move={move} />}
             {"rank" in row && row.rank ? <RankTag ranking={row.rank} who={fighterName} division={row.weight_class} /> : null}
             {row.title_narrative ? <span className={`font-semibold ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
             {weightMisses(row)}
@@ -426,7 +427,7 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
       >
         {/* The name takes the slack, so every date in the list lands on the
             same right edge and the column of dates can be read straight down. */}
-        <span className="min-w-0 flex-1 truncate text-xs leading-5 text-zinc-600">{row.event_name}</span>
+        <span className={`min-w-0 flex-1 break-words text-xs leading-5 ${bout.contender ? "text-cyan-700 dark:text-cyan-300" : "text-zinc-600"}`}>{row.event_name}</span>
         <span className="shrink-0 text-[11px] leading-5 tabular-nums text-zinc-400">{formatDateShortWithYear(row.date)}</span>
       </BoutLink>
     </div>
@@ -488,7 +489,7 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
       {/* A ranked division opens the rankings at its list. */}
       <DivisionCell to={bout.outside ? null : rankingsLink(row.weight_class)} className={`${cell} flex-col justify-start border-l border-zinc-100 text-left`}>
         <span className="block break-words text-[11px] leading-5 text-zinc-500">
-          <PromotionLabel row={row} move={move} />
+          {bout.contender ? null : <PromotionLabel row={row} move={move} />}
           {"rank" in row && row.rank ? <> <RankTag ranking={row.rank} who={fighterName} division={row.weight_class} /></> : null}
           {row.title_narrative ? <span className={`block font-semibold leading-4 ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
           {weightMisses(row).map((miss) => <span key={miss.key} className="mt-1 block leading-4">{miss}</span>)}
@@ -501,7 +502,7 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
         label={`Open ${row.event_name}`}
         className={`${cell} flex-col justify-start border-l border-zinc-100 text-right ${HIT}`}
       >
-        <span className="block text-xs font-medium leading-5 text-zinc-600">{row.event_name}</span>
+        <span className={`block break-words text-xs font-medium leading-5 ${bout.contender ? "text-cyan-700 dark:text-cyan-300" : "text-zinc-600"}`}>{row.event_name}</span>
         <span className="mt-0.5 block text-[11px] tabular-nums text-zinc-400">{formatDateShortWithYear(row.date)}</span>
       </BoutLink>
     </>
@@ -521,7 +522,7 @@ function HistoryRowView({ row, fighterName, move }: { row: HistoryRow | Professi
     // why it appeared at 40rem and ran straight out of the card. The result
     // track is sized to hold "KO/TKO · R5 · 1:32" and a four-figure price on
     // one line at that narrowest width, since it is the first thing read.
-    <div className={`grid grid-cols-1 items-stretch @3xl:grid-cols-[13rem_minmax(11rem,1.1fr)_7rem_minmax(12rem,1.3fr)] ${fightProgram(row.event_name) === "Contender Series" ? "border-l-2 border-cyan-500" : ""}`}>
+    <div className="grid grid-cols-1 items-stretch @3xl:grid-cols-[13rem_minmax(11rem,1.1fr)_7rem_minmax(12rem,1.3fr)]">
       <BoutCard row={row} fighterName={fighterName} move={move} />
       <BoutTableRow row={row} fighterName={fighterName} move={move} />
     </div>
