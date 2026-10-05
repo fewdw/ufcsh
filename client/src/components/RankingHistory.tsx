@@ -120,6 +120,7 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
   // pound-for-pound), and the last fight on or before it.
   const hovered = hover && lines.map((division) => ({ division: division.division, rank: rankOn(division.points, hover.at) }))
     .filter((row) => row.rank != null);
+  const activeNames = hovered?.map(row => row.division) ?? [];
   const fights = history.filter((row) => (row.promotion ?? "ufc") === "ufc" && row.outcome && !("upcoming" in row && row.upcoming))
     .map((row) => ({ row, at: time(row.date) })).filter((fight) => fight.at >= start && fight.at <= end)
     .sort((a, b) => a.at - b.at);
@@ -151,8 +152,9 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
     if (showFull) closeTimer.current = setTimeout(() => setHover(null), 150);
     else setHover(null);
   };
-  const tooltipWidth = Math.min(lines.length * 190 + 24, 600, window.innerWidth - 16);
-  const columns = Math.min(lines.length, Math.max(1, Math.floor((tooltipWidth - 24) / 160)));
+  const listCount = Math.max(1, activeNames.length);
+  const tooltipWidth = Math.min(listCount * 190 + 24, 600, window.innerWidth - 16);
+  const columns = Math.min(listCount, Math.max(1, Math.floor((tooltipWidth - 24) / 160)));
 
   return (
     <section className={PANEL}>
@@ -243,8 +245,9 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
               <span className="block text-zinc-400">{formatDate(lastFight.row.date)}{lastFight.row.method ? ` · ${lastFight.row.method}` : ""}</span>
             </span>
           ) : null}
-          {showFull ? <FullRankings date={new Date(hover.at).toISOString().slice(0, 10)} names={names}
-            archives={loaded?.urls === urls ? loaded.archives : null} fighterId={fighterId} columns={columns} /> : null}
+          {showFull && activeNames.length ? <FullRankings date={new Date(hover.at).toISOString().slice(0, 10)} names={activeNames}
+            archives={loaded?.urls === urls ? activeNames.map(name => loaded.archives[names.indexOf(name)]) : null}
+            fighterId={fighterId} columns={columns} /> : null}
         </> : null}
       </Tooltip>
     </section>
