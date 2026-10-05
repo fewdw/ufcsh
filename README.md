@@ -70,11 +70,12 @@ With Node.js 26 and npm installed, launch locally from the project folder:
 ./start
 ```
 
-The launcher installs missing or outdated dependencies, builds the frontend, and
-starts the app at http://localhost:8000. Press Ctrl+C to stop. It uses the existing
-local database and runs background syncing. If port 8000 is occupied, stop the
-existing server first. `PORT=8001 ./start` selects another port; use
-`NO_SYNC=1 PORT=8001 ./start` if another instance is already syncing the same database.
+The Linux launcher installs missing/changed dependencies and starts Node watch +
+Vite hot reload in a persistent user service. It prints this worktree's loopback
+URL; `./start stop` stops it. Run `./start ts` for a private Tailscale HTTPS URL
+you can open on your Mac/phone. Each worktree uses its own ports and data copy,
+development credentials from ignored `.env.dev`, and sync off by default.
+See [local setup and the feature workflow](docs/local-development.md).
 
 For the cheapest practical staging launch, use the [step-by-step launch guide](docs/launch.md).
 The [production details](docs/production.md) cover HTTPS, persistent storage,
@@ -110,7 +111,8 @@ npm start
 For frontend hot reload during development, run `npm run dev` from `client/`; it
 proxies API requests to the server on port 8000.
 
-For a private HTTPS dev site on this server, see [the dev environment guide](docs/dev-environment.md).
+For fast private local HTTPS previews, see [local development](docs/local-development.md).
+For the VPS Docker dev site, see [the dev environment guide](docs/dev-environment.md).
 The [project map](docs/project-map.md) says which file owns which feature, and
 [performance](docs/performance.md) holds the targets and the last load-test results.
 

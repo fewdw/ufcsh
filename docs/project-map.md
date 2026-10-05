@@ -65,6 +65,8 @@ copy of the local archive (`DATA_DIR`).
 
 `AGENTS.md` owns agent rules. `deploy/dev-review.sh` + `dev-review.ts` own the
 shared dev owner/queue; `select-dev-branch.sh` pins and verifies deployments.
+`start` + `tools/local-preview.ts` own local Node/Vite/Tailscale previews;
+`tools/new-task.sh` creates isolated local tasks. See `docs/local-development.md`.
 `tools/heavy.sh` queues/caps heavy commands; `tools/agent-session.sh` is the optional
 bounded session launcher. `deploy/build.sh` owns the bounded Docker builder.
 `.github/workflows/ci.yml` owns explicit PR checks and production releases;

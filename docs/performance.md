@@ -3,6 +3,33 @@
 Measure first, then change what the measurement points at. This page records
 the targets, how to measure against them, and the last measured results.
 
+## Local Tailscale previews (2026-10-05)
+
+Measured on the local Linux development host (31 GiB RAM), Node 26.10.0,
+with dependencies installed and a private snapshot of the VPS development archive.
+The snapshot held 8,923 indexed fights; no production data was mounted or changed.
+
+| Operation | Wall time |
+| --- | --- |
+| Previous launcher's mandatory client build (`tsc -b && vite build`) | 11.36 s |
+| First `./start ts`, including the worktree's database/image copy | 2.41 s |
+| Restart Tailscale preview with existing worktree data | 1.52 s |
+| Start loopback preview with existing data | 1.22 s |
+| Reuse healthy Tailscale preview | 0.26 s |
+
+Timings use `/usr/bin/time` around the launcher/build. Preview readiness checks
+the API `/readyz` and the Vite HTML through the configured URL; lazy page indexes
+are built on demand (first fight index: 1.55 s). Dependency installation, initial
+SSH archive transfer, and a full browser page render are outside these timings.
+The baseline is the client build component, not an end-to-end Docker deployment.
+
+Node watch + Vite remove repeated frontend builds; Tailscale Serve avoids GitHub
+runner/deployment waits. Browser verification confirmed frontend hot reload over
+WSS and development Clerk initialization. Backend source edits restarted Node.
+API/Vite listeners were loopback only; env/data/server files and an untrusted
+hostname were blocked. Each preview is capped at 2 GiB; one archive-backed service
+used about 788 MiB at inspection (not a measured peak).
+
 ## Agent workflow and deployment (2026-10-04)
 
 Baseline host: four CPU cores, 7.6 GiB RAM, 4 GiB swap. At inspection production
