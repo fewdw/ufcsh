@@ -397,6 +397,13 @@ export type RankingTimeline = {
   p4p?: { date: string; rank: string | null }[];
 };
 
+/** Shared division archive: names/identities appear once, lists only when changed. */
+export type RankingArchive = {
+  dates: string[];
+  fighters: [name: string, id: string | null][];
+  lists: { date: string; entries: [rank: string, fighter: number][] }[];
+};
+
 export type FighterProfile = {
   refreshing?: boolean;
   id: string;

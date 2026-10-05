@@ -1,13 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { IncomingMessage } from "node:http";
-import { canonicalApiKey, clientAddress, publicApi, RateLimiter } from "./api-policy.ts";
+import { cachePolicy, canonicalApiKey, clientAddress, publicApi, RateLimiter } from "./api-policy.ts";
 
 test("public caches exclude admin endpoints and preserve query distinctions", () => {
   assert.equal(publicApi("/api/bugs"), false);
   assert.equal(publicApi("/api/status"), false);
   assert.equal(publicApi("/api/fighters/abc/extra"), false);
   assert.equal(publicApi("/api/stats"), true);
+  assert.equal(publicApi("/api/rankings/history"), true);
+  assert.equal(publicApi("/api/rankings/history/extra"), false);
+  assert.deepEqual(cachePolicy(new URL("https://test/api/rankings/history?division=Welterweight&ranking=media")),
+    cachePolicy(new URL("https://test/api/rankings")), "archives use the shared compressed cache and browser/CDN caching");
   assert.equal(canonicalApiKey(new URL("https://test/api/stats?b=2&a=1")), canonicalApiKey(new URL("https://test/api/stats?a=1&b=2")));
   assert.notEqual(canonicalApiKey(new URL("https://test/api/rankings?ranking=meta")), canonicalApiKey(new URL("https://test/api/rankings?ranking=media")));
 });

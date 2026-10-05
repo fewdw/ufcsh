@@ -21,7 +21,7 @@ client (`client/`) renders every page.
 | News (outlets, relevance, fighter/event tags, story grouping, newest first, `?fighter=` for one fighter) | `news.ts`; feeds read in `scrape/news.ts` (`NEWS_FEEDS`) |
 | News read by Gemini (off by default; enabled in Admin → Health; `GEMINI_API_KEY`) | `news-ai.ts`, run from the API process every 10 minutes |
 | Profile records and full stat rankings | `records.ts` (`fighterRecords`, `fighterBoard`, `milestonesWithinReach`) |
-| Ranking history (every official list since Feb 2013; ranks entering past bouts, profile chart) | `ranking-history.ts` (archive + Wayback backfill, snapshots from the rankings sync, confirmed undisputed title results shown from fight day without altering official lists); chart `client/src/components/RankingHistory.tsx`; missing history and title evidence in Admin → Bugs |
+| Ranking history (every official list since Feb 2013; ranks entering past bouts, profile chart) | `ranking-history.ts` (archive + Wayback backfill, snapshots from the rankings sync, confirmed undisputed title results shown from fight day without altering official lists); `ranking-archive.ts` (compact division archives preloaded for full chart tooltips); chart `client/src/components/RankingHistory.tsx`; missing history and title evidence in Admin → Bugs |
 | Judges and referees | `officials.ts` (name merging, profiles, directory, search) |
 | Venues and locations | `venues.ts` (identity from ufc.com venue ids + Wikipedia names; locations group cards by the billed city and country) |
 | Roster changes (signings, releases) | `roster-moves.ts` (stored read + profile links, ufc.com newest-profile watch); parsed in `scrape/wikipedia.ts` (`rosterChanges`) and `scrape/ufccom.ts` (`parseNewestAthletes`) |

@@ -92,9 +92,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-05">October 5, 2026</time></p>
             <ul>
-              <li>Pull down anywhere in mobile Filters to close after scrolling to the top.</li>
-              <li>Choose ranking dates in Filters, with separate date and filter resets.</li>
-              <li>Roomier ranking controls, with division tabs beside Filters.</li>
+              <li>Show full rankings in fighter history tooltips for categories ranked at the hovered date.</li>
+              <li>Compact lists include every rank and highlight the selected fighter.</li>
+              <li>Ranking lists load when you open a fighter, and your preference stays saved in this browser.</li>
             </ul>
           </Section>
         </div>

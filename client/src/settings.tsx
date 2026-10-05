@@ -12,6 +12,8 @@ export type OddsFormat = "american" | "decimal";
 export type AppSettings = {
   theme: ThemeMode;
   rankingSource: RankingSource;
+  /** Expand fighter-history tooltips with complete published ranking lists. */
+  showFullRankings: boolean;
   dateMode: DateMode;
   /** Which end of the scale the rankings start from. */
   divisionOrder: DivisionOrder;
@@ -31,6 +33,7 @@ export type StatsSort = "grouped" | "best";
 const DEFAULTS: AppSettings = {
   theme: "light",
   rankingSource: "media",
+  showFullRankings: false,
   dateMode: "relative",
   divisionOrder: "light",
   oddsFormat: "american",
@@ -46,6 +49,7 @@ function loadSettings(): AppSettings {
     return {
       theme: saved?.theme === "dark" ? "dark" : "light",
       rankingSource: saved?.rankingSource === "meta" ? "meta" : "media",
+      showFullRankings: saved?.showFullRankings === true,
       dateMode: saved?.dateMode === "date" ? "date" : "relative",
       divisionOrder: saved?.divisionOrder === "heavy" ? "heavy" : "light",
       oddsFormat: saved?.oddsFormat === "decimal" ? "decimal" : "american",
