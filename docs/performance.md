@@ -3,6 +3,25 @@
 Measure first, then change what the measurement points at. This page records
 the targets, how to measure against them, and the last measured results.
 
+## Local Tailscale previews (2026-10-05)
+
+Measured with `/usr/bin/time ./start` on the home server (12 cores, 31 GiB RAM,
+Node 26.10.0, ext4) against a 448 MB private copy of the VPS dev archive. "Ready"
+means the API `/readyz` and the Vite page both answer.
+
+| Operation | Wall time |
+| --- | --- |
+| Old launcher's mandatory client build (`tsc -b && vite build`) | 11.36 s |
+| New worktree: `npm ci` for server and client, archive copy, start | 15.2 s |
+| Start with dependencies and data in place | 1.6 s |
+| Run again while it is up (prints the URL) | 0.06 s |
+
+A new worktree's time is almost all `npm ci` through `tools/heavy.sh` (warm npm
+cache); the archive copy is 0.5 s. Two previews ran side by side on ports 5101 and
+5102, about 410 MiB each at idle against a 2 GiB cap. Hot reload connected over WSS
+through Tailscale Serve. Vite returned 403 for an unknown `Host` and for `/@fs`
+paths outside `client/`.
+
 ## Mobile sheet scrolling (2026-10-05)
 
 The sheet drag handler used to claim downward gestures inside a scrolled list,

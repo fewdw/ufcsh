@@ -3,9 +3,18 @@
 Each chat works in its own worktree. Pushing saves work; finishing a task submits
 it for review. No feature push triggers CI or deployment.
 
-## Dev review
+## Local review (default)
 
-From the task worktree, after the final push and appropriate verification:
+On the home server, create a task with `./tools/new-task.sh feat/example`, then run
+`./start` in that worktree and send the private Tailscale URL it prints. Each
+worktree has its own port and data copy, so several reviews can be open at once.
+`./start stop` ends one. See [local development](local-development.md).
+
+Deploy to VPS dev only when asked ("put X in dev").
+
+## VPS dev review (explicit)
+
+On the VPS, after the final push and appropriate verification:
 
 ```sh
 ./deploy/dev-review.sh ready feat/example FULL_PUSHED_SHA
@@ -25,6 +34,9 @@ User intent takes precedence:
 | Show the next finished task | `./deploy/dev-review.sh next` |
 | Release the current task / it was merged | `./deploy/dev-review.sh release BRANCH` |
 | What's on dev / waiting? | `./deploy/dev-review.sh status` |
+
+From a local task, invoke these commands through `ssh ufcsh-vps` in
+`/home/ubuntu/ufcsh-dev`; never run the VPS selector against the local clone.
 
 A priority request preserves the previous task at the front of the queue. Release
 advances the queue only when the named branch owned dev; merging another task

@@ -2,6 +2,9 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
+// ./start runs each worktree's API on its own port.
+const api = `http://127.0.0.1:${process.env.PORT || 8000}`;
+
 export default defineConfig({
   // Shown by the dev-only stats overlay, to tell a stale bundle from a new one.
   define: { "import.meta.env.VITE_BUILD_TIME": JSON.stringify(new Date().toISOString()) },
@@ -15,8 +18,8 @@ export default defineConfig({
     react(), tailwindcss(),
   ],
   server: {
-    proxy: {
-      "/api": "http://localhost:8000",
-    },
+    // Private Tailscale preview hostnames; the dev server itself stays on loopback.
+    allowedHosts: [".ts.net"],
+    proxy: { "/api": api, "/og": api, "/readyz": api },
   },
 });

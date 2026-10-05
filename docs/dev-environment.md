@@ -1,5 +1,9 @@
 # Private dev environment
 
+This guide covers the VPS Docker environment (`dev`). Routine feature reviews now
+use fast local Tailscale previews (`ts`); see [local development](local-development.md).
+Deploy to `dev.ufc.sh` only when explicitly requested.
+
 `https://dev.ufc.sh` runs from a separate Git worktree in a separate app container and
 database volume. A Cloudflare Tunnel connects to that container over a private
 Docker network. The dev app publishes no host port and is not routed through
@@ -67,7 +71,7 @@ worktree under `/home/ubuntu/ufcsh-wt`; `/home/ubuntu/ufcsh-dev` is only the sha
 detached deployment checkout. Never edit it or rebuild it behind another review.
 
 Feature pushes save work and update draft PRs without running Actions or deploying.
-The first **finished** task claims dev through `./deploy/dev-review.sh ready BRANCH
+For an explicitly requested VPS review, the first **finished** task claims dev through `./deploy/dev-review.sh ready BRANCH
 SHA`; later tasks queue. Explicit "put in dev" uses `priority`, and "don't deploy"
 uses `skip`. `next` shows the next queued task; releasing/merging the owner advances
 the queue. See [agent workflow](agent-workflow.md) for commands and resource limits.

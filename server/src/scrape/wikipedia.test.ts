@@ -41,6 +41,19 @@ test("one weight stated for two fighters applies to both", () => {
   ]);
 });
 
+test("a surname shared with someone off the card is not attributed to the card's fighter", () => {
+  const text = article("A welterweight bout between [[Stephen Thompson (fighter)|Stephen Thompson]] and [[Michel Pereira]] was rescheduled for this event. At the weigh-ins, Pereira weighed in at 174 pounds, three pounds over the welterweight non-title fight limit. As a result, the bout was scrapped. Vinicius Salvador weighed in at 128.5 pounds, two and a half pounds over the flyweight non-title fight limit.");
+  assert.deepEqual(weightMisses(text, ["Alex Pereira", "Jan Blachowicz", "CJ Vergara", "Vinicius Salvador"]), [{ name: "Vinicius Salvador", pounds: 128.5 }]);
+  const own = article("[[Alex Pereira]] headlined. At the weigh-ins, Pereira weighed in at 207 pounds, one pound over the light heavyweight non-title fight limit.");
+  assert.deepEqual(weightMisses(own, ["Alex Pereira", "Jan Blachowicz"]), [{ name: "Alex Pereira", pounds: 207 }]);
+  // The article's spelling of a card fighter's own name is still that fighter.
+  const variants = article("At the weigh-ins, two fighters missed weight:\n*Jose Miguel Delgado weighed in at 147 pounds, one pound over the featherweight non-title fight limit.\n*Philip Rowe weighed in at 173.5 pounds, two and a half pounds over the welterweight non-title fight limit.\n\nDelgado and Rowe's bouts proceeded at catchweight.");
+  assert.deepEqual(weightMisses(variants, ["Jose Delgado", "Phil Rowe"]), [{ name: "Jose Delgado", pounds: 147 }, { name: "Phil Rowe", pounds: 173.5 }]);
+  // A namesake named in another paragraph does not take over the surname.
+  const apart = article("Marcelo Rojo was rescheduled to face [[Jonathan Martinez]] the following week.\n\nAt the weigh-ins, Martinez weighed in at 140 pounds, four pounds over the bantamweight non-title fight limit.");
+  assert.deepEqual(weightMisses(apart, ["Mana Martinez", "Guido Cannetti"]), [{ name: "Mana Martinez", pounds: 140 }]);
+});
+
 test("the opponent who receives the fine is never marked", () => {
   const text = article("At the weigh-ins, Mullins weighed in at 137 pounds, one pound over the bantamweight non-title fight limit. The bout proceeded at catchweight and she was fined 20 percent of her purse, which went to Syguła.");
   assert.deepEqual(weightMisses(text, ["Melissa Mullins", "Klaudia Sygula"]), [{ name: "Melissa Mullins", pounds: 137 }]);

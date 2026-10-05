@@ -1,79 +1,98 @@
 #!/usr/bin/env bash
+# Fast preview of this worktree: Node watch + Vite hot reload, no build or Docker.
+#   ./start        start (or reuse) the preview and print its URL
+#   ./start stop   stop it, keeping its data
+#   ./start logs   show recent output
+# Each worktree gets its own port and data copy, so several can run at once.
 set -euo pipefail
-
-# Resolve paths relative to this file, even when invoked from another directory.
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+root=$PWD
+state=$root/.local-preview
+unit="ufcsh-$(basename "$root" | tr -c 'a-zA-Z0-9\n' -)"
+mkdir -p "$state"
 
-if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-  echo "Node.js 26 and npm are required. Install them, then run ./start again." >&2
-  exit 1
+# One lifecycle operation at a time, so two new worktrees cannot pick one port.
+exec 9>/tmp/ufcsh-start.lock
+flock -w 600 9
+
+if [[ ! -f $state/port ]]; then
+  taken="$(git worktree list --porcelain | sed -n 's|^worktree \(.*\)|\1/.local-preview/port|p' | xargs -d '\n' cat 2>/dev/null || true)"
+  port=5101
+  while grep -qx "$port" <<<"$taken" || ss -Hltn | grep -q ":$port "; do port=$((port + 1)); done
+  echo "$port" > "$state/port"
 fi
-if ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 26 ? 0 : 1)'; then
-  echo "Node.js 26 or newer is required; found $(node --version)." >&2
-  exit 1
+port=$(<"$state/port")
+
+host=""
+if command -v tailscale >/dev/null; then
+  host="$(tailscale status --json 2>/dev/null | jq -r 'select(.BackendState == "Running") | .Self.DNSName | rtrimstr(".")' || true)"
 fi
+if [[ -n $host ]]; then origin="https://$host:$port"; else origin="http://127.0.0.1:$port"; fi
 
-export HOST="${HOST:-0.0.0.0}"
-export PORT="${PORT:-8000}"
-# This launcher always uses local mode. Production has its own supervisor.
-export NODE_ENV=development
-export API_WORKERS=0
-export SYNC_MODE=inline
-unset DB_INIT
+case "${1:-ts}" in
+  stop)
+    systemctl --user stop "$unit" 2>/dev/null || true
+    [[ -z $host ]] || tailscale serve --https="$port" off >/dev/null 2>&1 || true
+    echo "Stopped $unit."; exit ;;
+  logs) exec journalctl --user -u "$unit" -n "${2:-50}" --no-pager ;;
+  ts) ;;
+  *) echo 'Usage: ./start [stop|logs]' >&2; exit 2 ;;
+esac
 
-if ! [[ "$PORT" =~ ^[0-9]+$ ]] || (( PORT < 1 || PORT > 65535 )); then
-  echo "PORT must be a number between 1 and 65535." >&2
-  exit 1
-fi
+if ! systemctl --user is-active --quiet "$unit"; then
+  for project in server client; do
+    installed=$project/node_modules/.package-lock.json
+    if [[ ! -f $installed || $project/package-lock.json -nt $installed ]]; then
+      ./tools/heavy.sh npm ci --prefix "$project" --no-audit --no-fund
+    fi
+  done
 
-# Restart cleanly: whatever is already listening on this port — a previous
-# ./start, most likely — gets stopped first instead of making this run fail.
-if command -v lsof >/dev/null 2>&1; then
-  existing="$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
-  if [[ -n "$existing" ]]; then
-    echo "Stopping the server already running on port ${PORT}…"
-    kill $existing 2>/dev/null || true
-    for _ in $(seq 1 40); do
-      [[ -n "$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)" ]] || break
-      sleep 0.25
-    done
-    still="$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)"
-    if [[ -n "$still" ]]; then
-      kill -9 $still 2>/dev/null || true
-      sleep 0.5
+  # Development credentials only: this worktree's .env.dev, else the main clone's.
+  for env_file in "$root/.env.dev" "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.env.dev"; do
+    if [[ -f $env_file ]]; then set -a; . "$env_file"; set +a; break; fi
+  done
+  if [[ ${DEV_CLERK_SECRET_KEY:-} == sk_live_* || ${DEV_CLERK_PUBLISHABLE_KEY:-} == pk_live_* ]]; then
+    echo 'Previews use Clerk development keys only.' >&2; exit 1
+  fi
+
+  # First start copies the private archive seed; later starts keep this worktree's data.
+  if [[ ! -d $state/data ]]; then
+    seed="${TS_SEED_DIR:-$HOME/.local/share/ufcsh/dev-seed}"
+    if [[ -d $seed ]]; then
+      rm -rf "$state/data.tmp"
+      cp -a --reflink=auto "$seed" "$state/data.tmp"
+      mv "$state/data.tmp" "$state/data"
+    else
+      echo "No seed at $seed; starting with an empty database." >&2
+      mkdir "$state/data"
     fi
   fi
+
+  systemctl --user reset-failed "$unit" 2>/dev/null || true
+  systemd-run --user --quiet --collect --unit "$unit" --working-directory "$root" -p MemoryMax=2G \
+    --setenv=PATH="$PATH" --setenv=NODE_ENV=development --setenv=HOST=127.0.0.1 \
+    --setenv=PORT=$((port + 1000)) --setenv=DATA_DIR="$state/data" --setenv=API_WORKERS=0 \
+    --setenv=SYNC_MODE=inline --setenv=NO_SYNC="${TS_NO_SYNC:-1}" --setenv=DISABLE_REPAIRS=1 \
+    --setenv=SITE_ORIGIN="$origin" --setenv=VITE_SITE_ORIGIN="$origin" \
+    --setenv=CLERK_AUTHORIZED_PARTIES="$origin,http://127.0.0.1:$port,http://localhost:$port" \
+    --setenv=ADMIN_TOKEN="${DEV_ADMIN_TOKEN:-}" --setenv=DEFAULT_ADMIN="${DEV_DEFAULT_ADMIN:-}" \
+    --setenv=CLERK_SECRET_KEY="${DEV_CLERK_SECRET_KEY:-}" --setenv=GEMINI_API_KEY="${DEV_GEMINI_API_KEY:-}" \
+    --setenv=CLERK_PUBLISHABLE_KEY="${DEV_CLERK_PUBLISHABLE_KEY:-}" \
+    --setenv=VITE_CLERK_PUBLISHABLE_KEY="${DEV_CLERK_PUBLISHABLE_KEY:-}" \
+    bash -c 'node --watch server/src/index.ts & cd client && node_modules/.bin/vite --host 127.0.0.1 --port "$1" --strictPort & wait -n' start "$port"
 fi
 
-for project in server client; do
-  installed="$project/node_modules/.package-lock.json"
-  if [[ ! -f "$installed" || "$project/package-lock.json" -nt "$installed" || "$project/package.json" -nt "$installed" ]]; then
-    echo "Installing $project dependencies…"
-    npm ci --include=dev --prefix "$project"
+# Tailnet only (Serve, never Funnel); both servers listen on loopback.
+[[ -z $host ]] || tailscale serve --bg --https="$port" "http://127.0.0.1:$port" >/dev/null
+
+for _ in $(seq 240); do
+  if curl -fsS -o /dev/null -m 2 "http://127.0.0.1:$port/readyz" 2>/dev/null \
+    && curl -fsS -o /dev/null -m 2 "http://127.0.0.1:$port/" 2>/dev/null; then
+    echo "$origin"; exit
   fi
+  systemctl --user is-active --quiet "$unit" || break
+  sleep 0.25
 done
-
-# Always build so changed or deleted source files cannot leave a stale frontend.
-echo "Building the app…"
-NODE_ENV=production npm run build --prefix client
-
-echo
-echo "Starting UFC.sh…"
-echo "  http://localhost:$PORT"
-if [[ "$HOST" == "0.0.0.0" || "$HOST" == "::" ]]; then
-  # Bound to every interface: point out the LAN address(es) too, since that's
-  # what a phone or other device on the same network needs to connect to.
-  node -e '
-    const nets = require("node:os").networkInterfaces();
-    for (const addrs of Object.values(nets)) {
-      for (const addr of addrs ?? []) {
-        if (addr.family === "IPv4" && !addr.internal) {
-          console.log(`  http://${addr.address}:${process.env.PORT}  (on your network)`);
-        }
-      }
-    }
-  '
-fi
-echo "Press Ctrl+C to stop."
-echo
-exec node server/src/index.ts
+echo "Preview did not become ready. Recent output:" >&2
+journalctl --user -u "$unit" -n 30 --no-pager >&2
+exit 1

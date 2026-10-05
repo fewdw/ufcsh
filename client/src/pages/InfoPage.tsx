@@ -92,9 +92,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-05">October 5, 2026</time></p>
             <ul>
-              <li>Tap OPP. Record in a matchup to explore the quality of opposition.</li>
-              <li>See who opponents beat or lost to, grouped by fighter and ordered by recency.</li>
-              <li>Going Back restores your open opposition view, filters and place in the list.</li>
+              <li>Missed-weight badges no longer land on a fighter who shares a surname with someone else on the card.</li>
+              <li>Quality of opposition shows how each meeting ended under the opponent’s name.</li>
+              <li>Removed the opposition sort menu and tidied the Matchup link.</li>
             </ul>
           </Section>
         </div>
