@@ -7,7 +7,7 @@ function sheet(t: TestContext, scrollTop = 0, wide = false) {
     style = { transition: "", transform: "" };
     scrollTop = 0;
     offsetHeight = 600;
-    closest() { return this; }
+    closest(): Surface | null { return this; }
     getBoundingClientRect() { return { top: 100, bottom: 700, left: 0, right: 390 }; }
   }
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
@@ -32,12 +32,17 @@ function sheet(t: TestContext, scrollTop = 0, wide = false) {
     if (previousElement) Object.defineProperty(globalThis, "Element", previousElement);
     else Reflect.deleteProperty(globalThis, "Element");
   });
-  function touch(type: string, y: number, at: number, x = 100, count = 1, cancelable = true) {
+  function touch(type: string, y: number, at: number, x = 100, count = 1, cancelable = true, header = false) {
     const event = new Event(type, { cancelable });
     Object.defineProperties(event, {
       touches: { value: Array.from({ length: count }, () => ({ clientX: x, clientY: y })) },
       timeStamp: { value: at },
     });
+    if (header) {
+      const target = new Surface();
+      target.closest = () => null;
+      Object.defineProperty(event, "target", { value: target });
+    }
     node.dispatchEvent(event);
     return event;
   }
@@ -53,17 +58,23 @@ function sheet(t: TestContext, scrollTop = 0, wide = false) {
   } };
 }
 
-test("a downward pull scrolls to the top before dragging and dismissing in the same gesture", t => {
+test("a gesture starting in a scrolled list stays native even after reaching the top", t => {
   const s = sheet(t, 100);
   s.touch("touchstart", 200, 0);
-  assert.equal(s.touch("touchmove", 250, 100).defaultPrevented, true);
-  assert.equal(s.node.scrollTop, 50);
+  assert.equal(s.touch("touchmove", 204, 50).defaultPrevented, false);
+  assert.equal(s.touch("touchmove", 250, 100).defaultPrevented, false);
+  assert.equal(s.node.scrollTop, 100, "the drag handler must not write the scroll position");
+  s.node.scrollTop = 0; // Native scrolling reaches the top during the gesture.
+  assert.equal(s.touch("touchmove", 400, 200).defaultPrevented, false);
   assert.equal(s.pull(), 0);
-  s.touch("touchmove", 330, 200);
-  assert.equal(s.node.scrollTop, 0);
-  assert.equal(s.node.style.transform, "translateY(30px)");
-  s.touch("touchmove", 440, 400);
-  s.touch("touchend", 440, 600);
+  s.touch("touchend", 400, 300);
+  s.finish();
+  assert.equal(s.closed(), 0);
+  assert.equal(s.node.style.transform, "");
+  // A separate pull already at the top still dismisses.
+  s.touch("touchstart", 200, 400);
+  s.touch("touchmove", 350, 500);
+  s.touch("touchend", 350, 700);
   assert.equal(s.node.style.transform, "translateY(600px)");
   assert.equal(s.click().defaultPrevented, true, "drag must not toggle a filter");
   assert.equal(s.click(0).defaultPrevented, false, "keyboard activation is preserved");
@@ -74,12 +85,34 @@ test("a downward pull scrolls to the top before dragging and dismissing in the s
 test("scrolling without reaching the top does not dismiss even on a fast swipe", t => {
   const s = sheet(t, 300);
   s.touch("touchstart", 200, 0);
-  s.touch("touchmove", 400, 10);
+  assert.equal(s.touch("touchmove", 400, 10).defaultPrevented, false);
+  assert.equal(s.touch("touchmove", 300, 15).defaultPrevented, false, "reversals remain native");
   s.touch("touchend", 400, 20);
-  assert.equal(s.node.scrollTop, 100);
+  assert.equal(s.node.scrollTop, 300);
   s.finish();
   assert.equal(s.closed(), 0);
   assert.equal(s.node.style.transform, "");
+});
+
+test("a header pull dismisses even while the list is scrolled", t => {
+  const s = sheet(t, 300);
+  s.touch("touchstart", 200, 0, 100, 1, true, true);
+  assert.equal(s.touch("touchmove", 360, 100).defaultPrevented, true);
+  assert.equal(s.node.scrollTop, 300);
+  s.touch("touchend", 360, 300);
+  s.finish();
+  assert.equal(s.closed(), 1);
+});
+
+test("scrolling that resumes between touchstart and the first move stays native", t => {
+  const s = sheet(t);
+  s.touch("touchstart", 200, 0);
+  s.node.scrollTop = 20;
+  assert.equal(s.touch("touchmove", 240, 100).defaultPrevented, false);
+  assert.equal(s.node.scrollTop, 20);
+  s.touch("touchend", 240, 200);
+  s.finish();
+  assert.equal(s.closed(), 0);
 });
 
 test("reversing a pull restores the sheet before scrolling the content", t => {

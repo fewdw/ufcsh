@@ -13,8 +13,8 @@ export default function useSheetDrag(ref: RefObject<HTMLElement | null>, close: 
   }, [ref, enabled]);
 }
 
-/** Own downward gestures before native scrolling starts, so a single pull can
- * scroll back to the top and then move the sheet without lifting the finger. */
+/** Let gestures in a scrolled list stay native for their whole lifetime,
+ * including momentum. A fresh pull at the top or on the header drags the sheet. */
 export function attachSheetDrag(node: HTMLElement, close: () => void, onPull: (distance: number) => void = () => {}) {
   let gesture: { x: number; y: number; lastY: number; lastAt: number; velocity: number; active: boolean; pull: number; list: HTMLElement | null } | null = null;
   let closing: number | undefined;
@@ -34,6 +34,7 @@ export function attachSheetDrag(node: HTMLElement, close: () => void, onPull: (d
     const bounds = node.getBoundingClientRect();
     if (point.clientY < bounds.top || point.clientY > bounds.bottom || point.clientX < bounds.left || point.clientX > bounds.right) return;
     const list = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-sheet-scroll]") : null;
+    if (list && list.scrollTop > 0) return;
     gesture = { x: point.clientX, y: point.clientY, lastY: point.clientY, lastAt: event.timeStamp, velocity: 0, active: false, pull: 0, list };
   };
   const move = (event: TouchEvent) => {
@@ -42,6 +43,7 @@ export function attachSheetDrag(node: HTMLElement, close: () => void, onPull: (d
     const point = event.touches[0];
     const dy = point.clientY - gesture.y;
     if (!gesture.active) {
+      if (gesture.list && gesture.list.scrollTop > 0) { reset(); return; }
       const dx = Math.abs(point.clientX - gesture.x);
       if (!event.cancelable) { reset(); return; }
       if (Math.max(dx, Math.abs(dy)) < 8) {
