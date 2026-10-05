@@ -8,14 +8,19 @@ export default function EvidenceDialog({ id, close, wide, children }: { id: stri
   useLayoutEffect(() => {
     const node = dialog.current!;
     const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const root = document.documentElement;
-    const previousOverflow = root.style.overflow;
     node.showModal();
     node.querySelector<HTMLElement>("h2")?.focus({ preventScroll: true });
-    root.style.overflow = "hidden";
+    // Release native modal inertness before React Router changes history.
+    // Bubble after the drag helper has rejected accidental taps after a swipe.
+    const releaseForLink = (event: MouseEvent) => {
+      const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (link && link.getAttribute("target") !== "_blank" && !event.defaultPrevented
+        && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) node.close();
+    };
+    node.addEventListener("click", releaseForLink);
     return () => {
+      node.removeEventListener("click", releaseForLink);
       node.close();
-      root.style.overflow = previousOverflow;
       if (trigger?.isConnected) trigger.focus({ preventScroll: true });
     };
   }, []);

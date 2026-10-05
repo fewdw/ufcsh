@@ -37,13 +37,14 @@ function OppositionList({ fighter, before, outcome, sort, close }: { fighter: Fi
         {group.meetings.flatMap(({ meeting, bouts }, meetingIndex) => bouts.map((bout, index) => <tr key={`${meeting.fight_id}-${bout.fight_id ?? index}`} className={`${index ? "border-t border-zinc-100" : ""} hover:bg-zinc-50`}>
         {meetingIndex === 0 && index === 0 ? <td rowSpan={group.meetings.reduce((count, entry) => count + entry.bouts.length, 0)} className="py-2 pr-2 align-top">
           <div className="space-y-1.5">
-            {group.meetings.map(({ meeting: faced }, facedIndex) => <Link key={faced.fight_id} to={`/fights/${faced.fight_id}`} onClick={close} title={`${fighter.name} vs. ${group.opponent.name} · ${formatDate(faced.date)}`} className="flex items-start gap-1.5 text-[10px] font-medium text-zinc-700 hover:underline sm:text-xs">
+            {group.meetings.map(({ meeting: faced }, facedIndex) => <div key={faced.fight_id} className="flex items-start gap-1.5 text-[10px] font-medium text-zinc-700 sm:text-xs">
               <Result outcome={faced.outcome} label={`${fighter.name}: ${resultWords[faced.outcome ?? ""] ?? "Result unknown"} against ${group.opponent.name}`} />
               <span className="min-w-0 break-words">
-                {facedIndex === 0 ? <span className="block">{group.opponent.name}</span> : null}
+                {facedIndex === 0 ? group.opponent.id ? <Link to={`/fighters/${group.opponent.id}`} onClick={close} className="block underline underline-offset-2">{group.opponent.name}</Link> : <span className="block">{group.opponent.name}</span> : null}
                 {group.meetings.length > 1 ? <span className="block text-[10px] text-zinc-500">{formatDate(faced.date)}</span> : null}
+                <Link to={`/fights/${faced.fight_id}?tab=matchup`} onClick={close} title={`${fighter.name} vs. ${group.opponent.name} · ${formatDate(faced.date)}`} className="mt-0.5 block text-[9px] text-zinc-500 underline underline-offset-2 sm:text-[10px]">View matchup</Link>
               </span>
-            </Link>)}
+            </div>)}
           </div>
         </td> : null}
         <td className="py-2 text-center align-top"><Result outcome={bout.outcome} label={`${meeting.opponent.name}: ${resultWords[bout.outcome ?? ""] ?? "Result unknown"} against ${bout.opponent.name}`} /></td>
@@ -52,7 +53,7 @@ function OppositionList({ fighter, before, outcome, sort, close }: { fighter: Fi
         </td>
         <td className="break-words py-2 pl-2 text-right align-top font-medium text-zinc-900">
           {group.meetings.length > 1 && index === 0 ? <span className="mb-1 block text-[9px] font-normal text-zinc-500 sm:text-[10px]">Before {formatDate(meeting.date)}</span> : null}
-          {bout.opponent.id ? <Link to={`/fighters/${bout.opponent.id}`} onClick={close} className="hover:underline">{bout.opponent.name}</Link> : bout.opponent.name}
+          {bout.opponent.id ? <Link to={`/fighters/${bout.opponent.id}`} onClick={close} className="underline underline-offset-2">{bout.opponent.name}</Link> : bout.opponent.name}
         </td>
       </tr>))}</tbody>)}
     </table>}
@@ -79,7 +80,7 @@ function OppositionModal({ id, fighters, before, close }: { id: string; fighters
             className={`min-h-8 flex-auto whitespace-nowrap rounded-full px-1 text-[10px] font-medium sm:px-3 sm:text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${outcome === value ? segmentedSelected : segmentedIdle}`}>{value === "all" ? "All" : value === "win" ? "Wins" : "Losses"}</button>)}
         </div>
         <label title={`Sort by ${sort} recent`} className="relative flex min-h-10 shrink-0 items-center gap-1 rounded-full border border-zinc-200 bg-white px-2 text-[10px] font-medium text-zinc-700 hover:bg-zinc-50 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-zinc-900 sm:px-3 sm:text-xs">
-          <span aria-hidden="true">{sort === "fighter" ? "Fighter recent" : "Opp. recent"}</span>
+          <span aria-hidden="true">{sort === "fighter" ? "Fighter" : "Opp."}</span>
           <ChevronDown aria-hidden="true" className="h-3 w-3" />
           <select aria-label="Sort opposition" value={sort} onChange={event => setSort(event.target.value as OppositionSort)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0">
             <option value="fighter">Sort by fighter recent</option>
