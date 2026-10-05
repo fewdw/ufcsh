@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { rankingChart, rankingPath, rankingTime, rankOn } from "../src/rankingHistory.ts";
+import { fullRankingLists, rankingChart, rankingPath, rankingTime, rankOn } from "../src/rankingHistory.ts";
 
 const timeline = {
   divisions: [{ division: "Featherweight", points: [
@@ -13,6 +13,23 @@ const timeline = {
 };
 const debut = { date: "2016-11-26", outcome: "win" };
 const last = { date: "2021-07-10", outcome: "loss" };
+
+test("full tooltip lists retain every career division, complete tied lists, and the correct P4P gender", () => {
+  const entries = [{ rank: "C", name: "Champion" }, ...Array.from({ length: 15 }, (_, i) => ({ rank: String(i + 1), name: `Fighter ${i + 1}` })), { rank: "15", name: "Tied fighter" }];
+  const divisions = [
+    { division: "Women's Strawweight", entries },
+    { division: "Women's Pound-for-Pound", entries: [{ rank: "1", name: "Woman" }] },
+    { division: "Pound-for-Pound", entries: [{ rank: "1", name: "Man" }] },
+    { division: "Lightweight", entries },
+  ];
+  const lists = fullRankingLists(divisions, ["Women's Flyweight", "Women's Strawweight", "Pound-for-pound"], true);
+  assert.deepEqual(lists.map(row => row.division), ["Women's Flyweight", "Women's Strawweight", "Pound-for-pound"]);
+  assert.equal(lists[0].list, undefined, "a class without a published list stays unavailable instead of borrowing another class");
+  assert.deepEqual(lists[1].list?.entries, entries, "champions, all 15 ranks, and ties are retained");
+  assert.equal(lists[2].list?.entries[0].name, "Woman");
+  assert.equal(fullRankingLists(divisions, ["Pound-for-pound"], false)[0].list?.entries[0].name, "Man");
+  assert.ok(fullRankingLists([], ["Women's Strawweight", "Pound-for-pound"], true).every(row => row.list === undefined), "dates before the archive cannot show today's rankings");
+});
 
 test("the chart spans exactly the first and last completed UFC fights", () => {
   const chart = rankingChart(timeline, [last, debut])!;

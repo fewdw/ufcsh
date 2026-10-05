@@ -1,5 +1,14 @@
 import type { RankingTimeline } from "./api";
 
+/** Keep all classes ever ranked in, even when absent from the selected list.
+ * The chart's generic P4P label maps to the fighter's gender-specific list. */
+export function fullRankingLists<T extends { division: string }>(divisions: T[], names: string[], womens: boolean) {
+  return names.map((name) => {
+    const key = name === "Pound-for-pound" ? `${womens ? "Women's " : ""}Pound-for-Pound` : name;
+    return { division: name, list: divisions.find((division) => division.division === key) };
+  });
+}
+
 export const FIRST_RANKING_LIST = "2013-02-04";
 export const rankingTime = (date: string) => Date.parse(`${date}T00:00:00Z`);
 type RankingLine = RankingTimeline["divisions"][number];

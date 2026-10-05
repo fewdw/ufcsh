@@ -1,11 +1,13 @@
-import { useId, useState } from "react";
-import type { HistoryRow, ProfessionalHistoryRow, RankingTimeline } from "../api";
+import { useEffect, useId, useRef, useState } from "react";
+import { useApi } from "../api";
+import type { Division, HistoryRow, ProfessionalHistoryRow, RankingTimeline } from "../api";
 import { formatDate } from "../format";
 import { PANEL } from "./chartTokens";
 import { PanelHeading } from "./FightStats";
 import { Tooltip } from "./Tooltip";
 import type { TipAnchor } from "../tooltip";
-import { FIRST_RANKING_LIST, rankingChart, rankingPath, rankingTime as time, rankOn } from "../rankingHistory";
+import { FIRST_RANKING_LIST, fullRankingLists, rankingChart, rankingPath, rankingTime as time, rankOn } from "../rankingHistory";
+import { useSettings, withRanking } from "../settings";
 
 /** Slots follow the division in the order the fighter was first ranked in it. */
 const SERIES = ["text-series-1", "text-series-2", "text-series-3", "text-series-4"];
@@ -27,9 +29,65 @@ const colorSlot = (division: string, index: number) => division === "Pound-for-p
 type Bout = HistoryRow | ProfessionalHistoryRow;
 const RESULT_WORD: Record<string, string> = { win: "Win", loss: "Loss", draw: "Draw", nc: "No contest" };
 
-export default function RankingHistory({ timeline, history = [] }: { timeline: RankingTimeline | undefined; history?: Bout[] }) {
+function FullRankings({ date, names, womens, fighterId, columns }: { date: string; names: string[]; womens: boolean; fighterId: string; columns: number }) {
+  const { settings } = useSettings();
+  const [requestedDate, setRequestedDate] = useState<string | null>(null);
+  useEffect(() => {
+    const timer = setTimeout(() => setRequestedDate(date), 180);
+    return () => clearTimeout(timer);
+  }, [date]);
+  const { data, error } = useApi<{ divisions: Division[] }>(requestedDate
+    ? withRanking(`/api/rankings?date=${requestedDate}`, settings.rankingSource) : null);
+  if (requestedDate !== date || !data) {
+    return <span className="mt-2 block text-zinc-400">{requestedDate === date && error ? "Rankings unavailable." : "Loading rankings…"}</span>;
+  }
+  return (
+    <span className="mt-2 grid gap-x-4 gap-y-3 border-t border-white/10 pt-2" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+      {fullRankingLists(data.divisions, names, womens).map(({ division, list }) => (
+        <span key={division} className="block min-w-0">
+          <span className="mb-1 block font-semibold">{division}</span>
+          {list?.as_of ? <span className="mb-1 block text-[10px] text-zinc-400">List: {formatDate(list.as_of)}</span> : null}
+          {list?.entries.length ? list.entries.map((entry) => (
+            <span key={`${entry.rank}:${entry.name}`} className={`grid grid-cols-[1.5rem_minmax(0,1fr)] gap-1 py-px ${entry.fighter_id === fighterId ? "font-bold text-sky-300" : "text-zinc-300"}`}>
+              <span className={`tabular-nums ${entry.rank === "C" || entry.rank === "IC" ? "text-amber-300" : ""}`}>{entry.rank}</span>
+              <span>{entry.name}</span>
+            </span>
+          )) : <span className="text-zinc-400">No published rankings.</span>}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+export default function RankingHistory({ timeline, history = [], fighterId }: { timeline: RankingTimeline | undefined; history?: Bout[]; fighterId: string }) {
   const tipId = useId();
+  const [showFull, setShowFull] = useState(false);
   const [hover, setHover] = useState<{ at: number; anchor: TipAnchor } | null>(null);
+  const plotRef = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const keepOpen = () => { if (closeTimer.current) clearTimeout(closeTimer.current); };
+  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
+  const open = hover !== null;
+  useEffect(() => {
+    if (!open) return;
+    const inTooltip = (target: EventTarget | null) => target instanceof Node && document.getElementById(tipId)?.contains(target);
+    const dismiss = () => setHover(null);
+    const outside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !plotRef.current?.contains(event.target) && !inTooltip(event.target)) dismiss();
+    };
+    const scroll = (event: Event) => { if (!inTooltip(event.target)) dismiss(); };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") dismiss(); };
+    window.addEventListener("pointerdown", outside);
+    window.addEventListener("scroll", scroll, true);
+    window.addEventListener("resize", dismiss);
+    window.addEventListener("keydown", key);
+    return () => {
+      window.removeEventListener("pointerdown", outside);
+      window.removeEventListener("scroll", scroll, true);
+      window.removeEventListener("resize", dismiss);
+      window.removeEventListener("keydown", key);
+    };
+  }, [open, tipId]);
   const chart = rankingChart(timeline, history);
   if (!chart) return null;
   const { start, end, lines } = chart;
@@ -67,15 +125,30 @@ export default function RankingHistory({ timeline, history = [] }: { timeline: R
   ].filter(Boolean);
 
   const track = (event: React.PointerEvent<HTMLDivElement>) => {
+    keepOpen();
     const box = event.currentTarget.getBoundingClientRect();
     const fraction = Math.min(1, Math.max(0, (event.clientX - box.left) / (box.width * PLOT_WIDTH / WIDTH)));
     setHover({ at: Math.min(end, start + fraction * span), anchor: { x: Math.min(Math.max(event.clientX, 140), window.innerWidth - 140), y: box.top - 6, above: true } });
   };
-  const leave = () => setHover(null);
+  const leave = (event: React.PointerEvent) => {
+    keepOpen();
+    if (showFull && event.pointerType !== "mouse") return;
+    if (showFull) closeTimer.current = setTimeout(() => setHover(null), 150);
+    else setHover(null);
+  };
+  const tooltipWidth = Math.min(lines.length * 190 + 24, 600, window.innerWidth - 16);
+  const tooltipTop = hover ? Math.max(88, Math.min(hover.anchor.y, window.innerHeight - 8)) : 88;
+  const tooltipHeight = Math.min(420, tooltipTop - 8);
+  const columns = Math.min(lines.length, Math.max(1, Math.floor((tooltipWidth - 24) / 160)));
 
   return (
     <section className={PANEL}>
-      <PanelHeading title="Ranking history" />
+      <PanelHeading title="Ranking history" aside={
+        <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-zinc-500">
+          <input type="checkbox" checked={showFull} onChange={(event) => { keepOpen(); setShowFull(event.target.checked); setHover(null); }} className="h-3 w-3 accent-sky-500" />
+          Show full rankings
+        </label>
+      } />
       <div className="px-4 pb-4 pt-3 sm:px-5">
         {lines.length > 1 || lines[0].division === "Pound-for-pound" ? (
           <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-500">
@@ -93,7 +166,7 @@ export default function RankingHistory({ timeline, history = [] }: { timeline: R
               <span key={tick} className={`absolute right-0 -translate-y-1/2 ${tick === "C" ? "font-semibold text-belt" : ""}`} style={{ top: `${(y(tick) / HEIGHT) * 100}%` }}>{tick}</span>
             ))}
           </div>
-          <div className="relative h-40 touch-pan-y" onPointerMove={track} onPointerDown={track} onPointerLeave={leave} onPointerCancel={leave}>
+          <div ref={plotRef} className="relative h-40 touch-pan-y" onPointerMove={track} onPointerDown={track} onPointerLeave={leave} onPointerCancel={() => setHover(null)}>
             <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" role="img"
               aria-label={`${lines.map((division) => division.division).join(" and ")} ranking from ${formatDate(new Date(start).toISOString().slice(0, 10))}${best ? `; best ${held(best.rank!)} in ${best.division}` : ""}`}>
               {TICKS.map((tick) => (
@@ -134,7 +207,12 @@ export default function RankingHistory({ timeline, history = [] }: { timeline: R
           </tbody>
         </table>
       </div>
-      <Tooltip id={tipId} at={hover?.anchor ?? null}>
+      <Tooltip id={tipId} at={hover?.anchor ?? null} onPointerEnter={keepOpen} onPointerLeave={leave}
+        style={showFull && hover ? {
+          width: tooltipWidth, maxWidth: tooltipWidth, minWidth: 0, maxHeight: tooltipHeight,
+          left: Math.min(Math.max(hover.anchor.x, tooltipWidth / 2 + 8), window.innerWidth - tooltipWidth / 2 - 8),
+          top: tooltipTop, overflowY: "auto", pointerEvents: "auto",
+        } : undefined}>
         {hover && hovered ? <>
           <span className="block text-zinc-400">{formatDate(new Date(hover.at).toISOString().slice(0, 10))}</span>
           {hovered.map((row) => (
@@ -151,6 +229,8 @@ export default function RankingHistory({ timeline, history = [] }: { timeline: R
               <span className="block text-zinc-400">{formatDate(lastFight.row.date)}{lastFight.row.method ? ` · ${lastFight.row.method}` : ""}</span>
             </span>
           ) : null}
+          {showFull ? <FullRankings date={new Date(hover.at).toISOString().slice(0, 10)} names={lines.map((line) => line.division)}
+            womens={lines.some((line) => line.division.startsWith("Women's")) || history.some((bout) => bout.weight_class.startsWith("Women's"))} fighterId={fighterId} columns={columns} /> : null}
         </> : null}
       </Tooltip>
     </section>
