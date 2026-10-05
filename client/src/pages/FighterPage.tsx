@@ -302,7 +302,7 @@ function PromotionLabel({ row, move }: { row: HistoryRow | ProfessionalHistoryRo
 
 function RosterBand({ band }: { band: CareerBand }) {
   const content = <><span>{band.label}</span>{band.date ? <span className="font-normal opacity-75">{band.observed ? "Observed " : ""}{formatDateShortWithYear(band.date)}</span> : null}</>;
-  const className = `flex min-h-6 flex-wrap items-center justify-center gap-x-2 px-3 py-1 text-[10px] font-semibold leading-4 ${band.signing
+  const className = `flex min-h-12 flex-wrap items-center justify-center gap-x-2 px-4 py-3 text-sm font-semibold leading-6 @3xl:min-h-9 @3xl:py-1.5 ${band.signing
     ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
     : "bg-zinc-50 text-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-300"}`;
   return band.source_url ? <a href={band.source_url} target="_blank" rel="noreferrer" title={`${band.detail} Open source.`} aria-label={`${band.label}. ${band.detail} Open source.`}
