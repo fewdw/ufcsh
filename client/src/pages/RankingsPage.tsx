@@ -673,7 +673,7 @@ export default function RankingsPage() {
       <div className="p-2 pb-8 sm:p-3">
         {/* Controls stay on one row; only the tabs scroll when space is tight. */}
         <div className={`${shell} mb-2 flex flex-wrap items-center gap-1.5 px-2.5 py-2 sm:mb-3 sm:gap-2 sm:px-3 lg:gap-3`}>
-          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 lg:contents">
             <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto overscroll-x-contain py-1.5 sm:gap-2 [scrollbar-width:none]" aria-label="Ranking tabs">
               <div className={`${segmentedGroup} shrink-0 p-0.5 sm:p-1`} role="group" aria-label="Ranking view">
                 {SOURCES.map((source) => (
@@ -707,7 +707,7 @@ export default function RankingsPage() {
                 ))}
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2 lg:order-last">
               <FeaturesMenu
                 features={features}
                 onChange={(next) => {
@@ -724,12 +724,9 @@ export default function RankingsPage() {
                 today={today}
                 onViewDate={selectDate}
               />
-              <RankingsDateControl selectedDate={selectedDate} today={today} onView={selectDate} />
             </div>
           </div>
-          <div className={`flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 ${
-            wideKey ? "xl:basis-auto" : "lg:basis-auto"
-          }`}>
+          <div className="flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 lg:max-w-[60%] lg:basis-auto">
             {activeFeatures.activityColors ? activityKey : null}
             {activeFeatures.hoverResults ? <OpponentKey compact /> : null}
             {/* Both keys fill a phone's row; the Filters menu still shows the time. */}
