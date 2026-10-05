@@ -30,6 +30,7 @@ import { createRepairRunner } from "./repair-guard.ts";
 import { publicApi, cachePolicy, canonicalApiKey, clientAddress, RateLimiter } from "./api-policy.ts";
 import { canonicalMethod, log, normName, todayIso } from "./util.ts";
 import { currentRanking, currentRankings, rankingEntering, rankingSnapshot, rankingTimeline } from "./ranking-history.ts";
+import { rankingArchive } from "./ranking-archive.ts";
 import { bugReport, runBugAction } from "./bugs.ts";
 import { AdminStore } from "./admins.ts";
 import { createAdminHandler, type AdminLiveFight } from "./admin-http.ts";
@@ -2135,6 +2136,7 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
     if (date !== null && !validPastDate(date)) return undefined;
     return getFighterPreview(id, date ?? undefined) ?? undefined;
   }
+  if (p === "/api/rankings/history") return rankingArchive(rankingType, url.searchParams.get("division") ?? "");
   if (p === "/api/rankings") {
     const date = url.searchParams.get("date");
     if (date !== null) {

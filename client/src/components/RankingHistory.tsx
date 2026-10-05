@@ -1,13 +1,13 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { useApi } from "../api";
-import type { Division, HistoryRow, ProfessionalHistoryRow, RankingTimeline } from "../api";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { apiCache } from "../api";
+import type { HistoryRow, ProfessionalHistoryRow, RankingArchive, RankingTimeline } from "../api";
 import { formatDate } from "../format";
 import { PANEL } from "./chartTokens";
 import { PanelHeading } from "./FightStats";
 import { Tooltip } from "./Tooltip";
 import type { TipAnchor } from "../tooltip";
-import { FIRST_RANKING_LIST, fullRankingLists, rankingChart, rankingPath, rankingTime as time, rankOn } from "../rankingHistory";
-import { useSettings, withRanking } from "../settings";
+import { FIRST_RANKING_LIST, rankingArchiveUrl, rankingChart, rankingListOn, rankingPath, rankingTime as time, rankOn } from "../rankingHistory";
+import { useSettings } from "../settings";
 
 /** Slots follow the division in the order the fighter was first ranked in it. */
 const SERIES = ["text-series-1", "text-series-2", "text-series-3", "text-series-4"];
@@ -29,40 +29,55 @@ const colorSlot = (division: string, index: number) => division === "Pound-for-p
 type Bout = HistoryRow | ProfessionalHistoryRow;
 const RESULT_WORD: Record<string, string> = { win: "Win", loss: "Loss", draw: "Draw", nc: "No contest" };
 
-function FullRankings({ date, names, womens, fighterId, columns }: { date: string; names: string[]; womens: boolean; fighterId: string; columns: number }) {
-  const { settings } = useSettings();
-  const [requestedDate, setRequestedDate] = useState<string | null>(null);
-  useEffect(() => {
-    const timer = setTimeout(() => setRequestedDate(date), 180);
-    return () => clearTimeout(timer);
-  }, [date]);
-  const { data, error } = useApi<{ divisions: Division[] }>(requestedDate
-    ? withRanking(`/api/rankings?date=${requestedDate}`, settings.rankingSource) : null);
-  if (requestedDate !== date || !data) {
-    return <span className="mt-2 block text-zinc-400">{requestedDate === date && error ? "Rankings unavailable." : "Loading rankings…"}</span>;
-  }
+function FullRankings({ date, names, archives, fighterId, columns }: {
+  date: string; names: string[]; archives: (RankingArchive | null)[] | null; fighterId: string; columns: number;
+}) {
+  if (!archives) return <span className="mt-2 block text-zinc-400">Loading rankings…</span>;
   return (
-    <span className="mt-2 grid gap-x-4 gap-y-3 border-t border-white/10 pt-2" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
-      {fullRankingLists(data.divisions, names, womens).map(({ division, list }) => (
-        <span key={division} className="block min-w-0">
-          <span className="mb-1 block font-semibold">{division}</span>
-          {list?.as_of ? <span className="mb-1 block text-[10px] text-zinc-400">List: {formatDate(list.as_of)}</span> : null}
-          {list?.entries.length ? list.entries.map((entry) => (
-            <span key={`${entry.rank}:${entry.name}`} className={`grid grid-cols-[1.5rem_minmax(0,1fr)] gap-1 py-px ${entry.fighter_id === fighterId ? "font-bold text-sky-300" : "text-zinc-300"}`}>
-              <span className={`tabular-nums ${entry.rank === "C" || entry.rank === "IC" ? "text-amber-300" : ""}`}>{entry.rank}</span>
-              <span>{entry.name}</span>
-            </span>
-          )) : <span className="text-zinc-400">No published rankings.</span>}
-        </span>
-      ))}
+    <span className="mt-1.5 grid gap-x-3 gap-y-2 border-t border-white/10 pt-1.5" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+      {names.map((division, index) => {
+        const archive = archives[index];
+        const list = archive && rankingListOn(archive, date);
+        return (
+          <span key={division} className="block min-w-0">
+            <span className="block font-semibold">{division}</span>
+            {list?.as_of ? <span className="mb-0.5 block text-[10px] text-zinc-400">{formatDate(list.as_of)}</span> : null}
+            {list?.entries.length ? list.entries.map((entry) => (
+              <span key={`${entry.rank}:${entry.name}`} className={`grid grid-cols-[1.25rem_minmax(0,1fr)] gap-1 ${entry.fighter_id === fighterId ? "font-bold text-sky-300" : "text-zinc-300"}`}>
+                <span className={`tabular-nums ${entry.rank === "C" || entry.rank === "IC" ? "text-amber-300" : ""}`}>{entry.rank}</span>
+                <span>{entry.name}</span>
+              </span>
+            )) : <span className="text-zinc-400">{archive ? "No published rankings." : "Rankings unavailable."}</span>}
+          </span>
+        );
+      })}
     </span>
   );
 }
 
 export default function RankingHistory({ timeline, history = [], fighterId }: { timeline: RankingTimeline | undefined; history?: Bout[]; fighterId: string }) {
+  const { settings, update } = useSettings();
   const tipId = useId();
-  const [showFull, setShowFull] = useState(false);
-  const [hover, setHover] = useState<{ at: number; anchor: TipAnchor } | null>(null);
+  const chart = useMemo(() => rankingChart(timeline, history), [timeline, history]);
+  const names = useMemo(() => chart?.lines.map(line => line.division) ?? [], [chart]);
+  const womens = names.some(name => name.startsWith("Women's")) || history.some(bout => bout.weight_class.startsWith("Women's"));
+  const urls = useMemo(() => names.map(name => rankingArchiveUrl(name, womens, settings.rankingSource)), [names, womens, settings.rankingSource]);
+  const [loaded, setLoaded] = useState<{ urls: string[]; archives: (RankingArchive | null)[] } | null>(null);
+  // Warm once when the fighter opens, including with the checkbox off. Request
+  // coalescing and persistence reuse division archives across profiles/reloads.
+  useEffect(() => {
+    if (!urls.length) return;
+    let active = true;
+    const read = () => urls.map(url => apiCache.read(url).data as RankingArchive | null);
+    const cached = read();
+    if (cached.every(Boolean)) setLoaded({ urls, archives: cached });
+    void Promise.all(urls.map(url => apiCache.load(url, 60_000))).then(() => {
+      if (active) setLoaded({ urls, archives: read() });
+    });
+    return () => { active = false; };
+  }, [urls]);
+  const showFull = settings.showFullRankings;
+  const [hover, setHover] = useState<{ at: number; anchor: TipAnchor; below: number } | null>(null);
   const plotRef = useRef<HTMLDivElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keepOpen = () => { if (closeTimer.current) clearTimeout(closeTimer.current); };
@@ -88,7 +103,6 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
       window.removeEventListener("keydown", key);
     };
   }, [open, tipId]);
-  const chart = rankingChart(timeline, history);
   if (!chart) return null;
   const { start, end, lines } = chart;
   const span = Math.max(end - start, 86_400_000);
@@ -128,7 +142,8 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
     keepOpen();
     const box = event.currentTarget.getBoundingClientRect();
     const fraction = Math.min(1, Math.max(0, (event.clientX - box.left) / (box.width * PLOT_WIDTH / WIDTH)));
-    setHover({ at: Math.min(end, start + fraction * span), anchor: { x: Math.min(Math.max(event.clientX, 140), window.innerWidth - 140), y: box.top - 6, above: true } });
+    setHover({ at: Math.min(end, start + fraction * span), below: box.bottom + 6,
+      anchor: { x: Math.min(Math.max(event.clientX, 140), window.innerWidth - 140), y: box.top - 6, above: true } });
   };
   const leave = (event: React.PointerEvent) => {
     keepOpen();
@@ -137,15 +152,13 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
     else setHover(null);
   };
   const tooltipWidth = Math.min(lines.length * 190 + 24, 600, window.innerWidth - 16);
-  const tooltipTop = hover ? Math.max(88, Math.min(hover.anchor.y, window.innerHeight - 8)) : 88;
-  const tooltipHeight = Math.min(420, tooltipTop - 8);
   const columns = Math.min(lines.length, Math.max(1, Math.floor((tooltipWidth - 24) / 160)));
 
   return (
     <section className={PANEL}>
       <PanelHeading title="Ranking history" aside={
         <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-zinc-500">
-          <input type="checkbox" checked={showFull} onChange={(event) => { keepOpen(); setShowFull(event.target.checked); setHover(null); }} className="h-3 w-3 accent-sky-500" />
+          <input type="checkbox" checked={showFull} onChange={(event) => { keepOpen(); update("showFullRankings", event.target.checked); setHover(null); }} className="h-3 w-3 accent-sky-500" />
           Show full rankings
         </label>
       } />
@@ -207,30 +220,31 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
           </tbody>
         </table>
       </div>
-      <Tooltip id={tipId} at={hover?.anchor ?? null} onPointerEnter={keepOpen} onPointerLeave={leave}
+      <Tooltip id={tipId} at={hover?.anchor ?? null} onPointerEnter={keepOpen} onPointerLeave={leave} fitViewport={showFull}
+        fallbackBelow={hover?.below}
         style={showFull && hover ? {
-          width: tooltipWidth, maxWidth: tooltipWidth, minWidth: 0, maxHeight: tooltipHeight,
+          width: tooltipWidth, maxWidth: tooltipWidth, minWidth: 0, maxHeight: window.innerHeight - 16,
           left: Math.min(Math.max(hover.anchor.x, tooltipWidth / 2 + 8), window.innerWidth - tooltipWidth / 2 - 8),
-          top: tooltipTop, overflowY: "auto", pointerEvents: "auto",
+          padding: "8px 10px", lineHeight: "14px", overflowY: "auto", pointerEvents: "auto",
         } : undefined}>
         {hover && hovered ? <>
           <span className="block text-zinc-400">{formatDate(new Date(hover.at).toISOString().slice(0, 10))}</span>
-          {hovered.map((row) => (
+          {!showFull ? hovered.map((row) => (
             <span key={row.division} className="mt-0.5 flex justify-between gap-4">
               <span>{row.division}</span>
               <span className="font-semibold tabular-nums">{held(row.rank ?? "NR")}</span>
             </span>
-          ))}
+          )) : null}
           {lastFight ? (
-            <span className={`mt-1.5 block ${hovered.length ? "border-t border-white/10 pt-1.5" : ""}`}>
+            <span className={`${showFull ? "mt-0.5" : "mt-1.5"} block ${hovered.length && !showFull ? "border-t border-white/10 pt-1.5" : ""}`}>
               <span className={`font-semibold ${lastFight.row.outcome === "win" ? "text-emerald-400" : lastFight.row.outcome === "loss" ? "text-rose-400" : "text-zinc-300"}`}>
                 {RESULT_WORD[lastFight.row.outcome ?? ""] ?? "Result"}
               </span> vs {lastFight.row.opponent.name}
               <span className="block text-zinc-400">{formatDate(lastFight.row.date)}{lastFight.row.method ? ` · ${lastFight.row.method}` : ""}</span>
             </span>
           ) : null}
-          {showFull ? <FullRankings date={new Date(hover.at).toISOString().slice(0, 10)} names={lines.map((line) => line.division)}
-            womens={lines.some((line) => line.division.startsWith("Women's")) || history.some((bout) => bout.weight_class.startsWith("Women's"))} fighterId={fighterId} columns={columns} /> : null}
+          {showFull ? <FullRankings date={new Date(hover.at).toISOString().slice(0, 10)} names={names}
+            archives={loaded?.urls === urls ? loaded.archives : null} fighterId={fighterId} columns={columns} /> : null}
         </> : null}
       </Tooltip>
     </section>

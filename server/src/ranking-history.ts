@@ -267,7 +267,7 @@ export type RankingTimeline = {
 
 /** Every date a list of this type was stored, oldest first. Hops the index
  *  date to date rather than reading every row. */
-function listDates(type: RankingType): string[] {
+export function listDates(type: RankingType): string[] {
   return (db.prepare(`
     WITH RECURSIVE d(date) AS (
       SELECT MIN(date) FROM ranking_history WHERE ranking_type = ?1

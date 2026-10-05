@@ -287,3 +287,46 @@ Vite build measurements with the committed dependency lockfile; they measure
 transfer size, not elapsed load time. Date changes retain the displayed list
 and its date/source context until the replacement response arrives, avoiding a
 blank loading state and preserving the existing cards and scroll position.
+
+## Full ranking-history tooltips (2026-10-05)
+
+The original full tooltip fetched `/api/rankings?date=…` after each pause in
+mouse movement. On a private dev archive of 105,209 rows and 549 distinct
+dates, 30 dated reads across six dates measured 14.75 ms p50 and 16.99 ms p95
+(including JSON serialization, after index warm-up). Each response averaged
+170,573 bytes of JSON or 17,107 bytes gzipped, including unused records/activity.
+
+Profiles now preload one `/api/rankings/history` archive per relevant division
+and source, even with the checkbox off. Names/identities are stored once and
+only changed division lists are repeated. Every publication date remains so
+unchanged lists and removed/reintroduced divisions select accurately. Hovering
+uses binary searches in memory and makes zero requests. Division keys are shared
+across fighters; P4P always uses the appropriate Media archive. The existing
+bounded origin cache coalesces concurrent misses and retains compressed bodies;
+browser/CDN caching and saved browser snapshots reuse transfers. There is no new
+retained archive index in query workers, polling, database schema or source fetch.
+
+Twenty uncached reads per archive measured:
+
+| Division | Changed lists | JSON bytes | Gzip bytes | p50 ms | p95 ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Bantamweight | 284 | 60,334 | 7,587 | 54.70 | 76.75 |
+| Men's P4P | 313 | 63,472 | 8,874 | 53.70 | 89.09 |
+| Women's Bantamweight | 253 | 53,945 | 6,757 | 62.50 | 79.76 |
+| Women's Flyweight | 181 | 42,078 | 5,801 | 50.40 | 62.70 |
+| Women's P4P | 116 | 28,016 | 4,265 | 35.56 | 64.61 |
+
+Merab's full career preload totals 16,461 gzip bytes; Valentina's three classes
+total 16,823, each less than the average single old hover response. All 14
+divisions for both sources total 189,579 gzip bytes in the bounded origin cache.
+100,000 local date selections averaged 0.00103 ms each. A 1,000-request burst
+against the actual `ResponseCache` produced one archive build and one shared
+compressed representation in 74.32 ms, retaining 7,605 bytes including its key.
+This is an in-process cache/selection benchmark, not an HTTP capacity claim.
+
+An isolated browser preview with the actual dev archive made two preload
+requests before hovering, then zero additional requests across 30 hovered dates.
+Both columns' #15 rows fit without scrolling in a 327 px tooltip at desktop and
+390 px phone widths. Near the viewport top, the tooltip opens below the chart
+when that fits. The checkbox defaults off and survives profile changes and
+browser navigation through the existing local settings store.

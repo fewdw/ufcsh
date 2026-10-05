@@ -2,7 +2,7 @@ import { isIP } from "node:net";
 import type { IncomingMessage } from "node:http";
 
 const listRoutes = new Set([
-  "/api/events", "/api/live", "/api/rankings", "/api/stats", "/api/search",
+  "/api/events", "/api/live", "/api/rankings", "/api/rankings/history", "/api/stats", "/api/search",
   "/api/officials", "/api/venues", "/api/locations", "/api/roster", "/api/matchmaking", "/api/news",
 ]);
 export function publicApi(path: string): boolean {
@@ -13,7 +13,7 @@ export function publicApi(path: string): boolean {
 
 /** Lists that change a few times a day at most: a reader is always answered
  *  from memory, and the first one past expiry triggers the rebuild. */
-const slowRoutes = new Set(["/api/rankings", "/api/stats"]);
+const slowRoutes = new Set(["/api/rankings", "/api/rankings/history", "/api/stats"]);
 
 /** How long past its lifetime a copy is still served while a fresh one is
  *  built behind it. A reader is answered from memory unless nobody has asked
@@ -28,7 +28,7 @@ export function cachePolicy(url: URL): { ttl: number; stale: number; control: st
   const ttl = dynamic ? 5_000 : 60_000;
   const slow = slowRoutes.has(url.pathname);
   const stale = slow ? 6 * 60 * 60_000 : dynamic ? DYNAMIC_STALE_MS : LIST_STALE_MS;
-  if (url.pathname === "/api/rankings") {
+  if (url.pathname === "/api/rankings" || url.pathname === "/api/rankings/history") {
     // The browser keeps its copy for a minute and may show it for a day while
     // it revalidates, so a return visit paints the lists immediately.
     return { ttl, stale, control: "public, max-age=60, s-maxage=30, stale-while-revalidate=86400" };
