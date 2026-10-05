@@ -459,9 +459,15 @@ function FeaturesMenu({
   onDivisionOrder,
   legend,
   historical,
+  selectedDate,
+  today,
+  onViewDate,
 }: {
   legend: ReactNode;
   historical: boolean;
+  selectedDate: string | null;
+  today: string;
+  onViewDate: (date: string | null) => void;
   features: RankingFeatures;
   onChange: (features: RankingFeatures) => void;
   dateMode: DateMode;
@@ -475,6 +481,7 @@ function FeaturesMenu({
   const enabledCount = options.filter((option) => features[option.key]).length;
   return (
     <OptionsSheet label="Filters" count={`${enabledCount}/${options.length}`} onReset={() => onChange(DEFAULT_FEATURES)} iconOnlyOnPhone="lg">
+      {close => <>
       {/* The key to every mark in the lists, whichever are switched on. */}
       <div className="mb-1 space-y-1.5 border-b border-zinc-100 px-4 pb-3 pt-3 text-[11px] text-zinc-500">
         {/* Last 5: shape is where, fill how it ended, colour the result. */}
@@ -522,7 +529,7 @@ function FeaturesMenu({
           </fieldset>
         ))}
       </div>
-      <div className="mt-1 grid grid-cols-2 gap-2 border-t border-zinc-100 px-4 py-3">
+      <div className="mt-1 grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] items-end gap-2 border-t border-zinc-100 px-4 py-3">
         <SheetField label="Division order">
           <select value={divisionOrder} onChange={(event) => onDivisionOrder(event.target.value as DivisionOrder)} className={SHEET_SELECT}>
             <option value="light">Lightest first</option>
@@ -535,7 +542,10 @@ function FeaturesMenu({
             <option value="date">Calendar</option>
           </select>
         </SheetField>
+        <RankingsDateControl variant="field" selectedDate={selectedDate} today={today}
+          onView={date => { onViewDate(date); close(); }} />
       </div>
+      </>}
     </OptionsSheet>
   );
 }
@@ -710,6 +720,9 @@ export default function RankingsPage() {
                 onDivisionOrder={(order) => update("divisionOrder", order)}
                 legend={<>{activityKey}{features.hoverResults ? <OpponentKey /> : null}{updated}</>}
                 historical={historical}
+                selectedDate={selectedDate}
+                today={today}
+                onViewDate={selectDate}
               />
               <RankingsDateControl selectedDate={selectedDate} today={today} onView={selectDate} />
             </div>

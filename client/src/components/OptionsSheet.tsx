@@ -23,7 +23,8 @@ export default function OptionsSheet({
   /** Shown beside the label, e.g. "4/4" or the number of filters in use. */
   count?: ReactNode;
   onReset: () => void;
-  children: ReactNode;
+  /** Child actions can close the sheet after applying their selection. */
+  children: ReactNode | ((close: () => void) => ReactNode);
   /** Show only the icon on a phone, or with "lg" below the `lg` breakpoint. */
   iconOnlyOnPhone?: boolean | "lg";
 }) {
@@ -56,7 +57,10 @@ export default function OptionsSheet({
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
+      if (sheetRef.current?.closest("[inert]")) return;
       const target = event.target as Node;
+      // A child date picker portals its dialog outside the options sheet.
+      if (target instanceof Element && target.closest("[data-sheet-overlay]")) return;
       if (sheetRef.current?.contains(target)) return;
       // On a phone the backdrop covers everything else, and its own click
       // closes the sheet. Closing here would drop the backdrop before that
@@ -68,7 +72,8 @@ export default function OptionsSheet({
       setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented || sheetRef.current?.closest("[inert]")) return;
+      if (event.target instanceof Element && event.target.closest("[data-sheet-overlay]")) return;
       event.preventDefault();
       setOpen(false);
       buttonRef.current?.focus({ preventScroll: true });
@@ -88,6 +93,7 @@ export default function OptionsSheet({
     const previous = root.style.overflow;
     root.style.overflow = "hidden";
     const block = (event: TouchEvent) => {
+      if (event.target instanceof Element && event.target.closest("[data-sheet-overlay]")) return;
       if (!sheetRef.current?.contains(event.target as Node)) event.preventDefault();
     };
     document.addEventListener("touchmove", block, { passive: false });
@@ -149,7 +155,7 @@ export default function OptionsSheet({
                 </div>
               </div>
             </div>
-            {children}
+            {typeof children === "function" ? children(() => close()) : children}
           </div>
         </>;
         return phone ? createPortal(sheet, document.body) : sheet;
