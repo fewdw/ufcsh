@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { oppositionRows } from "../src/opposition.ts";
+import { oppositionGroups, oppositionRows } from "../src/opposition.ts";
 import type { Opposition, OppositionBout } from "../src/api.ts";
 
 const history = (fight_id: string | null, date: string, outcome: OppositionBout["outcome"], name: string): OppositionBout => ({
@@ -56,4 +56,22 @@ test("rematches preserve both attributions and empty opposition produces an empt
   ]), "win");
   assert.deepEqual(rows.map(row => [row.meeting.fight_id, row.meeting.outcome]), [["rematch", "win"], ["first", "loss"]]);
   assert.deepEqual(oppositionRows(data([]), "loss"), []);
+});
+
+test("opponent groups combine nonadjacent rematches without dropping evidence or result attribution", () => {
+  const prior = history("prior", "2023-01-01", "win", "B");
+  const later = history(null, "2024-01-01", "win", "C");
+  const opposition = data([
+    { ...meeting("rematch", "A", "win", [prior, later]), date: "2025-01-01" },
+    { ...meeting("other", "D", "loss", [prior]), date: "2024-01-01" },
+    { ...meeting("first", "A", "loss", [prior]), date: "2023-02-01" },
+  ]);
+  const groups = oppositionGroups(opposition, "win");
+  assert.deepEqual(groups.map(group => group.opponent.name), ["A", "D"]);
+  assert.deepEqual(groups[0].meetings.map(entry => [entry.meeting.fight_id, entry.meeting.outcome, entry.bouts.map(bout => bout.opponent.name)]), [
+    ["rematch", "win", ["C", "B"]], ["first", "loss", ["B"]],
+  ]);
+  assert.equal(groups.flatMap(group => group.meetings).flatMap(entry => entry.bouts).length, oppositionRows(opposition, "win").length);
+  assert.deepEqual(oppositionGroups(opposition, "loss"), []);
+  assert.deepEqual(oppositionGroups(data([]), "win"), []);
 });
