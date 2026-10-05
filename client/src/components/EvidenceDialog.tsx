@@ -10,16 +10,7 @@ export default function EvidenceDialog({ id, close, wide, children }: { id: stri
     const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     node.showModal();
     node.querySelector<HTMLElement>("h2")?.focus({ preventScroll: true });
-    // Release native modal inertness before React Router changes history.
-    // Bubble after the drag helper has rejected accidental taps after a swipe.
-    const releaseForLink = (event: MouseEvent) => {
-      const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
-      if (link && link.getAttribute("target") !== "_blank" && !event.defaultPrevented
-        && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) node.close();
-    };
-    node.addEventListener("click", releaseForLink);
     return () => {
-      node.removeEventListener("click", releaseForLink);
       node.close();
       if (trigger?.isConnected) trigger.focus({ preventScroll: true });
     };
