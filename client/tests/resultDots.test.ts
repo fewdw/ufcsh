@@ -17,6 +17,19 @@ test("every decision type has a hollow outcome-colored dot", () => {
     assert.ok(resultDot({ method, outcome }).className.includes("!bg-transparent"));
   }
 });
+test("draws and no contests stay solid in their outcome color regardless of method or promotion", () => {
+  for (const outcome of ["draw", "nc"] as const) {
+    for (const method of ["M-DEC", "S-DEC", "U-DEC", "Technical Decision", "Decision (Majority)", "KO/TKO", "SUB", "No Contest (Accidental Eye Poke)", null]) {
+      for (const ufc of [true, false]) {
+        const dot = resultDot({ outcome, method, ufc });
+        assert.doesNotMatch(dot.className, /transparent|opacity-/);
+        assert.ok(dot.className.includes(outcome === "draw" ? "bg-amber-500" : "bg-zinc-400"));
+        assert.ok(dot.className.includes(ufc ? "rounded-full" : "rounded-[3px]"));
+        assert.match(dot.label, outcome === "draw" ? /^Draw/ : /^No contest/);
+      }
+    }
+  }
+});
 test("unknown methods and disqualifications are not labelled as finishes", () => {
   for (const method of [null, "DQ"]) assert.equal(resultDot({ method, outcome: "win" }).kind, "other");
 });
