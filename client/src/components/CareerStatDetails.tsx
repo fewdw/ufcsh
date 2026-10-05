@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, type ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ArrowDown, ArrowUp, X } from "lucide-react";
@@ -8,7 +8,7 @@ import { CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
 import { formatDate, formatDateShortWithYear, outcomeClasses, outcomeLabel } from "../format";
 import RequestNotice from "./RequestNotice";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "./segmented";
-import useSheetDrag from "../useSheetDrag";
+import EvidenceDialog from "./EvidenceDialog";
 
 type Fighter = { id: string; name: string };
 type Sort = EvidenceSort;
@@ -81,13 +81,10 @@ function StatModal({ id, fighters, before, selection, update }: {
   id: string; fighters: Fighter[]; before?: string; selection: CareerStatSelection;
   update: (selection: CareerStatSelection | null) => void;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const title = useRef<HTMLHeadingElement>(null);
   const matchup = Boolean(before) || fighters.length > 1;
   const { fighter: selected, view: currentView, sort } = selection;
   const setSort = (sort: Sort) => update({ ...selection, sort });
   const close = () => update(null);
-  useSheetDrag(dialog, close);
   const results = currentView.key === "wins" || currentView.key === "losses";
   const sides = [useApi<CareerStatistics>(careerStatsUrl(fighters[0], before)), useApi<CareerStatistics>(careerStatsUrl(fighters[1], before))];
   const orders: EvidenceOrder[] = currentView.columns.some(column => column.value) ? ["recent", "descending", "ascending"] : ["recent"];
@@ -97,31 +94,11 @@ function StatModal({ id, fighters, before, selection, update }: {
     update({ ...selection, view: next, sort: initialEvidenceSort(next) });
   };
 
-  useLayoutEffect(() => {
-    const node = dialog.current!;
-    const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const root = document.documentElement;
-    const previousOverflow = root.style.overflow;
-    node.showModal();
-    title.current?.focus({ preventScroll: true });
-    root.style.overflow = "hidden";
-    return () => {
-      node.close();
-      root.style.overflow = previousOverflow;
-      if (trigger?.isConnected) trigger.focus({ preventScroll: true });
-    };
-  }, []);
-
-  return <dialog ref={dialog} id={id} aria-labelledby={`${id}-title`}
-    onCancel={event => { event.preventDefault(); close(); }}
-    onClick={event => { if (event.target === event.currentTarget) close(); }}
-    className={`search-dialog fixed inset-x-0 bottom-0 top-auto m-0 h-[80dvh] w-full max-h-none max-w-none overflow-hidden rounded-t-2xl border border-b-0 border-zinc-200 bg-white p-0 pb-[env(safe-area-inset-bottom)] text-zinc-900 shadow-2xl transition-transform duration-200 motion-reduce:transition-none sm:inset-0 sm:m-auto sm:h-[min(34rem,calc(100dvh-2rem))] sm:w-[calc(100%-2rem)] sm:rounded-2xl sm:border-b sm:pb-0 ${matchup ? "sm:max-w-5xl" : "sm:max-w-2xl"}`}>
-    <div className="flex h-full flex-col">
-      <div aria-hidden="true" className="flex h-6 shrink-0 items-center justify-center sm:hidden"><span className="h-1 w-9 rounded-full bg-zinc-300" /></div>
+  return <EvidenceDialog id={id} close={close} wide={matchup}>
       <div className="shrink-0 px-4 pb-3 pt-3 sm:px-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 ref={title} id={`${id}-title`} title={currentView.label} tabIndex={-1} autoFocus style={{ outline: "none" }} className={`${DIALOG_TITLE} truncate`}>{currentView.label}</h2>
+            <h2 id={`${id}-title`} title={currentView.label} tabIndex={-1} autoFocus style={{ outline: "none" }} className={`${DIALOG_TITLE} truncate`}>{currentView.label}</h2>
             <p className="mt-0.5 text-[10px] text-zinc-400">{before ? cutoff ? `Before ${formatDate(cutoff.date)}` : "Before this fight" : "UFC career"}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -152,8 +129,7 @@ function StatModal({ id, fighters, before, selection, update }: {
           <Evidence fighter={fighter} side={index} {...sides[index]} view={currentView} sort={sort} setSort={setSort} close={close} />
         </section>)}
       </div>
-    </div>
-  </dialog>;
+  </EvidenceDialog>;
 }
 
 /** Click/tap opens a modal. Profiles can browse categories; matchups compare

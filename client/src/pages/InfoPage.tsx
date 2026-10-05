@@ -92,9 +92,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-05">October 5, 2026</time></p>
             <ul>
-              <li>Fighter fight histories show UFC roster changes between bouts.</li>
-              <li>Contender Series event names appear in blue and wrap in full.</li>
-              <li>Admin Bugs tracks missing roster evidence for manual review.</li>
+              <li>Tap OPP. Record in a matchup to explore the quality of opposition.</li>
+              <li>See who opponents beat or lost to, grouped by fighter and ordered by recency.</li>
+              <li>Going Back restores your open opposition view, filters and place in the list.</li>
             </ul>
           </Section>
         </div>

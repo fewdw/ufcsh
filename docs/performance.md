@@ -3,6 +3,25 @@
 Measure first, then change what the measurement points at. This page records
 the targets, how to measure against them, and the last measured results.
 
+## Mobile sheet scrolling (2026-10-05)
+
+The sheet drag handler used to claim downward gestures inside a scrolled list,
+cancel the native touch events, and write `scrollTop` for each move. A fling
+back up the list therefore stopped at finger release instead of carrying native
+momentum. Gestures that begin inside a scrolled list now remain native until
+release, even if they reach the top; a fresh downward pull at the top or on the
+sheet header still dismisses.
+
+Measured with Chromium touch input at 375 × 812, using the actual drag handler
+in an isolated sheet with 112 rows of 40 px. An eight-step, 240 px downward swipe
+from the bottom canceled 8 touch moves and made 8 JavaScript scroll writes
+before the change; it traveled 0 px after release. After the change, 7 delivered
+moves canceled none and made no JavaScript scroll writes; the browser carried
+another 125 px in the following 500 ms. Distances depend on input timing; this
+checks native gesture ownership and momentum, not a frame-rate target or an
+iOS device measurement. Regression tests also cover reaching the top mid-swipe,
+reversals, fresh top pulls, header pulls, taps, cancellation, and desktop behavior.
+
 ## Agent workflow and deployment (2026-10-04)
 
 Baseline host: four CPU cores, 7.6 GiB RAM, 4 GiB swap. At inspection production

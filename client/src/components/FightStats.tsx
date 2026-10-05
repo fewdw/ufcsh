@@ -123,6 +123,7 @@ export function CompareRow({
   note,
   to,
   title,
+  action,
 }: {
   f1: React.ReactNode;
   f2: React.ReactNode;
@@ -130,6 +131,7 @@ export function CompareRow({
   note?: React.ReactNode;
   to?: string;
   title?: string;
+  action?: { onClick: () => void; label: string; expanded: boolean };
 }) {
   const body = (
     <>
@@ -141,6 +143,8 @@ export function CompareRow({
       {note ? <div className={`mt-0.5 truncate text-center ${CHART_TEXT} leading-4 text-zinc-400`}>{note}</div> : null}
     </>
   );
+  if (action) return <button type="button" onClick={action.onClick} aria-label={action.label} aria-haspopup="dialog" aria-expanded={action.expanded}
+    className={`block w-full cursor-pointer rounded-md text-left ${comparePad} transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900`}>{body}</button>;
   if (!to) return <div className={comparePad}>{body}</div>;
   return (
     <Link
