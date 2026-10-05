@@ -1,75 +1,59 @@
 import { useId, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { ChevronDown, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useApi, type Opposition, type OppositionBout } from "../api";
-import { formatDateShortWithYear, outcomeClasses, outcomeLabel } from "../format";
+import { formatDate, lastName, outcomeClasses, outcomeLabel } from "../format";
 import { CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
 import EvidenceDialog from "./EvidenceDialog";
+import { oppositionRows } from "../opposition";
+import { resultDot } from "../resultDots";
 import RequestNotice from "./RequestNotice";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "./segmented";
 
 type Fighter = { id: string; name: string };
 const resultWords: Record<string, string> = { win: "Win", loss: "Loss", draw: "Draw", nc: "No contest" };
 
-function Result({ outcome }: { outcome: OppositionBout["outcome"] }) {
-  return <span title={resultWords[outcome ?? ""] ?? "Result unknown"} className={`inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded px-1 text-[10px] font-bold ${outcomeClasses(outcome)}`}>{outcomeLabel(outcome) || "?"}</span>;
+function Result({ outcome, label }: { outcome: OppositionBout["outcome"]; label?: string }) {
+  const word = resultWords[outcome ?? ""] ?? "Result unknown";
+  return <span title={label ?? word} aria-label={label ?? word} className={`inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded px-1 text-[10px] font-bold ${outcomeClasses(outcome)}`}>{outcomeLabel(outcome) || "?"}</span>;
 }
 
-function OpponentHistory({ row, close }: { row: Opposition["rows"][number]; close: () => void }) {
-  const groups = [
-    { label: "Beat", outcomes: ["win"] },
-    { label: "Lost to", outcomes: ["loss"] },
-    { label: "Draw / NC", outcomes: ["draw", "nc"] },
-  ];
-  return <div className="border-t border-zinc-200 bg-zinc-50 px-3 pb-3 pt-1">
-    {!row.history.length ? <p className="py-2 text-xs text-zinc-500">No earlier UFC opponents.</p> : groups.map(group => {
-      const bouts = row.history.filter(bout => group.outcomes.includes(bout.outcome ?? ""));
-      if (!bouts.length) return null;
-      return <section key={group.label} aria-label={`${row.opponent.name}: ${group.label}`} className="mt-2">
-        <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">{group.label}</h3>
-        <ul className="divide-y divide-zinc-200 dark:divide-zinc-700">
-          {bouts.map((bout, index) => <li key={bout.fight_id ?? `${bout.date}-${index}`} className="flex items-start gap-2 py-2 text-xs">
-            {group.label === "Draw / NC" ? <Result outcome={bout.outcome} /> : null}
-            <div className="min-w-0 flex-1">
-              {bout.opponent.id ? <Link to={`/fighters/${bout.opponent.id}`} onClick={close} className="font-medium text-zinc-900 hover:underline">{bout.opponent.name}</Link> : <span className="font-medium text-zinc-900">{bout.opponent.name}</span>}
-              {bout.method ? <span className="mt-0.5 block text-[10px] text-zinc-500">{bout.method}</span> : null}
-            </div>
-            {bout.fight_id ? <Link to={`/fights/${bout.fight_id}`} onClick={close} title="View matchup" className="shrink-0 text-[10px] tabular-nums text-zinc-500 hover:underline">{formatDateShortWithYear(bout.date)}</Link> : <span className="shrink-0 text-[10px] tabular-nums text-zinc-500">{formatDateShortWithYear(bout.date)}</span>}
-          </li>)}
-        </ul>
-      </section>;
-    })}
-  </div>;
-}
-
-function OpponentRow({ row, close }: { row: Opposition["rows"][number]; close: () => void }) {
-  const [open, setOpen] = useState(false);
-  return <details className="group rounded-lg border border-zinc-200" onToggle={event => setOpen(event.currentTarget.open)}>
-    <summary className="flex cursor-pointer list-none items-start gap-2 rounded-lg px-3 py-3 hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-zinc-900 [&::-webkit-details-marker]:hidden">
-      <Result outcome={row.outcome} />
-      <span className="min-w-0 flex-1">
-        <span className="block text-xs font-semibold text-zinc-900">{row.opponent.name}</span>
-        <span className="mt-0.5 block text-[10px] text-zinc-500">{formatDateShortWithYear(row.date)}{row.method ? ` · ${row.method}` : ""}</span>
-      </span>
-      <ChevronDown aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400 transition-transform group-open:rotate-180" />
-    </summary>
-    {open ? <OpponentHistory row={row} close={close} /> : null}
-  </details>;
-}
-
-function OppositionList({ fighter, before, close }: { fighter: Fighter; before?: string; close: () => void }) {
+function OppositionList({ fighter, before, outcome, close }: { fighter: Fighter; before?: string; outcome: "win" | "loss"; close: () => void }) {
   const { data, error, retry } = useApi<Opposition>(`/api/fighters/${fighter.id}/opposition${before ? `?before=${before}` : ""}`);
+  const rows = data ? oppositionRows(data, outcome) : [];
   return <div data-sheet-scroll className="min-h-0 flex-1 overflow-auto overscroll-x-contain overscroll-y-none pr-2 [scrollbar-gutter:stable]">
     {error ? <RequestNotice onRetry={retry}>Couldn’t load opponents.</RequestNotice> : null}
-    {!data ? !error ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null : !data.rows.length ? <p className="py-4 text-xs text-zinc-500">UFC debut — no earlier opponents.</p> : <ul className="space-y-2">
-      {data.rows.map(row => <li key={row.fight_id}><OpponentRow row={row} close={close} /></li>)}
-    </ul>}
+    {!data ? !error ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null : !rows.length ? <p className="py-4 text-xs text-zinc-500">{data.rows.length ? `No earlier opponent ${outcome === "win" ? "wins" : "losses"}.` : "UFC debut — no earlier opponents."}</p> : <table aria-label={`${fighter.name}: opponent ${outcome === "win" ? "wins" : "losses"}`} className="w-full table-fixed text-left text-[11px] sm:text-xs">
+      <colgroup><col className="w-8" /><col className="w-12 sm:w-20" /><col /><col className="w-24 sm:w-44" /></colgroup>
+      <thead className="sticky top-0 z-10 bg-white"><tr className="text-[10px] font-medium text-zinc-500 sm:text-[11px]">
+        <th scope="col" className="pb-2 font-medium" title="Opponent’s result">W/L</th>
+        <th scope="col" className="pb-2 font-medium">Method</th>
+        <th scope="col" className="pb-2 pr-2 font-medium">{outcome === "win" ? "Beat" : "Lost to"}</th>
+        <th scope="col" className="pb-2 font-medium" title={`${fighter.name}'s result against their opponent`}>{lastName(fighter.name)} vs.</th>
+      </tr></thead>
+      <tbody>{rows.map(({ meeting, bout }, index) => <tr key={`${meeting.fight_id}-${bout.fight_id ?? index}`} className="border-t border-zinc-100 hover:bg-zinc-50">
+        <td className="py-2 pr-1 align-top"><Result outcome={bout.outcome} label={`${meeting.opponent.name}: ${resultWords[bout.outcome ?? ""] ?? "Result unknown"} against ${bout.opponent.name}`} /></td>
+        <td className="break-words py-2 pr-1 align-top text-[10px] text-zinc-500 sm:text-[11px]">
+          {bout.fight_id ? <Link to={`/fights/${bout.fight_id}`} onClick={close} title={`${bout.method || "Method unknown"} · ${formatDate(bout.date)} — view matchup`} className="hover:underline">{resultDot(bout).shortMethod || "—"}</Link> : resultDot(bout).shortMethod || "—"}
+        </td>
+        <td className="break-words py-2 pr-2 align-top font-medium text-zinc-900">
+          {bout.opponent.id ? <Link to={`/fighters/${bout.opponent.id}`} onClick={close} className="hover:underline">{bout.opponent.name}</Link> : bout.opponent.name}
+        </td>
+        <td className="py-2 align-top">
+          <span className="flex items-start gap-1.5">
+            <Result outcome={meeting.outcome} label={`${fighter.name}: ${resultWords[meeting.outcome ?? ""] ?? "Result unknown"} against ${meeting.opponent.name}`} />
+            <Link to={`/fights/${meeting.fight_id}`} onClick={close} className="min-w-0 break-words text-[10px] font-medium text-zinc-700 hover:underline sm:text-xs">{meeting.opponent.name}</Link>
+          </span>
+        </td>
+      </tr>)}</tbody>
+    </table>}
   </div>;
 }
 
 function OppositionModal({ id, fighters, before, close }: { id: string; fighters: Fighter[]; before?: string; close: () => void }) {
   const [selected, setSelected] = useState(0);
+  const [outcome, setOutcome] = useState<"win" | "loss">("win");
   return <EvidenceDialog id={id} close={close}>
     <div className="shrink-0 px-4 pb-3 pt-3 sm:px-5">
       <div className="flex items-center justify-between gap-3">
@@ -80,9 +64,13 @@ function OppositionModal({ id, fighters, before, close }: { id: string; fighters
         {fighters.map((fighter, index) => <button key={fighter.id} type="button" aria-pressed={selected === index} onClick={() => setSelected(index)}
           className={`min-h-8 min-w-0 flex-auto rounded-full px-3 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${selected === index ? segmentedSelected : segmentedIdle}`}>{fighter.name}</button>)}
       </div>
+      <div role="group" aria-label="Opponent results" className={`${segmentedGroup} mt-2 w-fit max-w-full`}>
+        {(["win", "loss"] as const).map(value => <button key={value} type="button" aria-pressed={outcome === value} onClick={() => setOutcome(value)}
+          className={`min-h-8 rounded-full px-3 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${outcome === value ? segmentedSelected : segmentedIdle}`}>{value === "win" ? "Opponent Wins" : "Opponent Losses"}</button>)}
+      </div>
     </div>
     <section aria-label={`${fighters[selected].name}: opposition`} className="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-5">
-      <OppositionList key={fighters[selected].id} fighter={fighters[selected]} before={before} close={close} />
+      <OppositionList key={fighters[selected].id} fighter={fighters[selected]} before={before} outcome={outcome} close={close} />
     </section>
   </EvidenceDialog>;
 }
