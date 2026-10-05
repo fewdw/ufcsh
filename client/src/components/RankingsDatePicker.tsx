@@ -24,7 +24,7 @@ export default function RankingsDatePicker({ selectedDate, today, onView, trigge
 }) {
   const [value, setValue] = useState<CalendarDate | null>(() => initialDate(selectedDate) ?? parseDate(today));
   const latest = parseDate(today);
-  return <Popover isOpen triggerRef={triggerRef} onOpenChange={open => { if (!open) onClose(); }} placement="bottom end" offset={8}
+  return <Popover data-sheet-overlay isOpen triggerRef={triggerRef} onOpenChange={open => { if (!open) onClose(); }} placement="bottom end" offset={8}
     className="z-[80] w-[324px] max-w-[calc(100vw-16px)] overflow-auto rounded-xl border border-zinc-200 bg-white p-2 shadow-xl">
     <Dialog aria-label="Choose ranking date" className="outline-none">
       <form aria-label="View rankings by date" onSubmit={event => {

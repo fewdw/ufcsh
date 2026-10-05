@@ -90,12 +90,11 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-04">October 4, 2026</time></p>
+            <p><time dateTime="2026-10-05">October 5, 2026</time></p>
             <ul>
-              <li>Browse UFC rankings from a selected date.</li>
-              <li>Historical filters and fighter results match that date.</li>
-              <li>Pick dates with month/year dropdowns and reset to current rankings.</li>
-              <li>Rankings update in place with compact, single-row controls.</li>
+              <li>Pull down anywhere in mobile Filters to close after scrolling to the top.</li>
+              <li>Choose ranking dates in Filters, with separate date and filter resets.</li>
+              <li>Roomier ranking controls, with division tabs beside Filters.</li>
             </ul>
           </Section>
         </div>

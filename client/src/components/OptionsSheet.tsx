@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { SlidersHorizontal, X } from "lucide-react";
+import useSheetDrag from "../useSheetDrag";
 import { CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
 
 /** A page's options. A popover under its button on a wide screen; on a phone
@@ -9,8 +10,8 @@ import { CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
  *  portalled to the body, so its dimmed backdrop covers the header too
  *  whatever the page's own stacking or blur, and the page under it stays
  *  still while it is open. A tap on that backdrop only closes the sheet — it
- *  never reaches the page beneath — and the sheet can be dragged down by its
- *  handle to dismiss it. */
+ *  never reaches the page beneath — and the sheet can be dragged down from its
+ *  content once scrolled to the top to dismiss it. */
 export default function OptionsSheet({
   label,
   count,
@@ -22,7 +23,8 @@ export default function OptionsSheet({
   /** Shown beside the label, e.g. "4/4" or the number of filters in use. */
   count?: ReactNode;
   onReset: () => void;
-  children: ReactNode;
+  /** Child actions can close the sheet after applying their selection. */
+  children: ReactNode | ((close: () => void) => ReactNode);
   /** Show only the icon on a phone, or with "lg" below the `lg` breakpoint. */
   iconOnlyOnPhone?: boolean | "lg";
 }) {
@@ -41,21 +43,24 @@ export default function OptionsSheet({
     query.addEventListener("change", change);
     return () => query.removeEventListener("change", change);
   }, []);
-  /** How far the phone sheet is dragged down, and where the drag began. */
+  /** Fade the backdrop as the phone sheet is pulled down. */
   const [dragY, setDragY] = useState(0);
-  const [dismissing, setDismissing] = useState(false);
-  const drag = useRef<{ id: number; startY: number; lastY: number; lastAt: number; velocity: number } | null>(null);
   const close = (returnFocus = false) => {
     setOpen(false);
     setDragY(0);
-    setDismissing(false);
-    drag.current = null;
     if (returnFocus) buttonRef.current?.focus({ preventScroll: true });
   };
+  useSheetDrag(sheetRef, () => {
+    closedAt.current = Date.now();
+    close();
+  }, open && phone, setDragY);
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
+      if (sheetRef.current?.closest("[inert]")) return;
       const target = event.target as Node;
+      // A child date picker portals its dialog outside the options sheet.
+      if (target instanceof Element && target.closest("[data-sheet-overlay]")) return;
       if (sheetRef.current?.contains(target)) return;
       // On a phone the backdrop covers everything else, and its own click
       // closes the sheet. Closing here would drop the backdrop before that
@@ -67,7 +72,8 @@ export default function OptionsSheet({
       setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented || sheetRef.current?.closest("[inert]")) return;
+      if (event.target instanceof Element && event.target.closest("[data-sheet-overlay]")) return;
       event.preventDefault();
       setOpen(false);
       buttonRef.current?.focus({ preventScroll: true });
@@ -80,39 +86,6 @@ export default function OptionsSheet({
     };
   }, [open, phone]);
 
-  const onDragStart = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!phone || dismissing) return;
-    // Let the header's own buttons take their taps.
-    if ((event.target as HTMLElement).closest("button")) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    drag.current = { id: event.pointerId, startY: event.clientY, lastY: event.clientY, lastAt: event.timeStamp, velocity: 0 };
-  };
-  const onDragMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const state = drag.current;
-    if (!state || state.id !== event.pointerId) return;
-    const elapsed = Math.max(1, event.timeStamp - state.lastAt);
-    state.velocity = (event.clientY - state.lastY) / elapsed;
-    state.lastY = event.clientY;
-    state.lastAt = event.timeStamp;
-    setDragY(Math.max(0, event.clientY - state.startY));
-  };
-  const onDragEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const state = drag.current;
-    if (!state || state.id !== event.pointerId) return;
-    drag.current = null;
-    const height = sheetRef.current?.offsetHeight ?? 400;
-    const distance = Math.max(0, event.clientY - state.startY);
-    // A far enough pull, or a quick flick down, dismisses it.
-    if (event.type !== "pointercancel" && (distance > Math.min(120, height / 3) || (distance > 16 && state.velocity > 0.5))) {
-      setDismissing(true);
-      setDragY(height);
-      closedAt.current = Date.now();
-      window.setTimeout(() => close(), 200);
-    } else {
-      setDragY(0);
-    }
-  };
-
   // Nothing behind a phone sheet scrolls: not the page, not an inner list.
   useEffect(() => {
     if (!open || !phone) return;
@@ -120,6 +93,7 @@ export default function OptionsSheet({
     const previous = root.style.overflow;
     root.style.overflow = "hidden";
     const block = (event: TouchEvent) => {
+      if (event.target instanceof Element && event.target.closest("[data-sheet-overlay]")) return;
       if (!sheetRef.current?.contains(event.target as Node)) event.preventDefault();
     };
     document.addEventListener("touchmove", block, { passive: false });
@@ -152,7 +126,7 @@ export default function OptionsSheet({
         const sheet = <>
           <div
             className="fixed inset-0 z-[60] bg-zinc-950/40 backdrop-blur-[3px] sm:hidden"
-            style={phone && dragY ? { opacity: Math.max(0, 1 - dragY / (sheetRef.current?.offsetHeight || 400)), transition: drag.current ? "none" : "opacity 200ms ease-out" } : undefined}
+            style={phone && dragY ? { opacity: Math.max(0, 1 - dragY / (sheetRef.current?.offsetHeight || 400)), transition: "opacity 200ms ease-out" } : undefined}
             aria-hidden="true"
             onClick={(event) => { event.preventDefault(); event.stopPropagation(); closedAt.current = Date.now(); close(); }}
           />
@@ -160,15 +134,11 @@ export default function OptionsSheet({
             ref={sheetRef}
             role="dialog"
             aria-label={label}
-            style={phone ? { transform: dragY ? `translateY(${dragY}px)` : undefined, transition: drag.current ? "none" : "transform 200ms ease-out" } : undefined}
-            className="fixed inset-x-0 bottom-0 z-[70] max-h-[80vh] overflow-y-auto overscroll-y-contain rounded-t-2xl border-t border-zinc-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:z-50 sm:mt-2 sm:max-h-[32rem] sm:w-80 sm:rounded-2xl sm:border sm:pb-0 sm:shadow-xl"
+            data-sheet-scroll
+            className="fixed inset-x-0 bottom-0 z-[70] max-h-[80vh] overflow-y-auto overscroll-y-none transition-transform duration-200 motion-reduce:transition-none rounded-t-2xl border-t border-zinc-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:z-50 sm:mt-2 sm:max-h-[32rem] sm:w-80 sm:rounded-2xl sm:border sm:pb-0 sm:shadow-xl"
           >
             <div
-              className="sticky top-0 z-10 bg-white px-4 pb-1 pt-3 touch-none sm:touch-auto"
-              onPointerDown={onDragStart}
-              onPointerMove={onDragMove}
-              onPointerUp={onDragEnd}
-              onPointerCancel={onDragEnd}
+              className="sticky top-0 z-10 bg-white px-4 pb-1 pt-3"
             >
               <div className="-mt-1 mb-2 flex justify-center sm:hidden" aria-hidden="true">
                 <span className="h-1 w-9 rounded-full bg-zinc-300" />
@@ -185,7 +155,7 @@ export default function OptionsSheet({
                 </div>
               </div>
             </div>
-            {children}
+            {typeof children === "function" ? children(() => close()) : children}
           </div>
         </>;
         return phone ? createPortal(sheet, document.body) : sheet;
