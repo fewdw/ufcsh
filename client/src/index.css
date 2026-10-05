@@ -393,25 +393,25 @@ select:not([multiple]):not([size]) {
 }
 .matchup-comparisons dl:first-of-type { border-top: 0; }
 .matchup-comparisons dl,
-.matchup-context > div {
+.matchup-context > :is(div, button) {
   min-height: 38px;
   padding: 9px 0;
   border-top: 1px solid var(--matchup-rule);
 }
 .matchup-comparisons dl,
-.matchup-context > div > div:first-child {
+.matchup-context > :is(div, button) > div:first-child {
   grid-template-columns: minmax(0, 1fr) 112px minmax(0, 1fr);
   gap: 8px;
 }
 .matchup-comparisons dd { flex-wrap: wrap; row-gap: 3px; }
 .matchup-comparisons dl > div:first-child dd { justify-content: flex-start; }
 .matchup-comparisons dd > span:first-child { font-size: 11px; overflow: visible; white-space: normal; }
-.matchup-context > div > div > div > span {
+.matchup-context > :is(div, button) > div > div > span {
   font-size: 11px;
   white-space: normal;
   overflow-wrap: anywhere;
 }
-.matchup-context > div > div:nth-child(1) > div:nth-child(2) > span {
+.matchup-context > :is(div, button) > div:nth-child(1) > div:nth-child(2) > span {
   white-space: nowrap;
 }
 @container (max-width: 57.99rem) {
@@ -420,12 +420,12 @@ select:not([multiple]):not([size]) {
   .matchup-market { padding-top: 16px; border-top: 1px solid var(--matchup-rule); }
   .matchup-comparisons { gap: 0; padding: 2px 16px 8px; }
   .matchup-comparisons dl,
-  .matchup-context > div { min-height: 30px; padding: 5px 0; }
+  .matchup-context > :is(div, button) { min-height: 30px; padding: 5px 0; }
 }
 @container (max-width: 24rem) {
   .matchup-name { font-size: 16px; }
   .matchup-comparisons dl,
-  .matchup-context > div > div:first-child { grid-template-columns: minmax(0, 1fr) 92px minmax(0, 1fr); gap: 5px; }
+  .matchup-context > :is(div, button) > div:first-child { grid-template-columns: minmax(0, 1fr) 92px minmax(0, 1fr); gap: 5px; }
 }
 
 /* Give the pinned identity and full-body portraits room above the fight data. */
