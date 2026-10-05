@@ -20,6 +20,7 @@ import Avatar from "../components/Avatar";
 import { CardEventTitle, NAV_STEP, CardNavigation } from "../components/CardHeader";
 import FightScoring from "../components/FightScoring";
 import FightPredictions from "../components/FightPredictions";
+import { predictionTabVisible, type PredictionSummary } from "../predictions";
 import { FightRail, FightRailSkeleton, FightStepLink, FightStrip, MatchupSkeleton } from "../components/FightRail";
 // Part of this page's own code, so the Discussion tab opens with it rather
 // than behind a fallback while a separate chunk loads.
@@ -721,6 +722,11 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     data => data?.refreshing ? 5_000 : isFightDay(data?.event.date) ? 15_000 : data?.status === "past" ? 0 : 5 * 60_000);
   if (loadedFight) previousFight.current = loadedFight;
   const fight = loadedFight ?? previousFight.current;
+  // Finished fights need saved community picks to have a useful Predict tab.
+  // Share the panel's cached public summary; no private pick request is needed.
+  const { data: predictions, error: predictionError } = useApi<PredictionSummary>(
+    fight?.status === "past" && fight.prediction_available !== false ? `/api/fights/${fight.id}/predictions` : null,
+  );
   const eventReturnDepth = location.state != null
     && typeof location.state === "object"
     && "eventReturnDepth" in location.state
@@ -857,7 +863,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     // The bout on now has its Score tab from the moment it starts, rounds
     // locked until the feed or the admin panel opens them.
     ...(scoreableRoundCount(fight) > 0 || fight.in_progress ? ["score" as const] : []),
-    ...(fight.prediction_available !== false ? ["predict" as const] : []),
+    ...(predictionTabVisible(fight, predictions, Boolean(predictionError)) ? ["predict" as const] : []),
     ...(!fight.potential ? ["discussion" as const] : []),
   ];
   const tab = tabs.find((candidate) => candidate === requestedTab) ?? tabs[0];
@@ -970,6 +976,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
             <div id="matchup-tabpanel" role={tabs.length > 1 ? "tabpanel" : undefined} aria-labelledby={tabs.length > 1 ? `matchup-tab-${tab}` : undefined} className="flex flex-col gap-2 sm:gap-3">
               {tab === "fight" ? <>
                 <Scorecards fight={fight} />
+                {fight.status === "past" && !detail?.judges?.length ? <FightScoring key={fight.id} fight={fight} communityOnly /> : null}
                 {hasStats ? <FightStatistics fight={fight} live={statsLive} /> : fight.in_progress ? (
                   <div className={`${shell} flex items-center justify-center gap-2 px-5 py-10 text-sm text-zinc-500`} role="status">
                     <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />

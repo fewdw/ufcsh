@@ -9,6 +9,7 @@ import type { MyScorecard, RoundScore, ScoreSummary } from "../scoring";
 import { fightFinish, scoreTotal } from "../scoring";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
 import { BUTTON_PRIMARY_LARGE, BUTTON_QUIET } from "../ui";
+import FightFinishRow from "./FightFinishRow";
 
 const primary = BUTTON_PRIMARY_LARGE;
 const quiet = BUTTON_QUIET;
@@ -218,14 +219,7 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
                   </div>
                 );
               })}
-              {finish ? (
-                <div className="py-3" role="group" aria-label={`Round ${finish.round}`}>
-                  <p className="text-center text-[13px]">
-                    <span className={`font-semibold ${finish.side === 1 ? "text-f1-ink" : "text-f2-ink"}`}>{finish.name}</span>
-                    <span className="text-zinc-400"> · {finish.method}{finish.time ? ` · ${finish.time}` : ""}</span>
-                  </p>
-                </div>
-              ) : null}
+              {finish ? <FightFinishRow finish={finish} /> : null}
             </div>
           </fieldset>
           <div className="mt-4 flex items-center justify-between gap-3 border-t border-zinc-100 pt-3">

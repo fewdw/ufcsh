@@ -9,12 +9,16 @@ import FanAvatar from "./FanAvatar";
 // Part of the matchup page's own code: a lazily loaded editor held the Score
 // tab on a fallback for at least React's 300 ms reveal throttle.
 import ScoreEditor from "./ScoreEditor";
+import FightFinishRow from "./FightFinishRow";
 
 
-/** The community's card and the reader's own card. Nothing else: the numbers
- *  and the seven buttons that produce them are the whole feature. */
-export default function FightScoring({ fight }: { fight: Matchup }) {
+/** The community card and the reader's scoring controls. Result uses
+ *  communityOnly to show existing scores without the editor or fan list. */
+export default function FightScoring({ fight, communityOnly = false }: { fight: Matchup; communityOnly?: boolean }) {
   const { data, error, retry } = useApi<ScoreSummary>(`/api/fights/${fight.id}/scores`, 5_000);
+  // Result includes existing community scores, while Score keeps the full
+  // loading/error state and the controls for creating a card.
+  if (communityOnly && (!data || data.totals.scorers === 0)) return null;
   if (!data)
     return (
       <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
@@ -77,17 +81,12 @@ export default function FightScoring({ fight }: { fight: Matchup }) {
               </div>
             );
           })}
-          {finish ? (
-            <p className="px-5 py-2.5 text-center text-xs">
-              <span className={`font-semibold ${finish.side === 1 ? "text-f1-ink" : "text-f2-ink"}`}>{finish.name}</span>
-              <span className="text-zinc-400"> · {finish.method} · R{finish.round}{finish.time ? ` · ${finish.time}` : ""}</span>
-            </p>
-          ) : null}
+          {finish ? <FightFinishRow finish={finish} /> : null}
         </div>
         {eligibility.reason ? <p className="border-t border-zinc-100 px-5 py-3 text-xs text-zinc-500">{eligibility.reason}</p> : null}
       </section>
-      {data.cards.length ? <FanCards fight={fight} cards={data.cards} localCards={totals.localCards} totalScorers={totals.scorers} /> : null}
-      {eligibility.available > 0 ? (
+      {!communityOnly && data.cards.length ? <FanCards fight={fight} cards={data.cards} localCards={totals.localCards} totalScorers={totals.scorers} /> : null}
+      {!communityOnly && eligibility.available > 0 ? (
         <ScoreEditor fight={fight} eligibility={eligibility} onSaved={() => { void apiCache.loadAfterWrite(`/api/fights/${fight.id}/scores`); }} />
       ) : null}
     </>

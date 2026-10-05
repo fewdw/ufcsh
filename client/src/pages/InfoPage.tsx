@@ -92,9 +92,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-05">October 5, 2026</time></p>
             <ul>
-              <li>Fighter profile tabs stay selected after refresh and in shared links.</li>
-              <li>Ranking history tooltips close when you lift your finger.</li>
-              <li>Draw and no-contest result markers use solid colors, including in dark mode.</li>
+              <li>Completed fights hide Predict when no predictions were saved.</li>
+              <li>Community scorecards appear in Result for fights that ended in a finish.</li>
+              <li>The finishing round shows the method beside the winner, with the round and time.</li>
             </ul>
           </Section>
         </div>

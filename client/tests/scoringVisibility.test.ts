@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Matchup } from "../src/api.ts";
-import { scoreableRoundCount } from "../src/scoring.ts";
+import { fightFinish, scoreableRoundCount } from "../src/scoring.ts";
 
 const fight = (patch: Partial<Matchup>): Matchup => ({
   status: "past",
@@ -19,6 +19,28 @@ test("the Score tab is offered only when a round can be scored", () => {
   assert.equal(scoreableRoundCount(fight({ method: "SUB", round: "2" })), 1);
   assert.equal(scoreableRoundCount(fight({})), 3);
   assert.equal(scoreableRoundCount(fight({ scheduled_rounds: null })), 0);
+});
+
+test("a stoppage occupies its actual round on the winning fighter's side", () => {
+  const eligibility = { state: "completed" as const, scheduled: 5, available: 2, reason: null };
+  const submission = fight({
+    method: "SUB", round: "3", time: "1:02", scheduled_rounds: 5,
+    f1: { name: "Charles Oliveira", outcome: "win" } as Matchup["f1"],
+    f2: { name: "Dustin Poirier", outcome: "loss" } as Matchup["f2"],
+  });
+  assert.deepEqual(fightFinish(submission, eligibility), {
+    round: 3, side: 1, name: "Charles Oliveira", method: "SUB", time: "1:02",
+  });
+  assert.deepEqual(fightFinish({ ...submission,
+    method: "KO/TKO", round: "1", time: "0:30",
+    f1: { ...submission.f1, outcome: "loss" }, f2: { ...submission.f2, outcome: "win" },
+  }, { ...eligibility, available: 0 }), {
+    round: 1, side: 2, name: "Dustin Poirier", method: "KO/TKO", time: "0:30",
+  });
+  assert.equal(fightFinish({ ...submission, method: "U-DEC" }, eligibility), null);
+  assert.equal(fightFinish(submission, { ...eligibility, state: "live" }), null);
+  assert.equal(fightFinish(submission, { ...eligibility, available: 1 }), null, "inconsistent round data must not invent a finish row");
+  assert.equal(fightFinish({ ...submission, f1: { ...submission.f1, outcome: "nc" } }, eligibility), null, "no winner means no winning side");
 });
 
 test("a live fight waits for completed-round data before showing Score", () => {
