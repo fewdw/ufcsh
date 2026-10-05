@@ -1,12 +1,12 @@
 import { useId, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { X } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 import { useApi, type Opposition, type OppositionBout } from "../api";
 import { formatDate, lastName, outcomeClasses, outcomeLabel } from "../format";
 import { CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
 import EvidenceDialog from "./EvidenceDialog";
-import { oppositionGroups, type OppositionFilter } from "../opposition";
+import { oppositionGroups, type OppositionFilter, type OppositionSort } from "../opposition";
 import { resultDot } from "../resultDots";
 import RequestNotice from "./RequestNotice";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "./segmented";
@@ -19,9 +19,9 @@ function Result({ outcome, label }: { outcome: OppositionBout["outcome"]; label?
   return <span title={label ?? word} aria-label={label ?? word} className={`inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded px-1 text-[10px] font-bold ${outcomeClasses(outcome)}`}>{outcomeLabel(outcome) || "?"}</span>;
 }
 
-function OppositionList({ fighter, before, outcome, close }: { fighter: Fighter; before?: string; outcome: OppositionFilter; close: () => void }) {
+function OppositionList({ fighter, before, outcome, sort, close }: { fighter: Fighter; before?: string; outcome: OppositionFilter; sort: OppositionSort; close: () => void }) {
   const { data, error, retry } = useApi<Opposition>(`/api/fighters/${fighter.id}/opposition${before ? `?before=${before}` : ""}`);
-  const groups = data ? oppositionGroups(data, outcome) : [];
+  const groups = data ? oppositionGroups(data, outcome, sort) : [];
   const resultName = outcome === "all" ? "wins and losses" : outcome === "win" ? "wins" : "losses";
   return <div data-sheet-scroll className="min-h-0 flex-1 overflow-auto overscroll-x-contain overscroll-y-none pr-2 [scrollbar-gutter:stable]">
     {error ? <RequestNotice onRetry={retry}>Couldn’t load opponents.</RequestNotice> : null}
@@ -62,25 +62,34 @@ function OppositionList({ fighter, before, outcome, close }: { fighter: Fighter;
 function OppositionModal({ id, fighters, before, close }: { id: string; fighters: Fighter[]; before?: string; close: () => void }) {
   const [selected, setSelected] = useState(0);
   const [outcome, setOutcome] = useState<OppositionFilter>("all");
+  const [sort, setSort] = useState<OppositionSort>("fighter");
   return <EvidenceDialog id={id} close={close}>
     <div className="shrink-0 px-4 pb-3 pt-3 sm:px-5">
       <div className="flex items-center justify-between gap-3">
         <h2 id={`${id}-title`} tabIndex={-1} style={{ outline: "none" }} className={DIALOG_TITLE}>Quality of opposition</h2>
         <button type="button" aria-label="Close opposition details" onClick={close} className={`-mr-1 ${CLOSE_BUTTON}`}><X className={CLOSE_ICON} aria-hidden="true" /></button>
       </div>
-      <div className="mt-2 flex items-center gap-2">
-        <div role="group" aria-label="Fighter" className={`${segmentedGroup} min-w-0 flex-1`}>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5 sm:gap-2">
+        <div role="group" aria-label="Fighter" className={`${segmentedGroup} min-w-max flex-1`}>
           {fighters.map((fighter, index) => <button key={fighter.id} type="button" aria-label={fighter.name} title={fighter.name} aria-pressed={selected === index} onClick={() => setSelected(index)}
-            className={`min-h-8 min-w-0 flex-auto truncate rounded-full px-2 text-[10px] font-medium min-[375px]:text-[11px] sm:px-3 sm:text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${selected === index ? segmentedSelected : segmentedIdle}`}><span className="sm:hidden">{lastName(fighter.name)}</span><span className="hidden sm:inline">{fighter.name}</span></button>)}
+            className={`min-h-8 min-w-0 flex-auto whitespace-nowrap rounded-full px-1 text-[10px] font-medium sm:px-3 sm:text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${selected === index ? segmentedSelected : segmentedIdle}`}><span className="sm:hidden">{lastName(fighter.name)}</span><span className="hidden sm:inline">{fighter.name}</span></button>)}
         </div>
-        <div role="group" aria-label="Opponent results" className={`${segmentedGroup} min-w-0 flex-1`}>
+        <div role="group" aria-label="Opponent results" className={`${segmentedGroup} min-w-max flex-1`}>
           {(["all", "win", "loss"] as const).map(value => <button key={value} type="button" aria-pressed={outcome === value} onClick={() => setOutcome(value)}
-            className={`min-h-8 min-w-0 flex-1 whitespace-nowrap rounded-full px-2 text-[10px] font-medium min-[375px]:text-[11px] sm:px-3 sm:text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${outcome === value ? segmentedSelected : segmentedIdle}`}>{value === "all" ? "All" : value === "win" ? "Wins" : "Losses"}</button>)}
+            className={`min-h-8 flex-auto whitespace-nowrap rounded-full px-1 text-[10px] font-medium sm:px-3 sm:text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${outcome === value ? segmentedSelected : segmentedIdle}`}>{value === "all" ? "All" : value === "win" ? "Wins" : "Losses"}</button>)}
         </div>
+        <label title={`Sort by ${sort} recent`} className="relative flex min-h-10 shrink-0 items-center gap-1 rounded-full border border-zinc-200 bg-white px-2 text-[10px] font-medium text-zinc-700 hover:bg-zinc-50 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-zinc-900 sm:px-3 sm:text-xs">
+          <span aria-hidden="true">{sort === "fighter" ? "Fighter recent" : "Opp. recent"}</span>
+          <ChevronDown aria-hidden="true" className="h-3 w-3" />
+          <select aria-label="Sort opposition" value={sort} onChange={event => setSort(event.target.value as OppositionSort)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0">
+            <option value="fighter">Sort by fighter recent</option>
+            <option value="opponent">Sort by opponent recent</option>
+          </select>
+        </label>
       </div>
     </div>
     <section aria-label={`${fighters[selected].name}: opposition`} className="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-5">
-      <OppositionList key={fighters[selected].id} fighter={fighters[selected]} before={before} outcome={outcome} close={close} />
+      <OppositionList key={fighters[selected].id} fighter={fighters[selected]} before={before} outcome={outcome} sort={sort} close={close} />
     </section>
   </EvidenceDialog>;
 }
