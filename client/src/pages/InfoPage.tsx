@@ -92,8 +92,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-05">October 5, 2026</time></p>
             <ul>
-              <li>Press, hold, or drag the ranking history chart to inspect past rankings and results.</li>
-              <li>The page stays still during touch gestures on the chart.</li>
+              <li>Tap OPP. Record in a matchup to explore the quality of opposition.</li>
+              <li>See who opponents beat or lost to, grouped by fighter and ordered by recency.</li>
+              <li>Going Back restores your open opposition view, filters and place in the list.</li>
             </ul>
           </Section>
         </div>
