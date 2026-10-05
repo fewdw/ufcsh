@@ -19,7 +19,7 @@ import { fetchPage, LoadMore, useInfiniteList } from "../components/InfiniteList
 import NewsRow, { savedOff, savedSummaries } from "../components/NewsRow";
 import { PanelHeading } from "../components/FightStats";
 import { SITE_URL, useSeo } from "../seo";
-import { useHistoryState, useRouteScrollRestoration, useTabBarAnchor } from "../navigationState";
+import { useRouteScrollRestoration, useTabBarAnchor } from "../navigationState";
 import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedTab } from "../components/segmented";
 import { outsideFighterUrl, useSettings, withRanking } from "../settings";
 
@@ -657,17 +657,14 @@ export default function FighterPage() {
   const mainScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:main", Boolean(fighter));
   const sideScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:side", Boolean(fighter));
   // Below `lg` the two columns become two tabs under the fighter.
-  const [savedTab, setTab] = useHistoryState<ProfileTab>("fighter:tab", "fights");
   const requestedTab = new URLSearchParams(location.search).get("tab");
-  const tab: ProfileTab = requestedTab === "stats" || requestedTab === "news" || requestedTab === "fights" ? requestedTab : savedTab;
+  const tab: ProfileTab = requestedTab === "stats" || requestedTab === "news" ? requestedTab : "fights";
   const tabAnchor = useTabBarAnchor(fighterId ?? "", tab);
   const selectTab = (next: ProfileTab, button: HTMLElement) => {
-    tabAnchor.keep(button); setTab(next);
-    if (requestedTab) {
-      const params = new URLSearchParams(location.search);
-      params.set("tab", next);
-      navigate({ search: `?${params}` }, { replace: true, state: location.state });
-    }
+    tabAnchor.keep(button);
+    const params = new URLSearchParams(location.search);
+    params.set("tab", next);
+    navigate({ search: `?${params}` }, { replace: true, state: location.state });
   };
   // Read with the fighter: the tab shows how many stories there are.
   const { data: news } = useApi<NewsPage>(fighterId ? newsUrl(fighterId) : null);
