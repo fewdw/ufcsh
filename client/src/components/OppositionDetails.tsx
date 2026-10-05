@@ -14,10 +14,11 @@ import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
 
 type Fighter = { id: string; name: string };
 const resultWords: Record<string, string> = { win: "Win", loss: "Loss", draw: "Draw", nc: "No contest" };
+const linkUnderline = "decoration-[0.5px] decoration-zinc-300/60 underline-offset-2 dark:decoration-zinc-500/40";
 
 function Result({ outcome, label }: { outcome: OppositionBout["outcome"]; label?: string }) {
   const word = resultWords[outcome ?? ""] ?? "Result unknown";
-  return <span title={label ?? word} aria-label={label ?? word} className={`inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded px-1 text-[10px] font-bold ${outcomeClasses(outcome)}`}>{outcomeLabel(outcome) || "?"}</span>;
+  return <span title={label ?? word} aria-label={label ?? word} className={`inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded px-1 font-bold ${outcomeClasses(outcome)}`}>{outcomeLabel(outcome) || "?"}</span>;
 }
 
 function OppositionList({ scope, fighter, before, outcome, sort }: { scope: string; fighter: Fighter; before?: string; outcome: OppositionFilter; sort: OppositionSort }) {
@@ -29,7 +30,7 @@ function OppositionList({ scope, fighter, before, outcome, sort }: { scope: stri
     {error ? <RequestNotice onRetry={retry}>Couldn’t load opponents.</RequestNotice> : null}
     {!data ? !error ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null : !groups.length ? <p className="py-4 text-xs text-zinc-500">{data.rows.length ? `No earlier opponent ${resultName}.` : "UFC debut — no earlier opponents."}</p> : <table aria-label={`${fighter.name}: opponent ${resultName}`} className="w-full table-fixed text-left text-[11px] sm:text-xs">
       <colgroup><col className="w-[34%]" /><col className="w-9 sm:w-12" /><col className="w-[18%]" /><col /></colgroup>
-      <thead className="sticky top-0 z-10 bg-white"><tr className="text-[10px] font-medium text-zinc-500 sm:text-[11px]">
+      <thead className="sticky top-0 z-10 bg-white"><tr className="font-medium text-zinc-500">
         <th scope="col" className="pb-2 pr-2 font-medium" title={`${fighter.name}'s result against their opponent`}>{lastName(fighter.name)} vs.</th>
         <th scope="col" className="pb-2 text-center font-medium" title="Opponent’s result">W/L</th>
         <th scope="col" className="pb-2 text-center font-medium">Method</th>
@@ -39,23 +40,23 @@ function OppositionList({ scope, fighter, before, outcome, sort }: { scope: stri
         {group.meetings.flatMap(({ meeting, bouts }, meetingIndex) => bouts.map((bout, index) => <tr key={`${meeting.fight_id}-${bout.fight_id ?? index}`} className={`${index ? "border-t border-zinc-100" : ""} hover:bg-zinc-50`}>
         {meetingIndex === 0 && index === 0 ? <td rowSpan={group.meetings.reduce((count, entry) => count + entry.bouts.length, 0)} className="py-2 pr-2 align-top">
           <div className="space-y-1.5">
-            {group.meetings.map(({ meeting: faced }, facedIndex) => <div key={faced.fight_id} className="flex items-start gap-1.5 text-[10px] font-medium text-zinc-700 sm:text-xs">
+            {group.meetings.map(({ meeting: faced }, facedIndex) => <div key={faced.fight_id} className="flex items-start gap-1.5 font-medium text-zinc-700">
               <Result outcome={faced.outcome} label={`${fighter.name}: ${resultWords[faced.outcome ?? ""] ?? "Result unknown"} against ${group.opponent.name}`} />
               <span className="min-w-0 break-words">
-                {facedIndex === 0 ? group.opponent.id ? <Link to={`/fighters/${group.opponent.id}`} className="block underline decoration-[0.5px] underline-offset-2">{group.opponent.name}</Link> : <span className="block">{group.opponent.name}</span> : null}
-                {group.meetings.length > 1 ? <span className="block text-[10px] text-zinc-500">{formatDate(faced.date)}</span> : null}
-                <Link to={`/fights/${faced.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name} · ${formatDate(faced.date)}`} className="inline-flex min-h-11 w-full items-center text-[11px] text-zinc-700 underline decoration-[0.5px] underline-offset-2 sm:min-h-8 sm:text-xs">Matchup</Link>
+                {facedIndex === 0 ? group.opponent.id ? <Link to={`/fighters/${group.opponent.id}`} className={`block underline ${linkUnderline}`}>{group.opponent.name}</Link> : <span className="block">{group.opponent.name}</span> : null}
+                {group.meetings.length > 1 ? <span className="block text-zinc-500">{formatDate(faced.date)}</span> : null}
+                <Link to={`/fights/${faced.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name} · ${formatDate(faced.date)}`} className={`inline-flex min-h-11 w-full items-center justify-center text-zinc-700 underline sm:min-h-8 ${linkUnderline}`}>Matchup</Link>
               </span>
             </div>)}
           </div>
         </td> : null}
         <td className="py-2 text-center align-top"><Result outcome={bout.outcome} label={`${meeting.opponent.name}: ${resultWords[bout.outcome ?? ""] ?? "Result unknown"} against ${bout.opponent.name}`} /></td>
-        <td className="break-words px-1 py-2 text-center align-top text-[10px] text-zinc-500 sm:text-[11px]">
-          {bout.fight_id ? <Link to={`/fights/${bout.fight_id}`} title={`${bout.method || "Method unknown"} · ${formatDate(bout.date)} — view matchup`} className="decoration-[0.5px] hover:underline">{resultDot(bout).shortMethod || "—"}</Link> : resultDot(bout).shortMethod || "—"}
+        <td className="break-words px-1 py-2 text-center align-top text-zinc-500">
+          {bout.fight_id ? <Link to={`/fights/${bout.fight_id}`} title={`${bout.method || "Method unknown"} · ${formatDate(bout.date)} — view matchup`} className={`${linkUnderline} hover:underline`}>{resultDot(bout).shortMethod || "—"}</Link> : resultDot(bout).shortMethod || "—"}
         </td>
         <td className="break-words py-2 pl-2 text-right align-top font-medium text-zinc-900">
-          {group.meetings.length > 1 && index === 0 ? <span className="mb-1 block text-[9px] font-normal text-zinc-500 sm:text-[10px]">Before {formatDate(meeting.date)}</span> : null}
-          {bout.opponent.id ? <Link to={`/fighters/${bout.opponent.id}`} className="underline decoration-[0.5px] underline-offset-2">{bout.opponent.name}</Link> : bout.opponent.name}
+          {group.meetings.length > 1 && index === 0 ? <span className="mb-1 block font-normal text-zinc-500">Before {formatDate(meeting.date)}</span> : null}
+          {bout.opponent.id ? <Link to={`/fighters/${bout.opponent.id}`} className={`underline ${linkUnderline}`}>{bout.opponent.name}</Link> : bout.opponent.name}
         </td>
       </tr>))}</tbody>)}
     </table>}
