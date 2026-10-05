@@ -464,7 +464,7 @@ function MatchupContext({ fight }: { fight: Matchup }) {
       <EnteringRow label="Record" f1={fight.f1.complete_record_before?.text ?? ""} f2={fight.f2.complete_record_before?.text ?? ""} note="Complete professional record entering this bout, reconstructed from verified dated history" />
       <EnteringRow label="UFC record" f1={fight.f1.ufc_record_before ?? "0-0"} f2={fight.f2.ufc_record_before ?? "0-0"} />
       <OppositionDetails key={fight.id} fighters={[fight.f1, fight.f2]} before={fight.potential ? undefined : fight.id}>
-        {action => <EnteringRow action={action} label={<span className="text-zinc-700 underline underline-offset-4">OPP. Record</span>} f1={fight.f1.ufc_opponents_record_before ?? "0-0"} f2={fight.f2.ufc_opponents_record_before ?? "0-0"} note="Combined UFC record of their UFC opponents on the night they fought them — view fighters" />}
+        {action => <EnteringRow action={action} label={<span className="inline-block border-b border-current pb-0.5 text-zinc-700">OPP. Record</span>} f1={fight.f1.ufc_opponents_record_before ?? "0-0"} f2={fight.f2.ufc_opponents_record_before ?? "0-0"} note="Combined UFC record of their UFC opponents on the night they fought them — view fighters" />}
       </OppositionDetails>
       <EnteringRow label="Time out" f1={layoff(fight.f1.ufc_days_since_before, fight.f1.ufc_record_before)} f2={layoff(fight.f2.ufc_days_since_before, fight.f2.ufc_record_before)} note="Days since their previous UFC bout" />
       <EnteringRow label="Last fight" f1={lastFight(f1Last)} f2={lastFight(f2Last)} note="Result and method in each fighter's previous professional bout, in any promotion" />

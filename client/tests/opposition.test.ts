@@ -75,3 +75,18 @@ test("opponent groups combine nonadjacent rematches without dropping evidence or
   assert.deepEqual(oppositionGroups(opposition, "loss"), []);
   assert.deepEqual(oppositionGroups(data([]), "win"), []);
 });
+
+test("All combines only opponent wins and losses in date order, retaining both rematch results", () => {
+  const evidence = [history("win", "2024-01-01", "win", "B"), history(null, "2024-03-01", "loss", "C"),
+    history("draw", "2024-04-01", "draw", "D"), history("nc", "2024-05-01", "nc", "E"), history("unknown", "2024-06-01", null, "F")];
+  const opposition = data([
+    { ...meeting("rematch", "A", "win", evidence), date: "2025-02-01" },
+    { ...meeting("first", "A", "loss", evidence.slice(0, 1)), date: "2024-02-01" },
+  ]);
+  const groups = oppositionGroups(opposition, "all");
+  assert.equal(groups.length, 1);
+  assert.deepEqual(groups[0].meetings.map(entry => [entry.meeting.outcome, entry.bouts.map(bout => bout.outcome)]), [
+    ["win", ["loss", "win"]], ["loss", ["win"]],
+  ]);
+  assert.equal(oppositionRows(opposition, "all").length, oppositionRows(opposition, "win").length + oppositionRows(opposition, "loss").length);
+});

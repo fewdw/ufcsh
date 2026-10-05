@@ -1,17 +1,19 @@
 import type { Opposition } from "./api";
 
+export type OppositionFilter = "all" | "win" | "loss";
+
 /** Each meeting keeps its own attribution, including rematches. Filter the
  * opponent's result, independently of the selected fighter's result. */
-export function oppositionRows(data: Opposition, outcome: "win" | "loss") {
+export function oppositionRows(data: Opposition, outcome: OppositionFilter) {
   return [...data.rows].sort((a, b) => b.date.localeCompare(a.date)).flatMap(meeting => meeting.history
-    .filter(bout => bout.outcome === outcome)
+    .filter(bout => outcome === "all" ? bout.outcome === "win" || bout.outcome === "loss" : bout.outcome === outcome)
     .sort((a, b) => b.date.localeCompare(a.date))
     .map(bout => ({ meeting, bout })));
 }
 
 /** Show each opponent once, retaining separate results and evidence cutoffs
  * for rematches. The first appearance is the most recent meeting. */
-export function oppositionGroups(data: Opposition, outcome: "win" | "loss") {
+export function oppositionGroups(data: Opposition, outcome: OppositionFilter) {
   type Row = ReturnType<typeof oppositionRows>[number];
   const groups = new Map<string, { opponent: Row["meeting"]["opponent"]; meetings: { meeting: Row["meeting"]; bouts: Row["bout"][] }[] }>();
   for (const { meeting, bout } of oppositionRows(data, outcome)) {
