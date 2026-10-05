@@ -92,9 +92,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-05">October 5, 2026</time></p>
             <ul>
-              <li>Fighter profile tabs stay selected after refresh and in shared links.</li>
-              <li>Ranking history tooltips close when you lift your finger.</li>
-              <li>Draw and no-contest result markers use solid colors, including in dark mode.</li>
+              <li>Press, hold, or drag the ranking history chart to inspect past rankings and results.</li>
+              <li>The page stays still during touch gestures on the chart.</li>
             </ul>
           </Section>
         </div>
