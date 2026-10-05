@@ -86,9 +86,14 @@ export function useRouteScrollRestoration<T extends HTMLElement>(id: string, rea
     let restoring = Boolean(saved);
     let frame = 0;
     let animationFrame = 0;
+    const position = () => ({ top: element.scrollTop, left: element.scrollLeft });
+    let lastVisiblePosition = position();
 
     const save = () => {
-      if (!restoring) rememberScroll(cacheKey, { top: element.scrollTop, left: element.scrollLeft });
+      if (!restoring && element.getClientRects().length) {
+        lastVisiblePosition = position();
+        rememberScroll(cacheKey, lastVisiblePosition);
+      }
     };
     const stopRestoring = () => {
       restoring = false;
@@ -98,6 +103,7 @@ export function useRouteScrollRestoration<T extends HTMLElement>(id: string, rea
       if (!saved || !restoring) return;
       element.scrollTop = saved.top;
       element.scrollLeft = saved.left;
+      lastVisiblePosition = position();
       frame += 1;
       // Keep trying for about a second while late content (a photo, a second
       // request) makes the region tall enough to reach the saved place.
@@ -113,6 +119,7 @@ export function useRouteScrollRestoration<T extends HTMLElement>(id: string, rea
     // reader stays where they are. A new page starts at the top.
     else if (navigationType !== "REPLACE") element.scrollTo({ top: 0, left: 0 });
     else save();
+    lastVisiblePosition = position();
     element.addEventListener("scroll", save, { passive: true });
     element.addEventListener("wheel", stopRestoring, { passive: true });
     element.addEventListener("pointerdown", stopRestoring, { passive: true });
@@ -120,7 +127,9 @@ export function useRouteScrollRestoration<T extends HTMLElement>(id: string, rea
 
     return () => {
       cancelAnimationFrame(animationFrame);
-      rememberScroll(cacheKey, restoring && saved ? saved : { top: element.scrollTop, left: element.scrollLeft });
+      // Closing a dialog or rendering the next route can hide or shorten this
+      // region before cleanup. Keep the offsets from its last visible content.
+      rememberScroll(cacheKey, restoring && saved ? saved : lastVisiblePosition);
       element.removeEventListener("scroll", save);
       element.removeEventListener("wheel", stopRestoring);
       element.removeEventListener("pointerdown", stopRestoring);

@@ -5,15 +5,12 @@ it for review. No feature push triggers CI or deployment.
 
 ## Local review (default)
 
-Create a local task with `./tools/new-task.sh feat/example`, build and verify it,
-then run `./start ts` from that worktree and send its private HTTPS URL with the
-draft PR. Node watch + Vite hot reload avoid Docker builds and CI waits. Each
-worktree owns its own ports, service, and data copy; previews stay available
-after the command ends. `./start status` checks readiness and `./start stop`
-stops that task before cleanup. See [local development](local-development.md).
+On the home server, create a task with `./tools/new-task.sh feat/example`, then run
+`./start` in that worktree and send the private Tailscale URL it prints. Each
+worktree has its own port and data copy, so several reviews can be open at once.
+`./start stop` ends one. See [local development](local-development.md).
 
-`ts` means Tailscale; `dev` means the existing VPS Docker environment below.
-Do not enqueue or deploy VPS dev for ordinary local tasks.
+Deploy to VPS dev only when asked ("put X in dev").
 
 ## VPS dev review (explicit)
 

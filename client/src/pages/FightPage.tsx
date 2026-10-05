@@ -20,6 +20,7 @@ import Avatar from "../components/Avatar";
 import { CardEventTitle, NAV_STEP, CardNavigation } from "../components/CardHeader";
 import FightScoring from "../components/FightScoring";
 import FightPredictions from "../components/FightPredictions";
+import { predictionTabVisible, type PredictionSummary } from "../predictions";
 import { FightRail, FightRailSkeleton, FightStepLink, FightStrip, MatchupSkeleton } from "../components/FightRail";
 // Part of this page's own code, so the Discussion tab opens with it rather
 // than behind a fallback while a separate chunk loads.
@@ -51,6 +52,7 @@ import { scoreableRoundCount } from "../scoring";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { useShortcutNav } from "../shortcuts";
 import { BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
+import OppositionDetails from "../components/OppositionDetails";
 
 const shell = PANEL_SHELL;
 const RESULT_PILL =
@@ -420,7 +422,7 @@ function FormTimeline({ fight, f1, f2 }: { fight: Matchup; f1: UfcHistoryRow[]; 
 /** A number both sides carry into the bout, mirrored either side of its name.
  *  Values are computed from our own fight records as they stood on the night,
  *  so an old matchup never shows a fighter's present-day career totals. */
-function EnteringRow({ label, f1, f2, note }: { label: string; f1: React.ReactNode; f2: React.ReactNode; note?: string }) {
+function EnteringRow({ label, f1, f2, note, action }: { label: React.ReactNode; f1: React.ReactNode; f2: React.ReactNode; note?: string; action?: React.ComponentProps<typeof CompareRow>["action"] }) {
   if (!f1 && !f2) return null;
   const value = (content: React.ReactNode) => <span className={compareValue}>
     {typeof content === "string" && /debut/i.test(content)
@@ -432,6 +434,7 @@ function EnteringRow({ label, f1, f2, note }: { label: string; f1: React.ReactNo
       f1={value(f1)}
       f2={value(f2)}
       center={<span className={compareLabel} title={note}>{label}</span>}
+      action={action}
     />
   );
 }
@@ -461,7 +464,9 @@ function MatchupContext({ fight }: { fight: Matchup }) {
       <h3 className="sr-only">Career entering this fight</h3>
       <EnteringRow label="Record" f1={fight.f1.complete_record_before?.text ?? ""} f2={fight.f2.complete_record_before?.text ?? ""} note="Complete professional record entering this bout, reconstructed from verified dated history" />
       <EnteringRow label="UFC record" f1={fight.f1.ufc_record_before ?? "0-0"} f2={fight.f2.ufc_record_before ?? "0-0"} />
-      <EnteringRow label="Opp. record" f1={fight.f1.ufc_opponents_record_before ?? "0-0"} f2={fight.f2.ufc_opponents_record_before ?? "0-0"} note="Combined UFC record of their UFC opponents on the night they fought them" />
+      <OppositionDetails key={fight.id} fighters={[fight.f1, fight.f2]} before={fight.potential ? undefined : fight.id}>
+        {action => <EnteringRow action={action} label={<span className="inline-block border-b border-current pb-0.5 text-zinc-700">OPP. Record</span>} f1={fight.f1.ufc_opponents_record_before ?? "0-0"} f2={fight.f2.ufc_opponents_record_before ?? "0-0"} note="Combined UFC record of their UFC opponents on the night they fought them — view fighters" />}
+      </OppositionDetails>
       <EnteringRow label="Time out" f1={layoff(fight.f1.ufc_days_since_before, fight.f1.ufc_record_before)} f2={layoff(fight.f2.ufc_days_since_before, fight.f2.ufc_record_before)} note="Days since their previous UFC bout" />
       <EnteringRow label="Last fight" f1={lastFight(f1Last)} f2={lastFight(f2Last)} note="Result and method in each fighter's previous professional bout, in any promotion" />
     </div>
@@ -721,6 +726,11 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     data => data?.refreshing ? 5_000 : isFightDay(data?.event.date) ? 15_000 : data?.status === "past" ? 0 : 5 * 60_000);
   if (loadedFight) previousFight.current = loadedFight;
   const fight = loadedFight ?? previousFight.current;
+  // Finished fights need saved community picks to have a useful Predict tab.
+  // Share the panel's cached public summary; no private pick request is needed.
+  const { data: predictions, error: predictionError } = useApi<PredictionSummary>(
+    fight?.status === "past" && fight.prediction_available !== false ? `/api/fights/${fight.id}/predictions` : null,
+  );
   const eventReturnDepth = location.state != null
     && typeof location.state === "object"
     && "eventReturnDepth" in location.state
@@ -857,7 +867,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     // The bout on now has its Score tab from the moment it starts, rounds
     // locked until the feed or the admin panel opens them.
     ...(scoreableRoundCount(fight) > 0 || fight.in_progress ? ["score" as const] : []),
-    ...(fight.prediction_available !== false ? ["predict" as const] : []),
+    ...(predictionTabVisible(fight, predictions, Boolean(predictionError)) ? ["predict" as const] : []),
     ...(!fight.potential ? ["discussion" as const] : []),
   ];
   const tab = tabs.find((candidate) => candidate === requestedTab) ?? tabs[0];
@@ -970,6 +980,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
             <div id="matchup-tabpanel" role={tabs.length > 1 ? "tabpanel" : undefined} aria-labelledby={tabs.length > 1 ? `matchup-tab-${tab}` : undefined} className="flex flex-col gap-2 sm:gap-3">
               {tab === "fight" ? <>
                 <Scorecards fight={fight} />
+                {fight.status === "past" && !detail?.judges?.length ? <FightScoring key={fight.id} fight={fight} communityOnly /> : null}
                 {hasStats ? <FightStatistics fight={fight} live={statsLive} /> : fight.in_progress ? (
                   <div className={`${shell} flex items-center justify-center gap-2 px-5 py-10 text-sm text-zinc-500`} role="status">
                     <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />

@@ -1,15 +1,98 @@
 #!/usr/bin/env bash
+# Fast preview of this worktree: Node watch + Vite hot reload, no build or Docker.
+#   ./start        start (or reuse) the preview and print its URL
+#   ./start stop   stop it, keeping its data
+#   ./start logs   show recent output
+# Each worktree gets its own port and data copy, so several can run at once.
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
-if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
-  echo 'Node.js 26 and npm are required.' >&2
-  exit 1
+root=$PWD
+state=$root/.local-preview
+unit="ufcsh-$(basename "$root" | tr -c 'a-zA-Z0-9\n' -)"
+mkdir -p "$state"
+
+# One lifecycle operation at a time, so two new worktrees cannot pick one port.
+exec 9>/tmp/ufcsh-start.lock
+flock -w 600 9
+
+if [[ ! -f $state/port ]]; then
+  taken="$(git worktree list --porcelain | sed -n 's|^worktree \(.*\)|\1/.local-preview/port|p' | xargs -d '\n' cat 2>/dev/null || true)"
+  port=5101
+  while grep -qx "$port" <<<"$taken" || ss -Hltn | grep -q ":$port "; do port=$((port + 1)); done
+  echo "$port" > "$state/port"
 fi
-if ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 26 ? 0 : 1)'; then
-  echo 'Node.js 26 or newer is required.' >&2
-  exit 1
+port=$(<"$state/port")
+
+host=""
+if command -v tailscale >/dev/null; then
+  host="$(tailscale status --json 2>/dev/null | jq -r 'select(.BackendState == "Running") | .Self.DNSName | rtrimstr(".")' || true)"
 fi
-# Serialize lifecycle operations for this worktree, including dependency installs.
-mkdir -p .local-preview
-chmod 700 .local-preview
-exec flock -w 600 .local-preview/launcher.lock node tools/local-preview.ts "$@"
+if [[ -n $host ]]; then origin="https://$host:$port"; else origin="http://127.0.0.1:$port"; fi
+
+case "${1:-ts}" in
+  stop)
+    systemctl --user stop "$unit" 2>/dev/null || true
+    [[ -z $host ]] || tailscale serve --https="$port" off >/dev/null 2>&1 || true
+    echo "Stopped $unit."; exit ;;
+  logs) exec journalctl --user -u "$unit" -n "${2:-50}" --no-pager ;;
+  ts) ;;
+  *) echo 'Usage: ./start [stop|logs]' >&2; exit 2 ;;
+esac
+
+if ! systemctl --user is-active --quiet "$unit"; then
+  for project in server client; do
+    installed=$project/node_modules/.package-lock.json
+    if [[ ! -f $installed || $project/package-lock.json -nt $installed ]]; then
+      ./tools/heavy.sh npm ci --prefix "$project" --no-audit --no-fund
+    fi
+  done
+
+  # Development credentials only: this worktree's .env.dev, else the main clone's.
+  for env_file in "$root/.env.dev" "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.env.dev"; do
+    if [[ -f $env_file ]]; then set -a; . "$env_file"; set +a; break; fi
+  done
+  if [[ ${DEV_CLERK_SECRET_KEY:-} == sk_live_* || ${DEV_CLERK_PUBLISHABLE_KEY:-} == pk_live_* ]]; then
+    echo 'Previews use Clerk development keys only.' >&2; exit 1
+  fi
+
+  # First start copies the private archive seed; later starts keep this worktree's data.
+  if [[ ! -d $state/data ]]; then
+    seed="${TS_SEED_DIR:-$HOME/.local/share/ufcsh/dev-seed}"
+    if [[ -d $seed ]]; then
+      rm -rf "$state/data.tmp"
+      cp -a --reflink=auto "$seed" "$state/data.tmp"
+      mv "$state/data.tmp" "$state/data"
+    else
+      echo "No seed at $seed; starting with an empty database." >&2
+      mkdir "$state/data"
+    fi
+  fi
+
+  systemctl --user reset-failed "$unit" 2>/dev/null || true
+  systemd-run --user --quiet --collect --unit "$unit" --working-directory "$root" -p MemoryMax=2G \
+    --setenv=PATH="$PATH" --setenv=NODE_ENV=development --setenv=HOST=127.0.0.1 \
+    --setenv=PORT=$((port + 1000)) --setenv=DATA_DIR="$state/data" --setenv=API_WORKERS=0 \
+    --setenv=SYNC_MODE=inline --setenv=NO_SYNC="${TS_NO_SYNC:-1}" --setenv=DISABLE_REPAIRS=1 \
+    --setenv=SITE_ORIGIN="$origin" --setenv=VITE_SITE_ORIGIN="$origin" \
+    --setenv=CLERK_AUTHORIZED_PARTIES="$origin,http://127.0.0.1:$port,http://localhost:$port" \
+    --setenv=ADMIN_TOKEN="${DEV_ADMIN_TOKEN:-}" --setenv=DEFAULT_ADMIN="${DEV_DEFAULT_ADMIN:-}" \
+    --setenv=CLERK_SECRET_KEY="${DEV_CLERK_SECRET_KEY:-}" --setenv=GEMINI_API_KEY="${DEV_GEMINI_API_KEY:-}" \
+    --setenv=CLERK_PUBLISHABLE_KEY="${DEV_CLERK_PUBLISHABLE_KEY:-}" \
+    --setenv=VITE_CLERK_PUBLISHABLE_KEY="${DEV_CLERK_PUBLISHABLE_KEY:-}" \
+    bash -c 'node --watch server/src/index.ts & cd client && node_modules/.bin/vite --host 127.0.0.1 --port "$1" --strictPort & wait -n' start "$port"
+fi
+
+# Tailnet only (Serve, never Funnel); both servers listen on loopback.
+[[ -z $host ]] || tailscale serve --bg --https="$port" "http://127.0.0.1:$port" >/dev/null
+
+for _ in $(seq 240); do
+  if curl -fsS -o /dev/null -m 2 "http://127.0.0.1:$port/readyz" 2>/dev/null \
+    && curl -fsS -o /dev/null -m 2 "http://127.0.0.1:$port/" 2>/dev/null; then
+    echo "$origin"; exit
+  fi
+  systemctl --user is-active --quiet "$unit" || break
+  sleep 0.25
+done
+echo "Preview did not become ready. Recent output:" >&2
+journalctl --user -u "$unit" -n 30 --no-pager >&2
+exit 1

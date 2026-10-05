@@ -70,12 +70,11 @@ With Node.js 26 and npm installed, launch locally from the project folder:
 ./start
 ```
 
-The Linux launcher installs missing/changed dependencies and starts Node watch +
-Vite hot reload in a persistent user service. It prints this worktree's loopback
-URL; `./start stop` stops it. Run `./start ts` for a private Tailscale HTTPS URL
-you can open on your Mac/phone. Each worktree uses its own ports and data copy,
-development credentials from ignored `.env.dev`, and sync off by default.
-See [local setup and the feature workflow](docs/local-development.md).
+The launcher installs missing dependencies and starts the API with Node watch and
+the client with Vite hot reload as a user systemd service (Linux), then prints the
+URL: a private Tailscale HTTPS address when Tailscale is connected, otherwise
+`http://127.0.0.1:PORT`. `./start stop` stops it. Each worktree gets its own port
+and data copy. See [local development](docs/local-development.md).
 
 For the cheapest practical staging launch, use the [step-by-step launch guide](docs/launch.md).
 The [production details](docs/production.md) cover HTTPS, persistent storage,

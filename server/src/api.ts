@@ -1,5 +1,6 @@
 import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, potentialMatchups, potentialFight } from "./potential-matchups.ts";
 import { careerStatistics } from "./career-statistics.ts";
+import { opposition } from "./opposition.ts";
 import { eventStatus, fightIsComplete, fightIsUnderway, isFightDay, liveDetailDue } from "./live-state.ts";
 import { ScoringStore, type ScoringFight } from "./scoring.ts";
 import { createScoringHandler, scoringOrigins } from "./scoring-http.ts";
@@ -64,7 +65,7 @@ import { locationDirectory, locationOfEvent, locationPage, searchVenues, venueDi
 import { matchmaking } from "./matchmaking.ts";
 import { newsView } from "./news.ts";
 import { newsAiStatus, setNewsAi, startNewsReader } from "./news-ai.ts";
-import { rosterMoveFighter, storedRosterMoves, ufcDepartures, ufcSignings } from "./roster-moves.ts";
+import { fighterRosterEvents, rosterMoveFighter, storedRosterMoves, ufcDepartures, ufcSignings } from "./roster-moves.ts";
 import type { RosterMove } from "./scrape/wikipedia.ts";
 
 const CLIENT_DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "client", "dist");
@@ -1064,7 +1065,7 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     err => log("lazy fighter titles failed:", String(err)), 5 * 60_000) || refreshing;
   requestPhoto(id);
   const index = fightIndex();
-  const version = `${dataRevision("profiles")}:${index.version}:${todayIso()}`;
+  const version = `${dataRevision("profiles")}:${index.version}:${todayIso()}:${getMeta("roster_history_revision")}:${getMeta("roster_moves_synced_at")}:${getMeta("ufc_signings_synced_at")}`;
   const cacheKey = `${id}:${rankingType}`;
   const cachedProfile = profileCache.get(cacheKey, version);
   if (cachedProfile) return { ...cachedProfile, refreshing };
@@ -1118,6 +1119,7 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     records,
     career_stats: careerStatistics(index, fr.id)?.totals,
     history: mergedUfcHistory,
+    roster_events: fighterRosterEvents(fr.id),
     // The professional list shows the same ranks on its UFC bouts.
     pro_history: proHistory.map((row) => {
       const ranked = row.fight_id ? mergedUfcHistory.find((entry) => entry.fight_id === row.fight_id) : undefined;
@@ -2115,7 +2117,7 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   if (p.startsWith("/api/venues/")) return venuePage(id) ?? undefined;
   if (p === "/api/locations") return locationDirectory();
   if (p.startsWith("/api/locations/")) return locationPage(id) ?? undefined;
-  if (/^\/api\/fighters\/[a-f0-9]{16}\/career-stats$/i.test(p)) {
+  if (/^\/api\/fighters\/[a-f0-9]{16}\/(career-stats|opposition)$/i.test(p)) {
     if (!hasUfcFight(id)) return undefined;
     const beforeId = url.searchParams.get("before");
     let before: { id: string; date: string; ord: number } | undefined;
@@ -2125,7 +2127,7 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
         WHERE f.id = ? AND (f.f1_id = ? OR f.f2_id = ?)`).get(beforeId, id, id) as typeof before;
       if (!before) return undefined;
     }
-    return careerStatistics(fightIndex(), id, before) ?? undefined;
+    return (p.endsWith("/opposition") ? opposition : careerStatistics)(fightIndex(), id, before) ?? undefined;
   }
   if (/^\/api\/fighters\/[a-f0-9]{16}\/stats$/i.test(p)) {
     return hasUfcFight(id) ? fighterBoard(id, url.searchParams.get("scope") ?? "ufc", Number(url.searchParams.get("minBouts") ?? 0)) ?? undefined : undefined;

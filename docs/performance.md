@@ -5,30 +5,41 @@ the targets, how to measure against them, and the last measured results.
 
 ## Local Tailscale previews (2026-10-05)
 
-Measured on the local Linux development host (31 GiB RAM), Node 26.10.0,
-with dependencies installed and a private snapshot of the VPS development archive.
-The snapshot held 8,923 indexed fights; no production data was mounted or changed.
+Measured with `/usr/bin/time ./start` on the home server (12 cores, 31 GiB RAM,
+Node 26.10.0, ext4) against a 448 MB private copy of the VPS dev archive. "Ready"
+means the API `/readyz` and the Vite page both answer.
 
 | Operation | Wall time |
 | --- | --- |
-| Previous launcher's mandatory client build (`tsc -b && vite build`) | 11.36 s |
-| First `./start ts`, including the worktree's database/image copy | 2.41 s |
-| Restart Tailscale preview with existing worktree data | 1.52 s |
-| Start loopback preview with existing data | 1.22 s |
-| Reuse healthy Tailscale preview | 0.26 s |
+| Old launcher's mandatory client build (`tsc -b && vite build`) | 11.36 s |
+| New worktree: `npm ci` for server and client, archive copy, start | 15.2 s |
+| Start with dependencies and data in place | 1.6 s |
+| Run again while it is up (prints the URL) | 0.06 s |
 
-Timings use `/usr/bin/time` around the launcher/build. Preview readiness checks
-the API `/readyz` and the Vite HTML through the configured URL; lazy page indexes
-are built on demand (first fight index: 1.55 s). Dependency installation, initial
-SSH archive transfer, and a full browser page render are outside these timings.
-The baseline is the client build component, not an end-to-end Docker deployment.
+A new worktree's time is almost all `npm ci` through `tools/heavy.sh` (warm npm
+cache); the archive copy is 0.5 s. Two previews ran side by side on ports 5101 and
+5102, about 410 MiB each at idle against a 2 GiB cap. Hot reload connected over WSS
+through Tailscale Serve. Vite returned 403 for an unknown `Host` and for `/@fs`
+paths outside `client/`.
 
-Node watch + Vite remove repeated frontend builds; Tailscale Serve avoids GitHub
-runner/deployment waits. Browser verification confirmed frontend hot reload over
-WSS and development Clerk initialization. Backend source edits restarted Node.
-API/Vite listeners were loopback only; env/data/server files and an untrusted
-hostname were blocked. Each preview is capped at 2 GiB; one archive-backed service
-used about 788 MiB at inspection (not a measured peak).
+## Mobile sheet scrolling (2026-10-05)
+
+The sheet drag handler used to claim downward gestures inside a scrolled list,
+cancel the native touch events, and write `scrollTop` for each move. A fling
+back up the list therefore stopped at finger release instead of carrying native
+momentum. Gestures that begin inside a scrolled list now remain native until
+release, even if they reach the top; a fresh downward pull at the top or on the
+sheet header still dismisses.
+
+Measured with Chromium touch input at 375 × 812, using the actual drag handler
+in an isolated sheet with 112 rows of 40 px. An eight-step, 240 px downward swipe
+from the bottom canceled 8 touch moves and made 8 JavaScript scroll writes
+before the change; it traveled 0 px after release. After the change, 7 delivered
+moves canceled none and made no JavaScript scroll writes; the browser carried
+another 125 px in the following 500 ms. Distances depend on input timing; this
+checks native gesture ownership and momentum, not a frame-rate target or an
+iOS device measurement. Regression tests also cover reaching the top mid-swipe,
+reversals, fresh top pulls, header pulls, taps, cancellation, and desktop behavior.
 
 ## Agent workflow and deployment (2026-10-04)
 

@@ -1,3 +1,5 @@
+import type { Matchup } from "./api";
+
 export type PredictionMethod = "ko" | "submission" | "decision";
 export const METHOD_LABEL: Record<PredictionMethod, string> = { ko: "KO/TKO", submission: "Submission", decision: "Decision" };
 export type PredictionPick = {
@@ -47,3 +49,14 @@ export const predictionName = (pick: PredictionPick) => pick.fighterId === pick.
 export const predictionLabel = (pick: PredictionPick) => [predictionName(pick), pick.method ? METHOD_LABEL[pick.method] : null, pick.round ? `R${pick.round}` : null].filter(Boolean).join(" · ");
 /** A whole-number share, and the one place rounding is decided. */
 export const sharePct = (count: number, total: number) => total ? Math.round((count / total) * 100) : 0;
+
+/** Keep completed predictions readable, but don't offer an empty closed tab.
+ * A failed summary still offers the panel's retry action. */
+export function predictionTabVisible(
+  fight: Pick<Matchup, "status" | "prediction_available">,
+  summary: Pick<PredictionSummary, "total"> | null,
+  failed = false,
+): boolean {
+  if (fight.prediction_available === false) return false;
+  return fight.status !== "past" || (summary ? summary.total > 0 : failed);
+}

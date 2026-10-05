@@ -2,7 +2,7 @@ import { potentialMatchups, syncPotentialMatchups } from "./potential-matchups.t
 import { db, getMeta, setMeta } from "./db.ts";
 import { confirmedTitleResults, missingCurrentRankingHistory, relinkRankingHistory } from "./ranking-history.ts";
 import { validateFightActions } from "./action-stats.ts";
-import { americanLine, fightIndex, impliedProbability } from "./fight-index.ts";
+import { americanLine, fightIndex, impliedProbability, professionalBouts } from "./fight-index.ts";
 import { fighterNamed, hasUfcFight, ufcFightExistsSql } from "./fighter-identity.ts";
 import { SEARCH_ALIASES } from "./search-aliases.ts";
 import { normName } from "./util.ts";
@@ -13,7 +13,9 @@ import { hasCompleteJudgeRounds } from "./judge-scorecards.ts";
 import { importVerdictEvent } from "./verdict-import.ts";
 import { mergedByHand, officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
-import { rosterMoveFighter, storedRosterMoves, syncRosterMoves, syncUfcSignings } from "./roster-moves.ts";
+import { rosterEventsByFighter, rosterMoveFighter, storedRosterMoves, syncRosterMoves, syncUfcSignings } from "./roster-moves.ts";
+import { storedRosterHistory, validRosterDate } from "./roster-history.ts";
+import { careerBands } from "./roster-timeline.ts";
 import { matchmaking } from "./matchmaking.ts";
 import { feedStatus, newsAiOff, newsToJudge, syncNews } from "./news.ts";
 import { judgeNews } from "./news-ai.ts";
@@ -109,14 +111,14 @@ const recent = (steps: [number, BugLevel][], otherwise: BugLevel = "ok") => (ite
   return (days != null && steps.find(([within]) => -days <= within)?.[1]) || otherwise;
 };
 
-function check(meta: Omit<BugCheck, "total" | "items" | "level"> & { grade: Grade }, items: BugItem[]): BugCheck {
+function check(meta: Omit<BugCheck, "total" | "items" | "level"> & { grade: Grade }, items: BugItem[], itemLimit = ITEM_LIMIT): BugCheck {
   const { grade, ...rest } = meta;
   const rank = (item: BugItem) => BUG_LEVELS.indexOf(item.level!);
   // Worst first; a stable sort keeps each check's own order within a level.
   const graded = items
     .map((item) => ({ ...item, level: typeof grade === "string" ? grade : grade(item) }))
     .sort((a, b) => rank(a) - rank(b));
-  return { ...rest, level: graded[0]?.level ?? "ok", total: graded.length, items: graded.slice(0, ITEM_LIMIT) };
+  return { ...rest, level: graded[0]?.level ?? "ok", total: graded.length, items: graded.slice(0, itemLimit) };
 }
 
 /** Fighters with a bout since the start of last year or one booked. */
@@ -1482,6 +1484,58 @@ function mergedOfficialSpellings(): BugCheck {
     grade: "ok",
   }, items);
 }
+function rosterHistoryGaps(): BugCheck {
+  const items: BugItem[] = [];
+  for (const event of storedRosterHistory()) {
+    const fighterId = rosterMoveFighter(event.name);
+    const missing = [!validRosterDate(event.date) && "valid date", !/^https:\/\//.test(event.source_url) && "source",
+      !fighterId && "unambiguous profile"].filter(Boolean);
+    if (!missing.length) continue;
+    items.push({ key: `${event.name}:${event.date}:${event.kind}`, title: event.name,
+      subtitle: `Roster timeline · missing ${missing.join(", ")}`,
+      facts: [["Date", event.date], ["Change", event.kind], ["Reason", event.reason ?? "Not reported"]],
+      links: [...(fighterId ? [fighterLink(fighterId, event.name)] : []),
+        ...(/^https:\/\//.test(event.source_url) ? [{ label: "Report", href: event.source_url }] : [])],
+      actions: [{ id: "roster-moves", label: "Re-read roster reports", target: "roster" }],
+    });
+  }
+  const index = fightIndex();
+  const reports = rosterEventsByFighter();
+  const missingLabel = { signing_date: "exact signing date", departure_date: "departure date", departure_reason: "departure reason" };
+  for (const fighter of index.fighters.values()) {
+    const bouts = professionalBouts(index, fighter.id).reverse();
+    const rows = bouts.map(bout => ({
+      date: bout.date, event_name: bout.eventName, promotion: bout.isUfc ? "ufc" as const : "outside" as const,
+      fight_id: bout.ufcFightId, title_type: bout.ufcFightId ? index.byId.get(bout.ufcFightId)?.titleType ?? null : null,
+      upcoming: false, outcome: bout.outcome,
+    }));
+    const bands = careerBands(rows, reports.get(fighter.id));
+    for (const [slot, entries] of bands.entries()) {
+      for (const band of entries) {
+        if (!band.unknown?.length) continue;
+        const older = bouts[slot], newer = bouts[slot - 1];
+        const facts: BugItem["facts"] = [["Band", band.label], ["Missing", band.unknown.map(field => missingLabel[field]).join(", ")]];
+        if (band.date) facts.push([band.observed ? "First observed" : "Reported change", band.date]);
+        if (older) facts.push(["Previous fight", `${older.date} · ${older.opponentName} · ${older.eventName}`]);
+        if (newer) facts.push(["Next fight", `${newer.date} · ${newer.opponentName} · ${newer.eventName}`]);
+        const links: BugLink[] = [fighterLink(fighter.id, fighter.name)];
+        if (band.source_url) links.push({ label: "Roster report", href: band.source_url });
+        const proof = band.signing ? newer : older;
+        if (proof?.ufcFightId) links.push(...fightLinks(proof.ufcFightId));
+        const source = db.prepare("SELECT source_url FROM career_profiles WHERE fighter_id = ? AND status = 'verified'").get(fighter.id) as { source_url: string | null } | undefined;
+        if (source?.source_url) links.push({ label: "Professional history", href: source.source_url });
+        items.push({ key: `gap:${fighter.id}:${band.signing ? "signed" : "left"}:${band.date ?? newer?.date ?? older?.date ?? "undated"}`,
+          title: fighter.name, subtitle: `${band.label} · unknown ${band.unknown.map(field => missingLabel[field]).join(", ")}`,
+          facts, links, actions: [],
+        });
+      }
+    }
+  }
+  return check({ id: "roster-history", group: "Fighters", label: "UFC roster timeline evidence",
+    description: "Manual research backlog for unknown signing/return dates, unconfirmed departure dates/reasons, observed-only roster changes, and incomplete source reports. Every item links to the profile and available bout/source evidence. Recruitment appearances alone never establish a signing. Add a verified dated report and source in server/src/roster-history.ts or retained roster_history metadata; the corresponding gap disappears on refresh. Re-read current roster reports to repair source fields. All timeline gaps remain searchable; the list loads in pages.",
+    grade: "minor" }, items, Infinity);
+}
+
 function rosterMovesUnread(): BugCheck {
   const wiki: BugLink = { label: "Wikipedia", href: `https://en.wikipedia.org/wiki/${encodeURIComponent(ROSTER_ARTICLE.replaceAll(" ", "_"))}` };
   const reread = { id: "roster-moves" as const, label: "Re-read Wikipedia", target: "roster" };
@@ -1500,7 +1554,7 @@ function rosterMovesUnread(): BugCheck {
       // Anyone cut has fought for the UFC, so a release without a profile
       // is almost always a name spelled differently from UFCStats.
       const missing = [!move.date && "date", !move.division && "division", !move.record && "record", !move.country && "country",
-        list === "Cut" && !rosterMoveFighter(move.name) && "profile"].filter(Boolean);
+        list === "Cut" && !rosterMoveFighter(move.name) && "profile", list === "Cut" && !move.reason && "reason"].filter(Boolean);
       if (missing.length) items.push({
         key: `${list}:${move.name}`,
         title: move.name,
@@ -1688,6 +1742,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     sharedCareerProfiles(),
     searchAliasMisses(),
     rosterMovesUnread(),
+    rosterHistoryGaps(),
     newsFeedsUnread(),
     newsUnjudged(),
   ];

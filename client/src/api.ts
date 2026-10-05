@@ -164,6 +164,17 @@ export type CareerStatistics = {
   rows: { fight_id: string; date: string; event_name: string; opponent: { id: string | null; name: string }; outcome: "win" | "loss" | "draw" | "nc" | null; method: string | null; totals: CareerTotals; takedowns: { scored: number; attempted: number | null } | null; control_seconds: number | null }[];
 };
 
+export type OppositionRecord = { wins: number; losses: number; draws: number; ncs: number };
+export type OppositionBout = {
+  fight_id: string | null; date: string; outcome: "win" | "loss" | "draw" | "nc" | null; method: string | null;
+  opponent: { id: string | null; name: string };
+};
+export type Opposition = {
+  fighter_id: string; name: string; before: { fight_id: string; date: string } | null;
+  record: OppositionRecord;
+  rows: (OppositionBout & { fight_id: string; record: OppositionRecord; history: OppositionBout[] })[];
+};
+
 export type FightOdds = {
   f1: { open: string | null; close: string | null };
   f2: { open: string | null; close: string | null };
@@ -404,6 +415,14 @@ export type RankingArchive = {
   lists: { date: string; entries: [rank: string, fighter: number][] }[];
 };
 
+export type CareerRosterEvent = {
+  date: string;
+  kind: "signed" | "released" | "retired" | "departed";
+  reason: string | null;
+  source_url: string;
+  observed: boolean;
+};
+
 export type FighterProfile = {
   refreshing?: boolean;
   id: string;
@@ -432,6 +451,7 @@ export type FighterProfile = {
   career_stats: CareerTotals;
   /** Every verified professional bout; UFC rows retain their richer local data. */
   pro_history: ProfessionalHistoryRow[];
+  roster_events?: CareerRosterEvent[];
   /** UFC-only history, including verified source-only UFC rows. */
   history: (HistoryRow | ProfessionalHistoryRow)[];
 };
