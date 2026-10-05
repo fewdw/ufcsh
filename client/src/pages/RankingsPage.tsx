@@ -480,7 +480,10 @@ function FeaturesMenu({
   const options = FEATURE_OPTIONS.filter((option) => option.key !== "hoverHistory" || canPreview);
   const enabledCount = options.filter((option) => features[option.key]).length;
   return (
-    <OptionsSheet label="Filters" count={`${enabledCount}/${options.length}`} onReset={() => onChange(DEFAULT_FEATURES)} iconOnlyOnPhone="lg">
+    <OptionsSheet label="Filters" count={`${enabledCount}/${options.length}`} onReset={() => {
+      onChange(DEFAULT_FEATURES);
+      if (selectedDate !== null) onViewDate(null);
+    }} iconOnlyOnPhone="lg">
       {close => <>
       {/* The key to every mark in the lists, whichever are switched on. */}
       <div className="mb-1 space-y-1.5 border-b border-zinc-100 px-4 pb-3 pt-3 text-[11px] text-zinc-500">
@@ -529,7 +532,7 @@ function FeaturesMenu({
           </fieldset>
         ))}
       </div>
-      <div className="mt-1 grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] items-end gap-2 border-t border-zinc-100 px-4 py-3">
+      <div className="mt-1 grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] items-start gap-2 border-t border-zinc-100 px-4 py-3">
         <SheetField label="Division order">
           <select value={divisionOrder} onChange={(event) => onDivisionOrder(event.target.value as DivisionOrder)} className={SHEET_SELECT}>
             <option value="light">Lightest first</option>

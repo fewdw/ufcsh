@@ -19,9 +19,10 @@ export default function RankingsDateControl({ selectedDate, today, onView, varia
       className={`${field ? "flex h-8 w-full items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 text-zinc-700 transition hover:border-zinc-300 focus-visible:outline-sky-500" : iconButton} ${selectedDate ? "border-sky-300 text-sky-600" : ""}`}>
       <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
     </button>
-    {selectedDate !== null && !field ? <button type="button" aria-label="Reset ranking date" title="Return to current rankings"
-      onClick={() => { setOpen(false); onView(null); }} className={iconButton}>
-      <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+    {selectedDate !== null ? <button type="button" aria-label="Reset date" title="Return to current rankings"
+      onClick={() => { setOpen(false); onView(null); }}
+      className={field ? "h-6 self-center rounded px-1 text-[10px] font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900" : iconButton}>
+      {field ? "Reset date" : <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />}
     </button> : null}
     {open ? <Suspense fallback={<span role="status" className="sr-only">Loading date picker…</span>}>
       <RankingsDatePicker key={selectedDate ?? "today"} selectedDate={selectedDate} today={today} onView={onView}
