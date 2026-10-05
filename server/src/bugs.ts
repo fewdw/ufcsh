@@ -14,6 +14,7 @@ import { importVerdictEvent } from "./verdict-import.ts";
 import { mergedByHand, officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
 import { rosterMoveFighter, storedRosterMoves, syncRosterMoves, syncUfcSignings } from "./roster-moves.ts";
+import { storedRosterHistory, validRosterDate } from "./roster-history.ts";
 import { matchmaking } from "./matchmaking.ts";
 import { feedStatus, newsAiOff, newsToJudge, syncNews } from "./news.ts";
 import { judgeNews } from "./news-ai.ts";
@@ -1482,6 +1483,26 @@ function mergedOfficialSpellings(): BugCheck {
     grade: "ok",
   }, items);
 }
+function rosterHistoryGaps(): BugCheck {
+  const items: BugItem[] = [];
+  for (const event of storedRosterHistory()) {
+    const fighterId = rosterMoveFighter(event.name);
+    const missing = [!validRosterDate(event.date) && "valid date", !/^https:\/\//.test(event.source_url) && "source",
+      !fighterId && "unambiguous profile"].filter(Boolean);
+    if (!missing.length) continue;
+    items.push({ key: `${event.name}:${event.date}:${event.kind}`, title: event.name,
+      subtitle: `Roster timeline · missing ${missing.join(", ")}`,
+      facts: [["Date", event.date], ["Change", event.kind], ["Reason", event.reason ?? "Not reported"]],
+      links: [...(fighterId ? [fighterLink(fighterId, event.name)] : []),
+        ...(/^https:\/\//.test(event.source_url) ? [{ label: "Report", href: event.source_url }] : [])],
+      actions: [{ id: "roster-moves", label: "Re-read roster reports", target: "roster" }],
+    });
+  }
+  return check({ id: "roster-history", group: "Fighters", label: "UFC roster timeline evidence",
+    description: "Profile signing and departure bands retain dated roster reports after they leave the recent list. Each needs a date, source and unambiguous fighter match. Re-read current reports to repair source fields; historical corrections belong in server/src/roster-history.ts or the retained roster_history metadata. A completed regular UFC appearance confirms a joining band but never supplies an exact contract date. Unreported historical exits show Last UFC fight, not Cut from UFC.",
+    grade: "minor" }, items);
+}
+
 function rosterMovesUnread(): BugCheck {
   const wiki: BugLink = { label: "Wikipedia", href: `https://en.wikipedia.org/wiki/${encodeURIComponent(ROSTER_ARTICLE.replaceAll(" ", "_"))}` };
   const reread = { id: "roster-moves" as const, label: "Re-read Wikipedia", target: "roster" };
@@ -1688,6 +1709,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     sharedCareerProfiles(),
     searchAliasMisses(),
     rosterMovesUnread(),
+    rosterHistoryGaps(),
     newsFeedsUnread(),
     newsUnjudged(),
   ];

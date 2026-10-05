@@ -1,6 +1,6 @@
 import FighterCareerStats from "../components/FighterCareerStats";
 import { CareerStatModal } from "../components/CareerStatDetails";
-import { Children, type ReactNode } from "react";
+import { Children, Fragment, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../api";
 import type { CompleteRecordBefore, FighterProfile, FighterRecord, HistoryRow, NewsPage, ProfessionalHistoryRow } from "../api";
@@ -22,6 +22,7 @@ import { SITE_URL, useSeo } from "../seo";
 import { useRouteScrollRestoration, useTabBarAnchor } from "../navigationState";
 import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedTab } from "../components/segmented";
 import { outsideFighterUrl, useSettings, withRanking } from "../settings";
+import { careerBands, fightProgram, type CareerBand } from "../fighterTimeline";
 
 const shell = PANEL;
 
@@ -288,6 +289,27 @@ function boutFields(row: HistoryRow | ProfessionalHistoryRow) {
   };
 }
 
+function PromotionLabel({ row, move }: { row: HistoryRow | ProfessionalHistoryRow; move?: DivisionMove }) {
+  const program = row.title_type === "tuf" ? "TUF" : fightProgram(row.event_name);
+  if (program) return <>{program === "TUF" && row.promotion !== "outside" ? <><DivisionLabel division={divisionName(row.weight_class, row.catch_weight)} move={move} /> · </> : null}<span className={`font-semibold ${program === "TUF" ? "text-amber-700 dark:text-amber-300" : "text-cyan-700 dark:text-cyan-300"}`}
+    title={program === "TUF" ? "The Ultimate Fighter event; this label does not imply the fighter competed on the show."
+      : `${program} appearance; participation or a win alone does not confirm a UFC contract.`}>
+    {program === "TUF" && row.title_type === "tuf" ? "TUF final" : program === "TUF" && /\bfinale\b/i.test(row.event_name) ? "TUF finale" : program}
+  </span></>;
+  return row.promotion === "outside" ? <span className="font-semibold text-violet-500">Outside UFC</span>
+    : <DivisionLabel division={divisionName(row.weight_class, row.catch_weight)} move={move} />;
+}
+
+function RosterBand({ band }: { band: CareerBand }) {
+  const content = <><span>{band.label}</span>{band.date ? <span className="font-normal opacity-75">{band.observed ? "Observed " : ""}{formatDateShortWithYear(band.date)}</span> : null}</>;
+  const className = `flex min-h-6 flex-wrap items-center justify-center gap-x-2 px-3 py-1 text-[10px] font-semibold leading-4 ${band.signing
+    ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+    : "bg-zinc-50 text-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-300"}`;
+  return band.source_url ? <a href={band.source_url} target="_blank" rel="noreferrer" title={`${band.detail} Open source.`} aria-label={`${band.label}. ${band.detail} Open source.`}
+    className={`${className} hover:underline focus-visible:outline-2 focus-visible:-outline-offset-2`}>{content}</a>
+    : <div className={className} title={band.detail}>{content}<span className="sr-only">{band.detail}</span></div>;
+}
+
 /** The bout's division, said as a move when it differs from the last one. */
 const DIVISION_SHORT: Record<string, string> = {
   Strawweight: "SW", Flyweight: "FLW", Bantamweight: "BW", Featherweight: "FW", Lightweight: "LW",
@@ -373,7 +395,7 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
         <span className="flex min-w-0 flex-1 flex-wrap items-center">
           <FactRun>
             <span className="font-medium">{bout.method}</span>
-            {bout.outside ? <span className="font-semibold text-violet-500">Outside UFC</span> : <DivisionLabel division={divisionName(row.weight_class, "catch_weight" in row ? row.catch_weight : null)} move={move} />}
+            <PromotionLabel row={row} move={move} />
             {"rank" in row && row.rank ? <RankTag ranking={row.rank} who={fighterName} division={row.weight_class} /> : null}
             {row.title_narrative ? <span className={`font-semibold ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
             {weightMisses(row)}
@@ -466,7 +488,7 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
       {/* A ranked division opens the rankings at its list. */}
       <DivisionCell to={bout.outside ? null : rankingsLink(row.weight_class)} className={`${cell} flex-col justify-start border-l border-zinc-100 text-left`}>
         <span className="block break-words text-[11px] leading-5 text-zinc-500">
-          {bout.outside ? <span className="font-semibold text-violet-500">Outside UFC</span> : <DivisionLabel division={divisionName(row.weight_class, "catch_weight" in row ? row.catch_weight : null)} move={move} />}
+          <PromotionLabel row={row} move={move} />
           {"rank" in row && row.rank ? <> <RankTag ranking={row.rank} who={fighterName} division={row.weight_class} /></> : null}
           {row.title_narrative ? <span className={`block font-semibold leading-4 ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
           {weightMisses(row).map((miss) => <span key={miss.key} className="mt-1 block leading-4">{miss}</span>)}
@@ -499,7 +521,7 @@ function HistoryRowView({ row, fighterName, move }: { row: HistoryRow | Professi
     // why it appeared at 40rem and ran straight out of the card. The result
     // track is sized to hold "KO/TKO · R5 · 1:32" and a four-figure price on
     // one line at that narrowest width, since it is the first thing read.
-    <div className="grid grid-cols-1 items-stretch @3xl:grid-cols-[13rem_minmax(11rem,1.1fr)_7rem_minmax(12rem,1.3fr)]">
+    <div className={`grid grid-cols-1 items-stretch @3xl:grid-cols-[13rem_minmax(11rem,1.1fr)_7rem_minmax(12rem,1.3fr)] ${fightProgram(row.event_name) === "Contender Series" ? "border-l-2 border-cyan-500" : ""}`}>
       <BoutCard row={row} fighterName={fighterName} move={move} />
       <BoutTableRow row={row} fighterName={fighterName} move={move} />
     </div>
@@ -703,6 +725,7 @@ export default function FighterPage() {
   const upcoming = fighter.history.filter((h) => h.upcoming);
   const past = fighter.pro_history ?? fighter.history.filter((h) => !h.upcoming);
   const allFights = [...upcoming, ...past].sort((a, b) => b.date.localeCompare(a.date));
+  const bands = careerBands(allFights, fighter.roster_events);
   const moves = divisionMoves(fighter.history);
 
   const done = fighter.history.filter((h) => !h.upcoming);
@@ -806,13 +829,16 @@ export default function FighterPage() {
           <div className={BOUT_LIST}>
             {allFights.length ? (
               allFights.map((row, index) => (
-                <HistoryRowView key={row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`} row={row} fighterName={fighter.name}
-                  move={row.fight_id ? moves.get(row.fight_id) : undefined} />
+                <Fragment key={row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`}>
+                  {bands[index].map((band, bandIndex) => <RosterBand key={bandIndex} band={band} />)}
+                  <HistoryRowView row={row} fighterName={fighter.name} move={row.fight_id ? moves.get(row.fight_id) : undefined} />
+                </Fragment>
               ))
             ) : (
               <div className="px-5 py-6 text-sm text-zinc-400">No fights on record.</div>
             )}
           </div>
+          {bands[allFights.length].map((band, index) => <RosterBand key={index} band={band} />)}
         </section>}
         </div>
         </div>

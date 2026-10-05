@@ -10,6 +10,7 @@ type Page = { name: string; status: "active" | "not_fighting" | null; division: 
 
 test("ufc.com's newest profiles become signings only once seen new and Active", async () => {
   const saved = getMeta("ufc_signings");
+  const history = getMeta("roster_history"), historyRevision = getMeta("roster_history_revision");
   try {
     db.prepare("DELETE FROM meta WHERE key = 'ufc_signings'").run();
     const read: string[] = [];
@@ -54,6 +55,10 @@ test("ufc.com's newest profiles become signings only once seen new and Active", 
   } finally {
     if (saved === null) db.prepare("DELETE FROM meta WHERE key = 'ufc_signings'").run();
     else setMeta("ufc_signings", saved);
+    for (const [key, value] of [["roster_history", history], ["roster_history_revision", historyRevision]]) {
+      if (value === null) db.prepare("DELETE FROM meta WHERE key = ?").run(key);
+      else setMeta(key!, value!);
+    }
   }
 });
 

@@ -4,6 +4,7 @@ import { hasUfcFight } from "./fighter-identity.ts";
 import { scrapeAthleteStatus, scrapeNewAthlete, scrapeNewestAthletes } from "./scrape/ufccom.ts";
 import { articleRevision, fetchArticleByTitle, ROSTER_ARTICLE, rosterChanges, type RosterMove } from "./scrape/wikipedia.ts";
 import { givenName, log, normName } from "./util.ts";
+import { archiveRosterEvents, departureKind, storedRosterHistory, validRosterDate, type RosterHistoryEvent } from "./roster-history.ts";
 
 /** Who the UFC has just signed and just let go. Two sources: Wikipedia's
  *  current-roster article (signings, and releases with their reason), and
@@ -12,6 +13,30 @@ import { givenName, log, normName } from "./util.ts";
  *  leaves the roster, reported or not. */
 
 export type RosterChanges = { signed: RosterMove[]; cut: RosterMove[] };
+
+const ROSTER_SOURCE = "https://en.wikipedia.org/wiki/List_of_current_UFC_fighters";
+function reportedRosterEvents(changes: RosterChanges): RosterHistoryEvent[] {
+  return [
+    ...changes.signed.map(move => ({ ...move, kind: "signed" as const })),
+    ...changes.cut.map(move => ({ ...move, kind: departureKind(move.reason) })),
+  ].flatMap(move => move.date && validRosterDate(move.date) ? [{
+    name: move.name, date: move.date, kind: move.kind, reason: move.reason, source_url: ROSTER_SOURCE, observed: false,
+  }] : []);
+}
+
+/** Only link evidence to an unambiguously matched profile. Current reports
+ * also work before the first sync after deployment has archived them. */
+export function fighterRosterEvents(fighterId: string): RosterHistoryEvent[] {
+  return [...storedRosterHistory(), ...reportedRosterEvents(storedRosterMoves()),
+    ...ufcSignings().map(signing => ({ ...signing, kind: "signed" as const, reason: null,
+      source_url: "https://www.ufc.com/athletes/all", observed: true })),
+  ].filter(event => rosterMoveFighter(event.name) === fighterId).concat(
+    ufcDepartures().filter(move => move.fighter_id === fighterId).map(move => ({
+      name: "", date: new Date(move.left_at).toISOString().slice(0, 10), kind: "departed" as const,
+      reason: "Athlete status changed from Active to Not Fighting", source_url: "https://www.ufc.com/athletes/all", observed: true,
+    })),
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Wikipedia
@@ -24,6 +49,7 @@ export async function syncRosterMoves(): Promise<void> {
   if (revision && revision === getMeta("roster_moves_revision")) {
     // UFCStats may have booked a signee since: their real profile takes over.
     syncSignees(storedRosterMoves().signed);
+    archiveRosterEvents(reportedRosterEvents(storedRosterMoves()));
     touchMeta("roster_moves_synced_at");
     return;
   }
@@ -34,6 +60,7 @@ export async function syncRosterMoves(): Promise<void> {
   if (!changes.signed.length || !changes.cut.length) throw new Error(`${ROSTER_ARTICLE}: ${changes.signed.length} signings, ${changes.cut.length} releases read`);
   setMeta("roster_moves", JSON.stringify(changes));
   syncSignees(changes.signed);
+  archiveRosterEvents(reportedRosterEvents(changes));
   setMeta("roster_moves_revision", revision);
   touchMeta("roster_moves_synced_at");
   log(`roster moves: ${changes.signed.length} signed, ${changes.cut.length} cut (revision ${revision})`);
@@ -142,7 +169,7 @@ export const DEPARTURE_DAYS = 30;
  *  or last seen active however long they have been out. */
 export async function syncUfcStatuses(batch = 2): Promise<void> {
   const due = db.prepare(`
-    SELECT fr.id, fr.name, s.url, s.status FROM fighters fr
+    SELECT fr.id, fr.name, s.url, s.status, s.left_at FROM fighters fr
     LEFT JOIN ufc_status s ON s.fighter_id = fr.id
     WHERE fr.signee = 0 AND (s.checked_at IS NULL OR s.checked_at < ?)
       AND (s.status = 'active' OR fr.id IN (
@@ -150,8 +177,10 @@ export async function syncUfcStatuses(batch = 2): Promise<void> {
         UNION SELECT f.f2_id FROM fights f JOIN events e ON e.id = f.event_id WHERE e.date >= date('now', '-3 years')))
     ORDER BY s.checked_at IS NOT NULL, s.checked_at
     LIMIT ?
-  `).all(Date.now() - STATUS_EVERY_MS, batch) as { id: string; name: string; url: string | null; status: string | null }[];
+  `).all(Date.now() - STATUS_EVERY_MS, batch) as { id: string; name: string; url: string | null; status: string | null; left_at: number | null }[];
   for (const fighter of due) {
+    if (fighter.left_at) archiveRosterEvents([{ name: fighter.name, date: new Date(fighter.left_at).toISOString().slice(0, 10), kind: "departed",
+      reason: "Athlete status changed from Active to Not Fighting", source_url: fighter.url ?? "https://www.ufc.com/athletes/all", observed: true }]);
     const found = await scrapeAthleteStatus(fighter.name, fighter.url);
     const status = found?.status ?? fighter.status;
     // Only a change we watched happen dates a departure; a page already
@@ -162,7 +191,11 @@ export async function syncUfcStatuses(batch = 2): Promise<void> {
       ON CONFLICT(fighter_id) DO UPDATE SET url = coalesce(?2, url), status = ?3, checked_at = ?4,
         left_at = CASE WHEN ?3 = 'active' THEN NULL WHEN ?5 IS NOT NULL THEN ?5 ELSE left_at END
     `).run(fighter.id, found?.url ?? null, status, Date.now(), left ? Date.now() : null);
-    if (left) log(`roster: ${fighter.name} left the UFC roster (ufc.com)`);
+    if (left) {
+      archiveRosterEvents([{ name: fighter.name, date: new Date().toISOString().slice(0, 10), kind: "departed",
+        reason: "Athlete status changed from Active to Not Fighting", source_url: found?.url ?? "https://www.ufc.com/athletes/all", observed: true }]);
+      log(`roster: ${fighter.name} left the UFC roster (ufc.com)`);
+    }
     // UFCStats has no height or reach for many debutants; ufc.com often does.
     if (found?.height || found?.reach) {
       db.prepare(`UPDATE fighters SET
@@ -179,6 +212,8 @@ export async function syncUfcStatuses(batch = 2): Promise<void> {
       const state = storedUfcSignings();
       state.signed.push({ name: fighter.name, division: null, date: new Date().toISOString().slice(0, 10) });
       setMeta("ufc_signings", JSON.stringify(state));
+      archiveRosterEvents([{ name: fighter.name, date: new Date().toISOString().slice(0, 10), kind: "signed",
+        reason: "Athlete status changed back to Active", source_url: found?.url ?? "https://www.ufc.com/athletes/all", observed: true }]);
       log(`roster: ${fighter.name} is back on the UFC roster (ufc.com)`);
     }
   }
@@ -241,9 +276,13 @@ export async function syncUfcSignings(readNewest = scrapeNewestAthletes, readAth
     seen.add(slug);
     state.seen.push(slug);
     state.signed.push({ name: athlete.name, division: athlete.division, date: today });
+    archiveRosterEvents([{ name: athlete.name, date: today, kind: "signed", reason: null,
+      source_url: `https://www.ufc.com/athlete/${slug}`, observed: true }]);
     log(`roster: ${athlete.name} signed (ufc.com)`);
   }
   const since = new Date(Date.now() - DEPARTURE_DAYS * 86_400_000).toISOString().slice(0, 10);
+  archiveRosterEvents(state.signed.map(signing => ({ name: signing.name, date: signing.date, kind: "signed", reason: null,
+    source_url: "https://www.ufc.com/athletes/all", observed: true })));
   setMeta("ufc_signings", JSON.stringify({
     seen: state.seen.slice(-SEEN_KEPT),
     pending,
