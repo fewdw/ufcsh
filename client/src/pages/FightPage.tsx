@@ -51,6 +51,7 @@ import { scoreableRoundCount } from "../scoring";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { useShortcutNav } from "../shortcuts";
 import { BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
+import OppositionDetails from "../components/OppositionDetails";
 
 const shell = PANEL_SHELL;
 const RESULT_PILL =
@@ -420,7 +421,7 @@ function FormTimeline({ fight, f1, f2 }: { fight: Matchup; f1: UfcHistoryRow[]; 
 /** A number both sides carry into the bout, mirrored either side of its name.
  *  Values are computed from our own fight records as they stood on the night,
  *  so an old matchup never shows a fighter's present-day career totals. */
-function EnteringRow({ label, f1, f2, note }: { label: string; f1: React.ReactNode; f2: React.ReactNode; note?: string }) {
+function EnteringRow({ label, f1, f2, note }: { label: React.ReactNode; f1: React.ReactNode; f2: React.ReactNode; note?: string }) {
   if (!f1 && !f2) return null;
   const value = (content: React.ReactNode) => <span className={compareValue}>
     {typeof content === "string" && /debut/i.test(content)
@@ -461,7 +462,9 @@ function MatchupContext({ fight }: { fight: Matchup }) {
       <h3 className="sr-only">Career entering this fight</h3>
       <EnteringRow label="Record" f1={fight.f1.complete_record_before?.text ?? ""} f2={fight.f2.complete_record_before?.text ?? ""} note="Complete professional record entering this bout, reconstructed from verified dated history" />
       <EnteringRow label="UFC record" f1={fight.f1.ufc_record_before ?? "0-0"} f2={fight.f2.ufc_record_before ?? "0-0"} />
-      <EnteringRow label="Opp. record" f1={fight.f1.ufc_opponents_record_before ?? "0-0"} f2={fight.f2.ufc_opponents_record_before ?? "0-0"} note="Combined UFC record of their UFC opponents on the night they fought them" />
+      <OppositionDetails key={fight.id} fighters={[fight.f1, fight.f2]} before={fight.potential ? undefined : fight.id}>
+        <EnteringRow label={<span className="underline decoration-dotted underline-offset-4">Opp. record</span>} f1={fight.f1.ufc_opponents_record_before ?? "0-0"} f2={fight.f2.ufc_opponents_record_before ?? "0-0"} note="Combined UFC record of their UFC opponents on the night they fought them — view fighters" />
+      </OppositionDetails>
       <EnteringRow label="Time out" f1={layoff(fight.f1.ufc_days_since_before, fight.f1.ufc_record_before)} f2={layoff(fight.f2.ufc_days_since_before, fight.f2.ufc_record_before)} note="Days since their previous UFC bout" />
       <EnteringRow label="Last fight" f1={lastFight(f1Last)} f2={lastFight(f2Last)} note="Result and method in each fighter's previous professional bout, in any promotion" />
     </div>
