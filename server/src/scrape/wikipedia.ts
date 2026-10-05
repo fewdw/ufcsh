@@ -1,5 +1,5 @@
 import { fetchHtml } from "../http.ts";
-import { firstLastName, normName } from "../util.ts";
+import { editDistance, firstLastName, normName } from "../util.ts";
 
 const API = "https://en.wikipedia.org/w/api.php";
 
@@ -85,6 +85,29 @@ function namedIn(sentence: string, people: CardPerson[]): { person: CardPerson; 
     .sort((a, b) => a.at - b.at);
 }
 
+/** The same given name as an article may write it: "Phil"/"Philip", "Viktoriia"/"Victoria". */
+function sameGiven(a: string, b: string): boolean {
+  const short = Math.min(a.length, b.length);
+  return a === b || (short >= 3 && (a.startsWith(b) || b.startsWith(a))) || (short >= 5 && a[0] === b[0] && editDistance(a, b) <= 2);
+}
+
+/** Whether a bare surname here belongs to someone else: the paragraph's latest
+ *  full name with it is not this fighter's ("Michel Pereira … Pereira weighed in
+ *  at 174 pounds" on Alex Pereira's card, in a bout that was scrapped). */
+function namesake(paragraph: string, sentence: string, person: CardPerson): boolean {
+  if (!person.last || sentence.includes(person.norm)) return false;
+  const own = person.norm.split(" ");
+  const words = paragraph.split(/\s+/);
+  const given = (word: string | undefined) => word != null && /^\p{Lu}[\p{L}'’.-]*$/u.test(word) && !TITLE.test(word);
+  for (let at = words.length - 1; at > 0; at--) {
+    if (normName(words[at].replace(/['’]s\b/, "")) !== person.last || !given(words[at - 1])) continue;
+    // Middle names are part of the same full name ("Jose Miguel Delgado").
+    const names = [words[at - 1], ...(given(words[at - 2]) ? [words[at - 2]] : [])].map((word) => normName(word).replace(/ /g, ""));
+    return !names.some((name) => own.some((part) => sameGiven(name, part)));
+  }
+  return false;
+}
+
 // A sentence says someone missed weight only with one of these phrases. The
 // fighter must be named before it: people named after it are recipients of
 // the fine or the opponent ("…half of that money went to Poirier").
@@ -97,42 +120,46 @@ const POUNDS = /(\d{3}(?:\.\d+)?)\s*(?:-\s*)?(?:pounds|pound|lbs?\b)/gi;
  * Names come from the card itself, so nobody else can be attributed. */
 export function weightMisses(wikitext: string, fighters: string[]): WeightMiss[] {
   const prose = plainText(wikitext.split(/==\s*Results\s*==/i)[0]);
-  // Bullet items ("four fighters missed weight:\n*Vázquez weighed in…") are
-  // sentences of their own.
-  const sentences = prose.replace(/\n\*+\s*/g, ". ").replace(/\s+/g, " ").split(/(?<=[.!?:])\s+(?=[A-Z*])/);
   const people = cardPeople(fighters);
   const found = new Map<string, WeightMiss>();
   let lastSubject: string | null = null;
-  for (const raw of sentences) {
-    const sentence = normName(raw);
-    const cue = raw.match(MISS_CUE);
-    // The sentence's subject is whoever it names first, not whoever the card lists first.
-    const named = namedIn(sentence, people);
-    if (!cue || OTHER_EVENT.test(raw)) {
+  for (const paragraph of prose.split(/\n\s*\n/)) {
+    // Bullet items ("four fighters missed weight:\n*Vázquez weighed in…") are
+    // sentences of their own.
+    const sentences = paragraph.replace(/\n\*+\s*/g, ". ").replace(/\s+/g, " ").split(/(?<=[.!?:])\s+(?=[A-Z*])/);
+    let read = "";
+    for (const raw of sentences) {
+      read += ` ${raw}`;
+      const sentence = normName(raw);
+      const cue = raw.match(MISS_CUE);
+      // The sentence's subject is whoever it names first, not whoever the card lists first.
+      const named = namedIn(sentence, people).filter((entry) => !namesake(read, sentence, entry.person));
+      if (!cue || OTHER_EVENT.test(raw)) {
+        if (named.length) lastSubject = named[0].person.name;
+        continue;
+      }
+      const cueAt = normName(raw.slice(0, cue.index)).length;
+      // "He was fined 30%…" follows the sentence that named him.
+      const before = named.filter((entry) => entry.at < cueAt && !new RegExp(`${entry.person.last ?? "\\0"} s opponent`).test(sentence));
+      const subjects = before.length
+        ? before.map((entry) => entry.person.name)
+        : /^(?:he|she)\b/i.test(raw.trim()) && lastSubject ? [lastSubject] : [];
+      // Weights in the order they are written pair with the fighters in the
+      // order they are named ("Cháirez weighed in at 131 pounds and Lacerda at 127").
+      const weights = [...raw.matchAll(POUNDS)]
+        .filter((match) => !/limit of|maximum of|limit is|up to|over the|more than/i.test(raw.slice(Math.max(0, match.index - 14), match.index)))
+        .map((match) => Number(match[1]))
+        .filter((value) => value >= 110 && value <= 300);
+      const ordered = before.length ? before.sort((a, b) => a.at - b.at).map((entry) => entry.person.name) : subjects;
+      ordered.forEach((name, index) => {
+        const pounds = found.get(name)?.pounds
+          // One weight for several names is shared ("X and Y weighed in at 127.5 pounds").
+          ?? (weights.length === 1 ? weights[0] : weights.length === ordered.length ? weights[index] : undefined)
+          ?? null;
+        found.set(name, { name, pounds });
+      });
       if (named.length) lastSubject = named[0].person.name;
-      continue;
     }
-    const cueAt = normName(raw.slice(0, cue.index)).length;
-    // "He was fined 30%…" follows the sentence that named him.
-    const before = named.filter((entry) => entry.at < cueAt && !new RegExp(`${entry.person.last ?? "\\0"} s opponent`).test(sentence));
-    const subjects = before.length
-      ? before.map((entry) => entry.person.name)
-      : /^(?:he|she)\b/i.test(raw.trim()) && lastSubject ? [lastSubject] : [];
-    // Weights in the order they are written pair with the fighters in the
-    // order they are named ("Cháirez weighed in at 131 pounds and Lacerda at 127").
-    const weights = [...raw.matchAll(POUNDS)]
-      .filter((match) => !/limit of|maximum of|limit is|up to|over the|more than/i.test(raw.slice(Math.max(0, match.index - 14), match.index)))
-      .map((match) => Number(match[1]))
-      .filter((value) => value >= 110 && value <= 300);
-    const ordered = before.length ? before.sort((a, b) => a.at - b.at).map((entry) => entry.person.name) : subjects;
-    ordered.forEach((name, index) => {
-      const pounds = found.get(name)?.pounds
-        // One weight for several names is shared ("X and Y weighed in at 127.5 pounds").
-        ?? (weights.length === 1 ? weights[0] : weights.length === ordered.length ? weights[index] : undefined)
-        ?? null;
-      found.set(name, { name, pounds });
-    });
-    if (named.length) lastSubject = named[0].person.name;
   }
   // The results table states the catchweight a missed bout went ahead at.
   const results = wikitext.split(/==\s*Results\s*==/i)[1] ?? "";

@@ -1020,6 +1020,46 @@ function eventsWithoutWiki(): BugCheck {
   })));
 }
 
+const DIVISION_LIMITS: Record<string, number> = {
+  Strawweight: 115, Flyweight: 125, Bantamweight: 135, Featherweight: 145,
+  Lightweight: 155, Welterweight: 170, Middleweight: 185, "Light Heavyweight": 205, Heavyweight: 265,
+};
+
+function weightMissesUnderLimit(): BugCheck {
+  const rows = db.prepare(`
+    SELECT f.id, f.event_id, f.f1_name, f.f2_name, f.weight_class, f.f1_weight_miss, f.f2_weight_miss,
+      e.name AS event_name, e.date, e.wiki_title
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE f.f1_weight_miss IS NOT NULL OR f.f2_weight_miss IS NOT NULL
+    ORDER BY e.date DESC
+  `).all() as { id: string; event_id: string; f1_name: string; f2_name: string; weight_class: string;
+    f1_weight_miss: string | null; f2_weight_miss: string | null; event_name: string; date: string; wiki_title: string | null }[];
+  const items = rows.flatMap((fight) => {
+    const limit = DIVISION_LIMITS[fight.weight_class.replace(/^Women's /, "")];
+    return ([[fight.f1_name, fight.f1_weight_miss], [fight.f2_name, fight.f2_weight_miss]] as const)
+      .filter(([, pounds]) => limit != null && pounds && Number(pounds) <= limit)
+      .map(([name, pounds]): BugItem => ({
+        key: `${fight.id}:${name}`,
+        title: `${name}: ${pounds} lb at ${fight.weight_class}`,
+        subtitle: `${fight.f1_name} vs ${fight.f2_name} · ${fight.event_name}`,
+        date: fight.date,
+        facts: [["Recorded weight", `${pounds} lb`], ["Division limit", `${limit} lb`]],
+        links: [
+          ...fightLinks(fight.id),
+          ...(fight.wiki_title ? [{ label: "Event article", href: `https://en.wikipedia.org/wiki/${encodeURIComponent(fight.wiki_title.replace(/ /g, "_"))}` }] : []),
+        ],
+        actions: [{ id: "wiki", label: "Re-read weigh-ins", target: fight.event_id }],
+      }));
+  });
+  return check({
+    id: "weight-miss-under-limit",
+    group: "Fights & events",
+    label: "Missed weight at or under the division limit",
+    description: "A fighter is marked as missing weight at a weight that makes the bout's division. Usually the article's sentence was about someone else (a namesake, or another bout on the card); sometimes the bout really moved up a division after the miss. Re-reading queues the event's weigh-ins for the next background pass.",
+    grade: "minor",
+  }, items);
+}
+
 function catchweightsWithoutLimit(): BugCheck {
   const rows = db.prepare(`
     SELECT f.id, f.event_id, f.f1_name, f.f2_name, f.catch_weight_checked_at, e.name AS event_name, e.date, e.wiki_title
@@ -1723,6 +1763,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     upcomingWithoutSegment(),
     decisionsWithoutJudges(),
     eventsWithoutWiki(),
+    weightMissesUnderLimit(),
     catchweightsWithoutLimit(),
     replacementsUnnamed(),
     replacementsWithoutNotice(),

@@ -113,3 +113,13 @@ export function canonicalMethod(method: string | null | undefined): string | nul
   if (text.includes("ko") || text.includes("knockout")) return text.includes("no contest") ? null : "KO/TKO";
   return null;
 }
+
+export function editDistance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) row[j] = Math.min(previous[j] + 1, row[j - 1] + 1, previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    previous = row;
+  }
+  return previous[b.length];
+}

@@ -1,12 +1,12 @@
 import { useId, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { ChevronDown, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useApi, type Opposition, type OppositionBout } from "../api";
 import { formatDate, lastName, outcomeClasses, outcomeLabel } from "../format";
 import { CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
 import EvidenceDialog from "./EvidenceDialog";
-import { oppositionGroups, type OppositionFilter, type OppositionSort } from "../opposition";
+import { oppositionGroups, type OppositionFilter } from "../opposition";
 import { resultDot } from "../resultDots";
 import RequestNotice from "./RequestNotice";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "./segmented";
@@ -21,10 +21,10 @@ function Result({ outcome, label }: { outcome: OppositionBout["outcome"]; label?
   return <span title={label ?? word} aria-label={label ?? word} className={`inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded px-1 font-bold ${outcomeClasses(outcome)}`}>{outcomeLabel(outcome) || "?"}</span>;
 }
 
-function OppositionList({ scope, fighter, before, outcome, sort }: { scope: string; fighter: Fighter; before?: string; outcome: OppositionFilter; sort: OppositionSort }) {
+function OppositionList({ scope, fighter, before, outcome }: { scope: string; fighter: Fighter; before?: string; outcome: OppositionFilter }) {
   const { data, error, retry } = useApi<Opposition>(`/api/fighters/${fighter.id}/opposition${before ? `?before=${before}` : ""}`);
-  const scrollRef = useRouteScrollRestoration<HTMLDivElement>(`${scope}:list:${fighter.id}:${outcome}:${sort}`, Boolean(data));
-  const groups = data ? oppositionGroups(data, outcome, sort) : [];
+  const scrollRef = useRouteScrollRestoration<HTMLDivElement>(`${scope}:list:${fighter.id}:${outcome}`, Boolean(data));
+  const groups = data ? oppositionGroups(data, outcome) : [];
   const resultName = outcome === "all" ? "wins and losses" : outcome === "win" ? "wins" : "losses";
   return <div ref={scrollRef} data-sheet-scroll className="min-h-0 flex-1 overflow-auto overscroll-x-contain overscroll-y-none pr-2 [scrollbar-gutter:stable]">
     {error ? <RequestNotice onRetry={retry}>Couldn’t load opponents.</RequestNotice> : null}
@@ -45,7 +45,10 @@ function OppositionList({ scope, fighter, before, outcome, sort }: { scope: stri
               <span className="min-w-0 break-words">
                 {facedIndex === 0 ? group.opponent.id ? <Link to={`/fighters/${group.opponent.id}`} className={`block underline ${linkUnderline}`}>{group.opponent.name}</Link> : <span className="block">{group.opponent.name}</span> : null}
                 {group.meetings.length > 1 ? <span className="block text-zinc-500">{formatDate(faced.date)}</span> : null}
-                <Link to={`/fights/${faced.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name} · ${formatDate(faced.date)}`} className={`inline-flex min-h-11 w-full items-center justify-center text-zinc-700 underline sm:min-h-8 ${linkUnderline}`}>Matchup</Link>
+                <span className="mt-0.5 flex flex-col items-start font-normal text-zinc-500">
+                  {resultDot(faced).shortMethod ? <span title={faced.method ?? undefined}>{resultDot(faced).shortMethod}</span> : null}
+                  <Link to={`/fights/${faced.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name} · ${formatDate(faced.date)}`} className={`py-1 underline hover:text-zinc-900 ${linkUnderline}`}>Matchup</Link>
+                </span>
               </span>
             </div>)}
           </div>
@@ -66,7 +69,6 @@ function OppositionList({ scope, fighter, before, outcome, sort }: { scope: stri
 function OppositionModal({ id, scope, fighters, before, close }: { id: string; scope: string; fighters: Fighter[]; before?: string; close: () => void }) {
   const [selected, setSelected] = useHistoryState(`${scope}:fighter`, 0);
   const [outcome, setOutcome] = useHistoryState<OppositionFilter>(`${scope}:outcome`, "all");
-  const [sort, setSort] = useHistoryState<OppositionSort>(`${scope}:sort`, "fighter");
   return <EvidenceDialog id={id} close={close}>
     <div className="shrink-0 px-4 pb-3 pt-3 sm:px-5">
       <div className="flex items-center justify-between gap-3">
@@ -82,18 +84,10 @@ function OppositionModal({ id, scope, fighters, before, close }: { id: string; s
           {(["all", "win", "loss"] as const).map(value => <button key={value} type="button" aria-pressed={outcome === value} onClick={() => setOutcome(value)}
             className={`min-h-8 flex-auto whitespace-nowrap rounded-full px-1 text-[10px] font-medium sm:px-3 sm:text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${outcome === value ? segmentedSelected : segmentedIdle}`}>{value === "all" ? "All" : value === "win" ? "Wins" : "Losses"}</button>)}
         </div>
-        <label title={`Sort by ${sort} recent`} className="relative flex min-h-10 w-18 shrink-0 items-center justify-between gap-1 rounded-full border border-zinc-200 bg-white px-2 text-[10px] font-medium text-zinc-700 hover:bg-zinc-50 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-zinc-900 sm:w-20 sm:px-3 sm:text-xs">
-          <span aria-hidden="true">{sort === "fighter" ? "Fighter" : "Opp."}</span>
-          <ChevronDown aria-hidden="true" className="h-3 w-3" />
-          <select aria-label="Sort opposition" value={sort} onChange={event => setSort(event.target.value as OppositionSort)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0">
-            <option value="fighter">Sort by fighter recent</option>
-            <option value="opponent">Sort by opponent recent</option>
-          </select>
-        </label>
       </div>
     </div>
     <section aria-label={`${fighters[selected].name}: opposition`} className="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-5">
-      <OppositionList key={fighters[selected].id} scope={scope} fighter={fighters[selected]} before={before} outcome={outcome} sort={sort} />
+      <OppositionList key={fighters[selected].id} scope={scope} fighter={fighters[selected]} before={before} outcome={outcome} />
     </section>
   </EvidenceDialog>;
 }

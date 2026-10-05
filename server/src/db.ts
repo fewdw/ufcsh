@@ -472,6 +472,15 @@ if (getMeta("migration_bout_changes") !== "2") {
   setMeta("migration_bout_changes", "2");
 }
 
+// A bare surname could be attributed to a card fighter when the article meant
+// a namesake (Michel Pereira's miss on Alex Pereira's bout). Read the weigh-ins
+// of cards with a stored miss once more; recent cards keep their confirmed read.
+if (getMeta("migration_weight_miss_namesakes") !== "1") {
+  db.exec(`UPDATE events SET wiki_checked_at = NULL WHERE complete = 1 AND date < date('now', '-30 day')
+    AND id IN (SELECT event_id FROM fights WHERE f1_weight_miss IS NOT NULL OR f2_weight_miss IS NOT NULL)`);
+  setMeta("migration_weight_miss_namesakes", "1");
+}
+
 if (getMeta("migration_career_identity_and_unlinked_bouts") !== "1") {
   db.exec("UPDATE career_profiles SET checked_at = NULL WHERE status != 'verified'");
   setMeta("migration_career_identity_and_unlinked_bouts", "1");

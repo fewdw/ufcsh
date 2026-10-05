@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { prepared } from "./db.ts";
-import { firstLastName, normName } from "./util.ts";
+import { editDistance, firstLastName, normName } from "./util.ts";
 import { fightIndex, type FightRecord } from "./fight-index.ts";
 
 /** Who counts as a UFC fighter, what their record reads, and where their
@@ -91,14 +91,4 @@ export function fighterNamed(name: string, division: string, date: string): stri
     ORDER BY f.weight_class = ? DESC, ABS(julianday(e.date) - julianday(?)) ASC LIMIT 1
   `).get(...ids, division, date) as { id: string } | undefined;
   return best?.id ?? "";
-}
-
-function editDistance(a: string, b: string): number {
-  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= a.length; i++) {
-    const row = [i];
-    for (let j = 1; j <= b.length; j++) row[j] = Math.min(previous[j] + 1, row[j - 1] + 1, previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    previous = row;
-  }
-  return previous[b.length];
 }

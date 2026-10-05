@@ -90,20 +90,3 @@ test("All combines only opponent wins and losses in date order, retaining both r
   ]);
   assert.equal(oppositionRows(opposition, "all").length, oppositionRows(opposition, "win").length + oppositionRows(opposition, "loss").length);
 });
-
-test("opponent recent orders whole groups by the latest filtered result, with stable ties", () => {
-  const opposition = data([
-    { ...meeting("most-recent", "A", "loss", [history("a-win", "2023-01-01", "win", "B"), history("a-loss", "2024-11-01", "loss", "C")]), date: "2025-02-01" },
-    { ...meeting("older-meeting", "D", "win", [history("d-win", "2024-01-01", "win", "E"), history("d-loss", "2024-02-01", "loss", "F")]), date: "2025-01-01" },
-    { ...meeting("tie", "G", "win", [history("g-win", "2024-01-01", "win", "H")]), date: "2024-12-01" },
-    { ...meeting("rematch", "A", "win", [history("earlier", "2022-01-01", "win", "I")]), date: "2022-02-01" },
-  ]);
-  assert.deepEqual(oppositionGroups(opposition, "win").map(group => group.opponent.name), ["A", "D", "G"]);
-  const wins = oppositionGroups(opposition, "win", "opponent");
-  assert.deepEqual(wins.map(group => group.opponent.name), ["D", "G", "A"]);
-  assert.deepEqual(wins[2].meetings.map(entry => entry.meeting.fight_id), ["most-recent", "rematch"]);
-  assert.deepEqual(oppositionGroups(opposition, "loss", "opponent").map(group => group.opponent.name), ["A", "D"]);
-  assert.deepEqual(oppositionGroups(opposition, "all", "opponent").map(group => group.opponent.name), ["A", "D", "G"]);
-  assert.deepEqual(oppositionGroups(data([]), "all", "opponent"), []);
-  assert.equal(opposition.rows[0].history[0].fight_id, "a-win");
-});
