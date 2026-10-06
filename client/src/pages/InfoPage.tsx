@@ -92,7 +92,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-06">October 6, 2026</time></p>
             <ul>
-              <li>Upcoming odds and props update every few minutes again.</li>
+              <li>A signing after a Contender Series win now shows right after that fight.</li>
+              <li>Roster bands on fighter pages are no longer links.</li>
             </ul>
           </Section>
         </div>
