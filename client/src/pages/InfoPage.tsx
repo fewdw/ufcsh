@@ -92,7 +92,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-06">October 6, 2026</time></p>
             <ul>
-              <li>Matchmaking has been removed, along with saved cards from its card builder.</li>
+              <li>Upcoming odds and props update every few minutes again.</li>
             </ul>
           </Section>
         </div>
