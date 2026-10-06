@@ -37,7 +37,7 @@ import { fighterNamed } from "./fighter-identity.ts";
 import { americanLine, impliedProbability } from "./fight-index.ts";
 import { consistentMoneyline } from "./method-odds.ts";
 import { decisionFromCards } from "./judge-scorecards.ts";
-import { boutLines, boutProps, fightOddsBoard, fightOddsEvents, fightOddsProps, matchBout } from "./scrape/fightodds.ts";
+import { boutLines, boutProps, fightOddsBoard, fightOddsEvents, fightOddsOpeners, fightOddsProps, matchBout } from "./scrape/fightodds.ts";
 
 const HOUR = 3600_000;
 const DAY = 24 * HOUR;
@@ -1309,8 +1309,8 @@ export async function syncUpcomingOdds(
 let fightOddsRunning = false;
 
 /** Upcoming lines from FightOdds.io's boards, matched by UFCStats id: each
- *  card's moneylines in one request, and with `props` each card's props in
- *  another. A line shows up within minutes of its first book posting it. Each
+ *  card's moneylines in two requests (plus one per new bout for its openers),
+ *  and with `props` one more per bout. A line shows up within minutes of its first book posting it. Each
  *  write is the freshest read. The BestFightOdds passes skip whatever this read
  *  in the last half hour (props: hour), so they fill what these boards don't
  *  price and take over whatever they stop reading. */
@@ -1337,6 +1337,7 @@ export async function syncFightOdds({ props = false }: { props?: boolean } = {})
     ON CONFLICT(fight_id) DO UPDATE SET
       markets_json = excluded.markets_json, source_url = excluded.source_url, final = 0, fetched_at = excluded.fetched_at
   `);
+  const hasOpener = db.prepare("SELECT 1 FROM odds WHERE fight_id = ? AND f1_open IS NOT NULL AND f2_open IS NOT NULL");
   // Read the card after each request, then write without awaiting, so a price
   // always lands on the corners the fight has right now.
   const card = (date: string) => {
@@ -1366,6 +1367,13 @@ export async function syncFightOdds({ props = false }: { props?: boolean } = {})
     if (!(selectFights.all(event.date, event.date) as unknown[]).length) continue;
     const bouts = await fightOddsBoard(event.pk);
     total.events++;
+    // A priced bout we hold no opener for reads its books' openers first.
+    const first = card(event.date);
+    for (const [i, bout] of bouts.entries()) {
+      const match = matchBout(bout, first.fights);
+      if (!match || first.frozen.has(match.fight.id) || !boutLines(bout) || hasOpener.get(match.fight.id)) continue;
+      bouts[i] = await fightOddsOpeners(bout);
+    }
     const now = Date.now();
     let { fights, frozen } = card(event.date);
     inTransaction(() => {
@@ -1431,13 +1439,13 @@ export async function syncPastFightOdds(eventId?: string): Promise<number> {
       const bouts = await fightOddsBoard(board.pk);
       const fights = (selectFights.all(date) as { id: string; f1_id: string; f2_id: string; f1_name: string; f2_name: string }[])
         .map((row) => ({ ...row, names1: oddsNames(row.f1_id, row.f1_name), names2: oddsNames(row.f2_id, row.f2_name) }));
-      const now = Date.now();
       for (const bout of bouts) {
         const match = matchBout(bout, fights);
-        const lines = match ? boutLines(bout) : null;
-        if (!match || !lines) continue;
+        if (!match || !boutLines(bout)) continue;
+        const lines = boutLines(await fightOddsOpeners(bout)) ?? boutLines(bout)!;
         const [open1, open2] = match.reversed ? [lines.open[1], lines.open[0]] : lines.open;
         const [close1, close2] = match.reversed ? [lines.close[1], lines.close[0]] : lines.close;
+        const now = Date.now();
         stored += Number(upsert.run(match.fight.id, open1, close1, open2, close2, bout.url, now, now).changes);
       }
     }

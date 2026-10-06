@@ -1,11 +1,15 @@
 import { postJson } from "../http.ts";
 import { consistentMoneyline } from "../method-odds.ts";
 import { normName } from "../util.ts";
+import {
+  CappingTableQrQuery, EventOfferTableQrQuery, EventsPromotionQuery, FightOfferTableRefetchQuery, FightPropOfferTableQrQuery,
+} from "./fightodds-queries.ts";
 import type { MethodOddsPrice, MethodOddsQuote, MethodOddsSide, ScrapedMethodOdds } from "./odds.ts";
 
 /** FightOdds.io: the app's own GraphQL API. It reads two dozen sportsbooks
  *  every few minutes and files each fighter under their UFCStats page, so an
- *  upcoming bout is matched by identity, not by name. */
+ *  upcoming bout is matched by identity, not by name. It answers only its web
+ *  app's own queries, word for word (`fightodds-queries.ts`). */
 const API = "https://api.fightodds.io/gql";
 const SITE = "https://fightodds.io";
 
@@ -24,40 +28,57 @@ async function query<T>(text: string, variables: Record<string, unknown>, timeou
 /** UFC events dated on or after `from`. */
 export async function fightOddsEvents(from: string): Promise<FightOddsEvent[]> {
   const data = await query<{ promotion: { events: { edges: { node: FightOddsEvent }[] } } | null }>(
-    `query($from: Date) { promotion: promotionBySlug(slug: "ufc") {
-      events(date_Gte: $from, first: 40, orderBy: "date") { edges { node { pk date slug } } } } }`,
-    { from },
+    EventsPromotionQuery, { promotionSlug: "ufc", dateGte: from, first: 40, orderBy: "date" },
   );
   return data.promotion?.events.edges.map((edge) => edge.node) ?? [];
 }
 
-type RawFighter = { id: string; firstName: string; lastName: string; fightmetricUrl: string | null };
-type RawOutcome = { odds: number | null; oddsOpen: number | null; fighter: { id: string } | null } | null;
+type RawFighter = { firstName: string; lastName: string; fightmetricUrl: string | null };
+type RawOutcome = { odds: number | null; oddsOpen?: number | null } | null;
+type RawOffers = { edges: { node: { outcome1: RawOutcome; outcome2: RawOutcome } }[] };
 type RawBout = {
   slug: string;
   isCancelled: boolean;
   propCount?: number | null;
   fighter1: RawFighter;
   fighter2: RawFighter;
-  straightOffers: { edges: { node: { outcome1: RawOutcome; outcome2: RawOutcome } }[] };
+  straightOffers: RawOffers;
 };
 
-/** Every bout on an event's odds board with each book's moneyline. */
+/** Every bout on an event's odds board with each book's moneyline. Only the
+ *  app's capping table carries UFCStats links; its event table counts props. */
 export async function fightOddsBoard(pk: number): Promise<FightOddsBout[]> {
-  const data = await query<{ board: { fightOffers: { edges: { node: RawBout }[] } } | null }>(
-    `query($pk: Int!) { board: eventOfferTable(pk: $pk) { fightOffers { edges { node {
-      slug isCancelled propCount
-      fighter1 { id firstName lastName fightmetricUrl }
-      fighter2 { id firstName lastName fightmetricUrl }
-      straightOffers { edges { node {
-        outcome1 { odds oddsOpen fighter { id } }
-        outcome2 { odds oddsOpen fighter { id } } } } } } } } } }`,
-    { pk },
-  );
-  if (!data.board) throw new Error(`FightOdds.io board ${pk} is missing`);
-  return data.board.fightOffers.edges.map((edge) => edge.node)
+  type Capping = { eventOffers: { fightOffers: { edges: { node: { fight: Omit<RawBout, "straightOffers">; straightOffers: RawOffers } }[] } } | null };
+  type Offers = { eventOfferTable: { fightOffers: { edges: { node: { slug: string; propCount: number | null } }[] } } | null };
+  const capping = await query<Capping>(CappingTableQrQuery, { eventPk: pk });
+  const offers = await query<Offers>(EventOfferTableQrQuery, { eventPk: pk });
+  if (!capping.eventOffers || !offers.eventOfferTable) throw new Error(`FightOdds.io board ${pk} is missing`);
+  const props = new Map(offers.eventOfferTable.fightOffers.edges.map(({ node }) => [node.slug, node.propCount]));
+  return capping.eventOffers.fightOffers.edges
+    .map(({ node }) => ({ ...node.fight, straightOffers: node.straightOffers, propCount: props.get(node.fight.slug) }))
     .filter((bout) => !bout.isCancelled)
     .map(parseBout);
+}
+
+/** The bout with each book's opening price, which only a bout's own table
+ *  carries: one request per bout, so only for a bout we have no opener for. */
+export async function fightOddsOpeners(bout: FightOddsBout): Promise<FightOddsBout> {
+  type Table = { fightOfferTable: { fighter1: Omit<RawFighter, "fightmetricUrl">; fighter2: Omit<RawFighter, "fightmetricUrl">; straightOffers: RawOffers } | null };
+  const { fightOfferTable: table } = await query<Table>(FightOfferTableRefetchQuery, { fightSlug: bout.slug });
+  const name = (fighter: Omit<RawFighter, "fightmetricUrl">) => `${fighter.firstName} ${fighter.lastName}`.trim();
+  // Corner order must be the board's, or the openers would land on the wrong side.
+  if (!table || name(table.fighter1) !== bout.f1.name || name(table.fighter2) !== bout.f2.name) return bout;
+  return { ...bout, quotes: quotes(table.straightOffers) };
+}
+
+/** Each book's price, read in the board's corner order (outcome1 is fighter1). */
+function quotes(offers: RawOffers): FightOddsQuote[] {
+  const list: FightOddsQuote[] = [];
+  for (const { node: { outcome1: a, outcome2: b } } of offers.edges) {
+    if (a?.odds == null || b?.odds == null) continue;
+    list.push({ now: [a.odds, b.odds], open: [a.oddsOpen ?? null, b.oddsOpen ?? null] });
+  }
+  return list;
 }
 
 export function parseBout(bout: RawBout): FightOddsBout {
@@ -66,19 +87,9 @@ export function parseBout(bout: RawBout): FightOddsBout {
     name: `${fighter.firstName} ${fighter.lastName}`.trim(),
     last: fighter.lastName,
   });
-  const quotes: FightOddsQuote[] = [];
-  for (const { node } of bout.straightOffers.edges) {
-    let [a, b] = [node.outcome1, node.outcome2];
-    if (!a || !b) continue;
-    // A book's outcomes are read against the fighter each one names.
-    if (a.fighter?.id === bout.fighter2.id && b.fighter?.id === bout.fighter1.id) [a, b] = [b, a];
-    else if ((a.fighter && a.fighter.id !== bout.fighter1.id) || (b.fighter && b.fighter.id !== bout.fighter2.id)) continue;
-    if (a.odds == null || b.odds == null) continue;
-    quotes.push({ now: [a.odds, b.odds], open: [a.oddsOpen, b.oddsOpen] });
-  }
   return {
     slug: bout.slug, url: `${SITE}/fights/${bout.slug}/odds`, propCount: bout.propCount ?? 0,
-    f1: corner(bout.fighter1), f2: corner(bout.fighter2), quotes,
+    f1: corner(bout.fighter1), f2: corner(bout.fighter2), quotes: quotes(bout.straightOffers),
   };
 }
 
@@ -157,17 +168,28 @@ export type RawProp = {
   offers: { edges: { node: { sportsbook: { shortName: string }; outcome1: RawPropOutcome; outcome2: RawPropOutcome } }[] };
 };
 
-/** Every prop on each bout's board, in one request per card. */
+/** Every prop on each bout's board, one request per bout. */
 export async function fightOddsProps(slugs: string[]): Promise<Map<string, RawProp[]>> {
-  if (!slugs.length) return new Map();
-  const fields = `propOffers { edges { node { propName1 propName2 offers { edges { node {
-    sportsbook { shortName } outcome1 { odds oddsPrev } outcome2 { odds oddsPrev } } } } } } }`;
-  const request = `query(${slugs.map((_, i) => `$s${i}: String!`).join(", ")}) {
-    ${slugs.map((_, i) => `p${i}: fightPropOfferTable(slug: $s${i}) { ${fields} }`).join("\n")} }`;
-  const data = await query<Record<string, { propOffers: { edges: { node: RawProp }[] } } | null>>(
-    request, Object.fromEntries(slugs.map((slug, i) => [`s${i}`, slug])), 90_000,
-  );
-  return new Map(slugs.map((slug, i) => [slug, data[`p${i}`]?.propOffers.edges.map((edge) => edge.node) ?? []]));
+  type Table = {
+    sportsbooks: { edges: { node: { id: string; shortName: string } }[] };
+    fightPropOfferTable: { propOffers: { edges: { node: Omit<RawProp, "offers"> & {
+      offers: { edges: { node: { sportsbook: { id: string }; outcome1: RawPropOutcome; outcome2: RawPropOutcome } }[] };
+    } }[] } } | null;
+  };
+  const boards = new Map<string, RawProp[]>();
+  for (const slug of slugs) {
+    const data = await query<Table>(FightPropOfferTableQrQuery, { fightSlug: slug });
+    const books = new Map(data.sportsbooks.edges.map(({ node }) => [node.id, node.shortName]));
+    boards.set(slug, (data.fightPropOfferTable?.propOffers.edges ?? []).map(({ node }) => ({
+      propName1: node.propName1, propName2: node.propName2,
+      // An offer from a book the list doesn't name can't be told apart from another.
+      offers: { edges: node.offers.edges.flatMap(({ node: offer }) => {
+        const shortName = books.get(offer.sportsbook.id);
+        return shortName ? [{ node: { ...offer, sportsbook: { shortName } } }] : [];
+      }) },
+    })));
+  }
+  return boards;
 }
 
 /** Exchanges and prediction markets. Their two-way moneylines join the median,

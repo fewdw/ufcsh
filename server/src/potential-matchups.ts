@@ -2,7 +2,7 @@ import { db, prepared, setMeta, getMeta } from "./db.ts";
 import { normName } from "./util.ts";
 import { bestFightOddsPotentialBouts, type PotentialBout } from "./scrape/potential-odds.ts";
 import { fighterNamed } from "./fighter-identity.ts";
-import { boutLines, boutProps, fightOddsProps, fightOddsBoard, fightOddsEvents } from "./scrape/fightodds.ts";
+import { boutLines, boutProps, fightOddsOpeners, fightOddsProps, fightOddsBoard, fightOddsEvents } from "./scrape/fightodds.ts";
 
 export const POTENTIAL_EVENT_ID = "potential-matchups";
 export const POTENTIAL_EVENT_NAME = "Potential matchups";
@@ -101,7 +101,13 @@ export function syncPotentialMatchups({ props = false }: { props?: boolean } = {
       const events = await fightOddsEvents(new Date().toISOString().slice(0, 10));
       const board = events.find(event => event.slug === "future-fights");
       if (!board) throw new Error("FightOdds.io future-fights board is missing");
-      await storePotentialBoard(await fightOddsBoard(board.pk), props);
+      const bouts = await fightOddsBoard(board.pk);
+      // A bout new to the board reads its books' openers once; after that the stored opener stands.
+      const stored = db.prepare("SELECT 1 FROM potential_matchups WHERE id = ?");
+      for (const [i, bout] of bouts.entries()) {
+        if (boutLines(bout) && !stored.get(`potential-${bout.slug}`)) bouts[i] = await fightOddsOpeners(bout);
+      }
+      await storePotentialBoard(bouts, props);
     };
     const results = await Promise.allSettled([
       readFightOdds(),

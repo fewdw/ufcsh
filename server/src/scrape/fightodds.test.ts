@@ -2,29 +2,34 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { boutLines, boutProps, consensusLine, matchBout, parseBout, type FightOddsBout, type RawProp } from "./fightodds.ts";
 
-const silva = { id: "RmlnaHRlck5vZGU6MQ==", firstName: "Natalia Cristina", lastName: "da Silva", fightmetricUrl: "http://www.ufcstats.com/fighter-details/262d32ebda89efc4" };
-const wang = { id: "RmlnaHRlck5vZGU6Mg==", firstName: "Cong", lastName: "Wang", fightmetricUrl: "http://www.ufcstats.com/fighter-details/2997e7fe3c9d3d4a" };
-const outcome = (odds: number | null, oddsOpen: number | null, fighter = silva) => ({ odds, oddsOpen, fighter: { id: fighter.id } });
+const silva = { firstName: "Natalia Cristina", lastName: "da Silva", fightmetricUrl: "http://www.ufcstats.com/fighter-details/262d32ebda89efc4" };
+const wang = { firstName: "Cong", lastName: "Wang", fightmetricUrl: null };
+const offer = (a: number | null, b: number | null, open?: [number, number]) =>
+  ({ node: { outcome1: { odds: a, oddsOpen: open?.[0] }, outcome2: { odds: b, oddsOpen: open?.[1] } } });
 
-test("a board bout reads each book against the fighter its outcomes name", () => {
+test("a board bout reads each book's price in the board's corner order", () => {
   const bout = parseBout({
     slug: "natalia-cristina-da-silva-vs-cong-wang-81444",
     isCancelled: false,
+    propCount: 12,
     fighter1: silva,
     fighter2: wang,
     straightOffers: { edges: [
-      { node: { outcome1: outcome(-215, -250), outcome2: outcome(164, 198, wang) } },
-      // Listed the other way round by this book.
-      { node: { outcome1: outcome(176, 177, wang), outcome2: outcome(-209, -210) } },
+      offer(-215, 164, [-250, 198]),
+      // The board's capping table carries no openers.
+      offer(-209, 176),
       // A book with no price yet.
-      { node: { outcome1: outcome(null, null), outcome2: outcome(null, null, wang) } },
+      offer(null, null),
+      offer(-200, null),
     ] },
   });
   assert.equal(bout.url, "https://fightodds.io/fights/natalia-cristina-da-silva-vs-cong-wang-81444/odds");
+  assert.equal(bout.propCount, 12);
   assert.deepEqual(bout.f1, { id: "262d32ebda89efc4", name: "Natalia Cristina da Silva", last: "da Silva" });
+  assert.deepEqual(bout.f2, { id: null, name: "Cong Wang", last: "Wang" });
   assert.deepEqual(bout.quotes, [
     { now: [-215, 164], open: [-250, 198] },
-    { now: [-209, 176], open: [-210, 177] },
+    { now: [-209, 176], open: [null, null] },
   ]);
 });
 

@@ -1,5 +1,5 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAdminRequest, useAdminResource } from "../admin";
 import { formatDateShortWithYear } from "../format";
 
@@ -81,6 +81,21 @@ function useReviews() {
     save(next);
   }, [save]);
   return { reviews, toggle, setNote };
+}
+
+/** Side by side from md up; on a phone the checks and one check's items take
+ *  turns filling the page. */
+const WIDE = "(min-width: 768px)";
+function useWide(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const query = window.matchMedia(WIDE);
+      query.addEventListener("change", onChange);
+      return () => query.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(WIDE).matches,
+    () => true,
+  );
 }
 
 const reviewId = (check: BugCheck, item: BugItem) => `${check.id}:${item.key}`;
@@ -209,14 +224,14 @@ function ItemRow({
           )}
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+        <div className="flex w-full shrink-0 flex-wrap items-center gap-1.5 pl-7 sm:w-auto sm:pl-0">
           {canAct && item.actions.map((action) => (
             <button
               key={action.id + action.target}
               type="button"
               disabled={running != null}
               onClick={() => void run(action)}
-              className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50 disabled:opacity-50"
+              className="rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-700 sm:px-2 sm:py-1 hover:border-zinc-300 hover:bg-zinc-50 disabled:opacity-50"
             >
               {running === action.id ? "Running…" : action.label}
             </button>
@@ -224,7 +239,7 @@ function ItemRow({
           <button
             type="button"
             onClick={() => setNoteOpen((open) => !open)}
-            className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-500 hover:border-zinc-300 hover:bg-zinc-50"
+            className="rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs text-zinc-500 sm:px-2 sm:py-1 hover:border-zinc-300 hover:bg-zinc-50"
           >
             Note
           </button>
@@ -232,7 +247,7 @@ function ItemRow({
             type="button"
             onClick={() => void copy()}
             title="Copy this item as text"
-            className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-500 hover:border-zinc-300 hover:bg-zinc-50"
+            className="rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs text-zinc-500 sm:px-2 sm:py-1 hover:border-zinc-300 hover:bg-zinc-50"
           >
             {copied ? "Copied" : "Copy"}
           </button>
@@ -248,6 +263,12 @@ export default function AdminBugs() {
   const { reviews, toggle, setNote } = useReviews();
   const [shown, setShown] = useState(PAGE);
   const [refreshing, setRefreshing] = useState(false);
+  const wide = useWide();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const root = useRef<HTMLDivElement>(null);
+  const detail = useRef<HTMLElement>(null);
+  const listScroll = useRef(0);
 
   const query = params.get("q") ?? "";
   const hideReviewed = params.get("reviewed") !== "show";
@@ -288,10 +309,38 @@ export default function AdminBugs() {
   const ordered = useMemo(() => groups.flatMap(([, checks]) => checks), [groups]);
 
   // A search with no check picked looks through every check at once.
-  const searchAll = Boolean(query) && !params.get("check");
-  const selected = searchAll ? undefined : ordered.find((check) => check.id === params.get("check"))
-    ?? ordered.find((check) => stat(check).count > 0)
-    ?? ordered[0];
+  const picked = params.get("check");
+  const searchAll = Boolean(query) && !picked;
+  // Wide, the worst check opens beside the list; a phone shows the list first.
+  const selected = searchAll ? undefined : ordered.find((check) => check.id === picked)
+    ?? (wide ? ordered.find((check) => stat(check).count > 0) ?? ordered[0] : undefined);
+  const showList = wide || (!picked && !searchAll);
+
+  // A phone opens a check as its own page: the back gesture returns to the
+  // list where it was left, and the check opens at its own heading.
+  const scroller = () => root.current?.closest<HTMLElement>("#admin-tabpanel") ?? null;
+  const openCheck = (id: string) => {
+    if (wide) return setParam("check", id);
+    listScroll.current = scroller()?.scrollTop ?? 0;
+    const next = new URLSearchParams(params);
+    next.set("check", id);
+    setParams(next, { state: { fromList: true } });
+  };
+  const back = () => {
+    if (picked && (location.state as { fromList?: boolean } | null)?.fromList) navigate(-1);
+    else setParam(picked ? "check" : "q", null);
+  };
+  // Only opening or leaving a check moves the page: a search typed above the
+  // list keeps its place.
+  const wasPicked = useRef(picked);
+  useLayoutEffect(() => {
+    const el = scroller();
+    const before = wasPicked.current;
+    wasPicked.current = picked;
+    if (wide || !el || before === picked) return;
+    if (picked) el.scrollTop += (detail.current?.getBoundingClientRect().top ?? 0) - el.getBoundingClientRect().top;
+    else if (showList) el.scrollTop = listScroll.current;
+  }, [wide, showList, picked]);
 
   useEffect(() => { setShown(PAGE); }, [selected?.id, query, hideReviewed, level]);
 
@@ -329,11 +378,11 @@ export default function AdminBugs() {
   }));
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
+    <div ref={root} className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
         {/* Each level is also a filter: the board, its counts and the list
             narrow to it, and a second click lets go. */}
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by level">
+        <div className="grid w-full grid-cols-4 gap-1.5 sm:flex sm:w-auto sm:flex-wrap sm:items-center" role="group" aria-label="Filter by level">
           {totals.map((entry) => (
             <button
               key={entry.id}
@@ -341,19 +390,21 @@ export default function AdminBugs() {
               aria-pressed={level === entry.id}
               onClick={() => setParam("level", level === entry.id ? null : entry.id)}
               title={entry.hint}
-              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs tabular-nums transition ${
+              className={`flex min-w-0 flex-col items-center gap-0.5 rounded-xl border px-1 py-1.5 text-xs tabular-nums transition sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-2.5 sm:py-1 ${
                 level === entry.id
                   ? "border-zinc-900 bg-zinc-900 text-white"
                   : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50"
               } ${entry.count || level === entry.id ? "" : "opacity-50"}`}
             >
-              <span className={`h-2 w-2 rounded-full ${entry.dot}`} aria-hidden="true" />
-              <span className="font-semibold">{entry.count.toLocaleString()}</span>
-              <span>{entry.label}</span>
+              <span className="flex items-center gap-1.5">
+                <span className={`h-2 w-2 rounded-full ${entry.dot}`} aria-hidden="true" />
+                <span className="font-semibold">{entry.count.toLocaleString()}</span>
+              </span>
+              <span className="max-w-full truncate text-[11px] sm:text-xs">{entry.label}</span>
             </button>
           ))}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <input
             type="search"
             value={query}
@@ -365,9 +416,9 @@ export default function AdminBugs() {
             }}
             placeholder="Search every check…"
             aria-label="Search every check by name, event, date or id"
-            className="w-full min-w-0 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-zinc-400 sm:w-56"
+            className="min-w-0 flex-1 basis-full rounded-lg border border-zinc-200 bg-white px-2.5 py-2 text-base outline-none focus:border-zinc-400 sm:basis-auto sm:py-1.5 sm:text-sm md:w-56 md:flex-none"
           />
-          <label className="flex items-center gap-1.5 text-xs text-zinc-600">
+          <label className="flex flex-1 items-center gap-1.5 py-1 text-xs text-zinc-600 sm:flex-none">
             <input
               type="checkbox"
               checked={hideReviewed}
@@ -388,20 +439,26 @@ export default function AdminBugs() {
         <p className="w-full text-[11px] text-zinc-400">
           Built {ago(data.generated_at)} · last sync tick {ago(data.sync.last_tick_at)}
           {!data.can_act && " · repairs are disabled"}
-          {data.sync.last_sync_error && <span className="text-rose-600"> · last sync error: {data.sync.last_sync_error}</span>}
         </p>
+        {/* A long error stays two lines on a phone; its full text is in the tooltip and the Copy. */}
+        {data.sync.last_sync_error && (
+          <p className="-mt-1 line-clamp-2 w-full break-words text-[11px] text-rose-600 sm:line-clamp-none" title={data.sync.last_sync_error}>
+            Last sync error: {data.sync.last_sync_error}
+          </p>
+        )}
       </div>
 
-      {/* The checks and the selected list each scroll on their own inside
-          the space under the tabs; the page itself never moves. */}
-      <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,2fr)_minmax(0,3fr)] gap-3 md:grid-cols-[18rem_minmax(0,1fr)] md:grid-rows-1">
-        <nav className="min-h-0 overflow-y-auto overscroll-y-contain rounded-xl border border-zinc-200 bg-white p-2" aria-label="Checks">
+      {/* Wide, the checks and the selected list each scroll on their own inside
+          the space under the tabs and the page never moves. A phone scrolls the
+          page through one or the other. */}
+      <div className="flex flex-col gap-3 md:grid md:min-h-0 md:flex-1 md:grid-cols-[18rem_minmax(0,1fr)]">
+        {showList && <nav className="rounded-xl border border-zinc-200 bg-white p-2 md:min-h-0 md:overflow-y-auto md:overscroll-y-contain" aria-label="Checks">
           {query && (
             <button
               type="button"
               onClick={() => setParam("check", null)}
               aria-current={searchAll ? "true" : undefined}
-              className={`mb-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${searchAll ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-100"}`}
+              className={`mb-2 flex w-full items-center gap-2 rounded-md px-2 py-2.5 text-left text-sm md:py-1.5 ${searchAll ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-100"}`}
             >
               <span className="min-w-0 flex-1 truncate">All matches</span>
               <span className={`tabular-nums text-xs ${searchAll ? "text-zinc-300" : "text-zinc-500"}`}>
@@ -425,14 +482,15 @@ export default function AdminBugs() {
                     <li key={check.id}>
                       <button
                         type="button"
-                        onClick={() => setParam("check", check.id)}
+                        onClick={() => openCheck(check.id)}
                         aria-current={active ? "true" : undefined}
                         title={check.label}
-                        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${active ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-100"}`}
+                        className={`flex w-full items-center gap-2 rounded-md px-2 py-2.5 text-left text-sm md:py-1.5 ${active ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-100"}`}
                       >
                         <Dot level={count ? worst : "ok"} className={count ? "" : "opacity-40"} />
                         <span className="min-w-0 flex-1 truncate">{check.label}</span>
                         <span className={`tabular-nums text-xs ${active ? "text-zinc-300" : count ? "text-zinc-500" : "text-zinc-300"}`}>{count.toLocaleString()}</span>
+                        {!wide && <span className="-mr-0.5 text-zinc-300" aria-hidden="true">›</span>}
                       </button>
                     </li>
                   );
@@ -440,12 +498,17 @@ export default function AdminBugs() {
               </ul>
             </div>
           ))}
-        </nav>
+        </nav>}
 
         {(selected || searchAll) && (
-          <section className="min-h-0 min-w-0 overflow-y-auto overscroll-y-contain rounded-xl border border-zinc-200 bg-white">
+          <section ref={detail} className="min-w-0 rounded-xl border border-zinc-200 bg-white md:min-h-0 md:overflow-y-auto md:overscroll-y-contain">
             <header className="sticky top-0 z-10 rounded-t-xl border-b border-zinc-200 bg-white px-4 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              {!wide && (
+                <button type="button" onClick={back} className="-ml-1 mb-1.5 flex items-center gap-1 py-1 pr-2 text-sm text-zinc-500 hover:text-zinc-900">
+                  <span aria-hidden="true">‹</span> {picked && query ? "Matches" : picked ? "All checks" : "Clear search"}
+                </button>
+              )}
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                 <h2 className="flex min-w-0 items-center gap-2 font-semibold text-zinc-900">
                   {selected ? (
                     <>
@@ -472,8 +535,13 @@ export default function AdminBugs() {
                   </button>
                 </div>
               </div>
-              {selected && <p className="mt-1 max-w-3xl text-xs leading-relaxed text-zinc-500">{selected.description}</p>}
             </header>
+            {/* Read once, then out of the way: it scrolls with the items. */}
+            {selected && (
+              <div className="border-b border-zinc-100 px-4 py-2.5">
+                <p className="max-w-3xl text-xs leading-relaxed text-zinc-500">{selected.description}</p>
+              </div>
+            )}
             {visible.length === 0 ? (
               <p className="px-4 py-10 text-center text-sm text-zinc-400">
                 {!selected ? "No check has a match." : selected.total === 0 ? "Nothing wrong here." : level ? `Nothing ${LEVEL[level].label.toLowerCase()} here.` : "Everything here is reviewed or filtered out."}
@@ -487,7 +555,7 @@ export default function AdminBugs() {
                       <li className="border-b border-zinc-100 bg-zinc-50 px-4 py-1.5">
                         <button
                           type="button"
-                          onClick={() => setParam("check", check.id)}
+                          onClick={() => openCheck(check.id)}
                           className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-900"
                         >
                           {check.group} · {check.label}

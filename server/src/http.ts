@@ -121,7 +121,8 @@ export function postJson(url: string, body: unknown, { timeoutMs = 25000, retrie
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+    // An API says why it refused in the body; keep that in the error.
+    if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}: ${(await res.text().catch(() => "")).slice(0, 200)}`);
     return res.json();
   });
 }
