@@ -6,7 +6,7 @@ import { useApi, type OpponentTag, type Opposition, type OppositionBout } from "
 import { formatDateShortWithYear, lastName, outcomeClasses, outcomeLabel } from "../format";
 import { CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
 import EvidenceDialog from "./EvidenceDialog";
-import { oppositionRows, recordText, tagText, type OppositionFilter } from "../opposition";
+import { oppositionGroups, recordText, tagText, type OppositionFilter } from "../opposition";
 import { resultDot } from "../resultDots";
 import RequestNotice from "./RequestNotice";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "./segmented";
@@ -34,56 +34,85 @@ function Tag({ tag }: { tag: OpponentTag }) {
   return <span title={title} className={`inline-block whitespace-nowrap rounded-full px-1.5 py-px text-[10px] font-bold leading-4 ${tagTone[tag.kind]}`}><span className="sr-only">{title}: </span><span aria-hidden="true">{short}</span></span>;
 }
 
-/** The opponent: a profile here, their Sherdog page when they never fought in the UFC. */
-function Opponent({ row }: { row: OppositionBout }) {
-  const { id, name, source_url: sourceUrl } = row.opponent;
-  const className = `font-medium text-zinc-900 underline ${linkUnderline}`;
-  if (id) return <Link to={`/fighters/${id}`} className={className}>{name}</Link>;
-  if (sourceUrl) return <a href={sourceUrl} target="_blank" rel="noopener noreferrer" title={`${name} on Sherdog`} className={className}>{name}<span aria-hidden="true" className="text-zinc-400"> ↗</span></a>;
-  return <span className="font-medium text-zinc-900">{name}</span>;
+const OUTSIDE = "text-violet-700";
+
+/** A name: a profile here, else their Sherdog page; purple outside the UFC. */
+function Name({ opponent, outside, className = "" }: { opponent: OppositionBout["opponent"]; outside: boolean; className?: string }) {
+  const tone = outside ? OUTSIDE : "text-zinc-900";
+  const label = outside ? `${opponent.name}, outside the UFC` : undefined;
+  if (opponent.id) return <Link to={`/fighters/${opponent.id}`} aria-label={label} className={`${className} font-medium underline ${tone} ${linkUnderline}`}>{opponent.name}</Link>;
+  if (opponent.source_url) return <a href={opponent.source_url} target="_blank" rel="noopener noreferrer" aria-label={`${opponent.name} on Sherdog${outside ? ", outside the UFC" : ""}`} className={`${className} font-medium underline ${tone} ${linkUnderline}`}>{opponent.name}</a>;
+  return <span aria-label={label} className={`${className} font-medium ${tone}`}>{opponent.name}</span>;
 }
 
-/** One bout: the selected fighter's result and opponent on the left, the
- *  opponent's record on the night on the right. */
-function OppositionRow({ fighter, row }: { fighter: Fighter; row: OppositionBout }) {
-  const method = resultDot(row).shortMethod || "—";
-  const where = row.fight_id ? "UFC" : row.event_name;
-  return <li className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-t border-zinc-200 py-2.5">
-    <div className="flex min-w-0 items-start gap-1.5">
-      <Result outcome={row.outcome} label={`${fighter.name}: ${resultWords[row.outcome ?? ""] ?? "Result unknown"} against ${row.opponent.name}`} />
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 break-words"><Opponent row={row} />{row.tag ? <Tag tag={row.tag} /> : null}</div>
-        <div className="mt-0.5 flex min-w-0 flex-wrap gap-x-1.5 text-zinc-500">
-          {row.fight_id ? <Link to={`/fights/${row.fight_id}?tab=matchup`} title={`${row.method || "Method unknown"} — view matchup`} className={`underline hover:text-zinc-900 ${linkUnderline}`}>{method}</Link> : <span title={row.method ?? undefined}>{method}</span>}
-          <span className="tabular-nums">{formatDateShortWithYear(row.date)}</span>
-          <span className="min-w-0 truncate" title={row.event_name}>{where}</span>
-        </div>
+type Group = ReturnType<typeof oppositionGroups>[number];
+const boutLabel = (name: string, outcome: OppositionBout["outcome"], against: string) => `${name}: ${resultWords[outcome ?? ""] ?? "Result unknown"} against ${against}`;
+
+/** The selected fighter's meetings with one opponent, each with the
+ *  opponent's record going in and the one thing worth knowing about them. */
+function Faced({ fighter, group }: { fighter: Fighter; group: Group }) {
+  return <div className="space-y-2">
+    {group.meetings.map(({ meeting }, index) => <div key={meeting.fight_id ?? meeting.date} className="flex items-start gap-1.5 text-zinc-700">
+      <Result outcome={meeting.outcome} label={boutLabel(fighter.name, meeting.outcome, group.opponent.name)} />
+      <span className="min-w-0 break-words">
+        {index === 0 ? <Name opponent={group.opponent} outside={group.outside} className="block" /> : null}
+        {meeting.pro_record || meeting.tag ? <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          {meeting.pro_record ? <span className="font-semibold tabular-nums text-zinc-900" title="Professional record going in">{recordText(meeting.pro_record)}</span> : null}
+          {meeting.tag ? <Tag tag={meeting.tag} /> : null}
+        </span> : null}
+        <span className="mt-0.5 flex flex-col items-start text-zinc-500 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-2">
+          <span title={meeting.method ?? undefined}>{resultDot(meeting).shortMethod || "—"} · <span className="tabular-nums">{formatDateShortWithYear(meeting.date)}</span></span>
+          {meeting.fight_id
+            ? <Link to={`/fights/${meeting.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name}`} className={`py-1 underline hover:text-zinc-900 ${linkUnderline}`}>Matchup</Link>
+            : <span className="line-clamp-2" title={meeting.event_name}>{meeting.event_name}</span>}
+        </span>
+      </span>
+    </div>)}
+  </div>;
+}
+
+/** Each opponent's earlier wins and losses wrap into a grid beside them,
+ *  newest first: two per row on a phone, more on a larger screen. */
+function OppositionGrid({ fighter, groups, label }: { fighter: Fighter; groups: Group[]; label: string }) {
+  const columns = "grid-cols-[38%_minmax(0,1fr)] gap-3 sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-4 lg:grid-cols-[14rem_minmax(0,1fr)]";
+  return <div aria-label={label} role="list" className="text-[11px] sm:text-xs">
+    <div aria-hidden="true" className={`sticky top-0 z-10 grid bg-white pb-2 font-medium text-zinc-500 ${columns}`}>
+      <span>{lastName(fighter.name)} vs.</span><span>Their earlier wins and losses</span>
+    </div>
+    {groups.map(group => <section key={group.opponent.id ?? group.opponent.source_url ?? group.opponent.name} role="listitem" aria-label={group.opponent.name} className={`grid border-t border-zinc-200 py-2.5 ${columns}`}>
+      <Faced fighter={fighter} group={group} />
+      <div className="min-w-0 space-y-2">
+        {group.meetings.map(({ meeting, bouts }) => <div key={meeting.fight_id ?? meeting.date}>
+          {group.meetings.length > 1 ? <p className="mb-1 text-zinc-500">Before {formatDateShortWithYear(meeting.date)}</p> : null}
+          {bouts.length ? <ul className="grid grid-cols-2 gap-x-2 gap-y-2 sm:grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] sm:gap-x-3">
+            {bouts.map((bout, index) => <li key={bout.fight_id ?? `${bout.date}-${index}`} className="flex min-w-0 items-start gap-1.5">
+              <Result outcome={bout.outcome} label={boutLabel(group.opponent.name, bout.outcome, bout.opponent.name)} />
+              <span className="min-w-0 break-words">
+                <Name opponent={bout.opponent} outside={bout.promotion === "outside"} className="block" />
+                <span className="block text-zinc-500">{bout.fight_id
+                  ? <Link to={`/fights/${bout.fight_id}`} title={`${bout.method || "Method unknown"} · ${formatDateShortWithYear(bout.date)} — view matchup`} className={`${linkUnderline} hover:underline`}>{resultDot(bout).shortMethod || "—"}</Link>
+                  : <span title={`${bout.method || "Method unknown"} · ${formatDateShortWithYear(bout.date)}`}>{resultDot(bout).shortMethod || "—"}</span>}</span>
+              </span>
+            </li>)}
+          </ul> : <p className="text-zinc-400">{meeting.pro_record || meeting.history.length ? "No earlier wins or losses." : !meeting.opponent.id && meeting.opponent.source_url ? "Earlier fights not read yet." : "No earlier fights on record."}</p>}
+        </div>)}
       </div>
-    </div>
-    <div className="text-right tabular-nums">
-      <div className="font-semibold text-zinc-900" title={row.pro_record ? "Professional record going in" : "Professional record not read yet"}>{row.pro_record ? recordText(row.pro_record) : "—"}</div>
-      {row.record ? <div className="mt-0.5 text-zinc-500" title="UFC record going in; these add up to the OPP. record"><span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(row.record)}</div> : null}
-    </div>
-  </li>;
+    </section>)}
+  </div>;
 }
 
 function OppositionList({ scope, fighter, before, outcome }: { scope: string; fighter: Fighter; before?: string; outcome: OppositionFilter }) {
   const { settings } = useSettings();
   const { data, error, retry } = useApi<Opposition>(withRanking(`/api/fighters/${fighter.id}/opposition${before ? `?before=${before}` : ""}`, settings.rankingSource));
   const scrollRef = useRouteScrollRestoration<HTMLDivElement>(`${scope}:list:${fighter.id}:${outcome}`, Boolean(data));
-  const rows = data ? oppositionRows(data, outcome) : [];
+  const groups = data ? oppositionGroups(data, outcome) : [];
   const resultName = outcome === "all" ? "all results" : outcome === "win" ? "wins" : "losses";
   return <div ref={scrollRef} data-sheet-scroll className="min-h-0 flex-1 overflow-auto overscroll-x-contain overscroll-y-none pr-2 [scrollbar-gutter:stable]">
     {error ? <RequestNotice onRetry={retry}>Couldn’t load opponents.</RequestNotice> : null}
-    {!data ? !error ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null : !rows.length ? <p className="py-4 text-xs text-zinc-500">{data.rows.length ? `No ${resultName}.` : "No earlier professional fights."}</p> : <div className="text-[11px] sm:text-xs">
-      <div aria-hidden="true" className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_auto] gap-3 bg-white pb-2 font-medium text-zinc-500">
-        <span>{lastName(fighter.name)} vs.</span><span>Record then</span>
-      </div>
-      <ul aria-label={`${fighter.name}: opposition, ${resultName}`}>
-        {rows.map((row, index) => <OppositionRow key={row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`} fighter={fighter} row={row} />)}
-      </ul>
-      <p className="border-t border-zinc-200 pt-2.5 text-[10px] leading-4 text-zinc-400">Each opponent’s record as it stood going into the fight. The UFC lines add up to the OPP. record. A dash means that opponent’s full history hasn’t been read yet.</p>
-    </div>}
+    {!data ? !error ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null : !groups.length ? <p className="py-4 text-xs text-zinc-500">{data.rows.length ? `No ${resultName}.` : "No earlier professional fights."}</p> : <>
+      <OppositionGrid fighter={fighter} groups={groups} label={`${fighter.name}: opposition, ${resultName}`} />
+      <p className="border-t border-zinc-200 pt-2.5 text-[10px] leading-4 text-zinc-400"><span className={`font-medium ${OUTSIDE}`}>Purple</span>: outside the UFC. Records and ranks are as they stood going into each fight.</p>
+    </>}
   </div>;
 }
 

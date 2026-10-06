@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { oddsRecord, roundOutcomes } from "./fight-insights.ts";
+import { oddsRecord, roundOutcomes, type RoundOutcome } from "./fight-insights.ts";
 import { fightIndex, type IndexedFight } from "./fight-index.ts";
 
 const bout = (outcome: string, method: string, round: number | null, scheduledRounds = 3, close: [number | null, number | null] = [null, null]) => ({
@@ -55,8 +55,8 @@ test("archive: every counted bout starts round one, and ends once", () => {
     assert.equal(ended, rounds.fights, fighter.name);
     const first = rounds.rounds[0];
     assert.equal(first.won + first.lost + first.past, rounds.fights, fighter.name);
-    for (const [index, round] of rounds.rounds.entries()) {
-      const next = rounds.rounds[index + 1];
+    for (const [at, round] of rounds.rounds.entries()) {
+      const next: RoundOutcome | undefined = rounds.rounds[at + 1];
       if (next) assert(next.won + next.lost + next.past <= round.past, `${fighter.name} R${next.round}`);
     }
     const odds = oddsRecord(fighter.fights, fighter.id);

@@ -225,13 +225,14 @@ CREATE INDEX IF NOT EXISTS idx_career_bouts_fighter_date
 CREATE INDEX IF NOT EXISTS idx_career_bouts_ufc
   ON career_bouts(ufc_fight_id);
 
--- Dated results of opponents met outside the UFC, read from the page the
--- verified history links to, so their record on the night can be counted.
--- Read only by that URL: no app profile, no name matching.
-CREATE TABLE IF NOT EXISTS opponent_records (
+-- The dated professional history of opponents met outside our UFC fight
+-- data, read from the page the verified history links to, so their record and
+-- earlier results on the night can be shown. Read only by that URL: no app
+-- profile, no name matching.
+CREATE TABLE IF NOT EXISTS opponent_histories (
   source_url  TEXT PRIMARY KEY,
   name        TEXT NOT NULL DEFAULT '',
-  -- [[date, outcome], ...] from the last good read, in the page's order
+  -- [{date, outcome, name, url, method, ufc}, ...] from the last good read, newest first
   bouts_json  TEXT,
   -- Last good read: it counts only for bouts dated before it.
   fetched_at  INTEGER,

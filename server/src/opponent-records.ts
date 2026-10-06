@@ -1,11 +1,13 @@
 import { db } from "./db.ts";
+import { looksLikeUfcEvent } from "./career-records.ts";
 import type { FightRecord, Outcome } from "./fight-index.ts";
 import { scrapeSherdogProfile } from "./scrape/sherdog.ts";
 import { log } from "./util.ts";
 
 /**
- * Records of the opponents a fighter met outside our UFC fight data (other
- * promotions, Contender Series), for the opposition dialog. Each is read from
+ * Professional histories of the opponents a fighter met outside our UFC fight
+ * data (other promotions, Contender Series), for the opposition dialog: their
+ * record on the night and who they had beaten or lost to. Each is read from
  * the Sherdog page the verified history links to, once, and again only when a
  * newer bout against them needs a later read.
  * An opponent with a verified UFC profile is counted from that instead.
@@ -14,7 +16,9 @@ import { log } from "./util.ts";
 const DAY = 86_400_000;
 const RETRY_MS = 7 * DAY;
 
-type Stored = { fetchedAt: number; bouts: [date: string, outcome: Outcome][] };
+/** One bout from the opponent's page, newest first as the page lists them. */
+export type StoredBout = { date: string; outcome: Outcome; name: string; url: string; method: string; ufc: boolean };
+type Stored = { fetchedAt: number; bouts: StoredBout[] };
 
 /** Outside opponents still wanting a read: one row per page, the fighters
  *  with readers first (ranked or booked, then recently active). */
@@ -35,7 +39,7 @@ const wantedSql = (fighterFilter: string) => `
       AND NOT EXISTS (SELECT 1 FROM career_profiles o WHERE o.source_url = cb.opponent_url AND o.status = 'verified')
     GROUP BY cb.opponent_url
   )
-  SELECT w.url, w.name FROM wanted w LEFT JOIN opponent_records r ON r.source_url = w.url
+  SELECT w.url, w.name FROM wanted w LEFT JOIN opponent_histories r ON r.source_url = w.url
   WHERE r.source_url IS NULL
      OR ((r.fetched_at IS NULL OR r.fetched_at <= w.newest) AND r.checked_at < ? - CASE WHEN r.error = '' THEN ${DAY} ELSE ${RETRY_MS} END)
   ORDER BY w.pri, r.checked_at IS NOT NULL, w.newest DESC
@@ -47,7 +51,7 @@ export function storedOpponentRecords(urls: string[]): Map<string, Stored> {
   const unique = [...new Set(urls.filter(Boolean))];
   for (let start = 0; start < unique.length; start += 400) {
     const chunk = unique.slice(start, start + 400);
-    const rows = db.prepare(`SELECT source_url, bouts_json, fetched_at FROM opponent_records
+    const rows = db.prepare(`SELECT source_url, bouts_json, fetched_at FROM opponent_histories
       WHERE fetched_at IS NOT NULL AND source_url IN (${chunk.map(() => "?").join(",")})`).all(...chunk) as { source_url: string; bouts_json: string; fetched_at: number }[];
     for (const row of rows) {
       try {
@@ -60,13 +64,18 @@ export function storedOpponentRecords(urls: string[]): Map<string, Stored> {
   return result;
 }
 
-/** The opponent's record entering a bout on `date`, or null when the stored
- *  read predates the bout and so cannot be trusted to hold everything before it. */
-export function storedRecordBefore(stored: Stored | undefined, date: string): FightRecord | null {
+/** The opponent's earlier bouts entering one on `date`, or null when the
+ *  stored read predates the bout and so cannot be trusted to hold them all. */
+export function storedBoutsBefore(stored: Stored | undefined, date: string): StoredBout[] | null {
   if (!stored || stored.fetchedAt <= Date.parse(`${date}T00:00:00Z`)) return null;
+  return stored.bouts.filter(bout => bout.date < date);
+}
+
+export function storedRecordBefore(stored: Stored | undefined, date: string): FightRecord | null {
+  const bouts = storedBoutsBefore(stored, date);
+  if (!bouts) return null;
   const record: FightRecord = { wins: 0, losses: 0, draws: 0, ncs: 0 };
-  for (const [boutDate, outcome] of stored.bouts) {
-    if (boutDate >= date) continue;
+  for (const { outcome } of bouts) {
     if (outcome === "win") record.wins++;
     else if (outcome === "loss") record.losses++;
     else if (outcome === "draw") record.draws++;
@@ -75,21 +84,38 @@ export function storedRecordBefore(stored: Stored | undefined, date: string): Fi
   return record;
 }
 
+/** Verified fighters behind source pages, so a name in a stored history links
+ *  to its profile here; ambiguous pages (two profiles on one) link nowhere. */
+export function fightersBySourceUrl(urls: string[]): Map<string, string> {
+  const result = new Map<string, string>();
+  const unique = [...new Set(urls.filter(Boolean))];
+  for (let start = 0; start < unique.length; start += 400) {
+    const chunk = unique.slice(start, start + 400);
+    const rows = db.prepare(`SELECT source_url, MIN(fighter_id) AS id FROM career_profiles
+      WHERE status = 'verified' AND source_url IN (${chunk.map(() => "?").join(",")})
+      GROUP BY source_url HAVING COUNT(*) = 1`).all(...chunk) as { source_url: string; id: string }[];
+    for (const row of rows) result.set(row.source_url, row.id);
+  }
+  return result;
+}
+
 export async function syncOpponentRecord(url: string, name = ""): Promise<boolean> {
   const now = Date.now();
   try {
     const profile = await scrapeSherdogProfile(url);
     db.prepare(`
-      INSERT INTO opponent_records (source_url, name, bouts_json, fetched_at, checked_at, error)
+      INSERT INTO opponent_histories (source_url, name, bouts_json, fetched_at, checked_at, error)
       VALUES (?, ?, ?, ?, ?, '')
       ON CONFLICT(source_url) DO UPDATE SET name = excluded.name, bouts_json = excluded.bouts_json,
         fetched_at = excluded.fetched_at, checked_at = excluded.checked_at, error = ''
-    `).run(url, profile.name || name, JSON.stringify(profile.bouts.map((bout) => [bout.date, bout.outcome])), now, now);
+    `).run(url, profile.name || name, JSON.stringify(profile.bouts.map((bout): StoredBout => ({
+      date: bout.date, outcome: bout.outcome, name: bout.opponentName, url: bout.opponentUrl, method: bout.method, ufc: looksLikeUfcEvent(bout.eventName),
+    }))), now, now);
     return true;
   } catch (error) {
     // Keep the last good read; it still counts for bouts dated before it.
     db.prepare(`
-      INSERT INTO opponent_records (source_url, name, checked_at, error) VALUES (?, ?, ?, ?)
+      INSERT INTO opponent_histories (source_url, name, checked_at, error) VALUES (?, ?, ?, ?)
       ON CONFLICT(source_url) DO UPDATE SET checked_at = excluded.checked_at, error = excluded.error
     `).run(url, name, now, String(error).slice(0, 300));
     return false;
@@ -131,7 +157,7 @@ export function opponentRecordGaps(): { fighter_id: string; name: string; source
     FROM career_bouts cb
     JOIN career_profiles cp ON cp.fighter_id = cb.fighter_id AND cp.status = 'verified'
     JOIN fighters fr ON fr.id = cb.fighter_id
-    LEFT JOIN opponent_records r ON r.source_url = cb.opponent_url
+    LEFT JOIN opponent_histories r ON r.source_url = cb.opponent_url
     WHERE cb.ufc_fight_id IS NULL AND cb.opponent_url LIKE 'https://www.sherdog.com/fighter/%'
       AND NOT EXISTS (SELECT 1 FROM career_profiles o WHERE o.source_url = cb.opponent_url AND o.status = 'verified')
       AND (r.fetched_at IS NULL OR r.fetched_at <= CAST(strftime('%s', cb.date) AS INTEGER) * 1000)

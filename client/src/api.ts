@@ -179,6 +179,14 @@ export type OppositionBout = {
   /** Complete professional record entering the bout, where it is known. */
   pro_record: OppositionRecord | null;
   tag: OpponentTag | null;
+  /** The opponent's earlier professional bouts, newest first. */
+  history: EarlierBout[];
+};
+/** One of an opponent's earlier bouts. Outside the UFC, its opponent links to
+ *  their Sherdog page unless they have a profile here. */
+export type EarlierBout = {
+  fight_id: string | null; date: string; outcome: "win" | "loss" | "draw" | "nc"; method: string | null; promotion: "ufc" | "outside";
+  opponent: { id: string | null; name: string; source_url: string | null };
 };
 export type Opposition = {
   fighter_id: string; name: string; before: { fight_id: string; date: string } | null;

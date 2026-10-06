@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { opposition } from "./opposition.ts";
-import { storedRecordBefore } from "./opponent-records.ts";
+import { storedBoutsBefore, storedRecordBefore } from "./opponent-records.ts";
 import { fightIndex, opponentsRecordBefore, sideOf, type CareerBout, type FightIndex, type IndexedFight } from "./fight-index.ts";
 import { resolvePublicApi } from "./api.ts";
 import { publicApi } from "./api-policy.ts";
@@ -39,6 +39,9 @@ test("opposition lists every professional bout, the opponent's record then, and 
   ]);
   assert.deepEqual(data.rows.map(row => row.tag), [{ kind: "rank", rank: "7", division: "Lightweight" }, { kind: "champion" }, { kind: "future" }, null]);
   assert.deepEqual(data.rows[1].record, { wins: 1, losses: 1, draws: 0, ncs: 0 });
+  // Who B had met going into the rematch, newest first.
+  assert.deepEqual(data.rows[1].history.map(bout => [bout.fight_id, bout.outcome, bout.opponent.name]), [["title", "win", "C"], ["first", "loss", "A"]]);
+  assert.deepEqual(data.rows[2].history, []);
   assert.deepEqual(data.rows[2].record, { wins: 0, losses: 0, draws: 0, ncs: 0 });
   // Outside bouts never count toward the UFC opponents' record.
   assert.equal(data.rows[3].record, null);
@@ -51,12 +54,14 @@ test("opposition lists every professional bout, the opponent's record then, and 
 });
 
 test("a stored outside record counts only bouts before the night, and only once read after it", () => {
-  const stored = { fetchedAt: Date.parse("2024-06-01T00:00:00Z"), bouts: [["2024-03-01", "loss"], ["2023-01-01", "win"], ["2022-01-01", "nc"], ["2021-01-01", "win"]] as [string, "win" | "loss" | "nc"][] };
+  const bout = (date: string, outcome: "win" | "loss" | "nc", name: string) => ({ date, outcome, name, url: "", method: "", ufc: false });
+  const stored = { fetchedAt: Date.parse("2024-06-01T00:00:00Z"), bouts: [bout("2024-03-01", "loss", "D"), bout("2023-01-01", "win", "C"), bout("2022-01-01", "nc", "B"), bout("2021-01-01", "win", "A")] };
   assert.deepEqual(storedRecordBefore(stored, "2024-03-01"), { wins: 2, losses: 0, draws: 0, ncs: 1 });
   assert.deepEqual(storedRecordBefore(stored, "2024-04-01"), { wins: 2, losses: 1, draws: 0, ncs: 1 });
   // Read before the bout: a later result may be missing, so it isn't trusted.
   assert.equal(storedRecordBefore(stored, "2024-07-01"), null);
   assert.equal(storedRecordBefore(undefined, "2024-01-01"), null);
+  assert.deepEqual(storedBoutsBefore(stored, "2023-06-01")!.map(entry => entry.name), ["C", "B", "A"]);
 });
 
 test("archive opposition rows sum to the matchup's opponent record at every cutoff", async () => {
@@ -68,6 +73,7 @@ test("archive opposition rows sum to the matchup's opponent record at every cuto
       const expected = (before ? opponentsRecordBefore(index, fighter.id, before.date, before.ord) : opponentsRecordBefore(index, fighter.id, "9999-12-31")) ?? { wins: 0, losses: 0, draws: 0, ncs: 0 };
       assert.deepEqual(evidence.record, expected, `${fighter.name} before ${before?.id ?? "now"}`);
       if (before) assert(!evidence.rows.some(row => row.fight_id === before.id || row.date > before.date), `${fighter.name}: ${before.id}`);
+      for (const row of evidence.rows) assert(!row.history.some(bout => bout.date > row.date || (bout.fight_id != null && bout.fight_id === row.fight_id)), `${fighter.name}: ${row.opponent.name}`);
       checked++;
     }
   }
