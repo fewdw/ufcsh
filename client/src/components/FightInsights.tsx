@@ -4,7 +4,7 @@ import { useTooltip } from "../tooltip";
 import { PanelHeading, PANEL_SHELL } from "./FightStats";
 import { Tooltip } from "./Tooltip";
 
-type Insightful = { name: string; insights: Pick<FightInsights, "rounds"> | null | undefined };
+type Insightful = { name: string; insights: FightInsights | null | undefined };
 
 // Checked with the dataviz palette validator against both surfaces: the
 // green and rose stay apart for red-green colour blindness in either mode.
@@ -13,8 +13,6 @@ const LOST = "bg-[#fb7185] dark:bg-[#f43f5e]";
 const ON = "bg-zinc-200";
 const DRAWN = "bg-[#d97706]";
 const CHART_PX = 96;
-/** Fewer priced fights than this and the comparison is noise. */
-const MIN_PRICED = 5;
 
 type Column = { key: string; label: string; title: string; won: number; lost: number; other: number; otherTone: string; lines: string[] };
 
@@ -77,48 +75,19 @@ export function SideName({ name }: { name: string }) {
   return <h3 className="mb-2 truncate text-xs font-semibold text-zinc-700" title={name}>{lastName(name)}</h3>;
 }
 
-/** How each fighter's UFC bouts ended, round by round and on the cards: two
- *  fighters in equal columns when the box is wide enough, else one under the
- *  other. */
+/** How each fighter's UFC bouts ended, round by round and on the cards,
+ *  across the box: two fighters side by side in equal columns, phones too. */
 export function RoundsPanel({ fighters }: { fighters: Insightful[] }) {
   if (!fighters.some(fighter => fighter.insights?.rounds)) return null;
   const max = Math.max(1, ...fighters.map(fighter => fighter.insights?.rounds?.fights ?? 0));
   const length = Math.max(...fighters.map(fighter => fighter.insights?.rounds?.rounds.length ?? 0));
   return <section className={`${PANEL_SHELL} @container min-w-0`}>
     <PanelHeading title="By round" />
-    <div className="grid px-4 pb-2 sm:px-5 @[30rem]:grid-cols-2 @[30rem]:gap-x-10">
-      {fighters.map(fighter => <div key={fighter.name} className="min-w-0 border-t border-zinc-100 py-3 first:border-t-0 @[30rem]:border-t-0">
+    <div className={`grid px-4 pb-2 sm:px-5 ${fighters.length > 1 ? "grid-cols-2 gap-x-4 @[30rem]:gap-x-10" : ""}`}>
+      {fighters.map(fighter => <div key={fighter.name} className="min-w-0 py-3">
         {fighters.length > 1 ? <SideName name={fighter.name} /> : null}
         {fighter.insights?.rounds ? <RoundChart fighter={fighter} rounds={fighter.insights.rounds} length={length} max={max} /> : <p className="text-[11px] text-zinc-500">No UFC fights yet.</p>}
       </div>)}
     </div>
   </section>;
-}
-
-const dollars = (value: number) => `${value > 0 ? "+" : value < 0 ? "−" : ""}$${Math.abs(value).toLocaleString("en-US")}`;
-
-/** $100 on their moneyline at the closing line in every UFC fight that had
- *  one: the total. Past results, not a forecast. */
-function OddsPanel({ odds }: { odds: NonNullable<FightInsights["odds"]> }) {
-  return <section className={`${PANEL_SHELL} flex min-w-0 flex-col`}>
-    <PanelHeading title="$100 on every fight" />
-    <div className="flex flex-1 flex-col justify-center px-4 py-4 sm:px-5">
-      <span className={`text-3xl font-semibold tabular-nums ${odds.profit > 0 ? "text-emerald-700" : odds.profit < 0 ? "text-rose-700" : "text-zinc-900"}`}>{dollars(odds.profit)}</span>
-      <span className="mt-1 text-xs tabular-nums text-zinc-500">Won {odds.wins} of {odds.priced} bets · ${(odds.priced * 100).toLocaleString("en-US")} staked</span>
-    </div>
-  </section>;
-}
-
-/** A profile's By round and betting record: two half-width boxes of one
- *  height side by side (half width even alone), stacked when narrow. */
-export function FightInsightsPanels({ fighter }: { fighter: { name: string; insights: FightInsights | null | undefined } }) {
-  const odds = fighter.insights?.odds;
-  const enough = odds && odds.priced >= MIN_PRICED;
-  if (!fighter.insights?.rounds && !enough) return null;
-  return <div className="@container">
-    <div className="grid gap-2 sm:gap-3 @[29rem]:grid-cols-2">
-      <RoundsPanel fighters={[fighter]} />
-      {enough ? <OddsPanel odds={odds} /> : null}
-    </div>
-  </div>;
 }

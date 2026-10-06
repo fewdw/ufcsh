@@ -196,8 +196,6 @@ export type Opposition = {
 export type RoundOutcome = { round: number; won: number; lost: number; past: number };
 export type FightInsights = {
   rounds: { fights: number; rounds: RoundOutcome[]; decision: { won: number; lost: number; drawn: number } } | null;
-  /** $100 on their moneyline at the closing line in every decided, priced UFC bout. */
-  odds: { fights: number; priced: number; wins: number; profit: number } | null;
 };
 
 export type FightOdds = {
@@ -356,7 +354,7 @@ export type MatchupSide = FightSide & {
   ufc_opponents_record_before: string | null;
   complete_record_before: CompleteRecordBefore | null;
   /** UFC bouts before this one: how they ended, by round. */
-  insights: Pick<FightInsights, "rounds"> | null;
+  insights: FightInsights | null;
   history: (HistoryRow | ProfessionalHistoryRow)[];
   /** Last five professional bouts before this matchup, newest first. */
   recent_history: (HistoryRow | ProfessionalHistoryRow)[];

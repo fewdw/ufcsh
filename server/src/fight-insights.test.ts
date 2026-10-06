@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { oddsRecord, roundOutcomes, type RoundOutcome } from "./fight-insights.ts";
+import { roundOutcomes, type RoundOutcome } from "./fight-insights.ts";
 import { fightIndex, type IndexedFight } from "./fight-index.ts";
 
-const bout = (outcome: string, method: string, round: number | null, scheduledRounds = 3, close: [number | null, number | null] = [null, null]) => ({
+const bout = (outcome: string, method: string, round: number | null, scheduledRounds = 3) => ({
   id: "fight", date: "2025-01-01", method, round, scheduledRounds,
-  sides: [{ id: "a", outcome, close: close[0] }, { id: "b", outcome: outcome === "win" ? "loss" : outcome === "loss" ? "win" : outcome, close: close[1] }],
+  sides: [{ id: "a", outcome }, { id: "b", outcome: outcome === "win" ? "loss" : outcome === "loss" ? "win" : outcome }],
 }) as unknown as IndexedFight;
 
 test("round outcomes: finishes in their round, decisions past every round, no contests left out", () => {
@@ -31,19 +31,6 @@ test("round outcomes: finishes in their round, decisions past every round, no co
   assert.equal(roundOutcomes([bout("nc", "CNC", 1)], "a"), null);
 });
 
-test("odds record bets $100 on every priced, decided bout at the closing line", () => {
-  const result = oddsRecord([
-    bout("win", "KO/TKO", 1, 3, [-200, 170]),
-    bout("win", "SUB", 1, 3, [150, -170]),
-    bout("loss", "U-DEC", 3, 3, [-150, 130]),
-    bout("win", "SUB", 1),
-    bout("draw", "M-DEC", 3, 3, [100, -120]),
-  ], "a")!;
-  // +$50 and +$150 for the wins, -$100 for the loss; unpriced and drawn bouts place no bet.
-  assert.deepEqual(result, { fights: 4, priced: 3, wins: 2, profit: 100 });
-  assert.equal(oddsRecord([bout("nc", "CNC", 1)], "a"), null);
-});
-
 test("archive: every counted bout starts round one, and ends once", () => {
   const index = fightIndex();
   for (const fighter of index.fighters.values()) {
@@ -58,7 +45,5 @@ test("archive: every counted bout starts round one, and ends once", () => {
       const next: RoundOutcome | undefined = rounds.rounds[at + 1];
       if (next) assert(next.won + next.lost + next.past <= round.past, `${fighter.name} R${next.round}`);
     }
-    const odds = oddsRecord(fighter.fights, fighter.id);
-    if (odds) assert(odds.priced <= odds.fights && odds.wins <= odds.priced && odds.profit >= -100 * odds.priced, fighter.name);
   }
 });

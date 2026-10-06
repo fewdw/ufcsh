@@ -79,9 +79,20 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
   const showFull = settings.showFullRankings;
   const [hover, setHover] = useState<{ at: number; anchor: TipAnchor; below: number } | null>(null);
   const plotRef = useRef<HTMLDivElement>(null);
+  // A finger scrubs only after holding still; a swipe scrolls the page.
+  const press = useRef<{ x: number; y: number; timer: ReturnType<typeof setTimeout>; active: boolean } | null>(null);
+  const endPress = () => { if (press.current) clearTimeout(press.current.timer); press.current = null; };
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keepOpen = () => { if (closeTimer.current) clearTimeout(closeTimer.current); };
-  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
+  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); endPress(); }, []);
+  const plotted = Boolean(chart);
+  useEffect(() => {
+    const plot = plotRef.current;
+    if (!plot) return;
+    const hold = (event: TouchEvent) => { if (press.current?.active) event.preventDefault(); };
+    plot.addEventListener("touchmove", hold, { passive: false });
+    return () => plot.removeEventListener("touchmove", hold);
+  }, [plotted]);
   const open = hover !== null;
   useEffect(() => {
     if (!open) return;
@@ -139,12 +150,29 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
     timeline!.meta_since && start < time(timeline!.meta_since) ? `Media rankings before ${formatDate(timeline!.meta_since)}.` : "",
   ].filter(Boolean);
 
-  const track = (event: React.PointerEvent<HTMLDivElement>) => {
+  const track = (clientX: number) => {
     keepOpen();
-    const box = event.currentTarget.getBoundingClientRect();
-    const fraction = Math.min(1, Math.max(0, (event.clientX - box.left) / (box.width * PLOT_WIDTH / WIDTH)));
+    const box = plotRef.current!.getBoundingClientRect();
+    const fraction = Math.min(1, Math.max(0, (clientX - box.left) / (box.width * PLOT_WIDTH / WIDTH)));
     setHover({ at: Math.min(end, start + fraction * span), below: box.bottom + 6,
-      anchor: { x: Math.min(Math.max(event.clientX, 140), window.innerWidth - 140), y: box.top - 6, above: true } });
+      anchor: { x: Math.min(Math.max(clientX, 140), window.innerWidth - 140), y: box.top - 6, above: true } });
+  };
+  const down = (event: React.PointerEvent) => {
+    if (event.pointerType === "mouse") return track(event.clientX);
+    endPress();
+    const { clientX, clientY } = event;
+    press.current = { x: clientX, y: clientY, active: false, timer: setTimeout(() => {
+      if (!press.current) return;
+      press.current.active = true;
+      navigator.vibrate?.(8);
+      track(clientX);
+    }, 250) };
+  };
+  const move = (event: React.PointerEvent) => {
+    if (event.pointerType === "mouse") return track(event.clientX);
+    const held = press.current;
+    if (held?.active) track(event.clientX);
+    else if (held && Math.hypot(event.clientX - held.x, event.clientY - held.y) > 8) endPress();
   };
   const leave = (event: React.PointerEvent) => {
     keepOpen();
@@ -153,6 +181,7 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
   };
   const release = (event: React.PointerEvent) => {
     if (event.pointerType === "mouse") return;
+    endPress();
     keepOpen();
     setHover(null);
   };
@@ -185,7 +214,8 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
               <span key={tick} className={`absolute right-0 -translate-y-1/2 ${tick === "C" ? "font-semibold text-belt" : ""}`} style={{ top: `${(y(tick) / HEIGHT) * 100}%` }}>{tick}</span>
             ))}
           </div>
-          <div ref={plotRef} className="relative h-40 touch-none" onPointerMove={track} onPointerDown={track} onPointerUp={release} onPointerLeave={leave} onPointerCancel={() => { keepOpen(); setHover(null); }}>
+          <div ref={plotRef} className="relative h-40 touch-pan-y select-none [-webkit-touch-callout:none]" onPointerMove={move} onPointerDown={down} onPointerUp={release} onPointerLeave={leave}
+            onPointerCancel={() => { endPress(); keepOpen(); setHover(null); }} onContextMenu={(event) => { if (press.current) event.preventDefault(); }}>
             <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" role="img"
               aria-label={`${lines.map((division) => division.division).join(" and ")} ranking from ${formatDate(new Date(start).toISOString().slice(0, 10))}${best ? `; best ${held(best.rank!)} in ${best.division}` : ""}`}>
               {TICKS.map((tick) => (
@@ -216,6 +246,7 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
             })}
           </div>
         </div>
+        <p className="mt-2 hidden text-[11px] text-zinc-400 pointer-coarse:block">Touch and hold, then slide, to see the ranking on any date.</p>
         {notes.length ? <p className="mt-2 text-[11px] text-zinc-400">{notes.join(" ")}</p> : null}
         <table className="sr-only">
           <caption>Ranking changes</caption>

@@ -58,11 +58,12 @@ function Faced({ fighter, group }: { fighter: Fighter; group: Group }) {
         <Name opponent={group.opponent} standing={meeting.standing} />
         <Chips standing={meeting.standing} />
       </span>
-      <span className="mt-1 text-zinc-500">
+      <span className="mt-1 pl-6.5 text-zinc-500">
         <span title={meeting.method ?? undefined}>{resultDot(meeting).shortMethod || "—"}</span>
         {" · "}<span className="tabular-nums" title="UFC record going in"><span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(meeting.record)}</span>
       </span>
-      <Link to={`/fights/${meeting.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name}`} className={`self-center py-1 text-zinc-500 underline hover:text-zinc-900 ${linkUnderline}`}>Matchup</Link>
+      <Link to={`/fights/${meeting.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name}`}
+        className="ml-6.5 mt-1.5 self-start rounded-full bg-zinc-100 px-2.5 py-0.5 font-semibold text-zinc-700 hover:bg-zinc-200 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">Matchup</Link>
     </div>)}
   </div>;
 }

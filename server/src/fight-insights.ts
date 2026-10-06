@@ -1,4 +1,4 @@
-import { sideOf, winProfit, type IndexedFight } from "./fight-index.ts";
+import { sideOf, type IndexedFight } from "./fight-index.ts";
 
 /** One round of a fighter's UFC bouts: finishes won and lost in it, and the
  *  bouts that carried on past it (into the next round or to the cards). */
@@ -8,18 +8,6 @@ export type RoundOutcomes = {
   fights: number;
   rounds: RoundOutcome[];
   decision: { won: number; lost: number; drawn: number };
-};
-
-/** $100 on this fighter's moneyline in every decided UFC bout. */
-export type OddsRecord = {
-  /** Decided (won or lost) UFC bouts. */
-  fights: number;
-  /** Those with a closing line: the bets placed. */
-  priced: number;
-  /** Bets won. */
-  wins: number;
-  /** Net dollars over all the bets. */
-  profit: number;
 };
 
 const decision = (method: string | null) => /DEC/i.test(method ?? "");
@@ -49,27 +37,4 @@ export function roundOutcomes(fights: IndexedFight[], fighterId: string): RoundO
     result.fights++;
   }
   return result.fights ? result : null;
-}
-
-/** $100 on the fighter at the closing line in every decided UFC bout that
- *  had one: a win pays the line, a loss costs the $100. Draws and no contests
- *  are left out, as a two-way moneyline refunds them. */
-export function oddsRecord(fights: IndexedFight[], fighterId: string): OddsRecord | null {
-  const result: OddsRecord = { fights: 0, priced: 0, wins: 0, profit: 0 };
-  for (const fight of fights) {
-    const own = sideOf(fight, fighterId);
-    if (own.outcome !== "win" && own.outcome !== "loss") continue;
-    result.fights++;
-    if (own.close == null) continue;
-    result.priced++;
-    // Rounded per bet, as a book pays whole dollars on each.
-    const net = Math.round(own.outcome === "win" ? winProfit(own.close) : -100);
-    if (net > 0) result.wins++;
-    result.profit += net;
-  }
-  return result.fights ? result : null;
-}
-
-export function fightInsights(fights: IndexedFight[], fighterId: string) {
-  return { rounds: roundOutcomes(fights, fighterId), odds: oddsRecord(fights, fighterId) };
 }
