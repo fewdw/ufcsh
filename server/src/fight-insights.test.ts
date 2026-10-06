@@ -4,7 +4,7 @@ import { oddsRecord, roundOutcomes, type RoundOutcome } from "./fight-insights.t
 import { fightIndex, type IndexedFight } from "./fight-index.ts";
 
 const bout = (outcome: string, method: string, round: number | null, scheduledRounds = 3, close: [number | null, number | null] = [null, null]) => ({
-  method, round, scheduledRounds,
+  id: "fight", date: "2025-01-01", method, round, scheduledRounds,
   sides: [{ id: "a", outcome, close: close[0] }, { id: "b", outcome: outcome === "win" ? "loss" : outcome === "loss" ? "win" : outcome, close: close[1] }],
 }) as unknown as IndexedFight;
 
@@ -40,7 +40,7 @@ test("odds record bets $100 on every priced, decided bout at the closing line", 
     bout("draw", "M-DEC", 3, 3, [100, -120]),
   ], "a")!;
   // +$50 and +$150 for the wins, -$100 for the loss; unpriced and drawn bouts place no bet.
-  assert.deepEqual(result, { fights: 4, priced: 3, wins: 2, profit: 100 });
+  assert.deepEqual({ ...result, bets: result.bets.map(bet => [bet.line, bet.net]) }, { fights: 4, priced: 3, wins: 2, profit: 100, bets: [[-200, 50], [150, 150], [-150, -100]] });
   assert.equal(oddsRecord([bout("nc", "CNC", 1)], "a"), null);
 });
 
@@ -60,5 +60,6 @@ test("archive: every counted bout starts round one, and ends once", () => {
     }
     const odds = oddsRecord(fighter.fights, fighter.id);
     if (odds) assert(odds.priced <= odds.fights && odds.wins <= odds.priced && odds.profit >= -100 * odds.priced, fighter.name);
+    if (odds) assert.equal(odds.profit, odds.bets.reduce((sum, bet) => sum + bet.net, 0), fighter.name);
   }
 });

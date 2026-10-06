@@ -1,10 +1,10 @@
 import type { FightInsights } from "../api";
-import { lastName } from "../format";
+import { formatDateShortWithYear, lastName } from "../format";
 import { useTooltip } from "../tooltip";
 import { PanelHeading, PANEL_SHELL } from "./FightStats";
 import { Tooltip } from "./Tooltip";
 
-type Insightful = { name: string; insights: FightInsights | null | undefined; side?: "f1" | "f2" };
+type Insightful = { name: string; insights: FightInsights | null | undefined };
 
 // Checked with the dataviz palette validator against both surfaces: the
 // green and rose stay apart for red-green colour blindness in either mode.
@@ -37,7 +37,7 @@ function Bar({ fighter, column, max }: { fighter: Insightful; column: Column; ma
   const { open, at, id, handlers } = useTooltip();
   const height = (count: number) => count ? Math.max(2, Math.round(count / max * CHART_PX)) : 0;
   const segments = ([[column.other, column.otherTone], [column.lost, LOST], [column.won, WON]] as [number, string][]).filter(([count]) => count);
-  return <div className="relative h-full w-6">
+  return <div className="relative h-full w-7.5">
     <button type="button" aria-label={`${fighter.name}, ${column.title}: ${column.lines.join(", ") || "no result in it"}`} aria-describedby={open ? id : undefined} {...(column.lines.length ? handlers : {})}
       className="flex h-full w-full cursor-default flex-col items-center justify-end focus-visible:outline-2 focus-visible:outline-zinc-900">
       <span aria-hidden="true" className="mb-0.5 text-[10px] font-medium tabular-nums leading-3 text-zinc-500">{column.won + column.lost + column.other}</span>
@@ -47,7 +47,6 @@ function Bar({ fighter, column, max }: { fighter: Insightful; column: Column; ma
     </button>
     <Tooltip id={id} at={at}>
       <span className="flex items-center gap-1.5">
-        {fighter.side ? <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: `var(--color-${fighter.side})` }} /> : null}
         <span>{lastName(fighter.name)}</span>
         <span className="font-normal text-zinc-400">· {column.title}</span>
       </span>
@@ -61,11 +60,11 @@ function Bar({ fighter, column, max }: { fighter: Insightful; column: Column; ma
 function RoundChart({ fighter, rounds, max }: { fighter: Insightful; rounds: NonNullable<FightInsights["rounds"]>; max: number }) {
   const columns = columnsOf(rounds);
   return <div role="group" aria-label={`${fighter.name}: how UFC fights ended, by round`} className="min-w-0">
-    <div className="flex items-end gap-1.5 border-b border-zinc-200" style={{ height: CHART_PX + 16 }}>
+    <div className="flex items-end border-b border-zinc-200" style={{ height: CHART_PX + 16 }}>
       {columns.map(column => <Bar key={column.key} fighter={fighter} column={column} max={max} />)}
     </div>
-    <div aria-hidden="true" className="flex gap-1.5 pt-1">
-      {columns.map(column => <span key={column.key} className="w-6 text-center text-[10px] font-semibold text-zinc-400">{column.label}</span>)}
+    <div aria-hidden="true" className="flex pt-1">
+      {columns.map(column => <span key={column.key} className="w-7.5 text-center text-[10px] font-semibold text-zinc-400">{column.label}</span>)}
     </div>
   </div>;
 }
@@ -96,45 +95,94 @@ const PAIR_CELL = "min-w-0 border-t border-zinc-100 py-3 first:border-t-0 @[30re
 
 const dollars = (value: number) => `${value > 0 ? "+" : value < 0 ? "−" : ""}$${Math.abs(value).toLocaleString("en-US")}`;
 
+type Odds = NonNullable<FightInsights["odds"]>;
+const lineText = (line: number) => line > 0 ? `+${line}` : String(line);
+const BET_HEIGHT = 112;
+
+/** One bet: a dot on the running total, its whole column the hover target. */
+function BetSlot({ fighter, bet, total, left, width, top }: { fighter: Insightful; bet: Odds["bets"][number]; total: number; left: number; width: number; top: number }) {
+  const { open, at, id, handlers } = useTooltip();
+  const won = bet.net > 0;
+  return <>
+    <button type="button" aria-label={`vs ${bet.opponent}, ${formatDateShortWithYear(bet.date)}: ${won ? "won" : "lost"} at ${lineText(bet.line)}, ${dollars(bet.net)}; total ${dollars(total)}`}
+      aria-describedby={open ? id : undefined} {...handlers}
+      className="absolute inset-y-0 cursor-default focus-visible:outline-2 focus-visible:outline-zinc-900" style={{ left: `${left - width / 2}%`, width: `${width}%` }} />
+    <span aria-hidden="true" className={`pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white dark:ring-zinc-900 ${won ? "bg-emerald-500" : "bg-rose-500"} ${open ? "scale-150" : ""}`}
+      style={{ left: `${left}%`, top: `${top}%` }} />
+    <Tooltip id={id} at={at}>
+      <span className="flex items-center gap-1.5">
+        <span>{lastName(fighter.name)}</span>
+        <span className="font-normal text-zinc-400">· vs {bet.opponent}</span>
+      </span>
+      <span className="mt-1.5 block space-y-0.5 font-normal text-zinc-200">
+        <span className="block whitespace-nowrap">{won ? "Won" : "Lost"} at {lineText(bet.line)}: {dollars(bet.net)}</span>
+        <span className="block whitespace-nowrap">Total {dollars(total)}</span>
+        <span className="block whitespace-nowrap text-zinc-400">{formatDateShortWithYear(bet.date)}</span>
+      </span>
+    </Tooltip>
+  </>;
+}
+
+/** The running total of $100 on every priced fight, oldest to newest, from a
+ *  $0 baseline: a line through one dot per fight. */
+function BetChart({ fighter, odds }: { fighter: Insightful; odds: Odds }) {
+  const totals = odds.bets.reduce<number[]>((sums, bet) => [...sums, (sums.at(-1) ?? 0) + bet.net], []);
+  const high = Math.max(0, ...totals);
+  const low = Math.min(0, ...totals);
+  const span = Math.max(high - low, 100);
+  const top = (value: number) => 6 + (high - value) / span * 88;
+  const left = (index: number) => (index + 1) / odds.bets.length * 100;
+  const path = [`M0 ${top(0)}`, ...totals.map((total, index) => `L${left(index)} ${top(total)}`)].join(" ");
+  const ticks = [...new Set([high, 0, low])];
+  return <div className="grid grid-cols-[2.75rem_minmax(0,1fr)] gap-x-2">
+    <div className="relative text-[10px] tabular-nums text-zinc-400" style={{ height: BET_HEIGHT }} aria-hidden="true">
+      {ticks.map(tick => <span key={tick} className={`absolute right-0 -translate-y-1/2 whitespace-nowrap ${tick === 0 ? "font-semibold text-zinc-500" : ""}`} style={{ top: `${top(tick)}%` }}>{tick === 0 ? "$0" : dollars(tick)}</span>)}
+    </div>
+    <div className="relative" style={{ height: BET_HEIGHT }}>
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" role="img"
+        aria-label={`$100 on ${fighter.name} in each of ${odds.priced} UFC fights: ${dollars(odds.profit)}`}>
+        {ticks.map(tick => <line key={tick} x1="0" x2="100" y1={top(tick)} y2={top(tick)} className={tick === 0 ? "stroke-zinc-400" : "stroke-plot-axis"} strokeWidth="1" vectorEffect="non-scaling-stroke" />)}
+        <path d={path} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" className="text-series-1" />
+      </svg>
+      {odds.bets.map((bet, index) => <BetSlot key={bet.fight_id} fighter={fighter} bet={bet} total={totals[index]} left={left(index)} width={100 / odds.bets.length} top={top(totals[index])} />)}
+    </div>
+  </div>;
+}
+
 /** $100 on their moneyline at the closing line in every UFC fight that had
- *  one: what it would have made or lost. Past results, not a forecast. */
+ *  one: the total, and how it got there fight by fight. Past results, not a
+ *  forecast. */
 function OddsPanel({ fighters }: { fighters: Insightful[] }) {
-  const single = fighters.length === 1;
-  return <section className={`${PANEL_SHELL} @container flex min-w-0 flex-col`}>
+  return <section className={`${PANEL_SHELL} @container min-w-0`}>
     <PanelHeading title="$100 on every fight" />
-    <ul className={single ? "flex flex-1 items-center justify-center px-4 py-4 sm:px-5" : PAIR_GRID}>
+    <div className={PAIR_GRID}>
       {fighters.map(fighter => {
         const odds = fighter.insights?.odds;
         const enough = odds && odds.priced >= MIN_PRICED;
-        // Alone (a profile) the result is the box's headline, centred in it.
-        if (single) return <li key={fighter.name} className="text-center">
-          {enough ? <div className={`text-3xl font-semibold tabular-nums ${odds.profit > 0 ? "text-emerald-700" : odds.profit < 0 ? "text-rose-700" : "text-zinc-900"}`}>{dollars(odds.profit)}</div> : null}
-          <div className="mt-1 text-[11px] tabular-nums text-zinc-500">{enough ? `Won ${odds.wins} of ${odds.priced} bets at the closing line` : `Fewer than ${MIN_PRICED} UFC fights with odds`}</div>
-        </li>;
-        return <li key={fighter.name} className={`${PAIR_CELL} flex items-center justify-between gap-3`}>
-          <div className="min-w-0">
-            {fighters.length > 1 ? <div className="truncate text-xs font-semibold text-zinc-700" title={fighter.name}>{lastName(fighter.name)}</div> : null}
-            <div className="text-[11px] tabular-nums text-zinc-500">{enough ? `Won ${odds.wins} of ${odds.priced} bets` : `Fewer than ${MIN_PRICED} UFC fights with odds`}</div>
-          </div>
-          {enough ? <div className={`shrink-0 text-lg font-semibold tabular-nums ${odds.profit > 0 ? "text-emerald-700" : odds.profit < 0 ? "text-rose-700" : "text-zinc-900"}`}
-            title={`$100 on ${lastName(fighter.name)} at the closing moneyline in each of ${odds.priced} UFC fights: ${dollars(odds.profit)} (${dollars(Math.round(odds.profit / odds.priced))} a bet)`}>
-            {dollars(odds.profit)}
-          </div> : null}
-        </li>;
+        return <div key={fighter.name} className={PAIR_CELL}>
+          {fighters.length > 1 ? <SideName name={fighter.name} /> : null}
+          {enough ? <>
+            <div className="mb-2 flex items-baseline justify-between gap-3">
+              <span className={`text-xl font-semibold tabular-nums ${odds.profit > 0 ? "text-emerald-700" : odds.profit < 0 ? "text-rose-700" : "text-zinc-900"}`}>{dollars(odds.profit)}</span>
+              <span className="text-[11px] tabular-nums text-zinc-500">Won {odds.wins} of {odds.priced} bets</span>
+            </div>
+            <BetChart fighter={fighter} odds={odds} />
+          </> : <p className="text-[11px] text-zinc-500">Fewer than {MIN_PRICED} UFC fights with odds.</p>}
+        </div>;
       })}
-    </ul>
+    </div>
   </section>;
 }
 
 /** By round and the betting record. For one fighter, two half-width boxes
- *  side by side at one height (half width even alone); for two, one box per row with the
+ *  side by side (half width even alone); for two, one box per row with the
  *  fighters in equal columns. Stacked when narrow. */
 export function FightInsightsPanels({ fighters }: { fighters: Insightful[] }) {
   const rounds = fighters.some(fighter => fighter.insights?.rounds);
   const odds = fighters.some(fighter => (fighter.insights?.odds?.priced ?? 0) >= MIN_PRICED);
   if (!rounds && !odds) return null;
   return <div className="@container">
-    <div className={`grid gap-2 sm:gap-3 ${fighters.length > 1 ? "items-start" : "@[29rem]:grid-cols-2"}`}>
+    <div className={`grid items-start gap-2 sm:gap-3 ${fighters.length > 1 ? "" : "@[29rem]:grid-cols-2"}`}>
       {rounds ? <RoundsPanel fighters={fighters} /> : null}
       {odds ? <OddsPanel fighters={fighters} /> : null}
     </div>

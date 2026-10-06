@@ -197,7 +197,7 @@ export type RoundOutcome = { round: number; won: number; lost: number; past: num
 export type FightInsights = {
   rounds: { fights: number; rounds: RoundOutcome[]; decision: { won: number; lost: number; drawn: number } } | null;
   /** $100 on their moneyline at the closing line in every decided, priced UFC bout. */
-  odds: { fights: number; priced: number; wins: number; profit: number } | null;
+  odds: { fights: number; priced: number; wins: number; profit: number; bets: { fight_id: string; date: string; opponent: string; line: number; net: number }[] } | null;
 };
 
 export type FightOdds = {
