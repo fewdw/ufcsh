@@ -306,9 +306,7 @@ function RosterBand({ band }: { band: CareerBand }) {
   const className = `flex min-h-12 flex-wrap items-center justify-center gap-x-2 px-4 py-3 text-sm font-semibold leading-6 @3xl:min-h-9 @3xl:py-1.5 ${band.signing
     ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
     : "bg-zinc-50 text-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-300"}`;
-  return band.source_url ? <a href={band.source_url} target="_blank" rel="noreferrer" title={`${band.detail} Open source.`} aria-label={`${band.label}. ${band.detail} Open source.`}
-    className={`${className} hover:underline focus-visible:outline-2 focus-visible:-outline-offset-2`}>{content}</a>
-    : <div className={className} title={band.detail}>{content}<span className="sr-only">{band.detail}</span></div>;
+  return <div className={className} title={band.detail}>{content}<span className="sr-only">{band.detail}</span></div>;
 }
 
 /** The bout's division, said as a move when it differs from the last one. */

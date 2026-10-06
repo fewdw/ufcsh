@@ -52,8 +52,9 @@ function regularUfc(row: Bout): boolean {
 }
 
 /** Slots surround the newest-first fights: slot 0 above the newest bout,
- * slot 1 between bouts 0 and 1, etc. Report dates retain their own position;
- * bout evidence never invents a signing date or a reason for leaving. */
+ * slot 1 between bouts 0 and 1, etc. Report dates retain their own position,
+ * a same-day DWCS/Road to UFC/TUF win landing before its signing; bout
+ * evidence never invents a signing date or a reason for leaving. */
 export function careerBands(rows: Bout[], reports: TimelineReport[] = []): CareerBand[][] {
   const bands: CareerBand[][] = Array.from({ length: rows.length + 1 }, () => []);
   const valid = reports.filter(event => /^\d{4}-\d{2}-\d{2}$/.test(event.date)
@@ -64,7 +65,8 @@ export function careerBands(rows: Bout[], reports: TimelineReport[] = []): Caree
       && Math.abs(Date.parse(other.date) - Date.parse(event.date)) <= 30 * 86_400_000))
     .sort((a, b) => b.date.localeCompare(a.date));
   for (const event of events) {
-    const slot = rows.findIndex(row => event.kind === "signed" ? row.date < event.date : row.date <= event.date);
+    const slot = rows.findIndex(row => event.kind === "signed"
+      ? row.date < event.date || (row.date === event.date && recruitmentBout(row)) : row.date <= event.date);
     bands[slot < 0 ? rows.length : slot].push({
       label: event.kind === "signed" ? "Signed to UFC" : event.kind === "released" ? "Cut from UFC"
         : event.kind === "retired" ? "Retired from UFC" : "Left UFC roster",
