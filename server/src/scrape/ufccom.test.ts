@@ -113,6 +113,10 @@ test("accepts a tie the UFC publishes and rejects a list caught mid-update", () 
   assert.equal(parseRankingsHtml(page(MEDIA_LABELS, META_DIVISIONS, shared)).media[6].entries.at(-1)?.rank, "15");
   assert.throws(() => parseRankingsHtml(page(MEDIA_LABELS, META_DIVISIONS, tie.slice(0, 14))), /Middleweight rankings invalid/);
   assert.throws(() => parseRankingsHtml(page(MEDIA_LABELS, META_DIVISIONS, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 15])), /Middleweight rankings invalid/);
+  // One place the UFC leaves empty after removing a fighter.
+  const vacant = Array.from({ length: 14 }, (_, i) => i + 2);
+  assert.deepEqual(parseRankingsHtml(page(MEDIA_LABELS, META_DIVISIONS, vacant)).media[6].entries.slice(1).map((entry) => entry.rank), vacant.map(String));
+  assert.throws(() => parseRankingsHtml(page(MEDIA_LABELS, META_DIVISIONS, [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 14])), /Middleweight rankings invalid/);
 });
 
 // ---------------------------------------------------------------------------

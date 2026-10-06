@@ -92,6 +92,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-06">October 6, 2026</time></p>
             <ul>
+              <li>Rankings update again: a rank the UFC leaves empty (Women’s Flyweight #1 today) no longer stops the whole update.</li>
               <li>Replacements name the right fighter: no more “Replaced February” or “COVID-”, and short surnames are completed.</li>
               <li>More replacements show their days’ notice, and replaced fighters link to their profiles.</li>
               <li>Weigh-in misses read correctly from lists like “128, 129 and 160 pounds”, without blaming a namesake or the opponent.</li>
