@@ -45,6 +45,11 @@ parsers (787 archived articles): nothing critical or must before or after.
   signing, or within 800 days before a departure. `node
   src/import-roster-history.ts` rebuilds it.
 
+- **Rankings.** ufc.com's media Women's Flyweight list has the champion and
+  then 2 to 15, #1 left empty. The parser took it for a page caught mid-update
+  and failed the whole sync, so no division had updated since Oct 5, 16:00
+  UTC. One empty place (fourteen distinct ranks ending at 15) is now accepted.
+
 Startup re-reads every completed card's article (`migration_bout_changes` 3)
 and the weigh-ins of cards with a stored miss (`migration_weight_miss_namesakes` 2).
 

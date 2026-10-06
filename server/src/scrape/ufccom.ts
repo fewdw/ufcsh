@@ -117,7 +117,12 @@ function validateRankingView(
     const numbered = listed.filter((entry) => entry.rank !== "IC").map((entry) => Number(entry.rank));
     const valid = listed.length >= 15 && listed.length <= 17 && numbered.at(-1) === 15
       && numbered.every((rank, i) => Number.isInteger(rank) && rank >= 1 && rank <= i + 1 + interim && (i === 0 || rank >= numbered[i - 1]));
-    if (!valid) {
+    // One place left empty when a fighter is removed between updates (Women's
+    // Flyweight on Oct 6, 2026: the champion, then 2 to 15): fourteen distinct
+    // ranks in order, ending at 15. The UFC publishes it that way for days.
+    const vacant = !interim && listed.length === 14 && numbered.at(-1) === 15
+      && numbered.every((rank, i) => Number.isInteger(rank) && rank >= 1 && (i === 0 || rank > numbered[i - 1]));
+    if (!valid && !vacant) {
       throw new Error(`${type} ${division.division} rankings invalid: ${listed.length} ranked (${numbered.join(",")})`);
     }
     const names = new Set(division.entries.map((entry) => normName(entry.name)));
