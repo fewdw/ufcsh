@@ -78,10 +78,10 @@ export function SideName({ name }: { name: string }) {
 /** How each fighter's UFC bouts ended, round by round and on the cards. */
 function RoundsPanel({ fighters }: { fighters: Insightful[] }) {
   const max = Math.max(1, ...fighters.map(fighter => fighter.insights?.rounds?.fights ?? 0));
-  return <section className={`${PANEL_SHELL} min-w-0`}>
+  return <section className={`${PANEL_SHELL} @container min-w-0`}>
     <PanelHeading title="By round" />
-    <div className="divide-y divide-zinc-100 px-4 sm:px-5">
-      {fighters.map(fighter => <div key={fighter.name} className="py-3">
+    <div className={PAIR_GRID}>
+      {fighters.map(fighter => <div key={fighter.name} className={PAIR_CELL}>
         {fighters.length > 1 ? <SideName name={fighter.name} /> : null}
         {fighter.insights?.rounds ? <RoundChart fighter={fighter} rounds={fighter.insights.rounds} max={max} /> : <p className="text-[11px] text-zinc-500">No UFC fights yet.</p>}
       </div>)}
@@ -89,18 +89,29 @@ function RoundsPanel({ fighters }: { fighters: Insightful[] }) {
   </section>;
 }
 
+/** Two fighters in two equal columns when the box is wide enough, one under
+ *  the other when not. */
+const PAIR_GRID = "grid px-4 sm:px-5 @[30rem]:grid-cols-2 @[30rem]:gap-x-8";
+const PAIR_CELL = "min-w-0 border-t border-zinc-100 py-3 first:border-t-0 @[30rem]:border-t-0";
+
 const dollars = (value: number) => `${value > 0 ? "+" : value < 0 ? "−" : ""}$${Math.abs(value).toLocaleString("en-US")}`;
 
 /** $100 on their moneyline at the closing line in every UFC fight that had
  *  one: what it would have made or lost. Past results, not a forecast. */
 function OddsPanel({ fighters }: { fighters: Insightful[] }) {
-  return <section className={`${PANEL_SHELL} min-w-0`}>
+  const single = fighters.length === 1;
+  return <section className={`${PANEL_SHELL} @container flex min-w-0 flex-col`}>
     <PanelHeading title="$100 on every fight" />
-    <ul className="divide-y divide-zinc-100 px-4 sm:px-5">
+    <ul className={single ? "flex flex-1 items-center justify-center px-4 py-4 sm:px-5" : PAIR_GRID}>
       {fighters.map(fighter => {
         const odds = fighter.insights?.odds;
         const enough = odds && odds.priced >= MIN_PRICED;
-        return <li key={fighter.name} className="flex items-center justify-between gap-3 py-3">
+        // Alone (a profile) the result is the box's headline, centred in it.
+        if (single) return <li key={fighter.name} className="text-center">
+          {enough ? <div className={`text-3xl font-semibold tabular-nums ${odds.profit > 0 ? "text-emerald-700" : odds.profit < 0 ? "text-rose-700" : "text-zinc-900"}`}>{dollars(odds.profit)}</div> : null}
+          <div className="mt-1 text-[11px] tabular-nums text-zinc-500">{enough ? `Won ${odds.wins} of ${odds.priced} bets at the closing line` : `Fewer than ${MIN_PRICED} UFC fights with odds`}</div>
+        </li>;
+        return <li key={fighter.name} className={`${PAIR_CELL} flex items-center justify-between gap-3`}>
           <div className="min-w-0">
             {fighters.length > 1 ? <div className="truncate text-xs font-semibold text-zinc-700" title={fighter.name}>{lastName(fighter.name)}</div> : null}
             <div className="text-[11px] tabular-nums text-zinc-500">{enough ? `Won ${odds.wins} of ${odds.priced} bets` : `Fewer than ${MIN_PRICED} UFC fights with odds`}</div>
@@ -115,14 +126,15 @@ function OddsPanel({ fighters }: { fighters: Insightful[] }) {
   </section>;
 }
 
-/** By round and the betting record: two boxes side by side, each half the
- *  width even when only one has anything to show; stacked when narrow. */
+/** By round and the betting record. For one fighter, two half-width boxes
+ *  side by side at one height (half width even alone); for two, one box per row with the
+ *  fighters in equal columns. Stacked when narrow. */
 export function FightInsightsPanels({ fighters }: { fighters: Insightful[] }) {
   const rounds = fighters.some(fighter => fighter.insights?.rounds);
   const odds = fighters.some(fighter => (fighter.insights?.odds?.priced ?? 0) >= MIN_PRICED);
   if (!rounds && !odds) return null;
   return <div className="@container">
-    <div className="grid items-start gap-2 sm:gap-3 @[29rem]:grid-cols-2">
+    <div className={`grid gap-2 sm:gap-3 ${fighters.length > 1 ? "items-start" : "@[29rem]:grid-cols-2"}`}>
       {rounds ? <RoundsPanel fighters={fighters} /> : null}
       {odds ? <OddsPanel fighters={fighters} /> : null}
     </div>
