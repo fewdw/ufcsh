@@ -1,7 +1,7 @@
 import { PANEL } from "../components/chartTokens";
 import { CareerStatModal } from "../components/CareerStatDetails";
 import { isFightDay, landingEvent, liveFightId, taggedEvent } from "../liveEvent";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type Ref } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CancelledBout, CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
@@ -106,6 +106,65 @@ function settleOn(list: HTMLElement | null, card: Element | null | undefined) {
   if (coasting) requestAnimationFrame(() => { list.style.overflowY = ""; });
 }
 
+/** One card in the events list. A plain anchor rather than a Link: every
+ *  Link redraws on every navigation, and with eight hundred of them each step
+ *  between cards would redraw the whole list. The list routes the click. */
+const EventListRow = memo(function EventListRow({ event, selected, tag, anchor, warm, ref }: {
+  event: EventListItem;
+  selected: boolean;
+  tag: keyof typeof STATUS_TAG | null;
+  anchor: boolean;
+  warm: (id: string | null, delay?: number) => void;
+  ref?: Ref<HTMLAnchorElement>;
+}) {
+  return (
+    <a
+      href={`/events/${event.id}`}
+      data-event=""
+      onPointerEnter={() => warm(event.id, 120)}
+      onPointerLeave={() => warm(null)}
+      onPointerDown={() => warm(event.id)}
+      onFocus={() => warm(event.id)}
+      ref={ref}
+      data-anchor={anchor ? "" : undefined}
+      aria-current={selected ? "page" : undefined}
+      className={[
+        "scroll-mt-10 rounded-xl border border-transparent px-3 py-2 transition-colors",
+        // Selection borrows the header nav's token outright: a
+        // clean surface inside a hairline ring with a soft
+        // shadow, rather than inverting to a solid block.
+        selected ? segmentedSelected : "hover:bg-zinc-50",
+      ].join(" ")}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div
+          className={[
+            "flex min-w-0 items-center gap-1.5 text-[13px] font-semibold leading-5",
+            // The name is warmed only for the card being
+            // pointed at, and only while the point is
+            // forward-looking: a finished night is told, not
+            // advertised.
+            tag === "next" ? "text-amber-700" : "text-zinc-900",
+          ].join(" ")}
+        >
+          <span className="min-w-0">{event.name}</span>
+        </div>
+        {/* At most one row on the whole list carries this;
+            the rest are told by the date beneath them. */}
+        {tag ? (
+          <span className={`${TAG_SHAPE} ${STATUS_TAG[tag].className}`}>
+            {STATUS_TAG[tag].label}
+          </span>
+        ) : null}
+      </div>
+      <div className={`mt-0.5 text-xs ${selected ? "text-zinc-500" : "text-zinc-400"}`}>
+        {event.date ? formatDateShort(event.date) : "No date"}
+        {event.location ? ` · ${event.location.split(",")[0]}` : ""}
+      </div>
+    </a>
+  );
+});
+
 function EventSidebar({
   events,
   selectedId,
@@ -123,14 +182,29 @@ function EventSidebar({
   const [filter, setFilter] = useHistoryState("events:filter", "");
   const [kind, setKind] = useHistoryState<KindFilter>("events:kind", "all");
   const [showTop, setShowTop] = useState(false);
-  const { settings } = useSettings();
+  const { settings: { rankingSource } } = useSettings();
+  const navigate = useNavigate();
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cancelWarm = () => {
+  useEffect(() => () => { if (hoverTimer.current) clearTimeout(hoverTimer.current); }, []);
+  // Starts loading a card about to be opened: after a short hover, or at once.
+  const warm = useCallback((id: string | null, delay = 0) => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     hoverTimer.current = null;
+    if (!id) return;
+    const load = () => prefetch(withRanking(`/api/events/${id}`, rankingSource));
+    if (delay) hoverTimer.current = setTimeout(load, delay);
+    else load();
+  }, [rankingSource]);
+  // The rows are plain anchors, so the list routes a plain click itself, the
+  // way a Link would; a modified click still opens a new tab.
+  const openEvent = (e: MouseEvent<HTMLDivElement>) => {
+    const link = (e.target as Element).closest<HTMLAnchorElement>("a[data-event]");
+    if (!link || e.defaultPrevented || e.button !== 0 || e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    const to = link.getAttribute("href")!;
+    const { pathname, search, hash } = window.location;
+    navigate(to, { replace: pathname + search + hash === to });
   };
-  useEffect(() => () => { if (hoverTimer.current) clearTimeout(hoverTimer.current); }, []);
-  const warmEvent = (id: string) => prefetch(withRanking(`/api/events/${id}`, settings.rankingSource));
   const listRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLAnchorElement>(null);
 
@@ -256,6 +330,7 @@ function EventSidebar({
           // ring and shadow rather than by the tone it happens to sit on. A
           // phone keeps Top at the bottom, so the last card scrolls clear of it.
           className="h-full overflow-y-auto bg-white px-2 pb-16 sm:pb-2"
+          onClick={openEvent}
         >
           {groups.map(([yearMonth, list]) => (
             <div key={yearMonth}>
@@ -264,59 +339,13 @@ function EventSidebar({
                 <span>{MONTHS[Number(yearMonth.slice(5, 7)) - 1]}</span>
               </div> : null}
               <div className="flex flex-col gap-1 pb-2">
-                {list.map((event) => {
-                  const isSelected = event.id === selectedId;
-                  const tag = event.id === tagged?.id ? tagged.tag : null;
-                  return (
-                    <Link
-                      key={event.id}
-                      to={`/events/${event.id}`}
-                      onPointerEnter={() => {
-                        cancelWarm();
-                        hoverTimer.current = setTimeout(() => warmEvent(event.id), 120);
-                      }}
-                      onPointerLeave={cancelWarm}
-                      onPointerDown={() => { cancelWarm(); warmEvent(event.id); }}
-                      onFocus={() => warmEvent(event.id)}
-                      ref={isSelected ? selectedRef : undefined}
-                      data-anchor={event.id === anchorId ? "" : undefined}
-                      aria-current={isSelected ? "page" : undefined}
-                      className={[
-                        "scroll-mt-10 rounded-xl border border-transparent px-3 py-2 transition-colors",
-                        // Selection borrows the header nav's token outright: a
-                        // clean surface inside a hairline ring with a soft
-                        // shadow, rather than inverting to a solid block.
-                        isSelected ? segmentedSelected : "hover:bg-zinc-50",
-                      ].join(" ")}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div
-                          className={[
-                            "flex min-w-0 items-center gap-1.5 text-[13px] font-semibold leading-5",
-                            // The name is warmed only for the card being
-                            // pointed at, and only while the point is
-                            // forward-looking: a finished night is told, not
-                            // advertised.
-                            tag === "next" ? "text-amber-700" : "text-zinc-900",
-                          ].join(" ")}
-                        >
-                          <span className="min-w-0">{event.name}</span>
-                        </div>
-                        {/* At most one row on the whole list carries this;
-                            the rest are told by the date beneath them. */}
-                        {tag ? (
-                          <span className={`${TAG_SHAPE} ${STATUS_TAG[tag].className}`}>
-                            {STATUS_TAG[tag].label}
-                          </span>
-                        ) : null}
-                      </div>
-                      <div className={`mt-0.5 text-xs ${isSelected ? "text-zinc-500" : "text-zinc-400"}`}>
-                        {event.date ? formatDateShort(event.date) : "No date"}
-                        {event.location ? ` · ${event.location.split(",")[0]}` : ""}
-                      </div>
-                    </Link>
-                  );
-                })}
+                {list.map((event) => (
+                  <EventListRow key={event.id} event={event} warm={warm}
+                    selected={event.id === selectedId}
+                    tag={event.id === tagged?.id ? tagged.tag : null}
+                    anchor={event.id === anchorId}
+                    ref={event.id === selectedId ? selectedRef : undefined} />
+                ))}
               </div>
             </div>
           ))}

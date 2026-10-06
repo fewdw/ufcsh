@@ -1,21 +1,28 @@
+// Building a formatter costs far more than using one, and long lists format
+// a date per row on every render, so each is built once.
+const FULL_DATE = new Intl.DateTimeFormat("en-US", { year: "numeric", month: "short", day: "numeric" });
+const SHORT_DATE = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
+const CLOCK = new Intl.DateTimeFormat([], { hour: "numeric", minute: "2-digit" });
+const HOUR_ZONE = new Intl.DateTimeFormat([], { hour: "numeric", timeZoneName: "short" });
+const CLOCK_ZONE = new Intl.DateTimeFormat([], { hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+const UTC_CLOCK = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+
 export function formatDate(date: string): string {
   const parsed = new Date(`${date}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return date;
-  return new Intl.DateTimeFormat("en-US", { year: "numeric", month: "short", day: "numeric" }).format(parsed);
+  return FULL_DATE.format(parsed);
 }
 
 export function formatDateShort(date: string): string {
   const parsed = new Date(`${date}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return date;
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(parsed);
+  return SHORT_DATE.format(parsed);
 }
 
 export function formatDateShortWithYear(date: string): string {
   const parsed = new Date(`${date}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return date;
-  return new Intl.DateTimeFormat("en-US", { year: "numeric", month: "short", day: "numeric" })
-    .format(parsed)
-    .replace(",", "");
+  return FULL_DATE.format(parsed).replace(",", "");
 }
 
 /** Calendar-day distance from today to a date-only event. Event dates do not
@@ -164,7 +171,7 @@ export function exactTime(timestamp: number | null | undefined): string | null {
 export function clockTime(timestamp: number | null | undefined): string | null {
   if (timestamp == null || !Number.isFinite(timestamp) || timestamp <= 0) return null;
   const date = new Date(timestamp);
-  return Number.isNaN(date.getTime()) ? null : date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return Number.isNaN(date.getTime()) ? null : CLOCK.format(date);
 }
 
 /** A start time in the reader's own zone, named: "9 PM EDT", "8:30 PM GMT+1". */
@@ -172,9 +179,7 @@ export function clockTimeWithZone(timestamp: number | null | undefined): string 
   if (timestamp == null || !Number.isFinite(timestamp) || timestamp <= 0) return null;
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return null;
-  const options: Intl.DateTimeFormatOptions = { hour: "numeric", timeZoneName: "short" };
-  if (date.getMinutes() !== 0) options.minute = "2-digit";
-  return date.toLocaleTimeString([], options);
+  return (date.getMinutes() !== 0 ? CLOCK_ZONE : HOUR_ZONE).format(date);
 }
 
 /** How long until something starts: "2h 05m", "12m", "40s". Null once it has.
@@ -198,7 +203,7 @@ export function venueClock(timestamp: number | null | undefined, offset: string 
   const match = /^GMT([+-])(\d{2}):(\d{2})$/.exec(offset ?? "");
   if (timestamp == null || !Number.isFinite(timestamp) || !match) return null;
   const minutes = (match[1] === "-" ? -1 : 1) * (Number(match[2]) * 60 + Number(match[3]));
-  return new Date(timestamp + minutes * 60_000).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+  return UTC_CLOCK.format(new Date(timestamp + minutes * 60_000));
 }
 
 /** "GMT-06:00" as people write it: "UTC−6". */
