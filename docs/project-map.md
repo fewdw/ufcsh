@@ -17,7 +17,6 @@ client (`client/`) renders every page.
 | In-memory analytics index | `fight-index.ts` (every completed bout, state entering it) |
 | Leaderboards | `stats.ts` (fighter cards), `stats-fights.ts` (Fights card: bouts, judges, referees) |
 | Potential matchups (pinned unconfirmed odds board, separate from scheduled fights) | `potential-matchups.ts`; synced at startup and every five minutes from FightOdds.io and BestFightOdds future boards; `scrape/potential-odds.ts` reads BestFightOdds |
-| Matchmaking (title fights, ranked pairings, next opponents after recent cards) | `matchmaking.ts` |
 | News (outlets, relevance, fighter/event tags, story grouping, newest first, `?fighter=` for one fighter) | `news.ts`; feeds read in `scrape/news.ts` (`NEWS_FEEDS`) |
 | News read by Gemini (off by default; enabled in Admin → Health; `GEMINI_API_KEY`) | `news-ai.ts`, run from the API process every 10 minutes |
 | Profile records and full stat rankings | `records.ts` (`fighterRecords`, `fighterBoard`, `milestonesWithinReach`) |
@@ -26,7 +25,7 @@ client (`client/`) renders every page.
 | Venues and locations | `venues.ts` (identity from ufc.com venue ids + Wikipedia names; locations group cards by the billed city and country) |
 | Roster changes (signings, releases) | `roster-moves.ts` (stored read + profile links, ufc.com newest-profile watch); `roster-history.ts` retains dated source evidence; shared `roster-timeline.ts` drives profile bands and the searchable Admin → Bugs backlog for unknown dates/reasons, with individually reviewed historical reports; parsed in `scrape/wikipedia.ts` (`rosterChanges`) and `scrape/ufccom.ts` (`parseNewestAthletes`) |
 | Admin data-quality board | `bugs.ts` (checks and repair actions), `admin-http.ts`, `repair-guard.ts` |
-| Accounts, scoring, predictions, bets, saved matchmaking cards, comments | `accounts.ts` (Clerk deletions and picture sync), `scoring*.ts`, `predictions*.ts`, `bets*.ts`, `cards*.ts`, `comments*.ts`, `moderation.ts` |
+| Accounts, scoring, predictions, bets, comments | `accounts.ts` (Clerk deletions and picture sync), `scoring*.ts`, `predictions*.ts`, `bets*.ts`, `comments*.ts`, `moderation.ts` |
 | Background sync | `sync.ts` (scheduler `tick`), `sync-worker.ts`, `career-records.ts`, `verdict-import.ts` |
 | Scrapers | `scrape/ufcstats.ts`, `scrape/ufccom.ts` (schedules, segments, venue/broadcast/referee feed), `scrape/wikipedia.ts` (weigh-ins, infobox, background, replacements and short notice via `boutChanges`, stored by `syncEventWikiInfo`), `scrape/fightodds.ts` (upcoming moneylines and props, matched by UFCStats id; every 5 and 30 min), `scrape/odds.ts` (BestFightOdds: fallback, archive), `scrape/sherdog.ts`, `scrape/verdict.ts`, `scrape/mmadecisions.ts` |
 | Database schema and migrations | `db.ts` |
@@ -39,9 +38,8 @@ copy of the local archive (`DATA_DIR`).
 | Area | Files |
 | --- | --- |
 | Shell, routes, header | `App.tsx`, `main.tsx` |
-| More menu, one column (Stats, News, Browse, Matchmaking); Browse tabs Roster, Officials, Venues, Locations; Graphic (Beta) opens from the profile | `components/MoreNav.tsx`, `components/BrowseTabs.tsx`; page `GraphicPage.tsx` |
+| More menu, one column (Stats, News, Browse); Browse tabs Roster, Officials, Venues, Locations; Graphic (Beta) opens from the profile | `components/MoreNav.tsx`, `components/BrowseTabs.tsx`; page `GraphicPage.tsx` |
 | Admin link in the header (admins only) | `App.tsx` (`AdminLink`) |
-| Matchmaking page (Top 15, recent cards, card builder) | `pages/MatchmakingPage.tsx` |
 | News page (newest first, Settings: summaries and outlet toggles); a fighter's News tab | `pages/NewsPage.tsx`, `components/NewsRow.tsx`; `FighterNews` in `pages/FighterPage.tsx` |
 | Data fetching and polling | `api.ts` (types + `useApi`), `requestCache.ts`, `polling.ts`; early data in `index.html`, link prefetch in `useLinkPrefetch.ts` + `pageRequests.ts`, page chunks in `pages.ts`, answers kept across reloads in `snapshots.ts` |
 | Events and matchups | `pages/EventsPage.tsx`, `pages/FightPage.tsx`, `components/FightRail.tsx`, `components/FightStats.tsx`; opponent-record drilldown in `components/OppositionDetails.tsx`, shared career-evidence dialog in `components/EvidenceDialog.tsx` |

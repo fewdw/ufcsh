@@ -16,7 +16,7 @@ export function pageRequests(pathname: string, search: string, ranking: "media" 
     const date = params.get("date");
     return [ranked("/api/rankings") + (date === null ? "" : `&date=${encodeURIComponent(date)}`)];
   }
-  if (pathname === "/officials" || pathname === "/venues" || pathname === "/locations" || pathname === "/roster" || pathname === "/matchmaking" || pathname === "/news") return ["/api" + pathname];
+  if (pathname === "/officials" || pathname === "/venues" || pathname === "/locations" || pathname === "/roster" || pathname === "/news") return ["/api" + pathname];
   if ((match = /^\/(judges|referees|venues|locations)\/([a-z0-9-]{1,80})\/?$/.exec(pathname))) return plain ? [`/api/${match[1]}/${match[2]}`] : [];
   if ((match = /^\/profiles\/([^/]+)\/?$/.exec(pathname)) && match[1] !== "me" && plain) {
     return [`/api/profiles/${match[1]}?filter=decisions&q=&offset=0`];

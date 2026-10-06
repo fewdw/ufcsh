@@ -194,6 +194,8 @@ export class ScoringStore {
     this.db.exec(`
       PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 1000;
       PRAGMA foreign_keys = ON;
+      -- Saved matchmaking cards, from a feature since removed.
+      DROP TABLE IF EXISTS saved_cards;
       CREATE TABLE IF NOT EXISTS scorers (
         user_id TEXT PRIMARY KEY, public_id TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL
       );
