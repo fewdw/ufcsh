@@ -48,8 +48,8 @@ function AdminShell({ tab, onTab }: { tab: TabId; onTab: (next: TabId) => void }
   }
 
   // The page itself never scrolls: the tabs stay put and each tab scrolls
-  // inside the space left under them. Bugs splits that space into its own
-  // scrolling sections; the others scroll as one.
+  // inside the space left under them. Wide, Bugs splits that space into its
+  // own scrolling sections; on a phone it scrolls as one like the others.
   const fills = tab === "bugs";
   return (
     <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-6xl flex-col gap-3 px-2 pt-3 sm:gap-4 sm:px-5 sm:pt-4">
@@ -83,7 +83,7 @@ function AdminShell({ tab, onTab }: { tab: TabId; onTab: (next: TabId) => void }
         id="admin-tabpanel"
         role="tabpanel"
         aria-labelledby={`admin-tab-${tab}`}
-        className={`min-h-0 flex-1 overscroll-y-contain ${fills ? "flex flex-col pb-3 sm:pb-4" : "overflow-y-auto overflow-x-hidden pb-6"}`}
+        className={`min-h-0 flex-1 overscroll-y-contain overflow-x-hidden ${fills ? "overflow-y-auto pb-6 md:flex md:flex-col md:overflow-y-visible md:pb-4" : "overflow-y-auto pb-6"}`}
       >
         <Suspense fallback={<div role="status" className="py-16 text-center text-sm text-zinc-400">Loading…</div>}>
           {tab === "health" ? <AdminHealth /> : null}

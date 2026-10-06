@@ -1674,7 +1674,7 @@ function potentialMatchupGaps(): BugCheck {
 
 /** FightOdds.io prices upcoming bouts every five minutes. Unread for half an
  *  hour, lines fall back to BestFightOdds' slower pass: the app's API moved,
- *  changed shape, or started asking for its bot check. */
+ *  rebuilt the queries it accepts, or started asking for its bot check. */
 function fightOddsUnread(): BugCheck {
   const readAt = Number(getMeta("fightodds_read_at")) || null;
   const items: BugItem[] = readAt && Date.now() - readAt < 30 * 60_000 ? [] : [{
@@ -1689,7 +1689,7 @@ function fightOddsUnread(): BugCheck {
     id: "odds-fightodds-unread",
     group: "Odds",
     label: "FightOdds.io not read",
-    description: "Upcoming moneylines come from FightOdds.io's event boards every five minutes, matched by UFCStats id; BestFightOdds fills anything they miss every few hours. While FightOdds.io is unread, lines only move at BestFightOdds' pace. Check the error: a changed GraphQL field, or the API now requiring its Cloudflare Turnstile token.",
+    description: "Upcoming moneylines come from FightOdds.io's event boards every five minutes, matched by UFCStats id; BestFightOdds fills anything they miss every few hours. While FightOdds.io is unread, lines only move at BestFightOdds' pace. Check the error. \"Unknown query\" (HTTP 403) means FightOdds.io rebuilt its app: it only answers its app's own query texts, so copy the new ones into server/src/scrape/fightodds-queries.ts. Otherwise: a changed field, or the API now requiring its Cloudflare Turnstile token.",
     grade: "must",
   }, items);
 }
