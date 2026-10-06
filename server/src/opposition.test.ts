@@ -42,6 +42,8 @@ test("opposition lists every UFC opponent with their records, standing and earli
   assert.deepEqual(data.rows[1].record, { wins: 1, losses: 1, draws: 0, ncs: 0 });
   // Everyone B had met going into the rematch, newest first.
   assert.deepEqual(data.rows[1].history.map(bout => [bout.fight_id, bout.outcome, bout.opponent.name, bout.standing]), [["title", "win", "C", null], ["first", "loss", "A", null]]);
+  // And their UFC records going into those bouts.
+  assert.deepEqual(data.rows[1].history.map(bout => bout.record), [{ wins: 0, losses: 0, draws: 0, ncs: 0 }, { wins: 0, losses: 0, draws: 0, ncs: 0 }]);
   assert.deepEqual(data.rows[2].history, []);
   // Who C had met before A: B, who took the belt from C that night, then held it.
   assert.deepEqual(opposition(index, "a", undefined, rankOf)!.rows[0].history.map(bout => [bout.opponent.name, bout.standing]), [["B", null]]);

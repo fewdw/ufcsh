@@ -15,6 +15,8 @@ export type EarlierBout = {
   fight_id: string | null; date: string; outcome: Outcome; method: string | null;
   opponent: { id: string | null; name: string; source_url: string | null };
   standing: Standing | null;
+  /** That opponent's UFC record going into the bout, when they have a profile here. */
+  record: FightRecord | null;
 };
 
 const wonBelt = (fight: IndexedFight, id: string) =>
@@ -43,19 +45,25 @@ export function opposition(index: FightIndex, fighterId: string, before?: { id: 
     const ranked = rank && rank.rank !== "C" && rank.rank !== "IC" ? rank : null;
     return ranked || status ? { rank: ranked?.rank ?? null, division: ranked?.division ?? null, belt: status } : null;
   };
+  const ufcRecordBefore = (id: string, date: string, ord?: number) => {
+    const record = emptyRecord();
+    for (const prior of ufcBoutsBefore(index, id, date, ord)) record[resultKey[prior.outcome]]++;
+    return record;
+  };
   const earlierBout = (bout: CareerBout): EarlierBout => {
     const id = bout.opponentId || null;
+    const local = bout.ufcFightId ? index.byId?.get(bout.ufcFightId) : undefined;
     return {
       fight_id: bout.ufcFightId, date: bout.date, outcome: bout.outcome, method: bout.method || null,
       opponent: { id, name: bout.opponentName, source_url: id ? null : bout.opponentUrl || null },
-      standing: standingOf(id, bout.date, bout.ufcFightId ? index.byId?.get(bout.ufcFightId) : undefined),
+      standing: standingOf(id, bout.date, local),
+      record: id ? ufcRecordBefore(id, bout.date, local?.ord) : null,
     };
   };
   const total = emptyRecord();
   const rows = fights.map(fight => {
     const opponent = opponentOf(fight, fighterId);
-    const record = emptyRecord();
-    for (const prior of ufcBoutsBefore(index, opponent.id, fight.date, fight.ord)) record[resultKey[prior.outcome]]++;
+    const record = ufcRecordBefore(opponent.id, fight.date, fight.ord);
     for (const key of Object.keys(total) as (keyof FightRecord)[]) total[key] += record[key];
     const verified = Boolean(opponent.id && index.fighters.get(opponent.id)?.careerVerified);
     const earlier = verified ? professionalBoutsBefore(index, opponent.id, fight.date, fight.ord) : ufcBoutsBefore(index, opponent.id, fight.date, fight.ord);

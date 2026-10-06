@@ -184,6 +184,8 @@ export type EarlierBout = {
   fight_id: string | null; date: string; outcome: "win" | "loss" | "draw" | "nc"; method: string | null;
   opponent: { id: string | null; name: string; source_url: string | null };
   standing: Standing | null;
+  /** That opponent's UFC record going into the bout, when they have a profile here. */
+  record: OppositionRecord | null;
 };
 export type Opposition = {
   fighter_id: string; name: string; before: { fight_id: string; date: string } | null;

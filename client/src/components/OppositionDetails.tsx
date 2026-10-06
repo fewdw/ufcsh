@@ -91,6 +91,7 @@ function OppositionGrid({ fighter, groups, label }: { fighter: Fighter; groups: 
                 </span>
                 <span className="block truncate text-zinc-500" title={`${bout.method || "Method unknown"} · ${formatDateShortWithYear(bout.date)}${bout.standing?.belt ? ` · ${standingChips(bout.standing).at(-1)?.title}` : ""}`}>
                   {bout.fight_id ? <Link to={`/fights/${bout.fight_id}`} className={`${linkUnderline} hover:underline`}>{resultDot(bout).shortMethod || "—"}</Link> : resultDot(bout).shortMethod || "—"}
+                  {bout.record ? <span className="tabular-nums" title="Their UFC record going in"> · <span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(bout.record)}</span> : null}
                 </span>
               </span>
             </li>)}

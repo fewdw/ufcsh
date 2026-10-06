@@ -52,7 +52,7 @@ import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { useShortcutNav } from "../shortcuts";
 import { BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
 import OppositionDetails from "../components/OppositionDetails";
-import { FightInsightsPanel } from "../components/FightInsights";
+import { FightInsightsPanels, SideName } from "../components/FightInsights";
 
 const shell = PANEL_SHELL;
 const RESULT_PILL =
@@ -380,10 +380,7 @@ function FormHalf({ name, rows, side }: { name: string; rows: UfcHistoryRow[]; s
   const mirror = side === "f2" ? "@[56rem]:flex-row-reverse" : "";
   return (
     <div className="min-w-0" aria-label={`${name}'s last five`}>
-      {/* The name in its corner's ink says whose list this is. */}
-      <div className={`mb-1 truncate px-1 text-[13px] font-semibold leading-5 @[56rem]:hidden ${side === "f1" ? "text-f1-ink" : "text-f2-ink"}`}>
-        {name}
-      </div>
+      <div className="px-1"><SideName name={name} side={side} /></div>
       <div className="flex flex-col @[34rem]:hidden">
         {rows.length ? rows.map((row, index) => <FormListBout key={row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`} row={row} />)
           : <p className={`px-1 py-1 ${CHART_TEXT} text-zinc-400`}>No earlier bouts available.</p>}
@@ -538,8 +535,8 @@ function meetingsOf(fight: Matchup, later: boolean): HistoryRow[] {
 function sharedOpponents(fight: Matchup) {
   return fight.common_opponents.map((comparison) => ({
     ...comparison,
-    f1_fights: comparison.f1_fights.filter((row) => !row.upcoming && (fight.potential || row.date <= fight.event.date)),
-    f2_fights: comparison.f2_fights.filter((row) => !row.upcoming && (fight.potential || row.date <= fight.event.date)),
+    f1_fights: comparison.f1_fights.filter((row) => !row.upcoming && (fight.potential || row.date <= fight.event.date)).sort((a, b) => b.date.localeCompare(a.date)),
+    f2_fights: comparison.f2_fights.filter((row) => !row.upcoming && (fight.potential || row.date <= fight.event.date)).sort((a, b) => b.date.localeCompare(a.date)),
   })).filter((comparison) => comparison.f1_fights.length && comparison.f2_fights.length);
 }
 
@@ -642,7 +639,7 @@ function CommonOpponents({ fight }: { fight: Matchup }) {
             key={comparison.opponent.id}
             className="grid grid-cols-2 items-center gap-x-2 px-4 py-2 @[30rem]:grid-cols-[minmax(0,1fr)_5.5rem_minmax(0,1fr)] @[30rem]:gap-x-0 @[40rem]:grid-cols-[minmax(0,1fr)_8rem_minmax(0,1fr)]"
           >
-            <div className="col-start-1 row-start-2 min-w-0 space-y-0.5 @[30rem]:row-start-1 @[30rem]:pr-3">
+            <div className="col-start-1 row-start-2 min-w-0 space-y-0.5 @[30rem]:row-start-1 @[30rem]:pr-3 @[40rem]:flex @[40rem]:justify-end @[40rem]:gap-1 @[40rem]:space-y-0">
               {comparison.f1_fights.map((row) => (
                 <CommonFight key={row.fight_id} row={row} align="right" />
               ))}
@@ -656,7 +653,7 @@ function CommonOpponents({ fight }: { fight: Matchup }) {
                 {comparison.opponent.name}
               </Link>
             </div>
-            <div className="col-start-2 row-start-2 min-w-0 space-y-0.5 @[30rem]:col-start-3 @[30rem]:row-start-1 @[30rem]:pl-3">
+            <div className="col-start-2 row-start-2 min-w-0 space-y-0.5 @[30rem]:col-start-3 @[30rem]:row-start-1 @[30rem]:pl-3 @[40rem]:flex @[40rem]:gap-1 @[40rem]:space-y-0">
               {comparison.f2_fights.map((row) => (
                 <CommonFight key={row.fight_id} row={row} align="left" />
               ))}
@@ -996,7 +993,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 </section>
                 <RecentForm fight={fight} />
                 <CareerProfile fight={fight} />
-                <FightInsightsPanel fighters={[{ ...fight.f1, side: "f1" }, { ...fight.f2, side: "f2" }]} />
+                <FightInsightsPanels fighters={[{ ...fight.f1, side: "f1" }, { ...fight.f2, side: "f2" }]} />
                 <HeadToHead fight={fight} />
                 {!fight.potential ? <HeadToHead fight={fight} later /> : null}
                 <CommonOpponents fight={fight} />
