@@ -739,10 +739,13 @@ function duplicateFighters(): BugCheck {
 
 function sharedCareerProfiles(): BugCheck {
   const rows = db.prepare(`
-    SELECT cp.source_url, fr.id, fr.name, fr.signee FROM career_profiles cp JOIN fighters fr ON fr.id = cp.fighter_id
-    WHERE cp.status = 'verified' AND cp.source_url IN (
-      SELECT source_url FROM career_profiles WHERE status = 'verified' GROUP BY source_url HAVING COUNT(*) > 1)
-    ORDER BY cp.source_url, fr.signee, fr.name
+    WITH shown AS (
+      -- A UFCStats page with no UFC bout (a booking that fell through) is no
+      -- profile anyone sees; the signee stays the one shown until they fight.
+      SELECT cp.source_url, fr.id, fr.name, fr.signee FROM career_profiles cp JOIN fighters fr ON fr.id = cp.fighter_id
+      WHERE cp.status = 'verified' AND (fr.signee = 1 OR ${ufcFightExistsSql("fr.id", "f")}))
+    SELECT * FROM shown WHERE source_url IN (SELECT source_url FROM shown GROUP BY source_url HAVING COUNT(*) > 1)
+    ORDER BY source_url, signee, name
   `).all() as { source_url: string; id: string; name: string; signee: number }[];
   const groups = new Map<string, typeof rows>();
   for (const row of rows) groups.set(row.source_url, [...(groups.get(row.source_url) ?? []), row]);

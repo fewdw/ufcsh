@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { db, getMeta, prepared, setMeta, touchMeta } from "./db.ts";
+import { dataRevision, db, getMeta, prepared, setMeta, touchMeta } from "./db.ts";
 import { hasUfcFight } from "./fighter-identity.ts";
 import { scrapeAthleteStatus, scrapeNewAthlete, scrapeNewestAthletes } from "./scrape/ufccom.ts";
 import { articleRevision, fetchArticleByTitle, ROSTER_ARTICLE, rosterChanges, type RosterMove } from "./scrape/wikipedia.ts";
@@ -32,9 +32,14 @@ export function fighterRosterEvents(fighterId: string): RosterHistoryEvent[] {
 
 /** Resolve source names once for bulk audits, using the same profile identity
  * matching as an individual profile. Never attach a report to a namesake. */
+let resolved = { version: "", ids: new Map<string, string | null>() };
+
 export function rosterEventsByFighter(): Map<string, RosterHistoryEvent[]> {
   const byFighter = new Map<string, RosterHistoryEvent[]>();
-  const byName = new Map<string, string | null>();
+  // Thousands of archived reports: each name is matched once per profile revision.
+  const version = dataRevision("profiles");
+  if (resolved.version !== version) resolved = { version, ids: new Map() };
+  const byName = resolved.ids;
   const add = (id: string, event: RosterHistoryEvent) => {
     const events = byFighter.get(id) ?? [];
     events.push(event);

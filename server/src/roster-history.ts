@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { getMeta, setMeta } from "./db.ts";
 import { normName } from "./util.ts";
 
@@ -30,8 +31,17 @@ export function departureKind(reason: string | null): RosterHistoryEvent["kind"]
   return "departed";
 }
 
+/** Wikipedia's dated signings and releases, read from one revision of the
+ *  roster article a week and kept only where the fighter's UFC bouts bear
+ *  them out (import-roster-history.ts rebuilds it). */
+const WIKIPEDIA: RosterHistoryEvent[] = (JSON.parse(readFileSync(new URL("./roster-history-wikipedia.json", import.meta.url), "utf8")) as
+  [string, string, RosterHistoryEvent["kind"], string | null, number][]).map(([name, date, kind, reason, revision]) => ({
+  name, date, kind, reason, observed: false,
+  source_url: `https://en.wikipedia.org/w/index.php?title=List_of_current_UFC_fighters&oldid=${revision}`,
+}));
+
 export function storedRosterHistory(): RosterHistoryEvent[] {
-  return [...VERIFIED, ...JSON.parse(getMeta("roster_history") ?? "[]") as RosterHistoryEvent[]];
+  return [...VERIFIED, ...WIKIPEDIA, ...JSON.parse(getMeta("roster_history") ?? "[]") as RosterHistoryEvent[]];
 }
 
 /** Keep dated reports after the rolling recent-roster lists drop them. Names

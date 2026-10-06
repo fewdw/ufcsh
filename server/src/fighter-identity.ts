@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { prepared } from "./db.ts";
 import { editDistance, firstLastName, normName } from "./util.ts";
 import { fightIndex, type FightRecord } from "./fight-index.ts";
+import { SEARCH_ALIASES } from "./search-aliases.ts";
 
 /** Who counts as a UFC fighter, what their record reads, and where their
  * pictures are served from — shared by the API, page metadata and share images. */
@@ -81,6 +82,36 @@ export function fighterNamed(name: string, division: string, date: string): stri
     const near = (prepared("SELECT id, norm_name FROM fighters WHERE norm_name LIKE ?").all(`% ${last}`) as { id: string; norm_name: string }[])
       .filter((row) => row.norm_name.split(" ").length === words.length && editDistance(row.norm_name.split(" ")[0], first) <= (first.length > 5 ? 2 : 1));
     if (near.length === 1) return near[0].id;
+  }
+  // Only when nothing above matched, each kept to a single fighter: a former
+  // or better-known name ("Bobby Green" for King Green); spacing and family-
+  // name order ("B.J. Penn", "Choi Seung-woo" for SeungWoo Choi); a longer
+  // stored name ("Michelle Waterson-Gomez", "Allen Frye Jr."); a middle name
+  // used as the first ("Carlos Diego Ferreira"); a short given name
+  // ("Montse Rendon"); a letter or two off in a long name ("Bharat Kandare").
+  if (!ids.length && words.length >= 2) {
+    const one = (found: string[]) => [...new Set(found)].length === 1 ? [found[0]] : [];
+    const stored = Object.entries(SEARCH_ALIASES).find(([, aliases]) => aliases.some((alias) => normName(alias) === normName(name)))?.[0];
+    if (stored) ids = (prepared("SELECT id FROM fighters WHERE norm_name = ?").all(normName(stored)) as { id: string }[]).map((row) => row.id);
+    if (!ids.length) {
+      const spaced = [words.join(""), [...words.slice(1), words[0]].join("")];
+      ids = one((prepared("SELECT id FROM fighters WHERE replace(norm_name, ' ', '') IN (?, ?)").all(...spaced) as { id: string }[]).map((row) => row.id));
+    }
+    const sameSurname = () => prepared("SELECT id, norm_name FROM fighters WHERE norm_name LIKE ?").all(`% ${words.at(-1)}%`) as { id: string; norm_name: string }[];
+    if (!ids.length) ids = one(sameSurname().filter((row) => row.norm_name.startsWith(`${words.join(" ")} `)).map((row) => row.id));
+    if (!ids.length && words.length >= 3) ids = one((prepared("SELECT id FROM fighters WHERE norm_name = ?").all(words.slice(1).join(" ")) as { id: string }[]).map((row) => row.id));
+    if (!ids.length) {
+      ids = one(sameSurname().filter((row) => {
+        const theirs = row.norm_name.split(" ");
+        const [a, b] = [theirs[0], words[0]];
+        return theirs.length === words.length && theirs.slice(1).join(" ") === words.slice(1).join(" ")
+          && Math.min(a.length, b.length) >= 4 && a !== b && (a.startsWith(b) || b.startsWith(a));
+      }).map((row) => row.id));
+    }
+    if (!ids.length && words.join(" ").length >= 12) {
+      ids = one((prepared("SELECT id, norm_name FROM fighters WHERE norm_name LIKE ?").all(`${words[0][0]}%`) as { id: string; norm_name: string }[])
+        .filter((row) => row.norm_name.split(" ").length === words.length && editDistance(row.norm_name, words.join(" ")) <= 2).map((row) => row.id));
+    }
   }
   if (ids.length <= 1) return ids[0] ?? "";
   const best = prepared(`

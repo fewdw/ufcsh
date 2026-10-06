@@ -368,3 +368,11 @@ Both columns' #15 rows fit without scrolling in a 327 px tooltip at desktop and
 390 px phone widths. Near the viewport top, the tooltip opens below the chart
 when that fits. The checkbox defaults off and survives profile changes and
 browser navigation through the existing local settings store.
+
+## Roster timeline reports (2026-10-06)
+
+Profiles attach every archived roster report whose name matches the fighter.
+Adding 2,029 Wikipedia reports raised that per-request build from 11.5 ms to
+48.5 ms on a production snapshot (5-call average after warm-up). Name matches
+are now kept per `profiles` data revision: the first build after a change
+takes 60 ms, later ones 6.7 ms.
