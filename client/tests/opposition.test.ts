@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { oppositionGroups, recordText, tagText } from "../src/opposition.ts";
+import { oppositionGroups, recordText, standingChips } from "../src/opposition.ts";
 import type { Opposition, OppositionBout } from "../src/api.ts";
 
 const meeting = (fight_id: string, name: string, outcome: OppositionBout["outcome"]): OppositionBout => ({
   fight_id, date: "2025-01-01", outcome, method: "Decision", opponent: { id: name, name },
-  record: { wins: 0, losses: 0, draws: 0, ncs: 0 }, pro_record: null, tag: null, wins: [],
+  record: { wins: 0, losses: 0, draws: 0, ncs: 0 }, pro_record: null, standing: null, history: [],
 });
 const data = (rows: OppositionBout[]): Opposition => ({
   fighter_id: "selected", name: "Selected", before: null, record: { wins: 0, losses: 0, draws: 0, ncs: 0 }, rows,
@@ -21,6 +21,7 @@ test("Wins and Losses filter the selected fighter's result; rematches stay under
 test("records and tags read the way the dialog prints them", () => {
   assert.equal(recordText({ wins: 14, losses: 2, draws: 0, ncs: 0 }), "14-2");
   assert.equal(recordText({ wins: 14, losses: 2, draws: 1, ncs: 1 }), "14-2-1 (1 NC)");
-  assert.equal(tagText({ kind: "rank", rank: "4", division: "Middleweight" }).short, "#4");
-  assert.equal(tagText({ kind: "future" }).short, "Future champ");
+  assert.deepEqual(standingChips({ rank: "11", division: "Welterweight", belt: "future" }).map(chip => chip.short), ["#11", "Future champ"]);
+  assert.deepEqual(standingChips({ rank: null, division: null, belt: "champion" }).map(chip => chip.short), ["Champ"]);
+  assert.deepEqual(standingChips(null), []);
 });

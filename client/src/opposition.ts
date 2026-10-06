@@ -1,4 +1,4 @@
-import type { OpponentTag, Opposition, OppositionBout, OppositionRecord } from "./api";
+import type { Opposition, OppositionBout, OppositionRecord, Standing } from "./api";
 
 export type OppositionFilter = "all" | "win" | "loss";
 
@@ -20,12 +20,18 @@ export function recordText(record: OppositionRecord): string {
   return `${record.wins}-${record.losses}${record.draws ? `-${record.draws}` : ""}${record.ncs ? ` (${record.ncs} NC)` : ""}`;
 }
 
-export function tagText(tag: OpponentTag): { short: string; title: string } {
-  switch (tag.kind) {
-    case "champion": return { short: "Champ", title: "UFC champion going in" };
-    case "interim": return { short: "Interim", title: "UFC interim champion going in" };
-    case "rank": return { short: `#${tag.rank}`, title: `Ranked #${tag.rank} at ${tag.division} on the last list before the fight` };
-    case "former": return { short: "Former champ", title: "Had held a UFC belt before this fight" };
-    case "future": return { short: "Future champ", title: "Went on to win a UFC belt" };
-  }
+const BELT: Record<NonNullable<Standing["belt"]>, { short: string; title: string }> = {
+  champion: { short: "Champ", title: "UFC champion going in" },
+  interim: { short: "Interim", title: "UFC interim champion going in" },
+  former: { short: "Former champ", title: "Had held a UFC belt before this fight" },
+  future: { short: "Future champ", title: "Went on to win a UFC belt" },
+};
+
+/** The chips beside a name: rank then, and any belt. */
+export function standingChips(standing: Standing | null): { kind: "rank" | NonNullable<Standing["belt"]>; short: string; title: string }[] {
+  if (!standing) return [];
+  return [
+    ...(standing.rank ? [{ kind: "rank" as const, short: `#${standing.rank}`, title: `Ranked #${standing.rank} at ${standing.division} on the last list before the fight` }] : []),
+    ...(standing.belt ? [{ kind: standing.belt, ...BELT[standing.belt] }] : []),
+  ];
 }

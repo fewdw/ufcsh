@@ -1,9 +1,10 @@
-import { useState } from "react";
 import type { FightInsights } from "../api";
 import { lastName } from "../format";
+import { useTooltip } from "../tooltip";
 import { PanelHeading, PANEL_SHELL } from "./FightStats";
+import { Tooltip } from "./Tooltip";
 
-type Insightful = { name: string; insights: FightInsights | null | undefined };
+type Insightful = { name: string; insights: FightInsights | null | undefined; side?: "f1" | "f2" };
 
 // Checked with the dataviz palette validator against both surfaces: the
 // green and rose stay apart for red-green colour blindness in either mode.
@@ -12,8 +13,10 @@ const LOST = "bg-[#fb7185] dark:bg-[#f43f5e]";
 const ON = "bg-zinc-200";
 const DRAWN = "bg-[#d97706]";
 const CHART_PX = 84;
+/** Fewer priced fights than this and the comparison is noise. */
+const MIN_PRICED = 5;
 
-type Column = { key: string; label: string; won: number; lost: number; other: number; otherTone: string; lines: string[] };
+type Column = { key: string; label: string; title: string; won: number; lost: number; other: number; otherTone: string; lines: string[] };
 
 /** Only what happened in it, one line each, zeros left out. */
 const lines = (entries: [number, string][]) => entries.filter(([count]) => count).map(([count, text]) => `${count} ${text}`);
@@ -22,89 +25,87 @@ function columnsOf(rounds: NonNullable<FightInsights["rounds"]>): Column[] {
   const { won, lost, drawn } = rounds.decision;
   return [
     ...rounds.rounds.map(round => ({
-      key: `r${round.round}`, label: `R${round.round}`, won: round.won, lost: round.lost, other: round.past, otherTone: ON,
+      key: `r${round.round}`, label: `R${round.round}`, title: `Round ${round.round}`, won: round.won, lost: round.lost, other: round.past, otherTone: ON,
       lines: lines([[round.won, `Finishes in R${round.round}`], [round.lost, `Losses in R${round.round}`]]),
     })),
-    { key: "dec", label: "Dec", won, lost, other: drawn, otherTone: DRAWN, lines: lines([[won, "Wins by decision"], [lost, "Losses by decision"], [drawn, "Draws"]]) },
+    { key: "dec", label: "Dec", title: "Decision", won, lost, other: drawn, otherTone: DRAWN, lines: lines([[won, "Wins by decision"], [lost, "Losses by decision"], [drawn, "Draws"]]) },
   ];
 }
 
-/** One column per round and one for the cards, packed together so each
- *  fighter's set reads as one. Heights are counts on a scale shared by every
- *  chart in the panel: wins at the base, losses on top, bouts that went on
- *  between. */
-function RoundChart({ name, rounds, max }: { name: string; rounds: NonNullable<FightInsights["rounds"]>; max: number }) {
-  const columns = columnsOf(rounds);
-  const [active, setActive] = useState<number | null>(null);
+/** Bottom to top: wins, losses, then the bouts that went on (or draws). */
+function Bar({ fighter, column, max }: { fighter: Insightful; column: Column; max: number }) {
+  const { open, at, id, handlers } = useTooltip();
   const height = (count: number) => count ? Math.max(2, Math.round(count / max * CHART_PX)) : 0;
-  return <div role="group" aria-label={`${name}: how UFC fights ended, by round`} onMouseLeave={() => setActive(null)}>
-    <div className="flex items-end justify-center gap-1.5 border-b border-zinc-200 sm:gap-2" style={{ height: CHART_PX + 16 }}>
-      {columns.map((column, index) => {
-        const segments = ([[column.lost, LOST], [column.other, column.otherTone], [column.won, WON]] as [number, string][]).filter(([count]) => count);
-        const tip = active === index && column.lines.length;
-        return <button key={column.key} type="button" aria-label={`${column.label}: ${column.lines.join(", ") || "no result in it"}`}
-          onMouseEnter={() => setActive(index)} onFocus={() => setActive(index)} onBlur={() => setActive(null)} onClick={() => setActive(active === index ? null : index)}
-          className="relative flex h-full w-7 flex-col items-center justify-end focus-visible:outline-2 focus-visible:outline-zinc-900">
-          {tip ? <span role="tooltip" className={`pointer-events-none absolute bottom-full z-10 mb-1 whitespace-nowrap rounded-md bg-zinc-900 px-2 py-1 text-left text-[11px] leading-4 text-white shadow ring-1 ring-zinc-700 ${index < columns.length / 2 ? "left-0" : "right-0"}`}>
-            {column.lines.map(line => <span key={line} className="block">{line}</span>)}
-          </span> : null}
-          <span aria-hidden="true" className="mb-0.5 text-[10px] font-medium tabular-nums leading-3 text-zinc-500">{column.won + column.lost + column.other}</span>
-          <span aria-hidden="true" className={`flex w-6 flex-col gap-[2px] ${active === index ? "opacity-80" : ""}`}>
-            {segments.map(([count, tone], segment) => <span key={segment} className={`${tone} ${segment === 0 ? "rounded-t" : ""}`} style={{ height: height(count) }} />)}
-          </span>
-        </button>;
-      })}
+  const segments = ([[column.other, column.otherTone], [column.lost, LOST], [column.won, WON]] as [number, string][]).filter(([count]) => count);
+  return <div className="relative h-full w-7">
+    <button type="button" aria-label={`${fighter.name}, ${column.title}: ${column.lines.join(", ") || "no result in it"}`} aria-describedby={open ? id : undefined} {...(column.lines.length ? handlers : {})}
+      className="flex h-full w-full cursor-default flex-col items-center justify-end focus-visible:outline-2 focus-visible:outline-zinc-900">
+      <span aria-hidden="true" className="mb-0.5 text-[10px] font-medium tabular-nums leading-3 text-zinc-500">{column.won + column.lost + column.other}</span>
+      <span aria-hidden="true" className="flex w-6 flex-col gap-[2px]">
+        {segments.map(([count, tone], segment) => <span key={segment} className={`${tone} ${segment === 0 ? "rounded-t" : ""}`} style={{ height: height(count) }} />)}
+      </span>
+    </button>
+    <Tooltip id={id} at={at}>
+      <span className="flex items-center gap-1.5">
+        {fighter.side ? <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: `var(--color-${fighter.side})` }} /> : null}
+        <span>{lastName(fighter.name)}</span>
+        <span className="font-normal text-zinc-400">· {column.title}</span>
+      </span>
+      <span className="mt-1.5 block space-y-0.5 font-normal text-zinc-200">
+        {column.lines.map(line => <span key={line} className="block whitespace-nowrap">{line}</span>)}
+      </span>
+    </Tooltip>
+  </div>;
+}
+
+function RoundChart({ fighter, rounds, max }: { fighter: Insightful; rounds: NonNullable<FightInsights["rounds"]>; max: number }) {
+  const columns = columnsOf(rounds);
+  return <div role="group" aria-label={`${fighter.name}: how UFC fights ended, by round`} className="min-w-0">
+    <div className="flex items-end gap-1.5 border-b border-zinc-200 sm:gap-2" style={{ height: CHART_PX + 16 }}>
+      {columns.map(column => <Bar key={column.key} fighter={fighter} column={column} max={max} />)}
     </div>
-    <div aria-hidden="true" className="flex justify-center gap-1.5 pt-1 sm:gap-2">
+    <div aria-hidden="true" className="flex gap-1.5 pt-1 sm:gap-2">
       {columns.map(column => <span key={column.key} className="w-7 text-center text-[10px] font-semibold text-zinc-400">{column.label}</span>)}
     </div>
   </div>;
 }
 
-/** How each fighter's UFC bouts ended, round by round and on the cards. */
-export function RoundOutcomesPanel({ fighters }: { fighters: Insightful[] }) {
-  const charted = fighters.map(fighter => ({ name: fighter.name, rounds: fighter.insights?.rounds ?? null }));
-  if (!charted.some(entry => entry.rounds)) return null;
-  const max = Math.max(...charted.map(entry => entry.rounds?.fights ?? 0));
-  const pair = charted.length > 1;
-  return <section className={PANEL_SHELL}>
-    <PanelHeading title="By round" />
-    <div className={`grid gap-x-4 gap-y-4 px-4 pb-4 pt-3 sm:px-5 ${pair ? "grid-cols-1 min-[480px]:grid-cols-2" : ""}`}>
-      {charted.map(entry => <div key={entry.name} className="min-w-0">
-        {pair ? <h3 className="mb-1 truncate text-center text-xs font-semibold text-zinc-700" title={entry.name}>{lastName(entry.name)}</h3> : null}
-        {entry.rounds ? <RoundChart name={entry.name} rounds={entry.rounds} max={max} /> : <p className="py-6 text-center text-[11px] text-zinc-500">No UFC fights yet.</p>}
-      </div>)}
-    </div>
-  </section>;
-}
-
-/** Fewer priced fights than this and the comparison is noise. */
-const MIN_PRICED = 5;
-
 /** Wins against what the closing odds expected, margin removed. A record of
  *  past fights, not a forecast. */
-export function OddsRecordPanel({ fighters }: { fighters: Insightful[] }) {
-  if (!fighters.some(fighter => (fighter.insights?.odds?.priced ?? 0) >= MIN_PRICED)) return null;
-  return <section className={`${PANEL_SHELL} overflow-hidden`}>
-    <PanelHeading title="Against the odds" />
-    <ul className="divide-y divide-zinc-100 px-4 sm:px-5">
-      {fighters.map(fighter => {
-        const odds = fighter.insights?.odds;
-        const enough = odds && odds.priced >= MIN_PRICED;
-        const difference = enough ? Math.round((odds.wins - odds.expected) * 10) / 10 : 0;
-        return <li key={fighter.name} className="flex items-start justify-between gap-3 py-2.5 text-xs">
-          <div className="min-w-0">
-            {fighters.length > 1 ? <div className="truncate font-semibold text-zinc-700" title={fighter.name}>{lastName(fighter.name)}</div> : null}
-            {enough ? <>
-              <div className="text-zinc-900">Won <span className="font-semibold tabular-nums">{odds.wins}</span> of {odds.priced} · the odds expected <span className="font-semibold tabular-nums">{odds.expected.toFixed(1)}</span></div>
-            </> : <div className="text-[11px] text-zinc-500">Fewer than {MIN_PRICED} UFC fights with closing odds{odds ? ` (${odds.priced})` : ""}.</div>}
-          </div>
-          {enough ? <div className="shrink-0 text-right">
-            <div className="text-base font-semibold tabular-nums text-zinc-900">{difference > 0 ? "+" : difference < 0 ? "−" : ""}{Math.abs(difference).toFixed(1)}</div>
-            <div className="text-[10px] text-zinc-500">{difference >= 0 ? "above" : "below"} odds</div>
-          </div> : null}
-        </li>;
-      })}
-    </ul>
+function OddsRecord({ odds }: { odds: NonNullable<FightInsights["odds"]> }) {
+  const difference = Math.round((odds.wins - odds.expected) * 10) / 10;
+  return <div className="shrink-0 text-right" title={`Won ${odds.wins} of ${odds.priced} UFC fights with closing odds; the odds, margin removed, expected ${odds.expected.toFixed(1)}`}>
+    <div className="text-base font-semibold tabular-nums text-zinc-900">{difference > 0 ? "+" : difference < 0 ? "−" : ""}{Math.abs(difference).toFixed(1)}</div>
+    <div className="text-[10px] text-zinc-500">{difference >= 0 ? "above" : "below"} odds</div>
+    <div className="mt-1 text-[11px] tabular-nums text-zinc-500">Won {odds.wins} of {odds.priced}</div>
+    <div className="text-[11px] tabular-nums text-zinc-500">Expected {odds.expected.toFixed(1)}</div>
+  </div>;
+}
+
+/** How each fighter's UFC bouts ended, round by round and on the cards, with
+ *  their wins against the closing odds beside it. Two fighters sit side by
+ *  side when the panel is wide enough, one under the other when not. */
+export function FightInsightsPanel({ fighters }: { fighters: Insightful[] }) {
+  const rows = fighters.map(fighter => ({
+    fighter,
+    rounds: fighter.insights?.rounds ?? null,
+    odds: (fighter.insights?.odds?.priced ?? 0) >= MIN_PRICED ? fighter.insights!.odds! : null,
+  }));
+  if (!rows.some(row => row.rounds || row.odds)) return null;
+  const max = Math.max(1, ...rows.map(row => row.rounds?.fights ?? 0));
+  return <section className={`${PANEL_SHELL} @container`}>
+    <PanelHeading title="By round" />
+    <div className="grid px-4 sm:px-5 @[44rem]:grid-cols-2 @[44rem]:gap-x-8">
+      {rows.map(({ fighter, rounds, odds }) => <div key={fighter.name} className="border-t border-zinc-100 py-3 first:border-t-0 @[44rem]:border-t-0">
+        {fighters.length > 1 ? <h3 className="mb-1 flex items-center gap-1.5 truncate text-xs font-semibold text-zinc-700" title={fighter.name}>
+          {fighter.side ? <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: `var(--color-${fighter.side})` }} /> : null}
+          {lastName(fighter.name)}
+        </h3> : null}
+        <div className="flex items-end justify-between gap-4">
+          {rounds ? <RoundChart fighter={fighter} rounds={rounds} max={max} /> : <p className="text-[11px] text-zinc-500">No UFC fights yet.</p>}
+          {odds ? <OddsRecord odds={odds} /> : null}
+        </div>
+      </div>)}
+    </div>
   </section>;
 }

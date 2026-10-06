@@ -165,10 +165,9 @@ export type CareerStatistics = {
 };
 
 export type OppositionRecord = { wins: number; losses: number; draws: number; ncs: number };
-/** The one thing worth knowing about an opponent's standing then (UFC only). */
-export type OpponentTag =
-  | { kind: "champion" | "interim" | "former" | "future" }
-  | { kind: "rank"; rank: string; division: string };
+/** Where someone stood going into a fight: rank on the last list before it,
+ *  and any UFC belt then, before or to come. */
+export type Standing = { rank: string | null; division: string | null; belt: "champion" | "interim" | "former" | "future" | null };
 export type OppositionBout = {
   fight_id: string; date: string; outcome: "win" | "loss" | "draw" | "nc" | null; method: string | null;
   opponent: { id: string | null; name: string };
@@ -176,14 +175,15 @@ export type OppositionBout = {
   record: OppositionRecord;
   /** Complete professional record going in, once their history is verified. */
   pro_record: OppositionRecord | null;
-  tag: OpponentTag | null;
-  /** Everyone the opponent had beaten before this fight, newest first. */
-  wins: EarlierWin[];
+  standing: Standing | null;
+  /** The opponent's earlier bouts, newest first. */
+  history: EarlierBout[];
 };
-/** Someone an opponent had beaten: a profile here, else their Sherdog page. */
-export type EarlierWin = {
-  fight_id: string | null; date: string; method: string | null;
+/** One of an opponent's earlier bouts: a profile here, else their Sherdog page. */
+export type EarlierBout = {
+  fight_id: string | null; date: string; outcome: "win" | "loss" | "draw" | "nc"; method: string | null;
   opponent: { id: string | null; name: string; source_url: string | null };
+  standing: Standing | null;
 };
 export type Opposition = {
   fighter_id: string; name: string; before: { fight_id: string; date: string } | null;

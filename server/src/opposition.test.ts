@@ -15,7 +15,7 @@ const ufcBout = (row: IndexedFight, id: string): CareerBout => {
   return { ufcFightId: row.id, date: row.date, sourceOrder: row.ord, outcome: sideOf(row, id).outcome!, method: row.method ?? "", opponentName: opponent.name, opponentId: opponent.id, eventName: "UFC", isUfc: true };
 };
 
-test("opposition lists every UFC opponent, their records then, one standing tag and who they had beaten", () => {
+test("opposition lists every UFC opponent with their records, standing and earlier bouts going in", () => {
   // B meets A, wins a belt, then beats A again; D was ranked; E fought A outside the UFC and is never listed.
   const first = fight("first", "2024-01-01", 3, [side("a", "win"), side("b", "loss")]);
   const title = fight("title", "2024-06-01", 0, [side("b", "win"), side("c", "loss")], true);
@@ -36,15 +36,19 @@ test("opposition lists every UFC opponent, their records then, one standing tag 
   assert.deepEqual(data.rows.map(row => [row.fight_id, row.outcome, row.opponent.name]), [
     ["ranked", "win", "D"], ["rematch", "loss", "B"], ["first", "win", "B"],
   ]);
-  assert.deepEqual(data.rows.map(row => row.tag), [{ kind: "rank", rank: "7", division: "Lightweight" }, { kind: "champion" }, { kind: "future" }]);
+  assert.deepEqual(data.rows.map(row => row.standing), [
+    { rank: "7", division: "Lightweight", belt: null }, { rank: null, division: null, belt: "champion" }, { rank: null, division: null, belt: "future" },
+  ]);
   assert.deepEqual(data.rows[1].record, { wins: 1, losses: 1, draws: 0, ncs: 0 });
-  // Who B had beaten going into the rematch (not the loss to A).
-  assert.deepEqual(data.rows[1].wins.map(bout => [bout.fight_id, bout.opponent.name]), [["title", "C"]]);
-  assert.deepEqual(data.rows[2].wins, []);
+  // Everyone B had met going into the rematch, newest first.
+  assert.deepEqual(data.rows[1].history.map(bout => [bout.fight_id, bout.outcome, bout.opponent.name, bout.standing]), [["title", "win", "C", null], ["first", "loss", "A", null]]);
+  assert.deepEqual(data.rows[2].history, []);
+  // Who C had met before A: B, who took the belt from C that night, then held it.
+  assert.deepEqual(opposition(index, "a", undefined, rankOf)!.rows[0].history.map(bout => [bout.opponent.name, bout.standing]), [["B", null]]);
   assert.deepEqual(data.rows[2].record, { wins: 0, losses: 0, draws: 0, ncs: 0 });
   assert.deepEqual(data.record, { wins: 1, losses: 1, draws: 0, ncs: 0 });
-  // A never held a belt, so C's meeting with A carries no tag.
-  assert.equal(opposition(index, "c")!.rows.find(row => row.fight_id === "later")!.tag, null);
+  // A never held a belt, so C's meeting with A carries no standing.
+  assert.equal(opposition(index, "c")!.rows.find(row => row.fight_id === "later")!.standing, null);
   assert.equal(opposition(index, "missing"), null);
   assert.deepEqual(opposition(index, "a", first)!.rows, []);
 });
@@ -58,7 +62,7 @@ test("archive opposition rows sum to the matchup's opponent record at every cuto
       const expected = (before ? opponentsRecordBefore(index, fighter.id, before.date, before.ord) : opponentsRecordBefore(index, fighter.id, "9999-12-31")) ?? { wins: 0, losses: 0, draws: 0, ncs: 0 };
       assert.deepEqual(evidence.record, expected, `${fighter.name} before ${before?.id ?? "now"}`);
       if (before) assert(!evidence.rows.some(row => row.fight_id === before.id || row.date > before.date), `${fighter.name}: ${before.id}`);
-      for (const row of evidence.rows) assert(!row.wins.some(bout => bout.date > row.date || bout.fight_id === row.fight_id), `${fighter.name}: ${row.opponent.name}`);
+      for (const row of evidence.rows) assert(!row.history.some(bout => bout.date > row.date || bout.fight_id === row.fight_id), `${fighter.name}: ${row.opponent.name}`);
       checked++;
     }
   }
