@@ -90,11 +90,11 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-05">October 5, 2026</time></p>
+            <p><time dateTime="2026-10-06">October 6, 2026</time></p>
             <ul>
-              <li>Missed-weight badges no longer land on a fighter who shares a surname with someone else on the card.</li>
-              <li>Quality of opposition shows how each meeting ended under the opponent’s name.</li>
-              <li>Removed the opposition sort menu and tidied the Matchup link.</li>
+              <li>Quality of opposition: Wins and Losses now filter the fighter’s own results, showing each of those opponents’ full record.</li>
+              <li>Each opponent’s earlier wins and losses sit in a compact grid beside them.</li>
+              <li>The opposition window is larger on big screens.</li>
             </ul>
           </Section>
         </div>
