@@ -54,6 +54,31 @@ test("a surname shared with someone off the card is not attributed to the card's
   assert.deepEqual(weightMisses(apart, ["Mana Martinez", "Guido Cannetti"]), [{ name: "Mana Martinez", pounds: 140 }]);
 });
 
+test("a list of weights pairs with the fighters named in the same order", () => {
+  const text = article("[[Jessica-Rose Clark]], [[Ryan Benoit]], [[Frank Camacho]], and [[Nadia Kassem]] missed weight at the official weigh-ins, coming in at 128, 129, 160 and 120 pounds, respectively.");
+  assert.deepEqual(weightMisses(text, ["Jessica-Rose Clark", "Bec Rawlings", "Ryan Benoit", "Frank Camacho", "Nadia Kassem"]), [
+    { name: "Jessica-Rose Clark", pounds: 128 },
+    { name: "Ryan Benoit", pounds: 129 },
+    { name: "Frank Camacho", pounds: 160 },
+    { name: "Nadia Kassem", pounds: 120 },
+  ]);
+});
+
+test("the bout's other fighter, named only to say which bout, did not miss", () => {
+  const text = article("In addition, at the weigh-ins, the originally contracted bantamweight bout between [[Farid Basharat]] and Victor Hugo was changed to a featherweight bout after Hugo weighed in at 145.5 pounds, 9.5 pounds over the bantamweight non-title fight limit; although Basharat weighed in at 137 pounds, he agreed to allow the fight to take place at featherweight.");
+  assert.deepEqual(weightMisses(text, ["Farid Basharat", "Victor Hugo"]), [{ name: "Victor Hugo", pounds: 145.5 }]);
+  // With no one named after the pair, the pair is still who missed.
+  const both = article("The bout between Ramon Taveras and Malcolm Gordon proceeded at a catchweight after both fighters missed weight.");
+  assert.deepEqual(weightMisses(both, ["Ramon Taveras", "Malcolm Gordon"]).map((miss) => miss.name), ["Ramon Taveras", "Malcolm Gordon"]);
+});
+
+test("a surname with a particle belongs to someone else", () => {
+  const text = article("A flyweight bout between Daniel da Silva and Vinicius Salvador was expected to take place at the event. However, after the official weigh-ins, in which da Silva weighed in at 129 pounds, three pounds over the flyweight non-title fight limit, it was announced he had been pulled from the card.");
+  assert.deepEqual(weightMisses(text, ["TJ Brown", "Erik Silva"]), []);
+  const own = article("At the weigh-ins, Bruno da Silva weighed in at 128 pounds, two pounds over the flyweight non-title fight limit. Da Silva was fined 20 percent.");
+  assert.deepEqual(weightMisses(own, ["Bruno da Silva", "Erik Silva"]), [{ name: "Bruno da Silva", pounds: 128 }]);
+});
+
 test("the opponent who receives the fine is never marked", () => {
   const text = article("At the weigh-ins, Mullins weighed in at 137 pounds, one pound over the bantamweight non-title fight limit. The bout proceeded at catchweight and she was fined 20 percent of her purse, which went to Syguła.");
   assert.deepEqual(weightMisses(text, ["Melissa Mullins", "Klaudia Sygula"]), [{ name: "Melissa Mullins", pounds: 137 }]);
@@ -346,4 +371,66 @@ test("an opponent who faced the stranded fighter instead replaced the one who le
   const { changes, cancelled } = cardChanges(text, [["Shavkat Rakhmonov", "Ian Machado Garry"], ["Rob Font", "Jean Matsumoto"]]);
   assert.deepEqual(changes.map((change) => [change.name, change.replaced]), [["Ian Machado Garry", "Belal Muhammad"], ["Jean Matsumoto", "Dominick Cruz"]]);
   assert.deepEqual(cancelled, []);
+});
+
+test("a month, an acronym or a sentence opener is never the replaced fighter", () => {
+  const text = article([
+    "A welterweight bout between [[Dakota Bush]] and [[Ludovit Klein]] was scheduled for the event.",
+    "However, Bush tested positive for COVID-19 during fight week and was replaced by [[Brandon Jenkins]].",
+    "[[Dhiego Lima]] was expected to face [[Mike Malott]].",
+    "However, Lima announced his retirement from competition in early February and was replaced by [[André Fialho]].",
+    "A lightweight bout between [[Alan Patrick]] and [[Rodrigo Vargas]] was scheduled for this event, but Vargas was removed from the card in early September for undisclosed reasons and replaced by [[Bobby Green]].",
+  ].join(" "));
+  const changes = cardChanges(text, [["Brandon Jenkins", "Ludovit Klein"], ["Andre Fialho", "Mike Malott"], ["Alan Patrick", "Bobby Green"]]).changes;
+  assert.deepEqual(changes.map((change) => [change.name, change.replaced]), [
+    ["Brandon Jenkins", "Dakota Bush"], ["Andre Fialho", "Dhiego Lima"], ["Bobby Green", "Rodrigo Vargas"],
+  ]);
+});
+
+test("he or she is the fighter the replacement's opponent was booked against", () => {
+  const text = article([
+    "[[Yancy Medeiros]] was expected to face [[Mike Perry (fighter)|Mike Perry]] at the event.",
+    "However, he pulled out of the fight in late-June citing a rib injury and was replaced by [[Paul Felder]].",
+    "[[Umar Nurmagomedov]] was expected to face [[Nathaniel Wood]] in a bantamweight bout at this event.",
+    "However, he pulled out on July 3 after the death of his uncle.",
+    "He was replaced by promotional newcomer John Castañeda.",
+    "On September 19, promotional newcomer Carlos Felipe was flagged for a potential USADA violation.",
+    "Therefore, he was pulled from his UFC debut against [[Christian Colombo]].",
+    "He was replaced by fellow promotional newcomer Marcelo Golm.",
+  ].join(" "));
+  const changes = cardChanges(text, [["Paul Felder", "Mike Perry"], ["John Castaneda", "Nathaniel Wood"], ["Marcelo Golm", "Christian Colombo"]]).changes;
+  assert.deepEqual(changes.map((change) => [change.name, change.replaced]), [
+    ["Paul Felder", "Yancy Medeiros"], ["John Castaneda", "Umar Nurmagomedov"], ["Marcelo Golm", "Carlos Felipe"],
+  ]);
+});
+
+test("a surname is completed across hyphens, particles and the article's own misspelling", () => {
+  const text = article([
+    "[[Abdul-Kareem Al-Selwady]] was expected to face [[Mitch Ramirez]]. However, Al-Selwady withdrew from the fight due to an injury and was replaced by promotional newcomer [[Jordan Vucenic]].",
+    "A bout between [[AJ Cunningham]] and [[Ricardo Ramos]] was scheduled. However, Cunninham withdrew from the fight due to an injury and was replaced by [[Gabriel Miranda]].",
+    "Dricus du Plessis was expected to face [[Andre Muniz]]. However, du Plessis withdrew and was replaced by [[Eryk Anders]].",
+  ].join(" "));
+  const changes = cardChanges(text, [["Jordan Vucenic", "Mitch Ramirez"], ["Gabriel Miranda", "Ricardo Ramos"], ["Eryk Anders", "Andre Muniz"]]).changes;
+  assert.deepEqual(changes.map((change) => [change.name, change.replaced]), [
+    ["Jordan Vucenic", "Abdul-Kareem Al-Selwady"], ["Gabriel Miranda", "AJ Cunningham"], ["Eryk Anders", "Dricus du Plessis"],
+  ]);
+});
+
+test("notice is counted from a date the replacing sentence states", () => {
+  const text = article([
+    "[[Ruslan Magomedov]] was expected to face [[Marcos Rogério de Lima]] at the event.",
+    "However, on October 24, it was reported that he pulled out of the event due to visa issues and was replaced by [[Adam Wieczorek]].",
+    "However, Jason pulled out of the bout on October 31 and was replaced by promotional newcomer [[Renato Moicano]].",
+    "[[Chris Weidman]] was expected to face Kelvin Gastelum, but was replaced by [[Uriah Hall]] in a bout originally scheduled for October 1.",
+  ].join(" ")).replace("{{start date|2024|01|20}}", "{{start date|2018|11|03}}");
+  const changes = cardChanges(text, [["Adam Wieczorek", "Marcos Rogerio de Lima"], ["Renato Moicano", "Tom Niinimaki"], ["Uriah Hall", "Kelvin Gastelum"]]).changes;
+  assert.deepEqual(changes.map((change) => [change.name, change.notice]), [["Adam Wieczorek", "10 days"], ["Renato Moicano", "3 days"], ["Uriah Hall", null]]);
+});
+
+test("a bout replaced by another bout, or a sentence about a later card, names no replacement", () => {
+  const text = article([
+    "A bout between George Roop and Francisco Rivera was scheduled for this card, but was moved to UFC Fight Night 31 and replaced by [[Sarah Kaufman]] vs. [[Jessica Eye]].",
+    "On Friday April 20, 2025, the UFC confirmed that Overeem has been removed from his fight with Dos Santos and replaced by [[Frank Mir]].",
+  ].join(" "));
+  assert.deepEqual(cardChanges(text, [["Sarah Kaufman", "Jessica Eye"], ["Frank Mir", "Antonio Rodrigo Nogueira"]]).changes, []);
 });

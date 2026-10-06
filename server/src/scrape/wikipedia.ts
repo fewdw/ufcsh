@@ -100,13 +100,18 @@ function namesake(paragraph: string, sentence: string, person: CardPerson): bool
   const words = paragraph.split(/\s+/);
   const given = (word: string | undefined) => word != null && /^\p{Lu}[\p{L}'’.-]*$/u.test(word) && !TITLE.test(word);
   for (let at = words.length - 1; at > 0; at--) {
-    if (normName(words[at].replace(/['’]s\b/, "")) !== person.last || !given(words[at - 1])) continue;
+    if (normName(words[at].replace(/['’]s\b/, "")) !== person.last) continue;
+    // A particle belongs to the surname: "Daniel da Silva" is not Erik Silva.
+    const first = PARTICLE.test(words[at - 1]) && !person.norm.includes(` ${normName(words[at - 1])} ${person.last}`) ? at - 2 : at - 1;
+    if (!given(words[first])) continue;
     // Middle names are part of the same full name ("Jose Miguel Delgado").
-    const names = [words[at - 1], ...(given(words[at - 2]) ? [words[at - 2]] : [])].map((word) => normName(word).replace(/ /g, ""));
+    const names = [words[first], ...(given(words[first - 1]) ? [words[first - 1]] : [])].map((word) => normName(word).replace(/ /g, ""));
     return !names.some((name) => own.some((part) => sameGiven(name, part)));
   }
   return false;
 }
+
+const PARTICLE = /^(?:da|das|de|do|dos|du|van|von|der|del|la|le)$/;
 
 // A sentence says someone missed weight only with one of these phrases. The
 // fighter must be named before it: people named after it are recipients of
@@ -114,7 +119,10 @@ function namesake(paragraph: string, sentence: string, person: CardPerson): bool
 const MISS_CUE = /missed (?:the )?weight|over the [a-z' -]*limit|overweight|fail(?:ing|ed) to make (?:the )?(?:required )?(?:[a-z']+ )?(?:weight|limit)|for missing weight|fined \d+ ?(?:%|percent)/i;
 // A sentence about some other card (a fighter's history) is never used.
 const OTHER_EVENT = /\b(?:at|from) (?:UFC|WEC|Strikeforce|Bellator|The Ultimate Fighter)\b/i;
-const POUNDS = /(\d{3}(?:\.\d+)?)\s*(?:-\s*)?(?:pounds|pound|lbs?\b)/gi;
+// "128, 129, 160 and 120 pounds, respectively" states four weights.
+const POUNDS = /((?:\d{3}(?:\.\d+)?,? (?:and )?)*\d{3}(?:\.\d+)?)\s*(?:-\s*)?(?:pounds|pound|lbs?\b)/gi;
+// The two fighters of a bout, named to say which bout it was.
+const BOUT_PAIR = /\bbetween ([^,;]+?) and ([^,;]+?)(?= was| were| had| has| is| in\b|,|$)/gi;
 
 /** Fighters on this card who missed weight, according to the article prose.
  * Names come from the card itself, so nobody else can be attributed. */
@@ -126,7 +134,9 @@ export function weightMisses(wikitext: string, fighters: string[]): WeightMiss[]
   for (const paragraph of prose.split(/\n\s*\n/)) {
     // Bullet items ("four fighters missed weight:\n*Vázquez weighed in…") are
     // sentences of their own.
-    const sentences = paragraph.replace(/\n\*+\s*/g, ". ").replace(/\s+/g, " ").split(/(?<=[.!?:])\s+(?=[A-Z*])/);
+    // A semicolon starts a clause of its own ("…after Hugo weighed in at
+    // 145.5 pounds; although Basharat weighed in at 137 pounds, …").
+    const sentences = paragraph.replace(/\n\*+\s*/g, ". ").replace(/\s+/g, " ").split(/(?<=[.!?:])\s+(?=[A-Z*])|(?<=;)\s+/);
     let read = "";
     for (const raw of sentences) {
       read += ` ${raw}`;
@@ -139,8 +149,14 @@ export function weightMisses(wikitext: string, fighters: string[]): WeightMiss[]
         continue;
       }
       const cueAt = normName(raw.slice(0, cue.index)).length;
+      // "The bout between Basharat and Hugo was changed after Hugo weighed in
+      // at …": the pair names the bout; whoever is named after it missed.
+      const pair = [...raw.slice(0, cue.index).matchAll(BOUT_PAIR)].at(-1);
+      const pairEnd = pair ? normName(raw.slice(0, pair.index + pair[0].length)).length : -1;
+      const later = pair ? namedIn(sentence.slice(pairEnd), people).filter((entry) => entry.at + pairEnd < cueAt && !namesake(read, sentence, entry.person)) : [];
+      const candidates = later.length ? later.map((entry) => ({ ...entry, at: entry.at + pairEnd })) : named;
       // "He was fined 30%…" follows the sentence that named him.
-      const before = named.filter((entry) => entry.at < cueAt && !new RegExp(`${entry.person.last ?? "\\0"} s opponent`).test(sentence));
+      const before = candidates.filter((entry) => entry.at < cueAt && !new RegExp(`${entry.person.last ?? "\\0"} s opponent`).test(sentence));
       const subjects = before.length
         ? before.map((entry) => entry.person.name)
         : /^(?:he|she)\b/i.test(raw.trim()) && lastSubject ? [lastSubject] : [];
@@ -148,7 +164,7 @@ export function weightMisses(wikitext: string, fighters: string[]): WeightMiss[]
       // order they are named ("Cháirez weighed in at 131 pounds and Lacerda at 127").
       const weights = [...raw.matchAll(POUNDS)]
         .filter((match) => !/limit of|maximum of|limit is|up to|over the|more than/i.test(raw.slice(Math.max(0, match.index - 14), match.index)))
-        .map((match) => Number(match[1]))
+        .flatMap((match) => match[1].split(/,? (?:and )?|, /).map(Number))
         .filter((value) => value >= 110 && value <= 300);
       const ordered = before.length ? before.sort((a, b) => a.at - b.at).map((entry) => entry.person.name) : subjects;
       ordered.forEach((name, index) => {
@@ -190,7 +206,7 @@ export type CardChanges = { changes: BoutChange[]; cancelled: CancelledBout[] };
 
 const REPLACED_BY = /\breplaced by\b/i;
 const STEPPED_IN = /\b(?:stepped in (?:to replace|for|as (?:a|the) replacement for)|steps in for|(?:as (?:a|the) )?replacement for|replaced|replacing|in place of)\b/i;
-const WITHDREW = /\b(?:withdr[ae]w|withdrawn|pull(?:ed)? out|was pulled|was removed|was forced (?:to withdraw|out)|dropped out|was unable to compete|was released)\b/i;
+const WITHDREW = /\b(?:withdr[ae]w|withdrawn|pull(?:ed)? out|backed out|bowed out|was pulled|was removed|was forced (?:to withdraw|out)|dropped out|was unable to compete|was released)\b/i;
 /** The article's own words for short notice; a late change is short notice
  *  for whoever replaced the fighter who made it. */
 const SHORT_NOTICE = /short[- ]notice|\b(?:[a-z]+|\d+)[- ](?:days?|weeks?)['’]?s?['’]? notice/i;
@@ -219,6 +235,28 @@ function noticeIn(text: string): string | null {
   return null;
 }
 
+/** Days' notice from a change the sentence itself dates: "On October 24, it
+ *  was reported that he pulled out … and was replaced by", "withdrew on
+ *  November 6 and was replaced by". Only a date that opens the sentence or
+ *  follows the withdrawal or its report, within 60 days before the event. */
+function datedNotice(raw: string, event: string | null): string | null {
+  if (!event) return null;
+  const months = MONTHS.join("|");
+  const day = `(?:(${months}) (\\d{1,2})(?:st|nd|rd|th)?(?:,? (\\d{4}))?|(\\d{1,2}) (${months})(?:,? (\\d{4}))?)`;
+  const match = new RegExp(`^(?:(?:However|Subsequently|Then|Later|In turn|Eventually),? )?(?:on|by) ${day},`, "i").exec(raw)
+    ?? new RegExp(`\\b(?:withdr[ae]w|pulled out|was removed|was forced out|dropped out|backed out|was pulled)(?: (?:of|from) (?:the|his|her) (?:bout|fight|card|event))? on ${day}\\b`, "i").exec(raw)
+    ?? new RegExp(`\\b(?:announced|reported|revealed|confirmed) on ${day}\\b`, "i").exec(raw);
+  if (!match) return null;
+  const [month, date, year] = match[1] ? [match[1], match[2], match[3]] : [match[5], match[4], match[6]];
+  const index = MONTHS.findIndex((name) => name.toLowerCase() === month.toLowerCase());
+  const at = (y: number) => Date.UTC(y, index, Number(date));
+  const held = Date.parse(`${event}T00:00:00Z`);
+  const eventYear = Number(event.slice(0, 4));
+  const when = year ? at(Number(year)) : at(eventYear) > held ? at(eventYear - 1) : at(eventYear);
+  const days = Math.round((held - when) / 86_400_000);
+  return days >= 1 && days <= 60 ? `${days} day${days === 1 ? "" : "s"}` : null;
+}
+
 /** The person a phrase names, past any titles before it ("former UFC Heavyweight Champion Andrei Arlovski"). */
 function personIn(text: string): string | null {
   const name = [...text.replace(/\([^)]*\)/g, " ").matchAll(NAME)].at(-1)?.[0];
@@ -230,10 +268,11 @@ function personIn(text: string): string | null {
   return person.includes(" ") || words.length === 1 ? person : null;
 }
 /** Capitalized names, with the particles and suffixes names carry. */
-const NAME = /\p{Lu}(?:\.|[\p{L}'’-]+)(?: (?:Jr\.?|\p{Lu}(?:\.|[\p{L}'’-]+)|de|da|das|do|dos|van|von|der|del|la|le))*/gu;
-const NOT_NAMES = /^(?:However|In|Subsequently|Additionally|Also|After|Then|Later|Meanwhile|On|At|The|He|She|They|It|This|A|An|UFC|Due|Despite|As|Initially|Eventually|Shortly|Former|Promotional|Renato)$/;
+const NAME = /\p{Lu}(?:\.|[\p{L}'’-]+)(?: (?:Jr\.?|\p{Lu}(?:\.|[\p{L}'’-]+)|de|da|das|do|dos|du|van|von|der|del|la|le))*/gu;
+const NOT_NAMES = /^(?:However|In|Subsequently|Additionally|Also|After|Then|Later|Meanwhile|On|At|The|He|She|They|It|This|A|An|UFC|Due|Despite|As|Initially|Eventually|Shortly|Former|Promotional|Renato|Therefore|Less|One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten)$/;
+const CALENDAR = /^(?:January|February|March|April|May|June|July|August|September|October|November|December|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/;
 const SUFFIX = /^(?:jr|sr|ii|iii|iv)$/;
-const TITLE = /^(?:Champion|Winner|Challenger|Contender|Finalist|Veteran|Newcomer|FC|UFC|MMA|KSW|LFA|Rizin|Bellator|Invicta|PFL|ONE|Cage|Warriors|Season|Series|Road|Brazilian|Jiu-Jitsu|Olympian|Olympic|(?:Women's )?\p{L}*weight)$/u;
+const TITLE = /^(?:Champions?|Winner|Challenger|Contender|Finalist|Veteran|Newcomer|FC|UFC|MMA|KSW|LFA|Rizin|Bellator|Invicta|PFL|ONE|Cage|Warriors|Season|Series|Road|Brazilian|Jiu-Jitsu|Olympian|Olympic|(?:Women's )?\p{L}*weights?)$/u;
 const surnameOf = (name: string) => normName(name).split(" ").filter((word) => !SUFFIX.test(word)).at(-1) ?? "";
 
 /** "Herbert took the bout on short notice": the fighter named before the
@@ -243,12 +282,16 @@ function tookIt(raw: string, sentence: string, at: number): boolean {
   return at < cue && /\b(?:took|takes|accepted|accepts|stepped in|steps in|agreed|agrees|will make|made|makes|filled in|fills in)\b/.test(sentence.slice(at, cue));
 }
 
-/** The last person a stretch of prose names, without a leading "However". */
-function lastPerson(text: string): string | null {
-  const names = [...text.matchAll(NAME)].map((match) => match[0].split(" ").filter((word, index, words) => index > 0 || words.length === 1 || !NOT_NAMES.test(word)).join(" "))
-    .filter((name) => !NOT_NAMES.test(name));
-  return names.at(-1) ?? null;
+/** Names a stretch of prose may mean a person by, in order, without a
+ *  leading "However"; never a month, an acronym ("COVID-19") or a division. */
+function namesIn(text: string): string[] {
+  // A particle is only part of a name before a surname ("Zviad Lazishvili la …").
+  return [...text.matchAll(NAME)].map((match) => match[0].replace(/['’]s$/, "").replace(/(?: (?:de|da|das|do|dos|du|van|von|der|del|la|le))+$/, "").split(" ")
+    .filter((word, index, words) => index > 0 || words.length === 1 || !(NOT_NAMES.test(word) || CALENDAR.test(word))).join(" "))
+    .filter((name) => !NOT_NAMES.test(name) && !CALENDAR.test(name) && !TITLE.test(name) && !/^\p{Lu}{2,}/u.test(name) && !PLACE.test(name));
 }
+/** Words in the names of places, teams and events, not people. */
+const PLACE = /\b(?:Fight|Night|Event|Card|Arena|Centre|Center|Stadium|Championship|League|Series|Den|Team|Gym|Academy|Club|Lake)\b/;
 
 /**
  * Which fighters on this card replaced someone, and who took a bout on short
@@ -269,6 +312,7 @@ export function cardChanges(wikitext: string, bouts: [string, string][]): CardCh
   const prose = plainText(background).replace(/\n\*+\s*/g, ". ").replace(/\s+/g, " ");
   const sentences = prose.split(/(?<=[.!?])(?<!\bvs\.)\s+(?=[A-Z])/);
   const people = cardPeople(bouts.flat());
+  const held = infoboxDate(wikitext);
   const opponent = new Map(bouts.flatMap(([a, b]) => [[a, b], [b, a]] as const));
   const found = new Map<string, BoutChange>();
   type Withdrawal = { name: string; late: boolean; notice: string | null; due: string | null };
@@ -284,6 +328,19 @@ export function cardChanges(wikitext: string, bouts: [string, string][]): CardCh
     const tail = ` ${normName(name).split(" ").filter((word) => !SUFFIX.test(word)).join(" ")}`;
     const links = [...new Set(linked.filter((link) => ` ${normName(link).split(" ").filter((word) => !SUFFIX.test(word)).join(" ")}`.endsWith(tail)))];
     if (links.length === 1) return links[0];
+    // "Al-Selwady" and "Du Plessis" are one surname: Abdul-Kareem Al-Selwady,
+    // Dricus du Plessis.
+    if (/^(?:du|de|da|dos|das|do|van|von|der|del|la|le|al|el) \S+$/i.test(name)) {
+      const named = [...new Set([...linked, ...[...prose.matchAll(NAME)].map((match) => match[0])]
+        .filter((other) => normName(other).endsWith(` ${normName(name)}`) && normName(other) !== normName(name)))];
+      return named.length === 1 ? named[0] : name;
+    }
+    if (!/\s/.test(name) && tail.trim().includes(" ")) {
+      const joined = tail.replace(/ /g, "");
+      const named = [...new Set([...linked, ...[...prose.matchAll(NAME)].map((match) => match[0])]
+        .filter((other) => other.includes(" ") && normName(other.split(" ").at(-1)).replace(/ /g, "") === joined))];
+      return named.length === 1 ? named[0] : name;
+    }
     if (tail.trim().includes(" ")) return name;
     const surname = tail.trim();
     // Unlinked: the nearest earlier "First Last" ending in the surname (or
@@ -301,15 +358,48 @@ export function cardChanges(wikitext: string, bouts: [string, string][]): CardCh
       }
       return null;
     };
-    return find(earlier) ?? find(prose) ?? name;
+    // The article's own misspelling ("Cunninham" for Cunningham), only when
+    // one person's surname is that close.
+    const close = [...new Set([...linked, ...[...prose.matchAll(NAME)].map((match) => match[0])].filter((other) => {
+      const last = surnameOf(other);
+      return other.includes(" ") && surname.length >= 6 && last !== surname && editDistance(last, surname) <= 1 && !NOT_NAMES.test(other.split(" ")[0]);
+    }))];
+    return find(earlier) ?? find(prose) ?? (close.length === 1 ? close[0] : name);
   };
+  // Whom a clause is about: its last name that belongs to someone (a full
+  // name, or a surname the article gives in full), or for "he"/"she" whoever
+  // the sentences before were about.
+  const personBefore = (text: string, pronoun: string | null) => {
+    const names = namesIn(text);
+    const name = names.filter((written) => fullName(written).includes(" ")).at(-1);
+    // A surname the article never gives in full is still kept as written.
+    return name ?? (/\b(?:he|she)\b/i.test(text) ? pronoun : null) ?? names.at(-1) ?? null;
+  };
+  // Every booking the article states ("Medeiros was expected to face Perry"),
+  // latest last: the fighter a replacement's opponent was booked against.
+  const booked: [string, string][] = [];
+  const pairedWith = (replacement: string) => {
+    const stayed = opponent.get(replacement);
+    const pair = stayed ? [...booked].reverse().find((entry) => entry.some((who) => surnameOf(who) === surnameOf(stayed))) : null;
+    return pair?.find((who) => surnameOf(who) !== surnameOf(stayed!)) ?? null;
+  };
+  // A withdrawal read in the last few sentences, and whom the last sentence
+  // was first about (for "Therefore, he was pulled …").
+  let withdrawnAt = -9;
+  let at = -1;
+  let subject: string | null = null;
   for (const raw of sentences) {
+    at++;
     const sentence = normName(raw);
     // A sentence about another card's booking is history, not this card's change.
     // Another card named in a side clause ("Guskov, who was scheduled at UFC 300,
     // replaced him") doesn't move the sentence there.
     const bare = raw.replace(/,\s*who\b[^,]*(?:,|$)/g, ",");
-    const elsewhere = OTHER_EVENT.test(bare) && !/\bthis (?:event|card)\b/i.test(bare);
+    // So is one that opens with a date after this card ("On Friday April 20,
+    // 2012, … Overeem has been removed" in UFC 140's article).
+    const opening = new RegExp(`^(?:However, )?On (?:[A-Z][a-z]+day,? )?((?:${MONTHS.join("|")}) \\d{1,2}, \\d{4})\\b`).exec(raw);
+    const later = held != null && opening != null && Date.parse(`${opening[1]} 12:00 UTC`) > Date.parse(`${held}T23:59:59Z`);
+    const elsewhere = later || (OTHER_EVENT.test(bare) && !/\bthis (?:event|card)\b/i.test(bare));
     const named = namedIn(sentence, people);
     // "The fight between X and Y was removed" is the bout, not a fighter, leaving.
     const cue = raw.match(WITHDREW);
@@ -318,14 +408,27 @@ export function cardChanges(wikitext: string, bouts: [string, string][]): CardCh
     let replaced: string | null = null;
     const by = raw.match(REPLACED_BY);
     // A backup who never fought for the spot replaced no one.
-    const step = by || /\bbackup\b|potential replacement|alternate\b/i.test(raw) ? null : raw.match(STEPPED_IN);
+    let step = by || /\bbackup\b|potential replacement|alternate\b/i.test(raw) ? null : raw.match(STEPPED_IN);
+    // "Kevin Holland, whom Vettori replaced …" is about someone else's change.
+    if (step && /\bwhom\b[^,.;]*$/i.test(raw.slice(0, step.index))) step = null;
     const instead = by ? null : raw.match(/\binstead (?:faced|faces|face|fought|met|meets|took on)\b/i);
     if (by) {
       const cueAt = normName(raw.slice(0, by.index)).length;
       replacement = named.find((entry) => entry.at >= cueAt)?.person.name ?? null;
-      // "X withdrew and was replaced by Z", or "He was replaced by Z" after the withdrawal.
-      replaced = out && out.index! < by.index! ? lastPerson(raw.slice(0, out.index))
-        : /^(?:He|She)\b/.test(raw.trim()) ? withdrawn?.name ?? null : lastPerson(raw.slice(0, by.index));
+      // A bout replaced by another bout ("… replaced by Sarah Kaufman vs. Jessica Eye").
+      if (/^replaced by (?:\p{Lu}[\p{L}'’.-]+ ){1,3}vs\.? \p{Lu}/u.test(raw.slice(by.index))) replacement = null;
+      // "X withdrew and was replaced by Z"; "He was replaced by Z" after "X
+      // withdrew": X. Otherwise whoever Z's
+      // opponent was booked against ("Medeiros was expected to face Perry.
+      // However, he pulled out … and was replaced by Felder").
+      const recent = withdrawnAt >= at - 2 ? withdrawn?.name ?? null : null;
+      const paired = replacement ? pairedWith(replacement) : null;
+      replaced = out && out.index! < by.index! ? personBefore(raw.slice(0, out.index), paired ?? recent)
+        : /^(?:He|She)\b/.test(raw.trim()) ? recent ?? paired : personBefore(raw.slice(0, by.index), paired ?? recent);
+      // Never the opponent who stayed ("X was expected to face Y, but has been
+      // injured and replaced by Z").
+      const stayed = replacement ? opponent.get(replacement) : null;
+      if (replaced && stayed && surnameOf(fullName(replaced)) === surnameOf(stayed)) replaced = paired;
     } else if (instead && named.length >= 2) {
       // "Rakhmonov instead faced Garry": Garry took the place of whoever left Rakhmonov.
       const cueAt = normName(raw.slice(0, instead.index)).length;
@@ -337,7 +440,8 @@ export function cardChanges(wikitext: string, bouts: [string, string][]): CardCh
       replacement = named.find((entry) => entry.at < cueAt)?.person.name ?? null;
       const after = raw.slice(step.index! + step[0].length);
       replaced = /^\s*(?:him|her)\b/.test(after) ? withdrawn?.name ?? null
-        : [...after.matchAll(NAME)].map((match) => match[0]).find((name) => !NOT_NAMES.test(name)) ?? null;
+        // "… a replacement for Harvey's original opponent Antônio Rogério Nogueira".
+        : namesIn(after.replace(/^\s*\S+['’]s (?:original |former |scheduled )?opponent,?/u, ""))[0] ?? null;
     }
     const notice = SHORT_NOTICE.test(raw);
     const late = notice || LATE.test(raw);
@@ -376,15 +480,16 @@ export function cardChanges(wikitext: string, bouts: [string, string][]): CardCh
       found.set(person, {
         name: person, replaced: wrong ? "" : name,
         shortNotice: !!previous?.shortNotice || late || (theirs && withdrawn!.late) || !!told,
-        notice: told ?? previous?.notice ?? null,
+        // A later replacement (of someone else) doesn't keep the earlier one's notice.
+        notice: told ?? (previous?.replaced && name && previous.replaced !== name ? null : previous?.notice) ?? datedNotice(raw, held),
       });
     } else if (notice && !elsewhere && named.length === 1 && !out && tookIt(raw, sentence, named[0].at)) {
       const person = named[0].person.name;
       found.set(person, { name: person, replaced: found.get(person)?.replaced ?? null, shortNotice: true, notice: stated ?? found.get(person)?.notice ?? null });
     }
     if (out && !by && !elsewhere) {
-      const name = lastPerson(raw.slice(0, out.index));
-      if (name) withdrawn = { name, late, notice: stated, due };
+      const name = personBefore(raw.slice(0, out.index), subject);
+      if (name) { withdrawn = { name, late, notice: stated, due }; withdrawnAt = at; }
     }
     // The pairing a sentence is about: one it names, latest first, else the last announced.
     const about = [...pairings].reverse().find((pair) => mentions(raw, pair.f1) || mentions(raw, pair.f2))
@@ -400,7 +505,11 @@ export function cardChanges(wikitext: string, bouts: [string, string][]): CardCh
         about.reason ??= member ? null : due;
       }
     }
+    const faces = elsewhere ? null : intro ?? /^(?:[^,]*,\s*)?(.+?) (?:was|had been|is) (?:originally |initially |previously )?(?:expected|scheduled|set|booked) to (?:face|meet|fight) (.+?)(?= at\b| in\b| on\b|,|\.|$)/.exec(raw);
+    const pair = faces && [personIn(faces[1]), personIn(faces[2])];
+    if (pair?.[0] && pair[1]) booked.push([fullName(pair[0]), fullName(pair[1])]);
     earlier += ` ${raw}`;
+    subject = namesIn(raw).find((written) => fullName(written).includes(" ")) ?? null;
   }
   // Scrapped, or left without an opponent, and neither fought anyone else on
   // the card: a fighter who did was given a new opponent, not cancelled.
@@ -753,7 +862,7 @@ function sectionRows(wikitext: string, heading: RegExp): Record<string, string>[
   }).filter(row => Object.values(row).some(value => value.trim()));
 }
 
-function rosterMoves(wikitext: string, heading: RegExp): RosterMove[] {
+export function rosterMoves(wikitext: string, heading: RegExp): RosterMove[] {
   const rows = sectionRows(wikitext, heading);
   const column = (row: Record<string, string>, pattern: RegExp) => Object.entries(row).find(([key]) => pattern.test(key))?.[1] ?? "";
   return rows.map(row => {
@@ -765,7 +874,8 @@ function rosterMoves(wikitext: string, heading: RegExp): RosterMove[] {
       nickname: cellText(column(row, /nickname/)),
       country: flag ? ALPHA2[flag] ?? null : null,
       division: cellText(column(row, /division/)),
-      reason: cellText(column(row, /reason/)),
+      // Older tables head it "Retired / Released / Chose not to re-sign".
+      reason: cellText(column(row, /reason|retired|released/)),
       record: cellText(column(row, /^mma record$/)),
     };
   }).filter(move => move.name);
@@ -773,9 +883,10 @@ function rosterMoves(wikitext: string, heading: RegExp): RosterMove[] {
 
 /** Wikipedia's "Recent signings" and "Recent releases and retirements"
  *  tables, the ones editors keep from the UFC's own roster changes. */
+export const ROSTER_HEADINGS = {
+  signed: /\n==\s*Recent signings\s*==/i,
+  cut: /\n==\s*Recent (?:releases(?: and retirements)?|cuts)\s*==/i,
+};
 export function rosterChanges(wikitext: string): { signed: RosterMove[]; cut: RosterMove[] } {
-  return {
-    signed: rosterMoves(wikitext, /\n==\s*Recent signings\s*==/i),
-    cut: rosterMoves(wikitext, /\n==\s*Recent releases(?: and retirements)?\s*==/i),
-  };
+  return { signed: rosterMoves(wikitext, ROSTER_HEADINGS.signed), cut: rosterMoves(wikitext, ROSTER_HEADINGS.cut) };
 }

@@ -92,9 +92,10 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-06">October 6, 2026</time></p>
             <ul>
-              <li>Quality of opposition: Wins and Losses now filter the fighter’s own results, showing each of those opponents’ full record.</li>
-              <li>Each opponent’s earlier wins and losses sit in a compact grid beside them.</li>
-              <li>The opposition window is larger on big screens.</li>
+              <li>Replacements name the right fighter: no more “Replaced February” or “COVID-”, and short surnames are completed.</li>
+              <li>More replacements show their days’ notice, and replaced fighters link to their profiles.</li>
+              <li>Weigh-in misses read correctly from lists like “128, 129 and 160 pounds”, without blaming a namesake or the opponent.</li>
+              <li>Fighter timelines show about 1,400 more dated UFC signings and releases, each linked to its source.</li>
             </ul>
           </Section>
         </div>
