@@ -35,11 +35,12 @@ function Chips({ standing }: { standing: Standing | null }) {
   return <>{standingChips(standing).map(chip => <span key={chip.kind} title={chip.title} className={`${CHIP} py-px ${chipTone[chip.kind]}`}><span className="sr-only">{chip.title}: </span><span aria-hidden="true">{chip.short}</span></span>)}</>;
 }
 
-/** A name: a profile here, else their Sherdog page. Gold for anyone who held,
- *  holds or would go on to hold a UFC belt. */
-function Name({ opponent, standing, className = "" }: { opponent: { id: string | null; name: string; source_url?: string | null }; standing: Standing | null; className?: string }) {
+/** A name: `to` when given, else a profile here, else their Sherdog page.
+ *  Gold for anyone who held, holds or would go on to hold a UFC belt. */
+function Name({ opponent, standing, to, title, className = "" }: { opponent: { id: string | null; name: string; source_url?: string | null }; standing: Standing | null; to?: string; title?: string; className?: string }) {
   const style = `${className} font-medium ${standing?.belt ? "text-belt" : "text-zinc-900"}`;
   const linked = `${style} underline ${linkUnderline}`;
+  if (to) return <Link to={to} title={title ?? opponent.name} className={linked}>{opponent.name}</Link>;
   if (opponent.id) return <Link to={`/fighters/${opponent.id}`} title={opponent.name} className={linked}>{opponent.name}</Link>;
   if (opponent.source_url) return <a href={opponent.source_url} target="_blank" rel="noopener noreferrer" title={`${opponent.name} on Sherdog`} className={linked}>{opponent.name}</a>;
   return <span title={opponent.name} className={style}>{opponent.name}</span>;
@@ -48,22 +49,20 @@ function Name({ opponent, standing, className = "" }: { opponent: { id: string |
 type Group = ReturnType<typeof oppositionGroups>[number];
 const boutLabel = (name: string, outcome: OppositionBout["outcome"], against: string) => `${name}: ${resultWords[outcome ?? ""] ?? "Result unknown"} against ${against}`;
 
-/** The selected fighter's meetings with one opponent: result, name and rank
- *  going in; how it ended and their UFC record going in; the matchup. */
+/** The selected fighter's meetings with one opponent: result, name (opening
+ *  the matchup) and rank going in; how it ended and their UFC record going in. */
 function Faced({ fighter, group }: { fighter: Fighter; group: Group }) {
   return <div className="space-y-2">
     {group.meetings.map(meeting => <div key={meeting.fight_id} className="flex min-w-0 flex-col text-zinc-700">
       <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 break-words">
         <Result outcome={meeting.outcome} label={boutLabel(fighter.name, meeting.outcome, group.opponent.name)} />
-        <Name opponent={group.opponent} standing={meeting.standing} />
+        <Name opponent={group.opponent} standing={meeting.standing} to={`/fights/${meeting.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name}`} />
         <Chips standing={meeting.standing} />
       </span>
       <span className="mt-1 pl-6.5 text-zinc-500">
         <span title={meeting.method ?? undefined}>{resultDot(meeting).shortMethod || "—"}</span>
         {" · "}<span className="tabular-nums" title="UFC record going in"><span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(meeting.record)}</span>
       </span>
-      <Link to={`/fights/${meeting.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name}`}
-        className="ml-6.5 mt-1.5 self-start rounded-full bg-zinc-100 px-2.5 py-0.5 font-semibold text-zinc-700 hover:bg-zinc-200 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">Matchup</Link>
     </div>)}
   </div>;
 }
