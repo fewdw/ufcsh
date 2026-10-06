@@ -29,6 +29,7 @@ import { isSummaryAgeDisagreement, validateFightActions } from "./action-stats.t
 import { correctOfficialJudges } from "./verified-scorecard-corrections.ts";
 import { cardChanges, catchweights, eventInfobox, eventSection, fetchArticleByTitle, fetchEventArticle, fetchFighterArticle, recordCatchweight, samePlace, weightMisses } from "./scrape/wikipedia.ts";
 import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
+import { syncOpponentRecords } from "./opponent-records.ts";
 import { syncVerdictScorecards } from "./verdict-import.ts";
 import { syncRosterMoves, syncUfcSignings, syncUfcStatuses } from "./roster-moves.ts";
 import { syncNews } from "./news.ts";
@@ -1939,6 +1940,9 @@ export async function tick(): Promise<void> {
     // 13. Complete professional records. This has its own politely throttled
     //     host queue, so it cannot delay UFCStats results or rankings.
     void guarded("career_records", () => syncCareerRecords(40));
+    // 14. Records of opponents met outside the UFC, on the same Sherdog queue:
+    //     twenty pages a minute, readers' fighters first.
+    void guarded("opponent_records", async () => { await syncOpponentRecords(20); });
 
     setMeta("last_tick_at", String(Date.now()));
   } finally {

@@ -3,7 +3,7 @@ import type { BugActionId } from "./bugs.ts";
 
 // Keyed by the board's own action type, so a repair it offers can't be left out.
 const ACTIONS: Record<BugActionId, true> = {
-  "potential-odds": true, odds: true, props: true, career: true, detail: true, segments: true, event: true,
+  "potential-odds": true, odds: true, props: true, career: true, "opponent-records": true, detail: true, segments: true, event: true,
   "clear-bfo": true, birth: true, wiki: true, article: true, catchweight: true, "forget-ufc": true, verdict: true,
   "roster-moves": true, "ufc-status": true, news: true, "news-ai": true, "ranking-history": true, rankings: true,
 };

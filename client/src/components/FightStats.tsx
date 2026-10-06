@@ -1,4 +1,5 @@
 import CareerStatDetails from "./CareerStatDetails";
+import { decidingRound } from "../decidingRound";
 import { PANEL } from "./chartTokens";
 import { Fragment } from "react";
 import { Link, useLocation } from "react-router-dom";
@@ -1118,10 +1119,14 @@ export function Scorecards({ fight }: { fight: Matchup }) {
   const { data } = useApi<ScoreSummary>(judges?.length ? `/api/fights/${fight.id}/scores` : null);
   const fans = data && data.totals.avg1 != null && data.totals.avg2 != null ? data.totals : null;
   if (!judges?.length) return null;
+  const decided = decidingRound(judges, fight.f1.outcome === "win" ? "f1" : fight.f2.outcome === "win" ? "f2" : null);
   return (
     <section className={`${shell} @container overflow-hidden`}>
       <PanelHeading title="Scorecards" />
-      <ScorecardTable fight={fight} judges={judges} fans={fans} rounds={data?.rounds ?? []} />
+      <ScorecardTable fight={fight} judges={judges} fans={fans} rounds={data?.rounds ?? []} decided={decided} />
+      {decided ? <p className="border-t border-zinc-100 px-4 py-2 text-center text-[11px] leading-4 text-zinc-500 sm:px-5">
+        <span className="font-semibold text-zinc-900">Round {decided} decided the fight.</span> The judges split on it, and scored the other way it changes the winner.
+      </p> : null}
     </section>
   );
 }
@@ -1143,11 +1148,12 @@ function ScorePair({ f1, f2, text, size }: { f1: number; f2: number; text: (valu
 
 /** Every card as one table: judges (and the fans) across, the
  *  total first and each round under it, so the round names are printed once. */
-function ScorecardTable({ fight, judges, fans, rounds }: {
+function ScorecardTable({ fight, judges, fans, rounds, decided }: {
   fight: Matchup;
   judges: Judge[];
   fans: ScoreSummary["totals"] | null;
   rounds: ScoreSummary["rounds"];
+  decided: number | null;
 }) {
   const location = useLocation();
   const roundCount = Math.max(0, ...judges.map((judge) => judge.rounds?.length ?? 0), fans ? rounds.length : 0);
@@ -1190,7 +1196,7 @@ function ScorecardTable({ fight, judges, fans, rounds }: {
 
       {Array.from({ length: roundCount }, (_, index) => (
         <Fragment key={`round-${index}`}>
-          <span className={`flex items-center border-t border-zinc-100 py-1 ${sectionLabel} !text-[9px] !tracking-normal`}>R{index + 1}</span>
+          <span className={`flex items-center border-t border-zinc-100 py-1 ${sectionLabel} !text-[9px] !tracking-normal ${decided === index + 1 ? "!text-zinc-900" : ""}`} title={decided === index + 1 ? "This round decided the fight" : undefined}>R{index + 1}</span>
           {judges.map((judge, judgeIndex) => {
             const round = judge.rounds?.[index];
             return (

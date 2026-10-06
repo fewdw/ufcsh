@@ -224,6 +224,20 @@ CREATE INDEX IF NOT EXISTS idx_career_bouts_fighter_date
   ON career_bouts(fighter_id, date, source_order);
 CREATE INDEX IF NOT EXISTS idx_career_bouts_ufc
   ON career_bouts(ufc_fight_id);
+
+-- Dated results of opponents met outside the UFC, read from the page the
+-- verified history links to, so their record on the night can be counted.
+-- Read only by that URL: no app profile, no name matching.
+CREATE TABLE IF NOT EXISTS opponent_records (
+  source_url  TEXT PRIMARY KEY,
+  name        TEXT NOT NULL DEFAULT '',
+  -- [[date, outcome], ...] from the last good read, in the page's order
+  bouts_json  TEXT,
+  -- Last good read: it counts only for bouts dated before it.
+  fetched_at  INTEGER,
+  checked_at  INTEGER NOT NULL,
+  error       TEXT NOT NULL DEFAULT ''
+);
 `);
 
 const careerBoutColumns = db.prepare("PRAGMA table_info(career_bouts)").all() as { name: string }[];

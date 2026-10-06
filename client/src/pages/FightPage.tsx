@@ -52,6 +52,7 @@ import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { useShortcutNav } from "../shortcuts";
 import { BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
 import OppositionDetails from "../components/OppositionDetails";
+import { OddsRecordPanel, RoundOutcomesPanel } from "../components/FightInsights";
 
 const shell = PANEL_SHELL;
 const RESULT_PILL =
@@ -995,6 +996,8 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 </section>
                 <RecentForm fight={fight} />
                 <CareerProfile fight={fight} />
+                <RoundOutcomesPanel fighters={[fight.f1, fight.f2]} subtitle="UFC · Before this fight" />
+                <OddsRecordPanel fighters={[fight.f1, fight.f2]} subtitle="UFC · Before this fight" />
                 <HeadToHead fight={fight} />
                 {!fight.potential ? <HeadToHead fight={fight} later /> : null}
                 <CommonOpponents fight={fight} />
