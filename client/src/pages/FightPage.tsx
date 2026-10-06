@@ -996,8 +996,8 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 </section>
                 <RecentForm fight={fight} />
                 <CareerProfile fight={fight} />
-                <RoundOutcomesPanel fighters={[fight.f1, fight.f2]} subtitle="UFC · Before this fight" />
-                <OddsRecordPanel fighters={[fight.f1, fight.f2]} subtitle="UFC · Before this fight" />
+                <RoundOutcomesPanel fighters={[fight.f1, fight.f2]} />
+                <OddsRecordPanel fighters={[fight.f1, fight.f2]} />
                 <HeadToHead fight={fight} />
                 {!fight.potential ? <HeadToHead fight={fight} later /> : null}
                 <CommonOpponents fight={fight} />

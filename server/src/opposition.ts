@@ -1,5 +1,4 @@
-import { completeRecordBefore, opponentOf, professionalBouts, professionalBoutsBefore, sideOf, ufcBoutsBefore, type CareerBout, type FightIndex, type FightRecord, type IndexedFight, type Outcome } from "./fight-index.ts";
-import { fightersBySourceUrl, storedBoutsBefore, storedOpponentRecords, storedRecordBefore, type StoredBout } from "./opponent-records.ts";
+import { boutsBefore, completeRecordBefore, opponentOf, professionalBoutsBefore, sideOf, ufcBoutsBefore, type CareerBout, type FightIndex, type FightRecord, type IndexedFight, type Outcome } from "./fight-index.ts";
 
 const emptyRecord = (): FightRecord => ({ wins: 0, losses: 0, draws: 0, ncs: 0 });
 const resultKey: Record<Outcome, keyof FightRecord> = { win: "wins", loss: "losses", draw: "draws", nc: "ncs" };
@@ -12,82 +11,58 @@ export type OpponentTag =
 
 export type RankOf = (opponentId: string, fight: IndexedFight) => { rank: string; division: string } | null;
 
-/** One of the opponent's earlier bouts: outside the UFC, its opponent links
- *  to their Sherdog page unless they have a profile here. */
-export type EarlierBout = {
-  fight_id: string | null; date: string; outcome: Outcome; method: string | null; promotion: "ufc" | "outside";
+/** Someone the opponent had beaten: a profile here, else their Sherdog page. */
+export type EarlierWin = {
+  fight_id: string | null; date: string; method: string | null;
   opponent: { id: string | null; name: string; source_url: string | null };
 };
 
-const fromCareer = (bout: CareerBout): EarlierBout => ({
-  fight_id: bout.ufcFightId, date: bout.date, outcome: bout.outcome, method: bout.method || null,
-  promotion: bout.isUfc ? "ufc" : "outside",
+const earlierWin = (bout: CareerBout): EarlierWin => ({
+  fight_id: bout.ufcFightId, date: bout.date, method: bout.method || null,
   opponent: { id: bout.opponentId || null, name: bout.opponentName, source_url: bout.opponentId ? null : bout.opponentUrl || null },
 });
 
 const wonBelt = (fight: IndexedFight, id: string) =>
   fight.titleFight && (fight.titleType === "title" || fight.titleType === "interim") && sideOf(fight, id).outcome === "win";
 
-/** Every professional bout, newest first, each opponent with their record on
- *  the night. `record` is the opponent's UFC record entering a UFC bout in our
- *  data, and those alone sum to the matchup's combined opponent record; the
- *  professional record is shown where a verified or linked history has it. */
+/** Every UFC opponent, newest first, with their records going in and who they
+ *  had beaten. `record` (UFC, on the night) sums to the matchup's combined
+ *  opponent record; `wins` is their whole verified professional history, or
+ *  their UFC bouts until that history is verified. */
 export function opposition(index: FightIndex, fighterId: string, before?: { id: string; date: string; ord: number }, rankOf?: RankOf) {
   const fighter = index.fighters.get(fighterId);
   if (!fighter) return null;
-  const bouts = before ? professionalBoutsBefore(index, fighterId, before.date, before.ord) : professionalBouts(index, fighterId);
-  const stored = storedOpponentRecords(bouts.map(bout => bout.ufcFightId ? "" : bout.opponentUrl ?? ""));
-  const linked = fightersBySourceUrl([...stored.values()].flatMap(entry => entry.bouts.map(bout => bout.url)));
-  const fromStored = (bout: StoredBout): EarlierBout => {
-    const id = linked.get(bout.url) ?? null;
-    return {
-      fight_id: null, date: bout.date, outcome: bout.outcome, method: bout.method || null, promotion: bout.ufc ? "ufc" : "outside",
-      opponent: { id, name: bout.name, source_url: id ? null : bout.url || null },
-    };
-  };
+  const fights = before ? boutsBefore(index, fighterId, before.date, before.ord) : fighter.fights;
   const firstBelts = new Map<string, IndexedFight | null>();
   const firstBelt = (id: string) => {
     if (!firstBelts.has(id)) firstBelts.set(id, index.fighters.get(id)?.fights.find(fight => wonBelt(fight, id)) ?? null);
     return firstBelts.get(id)!;
   };
   const total = emptyRecord();
-  const rows = bouts.map(bout => {
-    const local = bout.ufcFightId ? index.byId?.get(bout.ufcFightId) ?? fighter.fights.find(fight => fight.id === bout.ufcFightId) : undefined;
-    const opponent = local ? opponentOf(local, fighterId) : null;
-    const opponentId = opponent?.id || bout.opponentId || null;
-    let record: FightRecord | null = null;
-    if (local) {
-      record = emptyRecord();
-      for (const prior of ufcBoutsBefore(index, opponent!.id, local.date, local.ord)) record[resultKey[prior.outcome]]++;
-      for (const key of Object.keys(total) as (keyof FightRecord)[]) total[key] += record[key];
-    }
-    // Who the opponent had met going in: a verified history in full, a UFC
-    // record alone, or the stored page of an opponent with no profile here.
-    const verified = opponentId ? index.fighters.get(opponentId)?.careerVerified : false;
-    const page = !opponentId && !local && bout.opponentUrl ? stored.get(bout.opponentUrl) : undefined;
-    const pro = verified ? completeRecordBefore(index, opponentId!, bout.date, local?.ord) : page ? storedRecordBefore(page, bout.date) : null;
-    const history = verified ? professionalBoutsBefore(index, opponentId!, bout.date, local?.ord).map(fromCareer).reverse()
-      : opponentId ? ufcBoutsBefore(index, opponentId, bout.date, local?.ord).map(fromCareer).reverse()
-        : (storedBoutsBefore(page, bout.date) ?? []).map(fromStored);
+  const rows = fights.map(fight => {
+    const opponent = opponentOf(fight, fighterId);
+    const record = emptyRecord();
+    for (const prior of ufcBoutsBefore(index, opponent.id, fight.date, fight.ord)) record[resultKey[prior.outcome]]++;
+    for (const key of Object.keys(total) as (keyof FightRecord)[]) total[key] += record[key];
+    const verified = Boolean(opponent.id && index.fighters.get(opponent.id)?.careerVerified);
+    const earlier = verified ? professionalBoutsBefore(index, opponent.id, fight.date, fight.ord) : ufcBoutsBefore(index, opponent.id, fight.date, fight.ord);
     let tag: OpponentTag | null = null;
-    if (opponentId) {
-      const rank = local && rankOf ? rankOf(opponentId, local) : null;
-      const belt = firstBelt(opponentId);
-      const beltBefore = belt && (belt.date < bout.date || (local != null && belt.date === local.date && belt.ord > local.ord));
-      if (rank?.rank === "C" || opponent?.prior.reigningChampion) tag = { kind: "champion" };
+    if (opponent.id) {
+      const rank = rankOf ? rankOf(opponent.id, fight) : null;
+      const belt = firstBelt(opponent.id);
+      const beltBefore = belt && (belt.date < fight.date || (belt.date === fight.date && belt.ord > fight.ord));
+      if (rank?.rank === "C" || opponent.prior.reigningChampion) tag = { kind: "champion" };
       else if (rank?.rank === "IC") tag = { kind: "interim" };
       else if (rank) tag = { kind: "rank", rank: rank.rank, division: rank.division };
       else if (beltBefore) tag = { kind: "former" };
-      else if (belt && belt.id !== local?.id) tag = { kind: "future" };
+      else if (belt && belt.id !== fight.id) tag = { kind: "future" };
     }
     return {
-      fight_id: local?.id ?? null, date: bout.date, outcome: local ? sideOf(local, fighterId).outcome : bout.outcome,
-      method: local?.method ?? (bout.method || null), round: local?.round ?? null,
-      promotion: bout.isUfc ? "ufc" as const : "outside" as const, event_name: local?.eventName ?? bout.eventName,
-      opponent: { id: opponentId, name: opponent?.name || bout.opponentName, source_url: opponentId ? null : bout.opponentUrl ?? null },
-      record, pro_record: pro, tag,
+      fight_id: fight.id, date: fight.date, outcome: sideOf(fight, fighterId).outcome, method: fight.method,
+      opponent: { id: opponent.id || null, name: opponent.name },
+      record, pro_record: verified ? completeRecordBefore(index, opponent.id, fight.date, fight.ord) : null, tag,
       /** Newest first. */
-      history,
+      wins: earlier.filter(bout => bout.outcome === "win").map(earlierWin).reverse(),
     };
   }).reverse();
   return {

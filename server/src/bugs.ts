@@ -9,7 +9,6 @@ import { normName } from "./util.ts";
 import { noContestUnexplained } from "./no-contest.ts";
 import { pageNamesFighter } from "./scrape/odds.ts";
 import { syncCareerRecord } from "./career-records.ts";
-import { opponentRecordGaps, syncOpponentRecords } from "./opponent-records.ts";
 import { hasCompleteJudgeRounds } from "./judge-scorecards.ts";
 import { importVerdictEvent } from "./verdict-import.ts";
 import { mergedByHand, officialsIndex } from "./officials.ts";
@@ -1741,7 +1740,6 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     rankingHistoryGaps(),
     titleRankingEvidenceGaps(),
     fightsMissingFromHistory(),
-    outsideOpponentRecords(),
     unlinkedUfcBouts(),
     unexplainedNoContests(),
     recordMismatch(active),
@@ -1806,29 +1804,7 @@ function newsUnjudged(): BugCheck {
   }, items);
 }
 
-/** /fights/:id → Quality of opposition: outside-UFC opponents are counted from
- *  their own Sherdog page. Until it's read their record on the night is "—". */
-function outsideOpponentRecords(): BugCheck {
-  return check({
-    id: "outside-opponent-records",
-    group: "Records",
-    label: "Outside-UFC opponents without a record",
-    description: "Quality of opposition shows each opponent's professional record on the night. Opponents met outside the UFC have no profile here: their record is read from the Sherdog page the verified history links to, twenty pages a minute in the background, booked and ranked fighters first. Until then the dialog shows a dash. A failed read is retried after a week; opponents with no Sherdog link can't be read and aren't listed.",
-    grade: (item) => item.subtitle === "Booked" ? "must" : "minor",
-  }, opponentRecordGaps().map((row) => ({
-    key: row.fighter_id,
-    title: row.name,
-    subtitle: row.booked ? "Booked" : undefined,
-    facts: [
-      ["Unread opponents", String(row.missing)],
-      ...(row.failed ? [["Failed reads", `${row.failed}: ${row.error}`] as [string, string]] : []),
-    ],
-    links: [fighterLink(row.fighter_id, row.name), ...(row.source_url ? [{ label: "Sherdog", href: row.source_url }] : [])],
-    actions: [{ id: "opponent-records", label: "Read now", target: row.fighter_id }],
-  })));
-}
-
-export type BugActionId = "potential-odds" | "odds" | "props" | "career" | "opponent-records" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings";
+export type BugActionId = "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -1882,10 +1858,6 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
       const verified = await syncCareerRecord(target);
       const row = db.prepare("SELECT status, error FROM career_profiles WHERE fighter_id = ?").get(target) as { status: string; error: string } | undefined;
       return { ok: verified, message: verified ? "History verified and re-stored." : `Still ${row?.status ?? "unverified"}${row?.error ? `: ${row.error}` : ""}.` };
-    }
-    case "opponent-records": {
-      const { read, failed } = await syncOpponentRecords(60, target);
-      return { ok: !failed, message: read || failed ? `Read ${read} opponent ${read === 1 ? "record" : "records"}${failed ? `; ${failed} failed` : ""}.` : "Nothing due: every page was read recently." };
     }
     case "verdict": {
       const ids = target.startsWith("card:") ? [Number(target.slice(5))]

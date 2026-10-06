@@ -3,19 +3,15 @@ import type { OpponentTag, Opposition, OppositionBout, OppositionRecord } from "
 export type OppositionFilter = "all" | "win" | "loss";
 
 /** Each opponent once, most recent meeting first, with every meeting the
- *  filter keeps (the selected fighter's result) and, for each, the wins and
- *  losses the opponent had going in. Draws and no contests are left out. */
+ *  filter (the selected fighter's result) keeps. */
 export function oppositionGroups(data: Opposition, outcome: OppositionFilter) {
-  type Meeting = { meeting: OppositionBout; bouts: OppositionBout["history"] };
-  const groups = new Map<string, { opponent: OppositionBout["opponent"]; outside: boolean; meetings: Meeting[] }>();
+  const groups = new Map<string, { opponent: OppositionBout["opponent"]; meetings: OppositionBout[] }>();
   for (const meeting of data.rows) {
     if (outcome !== "all" && meeting.outcome !== outcome) continue;
-    const key = meeting.opponent.id ?? meeting.opponent.source_url ?? meeting.opponent.name;
+    const key = meeting.opponent.id ?? meeting.opponent.name;
     let group = groups.get(key);
-    if (!group) groups.set(key, group = { opponent: meeting.opponent, outside: true, meetings: [] });
-    // Purple only when every meeting was outside the UFC.
-    group.outside &&= meeting.promotion === "outside";
-    group.meetings.push({ meeting, bouts: meeting.history.filter(bout => bout.outcome === "win" || bout.outcome === "loss") });
+    if (!group) groups.set(key, group = { opponent: meeting.opponent, meetings: [] });
+    group.meetings.push(meeting);
   }
   return [...groups.values()];
 }

@@ -34,67 +34,58 @@ function Tag({ tag }: { tag: OpponentTag }) {
   return <span title={title} className={`inline-block whitespace-nowrap rounded-full px-1.5 py-px text-[10px] font-bold leading-4 ${tagTone[tag.kind]}`}><span className="sr-only">{title}: </span><span aria-hidden="true">{short}</span></span>;
 }
 
-const OUTSIDE = "text-violet-700";
-
-/** A name: a profile here, else their Sherdog page; purple outside the UFC. */
-function Name({ opponent, outside, className = "" }: { opponent: OppositionBout["opponent"]; outside: boolean; className?: string }) {
-  const tone = outside ? OUTSIDE : "text-zinc-900";
-  const label = outside ? `${opponent.name}, outside the UFC` : undefined;
-  if (opponent.id) return <Link to={`/fighters/${opponent.id}`} aria-label={label} className={`${className} font-medium underline ${tone} ${linkUnderline}`}>{opponent.name}</Link>;
-  if (opponent.source_url) return <a href={opponent.source_url} target="_blank" rel="noopener noreferrer" aria-label={`${opponent.name} on Sherdog${outside ? ", outside the UFC" : ""}`} className={`${className} font-medium underline ${tone} ${linkUnderline}`}>{opponent.name}</a>;
-  return <span aria-label={label} className={`${className} font-medium ${tone}`}>{opponent.name}</span>;
+/** A name: a profile here, else their Sherdog page. */
+function Name({ opponent, className = "" }: { opponent: { id: string | null; name: string; source_url?: string | null }; className?: string }) {
+  const style = `${className} font-medium text-zinc-900 underline ${linkUnderline}`;
+  if (opponent.id) return <Link to={`/fighters/${opponent.id}`} className={style}>{opponent.name}</Link>;
+  if (opponent.source_url) return <a href={opponent.source_url} target="_blank" rel="noopener noreferrer" aria-label={`${opponent.name} on Sherdog`} className={style}>{opponent.name}</a>;
+  return <span className={`${className} font-medium text-zinc-900`}>{opponent.name}</span>;
 }
 
 type Group = ReturnType<typeof oppositionGroups>[number];
 const boutLabel = (name: string, outcome: OppositionBout["outcome"], against: string) => `${name}: ${resultWords[outcome ?? ""] ?? "Result unknown"} against ${against}`;
 
 /** The selected fighter's meetings with one opponent, each with the
- *  opponent's record going in and the one thing worth knowing about them. */
+ *  opponent's records going in and the one thing worth knowing about them. */
 function Faced({ fighter, group }: { fighter: Fighter; group: Group }) {
   return <div className="space-y-2">
-    {group.meetings.map(({ meeting }, index) => <div key={meeting.fight_id ?? meeting.date} className="flex items-start gap-1.5 text-zinc-700">
+    {group.meetings.map((meeting, index) => <div key={meeting.fight_id} className="flex items-start gap-1.5 text-zinc-700">
       <Result outcome={meeting.outcome} label={boutLabel(fighter.name, meeting.outcome, group.opponent.name)} />
       <span className="min-w-0 break-words">
-        {index === 0 ? <Name opponent={group.opponent} outside={group.outside} className="block" /> : null}
-        {meeting.pro_record || meeting.tag ? <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-          {meeting.pro_record ? <span className="font-semibold tabular-nums text-zinc-900" title="Professional record going in">{recordText(meeting.pro_record)}</span> : null}
+        {index === 0 ? <Name opponent={group.opponent} className="block" /> : null}
+        <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 tabular-nums">
+          {meeting.pro_record ? <span className="font-semibold text-zinc-900" title="Professional record going in">{recordText(meeting.pro_record)}</span> : null}
+          <span className="text-zinc-500" title="UFC record going in"><span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(meeting.record)}</span>
           {meeting.tag ? <Tag tag={meeting.tag} /> : null}
-        </span> : null}
-        <span className="mt-0.5 flex flex-col items-start text-zinc-500 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-2">
+        </span>
+        <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-zinc-500">
           <span title={meeting.method ?? undefined}>{resultDot(meeting).shortMethod || "—"} · <span className="tabular-nums">{formatDateShortWithYear(meeting.date)}</span></span>
-          {meeting.fight_id
-            ? <Link to={`/fights/${meeting.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name}`} className={`py-1 underline hover:text-zinc-900 ${linkUnderline}`}>Matchup</Link>
-            : <span className="line-clamp-2" title={meeting.event_name}>{meeting.event_name}</span>}
+          <Link to={`/fights/${meeting.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name}`} className={`py-1 underline hover:text-zinc-900 ${linkUnderline}`}>Matchup</Link>
         </span>
       </span>
     </div>)}
   </div>;
 }
 
-/** Each opponent's earlier wins and losses wrap into a grid beside them,
- *  newest first: two per row on a phone, more on a larger screen. */
+/** Each opponent's earlier wins wrap into a grid beside them, newest first:
+ *  two per row on a phone, more on a larger screen. */
 function OppositionGrid({ fighter, groups, label }: { fighter: Fighter; groups: Group[]; label: string }) {
-  const columns = "grid-cols-[38%_minmax(0,1fr)] gap-3 sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-4 lg:grid-cols-[14rem_minmax(0,1fr)]";
+  const columns = "grid-cols-[42%_minmax(0,1fr)] gap-3 sm:grid-cols-[13rem_minmax(0,1fr)] sm:gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]";
   return <div aria-label={label} role="list" className="text-[11px] sm:text-xs">
     <div aria-hidden="true" className={`sticky top-0 z-10 grid bg-white pb-2 font-medium text-zinc-500 ${columns}`}>
-      <span>{lastName(fighter.name)} vs.</span><span>Their earlier wins and losses</span>
+      <span>{lastName(fighter.name)} vs.</span><span>Who they had beaten</span>
     </div>
-    {groups.map(group => <section key={group.opponent.id ?? group.opponent.source_url ?? group.opponent.name} role="listitem" aria-label={group.opponent.name} className={`grid border-t border-zinc-200 py-2.5 ${columns}`}>
+    {groups.map(group => <section key={group.opponent.id ?? group.opponent.name} role="listitem" aria-label={group.opponent.name} className={`grid border-t border-zinc-200 py-2.5 ${columns}`}>
       <Faced fighter={fighter} group={group} />
       <div className="min-w-0 space-y-2">
-        {group.meetings.map(({ meeting, bouts }) => <div key={meeting.fight_id ?? meeting.date}>
+        {group.meetings.map(meeting => <div key={meeting.fight_id}>
           {group.meetings.length > 1 ? <p className="mb-1 text-zinc-500">Before {formatDateShortWithYear(meeting.date)}</p> : null}
-          {bouts.length ? <ul className="grid grid-cols-2 gap-x-2 gap-y-2 sm:grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] sm:gap-x-3">
-            {bouts.map((bout, index) => <li key={bout.fight_id ?? `${bout.date}-${index}`} className="flex min-w-0 items-start gap-1.5">
-              <Result outcome={bout.outcome} label={boutLabel(group.opponent.name, bout.outcome, bout.opponent.name)} />
-              <span className="min-w-0 break-words">
-                <Name opponent={bout.opponent} outside={bout.promotion === "outside"} className="block" />
-                <span className="block text-zinc-500">{bout.fight_id
-                  ? <Link to={`/fights/${bout.fight_id}`} title={`${bout.method || "Method unknown"} · ${formatDateShortWithYear(bout.date)} — view matchup`} className={`${linkUnderline} hover:underline`}>{resultDot(bout).shortMethod || "—"}</Link>
-                  : <span title={`${bout.method || "Method unknown"} · ${formatDateShortWithYear(bout.date)}`}>{resultDot(bout).shortMethod || "—"}</span>}</span>
-              </span>
+          {meeting.wins.length ? <ul className="grid grid-cols-1 gap-x-3 gap-y-1.5 min-[420px]:grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))]">
+            {meeting.wins.map((win, index) => <li key={win.fight_id ?? `${win.date}-${index}`} className="min-w-0 break-words leading-4">
+              <Name opponent={win.opponent} />
+              <span className="ml-1 text-zinc-400" title={`${win.method || "Method unknown"} · ${formatDateShortWithYear(win.date)}`}>{resultDot({ outcome: "win", method: win.method }).shortMethod || "—"}</span>
             </li>)}
-          </ul> : <p className="text-zinc-400">{meeting.pro_record || meeting.history.length ? "No earlier wins or losses." : !meeting.opponent.id && meeting.opponent.source_url ? "Earlier fights not read yet." : "No earlier fights on record."}</p>}
+          </ul> : <p className="text-zinc-400">No earlier wins.</p>}
         </div>)}
       </div>
     </section>)}
@@ -109,10 +100,8 @@ function OppositionList({ scope, fighter, before, outcome }: { scope: string; fi
   const resultName = outcome === "all" ? "all results" : outcome === "win" ? "wins" : "losses";
   return <div ref={scrollRef} data-sheet-scroll className="min-h-0 flex-1 overflow-auto overscroll-x-contain overscroll-y-none pr-2 [scrollbar-gutter:stable]">
     {error ? <RequestNotice onRetry={retry}>Couldn’t load opponents.</RequestNotice> : null}
-    {!data ? !error ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null : !groups.length ? <p className="py-4 text-xs text-zinc-500">{data.rows.length ? `No ${resultName}.` : "No earlier professional fights."}</p> : <>
-      <OppositionGrid fighter={fighter} groups={groups} label={`${fighter.name}: opposition, ${resultName}`} />
-      <p className="border-t border-zinc-200 pt-2.5 text-[10px] leading-4 text-zinc-400"><span className={`font-medium ${OUTSIDE}`}>Purple</span>: outside the UFC. Records and ranks are as they stood going into each fight.</p>
-    </>}
+    {!data ? !error ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null : !groups.length ? <p className="py-4 text-xs text-zinc-500">{data.rows.length ? `No ${resultName}.` : "UFC debut — no earlier opponents."}</p>
+      : <OppositionGrid fighter={fighter} groups={groups} label={`${fighter.name}: opposition, ${resultName}`} />}
   </div>;
 }
 

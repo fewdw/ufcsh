@@ -170,22 +170,19 @@ export type OpponentTag =
   | { kind: "champion" | "interim" | "former" | "future" }
   | { kind: "rank"; rank: string; division: string };
 export type OppositionBout = {
-  fight_id: string | null; date: string; outcome: "win" | "loss" | "draw" | "nc" | null; method: string | null; round: number | null;
-  promotion: "ufc" | "outside"; event_name: string;
-  /** Outside opponents have no profile here: `source_url` is their Sherdog page. */
-  opponent: { id: string | null; name: string; source_url: string | null };
-  /** UFC record entering a UFC bout; these sum to the matchup's opponent record. */
-  record: OppositionRecord | null;
-  /** Complete professional record entering the bout, where it is known. */
+  fight_id: string; date: string; outcome: "win" | "loss" | "draw" | "nc" | null; method: string | null;
+  opponent: { id: string | null; name: string };
+  /** UFC record going in; these sum to the matchup's opponent record. */
+  record: OppositionRecord;
+  /** Complete professional record going in, once their history is verified. */
   pro_record: OppositionRecord | null;
   tag: OpponentTag | null;
-  /** The opponent's earlier professional bouts, newest first. */
-  history: EarlierBout[];
+  /** Everyone the opponent had beaten before this fight, newest first. */
+  wins: EarlierWin[];
 };
-/** One of an opponent's earlier bouts. Outside the UFC, its opponent links to
- *  their Sherdog page unless they have a profile here. */
-export type EarlierBout = {
-  fight_id: string | null; date: string; outcome: "win" | "loss" | "draw" | "nc"; method: string | null; promotion: "ufc" | "outside";
+/** Someone an opponent had beaten: a profile here, else their Sherdog page. */
+export type EarlierWin = {
+  fight_id: string | null; date: string; method: string | null;
   opponent: { id: string | null; name: string; source_url: string | null };
 };
 export type Opposition = {

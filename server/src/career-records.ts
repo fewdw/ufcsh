@@ -63,7 +63,7 @@ export function samePersonName(a: string, b: string, bNickname = ""): boolean {
   });
 }
 
-export function looksLikeUfcEvent(name: string): boolean {
+function looksLikeUfcEvent(name: string): boolean {
   // Unrelated promotions that happen to abbreviate to UFC.
   if (/^UFC (?:Venezuela|- Universal Fight Combat)\b/i.test(name.trim())) return false;
   return /^(?:UFC\b|The Ultimate Fighter\b|Dana White(?:'s)? (?:Tuesday Night )?Contender Series\b)/i.test(name.trim());
