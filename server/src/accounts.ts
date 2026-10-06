@@ -1,7 +1,6 @@
 import { isClerkAPIResponseError } from "@clerk/backend/errors";
 import type { BugCheck } from "./bugs.ts";
 import type { BetStore } from "./bets.ts";
-import type { CardStore } from "./cards.ts";
 import type { CommentStore } from "./comments.ts";
 import type { PredictionStore } from "./predictions.ts";
 import type { ScoringStore } from "./scoring.ts";
@@ -12,7 +11,7 @@ import { clerkClient, publicAccount } from "./scoring-http.ts";
  *  their picture — is picked up here by asking Clerk, so nothing needs to be
  *  configured there and a missed notification cannot leave data behind. */
 
-export type AccountStores = { scores: ScoringStore; comments: CommentStore; predictions: PredictionStore; bets: BetStore; cards: CardStore };
+export type AccountStores = { scores: ScoringStore; comments: CommentStore; predictions: PredictionStore; bets: BetStore };
 type Clerk = {
   users: {
     getUserList(params: { userId: string[]; limit: number }): Promise<{ data: { id: string; hasImage: boolean; imageUrl: string; createdAt: number }[] }>;
@@ -22,7 +21,7 @@ type Clerk = {
 
 /** Everything a deleted account leaves on the site, erased in one transaction:
  *  cards, picks and bets are removed from every average and board, comments
- *  become placeholders, saved fight cards are deleted, and the username is freed. */
+ *  become placeholders, and the username is freed. */
 export function forgetAccount(stores: AccountStores, user: string): void {
   const { db } = stores.scores;
   db.exec("BEGIN IMMEDIATE");
@@ -30,7 +29,6 @@ export function forgetAccount(stores: AccountStores, user: string): void {
     stores.comments.forgetAuthor(user);
     stores.predictions.forget(user);
     stores.bets.forget(user);
-    stores.cards.forget(user);
     stores.scores.forget(user);
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }

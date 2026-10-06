@@ -92,8 +92,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-06">October 6, 2026</time></p>
             <ul>
-              <li>Potential matchups no longer label past meetings “After this bout”.</li>
-              <li>Previous and subsequent meetings sit side by side on phones.</li>
+              <li>Matchmaking has been removed, along with saved cards from its card builder.</li>
             </ul>
           </Section>
         </div>

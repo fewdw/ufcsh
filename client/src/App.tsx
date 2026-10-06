@@ -46,7 +46,6 @@ const LocationsPage = page(pages.directories, module => module.LocationsPage);
 const LocationPage = page(pages.venue, module => module.LocationPage);
 const InfoPage = page(pages.info, module => module.default);
 const RosterPage = page(pages.roster, module => module.default);
-const MatchmakingPage = page(pages.matchmaking, module => module.default);
 const NewsPage = page(pages.news, module => module.default);
 const GraphicPage = page(pages.graphic, module => module.default);
 
@@ -312,7 +311,6 @@ export default function App() {
           <Route path="/referees/:slug" element={<RefereePage />} />
           <Route path="/venues/:slug" element={<VenuePage />} />
           <Route path="/locations/:slug" element={<LocationPage />} />
-          <Route path="/matchmaking" element={<MatchmakingPage />} />
           <Route path="/news" element={<NewsPage />} />
           <Route path="/graphic" element={<GraphicPage />} />
           <Route path="/admin" element={<AdminPage />} />

@@ -798,27 +798,6 @@ export function useApi<T>(url: string | null, pollMs?: number | ((data: T | null
   return { ...state, data: state.data as T | null, retry };
 }
 
-export type MatchFighter = {
-  id: string; name: string; photo_url: string | null; rank: number | null;
-  record: string; streak: number; last_date: string | null;
-};
-
-export type MatchmakingData = {
-  updated_at: number | null;
-  top15: {
-    division: string;
-    fights: { kind: "title" | "booked" | "suggested"; title: boolean; a: MatchFighter; b: MatchFighter; reason: string; event: { id: string; name: string; date: string } | null }[];
-    idle: { fighter: MatchFighter; reason: string }[];
-  }[];
-  recent_events: {
-    id: string; name: string; date: string;
-    bouts: {
-      fight_id: string; division: string; method: string | null; title: boolean;
-      sides: { fighter: MatchFighter; outcome: "win" | "loss" | "draw" | "nc" | null; next: { kind: "suggested" | "booked" | "title" | "cut" | "none"; opponent: MatchFighter | null; reason: string; title: boolean } }[];
-    }[];
-  }[];
-};
-
 /** A story as told by the first outlet the reader keeps on; `also` are the others that ran it. */
 export type NewsStory = {
   url: string; source: string; title: string; summary: string; published_at: number;

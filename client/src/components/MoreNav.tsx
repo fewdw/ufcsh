@@ -11,7 +11,6 @@ const GROUPS: Group[] = [
     { href: "/news", label: "News", paths: ["/news"] },
     // Roster, Officials, Venues and Locations, tabbed by `BrowseTabs`.
     { href: "/roster", label: "Browse", paths: ["/roster", "/officials", "/judges", "/referees", "/venues", "/locations"] },
-    { href: "/matchmaking", label: "Matchmaking", paths: ["/matchmaking"] },
   ] },
 ];
 

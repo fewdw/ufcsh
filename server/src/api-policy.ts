@@ -3,7 +3,7 @@ import type { IncomingMessage } from "node:http";
 
 const listRoutes = new Set([
   "/api/events", "/api/live", "/api/rankings", "/api/rankings/history", "/api/stats", "/api/search",
-  "/api/officials", "/api/venues", "/api/locations", "/api/roster", "/api/matchmaking", "/api/news",
+  "/api/officials", "/api/venues", "/api/locations", "/api/roster", "/api/news",
 ]);
 export function publicApi(path: string): boolean {
   return path === "/api/events/potential-matchups" || /^\/api\/fights\/potential-[a-z0-9-]{1,180}$/.test(path) || listRoutes.has(path) || /^\/api\/(events|fights|fighters|previews)\/[a-f0-9]{16}$/i.test(path)

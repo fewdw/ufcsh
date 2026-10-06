@@ -28,7 +28,6 @@ export const pages = {
   directories: loader(() => import("./pages/DirectoryPages")),
   info: loader(() => import("./pages/InfoPage")),
   roster: loader(() => import("./pages/RosterPage")),
-  matchmaking: loader(() => import("./pages/MatchmakingPage")),
   news: loader(() => import("./pages/NewsPage")),
   graphic: loader(() => import("./pages/GraphicPage")),
 };
@@ -46,7 +45,6 @@ export function pageFor(pathname: string): PageLoader | null {
   if (pathname === "/officials" || pathname === "/venues" || pathname === "/locations") return pages.directories;
   if (pathname === "/info") return pages.info;
   if (pathname === "/roster") return pages.roster;
-  if (pathname === "/matchmaking") return pages.matchmaking;
   if (pathname === "/news") return pages.news;
   if (pathname === "/graphic") return pages.graphic;
   if (pathname === "/admin" || pathname.startsWith("/admin/")) return pages.admin;

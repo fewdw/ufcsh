@@ -8,7 +8,6 @@ import { ScoringStore, type ScoringFight } from "./scoring.ts";
 import { CommentStore } from "./comments.ts";
 import { PredictionStore } from "./predictions.ts";
 import { BetStore } from "./bets.ts";
-import { CardStore } from "./cards.ts";
 import { syncAccounts } from "./accounts.ts";
 
 const FIGHT = "aaaaaaaaaaaaaaaa";
@@ -30,9 +29,8 @@ function fixture(t: any) {
   const comments = new CommentStore(scores, fights);
   const predictions = new PredictionStore(scores, () => undefined, () => []);
   const bets = new BetStore(scores, () => undefined, () => []);
-  const cards = new CardStore(scores, () => new Map());
   t.after(() => { scores.db.close(); rmSync(dir, { recursive: true, force: true }); });
-  return { scores, comments, predictions, bets, cards };
+  return { scores, comments, predictions, bets };
 }
 /** A Clerk that knows only `KEPT`; `down` makes every lookup fail as an outage would. */
 const clerk = (down = false) => ({
@@ -59,7 +57,6 @@ test("an account deleted at Clerk leaves no trace but placeholders, and frees it
   comments.block(KEPT, "Gone");
   scores.db.prepare("INSERT INTO predictions VALUES (?, ?, 1, 1, '{}')").run(FIGHT, GONE);
   scores.db.prepare("INSERT INTO bets VALUES ('b1', ?, 1, 100, '[]')").run(GONE);
-  scores.db.prepare("INSERT INTO saved_cards VALUES ('c1', ?, 'Dream card', '[]', 1)").run(GONE);
 
   // An outage erases nothing.
   await assert.rejects(syncAccounts(stores, clerk(true)), /unreachable/);
@@ -73,7 +70,7 @@ test("an account deleted at Clerk leaves no trace but placeholders, and frees it
   assert.deepEqual(list.comments.map((c: any) => [c.id, c.state, c.body, c.author]), [[answered.id, "deleted", null, null]]);
   assert.equal(list.comments[0].replies[0].score, 0);
   assert.ok(!list.comments.some((c: any) => c.id === lonely.id));
-  for (const table of ["predictions", "bets", "saved_cards", "comment_votes", "comment_blocks"]) {
+  for (const table of ["predictions", "bets", "comment_votes", "comment_blocks"]) {
     assert.equal((scores.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n, 0, table);
   }
   // A session that outlives the account cannot write, and the name is free.

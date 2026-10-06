@@ -16,7 +16,6 @@ import { venueIndex } from "./venues.ts";
 import { rosterEventsByFighter, rosterMoveFighter, storedRosterMoves, syncRosterMoves, syncUfcSignings } from "./roster-moves.ts";
 import { storedRosterHistory, validRosterDate } from "./roster-history.ts";
 import { careerBands } from "./roster-timeline.ts";
-import { matchmaking } from "./matchmaking.ts";
 import { feedStatus, newsAiOff, newsToJudge, syncNews } from "./news.ts";
 import { judgeNews } from "./news-ai.ts";
 import { NEWS_FEEDS } from "./scrape/news.ts";
@@ -1718,21 +1717,6 @@ function newsFeedsUnread(): BugCheck {
   }, items);
 }
 
-// ---------------------------------------------------------------------------
-
-function matchmakingGaps(): BugCheck {
-  return check({
-    id: "matchmaking-coverage", group: "Fighters", label: "Ranked fighters without a matchup",
-    description: "Ranked fighters left without a booking or suggested opponent. Review roster availability and recent history; retired fighters and recent rematches are deliberately excluded.",
-    grade: "minor",
-  }, matchmaking().top15.flatMap((division) => division.idle.map(({ fighter, reason }) => ({
-    key: `${division.division}:${fighter.id}`, title: fighter.name, subtitle: division.division,
-    facts: [["Reason", reason], ["Last fight", fighter.last_date ?? "Unknown"]] as [string, string][],
-    links: [fighterLink(fighter.id, fighter.name), { label: "Matchmaking", href: "/matchmaking", internal: true }],
-    actions: fighter.last_date ? [] : [{ id: "career" as const, label: "Re-read career", target: fighter.id }],
-  }))));
-}
-
 export function bugReport(): { generated_at: number; sync: { last_tick_at: string | null; last_sync_error: string | null }; checks: BugCheck[] } {
   const active = activeFighterIds();
   // Most important first within each group: wrong data on screen, then data
@@ -1755,7 +1739,6 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     rankedHistoryGaps(),
     rankingHistoryGaps(),
     titleRankingEvidenceGaps(),
-    matchmakingGaps(),
     fightsMissingFromHistory(),
     unlinkedUfcBouts(),
     unexplainedNoContests(),
