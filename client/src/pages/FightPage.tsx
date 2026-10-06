@@ -43,7 +43,6 @@ import {
   compareLabel,
   compareValue,
   metaText,
-  sectionLabel,
 } from "../components/FightStats";
 import { cardFightSearch, useRouteScrollRestoration, useTabBarAnchor } from "../navigationState";
 import { SITE_URL, useSeo } from "../seo";
@@ -551,10 +550,10 @@ function HeadToHead({ fight, later = false }: { fight: Matchup; later?: boolean 
     meetings.length === 1
       ? "grid-cols-1"
       : meetings.length === 2
-        ? "@[36rem]:grid-cols-2"
+        ? "grid-cols-2"
         : meetings.length === 3
-          ? "@[36rem]:grid-cols-3"
-          : "@[36rem]:grid-cols-2 @[52rem]:grid-cols-4";
+          ? "grid-cols-3"
+          : "grid-cols-2 @[52rem]:grid-cols-4";
 
   return (
     <section className={`${shell} flex flex-col overflow-hidden`}>
@@ -563,7 +562,6 @@ function HeadToHead({ fight, later = false }: { fight: Matchup; later?: boolean 
       />
       <div className={`grid gap-px bg-zinc-100 ${gridColumns}`}>
         {meetings.map((row) => {
-          const isLater = row.date > fight.event.date;
           const winner =
             row.outcome === "win"
               ? { label: lastName(fight.f1.name), tone: "bg-f1-soft text-f1-ink" }
@@ -580,13 +578,8 @@ function HeadToHead({ fight, later = false }: { fight: Matchup; later?: boolean 
               key={row.fight_id}
               to={`/fights/${row.fight_id}`}
               title={`${winner.label} · ${row.event_name} · ${formatDate(row.date)} · ${formatMethod(row.method, row.round, row.time)}`}
-              className="group min-w-0 bg-white px-3 py-4 text-center transition-colors hover:bg-zinc-50/80 focus-visible:relative focus-visible:z-10 focus-visible:rounded-xl focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-zinc-900"
+              className="group min-w-0 bg-white px-2 py-4 text-center transition-colors hover:bg-zinc-50/80 focus-visible:relative focus-visible:z-10 focus-visible:rounded-xl focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-zinc-900"
             >
-              {isLater ? (
-                <span className={`mb-1.5 block ${sectionLabel} !text-sky-600`}>
-                  After this bout
-                </span>
-              ) : null}
               <span
                 className={`${RESULT_PILL} max-w-full ${winner.tone}`}
               >
