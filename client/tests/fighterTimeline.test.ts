@@ -74,6 +74,12 @@ test("reported signings replace inferred bands, retaining a source and deduplica
   assert.equal(bands[1][0].source_url, "https://www.ufc.com/");
 });
 
+test("a signing reported on the day of a DWCS win follows that win, but precedes a same-day UFC bout", () => {
+  const rows = [bout("2023-04-08"), bout("2022-07-26", "Dana White's Contender Series 2022: Week 1"), bout("2021-12-17", "CFFC 104", "outside")];
+  assert.equal(careerBands(rows, [report("2022-07-26")])[1][0].label, "Signed to UFC");
+  assert.equal(careerBands([bout("2022-07-26")], [report("2022-07-26")])[1][0].label, "Signed to UFC");
+});
+
 test("retirement, non-renewal and observed roster changes retain distinct wording", () => {
   assert.equal(careerBands([], [report("2024-01-01", "retired")])[0][0].label, "Retired from UFC");
   const band = careerBands([], [report("2024-01-01", "departed", true)])[0][0];
