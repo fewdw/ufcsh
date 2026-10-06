@@ -1,6 +1,6 @@
 import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, potentialMatchups, potentialFight } from "./potential-matchups.ts";
 import { careerStatistics } from "./career-statistics.ts";
-import { fightInsights } from "./fight-insights.ts";
+import { fightInsights, roundOutcomes } from "./fight-insights.ts";
 import { opposition } from "./opposition.ts";
 import { eventStatus, fightIsComplete, fightIsUnderway, isFightDay, liveDetailDue } from "./live-state.ts";
 import { ScoringStore, type ScoringFight } from "./scoring.ts";
@@ -953,7 +953,8 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
       form_details: context.form_details ?? [],
       run_form: context.run_form ?? [],
       complete_record_before: completeRecord ? { ...completeRecord, text: recordText(completeRecord), verified: true } : null,
-      insights: fid ? fightInsights(boutsBefore(index, fid, f.event_date, Number(f.ord) || 0), fid) : null,
+      // The matchup shows only By round; the betting record is the profile's.
+      insights: fid ? { rounds: roundOutcomes(boutsBefore(index, fid, f.event_date, Number(f.ord) || 0), fid) } : null,
       history: ufcHistory,
       recent_history: recentHistory,
     };

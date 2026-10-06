@@ -29,8 +29,10 @@ function Result({ outcome, label }: { outcome: OppositionBout["outcome"]; label?
   return <span title={label ?? word} aria-label={label ?? word} className={`inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded px-1 font-bold ${outcomeClasses(outcome)}`}>{outcomeLabel(outcome) || "?"}</span>;
 }
 
+const CHIP = "inline-block whitespace-nowrap rounded-full px-1.5 text-[10px] font-bold leading-4";
+
 function Chips({ standing }: { standing: Standing | null }) {
-  return <>{standingChips(standing).map(chip => <span key={chip.kind} title={chip.title} className={`inline-block whitespace-nowrap rounded-full px-1.5 py-px text-[10px] font-bold leading-4 ${chipTone[chip.kind]}`}><span className="sr-only">{chip.title}: </span><span aria-hidden="true">{chip.short}</span></span>)}</>;
+  return <>{standingChips(standing).map(chip => <span key={chip.kind} title={chip.title} className={`${CHIP} py-px ${chipTone[chip.kind]}`}><span className="sr-only">{chip.title}: </span><span aria-hidden="true">{chip.short}</span></span>)}</>;
 }
 
 /** A name: a profile here, else their Sherdog page. Gold for anyone who held,
@@ -46,23 +48,21 @@ function Name({ opponent, standing, className = "" }: { opponent: { id: string |
 type Group = ReturnType<typeof oppositionGroups>[number];
 const boutLabel = (name: string, outcome: OppositionBout["outcome"], against: string) => `${name}: ${resultWords[outcome ?? ""] ?? "Result unknown"} against ${against}`;
 
-/** The selected fighter's meetings with one opponent, each with the
- *  opponent's records and standing going in. */
+/** The selected fighter's meetings with one opponent: result, name and rank
+ *  going in; how it ended and their UFC record going in; the matchup. */
 function Faced({ fighter, group }: { fighter: Fighter; group: Group }) {
   return <div className="space-y-2">
-    {group.meetings.map((meeting, index) => <div key={meeting.fight_id} className="flex items-start gap-1.5 text-zinc-700">
-      <Result outcome={meeting.outcome} label={boutLabel(fighter.name, meeting.outcome, group.opponent.name)} />
-      <span className="min-w-0 break-words">
-        <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-          {index === 0 ? <Name opponent={group.opponent} standing={meeting.standing} /> : null}
-          <Chips standing={meeting.standing} />
-        </span>
-        <span className="mt-0.5 block tabular-nums text-zinc-500" title="UFC record going in"><span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(meeting.record)}</span>
-        <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-zinc-500">
-          <span title={meeting.method ?? undefined}>{resultDot(meeting).shortMethod || "—"} · <span className="tabular-nums">{formatDateShortWithYear(meeting.date)}</span></span>
-          <Link to={`/fights/${meeting.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name}`} className={`py-1 underline hover:text-zinc-900 ${linkUnderline}`}>Matchup</Link>
-        </span>
+    {group.meetings.map(meeting => <div key={meeting.fight_id} className="flex min-w-0 flex-col text-zinc-700">
+      <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 break-words">
+        <Result outcome={meeting.outcome} label={boutLabel(fighter.name, meeting.outcome, group.opponent.name)} />
+        <Name opponent={group.opponent} standing={meeting.standing} />
+        <Chips standing={meeting.standing} />
       </span>
+      <span className="mt-1 text-zinc-500">
+        <span title={meeting.method ?? undefined}>{resultDot(meeting).shortMethod || "—"}</span>
+        {" · "}<span className="tabular-nums" title="UFC record going in"><span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(meeting.record)}</span>
+      </span>
+      <Link to={`/fights/${meeting.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name}`} className={`self-center py-1 text-zinc-500 underline hover:text-zinc-900 ${linkUnderline}`}>Matchup</Link>
     </div>)}
   </div>;
 }
@@ -86,7 +86,7 @@ function OppositionGrid({ fighter, groups, label }: { fighter: Fighter; groups: 
               <span className="min-w-0 flex-1 leading-4">
                 <span className="flex min-w-0 items-baseline gap-1">
                   <Name opponent={bout.opponent} standing={bout.standing} className="truncate" />
-                  {bout.standing?.rank ? <span className="shrink-0 text-[10px] font-semibold tabular-nums text-zinc-400" title={standingChips(bout.standing)[0]?.title}>#{bout.standing.rank}</span> : null}
+                  {bout.standing?.rank ? <span className={`${CHIP} shrink-0 tabular-nums ${chipTone.rank}`} title={standingChips(bout.standing)[0]?.title}>#{bout.standing.rank}</span> : null}
                 </span>
                 <span className="block truncate text-zinc-500" title={`${bout.method || "Method unknown"} · ${formatDateShortWithYear(bout.date)}${bout.standing?.belt ? ` · ${standingChips(bout.standing).at(-1)?.title}` : ""}`}>
                   {bout.fight_id ? <Link to={`/fights/${bout.fight_id}`} className={`${linkUnderline} hover:underline`}>{resultDot(bout).shortMethod || "—"}</Link> : resultDot(bout).shortMethod || "—"}

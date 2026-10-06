@@ -1,4 +1,4 @@
-import { opponentOf, sideOf, winProfit, type IndexedFight } from "./fight-index.ts";
+import { sideOf, winProfit, type IndexedFight } from "./fight-index.ts";
 
 /** One round of a fighter's UFC bouts: finishes won and lost in it, and the
  *  bouts that carried on past it (into the next round or to the cards). */
@@ -20,8 +20,6 @@ export type OddsRecord = {
   wins: number;
   /** Net dollars over all the bets. */
   profit: number;
-  /** Each bet in order: the closing line and what it made or lost. */
-  bets: { fight_id: string; date: string; opponent: string; line: number; net: number }[];
 };
 
 const decision = (method: string | null) => /DEC/i.test(method ?? "");
@@ -57,18 +55,17 @@ export function roundOutcomes(fights: IndexedFight[], fighterId: string): RoundO
  *  had one: a win pays the line, a loss costs the $100. Draws and no contests
  *  are left out, as a two-way moneyline refunds them. */
 export function oddsRecord(fights: IndexedFight[], fighterId: string): OddsRecord | null {
-  const result: OddsRecord = { fights: 0, priced: 0, wins: 0, profit: 0, bets: [] };
+  const result: OddsRecord = { fights: 0, priced: 0, wins: 0, profit: 0 };
   for (const fight of fights) {
     const own = sideOf(fight, fighterId);
     if (own.outcome !== "win" && own.outcome !== "loss") continue;
     result.fights++;
     if (own.close == null) continue;
     result.priced++;
-    // Rounded per bet, so the total is the sum of the bets shown.
+    // Rounded per bet, as a book pays whole dollars on each.
     const net = Math.round(own.outcome === "win" ? winProfit(own.close) : -100);
     if (net > 0) result.wins++;
     result.profit += net;
-    result.bets.push({ fight_id: fight.id, date: fight.date, opponent: opponentOf(fight, fighterId).name, line: own.close, net });
   }
   return result.fights ? result : null;
 }
