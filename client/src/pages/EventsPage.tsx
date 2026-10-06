@@ -1,7 +1,7 @@
 import { PANEL } from "../components/chartTokens";
 import { CareerStatModal } from "../components/CareerStatDetails";
 import { isFightDay, landingEvent, liveFightId, taggedEvent } from "../liveEvent";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type Ref } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CancelledBout, CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
@@ -106,6 +106,65 @@ function settleOn(list: HTMLElement | null, card: Element | null | undefined) {
   if (coasting) requestAnimationFrame(() => { list.style.overflowY = ""; });
 }
 
+/** One card in the events list. A plain anchor rather than a Link: every
+ *  Link redraws on every navigation, and with eight hundred of them each step
+ *  between cards would redraw the whole list. The list routes the click. */
+const EventListRow = memo(function EventListRow({ event, selected, tag, anchor, warm, ref }: {
+  event: EventListItem;
+  selected: boolean;
+  tag: keyof typeof STATUS_TAG | null;
+  anchor: boolean;
+  warm: (id: string | null, delay?: number) => void;
+  ref?: Ref<HTMLAnchorElement>;
+}) {
+  return (
+    <a
+      href={`/events/${event.id}`}
+      data-event=""
+      onPointerEnter={() => warm(event.id, 120)}
+      onPointerLeave={() => warm(null)}
+      onPointerDown={() => warm(event.id)}
+      onFocus={() => warm(event.id)}
+      ref={ref}
+      data-anchor={anchor ? "" : undefined}
+      aria-current={selected ? "page" : undefined}
+      className={[
+        "scroll-mt-10 rounded-xl border border-transparent px-3 py-2 transition-colors",
+        // Selection borrows the header nav's token outright: a
+        // clean surface inside a hairline ring with a soft
+        // shadow, rather than inverting to a solid block.
+        selected ? segmentedSelected : "hover:bg-zinc-50",
+      ].join(" ")}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div
+          className={[
+            "flex min-w-0 items-center gap-1.5 text-[13px] font-semibold leading-5",
+            // The name is warmed only for the card being
+            // pointed at, and only while the point is
+            // forward-looking: a finished night is told, not
+            // advertised.
+            tag === "next" ? "text-amber-700" : "text-zinc-900",
+          ].join(" ")}
+        >
+          <span className="min-w-0">{event.name}</span>
+        </div>
+        {/* At most one row on the whole list carries this;
+            the rest are told by the date beneath them. */}
+        {tag ? (
+          <span className={`${TAG_SHAPE} ${STATUS_TAG[tag].className}`}>
+            {STATUS_TAG[tag].label}
+          </span>
+        ) : null}
+      </div>
+      <div className={`mt-0.5 text-xs ${selected ? "text-zinc-500" : "text-zinc-400"}`}>
+        {event.date ? formatDateShort(event.date) : "No date"}
+        {event.location ? ` · ${event.location.split(",")[0]}` : ""}
+      </div>
+    </a>
+  );
+});
+
 function EventSidebar({
   events,
   selectedId,
@@ -123,14 +182,29 @@ function EventSidebar({
   const [filter, setFilter] = useHistoryState("events:filter", "");
   const [kind, setKind] = useHistoryState<KindFilter>("events:kind", "all");
   const [showTop, setShowTop] = useState(false);
-  const { settings } = useSettings();
+  const { settings: { rankingSource } } = useSettings();
+  const navigate = useNavigate();
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cancelWarm = () => {
+  useEffect(() => () => { if (hoverTimer.current) clearTimeout(hoverTimer.current); }, []);
+  // Starts loading a card about to be opened: after a short hover, or at once.
+  const warm = useCallback((id: string | null, delay = 0) => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     hoverTimer.current = null;
+    if (!id) return;
+    const load = () => prefetch(withRanking(`/api/events/${id}`, rankingSource));
+    if (delay) hoverTimer.current = setTimeout(load, delay);
+    else load();
+  }, [rankingSource]);
+  // The rows are plain anchors, so the list routes a plain click itself, the
+  // way a Link would; a modified click still opens a new tab.
+  const openEvent = (e: MouseEvent<HTMLDivElement>) => {
+    const link = (e.target as Element).closest<HTMLAnchorElement>("a[data-event]");
+    if (!link || e.defaultPrevented || e.button !== 0 || e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    const to = link.getAttribute("href")!;
+    const { pathname, search, hash } = window.location;
+    navigate(to, { replace: pathname + search + hash === to });
   };
-  useEffect(() => () => { if (hoverTimer.current) clearTimeout(hoverTimer.current); }, []);
-  const warmEvent = (id: string) => prefetch(withRanking(`/api/events/${id}`, settings.rankingSource));
   const listRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLAnchorElement>(null);
 
@@ -256,6 +330,7 @@ function EventSidebar({
           // ring and shadow rather than by the tone it happens to sit on. A
           // phone keeps Top at the bottom, so the last card scrolls clear of it.
           className="h-full overflow-y-auto bg-white px-2 pb-16 sm:pb-2"
+          onClick={openEvent}
         >
           {groups.map(([yearMonth, list]) => (
             <div key={yearMonth}>
@@ -264,59 +339,13 @@ function EventSidebar({
                 <span>{MONTHS[Number(yearMonth.slice(5, 7)) - 1]}</span>
               </div> : null}
               <div className="flex flex-col gap-1 pb-2">
-                {list.map((event) => {
-                  const isSelected = event.id === selectedId;
-                  const tag = event.id === tagged?.id ? tagged.tag : null;
-                  return (
-                    <Link
-                      key={event.id}
-                      to={`/events/${event.id}`}
-                      onPointerEnter={() => {
-                        cancelWarm();
-                        hoverTimer.current = setTimeout(() => warmEvent(event.id), 120);
-                      }}
-                      onPointerLeave={cancelWarm}
-                      onPointerDown={() => { cancelWarm(); warmEvent(event.id); }}
-                      onFocus={() => warmEvent(event.id)}
-                      ref={isSelected ? selectedRef : undefined}
-                      data-anchor={event.id === anchorId ? "" : undefined}
-                      aria-current={isSelected ? "page" : undefined}
-                      className={[
-                        "scroll-mt-10 rounded-xl border border-transparent px-3 py-2 transition-colors",
-                        // Selection borrows the header nav's token outright: a
-                        // clean surface inside a hairline ring with a soft
-                        // shadow, rather than inverting to a solid block.
-                        isSelected ? segmentedSelected : "hover:bg-zinc-50",
-                      ].join(" ")}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div
-                          className={[
-                            "flex min-w-0 items-center gap-1.5 text-[13px] font-semibold leading-5",
-                            // The name is warmed only for the card being
-                            // pointed at, and only while the point is
-                            // forward-looking: a finished night is told, not
-                            // advertised.
-                            tag === "next" ? "text-amber-700" : "text-zinc-900",
-                          ].join(" ")}
-                        >
-                          <span className="min-w-0">{event.name}</span>
-                        </div>
-                        {/* At most one row on the whole list carries this;
-                            the rest are told by the date beneath them. */}
-                        {tag ? (
-                          <span className={`${TAG_SHAPE} ${STATUS_TAG[tag].className}`}>
-                            {STATUS_TAG[tag].label}
-                          </span>
-                        ) : null}
-                      </div>
-                      <div className={`mt-0.5 text-xs ${isSelected ? "text-zinc-500" : "text-zinc-400"}`}>
-                        {event.date ? formatDateShort(event.date) : "No date"}
-                        {event.location ? ` · ${event.location.split(",")[0]}` : ""}
-                      </div>
-                    </Link>
-                  );
-                })}
+                {list.map((event) => (
+                  <EventListRow key={event.id} event={event} warm={warm}
+                    selected={event.id === selectedId}
+                    tag={event.id === tagged?.id ? tagged.tag : null}
+                    anchor={event.id === anchorId}
+                    ref={event.id === selectedId ? selectedRef : undefined} />
+                ))}
               </div>
             </div>
           ))}
@@ -891,17 +920,56 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
       : undefined,
   });
 
-  if (loading && !event) {
-    return (
-      <div className={`flex h-full items-center justify-center ${shell}`}>
-        <div role="status" className="appear-late text-sm text-zinc-400">Loading…</div>
-      </div>
-    );
-  }
+  // Read from the opener up, the card runs in the order it is fought.
+  const openerFirst = settings.cardOrder === "opener";
+  const oddsCard = oddsMode && (!event || event.fights.some(hasFightOdds));
+  const pane = "@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+3.25rem)] sm:gap-3 sm:pb-0 sm:pr-1";
+  // Stepping through cards one after another, the next is already here.
+  const loaded = Boolean(event);
+  const prevUrl = nav.prev ? withRanking(`/api/events/${nav.prev.id}`, settings.rankingSource) : null;
+  const nextUrl = nav.next ? withRanking(`/api/events/${nav.next.id}`, settings.rankingSource) : null;
+  useEffect(() => {
+    if (loaded) { prefetch(prevUrl); prefetch(nextUrl); }
+  }, [loaded, prevUrl, nextUrl]);
+
+  // On a phone the list folds away, so its button and the step to either
+  // neighbour float at the bottom; they head the card wherever else it is
+  // narrow enough to stack its bouts. They stay put while the next card
+  // loads, so a quick second tap lands on them, never on a bout beneath.
+  const navigation = (
+    <CardNavigation label="Event navigation" className="@3xl:hidden"
+      previous={<StepLink event={nav.prev} direction="prev" className={NAV_STEP} />}
+      // Reading the whole card's odds, the way out is back to the card.
+      center={oddsCard
+        ? <Link to={`/events/${eventId}`} className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+          <List className="h-3.5 w-3.5" aria-hidden="true" />Card
+        </Link>
+        // Events stays centred; the order toggle hangs off its right.
+        : <span className="relative inline-flex">
+          <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
+            className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+            <List className="h-3.5 w-3.5" aria-hidden="true" />Events
+          </button>
+          <button type="button" data-nav-extra onClick={() => update("cardOrder", openerFirst ? "main" : "opener")}
+            aria-label={openerFirst ? "Opener first; show the main event first" : "Main event first; show the opener first"}
+            title={openerFirst ? "Opener first" : "Main event first"}
+            className="absolute left-full top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950">
+            {openerFirst ? <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}
+          </button>
+        </span>}
+      next={<StepLink event={nav.next} direction="next" className={NAV_STEP} />}
+    />
+  );
+
   if (!event) {
     return (
-      <div className={`flex h-full items-center justify-center ${shell}`}>
-        <div className="text-sm text-zinc-400">Could not load this event.</div>
+      <div ref={eventScroll} className={pane}>
+        {navigation}
+        <div className={`flex min-h-0 flex-1 items-center justify-center ${shell}`}>
+          {loading
+            ? <div role="status" className="appear-late text-sm text-zinc-400">Loading…</div>
+            : <div className="text-sm text-zinc-400">Could not load this event.</div>}
+        </div>
       </div>
     );
   }
@@ -909,10 +977,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   const past = event.status === "past";
   const liveId = liveFightId(event);
   const oddsFights = event.fights.filter(hasFightOdds);
-  // Read from the opener up, the card runs in the order it is fought.
-  const openerFirst = settings.cardOrder === "opener";
   const cardFights = openerFirst ? [...event.fights].reverse() : event.fights;
-  const hasAnyOdds = oddsFights.length > 0;
   const announced = (["main", "prelims", "early"] as CardSegment[])
     .map((segment) => ({ segment, at: segmentStart(event.schedule, segment) }))
     .filter((entry): entry is { segment: CardSegment; at: number } => entry.at != null);
@@ -933,32 +998,8 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   ].filter((entry) => entry.count > 0) : [];
 
   return (
-    <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+3.25rem)] sm:gap-3 sm:pb-0 sm:pr-1">
-      {/* On a phone the list folds away, so its button and the step to
-          either neighbour float at the bottom; they head the card wherever
-          else it is narrow enough to stack its bouts. */}
-      <CardNavigation label="Event navigation" className="@3xl:hidden"
-        previous={<StepLink event={nav.prev} direction="prev" className={NAV_STEP} />}
-        // Reading the whole card's odds, the way out is back to the card.
-        center={oddsMode && hasAnyOdds
-          ? <Link to={`/events/${event.id}`} className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
-            <List className="h-3.5 w-3.5" aria-hidden="true" />Card
-          </Link>
-          // Events stays centred; the order toggle hangs off its right.
-          : <span className="relative inline-flex">
-            <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
-              className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
-              <List className="h-3.5 w-3.5" aria-hidden="true" />Events
-            </button>
-            <button type="button" data-nav-extra onClick={() => update("cardOrder", openerFirst ? "main" : "opener")}
-              aria-label={openerFirst ? "Opener first; show the main event first" : "Main event first; show the opener first"}
-              title={openerFirst ? "Opener first" : "Main event first"}
-              className="absolute left-full top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950">
-              {openerFirst ? <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}
-            </button>
-          </span>}
-        next={<StepLink event={nav.next} direction="next" className={NAV_STEP} />}
-      />
+    <div ref={eventScroll} className={pane}>
+      {navigation}
       <section className={`${shell} shrink-0 overflow-hidden`}>
         {/* The name, date and place on the left; the card's start times on
             the right, centred against it, one per line at every width. */}
@@ -1003,7 +1044,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
         </div>
       </section>
 
-      {oddsMode && hasAnyOdds ? (
+      {oddsCard ? (
         // Its own height, not the pane's: squeezed to fit, the list would run
         // out past the pane.
         <div className="flex shrink-0 flex-col gap-3">

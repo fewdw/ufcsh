@@ -1,5 +1,5 @@
 import { PANEL } from "./chartTokens";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import type { VenueRef } from "../api";
@@ -53,10 +53,12 @@ export function CardNavigation({ label, previous, center, next, className = "" }
   const bar = useRef<HTMLElement>(null);
   const [shown, setShown] = useState(false);
   // The pill shows while the card it steps through does, so it leaves with
-  // the card when the phone swaps in the events list.
-  useEffect(() => {
+  // the card when the phone swaps in the events list. It is there from the
+  // first paint: a pill a frame late lets a quick tap through to the card.
+  useLayoutEffect(() => {
     const card = bar.current?.parentElement;
     if (!card) return;
+    setShown(card.getClientRects().length > 0);
     const observer = new IntersectionObserver(([entry]) => setShown(entry.isIntersecting));
     observer.observe(card);
     return () => observer.disconnect();
@@ -69,8 +71,9 @@ export function CardNavigation({ label, previous, center, next, className = "" }
         <div className="min-w-0 justify-self-end">{next}</div>
       </nav>
       {createPortal(
+        // Taps in quick succession are each a step, never a double-tap zoom.
         <nav aria-label={label} inert={!shown}
-          className={`fixed bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full border border-zinc-200 bg-white/95 p-1 shadow-lg backdrop-blur sm:hidden [&_[data-nav-extra]]:static [&_[data-nav-extra]]:translate-y-0 [&_[data-nav-extra]]:h-8 [&_[data-nav-extra]]:w-10 ${
+          className={`touch-manipulation fixed bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full border border-zinc-200 bg-white/95 p-1 shadow-lg backdrop-blur sm:hidden [&_[data-nav-extra]]:static [&_[data-nav-extra]]:translate-y-0 [&_[data-nav-extra]]:h-8 [&_[data-nav-extra]]:w-10 ${
             shown ? "" : "invisible"}`}>
           {previous}{center}{next}
         </nav>,

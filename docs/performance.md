@@ -3,6 +3,26 @@
 Measure first, then change what the measurement points at. This page records
 the targets, how to measure against them, and the last measured results.
 
+## Stepping between event cards (2026-10-06)
+
+Playwright on the VPS against the dev container's data: a 390×844 touch phone with
+4× CPU throttling, tapping the floating Prev/Next pill with the neighbouring card
+already cached. Time from the tap to the new card's name on screen (tap overhead
+included), the median of seven steps.
+
+| Build | Tap to new card |
+| --- | --- |
+| Before | ~2,070 ms |
+| Date formatters built once | ~670 ms |
+| Plus memoized events-list rows | ~450 ms |
+
+Each step re-rendered the 800-row events list, which stays mounted under the
+card on a phone. Each row built a fresh `Intl.DateTimeFormat` (~1 s of a 1.04 s
+long task) and was a router `Link`, which re-renders on every navigation. The
+formatters in `client/src/format.ts` are now module constants. The rows are
+memoized plain anchors, and the list routes a plain click itself, so a step
+redraws only the two rows whose selection changed.
+
 ## Local Tailscale previews (2026-10-05)
 
 Measured with `/usr/bin/time ./start` on the home server (12 cores, 31 GiB RAM,
