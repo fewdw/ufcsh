@@ -1,4 +1,5 @@
 import FighterCareerStats from "../components/FighterCareerStats";
+import { RoundsPanel } from "../components/FightInsights";
 import { CareerStatModal } from "../components/CareerStatDetails";
 import { Children, Fragment, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -811,6 +812,7 @@ export default function FighterPage() {
 
         {fought ? <div className={`${tab === "stats" ? "contents" : "hidden lg:contents"} [&>*]:shrink-0`}>
           <FighterCareerStats fighterId={fighter.id} name={fighter.name} totals={fighter.career_stats} />
+          <RoundsPanel fighters={[fighter]} />
           <RankingHistory key={fighter.id} timeline={fighter.ranking_history} history={fighter.history} fighterId={fighter.id} />
           <Records records={fighter.records ?? []} />
           <FighterStatistics fighterId={fighter.id} history={fighter.history} />

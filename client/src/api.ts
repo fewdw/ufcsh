@@ -165,14 +165,37 @@ export type CareerStatistics = {
 };
 
 export type OppositionRecord = { wins: number; losses: number; draws: number; ncs: number };
+/** Where someone stood going into a fight: rank on the last list before it,
+ *  and any UFC belt then, before or to come. */
+export type Standing = { rank: string | null; division: string | null; belt: "champion" | "interim" | "former" | "future" | null };
 export type OppositionBout = {
-  fight_id: string | null; date: string; outcome: "win" | "loss" | "draw" | "nc" | null; method: string | null;
+  fight_id: string; date: string; outcome: "win" | "loss" | "draw" | "nc" | null; method: string | null;
   opponent: { id: string | null; name: string };
+  /** UFC record going in; these sum to the matchup's opponent record. */
+  record: OppositionRecord;
+  /** Complete professional record going in, once their history is verified. */
+  pro_record: OppositionRecord | null;
+  standing: Standing | null;
+  /** The opponent's earlier bouts, newest first. */
+  history: EarlierBout[];
+};
+/** One of an opponent's earlier bouts: a profile here, else their Sherdog page. */
+export type EarlierBout = {
+  fight_id: string | null; date: string; outcome: "win" | "loss" | "draw" | "nc"; method: string | null;
+  opponent: { id: string | null; name: string; source_url: string | null };
+  standing: Standing | null;
+  /** That opponent's UFC record going into the bout, when they have a profile here. */
+  record: OppositionRecord | null;
 };
 export type Opposition = {
   fighter_id: string; name: string; before: { fight_id: string; date: string } | null;
   record: OppositionRecord;
-  rows: (OppositionBout & { fight_id: string; record: OppositionRecord; history: OppositionBout[] })[];
+  rows: OppositionBout[];
+};
+
+export type RoundOutcome = { round: number; won: number; lost: number; past: number };
+export type FightInsights = {
+  rounds: { fights: number; rounds: RoundOutcome[]; decision: { won: number; lost: number; drawn: number } } | null;
 };
 
 export type FightOdds = {
@@ -330,6 +353,8 @@ export type MatchupSide = FightSide & {
   /** UFC opponents' UFC records on the nights they met, summed; null before a UFC bout. */
   ufc_opponents_record_before: string | null;
   complete_record_before: CompleteRecordBefore | null;
+  /** UFC bouts before this one: how they ended, by round. */
+  insights: FightInsights | null;
   history: (HistoryRow | ProfessionalHistoryRow)[];
   /** Last five professional bouts before this matchup, newest first. */
   recent_history: (HistoryRow | ProfessionalHistoryRow)[];
@@ -449,6 +474,7 @@ export type FighterProfile = {
   ranking_history?: RankingTimeline;
   records: FighterRecord[];
   career_stats: CareerTotals;
+  insights: FightInsights;
   /** Every verified professional bout; UFC rows retain their richer local data. */
   pro_history: ProfessionalHistoryRow[];
   roster_events?: CareerRosterEvent[];

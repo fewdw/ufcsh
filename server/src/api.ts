@@ -1,5 +1,6 @@
 import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, potentialMatchups, potentialFight } from "./potential-matchups.ts";
 import { careerStatistics } from "./career-statistics.ts";
+import { roundOutcomes } from "./fight-insights.ts";
 import { opposition } from "./opposition.ts";
 import { eventStatus, fightIsComplete, fightIsUnderway, isFightDay, liveDetailDue } from "./live-state.ts";
 import { ScoringStore, type ScoringFight } from "./scoring.ts";
@@ -50,7 +51,7 @@ import { titleNarratives } from "./titles.ts";
 import { fighterBoard, fighterRecords } from "./records.ts";
 import { ufcFightExistsSql, fighterNamed, hasUfcFight, recordText, currentRecord, cachedPhotoUrl, cachedFullPhotoUrl, photoVersion } from "./fighter-identity.ts";
 export { hasUfcFight };
-import { careerBefore, completeRecordBefore, fightIndex, indexesHeld, ageOn, opponentsRecordBefore, parseScheduledRounds, professionalBouts, professionalBoutsBefore, sideOf, ufcBoutsBefore, type FightRecord } from "./fight-index.ts";
+import { boutsBefore, careerBefore, completeRecordBefore, fightIndex, indexesHeld, ageOn, opponentsRecordBefore, parseScheduledRounds, professionalBouts, professionalBoutsBefore, sideOf, ufcBoutsBefore, type FightRecord } from "./fight-index.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { summarizeCard } from "./card-stats.ts";
 import { mergeJudgeRounds } from "./judge-scorecards.ts";
@@ -952,6 +953,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
       form_details: context.form_details ?? [],
       run_form: context.run_form ?? [],
       complete_record_before: completeRecord ? { ...completeRecord, text: recordText(completeRecord), verified: true } : null,
+      insights: fid ? { rounds: roundOutcomes(boutsBefore(index, fid, f.event_date, Number(f.ord) || 0), fid) } : null,
       history: ufcHistory,
       recent_history: recentHistory,
     };
@@ -1115,6 +1117,7 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     // same index the leaderboards use, so it moves the moment a result lands.
     records,
     career_stats: careerStatistics(index, fr.id)?.totals,
+    insights: { rounds: roundOutcomes(indexedFighter?.fights ?? [], fr.id) },
     history: mergedUfcHistory,
     roster_events: fighterRosterEvents(fr.id),
     // The professional list shows the same ranks on its UFC bouts.
@@ -2124,7 +2127,12 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
         WHERE f.id = ? AND (f.f1_id = ? OR f.f2_id = ?)`).get(beforeId, id, id) as typeof before;
       if (!before) return undefined;
     }
-    return (p.endsWith("/opposition") ? opposition : careerStatistics)(fightIndex(), id, before) ?? undefined;
+    const index = fightIndex();
+    if (!p.endsWith("/opposition")) return careerStatistics(index, id, before) ?? undefined;
+    return opposition(index, id, before, (opponentId, fight) => {
+      const rank = rankingEntering(opponentId, rankingType, fight.date, fight.weightClass, index.holdersBefore(fight.weightClass, fight.date, fight.ord));
+      return rank ? { rank: rank.rank, division: rank.division } : null;
+    }) ?? undefined;
   }
   if (/^\/api\/fighters\/[a-f0-9]{16}\/stats$/i.test(p)) {
     return hasUfcFight(id) ? fighterBoard(id, url.searchParams.get("scope") ?? "ufc", Number(url.searchParams.get("minBouts") ?? 0)) ?? undefined : undefined;

@@ -92,8 +92,11 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-06">October 6, 2026</time></p>
             <ul>
-              <li>A signing after a Contender Series win now shows right after that fight.</li>
-              <li>Roster bands on fighter pages are no longer links.</li>
+              <li>By round: how each fighter's UFC fights ended, on profiles and matchups.</li>
+              <li>Quality of opposition covers the whole career, with ranks going in; an opponent's name opens the matchup.</li>
+              <li>Close decisions name the round that decided the fight.</li>
+              <li>Common opponents run from oldest beside the opponent to newest.</li>
+              <li>On phones, swipe over Ranking history to scroll; touch and hold to read it.</li>
             </ul>
           </Section>
         </div>

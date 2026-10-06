@@ -124,6 +124,8 @@ export type CareerBout = {
   opponentName: string;
   /** Linked identity, absent when a source opponent has no verified profile. */
   opponentId?: string | null;
+  /** The opponent's page on the professional-record source, when it links one. */
+  opponentUrl?: string | null;
   eventName: string;
   isUfc: boolean;
   ufcFightId: string | null;
@@ -644,7 +646,7 @@ function build(version: string): FightIndex {
 
   const verifiedProfiles = db.prepare("SELECT fighter_id FROM career_profiles WHERE status = 'verified'").all() as { fighter_id: string }[];
   const careerRows = db.prepare(`
-    SELECT cb.fighter_id, cb.date, cb.source_order, cb.outcome, cb.method, cb.opponent_name,
+    SELECT cb.fighter_id, cb.date, cb.source_order, cb.outcome, cb.method, cb.opponent_name, cb.opponent_url,
            cb.event_name, cb.is_ufc, cb.ufc_fight_id,
            (SELECT CASE WHEN COUNT(*) = 1 THEN MIN(opponent.fighter_id) END
             FROM career_profiles opponent
@@ -663,6 +665,7 @@ function build(version: string): FightIndex {
       method: row.method ?? "",
       opponentName: row.opponent_name,
       opponentId: row.opponent_id ?? null,
+      opponentUrl: row.opponent_url || null,
       eventName: row.event_name,
       isUfc: Boolean(row.is_ufc),
       ufcFightId: row.ufc_fight_id ?? null,
