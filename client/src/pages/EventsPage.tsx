@@ -891,17 +891,56 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
       : undefined,
   });
 
-  if (loading && !event) {
-    return (
-      <div className={`flex h-full items-center justify-center ${shell}`}>
-        <div role="status" className="appear-late text-sm text-zinc-400">Loading…</div>
-      </div>
-    );
-  }
+  // Read from the opener up, the card runs in the order it is fought.
+  const openerFirst = settings.cardOrder === "opener";
+  const oddsCard = oddsMode && (!event || event.fights.some(hasFightOdds));
+  const pane = "@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+3.25rem)] sm:gap-3 sm:pb-0 sm:pr-1";
+  // Stepping through cards one after another, the next is already here.
+  const loaded = Boolean(event);
+  const prevUrl = nav.prev ? withRanking(`/api/events/${nav.prev.id}`, settings.rankingSource) : null;
+  const nextUrl = nav.next ? withRanking(`/api/events/${nav.next.id}`, settings.rankingSource) : null;
+  useEffect(() => {
+    if (loaded) { prefetch(prevUrl); prefetch(nextUrl); }
+  }, [loaded, prevUrl, nextUrl]);
+
+  // On a phone the list folds away, so its button and the step to either
+  // neighbour float at the bottom; they head the card wherever else it is
+  // narrow enough to stack its bouts. They stay put while the next card
+  // loads, so a quick second tap lands on them, never on a bout beneath.
+  const navigation = (
+    <CardNavigation label="Event navigation" className="@3xl:hidden"
+      previous={<StepLink event={nav.prev} direction="prev" className={NAV_STEP} />}
+      // Reading the whole card's odds, the way out is back to the card.
+      center={oddsCard
+        ? <Link to={`/events/${eventId}`} className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+          <List className="h-3.5 w-3.5" aria-hidden="true" />Card
+        </Link>
+        // Events stays centred; the order toggle hangs off its right.
+        : <span className="relative inline-flex">
+          <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
+            className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+            <List className="h-3.5 w-3.5" aria-hidden="true" />Events
+          </button>
+          <button type="button" data-nav-extra onClick={() => update("cardOrder", openerFirst ? "main" : "opener")}
+            aria-label={openerFirst ? "Opener first; show the main event first" : "Main event first; show the opener first"}
+            title={openerFirst ? "Opener first" : "Main event first"}
+            className="absolute left-full top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950">
+            {openerFirst ? <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}
+          </button>
+        </span>}
+      next={<StepLink event={nav.next} direction="next" className={NAV_STEP} />}
+    />
+  );
+
   if (!event) {
     return (
-      <div className={`flex h-full items-center justify-center ${shell}`}>
-        <div className="text-sm text-zinc-400">Could not load this event.</div>
+      <div ref={eventScroll} className={pane}>
+        {navigation}
+        <div className={`flex min-h-0 flex-1 items-center justify-center ${shell}`}>
+          {loading
+            ? <div role="status" className="appear-late text-sm text-zinc-400">Loading…</div>
+            : <div className="text-sm text-zinc-400">Could not load this event.</div>}
+        </div>
       </div>
     );
   }
@@ -909,10 +948,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   const past = event.status === "past";
   const liveId = liveFightId(event);
   const oddsFights = event.fights.filter(hasFightOdds);
-  // Read from the opener up, the card runs in the order it is fought.
-  const openerFirst = settings.cardOrder === "opener";
   const cardFights = openerFirst ? [...event.fights].reverse() : event.fights;
-  const hasAnyOdds = oddsFights.length > 0;
   const announced = (["main", "prelims", "early"] as CardSegment[])
     .map((segment) => ({ segment, at: segmentStart(event.schedule, segment) }))
     .filter((entry): entry is { segment: CardSegment; at: number } => entry.at != null);
@@ -933,32 +969,8 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   ].filter((entry) => entry.count > 0) : [];
 
   return (
-    <div ref={eventScroll} className="@container flex h-full min-h-0 flex-col gap-2 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+3.25rem)] sm:gap-3 sm:pb-0 sm:pr-1">
-      {/* On a phone the list folds away, so its button and the step to
-          either neighbour float at the bottom; they head the card wherever
-          else it is narrow enough to stack its bouts. */}
-      <CardNavigation label="Event navigation" className="@3xl:hidden"
-        previous={<StepLink event={nav.prev} direction="prev" className={NAV_STEP} />}
-        // Reading the whole card's odds, the way out is back to the card.
-        center={oddsMode && hasAnyOdds
-          ? <Link to={`/events/${event.id}`} className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
-            <List className="h-3.5 w-3.5" aria-hidden="true" />Card
-          </Link>
-          // Events stays centred; the order toggle hangs off its right.
-          : <span className="relative inline-flex">
-            <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
-              className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
-              <List className="h-3.5 w-3.5" aria-hidden="true" />Events
-            </button>
-            <button type="button" data-nav-extra onClick={() => update("cardOrder", openerFirst ? "main" : "opener")}
-              aria-label={openerFirst ? "Opener first; show the main event first" : "Main event first; show the opener first"}
-              title={openerFirst ? "Opener first" : "Main event first"}
-              className="absolute left-full top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950">
-              {openerFirst ? <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}
-            </button>
-          </span>}
-        next={<StepLink event={nav.next} direction="next" className={NAV_STEP} />}
-      />
+    <div ref={eventScroll} className={pane}>
+      {navigation}
       <section className={`${shell} shrink-0 overflow-hidden`}>
         {/* The name, date and place on the left; the card's start times on
             the right, centred against it, one per line at every width. */}
@@ -1003,7 +1015,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
         </div>
       </section>
 
-      {oddsMode && hasAnyOdds ? (
+      {oddsCard ? (
         // Its own height, not the pane's: squeezed to fit, the list would run
         // out past the pane.
         <div className="flex shrink-0 flex-col gap-3">

@@ -1,5 +1,5 @@
 import { PANEL } from "./chartTokens";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import type { VenueRef } from "../api";
@@ -53,10 +53,12 @@ export function CardNavigation({ label, previous, center, next, className = "" }
   const bar = useRef<HTMLElement>(null);
   const [shown, setShown] = useState(false);
   // The pill shows while the card it steps through does, so it leaves with
-  // the card when the phone swaps in the events list.
-  useEffect(() => {
+  // the card when the phone swaps in the events list. It is there from the
+  // first paint: a pill a frame late lets a quick tap through to the card.
+  useLayoutEffect(() => {
     const card = bar.current?.parentElement;
     if (!card) return;
+    setShown(card.getClientRects().length > 0);
     const observer = new IntersectionObserver(([entry]) => setShown(entry.isIntersecting));
     observer.observe(card);
     return () => observer.disconnect();
