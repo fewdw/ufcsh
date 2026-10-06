@@ -2,11 +2,13 @@ import type { Opposition } from "./api";
 
 export type OppositionFilter = "all" | "win" | "loss";
 
-/** Each meeting keeps its own attribution, including rematches. Filter the
- * opponent's result, independently of the selected fighter's result. */
+/** Each meeting keeps its own attribution, including rematches. The filter is
+ * the selected fighter's result in the meeting; each opponent's earlier wins
+ * and losses are always shown in full. */
 export function oppositionRows(data: Opposition, outcome: OppositionFilter) {
-  return [...data.rows].sort((a, b) => b.date.localeCompare(a.date)).flatMap(meeting => meeting.history
-    .filter(bout => outcome === "all" ? bout.outcome === "win" || bout.outcome === "loss" : bout.outcome === outcome)
+  return data.rows.filter(meeting => outcome === "all" || meeting.outcome === outcome)
+    .sort((a, b) => b.date.localeCompare(a.date)).flatMap(meeting => meeting.history
+    .filter(bout => bout.outcome === "win" || bout.outcome === "loss")
     .sort((a, b) => b.date.localeCompare(a.date))
     .map(bout => ({ meeting, bout })));
 }

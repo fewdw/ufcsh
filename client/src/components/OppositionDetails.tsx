@@ -25,19 +25,19 @@ function OppositionList({ scope, fighter, before, outcome }: { scope: string; fi
   const { data, error, retry } = useApi<Opposition>(`/api/fighters/${fighter.id}/opposition${before ? `?before=${before}` : ""}`);
   const scrollRef = useRouteScrollRestoration<HTMLDivElement>(`${scope}:list:${fighter.id}:${outcome}`, Boolean(data));
   const groups = data ? oppositionGroups(data, outcome) : [];
-  const resultName = outcome === "all" ? "wins and losses" : outcome === "win" ? "wins" : "losses";
+  const resultName = outcome === "all" ? "all results" : outcome === "win" ? "wins" : "losses";
   return <div ref={scrollRef} data-sheet-scroll className="min-h-0 flex-1 overflow-auto overscroll-x-contain overscroll-y-none pr-2 [scrollbar-gutter:stable]">
     {error ? <RequestNotice onRetry={retry}>Couldn’t load opponents.</RequestNotice> : null}
-    {!data ? !error ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null : !groups.length ? <p className="py-4 text-xs text-zinc-500">{data.rows.length ? `No earlier opponent ${resultName}.` : "UFC debut — no earlier opponents."}</p> : <table aria-label={`${fighter.name}: opponent ${resultName}`} className="w-full table-fixed text-left text-[11px] sm:text-xs">
+    {!data ? !error ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null : !groups.length ? <p className="py-4 text-xs text-zinc-500">{data.rows.length ? outcome === "all" ? "No opponent had earlier wins or losses." : `No ${resultName} against opponents with earlier wins or losses.` : "UFC debut — no earlier opponents."}</p> : <table aria-label={`${fighter.name}: opposition, ${resultName}`} className="w-full table-fixed text-left text-[11px] sm:text-xs">
       <colgroup><col className="w-[34%]" /><col className="w-9 sm:w-12" /><col className="w-[18%]" /><col /></colgroup>
       <thead className="sticky top-0 z-10 bg-white"><tr className="font-medium text-zinc-500">
         <th scope="col" className="pb-2 pr-2 font-medium" title={`${fighter.name}'s result against their opponent`}>{lastName(fighter.name)} vs.</th>
         <th scope="col" className="pb-2 text-center font-medium" title="Opponent’s result">W/L</th>
         <th scope="col" className="pb-2 text-center font-medium">Method</th>
-        <th scope="col" className="pb-2 text-right font-medium">{outcome === "all" ? "Beat / Lost to" : outcome === "win" ? "Beat" : "Lost to"}</th>
+        <th scope="col" className="pb-2 text-right font-medium">Beat / Lost to</th>
       </tr></thead>
       {groups.map(group => <tbody key={group.opponent.id ?? group.opponent.name} aria-label={group.opponent.name} className="border-t border-zinc-200">
-        {group.meetings.flatMap(({ meeting, bouts }, meetingIndex) => bouts.map((bout, index) => <tr key={`${meeting.fight_id}-${bout.fight_id ?? index}`} className={`${index ? "border-t border-zinc-100" : ""} hover:bg-zinc-50`}>
+        {group.meetings.flatMap(({ meeting, bouts }, meetingIndex) => bouts.map((bout, index) => <tr key={`${meeting.fight_id}-${bout.fight_id ?? index}`} className={index ? "border-t border-zinc-100" : undefined}>
         {meetingIndex === 0 && index === 0 ? <td rowSpan={group.meetings.reduce((count, entry) => count + entry.bouts.length, 0)} className="py-2 pr-2 align-top">
           <div className="space-y-1.5">
             {group.meetings.map(({ meeting: faced }, facedIndex) => <div key={faced.fight_id} className="flex items-start gap-1.5 font-medium text-zinc-700">
@@ -69,7 +69,7 @@ function OppositionList({ scope, fighter, before, outcome }: { scope: string; fi
 function OppositionModal({ id, scope, fighters, before, close }: { id: string; scope: string; fighters: Fighter[]; before?: string; close: () => void }) {
   const [selected, setSelected] = useHistoryState(`${scope}:fighter`, 0);
   const [outcome, setOutcome] = useHistoryState<OppositionFilter>(`${scope}:outcome`, "all");
-  return <EvidenceDialog id={id} close={close}>
+  return <EvidenceDialog id={id} close={close} large>
     <div className="shrink-0 px-4 pb-3 pt-3 sm:px-5">
       <div className="flex items-center justify-between gap-3">
         <h2 id={`${id}-title`} tabIndex={-1} style={{ outline: "none" }} className={DIALOG_TITLE}>Quality of opposition</h2>
@@ -80,7 +80,7 @@ function OppositionModal({ id, scope, fighters, before, close }: { id: string; s
           {fighters.map((fighter, index) => <button key={fighter.id} type="button" aria-label={fighter.name} title={fighter.name} aria-pressed={selected === index} onClick={() => setSelected(index)}
             className={`min-h-8 min-w-0 flex-auto whitespace-nowrap rounded-full px-1 text-[10px] font-medium sm:px-3 sm:text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${selected === index ? segmentedSelected : segmentedIdle}`}><span className="sm:hidden">{lastName(fighter.name)}</span><span className="hidden sm:inline">{fighter.name}</span></button>)}
         </div>
-        <div role="group" aria-label="Opponent results" className={`${segmentedGroup} min-w-max flex-1`}>
+        <div role="group" aria-label={`${lastName(fighters[selected].name)}'s results`} className={`${segmentedGroup} min-w-max flex-1`}>
           {(["all", "win", "loss"] as const).map(value => <button key={value} type="button" aria-pressed={outcome === value} onClick={() => setOutcome(value)}
             className={`min-h-8 flex-auto whitespace-nowrap rounded-full px-1 text-[10px] font-medium sm:px-3 sm:text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${outcome === value ? segmentedSelected : segmentedIdle}`}>{value === "all" ? "All" : value === "win" ? "Wins" : "Losses"}</button>)}
         </div>
