@@ -31,17 +31,16 @@ test("round outcomes: finishes in their round, decisions past every round, no co
   assert.equal(roundOutcomes([bout("nc", "CNC", 1)], "a"), null);
 });
 
-test("odds record removes the margin and counts only decided, priced bouts", () => {
+test("odds record bets $100 on every priced, decided bout at the closing line", () => {
   const result = oddsRecord([
     bout("win", "KO/TKO", 1, 3, [-200, 170]),
+    bout("win", "SUB", 1, 3, [150, -170]),
     bout("loss", "U-DEC", 3, 3, [-150, 130]),
     bout("win", "SUB", 1),
     bout("draw", "M-DEC", 3, 3, [100, -120]),
   ], "a")!;
-  const fair = (a: number, b: number) => a / (a + b);
-  const expected = fair(200 / 300, 100 / 270) + fair(150 / 250, 100 / 230);
-  assert.deepEqual({ ...result, expected: 0 }, { fights: 3, priced: 2, wins: 1, expected: 0 });
-  assert.equal(result.expected, Math.round(expected * 10) / 10);
+  // +$50 and +$150 for the wins, -$100 for the loss; unpriced and drawn bouts place no bet.
+  assert.deepEqual(result, { fights: 4, priced: 3, wins: 2, profit: 100 });
   assert.equal(oddsRecord([bout("nc", "CNC", 1)], "a"), null);
 });
 
@@ -60,6 +59,6 @@ test("archive: every counted bout starts round one, and ends once", () => {
       if (next) assert(next.won + next.lost + next.past <= round.past, `${fighter.name} R${next.round}`);
     }
     const odds = oddsRecord(fighter.fights, fighter.id);
-    if (odds) assert(odds.priced <= odds.fights && odds.wins <= odds.priced && odds.expected <= odds.priced + 0.05, fighter.name);
+    if (odds) assert(odds.priced <= odds.fights && odds.wins <= odds.priced && odds.profit >= -100 * odds.priced, fighter.name);
   }
 });

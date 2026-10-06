@@ -53,12 +53,11 @@ function Faced({ fighter, group }: { fighter: Fighter; group: Group }) {
     {group.meetings.map((meeting, index) => <div key={meeting.fight_id} className="flex items-start gap-1.5 text-zinc-700">
       <Result outcome={meeting.outcome} label={boutLabel(fighter.name, meeting.outcome, group.opponent.name)} />
       <span className="min-w-0 break-words">
-        {index === 0 ? <Name opponent={group.opponent} standing={meeting.standing} className="block" /> : null}
-        <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 tabular-nums">
-          {meeting.pro_record ? <span className="font-semibold text-zinc-900" title="Professional record going in">{recordText(meeting.pro_record)}</span> : null}
-          <span className="text-zinc-500" title="UFC record going in"><span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(meeting.record)}</span>
+        <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          {index === 0 ? <Name opponent={group.opponent} standing={meeting.standing} /> : null}
           <Chips standing={meeting.standing} />
         </span>
+        <span className="mt-0.5 block tabular-nums text-zinc-500" title="UFC record going in"><span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(meeting.record)}</span>
         <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-zinc-500">
           <span title={meeting.method ?? undefined}>{resultDot(meeting).shortMethod || "—"} · <span className="tabular-nums">{formatDateShortWithYear(meeting.date)}</span></span>
           <Link to={`/fights/${meeting.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name}`} className={`py-1 underline hover:text-zinc-900 ${linkUnderline}`}>Matchup</Link>

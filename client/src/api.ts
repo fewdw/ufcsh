@@ -196,7 +196,8 @@ export type Opposition = {
 export type RoundOutcome = { round: number; won: number; lost: number; past: number };
 export type FightInsights = {
   rounds: { fights: number; rounds: RoundOutcome[]; decision: { won: number; lost: number; drawn: number } } | null;
-  odds: { fights: number; priced: number; wins: number; expected: number } | null;
+  /** $100 on their moneyline at the closing line in every decided, priced UFC bout. */
+  odds: { fights: number; priced: number; wins: number; profit: number } | null;
 };
 
 export type FightOdds = {

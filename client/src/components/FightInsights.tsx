@@ -70,13 +70,9 @@ function RoundChart({ fighter, rounds, max }: { fighter: Insightful; rounds: Non
   </div>;
 }
 
-/** A fighter's name heading their part of a two-fighter panel: corner dot
- *  and last name, top left. */
-export function SideName({ name, side }: { name: string; side?: "f1" | "f2" }) {
-  return <h3 className="mb-2 flex min-w-0 items-center gap-1.5 text-xs font-semibold text-zinc-700" title={name}>
-    {side ? <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: `var(--color-${side})` }} /> : null}
-    <span className="truncate">{lastName(name)}</span>
-  </h3>;
+/** A fighter's name heading their part of a two-fighter panel, top left. */
+export function SideName({ name }: { name: string }) {
+  return <h3 className="mb-2 truncate text-xs font-semibold text-zinc-700" title={name}>{lastName(name)}</h3>;
 }
 
 /** How each fighter's UFC bouts ended, round by round and on the cards. */
@@ -86,45 +82,49 @@ function RoundsPanel({ fighters }: { fighters: Insightful[] }) {
     <PanelHeading title="By round" />
     <div className="divide-y divide-zinc-100 px-4 sm:px-5">
       {fighters.map(fighter => <div key={fighter.name} className="py-3">
-        {fighters.length > 1 ? <SideName name={fighter.name} side={fighter.side} /> : null}
+        {fighters.length > 1 ? <SideName name={fighter.name} /> : null}
         {fighter.insights?.rounds ? <RoundChart fighter={fighter} rounds={fighter.insights.rounds} max={max} /> : <p className="text-[11px] text-zinc-500">No UFC fights yet.</p>}
       </div>)}
     </div>
   </section>;
 }
 
-/** Wins against what the closing odds expected, margin removed. A record of
- *  past fights, not a forecast. */
+const dollars = (value: number) => `${value > 0 ? "+" : value < 0 ? "−" : ""}$${Math.abs(value).toLocaleString("en-US")}`;
+
+/** $100 on their moneyline at the closing line in every UFC fight that had
+ *  one: what it would have made or lost. Past results, not a forecast. */
 function OddsPanel({ fighters }: { fighters: Insightful[] }) {
   return <section className={`${PANEL_SHELL} min-w-0`}>
-    <PanelHeading title="Against the odds" />
-    <div className="divide-y divide-zinc-100 px-4 sm:px-5">
+    <PanelHeading title="$100 on every fight" />
+    <ul className="divide-y divide-zinc-100 px-4 sm:px-5">
       {fighters.map(fighter => {
         const odds = fighter.insights?.odds;
-        const difference = odds ? Math.round((odds.wins - odds.expected) * 10) / 10 : 0;
-        return <div key={fighter.name} className="py-3">
-          {fighters.length > 1 ? <SideName name={fighter.name} side={fighter.side} /> : null}
-          {odds && odds.priced >= MIN_PRICED ? <div title={`Won ${odds.wins} of ${odds.priced} UFC fights with closing odds; the odds, margin removed, expected ${odds.expected.toFixed(1)}`}>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-xl font-semibold tabular-nums text-zinc-900">{difference > 0 ? "+" : difference < 0 ? "−" : ""}{Math.abs(difference).toFixed(1)}</span>
-              <span className="text-[11px] text-zinc-500">{difference >= 0 ? "above" : "below"} odds</span>
-            </div>
-            <div className="mt-1 text-[11px] tabular-nums text-zinc-500">Won {odds.wins} of {odds.priced} · Expected {odds.expected.toFixed(1)}</div>
-          </div> : <p className="text-[11px] text-zinc-500">Fewer than {MIN_PRICED} UFC fights with closing odds.</p>}
-        </div>;
+        const enough = odds && odds.priced >= MIN_PRICED;
+        return <li key={fighter.name} className="flex items-center justify-between gap-3 py-3">
+          <div className="min-w-0">
+            {fighters.length > 1 ? <div className="truncate text-xs font-semibold text-zinc-700" title={fighter.name}>{lastName(fighter.name)}</div> : null}
+            <div className="text-[11px] tabular-nums text-zinc-500">{enough ? `Won ${odds.wins} of ${odds.priced} bets` : `Fewer than ${MIN_PRICED} UFC fights with odds`}</div>
+          </div>
+          {enough ? <div className={`shrink-0 text-lg font-semibold tabular-nums ${odds.profit > 0 ? "text-emerald-700" : odds.profit < 0 ? "text-rose-700" : "text-zinc-900"}`}
+            title={`$100 on ${lastName(fighter.name)} at the closing moneyline in each of ${odds.priced} UFC fights: ${dollars(odds.profit)} (${dollars(Math.round(odds.profit / odds.priced))} a bet)`}>
+            {dollars(odds.profit)}
+          </div> : null}
+        </li>;
       })}
-    </div>
+    </ul>
   </section>;
 }
 
-/** By round and Against the odds: two boxes side by side when there is room
- *  for both, one under the other when not. */
+/** By round and the betting record: two boxes side by side, each half the
+ *  width even when only one has anything to show; stacked when narrow. */
 export function FightInsightsPanels({ fighters }: { fighters: Insightful[] }) {
   const rounds = fighters.some(fighter => fighter.insights?.rounds);
   const odds = fighters.some(fighter => (fighter.insights?.odds?.priced ?? 0) >= MIN_PRICED);
   if (!rounds && !odds) return null;
-  return <div className="grid grid-cols-[repeat(auto-fit,minmax(13.5rem,1fr))] gap-2 sm:gap-3">
-    {rounds ? <RoundsPanel fighters={fighters} /> : null}
-    {odds ? <OddsPanel fighters={fighters} /> : null}
+  return <div className="@container">
+    <div className="grid items-start gap-2 sm:gap-3 @[29rem]:grid-cols-2">
+      {rounds ? <RoundsPanel fighters={fighters} /> : null}
+      {odds ? <OddsPanel fighters={fighters} /> : null}
+    </div>
   </div>;
 }

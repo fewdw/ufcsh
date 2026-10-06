@@ -1,4 +1,4 @@
-import { impliedProbability, opponentOf, sideOf, type IndexedFight } from "./fight-index.ts";
+import { sideOf, winProfit, type IndexedFight } from "./fight-index.ts";
 
 /** One round of a fighter's UFC bouts: finishes won and lost in it, and the
  *  bouts that carried on past it (into the next round or to the cards). */
@@ -10,16 +10,16 @@ export type RoundOutcomes = {
   decision: { won: number; lost: number; drawn: number };
 };
 
-/** Closing-odds expectation against results, over decided UFC bouts. */
+/** $100 on this fighter's moneyline in every decided UFC bout. */
 export type OddsRecord = {
   /** Decided (won or lost) UFC bouts. */
   fights: number;
-  /** Those with both closing lines. */
+  /** Those with a closing line: the bets placed. */
   priced: number;
-  /** Wins among the priced bouts. */
+  /** Bets won. */
   wins: number;
-  /** Sum of the no-vig closing win probabilities over the priced bouts. */
-  expected: number;
+  /** Net dollars over all the bets. */
+  profit: number;
 };
 
 const decision = (method: string | null) => /DEC/i.test(method ?? "");
@@ -51,22 +51,23 @@ export function roundOutcomes(fights: IndexedFight[], fighterId: string): RoundO
   return result.fights ? result : null;
 }
 
-/** Won bouts against what the closing odds expected, with the bookmaker's
- *  margin removed: each side's implied probability over the pair's sum. */
+/** $100 on the fighter at the closing line in every decided UFC bout that
+ *  had one: a win pays the line, a loss costs the $100. Draws and no contests
+ *  are left out, as a two-way moneyline refunds them. */
 export function oddsRecord(fights: IndexedFight[], fighterId: string): OddsRecord | null {
-  const result: OddsRecord = { fights: 0, priced: 0, wins: 0, expected: 0 };
+  const result: OddsRecord = { fights: 0, priced: 0, wins: 0, profit: 0 };
   for (const fight of fights) {
     const own = sideOf(fight, fighterId);
     if (own.outcome !== "win" && own.outcome !== "loss") continue;
     result.fights++;
-    const mine = impliedProbability(own.close);
-    const theirs = impliedProbability(opponentOf(fight, fighterId).close);
-    if (mine == null || theirs == null || mine + theirs <= 0) continue;
+    if (own.close == null) continue;
     result.priced++;
-    result.expected += mine / (mine + theirs);
-    if (own.outcome === "win") result.wins++;
+    if (own.outcome === "win") {
+      result.wins++;
+      result.profit += winProfit(own.close);
+    } else result.profit -= 100;
   }
-  return result.fights ? { ...result, expected: Math.round(result.expected * 10) / 10 } : null;
+  return result.fights ? { ...result, profit: Math.round(result.profit) } : null;
 }
 
 export function fightInsights(fights: IndexedFight[], fighterId: string) {

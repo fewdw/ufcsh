@@ -380,7 +380,7 @@ function FormHalf({ name, rows, side }: { name: string; rows: UfcHistoryRow[]; s
   const mirror = side === "f2" ? "@[56rem]:flex-row-reverse" : "";
   return (
     <div className="min-w-0" aria-label={`${name}'s last five`}>
-      <div className="px-1"><SideName name={name} side={side} /></div>
+      <div className="px-1"><SideName name={name} /></div>
       <div className="flex flex-col @[34rem]:hidden">
         {rows.length ? rows.map((row, index) => <FormListBout key={row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`} row={row} />)
           : <p className={`px-1 py-1 ${CHART_TEXT} text-zinc-400`}>No earlier bouts available.</p>}
