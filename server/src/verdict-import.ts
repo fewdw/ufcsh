@@ -180,7 +180,7 @@ async function importFight(eventId: number, fightNumber: number, fight: LocalFig
     }
     let communityJson: string | null = null;
     if ((mode !== "missing" || !fight.community_score_json) && page.community
-      && !communityScoreIssue(page.community, fight.method, fight.round)) {
+      && !communityScoreIssue(page.community, fight.method, fight.round, { judges: officialCards(fight) })) {
       const card = page.community;
       const aligned = order === 1 ? card : {
         ...card,

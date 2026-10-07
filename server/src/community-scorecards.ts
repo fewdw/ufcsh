@@ -1,9 +1,11 @@
 /** Validate a complete aggregate against the rounds actually reached, rather
- * than a scheduled five-round format on a technical decision. Overturned
- * results can have been decisions, so the final reached round is allowed. */
-export function communityScoreIssue(value: any, method: string | null, round: string | number | null): string | null {
+ * than a scheduled five-round format on a technical decision. An overturned
+ * decision retains official totals; an overturned finish excludes its last round. */
+export function communityScoreIssue(value: any, method: string | null, round: string | number | null, detail?: { judges?: unknown } | null): string | null {
   const reached = Number(round);
-  const max = reached - (/DEC|decision|draw|overturned/i.test(method ?? "") ? 0 : 1);
+  const decision = /DEC|decision|draw/i.test(method ?? "")
+    || (/overturned/i.test(method ?? "") && Array.isArray(detail?.judges) && detail.judges.length > 0);
+  const max = reached - (decision ? 0 : 1);
   if (!Number.isSafeInteger(value?.cards) || value.cards < 1) return "No valid vote count";
   if (!Number.isInteger(max) || max < 1 || max > 5 || !Array.isArray(value.rounds)
     || value.rounds.length !== max) return "Scores do not cover the completed rounds";

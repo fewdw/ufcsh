@@ -78,6 +78,7 @@ export const hasDistinctJudgeNames = (cards: JudgeCard[]): boolean => cards.ever
 /** Attach imported round detail to independent official totals. Each source
  * card is used once and never crosses a different final score. */
 export function mergeJudgeRounds(official: JudgeCard[], imported: JudgeCard[]): JudgeCard[] {
+  imported = imported.filter(card => typeof card?.judge === "string" && Number.isFinite(card.f1Score) && Number.isFinite(card.f2Score));
   const used = new Set<number>();
   const matches = new Map<number, number>();
   // Reserve the named officials first. An unnamed card with the same total

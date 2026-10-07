@@ -25,7 +25,7 @@ const sourceUrl = (value: any): boolean => {
 };
 
 function completeCommunity(value: any, fight: Row): boolean {
-  return sourceUrl(value) && communityScoreIssue(value, fight.method, fight.round) === null;
+  return sourceUrl(value) && communityScoreIssue(value, fight.method, fight.round, parse(fight.detail_json)) === null;
 }
 
 export function importScorecardArchive(source: DatabaseSync, target: DatabaseSync, apply = false) {

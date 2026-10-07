@@ -7,7 +7,9 @@ const sample = (rounds: number) => ({ cards: 123, avg1: rounds * 9.9, avg2: roun
 
 test("community cards follow the actual result, including technical and overturned decisions", () => {
   assert.equal(communityScoreIssue(sample(3), "U-DEC", "3"), null);
-  assert.equal(communityScoreIssue(sample(3), "Overturned", "3"), null);
+  assert.equal(communityScoreIssue(sample(3), "Overturned", "3", { judges: [{ f1Score: 29, f2Score: 28 }] }), null);
+  assert.equal(communityScoreIssue(sample(2), "Overturned", "3", {}), null);
+  assert.ok(communityScoreIssue(sample(2), "Overturned", "3", { judges: [{ f1Score: 29, f2Score: 28 }] }));
   assert.equal(communityScoreIssue(sample(1), "KO/TKO", "2"), null);
   assert.ok(communityScoreIssue(sample(5), "U-DEC", "3"));
   assert.ok(communityScoreIssue(sample(2), "U-DEC", "3"));
