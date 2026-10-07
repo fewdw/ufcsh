@@ -1,4 +1,4 @@
-import { List, X } from "lucide-react";
+import { ChevronDown, List, X } from "lucide-react";
 import Flag from "../components/Flag";
 import { isFightDay } from "../liveEvent";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -719,6 +719,9 @@ function MatchupTabs({ tabs, current, onSelect }: { tabs: MatchupTab[]; current:
 /** Matchup view rendered inside the events layout: card rail + detail + close. */
 export default function FightView({ fightId, eventIdHint }: { fightId: string; eventIdHint?: string | null }) {
   const { settings, update } = useSettings();
+  // The phone's Advanced toggle is never saved: each matchup opens closed.
+  const [tapeOpenFor, setTapeOpenFor] = useState<string | null>(null);
+  const tapeOpen = tapeOpenFor === fightId;
   const navigate = useNavigate();
   const location = useLocation();
   const previousFight = useRef<Matchup | null>(null);
@@ -996,30 +999,36 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
               {tab === "matchup" ? <>
                 <section className={`matchup-overview @container overflow-hidden ${shell}`}>
                   <PanelHeading title="Tale of the tape" aside={
-                    <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-zinc-500">
+                    <label className="hidden cursor-pointer items-center gap-1.5 text-[11px] text-zinc-500 @[40rem]:flex">
                       <input type="checkbox" checked={settings.tapeAdvanced} onChange={(event) => update("tapeAdvanced", event.target.checked)} className="h-3 w-3 accent-sky-500" />
                       Advanced
                     </label>
                   } />
-                  {settings.tapeAdvanced ? (
-                    <div className="grid items-start gap-x-9 gap-y-3 px-5 pb-4 @[40rem]:grid-cols-2">
-                      <div className="matchup-comparisons grid min-w-0 content-start">
-                        <TaleOfTape fight={fight} compact />
-                        <MatchupContext fight={fight} />
-                      </div>
-                      {/* Beside the tape, the pies take its height and scroll past it. */}
-                      <div className="relative min-w-0 self-stretch">
+                  {/* Wide: the saved checkbox puts the pies beside the tape. Narrow: a
+                      toggle under it opens them for this matchup only, closed by default. */}
+                  <div className={`grid items-start gap-x-9 px-5 pb-3 ${settings.tapeAdvanced ? "@[40rem]:grid-cols-2" : ""}`}>
+                    <div className="matchup-comparisons grid min-w-0 content-start">
+                      <TaleOfTape fight={fight} compact />
+                      <MatchupContext fight={fight} />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setTapeOpenFor(tapeOpen ? null : fightId)}
+                      aria-expanded={tapeOpen}
+                      className="mx-auto mt-2 flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-50 @[40rem]:hidden"
+                    >
+                      Advanced
+                      <ChevronDown className={`h-3.5 w-3.5 transition-transform ${tapeOpen ? "rotate-180" : ""}`} aria-hidden="true" />
+                    </button>
+                    {settings.tapeAdvanced || tapeOpen ? (
+                      // Beside the tape, the pies take its height and scroll past it.
+                      <div className={`relative min-w-0 self-stretch ${tapeOpen ? "" : "hidden"} ${settings.tapeAdvanced ? "@[40rem]:block" : "@[40rem]:hidden"}`}>
                         <div className="@[40rem]:absolute @[40rem]:inset-0 @[40rem]:overflow-y-auto @[40rem]:overscroll-contain">
                           <TapeHistory fight={fight} />
                         </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="matchup-comparisons grid px-5 pb-3">
-                      <TaleOfTape fight={fight} compact />
-                      <MatchupContext fight={fight} />
-                    </div>
-                  )}
+                    ) : null}
+                  </div>
                 </section>
                 <RecentForm fight={fight} />
                 <CareerProfile fight={fight} />
