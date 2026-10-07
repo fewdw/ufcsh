@@ -70,21 +70,10 @@ Production stays on clean `main` in `/home/ubuntu/ufcsh`. Each task edits its ow
 worktree under `/home/ubuntu/ufcsh-wt`; `/home/ubuntu/ufcsh-dev` is only the shared,
 detached deployment checkout. Never edit it or rebuild it behind another review.
 
-Feature pushes save work and update draft PRs without running Actions or deploying.
-For an explicitly requested VPS review, the first **finished** task claims dev through `./deploy/dev-review.sh ready BRANCH
-SHA`; later tasks queue. Explicit "put in dev" uses `priority`, and "don't deploy"
-uses `skip`. `next` shows the next queued task; releasing/merging the owner advances
-the queue. See [agent workflow](agent-workflow.md) for commands and resource limits.
-
-The scripts pin the pushed commit, build under a shared heavy-job lock, wait for
-readiness, and confirm the running container labels. Identical healthy deployments
-are skipped. **Actions → Choose dev branch → Run workflow** remains a manual
-priority override. `dev.sh` is for initial setup; use the coordinator afterward.
-
-Mark a draft PR ready when you want CI. Ordinary pushes do not rerun it. Before an
-authorized merge, prepare the changelog and branch update, push, then request final
-CI. Successful main CI deploys production without resetting the current dev review.
-`deploy/update.sh` remains available only for explicitly requested manual recovery.
+Deploy a task here only on request, through `./deploy/dev-review.sh`; commands
+and queue behavior are in [agent workflow](agent-workflow.md). `dev.sh` is for
+initial setup only. **Actions → Choose dev branch → Run workflow** remains a
+manual override, and `deploy/update.sh` is for explicitly requested recovery.
 
 To stop dev while retaining its database, run:
 
