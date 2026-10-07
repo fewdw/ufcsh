@@ -27,10 +27,16 @@ export function decisionFromCards(method: string | null, f1Outcome: string | nul
   return method;
 }
 
-const validRounds = (card: JudgeCard): JudgeRound[] => Array.isArray(card.rounds)
-  ? card.rounds.filter(round => Number.isInteger(round?.round)
-    && Number.isInteger(round?.f1Score) && Number.isInteger(round?.f2Score))
-  : [];
+const validRounds = (card: JudgeCard): JudgeRound[] => {
+  const rounds = card?.rounds;
+  if (!Array.isArray(rounds) || !rounds.length || rounds.length > 5
+    || rounds.some((round, index) => round?.round !== index + 1
+      || !Number.isInteger(round.f1Score) || !Number.isInteger(round.f2Score)
+      || round.f1Score < 0 || round.f1Score > 10 || round.f2Score < 0 || round.f2Score > 10)
+    || rounds.reduce((sum, round) => sum + round.f1Score, 0) !== Number(card.f1Score)
+    || rounds.reduce((sum, round) => sum + round.f2Score, 0) !== Number(card.f2Score)) return [];
+  return rounds;
+};
 
 const sameJudge = (left: string, right: string): boolean => {
   // MMA Decisions sometimes prefixes the judge's title, for example
@@ -71,7 +77,7 @@ const sameTotal = (left: JudgeCard, right: JudgeCard): boolean =>
 export function mergeJudgeRounds(official: JudgeCard[], imported: JudgeCard[]): JudgeCard[] {
   const used = new Set<number>();
   return official.map((judge, index) => {
-    const candidates = imported.map((card, at) => ({ card, at })).filter(({ at }) => !used.has(at));
+    const candidates = imported.map((card, at) => ({ card, at })).filter(({ card, at }) => !used.has(at) && validRounds(card).length);
     const match = candidates.find(({ card }) => sameJudge(card.judge, judge.judge) && sameTotal(card, judge))
       // Some early UFCStats cards omit every judge name. Only those unnamed
       // rows may fall back to source order or final score; a named official is
@@ -95,6 +101,18 @@ export function compatibleJudgeCards(official: JudgeCard[], imported: JudgeCard[
 }
 
 export function hasCompleteJudgeRounds(official: JudgeCard[], imported: JudgeCard[]): boolean {
-  if (!official.length) return imported.length > 0 && imported.every(card => validRounds(card).length > 0);
+  if (!official.length) return imported.length === 3 && imported.every((card, index) => typeof card?.judge === "string" && card.judge.trim()
+    && validRounds(card).length > 0 && !imported.slice(0, index).some(other => sameJudge(card.judge, other.judge)));
   return mergeJudgeRounds(official, imported).every(card => validRounds(card).length > 0);
+}
+
+/** Fill a panel from complementary sources, keeping already verified rounds.
+ * A re-read of one judge must never discard the other source's two judges. */
+export function combineJudgeRounds(official: JudgeCard[], prior: JudgeCard[], incoming: JudgeCard[]): JudgeCard[] {
+  if (official.length) return mergeJudgeRounds(official, [...prior, ...incoming]).filter(card => validRounds(card).length);
+  const combined: JudgeCard[] = [];
+  for (const card of [...prior, ...incoming]) {
+    if (typeof card?.judge === "string" && card.judge.trim() && validRounds(card).length && !combined.some(other => sameJudge(card.judge, other.judge))) combined.push(card);
+  }
+  return combined;
 }

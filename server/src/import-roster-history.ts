@@ -1,11 +1,11 @@
 // Rebuilds roster-history-wikipedia.json from the history of Wikipedia's
 // "List of current UFC fighters": one revision a week, each revision's dated
 // "Recent signings" and "Recent releases" rows, linked to that revision.
-//   node src/import-roster-history.ts [YYYY-MM-DD start, default 2010-11-12]
+//   node src/import-roster-history.ts [YYYY-MM-DD start, default 2010-11-12] [YYYY-MM-DD end] [--merge]
 // REVISIONS_DIR=<dir> reads (and keeps) each week's API response as <day>.json.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fetchHtml } from "./http.ts";
-import { ROSTER_ARTICLE, ROSTER_HEADINGS, rosterMoves, type RosterMove } from "./scrape/wikipedia.ts";
+import { citationDate, ROSTER_ARTICLE, ROSTER_HEADINGS, rosterMoves, type RosterMove } from "./scrape/wikipedia.ts";
 import { departureKind, validRosterDate, type RosterHistoryEvent } from "./roster-history.ts";
 import { normName } from "./util.ts";
 import { db } from "./db.ts";
@@ -86,12 +86,12 @@ export function undatedReleases(text: string): { name: string; date: string; rea
       const ref = match[2] ?? defined.get(match[1]?.trim() ?? "") ?? "";
       const field = (key: string) => ref.match(new RegExp(`\\|\\s*${key}\\s*=\\s*([^|}]*)`, "i"))?.[1].trim() ?? "";
       const title = field("title");
-      const date = field("date");
-      const parsed = Date.parse(`${date} 12:00 UTC`);
+      const date = citationDate(field("date"));
       const retired = /\bretire/i.test(title);
-      if (!/\d{4}/.test(date) || !Number.isFinite(parsed) || !normName(`${title} ${field("url")}`).split(" ").includes(surname)) continue;
+      if (!/^https?:\/\//.test(field("url")) || /\b(?:asks?|requests?|plans?|considering|could|might|unless|denies|denied|not)\b/i.test(title)) continue;
+      if (!date || !normName(`${title} ${field("url")}`).split(" ").includes(surname)) continue;
       if (!retired && !/\breleas|\bcuts?\b|parted ways|\blet go\b/i.test(title)) continue;
-      found.push({ name, date: new Date(parsed).toISOString().slice(0, 10), reason: retired ? "Retired" : "Released" });
+      found.push({ name, date, reason: retired ? "Retired" : "Released" });
       break;
     }
   }
@@ -133,8 +133,11 @@ export function reports(seen: Seen[]): RosterHistoryEvent[] {
 if (import.meta.main) {
   const seen: Seen[] = [];
   const today = new Date().toISOString().slice(0, 10);
+  const start = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : "2010-11-12";
+  const end = process.argv[3] && !process.argv[3].startsWith("--") ? process.argv[3] : today;
+  if (!validRosterDate(start) || !validRosterDate(end) || start > end || end > today) throw new Error("Expected a valid start/end date range through today");
   let read = 0;
-  for (let day = process.argv[2] ?? "2010-11-12"; day <= today; day = new Date(Date.parse(day) + 7 * 86_400_000).toISOString().slice(0, 10)) {
+  for (let day = start; day <= end; day = new Date(Date.parse(day) + 7 * 86_400_000).toISOString().slice(0, 10)) {
     const revision = await revisionAt(day);
     if (!revision) continue;
     const { signed, cut } = tables(revision.text);
@@ -164,7 +167,17 @@ if (import.meta.main) {
   });
   const unmatched = [...names.values()].filter((id) => !id).length;
   // [name, date, kind, reason, revision], one report a line (roster-history.ts reads it).
-  const rows = events.map((event) => JSON.stringify([event.name, event.date, event.kind, event.reason, Number(event.source_url.split("oldid=")[1])]));
-  writeFileSync(OUT, `[\n${rows.join(",\n")}\n]\n`);
+  type Row = [string, string, RosterHistoryEvent["kind"], string | null, number];
+  const rows: Row[] = process.argv.includes("--merge") ? JSON.parse(readFileSync(OUT, "utf8")) : [];
+  let added = 0;
+  for (const event of events) {
+    if (rows.some(row => normName(row[0]) === normName(event.name) && (row[2] === "signed") === (event.kind === "signed")
+      && Math.abs(Date.parse(row[1]) - Date.parse(event.date)) <= SAME_REPORT_DAYS * 86_400_000)) continue;
+    rows.push([event.name, event.date, event.kind, event.reason, Number(event.source_url.split("oldid=")[1])]);
+    added++;
+  }
+  rows.sort((a, b) => a[1].localeCompare(b[1]) || a[0].localeCompare(b[0]));
+  writeFileSync(OUT, `[\n${rows.map(row => JSON.stringify(row)).join(",\n")}\n]\n`);
   console.log(`${events.length} reports from ${read} revisions; ${unmatched} of ${names.size} names matched no single UFC fighter`);
+  console.log(`${added} added, ${rows.length} retained`);
 }

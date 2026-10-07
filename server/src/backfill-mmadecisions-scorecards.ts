@@ -1,6 +1,6 @@
 import { db } from "./db.ts";
 import { alignment } from "./verdict-import.ts";
-import { hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
+import { combineJudgeRounds, hasCompleteJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
 import { fetchMmaDecisions, mmaDecisionUrl, parseMmaDecision, parseMmaEventDecisions, parseMmaEvents } from "./scrape/mmadecisions.ts";
 import { normName } from "./util.ts";
 
@@ -113,13 +113,17 @@ await pool(paths, async ({ date, path }) => {
       ...card, f1Score: card.f2Score, f2Score: card.f1Score,
       rounds: card.rounds?.map(round => ({ ...round, f1Score: round.f2Score, f2Score: round.f1Score })),
     });
+    const current = db.prepare("SELECT detail_json, judge_rounds_json FROM fights WHERE id = ?").get(fight.id) as Pick<Fight, "detail_json" | "judge_rounds_json">;
+    Object.assign(fight, current);
     const totals = official(fight);
     const prior = imported(fight);
-    const before = totals.length ? mergeJudgeRounds(totals, prior).filter(card => card.rounds?.length).length : prior.length;
-    const combined = totals.length ? mergeJudgeRounds(totals, [...prior, ...cards]).filter(card => card.rounds?.length) : cards;
+    const before = combineJudgeRounds(totals, prior, []).length;
+    const combined = combineJudgeRounds(totals, prior, cards);
     // Without independent UFCStats totals, require all three judge cards.
     if (combined.length <= before || (!totals.length && combined.length < 3)) return;
-    const source = prior.length && combined.some(card => !cards.some(next => next.judge === card.judge))
+    let priorSource = "";
+    try { priorSource = String(JSON.parse(fight.judge_rounds_json ?? "null")?.source ?? ""); } catch { /* malformed prior cards were ignored */ }
+    const source = before > 0 && priorSource.includes("Verdict")
       ? "MMA Decisions + Verdict MMA" : "MMA Decisions";
     fight.judge_rounds_json = JSON.stringify({ source, sourceUrl: mmaDecisionUrl(path), fetchedAt: Date.now(), judges: combined });
     update.run(fight.judge_rounds_json, fight.id);

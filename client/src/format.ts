@@ -238,6 +238,7 @@ export function divisionName(weightClass: string, catchWeight?: number | null): 
 /** How much notice a replacement had, briefly: "3 days notice", "2 weeks
  *  notice", "fight week", "short notice". */
 export function noticePhrase(notice: string | null | undefined, short: boolean | undefined): string {
+  if (/^announced (?:\d{1,2} days? before|on fight day)$/.test(notice ?? "")) return notice!;
   const amount = notice?.match(/^(?:under )?(\d+) (day|week)s?$/);
   if (amount) return `${amount[1]} ${amount[2]}${amount[1] === "1" ? "" : "s"} notice`;
   if (notice === "fight week") return "fight week";

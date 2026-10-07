@@ -5,7 +5,7 @@ import { importVerdictEvent, type ImportMode } from "./verdict-import.ts";
  * One pass over Verdict MMA's whole event archive. Usage:
  *   node src/backfill-verdict-scorecards.ts [--from=1] [--max=2100] [--concurrency=6] [--refresh] [--since=<ms>]
  * By default only fights still missing official rounds or a community card are
- * read; --refresh replaces everything stored with what Verdict shows now.
+ * read; --refresh re-reads Verdict, preserving complementary official judges.
  */
 
 const argv = new Map(process.argv.slice(2).map(value => {

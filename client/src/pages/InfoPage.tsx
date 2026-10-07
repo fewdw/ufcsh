@@ -92,8 +92,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-07">October 7, 2026</time></p>
             <ul>
-              <li>Fighter profiles: Average scorecards beside By round, the mean score for and against across UFC decisions, from every judge's card and the fans' average. Three- and five-round fights are kept apart, each with the number of fights behind it.</li>
-              <li>Ranking history marks draws with an amber dot.</li>
+              <li>Historical roster timelines include more sourced signing and departure dates.</li>
+              <li>Replacement details retain dated announcements without calling them exact notice.</li>
+              <li>Scorecard imports combine verified judges across sources, and missing cards can be re-read from the admin board.</li>
             </ul>
           </Section>
         </div>

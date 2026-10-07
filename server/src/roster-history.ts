@@ -34,10 +34,13 @@ export function departureKind(reason: string | null): RosterHistoryEvent["kind"]
 /** Wikipedia's dated signings and releases, read from one revision of the
  *  roster article a week and kept only where the fighter's UFC bouts bear
  *  them out (import-roster-history.ts rebuilds it). */
-const WIKIPEDIA: RosterHistoryEvent[] = (JSON.parse(readFileSync(new URL("./roster-history-wikipedia.json", import.meta.url), "utf8")) as
+const WIKIPEDIA: RosterHistoryEvent[] = ([
+  ...JSON.parse(readFileSync(new URL("./roster-history-wikipedia.json", import.meta.url), "utf8")),
+  ...JSON.parse(readFileSync(new URL("./roster-history-reports.json", import.meta.url), "utf8")),
+] as
   [string, string, RosterHistoryEvent["kind"], string | null, number][]).map(([name, date, kind, reason, revision]) => ({
   name, date, kind, reason, observed: false,
-  source_url: `https://en.wikipedia.org/w/index.php?title=List_of_current_UFC_fighters&oldid=${revision}`,
+  source_url: `https://en.wikipedia.org/w/index.php?oldid=${revision}`,
 }));
 
 export function storedRosterHistory(): RosterHistoryEvent[] {

@@ -42,3 +42,12 @@ test("the potential odds board can be refreshed using its all target", async () 
   assert.deepEqual(await run("potential-odds", "all", "admin@example.com"), { action: "potential-odds", target: "all" });
   await assert.rejects(run("potential-odds", "invalid", "admin@example.com"), /Unknown repair/);
 });
+
+test("both roster sources offered by the board pass the repair guard", async () => {
+  const run = createRepairRunner(async () => {}, async (action, target) => ({ action, target }), () => {});
+  for (const target of ["roster", "ufc"]) {
+    assert.deepEqual(await run("roster-moves", target, "admin@example.com"), { action: "roster-moves", target });
+  }
+  await assert.rejects(run("detail", "ufc", "admin@example.com"), /Unknown repair/);
+  await assert.rejects(run("roster-moves", "unknown", "admin@example.com"), /Unknown repair/);
+});

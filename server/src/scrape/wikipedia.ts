@@ -37,6 +37,17 @@ export function plainText(wikitext: string): string {
     .replace(/'{2,}/g, "");
 }
 
+/** A citation's full publication date; a bare month or impossible calendar
+ * day cannot establish an exact roster or replacement announcement date. */
+export function citationDate(written: string): string | null {
+  if (!/^(?:\d{4}-\d{2}-\d{2}|(?:\d{1,2} [A-Za-z]+|[A-Za-z]+ \d{1,2},?) \d{4})$/.test(written)) return null;
+  const parsed = Date.parse(`${written} 12:00 UTC`);
+  if (!Number.isFinite(parsed)) return null;
+  const date = new Date(parsed).toISOString().slice(0, 10);
+  if (/^\d{4}-/.test(written) ? date !== written : new Date(parsed).getUTCDate() !== Number(written.match(/\b\d{1,2}\b/)?.[0])) return null;
+  return date;
+}
+
 /** The event date from the article's infobox, as YYYY-MM-DD. */
 export function infoboxDate(wikitext: string): string | null {
   // Maintenance tags carry their own "date=" ({{Use mdy dates|date=June 2021}})
@@ -255,6 +266,48 @@ function datedNotice(raw: string, event: string | null): string | null {
   const when = year ? at(Number(year)) : at(eventYear) > held ? at(eventYear - 1) : at(eventYear);
   const days = Math.round((held - when) / 86_400_000);
   return days >= 1 && days <= 60 ? `${days} day${days === 1 ? "" : "s"}` : null;
+}
+
+/** A cited replacement report dates the announcement, not when the fighter
+ * accepted. Keep that distinction in the displayed notice. Both people must
+ * be named in the title and the report must identify just one stored change. */
+function citedReplacementAnnouncements(background: string, changes: BoutChange[], event: string | null): void {
+  if (!event) return;
+  const dates = new Map<BoutChange, number[]>();
+  const nameAt = (title: string, name: string) => {
+    const words = normName(name).split(" ").filter(word => !SUFFIX.test(word));
+    const last = words.at(-1) ?? "";
+    return words.length > 1 && last.length >= 4 ? ` ${normName(title)} `.indexOf(` ${last} `) : -1;
+  };
+  for (const ref of background.matchAll(/<ref\b[^>]*>([\s\S]*?)<\/ref>/gi)) {
+    const field = (key: string) => ref[1].match(new RegExp(`\\|\\s*${key}\\s*=\\s*([^|}]*)`, "i"))?.[1].trim() ?? "";
+    const title = plainText(field("title"));
+    const normalized = normName(title);
+    const cue = /\breplaced by\b|\breplaces?\b|\breplacing\b|\b(?:steps? in|fills? in|in) for\b/.exec(normalized);
+    if (!cue || !/^https?:\/\//.test(field("url"))) continue;
+    const date = citationDate(field("date"));
+    if (!date) continue;
+    const published = Date.parse(`${date}T12:00:00Z`);
+    const days = Math.round((Date.parse(`${event}T12:00:00Z`) - published) / 86_400_000);
+    if (days < 0 || days > 60) continue;
+    const matches = changes.filter(change => {
+      if (!change.replaced || surnameOf(change.name) === surnameOf(change.replaced)) return false;
+      const replacement = nameAt(title, change.name), replaced = nameAt(title, change.replaced);
+      if (replacement < 0 || replaced < 0) return false;
+      return cue[0] === "replaced by" ? replaced < cue.index && replacement > cue.index
+        : replacement < cue.index && replaced > cue.index;
+    });
+    if (matches.length !== 1) continue;
+    const change = matches[0];
+    dates.set(change, [...(dates.get(change) ?? []), days]);
+  }
+  for (const [change, days] of dates) {
+    if (!change.notice) {
+      // The earliest dated report is the first announcement we can establish.
+      const first = Math.max(...days);
+      change.notice = first === 0 ? "announced on fight day" : `announced ${first} day${first === 1 ? "" : "s"} before`;
+    }
+  }
 }
 
 /** The person a phrase names, past any titles before it ("former UFC Heavyweight Champion Andrei Arlovski"). */
@@ -521,7 +574,9 @@ export function cardChanges(wikitext: string, bouts: [string, string][]): CardCh
     reason: pair.withdrew ? `${pair.withdrew.who} withdrew${short(pair.withdrew.why) ? ` (${short(pair.withdrew.why)})` : ""}`
       : short(pair.reason) ? `${pair.reason![0].toUpperCase()}${pair.reason!.slice(1)}` : null,
   }));
-  return { changes: [...found.values()], cancelled };
+  const changes = [...found.values()];
+  citedReplacementAnnouncements(background, changes, held);
+  return { changes, cancelled };
 }
 
 /**
@@ -885,7 +940,7 @@ export function rosterMoves(wikitext: string, heading: RegExp): RosterMove[] {
  *  tables, the ones editors keep from the UFC's own roster changes. */
 export const ROSTER_HEADINGS = {
   signed: /\n==\s*Recent signings\s*==/i,
-  cut: /\n==\s*Recent (?:releases(?: and retirements)?|cuts)\s*==/i,
+  cut: /\n==\s*(?:Recent (?:releases(?: and retirements)?|cuts)|Recently released)\s*==/i,
 };
 export function rosterChanges(wikitext: string): { signed: RosterMove[]; cut: RosterMove[] } {
   return { signed: rosterMoves(wikitext, ROSTER_HEADINGS.signed), cut: rosterMoves(wikitext, ROSTER_HEADINGS.cut) };

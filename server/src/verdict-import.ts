@@ -1,7 +1,7 @@
 import { db } from "./db.ts";
 import { fetchVerdictDocument, fetchVerdictHtml, parseVerdictEventFightNumbers, parseVerdictEventPage, parseVerdictFightPage, VERDICT } from "./scrape/verdict.ts";
 import { firstLastName, log, normName } from "./util.ts";
-import { compatibleJudgeCards, hasCompleteJudgeRounds } from "./judge-scorecards.ts";
+import { combineJudgeRounds, hasCompleteJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
 
 /**
  * Verdict MMA's official round cards and community aggregates, matched onto
@@ -128,7 +128,6 @@ function localFightsNear(date: string): LocalFight[] {
 
 const mergeUpdate = db.prepare(`UPDATE fights SET judge_rounds_json = COALESCE(?, judge_rounds_json),
   community_score_json = COALESCE(?, community_score_json), verdict_checked_at = ?, verdict_error = NULL WHERE id = ?`);
-const replaceUpdate = db.prepare(`UPDATE fights SET judge_rounds_json = ?, community_score_json = ?, verdict_checked_at = ?, verdict_error = NULL WHERE id = ?`);
 const fightError = db.prepare("UPDATE fights SET verdict_error = ? WHERE id = ?");
 const eventError = db.prepare(`INSERT INTO verdict_events (verdict_id, checked_at, error) VALUES (?, ?, ?)
   ON CONFLICT(verdict_id) DO UPDATE SET error = excluded.error`);
@@ -137,9 +136,9 @@ const recordEvent = db.prepare(`INSERT INTO verdict_events (verdict_id, event_id
     date = excluded.date, checked_at = excluded.checked_at, error = NULL`);
 
 /**
- * `refresh` replaces whatever is stored with what Verdict shows now (the
- * archive re-run). `recent` keeps stored official cards but takes the latest
- * community aggregate, which keeps growing for days after a card.
+ * `refresh` re-reads every matched fight. Validated official rounds survive
+ * partial or empty source pages; available community aggregates are updated.
+ * `recent` only reads gaps and growing community aggregates.
  */
 async function importFight(eventId: number, fightNumber: number, fight: LocalFight, mode: ImportMode, stats: VerdictImportStats): Promise<void> {
   const sourceUrl = `${VERDICT}/event/${eventId}/fight/${fightNumber}`;
@@ -157,12 +156,24 @@ async function importFight(eventId: number, fightNumber: number, fight: LocalFig
         f1Score: card.f2Score, f2Score: card.f1Score,
         rounds: card.rounds.map(round => ({ ...round, f1Score: round.f2Score, f2Score: round.f1Score })),
       });
-      const judges = compatibleJudgeCards(officialCards(fight), aligned);
-      let storedCount = 0;
-      try { storedCount = mode === "refresh" ? 0 : JSON.parse(fight.judge_rounds_json ?? "null")?.judges?.length ?? 0; } catch { /* replace malformed */ }
+      // Another importer may have filled this panel while the source request
+      // was in flight. Compare and merge against the current stored value.
+      const current = db.prepare("SELECT detail_json, judge_rounds_json FROM fights WHERE id = ?").get(fight.id) as Pick<LocalFight, "detail_json" | "judge_rounds_json">;
+      const official = officialCards({ ...fight, ...current });
+      let prior: JudgeCard[] = [];
+      let priorSource = "";
+      try {
+        const stored = JSON.parse(current.judge_rounds_json ?? "null");
+        priorSource = String(stored?.source ?? "");
+        if (Array.isArray(stored?.judges)) prior = stored.judges;
+      } catch { /* replace malformed */ }
+      const judges = combineJudgeRounds(official, prior, aligned);
+      const storedCount = combineJudgeRounds(official, prior, []).length;
       // Filling a partial panel never trades cards for fewer.
       if (judges.length > storedCount) {
-        judgeJson = JSON.stringify({ source: "Verdict MMA", sourceUrl, fetchedAt, judges });
+        const source = storedCount > 0 && priorSource.includes("MMA Decisions")
+          ? "MMA Decisions + Verdict MMA" : "Verdict MMA";
+        judgeJson = JSON.stringify({ source, sourceUrl, fetchedAt, judges });
         stats.official += 1;
       }
     }
@@ -188,8 +199,7 @@ async function importFight(eventId: number, fightNumber: number, fight: LocalFig
         stats.community += 1;
       }
     }
-    if (mode === "refresh") replaceUpdate.run(judgeJson, communityJson, fetchedAt, fight.id);
-    else mergeUpdate.run(judgeJson, communityJson, fetchedAt, fight.id);
+    mergeUpdate.run(judgeJson, communityJson, fetchedAt, fight.id);
   } catch (error) {
     stats.failed += 1;
     fightError.run(`${sourceUrl}: ${String(error)}`.slice(0, 500), fight.id);
