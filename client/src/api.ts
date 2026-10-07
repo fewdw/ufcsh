@@ -201,8 +201,7 @@ export type FightInsights = {
   /** Profiles only: mean decision cards, by bout length. */
   decisions?: DecisionScores[] | null;
 };
-export type ScoreAverage = { fights: number; own: number; opponent: number };
-export type DecisionScores = { rounds: number; judges: ScoreAverage | null; fans: ScoreAverage | null };
+export type DecisionScores = { rounds: number; fights: number; own: number; opponent: number };
 
 export type FightOdds = {
   f1: { open: string | null; close: string | null };

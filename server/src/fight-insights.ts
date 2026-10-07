@@ -44,21 +44,20 @@ export function roundOutcomes(fights: IndexedFight[], fighterId: string): RoundO
   return result.fights ? result : null;
 }
 
-/** The mean card over `fights` decisions: this fighter's score, the opponent's. */
-export type ScoreAverage = { fights: number; own: number; opponent: number };
-/** Decisions of one length. Three- and five-round totals are never mixed. */
-export type DecisionScores = { rounds: number; judges: ScoreAverage | null; fans: ScoreAverage | null };
+/** The mean card over decisions of one length: this fighter's score, the
+ *  opponent's. Three- and five-round totals are never mixed. */
+export type DecisionScores = { rounds: number; fights: number; own: number; opponent: number };
 
 const parse = (text: unknown): any => {
   if (typeof text !== "string" || !text) return null;
   try { return JSON.parse(text); } catch { return null; }
 };
 
-/** How this fighter's UFC decisions were scored, by bout length. Every bout
- *  counts once: the mean of its official cards for the judges, the community
- *  average for the fans, so one widely scored fight cannot outweigh the rest. */
+/** How this fighter's UFC decisions were scored, by bout length: the mean of
+ *  every official judge's card and every bout's community (fan) average,
+ *  each one card. */
 export function decisionScores(fights: IndexedFight[], fighterId: string): DecisionScores[] | null {
-  const sums = new Map<number, Record<"judges" | "fans", ScoreAverage>>();
+  const sums = new Map<number, { fights: number; cards: number; own: number; opponent: number }>();
   for (const fight of fights) {
     const outcome = sideOf(fight, fighterId).outcome;
     const rounds = fight.round;
@@ -66,21 +65,24 @@ export function decisionScores(fights: IndexedFight[], fighterId: string): Decis
     const first = fight.sides[0].id === fighterId;
     // A total no ten-point card of this length could carry belongs elsewhere.
     const score = (value: unknown) => typeof value === "number" && value >= rounds * 6 && value <= rounds * 10;
-    const add = (who: "judges" | "fans", f1: number, f2: number) => {
-      const group = sums.get(rounds) ?? { judges: { fights: 0, own: 0, opponent: 0 }, fans: { fights: 0, own: 0, opponent: 0 } };
-      sums.set(rounds, group);
-      group[who].fights++;
-      group[who].own += first ? f1 : f2;
-      group[who].opponent += first ? f2 : f1;
-    };
-    const cards = parse(fight.row?.detail_json)?.judges;
-    if (Array.isArray(cards) && cards.length && cards.every(card => score(card?.f1Score) && score(card?.f2Score))) {
-      add("judges", cards.reduce((sum, card) => sum + card.f1Score, 0) / cards.length, cards.reduce((sum, card) => sum + card.f2Score, 0) / cards.length);
+    const cards: [number, number][] = [];
+    const judges = parse(fight.row?.detail_json)?.judges;
+    if (Array.isArray(judges) && judges.every(card => score(card?.f1Score) && score(card?.f2Score))) {
+      for (const card of judges) cards.push([card.f1Score, card.f2Score]);
     }
     const fans = parse(fight.row?.community_score_json);
-    if (fans?.cards > 0 && fans.rounds?.length === rounds && score(fans.avg1) && score(fans.avg2)) add("fans", fans.avg1, fans.avg2);
+    if (fans?.cards > 0 && fans.rounds?.length === rounds && score(fans.avg1) && score(fans.avg2)) cards.push([fans.avg1, fans.avg2]);
+    if (!cards.length) continue;
+    const sum = sums.get(rounds) ?? { fights: 0, cards: 0, own: 0, opponent: 0 };
+    sums.set(rounds, sum);
+    sum.fights++;
+    for (const [f1, f2] of cards) {
+      sum.cards++;
+      sum.own += first ? f1 : f2;
+      sum.opponent += first ? f2 : f1;
+    }
   }
-  const mean = (sum: ScoreAverage) => sum.fights ? { fights: sum.fights, own: sum.own / sum.fights, opponent: sum.opponent / sum.fights } : null;
-  const groups = [...sums].sort((a, b) => a[0] - b[0]).map(([rounds, group]) => ({ rounds, judges: mean(group.judges), fans: mean(group.fans) }));
+  const groups = [...sums].sort((a, b) => a[0] - b[0])
+    .map(([rounds, sum]) => ({ rounds, fights: sum.fights, own: sum.own / sum.cards, opponent: sum.opponent / sum.cards }));
   return groups.length ? groups : null;
 }

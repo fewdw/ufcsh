@@ -13,7 +13,7 @@ client (`client/`) renders every page.
 | Link-preview images (`/og/*.jpg`) | `og-images.ts` (drawing); data lookup in `api.ts` (`shareCardData`) |
 | Fighter identity, records, photo URLs | `fighter-identity.ts` |
 | Search aliases (GSP, Aljo, real and maiden names; search only, never shown) | `search-aliases.ts` |
-| Career averages and opponent evidence | `career-metrics.ts` (shared formulas and recorded samples), `career-statistics.ts` (current career or cutoff before a matchup), `opposition.ts` (each UFC opponent's records then or now, standing tag and earlier or all fights), `fight-insights.ts` (bouts by round, average judge and fan decision scores by bout length, wins against no-vig closing odds); missing samples in Admin → Bugs |
+| Career averages and opponent evidence | `career-metrics.ts` (shared formulas and recorded samples), `career-statistics.ts` (current career or cutoff before a matchup), `opposition.ts` (each UFC opponent's records then or now, standing tag and earlier or all fights), `fight-insights.ts` (bouts by round, average decision score by bout length over judges' cards and fan averages, wins against no-vig closing odds); missing samples in Admin → Bugs |
 | In-memory analytics index | `fight-index.ts` (every completed bout, state entering it) |
 | Leaderboards | `stats.ts` (fighter cards), `stats-fights.ts` (Fights card: bouts, judges, referees) |
 | Potential matchups (pinned unconfirmed odds board, separate from scheduled fights) | `potential-matchups.ts`; synced at startup and every five minutes from FightOdds.io and BestFightOdds future boards; `scrape/potential-odds.ts` reads BestFightOdds |
