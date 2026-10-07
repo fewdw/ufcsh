@@ -2140,7 +2140,7 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
     return opposition(index, id, before, (opponentId, fight) => {
       const rank = rankingEntering(opponentId, rankingType, fight.date, fight.weightClass, index.holdersBefore(fight.weightClass, fight.date, fight.ord));
       return rank ? { rank: rank.rank, division: rank.division } : null;
-    }) ?? undefined;
+    }, url.searchParams.get("records") === "now") ?? undefined;
   }
   if (/^\/api\/fighters\/[a-f0-9]{16}\/stats$/i.test(p)) {
     return hasUfcFight(id) ? fighterBoard(id, url.searchParams.get("scope") ?? "ufc", Number(url.searchParams.get("minBouts") ?? 0)) ?? undefined : undefined;

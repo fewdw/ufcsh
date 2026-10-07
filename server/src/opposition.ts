@@ -15,9 +15,12 @@ export type EarlierBout = {
   fight_id: string | null; date: string; outcome: Outcome; method: string | null;
   opponent: { id: string | null; name: string; source_url: string | null };
   standing: Standing | null;
-  /** That opponent's UFC record going into the bout, when they have a profile here. */
+  /** That opponent's UFC record when the selected fighter met the listed one
+   *  (or today, when asked for), when they have a profile here. */
   record: FightRecord | null;
 };
+
+const NOW = "9999-12-31";
 
 const wonBelt = (fight: IndexedFight, id: string) =>
   fight.titleFight && (fight.titleType === "title" || fight.titleType === "interim") && sideOf(fight, id).outcome === "win";
@@ -25,8 +28,11 @@ const wonBelt = (fight: IndexedFight, id: string) =>
 /** Every UFC opponent, newest first, with their records and standing going in
  *  and their earlier bouts. `record` (UFC, on the night) sums to the matchup's
  *  combined opponent record; `history` is their whole verified professional
- *  history, or their UFC bouts until that history is verified. */
-export function opposition(index: FightIndex, fighterId: string, before?: { id: string; date: string; ord: number }, rankOf?: RankOf) {
+ *  history, or their UFC bouts until that history is verified. Everyone in
+ *  that history carries their UFC record on the night of the meeting.
+ *  `current` swaps the night for today: every bout the opponent has had, and
+ *  everyone's UFC record now. The total stays the one going in. */
+export function opposition(index: FightIndex, fighterId: string, before?: { id: string; date: string; ord: number }, rankOf?: RankOf, current = false) {
   const fighter = index.fighters.get(fighterId);
   if (!fighter) return null;
   const fights = before ? boutsBefore(index, fighterId, before.date, before.ord) : fighter.fights;
@@ -50,14 +56,14 @@ export function opposition(index: FightIndex, fighterId: string, before?: { id: 
     for (const prior of ufcBoutsBefore(index, id, date, ord)) record[resultKey[prior.outcome]]++;
     return record;
   };
-  const earlierBout = (bout: CareerBout): EarlierBout => {
+  const earlierBout = (bout: CareerBout, date: string, ord?: number): EarlierBout => {
     const id = bout.opponentId || null;
     const local = bout.ufcFightId ? index.byId?.get(bout.ufcFightId) : undefined;
     return {
       fight_id: bout.ufcFightId, date: bout.date, outcome: bout.outcome, method: bout.method || null,
       opponent: { id, name: bout.opponentName, source_url: id ? null : bout.opponentUrl || null },
       standing: standingOf(id, bout.date, local),
-      record: id ? ufcRecordBefore(id, bout.date, local?.ord) : null,
+      record: id ? ufcRecordBefore(id, date, ord) : null,
     };
   };
   const total = emptyRecord();
@@ -66,19 +72,20 @@ export function opposition(index: FightIndex, fighterId: string, before?: { id: 
     const record = ufcRecordBefore(opponent.id, fight.date, fight.ord);
     for (const key of Object.keys(total) as (keyof FightRecord)[]) total[key] += record[key];
     const verified = Boolean(opponent.id && index.fighters.get(opponent.id)?.careerVerified);
-    const earlier = verified ? professionalBoutsBefore(index, opponent.id, fight.date, fight.ord) : ufcBoutsBefore(index, opponent.id, fight.date, fight.ord);
+    const [date, ord] = current ? [NOW, undefined] : [fight.date, fight.ord];
+    const earlier = verified ? professionalBoutsBefore(index, opponent.id, date, ord) : ufcBoutsBefore(index, opponent.id, date, ord);
     return {
       fight_id: fight.id, date: fight.date, outcome: sideOf(fight, fighterId).outcome, method: fight.method,
       opponent: { id: opponent.id || null, name: opponent.name },
-      record, pro_record: verified ? completeRecordBefore(index, opponent.id, fight.date, fight.ord) : null,
+      record: current ? ufcRecordBefore(opponent.id, NOW) : record, pro_record: verified ? completeRecordBefore(index, opponent.id, fight.date, fight.ord) : null,
       standing: standingOf(opponent.id || null, fight.date, fight),
       /** Newest first. */
-      history: earlier.map(earlierBout).reverse(),
+      history: earlier.map(bout => earlierBout(bout, date, ord)).reverse(),
     };
   }).reverse();
   return {
     fighter_id: fighterId, name: fighter.name,
     before: before ? { fight_id: before.id, date: before.date } : null,
-    record: total, rows,
+    current, record: total, rows,
   };
 }

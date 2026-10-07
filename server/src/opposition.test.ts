@@ -42,8 +42,17 @@ test("opposition lists every UFC opponent with their records, standing and earli
   assert.deepEqual(data.rows[1].record, { wins: 1, losses: 1, draws: 0, ncs: 0 });
   // Everyone B had met going into the rematch, newest first.
   assert.deepEqual(data.rows[1].history.map(bout => [bout.fight_id, bout.outcome, bout.opponent.name, bout.standing]), [["title", "win", "C", null], ["first", "loss", "A", null]]);
-  // And their UFC records going into those bouts.
-  assert.deepEqual(data.rows[1].history.map(bout => bout.record), [{ wins: 0, losses: 0, draws: 0, ncs: 0 }, { wins: 0, losses: 0, draws: 0, ncs: 0 }]);
+  // And their UFC records on the night of the rematch: C had lost the title bout, A had won the first meeting.
+  assert.deepEqual(data.rows[1].history.map(bout => bout.record), [{ wins: 0, losses: 1, draws: 0, ncs: 0 }, { wins: 1, losses: 0, draws: 0, ncs: 0 }]);
+  // Asked for today instead: the same opponents, every bout they have had and everyone's record now.
+  const now = opposition(index, "a", later, rankOf, true)!;
+  assert.deepEqual(now.rows.map(row => row.fight_id), data.rows.map(row => row.fight_id));
+  assert.deepEqual(now.record, data.record);
+  assert.deepEqual(now.rows[1].record, { wins: 2, losses: 1, draws: 0, ncs: 0 });
+  assert.deepEqual(now.rows[1].history.map(bout => [bout.fight_id, bout.opponent.name, bout.record]), [
+    ["rematch", "A", { wins: 3, losses: 1, draws: 0, ncs: 0 }], ["title", "C", { wins: 0, losses: 2, draws: 0, ncs: 0 }], ["first", "A", { wins: 3, losses: 1, draws: 0, ncs: 0 }],
+  ]);
+  assert.deepEqual(now.rows[0].history.map(bout => bout.fight_id), ["ranked"]);
   assert.deepEqual(data.rows[2].history, []);
   // Who C had met before A: B, who took the belt from C that night, then held it.
   assert.deepEqual(opposition(index, "a", undefined, rankOf)!.rows[0].history.map(bout => [bout.opponent.name, bout.standing]), [["B", null]]);
@@ -65,6 +74,13 @@ test("archive opposition rows sum to the matchup's opponent record at every cuto
       assert.deepEqual(evidence.record, expected, `${fighter.name} before ${before?.id ?? "now"}`);
       if (before) assert(!evidence.rows.some(row => row.fight_id === before.id || row.date > before.date), `${fighter.name}: ${before.id}`);
       for (const row of evidence.rows) assert(!row.history.some(bout => bout.date > row.date || bout.fight_id === row.fight_id), `${fighter.name}: ${row.opponent.name}`);
+      if (!before) {
+        // Today's view: the same opponents and total, each with at least the bouts they had then.
+        const now = opposition(index, fighter.id, undefined, undefined, true)!;
+        assert.deepEqual(now.record, evidence.record, fighter.name);
+        assert.deepEqual(now.rows.map(row => row.fight_id), evidence.rows.map(row => row.fight_id), fighter.name);
+        for (const [at, row] of now.rows.entries()) assert(row.history.length > evidence.rows[at].history.length, `${fighter.name}: ${row.opponent.name}`);
+      }
       checked++;
     }
   }
@@ -78,6 +94,9 @@ test("archive opposition rows sum to the matchup's opponent record at every cuto
     const last = fighter.fights.at(-1)!;
     const historical = await resolvePublicApi(new URL(`http://localhost${path}?before=${last.id}`)) as ReturnType<typeof opposition>;
     assert.deepEqual(historical!.rows.map(row => row.fight_id), opposition(index, id, last)!.rows.map(row => row.fight_id));
+    const now = await resolvePublicApi(new URL(`http://localhost${path}?before=${last.id}&records=now`)) as ReturnType<typeof opposition>;
+    assert.equal(now!.current, true);
+    assert.deepEqual(now!.rows.map(row => row.record), opposition(index, id, last, undefined, true)!.rows.map(row => row.record));
     const other = index.fights.find(row => row.sides.every(entry => entry.id !== id))!;
     for (const before of ["invalid", other.id]) assert.equal(await resolvePublicApi(new URL(`http://localhost${path}?before=${before}`)), undefined);
   }

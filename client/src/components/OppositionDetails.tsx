@@ -51,7 +51,7 @@ const boutLabel = (name: string, outcome: OppositionBout["outcome"], against: st
 
 /** The selected fighter's meetings with one opponent: result, name (opening
  *  the matchup) and rank going in; how it ended and their UFC record going in. */
-function Faced({ fighter, group }: { fighter: Fighter; group: Group }) {
+function Faced({ fighter, group, current }: { fighter: Fighter; group: Group; current: boolean }) {
   return <div className="space-y-2">
     {group.meetings.map(meeting => <div key={meeting.fight_id} className="flex min-w-0 flex-col text-zinc-700">
       <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 break-words">
@@ -61,7 +61,7 @@ function Faced({ fighter, group }: { fighter: Fighter; group: Group }) {
       </span>
       <span className="mt-1 pl-6.5 text-zinc-500">
         <span title={meeting.method ?? undefined}>{resultDot(meeting).shortMethod || "—"}</span>
-        {" · "}<span className="tabular-nums" title="UFC record going in"><span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(meeting.record)}</span>
+        {" · "}<span className="tabular-nums" title={current ? "UFC record now" : "UFC record going in"}><span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(meeting.record)}</span>
       </span>
     </div>)}
   </div>;
@@ -69,17 +69,18 @@ function Faced({ fighter, group }: { fighter: Fighter; group: Group }) {
 
 /** Each opponent's earlier bouts in an even grid beside them, newest first:
  *  one name per line, rank then beside it, method under it. */
-function OppositionGrid({ fighter, groups, label }: { fighter: Fighter; groups: Group[]; label: string }) {
+function OppositionGrid({ fighter, groups, label, current }: { fighter: Fighter; groups: Group[]; label: string; current: boolean }) {
   const columns = "grid-cols-[42%_minmax(0,1fr)] gap-3 sm:grid-cols-[13rem_minmax(0,1fr)] sm:gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]";
   return <div aria-label={label} role="list" className="text-[11px] sm:text-xs">
     <div aria-hidden="true" className={`sticky top-0 z-10 grid bg-white pb-2 font-medium text-zinc-500 ${columns}`}>
-      <span>{lastName(fighter.name)} vs.</span><span>Their earlier fights</span>
+      <span>{lastName(fighter.name)} vs.</span><span>{current ? "All their fights" : "Their earlier fights"}</span>
     </div>
     {groups.map(group => <section key={group.opponent.id ?? group.opponent.name} role="listitem" aria-label={group.opponent.name} className={`grid border-t border-zinc-200 py-2.5 ${columns}`}>
-      <Faced fighter={fighter} group={group} />
+      <Faced fighter={fighter} group={group} current={current} />
       <div className="min-w-0 space-y-2">
-        {group.meetings.map(meeting => <div key={meeting.fight_id}>
-          {group.meetings.length > 1 ? <p className="mb-1 text-zinc-500">Before {formatDateShortWithYear(meeting.date)}</p> : null}
+        {/* Today's list is the same for every meeting, so it is shown once. */}
+        {(current ? group.meetings.slice(0, 1) : group.meetings).map(meeting => <div key={meeting.fight_id}>
+          {group.meetings.length > 1 && !current ? <p className="mb-1 text-zinc-500">Before {formatDateShortWithYear(meeting.date)}</p> : null}
           {meeting.history.length ? <ul className="grid grid-cols-1 gap-x-3 gap-y-2 min-[440px]:grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(10rem,1fr))]">
             {meeting.history.map((bout, index) => <li key={bout.fight_id ?? `${bout.date}-${index}`} className="flex min-w-0 items-start gap-1.5">
               <Result outcome={bout.outcome} label={boutLabel(group.opponent.name, bout.outcome, bout.opponent.name)} />
@@ -90,7 +91,7 @@ function OppositionGrid({ fighter, groups, label }: { fighter: Fighter; groups: 
                 </span>
                 <span className="block truncate text-zinc-500" title={`${bout.method || "Method unknown"} · ${formatDateShortWithYear(bout.date)}${bout.standing?.belt ? ` · ${standingChips(bout.standing).at(-1)?.title}` : ""}`}>
                   {bout.fight_id ? <Link to={`/fights/${bout.fight_id}`} className={`${linkUnderline} hover:underline`}>{resultDot(bout).shortMethod || "—"}</Link> : resultDot(bout).shortMethod || "—"}
-                  {bout.record ? <span className="tabular-nums" title="Their UFC record going in"> · <span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(bout.record)}</span> : null}
+                  {bout.record ? <span className="tabular-nums" title={current ? "Their UFC record now" : `Their UFC record when ${lastName(fighter.name)} fought ${lastName(group.opponent.name)}`}> · <span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(bout.record)}</span> : null}
                 </span>
               </span>
             </li>)}
@@ -101,22 +102,26 @@ function OppositionGrid({ fighter, groups, label }: { fighter: Fighter; groups: 
   </div>;
 }
 
-function OppositionList({ scope, fighter, before, outcome }: { scope: string; fighter: Fighter; before?: string; outcome: OppositionFilter }) {
+function OppositionList({ scope, fighter, before, outcome, current }: { scope: string; fighter: Fighter; before?: string; outcome: OppositionFilter; current: boolean }) {
   const { settings } = useSettings();
-  const { data, error, retry } = useApi<Opposition>(withRanking(`/api/fighters/${fighter.id}/opposition${before ? `?before=${before}` : ""}`, settings.rankingSource));
+  const query = [before ? `before=${before}` : "", current ? "records=now" : ""].filter(Boolean).join("&");
+  const { data, error, retry } = useApi<Opposition>(withRanking(`/api/fighters/${fighter.id}/opposition${query ? `?${query}` : ""}`, settings.rankingSource));
   const scrollRef = useRouteScrollRestoration<HTMLDivElement>(`${scope}:list:${fighter.id}:${outcome}`, Boolean(data));
   const groups = data ? oppositionGroups(data, outcome) : [];
   const resultName = outcome === "all" ? "all results" : outcome === "win" ? "wins" : "losses";
   return <div ref={scrollRef} data-sheet-scroll className="min-h-0 flex-1 overflow-auto overscroll-x-contain overscroll-y-none pr-2 [scrollbar-gutter:stable]">
     {error ? <RequestNotice onRetry={retry}>Couldn’t load opponents.</RequestNotice> : null}
     {!data ? !error ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null : !groups.length ? <p className="py-4 text-xs text-zinc-500">{data.rows.length ? `No ${resultName}.` : "UFC debut — no earlier opponents."}</p>
-      : <OppositionGrid fighter={fighter} groups={groups} label={`${fighter.name}: opposition, ${resultName}`} />}
+      : <OppositionGrid fighter={fighter} groups={groups} label={`${fighter.name}: opposition, ${resultName}`} current={data.current} />}
   </div>;
 }
 
 function OppositionModal({ id, scope, fighters, before, close }: { id: string; scope: string; fighters: Fighter[]; before?: string; close: () => void }) {
   const [selected, setSelected] = useHistoryState(`${scope}:fighter`, 0);
   const [outcome, setOutcome] = useHistoryState<OppositionFilter>(`${scope}:outcome`, "all");
+  // On the night each opponent was met, or everything they have done since too.
+  const [current, setCurrent] = useHistoryState(`${scope}:current`, false);
+  const segment = "min-h-8 flex-auto whitespace-nowrap rounded-full px-1 text-[10px] font-medium sm:px-3 sm:text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900";
   return <EvidenceDialog id={id} close={close} large>
     <div className="shrink-0 px-4 pb-3 pt-3 sm:px-5">
       <div className="flex items-center justify-between gap-3">
@@ -130,12 +135,17 @@ function OppositionModal({ id, scope, fighters, before, close }: { id: string; s
         </div>
         <div role="group" aria-label={`${lastName(fighters[selected].name)}'s results`} className={`${segmentedGroup} min-w-max flex-1`}>
           {(["all", "win", "loss"] as const).map(value => <button key={value} type="button" aria-pressed={outcome === value} onClick={() => setOutcome(value)}
-            className={`min-h-8 flex-auto whitespace-nowrap rounded-full px-1 text-[10px] font-medium sm:px-3 sm:text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${outcome === value ? segmentedSelected : segmentedIdle}`}>{value === "all" ? "All" : value === "win" ? "Wins" : "Losses"}</button>)}
+            className={`${segment} ${outcome === value ? segmentedSelected : segmentedIdle}`}>{value === "all" ? "All" : value === "win" ? "Wins" : "Losses"}</button>)}
+        </div>
+        <div role="group" aria-label="Opponents' fights and records" className={`${segmentedGroup} min-w-max flex-1`}>
+          {[false, true].map(value => <button key={String(value)} type="button" aria-pressed={current === value} onClick={() => setCurrent(value)}
+            title={value ? "Every fight each opponent has had, and UFC records today" : `Each opponent's fights and UFC records when ${lastName(fighters[selected].name)} fought them`}
+            className={`${segment} ${current === value ? segmentedSelected : segmentedIdle}`}>{value ? "Now" : <><span className="sm:hidden">Then</span><span className="hidden sm:inline">At the time</span></>}</button>)}
         </div>
       </div>
     </div>
     <section aria-label={`${fighters[selected].name}: opposition`} className="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-5">
-      <OppositionList key={fighters[selected].id} scope={scope} fighter={fighters[selected]} before={before} outcome={outcome} />
+      <OppositionList key={fighters[selected].id} scope={scope} fighter={fighters[selected]} before={before} outcome={outcome} current={current} />
     </section>
   </EvidenceDialog>;
 }
