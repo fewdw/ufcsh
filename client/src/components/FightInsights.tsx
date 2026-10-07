@@ -3,7 +3,7 @@ import type { DecisionScores, FightInsights, RoundBout } from "../api";
 import { lastName } from "../format";
 import { resultDot } from "../resultDots";
 import { anchorAbove, useTooltip } from "../tooltip";
-import { CHART_TEXT, PanelHeading, PANEL_SHELL, sectionLabel } from "./FightStats";
+import { CHART_TEXT, metaText, PanelHeading, PANEL_SHELL, sectionLabel } from "./FightStats";
 import { Tooltip } from "./Tooltip";
 
 type Insightful = { name: string; insights: FightInsights | null | undefined };
@@ -168,9 +168,10 @@ export function DecisionsPanel({ name, decisions }: { name: string; decisions: D
         {decisions.map(group => <div key={group.rounds}>
           <dt className={sectionLabel}>{group.rounds} rounds</dt>
           <dd className="mt-0.5 whitespace-nowrap text-base tabular-nums text-zinc-500"
-            aria-label={`${lastName(name)} ${group.own.toFixed(1)}, opponents ${group.opponent.toFixed(1)}, on average over ${group.fights} ${group.fights === 1 ? "decision" : "decisions"}`}>
+            aria-label={`${lastName(name)} ${group.own.toFixed(1)}, opponents ${group.opponent.toFixed(1)}, on average over ${group.fights} ${group.fights === 1 ? "fight" : "fights"}`}>
             <span className="font-semibold text-zinc-900">{group.own.toFixed(1)}</span>–{group.opponent.toFixed(1)}
           </dd>
+          <dd aria-hidden="true" className={metaText}>{group.fights} {group.fights === 1 ? "fight" : "fights"}</dd>
         </div>)}
       </dl> : <p className={`text-center ${CHART_TEXT} text-zinc-500`}>No scored UFC decisions yet.</p>}
     </div>
