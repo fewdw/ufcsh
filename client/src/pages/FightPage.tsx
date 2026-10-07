@@ -1022,7 +1022,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     </button>
                     {settings.tapeAdvanced || tapeOpen ? (
                       // Beside the tape, the pies spread over its height.
-                      <div className={`min-w-0 self-stretch ${tapeOpen ? "" : "hidden"} ${settings.tapeAdvanced ? "@[40rem]:block" : "@[40rem]:hidden"}`}>
+                      <div className={`min-w-0 self-stretch pt-3 @[40rem]:pt-0 ${tapeOpen ? "" : "hidden"} ${settings.tapeAdvanced ? "@[40rem]:block" : "@[40rem]:hidden"}`}>
                         <TapeHistory fight={fight} />
                       </div>
                     ) : null}

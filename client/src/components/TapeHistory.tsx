@@ -81,7 +81,7 @@ export default function TapeHistory({ fight }: { fight: Matchup }) {
   const names: [string, string] = [fight.f1.name, fight.f2.name];
   if (data && !data.rows.length) return null;
   return (
-    <div ref={root} className="@container h-full min-w-0 pt-3" aria-label="How these differences have gone before">
+    <div ref={root} className="@container h-full min-w-0" aria-label="How these differences have gone before">
       <h3 className="sr-only">How these differences have gone before</h3>
       {data ? (
         <div className="grid h-full grid-cols-1 content-start gap-x-2 gap-y-5 @[18rem]:grid-cols-2 @[26rem]:grid-cols-3 @[26rem]:content-evenly @[26rem]:gap-y-2.5">
