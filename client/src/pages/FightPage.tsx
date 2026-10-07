@@ -453,6 +453,12 @@ function MatchupContext({ fight }: { fight: Matchup }) {
       <span className="min-w-0 text-zinc-500" title={row.method ?? undefined}>{resultDot(row).shortMethod || "—"}</span>
     </span>
   ) : null;
+  // Consecutive wins entering the bout; no contests neither extend nor end it.
+  const winStreak = (side: Matchup["f1"], last: UfcHistoryRow | undefined) => {
+    if (!side.streak) return last ? "0" : "";
+    const count = side.streak.outcome === "win" ? side.streak.count : 0;
+    return <span title={side.streak.complete ? "Across all promotions" : "From available history"}>{count}</span>;
+  };
 
   if (!f1 && !f2 && !f1Last && !f2Last && !fight.f1.complete_record_before && !fight.f2.complete_record_before) return null;
 
@@ -466,6 +472,7 @@ function MatchupContext({ fight }: { fight: Matchup }) {
       </OppositionDetails>
       <EnteringRow label="Time out" f1={layoff(fight.f1.ufc_days_since_before, fight.f1.ufc_record_before)} f2={layoff(fight.f2.ufc_days_since_before, fight.f2.ufc_record_before)} note="Days since their previous UFC bout" />
       <EnteringRow label="Last fight" f1={lastFight(f1Last)} f2={lastFight(f2Last)} note="Result and method in each fighter's previous professional bout, in any promotion" />
+      <EnteringRow label="Win streak" f1={winStreak(fight.f1, f1Last)} f2={winStreak(fight.f2, f2Last)} note="Consecutive professional wins entering this bout" />
     </div>
   );
 }
