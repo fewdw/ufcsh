@@ -24,6 +24,8 @@ export type AppSettings = {
   statsSort: StatsSort;
   /** Which end a card is read from: the main event down, or the opener up. */
   cardOrder: CardOrder;
+  /** Tale of the tape shows how each difference has gone in earlier bouts. */
+  tapeAdvanced: boolean;
 };
 
 export type CardOrder = "main" | "opener";
@@ -40,6 +42,7 @@ const DEFAULTS: AppSettings = {
   topStatsOpen: false,
   statsSort: "grouped",
   cardOrder: "main",
+  tapeAdvanced: false,
 };
 const STORAGE_KEY = "ufcsh:settings:v1";
 
@@ -56,6 +59,7 @@ function loadSettings(): AppSettings {
       topStatsOpen: saved?.topStatsOpen === true,
       statsSort: saved?.statsSort === "best" ? "best" : "grouped",
       cardOrder: saved?.cardOrder === "opener" ? "opener" : "main",
+      tapeAdvanced: saved?.tapeAdvanced === true,
     };
   } catch {
     return DEFAULTS;

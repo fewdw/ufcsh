@@ -1,4 +1,4 @@
-import { List, X } from "lucide-react";
+import { ChevronDown, List, X } from "lucide-react";
 import Flag from "../components/Flag";
 import { isFightDay } from "../liveEvent";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -52,6 +52,7 @@ import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { useShortcutNav } from "../shortcuts";
 import { BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
 import OppositionDetails from "../components/OppositionDetails";
+import TapeHistory from "../components/TapeHistory";
 import { RoundsPanel, SideName } from "../components/FightInsights";
 
 const shell = PANEL_SHELL;
@@ -453,6 +454,12 @@ function MatchupContext({ fight }: { fight: Matchup }) {
       <span className="min-w-0 text-zinc-500" title={row.method ?? undefined}>{resultDot(row).shortMethod || "—"}</span>
     </span>
   ) : null;
+  // Consecutive wins entering the bout; no contests neither extend nor end it.
+  const winStreak = (side: Matchup["f1"], last: UfcHistoryRow | undefined) => {
+    if (!side.streak) return last ? "0" : "";
+    const count = side.streak.outcome === "win" ? side.streak.count : 0;
+    return <span title={side.streak.complete ? "Across all promotions" : "From available history"}>{count}</span>;
+  };
 
   if (!f1 && !f2 && !f1Last && !f2Last && !fight.f1.complete_record_before && !fight.f2.complete_record_before) return null;
 
@@ -466,6 +473,7 @@ function MatchupContext({ fight }: { fight: Matchup }) {
       </OppositionDetails>
       <EnteringRow label="Time out" f1={layoff(fight.f1.ufc_days_since_before, fight.f1.ufc_record_before)} f2={layoff(fight.f2.ufc_days_since_before, fight.f2.ufc_record_before)} note="Days since their previous UFC bout" />
       <EnteringRow label="Last fight" f1={lastFight(f1Last)} f2={lastFight(f2Last)} note="Result and method in each fighter's previous professional bout, in any promotion" />
+      <EnteringRow label="Win streak" f1={winStreak(fight.f1, f1Last)} f2={winStreak(fight.f2, f2Last)} note="Consecutive professional wins entering this bout" />
     </div>
   );
 }
@@ -540,7 +548,23 @@ function sharedOpponents(fight: Matchup) {
   })).filter((comparison) => comparison.f1_fights.length && comparison.f2_fights.length);
 }
 
-function HeadToHead({ fight, later = false }: { fight: Matchup; later?: boolean }) {
+/** Earlier meetings, and later ones beside them on one row, each panel as
+ *  wide as its share of the meetings. Too many for a phone's row stack there. */
+function Meetings({ fight }: { fight: Matchup }) {
+  const earlier = meetingsOf(fight, false).length;
+  const later = fight.potential ? 0 : meetingsOf(fight, true).length;
+  const both = earlier > 0 && later > 0;
+  const panels = <>
+    <HeadToHead fight={fight} paired={both} />
+    {!fight.potential ? <HeadToHead fight={fight} later paired={both} /> : null}
+  </>;
+  if (!both) return panels;
+  const row = earlier <= 3 && later <= 3 && earlier + later <= 4;
+  return <div className={`grid gap-2 sm:gap-3 ${row ? "grid-cols-[minmax(8.5rem,var(--earlier))_minmax(8.5rem,var(--later))]" : "@[52rem]:grid-cols-2"}`}
+    style={{ "--earlier": `${earlier}fr`, "--later": `${later}fr` } as React.CSSProperties}>{panels}</div>;
+}
+
+function HeadToHead({ fight, later = false, paired = false }: { fight: Matchup; later?: boolean; paired?: boolean }) {
   const meetings = meetingsOf(fight, later);
   if (!meetings.length) return null;
 
@@ -551,14 +575,14 @@ function HeadToHead({ fight, later = false }: { fight: Matchup; later?: boolean 
         ? "grid-cols-2"
         : meetings.length === 3
           ? "grid-cols-3"
-          : "grid-cols-2 @[52rem]:grid-cols-4";
+          : paired ? "grid-cols-2" : "grid-cols-2 @[52rem]:grid-cols-4";
 
   return (
     <section className={`${shell} flex flex-col overflow-hidden`}>
       <PanelHeading
-        title={later ? "Subsequent meetings" : "Previous meetings"}
+        title={paired ? <>{later ? "Subsequent" : "Previous"}<span className="hidden @[40rem]:inline"> meetings</span></> : later ? "Subsequent meetings" : "Previous meetings"}
       />
-      <div className={`grid gap-px bg-zinc-100 ${gridColumns}`}>
+      <div className={`grid flex-1 gap-px bg-zinc-100 ${gridColumns}`}>
         {meetings.map((row) => {
           const winner =
             row.outcome === "win"
@@ -576,7 +600,7 @@ function HeadToHead({ fight, later = false }: { fight: Matchup; later?: boolean 
               key={row.fight_id}
               to={`/fights/${row.fight_id}`}
               title={`${winner.label} · ${row.event_name} · ${formatDate(row.date)} · ${formatMethod(row.method, row.round, row.time)}`}
-              className="group min-w-0 bg-white px-2 py-4 text-center transition-colors hover:bg-zinc-50/80 focus-visible:relative focus-visible:z-10 focus-visible:rounded-xl focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-zinc-900"
+              className="group min-w-0 bg-white px-1 py-4 text-center @[30rem]:px-2 transition-colors hover:bg-zinc-50/80 focus-visible:relative focus-visible:z-10 focus-visible:rounded-xl focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-zinc-900"
             >
               <span
                 className={`${RESULT_PILL} max-w-full ${winner.tone}`}
@@ -635,13 +659,13 @@ function CommonOpponents({ fight }: { fight: Matchup }) {
         {shared.map((comparison) => (
           // Too narrow for three columns, the opponent heads the row and the
           // two records sit under it, still first fighter left. Newest first
-          // in each list; on one line they run from the oldest beside the
-          // opponent out to the newest.
+          // in each list; on one line they run from the newest beside the
+          // opponent out to the oldest.
           <div
             key={comparison.opponent.id}
             className="grid grid-cols-2 items-center gap-x-2 px-4 py-2 @[30rem]:grid-cols-[minmax(0,1fr)_5.5rem_minmax(0,1fr)] @[30rem]:gap-x-0 @[40rem]:grid-cols-[minmax(0,1fr)_8rem_minmax(0,1fr)]"
           >
-            <div className="col-start-1 row-start-2 min-w-0 space-y-0.5 @[30rem]:row-start-1 @[30rem]:pr-3 @[40rem]:flex @[40rem]:justify-end @[40rem]:gap-1 @[40rem]:space-y-0">
+            <div className="col-start-1 row-start-2 min-w-0 space-y-0.5 @[30rem]:row-start-1 @[30rem]:pr-3 @[40rem]:flex @[40rem]:flex-row-reverse @[40rem]:justify-start @[40rem]:gap-1 @[40rem]:space-y-0">
               {comparison.f1_fights.map((row) => (
                 <CommonFight key={row.fight_id} row={row} align="right" />
               ))}
@@ -655,7 +679,7 @@ function CommonOpponents({ fight }: { fight: Matchup }) {
                 {comparison.opponent.name}
               </Link>
             </div>
-            <div className="col-start-2 row-start-2 min-w-0 space-y-0.5 @[30rem]:col-start-3 @[30rem]:row-start-1 @[30rem]:pl-3 @[40rem]:flex @[40rem]:flex-row-reverse @[40rem]:justify-end @[40rem]:gap-1 @[40rem]:space-y-0">
+            <div className="col-start-2 row-start-2 min-w-0 space-y-0.5 @[30rem]:col-start-3 @[30rem]:row-start-1 @[30rem]:pl-3 @[40rem]:flex @[40rem]:justify-start @[40rem]:gap-1 @[40rem]:space-y-0">
               {comparison.f2_fights.map((row) => (
                 <CommonFight key={row.fight_id} row={row} align="left" />
               ))}
@@ -710,7 +734,10 @@ function MatchupTabs({ tabs, current, onSelect }: { tabs: MatchupTab[]; current:
 
 /** Matchup view rendered inside the events layout: card rail + detail + close. */
 export default function FightView({ fightId, eventIdHint }: { fightId: string; eventIdHint?: string | null }) {
-  const { settings } = useSettings();
+  const { settings, update } = useSettings();
+  // The phone's Advanced toggle is never saved: each matchup opens closed.
+  const [tapeOpenFor, setTapeOpenFor] = useState<string | null>(null);
+  const tapeOpen = tapeOpenFor === fightId;
   const navigate = useNavigate();
   const location = useLocation();
   const previousFight = useRef<Matchup | null>(null);
@@ -987,17 +1014,40 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
               </> : null}
               {tab === "matchup" ? <>
                 <section className={`matchup-overview @container overflow-hidden ${shell}`}>
-                  <PanelHeading title="Tale of the tape" />
-                  <div className="matchup-comparisons grid px-5 pb-3">
-                    <TaleOfTape fight={fight} compact />
-                    <MatchupContext fight={fight} />
+                  <PanelHeading title="Tale of the tape" aside={
+                    <button type="button" onClick={() => update("tapeAdvanced", !settings.tapeAdvanced)} aria-expanded={settings.tapeAdvanced}
+                      className="hidden text-[11px] text-zinc-500 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900 @[40rem]:block">
+                      {settings.tapeAdvanced ? "Show less" : "Show more"}
+                    </button>
+                  } />
+                  {/* Wide: the saved Show more puts the pies beside the tape. Narrow: a
+                      toggle under it opens them for this matchup only, closed by default. */}
+                  <div className={`grid items-start gap-x-9 px-5 pb-3 ${settings.tapeAdvanced ? "@[40rem]:grid-cols-2 @[52rem]:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]" : ""}`}>
+                    <div className="matchup-comparisons grid min-w-0 content-start">
+                      <TaleOfTape fight={fight} compact />
+                      <MatchupContext fight={fight} />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setTapeOpenFor(tapeOpen ? null : fightId)}
+                      aria-expanded={tapeOpen}
+                      className="mx-auto mt-2 flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-50 @[40rem]:hidden"
+                    >
+                      {tapeOpen ? "Show less" : "Show more"}
+                      <ChevronDown className={`h-3.5 w-3.5 transition-transform ${tapeOpen ? "rotate-180" : ""}`} aria-hidden="true" />
+                    </button>
+                    {settings.tapeAdvanced || tapeOpen ? (
+                      // Beside the tape, the pies spread over its height.
+                      <div className={`min-w-0 self-stretch pt-3 @[40rem]:pt-0 ${tapeOpen ? "" : "hidden"} ${settings.tapeAdvanced ? "@[40rem]:block" : "@[40rem]:hidden"}`}>
+                        <TapeHistory fight={fight} />
+                      </div>
+                    ) : null}
                   </div>
                 </section>
                 <RecentForm fight={fight} />
                 <CareerProfile fight={fight} />
                 <RoundsPanel fighters={[fight.f1, fight.f2]} />
-                <HeadToHead fight={fight} />
-                {!fight.potential ? <HeadToHead fight={fight} later /> : null}
+                <Meetings fight={fight} />
                 <CommonOpponents fight={fight} />
               </> : null}
               {tab === "odds" ? <OddsPanel fight={fight} /> : null}

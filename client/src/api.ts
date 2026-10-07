@@ -167,16 +167,14 @@ export type CareerStatistics = {
 export type OppositionRecord = { wins: number; losses: number; draws: number; ncs: number };
 /** Where someone stood going into a fight: rank on the last list before it,
  *  and any UFC belt then, before or to come. */
-export type Standing = { rank: string | null; division: string | null; belt: "champion" | "interim" | "former" | "future" | null };
+export type Standing = { rank: string | null; division: string | null; belt: "champion" | "interim" | "former" | "former-interim" | "future" | "future-interim" | null };
 export type OppositionBout = {
   fight_id: string; date: string; outcome: "win" | "loss" | "draw" | "nc" | null; method: string | null;
   opponent: { id: string | null; name: string };
-  /** UFC record going in; these sum to the matchup's opponent record. */
+  /** UFC record going in, or today when asked for. */
   record: OppositionRecord;
-  /** Complete professional record going in, once their history is verified. */
-  pro_record: OppositionRecord | null;
   standing: Standing | null;
-  /** The opponent's earlier bouts, newest first. */
+  /** The opponent's earlier UFC bouts, or every one when asked for, newest first. */
   history: EarlierBout[];
 };
 /** One of an opponent's earlier bouts: a profile here, else their Sherdog page. */
@@ -184,18 +182,22 @@ export type EarlierBout = {
   fight_id: string | null; date: string; outcome: "win" | "loss" | "draw" | "nc"; method: string | null;
   opponent: { id: string | null; name: string; source_url: string | null };
   standing: Standing | null;
-  /** That opponent's UFC record going into the bout, when they have a profile here. */
+  /** That opponent's UFC record on the night of the meeting, or today when
+   *  asked for, when they have a profile here. */
   record: OppositionRecord | null;
 };
 export type Opposition = {
   fighter_id: string; name: string; before: { fight_id: string; date: string } | null;
+  /** True when records and bouts are today's, not the night's. */
+  current: boolean;
   record: OppositionRecord;
   rows: OppositionBout[];
 };
 
-export type RoundOutcome = { round: number; won: number; lost: number; past: number };
+export type RoundBout = { outcome: "win" | "loss" | "draw"; method: string | null; opponent: string };
+export type RoundOutcome = { round: number; won: number; lost: number; past: number; bouts: RoundBout[] };
 export type FightInsights = {
-  rounds: { fights: number; rounds: RoundOutcome[]; decision: { won: number; lost: number; drawn: number } } | null;
+  rounds: { fights: number; rounds: RoundOutcome[]; decision: { won: number; lost: number; drawn: number; bouts: RoundBout[] } } | null;
 };
 
 export type FightOdds = {
@@ -336,6 +338,18 @@ export type ProfessionalHistoryRow = Omit<HistoryRow, "promotion" | "fight_id" |
   event_url: string | null;
   source_url: string | null;
   opponent: { id: string; name: string; source_url?: string | null };
+};
+
+/** Advanced Tale of the tape: decided UFC bouts before this one between a
+ *  fighter with f1's value and one with f2's, per row on which they differ
+ *  and enough such bouts exist. `basis: "gap"` when too few exact pairings
+ *  met and any two values that far apart were counted instead. */
+export type TapeHistory = {
+  rows: {
+    key: string; label: string; f1: string; f2: string;
+    basis: "exact" | "gap"; gap: string | null;
+    f1Wins: number; f2Wins: number; fights: number;
+  }[];
 };
 
 export type MatchupSide = FightSide & {

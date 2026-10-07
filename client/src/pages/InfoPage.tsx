@@ -90,13 +90,13 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-06">October 6, 2026</time></p>
+            <p><time dateTime="2026-10-07">October 7, 2026</time></p>
             <ul>
-              <li>By round: how each fighter's UFC fights ended, on profiles and matchups.</li>
-              <li>Quality of opposition covers the whole career, with ranks going in; an opponent's name opens the matchup.</li>
-              <li>Close decisions name the round that decided the fight.</li>
-              <li>Common opponents run from oldest beside the opponent to newest.</li>
-              <li>On phones, swipe over Ranking history to scroll; touch and hold to read it.</li>
+              <li>Tale of the tape: a Win streak row, and Show more for historical win rates by each difference.</li>
+              <li>By round: slimmer bars with totals beside them; hover or drag across to see each fight.</li>
+              <li>Quality of opposition lists UFC fights only, with records as of each meeting or as they are now; pick one meeting when two fighters met more than once.</li>
+              <li>Belt tags tell interim champions from undisputed ones, former and future.</li>
+              <li>Previous and subsequent meetings share a row; common opponents put the most recent fight nearest the middle.</li>
             </ul>
           </Section>
         </div>
