@@ -3,6 +3,20 @@
 Measure first, then change what the measurement points at. This page records
 the targets, how to measure against them, and the last measured results.
 
+## Advanced Tale of the tape (2026-10-07)
+
+`/api/fights/:id/tape-history` is only requested when a reader ticks Advanced.
+Measured in Node 26.10.0 on the VPS (4 cores) against a production snapshot
+(8,923 indexed fights, 8,767 decided), 200 random matchups:
+
+| Step | Time |
+| --- | --- |
+| First request after an index build: both corners' tape values for every decided bout | ~390–435 ms |
+| Every request after that, until the data changes | median ~3.5 ms, p95 ~8.5 ms |
+
+The per-bout values are held against the fight index object, so they are thrown
+away and rebuilt only when the archive changes; no timed cache can go stale.
+
 ## Stepping between event cards (2026-10-06)
 
 Playwright on the VPS against the dev container's data: a 390×844 touch phone with

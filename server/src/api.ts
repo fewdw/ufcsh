@@ -2,6 +2,7 @@ import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, potentialMatchups, potentialF
 import { careerStatistics } from "./career-statistics.ts";
 import { roundOutcomes } from "./fight-insights.ts";
 import { opposition } from "./opposition.ts";
+import { tapeHistory } from "./tape-history.ts";
 import { eventStatus, fightIsComplete, fightIsUnderway, isFightDay, liveDetailDue } from "./live-state.ts";
 import { ScoringStore, type ScoringFight } from "./scoring.ts";
 import { createScoringHandler, scoringOrigins } from "./scoring-http.ts";
@@ -2109,6 +2110,13 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   if (p === "/api/events") return listEvents();
   if (p === "/api/live") return liveCard(rankingType);
   if (p.startsWith("/api/events/")) return await getEvent(id, rankingType) ?? undefined;
+  if (/^\/api\/fights\/[^/]+\/tape-history$/.test(p)) {
+    const potential = id.startsWith("potential-") ? potentialMatchups().find(row => row.id === id) : null;
+    const bout = potential ? potentialFight(potential) : prepared(`SELECT f.f1_id, f.f2_id, e.date AS event_date, f.ord
+      FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?`).get(id) as { f1_id: string; f2_id: string; event_date: string; ord: number } | undefined;
+    if (!bout) return undefined;
+    return tapeHistory(fightIndex(), bout.f1_id ?? "", bout.f2_id ?? "", bout.event_date, Number(bout.ord) || 0);
+  }
   if (p.startsWith("/api/fights/")) return await getFight(id, rankingType) ?? undefined;
   if (p === "/api/officials") return officialsDirectory();
   if (p.startsWith("/api/judges/")) return judgeProfile(id, url.searchParams) ?? undefined;

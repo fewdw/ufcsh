@@ -52,6 +52,7 @@ import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { useShortcutNav } from "../shortcuts";
 import { BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
 import OppositionDetails from "../components/OppositionDetails";
+import TapeHistory from "../components/TapeHistory";
 import { RoundsPanel, SideName } from "../components/FightInsights";
 
 const shell = PANEL_SHELL;
@@ -717,7 +718,7 @@ function MatchupTabs({ tabs, current, onSelect }: { tabs: MatchupTab[]; current:
 
 /** Matchup view rendered inside the events layout: card rail + detail + close. */
 export default function FightView({ fightId, eventIdHint }: { fightId: string; eventIdHint?: string | null }) {
-  const { settings } = useSettings();
+  const { settings, update } = useSettings();
   const navigate = useNavigate();
   const location = useLocation();
   const previousFight = useRef<Matchup | null>(null);
@@ -994,11 +995,26 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
               </> : null}
               {tab === "matchup" ? <>
                 <section className={`matchup-overview @container overflow-hidden ${shell}`}>
-                  <PanelHeading title="Tale of the tape" />
-                  <div className="matchup-comparisons grid px-5 pb-3">
-                    <TaleOfTape fight={fight} compact />
-                    <MatchupContext fight={fight} />
-                  </div>
+                  <PanelHeading title="Tale of the tape" aside={
+                    <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-zinc-500">
+                      <input type="checkbox" checked={settings.tapeAdvanced} onChange={(event) => update("tapeAdvanced", event.target.checked)} className="h-3 w-3 accent-sky-500" />
+                      Advanced
+                    </label>
+                  } />
+                  {settings.tapeAdvanced ? (
+                    <div className="grid gap-x-9 gap-y-3 px-5 pb-4 @[40rem]:grid-cols-2">
+                      <div className="matchup-comparisons grid min-w-0">
+                        <TaleOfTape fight={fight} compact />
+                        <MatchupContext fight={fight} />
+                      </div>
+                      <TapeHistory fight={fight} />
+                    </div>
+                  ) : (
+                    <div className="matchup-comparisons grid px-5 pb-3">
+                      <TaleOfTape fight={fight} compact />
+                      <MatchupContext fight={fight} />
+                    </div>
+                  )}
                 </section>
                 <RecentForm fight={fight} />
                 <CareerProfile fight={fight} />
