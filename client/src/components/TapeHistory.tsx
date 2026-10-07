@@ -35,7 +35,7 @@ function HistoryTile({ row, names }: { row: Row; names: [string, string] }) {
     <span className={`text-sm tabular-nums ${value > other ? "font-bold" : "font-medium opacity-70"}`} style={{ color: ink }}>{value}%</span>
   );
   return (
-    <div className="flex min-w-0 flex-col items-center gap-1.5 rounded-xl border border-zinc-100 bg-zinc-50/50 px-2.5 py-2.5" title={`${names[0]}: ${row.f1} · ${names[1]}: ${row.f2}. ${said}.`}>
+    <div className="flex min-w-0 flex-col items-center gap-1.5 py-1" title={`${names[0]}: ${row.f1} · ${names[1]}: ${row.f2}. ${said}.`}>
       <span className={sectionLabel}>{row.label}</span>
       <div className="grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2">
         <div className="flex min-w-0 flex-col items-end text-right">
@@ -64,7 +64,7 @@ export default function TapeHistory({ fight }: { fight: Matchup }) {
     <div className="@container min-w-0 pt-3" aria-label="How these differences have gone before">
       <h3 className="sr-only">How these differences have gone before</h3>
       {data ? (
-        <div className="grid grid-cols-1 gap-2 @[18rem]:grid-cols-2">
+        <div className="grid grid-cols-1 gap-x-2 gap-y-5 @[18rem]:grid-cols-2">
           {data.rows.map(row => <HistoryTile key={row.key} row={row} names={names} />)}
         </div>
       ) : error ? <p className={`${CHART_TEXT} text-zinc-400`}>Could not load. <button type="button" onClick={retry} className="underline">Retry</button></p>
