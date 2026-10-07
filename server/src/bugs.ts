@@ -762,7 +762,7 @@ function sharedCareerProfiles(): BugCheck {
     subtitle: `${group.length} profiles`,
     facts: group.map((row) => [row.name, row.signee ? "signee" : "UFCStats"]),
     links: [...group.map((row) => fighterLink(row.id, row.name)), { label: "Sherdog", href: url }],
-    actions: group.some((row) => row.signee) ? [{ id: "roster-moves", label: "Re-read roster moves", target: "wikipedia" }] : [],
+    actions: group.some((row) => row.signee) ? [{ id: "roster-moves", label: "Re-read roster moves", target: "roster" }] : [],
   })));
 }
 
@@ -815,6 +815,7 @@ function decisionsWithoutJudges(): BugCheck {
 }
 
 function decisionsWithoutJudgeRounds(): BugCheck {
+  const linkedEvents = new Set((db.prepare("SELECT DISTINCT event_id FROM verdict_events WHERE event_id IS NOT NULL").all() as { event_id: string }[]).map(row => row.event_id));
   const candidates = db.prepare(`
     SELECT ${FIGHT_COLUMNS}, f.method, f.detail_json, f.judge_rounds_json, f.verdict_checked_at
     FROM fights f JOIN events e ON e.id = f.event_id
@@ -839,10 +840,12 @@ function decisionsWithoutJudgeRounds(): BugCheck {
   }, rows.map(fight => fightItem(fight, {
     facts: [["Official totals", fight.detail_json?.includes('"judges"') ? "yes" : "no"], ["Verdict checked", ago(fight.verdict_checked_at)]],
     links: [{ label: "Verdict events", href: "https://verdictmma.com/events" }],
+    actions: linkedEvents.has(fight.event_id) ? [{ id: "verdict", label: "Re-read scorecards", target: fight.id }] : [],
   })));
 }
 
 function fightsWithoutCommunityScores(): BugCheck {
+  const linkedEvents = new Set((db.prepare("SELECT DISTINCT event_id FROM verdict_events WHERE event_id IS NOT NULL").all() as { event_id: string }[]).map(row => row.event_id));
   const rows = db.prepare(`
     SELECT ${FIGHT_COLUMNS}, f.method, f.round, f.verdict_checked_at
     FROM fights f JOIN events e ON e.id = f.event_id
@@ -859,14 +862,15 @@ function fightsWithoutCommunityScores(): BugCheck {
   }, rows.map(fight => fightItem(fight, {
     facts: [["Method", fight.method ?? "unknown"], ["Rounds reached", fight.round ?? "unknown"], ["Verdict checked", ago(fight.verdict_checked_at)]],
     links: [{ label: "Verdict events", href: "https://verdictmma.com/events" }],
+    actions: linkedEvents.has(fight.event_id) ? [{ id: "verdict", label: "Re-read scorecards", target: fight.id }] : [],
   })));
 }
 
 function invalidCommunityScores(): BugCheck {
-  const rows = db.prepare(`SELECT ${FIGHT_COLUMNS}, f.method, f.round, f.community_score_json
+  const rows = db.prepare(`SELECT ${FIGHT_COLUMNS}, f.method, f.round, f.detail_json, f.community_score_json
     FROM fights f JOIN events e ON e.id = f.event_id
     WHERE e.complete = 1 AND f.community_score_json IS NOT NULL ORDER BY e.date DESC`)
-    .all() as (FightRow & { method: string; round: string | null; community_score_json: string })[];
+    .all() as (FightRow & { method: string; round: string | null; detail_json: string | null; community_score_json: string })[];
   const invalid = rows.filter(fight => !parseCommunityScorecard(fight.community_score_json, completedScorecardRounds(fight)));
   return check({
     id: "fight-invalid-community-scores", group: "Scorecards", label: "Community scorecards with incompatible rounds or averages",
@@ -1188,7 +1192,7 @@ function replacementsWithoutNotice(): BugCheck {
     id: "replacement-no-notice",
     group: "Fights & events",
     label: "Replacements without their days' notice",
-    description: "A replacement whose notice the event article doesn't state, so the matchup says \"Replaced X\" (or \"on short notice\") without how many days. Stated notice (\"on 10 days' notice\", \"less than two weeks before\", \"during fight week\") is read with the article; the rest wait for another source.",
+    description: "A replacement whose notice the event article doesn't state, so the matchup says \"Replaced X\" (or \"on short notice\") without how many days. Stated notice (\"on 10 days' notice\", \"less than two weeks before\", \"during fight week\") is read with the article. A dated cited report naming both fighters and the replacement gives \"announced N days before\", rather than claiming when the fighter accepted. The rest wait for another source.",
     grade: ahead([[14, "minor"]]),
   }, rows.map((row): BugItem => ({
     key: `${row.id}:${row.name}`,

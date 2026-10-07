@@ -5,6 +5,30 @@ import { cardChanges, catchweights, eventSection, infoboxDate, namesCard, plainT
 const article = (background: string, results = "") =>
   `{{Infobox MMA event\n| date = {{start date|2024|01|20}}\n}}\n==Background==\n${background}\n==Results==\n${results}`;
 
+test("cited replacement reports expose an announcement date without inventing acceptance notice", () => {
+  const report = (date: string) => `<ref>{{cite web|url=https://example.com/change|title=Rob Font replaces Aljamain Sterling, faces Mitch Gagnon|date=${date}}}</ref>`;
+  const prose = "[[Aljamain Sterling]] withdrew and was replaced by [[Rob Font]]";
+  const change = cardChanges(article(`${prose}${report("2024-01-11")}${report("January 12, 2024")}.`), [["Rob Font", "Mitch Gagnon"]]).changes[0];
+  assert.equal(change.replaced, "Aljamain Sterling");
+  assert.equal(change.notice, "announced 9 days before");
+  assert.equal(change.shortNotice, false);
+  const explicit = cardChanges(article(`${prose} on three days' notice${report("2024-01-11")}.`), [["Rob Font", "Mitch Gagnon"]]).changes[0];
+  assert.equal(explicit.notice, "3 days");
+});
+
+test("announcement dates require the right replacement direction, both names and a dated source", () => {
+  const prose = "[[Aljamain Sterling]] withdrew and was replaced by [[Rob Font]]";
+  const read = (title: string, date: string, extra = "") => cardChanges(article(`${prose}<ref>{{cite web|url=https://example.com/change|title=${title}|date=${date}${extra}}}</ref>.`), [["Rob Font", "Mitch Gagnon"]]).changes[0].notice;
+  const title = "Rob Font replaces Aljamain Sterling";
+  assert.equal(read("Aljamain Sterling replaces Rob Font", "2024-01-11"), null);
+  assert.equal(read("Rob Font replaces another fighter", "2024-01-11"), null);
+  assert.equal(read(title, "January 2024", "|access-date=2024-01-11"), null);
+  assert.equal(read(title, "2024-01-21"), null);
+  assert.equal(read(title, "2023-01-11"), null);
+  assert.equal(read(title, "2023-11-31"), null);
+  assert.equal(read("Sterling replaced by Font", "2024-01-20"), "announced on fight day");
+});
+
 test("infobox dates read both the template and written forms", () => {
   assert.equal(infoboxDate(article("")), "2024-01-20");
   assert.equal(infoboxDate("| date = August 11, 2012\n"), "2012-08-11");

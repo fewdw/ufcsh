@@ -1,6 +1,6 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { randomInt, randomUUID } from "node:crypto";
-import { parseCommunityScorecard } from "./community-scorecards.ts";
+import { completedScorecardRounds, parseCommunityScorecard } from "./community-scorecards.ts";
 import { fightIsComplete, fightIsUnderway, isFightDay } from "./live-state.ts";
 
 export class ScoringError extends Error {
@@ -44,9 +44,8 @@ export function scoringEligibility(fight: ScoringFight, now = Date.now(), opened
   if (![3, 5].includes(scheduled)) return { state, scheduled: 0, available: 0, reason: "Round scoring is available for confirmed three- and five-round bouts. This fight’s format is not confirmed or uses a historical ruleset." };
   if (complete) {
     const last = Number(fight.round);
-    const decision = /DEC|decision/i.test(fight.method ?? "");
     // A stoppage round is not a completed judged round, even at 5:00.
-    const available = Number.isInteger(last) && last >= 1 && last <= scheduled ? (decision ? last : last - 1) : 0;
+    const available = Number.isInteger(last) && last >= 1 && last <= scheduled ? completedScorecardRounds(fight) : 0;
     return { state, scheduled, available, reason: available ? null : "This fight has no completed rounds to score." };
   }
   const observed = Math.max(detail?.totalsRounds?.rounds?.length ?? 0, detail?.sigStrikesRounds?.rounds?.length ?? 0);

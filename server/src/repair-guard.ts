@@ -19,7 +19,7 @@ export function createRepairRunner<T>(
   let running = false;
   let backedUpDay = "";
   return async (action: string, target: string, actor: string): Promise<T> => {
-    if (!Object.hasOwn(ACTIONS, action) || !(/^[a-f0-9]{16}$/i.test(target) || (action === "verdict" && /^card:\d{1,7}$/.test(target)) || (action === "roster-moves" && target === "roster") || ((action.startsWith("news") || action === "ranking-history" || action === "rankings" || action === "potential-odds") && target === "all"))) throw new ScoringError(400, "Unknown repair or target.");
+    if (!Object.hasOwn(ACTIONS, action) || !(/^[a-f0-9]{16}$/i.test(target) || (action === "verdict" && /^card:\d{1,7}$/.test(target)) || (action === "roster-moves" && (target === "roster" || target === "ufc")) || ((action.startsWith("news") || action === "ranking-history" || action === "rankings" || action === "potential-odds") && target === "all"))) throw new ScoringError(400, "Unknown repair or target.");
     if (running) throw new ScoringError(503, "Another repair is running. Retry shortly.");
     running = true;
     const started = now();

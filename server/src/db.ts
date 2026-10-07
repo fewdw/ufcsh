@@ -467,10 +467,17 @@ if (getMeta("migration_placeholder_photos_v2") !== "1") {
 
 // Replacements and short notice are read with the rest of the event
 // article; past cards were read before that, so read them once more
-// (v3: months and acronyms were read as the replaced fighter's name).
-if (getMeta("migration_bout_changes") !== "3") {
-  db.exec("UPDATE events SET wiki_info_checked_at = NULL WHERE complete = 1");
-  setMeta("migration_bout_changes", "3");
+// (v3: months and acronyms were read as the replaced fighter's name;
+// v4: cited replacement reports also retain the announcement date).
+if (getMeta("migration_bout_changes") !== "4") {
+  if (getMeta("migration_bout_changes") !== "3") {
+    db.exec("UPDATE events SET wiki_info_checked_at = NULL WHERE complete = 1");
+  } else {
+    db.exec(`UPDATE events SET wiki_info_checked_at = NULL WHERE complete = 1 AND id IN (
+      SELECT event_id FROM fights WHERE (f1_replaced IS NOT NULL AND f1_notice IS NULL)
+        OR (f2_replaced IS NOT NULL AND f2_notice IS NULL))`);
+  }
+  setMeta("migration_bout_changes", "4");
 }
 
 // A bare surname could be attributed to a card fighter when the article meant

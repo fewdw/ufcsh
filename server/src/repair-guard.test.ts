@@ -43,6 +43,15 @@ test("the potential odds board can be refreshed using its all target", async () 
   await assert.rejects(run("potential-odds", "invalid", "admin@example.com"), /Unknown repair/);
 });
 
+test("both roster sources offered by the board pass the repair guard", async () => {
+  const run = createRepairRunner(async () => {}, async (action, target) => ({ action, target }), () => {});
+  for (const target of ["roster", "ufc"]) {
+    assert.deepEqual(await run("roster-moves", target, "admin@example.com"), { action: "roster-moves", target });
+  }
+  await assert.rejects(run("detail", "ufc", "admin@example.com"), /Unknown repair/);
+  await assert.rejects(run("roster-moves", "unknown", "admin@example.com"), /Unknown repair/);
+});
+
 test("judge-name repairs require a fight id and the normal backup and audit", async () => {
   const calls: string[] = [];
   const run = createRepairRunner(async () => { calls.push("backup"); }, async () => { calls.push("repair"); }, () => { calls.push("audit"); });

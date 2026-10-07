@@ -45,6 +45,17 @@ test("server rejects incomplete cards, skipped and duplicate rounds, invalid sco
   assert.equal(validateSubmission({ revision: 0, rounds: [{ ...rounds[0], f2: 10, deduct1: 1 }, ...rounds.slice(1)] }, eligibility).rounds[0].deduct1, 1);
 });
 
+test("overturned decisions retain their judged rounds while overturned finishes do not", t => {
+  const decision = { ...fight, method: "Overturned", f1_outcome: "nc", f2_outcome: "nc",
+    detail_json: JSON.stringify({ methodInfo: { "Time format": "3 Rnd (5-5-5)" }, judges: [{ judge: "A Judge", f1Score: 29, f2Score: 28 }] }),
+    community_score_json: JSON.stringify({ cards: 100, avg1: 30, avg2: 27, rounds: [1, 2, 3].map(round => ({ round, avg1: 10, avg2: 9 })) }) };
+  assert.equal(scoringEligibility(decision).available, 3);
+  const { store } = fixture(t, decision);
+  assert.equal((store.summary(id) as any).totals.importedCards, 100);
+  const finish = { ...decision, detail_json: JSON.stringify({ methodInfo: { "Time format": "3 Rnd (5-5-5)" } }) };
+  assert.equal(scoringEligibility(finish).available, 2);
+});
+
 test("atomic edits, duplicates, private ownership, deletion and decimal aggregates", t => {
   const { store } = fixture(t);
   const first = store.save(id, "alice", { revision: 0, rounds });

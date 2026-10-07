@@ -34,3 +34,30 @@ test("an undated release counts only through a dated report about that fighter l
     { name: "Ricardo Almeida", date: "2011-03-31", reason: "Retired" },
   ]);
 });
+
+test("the pre-2017 Recently released heading keeps a dated retirement citation", () => {
+  const text = `Intro
+==Recently released==
+{| class="wikitable"
+! Name
+! Division
+|-
+|[[Kyle Noke]] ''(retired)''<span style="display:none">December 27</span><ref>{{cite web|url=https://example.com/report|title=Video: Kyle Noke retires after UFC Melbourne|date=November 27, 2016}}</ref>
+|Welterweight
+|}
+==Recent signings==
+`;
+  assert.deepEqual(undatedReleases(text), [{ name: "Kyle Noke", date: "2016-11-27", reason: "Retired" }]);
+});
+
+test("release requests, conditional retirements and incomplete dates do not establish departures", () => {
+  for (const [title, date] of [
+    ["Tatsuya Kawajiri asks for release from the UFC", "October 17, 2016"],
+    ["Tatsuya Kawajiri retired unless a new contract is offered", "October 17, 2016"],
+    ["Tatsuya Kawajiri released from UFC", "October 2016"],
+    ["Tatsuya Kawajiri released from UFC", "February 30, 2016"],
+  ]) {
+    const text = `==Recently released==\n{|\n! Name\n|-\n|[[Tatsuya Kawajiri]]<ref>{{cite web|url=https://example.com/report|title=${title}|date=${date}}}</ref>\n|}\n==Recent signings==`;
+    assert.deepEqual(undatedReleases(text), []);
+  }
+});

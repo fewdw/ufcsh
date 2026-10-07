@@ -92,9 +92,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-07">October 7, 2026</time></p>
             <ul>
-              <li>Recovered missing scorecards and judges' names from verified source panels.</li>
-              <li>Community averages require consistent totals and complete round coverage.</li>
-              <li>Verified career histories fill missing birth dates and keep them through empty source responses.</li>
+              <li>Historical roster timelines include more sourced signing and departure dates.</li>
+              <li>Replacement details retain dated announcements without calling them exact notice.</li>
+              <li>Scorecard imports combine verified judges across sources, and missing cards can be re-read from the admin board.</li>
             </ul>
           </Section>
         </div>

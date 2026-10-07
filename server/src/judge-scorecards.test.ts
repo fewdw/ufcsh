@@ -1,8 +1,33 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compatibleJudgeCards, decisionFromCards, hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
+import { combineJudgeRounds, compatibleJudgeCards, decisionFromCards, hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
 
 const rounds = (a: number[], b: number[]) => a.map((f1Score, index) => ({ round: index + 1, f1Score, f2Score: b[index] }));
+
+test("complementary source panels combine without losing a previously imported judge", () => {
+  const panel: JudgeCard[] = ["Mike Bell", "Sal D'Amato", "Chris Lee"].map(judge => ({ judge, f1Score: 29, f2Score: 28, rounds: rounds([10, 9, 10], [9, 10, 9]) }));
+  const official = panel.map(({ rounds: _, ...card }) => card);
+  assert.deepEqual(combineJudgeRounds(official, panel.slice(0, 1), panel.slice(1)), panel);
+  assert.deepEqual(combineJudgeRounds(official, panel, panel.slice(1)), panel);
+  assert.deepEqual(combineJudgeRounds([], panel, [{ ...panel[0], judge: "Michael Bell" }]), panel);
+  assert.equal(hasCompleteJudgeRounds([], panel), true);
+  assert.equal(hasCompleteJudgeRounds([], panel.slice(0, 1)), false);
+  assert.equal(hasCompleteJudgeRounds([], [panel[0], { ...panel[0], judge: "Michael Bell" }, panel[2]]), false);
+});
+
+test("round detail must be complete, ordered, bounded and add up to the official total", () => {
+  const card: JudgeCard = { judge: "Mike Bell", f1Score: 29, f2Score: 28, rounds: rounds([10, 9, 10], [9, 10, 9]) };
+  const official = [{ judge: card.judge, f1Score: 29, f2Score: 28 }];
+  for (const invalid of [
+    { ...card, rounds: card.rounds!.slice(0, 2) },
+    { ...card, rounds: [...card.rounds!].reverse() },
+    { ...card, rounds: rounds([11, 8, 10], [9, 10, 9]) },
+    { ...card, rounds: rounds([9, 9, 10], [9, 10, 9]) },
+  ]) {
+    assert.equal(hasCompleteJudgeRounds(official, [invalid]), false);
+    assert.deepEqual(combineJudgeRounds(official, [invalid], [card]), [card]);
+  }
+});
 
 test("judge aliases and reordered source cards attach to the right official", () => {
   const official: JudgeCard[] = [
@@ -101,10 +126,11 @@ test("new named source rounds take precedence over older anonymous copies", () =
   assert.deepEqual(mergeJudgeRounds(official, [...anonymous, ...named]).map(card => card.judge), named.map(card => card.judge));
 });
 
-test("a named totals-only card cannot hide newer round scores for the same official", () => {
+test("malformed and totals-only prior cards cannot hide newer round scores", () => {
   const official: JudgeCard[] = [{ judge: "Mike Bell", f1Score: 29, f2Score: 28 }];
   const detailed: JudgeCard = { judge: "Michael Bell", f1Score: 29, f2Score: 28, rounds: rounds([10, 9, 10], [9, 10, 9]) };
-  assert.deepEqual(mergeJudgeRounds(official, [...official, detailed])[0].rounds, detailed.rounds);
+  const malformed = [null, { judge: null, f1Score: 29, f2Score: 28 }] as unknown as JudgeCard[];
+  assert.deepEqual(mergeJudgeRounds(official, [...malformed, ...official, detailed])[0].rounds, detailed.rounds);
 });
 
 test("a decision's kind follows its three cards", () => {
