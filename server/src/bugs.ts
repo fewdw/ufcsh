@@ -1,3 +1,4 @@
+import { completedScorecardRounds, parseCommunityScorecard } from "./community-scorecards.ts";
 import { potentialMatchups, syncPotentialMatchups } from "./potential-matchups.ts";
 import { db, getMeta, setMeta } from "./db.ts";
 import { confirmedTitleResults, missingCurrentRankingHistory, relinkRankingHistory } from "./ranking-history.ts";
@@ -859,6 +860,30 @@ function fightsWithoutCommunityScores(): BugCheck {
     facts: [["Method", fight.method ?? "unknown"], ["Rounds reached", fight.round ?? "unknown"], ["Verdict checked", ago(fight.verdict_checked_at)]],
     links: [{ label: "Verdict events", href: "https://verdictmma.com/events" }],
   })));
+}
+
+function invalidCommunityScores(): BugCheck {
+  const rows = db.prepare(`SELECT ${FIGHT_COLUMNS}, f.method, f.round, f.community_score_json
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 1 AND f.community_score_json IS NOT NULL ORDER BY e.date DESC`)
+    .all() as (FightRow & { method: string; round: string | null; community_score_json: string })[];
+  const invalid = rows.filter(fight => !parseCommunityScorecard(fight.community_score_json, completedScorecardRounds(fight)));
+  return check({
+    id: "fight-invalid-community-scores", group: "Scorecards", label: "Community scorecards with incompatible rounds or averages",
+    description: "Stored source aggregates must cover exactly the bout's completed rounds, with consecutive rounds and totals consistent with their round averages. Incompatible aggregates are excluded from displayed averages until the source is corrected.",
+    grade: recent([[7, "minor"]]),
+  }, invalid.map(fight => {
+    let source: any = null;
+    try { source = JSON.parse(fight.community_score_json); } catch { /* malformed source */ }
+    const matched = typeof source?.sourceUrl === "string"
+      ? source.sourceUrl.match(/^https:\/\/verdictmma\.com\/event\/(\d+)\/fight\/\d+$/) : null;
+    return fightItem(fight, {
+      facts: [["Completed rounds", String(completedScorecardRounds(fight))],
+        ["Source rounds", Array.isArray(source?.rounds) ? String(source.rounds.length) : "invalid"]],
+      links: matched ? [{ label: "Stored scorecard", href: source.sourceUrl }] : [],
+      actions: matched ? [{ id: "verdict", label: "Re-read source scorecards", target: `card:${matched[1]}` }] : [],
+    });
+  }));
 }
 
 function verdictImportErrors(): BugCheck {
@@ -1735,6 +1760,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
   const checks = [
     decisionsWithoutJudgeRounds(),
     fightsWithoutCommunityScores(),
+    invalidCommunityScores(),
     verdictImportErrors(),
     suspiciousOdds(),
     wrongFighterPages(),

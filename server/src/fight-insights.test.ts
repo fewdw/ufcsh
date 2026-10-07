@@ -66,7 +66,7 @@ test("decision scores: every judge's card and fan average, by length, from the f
     sides: id === "a" ? [{ id: "a", name: "A", outcome: "win" }, { id: "b", name: "B", outcome: "loss" }] : [{ id: "b", name: "B", outcome: "win" }, { id: "a", name: "A", outcome: "loss" }],
     row: {
       detail_json: JSON.stringify({ judges: cards.map(([f1Score, f2Score]) => ({ judge: "J", f1Score, f2Score })) }),
-      community_score_json: fans ? JSON.stringify({ cards: 900, avg1: fans[0], avg2: fans[1], rounds: Array.from({ length: rounds }, (_, index) => ({ round: index + 1 })) }) : null,
+      community_score_json: fans ? JSON.stringify({ cards: 900, avg1: fans[0], avg2: fans[1], rounds: Array.from({ length: rounds }, (_, index) => ({ round: index + 1, avg1: fans[0] / rounds, avg2: fans[1] / rounds })) }) : null,
     },
   }) as unknown as IndexedFight;
   assert.deepEqual(decisionScores([scored("a", 5, [[50, 45], [50, 45], [50, 45]], [50, 45])], "a"), [

@@ -64,24 +64,32 @@ test("an unknown official is not found rather than empty", () => {
 });
 
 test("source-only scorecards appear in the judges' directory and profiles", async t => {
-  const row = db.prepare(`SELECT f.id, f.detail_json, f.judge_rounds_json FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE e.complete = 1 AND f.method LIKE '%DEC' LIMIT 1`).get() as { id: string; detail_json: string | null; judge_rounds_json: string | null };
+  const row = db.prepare(`SELECT f.id, f.detail_json, f.judge_rounds_json, f.community_score_json FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 1 AND f.method LIKE '%DEC' AND f.round = '3' LIMIT 1`).get() as { id: string; detail_json: string | null; judge_rounds_json: string | null; community_score_json: string | null };
   assert.ok(row);
-  const update = db.prepare("UPDATE fights SET detail_json = ?, judge_rounds_json = ? WHERE id = ?");
+  const update = db.prepare("UPDATE fights SET detail_json = ?, judge_rounds_json = ?, community_score_json = ? WHERE id = ?");
   t.after(async () => {
-    update.run(row.detail_json, row.judge_rounds_json, row.id);
+    update.run(row.detail_json, row.judge_rounds_json, row.community_score_json, row.id);
     await new Promise(resolve => setTimeout(resolve, 5100));
     fightIndex();
   });
   const judges = ["Archive Only Judge A", "Archive Only Judge B", "Archive Only Judge C"].map(judge => ({ judge, f1Score: 29, f2Score: 28,
     rounds: [{ round: 1, f1Score: 10, f2Score: 9 }, { round: 2, f1Score: 9, f2Score: 10 }, { round: 3, f1Score: 10, f2Score: 9 }],
   }));
-  update.run(JSON.stringify({ ...JSON.parse(row.detail_json ?? "{}"), judges: [] }), JSON.stringify({ source: "MMA Decisions", judges }), row.id);
+  update.run(JSON.stringify({ ...JSON.parse(row.detail_json ?? "{}"), judges: [] }), JSON.stringify({ source: "MMA Decisions", judges }),
+    JSON.stringify({ source: "Verdict MMA", sourceUrl: "https://verdictmma.com/event/1/fight/1", cards: 100,
+      avg1: 50, avg2: 45, rounds: [1, 2, 3, 4, 5].map(round => ({ round, avg1: 10, avg2: 9 })) }), row.id);
   await new Promise(resolve => setTimeout(resolve, 5100));
   const profile = judgeProfile("archive-only-judge-a", new URLSearchParams()) as any;
   assert.equal(profile.total, 1);
   assert.equal(profile.rows[0].fight_id, row.id);
   assert.equal(profile.rows[0].card.rounds.length, 3);
+  assert.equal(profile.rows[0].fans, null, "an incompatible fan aggregate must not enter judge agreement");
+  const { bugReport } = await import("./bugs.ts");
+  const issue = bugReport().checks.find(check => check.id === "fight-invalid-community-scores")!
+    .items.find(item => item.key === row.id);
+  assert.ok(issue, "the incompatible source card remains a visible data issue");
+  assert.equal(issue.actions[0].target, "card:1");
 });
 
 test("the bug board's officials checks only list real pairs and real merges", async () => {

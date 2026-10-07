@@ -1,3 +1,4 @@
+import { completedScorecardRounds, validCommunityScorecard } from "./community-scorecards.ts";
 import { DatabaseSync, backup } from "node:sqlite";
 import { realpathSync } from "node:fs";
 import { hasCompleteJudgeRounds, hasDistinctJudgeNames, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
@@ -24,13 +25,7 @@ const sourceUrl = (value: any): boolean => {
 };
 
 function completeCommunity(value: any, fight: Row): boolean {
-  const max = Number(fight.round) - (/DEC/.test(fight.method) ? 0 : 1);
-  return max >= 1 && max <= 5 && sourceUrl(value) && Number.isSafeInteger(value.cards) && value.cards > 0
-    && [value.avg1, value.avg2].every(n => Number.isFinite(n) && n >= 0 && n <= max * 10)
-    && Array.isArray(value.rounds) && value.rounds.length === max
-    && value.rounds.every((r: any, i: number) => r?.round === i + 1
-      && [r.avg1, r.avg2].every(n => Number.isFinite(n) && n >= 0 && n <= 10))
-    && ["avg1", "avg2"].every(key => Math.abs(value[key] - value.rounds.reduce((sum: number, r: any) => sum + r[key], 0)) <= 0.05 * (max + 1) + 1e-9);
+  return sourceUrl(value) && validCommunityScorecard(value, completedScorecardRounds(fight));
 }
 
 export function importScorecardArchive(source: DatabaseSync, target: DatabaseSync, apply = false) {

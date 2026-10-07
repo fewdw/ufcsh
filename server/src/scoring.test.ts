@@ -100,6 +100,30 @@ test("external community aggregates are weighted with real local cards without i
   assert.equal(result.cards.length, 1);
 });
 
+test("incompatible source totals and rounds cannot contaminate real local cards", t => {
+  const valid = { cards: 4, avg1: 30, avg2: 27,
+    rounds: [1, 2, 3].map(round => ({ round, avg1: 10, avg2: 9 })) };
+  const invalid = [
+    { ...valid, avg1: 50, avg2: 45, rounds: [1, 2, 3, 4, 5].map(round => ({ round, avg1: 10, avg2: 9 })) },
+    { ...valid, rounds: valid.rounds.slice(0, 2) },
+    { ...valid, rounds: [valid.rounds[0], valid.rounds[0], valid.rounds[2]] },
+    { ...valid, avg2: 24 },
+    { ...valid, cards: 1.5 },
+    { ...valid, rounds: [{ round: 1, avg1: 11, avg2: 9 }, ...valid.rounds.slice(1)] },
+  ];
+  const { store, setFight } = fixture(t);
+  store.save(id, "alice", { revision: 0, rounds });
+  for (const value of invalid) {
+    setFight({ ...fight, community_score_json: JSON.stringify(value) });
+    const summary = store.summary(id) as any;
+    assert.equal(summary.totals.importedCards, 0);
+    assert.equal(summary.totals.scorers, 1);
+    assert.equal(summary.totals.avg1, 30);
+    assert.equal(summary.totals.avg2, 27);
+    assert.deepEqual(summary.rounds.map((r: any) => r.total2), [9, 9, 9]);
+  }
+});
+
 test("live partial cards have separate per-round samples and cannot include future or finishing rounds", t => {
   const live: ScoringFight = { ...fight, f1_outcome: null, f2_outcome: null, event_date: new Date().toISOString().slice(0, 10), detail_json: JSON.stringify({ type: "past", totalsRounds: { rounds: [{}, {}] } }) };
   const { store, setFight } = fixture(t, live);
