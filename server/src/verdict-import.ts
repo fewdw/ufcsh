@@ -1,8 +1,8 @@
+import { completedScorecardRounds, parseCommunityScorecard, validCommunityScorecard } from "./community-scorecards.ts";
 import { db } from "./db.ts";
 import { fetchVerdictDocument, fetchVerdictHtml, parseVerdictEventFightNumbers, parseVerdictEventPage, parseVerdictFightPage, VERDICT } from "./scrape/verdict.ts";
 import { firstLastName, log, normName } from "./util.ts";
 import { combineJudgeRounds, hasCompleteJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
-import { communityScoreIssue } from "./community-scorecards.ts";
 
 /**
  * Verdict MMA's official round cards and community aggregates, matched onto
@@ -96,6 +96,7 @@ function needsJudges(fight: LocalFight): boolean {
     return !hasCompleteJudgeRounds(officialCards(fight), Array.isArray(imported) ? imported : []);
   } catch { return true; }
 }
+const hasCommunity = (fight: LocalFight) => !!parseCommunityScorecard(fight.community_score_json, completedScorecardRounds(fight));
 const scoreable = (fight: LocalFight) => isDecision(fight) || Number(fight.round) > 1;
 
 function shiftDate(dateIso: string, days: number): string {
@@ -179,8 +180,7 @@ async function importFight(eventId: number, fightNumber: number, fight: LocalFig
       }
     }
     let communityJson: string | null = null;
-    if ((mode !== "missing" || !fight.community_score_json) && page.community
-      && !communityScoreIssue(page.community, fight.method, fight.round, { judges: officialCards(fight) })) {
+    if ((mode !== "missing" || !hasCommunity(fight)) && validCommunityScorecard(page.community, completedScorecardRounds(fight))) {
       const card = page.community;
       const aligned = order === 1 ? card : {
         ...card,
@@ -245,7 +245,7 @@ export async function importVerdictEvent(
   // Verdict splits a card over two pages that both list it, so a pass skips
   // fights it has already read.
   const wanted = matches.filter(({ fight }) => (fight.verdict_checked_at ?? 0) < skipCheckedSince && due(fight)
-    && (mode !== "missing" || needsJudges(fight) || !fight.community_score_json));
+    && (mode !== "missing" || needsJudges(fight) || !hasCommunity(fight)));
   if (wanted.length) {
     const numbered = wanted.some(match => match.source.fightNumber == null)
       ? parseVerdictEventFightNumbers(await fetchVerdictDocument(`/event/${verdictId}`).catch((error) => {

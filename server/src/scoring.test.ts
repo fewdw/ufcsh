@@ -45,6 +45,17 @@ test("server rejects incomplete cards, skipped and duplicate rounds, invalid sco
   assert.equal(validateSubmission({ revision: 0, rounds: [{ ...rounds[0], f2: 10, deduct1: 1 }, ...rounds.slice(1)] }, eligibility).rounds[0].deduct1, 1);
 });
 
+test("overturned decisions retain their judged rounds while overturned finishes do not", t => {
+  const decision = { ...fight, method: "Overturned", f1_outcome: "nc", f2_outcome: "nc",
+    detail_json: JSON.stringify({ methodInfo: { "Time format": "3 Rnd (5-5-5)" }, judges: [{ judge: "A Judge", f1Score: 29, f2Score: 28 }] }),
+    community_score_json: JSON.stringify({ cards: 100, avg1: 30, avg2: 27, rounds: [1, 2, 3].map(round => ({ round, avg1: 10, avg2: 9 })) }) };
+  assert.equal(scoringEligibility(decision).available, 3);
+  const { store } = fixture(t, decision);
+  assert.equal((store.summary(id) as any).totals.importedCards, 100);
+  const finish = { ...decision, detail_json: JSON.stringify({ methodInfo: { "Time format": "3 Rnd (5-5-5)" } }) };
+  assert.equal(scoringEligibility(finish).available, 2);
+});
+
 test("atomic edits, duplicates, private ownership, deletion and decimal aggregates", t => {
   const { store } = fixture(t);
   const first = store.save(id, "alice", { revision: 0, rounds });
@@ -98,6 +109,30 @@ test("external community aggregates are weighted with real local cards without i
   assert.equal(result.totals.distributionCards, 1);
   assert.deepEqual([result.totals.f1, result.totals.draws, result.totals.f2], [1, 0, 0]);
   assert.equal(result.cards.length, 1);
+});
+
+test("incompatible source totals and rounds cannot contaminate real local cards", t => {
+  const valid = { cards: 4, avg1: 30, avg2: 27,
+    rounds: [1, 2, 3].map(round => ({ round, avg1: 10, avg2: 9 })) };
+  const invalid = [
+    { ...valid, avg1: 50, avg2: 45, rounds: [1, 2, 3, 4, 5].map(round => ({ round, avg1: 10, avg2: 9 })) },
+    { ...valid, rounds: valid.rounds.slice(0, 2) },
+    { ...valid, rounds: [valid.rounds[0], valid.rounds[0], valid.rounds[2]] },
+    { ...valid, avg2: 24 },
+    { ...valid, cards: 1.5 },
+    { ...valid, rounds: [{ round: 1, avg1: 11, avg2: 9 }, ...valid.rounds.slice(1)] },
+  ];
+  const { store, setFight } = fixture(t);
+  store.save(id, "alice", { revision: 0, rounds });
+  for (const value of invalid) {
+    setFight({ ...fight, community_score_json: JSON.stringify(value) });
+    const summary = store.summary(id) as any;
+    assert.equal(summary.totals.importedCards, 0);
+    assert.equal(summary.totals.scorers, 1);
+    assert.equal(summary.totals.avg1, 30);
+    assert.equal(summary.totals.avg2, 27);
+    assert.deepEqual(summary.rounds.map((r: any) => r.total2), [9, 9, 9]);
+  }
 });
 
 test("live partial cards have separate per-round samples and cannot include future or finishing rounds", t => {

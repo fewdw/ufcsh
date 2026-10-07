@@ -1,3 +1,4 @@
+import { completedScorecardRounds, parseCommunityScorecard } from "./community-scorecards.ts";
 import { potentialMatchups, syncPotentialMatchups } from "./potential-matchups.ts";
 import { db, getMeta, setMeta } from "./db.ts";
 import { confirmedTitleResults, missingCurrentRankingHistory, relinkRankingHistory } from "./ranking-history.ts";
@@ -12,7 +13,6 @@ import { syncCareerRecord } from "./career-records.ts";
 import { hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
 import { importVerdictEvent } from "./verdict-import.ts";
 import { repairJudgeNames } from "./repair-judge-names.ts";
-import { communityScoreIssue } from "./community-scorecards.ts";
 import { mergedByHand, officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
 import { rosterEventsByFighter, rosterMoveFighter, storedRosterMoves, syncRosterMoves, syncUfcSignings } from "./roster-moves.ts";
@@ -844,19 +844,6 @@ function decisionsWithoutJudgeRounds(): BugCheck {
   })));
 }
 
-function invalidCommunityScores(): BugCheck {
-  const linked = new Set((db.prepare("SELECT DISTINCT event_id FROM verdict_events WHERE event_id IS NOT NULL").all() as { event_id: string }[]).map(row => row.event_id));
-  const rows = db.prepare(`SELECT ${FIGHT_COLUMNS}, f.method, f.round, f.detail_json, f.community_score_json FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE e.complete = 1 AND f.community_score_json IS NOT NULL ORDER BY e.date DESC`).all() as (FightRow & { method: string; round: string; detail_json: string | null; community_score_json: string })[];
-  return check({ id: "community-score-invalid", group: "Scorecards", label: "Community cards with inconsistent scores",
-    description: "Vote counts, round samples and totals must agree with the rounds actually completed. A scheduled five-round technical decision can incorrectly include votes for rounds that never happened. Re-reading retains the old card until the source supplies a valid replacement.", grade: "minor" }, rows.flatMap(fight => {
-    let issue: string | null;
-    try { issue = communityScoreIssue(JSON.parse(fight.community_score_json), fight.method, fight.round, JSON.parse(fight.detail_json ?? "null")); } catch { issue = "Unreadable scorecard"; }
-    return issue ? [fightItem(fight, { facts: [["Problem", issue]], actions: linked.has(fight.event_id)
-      ? [{ id: "verdict", label: "Re-read scorecards", target: fight.id }] : [] })] : [];
-  }));
-}
-
 function fightsWithoutCommunityScores(): BugCheck {
   const linkedEvents = new Set((db.prepare("SELECT DISTINCT event_id FROM verdict_events WHERE event_id IS NOT NULL").all() as { event_id: string }[]).map(row => row.event_id));
   const rows = db.prepare(`
@@ -877,6 +864,30 @@ function fightsWithoutCommunityScores(): BugCheck {
     links: [{ label: "Verdict events", href: "https://verdictmma.com/events" }],
     actions: linkedEvents.has(fight.event_id) ? [{ id: "verdict", label: "Re-read scorecards", target: fight.id }] : [],
   })));
+}
+
+function invalidCommunityScores(): BugCheck {
+  const rows = db.prepare(`SELECT ${FIGHT_COLUMNS}, f.method, f.round, f.detail_json, f.community_score_json
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 1 AND f.community_score_json IS NOT NULL ORDER BY e.date DESC`)
+    .all() as (FightRow & { method: string; round: string | null; detail_json: string | null; community_score_json: string })[];
+  const invalid = rows.filter(fight => !parseCommunityScorecard(fight.community_score_json, completedScorecardRounds(fight)));
+  return check({
+    id: "fight-invalid-community-scores", group: "Scorecards", label: "Community scorecards with incompatible rounds or averages",
+    description: "Stored source aggregates must cover exactly the bout's completed rounds, with consecutive rounds and totals consistent with their round averages. Incompatible aggregates are excluded from displayed averages until the source is corrected.",
+    grade: recent([[7, "minor"]]),
+  }, invalid.map(fight => {
+    let source: any = null;
+    try { source = JSON.parse(fight.community_score_json); } catch { /* malformed source */ }
+    const matched = typeof source?.sourceUrl === "string"
+      ? source.sourceUrl.match(/^https:\/\/verdictmma\.com\/event\/(\d+)\/fight\/\d+$/) : null;
+    return fightItem(fight, {
+      facts: [["Completed rounds", String(completedScorecardRounds(fight))],
+        ["Source rounds", Array.isArray(source?.rounds) ? String(source.rounds.length) : "invalid"]],
+      links: matched ? [{ label: "Stored scorecard", href: source.sourceUrl }] : [],
+      actions: matched ? [{ id: "verdict", label: "Re-read source scorecards", target: `card:${matched[1]}` }] : [],
+    });
+  }));
 }
 
 function verdictImportErrors(): BugCheck {

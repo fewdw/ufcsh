@@ -1,7 +1,7 @@
+import { completedScorecardRounds, validCommunityScorecard } from "./community-scorecards.ts";
 import { DatabaseSync, backup } from "node:sqlite";
 import { realpathSync } from "node:fs";
 import { hasCompleteJudgeRounds, hasDistinctJudgeNames, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
-import { communityScoreIssue } from "./community-scorecards.ts";
 
 /** Restore source-backed scorecards from another archive without replacing
  * fights, user data, or already complete cards. Both databases retain their
@@ -25,7 +25,7 @@ const sourceUrl = (value: any): boolean => {
 };
 
 function completeCommunity(value: any, fight: Row): boolean {
-  return sourceUrl(value) && communityScoreIssue(value, fight.method, fight.round, parse(fight.detail_json)) === null;
+  return sourceUrl(value) && validCommunityScorecard(value, completedScorecardRounds(fight));
 }
 
 export function importScorecardArchive(source: DatabaseSync, target: DatabaseSync, apply = false) {

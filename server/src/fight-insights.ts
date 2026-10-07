@@ -1,3 +1,4 @@
+import { parseCommunityScorecard } from "./community-scorecards.ts";
 import { sideOf, type IndexedFight } from "./fight-index.ts";
 
 /** One round of a fighter's UFC bouts: finishes won and lost in it, and the
@@ -70,8 +71,8 @@ export function decisionScores(fights: IndexedFight[], fighterId: string): Decis
     if (Array.isArray(judges) && judges.every(card => score(card?.f1Score) && score(card?.f2Score))) {
       for (const card of judges) cards.push([card.f1Score, card.f2Score]);
     }
-    const fans = parse(fight.row?.community_score_json);
-    if (fans?.cards > 0 && fans.rounds?.length === rounds && score(fans.avg1) && score(fans.avg2)) cards.push([fans.avg1, fans.avg2]);
+    const fans = parseCommunityScorecard(fight.row?.community_score_json, rounds);
+    if (fans && score(fans.avg1) && score(fans.avg2)) cards.push([fans.avg1, fans.avg2]);
     if (!cards.length) continue;
     const sum = sums.get(rounds) ?? { fights: 0, cards: 0, own: 0, opponent: 0 };
     sums.set(rounds, sum);

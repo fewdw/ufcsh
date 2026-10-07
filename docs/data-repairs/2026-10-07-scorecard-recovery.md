@@ -59,3 +59,24 @@ The latter also takes a checked backup before applying changes.
 Regression checks cover rejected identities and scores, anonymous panels,
 read-only audits, repeat imports, preservation of existing cards, source-only
 judge profiles, verified birth dates, and guarded admin repairs.
+
+## Validate community averages consistently
+
+An audit found 75 stored production community aggregates whose round coverage
+was incompatible with the bout's completed rounds. The scoring store previously
+filtered out extra rounds but kept their full-bout totals, so a five-round
+average could be weighted into a three-round bout. Officials also accepted
+these averages without checking round coverage.
+
+A shared validator now checks the positive integer sample count, exact
+consecutive round coverage, bounded finite averages and consistency between
+totals and round means (allowing independently rounded published figures).
+Fight scoring, officials, career decision scores and both importers use it.
+Invalid stored aggregates stay available for investigation and appear in an
+admin Bugs category with a guarded source-card repair action. Missing-mode
+imports can recover them; an incompatible source refresh cannot overwrite a
+valid community aggregate.
+
+Regression checks exercise extra, missing and duplicate rounds, contradictory
+totals, preservation of genuine user cards, source refresh rejection, judge
+agreement exclusion and the repair action.

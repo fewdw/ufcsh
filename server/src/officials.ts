@@ -1,3 +1,4 @@
+import { completedScorecardRounds, parseCommunityScorecard } from "./community-scorecards.ts";
 import { fightIndex, type IndexedFight } from "./fight-index.ts";
 import { mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
 import { searchList } from "./fuzzy.ts";
@@ -103,14 +104,11 @@ function officiatedOf(fight: IndexedFight): Officiated {
       f2: Number(card.f2Score),
       rounds: (card.rounds ?? []).map((round) => ({ round: round.round, f1: round.f1Score, f2: round.f2Score })),
     }));
-  const community = parseJson(fight.row.community_score_json);
-  const fans: FanCard | null = community && Number.isFinite(community.avg1) && Number.isFinite(community.avg2)
-    ? {
-      cards: Number(community.cards) || 0, avg1: community.avg1, avg2: community.avg2,
-      rounds: Array.isArray(community.rounds) ? community.rounds.filter((round: any) => Number.isFinite(round?.avg1) && Number.isFinite(round?.avg2)) : [],
-      source: String(community.source ?? "Community scorecards"), url: community.sourceUrl ?? null,
-    }
-    : null;
+  const community = parseCommunityScorecard(fight.row.community_score_json, completedScorecardRounds({ ...fight, detail_json: fight.row.detail_json }));
+  const fans: FanCard | null = community ? {
+    cards: community.cards, avg1: community.avg1, avg2: community.avg2, rounds: community.rounds,
+    source: String(community.source ?? "Community scorecards"), url: community.sourceUrl ?? null,
+  } : null;
   const referee = typeof detail?.methodInfo?.Referee === "string" && detail.methodInfo.Referee.trim() ? displayName(detail.methodInfo.Referee) : null;
   return {
     fight, referee, refereeKey: officialKey(referee), cards, fans,
