@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { useApi, type Matchup, type TapeHistory as TapeHistoryData } from "../api";
 import { CHART_TEXT, metaText, sectionLabel } from "./FightStats";
 
@@ -57,11 +58,24 @@ function HistoryTile({ row, names }: { row: Row; names: [string, string] }) {
  *  that side of the difference won in decided UFC bouts before this one, the
  *  most one-sided first. Rows without enough earlier bouts to say are not sent. */
 export default function TapeHistory({ fight }: { fight: Matchup }) {
-  const { data, error, retry } = useApi<TapeHistoryData>(`/api/fights/${fight.id}/tape-history`);
+  // Ask only once the pies are on screen: a hidden copy (a phone with the wide
+  // screen's saved setting) never intersects, so it never costs a request.
+  const root = useRef<HTMLDivElement>(null);
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const element = root.current;
+    if (!element || shown) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setShown(true);
+    }, { rootMargin: "400px" });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [shown]);
+  const { data, error, retry } = useApi<TapeHistoryData>(shown ? `/api/fights/${fight.id}/tape-history` : null);
   const names: [string, string] = [fight.f1.name, fight.f2.name];
   if (data && !data.rows.length) return null;
   return (
-    <div className="@container min-w-0 pt-3" aria-label="How these differences have gone before">
+    <div ref={root} className="@container min-w-0 pt-3" aria-label="How these differences have gone before">
       <h3 className="sr-only">How these differences have gone before</h3>
       {data ? (
         <div className="grid grid-cols-1 gap-x-2 gap-y-5 @[18rem]:grid-cols-2">
