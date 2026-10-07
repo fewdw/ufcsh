@@ -57,14 +57,14 @@ export default function TapeHistory({ fight }: { fight: Matchup }) {
   const { data, error, retry } = useApi<TapeHistoryData>(`/api/fights/${fight.id}/tape-history`);
   const names: [string, string] = [fight.f1.name, fight.f2.name];
   return (
-    <div className="tape-history min-w-0" aria-label="How these differences have gone before">
+    <div className="tape-history flex min-w-0 flex-col gap-3 pt-3" aria-label="How these differences have gone before">
       <h3 className="sr-only">How these differences have gone before</h3>
       {data ? data.rows.map(row => <HistoryRow key={row.key} row={row} minFights={data.minFights} names={names} />)
         : error ? <p className={`${CHART_TEXT} text-zinc-400`}>Could not load. <button type="button" onClick={retry} className="underline">Retry</button></p>
           : <p className={`${CHART_TEXT} text-zinc-400`}>Loading earlier bouts…</p>}
       {data && !data.rows.length ? <p className={`${CHART_TEXT} text-zinc-400`}>Nothing on the tape sets these two apart.</p> : null}
       {data ? (
-        <p className={`${metaText} pt-2 leading-4`}>
+        <p className={`${metaText} leading-4`}>
           Win rate of a fighter with each value against one with the other, in decided UFC bouts before
           this one, measured as they stood that night. Draws and no contests are left out.
         </p>
