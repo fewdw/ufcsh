@@ -92,7 +92,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-07">October 7, 2026</time></p>
             <ul>
-              <li>Fighter profiles: Average scorecards beside By round, the mean score for and against across UFC decisions, from every judge's card and the fans' average. Three- and five-round fights are kept apart.</li>
+              <li>Fighter profiles: Average scorecards beside By round, the mean score for and against across UFC decisions, from every judge's card and the fans' average. Three- and five-round fights are kept apart, each with the number of fights behind it.</li>
               <li>Ranking history marks draws with an amber dot.</li>
             </ul>
           </Section>
