@@ -47,7 +47,8 @@ const imported = (fight: Fight): JudgeCard[] => {
   catch { return []; }
 };
 for (const fight of fights) {
-  if (hasCompleteJudgeRounds(official(fight), imported(fight))) continue;
+  const totals = official(fight), prior = imported(fight);
+  if (hasCompleteJudgeRounds(totals, prior) && !mergeJudgeRounds(totals, prior).some(card => !card.judge?.trim())) continue;
   byDate.set(fight.date, [...(byDate.get(fight.date) ?? []), fight]);
 }
 
@@ -115,10 +116,13 @@ await pool(paths, async ({ date, path }) => {
     });
     const totals = official(fight);
     const prior = imported(fight);
-    const before = totals.length ? mergeJudgeRounds(totals, prior).filter(card => card.rounds?.length).length : prior.length;
-    const combined = totals.length ? mergeJudgeRounds(totals, [...prior, ...cards]).filter(card => card.rounds?.length) : cards;
+    const previous = totals.length ? mergeJudgeRounds(totals, prior) : prior;
+    const combined = totals.length ? mergeJudgeRounds(totals, [...prior, ...cards]) : cards;
+    const before = previous.filter(card => card.rounds?.length).length;
+    const after = combined.filter(card => card.rounds?.length).length;
+    const namesRecovered = previous.filter(card => !card.judge?.trim()).length > combined.filter(card => !card.judge?.trim()).length;
     // Without independent UFCStats totals, require all three judge cards.
-    if (combined.length <= before || (!totals.length && combined.length < 3)) return;
+    if ((after <= before && !namesRecovered) || (!totals.length && combined.length < 3)) return;
     const source = prior.length && combined.some(card => !cards.some(next => next.judge === card.judge))
       ? "MMA Decisions + Verdict MMA" : "MMA Decisions";
     fight.judge_rounds_json = JSON.stringify({ source, sourceUrl: mmaDecisionUrl(path), fetchedAt: Date.now(), judges: combined });

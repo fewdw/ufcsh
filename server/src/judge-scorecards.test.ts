@@ -64,6 +64,49 @@ test("Munah Holland and Munah Querido are the same judge", () => {
   assert.equal(hasCompleteJudgeRounds([{ ...official[0], judge: "Another Holland" }], imported), false);
 });
 
+test("a complete imported panel recovers missing judge names without stealing a named official's card", () => {
+  const official: JudgeCard[] = [
+    { judge: "", f1Score: 29, f2Score: 28 },
+    { judge: "Mike Bell", f1Score: 29, f2Score: 28 },
+    { judge: "", f1Score: 30, f2Score: 27 },
+  ];
+  const imported: JudgeCard[] = [
+    { judge: "Michael Bell", f1Score: 29, f2Score: 28, rounds: rounds([10, 9, 10], [9, 10, 9]) },
+    { judge: "Sal D'Amato", f1Score: 29, f2Score: 28, rounds: rounds([9, 10, 10], [10, 9, 9]) },
+    { judge: "Chris Lee", f1Score: 30, f2Score: 27, rounds: rounds([10, 10, 10], [9, 9, 9]) },
+  ];
+  const merged = mergeJudgeRounds(official, imported);
+  assert.deepEqual(merged.map(card => card.judge), ["Sal D'Amato", "Mike Bell", "Chris Lee"]);
+  assert.deepEqual(merged[1].rounds, imported[0].rounds);
+  assert.equal(hasCompleteJudgeRounds(official, imported), true);
+  assert.deepEqual(official.map(card => card.judge), ["", "Mike Bell", ""], "source totals remain untouched");
+});
+
+test("partial, duplicate or contradictory panels cannot supply missing identities", () => {
+  const official: JudgeCard[] = Array.from({ length: 3 }, () => ({ judge: "", f1Score: 29, f2Score: 28 }));
+  const card = (judge: string): JudgeCard => ({ judge, f1Score: 29, f2Score: 28, rounds: rounds([10, 9, 10], [9, 10, 9]) });
+  for (const imported of [
+    [card("One Judge")],
+    [card("One Judge"), card("Two Judge"), card("One Judge")],
+    [card("One Judge"), card("Two Judge"), { ...card("Three Judge"), f2Score: 27 }],
+  ]) assert.deepEqual(mergeJudgeRounds(official, imported).map(row => row.judge), ["", "", ""]);
+  const named = [{ ...official[0], judge: "A Different Judge" }, ...official.slice(1)];
+  assert.deepEqual(mergeJudgeRounds(named, [card("One Judge"), card("Two Judge"), card("Three Judge")]).map(row => row.judge), ["A Different Judge", "", ""]);
+});
+
+test("new named source rounds take precedence over older anonymous copies", () => {
+  const official: JudgeCard[] = Array.from({ length: 3 }, () => ({ judge: "", f1Score: 29, f2Score: 28 }));
+  const anonymous = official.map(card => ({ ...card, rounds: rounds([10, 9, 10], [9, 10, 9]) }));
+  const named = anonymous.map((card, i) => ({ ...card, judge: ["Alice Archer", "Ben Baker", "Chris Clark"][i] }));
+  assert.deepEqual(mergeJudgeRounds(official, [...anonymous, ...named]).map(card => card.judge), named.map(card => card.judge));
+});
+
+test("a named totals-only card cannot hide newer round scores for the same official", () => {
+  const official: JudgeCard[] = [{ judge: "Mike Bell", f1Score: 29, f2Score: 28 }];
+  const detailed: JudgeCard = { judge: "Michael Bell", f1Score: 29, f2Score: 28, rounds: rounds([10, 9, 10], [9, 10, 9]) };
+  assert.deepEqual(mergeJudgeRounds(official, [...official, detailed])[0].rounds, detailed.rounds);
+});
+
 test("a decision's kind follows its three cards", () => {
   const cards = (...totals: [number, number][]) => totals.map(([f1Score, f2Score], i) => ({ judge: `J${i}`, f1Score, f2Score }));
   // Trinaldo vs. Parke and Cummins vs. Blachowicz, labeled unanimous on UFCStats.
