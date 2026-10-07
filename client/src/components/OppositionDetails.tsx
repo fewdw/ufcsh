@@ -133,7 +133,7 @@ function OppositionList({ scope, fighter, before, outcome, current }: { scope: s
   const scrollRef = useRouteScrollRestoration<HTMLDivElement>(`${scope}:list:${fighter.id}:${outcome}`, Boolean(data));
   const groups = data ? oppositionGroups(data, outcome) : [];
   const resultName = outcome === "all" ? "all results" : outcome === "win" ? "wins" : "losses";
-  return <div ref={scrollRef} data-sheet-scroll className="min-h-0 flex-1 overflow-auto overscroll-x-contain overscroll-y-none pr-2 [scrollbar-gutter:stable]">
+  return <div ref={scrollRef} data-sheet-scroll className="-ml-1.5 min-h-0 flex-1 overflow-auto overscroll-x-contain overscroll-y-none pl-1.5 pr-2 [scrollbar-gutter:stable]">
     {error ? <RequestNotice onRetry={retry}>Couldn’t load opponents.</RequestNotice> : null}
     {!data ? !error ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null : !groups.length ? <p className="py-4 text-xs text-zinc-500">{data.rows.length ? `No ${resultName}.` : "UFC debut — no earlier opponents."}</p>
       : <OppositionGrid fighter={fighter} groups={groups} label={`${fighter.name}: opposition, ${resultName}`} current={data.current} />}
