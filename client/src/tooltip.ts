@@ -18,6 +18,11 @@ export function anchorFrom(box: DOMRect): TipAnchor {
   };
 }
 
+/** Over the point given, whatever room is under it: a finger covers what is below. */
+export function anchorAbove(x: number, top: number): TipAnchor {
+  return { x: Math.min(Math.max(x, HALF_WIDTH + 8), Math.max(HALF_WIDTH + 8, window.innerWidth - HALF_WIDTH - 8)), y: top - 6, above: true };
+}
+
 /** Closes whichever tooltip is open, so only one shows at a time. */
 let closeOpen: (() => void) | null = null;
 
@@ -40,12 +45,12 @@ export function useTooltip() {
   }, [at]);
 
   // Measured now: React clears currentTarget once the handler returns.
-  const show = (event: React.SyntheticEvent<HTMLElement>) => {
-    const anchor = anchorFrom(event.currentTarget.getBoundingClientRect());
+  const showAt = (anchor: TipAnchor) => {
     if (closeOpen !== hide) closeOpen?.();
     closeOpen = hide;
     setAt(anchor);
   };
+  const show = (event: React.SyntheticEvent<HTMLElement>) => showAt(anchorFrom(event.currentTarget.getBoundingClientRect()));
 
   const handlers = {
     onPointerEnter: (event: React.PointerEvent<HTMLElement>) => { if (event.pointerType === "mouse") show(event); },
@@ -60,6 +65,6 @@ export function useTooltip() {
     onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => event.key === "Escape" && hide(),
   };
 
-  return { at, id, open: at != null, handlers };
+  return { at, id, open: at != null, handlers, showAt, hide };
 }
 
