@@ -1006,7 +1006,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                   } />
                   {/* Wide: the saved checkbox puts the pies beside the tape. Narrow: a
                       toggle under it opens them for this matchup only, closed by default. */}
-                  <div className={`grid items-start gap-x-9 px-5 pb-3 ${settings.tapeAdvanced ? "@[40rem]:grid-cols-2" : ""}`}>
+                  <div className={`grid items-start gap-x-9 px-5 pb-3 ${settings.tapeAdvanced ? "@[40rem]:grid-cols-2 @[52rem]:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]" : ""}`}>
                     <div className="matchup-comparisons grid min-w-0 content-start">
                       <TaleOfTape fight={fight} compact />
                       <MatchupContext fight={fight} />
@@ -1021,11 +1021,9 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                       <ChevronDown className={`h-3.5 w-3.5 transition-transform ${tapeOpen ? "rotate-180" : ""}`} aria-hidden="true" />
                     </button>
                     {settings.tapeAdvanced || tapeOpen ? (
-                      // Beside the tape, the pies take its height and scroll past it.
-                      <div className={`relative min-w-0 self-stretch ${tapeOpen ? "" : "hidden"} ${settings.tapeAdvanced ? "@[40rem]:block" : "@[40rem]:hidden"}`}>
-                        <div className="@[40rem]:absolute @[40rem]:inset-0 @[40rem]:overflow-y-auto @[40rem]:overscroll-contain">
-                          <TapeHistory fight={fight} />
-                        </div>
+                      // Beside the tape, the pies spread over its height.
+                      <div className={`min-w-0 self-stretch ${tapeOpen ? "" : "hidden"} ${settings.tapeAdvanced ? "@[40rem]:block" : "@[40rem]:hidden"}`}>
+                        <TapeHistory fight={fight} />
                       </div>
                     ) : null}
                   </div>
