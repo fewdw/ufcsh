@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { judgeProfile, officialKey, officialsDirectory, refereeProfile } from "./officials.ts";
 import { fightIndex } from "./fight-index.ts";
+import { db } from "./db.ts";
 
 test("short and long first names, particles and titles resolve to one official", () => {
   assert.equal(officialKey("Mike Bell"), officialKey("Michael Bell"));
@@ -60,6 +61,27 @@ test("a referee's counts add up and carry a same-filter baseline", () => {
 test("an unknown official is not found rather than empty", () => {
   assert.equal(judgeProfile("no-such-judge", new URLSearchParams()), null);
   assert.equal(refereeProfile("no-such-referee", new URLSearchParams()), null);
+});
+
+test("source-only scorecards appear in the judges' directory and profiles", async t => {
+  const row = db.prepare(`SELECT f.id, f.detail_json, f.judge_rounds_json FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 1 AND f.method LIKE '%DEC' LIMIT 1`).get() as { id: string; detail_json: string | null; judge_rounds_json: string | null };
+  assert.ok(row);
+  const update = db.prepare("UPDATE fights SET detail_json = ?, judge_rounds_json = ? WHERE id = ?");
+  t.after(async () => {
+    update.run(row.detail_json, row.judge_rounds_json, row.id);
+    await new Promise(resolve => setTimeout(resolve, 5100));
+    fightIndex();
+  });
+  const judges = ["Archive Only Judge A", "Archive Only Judge B", "Archive Only Judge C"].map(judge => ({ judge, f1Score: 29, f2Score: 28,
+    rounds: [{ round: 1, f1Score: 10, f2Score: 9 }, { round: 2, f1Score: 9, f2Score: 10 }, { round: 3, f1Score: 10, f2Score: 9 }],
+  }));
+  update.run(JSON.stringify({ ...JSON.parse(row.detail_json ?? "{}"), judges: [] }), JSON.stringify({ source: "MMA Decisions", judges }), row.id);
+  await new Promise(resolve => setTimeout(resolve, 5100));
+  const profile = judgeProfile("archive-only-judge-a", new URLSearchParams()) as any;
+  assert.equal(profile.total, 1);
+  assert.equal(profile.rows[0].fight_id, row.id);
+  assert.equal(profile.rows[0].card.rounds.length, 3);
 });
 
 test("the bug board's officials checks only list real pairs and real merges", async () => {

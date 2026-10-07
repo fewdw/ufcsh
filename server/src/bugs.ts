@@ -9,8 +9,9 @@ import { normName } from "./util.ts";
 import { noContestUnexplained } from "./no-contest.ts";
 import { pageNamesFighter } from "./scrape/odds.ts";
 import { syncCareerRecord } from "./career-records.ts";
-import { hasCompleteJudgeRounds } from "./judge-scorecards.ts";
+import { hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
 import { importVerdictEvent } from "./verdict-import.ts";
+import { repairJudgeNames } from "./repair-judge-names.ts";
 import { mergedByHand, officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
 import { rosterEventsByFighter, rosterMoveFighter, storedRosterMoves, syncRosterMoves, syncUfcSignings } from "./roster-moves.ts";
@@ -1428,21 +1429,31 @@ function upcomingWithoutReferee(): BugCheck {
 
 function unnamedJudges(): BugCheck {
   const rows = db.prepare(`
-    SELECT ${FIGHT_COLUMNS} FROM fights f JOIN events e ON e.id = f.event_id
+    SELECT ${FIGHT_COLUMNS}, f.detail_json, f.judge_rounds_json FROM fights f JOIN events e ON e.id = f.event_id
     WHERE f.detail_json LIKE '%"judges"%'
       AND EXISTS (SELECT 1 FROM json_each(json_extract(f.detail_json, '$.judges')) j
         WHERE COALESCE(TRIM(json_extract(j.value, '$.judge')), '') = '')
     ORDER BY e.date DESC
-  `).all() as FightRow[];
+  `).all() as (FightRow & { detail_json: string; judge_rounds_json: string | null })[];
+  const unresolved = rows.filter(fight => {
+    const official = JSON.parse(fight.detail_json).judges as JudgeCard[];
+    let imported: JudgeCard[] = [];
+    try { imported = JSON.parse(fight.judge_rounds_json ?? "{}").judges ?? []; } catch { /* malformed source remains a gap */ }
+    return mergeJudgeRounds(official, Array.isArray(imported) ? imported : []).some(card => !card.judge?.trim());
+  });
   return check({
     id: "judge-unnamed",
     group: "Venues & officials",
     label: "Scorecards with an unnamed judge",
     description: "The official card gives a score but no judge's name, so it counts toward the panel but toward no judge's profile. Common on early cards; MMA Decisions sometimes names them.",
     grade: "ok",
-  }, rows.map((fight) => fightItem(fight, {
+  }, unresolved.map((fight) => fightItem(fight, {
     links: [{ label: "MMA Decisions search", href: `http://mmadecisions.com/search.jsp?s=${encodeURIComponent(fight.f1_name.split(" ").at(-1) ?? "")}` }],
-    actions: [{ id: "detail", label: "Re-fetch fight detail", target: fight.id }],
+    actions: [
+      ...(fight.judge_rounds_json?.includes("https://mmadecisions.com/decision/")
+        ? [{ id: "judge-names" as const, label: "Recover judge names", target: fight.id }] : []),
+      { id: "detail", label: "Re-fetch fight detail", target: fight.id },
+    ],
   })));
 }
 
@@ -1804,7 +1815,7 @@ function newsUnjudged(): BugCheck {
   }, items);
 }
 
-export type BugActionId = "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings";
+export type BugActionId = "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -1814,6 +1825,7 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
   `).get(target) as { id: string; event_id: string; f1_id: string; f2_id: string; f1_name: string; f2_name: string; date: string } | undefined;
 
   switch (action) {
+    case "judge-names": return repairJudgeNames(target);
     case "potential-odds": {
       const result = await syncPotentialMatchups({ props: true });
       return { ok: result.failed < 2, message: `${potentialMatchups().length} potential matchups with odds.${result.failed ? ` ${result.failed} source(s) could not be read; stored prices were kept.` : ""}` };

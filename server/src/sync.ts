@@ -460,7 +460,7 @@ export async function syncRoster(): Promise<void> {
 
 export async function syncFighterBirthDate(fighterId: string): Promise<void> {
   const birthDate = await scrapeFighterBirthDate(fighterId);
-  db.prepare("UPDATE fighters SET birth_date = ?, birth_fetched_at = ? WHERE id = ?")
+  db.prepare("UPDATE fighters SET birth_date = COALESCE(NULLIF(?, ''), birth_date), birth_fetched_at = ? WHERE id = ?")
     .run(birthDate, Date.now(), fighterId);
 }
 
