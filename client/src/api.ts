@@ -339,11 +339,10 @@ export type ProfessionalHistoryRow = Omit<HistoryRow, "promotion" | "fight_id" |
 };
 
 /** Advanced Tale of the tape: decided UFC bouts before this one between a
- *  fighter with f1's value and one with f2's, per row on which they differ.
- *  `basis: "gap"` when too few exact pairings met and any two values that far
- *  apart were counted instead. */
+ *  fighter with f1's value and one with f2's, per row on which they differ
+ *  and enough such bouts exist. `basis: "gap"` when too few exact pairings
+ *  met and any two values that far apart were counted instead. */
 export type TapeHistory = {
-  minFights: number;
   rows: {
     key: string; label: string; f1: string; f2: string;
     basis: "exact" | "gap"; gap: string | null;
