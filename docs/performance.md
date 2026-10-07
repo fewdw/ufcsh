@@ -11,7 +11,7 @@ Measured in Node 26.10.0 on the VPS (4 cores) against a production snapshot
 
 | Step | Time |
 | --- | --- |
-| First request after an index build: both corners' tape values for every decided bout | ~390–435 ms |
+| First request after an index build: both corners' tape values for every decided bout | ~390–470 ms |
 | Every request after that, until the data changes | median ~3.5 ms, p95 ~8.5 ms |
 
 The per-bout values are held against the fight index object, so they are thrown
