@@ -1,0 +1,239 @@
+/* Style lab: five candidate looks for the same layout and data. Each one only
+   retints the neutral scale, swaps type, corners, shadows and the warm accent;
+   nothing here moves or resizes a box. `data-style` on <html> picks one
+   (see StyleLab.tsx); without it the app is exactly as it was. */
+
+@font-face {
+  font-family: "Barlow Condensed";
+  font-weight: 600;
+  font-display: swap;
+  src: url(/fonts/barlow-condensed/barlow-condensed-600-latin.woff2) format("woff2");
+}
+@font-face {
+  font-family: "Barlow Condensed";
+  font-weight: 800;
+  font-display: swap;
+  src: url(/fonts/barlow-condensed/barlow-condensed-800-latin.woff2) format("woff2");
+}
+
+/* ---- Shared plumbing: every theme speaks through these variables. ---- */
+html[data-style] body {
+  font-family: var(--lab-font);
+  font-feature-settings: var(--lab-font-features, normal);
+}
+html[data-style] :is([data-lab="name"], [data-lab="heading"], [data-lab="title"], [data-lab="month"], [data-lab="logo"]) {
+  font-family: var(--lab-display, inherit);
+}
+html[data-style] .tabular-nums { font-family: var(--lab-numeric, inherit); }
+
+/* The warm accent: the Next tag, the next card's name, title-fight tags. */
+html[data-style] .bg-amber-50 { background-color: var(--lab-accent-wash) !important; }
+html[data-style] .bg-amber-100 { background-color: var(--lab-accent-soft) !important; }
+html[data-style] :is(.text-amber-600, .text-amber-700, .text-amber-800) { color: var(--lab-accent-ink) !important; }
+html[data-style] :where(button, a, input, select, [tabindex]):focus-visible { outline-color: var(--lab-accent); }
+
+html[data-style] .odds-pair {
+  color: var(--lab-odds-ink);
+  border-color: var(--lab-odds-border);
+  background: var(--lab-odds-bg);
+  box-shadow: var(--lab-odds-shadow, none);
+}
+html[data-style] .odds-pair-divider { background: var(--lab-odds-border); }
+html[data-style] .pick-option-on { background-color: var(--color-zinc-900); border-color: var(--color-zinc-900); }
+html[data-style].dark .pick-option-on { background-color: var(--dk-100); border-color: var(--dk-100); color: var(--dk-900); }
+html[data-style] { --lab-scrollbar: var(--color-zinc-300); }
+
+/* ======================================================================
+   1. Broadcast — black bar, fight-poster caps, one red.
+   ====================================================================== */
+html[data-style="broadcast"] {
+  --lab-font: "Archivo Variable", ui-sans-serif, system-ui, sans-serif;
+  --lab-display: "Barlow Condensed", "Archivo Variable", sans-serif;
+  --lab-accent: #d20a0a;
+  --radius-md: 2px; --radius-lg: 3px; --radius-xl: 4px; --radius-2xl: 4px;
+}
+html[data-style="broadcast"]:not(.dark) {
+  --color-white: #ffffff;
+  --color-zinc-50: #f6f6f6; --color-zinc-100: #ececec; --color-zinc-200: #d9d9d9;
+  --color-zinc-300: #bdbdbd; --color-zinc-400: #858585; --color-zinc-500: #636363;
+  --color-zinc-600: #454545; --color-zinc-700: #2e2e2e; --color-zinc-800: #1c1c1c;
+  --color-zinc-900: #0d0d0d; --color-zinc-950: #000000;
+  --lab-accent-ink: #c00808; --lab-accent-soft: #fde3e3; --lab-accent-wash: #fff1f1;
+  --lab-odds-ink: #fff; --lab-odds-border: #0d0d0d; --lab-odds-bg: #0d0d0d;
+}
+html[data-style="broadcast"].dark {
+  --dk-950: #000000; --dk-900: #0e0e0e; --dk-800: #1a1a1a; --dk-700: #2b2b2b;
+  --dk-600: #404040; --dk-500: #6e6e6e; --dk-400: #a3a3a3; --dk-300: #d6d6d6; --dk-100: #fafafa;
+  --color-zinc-950: #000000; --color-zinc-900: #0e0e0e; --color-zinc-800: #1a1a1a; --color-zinc-700: #2b2b2b;
+  --lab-accent-ink: #ff5a52; --lab-accent-soft: #3d0a0a; --lab-accent-wash: #2a0707;
+  --lab-odds-ink: #0e0e0e; --lab-odds-border: #fafafa; --lab-odds-bg: #fafafa;
+}
+/* The header is the black bar in both themes: its neutrals run backwards. */
+html[data-style="broadcast"]:not(.dark) header {
+  --color-white: #0d0d0d;
+  --color-zinc-50: #1a1a1a; --color-zinc-100: #232323; --color-zinc-200: #363636;
+  --color-zinc-300: #5c5c5c; --color-zinc-400: #9a9a9a; --color-zinc-500: #b5b5b5;
+  --color-zinc-600: #d6d6d6; --color-zinc-700: #e6e6e6; --color-zinc-800: #f2f2f2;
+  --color-zinc-900: #ffffff; --color-zinc-950: #ffffff;
+  border-bottom: 2px solid #d20a0a;
+}
+html[data-style="broadcast"].dark header { border-bottom: 2px solid #d20a0a; }
+html[data-style="broadcast"] [data-lab="logo"] > span { color: #d20a0a !important; }
+html[data-style="broadcast"] :is([data-lab="name"], [data-lab="heading"], [data-lab="title"]) {
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+html[data-style="broadcast"] [data-lab="name"] { font-size: 17px; }
+html[data-style="broadcast"] [data-lab="heading"] { font-size: 17px; letter-spacing: 0.06em; }
+html[data-style="broadcast"] [data-lab="month"] { font-weight: 800; font-size: 15px; letter-spacing: 0.12em; color: #d20a0a !important; }
+html[data-style="broadcast"] [data-lab="logo"] { font-weight: 800; font-size: 1.45em; letter-spacing: 0.01em; text-transform: uppercase; }
+html[data-style="broadcast"] :is(a, button, nav, span, kbd, div):not(:has(> img)).rounded-full:not([class*="h-1"], [class*="h-2"]) { border-radius: 3px; }
+html[data-style="broadcast"] [class*="shadow"] { --tw-shadow: 0 0 #0000 !important; }
+
+/* ======================================================================
+   2. Editorial — warm paper, serif names, oxblood.
+   ====================================================================== */
+html[data-style="editorial"] {
+  --lab-font: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --lab-display: "Newsreader Variable", Georgia, serif;
+  --lab-accent: #8c2f1b;
+  --radius-md: 4px; --radius-lg: 6px; --radius-xl: 8px; --radius-2xl: 10px;
+}
+html[data-style="editorial"]:not(.dark) {
+  --color-white: #fcfaf5;
+  --color-zinc-50: #f6f2e9; --color-zinc-100: #efe9dc; --color-zinc-200: #dfd6c4;
+  --color-zinc-300: #c9bea8; --color-zinc-400: #94897a; --color-zinc-500: #746a5c;
+  --color-zinc-600: #564d42; --color-zinc-700: #40382f; --color-zinc-800: #2c2620;
+  --color-zinc-900: #1f1a15; --color-zinc-950: #14100c;
+  --lab-accent-ink: #8c2f1b; --lab-accent-soft: #f3dcd2; --lab-accent-wash: #f8e9e2;
+  --lab-odds-ink: #1f1a15; --lab-odds-border: #dfd6c4; --lab-odds-bg: #f6f2e9;
+}
+html[data-style="editorial"].dark {
+  --dk-950: #12100d; --dk-900: #1c1915; --dk-800: #29251f; --dk-700: #3d372e;
+  --dk-600: #554d41; --dk-500: #7d7365; --dk-400: #aba192; --dk-300: #d8d0c2; --dk-100: #f5f0e6;
+  --color-zinc-950: #12100d; --color-zinc-900: #1c1915; --color-zinc-800: #29251f; --color-zinc-700: #3d372e;
+  --lab-accent-ink: #f0a48f; --lab-accent-soft: #46190f; --lab-accent-wash: #33130c;
+  --lab-odds-ink: #f5f0e6; --lab-odds-border: #3d372e; --lab-odds-bg: #29251f;
+}
+html[data-style="editorial"] :is([data-lab="name"], [data-lab="heading"], [data-lab="title"]) {
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+html[data-style="editorial"] [data-lab="name"] { font-size: 16.5px; }
+html[data-style="editorial"] [data-lab="heading"] { font-size: 17px; font-style: italic; font-weight: 500; }
+html[data-style="editorial"] [data-lab="month"] { font-size: 12px; font-weight: 600; letter-spacing: 0.16em; font-family: var(--lab-font); }
+html[data-style="editorial"] [data-lab="logo"] { font-weight: 700; font-size: 1.2em; letter-spacing: -0.01em; }
+html[data-style="editorial"] [data-lab="logo"] > span { font-style: italic; font-weight: 500; color: var(--lab-accent-ink) !important; }
+html[data-style="editorial"] .odds-pair { font-family: "Newsreader Variable", Georgia, serif; font-size: 1.08em; }
+html[data-style="editorial"] [class*="shadow"] { --tw-shadow: 0 0 #0000 !important; }
+
+/* ======================================================================
+   3. Terminal — monospace, hairlines, phosphor green. The ".sh" taken literally.
+   ====================================================================== */
+html[data-style="terminal"] {
+  --lab-font: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --lab-font-features: "zero" 1;
+  --lab-accent: #16a34a;
+  --radius-md: 2px; --radius-lg: 2px; --radius-xl: 3px; --radius-2xl: 3px;
+}
+html[data-style="terminal"] body { letter-spacing: -0.035em; }
+html[data-style="terminal"]:not(.dark) {
+  --color-white: #fbfcfb;
+  --color-zinc-50: #f2f5f2; --color-zinc-100: #e8ece8; --color-zinc-200: #d3dad4;
+  --color-zinc-300: #b5bfb7; --color-zinc-400: #7c887f; --color-zinc-500: #5c685f;
+  --color-zinc-600: #414c44; --color-zinc-700: #2e3731; --color-zinc-800: #1e2521;
+  --color-zinc-900: #131915; --color-zinc-950: #0a0e0b;
+  --lab-accent-ink: #15803d; --lab-accent-soft: #d5f2df; --lab-accent-wash: #e8f8ed;
+  --lab-odds-ink: #131915; --lab-odds-border: #b5bfb7; --lab-odds-bg: transparent;
+}
+html[data-style="terminal"].dark {
+  --dk-950: #060907; --dk-900: #0c110e; --dk-800: #151c17; --dk-700: #243028;
+  --dk-600: #35453a; --dk-500: #5f7265; --dk-400: #93a698; --dk-300: #c5d3c9; --dk-100: #e9f2eb;
+  --color-zinc-950: #060907; --color-zinc-900: #0c110e; --color-zinc-800: #151c17; --color-zinc-700: #243028;
+  --lab-accent-ink: #4ade80; --lab-accent-soft: #0f3a1f; --lab-accent-wash: #0b2a17;
+  --lab-odds-ink: #4ade80; --lab-odds-border: #243028; --lab-odds-bg: transparent;
+}
+html[data-style="terminal"] :is([data-lab="name"], [data-lab="heading"], [data-lab="title"]) { font-weight: 700; letter-spacing: -0.04em; }
+html[data-style="terminal"] [data-lab="heading"]::before { content: "# "; color: var(--lab-accent-ink); }
+html[data-style="terminal"] [data-lab="month"]::before { content: "~/"; color: var(--lab-accent-ink); }
+html[data-style="terminal"] [data-lab="month"] { letter-spacing: 0; }
+html[data-style="terminal"] [data-lab="month"]::before { margin-right: -0.5rem; }
+html[data-style="terminal"] [data-lab="event"] { font-size: 12px; letter-spacing: -0.05em; }
+html[data-style="terminal"] [data-lab="logo"] > span { color: var(--lab-accent-ink) !important; }
+html[data-style="terminal"] :is(a, button, nav, span, kbd, div):not(:has(> img)).rounded-full:not([class*="h-1"], [class*="h-2"]) { border-radius: 3px; }
+html[data-style="terminal"] [class*="shadow"] { --tw-shadow: 0 0 #0000 !important; }
+
+/* ======================================================================
+   4. Soft — cool indigo neutrals, rounder cards, lifted on diffuse shadows.
+   ====================================================================== */
+html[data-style="soft"] {
+  --lab-font: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --lab-font-features: "cv11" 1, "ss01" 1;
+  --lab-accent: #4f46e5;
+  --radius-md: 10px; --radius-lg: 12px; --radius-xl: 16px; --radius-2xl: 22px;
+}
+html[data-style="soft"]:not(.dark) {
+  --color-white: #ffffff;
+  --color-zinc-50: #f6f7fc; --color-zinc-100: #eef0f9; --color-zinc-200: #e2e5f3;
+  --color-zinc-300: #cdd2e6; --color-zinc-400: #8e95b3; --color-zinc-500: #666d8c;
+  --color-zinc-600: #4a5070; --color-zinc-700: #363b58; --color-zinc-800: #252944;
+  --color-zinc-900: #191c33; --color-zinc-950: #0f1124;
+  --lab-accent-ink: #4338ca; --lab-accent-soft: #e4e3ff; --lab-accent-wash: #f0efff;
+  --lab-odds-ink: #4338ca; --lab-odds-border: #e2e5f3; --lab-odds-bg: linear-gradient(180deg, #ffffff, #f4f4ff);
+  --lab-odds-shadow: 0 1px 2px rgb(67 56 202 / 0.06), 0 6px 16px -8px rgb(67 56 202 / 0.25);
+}
+html[data-style="soft"].dark {
+  --dk-950: #090b18; --dk-900: #111427; --dk-800: #1b1f38; --dk-700: #2a2f50;
+  --dk-600: #3d4369; --dk-500: #666d96; --dk-400: #9aa0c2; --dk-300: #cdd1e8; --dk-100: #f0f1fb;
+  --color-zinc-950: #090b18; --color-zinc-900: #111427; --color-zinc-800: #1b1f38; --color-zinc-700: #2a2f50;
+  --lab-accent-ink: #a5b4fc; --lab-accent-soft: #272a66; --lab-accent-wash: #1c1e4a;
+  --lab-odds-ink: #c7d2fe; --lab-odds-border: #2a2f50; --lab-odds-bg: linear-gradient(180deg, #1f2342, #191c36);
+}
+html[data-style="soft"] :is([data-lab="name"], [data-lab="heading"], [data-lab="title"]) { letter-spacing: -0.02em; }
+html[data-style="soft"] [data-lab="name"] { font-size: 15px; }
+html[data-style="soft"] [data-lab="logo"] > span { color: var(--lab-accent) !important; }
+html[data-style="soft"]:not(.dark) :is(.rounded-2xl, .md\:rounded-2xl, .xl\:rounded-2xl).border {
+  border-color: transparent;
+  box-shadow: 0 1px 2px rgb(25 28 51 / 0.04), 0 12px 32px -16px rgb(25 28 51 / 0.18);
+}
+
+/* ======================================================================
+   5. Brutalist — black rules, square corners, hard shadows, one yellow.
+   ====================================================================== */
+html[data-style="brutal"] {
+  --lab-font: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
+  --lab-accent: #111111;
+  --radius-md: 0px; --radius-lg: 0px; --radius-xl: 0px; --radius-2xl: 0px;
+}
+html[data-style="brutal"]:not(.dark) {
+  --color-white: #ffffff;
+  --color-zinc-50: #f4f4f0; --color-zinc-100: #f1efe6; --color-zinc-200: #111111;
+  --color-zinc-300: #111111; --color-zinc-400: #6b6b66; --color-zinc-500: #4d4d49;
+  --color-zinc-600: #333330; --color-zinc-700: #222220; --color-zinc-800: #161614;
+  --color-zinc-900: #0a0a0a; --color-zinc-950: #000000;
+  --lab-accent-ink: #111111; --lab-accent-soft: #ffe14a; --lab-accent-wash: #fff3a8;
+  --lab-odds-ink: #0a0a0a; --lab-odds-border: #111111; --lab-odds-bg: #ffe14a;
+  --lab-odds-shadow: 2px 2px 0 #111111;
+  --lab-rule: #111111;
+}
+html[data-style="brutal"].dark {
+  --dk-950: #000000; --dk-900: #0c0c0c; --dk-800: #181818; --dk-700: #e8e8e2;
+  --dk-600: #e8e8e2; --dk-500: #8a8a84; --dk-400: #b4b4ad; --dk-300: #dcdcd6; --dk-100: #fafaf5;
+  --color-zinc-950: #000000; --color-zinc-900: #0c0c0c; --color-zinc-800: #181818; --color-zinc-700: #e8e8e2;
+  --lab-accent-ink: #0a0a0a; --lab-accent-soft: #ffe14a; --lab-accent-wash: #ffe14a;
+  --lab-odds-ink: #0a0a0a; --lab-odds-border: #e8e8e2; --lab-odds-bg: #ffe14a;
+  --lab-odds-shadow: 2px 2px 0 #e8e8e2;
+  --lab-rule: #e8e8e2;
+}
+/* Rows are parted by a light rule; only boxes carry the black line. */
+html[data-style="brutal"]:not(.dark) :is(.border-zinc-100, .divide-zinc-100 > :not(:last-child), .divide-zinc-50 > :not(:last-child)) { border-color: #d6d4c8 !important; }
+html[data-style="brutal"].dark :is(.border-zinc-100, .divide-zinc-100 > :not(:last-child), .divide-zinc-50 > :not(:last-child)) { border-color: #333330 !important; }
+html[data-style="brutal"] :is([data-lab="name"], [data-lab="heading"], [data-lab="title"]) { font-weight: 700; letter-spacing: -0.02em; }
+html[data-style="brutal"] [data-lab="name"] { font-size: 15.5px; }
+html[data-style="brutal"] [data-lab="heading"] { text-transform: uppercase; letter-spacing: 0.04em; }
+html[data-style="brutal"] [data-lab="logo"] > span { background: #ffe14a; color: #0a0a0a !important; padding: 0 0.15em; }
+html[data-style="brutal"] :is(a, button, nav, span, kbd, div):not(:has(> img)).rounded-full:not([class*="h-1"], [class*="h-2"]) { border-radius: 0; }
+html[data-style="brutal"] [class*="shadow"] { --tw-shadow: 0 0 #0000 !important; }
+html[data-style="brutal"] :is(.rounded-2xl, .md\:rounded-2xl, .xl\:rounded-2xl).border { box-shadow: 4px 4px 0 var(--lab-rule); }
+html[data-style="brutal"] [aria-current="page"] { box-shadow: 3px 3px 0 var(--lab-rule); }

@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import "./index.css";
 import App from "./App";
+import StyleLab from "./StyleLab";
 import { pageFor } from "./pages";
 import { AuthProvider } from "./auth";
 import { SettingsProvider } from "./settings";
@@ -28,6 +29,7 @@ createRoot(document.getElementById("root")!).render(
         <ParlayProvider>
           <BrowserRouter>
             <App />
+            <StyleLab />
           </BrowserRouter>
         </ParlayProvider>
       </AuthProvider>

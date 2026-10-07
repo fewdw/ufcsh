@@ -147,7 +147,7 @@ const EventListRow = memo(function EventListRow({ event, selected, tag, anchor, 
             tag === "next" ? "text-amber-700" : "text-zinc-900",
           ].join(" ")}
         >
-          <span className="min-w-0">{event.name}</span>
+          <span data-lab="event" className="min-w-0">{event.name}</span>
         </div>
         {/* At most one row on the whole list carries this;
             the rest are told by the date beneath them. */}
@@ -334,7 +334,7 @@ function EventSidebar({
         >
           {groups.map(([yearMonth, list]) => (
             <div key={yearMonth}>
-              {yearMonth && yearMonth !== "potential" ? <div className="sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-white px-4 py-2 text-[13px] font-bold uppercase tracking-[0.1em] text-zinc-700">
+              {yearMonth && yearMonth !== "potential" ? <div data-lab="month" className="sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-white px-4 py-2 text-[13px] font-bold uppercase tracking-[0.1em] text-zinc-700">
                 <span>{yearMonth.slice(0, 4)}</span>
                 <span>{MONTHS[Number(yearMonth.slice(5, 7)) - 1]}</span>
               </div> : null}
@@ -441,7 +441,7 @@ function FighterBlock({
           overlapping it. */}
       <div className={`flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
         {rankingBadge}
-        <span className={`min-w-0 break-words text-sm leading-5 font-semibold ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>
+        <span data-lab="name" className={`min-w-0 break-words text-sm leading-5 font-semibold ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>
           {side.name}
         </span>
         <span className={`flex shrink-0 items-center gap-2 empty:hidden ${align === "right" ? "flex-row-reverse" : ""}`}>
@@ -599,7 +599,7 @@ function CompactSide({ side, fight, done, other }: { side: FightSide; fight: Eve
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
           {rank ? <span className={`text-[10px] font-semibold tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-400"}`} title={rankingTitle(side.ranking, done)}>{rank}</span> : null}
-          <span className={`text-[14px] font-semibold leading-5 ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>{side.name}</span>
+          <span data-lab="name" className={`text-[14px] font-semibold leading-5 ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>{side.name}</span>
           {tag ? (
             <span className={`${METHOD_TAG} ${outcomeClasses(side.outcome)}`}>
               {tag.label}
@@ -813,7 +813,7 @@ function SegmentBreak({ segment, at }: { segment: CardSegment; at: number | null
   return (
     // The containing row supplies a matching top rule at segment boundaries.
     <div className="flex items-center justify-between gap-3 border-b border-zinc-200 bg-white px-3 py-1.5 @[34rem]:px-6 @[34rem]:py-2.5">
-      <h2 className="min-w-0 text-sm font-semibold leading-5 tracking-tight text-zinc-900">{SEGMENT_LABEL[segment]}</h2>
+      <h2 data-lab="heading" className="min-w-0 text-sm font-semibold leading-5 tracking-tight text-zinc-900">{SEGMENT_LABEL[segment]}</h2>
       {clock ? (
         <span className="shrink-0 rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-medium leading-4 tabular-nums text-zinc-600 @[34rem]:py-1" title="Announced start, in your time zone">
           {clock}
@@ -832,7 +832,7 @@ function CancelledBouts({ bouts }: { bouts: CancelledBout[] }) {
   return (
     <div className="border-t border-zinc-200">
       <div className="border-b border-zinc-200 bg-white px-3 py-1.5 @[34rem]:px-6 @[34rem]:py-2.5">
-        <h2 className="text-sm font-semibold leading-5 tracking-tight text-zinc-900">Cancelled</h2>
+        <h2 data-lab="heading" className="text-sm font-semibold leading-5 tracking-tight text-zinc-900">Cancelled</h2>
       </div>
       <ul className="divide-y divide-zinc-100">
         {bouts.map((bout) => (
@@ -1005,7 +1005,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
             the right, centred against it, one per line at every width. */}
         <div className="flex items-center justify-between gap-3 px-3 py-2.5 @[34rem]:gap-5 @[34rem]:px-5 @[34rem]:py-3.5">
           <div className="min-w-0">
-            <h1 className="text-balance text-base font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-xl @[64rem]:text-2xl">{event.name}</h1>
+            <h1 data-lab="title" className="text-balance text-base font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-xl @[64rem]:text-2xl">{event.name}</h1>
             <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[34rem]:gap-x-2 @[34rem]:text-xs">
               {event.date ? (
                 <span className="whitespace-nowrap font-medium text-zinc-600">

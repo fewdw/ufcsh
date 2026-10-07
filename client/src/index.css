@@ -166,6 +166,16 @@ select:not([multiple]):not([size]) {
    participates without maintaining two copies of each component class list. */
 .dark {
   color-scheme: dark;
+  /* The dark neutrals, named once so a theme can retint the whole surface. */
+  --dk-950: #09090b;
+  --dk-900: #18181b;
+  --dk-800: #27272a;
+  --dk-700: #3f3f46;
+  --dk-600: #52525b;
+  --dk-500: #71717a;
+  --dk-400: #a1a1aa;
+  --dk-300: #d4d4d8;
+  --dk-100: #f4f4f5;
   --color-series-1: #60a5fa;
   --color-series-2: #fb923c;
   --color-series-3: #2dd4bf;
@@ -186,37 +196,37 @@ select:not([multiple]):not([size]) {
   --color-round-4: #60a5fa;
   --color-round-5: #93c5fd;
 }
-.dark .bg-white { background-color: #18181b !important; }
-.dark .bg-white\/95 { background-color: rgb(24 24 27 / 0.95) !important; }
-.dark .bg-zinc-50 { background-color: #27272a !important; }
-.dark .bg-zinc-100 { background-color: #09090b !important; }
-.dark .bg-zinc-100\/50 { background-color: rgb(24 24 27 / 0.65) !important; }
+.dark .bg-white { background-color: var(--dk-900) !important; }
+.dark .bg-white\/95 { background-color: color-mix(in srgb, var(--dk-900) 95%, transparent) !important; }
+.dark .bg-zinc-50 { background-color: var(--dk-800) !important; }
+.dark .bg-zinc-100 { background-color: var(--dk-950) !important; }
+.dark .bg-zinc-100\/50 { background-color: color-mix(in srgb, var(--dk-900) 65%, transparent) !important; }
 .dark .bg-zinc-50\/70,
-.dark .bg-zinc-50\/50 { background-color: rgb(39 39 42 / 0.7) !important; }
-.dark .bg-zinc-100\/90 { background-color: rgb(39 39 42 / 0.9) !important; }
-.dark .bg-zinc-200 { background-color: #3f3f46 !important; }
-.dark .bg-zinc-300 { background-color: #52525b !important; }
-.dark .bg-zinc-900 { background-color: #09090b !important; }
+.dark .bg-zinc-50\/50 { background-color: color-mix(in srgb, var(--dk-800) 70%, transparent) !important; }
+.dark .bg-zinc-100\/90 { background-color: color-mix(in srgb, var(--dk-800) 90%, transparent) !important; }
+.dark .bg-zinc-200 { background-color: var(--dk-700) !important; }
+.dark .bg-zinc-300 { background-color: var(--dk-600) !important; }
+.dark .bg-zinc-900 { background-color: var(--dk-950) !important; }
 .dark .text-zinc-950,
 .dark .text-zinc-900,
-.dark .text-zinc-800 { color: #f4f4f5 !important; }
+.dark .text-zinc-800 { color: var(--dk-100) !important; }
 .dark .text-zinc-700,
-.dark .text-zinc-600 { color: #d4d4d8 !important; }
-.dark .text-zinc-500 { color: #a1a1aa !important; }
-.dark .text-zinc-400 { color: #a1a1aa !important; }
-.dark .text-zinc-300 { color: #71717a !important; }
-.dark .border-zinc-100 { border-color: #27272a !important; }
-.dark .border-zinc-200 { border-color: #3f3f46 !important; }
+.dark .text-zinc-600 { color: var(--dk-300) !important; }
+.dark .text-zinc-500 { color: var(--dk-400) !important; }
+.dark .text-zinc-400 { color: var(--dk-400) !important; }
+.dark .text-zinc-300 { color: var(--dk-500) !important; }
+.dark .border-zinc-100 { border-color: var(--dk-800) !important; }
+.dark .border-zinc-200 { border-color: var(--dk-700) !important; }
 /* Breakpoint variants carry their own class names; without these a docked
    panel keeps its light-mode outline in dark mode. */
-.dark .md\:border-zinc-100 { border-color: #27272a !important; }
+.dark .md\:border-zinc-100 { border-color: var(--dk-800) !important; }
 .dark .md\:border-zinc-200,
-.dark .xl\:border-zinc-200 { border-color: #3f3f46 !important; }
+.dark .xl\:border-zinc-200 { border-color: var(--dk-700) !important; }
 .dark .border-zinc-300,
-.dark .border-zinc-400 { border-color: #52525b !important; }
+.dark .border-zinc-400 { border-color: var(--dk-600) !important; }
 .dark .divide-zinc-50 > :not(:last-child),
-.dark .divide-zinc-100 > :not(:last-child) { border-color: #27272a !important; }
-.dark .ring-zinc-200 { --tw-ring-color: #52525b !important; }
+.dark .divide-zinc-100 > :not(:last-child) { border-color: var(--dk-800) !important; }
+.dark .ring-zinc-200 { --tw-ring-color: var(--dk-600) !important; }
 .dark .bg-emerald-50 { background-color: #052e16 !important; }
 .dark .bg-emerald-100 { background-color: #064e3b !important; }
 /* The live bout's box: a faint green wash that deepens a touch on hover. */
@@ -267,14 +277,14 @@ select:not([multiple]):not([size]) {
 .dark .ring-amber-200,
 .dark .ring-amber-500 { --tw-ring-color: #b45309 !important; }
 .dark .ring-slate-200 { --tw-ring-color: #475569 !important; }
-.dark .ring-white { --tw-ring-color: #18181b !important; }
+.dark .ring-white { --tw-ring-color: var(--dk-900) !important; }
 .dark select,
 .dark input { color-scheme: dark; }
 /* A black button on a near-black panel disappears; on the dark theme the
    primary action inverts to a light pill instead (see ui.ts). */
-.dark .ui-primary { background-color: #f4f4f5 !important; color: #18181b !important; }
+.dark .ui-primary { background-color: var(--dk-100) !important; color: var(--dk-900) !important; }
 /* A press, for the touch screens the hover rules below leave out. */
-.dark .active\:bg-zinc-100:active { background-color: #27272a !important; }
+.dark .active\:bg-zinc-100:active { background-color: var(--dk-800) !important; }
 /* Like Tailwind's own hover: variant, only where a pointer can hover. A touch
    screen fires :hover on whatever a scrolling finger lands on. */
 @media (hover: hover) {
@@ -282,18 +292,18 @@ select:not([multiple]):not([size]) {
   .dark .hover\:bg-zinc-50:hover,
   .dark .hover\:bg-zinc-50\/80:hover,
   .dark .hover\:bg-zinc-50\/70:hover,
-  .dark .hover\:bg-zinc-100:hover { background-color: #27272a !important; }
+  .dark .hover\:bg-zinc-100:hover { background-color: var(--dk-800) !important; }
   .dark .hover\:bg-zinc-200:hover,
-  .dark .hover\:bg-zinc-200\/60:hover { background-color: #3f3f46 !important; }
+  .dark .hover\:bg-zinc-200\/60:hover { background-color: var(--dk-700) !important; }
   .dark .hover\:bg-white:hover,
-  .dark .hover\:bg-white\/70:hover { background-color: #27272a !important; }
+  .dark .hover\:bg-white\/70:hover { background-color: var(--dk-800) !important; }
   .dark .hover\:bg-emerald-100:hover { background-color: #064e3b !important; }
   .dark .hover\:bg-rose-100:hover { background-color: #881337 !important; }
   .dark .hover\:bg-amber-100:hover { background-color: #78350f !important; }
   .dark .hover\:bg-sky-100:hover { background-color: #0c4a6e !important; }
   .dark .hover\:text-zinc-900:hover,
   .dark .hover\:text-zinc-950:hover { color: #fff !important; }
-  .dark .ui-primary:hover { background-color: #d4d4d8 !important; }
+  .dark .ui-primary:hover { background-color: var(--dk-300) !important; }
   .dark .ui-danger:hover { background-color: #e11d48 !important; }
 }
 /* Slim, quiet scrollbars for the always-scrolling panes. Only where there is
@@ -302,9 +312,9 @@ select:not([multiple]):not([size]) {
 @media (pointer: fine) {
   * {
     scrollbar-width: thin;
-    scrollbar-color: rgb(212 212 216) transparent;
+    scrollbar-color: var(--lab-scrollbar, rgb(212 212 216)) transparent;
   }
-  .dark * { scrollbar-color: #52525b transparent; }
+  .dark * { scrollbar-color: var(--dk-600) transparent; }
 }
 
 /* Chart marks settle in rather than snapping; motion carries the comparison,

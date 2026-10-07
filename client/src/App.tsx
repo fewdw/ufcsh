@@ -166,7 +166,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
           between them. Nothing is positioned over anything else, so no width
           can make two of them collide. */}
       <div className="flex w-full items-center gap-1 px-2 py-2 min-[380px]:gap-1.5 min-[380px]:px-2.5 min-[420px]:gap-2 sm:gap-3 sm:px-5 sm:py-3">
-        <Link to="/" aria-label="UFC.sh home" className={`shrink-0 text-sm font-extrabold tracking-tight min-[380px]:text-[15px] min-[420px]:text-base sm:text-lg ${isDevSite ? "text-sky-500" : "text-zinc-900"}`}>
+        <Link to="/" aria-label="UFC.sh home" data-lab="logo" className={`shrink-0 text-sm font-extrabold tracking-tight min-[380px]:text-[15px] min-[420px]:text-base sm:text-lg ${isDevSite ? "text-sky-500" : "text-zinc-900"}`}>
           UFC<span className={isDevSite ? "font-bold" : "font-bold text-zinc-400"}>.sh</span>
         </Link>
         {/* The shared pill group, tightened on a phone so the row still fits a
