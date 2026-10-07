@@ -93,7 +93,7 @@ export default function InfoPage() {
             <p><time dateTime="2026-10-07">October 7, 2026</time></p>
             <ul>
               <li>Recovered missing scorecards and judges' names from verified source panels.</li>
-              <li>Judge profiles include source-only scorecards.</li>
+              <li>Community averages require consistent totals and complete round coverage.</li>
               <li>Verified career histories fill missing birth dates and keep them through empty source responses.</li>
             </ul>
           </Section>

@@ -1,5 +1,6 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { randomInt, randomUUID } from "node:crypto";
+import { parseCommunityScorecard } from "./community-scorecards.ts";
 import { fightIsComplete, fightIsUnderway, isFightDay } from "./live-state.ts";
 
 export class ScoringError extends Error {
@@ -412,19 +413,9 @@ export class ScoringStore {
     source: string; sourceUrl: string; cards: number; avg1: number; avg2: number;
     rounds: { round: number; avg1: number; avg2: number }[];
   } | null {
-    if (!max) return null;
-    const raw = this.fight(id)?.community_score_json;
-    if (!raw) return null;
-    try {
-      const value = JSON.parse(raw);
-      const rounds = Array.isArray(value?.rounds) ? value.rounds.filter((round: any) =>
-        Number.isInteger(round?.round) && round.round >= 1 && round.round <= max
-        && Number.isFinite(round?.avg1) && Number.isFinite(round?.avg2)) : [];
-      if (!Number.isSafeInteger(value?.cards) || value.cards <= 0 || !Number.isFinite(value?.avg1)
-        || !Number.isFinite(value?.avg2) || rounds.length !== max) return null;
-      return { source: String(value.source ?? "External"), sourceUrl: String(value.sourceUrl ?? ""),
-        cards: value.cards, avg1: value.avg1, avg2: value.avg2, rounds };
-    } catch { return null; }
+    const value = parseCommunityScorecard(this.fight(id)?.community_score_json, max);
+    return value ? { source: String(value.source ?? "External"), sourceUrl: String(value.sourceUrl ?? ""),
+      cards: value.cards, avg1: value.avg1, avg2: value.avg2, rounds: value.rounds } : null;
   }
   /** The individual cards behind the average, newest first, each one a link to
    *  the scorer's profile. Aliases only: no account ever appears here. */
