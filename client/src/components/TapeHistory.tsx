@@ -54,8 +54,8 @@ function HistoryTile({ row, names }: { row: Row; names: [string, string] }) {
 }
 
 /** Advanced Tale of the tape: for each row on which the two differ, how often
- *  that side of the difference won in decided UFC bouts before this one. Rows
- *  without enough earlier bouts to say are not sent at all. */
+ *  that side of the difference won in decided UFC bouts before this one, the
+ *  most one-sided first. Rows without enough earlier bouts to say are not sent. */
 export default function TapeHistory({ fight }: { fight: Matchup }) {
   const { data, error, retry } = useApi<TapeHistoryData>(`/api/fights/${fight.id}/tape-history`);
   const names: [string, string] = [fight.f1.name, fight.f2.name];
@@ -65,7 +65,9 @@ export default function TapeHistory({ fight }: { fight: Matchup }) {
       <h3 className="sr-only">How these differences have gone before</h3>
       {data ? (
         <div className="grid grid-cols-1 gap-x-2 gap-y-5 @[18rem]:grid-cols-2">
-          {data.rows.map(row => <HistoryTile key={row.key} row={row} names={names} />)}
+          {data.rows.map((row) => ({ row, edge: Math.abs(row.f1Wins / row.fights - 0.5) }))
+            .sort((a, b) => b.edge - a.edge)
+            .map(({ row }) => <HistoryTile key={row.key} row={row} names={names} />)}
         </div>
       ) : error ? <p className={`${CHART_TEXT} text-zinc-400`}>Could not load. <button type="button" onClick={retry} className="underline">Retry</button></p>
         : <p className={`${CHART_TEXT} text-zinc-400`}>Loading earlier bouts…</p>}

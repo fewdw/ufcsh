@@ -1007,7 +1007,12 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                         <TaleOfTape fight={fight} compact />
                         <MatchupContext fight={fight} />
                       </div>
-                      <TapeHistory fight={fight} />
+                      {/* Beside the tape, the pies take its height and scroll past it. */}
+                      <div className="relative min-w-0 self-stretch">
+                        <div className="@[40rem]:absolute @[40rem]:inset-0 @[40rem]:overflow-y-auto @[40rem]:overscroll-contain">
+                          <TapeHistory fight={fight} />
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div className="matchup-comparisons grid px-5 pb-3">
