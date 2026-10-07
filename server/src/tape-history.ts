@@ -115,13 +115,14 @@ const gapValue = (key: Key, value: unknown): value is number =>
 
 const inches = (value: number) => `${Math.floor(value / 12)}' ${Math.round((value % 12) * 10) / 10}"`;
 const STATUS: Record<Status, string> = { champion: "Champion", former: "Former champion", undefeated: "Undefeated", lost: "Has lost" };
-const FINISH: Record<string, string> = { "KO/TKO": "KO/TKO", SUB: "submission", DEC: "decision" };
+const FINISH: Record<string, string> = { "KO/TKO": "KO/TKO", SUB: "Sub", DEC: "Decision" };
 
 function lastFightText(value: string): string {
   const [outcome, method] = value.split(":") as [Outcome, string | undefined];
-  if (outcome === "draw") return "off a draw";
-  if (outcome === "nc") return "off a no contest";
-  return method && FINISH[method] ? `off a ${FINISH[method]} ${outcome}` : `off a ${outcome} by other means`;
+  if (outcome === "draw") return "Draw";
+  if (outcome === "nc") return "No contest";
+  const result = outcome === "win" ? "win" : "loss";
+  return method && FINISH[method] ? `${FINISH[method]} ${result}` : `${result[0].toUpperCase()}${result.slice(1)}, other`;
 }
 
 function show(key: Key, value: TapeValues[Key]): string {
@@ -134,13 +135,13 @@ function show(key: Key, value: TapeValues[Key]): string {
   return String(value);
 }
 
+/** Short: the tile's own label already says what the gap is in. */
 function showGap(key: Key, gap: number): string {
-  if (key === "age") return `${gap}-year age gap`;
-  if (key === "height") return `${gap}" height gap`;
-  if (key === "reach") return `${gap}" reach gap`;
-  if (key === "timeOut") return `${gap}-month time-out gap`;
-  if (key === "ufcFights") return `${gap}-fight UFC experience gap`;
-  return `${gap}-win streak gap`;
+  if (key === "age") return `${gap}-year gap`;
+  if (key === "height" || key === "reach") return `${gap}" gap`;
+  if (key === "timeOut") return `${gap}-month gap`;
+  if (key === "ufcFights") return `${gap}-fight gap`;
+  return `${gap}-win gap`;
 }
 
 export type TapeComparison = {

@@ -1002,8 +1002,8 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     </label>
                   } />
                   {settings.tapeAdvanced ? (
-                    <div className="grid gap-x-9 gap-y-3 px-5 pb-4 @[40rem]:grid-cols-2">
-                      <div className="matchup-comparisons grid min-w-0">
+                    <div className="grid items-start gap-x-9 gap-y-3 px-5 pb-4 @[40rem]:grid-cols-2">
+                      <div className="matchup-comparisons grid min-w-0 content-start">
                         <TaleOfTape fight={fight} compact />
                         <MatchupContext fight={fight} />
                       </div>

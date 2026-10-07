@@ -59,7 +59,7 @@ test("a thin exact pairing falls back to the same gap between any two values", (
   // c and d are 4" apart too: the longer of them wins every time.
   for (let i = 0; i < MIN_FIGHTS; i++) bouts.push([`2020-02-${String((i % 28) + 1).padStart(2, "0")}`, "d", "c"]);
   const reach = tapeHistory(archive(bios, bouts), "a", "b", "2025-01-01").rows.find(row => row.key === "reach")!;
-  assert.deepEqual([reach.basis, reach.gap, reach.f1Wins, reach.f2Wins], ["gap", '4" reach gap', 0, MIN_FIGHTS + 1]);
+  assert.deepEqual([reach.basis, reach.gap, reach.f1Wins, reach.f2Wins], ["gap", '4" gap', 0, MIN_FIGHTS + 1]);
 });
 
 test("form values follow the tape: no contests skipped in a streak, no UFC bout is a debut", () => {
