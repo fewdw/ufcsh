@@ -4,7 +4,7 @@ import { alignment, importVerdictEvent } from "./verdict-import.ts";
 import { db } from "./db.ts";
 import { bugReport } from "./bugs.ts";
 
-test("a refresh with no published cards retains existing scorecards", async () => {
+test("a refresh with absent or impossible source cards retains existing scorecards", async () => {
   const fight = db.prepare(`SELECT f.id, f.f1_name, f.f2_name, e.date FROM fights f JOIN events e ON e.id = f.event_id
     WHERE e.complete = 1 AND f.method LIKE '%DEC' ORDER BY e.date DESC LIMIT 1`).get() as { id: string; f1_name: string; f2_name: string; date: string };
   const escape = (value: string) => value.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
@@ -16,15 +16,21 @@ test("a refresh with no published cards retains existing scorecards", async () =
   db.exec("BEGIN");
   try {
     db.prepare("UPDATE fights SET judge_rounds_json = ?, community_score_json = ? WHERE id = ?").run(judges, community, fight.id);
-    globalThis.fetch = async input => new Response(String(input).includes("/fight/")
-      ? `<head><meta property="og:title" content="${first} vs ${second}"></head>`
+    const impossible = `<main><section><h2>Verdict Scorecard</h2><div>
+      <div style="display:grid;padding:0 4px 10px"><span>Round</span>${[1, 2, 3, 4, 5, 6].map(r => `<span>R${r}</span>`).join("")}<span>TOT</span></div>
+      ${[first, second].map(name => `<div style="display:grid;margin-bottom:0"><span>${name}</span>${Array.from({ length: 6 }, () => "<span>9</span>").join("")}<span>54</span></div>`).join("")}
+      </div><a href="/community-scorecards/event/999999/fight/1"><span>123 scorecards</span></a></section></main>`;
+    for (const body of ["", impossible]) {
+      globalThis.fetch = async input => new Response(String(input).includes("/fight/")
+      ? `<head><meta property="og:title" content="${first} vs ${second}"></head>${body}`
       : `<head><meta name="description" content="UFC Test — ${date} · Arena"></head><a href="/rate/fights/event/999999/fight/1"><div></div><div><div>${first}</div><div>vs.</div><div>${second}</div></div></a>`);
-    const result = await importVerdictEvent(999999, "refresh");
-    assert.equal(result?.matchedFights, 1);
-    assert.equal(result?.failed, 0);
-    const stored = db.prepare("SELECT judge_rounds_json, community_score_json FROM fights WHERE id = ?").get(fight.id) as { judge_rounds_json: string; community_score_json: string };
-    assert.equal(stored.judge_rounds_json, judges);
-    assert.equal(stored.community_score_json, community);
+      const result = await importVerdictEvent(999999, "refresh");
+      assert.equal(result?.matchedFights, 1);
+      assert.equal(result?.failed, 0);
+      const stored = db.prepare("SELECT judge_rounds_json, community_score_json FROM fights WHERE id = ?").get(fight.id) as { judge_rounds_json: string; community_score_json: string };
+      assert.equal(stored.judge_rounds_json, judges);
+      assert.equal(stored.community_score_json, community);
+    }
   } finally { globalThis.fetch = priorFetch; db.exec("ROLLBACK"); }
 });
 
@@ -42,6 +48,8 @@ test("known Verdict cards give both scorecard backlogs a working repair target",
     for (const check of ["decision-no-judge-rounds", "fight-no-community-scores"]) {
       assert.deepEqual(action(check), [{ id: "verdict", label: "Re-read scorecards", target: fight.id }]);
     }
+    db.prepare("UPDATE fights SET community_score_json = ? WHERE id = ?").run('{"cards":0}', fight.id);
+    assert.deepEqual(action("community-score-invalid"), [{ id: "verdict", label: "Re-read scorecards", target: fight.id }]);
   } finally { db.exec("ROLLBACK"); }
 });
 

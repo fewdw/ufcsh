@@ -2,6 +2,7 @@ import { db } from "./db.ts";
 import { fetchVerdictDocument, fetchVerdictHtml, parseVerdictEventFightNumbers, parseVerdictEventPage, parseVerdictFightPage, VERDICT } from "./scrape/verdict.ts";
 import { firstLastName, log, normName } from "./util.ts";
 import { combineJudgeRounds, hasCompleteJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
+import { communityScoreIssue } from "./community-scorecards.ts";
 
 /**
  * Verdict MMA's official round cards and community aggregates, matched onto
@@ -178,7 +179,8 @@ async function importFight(eventId: number, fightNumber: number, fight: LocalFig
       }
     }
     let communityJson: string | null = null;
-    if ((mode !== "missing" || !fight.community_score_json) && page.community) {
+    if ((mode !== "missing" || !fight.community_score_json) && page.community
+      && !communityScoreIssue(page.community, fight.method, fight.round)) {
       const card = page.community;
       const aligned = order === 1 ? card : {
         ...card,

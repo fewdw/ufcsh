@@ -12,6 +12,7 @@ import { syncCareerRecord } from "./career-records.ts";
 import { hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
 import { importVerdictEvent } from "./verdict-import.ts";
 import { repairJudgeNames } from "./repair-judge-names.ts";
+import { communityScoreIssue } from "./community-scorecards.ts";
 import { mergedByHand, officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
 import { rosterEventsByFighter, rosterMoveFighter, storedRosterMoves, syncRosterMoves, syncUfcSignings } from "./roster-moves.ts";
@@ -841,6 +842,19 @@ function decisionsWithoutJudgeRounds(): BugCheck {
     links: [{ label: "Verdict events", href: "https://verdictmma.com/events" }],
     actions: linkedEvents.has(fight.event_id) ? [{ id: "verdict", label: "Re-read scorecards", target: fight.id }] : [],
   })));
+}
+
+function invalidCommunityScores(): BugCheck {
+  const linked = new Set((db.prepare("SELECT DISTINCT event_id FROM verdict_events WHERE event_id IS NOT NULL").all() as { event_id: string }[]).map(row => row.event_id));
+  const rows = db.prepare(`SELECT ${FIGHT_COLUMNS}, f.method, f.round, f.community_score_json FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 1 AND f.community_score_json IS NOT NULL ORDER BY e.date DESC`).all() as (FightRow & { method: string; round: string; community_score_json: string })[];
+  return check({ id: "community-score-invalid", group: "Scorecards", label: "Community cards with inconsistent scores",
+    description: "Vote counts, round samples and totals must agree with the rounds actually completed. A scheduled five-round technical decision can incorrectly include votes for rounds that never happened. Re-reading retains the old card until the source supplies a valid replacement.", grade: "minor" }, rows.flatMap(fight => {
+    let issue: string | null;
+    try { issue = communityScoreIssue(JSON.parse(fight.community_score_json), fight.method, fight.round); } catch { issue = "Unreadable scorecard"; }
+    return issue ? [fightItem(fight, { facts: [["Problem", issue]], actions: linked.has(fight.event_id)
+      ? [{ id: "verdict", label: "Re-read scorecards", target: fight.id }] : [] })] : [];
+  }));
 }
 
 function fightsWithoutCommunityScores(): BugCheck {
@@ -1739,6 +1753,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
   const checks = [
     decisionsWithoutJudgeRounds(),
     fightsWithoutCommunityScores(),
+    invalidCommunityScores(),
     verdictImportErrors(),
     suspiciousOdds(),
     wrongFighterPages(),

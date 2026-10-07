@@ -13,6 +13,10 @@ credentials are not committed.
   independent official totals, a complete panel needs three distinct judges.
 - Known Verdict event associations give both scorecard gap checks a working
   re-read action. Roster actions accept the two sources the board actually offers.
+- Community aggregates must cover the rounds actually scored, with consistent
+  vote counts and totals. Invalid samples are rejected; an admin check exposes
+  existing invalid cards and offers re-reading when their event is linked. This
+  catches scheduled five-round samples on three-round technical decisions.
 - Replacement citations must explicitly name both fighters in the correct
   direction, provide a public URL and a valid full publication date, and identify
   one actual card replacement. The UI says **announced N days before**, preserving
