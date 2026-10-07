@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { X } from "lucide-react";
@@ -51,23 +51,64 @@ const boutLabel = (name: string, outcome: OppositionBout["outcome"], against: st
 
 /** The selected fighter's meetings with one opponent: result, name (opening
  *  the matchup) and rank going in; how it ended and their UFC record going in. */
-function Faced({ fighter, group, current }: { fighter: Fighter; group: Group; current: boolean }) {
-  return <div className="space-y-2">
-    {group.meetings.map(meeting => <div key={meeting.fight_id} className="flex min-w-0 items-start gap-1.5 text-zinc-700">
-      <Result outcome={meeting.outcome} label={boutLabel(fighter.name, meeting.outcome, group.opponent.name)} />
+function Faced({ fighter, group, current, picked, pick }: { fighter: Fighter; group: Group; current: boolean; picked: string | null; pick: (value: string) => void }) {
+  // Met more than once, each meeting is a tab choosing whose earlier fights
+  // show beside it, under one for them all. The name still opens the matchup.
+  const tab = (on: boolean) => `relative -mx-1.5 rounded-lg px-1.5 py-1.5 ${on ? "bg-zinc-100" : "hover:bg-zinc-50"}`;
+  const focus = "focus-visible:outline-2 focus-visible:outline-zinc-900";
+  const under = picked ? "pointer-events-none relative" : "";
+  return <div role={picked ? "group" : undefined} aria-label={picked ? `Fights with ${group.opponent.name}` : undefined} className={picked ? "space-y-0.5" : "space-y-2"}>
+    {picked ? <button type="button" aria-pressed={picked === "all"} onClick={() => pick("all")} className={`${tab(picked === "all")} ${focus} block w-[calc(100%+0.75rem)] text-left font-medium text-zinc-700`}>All fights</button> : null}
+    {group.meetings.map(meeting => <div key={meeting.fight_id} className={`flex min-w-0 items-start gap-1.5 text-zinc-700 ${picked ? tab(picked === meeting.fight_id) : ""}`}>
+      {picked ? <button type="button" aria-pressed={picked === meeting.fight_id} aria-label={`${group.opponent.name}, ${formatDateShortWithYear(meeting.date)}`} onClick={() => pick(meeting.fight_id)} className={`absolute inset-0 rounded-lg ${focus}`} /> : null}
+      <span className={`flex ${under}`}><Result outcome={meeting.outcome} label={boutLabel(fighter.name, meeting.outcome, group.opponent.name)} /></span>
       {/* Chips that do not fit beside the name wrap under it, not under the result. */}
-      <span className="min-w-0 flex-1">
+      <span className={`min-w-0 flex-1 ${under}`}>
         <span className="flex min-h-5 min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 break-words">
-          <Name opponent={group.opponent} standing={meeting.standing} to={`/fights/${meeting.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name}`} />
+          <Name opponent={group.opponent} standing={meeting.standing} to={`/fights/${meeting.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name}`} className={picked ? "pointer-events-auto" : ""} />
           <Chips standing={meeting.standing} />
         </span>
         <span className="mt-1 block text-zinc-500">
           <span title={meeting.method ?? undefined}>{resultDot(meeting).shortMethod || "—"}</span>
           {" · "}<span className="whitespace-nowrap tabular-nums" title={current ? "UFC record now" : "UFC record going in"}><span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(meeting.record)}</span>
         </span>
+        {picked ? <span className="mt-0.5 block text-[10px] tabular-nums text-zinc-400">{formatDateShortWithYear(meeting.date)}</span> : null}
       </span>
     </div>)}
   </div>;
+}
+
+/** One opponent: the meetings on the left, the fights they had had on the right. */
+function Opponent({ fighter, group, current, columns }: { fighter: Fighter; group: Group; current: boolean; columns: string }) {
+  const [choice, setChoice] = useState<string | null>(null);
+  // Today's list is the same for every meeting, so it is shown once, untabbed.
+  const tabbed = group.meetings.length > 1 && !current;
+  // The latest meeting unless another is chosen, or the filter has dropped the one that was.
+  const picked = !tabbed ? null : choice === "all" || group.meetings.some(meeting => meeting.fight_id === choice) ? choice : group.meetings[0].fight_id;
+  const shown = current ? group.meetings.slice(0, 1) : picked && picked !== "all" ? group.meetings.filter(meeting => meeting.fight_id === picked) : group.meetings;
+  return <section role="listitem" aria-label={group.opponent.name} className={`grid border-t border-zinc-200 py-2.5 ${columns}`}>
+    <Faced fighter={fighter} group={group} current={current} picked={picked} pick={setChoice} />
+    <div className="min-w-0 space-y-2">
+      {shown.map(meeting => <div key={meeting.fight_id}>
+        {tabbed ? <p className="mb-1 text-zinc-500">Before {formatDateShortWithYear(meeting.date)}</p> : null}
+        {meeting.history.length ? <ul className="grid grid-cols-1 gap-x-3 gap-y-2 min-[440px]:grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(10rem,1fr))]">
+          {meeting.history.map((bout, index) => <li key={bout.fight_id ?? `${bout.date}-${index}`} className="flex min-w-0 items-start gap-1.5">
+            <Result outcome={bout.outcome} label={boutLabel(group.opponent.name, bout.outcome, bout.opponent.name)} />
+            <span className="min-w-0 flex-1 leading-4">
+              <span className="flex min-w-0 items-baseline gap-1">
+                <Name opponent={bout.opponent} standing={bout.standing} className="truncate" />
+                {bout.standing?.rank ? <span className={`${CHIP} shrink-0 tabular-nums ${chipTone.rank}`} title={standingChips(bout.standing)[0]?.title}>#{bout.standing.rank}</span> : null}
+              </span>
+              <span className="block truncate text-zinc-500" title={`${bout.method || "Method unknown"} · ${formatDateShortWithYear(bout.date)}${bout.standing?.belt ? ` · ${standingChips(bout.standing).at(-1)?.title}` : ""}`}>
+                {bout.fight_id ? <Link to={`/fights/${bout.fight_id}`} className={`${linkUnderline} hover:underline`}>{resultDot(bout).shortMethod || "—"}</Link> : resultDot(bout).shortMethod || "—"}
+                {bout.record ? <span className="tabular-nums" title={current ? "Their UFC record now" : `Their UFC record when ${lastName(fighter.name)} fought ${lastName(group.opponent.name)}`}> · <span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(bout.record)}</span> : null}
+              </span>
+            </span>
+          </li>)}
+        </ul> : <p className="text-zinc-400">UFC debut.</p>}
+      </div>)}
+    </div>
+  </section>;
 }
 
 /** Each opponent's earlier bouts in an even grid beside them, newest first:
@@ -78,30 +119,7 @@ function OppositionGrid({ fighter, groups, label, current }: { fighter: Fighter;
     <div aria-hidden="true" className={`sticky top-0 z-10 grid bg-white pb-2 font-medium text-zinc-500 ${columns}`}>
       <span>{lastName(fighter.name)} vs.</span><span>{current ? "All their UFC fights" : "Their earlier UFC fights"}</span>
     </div>
-    {groups.map(group => <section key={group.opponent.id ?? group.opponent.name} role="listitem" aria-label={group.opponent.name} className={`grid border-t border-zinc-200 py-2.5 ${columns}`}>
-      <Faced fighter={fighter} group={group} current={current} />
-      <div className="min-w-0 space-y-2">
-        {/* Today's list is the same for every meeting, so it is shown once. */}
-        {(current ? group.meetings.slice(0, 1) : group.meetings).map(meeting => <div key={meeting.fight_id}>
-          {group.meetings.length > 1 && !current ? <p className="mb-1 text-zinc-500">Before {formatDateShortWithYear(meeting.date)}</p> : null}
-          {meeting.history.length ? <ul className="grid grid-cols-1 gap-x-3 gap-y-2 min-[440px]:grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(10rem,1fr))]">
-            {meeting.history.map((bout, index) => <li key={bout.fight_id ?? `${bout.date}-${index}`} className="flex min-w-0 items-start gap-1.5">
-              <Result outcome={bout.outcome} label={boutLabel(group.opponent.name, bout.outcome, bout.opponent.name)} />
-              <span className="min-w-0 flex-1 leading-4">
-                <span className="flex min-w-0 items-baseline gap-1">
-                  <Name opponent={bout.opponent} standing={bout.standing} className="truncate" />
-                  {bout.standing?.rank ? <span className={`${CHIP} shrink-0 tabular-nums ${chipTone.rank}`} title={standingChips(bout.standing)[0]?.title}>#{bout.standing.rank}</span> : null}
-                </span>
-                <span className="block truncate text-zinc-500" title={`${bout.method || "Method unknown"} · ${formatDateShortWithYear(bout.date)}${bout.standing?.belt ? ` · ${standingChips(bout.standing).at(-1)?.title}` : ""}`}>
-                  {bout.fight_id ? <Link to={`/fights/${bout.fight_id}`} className={`${linkUnderline} hover:underline`}>{resultDot(bout).shortMethod || "—"}</Link> : resultDot(bout).shortMethod || "—"}
-                  {bout.record ? <span className="tabular-nums" title={current ? "Their UFC record now" : `Their UFC record when ${lastName(fighter.name)} fought ${lastName(group.opponent.name)}`}> · <span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(bout.record)}</span> : null}
-                </span>
-              </span>
-            </li>)}
-          </ul> : <p className="text-zinc-400">UFC debut.</p>}
-        </div>)}
-      </div>
-    </section>)}
+    {groups.map(group => <Opponent key={group.opponent.id ?? group.opponent.name} fighter={fighter} group={group} current={current} columns={columns} />)}
   </div>;
 }
 

@@ -548,14 +548,20 @@ function sharedOpponents(fight: Matchup) {
   })).filter((comparison) => comparison.f1_fights.length && comparison.f2_fights.length);
 }
 
-/** Earlier meetings, and later ones beside them where the column is wide. */
+/** Earlier meetings, and later ones beside them on one row, each panel as
+ *  wide as its share of the meetings. Too many for a phone's row stack there. */
 function Meetings({ fight }: { fight: Matchup }) {
-  const both = meetingsOf(fight, false).length > 0 && !fight.potential && meetingsOf(fight, true).length > 0;
+  const earlier = meetingsOf(fight, false).length;
+  const later = fight.potential ? 0 : meetingsOf(fight, true).length;
+  const both = earlier > 0 && later > 0;
   const panels = <>
     <HeadToHead fight={fight} paired={both} />
     {!fight.potential ? <HeadToHead fight={fight} later paired={both} /> : null}
   </>;
-  return both ? <div className="grid gap-2 sm:gap-3 @[52rem]:grid-cols-2">{panels}</div> : panels;
+  if (!both) return panels;
+  const row = earlier <= 3 && later <= 3 && earlier + later <= 4;
+  return <div className={`grid gap-2 sm:gap-3 ${row ? "grid-cols-[minmax(8.5rem,var(--earlier))_minmax(8.5rem,var(--later))]" : "@[52rem]:grid-cols-2"}`}
+    style={{ "--earlier": `${earlier}fr`, "--later": `${later}fr` } as React.CSSProperties}>{panels}</div>;
 }
 
 function HeadToHead({ fight, later = false, paired = false }: { fight: Matchup; later?: boolean; paired?: boolean }) {
@@ -574,7 +580,7 @@ function HeadToHead({ fight, later = false, paired = false }: { fight: Matchup; 
   return (
     <section className={`${shell} flex flex-col overflow-hidden`}>
       <PanelHeading
-        title={later ? "Subsequent meetings" : "Previous meetings"}
+        title={paired ? <>{later ? "Subsequent" : "Previous"}<span className="hidden @[40rem]:inline"> meetings</span></> : later ? "Subsequent meetings" : "Previous meetings"}
       />
       <div className={`grid flex-1 gap-px bg-zinc-100 ${gridColumns}`}>
         {meetings.map((row) => {
@@ -594,7 +600,7 @@ function HeadToHead({ fight, later = false, paired = false }: { fight: Matchup; 
               key={row.fight_id}
               to={`/fights/${row.fight_id}`}
               title={`${winner.label} · ${row.event_name} · ${formatDate(row.date)} · ${formatMethod(row.method, row.round, row.time)}`}
-              className="group min-w-0 bg-white px-2 py-4 text-center transition-colors hover:bg-zinc-50/80 focus-visible:relative focus-visible:z-10 focus-visible:rounded-xl focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-zinc-900"
+              className="group min-w-0 bg-white px-1 py-4 text-center @[30rem]:px-2 transition-colors hover:bg-zinc-50/80 focus-visible:relative focus-visible:z-10 focus-visible:rounded-xl focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-zinc-900"
             >
               <span
                 className={`${RESULT_PILL} max-w-full ${winner.tone}`}

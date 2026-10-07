@@ -65,7 +65,7 @@ export function PanelHeading({
   controls,
   divider = true,
 }: {
-  title: string;
+  title: React.ReactNode;
   subtitle?: React.ReactNode;
   aside?: React.ReactNode;
   controls?: React.ReactNode;
