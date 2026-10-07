@@ -167,7 +167,7 @@ export type CareerStatistics = {
 export type OppositionRecord = { wins: number; losses: number; draws: number; ncs: number };
 /** Where someone stood going into a fight: rank on the last list before it,
  *  and any UFC belt then, before or to come. */
-export type Standing = { rank: string | null; division: string | null; belt: "champion" | "interim" | "former" | "future" | null };
+export type Standing = { rank: string | null; division: string | null; belt: "champion" | "interim" | "former" | "former-interim" | "future" | "future-interim" | null };
 export type OppositionBout = {
   fight_id: string; date: string; outcome: "win" | "loss" | "draw" | "nc" | null; method: string | null;
   opponent: { id: string | null; name: string };

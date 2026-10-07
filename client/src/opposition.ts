@@ -23,8 +23,10 @@ export function recordText(record: OppositionRecord): string {
 const BELT: Record<NonNullable<Standing["belt"]>, { short: string; title: string }> = {
   champion: { short: "Champ", title: "UFC champion going in" },
   interim: { short: "Interim", title: "UFC interim champion going in" },
-  former: { short: "Former champ", title: "Had held a UFC belt before this fight" },
-  future: { short: "Future champ", title: "Went on to win a UFC belt" },
+  former: { short: "Former champ", title: "Had held an undisputed UFC belt before this fight" },
+  "former-interim": { short: "Former interim champ", title: "Had held a UFC interim belt, never the undisputed one, before this fight" },
+  future: { short: "Future champ", title: "Went on to hold an undisputed UFC belt" },
+  "future-interim": { short: "Future interim champ", title: "Went on to hold a UFC interim belt, not the undisputed one" },
 };
 
 /** The chips beside a name: rank then, and any belt. */

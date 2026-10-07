@@ -21,7 +21,9 @@ const chipTone: Record<ReturnType<typeof standingChips>[number]["kind"], string>
   interim: "bg-slate-100 text-belt-interim",
   rank: "bg-zinc-100 text-zinc-600",
   former: "bg-amber-50 text-belt",
+  "former-interim": "bg-slate-100 text-belt-interim",
   future: "bg-amber-50 text-belt",
+  "future-interim": "bg-slate-100 text-belt-interim",
 };
 
 function Result({ outcome, label }: { outcome: OppositionBout["outcome"]; label?: string }) {

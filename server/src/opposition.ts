@@ -4,8 +4,10 @@ const emptyRecord = (): FightRecord => ({ wins: 0, losses: 0, draws: 0, ncs: 0 }
 const resultKey: Record<Outcome, keyof FightRecord> = { win: "wins", loss: "losses", draw: "draws", nc: "ncs" };
 
 /** Where someone stood going into a fight: their rank on the last list
- *  before it, and any belt then, before or to come. UFC only. */
-export type Standing = { rank: string | null; division: string | null; belt: "champion" | "interim" | "former" | "future" | null };
+ *  before it, and any belt then, before or to come. UFC only. An interim belt
+ *  is told apart from the undisputed one, which outranks it: someone who had
+ *  held both is a former champion. */
+export type Standing = { rank: string | null; division: string | null; belt: "champion" | "interim" | "former" | "former-interim" | "future" | "future-interim" | null };
 
 export type RankOf = (fighterId: string, fight: IndexedFight) => { rank: string; division: string } | null;
 
@@ -22,8 +24,8 @@ export type EarlierBout = {
 
 const NOW = "9999-12-31";
 
-const wonBelt = (fight: IndexedFight, id: string) =>
-  fight.titleFight && (fight.titleType === "title" || fight.titleType === "interim") && sideOf(fight, id).outcome === "win";
+const wonBelt = (fight: IndexedFight, id: string, type: "title" | "interim") =>
+  fight.titleFight && fight.titleType === type && sideOf(fight, id).outcome === "win";
 
 /** Every UFC opponent, newest first, with their records and standing going in
  *  and their earlier bouts. `record` (UFC, on the night) sums to the matchup's
@@ -36,18 +38,50 @@ export function opposition(index: FightIndex, fighterId: string, before?: { id: 
   const fighter = index.fighters.get(fighterId);
   if (!fighter) return null;
   const fights = before ? boutsBefore(index, fighterId, before.date, before.ord) : fighter.fights;
-  const firstBelts = new Map<string, IndexedFight | null>();
+  // An interim champion promoted without a fight shows only in their next
+  // undisputed title bout: they enter it with an interim claim they never
+  // lost and no undisputed champion across the cage, against someone with
+  // no claim or the newer interim champion. Same reading as the title
+  // narratives; the lineage's own interim holder is cleared too early for it.
+  const promotedInto = (fight: IndexedFight, id: string) => {
+    if (!fight.titleFight || fight.titleType !== "title") return false;
+    const holders = index.holdersBefore(fight.weightClass, fight.date, fight.ord);
+    const other = opponentOf(fight, id).id;
+    if (holders.undisputed === id || holders.undisputed === other) return false;
+    const claim = (who: string) => index.interimClaimBefore(who, fight.weightClass, fight.date, fight.ord);
+    return claim(id) && (holders.interim === other || !claim(other));
+  };
+  /** The first bout that won each belt, or that they entered already promoted. */
+  type Belts = Record<"title" | "interim", IndexedFight | null>;
+  const firstBelts = new Map<string, Belts>();
   const firstBelt = (id: string) => {
-    if (!firstBelts.has(id)) firstBelts.set(id, index.fighters.get(id)?.fights.find(fight => wonBelt(fight, id)) ?? null);
-    return firstBelts.get(id)!;
+    let belts = firstBelts.get(id);
+    if (!belts) {
+      const fights = index.fighters.get(id)?.fights ?? [];
+      firstBelts.set(id, belts = { title: fights.find(fight => wonBelt(fight, id, "title") || promotedInto(fight, id)) ?? null, interim: fights.find(fight => wonBelt(fight, id, "interim")) ?? null });
+    }
+    return belts;
   };
   const standingOf = (id: string | null, date: string, fight?: IndexedFight): Standing | null => {
     if (!id) return null;
     const rank = fight && rankOf ? rankOf(id, fight) : null;
-    const belt = firstBelt(id);
-    const beltBefore = belt && (belt.date < date || (fight != null && belt.date === fight.date && belt.ord > fight.ord));
-    const status: Standing["belt"] = rank?.rank === "C" || (fight && sideOf(fight, id).prior.reigningChampion) ? "champion"
-      : rank?.rank === "IC" ? "interim" : beltBefore ? "former" : belt && belt.id !== fight?.id && belt.date >= date ? "future" : null;
+    const belts = firstBelt(id);
+    const before = (belt: IndexedFight | null) => belt != null && (belt.date < date || (fight != null && belt.date === fight.date && belt.ord > fight.ord));
+    const after = (belt: IndexedFight | null) => belt != null && !before(belt) && belt.date >= date;
+    // Won on the night itself, the belt is neither held going in nor still to come.
+    const tonight = (belt: IndexedFight | null) => belt != null && belt.id === fight?.id;
+    const prior = fight ? sideOf(fight, id).prior : null;
+    // Between a promotion and the title bout that shows it, the date it was
+    // made is unknown: with the interim claim still theirs and the interim
+    // belt no longer on the lineage, they are taken as already promoted.
+    const promoted = fight != null && belts.title != null && !before(belts.title) && !tonight(belts.title) && promotedInto(belts.title, id)
+      && index.interimClaimBefore(id, belts.title.weightClass, fight.date, fight.ord)
+      && index.holdersBefore(belts.title.weightClass, fight.date, fight.ord).interim !== id;
+    const status: Standing["belt"] = rank?.rank === "C" || (fight && promotedInto(fight, id)) || promoted ? "champion" : rank?.rank === "IC" || (prior?.interimChampion && !prior.champion) ? "interim"
+      : prior?.reigningChampion ? "champion"
+      : before(belts.title) ? "former" : before(belts.interim) ? "former-interim"
+      : tonight(belts.title) ? null : after(belts.title) ? "future"
+      : tonight(belts.interim) ? null : after(belts.interim) ? "future-interim" : null;
     const ranked = rank && rank.rank !== "C" && rank.rank !== "IC" ? rank : null;
     return ranked || status ? { rank: ranked?.rank ?? null, division: ranked?.division ?? null, belt: status } : null;
   };

@@ -29,7 +29,7 @@ test("opposition lists every UFC opponent with their records, standing and earli
     ["c", { id: "c", name: "C", fights: [title, later], ufcBouts: [title, later].map(row => ufcBout(row, "c")), outsideBouts: [], careerBouts: [], careerVerified: false }],
     ["d", { id: "d", name: "D", fights: [ranked], ufcBouts: [ufcBout(ranked, "d")], outsideBouts: [], careerBouts: [], careerVerified: false }],
   ]);
-  const index = { fighters, byId: new Map([first, title, rematch, ranked, later].map(row => [row.id, row])) } as unknown as FightIndex;
+  const index = { fighters, holdersBefore: () => ({ undisputed: null, interim: null }), interimClaimBefore: () => false, byId: new Map([first, title, rematch, ranked, later].map(row => [row.id, row])) } as unknown as FightIndex;
   const rankOf = (id: string) => id === "d" ? { rank: "7", division: "Lightweight" } : null;
 
   const data = opposition(index, "a", later, rankOf)!;
@@ -64,6 +64,24 @@ test("opposition lists every UFC opponent with their records, standing and earli
   assert.deepEqual(opposition(index, "c")!.rows.find(row => row.fight_id === "later")!.history.map(bout => bout.opponent.name), ["D", "B", "B"]);
   assert.equal(opposition(index, "missing"), null);
   assert.deepEqual(opposition(index, "a", first)!.rows, []);
+});
+
+test("opposition tells an interim belt from the undisputed one, before and after", () => {
+  // X beats A, wins an interim belt, beats A again, then wins the undisputed belt and beats A a third time.
+  // Y only ever wins an interim belt, after meeting A.
+  const interim = (id: string, date: string, sides: unknown[]) => ({ ...fight(id, date, 0, sides, true), titleType: "interim" }) as unknown as IndexedFight;
+  const one = fight("one", "2020-01-01", 0, [side("a", "loss"), side("x", "win")]);
+  const xInterim = interim("x-interim", "2020-06-01", [side("x", "win"), side("z", "loss")]);
+  const two = fight("two", "2021-01-01", 0, [side("a", "loss"), side("x", "win")]);
+  const xTitle = fight("x-title", "2021-06-01", 0, [side("x", "win"), side("z", "loss")], true);
+  const three = fight("three", "2022-01-01", 0, [side("a", "loss"), side("x", "win")]);
+  const y = fight("y", "2022-06-01", 0, [side("a", "win"), side("y", "loss")]);
+  const yInterim = interim("y-interim", "2023-01-01", [side("y", "win"), side("z", "loss")]);
+  const entry = (id: string, fights: IndexedFight[]) => [id, { id, name: id.toUpperCase(), fights, ufcBouts: fights.map(row => ufcBout(row, id)), outsideBouts: [], careerBouts: [], careerVerified: false }] as const;
+  const all = [one, xInterim, two, xTitle, three, y, yInterim];
+  const index = { fighters: new Map(["a", "x", "y", "z"].map(id => entry(id, all.filter(row => row.sides.some(entry => entry.id === id))))), holdersBefore: () => ({ undisputed: null, interim: null }), interimClaimBefore: () => false, byId: new Map(all.map(row => [row.id, row])) } as unknown as FightIndex;
+  const belts = Object.fromEntries(opposition(index, "a")!.rows.map(row => [row.fight_id, row.standing?.belt ?? null]));
+  assert.deepEqual(belts, { one: "future", two: "former-interim", three: "former", y: "future-interim" });
 });
 
 test("archive opposition rows sum to the matchup's opponent record at every cutoff", async () => {
@@ -103,4 +121,18 @@ test("archive opposition rows sum to the matchup's opponent record at every cuto
     for (const before of ["invalid", other.id]) assert.equal(await resolvePublicApi(new URL(`http://localhost${path}?before=${before}`)), undefined);
   }
   assert.equal(await resolvePublicApi(new URL("http://localhost/api/fighters/0000000000000000/opposition")), undefined);
+  // Belts as opponents met them. Whittaker won the interim belt in 2017 and was promoted without a fight:
+  // champion until he lost the undisputed title bout of October 2019, a former champion after. Poirier only ever held the interim belt.
+  const beltsOf = (id: string) => {
+    const met = new Map<string, string | null>();
+    for (const fight of index.fighters.get(id)!.fights) {
+      const opponent = fight.sides.find(entry => entry.id !== id)!;
+      met.set(fight.date, opposition(index, opponent.id)!.rows.find(row => row.fight_id === fight.id)!.standing?.belt ?? null);
+    }
+    return met;
+  };
+  const whittaker = beltsOf("e1147d3d2dabe1ce");
+  assert.deepEqual(["2017-07-08", "2018-06-09", "2019-10-05", "2020-07-25"].map(date => whittaker.get(date)), ["future", "champion", "champion", "former"]);
+  const poirier = beltsOf("029eaff01e6bb8f0");
+  assert.deepEqual(["2018-07-28", "2019-04-13", "2019-09-07", "2020-06-27"].map(date => poirier.get(date)), ["future-interim", null, "interim", "former-interim"]);
 });
