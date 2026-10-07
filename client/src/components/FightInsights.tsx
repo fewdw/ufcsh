@@ -162,7 +162,7 @@ export function RoundsPanel({ fighters }: { fighters: Insightful[] }) {
  *  three- and five-round bouts apart, their totals not being on one scale. */
 export function DecisionsPanel({ name, decisions }: { name: string; decisions: DecisionScores[] | null | undefined }) {
   return <section className={`${PANEL_SHELL} flex min-w-0 flex-col`}>
-    <PanelHeading title="Decision scores" />
+    <PanelHeading title="Average scorecards" />
     <div className="flex flex-1 flex-col justify-center px-3 py-3">
       {decisions?.length ? <dl className="flex flex-col items-center gap-3 text-center">
         {decisions.map(group => <div key={group.rounds}>
