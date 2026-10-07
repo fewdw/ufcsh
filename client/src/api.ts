@@ -173,10 +173,8 @@ export type OppositionBout = {
   opponent: { id: string | null; name: string };
   /** UFC record going in, or today when asked for. */
   record: OppositionRecord;
-  /** Complete professional record going in, once their history is verified. */
-  pro_record: OppositionRecord | null;
   standing: Standing | null;
-  /** The opponent's earlier bouts, or every one when asked for, newest first. */
+  /** The opponent's earlier UFC bouts, or every one when asked for, newest first. */
   history: EarlierBout[];
 };
 /** One of an opponent's earlier bouts: a profile here, else their Sherdog page. */

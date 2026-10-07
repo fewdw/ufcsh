@@ -20,8 +20,8 @@ const chipTone: Record<ReturnType<typeof standingChips>[number]["kind"], string>
   champion: "bg-amber-100 text-belt",
   interim: "bg-slate-100 text-belt-interim",
   rank: "bg-zinc-100 text-zinc-600",
-  former: "text-belt ring-1 ring-inset ring-amber-200",
-  future: "text-belt ring-1 ring-inset ring-amber-200",
+  former: "bg-amber-50 text-belt",
+  future: "bg-amber-50 text-belt",
 };
 
 function Result({ outcome, label }: { outcome: OppositionBout["outcome"]; label?: string }) {
@@ -53,15 +53,18 @@ const boutLabel = (name: string, outcome: OppositionBout["outcome"], against: st
  *  the matchup) and rank going in; how it ended and their UFC record going in. */
 function Faced({ fighter, group, current }: { fighter: Fighter; group: Group; current: boolean }) {
   return <div className="space-y-2">
-    {group.meetings.map(meeting => <div key={meeting.fight_id} className="flex min-w-0 flex-col text-zinc-700">
-      <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 break-words">
-        <Result outcome={meeting.outcome} label={boutLabel(fighter.name, meeting.outcome, group.opponent.name)} />
-        <Name opponent={group.opponent} standing={meeting.standing} to={`/fights/${meeting.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name}`} />
-        <Chips standing={meeting.standing} />
-      </span>
-      <span className="mt-1 pl-6.5 text-zinc-500">
-        <span title={meeting.method ?? undefined}>{resultDot(meeting).shortMethod || "—"}</span>
-        {" · "}<span className="tabular-nums" title={current ? "UFC record now" : "UFC record going in"}><span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(meeting.record)}</span>
+    {group.meetings.map(meeting => <div key={meeting.fight_id} className="flex min-w-0 items-start gap-1.5 text-zinc-700">
+      <Result outcome={meeting.outcome} label={boutLabel(fighter.name, meeting.outcome, group.opponent.name)} />
+      {/* Chips that do not fit beside the name wrap under it, not under the result. */}
+      <span className="min-w-0 flex-1">
+        <span className="flex min-h-5 min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 break-words">
+          <Name opponent={group.opponent} standing={meeting.standing} to={`/fights/${meeting.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name}`} />
+          <Chips standing={meeting.standing} />
+        </span>
+        <span className="mt-1 block text-zinc-500">
+          <span title={meeting.method ?? undefined}>{resultDot(meeting).shortMethod || "—"}</span>
+          {" · "}<span className="whitespace-nowrap tabular-nums" title={current ? "UFC record now" : "UFC record going in"}><span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(meeting.record)}</span>
+        </span>
       </span>
     </div>)}
   </div>;
@@ -73,7 +76,7 @@ function OppositionGrid({ fighter, groups, label, current }: { fighter: Fighter;
   const columns = "grid-cols-[42%_minmax(0,1fr)] gap-3 sm:grid-cols-[13rem_minmax(0,1fr)] sm:gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]";
   return <div aria-label={label} role="list" className="text-[11px] sm:text-xs">
     <div aria-hidden="true" className={`sticky top-0 z-10 grid bg-white pb-2 font-medium text-zinc-500 ${columns}`}>
-      <span>{lastName(fighter.name)} vs.</span><span>{current ? "All their fights" : "Their earlier fights"}</span>
+      <span>{lastName(fighter.name)} vs.</span><span>{current ? "All their UFC fights" : "Their earlier UFC fights"}</span>
     </div>
     {groups.map(group => <section key={group.opponent.id ?? group.opponent.name} role="listitem" aria-label={group.opponent.name} className={`grid border-t border-zinc-200 py-2.5 ${columns}`}>
       <Faced fighter={fighter} group={group} current={current} />
@@ -95,7 +98,7 @@ function OppositionGrid({ fighter, groups, label, current }: { fighter: Fighter;
                 </span>
               </span>
             </li>)}
-          </ul> : <p className="text-zinc-400">{meeting.pro_record ? "Professional debut." : "No earlier fights on record."}</p>}
+          </ul> : <p className="text-zinc-400">UFC debut.</p>}
         </div>)}
       </div>
     </section>)}
@@ -139,7 +142,7 @@ function OppositionModal({ id, scope, fighters, before, close }: { id: string; s
         </div>
         <div role="group" aria-label="Opponents' fights and records" className={`${segmentedGroup} min-w-max flex-1`}>
           {[false, true].map(value => <button key={String(value)} type="button" aria-pressed={current === value} onClick={() => setCurrent(value)}
-            title={value ? "Every fight each opponent has had, and UFC records today" : `Each opponent's fights and UFC records when ${lastName(fighters[selected].name)} fought them`}
+            title={value ? "Every UFC fight each opponent has had, and UFC records today" : `Each opponent's UFC fights and records when ${lastName(fighters[selected].name)} fought them`}
             className={`${segment} ${current === value ? segmentedSelected : segmentedIdle}`}>{value ? "Now" : <><span className="sm:hidden">Then</span><span className="hidden sm:inline">At the time</span></>}</button>)}
         </div>
       </div>

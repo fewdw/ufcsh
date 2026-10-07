@@ -548,7 +548,17 @@ function sharedOpponents(fight: Matchup) {
   })).filter((comparison) => comparison.f1_fights.length && comparison.f2_fights.length);
 }
 
-function HeadToHead({ fight, later = false }: { fight: Matchup; later?: boolean }) {
+/** Earlier meetings, and later ones beside them where the column is wide. */
+function Meetings({ fight }: { fight: Matchup }) {
+  const both = meetingsOf(fight, false).length > 0 && !fight.potential && meetingsOf(fight, true).length > 0;
+  const panels = <>
+    <HeadToHead fight={fight} paired={both} />
+    {!fight.potential ? <HeadToHead fight={fight} later paired={both} /> : null}
+  </>;
+  return both ? <div className="grid gap-2 sm:gap-3 @[52rem]:grid-cols-2">{panels}</div> : panels;
+}
+
+function HeadToHead({ fight, later = false, paired = false }: { fight: Matchup; later?: boolean; paired?: boolean }) {
   const meetings = meetingsOf(fight, later);
   if (!meetings.length) return null;
 
@@ -559,14 +569,14 @@ function HeadToHead({ fight, later = false }: { fight: Matchup; later?: boolean 
         ? "grid-cols-2"
         : meetings.length === 3
           ? "grid-cols-3"
-          : "grid-cols-2 @[52rem]:grid-cols-4";
+          : paired ? "grid-cols-2" : "grid-cols-2 @[52rem]:grid-cols-4";
 
   return (
     <section className={`${shell} flex flex-col overflow-hidden`}>
       <PanelHeading
         title={later ? "Subsequent meetings" : "Previous meetings"}
       />
-      <div className={`grid gap-px bg-zinc-100 ${gridColumns}`}>
+      <div className={`grid flex-1 gap-px bg-zinc-100 ${gridColumns}`}>
         {meetings.map((row) => {
           const winner =
             row.outcome === "win"
@@ -643,13 +653,13 @@ function CommonOpponents({ fight }: { fight: Matchup }) {
         {shared.map((comparison) => (
           // Too narrow for three columns, the opponent heads the row and the
           // two records sit under it, still first fighter left. Newest first
-          // in each list; on one line they run from the oldest beside the
-          // opponent out to the newest.
+          // in each list; on one line they run from the newest beside the
+          // opponent out to the oldest.
           <div
             key={comparison.opponent.id}
             className="grid grid-cols-2 items-center gap-x-2 px-4 py-2 @[30rem]:grid-cols-[minmax(0,1fr)_5.5rem_minmax(0,1fr)] @[30rem]:gap-x-0 @[40rem]:grid-cols-[minmax(0,1fr)_8rem_minmax(0,1fr)]"
           >
-            <div className="col-start-1 row-start-2 min-w-0 space-y-0.5 @[30rem]:row-start-1 @[30rem]:pr-3 @[40rem]:flex @[40rem]:justify-end @[40rem]:gap-1 @[40rem]:space-y-0">
+            <div className="col-start-1 row-start-2 min-w-0 space-y-0.5 @[30rem]:row-start-1 @[30rem]:pr-3 @[40rem]:flex @[40rem]:flex-row-reverse @[40rem]:justify-start @[40rem]:gap-1 @[40rem]:space-y-0">
               {comparison.f1_fights.map((row) => (
                 <CommonFight key={row.fight_id} row={row} align="right" />
               ))}
@@ -663,7 +673,7 @@ function CommonOpponents({ fight }: { fight: Matchup }) {
                 {comparison.opponent.name}
               </Link>
             </div>
-            <div className="col-start-2 row-start-2 min-w-0 space-y-0.5 @[30rem]:col-start-3 @[30rem]:row-start-1 @[30rem]:pl-3 @[40rem]:flex @[40rem]:flex-row-reverse @[40rem]:justify-end @[40rem]:gap-1 @[40rem]:space-y-0">
+            <div className="col-start-2 row-start-2 min-w-0 space-y-0.5 @[30rem]:col-start-3 @[30rem]:row-start-1 @[30rem]:pl-3 @[40rem]:flex @[40rem]:justify-start @[40rem]:gap-1 @[40rem]:space-y-0">
               {comparison.f2_fights.map((row) => (
                 <CommonFight key={row.fight_id} row={row} align="left" />
               ))}
@@ -1031,8 +1041,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 <RecentForm fight={fight} />
                 <CareerProfile fight={fight} />
                 <RoundsPanel fighters={[fight.f1, fight.f2]} />
-                <HeadToHead fight={fight} />
-                {!fight.potential ? <HeadToHead fight={fight} later /> : null}
+                <Meetings fight={fight} />
                 <CommonOpponents fight={fight} />
               </> : null}
               {tab === "odds" ? <OddsPanel fight={fight} /> : null}

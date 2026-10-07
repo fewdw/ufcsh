@@ -94,6 +94,13 @@ function StatModal({ id, fighters, before, selection, update }: {
     update({ ...selection, view: next, sort: initialEvidenceSort(next) });
   };
 
+  // Beside the title on a phone, where the categories fill their rows; on
+  // their line from there up.
+  const order = (className: string) => orders.length > 1 ? <select aria-label="Sort opponents" value={sort.order} onChange={event => setSort({ ...sort, order: event.target.value as EvidenceOrder })}
+    className={`${className} h-9 w-24 shrink-0 rounded-full border-0 bg-zinc-100 pl-3 pr-6 text-xs font-medium text-zinc-700 focus-visible:outline-2 focus-visible:outline-zinc-900`}>
+    {orders.map(order => <option key={order} value={order}>{order === "recent" ? "Recent" : order === "descending" ? "Highest" : "Lowest"}</option>)}
+  </select> : null;
+
   return <EvidenceDialog id={id} close={close} wide={matchup}>
       <div className="shrink-0 px-4 pb-3 pt-3 sm:px-5">
         <div className="flex items-start justify-between gap-3">
@@ -102,10 +109,7 @@ function StatModal({ id, fighters, before, selection, update }: {
             <p className="mt-0.5 text-[10px] text-zinc-400">{before ? cutoff ? `Before ${formatDate(cutoff.date)}` : "Before this fight" : "UFC career"}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            {orders.length > 1 ? <select aria-label="Sort opponents" value={sort.order} onChange={event => setSort({ ...sort, order: event.target.value as EvidenceOrder })}
-              className="h-9 w-24 rounded-full border-0 bg-zinc-100 pl-3 pr-6 text-xs font-medium text-zinc-700 focus-visible:outline-2 focus-visible:outline-zinc-900">
-              {orders.map(order => <option key={order} value={order}>{order === "recent" ? "Recent" : order === "descending" ? "Highest" : "Lowest"}</option>)}
-            </select> : null}
+            {order("sm:hidden")}
             <button type="button" aria-label="Close statistic details" onClick={close} className={`-mr-1 ${CLOSE_BUTTON}`}><X className={CLOSE_ICON} aria-hidden="true" /></button>
           </div>
         </div>
@@ -116,6 +120,7 @@ function StatModal({ id, fighters, before, selection, update }: {
               <span className="sm:hidden">{COMPACT_STAT_LABELS[option.key] ?? option.label}</span><span className="hidden sm:inline">{option.label}</span>
             </button>)}
           </div>)}
+          {order("ml-auto hidden sm:block")}
         </div>
         {matchup && !results ? <div role="group" aria-label="Fighter" className={`${segmentedGroup} mt-3 h-10 lg:hidden`}>
           {fighters.map((fighter, index) => <button key={fighter.id} type="button" aria-pressed={selected === index} onClick={() => update({ ...selection, fighter: index })}

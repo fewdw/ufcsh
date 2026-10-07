@@ -60,6 +60,8 @@ test("opposition lists every UFC opponent with their records, standing and earli
   assert.deepEqual(data.record, { wins: 1, losses: 1, draws: 0, ncs: 0 });
   // A never held a belt, so C's meeting with A carries no standing.
   assert.equal(opposition(index, "c")!.rows.find(row => row.fight_id === "later")!.standing, null);
+  // UFC bouts only: A's regional win over E is not among the bouts C's opponent had had.
+  assert.deepEqual(opposition(index, "c")!.rows.find(row => row.fight_id === "later")!.history.map(bout => bout.opponent.name), ["D", "B", "B"]);
   assert.equal(opposition(index, "missing"), null);
   assert.deepEqual(opposition(index, "a", first)!.rows, []);
 });
@@ -73,13 +75,13 @@ test("archive opposition rows sum to the matchup's opponent record at every cuto
       const expected = (before ? opponentsRecordBefore(index, fighter.id, before.date, before.ord) : opponentsRecordBefore(index, fighter.id, "9999-12-31")) ?? { wins: 0, losses: 0, draws: 0, ncs: 0 };
       assert.deepEqual(evidence.record, expected, `${fighter.name} before ${before?.id ?? "now"}`);
       if (before) assert(!evidence.rows.some(row => row.fight_id === before.id || row.date > before.date), `${fighter.name}: ${before.id}`);
-      for (const row of evidence.rows) assert(!row.history.some(bout => bout.date > row.date || bout.fight_id === row.fight_id), `${fighter.name}: ${row.opponent.name}`);
+      for (const row of evidence.rows) assert(!row.history.some(bout => bout.date > row.date || bout.fight_id === row.fight_id || !bout.fight_id || !bout.record), `${fighter.name}: ${row.opponent.name}`);
       if (!before) {
         // Today's view: the same opponents and total, each with at least the bouts they had then.
         const now = opposition(index, fighter.id, undefined, undefined, true)!;
         assert.deepEqual(now.record, evidence.record, fighter.name);
         assert.deepEqual(now.rows.map(row => row.fight_id), evidence.rows.map(row => row.fight_id), fighter.name);
-        for (const [at, row] of now.rows.entries()) assert(row.history.length > evidence.rows[at].history.length, `${fighter.name}: ${row.opponent.name}`);
+        for (const [at, row] of now.rows.entries()) assert(row.history.length > evidence.rows[at].history.length && row.history.some(bout => bout.fight_id === row.fight_id), `${fighter.name}: ${row.opponent.name}`);
       }
       checked++;
     }
