@@ -92,11 +92,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-07">October 7, 2026</time></p>
             <ul>
-              <li>Tale of the tape: a Win streak row, and Show more for historical win rates by each difference.</li>
-              <li>By round: slimmer bars with totals beside them; hover or drag across to see each fight.</li>
-              <li>Quality of opposition lists UFC fights only, with records as of each meeting or as they are now; pick one meeting when two fighters met more than once.</li>
-              <li>Belt tags tell interim champions from undisputed ones, former and future.</li>
-              <li>Previous and subsequent meetings share a row; common opponents put the most recent fight nearest the middle.</li>
+              <li>Fighter profiles: Average scorecards beside By round, the mean score for and against across UFC decisions, from every judge's card and the fans' average. Three- and five-round fights are kept apart.</li>
+              <li>Ranking history marks draws with an amber dot.</li>
             </ul>
           </Section>
         </div>

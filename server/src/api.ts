@@ -1,6 +1,6 @@
 import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, potentialMatchups, potentialFight } from "./potential-matchups.ts";
 import { careerStatistics } from "./career-statistics.ts";
-import { roundOutcomes } from "./fight-insights.ts";
+import { decisionScores, roundOutcomes } from "./fight-insights.ts";
 import { opposition } from "./opposition.ts";
 import { tapeHistory } from "./tape-history.ts";
 import { eventStatus, fightIsComplete, fightIsUnderway, isFightDay, liveDetailDue } from "./live-state.ts";
@@ -1118,7 +1118,7 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     // same index the leaderboards use, so it moves the moment a result lands.
     records,
     career_stats: careerStatistics(index, fr.id)?.totals,
-    insights: { rounds: roundOutcomes(indexedFighter?.fights ?? [], fr.id) },
+    insights: { rounds: roundOutcomes(indexedFighter?.fights ?? [], fr.id), decisions: decisionScores(indexedFighter?.fights ?? [], fr.id) },
     history: mergedUfcHistory,
     roster_events: fighterRosterEvents(fr.id),
     // The professional list shows the same ranks on its UFC bouts.

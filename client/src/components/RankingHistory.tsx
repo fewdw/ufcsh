@@ -137,7 +137,7 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
     .sort((a, b) => a.at - b.at);
   const lastFight = hover ? fights.filter((fight) => fight.at <= hover.at).at(-1) : undefined;
   // Each result sits at the divisional rank held going in, including NR.
-  const marks = fights.filter((fight) => fight.row.outcome === "win" || fight.row.outcome === "loss").map((fight) => {
+  const marks = fights.filter((fight) => fight.row.outcome !== "nc").map((fight) => {
     const own = timeline!.divisions.find((division) => division.division === fight.row.weight_class);
     const rank = own ? rankOn(own.points, fight.at - 1) : null;
     return { ...fight, top: y(rank ?? "NR") };
@@ -229,7 +229,7 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
             {/* Dots in HTML stay round however the plot is stretched. */}
             {marks.map((mark) => (
               <span key={`${mark.row.date}-${mark.row.opponent.name}`} aria-hidden="true"
-                className={`pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white dark:ring-zinc-900 ${mark.row.outcome === "win" ? "bg-emerald-500" : "bg-rose-500"}`}
+                className={`pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white dark:ring-zinc-900 ${mark.row.outcome === "win" ? "bg-emerald-500" : mark.row.outcome === "loss" ? "bg-rose-500" : "bg-amber-500"}`}
                 style={{ left: `${(x(mark.at) / WIDTH) * 100}%`, top: `${(mark.top / HEIGHT) * 100}%` }} />
             ))}
             {hover ? lines.map((division, index) => {
@@ -274,7 +274,7 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
           )) : null}
           {lastFight ? (
             <span className={`${showFull ? "mt-0.5" : "mt-1.5"} block ${hovered.length && !showFull ? "border-t border-white/10 pt-1.5" : ""}`}>
-              <span className={`font-semibold ${lastFight.row.outcome === "win" ? "text-emerald-400" : lastFight.row.outcome === "loss" ? "text-rose-400" : "text-zinc-300"}`}>
+              <span className={`font-semibold ${lastFight.row.outcome === "win" ? "text-emerald-400" : lastFight.row.outcome === "loss" ? "text-rose-400" : lastFight.row.outcome === "draw" ? "text-amber-400" : "text-zinc-300"}`}>
                 {RESULT_WORD[lastFight.row.outcome ?? ""] ?? "Result"}
               </span> vs {lastFight.row.opponent.name}
               <span className="block text-zinc-400">{formatDate(lastFight.row.date)}{lastFight.row.method ? ` · ${lastFight.row.method}` : ""}</span>

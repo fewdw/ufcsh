@@ -1,5 +1,5 @@
 import { Fragment, useRef, useState } from "react";
-import type { FightInsights, RoundBout } from "../api";
+import type { DecisionScores, FightInsights, RoundBout } from "../api";
 import { lastName } from "../format";
 import { resultDot } from "../resultDots";
 import { anchorAbove, useTooltip } from "../tooltip";
@@ -153,6 +153,26 @@ export function RoundsPanel({ fighters }: { fighters: Insightful[] }) {
           <RoundKey rounds={fighter.insights.rounds} className={two ? "hidden @[44rem]:grid" : "hidden @[21rem]:grid"} />
         </div> : <p className={`py-3 text-center ${CHART_TEXT} text-zinc-500`}>No UFC fights yet.</p>}
       </div>)}
+    </div>
+  </section>;
+}
+
+/** What a fighter's UFC decisions read on the cards on average, theirs then
+ *  the opponent's, over every judge's card and every bout's fan average:
+ *  three- and five-round bouts apart, their totals not being on one scale. */
+export function DecisionsPanel({ name, decisions }: { name: string; decisions: DecisionScores[] | null | undefined }) {
+  return <section className={`${PANEL_SHELL} flex min-w-0 flex-col`}>
+    <PanelHeading title="Average scorecards" />
+    <div className="flex flex-1 flex-col justify-center px-3 py-3">
+      {decisions?.length ? <dl className="flex flex-col items-center gap-3 text-center">
+        {decisions.map(group => <div key={group.rounds}>
+          <dt className={sectionLabel}>{group.rounds} rounds</dt>
+          <dd className="mt-0.5 whitespace-nowrap text-base tabular-nums text-zinc-500"
+            aria-label={`${lastName(name)} ${group.own.toFixed(1)}, opponents ${group.opponent.toFixed(1)}, on average over ${group.fights} ${group.fights === 1 ? "decision" : "decisions"}`}>
+            <span className="font-semibold text-zinc-900">{group.own.toFixed(1)}</span>–{group.opponent.toFixed(1)}
+          </dd>
+        </div>)}
+      </dl> : <p className={`text-center ${CHART_TEXT} text-zinc-500`}>No scored UFC decisions yet.</p>}
     </div>
   </section>;
 }

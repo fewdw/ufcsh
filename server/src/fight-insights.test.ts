@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { roundOutcomes, type RoundOutcome } from "./fight-insights.ts";
+import { decisionScores, roundOutcomes, type RoundOutcome } from "./fight-insights.ts";
 import { fightIndex, type IndexedFight } from "./fight-index.ts";
 
 const bout = (outcome: string, method: string, round: number | null, scheduledRounds = 3) => ({
@@ -58,4 +58,33 @@ test("archive: every counted bout starts round one, and ends once", () => {
       if (next) assert(next.won + next.lost + next.past <= round.past, `${fighter.name} R${next.round}`);
     }
   }
+});
+
+test("decision scores: every judge's card and fan average, by length, from the fighter's side", () => {
+  const scored = (id: string, rounds: number, cards: [number, number][], fans?: [number, number]) => ({
+    ...bout(id === "a" ? "win" : "loss", "U-DEC", rounds, rounds),
+    sides: id === "a" ? [{ id: "a", name: "A", outcome: "win" }, { id: "b", name: "B", outcome: "loss" }] : [{ id: "b", name: "B", outcome: "win" }, { id: "a", name: "A", outcome: "loss" }],
+    row: {
+      detail_json: JSON.stringify({ judges: cards.map(([f1Score, f2Score]) => ({ judge: "J", f1Score, f2Score })) }),
+      community_score_json: fans ? JSON.stringify({ cards: 900, avg1: fans[0], avg2: fans[1], rounds: Array.from({ length: rounds }, (_, index) => ({ round: index + 1 })) }) : null,
+    },
+  }) as unknown as IndexedFight;
+  assert.deepEqual(decisionScores([scored("a", 5, [[50, 45], [50, 45], [50, 45]], [50, 45])], "a"), [
+    { rounds: 5, fights: 1, own: 50, opponent: 45 },
+  ]);
+  const result = decisionScores([
+    scored("a", 3, [[30, 27], [29, 28], [28, 29]], [29, 28]),
+    // Fought from the other corner and lost: the scores swap sides.
+    scored("b", 3, [[30, 27], [30, 27], [30, 27]]),
+    scored("a", 5, [[48, 47], [48, 47], [47, 48]]),
+    // A total no three-round card can carry is left out, as is a finish.
+    scored("a", 3, [[48, 47], [48, 47], [48, 47]]),
+    { ...scored("a", 3, [[30, 27], [30, 27], [30, 27]]), method: "KO/TKO" },
+  ], "a")!;
+  // Three-rounders: three judges and the fans, then three judges: seven cards.
+  assert.deepEqual(result, [
+    { rounds: 3, fights: 2, own: (30 + 29 + 28 + 29 + 27 * 3) / 7, opponent: (27 + 28 + 29 + 28 + 30 * 3) / 7 },
+    { rounds: 5, fights: 1, own: 143 / 3, opponent: 142 / 3 },
+  ]);
+  assert.equal(decisionScores([bout("win", "KO/TKO", 1)], "a"), null);
 });
