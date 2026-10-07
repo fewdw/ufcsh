@@ -53,8 +53,9 @@ const boutLabel = (name: string, outcome: OppositionBout["outcome"], against: st
  *  the matchup) and rank going in; how it ended and their UFC record going in. */
 function Faced({ fighter, group, current, picked, pick }: { fighter: Fighter; group: Group; current: boolean; picked: string | null; pick: (value: string) => void }) {
   // Met more than once, each meeting is a tab choosing whose earlier fights
-  // show beside it, under one for them all. The name still opens the matchup.
-  const tab = (on: boolean) => `relative -mx-1.5 rounded-lg px-1.5 py-1.5 ${on ? "bg-zinc-100" : "hover:bg-zinc-50"}`;
+  // show beside it, under one for them all. The whole tab selects, name
+  // included; only its date, marked as a link, opens the matchup.
+  const tab = (on: boolean) => `relative -mx-1.5 cursor-pointer rounded-lg px-1.5 py-1.5 ring-1 ring-inset ${on ? "bg-zinc-50 ring-zinc-300" : "ring-transparent hover:bg-zinc-50"}`;
   const focus = "focus-visible:outline-2 focus-visible:outline-zinc-900";
   const under = picked ? "pointer-events-none relative" : "";
   return <div role={picked ? "group" : undefined} aria-label={picked ? `Fights with ${group.opponent.name}` : undefined} className={picked ? "space-y-0.5" : "space-y-2"}>
@@ -65,14 +66,16 @@ function Faced({ fighter, group, current, picked, pick }: { fighter: Fighter; gr
       {/* Chips that do not fit beside the name wrap under it, not under the result. */}
       <span className={`min-w-0 flex-1 ${under}`}>
         <span className="flex min-h-5 min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 break-words">
-          <Name opponent={group.opponent} standing={meeting.standing} to={`/fights/${meeting.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name}`} className={picked ? "pointer-events-auto" : ""} />
+          {picked ? <Name opponent={{ id: null, name: group.opponent.name }} standing={meeting.standing} />
+            : <Name opponent={group.opponent} standing={meeting.standing} to={`/fights/${meeting.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name}`} />}
           <Chips standing={meeting.standing} />
         </span>
         <span className="mt-1 block text-zinc-500">
           <span title={meeting.method ?? undefined}>{resultDot(meeting).shortMethod || "—"}</span>
           {" · "}<span className="whitespace-nowrap tabular-nums" title={current ? "UFC record now" : "UFC record going in"}><span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(meeting.record)}</span>
         </span>
-        {picked ? <span className="mt-0.5 block text-[10px] tabular-nums text-zinc-400">{formatDateShortWithYear(meeting.date)}</span> : null}
+        {picked ? <Link to={`/fights/${meeting.fight_id}?tab=matchup`} title={`Open ${fighter.name} vs. ${group.opponent.name}`}
+          className={`pointer-events-auto mt-0.5 inline-block text-[10px] tabular-nums text-zinc-500 underline hover:text-zinc-900 ${linkUnderline}`}>{formatDateShortWithYear(meeting.date)} <span aria-hidden="true">↗</span></Link> : null}
       </span>
     </div>)}
   </div>;
