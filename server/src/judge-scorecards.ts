@@ -72,23 +72,47 @@ function surnameMatches(a: string, b: string): boolean {
 const sameTotal = (left: JudgeCard, right: JudgeCard): boolean =>
   Number(left.f1Score) === Number(right.f1Score) && Number(left.f2Score) === Number(right.f2Score);
 
+export const hasDistinctJudgeNames = (cards: JudgeCard[]): boolean => cards.every((card, i) =>
+  !!card.judge?.trim() && !cards.slice(0, i).some(other => sameJudge(card.judge, other.judge)));
+
 /** Attach imported round detail to independent official totals. Each source
  * card is used once and never crosses a different final score. */
 export function mergeJudgeRounds(official: JudgeCard[], imported: JudgeCard[]): JudgeCard[] {
   const used = new Set<number>();
+  const matches = new Map<number, number>();
+  // Reserve the named officials first. An unnamed card with the same total
+  // must not consume the source card belonging to a known panel member.
+  official.forEach((judge, index) => {
+    if (!judge.judge?.trim()) return;
+    const candidates = imported.map((card, at) => ({ card, at }))
+      .filter(({ card, at }) => !used.has(at) && sameJudge(card.judge, judge.judge) && sameTotal(card, judge));
+    const match = candidates.find(({ card }) => validRounds(card).length) ?? candidates[0];
+    if (match) { matches.set(index, match.at); used.add(match.at); }
+  });
+  official.forEach((judge, index) => {
+    if (judge.judge?.trim()) return;
+    const candidates = imported.map((card, at) => ({ card, at })).filter(({ card, at }) => !used.has(at) && sameTotal(card, judge));
+    const namedRounds = candidates.filter(({ card }) => card.judge?.trim() && validRounds(card).length);
+    const withRounds = candidates.filter(({ card }) => validRounds(card).length);
+    const named = candidates.filter(({ card }) => card.judge?.trim());
+    const preferred = namedRounds.length ? namedRounds : withRounds.length ? withRounds : named.length ? named : candidates;
+    const match = preferred.find(({ at }) => at === index) ?? preferred[0];
+    if (match) { matches.set(index, match.at); used.add(match.at); }
+  });
+  // Recover missing names only from a complete, distinct, independently
+  // confirmed three-judge panel. Equal totals do not give an unnamed row an
+  // identity on their own; the full panel establishes who supplied them.
+  const completePanel = official.length === 3 && matches.size === 3
+    && hasDistinctJudgeNames([...matches.values()].map(at => imported[at]));
   return official.map((judge, index) => {
-    const candidates = imported.map((card, at) => ({ card, at })).filter(({ card, at }) => !used.has(at) && validRounds(card).length);
-    const match = candidates.find(({ card }) => sameJudge(card.judge, judge.judge) && sameTotal(card, judge))
-      // Some early UFCStats cards omit every judge name. Only those unnamed
-      // rows may fall back to source order or final score; a named official is
-      // never replaced merely because an unrelated card has the same total.
-      ?? (!judge.judge ? candidates.find(({ card, at }) => at === index && sameTotal(card, judge)) : undefined)
-      ?? (!judge.judge ? candidates.find(({ card }) => sameTotal(card, judge)) : undefined);
-    if (!match) return judge;
-    const rounds = validRounds(match.card);
-    if (!rounds.length) return judge;
-    used.add(match.at);
-    return { ...judge, rounds };
+    const at = matches.get(index);
+    if (at == null) return judge;
+    const card = imported[at];
+    const rounds = validRounds(card);
+    return { ...judge,
+      ...(completePanel && !judge.judge?.trim() ? { judge: card.judge } : {}),
+      ...(rounds.length ? { rounds } : {}),
+    };
   });
 }
 

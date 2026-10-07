@@ -51,3 +51,11 @@ test("both roster sources offered by the board pass the repair guard", async () 
   await assert.rejects(run("detail", "ufc", "admin@example.com"), /Unknown repair/);
   await assert.rejects(run("roster-moves", "unknown", "admin@example.com"), /Unknown repair/);
 });
+
+test("judge-name repairs require a fight id and the normal backup and audit", async () => {
+  const calls: string[] = [];
+  const run = createRepairRunner(async () => { calls.push("backup"); }, async () => { calls.push("repair"); }, () => { calls.push("audit"); });
+  await run("judge-names", "0123456789abcdef", "admin@example.com");
+  assert.deepEqual(calls, ["backup", "repair", "audit"]);
+  await assert.rejects(run("judge-names", "all", "admin@example.com"), /Unknown repair/);
+});

@@ -48,12 +48,13 @@ export function parseMmaDecision(html: string): MmaDecision | null {
     const totals = table.find("tr.bottom-row td").map((_j, td) => cleanText($(td).text())).get();
     const f1Score = Number(totals[1]);
     const f2Score = Number(totals[2]);
-    if (!judge || ![3, 5].includes(rounds.length) || totals[0] !== "TOTAL"
+    if (!judge || ![0, 3, 5].includes(rounds.length) || totals[0] !== "TOTAL"
+      || !Number.isInteger(f1Score) || !Number.isInteger(f2Score) || f1Score <= 0 || f2Score <= 0 || f1Score > 50 || f2Score > 50
       || rounds.some((r, i) => r.round !== i + 1 || !Number.isInteger(r.f1Score) || !Number.isInteger(r.f2Score)
         || r.f1Score < 0 || r.f2Score < 0 || r.f1Score > 10 || r.f2Score > 10)
-      || rounds.reduce((sum, r) => sum + r.f1Score, 0) !== f1Score
-      || rounds.reduce((sum, r) => sum + r.f2Score, 0) !== f2Score) return;
-    judges.push({ judge, f1Score, f2Score, rounds });
+      || (rounds.length > 0 && (rounds.reduce((sum, r) => sum + r.f1Score, 0) !== f1Score
+        || rounds.reduce((sum, r) => sum + r.f2Score, 0) !== f2Score))) return;
+    judges.push({ judge, f1Score, f2Score, ...(rounds.length ? { rounds } : {}) });
   });
   return { f1Name: names[0], f2Name: names[1], judges };
 }

@@ -93,7 +93,7 @@ function officiatedOf(fight: IndexedFight): Officiated {
   const imported = parseJson(fight.row.judge_rounds_json);
   const official: JudgeCard[] = Array.isArray(detail?.judges) ? detail.judges : [];
   const importedCards: JudgeCard[] = Array.isArray(imported?.judges) ? imported.judges : [];
-  const merged = official.length ? mergeJudgeRounds(official, importedCards) : [];
+  const merged = official.length ? mergeJudgeRounds(official, importedCards) : importedCards;
   const cards: Card[] = merged
     .filter((card) => Number.isFinite(Number(card.f1Score)) && Number.isFinite(Number(card.f2Score)))
     .map((card) => ({

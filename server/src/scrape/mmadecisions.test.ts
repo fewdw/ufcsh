@@ -29,3 +29,10 @@ test("MMA Decisions judge rounds must sum to the published total", () => {
     [{ round: 1, f1Score: 10, f2Score: 9 }, { round: 2, f1Score: 9, f2Score: 10 }, { round: 3, f1Score: 10, f2Score: 9 }]);
   assert.equal(parseMmaDecision(page(30))?.judges.length, 0);
 });
+
+test("published judge totals can retain names when the source has no round scores", () => {
+  const page = `<a href="fighter/1/A">First Fighter</a><a href="fighter/2/B">Second Fighter</a>
+    <table><tr><td class="judge">Jane Judge</td></tr><tr class="bottom-row"><td>TOTAL</td><td>29</td><td>28</td></tr></table>`;
+  assert.deepEqual(parseMmaDecision(page)?.judges, [{ judge: "Jane Judge", f1Score: 29, f2Score: 28 }]);
+  assert.equal(parseMmaDecision(page.replace("<td>29</td>", "<td>--</td>"))?.judges.length, 0);
+});

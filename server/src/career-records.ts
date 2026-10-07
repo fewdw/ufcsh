@@ -330,12 +330,16 @@ async function resolve(local: LocalFighter, knownUrl = "", verified = false): Pr
 
 function storeVerified(fighterId: string, value: VerifiedCandidate): void {
   const now = Date.now();
+  const born = value.profile.birthDate;
+  const birthDate = /^\d{4}-\d{2}-\d{2}$/.test(born) && Number.isFinite(Date.parse(born))
+    && new Date(born).toISOString().slice(0, 10) === born && Date.parse(born) < now ? born : "";
   db.exec("BEGIN IMMEDIATE");
   try {
     // Nationality rides along with the verified history: it is the same page,
     // read once, and it belongs to the identity we just established.
-    db.prepare("UPDATE fighters SET country = ?, country_code = ?, birthplace = ? WHERE id = ?")
-      .run(value.profile.country || null, value.profile.countryCode || null, value.profile.birthplace || null, fighterId);
+    db.prepare(`UPDATE fighters SET country = ?, country_code = ?, birthplace = ?,
+      birth_date = CASE WHEN birth_date = '' THEN ? ELSE birth_date END WHERE id = ?`)
+      .run(value.profile.country || null, value.profile.countryCode || null, value.profile.birthplace || null, birthDate, fighterId);
     db.prepare("DELETE FROM career_bouts WHERE fighter_id = ? AND source = ?").run(fighterId, SOURCE);
     const insert = db.prepare(`
       INSERT INTO career_bouts (

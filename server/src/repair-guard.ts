@@ -6,6 +6,7 @@ const ACTIONS: Record<BugActionId, true> = {
   "potential-odds": true, odds: true, props: true, career: true, detail: true, segments: true, event: true,
   "clear-bfo": true, birth: true, wiki: true, article: true, catchweight: true, "forget-ufc": true, verdict: true,
   "roster-moves": true, "ufc-status": true, news: true, "news-ai": true, "ranking-history": true, rankings: true,
+  "judge-names": true,
 };
 
 /** One concurrent repair per API process, with a verified snapshot before the day's first change. */
