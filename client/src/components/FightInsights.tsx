@@ -1,5 +1,5 @@
 import { Fragment, useRef, useState } from "react";
-import type { FightInsights, RoundBout } from "../api";
+import type { DecisionScores, FightInsights, RoundBout } from "../api";
 import { lastName } from "../format";
 import { resultDot } from "../resultDots";
 import { anchorAbove, useTooltip } from "../tooltip";
@@ -153,6 +153,31 @@ export function RoundsPanel({ fighters }: { fighters: Insightful[] }) {
           <RoundKey rounds={fighter.insights.rounds} className={two ? "hidden @[44rem]:grid" : "hidden @[21rem]:grid"} />
         </div> : <p className={`py-3 text-center ${CHART_TEXT} text-zinc-500`}>No UFC fights yet.</p>}
       </div>)}
+    </div>
+  </section>;
+}
+
+const SCORED = [["judges", "Judges"], ["fans", "Fans"]] as const;
+
+/** What a fighter's UFC decisions read on the cards on average, theirs then
+ *  the opponent's: the judges' and the fans', three- and five-round bouts
+ *  apart because their totals are not on one scale. */
+export function DecisionsPanel({ name, decisions }: { name: string; decisions: DecisionScores[] | null | undefined }) {
+  return <section className={`${PANEL_SHELL} flex min-w-0 flex-col`}>
+    <PanelHeading title="Decision scores" />
+    <div className="flex flex-1 flex-col justify-center gap-3 px-3 py-3">
+      {decisions?.length ? decisions.map(group => <dl key={group.rounds} className="mx-auto grid w-full max-w-56 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 gap-y-1">
+        <dt className={`col-span-2 ${sectionLabel}`}>{group.rounds} rounds · avg</dt>
+        {SCORED.map(([key, label]) => {
+          const average = group[key];
+          return average ? <Fragment key={key}>
+            <dt className={`truncate ${CHART_TEXT} text-zinc-500`}>{label} <span className="tabular-nums text-zinc-400" title={`${average.fights} ${average.fights === 1 ? "decision" : "decisions"}`}>· {average.fights}</span></dt>
+            <dd className="whitespace-nowrap text-sm tabular-nums text-zinc-500" aria-label={`${lastName(name)} ${average.own.toFixed(1)}, opponents ${average.opponent.toFixed(1)}, over ${average.fights} ${average.fights === 1 ? "decision" : "decisions"}`}>
+              <span className="font-semibold text-zinc-900">{average.own.toFixed(1)}</span>–{average.opponent.toFixed(1)}
+            </dd>
+          </Fragment> : null;
+        })}
+      </dl>) : <p className={`text-center ${CHART_TEXT} text-zinc-500`}>No scored UFC decisions yet.</p>}
     </div>
   </section>;
 }

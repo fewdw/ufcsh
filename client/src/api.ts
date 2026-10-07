@@ -198,7 +198,11 @@ export type RoundBout = { outcome: "win" | "loss" | "draw"; method: string | nul
 export type RoundOutcome = { round: number; won: number; lost: number; past: number; bouts: RoundBout[] };
 export type FightInsights = {
   rounds: { fights: number; rounds: RoundOutcome[]; decision: { won: number; lost: number; drawn: number; bouts: RoundBout[] } } | null;
+  /** Profiles only: mean decision cards, by bout length. */
+  decisions?: DecisionScores[] | null;
 };
+export type ScoreAverage = { fights: number; own: number; opponent: number };
+export type DecisionScores = { rounds: number; judges: ScoreAverage | null; fans: ScoreAverage | null };
 
 export type FightOdds = {
   f1: { open: string | null; close: string | null };
