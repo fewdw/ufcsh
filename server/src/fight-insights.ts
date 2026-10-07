@@ -2,12 +2,14 @@ import { sideOf, type IndexedFight } from "./fight-index.ts";
 
 /** One round of a fighter's UFC bouts: finishes won and lost in it, and the
  *  bouts that carried on past it (into the next round or to the cards). */
-export type RoundOutcome = { round: number; won: number; lost: number; past: number };
+export type RoundOutcome = { round: number; won: number; lost: number; past: number; bouts: RoundBout[] };
+/** A bout that ended there: this fighter's result, how, and against whom. */
+export type RoundBout = { outcome: "win" | "loss" | "draw"; method: string | null; opponent: string };
 export type RoundOutcomes = {
   /** Bouts counted: decided by a finish in a known round, or on the cards. */
   fights: number;
   rounds: RoundOutcome[];
-  decision: { won: number; lost: number; drawn: number };
+  decision: { won: number; lost: number; drawn: number; bouts: RoundBout[] };
 };
 
 const decision = (method: string | null) => /DEC/i.test(method ?? "");
@@ -17,22 +19,25 @@ const decision = (method: string | null) => /DEC/i.test(method ?? "");
 export function roundOutcomes(fights: IndexedFight[], fighterId: string): RoundOutcomes | null {
   const rounds: RoundOutcome[] = [];
   const at = (round: number) => {
-    while (rounds.length < round) rounds.push({ round: rounds.length + 1, won: 0, lost: 0, past: 0 });
+    while (rounds.length < round) rounds.push({ round: rounds.length + 1, won: 0, lost: 0, past: 0, bouts: [] });
     return rounds[round - 1];
   };
-  const result = { fights: 0, rounds, decision: { won: 0, lost: 0, drawn: 0 } };
+  const result = { fights: 0, rounds, decision: { won: 0, lost: 0, drawn: 0, bouts: [] as RoundBout[] } };
   for (const fight of fights) {
     const outcome = sideOf(fight, fighterId).outcome;
     if (!outcome || outcome === "nc") continue;
+    const bout = { outcome, method: fight.method, opponent: fight.sides.find(side => side.id !== fighterId)?.name ?? "" };
     if (decision(fight.method)) {
       const last = fight.round ?? fight.scheduledRounds;
       if (!last) continue;
       for (let round = 1; round <= last; round++) at(round).past++;
       result.decision[outcome === "win" ? "won" : outcome === "loss" ? "lost" : "drawn"]++;
+      result.decision.bouts.push(bout);
     } else {
       if (outcome === "draw" || !fight.round) continue;
       for (let round = 1; round < fight.round; round++) at(round).past++;
       at(fight.round)[outcome === "win" ? "won" : "lost"]++;
+      at(fight.round).bouts.push(bout);
     }
     result.fights++;
   }

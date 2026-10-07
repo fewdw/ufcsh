@@ -999,12 +999,12 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
               {tab === "matchup" ? <>
                 <section className={`matchup-overview @container overflow-hidden ${shell}`}>
                   <PanelHeading title="Tale of the tape" aside={
-                    <label className="hidden cursor-pointer items-center gap-1.5 text-[11px] text-zinc-500 @[40rem]:flex">
-                      <input type="checkbox" checked={settings.tapeAdvanced} onChange={(event) => update("tapeAdvanced", event.target.checked)} className="h-3 w-3 accent-sky-500" />
-                      Advanced
-                    </label>
+                    <button type="button" onClick={() => update("tapeAdvanced", !settings.tapeAdvanced)} aria-expanded={settings.tapeAdvanced}
+                      className="hidden text-[11px] text-zinc-500 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900 @[40rem]:block">
+                      {settings.tapeAdvanced ? "Show less" : "Show more"}
+                    </button>
                   } />
-                  {/* Wide: the saved checkbox puts the pies beside the tape. Narrow: a
+                  {/* Wide: the saved Show more puts the pies beside the tape. Narrow: a
                       toggle under it opens them for this matchup only, closed by default. */}
                   <div className={`grid items-start gap-x-9 px-5 pb-3 ${settings.tapeAdvanced ? "@[40rem]:grid-cols-2 @[52rem]:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]" : ""}`}>
                     <div className="matchup-comparisons grid min-w-0 content-start">
@@ -1017,7 +1017,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                       aria-expanded={tapeOpen}
                       className="mx-auto mt-2 flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-50 @[40rem]:hidden"
                     >
-                      Advanced
+                      {tapeOpen ? "Show less" : "Show more"}
                       <ChevronDown className={`h-3.5 w-3.5 transition-transform ${tapeOpen ? "rotate-180" : ""}`} aria-hidden="true" />
                     </button>
                     {settings.tapeAdvanced || tapeOpen ? (

@@ -193,9 +193,10 @@ export type Opposition = {
   rows: OppositionBout[];
 };
 
-export type RoundOutcome = { round: number; won: number; lost: number; past: number };
+export type RoundBout = { outcome: "win" | "loss" | "draw"; method: string | null; opponent: string };
+export type RoundOutcome = { round: number; won: number; lost: number; past: number; bouts: RoundBout[] };
 export type FightInsights = {
-  rounds: { fights: number; rounds: RoundOutcome[]; decision: { won: number; lost: number; drawn: number } } | null;
+  rounds: { fights: number; rounds: RoundOutcome[]; decision: { won: number; lost: number; drawn: number; bouts: RoundBout[] } } | null;
 };
 
 export type FightOdds = {
