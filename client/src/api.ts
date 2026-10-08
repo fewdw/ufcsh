@@ -524,6 +524,8 @@ export type RankingEntry = {
     /** Distinct results against each ranked opponent, latest last. */
     opponent_history?: Record<string, ("win" | "loss" | "draw" | "nc")[]>;
     top15_record?: { wins: number; losses: number; draws: number } | null;
+    /** UFC-branded bouts only, as on the profile; null before a UFC debut. */
+    ufc_record?: { wins: number; losses: number; draws: number; ncs: number; text: string } | null;
     ranked_record?: { wins: number; losses: number; draws: number };
   };
 };
