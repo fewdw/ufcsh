@@ -461,6 +461,9 @@ function MatchupContext({ fight }: { fight: Matchup }) {
     return <span title={side.streak.complete ? "Across all promotions" : "From available history"}>{count}</span>;
   };
 
+  // Text, so a fighter with none reads 0 rather than a missing value.
+  const fiveRounders = (side: Matchup["f1"]) => side.ufc_five_round_fights_before == null ? "" : String(side.ufc_five_round_fights_before);
+
   if (!f1 && !f2 && !f1Last && !f2Last && !fight.f1.complete_record_before && !fight.f2.complete_record_before) return null;
 
   return (
@@ -468,6 +471,7 @@ function MatchupContext({ fight }: { fight: Matchup }) {
       <h3 className="sr-only">Career entering this fight</h3>
       <EnteringRow label="Record" f1={fight.f1.complete_record_before?.text ?? ""} f2={fight.f2.complete_record_before?.text ?? ""} note="Complete professional record entering this bout, reconstructed from verified dated history" />
       <EnteringRow label="UFC record" f1={fight.f1.ufc_record_before ?? "0-0"} f2={fight.f2.ufc_record_before ?? "0-0"} />
+      {fight.scheduled_rounds === 5 ? <EnteringRow label="5-round fights" f1={fiveRounders(fight.f1)} f2={fiveRounders(fight.f2)} note="UFC bouts booked for five rounds before this one, however they ended" /> : null}
       <OppositionDetails key={fight.id} fighters={[fight.f1, fight.f2]} before={fight.potential ? undefined : fight.id}>
         {action => <EnteringRow action={action} label={<span className="inline-block border-b border-current pb-0.5 text-zinc-700">OPP. Record</span>} f1={fight.f1.ufc_opponents_record_before ?? "0-0"} f2={fight.f2.ufc_opponents_record_before ?? "0-0"} note="Combined UFC record of their UFC opponents on the night they fought them — view fighters" />}
       </OppositionDetails>

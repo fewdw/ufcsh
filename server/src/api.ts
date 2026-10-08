@@ -950,6 +950,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
       career_before: fid ? careerBefore(index, fid, f.event_date, f.weight_class ?? "", Number(f.ord) || 0, opponentId) : null,
       ufc_record_before: context.ufc_record ?? null,
       ufc_days_since_before: context.days_since ?? null,
+      ufc_five_round_fights_before: fid ? earlier.filter(bout => bout.scheduledRounds === 5).length : null,
       ufc_opponents_record_before: opponentsRecord ? recordText(opponentsRecord) : null,
       streak: context.streak ?? null,
       form_details: context.form_details ?? [],

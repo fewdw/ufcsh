@@ -370,6 +370,8 @@ export type MatchupSide = FightSide & {
   ufc_record_before: string | null;
   /** Days since the previous merged UFC-history bout. */
   ufc_days_since_before: number | null;
+  /** UFC bouts booked for five rounds before this one, however they ended. */
+  ufc_five_round_fights_before: number | null;
   /** UFC opponents' UFC records on the nights they met, summed; null before a UFC bout. */
   ufc_opponents_record_before: string | null;
   complete_record_before: CompleteRecordBefore | null;
