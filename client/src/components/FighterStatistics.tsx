@@ -63,10 +63,9 @@ function Rows({ stats }: { stats: BoardStat[] }) {
 export default function FighterStatistics({ fighterId, history }: { fighterId: string; history: FighterProfile["history"] }) {
   const { settings, update } = useSettings();
   const [scope, setScope] = useHistoryState<string>(`stats-scope:${fighterId}`, "ufc");
-  const [minimum, setMinimum] = useHistoryState<number>(`stats-minimum:${fighterId}`, 0);
   const [query, setQuery] = useState("");
   const sort: StatsSort = settings.statsSort;
-  const { data, error, retry } = useApi<FighterBoard>(`/api/fighters/${fighterId}/stats?scope=${encodeURIComponent(scope)}&minBouts=${minimum}`);
+  const { data, error, retry } = useApi<FighterBoard>(`/api/fighters/${fighterId}/stats?scope=${encodeURIComponent(scope)}&minBouts=0`);
   // Switching scope keeps the last answer on screen, dimmed, until the next
   // arrives, so the controls never jump out from under the pointer.
   const last = useRef<FighterBoard | null>(null);
@@ -98,9 +97,6 @@ export default function FighterStatistics({ fighterId, history }: { fighterId: s
     <section className={`${PANEL} @container overflow-hidden`}>
       <div className="px-4 py-2.5 sm:px-5 sm:py-3">
         <h2 className="text-sm font-semibold text-zinc-900">Statistics</h2>
-        <p className="mt-0.5 truncate text-xs text-zinc-500">
-          {board ? `${board.stats.length.toLocaleString()} ranked readings · ${board.scope_label}` : error ? "Couldn’t load rankings" : <span className="appear-late">Loading rankings…</span>}
-        </p>
       </div>
 
       <div className="border-t border-zinc-100">
@@ -134,13 +130,6 @@ export default function FighterStatistics({ fighterId, history }: { fighterId: s
           </label>
         </div>
 
-        <div className="px-4 pb-2.5 sm:px-5">
-          <label className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">Minimum UFC bouts in this scope
-            <select aria-label="Minimum UFC bouts" value={minimum} onChange={(event) => setMinimum(Number(event.target.value))} className="rounded-full border border-zinc-200 bg-white px-2 py-1 text-zinc-700">
-              {[0, 3, 5, 10, 20].map((n) => <option key={n} value={n}>{n ? `${n}+ bouts` : "Default samples"}</option>)}
-            </select>
-          </label>
-        </div>
         {error ? <div className="px-4 pb-3 sm:px-5"><RequestNotice onRetry={retry}>Couldn’t update these rankings. Any figures below are from the previous selection.</RequestNotice></div> : null}
         {!board && !error ? <p role="status" className="appear-late px-5 py-6 text-center text-xs text-zinc-400">Loading rankings…</p> : null}
 
@@ -174,7 +163,7 @@ export default function FighterStatistics({ fighterId, history }: { fighterId: s
             )}
             <details className="border-t border-zinc-100 px-4 py-3 text-xs text-zinc-500 sm:px-5">
               <summary className="cursor-pointer font-medium text-zinc-700">Coverage & bout history</summary>
-              <p className="my-2 leading-5">Current career statistics. Rate rankings keep their own minimum samples even with no extra bout filter. The history below covers this scope; some metrics use fewer bouts, as shown beside each reading. Missing data is never counted as zero.</p>
+              <p className="my-2 leading-5">Current career statistics. Every UFC bout in this scope counts. Rate rankings keep their own minimum samples, so one bout cannot top them. The history below covers this scope; some metrics use fewer bouts, as shown beside each reading. Missing data is never counted as zero.</p>
               {board.unqualified.length ? <details className="my-2"><summary className="cursor-pointer">{board.unqualified.length} readings without a qualifying sample</summary><ul className="mt-2 grid gap-1 sm:grid-cols-2">{board.unqualified.map((entry) => <li key={entry.key}>{entry.label} · unranked</li>)}</ul></details> : null}
               <ul className="max-h-64 space-y-2 overflow-y-auto">{history.filter((row) => !row.upcoming && (board.scope === "ufc" || row.weight_class === board.scope)).map((row) => <li key={row.fight_id}><Link className="underline underline-offset-2 hover:text-zinc-900" to={`/fights/${row.fight_id}`}>{row.date} · {row.opponent.name}</Link>{row.method ? ` · ${row.method}` : ""}</li>)}</ul>
             </details>

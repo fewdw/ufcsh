@@ -535,7 +535,7 @@ function Records({ records }: { records: FighterRecord[] }) {
   const place = (record: FighterRecord) => `${record.tied ? "T" : ""}${record.rank}`;
   return (
     <section className={shell}>
-      <PanelHeading title="Records" />
+      <PanelHeading title="Top Records" />
       <div className="divide-y divide-zinc-50 py-1">
         {records.map((record) => (
           <div key={`${record.key}:${record.scope}`} className="flex items-center gap-3 px-4 py-2">
