@@ -90,11 +90,11 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-07">October 7, 2026</time></p>
+            <p><time dateTime="2026-10-08">October 8, 2026</time></p>
             <ul>
-              <li>Historical roster timelines include more sourced signing and departure dates.</li>
-              <li>Replacement details retain dated announcements without calling them exact notice.</li>
-              <li>Scorecard imports combine verified judges across sources, and missing cards can be re-read from the admin board.</li>
+              <li>Pages open faster on phones, especially event cards and matchups.</li>
+              <li>A matchup no longer jumps down as its row of bouts loads.</li>
+              <li>Smaller downloads for the site's code and placeholder images.</li>
             </ul>
           </Section>
         </div>

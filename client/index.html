@@ -29,6 +29,24 @@
         var responses = {};
         urls.forEach(function (url) { responses[url] = fetch(url).catch(function () { return null; }); });
         window.__ufcPreload = { at: Date.now(), responses: responses };
+        // "/" opens the card the list tags (landingEvent in src/liveEvent.ts),
+        // so that card is asked for the moment the list arrives, not after the
+        // code has run. A different pick only costs one unused request.
+        if (path === "/") responses["/api/events"].then(function (response) {
+          return response && response.ok ? response.clone().json() : null;
+        }).then(function (events) {
+          if (!events || !events.length) return;
+          var now = Date.now(), day = function (t) { return new Date(t).toISOString().slice(0, 10); };
+          var live, done, next, dated, url;
+          events.forEach(function (e) {
+            if (e.status === "current") { if (!live || e.date > live.date) live = e; }
+            else if (e.status === "past" && e.date && e.date >= day(now - 86400000) && e.date <= day(now)) { if (!done || e.date > done.date) done = e; }
+            else if (e.status === "next") { if (!next || e.date < next.date) next = e; }
+            if (!dated && e.date) dated = e;
+          });
+          url = ranked("/api/events/" + (live || done || next || dated || events[0]).id);
+          if (!responses[url]) responses[url] = fetch(url).catch(function () { return null; });
+        }).catch(function () {});
       })();
     </script>
     <title>#1 UFC Data Platform: Events, Odds, Stats &amp; Rankings | ufc.sh</title>
@@ -73,5 +91,29 @@
     <div id="root"></div>
     <noscript>ufc.sh requires JavaScript to display UFC fight cards, matchup statistics, odds and rankings.</noscript>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // The opening page's code, asked for alongside the main bundle (which
+      // the build puts above) rather than after it. Chunk lists come from the
+      // build (vite.config.ts); the paths match `pageFor` in src/pages.ts.
+      (function () {
+        var chunks = __PAGE_CHUNKS__, path = location.pathname;
+        var page = path === "/" || /^\/(events|fights)\//.test(path) ? "EventsPage"
+          : /^\/fighters\//.test(path) ? "FighterPage"
+          : path === "/rankings" ? "RankingsPage"
+          : path === "/stats" ? "StatsPage"
+          : /^\/judges\//.test(path) ? "JudgePage"
+          : /^\/referees\//.test(path) ? "RefereePage"
+          : /^\/(venues|locations)\//.test(path) ? "VenuePage"
+          : path === "/officials" || path === "/venues" || path === "/locations" ? "DirectoryPages"
+          : null;
+        (chunks[page] || []).forEach(function (name) {
+          var link = document.createElement("link");
+          link.rel = "modulepreload";
+          link.crossOrigin = "";
+          link.href = "/assets/" + name + ".js";
+          document.head.appendChild(link);
+        });
+      })();
+    </script>
   </body>
 </html>
