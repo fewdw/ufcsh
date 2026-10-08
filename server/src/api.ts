@@ -19,13 +19,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { backup, DatabaseSync } from "node:sqlite";
-import { gzip } from "node:zlib";
+import { brotliCompress, constants as zlibConstants, gzip } from "node:zlib";
 import { promisify } from "node:util";
 import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import { prepared, getMeta, setMeta, DATA_DIR, dataRevision, db } from "./db.ts";
 import { enqueueRefresh } from "./refresh-queue.ts";
 import { QueryPool } from "./query-pool.ts";
-import { ResponseCache, representation, acceptsGzip, matchesEtag, OverloadedError, type Representation } from "./response-cache.ts";
+import { ResponseCache, representation, acceptsEncoding, acceptsGzip, matchesEtag, OverloadedError, type Representation } from "./response-cache.ts";
 import { HttpObservability } from "./observability.ts";
 import { createRepairRunner } from "./repair-guard.ts";
 import { publicApi, cachePolicy, canonicalApiKey, clientAddress, RateLimiter } from "./api-policy.ts";
@@ -1591,7 +1591,7 @@ function status(): unknown {
 
 const MIME: Record<string, string> = {
   ".html": "text/html", ".js": "text/javascript", ".css": "text/css",
-  ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon",
+  ".svg": "image/svg+xml", ".png": "image/png", ".webp": "image/webp", ".ico": "image/x-icon",
   ".woff2": "font/woff2", ".json": "application/json", ".webmanifest": "application/manifest+json",
   ".txt": "text/plain; charset=utf-8", ".xml": "application/xml; charset=utf-8",
 };
@@ -1834,12 +1834,13 @@ async function sendJson(req: http.IncomingMessage, res: http.ServerResponse, dat
   sendRepresentation(req, res, await representation({ json: JSON.stringify(data), status: statusCode }), "no-store");
 }
 
-type StaticFile = { data: Buffer; gzip?: Buffer; etag: string; mtimeMs: number; checkedAt: number };
+type StaticFile = { data: Buffer; gzip?: Buffer; br?: Buffer; etag: string; mtimeMs: number; checkedAt: number };
 const staticFiles = new Map<string, StaticFile>();
 const COMPRESSIBLE = new Set([".html", ".js", ".css", ".svg", ".json", ".webmanifest", ".txt", ".xml"]);
 const gzipAsync = promisify(gzip);
+const brotliAsync = promisify(brotliCompress);
 
-/** A build file held in memory with its gzip bytes; a rebuild is noticed
+/** A build file held in memory with its gzip and Brotli bytes; a rebuild is noticed
  * within two seconds because the file's mtime is re-checked that often. */
 async function readStatic(filePath: string): Promise<StaticFile | null> {
   const now = Date.now();
@@ -1855,6 +1856,13 @@ async function readStatic(filePath: string): Promise<StaticFile | null> {
     etag: `W/"${createHash("sha256").update(data).digest("base64url")}"`,
   };
   staticFiles.set(filePath, file);
+  // Brotli is about a seventh smaller than gzip for the build, but at its best
+  // setting the largest chunk takes most of a second, so it is made off the
+  // event loop and gzip answers until it is ready.
+  if (file.gzip) {
+    brotliAsync(data, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 11, [zlibConstants.BROTLI_PARAM_SIZE_HINT]: data.length } })
+      .then(br => { if (br.length < file.gzip!.length) file.br = br; }, () => {});
+  }
   return file;
 }
 
@@ -1876,9 +1884,10 @@ export async function serveStatic(req: http.IncomingMessage, res: http.ServerRes
       res.end();
       return;
     }
-    const gzipped = Boolean(file.gzip) && acceptsGzip(req.headers?.["accept-encoding"]);
-    if (gzipped) headers["Content-Encoding"] = "gzip";
-    const body = gzipped ? file.gzip! : file.data;
+    const accepted = req.headers?.["accept-encoding"];
+    const encoding = file.br && acceptsEncoding(accepted, "br") ? "br" : file.gzip && acceptsGzip(accepted) ? "gzip" : null;
+    if (encoding) headers["Content-Encoding"] = encoding;
+    const body = encoding === "br" ? file.br! : encoding === "gzip" ? file.gzip! : file.data;
     headers["Content-Length"] = body.length;
     res.writeHead(200, headers);
     res.end(req.method === "HEAD" ? undefined : body);

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import Avatar from "./Avatar";
 import ProgressiveImage from "./ProgressiveImage";
+import shadow from "../assets/fighter-shadow.webp";
 
 /** ufc.com cuts every full body to 460×700, so these boxes carry that exact
  *  ratio: the picture fills them edge to edge with nothing letterboxed and
@@ -53,7 +54,7 @@ export default function FighterPortrait({
   const [failed, setFailed] = useState(false);
   // Only the matchup hero uses the full-body silhouette. Profile fallbacks
   // and round avatars keep the regular blank face.
-  const displaySrc = src ?? (size === "hero" && !headshot ? "/fighter-shadow.png" : null);
+  const displaySrc = src ?? (size === "hero" && !headshot ? shadow : null);
   // A different fighter (or a switch back to full body) deserves its own
   // attempt; without this the first broken picture would sink every later one.
   useEffect(() => setFailed(false), [displaySrc]);

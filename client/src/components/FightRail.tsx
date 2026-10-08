@@ -211,7 +211,7 @@ export function FightStrip({ eventId, currentId, returnDepth, onReselect, classN
   const { settings } = useSettings();
   const location = useLocation();
   const row = useRef<HTMLDivElement>(null);
-  const { data: event } = useApi<EventDetail>(withRanking(`/api/events/${eventId}`, settings.rankingSource));
+  const { data: event, error } = useApi<EventDetail>(withRanking(`/api/events/${eventId}`, settings.rankingSource));
   const fights = event ? [...event.fights].reverse() : [];
   const ready = fights.some((f) => f.id === currentId);
   useLayoutEffect(() => {
@@ -234,6 +234,22 @@ export function FightStrip({ eventId, currentId, returnDepth, onReselect, classN
     }
     stripScroll.set(eventId, scroller.scrollLeft);
   }, [currentId, eventId, ready]);
+  // Until the card arrives the row is held open with empty tiles, so the
+  // matchup under it isn't pushed down when it fills in.
+  if (!event && !error) {
+    return (
+      <div className={className} role="status" aria-label="Loading fights on this card">
+        <div className="flex gap-2 overflow-hidden" aria-hidden="true">
+          {Array.from({ length: 6 }, (_, index) => (
+            <span key={index} className="flex shrink-0 items-center gap-2 rounded-2xl border border-zinc-200 bg-white p-2 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+              <span className="h-9 w-9 rounded-full bg-zinc-100" />
+              <span className="h-9 w-9 rounded-full bg-zinc-100" />
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  }
   if (fights.length < 2) return null;
   const liveId = liveFightId(event!);
   const search = cardFightSearch(location.search);

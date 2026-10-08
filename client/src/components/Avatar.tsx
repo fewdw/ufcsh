@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import ProgressiveImage from "./ProgressiveImage";
+import placeholder from "../assets/fighter-placeholder.webp";
 
 const SIZES = {
   tag: "h-4 w-4 text-[6px]",
@@ -15,7 +16,7 @@ const SIZES = {
   fill: "h-full w-full text-lg",
 } as const;
 
-const UFC_EMPTY_AVATAR = "/fighter-placeholder.png";
+const UFC_EMPTY_AVATAR = placeholder;
 
 export default function Avatar({
   src,

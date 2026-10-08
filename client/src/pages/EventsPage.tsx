@@ -1,7 +1,7 @@
 import { PANEL } from "../components/chartTokens";
 import { CareerStatModal } from "../components/CareerStatDetails";
 import { isFightDay, landingEvent, liveFightId, taggedEvent } from "../liveEvent";
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type Ref } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type Ref } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CancelledBout, CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
@@ -83,11 +83,12 @@ const KIND_NOUN: Record<KindFilter, string> = {
 const DOCK = {
   // A phone's sheet is two panels, the search and filters over the list;
   // docked beside the card they join into one panel.
-  card: { sidebar: "md:flex md:w-72 md:shrink-0 md:flex-none lg:w-80", toggle: "md:hidden", main: "md:block", row: "md:flex-row",
+  // `docked` is the breakpoint below as a media query (Tailwind's md and xl).
+  card: { docked: "(min-width: 48rem)", sidebar: "md:flex md:w-72 md:shrink-0 md:flex-none lg:w-80", toggle: "md:hidden", main: "md:block", row: "md:flex-row",
     aside: "gap-2 md:gap-0 md:rounded-2xl md:border md:border-zinc-200 md:shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
     head: "md:rounded-none md:border-x-0 md:border-t-0 md:shadow-none",
     list: "md:rounded-none md:border-0 md:shadow-none" },
-  matchup: { sidebar: "xl:flex xl:w-80 xl:shrink-0 xl:flex-none", toggle: "xl:hidden", main: "xl:block", row: "xl:flex-row",
+  matchup: { docked: "(min-width: 80rem)", sidebar: "xl:flex xl:w-80 xl:shrink-0 xl:flex-none", toggle: "xl:hidden", main: "xl:block", row: "xl:flex-row",
     aside: "gap-2 xl:gap-0 xl:rounded-2xl xl:border xl:border-zinc-200 xl:shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
     head: "xl:rounded-none xl:border-x-0 xl:border-t-0 xl:shadow-none",
     list: "xl:rounded-none xl:border-0 xl:shadow-none" },
@@ -208,6 +209,20 @@ function EventSidebar({
   const listRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLAnchorElement>(null);
 
+  // On a phone the list is a closed sheet, and its eight hundred rows were
+  // most of the page's first render. They are drawn the first time the list
+  // can be seen, docked beside the card or opened, and kept from then on.
+  const docked = useSyncExternalStore(
+    useCallback((onChange: () => void) => {
+      const query = window.matchMedia(dock.docked);
+      query.addEventListener("change", onChange);
+      return () => query.removeEventListener("change", onChange);
+    }, [dock.docked]),
+    () => window.matchMedia(dock.docked).matches,
+  );
+  const [drawn, setDrawn] = useState(false);
+  if (!drawn && (docked || mobileOpen)) setDrawn(true);
+
   // A search is for the one visit: once the phone's sheet folds away — ✕, a
   // pick, or any other way out — it opens again on the whole list.
   const [wasOpen, setWasOpen] = useState(mobileOpen);
@@ -257,7 +272,7 @@ function EventSidebar({
   // Bring the selected event into view when arriving via a link/search.
   useEffect(() => {
     selectedRef.current?.scrollIntoView({ block: "nearest" });
-  }, [selectedId, events.length]);
+  }, [selectedId, events.length, drawn]);
 
   // Top leads back to the tagged card (live or next), or to the head of the
   // list when a filter hides it, and only shows once that card is out of view.
@@ -270,7 +285,7 @@ function EventSidebar({
     const observer = new IntersectionObserver(([entry]) => setShowTop(!entry.isIntersecting), { root: list, rootMargin: "-40px 0px 0px 0px" });
     observer.observe(anchor);
     return () => observer.disconnect();
-  }, [anchorId, filtered]);
+  }, [anchorId, filtered, drawn]);
   const backToAnchor = () => settleOn(listRef.current, listRef.current?.querySelector("[data-anchor]"));
   // The phone's sheet opens where Top would take it, or on the card being read.
   useLayoutEffect(() => {
@@ -332,7 +347,7 @@ function EventSidebar({
           className="h-full overflow-y-auto bg-white px-2 pb-16 sm:pb-2"
           onClick={openEvent}
         >
-          {groups.map(([yearMonth, list]) => (
+          {(drawn ? groups : []).map(([yearMonth, list]) => (
             <div key={yearMonth}>
               {yearMonth && yearMonth !== "potential" ? <div className="sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-white px-4 py-2 text-[13px] font-bold uppercase tracking-[0.1em] text-zinc-700">
                 <span>{yearMonth.slice(0, 4)}</span>

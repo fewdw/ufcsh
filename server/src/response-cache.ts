@@ -86,8 +86,12 @@ export class ResponseCache {
 }
 
 export function acceptsGzip(header = ""): boolean {
+  return acceptsEncoding(header, "gzip");
+}
+
+export function acceptsEncoding(header = "", encoding: "gzip" | "br"): boolean {
   const encodings = header.split(",").map(entry => entry.trim().split(";"));
-  const selected = encodings.find(([name]) => name.toLowerCase() === "gzip")
+  const selected = encodings.find(([name]) => name.toLowerCase() === encoding)
     ?? encodings.find(([name]) => name === "*");
   if (!selected) return false;
   const quality = selected.slice(1).find(part => part.trim().startsWith("q="));

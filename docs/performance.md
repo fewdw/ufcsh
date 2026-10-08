@@ -3,6 +3,47 @@
 Measure first, then change what the measurement points at. This page records
 the targets, how to measure against them, and the last measured results.
 
+## First page load on a phone (2026-10-08)
+
+Lighthouse 12 mobile preset (simulated slow 4G, 4× CPU) against a production
+build on the VPS, served by `server/src/production.ts` over a copy of the dev
+archive, built with the dev Clerk key. Median of five runs per page:
+
+| Page | Score | FCP | LCP | TBT | CLS | DOM elements |
+| --- | --- | --- | --- | --- | --- | --- |
+| `/` before → after | 58 → 63 | 2.9 → 2.7 s | 4.6 → 3.9 s | 878 → 744 ms | 0 → 0 | 6,994 → 1,434 |
+| Event card | 59 → 67 | 2.9 → 2.7 s | 4.7 → 3.9 s | 937 → 698 ms | 0 → 0 | 6,994 → 1,434 |
+| Matchup | 50 → 59 | 2.9 → 2.7 s | 5.6 → 4.6 s | 1,140 → 906 ms | 0.061 → 0 | 6,454 → 894 |
+| Fighter | 55 → 57 | 2.8 → 2.6 s | 5.2 → 5.0 s | 854 → 934 ms (noise: runs 826–1,107) | 0.001 | 2,921 → 2,922 |
+
+What changed, by the measurement that pointed at it:
+
+- **Events list on a phone.** The closed sheet still built all 800 rows (about
+  5,600 elements) with the first card. They are now drawn the first time the
+  list can be seen (docked, or opened). A throttled load without them blocked
+  ~250 ms less. The first open of the sheet costs ~80 ms more (median 994 →
+  1,073 ms, 4× CPU, 390 px phone); later opens are unchanged.
+- **Page code waterfall.** The page's chunk was requested only after the main
+  bundle had downloaded and run. The build now lists each page's chunks in
+  `index.html`, which preloads the opening page's beside the main bundle.
+- **`/` waited for the code to pick its card.** The inline preload now picks the
+  same card as `landingEvent` once `/api/events` arrives
+  (`client/tests/indexPreload.test.ts` keeps the two in step).
+- **Matchup layout shift.** The phone's row of bouts appeared after the card
+  loaded and pushed the matchup down 62 px; it is held open while loading.
+- **Brotli.** Built JS/CSS is served Brotli (quality 11, made off the event loop
+  on first read; gzip until then): 13.6% fewer bytes than gzip across the
+  first load's 47 files (235 → 203 KB).
+- **Placeholders.** The two PNG fighter placeholders are lossless WebP
+  (35 → 16 KB, 96 → 39 KB, pixel-identical) with hashed, immutable URLs.
+
+Checked and left alone: fonts are system fonts (Barlow loads only in the
+graphics builder); photos are already WebP, sized, versioned and lazy below
+the fold; static assets already carry `immutable`. Building `Intl` formatters
+lazily would save nothing: Chromium spends ~100 ms (4× CPU) on whichever is
+built first. The largest remaining cost is Clerk: ~650 ms of main-thread time
+and ~300 KB of script on every load, signed in or not.
+
 ## Advanced Tale of the tape (2026-10-07)
 
 `/api/fights/:id/tape-history` is only requested when a reader ticks Advanced.

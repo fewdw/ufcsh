@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { gunzipSync } from "node:zlib";
-import { ResponseCache, acceptsGzip, matchesEtag } from "./response-cache.ts";
+import { ResponseCache, acceptsEncoding, acceptsGzip, matchesEtag } from "./response-cache.ts";
 
 test("a burst shares one calculation and compressed bytes", async () => {
   const cache = new ResponseCache();
@@ -62,6 +62,9 @@ test("encoding and conditional request negotiation honors exclusions", () => {
   assert.equal(acceptsGzip("gzip;q=0.5"), true);
   assert.equal(acceptsGzip("br, *;q=1"), true);
   assert.equal(acceptsGzip(""), false);
+  assert.equal(acceptsEncoding("gzip, deflate, br, zstd", "br"), true);
+  assert.equal(acceptsEncoding("gzip, br;q=0", "br"), false);
+  assert.equal(acceptsEncoding("gzip, deflate", "br"), false);
   assert.equal(matchesEtag('"other", "same"', 'W/"same"'), true);
   assert.equal(matchesEtag(undefined, 'W/"same"'), false);
 });
