@@ -92,10 +92,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-08">October 8, 2026</time></p>
             <ul>
-              <li>Matchups and fighter profiles show average strikes landed and absorbed in each round.</li>
-              <li>Average scorecards are now on matchups too, with the margin drawn beside each.</li>
-              <li>Five-round bouts list each fighter's earlier five-round fights in the tale of the tape.</li>
-              <li>Fighter profiles have a Records tab holding Top Records and the full Statistics list.</li>
+              <li>Rankings show each fighter's UFC record beside their name.</li>
+              <li>On a past date, the record is the one they held that day.</li>
             </ul>
           </Section>
         </div>

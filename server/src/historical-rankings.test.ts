@@ -76,6 +76,7 @@ test("historical filters use completed results, activity and ranked membership a
   assert.equal(before.status, "normal");
   assert.equal(before.last_fight_date, "2019-12-14");
   assert.equal(before.current_streak?.label, "18W");
+  assert.equal(before.ufc_record?.text, "8-0");
   assert.equal(before.next_fight, null, "later bookings cannot be reconstructed from today's schedule");
   const after = entry("2020-07-11").activity;
   assert.deepEqual(after.opponent_history?.[max], ["win", "win"], "same-day completed results are included");
@@ -83,6 +84,7 @@ test("historical filters use completed results, activity and ranked membership a
   assert.equal(after.status, "active");
   assert.equal(after.days_since, 0);
   assert.equal(after.current_streak?.label, "19W");
+  assert.equal(after.ufc_record?.text, "9-0", "UFC record includes the same-day win");
   assert.equal(after.form?.length, 5);
   assert.equal(entry("2020-08-25").activity.status, "active", "45-day boundary is inclusive");
   assert.equal(entry("2020-08-26").activity.status, "normal");

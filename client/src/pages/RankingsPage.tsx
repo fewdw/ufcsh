@@ -204,6 +204,7 @@ function RankRow({
   const displayedRank = isInterimChamp ? "IC" : entry.rank;
   const nextFight = entry.activity.next_fight;
   const top15Record = features.top15Scope === "all" ? entry.activity.ranked_record : entry.activity.top15_record;
+  const ufcRecord = entry.activity.ufc_record;
   const recordScope = features.top15Scope === "all" ? "all divisions" : division;
 
   const inner = (
@@ -222,7 +223,17 @@ function RankRow({
       </span>
       <Avatar src={entry.photo_url} name={entry.name} size="xs" />
       <span className="min-w-0 flex-1">
-        <span className="block text-[13px] font-medium leading-4 text-zinc-900 [overflow-wrap:anywhere]">{entry.name}</span>
+        <span className="block text-[13px] font-medium leading-4 text-zinc-900 [overflow-wrap:anywhere]">
+          {entry.name}
+          {ufcRecord ? (
+            <span
+              className="ml-1.5 whitespace-nowrap text-[11px] font-normal tabular-nums text-zinc-600"
+              title={`UFC record${at ? ` as of ${formatDate(at)}` : " today"}: ${ufcRecord.wins} wins, ${ufcRecord.losses} losses, ${ufcRecord.draws} draws${ufcRecord.ncs ? `, ${ufcRecord.ncs} no contest${ufcRecord.ncs === 1 ? "" : "s"}` : ""}`}
+            >
+              {ufcRecord.text}
+            </span>
+          ) : null}
+        </span>
         {features.opponents && meta.hint ? (
           <span
             title={meta.hint}

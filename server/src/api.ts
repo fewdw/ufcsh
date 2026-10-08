@@ -1241,6 +1241,8 @@ function rankingActivity(fighterId: string, date: string, division: string,
     }
   }
   const streakSuffix: Record<string, string> = { win: "W", loss: "L", draw: "D", nc: "NC" };
+  // Same UFC-branded bouts as the profile's UFC record, through the requested day.
+  const ufc = ufcRecordBefore(index, fighterId, dayAfter(date));
   const top15Record = division.includes("Pound-for-Pound") ? null : { wins: 0, losses: 0, draws: 0 };
   const rankedRecord = { wins: 0, losses: 0, draws: 0 };
   for (const bout of completed) {
@@ -1252,6 +1254,8 @@ function rankingActivity(fighterId: string, date: string, division: string,
   }
   return {
     status,
+    ufc_record: ufc.wins + ufc.losses + ufc.draws + ufc.ncs
+      ? { wins: ufc.wins, losses: ufc.losses, draws: ufc.draws, ncs: ufc.ncs, text: ufc.text } : null,
     top15_record: top15Record,
     ranked_record: rankedRecord,
     last_fight_date: last?.date ?? null,
