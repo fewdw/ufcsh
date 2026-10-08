@@ -1,5 +1,5 @@
 import FighterCareerStats from "../components/FighterCareerStats";
-import { DecisionsPanel, RoundsPanel } from "../components/FightInsights";
+import { DecisionsPanel, RoundsPanel, StrikesPanel } from "../components/FightInsights";
 import { CareerStatModal } from "../components/CareerStatDetails";
 import { Children, Fragment, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -816,6 +816,7 @@ export default function FighterPage() {
             <RoundsPanel fighters={[fighter]} />
             <DecisionsPanel name={fighter.name} decisions={fighter.insights.decisions} />
           </div> : null}
+          <StrikesPanel fighters={[fighter]} />
           <RankingHistory key={fighter.id} timeline={fighter.ranking_history} history={fighter.history} fighterId={fighter.id} />
           <Records records={fighter.records ?? []} />
           <FighterStatistics fighterId={fighter.id} history={fighter.history} />

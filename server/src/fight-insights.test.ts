@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { decisionScores, roundOutcomes, type RoundOutcome } from "./fight-insights.ts";
+import { decisionScores, roundOutcomes, roundStrikes, type RoundOutcome } from "./fight-insights.ts";
 import { fightIndex, type IndexedFight } from "./fight-index.ts";
 
 const bout = (outcome: string, method: string, round: number | null, scheduledRounds = 3) => ({
@@ -87,4 +87,36 @@ test("decision scores: every judge's card and fan average, by length, from the f
     { rounds: 5, fights: 1, own: 143 / 3, opponent: 142 / 3 },
   ]);
   assert.equal(decisionScores([bout("win", "KO/TKO", 1)], "a"), null);
+});
+
+test("round strikes: mean landed and absorbed over the bouts that reached each round, from the fighter's side", () => {
+  const struck = (id: string, own: number[], faced: number[]) => {
+    const sides = [{ id: "a", name: "A", outcome: "win", rounds: own.map(sig => ({ sig })) }, { id: "b", name: "B", outcome: "loss", rounds: faced.map(sig => ({ sig })) }];
+    return { ...bout("win", "U-DEC", own.length), sides: id === "a" ? sides : sides.reverse() } as unknown as IndexedFight;
+  };
+  assert.deepEqual(roundStrikes([
+    struck("a", [10, 20, 30], [5, 5, 5]),
+    struck("b", [20], [15]),
+    // Rounds recorded for one corner only say nothing of the other.
+    struck("a", [99, 99], []),
+    struck("a", [], []),
+  ], "a"), [
+    { round: 1, fights: 2, landed: 15, absorbed: 10 },
+    { round: 2, fights: 1, landed: 20, absorbed: 5 },
+    { round: 3, fights: 1, landed: 30, absorbed: 5 },
+  ]);
+  assert.equal(roundStrikes([bout("win", "KO/TKO", 1)], "a"), null);
+});
+
+test("archive: round strikes cover no more bouts than were fought, fewer each round", () => {
+  for (const fighter of fightIndex().fighters.values()) {
+    const strikes = roundStrikes(fighter.fights, fighter.id);
+    if (!strikes) continue;
+    assert(strikes[0].fights <= fighter.fights.length, fighter.name);
+    for (const [at, round] of strikes.entries()) {
+      assert.equal(round.round, at + 1, fighter.name);
+      assert(round.fights > 0 && round.landed >= 0 && round.absorbed >= 0, fighter.name);
+      if (at) assert(round.fights <= strikes[at - 1].fights, `${fighter.name} R${round.round}`);
+    }
+  }
 });

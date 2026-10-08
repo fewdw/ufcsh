@@ -157,6 +157,40 @@ export function RoundsPanel({ fighters }: { fighters: Insightful[] }) {
   </section>;
 }
 
+/** The mean significant strikes each fighter landed and absorbed in each
+ *  round of their UFC bouts, beside how many bouts reached it: figures, so
+ *  a late round's thin sample is read with its average. */
+export function StrikesPanel({ fighters }: { fighters: Insightful[] }) {
+  if (!fighters.some(fighter => fighter.insights?.strikes?.length)) return null;
+  const two = fighters.length > 1;
+  return <section className={`${PANEL_SHELL} @container min-w-0`}>
+    <PanelHeading title="Average strikes by round" />
+    <div className={`grid px-3 pb-3 pt-1.5 @[40rem]:px-4 @[40rem]:pt-2 ${two ? "grid-cols-2 gap-x-4 @[40rem]:gap-x-8" : ""}`}>
+      {fighters.map(fighter => <div key={fighter.name} className={`min-w-0 ${two ? "" : "pt-2"}`}>
+        {two ? <h3 className={`truncate pb-1 pt-1 text-center ${sectionLabel}`} title={fighter.name}>{lastName(fighter.name)}</h3> : null}
+        {fighter.insights?.strikes?.length ? <table className={`mx-auto ${CHART_TEXT} tabular-nums`}>
+          <caption className="sr-only">{fighter.name}: average significant strikes landed and absorbed in each round of their UFC fights</caption>
+          <thead>
+            <tr className={metaText}>
+              <td />
+              {["Landed", "Absorbed", "Fights"].map(label => <th key={label} scope="col" className="pb-1 pl-2 text-right font-normal @[40rem]:pl-5">{label}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {fighter.insights.strikes.map(round => <tr key={round.round}>
+              <th scope="row" className="py-0.5 text-left font-normal text-zinc-500"><span className="sr-only">Round </span><span aria-hidden="true">R</span>{round.round}</th>
+              <td className="pl-2 text-right font-semibold text-zinc-900 @[40rem]:pl-5">{round.landed.toFixed(1)}</td>
+              <td className="pl-2 text-right text-zinc-500 @[40rem]:pl-5">{round.absorbed.toFixed(1)}</td>
+              <td className="pl-2 text-right text-zinc-400 @[40rem]:pl-5">{round.fights}</td>
+            </tr>)}
+          </tbody>
+        </table> : <p className={`py-3 text-center ${CHART_TEXT} text-zinc-500`}>No round-by-round stats yet.</p>}
+      </div>)}
+    </div>
+    <p className={`border-t border-zinc-100 px-3 py-2 text-center ${metaText}`}>Significant strikes per round fought, a round a stoppage cut short included.</p>
+  </section>;
+}
+
 /** What a fighter's UFC decisions read on the cards on average, theirs then
  *  the opponent's, over every judge's card and every bout's fan average:
  *  three- and five-round bouts apart, their totals not being on one scale. */

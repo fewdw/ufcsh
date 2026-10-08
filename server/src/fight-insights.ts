@@ -1,5 +1,5 @@
 import { parseCommunityScorecard } from "./community-scorecards.ts";
-import { sideOf, type IndexedFight } from "./fight-index.ts";
+import { opponentOf, sideOf, type IndexedFight } from "./fight-index.ts";
 
 /** One round of a fighter's UFC bouts: finishes won and lost in it, and the
  *  bouts that carried on past it (into the next round or to the cards). */
@@ -86,4 +86,27 @@ export function decisionScores(fights: IndexedFight[], fighterId: string): Decis
   const groups = [...sums].sort((a, b) => a[0] - b[0])
     .map(([rounds, sum]) => ({ rounds, fights: sum.fights, own: sum.own / sum.cards, opponent: sum.opponent / sum.cards }));
   return groups.length ? groups : null;
+}
+
+/** One round across a fighter's UFC bouts: the mean significant strikes they
+ *  landed and absorbed in it, over the bouts that reached it. */
+export type RoundStrikes = { round: number; fights: number; landed: number; absorbed: number };
+
+/** Significant strikes by round, from the official round-by-round totals.
+ *  Every bout counts whatever its result, a round a stoppage cut short
+ *  included; bouts without both corners' rounds recorded are left out. */
+export function roundStrikes(fights: IndexedFight[], fighterId: string): RoundStrikes[] | null {
+  const sums: RoundStrikes[] = [];
+  for (const fight of fights) {
+    const own = sideOf(fight, fighterId).rounds ?? [];
+    const faced = opponentOf(fight, fighterId).rounds ?? [];
+    if (!own.length || own.length !== faced.length) continue;
+    for (const [at, round] of own.entries()) {
+      const sum = sums[at] ??= { round: at + 1, fights: 0, landed: 0, absorbed: 0 };
+      sum.fights++;
+      sum.landed += round.sig;
+      sum.absorbed += faced[at].sig;
+    }
+  }
+  return sums.length ? sums.map(sum => ({ ...sum, landed: sum.landed / sum.fights, absorbed: sum.absorbed / sum.fights })) : null;
 }
