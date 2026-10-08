@@ -14,10 +14,9 @@ const WON = "bg-[#047857] dark:bg-[#059669]";
 const LOST = "bg-[#fb7185] dark:bg-[#f43f5e]";
 // The bouts that went on are the column's track: context behind the finishes.
 const ON = "bg-[#e9e9ec] dark:bg-[#2e2e33]";
-// Checked with the same validator: the blue stands clear of the grey beside
-// it in either mode, and every bar carries its figure.
-const LANDED = "bg-[#2563eb] dark:bg-[#3b82f6]";
-const ABSORBED = "bg-[#a1a1aa] dark:bg-[#71717a]";
+// Strikes wear the same pair: landed is the fighter's good, absorbed their bad.
+const LANDED = WON;
+const ABSORBED = LOST;
 const DRAWN = "bg-[#d97706]";
 const CHART_PX = 96;
 
@@ -183,7 +182,7 @@ export function StrikesPanel({ fighters }: { fighters: Insightful[] }) {
   const max = Math.max(1, ...all.flatMap(round => [round.landed, round.absorbed]));
   const length = Math.max(...all.map(round => round.round));
   const bar = (value: number, tone: string, strong: boolean) => <span className="grid grid-cols-[minmax(0,1fr)_2rem] items-center gap-1.5">
-    <span className="flex h-2"><span className={`rounded-r-[4px] ${tone}`} style={{ width: `${Math.max(1, value / max * 100)}%` }} /></span>
+    <span className="flex h-2 bg-plot-track @[40rem]:h-3"><span className={`rounded-r-[3px] ${tone}`} style={{ width: `${Math.max(1, value / max * 100)}%` }} /></span>
     <span className={`text-right tabular-nums leading-none ${strong ? "font-semibold text-zinc-900" : "text-zinc-500"}`}>{value.toFixed(1)}</span>
   </span>;
   return <section className={`${PANEL_SHELL} @container min-w-0`}>
@@ -203,13 +202,12 @@ export function StrikesPanel({ fighters }: { fighters: Insightful[] }) {
                 <span className="block font-medium text-zinc-700">R{index + 1}</span>
                 <span className={`block whitespace-nowrap ${metaText}`}>{round ? `${round.fights} ${round.fights === 1 ? "fight" : "fights"}` : "none"}</span>
               </span>
-              {round ? <span className="grid gap-[3px]">{bar(round.landed, LANDED, true)}{bar(round.absorbed, ABSORBED, false)}</span> : <span />}
+              {round ? <span className="grid gap-1">{bar(round.landed, LANDED, true)}{bar(round.absorbed, ABSORBED, false)}</span> : <span />}
             </div>)}
           </div> : <p className={`py-3 text-center ${CHART_TEXT} text-zinc-500`}>No round-by-round stats yet.</p>}
         </div>;
       })}
     </div>
-    <p className={`border-t border-zinc-100 px-3 py-2 text-center ${metaText}`}>Significant strikes per round fought, a round a stoppage cut short included.</p>
   </section>;
 }
 
