@@ -18,9 +18,7 @@ export type AppSettings = {
   /** Which end of the scale the rankings start from. */
   divisionOrder: DivisionOrder;
   oddsFormat: OddsFormat;
-  /** Whether a fighter profile's Statistics panel starts expanded. */
-  topStatsOpen: boolean;
-  /** How that panel orders its rows: by category, or best place first. */
+  /** How a fighter profile's Statistics panel orders its rows: by category, or best place first. */
   statsSort: StatsSort;
   /** Which end a card is read from: the main event down, or the opener up. */
   cardOrder: CardOrder;
@@ -39,7 +37,6 @@ const DEFAULTS: AppSettings = {
   dateMode: "relative",
   divisionOrder: "light",
   oddsFormat: "american",
-  topStatsOpen: false,
   statsSort: "grouped",
   cardOrder: "main",
   tapeAdvanced: false,
@@ -56,7 +53,6 @@ function loadSettings(): AppSettings {
       dateMode: saved?.dateMode === "date" ? "date" : "relative",
       divisionOrder: saved?.divisionOrder === "heavy" ? "heavy" : "light",
       oddsFormat: saved?.oddsFormat === "decimal" ? "decimal" : "american",
-      topStatsOpen: saved?.topStatsOpen === true,
       statsSort: saved?.statsSort === "best" ? "best" : "grouped",
       cardOrder: saved?.cardOrder === "opener" ? "opener" : "main",
       tapeAdvanced: saved?.tapeAdvanced === true,
