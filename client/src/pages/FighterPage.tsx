@@ -612,12 +612,12 @@ function BonusTally({ fight, perf, against }: { fight: number; perf: number; aga
   );
 }
 
-type ProfileTab = "fights" | "stats" | "news";
-const TAB_LABELS: Record<ProfileTab, string> = { fights: "Fights", stats: "Stats", news: "News" };
+type ProfileTab = "fights" | "stats" | "records" | "news";
+const TAB_LABELS: Record<ProfileTab, string> = { fights: "Fights", stats: "Stats", records: "Records", news: "News" };
 
 /** The section switch, styled like the matchup tabs: every section on a
  *  narrow window; on a wide one the stats have a column of their own, so it
- *  only switches the other column between fights and news. */
+ *  only switches the other column between fights, records and news. */
 function ProfileTabs({ tabs, current, onSelect, news, className }: {
   tabs: ProfileTab[]; current: ProfileTab; onSelect: (tab: ProfileTab, button: HTMLElement) => void; news: number | null; className: string;
 }) {
@@ -680,7 +680,7 @@ export default function FighterPage() {
   const sideScroll = useRouteScrollRestoration<HTMLDivElement>("fighter:side", Boolean(fighter));
   // Below `lg` the two columns become two tabs under the fighter.
   const requestedTab = new URLSearchParams(location.search).get("tab");
-  const tab: ProfileTab = requestedTab === "stats" || requestedTab === "news" ? requestedTab : "fights";
+  const tab: ProfileTab = requestedTab === "stats" || requestedTab === "records" || requestedTab === "news" ? requestedTab : "fights";
   const tabAnchor = useTabBarAnchor(fighterId ?? "", tab);
   const selectTab = (next: ProfileTab, button: HTMLElement) => {
     tabAnchor.keep(button);
@@ -808,7 +808,7 @@ export default function FighterPage() {
 
         {/* Statistics rank UFC bouts, so a fighter yet to have one — booked
             or only signed — has fights and news and nothing else. */}
-        <ProfileTabs tabs={fought ? ["fights", "stats", "news"] : ["fights", "news"]} current={tab} onSelect={selectTab} news={news?.total ?? null} className="lg:hidden" />
+        <ProfileTabs tabs={fought ? ["fights", "stats", "records", "news"] : ["fights", "news"]} current={tab} onSelect={selectTab} news={news?.total ?? null} className="lg:hidden" />
 
         {fought ? <div className={`${tab === "stats" ? "contents" : "hidden lg:contents"} [&>*]:shrink-0`}>
           <FighterCareerStats fighterId={fighter.id} name={fighter.name} totals={fighter.career_stats} />
@@ -818,15 +818,16 @@ export default function FighterPage() {
           </div> : null}
           <StrikesPanel fighters={[fighter]} />
           <RankingHistory key={fighter.id} timeline={fighter.ranking_history} history={fighter.history} fighterId={fighter.id} />
-          <Records records={fighter.records ?? []} />
-          <FighterStatistics fighterId={fighter.id} history={fighter.history} />
         </div> : null}
         </div>
 
         <div ref={sideScroll} className={`${tab !== "stats" || !fought ? "flex" : "hidden lg:flex"} min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]`}>
-        <ProfileTabs tabs={["fights", "news"]} current={tab === "news" ? "news" : "fights"} onSelect={selectTab} news={news?.total ?? null} className="hidden lg:block" />
+        <ProfileTabs tabs={fought ? ["fights", "records", "news"] : ["fights", "news"]} current={tab === "stats" ? "fights" : tab} onSelect={selectTab} news={news?.total ?? null} className="hidden lg:block" />
 
-        {tab === "news" ? <FighterNews key={fighter.id} fighterId={fighter.id} name={fighter.name} first={news ?? null} /> : <section className={shell}>
+        {tab === "news" ? <FighterNews key={fighter.id} fighterId={fighter.id} name={fighter.name} first={news ?? null} /> : tab === "records" && fought ? <>
+          <Records records={fighter.records ?? []} />
+          <FighterStatistics fighterId={fighter.id} history={fighter.history} />
+        </> : <section className={shell}>
           <PanelHeading title="Fights" subtitle={allFights.length.toLocaleString()} />
           {!fighter.record_verified ? (
             <div className="px-4 pb-1 pt-3 text-xs text-zinc-500 sm:px-5">Outside-UFC history is still syncing; UFC bouts are shown now.</div>
