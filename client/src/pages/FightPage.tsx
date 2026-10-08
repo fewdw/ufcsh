@@ -53,7 +53,7 @@ import { useShortcutNav } from "../shortcuts";
 import { BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
 import OppositionDetails from "../components/OppositionDetails";
 import TapeHistory from "../components/TapeHistory";
-import { RoundsPanel, SideName, StrikesPanel } from "../components/FightInsights";
+import { DecisionsPanel, RoundsPanel, SideName, StrikesPanel } from "../components/FightInsights";
 
 const shell = PANEL_SHELL;
 const RESULT_PILL =
@@ -1052,6 +1052,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 <CareerProfile fight={fight} />
                 <RoundsPanel fighters={[fight.f1, fight.f2]} />
                 <StrikesPanel fighters={[fight.f1, fight.f2]} />
+                <DecisionsPanel fighters={[fight.f1, fight.f2]} />
                 <Meetings fight={fight} />
                 <CommonOpponents fight={fight} />
               </> : null}

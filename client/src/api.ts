@@ -200,7 +200,7 @@ export type FightInsights = {
   rounds: { fights: number; rounds: RoundOutcome[]; decision: { won: number; lost: number; drawn: number; bouts: RoundBout[] } } | null;
   /** Mean significant strikes landed and absorbed in each round reached. */
   strikes?: RoundStrikes[] | null;
-  /** Profiles only: mean decision cards, by bout length. */
+  /** Mean decision cards, by bout length. */
   decisions?: DecisionScores[] | null;
 };
 export type RoundStrikes = { round: number; fights: number; landed: number; absorbed: number };

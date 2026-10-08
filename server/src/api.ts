@@ -956,7 +956,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
       form_details: context.form_details ?? [],
       run_form: context.run_form ?? [],
       complete_record_before: completeRecord ? { ...completeRecord, text: recordText(completeRecord), verified: true } : null,
-      insights: fid ? { rounds: roundOutcomes(earlier, fid), strikes: roundStrikes(earlier, fid) } : null,
+      insights: fid ? { rounds: roundOutcomes(earlier, fid), strikes: roundStrikes(earlier, fid), decisions: decisionScores(earlier, fid) } : null,
       history: ufcHistory,
       recent_history: recentHistory,
     };
