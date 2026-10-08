@@ -227,7 +227,7 @@ function RankRow({
           {entry.name}
           {ufcRecord ? (
             <span
-              className="ml-1.5 whitespace-nowrap text-[11px] font-normal tabular-nums text-zinc-500"
+              className="ml-1.5 whitespace-nowrap text-[11px] font-normal tabular-nums text-zinc-600"
               title={`UFC record${at ? ` as of ${formatDate(at)}` : " today"}: ${ufcRecord.wins} wins, ${ufcRecord.losses} losses, ${ufcRecord.draws} draws${ufcRecord.ncs ? `, ${ufcRecord.ncs} no contest${ufcRecord.ncs === 1 ? "" : "s"}` : ""}`}
             >
               {ufcRecord.text}
