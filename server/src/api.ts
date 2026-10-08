@@ -1,6 +1,6 @@
 import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, potentialMatchups, potentialFight } from "./potential-matchups.ts";
 import { careerStatistics } from "./career-statistics.ts";
-import { decisionScores, roundOutcomes } from "./fight-insights.ts";
+import { decisionScores, roundOutcomes, roundStrikes } from "./fight-insights.ts";
 import { opposition } from "./opposition.ts";
 import { tapeHistory } from "./tape-history.ts";
 import { eventStatus, fightIsComplete, fightIsUnderway, isFightDay, liveDetailDue } from "./live-state.ts";
@@ -931,6 +931,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
           && (row.promotion === "ufc") === bout.isUfc)).filter(Boolean);
     const birthDate: string = bio?.birth_date ?? "";
     const completeRecord = fid ? completeRecordBefore(index, fid, f.event_date, Number(f.ord) || 0) : null;
+    const earlier = fid ? boutsBefore(index, fid, f.event_date, Number(f.ord) || 0) : [];
     const context = sideContext(fid, f.event_date, Number(f.ord) || 0);
     const opponentsRecord = fid ? opponentsRecordBefore(index, fid, f.event_date, Number(f.ord) || 0) : null;
     return {
@@ -949,12 +950,13 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
       career_before: fid ? careerBefore(index, fid, f.event_date, f.weight_class ?? "", Number(f.ord) || 0, opponentId) : null,
       ufc_record_before: context.ufc_record ?? null,
       ufc_days_since_before: context.days_since ?? null,
+      ufc_five_round_fights_before: fid ? earlier.filter(bout => bout.scheduledRounds === 5).length : null,
       ufc_opponents_record_before: opponentsRecord ? recordText(opponentsRecord) : null,
       streak: context.streak ?? null,
       form_details: context.form_details ?? [],
       run_form: context.run_form ?? [],
       complete_record_before: completeRecord ? { ...completeRecord, text: recordText(completeRecord), verified: true } : null,
-      insights: fid ? { rounds: roundOutcomes(boutsBefore(index, fid, f.event_date, Number(f.ord) || 0), fid) } : null,
+      insights: fid ? { rounds: roundOutcomes(earlier, fid), strikes: roundStrikes(earlier, fid), decisions: decisionScores(earlier, fid) } : null,
       history: ufcHistory,
       recent_history: recentHistory,
     };
@@ -1118,7 +1120,7 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     // same index the leaderboards use, so it moves the moment a result lands.
     records,
     career_stats: careerStatistics(index, fr.id)?.totals,
-    insights: { rounds: roundOutcomes(indexedFighter?.fights ?? [], fr.id), decisions: decisionScores(indexedFighter?.fights ?? [], fr.id) },
+    insights: { rounds: roundOutcomes(indexedFighter?.fights ?? [], fr.id), strikes: roundStrikes(indexedFighter?.fights ?? [], fr.id), decisions: decisionScores(indexedFighter?.fights ?? [], fr.id) },
     history: mergedUfcHistory,
     roster_events: fighterRosterEvents(fr.id),
     // The professional list shows the same ranks on its UFC bouts.

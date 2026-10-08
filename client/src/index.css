@@ -403,6 +403,8 @@ select:not([multiple]):not([size]) {
   grid-template-columns: minmax(0, 1fr) 112px minmax(0, 1fr);
   gap: 8px;
 }
+/* Wide enough for the longest label, "5-round fights", at every width. */
+.matchup-context > :is(div, button) > div:first-child { grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1fr); }
 .matchup-comparisons dd { flex-wrap: wrap; row-gap: 3px; }
 .matchup-comparisons dl > div:first-child dd { justify-content: flex-start; }
 .matchup-comparisons dd > span:first-child { font-size: 11px; overflow: visible; white-space: normal; }
@@ -426,6 +428,7 @@ select:not([multiple]):not([size]) {
   .matchup-name { font-size: 16px; }
   .matchup-comparisons dl,
   .matchup-context > :is(div, button) > div:first-child { grid-template-columns: minmax(0, 1fr) 92px minmax(0, 1fr); gap: 5px; }
+  .matchup-context > :is(div, button) > div:first-child { grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1fr); }
 }
 
 /* Give the pinned identity and full-body portraits room above the fight data. */

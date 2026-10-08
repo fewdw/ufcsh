@@ -92,9 +92,10 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-08">October 8, 2026</time></p>
             <ul>
-              <li>Pages open faster on phones, especially event cards and matchups.</li>
-              <li>A matchup no longer jumps down as its row of bouts loads.</li>
-              <li>Smaller downloads for the site's code and placeholder images.</li>
+              <li>Matchups and fighter profiles show average strikes landed and absorbed in each round.</li>
+              <li>Average scorecards are now on matchups too, with the margin drawn beside each.</li>
+              <li>Five-round bouts list each fighter's earlier five-round fights in the tale of the tape.</li>
+              <li>Fighter profiles have a Records tab holding Top Records and the full Statistics list.</li>
             </ul>
           </Section>
         </div>

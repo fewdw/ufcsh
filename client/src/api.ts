@@ -198,9 +198,12 @@ export type RoundBout = { outcome: "win" | "loss" | "draw"; method: string | nul
 export type RoundOutcome = { round: number; won: number; lost: number; past: number; bouts: RoundBout[] };
 export type FightInsights = {
   rounds: { fights: number; rounds: RoundOutcome[]; decision: { won: number; lost: number; drawn: number; bouts: RoundBout[] } } | null;
-  /** Profiles only: mean decision cards, by bout length. */
+  /** Mean significant strikes landed and absorbed in each round reached. */
+  strikes?: RoundStrikes[] | null;
+  /** Mean decision cards, by bout length. */
   decisions?: DecisionScores[] | null;
 };
+export type RoundStrikes = { round: number; fights: number; landed: number; absorbed: number };
 export type DecisionScores = { rounds: number; fights: number; own: number; opponent: number };
 
 export type FightOdds = {
@@ -367,6 +370,8 @@ export type MatchupSide = FightSide & {
   ufc_record_before: string | null;
   /** Days since the previous merged UFC-history bout. */
   ufc_days_since_before: number | null;
+  /** UFC bouts booked for five rounds before this one, however they ended. */
+  ufc_five_round_fights_before: number | null;
   /** UFC opponents' UFC records on the nights they met, summed; null before a UFC bout. */
   ufc_opponents_record_before: string | null;
   complete_record_before: CompleteRecordBefore | null;
