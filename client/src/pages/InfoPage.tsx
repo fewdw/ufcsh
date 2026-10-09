@@ -92,8 +92,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-09">October 9, 2026</time></p>
             <ul>
-              <li>Cancelled bouts now show fighter photos, records and recent form in the normal card layout with a red background.</li>
-              <li>Cancellation details stay on one line on wide screens; the compact layout stays the same.</li>
+              <li>Upcoming cards now say when their main-card and prelim sections are still to be confirmed.</li>
+              <li>Bout start estimates appear once every bout has a section; announced broadcast times remain visible.</li>
             </ul>
           </Section>
         </div>
