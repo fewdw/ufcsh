@@ -522,12 +522,7 @@ function CenterBlock({ fight, past, cancellation }: { fight: EventFight; past: b
       {/* The result wraps rather than truncating: the round and the clock are
           the point of the line, and the centre column is narrow enough that
           "KO/TKO · R1 · 2:54" would lose its tail to an ellipsis. */}
-      {cancellation ? (
-        <div className="mt-1.5 max-w-full text-balance text-center text-[10px] leading-4 text-red-700 dark:text-red-300">
-          <span className="font-semibold">Cancelled</span>
-          {cancellation.reason ? <div>{cancellation.reason}</div> : null}
-        </div>
-      ) : past ? (
+      {cancellation ? null : past ? (
         <div className="mt-1.5 max-w-full text-balance text-center text-[10px] font-medium leading-4 text-zinc-500" title={fight.method_details ?? result}>
           {result || "Result"}
         </div>
@@ -587,10 +582,9 @@ function FightRow({ fight, past, eventId, live = false, cancellation }: { fight:
       className={`group block w-full px-3 text-left transition-colors @3xl:px-4 ${cancellation ? "bg-red-50 py-2 @3xl:py-1.5 dark:bg-red-950/40" : live ? "cursor-pointer py-2.5 hover:bg-emerald-50/60 @3xl:py-3" : "cursor-pointer py-2 hover:bg-zinc-50 @3xl:py-1.5"}`}
     >
       <div className="@3xl:hidden"><CompactFightRow fight={fight} done={done} live={live} cancellation={cancellation} /></div>
-      <div className="hidden grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 @3xl:grid">
-      {/* Explicit grid placement rather than the order-1/2/3 trick a 3-item
-          row could get away with — a 4th item (the mobile-only weight class
-          row below) needs an unambiguous spot too. */}
+      <div className="hidden grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-4 gap-y-1 @3xl:grid">
+      {/* Keep the corners and odds in one row; cancellation text gets the
+          whole width below them so it is not squeezed into the odds column. */}
       <div className="col-start-1 row-start-1 min-w-0">
         <FighterBlock side={fight.f1} align="left" past={done} bonuses={fight.bonuses} resultTag={resultTag(fight, fight.f1.outcome)} profileLink={Boolean(cancellation)} />
       </div>
@@ -601,6 +595,12 @@ function FightRow({ fight, past, eventId, live = false, cancellation }: { fight:
       <div className="col-start-3 row-start-1 min-w-0">
         <FighterBlock side={fight.f2} align="right" past={done} bonuses={fight.bonuses} resultTag={resultTag(fight, fight.f2.outcome)} profileLink={Boolean(cancellation)} />
       </div>
+      {cancellation ? (
+        <p className="col-span-3 row-start-2 min-w-0 truncate text-center text-[10px] leading-4 text-red-700 dark:text-red-300" title={cancellation.reason ?? undefined}>
+          <span className="font-semibold">Cancelled</span>
+          {cancellation.reason ? <> · {cancellation.reason}</> : null}
+        </p>
+      ) : null}
       </div>
     </div>
   );
