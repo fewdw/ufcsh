@@ -12,7 +12,7 @@ import { betContext, eventFightIds, predictionContext, predictionFights } from "
 import { BetStore } from "./bets.ts";
 import { createBetsHandler } from "./bets-http.ts";
 import { createLeaderboards } from "./leaderboards.ts";
-import { estimatedStart, type SegmentTimes } from "./card-schedule.ts";
+import { cardOrder, estimatedStart, type SegmentTimes } from "./card-schedule.ts";
 import http from "node:http";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -492,10 +492,10 @@ async function getEvent(id: string, rankingType: RankingType): Promise<unknown |
   if (!e) return null;
   let refreshing = isFightDay(e.date) && matchupRefresh.request(`event:${id}`, () => refreshLiveEvent(id),
     err => log("live event refresh failed:", String(err)), 10_000);
-  const fights = prepared(`SELECT f.*, o.f1_close AS card_f1_close, o.f2_close AS card_f2_close
+  const fights = cardOrder(prepared(`SELECT f.*, o.f1_close AS card_f1_close, o.f2_close AS card_f2_close
       FROM fights f LEFT JOIN odds o ON o.fight_id = f.id
       WHERE f.event_id = ? ORDER BY f.ord ASC`)
-    .all(id) as any[];
+    .all(id) as any[]);
   if (!fights.length || fights.some((fight) => fight.perf_bonus == null || fight.fotn_bonus == null)) {
     refreshing = matchupRefresh.request(`event-detail:${id}`, () => syncEventDetailOnce(id),
       err => log("lazy event bonus sync failed:", String(err))) || refreshing;
@@ -1989,7 +1989,7 @@ export function shareCardData(kind: string, id: string): ShareCardData | null {
   if (kind === "events") {
     const event = prepared("SELECT id, name, date, location FROM events WHERE id = ?").get(id) as { id: string; name: string; date: string; location: string } | undefined;
     if (!event) return null;
-    const fights = prepared("SELECT f1_name, f2_name FROM fights WHERE event_id = ? ORDER BY ord LIMIT 5").all(id) as { f1_name: string; f2_name: string }[];
+    const fights = cardOrder(prepared("SELECT f1_name, f2_name, ord, segment FROM fights WHERE event_id = ? ORDER BY ord").all(id) as { f1_name: string; f2_name: string; ord: number; segment: string | null }[]).slice(0, 5);
     const venue = venueOfEvent(id);
     return {
       kind: "list", eyebrow: "Fight card", title: event.name,
@@ -2209,15 +2209,15 @@ async function repairSnapshot(day: string): Promise<void> {
 
 /** Today's card for the admin panel, opening bout first. */
 function liveFights(): AdminLiveFight[] {
-  return prepared(`
-    SELECT f.id, f.ord, f.f1_name, f.f2_name, f.weight_class, f.scheduled_rounds,
+  return cardOrder(prepared(`
+    SELECT f.id, f.ord, f.segment, f.f1_name, f.f2_name, f.weight_class, f.scheduled_rounds,
       f.round, f.time, f.method, f.detail_json, f.f1_outcome, f.f2_outcome,
       f.f1_id, f.f2_id, NULL AS f1_photo, NULL AS f2_photo,
       e.id AS event_id, e.name AS event_name, e.date AS event_date
     FROM fights f JOIN events e ON e.id = f.event_id
     WHERE e.id = (SELECT id FROM events WHERE date >= date('now', '-1 day') AND date <= date('now') ORDER BY date DESC LIMIT 1)
-    ORDER BY f.ord DESC
-  `).all() as AdminLiveFight[];
+    ORDER BY f.ord
+  `).all() as (AdminLiveFight & { segment: string | null })[]).reverse();
 }
 
 export function startApi(port: number): http.Server {

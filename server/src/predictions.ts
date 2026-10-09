@@ -1,11 +1,12 @@
 import type { DatabaseSync } from "node:sqlite";
 import { fightIsComplete, fightIsUnderway } from "./live-state.ts";
+import { cardOrder } from "./card-schedule.ts";
 import { ScoringError, type ScoringStore } from "./scoring.ts";
 
 export type PredictionMethod = "ko" | "submission" | "decision";
 export type PredictionFight = {
   id: string; event_id: string; event_name: string; event_date: string; event_complete: number;
-  event_start: number | null; section_start: number | null; ord: number; scheduled_rounds: number | null;
+  event_start: number | null; section_start: number | null; ord: number; segment?: string | null; scheduled_rounds: number | null;
   f1_id: string; f2_id: string; f1_name: string; f2_name: string;
   f1_outcome: string | null; f2_outcome: string | null;
   method: string | null; round: string | null; detail_json: string | null;
@@ -35,11 +36,11 @@ export const PREDICTION_MAX = PREDICTION_POINTS.entry + PREDICTION_POINTS.fighte
   + PREDICTION_POINTS.method + PREDICTION_POINTS.round;
 const RECENT_PREDICTIONS = 5;
 
-/** `ord=0` is the main event. Card order is reversed for actual fight order;
- * array positions, rather than ord arithmetic, also handle gaps and removals. */
+/** Card order (main event first) is reversed for actual fight order; array
+ * positions, rather than ord arithmetic, also handle gaps and removals. */
 export function predictionWindow(context: PredictionContext, now = Date.now()) {
   const { fight } = context;
-  const bouts = [...context.bouts].sort((a, b) => b.ord - a.ord);
+  const bouts = cardOrder(context.bouts).reverse();
   const at = bouts.findIndex(bout => bout.id === fight.id);
   const trigger = bouts[Math.max(0, at - 2)];
   const cutoff = fight.event_start ?? Date.parse(`${fight.event_date}T00:00:00Z`);

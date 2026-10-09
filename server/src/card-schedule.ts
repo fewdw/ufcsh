@@ -180,3 +180,22 @@ export function estimatedStart(
   const offset = Math.floor(minutes * pace / 5) * 5;
   return segmentStart + offset * 60_000;
 }
+
+const SEGMENT_RANK: Record<CardSegment, number> = { main: 0, prelims: 1, early: 2 };
+
+/** A card top to bottom: main card, prelims, then early prelims, each in its
+ *  source order. UFCStats appends a late addition to the bottom of its list
+ *  whichever segment ufc.com books it on. A bout with no segment stays with the
+ *  bout above it. */
+export function cardOrder<T extends { ord: number | string | null; segment?: string | null }>(fights: T[]): T[] {
+  let rank = 0;
+  return fights
+    .map((fight) => ({ fight, ord: Number(fight.ord) || 0 }))
+    .sort((a, b) => a.ord - b.ord)
+    .map(({ fight, ord }) => {
+      rank = SEGMENT_RANK[fight.segment as CardSegment] ?? rank;
+      return { fight, ord, rank };
+    })
+    .sort((a, b) => a.rank - b.rank || a.ord - b.ord)
+    .map(({ fight }) => fight);
+}

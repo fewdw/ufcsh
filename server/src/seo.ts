@@ -3,6 +3,7 @@ import { prepared } from "./db.ts";
 import { ufcFightExistsSql, currentRecord, hasUfcFight, recordText } from "./fighter-identity.ts";
 import { judgeProfile, officialsIndex, refereeProfile } from "./officials.ts";
 import { locationPage, venueIndex, venuePage } from "./venues.ts";
+import { cardOrder } from "./card-schedule.ts";
 
 /**
  * What a page is called before any script runs: the title, description,
@@ -86,7 +87,7 @@ export function pageSeo(pathname: string): PageSeo {
   if (parts[1] === "events") {
     const event = prepared("SELECT id, name, date, location, complete FROM events WHERE id = ?").get(id) as { id: string; name: string; date: string; location: string; complete: number } | undefined;
     if (!event) return notFound();
-    const fights = prepared("SELECT id, f1_name, f2_name, weight_class FROM fights WHERE event_id = ? ORDER BY ord").all(id) as { id: string; f1_name: string; f2_name: string; weight_class: string }[];
+    const fights = cardOrder(prepared("SELECT id, f1_name, f2_name, weight_class, ord, segment FROM fights WHERE event_id = ? ORDER BY ord").all(id) as { id: string; f1_name: string; f2_name: string; weight_class: string; ord: number; segment: string | null }[]);
     const headliner = fights[0] ? `${fights[0].f1_name} vs ${fights[0].f2_name}` : "";
     return {
       ...DEFAULT,

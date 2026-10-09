@@ -12,7 +12,7 @@ import {
   type ScrapedEventDetail,
 } from "./scrape/ufcstats.ts";
 import { scrapeAthleteDirectoryPage, scrapeEventCard, scrapeEventSchedules, scrapeFighterImages, scrapeRankings } from "./scrape/ufccom.ts";
-import { assignPerBout, assignRounds, assignSegments, matchEventSchedule, sharesBout } from "./card-schedule.ts";
+import { assignPerBout, assignRounds, assignSegments, cardOrder, matchEventSchedule, sharesBout } from "./card-schedule.ts";
 import {
   alignScrapedOdds,
   findOddsEventPages,
@@ -1743,11 +1743,12 @@ export async function syncLiveEvents(): Promise<void> {
       // reaches it — and it is the one whose numbers are moving. UFCStats
       // publishes its round totals as they happen, so keep it warm rather than
       // waiting for a reader to ask for it. A card fills in from the bottom up,
-      // so that bout is the highest ord still without an outcome.
+      // so that bout is the lowest on the card still without an outcome.
       if (fights.length) {
-        const underway = db.prepare(`SELECT id, f1_outcome, f2_outcome, detail_json, detail_fetched_at FROM fights
-          WHERE event_id = ? AND f1_outcome IS NULL AND f2_outcome IS NULL ORDER BY ord DESC LIMIT 1`)
-          .get(event.id) as { id: string; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; detail_fetched_at: number | null } | undefined;
+        const underway = cardOrder(db.prepare(`SELECT id, ord, segment, f1_outcome, f2_outcome, detail_json, detail_fetched_at FROM fights
+          WHERE event_id = ? ORDER BY ord`)
+          .all(event.id) as { id: string; ord: number; segment: string | null; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; detail_fetched_at: number | null }[])
+          .findLast((fight) => fight.f1_outcome == null && fight.f2_outcome == null);
         if (underway && liveDetailDue(underway)) await guarded(`live_stats ${underway.id}`, () => syncFightDetail(underway.id));
       }
     }

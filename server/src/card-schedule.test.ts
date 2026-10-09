@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assignRounds, assignSegments, estimatedStart, matchEventSchedule, sharesBout } from "./card-schedule.ts";
+import { assignRounds, assignSegments, cardOrder, estimatedStart, matchEventSchedule, sharesBout } from "./card-schedule.ts";
 import type { ScrapedEventSchedule, ScrapedSegmentBout } from "./scrape/ufccom.ts";
 
 const schedule = (slug: string, headline: string, prelims: string, main: string, early?: string): ScrapedEventSchedule => ({
@@ -168,4 +168,14 @@ test("a page that shares no bout with our card is another event's", () => {
   const fights = [{ f1_name: "Paddy Holohan", f2_name: "Louis Smolka" }, { f1_name: "Norman Parke", f2_name: "Reza Madadi" }];
   assert.equal(sharesBout(fights, [{ f1: "Louis Smolka", f2: "Paddy Holohan" }]), true);
   assert.equal(sharesBout(fights, [{ f1: "Neil Magny", f2: "Kelvin Gastelum" }, { f1: "Ricardo Lamas", f2: "Diego Sanchez" }]), false);
+});
+
+test("cardOrder keeps a late main-card addition with the main card", () => {
+  const bout = (ord: number, segment: string | null) => ({ ord, segment });
+  // UFC 333: UFCStats lists Pico vs Keita last, ufc.com books it on the main card.
+  const card = [bout(0, "main"), bout(1, "main"), bout(2, "prelims"), bout(3, "prelims"), bout(4, "main")];
+  assert.deepEqual(cardOrder(card).map((f) => f.ord), [0, 1, 4, 2, 3]);
+  assert.deepEqual(cardOrder([bout(0, "main"), bout(1, null), bout(2, "early"), bout(3, "prelims")]).map((f) => f.ord), [0, 1, 3, 2],
+    "an unplaced bout stays with the bout above it");
+  assert.deepEqual(cardOrder([bout(1, null), bout(0, null)]).map((f) => f.ord), [0, 1], "an unplaced card keeps source order");
 });
