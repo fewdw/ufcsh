@@ -71,9 +71,9 @@ export type MetricValues = {
 };
 
 /** Finer latency steps, in milliseconds, for the admin dashboard's estimates. */
-const MS_STEPS = [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10_000, 30_000];
-type Latency = { count: number; errors: number; clientErrors: number; notFound: number; throttled: number; slow: number; sumMs: number; maxMs: number; steps: number[] };
-const emptyLatency = (): Latency => ({ count: 0, errors: 0, clientErrors: 0, notFound: 0, throttled: 0, slow: 0, sumMs: 0, maxMs: 0, steps: MS_STEPS.map(() => 0) });
+export const MS_STEPS = [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10_000, 30_000];
+export type Latency = { count: number; errors: number; clientErrors: number; notFound: number; throttled: number; slow: number; sumMs: number; maxMs: number; steps: number[] };
+export const emptyLatency = (): Latency => ({ count: 0, errors: 0, clientErrors: 0, notFound: 0, throttled: 0, slow: 0, sumMs: 0, maxMs: 0, steps: MS_STEPS.map(() => 0) });
 /** Process health sampled once a minute beside that minute's traffic. */
 export type MinuteGauges = { eventLoopP95Ms: number; cpuPercent: number; memoryBytes: number };
 type Minute = { at: number; traffic: Latency; routes: Map<string, Latency>; views: Map<string, number>; visitors: Set<string>; gauges?: MinuteGauges };
@@ -83,9 +83,9 @@ const TIMELINE_MINUTES = 60;
 const VISITORS_PER_MINUTE = 100_000;
 /** Admin traffic keeps its own route rows but stays out of the site-wide
  *  totals, so the admin dashboard's own slow queries never look like an outage. */
-const ADMIN_ROUTES = new Set(["admin", "page_admin"]);
+export const ADMIN_ROUTES = new Set(["admin", "page_admin"]);
 
-function addLatency(entry: Latency, status: number, ms: number) {
+export function addLatency(entry: Latency, status: number, ms: number) {
   entry.count++;
   if (status >= 500) entry.errors++;
   if (status >= 400 && status < 500) entry.clientErrors++;
@@ -98,7 +98,7 @@ function addLatency(entry: Latency, status: number, ms: number) {
   if (step >= 0) entry.steps[step]++;
 }
 
-function mergeLatency(target: Latency, source: Latency) {
+export function mergeLatency(target: Latency, source: Latency) {
   target.count += source.count; target.errors += source.errors; target.clientErrors += source.clientErrors;
   target.notFound += source.notFound; target.throttled += source.throttled; target.slow += source.slow;
   target.sumMs += source.sumMs; target.maxMs = Math.max(target.maxMs, source.maxMs);
@@ -122,7 +122,7 @@ export function estimatePercentile(entry: Latency, percentile: number): number {
   return entry.maxMs;
 }
 
-const summarise = (entry: Latency) => ({
+export const summarise = (entry: Latency) => ({
   requests: entry.count, errors: entry.errors, clientErrors: entry.clientErrors,
   notFound: entry.notFound, throttled: entry.throttled, slow: entry.slow,
   meanMs: entry.count ? entry.sumMs / entry.count : 0,
@@ -131,6 +131,8 @@ const summarise = (entry: Latency) => ({
 });
 
 export class HttpObservability {
+  /** Hourly totals kept on disk for the long-range dashboard. */
+  history?: { record(route: string, status: number, ms: number, visitor?: string): void; view(route: string): void };
   private readonly requests = new Map<string, number>();
   private readonly durations = new Map<string, Duration>();
   private readonly routes = new Map<string, Latency>();
@@ -161,6 +163,7 @@ export class HttpObservability {
     this.pageViews.set(route, (this.pageViews.get(route) ?? 0) + 1);
     const views = this.minute().views;
     views.set(route, (views.get(route) ?? 0) + 1);
+    this.history?.view(route);
     return true;
   }
 
@@ -178,7 +181,9 @@ export class HttpObservability {
     const minuteRoute = minute.routes.get(route) ?? emptyLatency();
     addLatency(minuteRoute, status, ms);
     minute.routes.set(route, minuteRoute);
-    if (visitor && !admin && route !== "health" && route !== "monitoring" && minute.visitors.size < VISITORS_PER_MINUTE) minute.visitors.add(visitor);
+    const counted = visitor && !admin && route !== "health" && route !== "monitoring" ? visitor : undefined;
+    if (counted && minute.visitors.size < VISITORS_PER_MINUTE) minute.visitors.add(counted);
+    this.history?.record(route, status, ms, counted);
     const verb = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(method) ? method : "OTHER";
     const code = Number.isInteger(status) && status >= 100 && status <= 599 ? String(status) : "0";
     const key = `${route}|${verb}|${code}`;

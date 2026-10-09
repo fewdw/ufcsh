@@ -41,6 +41,7 @@ async function fixture(t: any, options: { user?: string; email?: string | null }
     canAct: () => true,
     liveFights: () => [liveFight()],
     metrics: () => ({ ready: true, http: { routes: [] } }),
+    traffic: range => ({ range }),
     newsAi: { status: () => ({ on: aiOn }), set: on => ({ on: aiOn = on }) },
   // The signed-in account, resolved the way Clerk would.
     authenticate: async req => {
@@ -82,9 +83,18 @@ test("every admin route is closed to accounts that are not administrators", asyn
     ["admins", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"email":"x@y.com"}' }],
     ["admins?email=x@y.com", { method: "DELETE" }],
     [`live/${FIGHT}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: '{"rounds":3}' }],
+    ["bugs/action?action=x&target=y", { method: "POST" }],
+    ["comments", {}], ["commenters", {}], ["traffic?range=all", {}],
+    ["comments/00000000-0000-4000-8000-000000000000", { method: "PUT", headers: { "Content-Type": "application/json" }, body: '{"action":"remove"}' }],
+    ["commenters/someone", { method: "PUT", headers: { "Content-Type": "application/json" }, body: '{"action":"mute"}' }],
   ] as const) {
-    const response = await request(route, init as RequestInit);
+    const options = init as RequestInit;
+    const response = await request(route, options);
     assert.equal(response.status, 403, `${route} is closed`);
+    // Signed out, or from another site, nothing is read or changed either.
+    assert.equal((await request(route, { ...options, anonymous: true })).status, 401, `${route} needs a session`);
+    const foreign = await request(route, { ...options, headers: { ...options.headers as Record<string, string>, Origin: "https://evil.example" } });
+    assert.equal(foreign.status, 403, `${route} refuses other sites`);
   }
   // The panel is told plainly rather than being left to guess.
   const session = await request("session");
@@ -182,6 +192,13 @@ test("administrators can read live server metrics, uncached", async t => {
   assert.equal(response.headers.get("cache-control"), "private, no-store");
   assert.deepEqual(await response.json(), { ready: true, http: { routes: [] } });
   assert.equal((await request("metrics", { method: "POST" })).status, 405);
+});
+
+test("administrators can read stored traffic for a known range only", async t => {
+  const { request } = await fixture(t);
+  assert.deepEqual(await (await request("traffic?range=90d")).json(), { range: "90d" });
+  assert.deepEqual(await (await request("traffic")).json(), { range: "24h" });
+  assert.equal((await request("traffic?range=constructor")).status, 400);
 });
 
 test("administrators can switch news AI off and on, with boolean values only", async t => {

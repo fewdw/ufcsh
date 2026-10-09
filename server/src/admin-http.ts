@@ -5,6 +5,7 @@ import { ScoringError, scoringEligibility, type ScoringFight, type ScoringStore 
 import type { AdminStore } from "./admins.ts";
 import type { ReportStore } from "./reports.ts";
 import type { CommentStore } from "./comments.ts";
+import { isTrafficRange, type TrafficRange } from "./traffic-history.ts";
 
 /** A bout the panel can release rounds for: everything on a card being fought
  *  today, whether or not the feed has noticed it has started. Listed in the
@@ -22,6 +23,8 @@ export type AdminHandlerOptions = {
   runAction: (action: string, target: string, actor: string) => Promise<unknown>;
   /** Live server health and traffic for the dashboard. */
   metrics?: () => unknown;
+  /** Traffic kept on disk across restarts, for one time range. */
+  traffic?: (range: TrafficRange) => unknown;
   canAct: () => boolean;
   /** Gemini on /news: its state, and the switch that turns it off. */
   newsAi?: { status: () => unknown; set: (on: boolean) => unknown };
@@ -55,7 +58,7 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
  * whenever a token happens to expire.
  */
 export function createAdminHandler(options: AdminHandlerOptions) {
-  const { admins, scores, reports, comments, report, runAction, canAct, liveFights, metrics, newsAi } = options;
+  const { admins, scores, reports, comments, report, runAction, canAct, liveFights, metrics, traffic, newsAi } = options;
   const currentBout = options.currentBout ?? (() => {
     const bout = liveFights().find(fight => fight.f1_outcome == null && fight.f2_outcome == null);
     return bout ? { id: bout.id, live: false } : null;
@@ -171,6 +174,12 @@ export function createAdminHandler(options: AdminHandlerOptions) {
       else if (route === "metrics") {
         if (!metrics) throw new ScoringError(404, "Not found.");
         send(metrics());
+      }
+      else if (route === "traffic") {
+        if (!traffic) throw new ScoringError(404, "Not found.");
+        const range = url.searchParams.get("range") ?? "24h";
+        if (!isTrafficRange(range)) throw new ScoringError(400, "Unknown range.");
+        send(traffic(range));
       }
       else if (route === "live") send(card());
       else if (liveFight) {

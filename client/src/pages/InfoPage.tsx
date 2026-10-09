@@ -90,10 +90,10 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-08">October 8, 2026</time></p>
+            <p><time dateTime="2026-10-09">October 9, 2026</time></p>
             <ul>
-              <li>Rankings show each fighter's UFC record beside their name.</li>
-              <li>On a past date, the record is the one they held that day.</li>
+              <li>Admin health keeps traffic history across restarts: 24 hours, 7, 30 and 90 days, and all time.</li>
+              <li>The admin page can no longer be embedded by other sites.</li>
             </ul>
           </Section>
         </div>
