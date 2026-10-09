@@ -293,8 +293,8 @@ export type EventDetail = {
 };
 
 export type CancelledBout = {
-  f1: { name: string; id: string | null };
-  f2: { name: string; id: string | null };
+  f1: Omit<FightSide, "id"> & { id: string | null };
+  f2: Omit<FightSide, "id"> & { id: string | null };
   division: string | null;
   reason: string | null;
 };
