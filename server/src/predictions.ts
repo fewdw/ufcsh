@@ -6,7 +6,7 @@ import { ScoringError, type ScoringStore } from "./scoring.ts";
 export type PredictionMethod = "ko" | "submission" | "decision";
 export type PredictionFight = {
   id: string; event_id: string; event_name: string; event_date: string; event_complete: number;
-  event_start: number | null; section_start: number | null; ord: number; segment?: string | null; scheduled_rounds: number | null;
+  event_start: number | null; section_start: number | null; ord: number; segment?: string | null; card_pos?: number | null; scheduled_rounds: number | null;
   f1_id: string; f2_id: string; f1_name: string; f2_name: string;
   f1_outcome: string | null; f2_outcome: string | null;
   method: string | null; round: string | null; detail_json: string | null;

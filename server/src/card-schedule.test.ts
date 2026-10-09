@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assignRounds, assignSegments, cardOrder, estimatedStart, matchEventSchedule, sharesBout } from "./card-schedule.ts";
+import { assignPositions, assignRounds, assignSegments, cardOrder, estimatedStart, matchEventSchedule, sharesBout } from "./card-schedule.ts";
 import type { ScrapedEventSchedule, ScrapedSegmentBout } from "./scrape/ufccom.ts";
 
 const schedule = (slug: string, headline: string, prelims: string, main: string, early?: string): ScrapedEventSchedule => ({
@@ -178,4 +178,38 @@ test("cardOrder keeps a late main-card addition with the main card", () => {
   assert.deepEqual(cardOrder([bout(0, "main"), bout(1, null), bout(2, "early"), bout(3, "prelims")]).map((f) => f.ord), [0, 1, 3, 2],
     "an unplaced bout stays with the bout above it");
   assert.deepEqual(cardOrder([bout(1, null), bout(0, null)]).map((f) => f.ord), [0, 1], "an unplaced card keeps source order");
+});
+
+test("cardOrder follows ufc.com's place for a late addition booked mid-card", () => {
+  const bout = (ord: number, segment: string, card_pos: number | null) => ({ ord, segment, card_pos });
+  // UFCStats appends the new co-main to the bottom; ufc.com books it second.
+  const card = [bout(0, "main", 0), bout(1, "main", 2), bout(2, "prelims", 3), bout(3, "prelims", 4), bout(4, "main", 1)];
+  assert.deepEqual(cardOrder(card).map((f) => f.ord), [0, 4, 1, 2, 3]);
+  assert.deepEqual(cardOrder([bout(0, "main", 0), bout(1, "main", null), bout(2, "prelims", 2), bout(3, "main", 1)]).map((f) => f.ord), [0, 1, 3, 2],
+    "a bout ufc.com does not name stays just below the bout above it in UFCStats' list");
+});
+
+test("positions come from names on ufc.com's page, never guessed", () => {
+  const page: ScrapedSegmentBout[] = [
+    { segment: "main", f1: "Alexander Volkanovski", f2: "Movsar Evloev" },
+    { segment: "main", f1: "Aaron Pico", f2: "Losene Keita" },
+    { segment: "prelims", f1: "Grant Dawson", f2: "Nurullo Aliev" },
+  ];
+  const ours = [
+    { id: "a", f1_name: "Movsar Evloev", f2_name: "Alexander Volkanovski" },
+    { id: "b", f1_name: "Grant Dawson", f2_name: "Nurullo Aliev" },
+    { id: "c", f1_name: "Aaron Pico", f2_name: "Losene Keita" },
+    { id: "d", f1_name: "Someone Else", f2_name: "Another Fighter" },
+  ];
+  assert.deepEqual([...assignPositions(ours, page)].sort(), [["a", 0], ["b", 2], ["c", 1]]);
+});
+
+test("a late addition's start counts the bouts below it on ufc.com's card", () => {
+  const late = [
+    { ord: 0, segment: "main" as const, card_pos: 0, fiveRound: true },
+    { ord: 1, segment: "main" as const, card_pos: 2 },
+    { ord: 2, segment: "main" as const, card_pos: 1 },
+  ];
+  assert.equal(estimatedStart(late, 1, times), times.main, "the bout ufc.com lists last opens the main card");
+  assert.equal(estimatedStart(late, 2, times), times.main + 30 * 60_000);
 });

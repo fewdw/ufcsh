@@ -97,6 +97,22 @@ export function assignSegments(
   return assigned;
 }
 
+/** Each bout's place on ufc.com's card, main event 0, matched by both names
+ *  only: a position guessed from UFCStats' order is no better than `ord`. */
+export function assignPositions(
+  fights: { id: string; f1_name: string; f2_name: string }[],
+  bouts: ScrapedSegmentBout[],
+): Map<string, number> {
+  const byPair = new Map<string, number>();
+  bouts.forEach((bout, index) => byPair.set(pairKey(bout.f1, bout.f2), index));
+  const positions = new Map<string, number>();
+  for (const fight of fights) {
+    const index = byPair.get(pairKey(fight.f1_name, fight.f2_name));
+    if (index != null) positions.set(fight.id, index);
+  }
+  return positions;
+}
+
 /** Booked length per bout, matched by both names, or by card position plus
  * one identical name. An unidentified bout gets no length. */
 export function assignRounds(
@@ -143,7 +159,7 @@ export const BOUT_MINUTES = 30;
 export const FIVE_ROUND_BOUT_MINUTES = 40;
 
 /** One bout as the schedule reads it: where it sits, and how long it can run. */
-export type ScheduledBout = { ord: number; segment: CardSegment | null; fiveRound?: boolean };
+export type ScheduledBout = { ord: number; segment: CardSegment | null; card_pos?: number | null; fiveRound?: boolean };
 
 export const boutMinutes = (bout: ScheduledBout): number =>
   bout.fiveRound ? FIVE_ROUND_BOUT_MINUTES : BOUT_MINUTES;
@@ -153,16 +169,18 @@ export function estimatedStart(
   ord: number,
   times: SegmentTimes,
 ): number | null {
-  const bout = fights.find((fight) => fight.ord === ord);
+  const card = cardOrder(fights);
+  const index = card.findIndex((fight) => fight.ord === ord);
+  const bout = card[index];
   if (!bout) return null;
   const segment = bout.segment;
   const segmentStart = segment ? times[segment] : (times.early ?? times.prelims ?? times.main);
   if (segmentStart == null) return null;
   // A card is fought bottom-up, so the bouts before this one in its segment are
-  // the ones with a higher ord, each taking as long as its own length allows.
+  // the ones below it, each taking as long as its own length allows.
   const segmentBouts = fights.filter((fight) => fight.segment === segment);
-  const minutes = segmentBouts
-    .filter((fight) => fight.ord > ord)
+  const minutes = card.slice(index + 1)
+    .filter((fight) => fight.segment === segment)
     .reduce((total, fight) => total + boutMinutes(fight), 0);
   const nextSegments: CardSegment[] = segment === "early" ? ["prelims", "main"]
     : segment === "prelims" ? ["main"] : [];
@@ -183,19 +201,22 @@ export function estimatedStart(
 
 const SEGMENT_RANK: Record<CardSegment, number> = { main: 0, prelims: 1, early: 2 };
 
-/** A card top to bottom: main card, prelims, then early prelims, each in its
- *  source order. UFCStats appends a late addition to the bottom of its list
- *  whichever segment ufc.com books it on. A bout with no segment stays with the
- *  bout above it. */
-export function cardOrder<T extends { ord: number | string | null; segment?: string | null }>(fights: T[]): T[] {
+/** A card top to bottom, as it is fought in reverse: main card, prelims, then
+ *  early prelims, each in ufc.com's order. UFCStats appends a late addition to
+ *  the bottom of its list (`ord`) wherever ufc.com books it, so `ord` alone is
+ *  never the running order; anything that needs one reads it here. A bout
+ *  ufc.com has not placed stays with the bout above it in UFCStats' list. */
+export function cardOrder<T extends { ord: number | string | null; segment?: string | null; card_pos?: number | null }>(fights: T[]): T[] {
   let rank = 0;
+  let pos = -1;
   return fights
     .map((fight) => ({ fight, ord: Number(fight.ord) || 0 }))
     .sort((a, b) => a.ord - b.ord)
     .map(({ fight, ord }) => {
       rank = SEGMENT_RANK[fight.segment as CardSegment] ?? rank;
-      return { fight, ord, rank };
+      pos = fight.card_pos ?? pos;
+      return { fight, ord, rank, pos };
     })
-    .sort((a, b) => a.rank - b.rank || a.ord - b.ord)
+    .sort((a, b) => a.rank - b.rank || a.pos - b.pos || a.ord - b.ord)
     .map(({ fight }) => fight);
 }

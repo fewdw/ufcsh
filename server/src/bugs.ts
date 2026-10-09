@@ -973,18 +973,23 @@ function upcomingWithoutSegment(): BugCheck {
   const rows = db.prepare(`
     SELECT ${FIGHT_COLUMNS}, e.ufc_slug, e.segments_fetched_at
     FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE e.complete = 0 AND f.segment IS NULL
-      -- ufc.com only splits a card close to the event, so earlier than a week out
-      -- a missing segment is a problem only when the rest of the card is placed.
-      AND (e.date <= date('now', '+7 day')
-        OR EXISTS (SELECT 1 FROM fights o WHERE o.event_id = f.event_id AND o.segment IS NOT NULL))
+    WHERE e.complete = 0 AND (
+      (f.segment IS NULL
+        -- ufc.com only splits a card close to the event, so earlier than a week out
+        -- a missing segment is a problem only when the rest of the card is placed.
+        AND (e.date <= date('now', '+7 day')
+          OR EXISTS (SELECT 1 FROM fights o WHERE o.event_id = f.event_id AND o.segment IS NOT NULL)))
+      -- Without ufc.com's place, the bout sits where UFCStats lists it, which
+      -- for a late addition is the bottom of the card, whatever it is booked on.
+      OR (f.card_pos IS NULL
+        AND EXISTS (SELECT 1 FROM fights o WHERE o.event_id = f.event_id AND o.card_pos IS NOT NULL)))
     ORDER BY e.date ASC, f.ord ASC
   `).all() as (FightRow & { ufc_slug: string | null; segments_fetched_at: number | null })[];
   return check({
     id: "upcoming-no-segment",
     group: "Fights & events",
-    label: "Upcoming bouts not placed on a broadcast",
-    description: "The bout isn't placed under early prelims, prelims or main card, so it has no estimated start time. Usually ufc.com hasn't listed it yet (a new booking), or its names differ from UFCStats.",
+    label: "Upcoming bouts not placed on ufc.com's card",
+    description: "ufc.com's card doesn't name the bout, so its segment (early prelims, prelims or main card), its place in the running order and its estimated start time fall back to UFCStats' list, which puts a late addition at the bottom. Usually ufc.com hasn't listed it yet (a new booking), or its names differ from UFCStats.",
     grade: ahead([[3, "must"], [14, "minor"]]),
   }, rows.map((fight) => fightItem(fight, {
     facts: [["ufc.com slug", fight.ufc_slug ?? "none"], ["Segments read", ago(fight.segments_fetched_at)]],

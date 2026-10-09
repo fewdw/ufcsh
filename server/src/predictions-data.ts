@@ -1,4 +1,5 @@
 import { prepared } from "./db.ts";
+import { cardOrder } from "./card-schedule.ts";
 import { parseScheduledRounds } from "./fight-index.ts";
 import type { PredictionContext, PredictionFight } from "./predictions.ts";
 import type { BetContext, BetMarkets } from "./bets.ts";
@@ -35,11 +36,11 @@ export function predictionContext(id: string): PredictionContext | undefined {
   const fight = read(row);
   return { fight, bouts: event.all(fight.event_id).map(read), eventOpen: predictionEvents().has(fight.event_id) };
 }
-const card = prepared("SELECT f.id FROM events e LEFT JOIN fights f ON f.event_id = e.id WHERE e.id = ? ORDER BY f.ord");
+const card = prepared("SELECT f.id, f.ord, f.segment, f.card_pos FROM events e LEFT JOIN fights f ON f.event_id = e.id WHERE e.id = ? ORDER BY f.ord");
 /** A card's bouts in running order; undefined when there is no such event. */
 export function eventFightIds(eventId: string): string[] | undefined {
-  const rows = card.all(eventId) as { id: string | null }[];
-  return rows.length ? rows.flatMap(row => row.id ? [row.id] : []) : undefined;
+  const rows = card.all(eventId) as { id: string | null; ord: number | null; segment: string | null; card_pos: number | null }[];
+  return rows.length ? cardOrder(rows).flatMap(row => row.id ? [row.id] : []) : undefined;
 }
 export function predictionFights(ids: string[]): PredictionFight[] {
   if (!ids.length) return [];

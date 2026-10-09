@@ -101,6 +101,7 @@ type SegmentOf = "main" | "prelims" | "early" | null;
 const scheduledBout = (f: any) => ({
   ord: Number(f.ord) || 0,
   segment: (f.segment || null) as SegmentOf,
+  card_pos: f.card_pos ?? null,
   fiveRound: Number(f.scheduled_rounds) > 0 ? Number(f.scheduled_rounds) === 5 : ["title", "interim"].includes(f.title_type) || Number(f.ord) === 0,
 });
 
@@ -1989,7 +1990,7 @@ export function shareCardData(kind: string, id: string): ShareCardData | null {
   if (kind === "events") {
     const event = prepared("SELECT id, name, date, location FROM events WHERE id = ?").get(id) as { id: string; name: string; date: string; location: string } | undefined;
     if (!event) return null;
-    const fights = cardOrder(prepared("SELECT f1_name, f2_name, ord, segment FROM fights WHERE event_id = ? ORDER BY ord").all(id) as { f1_name: string; f2_name: string; ord: number; segment: string | null }[]).slice(0, 5);
+    const fights = cardOrder(prepared("SELECT f1_name, f2_name, ord, segment, card_pos FROM fights WHERE event_id = ? ORDER BY ord").all(id) as { f1_name: string; f2_name: string; ord: number; segment: string | null; card_pos: number | null }[]).slice(0, 5);
     const venue = venueOfEvent(id);
     return {
       kind: "list", eyebrow: "Fight card", title: event.name,
@@ -2210,14 +2211,14 @@ async function repairSnapshot(day: string): Promise<void> {
 /** Today's card for the admin panel, opening bout first. */
 function liveFights(): AdminLiveFight[] {
   return cardOrder(prepared(`
-    SELECT f.id, f.ord, f.segment, f.f1_name, f.f2_name, f.weight_class, f.scheduled_rounds,
+    SELECT f.id, f.ord, f.segment, f.card_pos, f.f1_name, f.f2_name, f.weight_class, f.scheduled_rounds,
       f.round, f.time, f.method, f.detail_json, f.f1_outcome, f.f2_outcome,
       f.f1_id, f.f2_id, NULL AS f1_photo, NULL AS f2_photo,
       e.id AS event_id, e.name AS event_name, e.date AS event_date
     FROM fights f JOIN events e ON e.id = f.event_id
     WHERE e.id = (SELECT id FROM events WHERE date >= date('now', '-1 day') AND date <= date('now') ORDER BY date DESC LIMIT 1)
     ORDER BY f.ord
-  `).all() as (AdminLiveFight & { segment: string | null })[]).reverse();
+  `).all() as (AdminLiveFight & { segment: string | null; card_pos: number | null })[]).reverse();
 }
 
 export function startApi(port: number): http.Server {
