@@ -92,8 +92,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-09">October 9, 2026</time></p>
             <ul>
-              <li>Admin health keeps traffic history across restarts: 24 hours, 7, 30 and 90 days, and all time.</li>
-              <li>The admin page can no longer be embedded by other sites.</li>
+              <li>A bout added late to a card now shows in its real place, so a card no longer shows two main card sections.</li>
+              <li>Start times, the bout on now and prediction cutoffs follow the same order.</li>
             </ul>
           </Section>
         </div>
