@@ -51,7 +51,12 @@
   --color-photo-ink: oklch(100% 0 0);
   --color-scrim: oklch(0% 0 0);
   --color-result-win: var(--color-win-2);
-  --color-result-draw: var(--color-belt);
+  /* Filled result badges keep contrasting ink in both themes. */
+  --color-result-loss: var(--color-loss-2);
+  --color-result-draw: oklch(48% .12 74);
+  --color-result-draw-soft: oklch(88% .15 85);
+  --color-result-neutral: oklch(54% 0 0);
+  --color-result-ink: oklch(15% 0 0);
   /* Arc's concentric corners, scaled to this app's denser panels. */
   --radius-md: 0.625rem;
   --radius-lg: 0.875rem;

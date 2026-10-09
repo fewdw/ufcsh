@@ -51,15 +51,15 @@ function resultBadgeLetter(outcome: HistoryRow["outcome"], upcoming: boolean): s
   }
 }
 
-/** Finishes use deep colours; decisions use light colours, all with white letters. */
+/** Finishes use deep colors with light ink; decisions use lighter colors with dark ink. */
 function resultBadgeClasses(outcome: HistoryRow["outcome"], upcoming: boolean, method: string | null): string {
   if (upcoming) return "bg-info-subtle text-info";
   const decision = isDecision(method);
   switch (outcome) {
-    case "win": return decision ? "bg-win-3 text-photo-ink" : "bg-win-1 text-photo-ink";
-    case "loss": return decision ? "bg-loss-3 text-photo-ink" : "bg-loss-1 text-photo-ink";
-    case "draw": return decision ? "bg-warning text-photo-ink" : "bg-result-draw text-photo-ink";
-    case "nc": return "bg-muted text-photo-ink";
+    case "win": return decision ? "bg-win-3 text-result-ink" : "bg-win-1 text-photo-ink";
+    case "loss": return decision ? "bg-loss-3 text-result-ink" : "bg-loss-1 text-photo-ink";
+    case "draw": return decision ? "bg-result-draw-soft text-result-ink" : "bg-result-draw text-photo-ink";
+    case "nc": return "bg-result-neutral text-photo-ink";
     default: return "bg-track text-muted";
   }
 }

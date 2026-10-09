@@ -112,7 +112,7 @@ function Verdict({ row, against }: { row: Row; against: Against }) {
   const agrees = against === "fans"
     ? row.fans ? fanPick(row.fans) === mine : null
     : row.others.length === 2 ? !row.dissent : null;
-  const tone = agrees == null ? "bg-track text-muted" : agrees ? "bg-success text-photo-ink" : "bg-danger text-photo-ink";
+  const tone = agrees == null ? "bg-track text-muted" : agrees ? "bg-result-win text-photo-ink" : "bg-result-loss text-photo-ink";
   return (
     <span className={`grid h-7 min-w-7 shrink-0 place-items-center rounded-full text-[11px] font-medium leading-none ${tone}`}
       title={agrees == null ? `No ${against === "fans" ? "fan card" : "full panel"}` : `${agrees ? "Same winner as" : "Different winner from"} the ${against}`}>
