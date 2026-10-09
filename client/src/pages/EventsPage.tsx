@@ -438,12 +438,14 @@ function FighterBlock({
   past,
   bonuses,
   resultTag,
+  profileLink = false,
 }: {
   side: FightSide;
   align: "left" | "right";
   past: boolean;
   bonuses: EventFight["bonuses"];
   resultTag: { label: string; when: string | null } | null;
+  profileLink?: boolean;
 }) {
   const dimmed = past && side.outcome === "loss";
   const rank = side.ranking?.rank === "IC" || side.ranking?.rank === "I" ? "I" : rankLabel(side.ranking) || "NR";
@@ -457,7 +459,7 @@ function FighterBlock({
       <div className={`flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
         {rankingBadge}
         <span className={`min-w-0 break-words text-sm leading-5 font-medium ${dimmed ? "text-muted" : "text-foreground"}`}>
-          {side.name}
+          {profileLink && side.profile_eligible && side.id ? <Link to={`/fighters/${side.id}`} className="hover:underline">{side.name}</Link> : side.name}
         </span>
         <span className={`flex shrink-0 items-center gap-2 empty:hidden ${align === "right" ? "flex-row-reverse" : ""}`}>
           {resultTag ? (
@@ -504,7 +506,7 @@ function resultTag(fight: EventFight, outcome: FightSide["outcome"]): { label: s
   return { label: fight.method === "CNC" ? "NC" : fight.method.toUpperCase(), when: when || null };
 }
 
-function CenterBlock({ fight, past }: { fight: EventFight; past: boolean }) {
+function CenterBlock({ fight, past, cancellation }: { fight: EventFight; past: boolean; cancellation?: CancelledBout }) {
   const f1Odds = fight.odds?.f1.close ?? null;
   const f2Odds = fight.odds?.f2.close ?? null;
   const result = formatMethod(fight.method, fight.round, fight.time);
@@ -520,7 +522,7 @@ function CenterBlock({ fight, past }: { fight: EventFight; past: boolean }) {
       {/* The result wraps rather than truncating: the round and the clock are
           the point of the line, and the centre column is narrow enough that
           "KO/TKO · R1 · 2:54" would lose its tail to an ellipsis. */}
-      {past ? (
+      {cancellation ? null : past ? (
         <div className="mt-1.5 max-w-full text-balance text-center text-[10px] font-medium leading-4 text-muted" title={fight.method_details ?? result}>
           {result || "Result"}
         </div>
@@ -533,7 +535,7 @@ function CenterBlock({ fight, past }: { fight: EventFight; past: boolean }) {
   );
 }
 
-function FightRow({ fight, past, eventId, live = false }: { fight: EventFight; past: boolean; eventId: string; live?: boolean }) {
+function FightRow({ fight, past, eventId, live = false, cancellation }: { fight: EventFight; past: boolean; eventId: string; live?: boolean; cancellation?: CancelledBout }) {
   const navigate = useNavigate();
   const { settings } = useSettings();
   // During a live event some fights are already finished — show their results.
@@ -566,34 +568,39 @@ function FightRow({ fight, past, eventId, live = false }: { fight: EventFight; p
     // A plain button so the odds pair below can't hold one of its own — the
     // row still opens the matchup on Enter/Space, same as a real button would.
     <div
-      role="button"
-      tabIndex={0}
-      onPointerEnter={warm}
-      onPointerDown={warm}
-      onFocus={warm}
-      onClick={open}
-      onKeyDown={(event) => {
+      role={cancellation ? undefined : "button"}
+      tabIndex={cancellation ? undefined : 0}
+      onPointerEnter={cancellation ? undefined : warm}
+      onPointerDown={cancellation ? undefined : warm}
+      onFocus={cancellation ? undefined : warm}
+      onClick={cancellation ? undefined : open}
+      onKeyDown={cancellation ? undefined : (event) => {
         if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
         open();
       }}
-      className={`group block w-full cursor-pointer px-3 text-left transition-colors @3xl:px-4 ${live ? "py-2.5 hover:bg-success-subtle/60 @3xl:py-3" : "py-2 hover:bg-surface-muted @3xl:py-1.5"}`}
+      className={`group block w-full px-3 text-left transition-colors @3xl:px-4 ${cancellation ? "bg-danger-subtle py-2 @3xl:py-1.5" : live ? "cursor-pointer py-2.5 hover:bg-success-subtle/60 @3xl:py-3" : "cursor-pointer py-2 hover:bg-surface-muted @3xl:py-1.5"}`}
     >
-      <div className="@3xl:hidden"><CompactFightRow fight={fight} done={done} live={live} /></div>
-      <div className="hidden grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 @3xl:grid">
-      {/* Explicit grid placement rather than the order-1/2/3 trick a 3-item
-          row could get away with — a 4th item (the mobile-only weight class
-          row below) needs an unambiguous spot too. */}
+      <div className="@3xl:hidden"><CompactFightRow fight={fight} done={done} live={live} cancellation={cancellation} /></div>
+      <div className="hidden grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-4 gap-y-1 @3xl:grid">
+      {/* Keep the corners and odds in one row; cancellation text gets the
+          whole width below them so it is not squeezed into the odds column. */}
       <div className="col-start-1 row-start-1 min-w-0">
-        <FighterBlock side={fight.f1} align="left" past={done} bonuses={fight.bonuses} resultTag={resultTag(fight, fight.f1.outcome)} />
+        <FighterBlock side={fight.f1} align="left" past={done} bonuses={fight.bonuses} resultTag={resultTag(fight, fight.f1.outcome)} profileLink={Boolean(cancellation)} />
       </div>
       <div className="col-start-2 row-start-1 flex w-40 shrink-0 flex-col items-center justify-center gap-2 self-center @5xl:w-52">
         {weightClassRow}
-        <CenterBlock fight={fight} past={done} />
+        <CenterBlock fight={fight} past={done} cancellation={cancellation} />
       </div>
       <div className="col-start-3 row-start-1 min-w-0">
-        <FighterBlock side={fight.f2} align="right" past={done} bonuses={fight.bonuses} resultTag={resultTag(fight, fight.f2.outcome)} />
+        <FighterBlock side={fight.f2} align="right" past={done} bonuses={fight.bonuses} resultTag={resultTag(fight, fight.f2.outcome)} profileLink={Boolean(cancellation)} />
       </div>
+      {cancellation ? (
+        <p className="col-span-3 row-start-2 min-w-0 truncate text-center text-[10px] leading-4 text-danger" title={cancellation.reason ?? undefined}>
+          <span className="font-medium">Cancelled</span>
+          {cancellation.reason ? <> · {cancellation.reason}</> : null}
+        </p>
+      ) : null}
       </div>
     </div>
   );
@@ -601,7 +608,7 @@ function FightRow({ fight, past, eventId, live = false }: { fight: EventFight; p
 
 /** One corner of a phone-width row: the whole width is the fighter's, so the
  *  name is never cut short, with their price at the end of the line. */
-function CompactSide({ side, fight, done, other }: { side: FightSide; fight: EventFight; done: boolean; other: FightSide }) {
+function CompactSide({ side, fight, done, other, profileLink = false }: { side: FightSide; fight: EventFight; done: boolean; other: FightSide; profileLink?: boolean }) {
   const dimmed = done && side.outcome === "loss";
   const rank = side.ranking?.rank === "IC" || side.ranking?.rank === "I" ? "I" : rankLabel(side.ranking);
   const tag = resultTag(fight, side.outcome);
@@ -614,7 +621,7 @@ function CompactSide({ side, fight, done, other }: { side: FightSide; fight: Eve
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
           {rank ? <span className={`text-[10px] font-medium tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-muted"}`} title={rankingTitle(side.ranking, done)}>{rank}</span> : null}
-          <span className={`text-[14px] font-medium leading-5 ${dimmed ? "text-muted" : "text-foreground"}`}>{side.name}</span>
+          <span className={`text-[14px] font-medium leading-5 ${dimmed ? "text-muted" : "text-foreground"}`}>{profileLink && side.profile_eligible && side.id ? <Link to={`/fighters/${side.id}`} className="hover:underline">{side.name}</Link> : side.name}</span>
           {tag ? (
             <span className={`${METHOD_TAG} ${outcomeClasses(side.outcome)}`}>
               {tag.label}
@@ -647,7 +654,7 @@ function CompactSide({ side, fight, done, other }: { side: FightSide; fight: Eve
 /** Below `@3xl` a bout is two stacked lines, one per fighter, the way a
  *  sportsbook lists a game: half the height of the face-off layout, and each
  *  name gets the whole width. */
-function CompactFightRow({ fight, done, live }: { fight: EventFight; done: boolean; live: boolean }) {
+function CompactFightRow({ fight, done, live, cancellation }: { fight: EventFight; done: boolean; live: boolean; cancellation?: CancelledBout }) {
   const title = beltTag(fight);
   const expected = !done ? clockTime(fight.starts_at) : null;
   // The winner's badge already says how it ended; only a result with no
@@ -664,13 +671,15 @@ function CompactFightRow({ fight, done, live }: { fight: EventFight; done: boole
         <span className="font-medium text-muted">{divisionName(fight.weight_class, fight.catch_weight)}</span>
         {fight.scheduled_rounds ? <span>{roundsLabel(fight.scheduled_rounds)}</span> : null}
         {title ? <span className={`rounded px-1 py-px text-[9px] font-medium leading-3 ${title.className}`}>{title.label}</span> : null}
+        {cancellation ? <span className="ml-auto font-medium text-danger">Cancelled</span> : null}
         {result ? <span className="ml-auto text-right" title={fight.method_details ?? result}>{result}</span> : null}
         {expected ? <span className="ml-auto tabular-nums" title="Approximate start in your time zone.">~{expected}</span> : null}
       </div>
       <div className="flex flex-col gap-1.5">
-        <CompactSide side={fight.f1} other={fight.f2} fight={fight} done={done} />
-        <CompactSide side={fight.f2} other={fight.f1} fight={fight} done={done} />
+        <CompactSide side={fight.f1} other={fight.f2} fight={fight} done={done} profileLink={Boolean(cancellation)} />
+        <CompactSide side={fight.f2} other={fight.f1} fight={fight} done={done} profileLink={Boolean(cancellation)} />
       </div>
+      {cancellation?.reason ? <p className="text-[10px] leading-4 text-danger">{cancellation.reason}</p> : null}
     </div>
   );
 }
@@ -840,22 +849,29 @@ function SegmentBreak({ segment, at }: { segment: CardSegment; at: number | null
 
 /** Bouts announced for the card that never happened on it, after every bout
  *  that did. A fighter links to their profile when they have one. */
-function CancelledBouts({ bouts }: { bouts: CancelledBout[] }) {
-  const name = (side: CancelledBout["f1"]) => side.id
-    ? <Link to={`/fighters/${side.id}`} className="transition hover:text-foreground">{side.name}{"\u00a0"}<span aria-hidden="true">↗</span></Link>
-    : side.name;
+function CancelledBouts({ bouts, eventId }: { bouts: CancelledBout[]; eventId: string }) {
   return (
     <div className="border-t border-line">
       <div className="border-b border-line bg-surface px-3 py-1.5 @[34rem]:px-6 @[34rem]:py-2.5">
         <h2 className="text-sm font-medium leading-5 tracking-tight text-foreground">Cancelled</h2>
       </div>
       <ul className="divide-y divide-line-subtle">
-        {bouts.map((bout) => (
-          <li key={`${bout.f1.name}-${bout.f2.name}`} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 px-3 py-2.5 @[34rem]:px-6">
-            <span className="min-w-0 text-sm font-medium text-secondary">{name(bout.f1)} <span className="font-normal text-muted">vs</span> {name(bout.f2)}</span>
-            <span className="min-w-0 text-[11px] text-muted">{[bout.division, bout.reason].filter(Boolean).join(" · ")}</span>
-          </li>
-        ))}
+        {bouts.map((bout) => {
+          // Reuse the card row without inventing a fight URL, odds or a result.
+          const fight: EventFight = {
+            id: "", ord: 0, segment: null, weight_class: bout.division ?? "",
+            title_fight: false, title_type: null, scheduled_rounds: null,
+            method: null, method_details: null, round: null, time: null,
+            f1: { ...bout.f1, id: bout.f1.id ?? "" },
+            f2: { ...bout.f2, id: bout.f2.id ?? "" },
+            odds: null, bonuses: { perf: false, fotn: false },
+          };
+          return (
+            <li key={`${bout.f1.name}-${bout.f2.name}`}>
+              <FightRow fight={fight} past={false} eventId={eventId} cancellation={bout} />
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
@@ -1099,7 +1115,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
               );
             })
           )}
-          {event.cancelled?.length ? <CancelledBouts bouts={event.cancelled} /> : null}
+          {event.cancelled?.length ? <CancelledBouts bouts={event.cancelled} eventId={event.id} /> : null}
         </section>
       )}
     </div>
