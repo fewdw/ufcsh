@@ -989,7 +989,7 @@ function upcomingWithoutSegment(): BugCheck {
     id: "upcoming-no-segment",
     group: "Fights & events",
     label: "Upcoming bouts not placed on ufc.com's card",
-    description: "ufc.com's card doesn't name the bout, so its segment (early prelims, prelims or main card), its place in the running order and its estimated start time fall back to UFCStats' list, which puts a late addition at the bottom. Usually ufc.com hasn't listed it yet (a new booking), or its names differ from UFCStats.",
+    description: "A bout is missing its section (early prelims, prelims or main card) or its place on ufc.com's card. Cards with missing sections show a confirmation notice and no bout start estimates. Missing positions fall back to UFCStats' list, which puts a late addition at the bottom. Usually ufc.com hasn't published the full split yet, hasn't listed a new booking, or its names differ from UFCStats.",
     grade: ahead([[3, "must"], [14, "minor"]]),
   }, rows.map((fight) => fightItem(fight, {
     facts: [["ufc.com slug", fight.ufc_slug ?? "none"], ["Segments read", ago(fight.segments_fetched_at)]],
