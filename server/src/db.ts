@@ -358,6 +358,10 @@ for (const alter of [
   "ALTER TABLE events ADD COLUMN bfo_checked_at INTEGER",
   "ALTER TABLE events ADD COLUMN bfo_final_at INTEGER",
   "ALTER TABLE fights ADD COLUMN segment TEXT",
+  // The bout's place on ufc.com's card, main event 0. UFCStats appends a late
+  // addition to the bottom of its list (`ord`), wherever it is booked; this is
+  // where it is actually fought. NULL until ufc.com's page names the bout.
+  "ALTER TABLE fights ADD COLUMN card_pos INTEGER",
   // How many rounds the bout is booked for, from ufc.com's live-card feed.
   // NULL until that feed has identified the bout; never inferred.
   "ALTER TABLE fights ADD COLUMN scheduled_rounds INTEGER",

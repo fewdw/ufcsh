@@ -14,6 +14,7 @@ client (`client/`) renders every page.
 | Fighter identity, records, photo URLs | `fighter-identity.ts` |
 | Search aliases (GSP, Aljo, real and maiden names; search only, never shown) | `search-aliases.ts` |
 | Career averages and opponent evidence | `career-metrics.ts` (shared formulas and recorded samples), `career-statistics.ts` (current career or cutoff before a matchup), `opposition.ts` (each UFC opponent's records then or now, standing tag and earlier or all fights), `fight-insights.ts` (bouts by round, average significant strikes landed and absorbed by round, average decision score by bout length over judges' cards and fan averages, wins against no-vig closing odds); missing samples in Admin → Bugs |
+| Card running order (main card, prelims, early; ufc.com's place within each) | `card-schedule.ts` (`cardOrder`; `fights.ord` is UFCStats' list, which appends late additions to the bottom, so never order a card by it alone), `card_pos` read in `sync.ts` (`syncEventSegments`); unplaced bouts in Admin → Bugs |
 | In-memory analytics index | `fight-index.ts` (every completed bout, state entering it) |
 | Leaderboards | `stats.ts` (fighter cards), `stats-fights.ts` (Fights card: bouts, judges, referees) |
 | Potential matchups (pinned unconfirmed odds board, separate from scheduled fights) | `potential-matchups.ts`; synced at startup and every five minutes from FightOdds.io and BestFightOdds future boards; `scrape/potential-odds.ts` reads BestFightOdds |

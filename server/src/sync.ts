@@ -12,7 +12,7 @@ import {
   type ScrapedEventDetail,
 } from "./scrape/ufcstats.ts";
 import { scrapeAthleteDirectoryPage, scrapeEventCard, scrapeEventSchedules, scrapeFighterImages, scrapeRankings } from "./scrape/ufccom.ts";
-import { assignPerBout, assignRounds, assignSegments, matchEventSchedule, sharesBout } from "./card-schedule.ts";
+import { assignPerBout, assignPositions, assignRounds, assignSegments, cardOrder, matchEventSchedule, sharesBout } from "./card-schedule.ts";
 import {
   alignScrapedOdds,
   findOddsEventPages,
@@ -284,6 +284,10 @@ export async function syncEventSegments(eventId: string): Promise<void> {
   const segments = assignSegments(fights, card.segments);
   const update = db.prepare("UPDATE fights SET segment = ? WHERE id = ?");
   for (const [id, segment] of segments) update.run(segment, id);
+  // A bout the page no longer names loses its place, as a moved bout must.
+  const positions = assignPositions(fights, card.segments);
+  const setPosition = db.prepare("UPDATE fights SET card_pos = ? WHERE id = ?");
+  for (const fight of fights) setPosition.run(positions.get(fight.id) ?? null, fight.id);
   // The feed is reached through the page's first fight, and ufc.com has linked
   // fights to another event's feed (UFC 239's under the Minneapolis card). A
   // feed that shares no bout with ours says nothing about this card.
@@ -324,7 +328,7 @@ export function forgetUfcPage(eventId: string): void {
     schedule_fetched_at = NULL, segments_fetched_at = NULL, ufc_event_id = NULL, venue_id = NULL, venue_name = NULL,
     venue_city = NULL, venue_state = NULL, venue_country = NULL, venue_tz = NULL, broadcast_json = NULL,
     venue_checked_at = NULL WHERE id = ?`).run(eventId);
-  db.prepare("UPDATE fights SET segment = NULL, scheduled_rounds = NULL, referee_assigned = NULL WHERE event_id = ?").run(eventId);
+  db.prepare("UPDATE fights SET segment = NULL, card_pos = NULL, scheduled_rounds = NULL, referee_assigned = NULL WHERE event_id = ?").run(eventId);
   setMeta("schedule_archive_done", "0");
 }
 
@@ -1317,11 +1321,11 @@ let fightOddsRunning = false;
 export async function syncFightOdds({ props = false }: { props?: boolean } = {}): Promise<{ events: number; lines: number; props: number }> {
   const events = await fightOddsEvents(new Date(Date.now() - DAY).toISOString().slice(0, 10));
   const selectFights = db.prepare(`
-    SELECT f.id, f.event_id, f.ord, f.f1_id, f.f2_id, f.f1_name, f.f2_name, f.f1_outcome, f.f2_outcome, f.detail_json, e.date
+    SELECT f.id, f.event_id, f.ord, f.segment, f.card_pos, f.f1_id, f.f2_id, f.f1_name, f.f2_name, f.f1_outcome, f.f2_outcome, f.detail_json, e.date
     FROM fights f JOIN events e ON e.id = f.event_id
     WHERE e.complete = 0 AND e.date BETWEEN date(?, '-1 day') AND date(?, '+1 day')
   `);
-  type Row = { id: string; event_id: string; ord: number; f1_id: string; f2_id: string; f1_name: string; f2_name: string;
+  type Row = { id: string; event_id: string; ord: number; segment: string | null; card_pos: number | null; f1_id: string; f2_id: string; f1_name: string; f2_name: string;
     f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; date: string };
   const upsertLine = db.prepare(`
     INSERT INTO odds (fight_id, f1_open, f1_close, f2_open, f2_close, source_url, checked_at, fetched_at)
@@ -1350,7 +1354,7 @@ export async function syncFightOdds({ props = false }: { props?: boolean } = {})
       if (!isFightDay(row.date)) continue;
       if (fightIsComplete(row) || fightIsUnderway(row)) frozen.add(row.id);
       const same = fights.filter((other) => other.event_id === row.event_id);
-      const next = same.filter((other) => !fightIsComplete(other)).sort((a, b) => b.ord - a.ord)[0];
+      const next = cardOrder(same).findLast((other) => !fightIsComplete(other));
       if (next?.id === row.id && same.some((other) => fightIsComplete(other))) frozen.add(row.id);
     }
     return { fights, frozen };
@@ -1743,11 +1747,12 @@ export async function syncLiveEvents(): Promise<void> {
       // reaches it — and it is the one whose numbers are moving. UFCStats
       // publishes its round totals as they happen, so keep it warm rather than
       // waiting for a reader to ask for it. A card fills in from the bottom up,
-      // so that bout is the highest ord still without an outcome.
+      // so that bout is the lowest on the card still without an outcome.
       if (fights.length) {
-        const underway = db.prepare(`SELECT id, f1_outcome, f2_outcome, detail_json, detail_fetched_at FROM fights
-          WHERE event_id = ? AND f1_outcome IS NULL AND f2_outcome IS NULL ORDER BY ord DESC LIMIT 1`)
-          .get(event.id) as { id: string; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; detail_fetched_at: number | null } | undefined;
+        const underway = cardOrder(db.prepare(`SELECT id, ord, segment, card_pos, f1_outcome, f2_outcome, detail_json, detail_fetched_at FROM fights
+          WHERE event_id = ? ORDER BY ord`)
+          .all(event.id) as { id: string; ord: number; segment: string | null; card_pos: number | null; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; detail_fetched_at: number | null }[])
+          .findLast((fight) => fight.f1_outcome == null && fight.f2_outcome == null);
         if (underway && liveDetailDue(underway)) await guarded(`live_stats ${underway.id}`, () => syncFightDetail(underway.id));
       }
     }

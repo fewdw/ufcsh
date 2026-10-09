@@ -43,6 +43,17 @@ test("prediction cutoff uses real card positions and closes exactly two fights a
   assert.equal(status(4).open, true);
 });
 
+test("a late main-card addition listed below the prelims is fought with the main card", () => {
+  const bouts = Array.from({ length: 6 }, (_, index) => ({ ...fight(index), segment: index < 3 ? "prelims" : "main" }));
+  const late = { ...fight(6), ord: 12, segment: "main" };
+  const card = [...bouts, late];
+  const status = (bout: PredictionFight) => predictionWindow({ fight: bout, bouts: card }, now);
+  assert.equal(status(bouts[0]).closesAt, eventStart - 15 * 60_000, "the prelim opener still opens the night");
+  assert.equal(status(late).closesAt, null);
+  assert.equal(status(late).triggerFightId, bouts[1].id, "closes two fights ahead of its main-card slot");
+  assert.equal(status(bouts[3]).triggerFightId, bouts[2].id);
+});
+
 test("only the night's opener closes 15 minutes early; later fights retain their cutoff", () => {
   const bouts = Array.from({ length: 5 }, (_, index) => fight(index));
   const status = (index: number, time: number) => predictionWindow({ fight: bouts[index], bouts }, time);
