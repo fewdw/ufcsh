@@ -448,3 +448,20 @@ Adding 2,029 Wikipedia reports raised that per-request build from 11.5 ms to
 48.5 ms on a production snapshot (5-call average after warm-up). Name matches
 are now kept per `profiles` data revision: the first build after a change
 takes 60 ms, later ones 6.7 ms.
+
+## Saved traffic history (2026-10-09)
+
+`server/src/traffic-history.ts` runs on the API's main thread. Measured in
+memory with a synthetic year of 50 active routes every hour:
+
+| Step | Cost |
+| --- | --- |
+| Counting a request (route row, hashed visitor for hour and day) | ~5 µs |
+| Flush every minute | ~1 ms |
+| Admin → Health History: 24 h / 7 d / 30 d / 90 d / all | 6 / 12 / 14 / 17 / 32 ms |
+
+The first layout took 350 ms for "all": summing 22 columns over every route
+row, then sorting them by route. A site-wide row per hour serves totals and
+the timeline, the `(route, hour)` key lets the route table stream groups
+without a sort, and route hours fold into days after eight days (29k rows a
+year instead of about 447k).
