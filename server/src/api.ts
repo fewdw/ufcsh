@@ -516,8 +516,11 @@ async function getEvent(id: string, rankingType: RankingType): Promise<unknown |
   // it. A bout that has happened, or is happening, has no estimate to give.
   const times = segmentTimes(e);
   const card = fights.map(scheduledBout);
+  // A segment start is announced before the lineup is split. Until every
+  // bout is placed, unknown bouts could change either broadcast window.
+  const sectionsConfirmed = card.every((fight) => fight.segment != null);
   const startsAt = (f: any): number | null =>
-    fightIsComplete(f) || fightIsUnderway(f) ? null : estimatedStart(card, Number(f.ord) || 0, times);
+    !sectionsConfirmed || fightIsComplete(f) || fightIsUnderway(f) ? null : estimatedStart(card, Number(f.ord) || 0, times);
 
   return {
     id: e.id,
