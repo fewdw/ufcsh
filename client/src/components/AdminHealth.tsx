@@ -3,6 +3,7 @@ import { useAdminResource } from "../admin";
 import AdminNewsAi from "./AdminNewsAi";
 import { relativeAge } from "../format";
 import { BUTTON_PRIMARY } from "../ui";
+import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "./segmented";
 
 type Summary = {
   requests: number; errors: number; clientErrors: number; notFound: number; throttled: number; slow: number;
@@ -101,24 +102,26 @@ function Card({ label, value, hint, level }: { label: string; value: string; hin
 }
 
 /** An hour, minute by minute. Bars count things; a line tracks a level. */
-function MinuteChart({ title, points, format, kind = "bar", tone = "text-series-1" }: {
+const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+function MinuteChart({ title, points, format, kind = "bar", tone = "text-series-1", time = clock, span = "last 60 minutes", total }: {
   title: string; points: { at: number; value: number | null }[]; format: (value: number) => string;
-  kind?: "bar" | "line"; tone?: string;
+  kind?: "bar" | "line"; tone?: string; time?: (at: number) => string; span?: string;
+  /** Shown in place of the latest value, for charts of a longer window. */
+  total?: string;
 }) {
   const peak = Math.max(...points.map(point => point.value ?? 0), 0);
   const top = peak || 1;
   const latest = [...points].reverse().find(point => point.value != null)?.value ?? null;
-  const width = 300, height = 64, step = width / points.length;
+  const width = 300, height = 64, step = width / Math.max(points.length, 1);
   const y = (value: number) => height - (value / top) * (height - 4);
-  const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const line = points.map((point, index) => point.value == null ? null : `${(index + 0.5) * step},${y(point.value)}`).filter(Boolean).join(" ");
   return (
     <figure className="min-w-0 rounded-xl border border-zinc-200 bg-white px-3 pb-2 pt-2.5">
       <figcaption className="flex items-baseline justify-between gap-2 text-[11px]">
         <span className="truncate font-medium text-zinc-500">{title}</span>
-        <span className="shrink-0 tabular-nums text-zinc-400">now <b className="font-semibold text-zinc-800">{latest == null ? "—" : format(latest)}</b> · peak {format(peak)}</span>
+        <span className="shrink-0 tabular-nums text-zinc-400">{total ? "total" : "now"} <b className="font-semibold text-zinc-800">{total ?? (latest == null ? "—" : format(latest))}</b> · peak {format(peak)}</span>
       </figcaption>
-      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className={`mt-1.5 h-16 w-full ${tone}`} role="img" aria-label={`${title}, last 60 minutes`}>
+      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className={`mt-1.5 h-16 w-full ${tone}`} role="img" aria-label={`${title}, ${span}`}>
         <line x1="0" x2={width} y1={height - 0.5} y2={height - 0.5} className="stroke-plot-axis" strokeWidth="1" />
         {kind === "line" && line ? <polyline points={line} fill="none" stroke="currentColor" strokeWidth="1.75" vectorEffect="non-scaling-stroke" strokeLinejoin="round" /> : null}
         {points.map((point, index) => (
@@ -134,7 +137,7 @@ function MinuteChart({ title, points, format, kind = "bar", tone = "text-series-
         ))}
       </svg>
       <div className="mt-0.5 flex justify-between text-[10px] text-zinc-400">
-        <span>{points.length ? time(points[0].at) : ""}</span><span>now</span>
+        <span>{points.length ? time(points[0].at) : ""}</span><span>{total ? (points.length ? time(points.at(-1)!.at) : "") : "now"}</span>
       </div>
     </figure>
   );
@@ -196,6 +199,106 @@ const ROUTE_INFO: Record<string, { name: string; path: string }> = {
   pageview_beacon: { name: "Page view signals", path: "/api/pageview" },
   api_other: { name: "Other API", path: "/api/*" },
 };
+
+type TrafficRange = "24h" | "7d" | "30d" | "90d" | "all";
+const RANGES: [TrafficRange, string][] = [["24h", "24 hours"], ["7d", "7 days"], ["30d", "30 days"], ["90d", "90 days"], ["all", "All time"]];
+type Traffic = {
+  range: TrafficRange; since: number; until: number; bucketMs: number; firstRecordedAt: number | null;
+  totals: Summary & { pageViews: number };
+  dailyVisitors: { days: number; average: number; peak: number; peakDay: number | null };
+  series: { at: number; requests: number; errors: number; throttled: number; pageViews: number; p95Ms: number | null; visitors: number }[];
+  routes: (Summary & { route: string; pageViews: number })[];
+  community: { accounts: number; comments: number; bets: number };
+};
+const day = (at: number, year = false) => new Date(at).toLocaleDateString([], { month: "short", day: "numeric", ...(year ? { year: "numeric" } : {}), timeZone: "UTC" });
+
+/** Saved traffic, hour by hour on disk, so it outlives restarts and deploys. */
+function TrafficHistory() {
+  const [range, setRange] = useState<TrafficRange>("24h");
+  const { data, error, loading } = useAdminResource<Traffic>(`/api/admin/traffic?range=${range}`, 60_000);
+  const shown = data?.range === range ? data : null;
+  const hourly = shown ? shown.bucketMs < 86_400_000 : true;
+  const time = (at: number) => hourly
+    ? new Date(at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+    : day(at, range === "all");
+  const unit = !shown ? "" : hourly ? "hour" : shown.bucketMs > 86_400_000 ? "week" : "day";
+  const label = RANGES.find(([key]) => key === range)![1].toLowerCase();
+  const points = (pick: (point: Traffic["series"][number]) => number | null) => (shown?.series ?? []).map(point => ({ at: point.at, value: pick(point) }));
+  const t = shown?.totals;
+  return (
+    <section className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-900">History</h3>
+          <p className="text-[11px] text-zinc-500">
+            Saved every minute and kept across restarts{shown?.firstRecordedAt ? `, recorded since ${day(shown.firstRecordedAt, true)}` : ""}.
+            {hourly ? "" : " Days are UTC."} Admin traffic is left out of the totals.
+          </p>
+        </div>
+        <div className={segmentedGroup} role="group" aria-label="History range">
+          {RANGES.map(([key, name]) => (
+            <button key={key} type="button" onClick={() => setRange(key)} aria-pressed={range === key}
+              className={`${segmentedOption} ${range === key ? segmentedSelected : segmentedIdle}`}>{name}</button>
+          ))}
+        </div>
+      </div>
+      {!shown || !t ? (
+        <div role="status" className="rounded-xl border border-zinc-200 bg-white py-10 text-center text-sm text-zinc-400">
+          {loading || !error ? "Loading history…" : `Couldn’t load history. ${error}`}
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <Card label="Requests" value={whole(t.requests)} hint={`last ${label}`} />
+            <Card label="Page views" value={whole(t.pageViews)} hint={`last ${label}`} />
+            <Card label="Visitor IPs / day" value={whole(shown.dailyVisitors.average)} hint={shown.dailyVisitors.peakDay != null ? `peak ${whole(shown.dailyVisitors.peak)} on ${day(shown.dailyVisitors.peakDay)}` : "no visitors recorded"} />
+            <Card label="Response time (p95)" value={t.requests ? ms(t.p95Ms) : "—"} hint={`median ${t.requests ? ms(t.p50Ms) : "—"} · max ${t.requests ? ms(t.maxMs) : "—"}`} />
+            <Card label="Server errors" value={percent(t.errors, t.requests)} hint={`${whole(t.errors)} responses · ${whole(t.throttled)} rate-limited`} level={t.requests && t.errors / t.requests > 0.01 ? "warn" : "ok"} />
+            <Card label="Slow (≥ 1 s)" value={percent(t.slow, t.requests)} hint={`${whole(t.slow)} requests · ${whole(t.notFound)} not found`} />
+            <Card label="New accounts" value={whole(shown.community.accounts)} hint={`last ${label}`} />
+            <Card label="Comments" value={whole(shown.community.comments)} hint={`${whole(shown.community.bets)} bets placed`} />
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <MinuteChart title={`Page views per ${unit}`} points={points(point => point.pageViews)} format={whole} tone="text-series-3" time={time} span={`last ${label}`} total={whole(t.pageViews)} />
+            <MinuteChart title={`Requests per ${unit}`} points={points(point => point.requests)} format={whole} time={time} span={`last ${label}`} total={whole(t.requests)} />
+            <MinuteChart title={unit === "week" ? "Visitor IPs per day (weekly average)" : `Visitor IPs per ${unit}`} points={points(point => point.visitors)} format={whole} tone="text-series-3" time={time} span={`last ${label}`} />
+            <MinuteChart title="Response time (p95)" points={points(point => point.p95Ms)} format={ms} kind="line" tone="text-series-4" time={time} span={`last ${label}`} />
+            <MinuteChart title={`Errors per ${unit}`} points={points(point => point.errors)} format={whole} tone="text-rose-500" time={time} span={`last ${label}`} total={whole(t.errors)} />
+            <MinuteChart title={`Rate-limited per ${unit}`} points={points(point => point.throttled)} format={whole} tone="text-series-2" time={time} span={`last ${label}`} total={whole(t.throttled)} />
+          </div>
+          <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] text-xs">
+                <thead className="bg-zinc-50 text-left text-[11px] uppercase tracking-wide text-zinc-500">
+                  <tr>
+                    <th className="px-4 py-2 font-semibold">Route pattern, last {label}</th>
+                    {["Requests", "Share", "Views", "p95", "4xx", "429", "5xx", "≥1s"].map(name => <th key={name} className="px-3 py-2 text-right font-semibold">{name}</th>)}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 tabular-nums">
+                  {shown.routes.map(route => (
+                    <tr key={route.route} className={route.requests && route.errors / route.requests > 0.01 ? "bg-rose-50" : route.p95Ms > 500 ? "bg-amber-50" : ""}>
+                      <td className="px-4 py-2"><b className="block font-medium text-zinc-900">{ROUTE_INFO[route.route]?.name ?? route.route}</b><code className="text-[11px] text-zinc-500">{ROUTE_INFO[route.route]?.path ?? route.route}</code></td>
+                      <td className="px-3 py-2 text-right font-semibold text-zinc-900">{whole(route.requests)}</td>
+                      <td className="px-3 py-2 text-right text-zinc-600">{percent(route.requests, t.requests)}</td>
+                      <td className="px-3 py-2 text-right text-zinc-600">{route.pageViews ? whole(route.pageViews) : "—"}</td>
+                      <td className="px-3 py-2 text-right text-zinc-800">{route.requests ? ms(route.p95Ms) : "—"}</td>
+                      <td className="px-3 py-2 text-right text-zinc-600">{route.clientErrors ? whole(route.clientErrors) : "—"}</td>
+                      <td className="px-3 py-2 text-right text-zinc-600">{route.throttled ? whole(route.throttled) : "—"}</td>
+                      <td className="px-3 py-2 text-right text-zinc-600">{route.errors ? whole(route.errors) : "—"}</td>
+                      <td className="px-3 py-2 text-right text-zinc-600">{route.slow ? whole(route.slow) : "—"}</td>
+                    </tr>
+                  ))}
+                  {!shown.routes.length ? <tr><td colSpan={9} className="px-4 py-6 text-center text-zinc-400">Nothing recorded in this range yet.</td></tr> : null}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
 
 /** Live health for whoever runs the site: is it up, is it fast, is it
  *  busy, and is anything waiting on an administrator. */
@@ -284,6 +387,8 @@ export default function AdminHealth() {
         <MinuteChart title="CPU" points={series(minute => minute.cpuPercent)} format={value => `${Math.round(value)}%`} kind="line" />
         <MinuteChart title="Memory" points={series(minute => minute.memoryBytes)} format={bytes} kind="line" tone="text-series-3" />
       </div>
+
+      <TrafficHistory />
 
       <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-zinc-100 px-4 py-3">
@@ -411,8 +516,8 @@ export default function AdminHealth() {
       <section className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-600">
         <h3 className="text-sm font-semibold text-zinc-900">History and alerts</h3>
         <p className="mt-1">
-          This page is live and covers the last hour; it starts over when the server restarts. Fourteen days of history,
-          CPU and disk for the whole machine, and alerts live in Grafana.
+          The live figures cover the last hour and start over when the server restarts; History above is saved
+          hourly and kept. Fourteen days of CPU and disk for the whole machine, and alerts, live in Grafana.
         </p>
         <a href={data.grafanaUrl ?? "http://localhost:3001"} target="_blank" rel="noreferrer" className={`mt-2 ${BUTTON_PRIMARY}`}>
           Open Grafana

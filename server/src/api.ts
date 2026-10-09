@@ -27,6 +27,7 @@ import { enqueueRefresh } from "./refresh-queue.ts";
 import { QueryPool } from "./query-pool.ts";
 import { ResponseCache, representation, acceptsEncoding, acceptsGzip, matchesEtag, OverloadedError, type Representation } from "./response-cache.ts";
 import { HttpObservability } from "./observability.ts";
+import { TrafficHistory } from "./traffic-history.ts";
 import { createRepairRunner } from "./repair-guard.ts";
 import { publicApi, cachePolicy, canonicalApiKey, clientAddress, RateLimiter } from "./api-policy.ts";
 import { canonicalMethod, log, normName, todayIso } from "./util.ts";
@@ -2254,6 +2255,18 @@ export function startApi(port: number): http.Server {
     reports: reportStore,
     comments: commentStore,
     metrics: () => adminMetrics(),
+    traffic: range => {
+      const summary = trafficHistory.summary(range);
+      const count = (sql: string) => Number((scoreStore.db.prepare(sql).get(summary.since) as { n: number }).n);
+      return {
+        ...summary,
+        community: {
+          accounts: count("SELECT COUNT(*) AS n FROM scorers WHERE created_at >= ?"),
+          comments: count("SELECT COUNT(*) AS n FROM comments WHERE created_at >= ?"),
+          bets: count("SELECT COUNT(*) AS n FROM bets WHERE placed_at >= ?"),
+        },
+      };
+    },
     report: async () => {
       const report = queryPool ? JSON.parse((await queryPool.run("/api/bugs")).json) : bugReport();
       return { ...report, checks: [accountSyncCheck(), ...report.checks] };
@@ -2337,6 +2350,11 @@ export function startApi(port: number): http.Server {
   }, 1000);
   warmLists.unref();
   const observability = new HttpObservability();
+  const trafficHistory = new TrafficHistory(scoreStore.db);
+  observability.history = trafficHistory;
+  const flushTraffic = () => { try { trafficHistory.flush(); } catch (err) { log("traffic history flush failed:", String(err)); } };
+  const trafficFlusher = setInterval(flushTraffic, 60_000);
+  trafficFlusher.unref();
   const eventLoop = monitorEventLoopDelay({ resolution: 20 });
   eventLoop.enable();
   // The dashboard's process gauges: event-loop delay, CPU and memory, sampled
@@ -2419,6 +2437,11 @@ export function startApi(port: number): http.Server {
       if ((req.url?.length ?? 0) > 16_384) return await sendJson(req, res, { error: "URL too long" }, 414);
       const url = new URL(req.url ?? "/", "http://localhost");
       const p = url.pathname;
+      // No other site may frame the admin panel and steer an administrator's clicks.
+      if (p === "/admin" || p.startsWith("/admin/")) {
+        res.setHeader("X-Frame-Options", "DENY");
+        res.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
+      }
       if (p === "/api/pageview") {
         res.setHeader("Cache-Control", "no-store");
         if (req.method !== "POST") {
@@ -2563,6 +2586,8 @@ export function startApi(port: number): http.Server {
   process.once("SIGINT", shutdown);
   server.on("close", () => {
     metricsServer?.close();
+    clearInterval(trafficFlusher);
+    flushTraffic();
     scoreStore.db.close();
     eventLoop.disable();
     recentLoop.disable();
