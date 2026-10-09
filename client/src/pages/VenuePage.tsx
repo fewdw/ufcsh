@@ -15,11 +15,11 @@ import {
 type Results = VenueData["results"];
 
 const wheel = (results: Results): WheelGroup[] => [
-  { title: "Finished", tone: "text-zinc-500", slices: [
+  { title: "Finished", tone: "text-muted", slices: [
     { key: "ko", label: "KO/TKO", n: results.ko, color: "var(--color-pick-ko)" },
     { key: "sub", label: "SUB", n: results.sub, color: "var(--color-pick-sub)" },
   ] },
-  { title: "Not finished", tone: "text-zinc-500", slices: [
+  { title: "Not finished", tone: "text-muted", slices: [
     { key: "dec", label: "DEC", n: results.dec, color: "var(--color-pick-dec)" },
     { key: "other", label: "Other", n: results.other, color: "var(--color-pick-none)" },
   ] },
@@ -33,7 +33,7 @@ const EVENT_KINDS = [
   { value: "numbered", label: "Numbered events" },
   { value: "fight-night", label: "Fight Nights" },
 ];
-const TOP = (index: number) => index < 3 ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600";
+const TOP = (index: number) => index < 3 ? "bg-foreground text-background" : "bg-surface-strong text-secondary";
 
 type Event = VenueData["events"][number];
 
@@ -42,21 +42,21 @@ type Event = VenueData["events"][number];
  *  names its venue; a venue's card, the name it had that night. */
 function EventRow({ event, record }: { event: Event; record: number }) {
   return (
-    <Link to={`/events/${event.id}`} className="grid grid-cols-[3.25rem_minmax(0,1fr)_auto] items-center gap-x-3 px-4 py-2.5 transition-colors hover:bg-zinc-50 sm:px-5">
+    <Link to={`/events/${event.id}`} className="grid grid-cols-[3.25rem_minmax(0,1fr)_auto] items-center gap-x-3 px-4 py-2.5 transition-colors hover:bg-surface-muted sm:px-5">
       <span className="text-center leading-tight">
-        <span className="block text-[13px] font-semibold text-zinc-900">{formatDateShort(event.date)}</span>
-        <span className="block text-[10px] tabular-nums text-zinc-400">{event.date.slice(0, 4)}</span>
+        <span className="block text-[13px] font-medium text-foreground">{formatDateShort(event.date)}</span>
+        <span className="block text-[10px] tabular-nums text-muted">{event.date.slice(0, 4)}</span>
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-[13px] font-semibold leading-5 text-zinc-900">{event.name}</span>
-        <span className="block truncate text-[11px] leading-4 text-zinc-500">
+        <span className="block truncate text-[13px] font-medium leading-5 text-foreground">{event.name}</span>
+        <span className="block truncate text-[11px] leading-4 text-muted">
           {event.fights} bouts{event.finishes != null && event.fights ? ` · ${event.finishes} finished` : ""}
-          {event.title_fights ? <> · <span className="font-semibold text-belt">{event.title_fights > 1 ? `${event.title_fights} title bouts` : "Title bout"}</span></> : null}
+          {event.title_fights ? <> · <span className="font-medium text-belt">{event.title_fights > 1 ? `${event.title_fights} title bouts` : "Title bout"}</span></> : null}
           {event.venue ? ` · ${event.venue.name}` : event.name_then ? ` · as ${event.name_then}` : ""}
         </span>
       </span>
-      <span className="text-right text-[11px] tabular-nums text-zinc-500" title={event.attendance ? "Attendance" : undefined}>
-        {event.attendance ? <>{event.attendance.toLocaleString("en-US")}{event.attendance === record ? <span className="block text-[10px] font-semibold text-belt">Record</span> : null}</> : null}
+      <span className="text-right text-[11px] tabular-nums text-muted" title={event.attendance ? "Attendance" : undefined}>
+        {event.attendance ? <>{event.attendance.toLocaleString("en-US")}{event.attendance === record ? <span className="block text-[10px] font-medium text-belt">Record</span> : null}</> : null}
       </span>
     </Link>
   );
@@ -138,9 +138,9 @@ function PlacePage({ kind }: { kind: "venue" | "location" }) {
   const identity = (
     <IdentityCard title={title}
       subtitle={venue?.location_slug && place
-        ? <Link to={`/locations/${venue.location_slug}`} title={`${place}: every card held here`} className="transition hover:text-zinc-900 dark:hover:text-zinc-100">{place} <span aria-hidden="true">↗</span></Link>
+        ? <Link to={`/locations/${venue.location_slug}`} title={`${place}: every card held here`} className="transition hover:text-foreground">{place} <span aria-hidden="true">↗</span></Link>
         : place || (venue ? "Location not recorded" : null)}
-      badge={venue?.former_names.length ? <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-[11px] font-semibold text-zinc-600">Formerly {venue.former_names.join(", ")}</span> : null}
+      badge={venue?.former_names.length ? <span className="rounded-full bg-surface-strong px-2.5 py-0.5 text-[11px] font-medium text-secondary">Formerly {venue.former_names.join(", ")}</span> : null}
       facts={[
         ["Events", s.events.toLocaleString()],
         ["Bouts", s.fights.toLocaleString()],
@@ -150,8 +150,8 @@ function PlacePage({ kind }: { kind: "venue" | "location" }) {
         ["Local time", data.time_zone ? offsetLabel(data.time_zone) : null],
       ]}>
       <div className="flex justify-center"><Wheel label="Bouts" groups={wheel(data.results)} /></div>
-      {data.notes.length ? <p className="mt-4 text-xs leading-5 text-zinc-500">{data.notes.map((note) => note.detail).join(" ")}</p> : null}
-      <a href={data.map_url} target="_blank" rel="noreferrer" className="mt-3 inline-block text-xs font-medium text-zinc-500 hover:text-zinc-900">Map ↗</a>
+      {data.notes.length ? <p className="mt-4 text-xs leading-5 text-muted">{data.notes.map((note) => note.detail).join(" ")}</p> : null}
+      <a href={data.map_url} target="_blank" rel="noreferrer" className="mt-3 inline-block text-xs font-medium text-muted hover:text-foreground">Map ↗</a>
     </IdentityCard>
   );
 
@@ -178,15 +178,15 @@ function PlacePage({ kind }: { kind: "venue" | "location" }) {
   const lists = <>
     {upcoming.length ? (
       <Panel title="Upcoming" subtitle={upcoming.length}>
-        <div className="divide-y divide-zinc-100">
+        <div className="divide-y divide-line-subtle">
           {upcoming.map((event) => {
             const local = event.starts_at ? venueClock(event.starts_at, event.time_zone) : null;
             return (
-              <Link key={event.id} to={`/events/${event.id}`} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-4 py-2.5 transition-colors hover:bg-zinc-50 sm:px-5">
-                <span className="min-w-0 text-[13px] font-semibold text-zinc-900">{event.name}</span>
-                <span className="text-xs tabular-nums text-zinc-500">
+              <Link key={event.id} to={`/events/${event.id}`} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-4 py-2.5 transition-colors hover:bg-surface-muted sm:px-5">
+                <span className="min-w-0 text-[13px] font-medium text-foreground">{event.name}</span>
+                <span className="text-xs tabular-nums text-muted">
                   {formatDate(event.date)}{event.starts_at ? ` · ${clockTimeWithZone(event.starts_at)}` : ""}
-                  {local ? <span className="text-zinc-400"> · {local} local</span> : null}
+                  {local ? <span className="text-muted"> · {local} local</span> : null}
                 </span>
               </Link>
             );
@@ -224,12 +224,12 @@ function PlacePage({ kind }: { kind: "venue" | "location" }) {
                 eventName={bout.event_name} date={bout.date} fightId={bout.fight_id} />
             ))}
           </div>
-        ) : <p className="px-5 py-8 text-center text-sm text-zinc-500">{data.title_bouts.length ? "No title fights match these filters." : "No title fights here yet."}</p>
+        ) : <p className="px-5 py-8 text-center text-sm text-muted">{data.title_bouts.length ? "No title fights match these filters." : "No title fights here yet."}</p>
       ) : events.length ? (
-        <div className="divide-y divide-zinc-100 pb-2">
+        <div className="divide-y divide-line-subtle pb-2">
           {events.map((event) => <EventRow key={event.id} event={event} record={record} />)}
         </div>
-      ) : <p className="px-5 py-8 text-center text-sm text-zinc-500">{past.length ? "No cards match these filters." : "No completed UFC cards here yet."}</p>}
+      ) : <p className="px-5 py-8 text-center text-sm text-muted">{past.length ? "No cards match these filters." : "No completed UFC cards here yet."}</p>}
     </section>
   </>;
 

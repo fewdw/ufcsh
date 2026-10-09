@@ -24,13 +24,13 @@ export function PageHeader({ title, meta, children, aside }: { title: string; me
   return (
     <header className={`${PANEL} flex flex-wrap items-start justify-between gap-x-4 gap-y-3 px-4 py-4 sm:px-6 sm:py-5`}>
       <div className="min-w-0">
-        <h1 className="text-balance break-words text-xl font-semibold tracking-tight text-zinc-950 sm:text-2xl">{title}</h1>
+        <h1 className="text-balance break-words text-xl font-medium tracking-tight text-foreground sm:text-2xl">{title}</h1>
         {facts.length ? (
-          <p className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs leading-5 text-zinc-500 sm:text-sm">
-            {facts.map((fact, index) => <span key={index} className="contents">{index ? <span aria-hidden="true" className="text-zinc-300">·</span> : null}<span className="min-w-0">{fact}</span></span>)}
+          <p className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs leading-5 text-muted sm:text-sm">
+            {facts.map((fact, index) => <span key={index} className="contents">{index ? <span aria-hidden="true" className="text-faint">·</span> : null}<span className="min-w-0">{fact}</span></span>)}
           </p>
         ) : null}
-        {children ? <div className="mt-1 text-xs leading-5 text-zinc-400">{children}</div> : null}
+        {children ? <div className="mt-1 text-xs leading-5 text-muted">{children}</div> : null}
       </div>
       {aside ? <div className="flex shrink-0 flex-wrap items-center gap-2">{aside}</div> : null}
     </header>
@@ -40,11 +40,11 @@ export function PageHeader({ title, meta, children, aside }: { title: string; me
 export function Panel({ title, subtitle, children, aside }: { title: string; subtitle?: ReactNode; children: ReactNode; aside?: ReactNode }) {
   return (
     <section className={`${PANEL} overflow-hidden`}>
-      <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-zinc-100 px-4 py-2.5 sm:px-5 sm:py-3">
-        <h2 className="text-sm font-semibold text-zinc-900">{title}</h2>
+      <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-line-subtle px-4 py-2.5 sm:px-5 sm:py-3">
+        <h2 className="text-sm font-medium text-foreground">{title}</h2>
         {subtitle || aside ? (
           <div className="flex min-w-0 items-center gap-2">
-            {subtitle ? <p className="min-w-0 text-xs tabular-nums text-zinc-500">{subtitle}</p> : null}
+            {subtitle ? <p className="min-w-0 text-xs tabular-nums text-muted">{subtitle}</p> : null}
             {aside}
           </div>
         ) : null}
@@ -98,18 +98,18 @@ export function IdentityCard({ title, subtitle, badge, facts, children }: {
 }) {
   return (
     <section className={`${PANEL} @container px-4 py-4 @[30rem]:px-6 @[30rem]:py-5`}>
-      <h1 className="text-balance break-words text-xl font-semibold leading-tight tracking-tight text-zinc-950 @[30rem]:text-2xl @[56rem]:text-3xl">{title}</h1>
-      <div className="mt-0.5 text-sm text-zinc-400">{subtitle}</div>
+      <h1 className="text-balance break-words text-xl font-medium leading-tight tracking-tight text-foreground @[30rem]:text-2xl @[56rem]:text-3xl">{title}</h1>
+      <div className="mt-0.5 text-sm text-muted">{subtitle}</div>
       {badge ? <div className="mt-2 flex flex-wrap items-center gap-2">{badge}</div> : null}
       <dl className="mt-4 grid grid-cols-3 gap-x-4 gap-y-2.5">
         {facts.filter(([, value]) => value != null && value !== "").map(([label, value]) => (
           <div key={label} className="min-w-0">
-            <dt className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">{label}</dt>
-            <dd className="truncate text-sm font-medium tabular-nums text-zinc-800">{value}</dd>
+            <dt className="text-[10px] font-medium text-muted">{label}</dt>
+            <dd className="truncate text-sm font-medium tabular-nums text-foreground">{value}</dd>
           </div>
         ))}
       </dl>
-      {children ? <div className="mt-4 border-t border-zinc-100 pt-4">{children}</div> : null}
+      {children ? <div className="mt-4 border-t border-line-subtle pt-4">{children}</div> : null}
     </section>
   );
 }
@@ -136,22 +136,22 @@ export function Wheel({ label, groups, compact }: { label: string; groups: Wheel
       {/* What the ring counts sits above it, as a fighter's PRO and UFC
           records do; the hole holds only the total, sized to fit. */}
       <div className="flex shrink-0 flex-col items-center gap-1.5">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">{label}</span>
+        <span className="text-[10px] font-medium text-muted">{label}</span>
         <div className="grid h-20 w-20 place-items-center rounded-full" style={{ background: `conic-gradient(from 0deg, ${gradient})` }}
           role="img" aria-label={`${label}: ${groups.flatMap((group) => group.slices).filter((slice) => slice.n > 0).map((slice) => `${slice.n} ${slice.label}`).join(", ")}`}>
-          <div className="grid h-[3.75rem] w-[3.75rem] place-items-center rounded-full bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.04)]">
-            <span className={`${total >= 1000 ? "text-[13px]" : "text-base"} font-semibold tabular-nums tracking-tight text-zinc-900`}>{total.toLocaleString()}</span>
+          <div className="grid h-[3.75rem] w-[3.75rem] place-items-center rounded-full bg-surface shadow-[0_0_0_1px_rgba(0,0,0,0.04)]">
+            <span className={`${total >= 1000 ? "text-[13px]" : "text-base"} font-medium tabular-nums tracking-tight text-foreground`}>{total.toLocaleString()}</span>
           </div>
         </div>
       </div>
       <div className={compact ? "flex flex-col gap-1.5" : "flex gap-x-4"}>
         {groups.map((group) => (
           <div key={group.title}>
-            <div className={`mb-1 text-[8px] font-bold uppercase tracking-wider ${group.tone}`}>{group.title}</div>
+            <div className={`mb-1 text-[8px] font-medium ${group.tone}`}>{group.title}</div>
             {group.slices.filter((slice) => slice.n > 0).map((slice) => (
-              <div key={slice.key} className="flex items-center gap-1.5 text-[10px] leading-4 text-zinc-500">
+              <div key={slice.key} className="flex items-center gap-1.5 text-[10px] leading-4 text-muted">
                 <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: slice.color }} />
-                <span className="whitespace-nowrap"><strong className="font-semibold text-zinc-700">{slice.n.toLocaleString()}</strong> {slice.label}</span>
+                <span className="whitespace-nowrap"><strong className="font-medium text-secondary">{slice.n.toLocaleString()}</strong> {slice.label}</span>
               </div>
             ))}
           </div>
@@ -175,22 +175,22 @@ export function RankRows({ title, subtitle, rows }: { title: string; subtitle?: 
   if (!rows.length) return null;
   return (
     <Panel title={title} subtitle={subtitle}>
-      <div className="divide-y divide-zinc-50 py-1">
+      <div className="divide-y divide-line-subtle py-1">
         {rows.map((row) => {
           const body = <>
-            {row.chip != null ? <span className={`grid h-8 min-w-10 shrink-0 place-items-center rounded-lg px-1.5 text-xs font-bold tabular-nums ${row.chipClass ?? "bg-zinc-100 text-zinc-600"}`}>{row.chip}</span> : null}
+            {row.chip != null ? <span className={`grid h-8 min-w-10 shrink-0 place-items-center rounded-lg px-1.5 text-xs font-medium tabular-nums ${row.chipClass ?? "bg-surface-strong text-secondary"}`}>{row.chip}</span> : null}
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] font-semibold leading-tight text-zinc-900">{row.title}</span>
-              {row.detail ? <span className="mt-0.5 block text-[11px] leading-tight text-zinc-400">{row.detail}</span> : null}
+              <span className="block truncate text-[13px] font-medium leading-tight text-foreground">{row.title}</span>
+              {row.detail ? <span className="mt-0.5 block text-[11px] leading-tight text-muted">{row.detail}</span> : null}
             </span>
-            <span className="shrink-0 text-right text-base font-semibold tabular-nums text-zinc-950">{row.value}</span>
+            <span className="shrink-0 text-right text-base font-medium tabular-nums text-foreground">{row.value}</span>
           </>;
           if (row.to) {
-            return <Link key={row.key} to={row.to} title={row.hint} className="group flex w-full items-center gap-3 px-4 py-2 transition-colors hover:bg-zinc-50">{body}</Link>;
+            return <Link key={row.key} to={row.to} title={row.hint} className="group flex w-full items-center gap-3 px-4 py-2 transition-colors hover:bg-surface-muted">{body}</Link>;
           }
           return row.onSelect ? (
             <button key={row.key} type="button" onClick={row.onSelect} aria-pressed={row.selected} title={row.hint}
-              className={`flex w-full items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-zinc-50 ${row.selected ? "bg-zinc-100 shadow-[inset_3px_0_0_var(--color-series-1)]" : ""}`}>
+              className={`flex w-full items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-surface-muted ${row.selected ? "bg-surface-strong shadow-[inset_3px_0_0_var(--color-series-1)]" : ""}`}>
               {body}
             </button>
           ) : <div key={row.key} className="flex items-center gap-3 px-4 py-2" title={row.hint}>{body}</div>;
@@ -210,7 +210,7 @@ const METHOD_LETTER: Record<string, string> = { ko: "KO", sub: "SUB", dec: "DEC"
 /** The circle a fighter's bout row opens with, here saying how it ended. */
 export function MethodCircle({ result }: { result: string }) {
   return (
-    <span aria-hidden="true" className="grid h-7 min-w-7 shrink-0 place-items-center rounded-full px-1 text-[9px] font-bold leading-none text-white"
+    <span aria-hidden="true" className="grid h-7 min-w-7 shrink-0 place-items-center rounded-full px-1 text-[9px] font-medium leading-none text-photo-ink"
       style={{ background: METHOD_COLOR[result] ?? METHOD_COLOR.other }}>
       {METHOD_LETTER[result] ?? "—"}
     </span>
@@ -220,11 +220,11 @@ export function MethodCircle({ result }: { result: string }) {
 /** Both fighters, the winner in ink and the loser muted. The row around
  *  them is the link to their matchup, and pointing at it lights both names. */
 export function Pair({ f1, f2 }: { f1: Side; f2: Side }) {
-  const tone = (outcome: string | null) => outcome === "win" ? "font-semibold text-zinc-900" : "text-zinc-500 group-hover:text-zinc-900";
+  const tone = (outcome: string | null) => outcome === "win" ? "font-medium text-foreground" : "text-muted group-hover:text-foreground";
   return (
-    <span className="min-w-0 decoration-zinc-400 underline-offset-2 group-hover:underline">
+    <span className="min-w-0 decoration-muted underline-offset-2 group-hover:underline">
       <span className={tone(f1.outcome)}>{f1.name}</span>
-      <span className="px-1 text-zinc-300">vs</span>
+      <span className="px-1 text-faint">vs</span>
       <span className={tone(f2.outcome)}>{f2.name}</span>
     </span>
   );
@@ -235,7 +235,7 @@ export function Pair({ f1, f2 }: { f1: Side; f2: Side }) {
 export const ROW_CONTROL = "relative z-10";
 
 export function TitleNote({ interim }: { interim?: boolean }) {
-  return <span className={`font-semibold ${interim ? "text-belt-interim" : "text-belt"}`}>{interim ? "Interim title" : "Title"}</span>;
+  return <span className={`font-medium ${interim ? "text-belt-interim" : "text-belt"}`}>{interim ? "Interim title" : "Title"}</span>;
 }
 
 /** One bout in a fighter page's shape: how it ended, who fought, the division
@@ -246,40 +246,40 @@ export function BoutRow({ lead, how, f1, f2, division, note, eventName, date, fi
 }) {
   const cell = "hidden min-w-0 px-3 py-2.5 @3xl:flex";
   return (
-    <div className="group relative grid grid-cols-1 items-stretch transition-colors hover:bg-zinc-50 @3xl:grid-cols-[11rem_minmax(12rem,1.3fr)_8rem_minmax(11rem,1fr)]">
+    <div className="group relative grid grid-cols-1 items-stretch transition-colors hover:bg-surface-muted @3xl:grid-cols-[11rem_minmax(12rem,1.3fr)_8rem_minmax(11rem,1fr)]">
       <Link to={`/fights/${fightId}`} aria-label={`${f1.name} vs ${f2.name}, ${eventName}`}
-        className="absolute inset-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-zinc-900" />
+        className="absolute inset-0 focus-visible:-outline-offset-2 " />
       <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 px-4 py-2.5 @3xl:hidden">
         <span className="row-span-3 self-start pt-0.5">{lead}</span>
         <p className="text-[13px] leading-5"><Pair f1={f1} f2={f2} /></p>
-        <p className="text-[11px] leading-4 text-zinc-500"><span className="font-medium">{how}</span><span className="text-zinc-300"> · </span>{division}{note ? <><span className="text-zinc-300"> · </span>{note}</> : null}</p>
+        <p className="text-[11px] leading-4 text-muted"><span className="font-medium">{how}</span><span className="text-faint"> · </span>{division}{note ? <><span className="text-faint"> · </span>{note}</> : null}</p>
         <p className="flex min-w-0 items-baseline gap-2 py-0.5">
-          <span className="min-w-0 flex-1 truncate text-[11px] leading-4 text-zinc-600">{eventName}</span>
-          <span className="shrink-0 text-[10px] tabular-nums text-zinc-400">{formatDateShortWithYear(date)}</span>
+          <span className="min-w-0 flex-1 truncate text-[11px] leading-4 text-secondary">{eventName}</span>
+          <span className="shrink-0 text-[10px] tabular-nums text-muted">{formatDateShortWithYear(date)}</span>
         </p>
         {extra ? <div className="col-start-2">{extra}</div> : null}
       </div>
       <div className={`${cell} items-center gap-2.5`}>
         {lead}
-        <span className="min-w-0 text-[11px] font-medium leading-5 text-zinc-500">{how}</span>
+        <span className="min-w-0 text-[11px] font-medium leading-5 text-muted">{how}</span>
       </div>
       <div className={`${cell} flex-col justify-center`}>
         <p className="text-sm leading-5"><Pair f1={f1} f2={f2} /></p>
         {extra}
       </div>
-      <div className={`${cell} flex-col justify-center border-l border-zinc-100 text-[11px] leading-5 text-zinc-500`}>
+      <div className={`${cell} flex-col justify-center border-l border-line-subtle text-[11px] leading-5 text-muted`}>
         <span className="break-words">{division}</span>
         {note ? <span className="leading-4">{note}</span> : null}
       </div>
-      <div className={`${cell} flex-col justify-center border-l border-zinc-100 text-right`}>
-        <span className="block text-xs font-medium leading-5 text-zinc-600">{eventName}</span>
-        <span className="mt-0.5 block text-[11px] tabular-nums text-zinc-400">{formatDateShortWithYear(date)}</span>
+      <div className={`${cell} flex-col justify-center border-l border-line-subtle text-right`}>
+        <span className="block text-xs font-medium leading-5 text-secondary">{eventName}</span>
+        <span className="mt-0.5 block text-[11px] tabular-nums text-muted">{formatDateShortWithYear(date)}</span>
       </div>
     </div>
   );
 }
 
-export const BOUT_LIST = "@container divide-y divide-zinc-100 pb-2 @3xl:divide-zinc-50";
+export const BOUT_LIST = "@container divide-y divide-line-subtle pb-2 @3xl:divide-line-subtle";
 
 // ---------------------------------------------------------------------------
 // filters
@@ -297,10 +297,10 @@ export function FilterSearch({ value, onChange, placeholder }: { value: string; 
   }, [typed, onChange]);
   return (
     <label className="relative block w-full">
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" aria-hidden="true" />
       <input type="search" value={typed} onChange={(event) => setTyped(event.target.value.slice(0, 60))} placeholder={placeholder}
         aria-label={placeholder} autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
-        className="h-9 w-full rounded-full border border-zinc-200 bg-zinc-50 pl-8 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-8 sm:text-[13px]" />
+        className="h-9 w-full rounded-full border border-line bg-surface-muted pl-8 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted hover:border-line-strong focus:border-line-strong sm:h-8 sm:text-[13px]" />
     </label>
   );
 }
@@ -334,11 +334,11 @@ export function ListHeading({ title, count, active, onReset, search, children }:
   title: ReactNode; count: ReactNode; active: number; onReset: () => void; search: ReactNode; children: ReactNode;
 }) {
   return (
-    <div className="border-b border-zinc-100 px-4 py-2.5 sm:px-5 sm:py-3">
+    <div className="border-b border-line-subtle px-4 py-2.5 sm:px-5 sm:py-3">
       <div className="flex min-h-6 items-center justify-between gap-3">
-        <h2 className="min-w-0 truncate text-sm font-semibold text-zinc-900">{title}</h2>
+        <h2 className="min-w-0 truncate text-sm font-medium text-foreground">{title}</h2>
         <div className="flex shrink-0 items-center justify-end gap-2">
-          <p className="text-xs tabular-nums text-zinc-500">{count}</p>
+          <p className="text-xs tabular-nums text-muted">{count}</p>
           <OptionsSheet label="Filters" count={active || undefined} onReset={onReset}>
             <div className="grid grid-cols-2 gap-2 px-4 pb-4 pt-2">{children}</div>
           </OptionsSheet>
@@ -379,24 +379,24 @@ export function YearBars({ title, data, unit, marked, from, to, onPick }: {
               onMouseEnter={() => setHover(entry)} onFocus={() => setHover(entry)} onBlur={() => setHover(null)}
               className={`group flex min-w-0 max-w-12 flex-1 flex-col items-center transition-opacity ${inRange(entry.year) ? "" : "opacity-30"}`}>
               <span className="flex h-24 w-full flex-col justify-end">
-                <span className={`mb-0.5 whitespace-nowrap text-center font-semibold tabular-nums tracking-tight text-zinc-500 ${short ? "text-[9px]" : "text-[10px]"}`}>{entry.n || ""}</span>
+                <span className={`mb-0.5 whitespace-nowrap text-center font-medium tabular-nums tracking-tight text-muted ${short ? "text-[9px]" : "text-[10px]"}`}>{entry.n || ""}</span>
                 {entry.n ? (
                   <span className="flex w-full flex-col justify-end gap-px overflow-hidden rounded-t-[3px]" style={{ height: `${(entry.n / max) * 80}%` }}>
-                    {entry.n - entry.marked ? <span className="w-full bg-zinc-300 group-hover:bg-zinc-400" style={{ flexGrow: entry.n - entry.marked }} /> : null}
-                    {entry.marked ? <span className="w-full bg-zinc-800 group-hover:opacity-80 dark:bg-zinc-200" style={{ flexGrow: entry.marked }} /> : null}
+                    {entry.n - entry.marked ? <span className="w-full bg-line-strong group-hover:bg-muted" style={{ flexGrow: entry.n - entry.marked }} /> : null}
+                    {entry.marked ? <span className="w-full bg-foreground group-hover:opacity-80" style={{ flexGrow: entry.marked }} /> : null}
                   </span>
-                ) : <span className="h-px w-full bg-zinc-200" />}
+                ) : <span className="h-px w-full bg-track" />}
               </span>
-              <span className={`mt-1 whitespace-nowrap tabular-nums tracking-tight ${short ? "text-[9px] sm:text-[10px]" : "text-[10px]"} ${single === entry.year ? "font-semibold text-zinc-900" : "text-zinc-400"}`}>
+              <span className={`mt-1 whitespace-nowrap tabular-nums tracking-tight ${short ? "text-[9px] sm:text-[10px]" : "text-[10px]"} ${single === entry.year ? "font-medium text-foreground" : "text-muted"}`}>
                 {short ? <><span className="max-sm:hidden">’</span>{String(entry.year).slice(2)}</> : entry.year}
               </span>
             </button>
           ))}
         </div>
         {marked ? (
-          <div className="mt-2 flex items-center justify-center gap-3 text-[10px] text-zinc-400">
-            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-zinc-800 dark:bg-zinc-200" aria-hidden="true" />{marked}</span>
-            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-zinc-300" aria-hidden="true" />{unit}</span>
+          <div className="mt-2 flex items-center justify-center gap-3 text-[10px] text-muted">
+            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-foreground" aria-hidden="true" />{marked}</span>
+            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-line-strong" aria-hidden="true" />{unit}</span>
           </div>
         ) : null}
       </div>
@@ -408,14 +408,14 @@ export function YearBars({ title, data, unit, marked, from, to, onPick }: {
 // states
 
 export function PageState({ children }: { children: ReactNode }) {
-  return <div role="status" className="appear-late flex h-full items-center justify-center px-5 text-center text-sm text-zinc-400">{children}</div>;
+  return <div role="status" className="appear-late flex h-full items-center justify-center px-5 text-center text-sm text-muted">{children}</div>;
 }
 
 export function NotFound({ what, back }: { what: string; back: { to: string; label: string } }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 px-5 text-center text-sm text-zinc-500">
+    <div className="flex h-full flex-col items-center justify-center gap-3 px-5 text-center text-sm text-muted">
       <p>{what} couldn’t be found.</p>
-      <Link to={back.to} className="font-semibold text-zinc-900 underline">{back.label}</Link>
+      <Link to={back.to} className="font-medium text-foreground underline">{back.label}</Link>
     </div>
   );
 }

@@ -22,7 +22,7 @@ export default function AdminNewsAi() {
       : data.error ? `AI unavailable. News keeps updating from feeds; previous AI results are retained. ${data.error}`
         : data.read_at ? `Last read ${relativeAge(data.read_at)} · ${data.tokens.toLocaleString()} tokens so far` : "Waiting for its first pass.";
   return (
-    <section className="rounded-xl border border-zinc-200 bg-white px-1.5 py-1.5">
+    <section className="rounded-xl border border-line bg-surface px-1.5 py-1.5">
       <SwitchRow label="News AI (Gemini)" hint={failed ?? state} on={data.on} onChange={(on) => void set(on)} />
     </section>
   );

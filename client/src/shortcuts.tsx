@@ -111,7 +111,7 @@ export function Keys({ keys }: { keys: string[] }) {
   return (
     <span className="inline-flex shrink-0 gap-1">
       {keys.map((key) => (
-        <kbd key={key} className="min-w-6 rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-center text-[11px] font-semibold text-zinc-700 shadow-[0_1px_0_rgba(0,0,0,0.06)]">{key}</kbd>
+        <kbd key={key} className="min-w-6 rounded-md border border-line bg-surface-muted px-1.5 py-0.5 text-center text-[11px] font-medium text-secondary shadow-[0_1px_0_rgba(0,0,0,0.06)]">{key}</kbd>
       ))}
     </span>
   );
@@ -132,26 +132,26 @@ function ShortcutHelp({ nav, onClose }: { nav: ShortcutNav | null; onClose: () =
     <dialog ref={dialog} aria-labelledby="shortcut-title"
       onCancel={(event) => { event.preventDefault(); onClose(); }}
       onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
-      className="search-dialog fixed inset-0 m-auto w-[min(30rem,calc(100%-2rem))] max-w-none rounded-2xl border border-zinc-200 bg-white p-0 text-zinc-900 shadow-2xl">
-      <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4">
+      className="search-dialog fixed inset-0 m-auto w-[min(30rem,calc(100%-2rem))] max-w-none rounded-2xl border border-line bg-surface p-0 text-foreground shadow-2xl">
+      <div className="flex items-center justify-between border-b border-line-subtle px-5 py-4">
         <h2 id="shortcut-title" className={DIALOG_TITLE}>Keyboard shortcuts</h2>
         <button type="button" onClick={onClose} aria-label="Close shortcuts" className={`-mr-2 ${CLOSE_BUTTON}`}><X className={CLOSE_ICON} aria-hidden="true" /></button>
       </div>
       <div className="px-5 py-4">
-        <p className="mb-3 rounded-xl bg-zinc-50 px-3 py-2 text-xs leading-5 text-zinc-600">
+        <p className="mb-3 rounded-xl bg-surface-muted px-3 py-2 text-xs leading-5 text-secondary">
           {nav
-            ? <>On this page, <strong className="font-semibold text-zinc-900">← {nav.prevLabel}</strong> and <strong className="font-semibold text-zinc-900">→ {nav.nextLabel}</strong> · {nav.context}.</>
+            ? <>On this page, <strong className="font-medium text-foreground">← {nav.prevLabel}</strong> and <strong className="font-medium text-foreground">→ {nav.nextLabel}</strong> · {nav.context}.</>
             : "The arrow keys do nothing special on this page; open an event or a matchup to step through it."}
         </p>
         <ul className="space-y-2.5">
           {SHORTCUTS.map((shortcut) => (
-            <li key={shortcut.action} className="flex items-start justify-between gap-4 text-[13px] leading-5 text-zinc-700">
+            <li key={shortcut.action} className="flex items-start justify-between gap-4 text-[13px] leading-5 text-secondary">
               <span>{shortcut.action}</span>
               <Keys keys={shortcut.keys} />
             </li>
           ))}
         </ul>
-        <p className="mt-4 text-[11px] leading-4 text-zinc-400">Shortcuts pause while you type, inside tabs and lists (where arrows move the selection), and while a dialog is open.</p>
+        <p className="mt-4 text-[11px] leading-4 text-muted">Shortcuts pause while you type, inside tabs and lists (where arrows move the selection), and while a dialog is open.</p>
       </div>
     </dialog>
   );

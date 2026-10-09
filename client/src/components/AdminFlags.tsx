@@ -17,8 +17,8 @@ const CATEGORY: Record<Category, string> = {
 };
 const STATUS: Record<Status, string> = { open: "Open", reviewing: "Reviewing", resolved: "Resolved", dismissed: "Dismissed" };
 const statusTone: Record<Status, string> = {
-  open: "bg-rose-50 text-rose-700", reviewing: "bg-amber-50 text-amber-700",
-  resolved: "bg-emerald-50 text-emerald-700", dismissed: "bg-zinc-100 text-zinc-500",
+  open: "bg-danger-subtle text-danger", reviewing: "bg-warning-subtle text-warning",
+  resolved: "bg-success-subtle text-success", dismissed: "bg-surface-strong text-muted",
 };
 
 function FlagRow({ report, onChanged }: { report: Flag; onChanged: (report: Flag) => void }) {
@@ -41,36 +41,36 @@ function FlagRow({ report, onChanged }: { report: Flag; onChanged: (report: Flag
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="font-semibold text-zinc-900">{report.title}</h3>
-          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusTone[report.status]}`}>{STATUS[report.status]}</span>
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">{CATEGORY[report.category]}</span>
+          <h3 className="font-medium text-foreground">{report.title}</h3>
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusTone[report.status]}`}>{STATUS[report.status]}</span>
+          <span className="text-[10px] font-medium text-muted">{CATEGORY[report.category]}</span>
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
           <span>{new Date(report.createdAt).toLocaleString()}</span>
-          <Link to={`/profiles/${report.reporter.handle}`} className="text-zinc-600 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900">{report.reporter.displayName}</Link>
-          <Link to={report.pageUrl} className="max-w-full truncate text-zinc-600 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900">Open reported page</Link>
+          <Link to={`/profiles/${report.reporter.handle}`} className="text-secondary underline decoration-faint underline-offset-2 hover:text-foreground">{report.reporter.displayName}</Link>
+          <Link to={report.pageUrl} className="max-w-full truncate text-secondary underline decoration-faint underline-offset-2 hover:text-foreground">Open reported page</Link>
         </div>
-        <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-zinc-700">{report.message}</p>
+        <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-secondary">{report.message}</p>
       </div>
       <button type="button" disabled={busy || report.status === "resolved"} onClick={() => { setStatus("resolved"); void save("resolved"); }}
-        className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-40">
+        className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-medium text-secondary hover:bg-surface-muted disabled:opacity-40">
         Mark fixed
       </button>
     </div>
-    <div className="mt-4 grid gap-2 border-t border-zinc-100 pt-3 sm:grid-cols-[9rem_minmax(0,1fr)_auto]">
+    <div className="mt-4 grid gap-2 border-t border-line-subtle pt-3 sm:grid-cols-[9rem_minmax(0,1fr)_auto]">
       <select value={status} onChange={event => setStatus(event.target.value as Status)}
-        className="rounded-lg border border-zinc-200 bg-white px-2.5 py-2 pr-7 text-xs text-zinc-700">
+        className="rounded-lg border border-line bg-surface px-2.5 py-2 pr-7 text-xs text-secondary">
         {(Object.keys(STATUS) as Status[]).map(value => <option key={value} value={value}>{STATUS[value]}</option>)}
       </select>
       <input value={note} onChange={event => setNote(event.target.value)} maxLength={2000} placeholder="Admin note or what was fixed"
-        className="min-w-0 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-700 outline-none focus:border-zinc-400" />
+        className="min-w-0 rounded-lg border border-line bg-surface px-3 py-2 text-xs text-secondary outline-none focus:border-line-strong" />
       <button type="button" onClick={() => void save()} disabled={busy || !changed}
         className={BUTTON_PRIMARY}>
         {busy ? "Saving…" : "Save"}
       </button>
     </div>
-    {error ? <p role="alert" className="mt-2 text-xs text-rose-600">{error}</p> : null}
-    {report.updatedBy ? <p className="mt-2 text-[10px] text-zinc-400">Last handled by {report.updatedBy}</p> : null}
+    {error ? <p role="alert" className="mt-2 text-xs text-danger">{error}</p> : null}
+    {report.updatedBy ? <p className="mt-2 text-[10px] text-muted">Last handled by {report.updatedBy}</p> : null}
   </li>;
 }
 
@@ -97,33 +97,33 @@ export default function AdminFlags() {
     }, { open: 0, reviewing: 0, resolved: 0, dismissed: 0 } as Record<Status, number>),
   } : current);
 
-  return <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
-    <div className="border-b border-zinc-100 px-4 py-4 sm:px-5">
+  return <section className="overflow-hidden rounded-xl border border-line bg-surface">
+    <div className="border-b border-line-subtle px-4 py-4 sm:px-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-zinc-900">Reported issues</h2>
-          <p className="mt-0.5 text-xs text-zinc-500">{data ? `${data.counts.open + data.counts.reviewing} need attention · ${data.total} total` : "Loading reports…"}</p>
+          <h2 className="text-base font-medium text-foreground">Reported issues</h2>
+          <p className="mt-0.5 text-xs text-muted">{data ? `${data.counts.open + data.counts.reviewing} need attention · ${data.total} total` : "Loading reports…"}</p>
         </div>
-        <button type="button" onClick={() => void reload()} className="text-xs text-zinc-500 underline underline-offset-2">Refresh</button>
+        <button type="button" onClick={() => void reload()} className="text-xs text-muted underline underline-offset-2">Refresh</button>
       </div>
       <div className="mt-4 grid gap-2 sm:grid-cols-[minmax(12rem,1fr)_9rem_10rem]">
         <input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search title, message, user or page…"
-          className="min-w-0 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs outline-none focus:border-zinc-400" />
+          className="min-w-0 rounded-lg border border-line bg-surface px-3 py-2 text-xs outline-none focus:border-line-strong" />
         <select value={status} onChange={event => setStatus(event.target.value as Status | "all")}
-          className="rounded-lg border border-zinc-200 bg-white px-2.5 py-2 pr-7 text-xs text-zinc-700">
+          className="rounded-lg border border-line bg-surface px-2.5 py-2 pr-7 text-xs text-secondary">
           <option value="all">All statuses</option>
           {(Object.keys(STATUS) as Status[]).map(value => <option key={value} value={value}>{STATUS[value]} ({data?.counts[value] ?? 0})</option>)}
         </select>
         <select value={category} onChange={event => setCategory(event.target.value as Category | "all")}
-          className="rounded-lg border border-zinc-200 bg-white px-2.5 py-2 pr-7 text-xs text-zinc-700">
+          className="rounded-lg border border-line bg-surface px-2.5 py-2 pr-7 text-xs text-secondary">
           <option value="all">All categories</option>
           {(Object.keys(CATEGORY) as Category[]).map(value => <option key={value} value={value}>{CATEGORY[value]}</option>)}
         </select>
       </div>
     </div>
-    {loading && !data ? <p className="px-5 py-12 text-center text-sm text-zinc-400">Loading reports…</p>
-      : error && !data ? <p className="px-5 py-12 text-center text-sm text-rose-600">{error}</p>
-        : reports.length ? <ul className="divide-y divide-zinc-100">{reports.map(report => <FlagRow key={report.id} report={report} onChanged={changed} />)}</ul>
-          : <p className="px-5 py-12 text-center text-sm text-zinc-500">No reports match these filters.</p>}
+    {loading && !data ? <p className="px-5 py-12 text-center text-sm text-muted">Loading reports…</p>
+      : error && !data ? <p className="px-5 py-12 text-center text-sm text-danger">{error}</p>
+        : reports.length ? <ul className="divide-y divide-line-subtle">{reports.map(report => <FlagRow key={report.id} report={report} onChanged={changed} />)}</ul>
+          : <p className="px-5 py-12 text-center text-sm text-muted">No reports match these filters.</p>}
   </section>;
 }

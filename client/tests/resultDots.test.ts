@@ -7,7 +7,7 @@ test("KO and submission results are solid dots in the outcome color", () => {
   for (const method of ["KO/TKO", "SUB", "TKO (Punches)", "KO (Knee and Punch)", "Submission (Armbar)"]) for (const outcome of ["win", "loss"] as const) {
     const dot = resultDot({ method, outcome });
     assert.equal(dot.kind, "finish");
-    assert.ok(dot.className.includes(outcome === "win" ? "emerald" : "rose"));
+    assert.ok(dot.className.includes(outcome === "win" ? "success" : "danger"));
     assert.ok(!dot.className.includes("transparent"));
   }
 });
@@ -23,7 +23,7 @@ test("draws and no contests stay solid in their outcome color regardless of meth
       for (const ufc of [true, false]) {
         const dot = resultDot({ outcome, method, ufc });
         assert.doesNotMatch(dot.className, /transparent|opacity-/);
-        assert.ok(dot.className.includes(outcome === "draw" ? "bg-amber-500" : "bg-zinc-400"));
+        assert.ok(dot.className.includes(outcome === "draw" ? "bg-warning" : "bg-muted"));
         assert.ok(dot.className.includes(ufc ? "rounded-full" : "rounded-[3px]"));
         assert.match(dot.label, outcome === "draw" ? /^Draw/ : /^No contest/);
       }

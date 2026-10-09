@@ -72,13 +72,13 @@ export function PanelHeading({
   divider?: boolean;
 }) {
   return (
-    <div className={`px-4 py-2.5 sm:px-5 sm:py-3 ${divider ? "border-b border-zinc-100" : ""}`}>
+    <div className={`px-4 py-2.5 sm:px-5 sm:py-3 ${divider ? "border-b border-line-subtle" : ""}`}>
       <div className="flex min-h-6 items-center justify-between gap-3">
-        <h2 className="shrink-0 whitespace-nowrap text-sm font-semibold text-zinc-900">{title}</h2>
+        <h2 className="shrink-0 whitespace-nowrap text-sm font-medium text-foreground">{title}</h2>
         {subtitle || aside ? (
           <div className="flex min-w-0 items-center justify-end gap-2">
             {subtitle ? (
-              <p className="min-w-0 truncate text-xs tabular-nums text-zinc-500" title={typeof subtitle === "string" ? subtitle : undefined}>{subtitle}</p>
+              <p className="min-w-0 truncate text-xs tabular-nums text-muted" title={typeof subtitle === "string" ? subtitle : undefined}>{subtitle}</p>
             ) : null}
             {aside ? <div className="shrink-0">{aside}</div> : null}
           </div>
@@ -100,20 +100,20 @@ export function PanelHeading({
 const compareGrid =
   "grid grid-cols-[minmax(0,1fr)_5rem_minmax(0,1fr)] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_7rem_minmax(0,1fr)]";
 const comparePad = "py-2";
-/** The middle column's quiet, uppercase caption. */
-export const compareLabel = `block truncate text-center ${CHART_TEXT} font-semibold uppercase leading-4 tracking-[0.12em] text-zinc-400`;
+/** The middle column's quiet, caption. */
+export const compareLabel = `block truncate text-center ${CHART_TEXT} font-medium leading-4 text-muted`;
 
-/** Small uppercase caption for any label inside a panel: chart names, column
+/** Small caption for any label inside a panel: chart names, column
  *  heads, group names. One style so every section reads as the same app. */
-export const sectionLabel = `${CHART_TEXT} font-semibold uppercase tracking-[0.12em] text-zinc-400`;
+export const sectionLabel = `${CHART_TEXT} font-medium text-muted`;
 /** Dates and other trailing detail under a value. */
-export const metaText = "text-[10px] tabular-nums text-zinc-400";
+export const metaText = "text-[10px] tabular-nums text-muted";
 
 /** The value either side of it — the thing the eye should land on first. */
-export const compareValue = `truncate ${CHART_TEXT} font-semibold text-zinc-900`;
+export const compareValue = `truncate ${CHART_TEXT} font-medium text-foreground`;
 
 export function PanelEmpty({ children }: { children: React.ReactNode }) {
-  return <p className={`py-6 text-center ${CHART_TEXT} text-zinc-400`}>{children}</p>;
+  return <p className={`py-6 text-center ${CHART_TEXT} text-muted`}>{children}</p>;
 }
 
 /** One mirrored row, optionally a link to the fight it describes. */
@@ -141,17 +141,17 @@ export function CompareRow({
         <div className="min-w-0">{center}</div>
         <div className="flex min-w-0 items-center justify-start text-left">{f2}</div>
       </div>
-      {note ? <div className={`mt-0.5 truncate text-center ${CHART_TEXT} leading-4 text-zinc-400`}>{note}</div> : null}
+      {note ? <div className={`mt-0.5 truncate text-center ${CHART_TEXT} leading-4 text-muted`}>{note}</div> : null}
     </>
   );
   if (action) return <button type="button" onClick={action.onClick} aria-label={action.label} aria-haspopup="dialog" aria-expanded={action.expanded}
-    className={`block w-full cursor-pointer rounded-md text-left ${comparePad} transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900`}>{body}</button>;
+    className={`block w-full cursor-pointer rounded-md text-left ${comparePad} transition-colors hover:bg-surface-muted `}>{body}</button>;
   if (!to) return <div className={comparePad}>{body}</div>;
   return (
     <Link
       to={to}
       title={title}
-      className={`block rounded-xl ${comparePad} transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900`}
+      className={`block rounded-xl ${comparePad} transition-colors hover:bg-surface-muted `}
     >
       {body}
     </Link>
@@ -169,7 +169,7 @@ export function Legend({
   mutedSides?: Partial<Record<Side, boolean>>;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold text-zinc-700">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-secondary">
       {SIDES.map((side) => (
         <span key={side} className="flex items-center gap-1.5">
           <span
@@ -184,7 +184,7 @@ export function Legend({
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="px-5 py-10 text-center text-sm text-zinc-400">{children}</p>;
+  return <p className="px-5 py-10 text-center text-sm text-muted">{children}</p>;
 }
 
 // ---------------------------------------------------------------------------
@@ -209,7 +209,7 @@ function Tooltip({
         type="button"
         aria-describedby={open ? id : undefined}
         {...handlers}
-        className={`block w-full min-h-11 cursor-default rounded-xl px-1 py-1 text-left transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${className}`}
+        className={`block w-full min-h-11 cursor-default rounded-xl px-1 py-1 text-left transition-colors hover:bg-surface-muted ${className}`}
       >
         {children}
       </button>
@@ -243,7 +243,7 @@ function BarTooltip({
         aria-label={ariaLabel}
         aria-describedby={open ? id : undefined}
         {...handlers}
-        className="flex h-full w-full cursor-pointer items-end justify-center rounded-t focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+        className="flex h-full w-full cursor-pointer items-end justify-center rounded-t "
       >
         {children}
       </button>
@@ -268,9 +268,9 @@ function StatBarTip({
       <span className="flex items-center gap-1.5">
         <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: SIDE[side].fill }} />
         <span>{lastName(fight[side].name)}</span>
-        <span className="font-normal text-zinc-400">· {context}</span>
+        <span className="font-normal text-muted">· {context}</span>
       </span>
-      <span className="mt-1.5 block space-y-0.5 font-normal text-zinc-200">
+      <span className="mt-1.5 block space-y-0.5 font-normal text-secondary">
         {lines.map((line) => (
           <span key={line} className="block whitespace-nowrap">
             {line}
@@ -288,7 +288,7 @@ function TipLines({ fight, f1, f2 }: { fight: Matchup; f1: string; f2: string })
       {SIDES.map((side) => (
         <span key={side} className="flex items-baseline gap-1.5">
           <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: SIDE[side].fill }} />
-          <span className="text-zinc-300">{lastName(fight[side].name)}</span>
+          <span className="text-faint">{lastName(fight[side].name)}</span>
           <span className="tabular-nums">{side === "f1" ? f1 : f2}</span>
         </span>
       ))}
@@ -368,7 +368,7 @@ function Figures({ lines, notes = [] }: { lines: Record<Side, string>; notes?: C
   return (
     <div className="mt-1 min-w-0 text-center tabular-nums @[36rem]:mt-1.5">
       {SIDES.map((side) => (
-        <div key={side} className={`min-h-4 whitespace-nowrap ${CHART_TEXT} font-bold leading-4`} style={{ color: SIDE[side].ink }}>
+        <div key={side} className={`min-h-4 whitespace-nowrap ${CHART_TEXT} font-medium leading-4`} style={{ color: SIDE[side].ink }}>
           {lines[side]}
         </div>
       ))}
@@ -378,9 +378,9 @@ function Figures({ lines, notes = [] }: { lines: Record<Side, string>; notes?: C
         <div className="mx-auto mt-0.5 grid w-max grid-cols-[1fr_auto_1fr] items-baseline gap-x-1.5 text-[10px] leading-4 @[36rem]:text-[11px]">
           {notes.map((note) => (
             <Fragment key={note.label}>
-              <span className="text-right font-semibold" style={{ color: SIDE.f1.ink }}>{note.f1}</span>
-              <span className="text-center text-[9px] uppercase tracking-wide text-zinc-400">{note.label}</span>
-              <span className="text-left font-semibold" style={{ color: SIDE.f2.ink }}>{note.f2}</span>
+              <span className="text-right font-medium" style={{ color: SIDE.f1.ink }}>{note.f1}</span>
+              <span className="text-center text-[9px] text-muted">{note.label}</span>
+              <span className="text-left font-medium" style={{ color: SIDE.f2.ink }}>{note.f2}</span>
             </Fragment>
           ))}
         </div>
@@ -516,7 +516,7 @@ export function TaleOfTape({ fight, compact = false }: { fight: Matchup; compact
   return (
     <div className="mx-auto w-full max-w-md" aria-label="Tale of the tape">
       {compact ? <h3 className="sr-only">Physical comparison</h3> : (
-        <h2 className="mb-1.5 text-center text-[9px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+        <h2 className="mb-1.5 text-center text-[9px] font-medium text-muted">
           Tale of the tape
         </h2>
       )}
@@ -539,7 +539,7 @@ export function TaleOfTape({ fight, compact = false }: { fight: Matchup; compact
                 </span>
                 {row.edge?.side === side ? (
                   <span
-                    className="shrink-0 rounded px-1 py-px text-[9px] font-bold leading-3.5"
+                    className="shrink-0 rounded px-1 py-px text-[9px] font-medium leading-3.5"
                     style={{ backgroundColor: SIDE[side].soft, color: SIDE[side].ink }}
                   >
                     {row.edge.badge}
@@ -610,7 +610,7 @@ function CombinedStrikeColumns({
               ]
             : ["Statistics unavailable"];
           const controlBar = controlShare ? (
-            <div aria-hidden="true" className="flex h-full w-1.5 shrink-0 items-end overflow-hidden rounded-t-full bg-zinc-100">
+            <div aria-hidden="true" className="flex h-full w-1.5 shrink-0 items-end overflow-hidden rounded-t-full bg-surface-strong">
               <div
                 className="plot-grow w-full"
                 style={{ height: controlShare[side] > 0 ? barHeight(controlShare[side], 2) : 0, backgroundColor: SIDE[side].fill }}
@@ -626,7 +626,7 @@ function CombinedStrikeColumns({
                 label={<StatBarTip fight={fight} side={side} context={context} lines={lines} />}
               >
                 <div
-                  className="plot-grow relative w-full overflow-hidden rounded-t-md border-2 bg-white"
+                  className="plot-grow relative w-full overflow-hidden rounded-t-md border-2 bg-surface"
                   style={{ height: columnHeight, borderColor: SIDE[side].fill, visibility: attempts > 0 ? "visible" : "hidden" }}
                 >
                   <div
@@ -656,14 +656,14 @@ function CombinedStrikeColumns({
 }
 
 /** The split charts name each pair under its figures. */
-const PAIR_LABEL = `whitespace-nowrap text-center text-[9px] font-semibold uppercase leading-4 tracking-[0.08em] text-zinc-400 @[36rem]:text-[10px]`;
+const PAIR_LABEL = `whitespace-nowrap text-center text-[9px] font-medium leading-4 text-muted @[36rem]:text-[10px]`;
 
 /** A chart and its name. Captions follow the figures for totals and rounds. */
 function ChartBlock({ title, children, fill = false }: { title: string; children: React.ReactNode; fill?: boolean }) {
   return (
     <section className={`flex min-w-0 flex-col items-center ${fill ? "flex-1" : ""}`}>
       {children}
-      <h3 className="mt-auto px-1 pt-2 text-center text-[10px] font-semibold uppercase tracking-[0.1em] text-zinc-400 @[36rem]:text-[11px]">
+      <h3 className="mt-auto px-1 pt-2 text-center text-[10px] font-medium text-muted @[36rem]:text-[11px]">
         {title}
       </h3>
     </section>
@@ -732,7 +732,7 @@ function StrikeSplitColumns({
                   label={<StatBarTip fight={fight} side={side} context={target.label} lines={lines} />}
                 >
                   <div
-                    className="plot-grow relative w-full overflow-hidden rounded-t border-2 bg-white"
+                    className="plot-grow relative w-full overflow-hidden rounded-t border-2 bg-surface"
                     style={{ height: barHeight(attempts / scale, 4), borderColor: SIDE[side].fill, visibility: attempts > 0 ? "visible" : "hidden" }}
                   >
                     <span
@@ -793,7 +793,7 @@ export function FightTotals({ fight, grouped = false }: { fight: Matchup; groupe
 
           <ChartBlock title="Landed by target">
             {strikeDistribution ? <StrikeSplitColumns fight={fight} block={strikeDistribution} split={STRIKE_TARGETS} />
-              : <p className="py-8 text-xs text-zinc-400">Strike distribution unavailable.</p>}
+              : <p className="py-8 text-xs text-muted">Strike distribution unavailable.</p>}
           </ChartBlock>
 
           <ChartBlock title="Control time">
@@ -818,7 +818,7 @@ export function FightTotals({ fight, grouped = false }: { fight: Matchup; groupe
 
           <ChartBlock title="Landed by position">
             {strikeDistribution ? <StrikeSplitColumns fight={fight} block={strikeDistribution} split={STRIKE_POSITIONS} />
-              : <p className="py-8 text-xs text-zinc-400">Position breakdown unavailable.</p>}
+              : <p className="py-8 text-xs text-muted">Position breakdown unavailable.</p>}
           </ChartBlock>
         </div>
       ) : (
@@ -913,7 +913,7 @@ export function RoundByRound({ fight, grouped = false }: { fight: Matchup; group
   const width = ROUND_WIDTH[Math.min(Math.max(count, 1), 5)];
 
   return (
-    <section className={grouped ? "border-t border-zinc-200" : shell}>
+    <section className={grouped ? "border-t border-line" : shell}>
       <PanelHeading title="Round by round" aside={grouped ? undefined : <Legend fight={fight} />} divider={false} />
       {count ? (
         <div className="flex flex-wrap justify-center gap-y-4 px-2 pb-3 pt-1 @[36rem]:gap-y-6 @[36rem]:px-4 @[36rem]:pb-4 @[36rem]:pt-3">
@@ -938,9 +938,9 @@ export function FightStatistics({ fight, live = false }: { fight: Matchup; live?
   return (
     <section className={`fight-statistics @container ${shell}`}>
       {live ? (
-        <div className="flex items-center gap-1.5 border-b border-zinc-100 px-5 py-2 text-[11px] text-zinc-500" role="status">
-          <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-          <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">Live</span>
+        <div className="flex items-center gap-1.5 border-b border-line-subtle px-5 py-2 text-[11px] text-muted" role="status">
+          <span className="live-dot h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
+          <span className="text-[10px] font-medium text-success">Live</span>
           {rounds ? <span>· through round {rounds}, still being added to</span> : null}
         </div>
       ) : null}
@@ -982,10 +982,10 @@ function ProfileRow({
 
   return (
     <CareerStatDetails fighters={[fight.f1, fight.f2]} before={fight.potential ? undefined : fight.id} view={metricView(metric)} className="block w-full py-1 text-left">
-      <span className={`block text-center text-[10px] leading-4 text-zinc-500 @[40rem]:text-[11px]`}>
+      <span className={`block text-center text-[10px] leading-4 text-muted @[40rem]:text-[11px]`}>
         <span className="@[40rem]:hidden">{metric.short}</span>
         <span className="hidden @[40rem]:inline">{metric.label}</span>
-        {metric.better === "low" ? <span className="text-zinc-400"> ↓</span> : null}
+        {metric.better === "low" ? <span className="text-muted"> ↓</span> : null}
       </span>
       <span className="grid grid-cols-2 items-center gap-x-1 @[40rem]:gap-x-1.5">
         {SIDES.map((side) => {
@@ -1007,7 +1007,7 @@ function ProfileRow({
           const figure = (
             <span
               key={`${side}-value`}
-              className={`${CHART_TEXT} tabular-nums ${side === "f1" ? "text-right" : "text-left"} ${ahead === side ? "font-bold" : "font-medium"}`}
+              className={`${CHART_TEXT} tabular-nums ${side === "f1" ? "text-right" : "text-left"} ${ahead === side ? "font-medium" : "font-medium"}`}
               style={{ color: value == null ? "var(--color-zinc-400)" : SIDE[side].ink }}
             >
               {profileText(value, metric.format)}
@@ -1038,7 +1038,7 @@ function MethodBar({ side, counts, total }: { side: Side; counts: { ko: number; 
           <span key={segment.key} title={`${segment.value} by ${segment.label}`} style={{ width: `${(segment.value / total) * 100}%`, backgroundColor: segment.color }} />
         ))}
       </span>
-      <span className="mt-0.5 block whitespace-nowrap text-[10px] leading-4 tabular-nums text-zinc-500 @[36rem]:mt-1 @[36rem]:text-[11px]">
+      <span className="mt-0.5 block whitespace-nowrap text-[10px] leading-4 tabular-nums text-muted @[36rem]:mt-1 @[36rem]:text-[11px]">
         {counts.ko} KO · {counts.sub} SUB · {counts.decision} DEC
       </span>
     </>
@@ -1060,7 +1060,7 @@ function MethodProfile({ fight, careers }: { fight: Matchup; careers: Record<Sid
     { key: "losses", label: "Losses", view: resultView("loss") },
   ] as const;
   return (
-    <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-zinc-100 px-3 py-2.5 @[36rem]:gap-x-6 @[36rem]:px-4 @[36rem]:py-3">
+    <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-line-subtle px-3 py-2.5 @[36rem]:gap-x-6 @[36rem]:px-4 @[36rem]:py-3">
       {rows.map((row) => (
         <CareerStatDetails key={row.key} fighters={[fight.f1, fight.f2]} before={fight.potential ? undefined : fight.id} view={row.view} className="block w-full min-w-0 py-1 text-left">
           <span className={`mb-1 block text-center ${sectionLabel}`}>{row.label}</span>
@@ -1124,8 +1124,8 @@ export function Scorecards({ fight }: { fight: Matchup }) {
     <section className={`${shell} @container overflow-hidden`}>
       <PanelHeading title="Scorecards" />
       <ScorecardTable fight={fight} judges={judges} fans={fans} rounds={data?.rounds ?? []} decided={decided} />
-      {decided ? <p className="border-t border-zinc-100 px-4 py-2 text-center text-[11px] leading-4 text-zinc-500 sm:px-5">
-        <span className="font-semibold text-zinc-900">Round {decided} decided the fight.</span> The judges split on it, and scored the other way it changes the winner.
+      {decided ? <p className="border-t border-line-subtle px-4 py-2 text-center text-[11px] leading-4 text-muted sm:px-5">
+        <span className="font-medium text-foreground">Round {decided} decided the fight.</span> The judges split on it, and scored the other way it changes the winner.
       </p> : null}
     </section>
   );
@@ -1136,11 +1136,11 @@ type Judge = NonNullable<FightDetailBlock["judges"]>[number];
 /** A pair of scores, the winner's in their colour and the other's muted. */
 function ScorePair({ f1, f2, text, size }: { f1: number; f2: number; text: (value: number) => string; size: string }) {
   const lead: Side | null = f1 > f2 ? "f1" : f2 > f1 ? "f2" : null;
-  const tone = (side: Side) => lead === side ? "font-semibold" : "font-medium text-zinc-400";
+  const tone = (side: Side) => lead === side ? "font-medium" : "font-medium text-muted";
   return (
     <span className={`inline-grid grid-cols-[1fr_auto_1fr] items-center gap-1 tabular-nums leading-tight ${size}`}>
       <span className={`text-right ${tone("f1")}`} style={lead === "f1" ? { color: SIDE.f1.ink } : undefined}>{text(f1)}</span>
-      <span className="h-3 w-px bg-zinc-200" aria-hidden="true" />
+      <span className="h-3 w-px bg-track" aria-hidden="true" />
       <span className={`text-left ${tone("f2")}`} style={lead === "f2" ? { color: SIDE.f2.ink } : undefined}>{text(f2)}</span>
     </span>
   );
@@ -1169,15 +1169,15 @@ function ScorecardTable({ fight, judges, fans, rounds, decided }: {
       {judges.map((judge, index) => {
         const slug = fight.officials?.judges[index];
         const name = judge.judge ? <><span className="@[40rem]:hidden">{lastName(judge.judge)}</span><span className="hidden @[40rem]:inline">{judge.judge}</span></> : `Judge ${index + 1}`;
-        const label = "line-clamp-2 break-words px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] @[32rem]:text-[10px] @[32rem]:leading-4";
+        const label = "line-clamp-2 break-words px-0.5 text-[9px] font-medium leading-3 @[32rem]:text-[10px] @[32rem]:leading-4";
         // Each name opens that judge's record: every card they have scored.
         return slug
           ? <Link key={`name-${index}`} to={`/judges/${slug}`} title={`${judge.judge} — every card they have scored`}
-              className={`${label} text-zinc-500 transition hover:text-zinc-900 dark:hover:text-zinc-100`}>{name} <span aria-hidden="true">↗</span></Link>
-          : <span key={`name-${index}`} className={`${label} text-zinc-400`} title={judge.judge || undefined}>{name}</span>;
+              className={`${label} text-muted transition hover:text-foreground`}>{name} <span aria-hidden="true">↗</span></Link>
+          : <span key={`name-${index}`} className={`${label} text-muted`} title={judge.judge || undefined}>{name}</span>;
       })}
       {fans ? (
-        <Link to={{ search: "?tab=score" }} replace state={location.state} className="line-clamp-2 px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] text-sky-600 underline-offset-2 hover:underline">
+        <Link to={{ search: "?tab=score" }} replace state={location.state} className="line-clamp-2 px-0.5 text-[9px] font-medium leading-3 text-info underline-offset-2 hover:underline">
           {fans.completeCards.toLocaleString()} {fans.completeCards === 1 ? "fan" : "fans"}
         </Link>
       ) : null}
@@ -1196,18 +1196,18 @@ function ScorecardTable({ fight, judges, fans, rounds, decided }: {
 
       {Array.from({ length: roundCount }, (_, index) => (
         <Fragment key={`round-${index}`}>
-          <span className={`flex items-center border-t border-zinc-100 py-1 ${sectionLabel} !text-[9px] !tracking-normal ${decided === index + 1 ? "!text-zinc-900" : ""}`} title={decided === index + 1 ? "This round decided the fight" : undefined}>R{index + 1}</span>
+          <span className={`flex items-center border-t border-line-subtle py-1 ${sectionLabel} !text-[9px] !tracking-normal ${decided === index + 1 ? "!text-foreground" : ""}`} title={decided === index + 1 ? "This round decided the fight" : undefined}>R{index + 1}</span>
           {judges.map((judge, judgeIndex) => {
             const round = judge.rounds?.[index];
             return (
-              <span key={judgeIndex} className={`${cell} border-t border-zinc-100 py-1`}>
-                {round ? <ScorePair f1={round.f1Score} f2={round.f2Score} text={String} size="text-[11px] @[32rem]:text-xs" /> : <span className="text-[11px] text-zinc-300">—</span>}
+              <span key={judgeIndex} className={`${cell} border-t border-line-subtle py-1`}>
+                {round ? <ScorePair f1={round.f1Score} f2={round.f2Score} text={String} size="text-[11px] @[32rem]:text-xs" /> : <span className="text-[11px] text-faint">—</span>}
               </span>
             );
           })}
           {fans ? (
-            <span className={`${cell} border-t border-zinc-100 py-1`}>
-              {rounds[index] ? <ScorePair f1={rounds[index].total1} f2={rounds[index].total2} text={decimalScore} size="text-[11px] @[32rem]:text-xs" /> : <span className="text-[11px] text-zinc-300">—</span>}
+            <span className={`${cell} border-t border-line-subtle py-1`}>
+              {rounds[index] ? <ScorePair f1={rounds[index].total1} f2={rounds[index].total2} text={decimalScore} size="text-[11px] @[32rem]:text-xs" /> : <span className="text-[11px] text-faint">—</span>}
             </span>
           ) : null}
         </Fragment>

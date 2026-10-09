@@ -8,7 +8,7 @@ import OptionsSheet, { SwitchRow } from "../components/OptionsSheet";
 import RequestNotice from "../components/RequestNotice";
 import { FilterSearch, PageState } from "../components/ResearchKit";
 
-const LEGEND = "px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500";
+const LEGEND = "px-2.5 pb-1 pt-2 text-[10px] font-medium text-muted";
 
 function Settings({ sources, off, setOff, summaries, setSummaries }: {
   sources: NewsData["sources"]; off: ReadonlySet<string>; setOff: (off: string[]) => void; summaries: boolean; setSummaries: (on: boolean) => void;
@@ -20,7 +20,7 @@ function Settings({ sources, off, setOff, summaries, setSummaries }: {
       <div className="max-h-[60vh] overflow-y-auto px-1.5 pb-1.5">
         <SwitchRow label="Summaries" hint="A few lines on what each story says, by AI" on={summaries} onChange={setSummaries} />
         <p className={LEGEND}>Sources</p>
-        <p className="px-2.5 pb-1 text-[11px] text-zinc-400">A story another outlet you keep on also ran stays, credited to that outlet.</p>
+        <p className="px-2.5 pb-1 text-[11px] text-muted">A story another outlet you keep on also ran stays, credited to that outlet.</p>
         {sources.map((source) => (
           <SwitchRow key={source.name} label={source.name} hint={source.ok ? undefined : "Couldn’t be read lately"} on={!off.has(source.name)} onChange={(value) => toggle(source.name, value)} />
         ))}
@@ -75,8 +75,8 @@ export default function NewsPage() {
         </div>
 
         <section aria-label={query.trim() ? "Search results" : "News"}>
-          {query.trim() ? <h2 className="py-2 text-[12px] font-bold uppercase tracking-[0.12em] text-zinc-900">{first.total} {first.total === 1 ? "story" : "stories"} for “{query.trim()}”</h2> : null}
-          {!stories.length ? <p className="py-10 text-center text-sm text-zinc-500">{query.trim() ? "Nothing matches." : "Nothing from the outlets you keep on."}</p> : null}
+          {query.trim() ? <h2 className="py-2 text-[12px] font-medium text-foreground">{first.total} {first.total === 1 ? "story" : "stories"} for “{query.trim()}”</h2> : null}
+          {!stories.length ? <p className="py-10 text-center text-sm text-muted">{query.trim() ? "Nothing matches." : "Nothing from the outlets you keep on."}</p> : null}
           {stories.map((story) => <NewsRow key={story.url} story={story} summaries={summaries} />)}
           <LoadMore list={list} />
         </section>

@@ -42,4 +42,4 @@ export function compact(value: number): string {
   return value.toLocaleString("en-US");
 }
 
-export const PANEL = "rounded-2xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
+export const PANEL = "rounded-2xl border border-line bg-surface";

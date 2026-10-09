@@ -12,27 +12,27 @@ import { BUTTON_PRIMARY_LARGE } from "../ui";
 
 const METHOD_SHORT: Record<PredictionMethod, string> = { ko: "KO", submission: "Sub", decision: "Dec" };
 /** A method or round choice: a full-width cell in an even grid. */
-const option = "rounded-xl border px-2 py-2 text-center text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 disabled:cursor-not-allowed disabled:opacity-40 sm:text-[13px]";
-const optionIdle = "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50";
+const option = "rounded-xl border px-2 py-2 text-center text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 sm:text-[13px]";
+const optionIdle = "border-line bg-surface text-secondary hover:border-line-strong hover:bg-surface-muted";
 /** Defined in index.css: ink on paper, inverted in the dark theme. */
 const optionOn = "pick-option-on";
 const primary = BUTTON_PRIMARY_LARGE;
 
 export default function FightPredictions({ fight }: { fight: Matchup }) {
   const { data, error, retry } = useApi<PredictionSummary>(`/api/fights/${fight.id}/predictions`, 3_000);
-  if (!data) return <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
+  if (!data) return <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-muted`} role="status">
     {error ? <>{error} <button className="underline" onClick={retry}>Retry</button></> : "Loading predictions…"}
   </section>;
   return <>
     {data.total ? <CommunityPicks distribution={data.distribution} scheduledRounds={data.scheduledRounds} /> : null}
     {accountsEnabled ? <PredictionGate key={fight.id} fight={fight} status={data} onSaved={retry} />
-      : <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`}>Sign-in must be configured to save predictions.</section>}
+      : <section className={`${PANEL_SHELL} p-5 text-sm text-muted`}>Sign-in must be configured to save predictions.</section>}
   </>;
 }
 
 type Share = { key: string; label: string; short?: string; count: number; color: string; counterClockwise?: boolean };
 
-const SECTION_LABEL = "mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-400";
+const SECTION_LABEL = "mb-2 text-[10px] font-medium text-muted";
 /** Each corner's colour, darkest for a knockout down to lightest for no
  *  method named: the method pie reads by fighter and by how at once. */
 const SHADES: Record<string, [string, string]> = {
@@ -63,7 +63,7 @@ function Pie({ entries, total, size = 76 }: { entries: Share[]; total: number; s
         if (entry.counterClockwise) { counter -= sweep; from = counter; } else { from = clockwise; clockwise += sweep; }
         const large = sweep > Math.PI ? 1 : 0;
         return <path key={entry.key} d={`M ${c} ${c} L ${point(from)} A ${r} ${r} 0 ${large} 1 ${point(from + sweep)} Z`}
-          fill={entry.color} strokeWidth={1.5} strokeLinejoin="round" className="stroke-white dark:stroke-[#18181b]">
+          fill={entry.color} strokeWidth={1.5} strokeLinejoin="round" className="stroke-surface">
           <title>{`${entry.label}: ${picksWord(entry.count)} (${sharePct(entry.count, total)}%)`}</title>
         </path>;
       })}
@@ -73,10 +73,10 @@ function Pie({ entries, total, size = 76 }: { entries: Share[]; total: number; s
 /** A small key under a chart: swatches, a short name, the share. */
 function Key({ rows }: { rows: { key: string; swatches: string[]; label: string; value: string; ink?: string; muted?: boolean }[] }) {
   return <ul className="mt-2 w-full space-y-0.5 text-[11px] leading-4" aria-hidden="true">
-    {rows.map(row => <li key={row.key} className={`flex min-w-0 items-center gap-1 ${row.muted ? "text-zinc-400" : "text-zinc-600"}`}>
-      <span className="flex shrink-0 -space-x-0.5">{row.swatches.map(color => <span key={color} className="h-2 w-2 rounded-full ring-1 ring-white dark:ring-[#18181b]" style={{ backgroundColor: color }} />)}</span>
+    {rows.map(row => <li key={row.key} className={`flex min-w-0 items-center gap-1 ${row.muted ? "text-muted" : "text-secondary"}`}>
+      <span className="flex shrink-0 -space-x-0.5">{row.swatches.map(color => <span key={color} className="h-2 w-2 rounded-full ring-1 ring-surface" style={{ backgroundColor: color }} />)}</span>
       <span className="min-w-0 truncate">{row.label}</span>
-      <span className={`ml-auto shrink-0 font-semibold tabular-nums ${row.ink ?? "text-zinc-900"}`}>{row.value}</span>
+      <span className={`ml-auto shrink-0 font-medium tabular-nums ${row.ink ?? "text-foreground"}`}>{row.value}</span>
     </li>)}
   </ul>;
 }
@@ -88,7 +88,7 @@ function RoundBars({ rounds, total }: { rounds: { key: string; label: string; sh
   return <div className="flex h-[76px] items-end justify-center gap-1.5" role="img"
     aria-label={rounds.map(round => `${round.label} ${sharePct(round.count, total)}%`).join(", ")}>
     {rounds.map(round => <div key={round.key} className="flex h-full flex-col items-center justify-end gap-0.5" title={`${round.label}: ${picksWord(round.count)}`}>
-      {round.count ? <span className="text-[9px] font-semibold leading-none tabular-nums text-zinc-700">{sharePct(round.count, total)}</span> : null}
+      {round.count ? <span className="text-[9px] font-medium leading-none tabular-nums text-secondary">{sharePct(round.count, total)}</span> : null}
       <div className="flex h-full items-end gap-px">
         {round.sides.map((count, index) => <span key={index} className="block w-[7px] rounded-t-[2px]"
           style={{ height: `${count ? Math.max(6, (count / most) * 100) : 3}%`, backgroundColor: count ? (index === 0 ? "var(--color-f1)" : "var(--color-f2)") : "var(--color-plot-axis)" }} />)}
@@ -133,7 +133,7 @@ function CommunityPicks({ distribution, scheduledRounds }: { distribution: Predi
 
   return (
     <section className={PANEL_SHELL}>
-      <PanelHeading title="Community picks" divider={false} aside={<span className="text-xs tabular-nums text-zinc-500">{picksWord(total)}</span>} />
+      <PanelHeading title="Community picks" divider={false} aside={<span className="text-xs tabular-nums text-muted">{picksWord(total)}</span>} />
       <div className={`grid gap-3 px-4 pb-4 sm:gap-6 sm:px-5 ${roundsKnown ? "grid-cols-3" : "grid-cols-2"}`}>
         <div className="flex min-w-0 flex-col items-center">
           <h3 className={SECTION_LABEL}>Winner</h3>
@@ -154,10 +154,10 @@ function CommunityPicks({ distribution, scheduledRounds }: { distribution: Predi
         {roundsKnown ? <div className="flex min-w-0 flex-col items-center">
           <h3 className={SECTION_LABEL}>Round %</h3>
           <RoundBars rounds={rounds} total={timed} />
-          <div className="mt-1 flex justify-center gap-1.5 text-[10px] leading-none text-zinc-500" aria-hidden="true">
+          <div className="mt-1 flex justify-center gap-1.5 text-[10px] leading-none text-muted" aria-hidden="true">
             {rounds.map(entry => <span key={entry.key} className="w-[15px] text-center">{entry.short}</span>)}
           </div>
-          <p className="mt-2 text-center text-[9px] leading-tight text-zinc-500">D = decision</p>
+          <p className="mt-2 text-center text-[9px] leading-tight text-muted">D = decision</p>
         </div> : null}
       </div>
     </section>
@@ -182,7 +182,7 @@ function PredictionGate(props: EditorProps) {
 /** The one place the open/closed state is stated. */
 function PredictionHeading({ open }: { open: boolean }) {
   return <PanelHeading title="Your prediction" divider={false} aside={
-    <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${open ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500"}`}>
+    <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${open ? "bg-success-subtle text-success" : "bg-surface-strong text-muted"}`}>
       {open ? "Open" : "Closed"}
     </span>
   } />;
@@ -260,14 +260,14 @@ function PredictionEditor({ fight, status, onSaved, userId }: EditorProps & { us
     <PredictionHeading open={open} />
     <div className="px-4 pb-4 sm:px-5">
       {!saved ? (
-        <p role="status" className="appear-late text-sm text-zinc-500">
+        <p role="status" className="appear-late text-sm text-muted">
           {error ? <>{error} <button className="underline" onClick={() => void load()}>Retry</button></> : "Loading your pick…"}
         </p>
       ) : <>
         {saved.pick ? <SavedPick pick={predictionLabel(saved.pick)} result={saved.result} open={open} /> : null}
 
         {!open ? (
-          !saved.pick ? <p className="text-sm text-zinc-500">You didn’t pick this fight.</p> : null
+          !saved.pick ? <p className="text-sm text-muted">You didn’t pick this fight.</p> : null
         ) : <>
           <fieldset disabled={busy || conflict} className="min-w-0 space-y-3">
             <legend className="sr-only">Your fight prediction</legend>
@@ -279,12 +279,12 @@ function PredictionEditor({ fight, status, onSaved, userId }: EditorProps & { us
                   return (
                     <button key={item.fighterId} type="button" aria-pressed={picked}
                       onClick={() => { setFighter(picked ? "" : item.fighterId); edited.current = true; setMessage(""); }}
-                      className={`min-w-0 rounded-xl border px-3 py-2.5 text-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${
+                      className={`min-w-0 rounded-xl border px-3 py-2.5 text-center transition-colors ${
                         picked
                           ? index === 0 ? "border-f1 bg-f1-soft text-f1-ink" : "border-f2 bg-f2-soft text-f2-ink"
-                          : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50"
+                          : "border-line bg-surface text-secondary hover:border-line-strong hover:bg-surface-muted"
                       }`}>
-                      <span className="block break-words text-sm font-semibold leading-snug">{item.name}</span>
+                      <span className="block break-words text-sm font-medium leading-snug">{item.name}</span>
                     </button>
                   );
                 })}
@@ -323,7 +323,7 @@ function PredictionEditor({ fight, status, onSaved, userId }: EditorProps & { us
                       );
                     })}
                   </div>
-                ) : <p className="text-xs text-zinc-500">Opens when the bout length is confirmed.</p>}
+                ) : <p className="text-xs text-muted">Opens when the bout length is confirmed.</p>}
               </div>
             ) : null}
           </fieldset>
@@ -333,18 +333,18 @@ function PredictionEditor({ fight, status, onSaved, userId }: EditorProps & { us
               className={primary} onClick={() => void submit()}>
               {busy ? "Saving…" : saved.pick ? "Update pick" : "Save pick"}
             </button>
-            <p className="text-xs tabular-nums text-zinc-500"><span className="font-semibold text-zinc-900">{onOffer}</span> pts</p>
+            <p className="text-xs tabular-nums text-muted"><span className="font-medium text-foreground">{onOffer}</span> pts</p>
             {saved.pick && saved.removable ? (
               <button type="button" disabled={busy || conflict} onClick={() => void submit(true)}
-                className="ml-auto text-xs text-zinc-400 underline underline-offset-2 hover:text-zinc-700 disabled:opacity-40">
+                className="ml-auto text-xs text-muted underline underline-offset-2 hover:text-secondary disabled:opacity-40">
                 Remove
               </button>
             ) : null}
           </div>
         </>}
 
-        {error ? <p role="alert" className="mt-3 text-xs text-rose-600">{error} <button className="underline" onClick={() => void load()}>Reload</button></p> : null}
-        {message ? <p role="status" className="mt-3 text-xs text-emerald-700">{message}</p> : null}
+        {error ? <p role="alert" className="mt-3 text-xs text-danger">{error} <button className="underline" onClick={() => void load()}>Reload</button></p> : null}
+        {message ? <p role="status" className="mt-3 text-xs text-success">{message}</p> : null}
       </>}
     </div>
   </section>;
@@ -353,23 +353,23 @@ function PredictionEditor({ fight, status, onSaved, userId }: EditorProps & { us
 /** The saved call, and what it was worth once the fight is settled. */
 function SavedPick({ pick, result, open }: { pick: string; result: MyPrediction["result"]; open: boolean }) {
   const state = result?.state;
-  const tone = state === "won" ? "text-emerald-600" : state === "lost" ? "text-zinc-500" : "text-zinc-400";
+  const tone = state === "won" ? "text-success" : state === "lost" ? "text-muted" : "text-muted";
   return (
-    <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl bg-zinc-50 px-3 py-2 ${open ? "mb-3" : ""}`}>
+    <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl bg-surface-muted px-3 py-2 ${open ? "mb-3" : ""}`}>
       <div className="min-w-0">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Your pick</p>
-        <p className="mt-0.5 truncate text-sm font-semibold text-zinc-900">{pick}</p>
-        {result?.reason ? <p className="mt-1 text-xs text-zinc-500">{result.reason}</p> : null}
+        <p className="text-[11px] font-medium text-muted">Your pick</p>
+        <p className="mt-0.5 truncate text-sm font-medium text-foreground">{pick}</p>
+        {result?.reason ? <p className="mt-1 text-xs text-muted">{result.reason}</p> : null}
       </div>
       <div className="shrink-0 text-right">
         {result?.points != null ? <>
-          <p className={`text-lg font-semibold tabular-nums ${tone}`}>{predictionPoints(result.points)} <span className="text-xs font-medium text-zinc-400">pts</span></p>
+          <p className={`text-lg font-medium tabular-nums ${tone}`}>{predictionPoints(result.points)} <span className="text-xs font-medium text-muted">pts</span></p>
           {state === "won" || state === "lost" ? (
-            <p className="mt-0.5 text-[11px] tabular-nums text-zinc-400">
+            <p className="mt-0.5 text-[11px] tabular-nums text-muted">
               {result.entry} picked{result.fighter ? ` · ${result.fighter} winner` : ""}{result.method ? ` · ${result.method} method` : ""}{result.round ? ` · ${result.round} round` : ""}
             </p>
           ) : null}
-        </> : <p className="text-xs text-zinc-500">{open ? "You can still change this" : "Awaiting the result"}</p>}
+        </> : <p className="text-xs text-muted">{open ? "You can still change this" : "Awaiting the result"}</p>}
       </div>
     </div>
   );

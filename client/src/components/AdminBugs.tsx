@@ -35,10 +35,10 @@ type BugReport = {
 };
 
 const LEVELS: { id: Level; label: string; hint: string; dot: string }[] = [
-  { id: "critical", label: "Critical", hint: "Wrong or missing where readers are looking right now", dot: "bg-rose-500" },
-  { id: "must", label: "Must fix", hint: "Will be seen soon, or wrong on a live page", dot: "bg-orange-500" },
+  { id: "critical", label: "Critical", hint: "Wrong or missing where readers are looking right now", dot: "bg-danger" },
+  { id: "must", label: "Must fix", hint: "Will be seen soon, or wrong on a live page", dot: "bg-attention" },
   { id: "minor", label: "Not bad", hint: "A real gap nobody is waiting on", dot: "bg-yellow-400" },
-  { id: "ok", label: "OK", hint: "Expected for now, or cosmetic", dot: "bg-zinc-300" },
+  { id: "ok", label: "OK", hint: "Expected for now, or cosmetic", dot: "bg-line-strong" },
 ];
 const LEVEL = Object.fromEntries(LEVELS.map((level) => [level.id, level])) as Record<Level, (typeof LEVELS)[number]>;
 const rank = (level: Level) => LEVELS.findIndex((item) => item.id === level);
@@ -168,7 +168,7 @@ function ItemRow({
   const primary = item.links.find((link) => link.internal);
 
   return (
-    <li className={`border-b border-zinc-100 px-4 py-3 last:border-b-0 ${review ? "opacity-50" : ""}`}>
+    <li className={`border-b border-line-subtle px-4 py-3 last:border-b-0 ${review ? "opacity-50" : ""}`}>
       <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
         <input
           type="checkbox"
@@ -183,20 +183,20 @@ function ItemRow({
           <div className="flex flex-wrap items-baseline gap-x-2">
             <Dot level={item.level} className="translate-y-[-1px] self-center" />
             {primary ? (
-              <Link to={primary.href} className="font-semibold text-zinc-900 hover:underline">{item.title}</Link>
+              <Link to={primary.href} className="font-medium text-foreground hover:underline">{item.title}</Link>
             ) : (
-              <span className="font-semibold text-zinc-900">{item.title}</span>
+              <span className="font-medium text-foreground">{item.title}</span>
             )}
-            {item.date && <span className="text-xs tabular-nums text-zinc-400">{formatDateShortWithYear(item.date)}</span>}
+            {item.date && <span className="text-xs tabular-nums text-muted">{formatDateShortWithYear(item.date)}</span>}
           </div>
-          {item.subtitle && <div className="text-xs text-zinc-500">{item.subtitle}</div>}
+          {item.subtitle && <div className="text-xs text-muted">{item.subtitle}</div>}
 
           {item.facts.length > 0 && (
             <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
               {item.facts.map(([label, value], i) => (
                 <div key={i} className="contents">
-                  <dt className="text-zinc-400">{label}</dt>
-                  <dd className="min-w-0 break-words text-zinc-700">{value}</dd>
+                  <dt className="text-muted">{label}</dt>
+                  <dd className="min-w-0 break-words text-secondary">{value}</dd>
                 </div>
               ))}
             </dl>
@@ -204,9 +204,9 @@ function ItemRow({
 
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
             {item.links.map((link, i) => link.internal ? (
-              <Link key={i} to={link.href} className="text-zinc-600 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900">{link.label}</Link>
+              <Link key={i} to={link.href} className="text-secondary underline decoration-faint underline-offset-2 hover:text-foreground">{link.label}</Link>
             ) : (
-              <a key={i} href={link.href} target="_blank" rel="noreferrer" className="text-zinc-600 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900">{link.label} ↗</a>
+              <a key={i} href={link.href} target="_blank" rel="noreferrer" className="text-secondary underline decoration-faint underline-offset-2 hover:text-foreground">{link.label} ↗</a>
             ))}
           </div>
 
@@ -216,11 +216,11 @@ function ItemRow({
               onBlur={(e) => { if (e.target.value !== (review?.note ?? "")) onNote(e.target.value); }}
               placeholder="Note (saved in this browser)"
               rows={2}
-              className="mt-2 w-full rounded-lg border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 outline-none focus:border-zinc-400"
+              className="mt-2 w-full rounded-lg border border-line bg-surface px-2 py-1 text-xs text-secondary outline-none focus:border-line-strong"
             />
           )}
           {result && (
-            <div className={`mt-2 text-xs ${result.ok ? "text-emerald-700" : "text-rose-600"}`}>{result.message}</div>
+            <div className={`mt-2 text-xs ${result.ok ? "text-success" : "text-danger"}`}>{result.message}</div>
           )}
         </div>
 
@@ -231,7 +231,7 @@ function ItemRow({
               type="button"
               disabled={running != null}
               onClick={() => void run(action)}
-              className="rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-700 sm:px-2 sm:py-1 hover:border-zinc-300 hover:bg-zinc-50 disabled:opacity-50"
+              className="rounded-md border border-line bg-surface px-2.5 py-1.5 text-xs font-medium text-secondary sm:px-2 sm:py-1 hover:border-line-strong hover:bg-surface-muted disabled:opacity-50"
             >
               {running === action.id ? "Running…" : action.label}
             </button>
@@ -239,7 +239,7 @@ function ItemRow({
           <button
             type="button"
             onClick={() => setNoteOpen((open) => !open)}
-            className="rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs text-zinc-500 sm:px-2 sm:py-1 hover:border-zinc-300 hover:bg-zinc-50"
+            className="rounded-md border border-line bg-surface px-2.5 py-1.5 text-xs text-muted sm:px-2 sm:py-1 hover:border-line-strong hover:bg-surface-muted"
           >
             Note
           </button>
@@ -247,7 +247,7 @@ function ItemRow({
             type="button"
             onClick={() => void copy()}
             title="Copy this item as text"
-            className="rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs text-zinc-500 sm:px-2 sm:py-1 hover:border-zinc-300 hover:bg-zinc-50"
+            className="rounded-md border border-line bg-surface px-2.5 py-1.5 text-xs text-muted sm:px-2 sm:py-1 hover:border-line-strong hover:bg-surface-muted"
           >
             {copied ? "Copied" : "Copy"}
           </button>
@@ -362,14 +362,14 @@ export default function AdminBugs() {
 
   if (error && !data) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 py-16 text-sm text-zinc-500">
+      <div className="flex flex-col items-center justify-center gap-2 py-16 text-sm text-muted">
         <p>Couldn’t load the report. {error}</p>
-        <button type="button" onClick={() => void reload()} className="font-semibold text-zinc-900 underline">Retry</button>
+        <button type="button" onClick={() => void reload()} className="font-medium text-foreground underline">Retry</button>
       </div>
     );
   }
   if (loading || !data) {
-    return <div role="status" className="flex items-center justify-center py-16 text-sm text-zinc-400">Checking the database…</div>;
+    return <div role="status" className="flex items-center justify-center py-16 text-sm text-muted">Checking the database…</div>;
   }
 
   const totals = LEVELS.map((entry) => ({
@@ -392,13 +392,13 @@ export default function AdminBugs() {
               title={entry.hint}
               className={`flex min-w-0 flex-col items-center gap-0.5 rounded-xl border px-1 py-1.5 text-xs tabular-nums transition sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-2.5 sm:py-1 ${
                 level === entry.id
-                  ? "border-zinc-900 bg-zinc-900 text-white"
-                  : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50"
+                  ? "border-foreground bg-foreground text-background"
+                  : "border-line bg-surface text-secondary hover:border-line-strong hover:bg-surface-muted"
               } ${entry.count || level === entry.id ? "" : "opacity-50"}`}
             >
               <span className="flex items-center gap-1.5">
                 <span className={`h-2 w-2 rounded-full ${entry.dot}`} aria-hidden="true" />
-                <span className="font-semibold">{entry.count.toLocaleString()}</span>
+                <span className="font-medium">{entry.count.toLocaleString()}</span>
               </span>
               <span className="max-w-full truncate text-[11px] sm:text-xs">{entry.label}</span>
             </button>
@@ -416,9 +416,9 @@ export default function AdminBugs() {
             }}
             placeholder="Search every check…"
             aria-label="Search every check by name, event, date or id"
-            className="min-w-0 flex-1 basis-full rounded-lg border border-zinc-200 bg-white px-2.5 py-2 text-base outline-none focus:border-zinc-400 sm:basis-auto sm:py-1.5 sm:text-sm md:w-56 md:flex-none"
+            className="min-w-0 flex-1 basis-full rounded-lg border border-line bg-surface px-2.5 py-2 text-base outline-none focus:border-line-strong sm:basis-auto sm:py-1.5 sm:text-sm md:w-56 md:flex-none"
           />
-          <label className="flex flex-1 items-center gap-1.5 py-1 text-xs text-zinc-600 sm:flex-none">
+          <label className="flex flex-1 items-center gap-1.5 py-1 text-xs text-secondary sm:flex-none">
             <input
               type="checkbox"
               checked={hideReviewed}
@@ -431,18 +431,18 @@ export default function AdminBugs() {
             type="button"
             onClick={() => void refresh()}
             disabled={refreshing}
-            className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            className="rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs font-medium text-secondary hover:bg-surface-muted disabled:opacity-50"
           >
             {refreshing ? "Checking…" : "Re-run checks"}
           </button>
         </div>
-        <p className="w-full text-[11px] text-zinc-400">
+        <p className="w-full text-[11px] text-muted">
           Built {ago(data.generated_at)} · last sync tick {ago(data.sync.last_tick_at)}
           {!data.can_act && " · repairs are disabled"}
         </p>
         {/* A long error stays two lines on a phone; its full text is in the tooltip and the Copy. */}
         {data.sync.last_sync_error && (
-          <p className="-mt-1 line-clamp-2 w-full break-words text-[11px] text-rose-600 sm:line-clamp-none" title={data.sync.last_sync_error}>
+          <p className="-mt-1 line-clamp-2 w-full break-words text-[11px] text-danger sm:line-clamp-none" title={data.sync.last_sync_error}>
             Last sync error: {data.sync.last_sync_error}
           </p>
         )}
@@ -452,23 +452,23 @@ export default function AdminBugs() {
           the space under the tabs and the page never moves. A phone scrolls the
           page through one or the other. */}
       <div className="flex flex-col gap-3 md:grid md:min-h-0 md:flex-1 md:grid-cols-[18rem_minmax(0,1fr)]">
-        {showList && <nav className="rounded-xl border border-zinc-200 bg-white p-2 md:min-h-0 md:overflow-y-auto md:overscroll-y-contain" aria-label="Checks">
+        {showList && <nav className="rounded-xl border border-line bg-surface p-2 md:min-h-0 md:overflow-y-auto md:overscroll-y-contain" aria-label="Checks">
           {query && (
             <button
               type="button"
               onClick={() => setParam("check", null)}
               aria-current={searchAll ? "true" : undefined}
-              className={`mb-2 flex w-full items-center gap-2 rounded-md px-2 py-2.5 text-left text-sm md:py-1.5 ${searchAll ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-100"}`}
+              className={`mb-2 flex w-full items-center gap-2 rounded-md px-2 py-2.5 text-left text-sm md:py-1.5 ${searchAll ? "bg-foreground text-background" : "text-secondary hover:bg-surface-strong"}`}
             >
               <span className="min-w-0 flex-1 truncate">All matches</span>
-              <span className={`tabular-nums text-xs ${searchAll ? "text-zinc-300" : "text-zinc-500"}`}>
+              <span className={`tabular-nums text-xs ${searchAll ? "text-faint" : "text-muted"}`}>
                 {ordered.reduce((sum, check) => sum + stat(check).count, 0).toLocaleString()}
               </span>
             </button>
           )}
           {groups.map(([group, groupChecks]) => (
             <div key={group} className="mb-2 last:mb-0">
-              <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
+              <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-1.5 text-[11px] font-medium text-muted">
                 <span>{group}</span>
                 <span className="tabular-nums" aria-label={`${group} total`}>
                   {groupChecks.reduce((sum, check) => sum + stat(check).count, 0).toLocaleString()}
@@ -485,12 +485,12 @@ export default function AdminBugs() {
                         onClick={() => openCheck(check.id)}
                         aria-current={active ? "true" : undefined}
                         title={check.label}
-                        className={`flex w-full items-center gap-2 rounded-md px-2 py-2.5 text-left text-sm md:py-1.5 ${active ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-100"}`}
+                        className={`flex w-full items-center gap-2 rounded-md px-2 py-2.5 text-left text-sm md:py-1.5 ${active ? "bg-foreground text-background" : "text-secondary hover:bg-surface-strong"}`}
                       >
                         <Dot level={count ? worst : "ok"} className={count ? "" : "opacity-40"} />
                         <span className="min-w-0 flex-1 truncate">{check.label}</span>
-                        <span className={`tabular-nums text-xs ${active ? "text-zinc-300" : count ? "text-zinc-500" : "text-zinc-300"}`}>{count.toLocaleString()}</span>
-                        {!wide && <span className="-mr-0.5 text-zinc-300" aria-hidden="true">›</span>}
+                        <span className={`tabular-nums text-xs ${active ? "text-faint" : count ? "text-muted" : "text-faint"}`}>{count.toLocaleString()}</span>
+                        {!wide && <span className="-mr-0.5 text-faint" aria-hidden="true">›</span>}
                       </button>
                     </li>
                   );
@@ -501,15 +501,15 @@ export default function AdminBugs() {
         </nav>}
 
         {(selected || searchAll) && (
-          <section ref={detail} className="min-w-0 rounded-xl border border-zinc-200 bg-white md:min-h-0 md:overflow-y-auto md:overscroll-y-contain">
-            <header className="sticky top-0 z-10 rounded-t-xl border-b border-zinc-200 bg-white px-4 py-3">
+          <section ref={detail} className="min-w-0 rounded-xl border border-line bg-surface md:min-h-0 md:overflow-y-auto md:overscroll-y-contain">
+            <header className="sticky top-0 z-10 rounded-t-xl border-b border-line bg-surface px-4 py-3">
               {!wide && (
-                <button type="button" onClick={back} className="-ml-1 mb-1.5 flex items-center gap-1 py-1 pr-2 text-sm text-zinc-500 hover:text-zinc-900">
+                <button type="button" onClick={back} className="-ml-1 mb-1.5 flex items-center gap-1 py-1 pr-2 text-sm text-muted hover:text-foreground">
                   <span aria-hidden="true">‹</span> {picked && query ? "Matches" : picked ? "All checks" : "Clear search"}
                 </button>
               )}
               <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                <h2 className="flex min-w-0 items-center gap-2 font-semibold text-zinc-900">
+                <h2 className="flex min-w-0 items-center gap-2 font-medium text-foreground">
                   {selected ? (
                     <>
                       <Dot level={stat(selected).count ? stat(selected).worst : "ok"} />
@@ -519,7 +519,7 @@ export default function AdminBugs() {
                     <span className="min-w-0 truncate">Matches for “{query}”</span>
                   )}
                 </h2>
-                <div className="flex items-center gap-3 text-xs text-zinc-500">
+                <div className="flex items-center gap-3 text-xs text-muted">
                   <span>
                     {selected ? (
                       <>
@@ -530,7 +530,7 @@ export default function AdminBugs() {
                       `${visible.length.toLocaleString()} in ${matchedChecks} ${matchedChecks === 1 ? "check" : "checks"}`
                     )}
                   </span>
-                  <button type="button" onClick={() => void copyAll()} className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900">
+                  <button type="button" onClick={() => void copyAll()} className="underline decoration-faint underline-offset-2 hover:text-foreground">
                     Copy shown
                   </button>
                 </div>
@@ -538,12 +538,12 @@ export default function AdminBugs() {
             </header>
             {/* Read once, then out of the way: it scrolls with the items. */}
             {selected && (
-              <div className="border-b border-zinc-100 px-4 py-2.5">
-                <p className="max-w-3xl text-xs leading-relaxed text-zinc-500">{selected.description}</p>
+              <div className="border-b border-line-subtle px-4 py-2.5">
+                <p className="max-w-3xl text-xs leading-relaxed text-muted">{selected.description}</p>
               </div>
             )}
             {visible.length === 0 ? (
-              <p className="px-4 py-10 text-center text-sm text-zinc-400">
+              <p className="px-4 py-10 text-center text-sm text-muted">
                 {!selected ? "No check has a match." : selected.total === 0 ? "Nothing wrong here." : level ? `Nothing ${LEVEL[level].label.toLowerCase()} here.` : "Everything here is reviewed or filtered out."}
               </p>
             ) : (
@@ -552,11 +552,11 @@ export default function AdminBugs() {
                   <Fragment key={`${check.id}:${item.key}`}>
                     {/* Across every check, each run of one check's items is headed by its name. */}
                     {searchAll && check.id !== visible[i - 1]?.check.id && (
-                      <li className="border-b border-zinc-100 bg-zinc-50 px-4 py-1.5">
+                      <li className="border-b border-line-subtle bg-surface-muted px-4 py-1.5">
                         <button
                           type="button"
                           onClick={() => openCheck(check.id)}
-                          className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-900"
+                          className="text-[11px] font-medium text-muted hover:text-foreground"
                         >
                           {check.group} · {check.label}
                         </button>
@@ -575,8 +575,8 @@ export default function AdminBugs() {
               </ul>
             )}
             {visible.length > shown && (
-              <div className="border-t border-zinc-100 px-4 py-3 text-center">
-                <button type="button" onClick={() => setShown((n) => n + PAGE)} className="text-sm font-medium text-zinc-700 underline decoration-zinc-300 underline-offset-2">
+              <div className="border-t border-line-subtle px-4 py-3 text-center">
+                <button type="button" onClick={() => setShown((n) => n + PAGE)} className="text-sm font-medium text-secondary underline decoration-faint underline-offset-2">
                   Show {Math.min(PAGE, visible.length - shown)} more of {visible.length - shown}
                 </button>
               </div>

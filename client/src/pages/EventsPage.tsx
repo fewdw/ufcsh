@@ -31,8 +31,8 @@ const shell = PANEL;
 /** The source flags a tournament or TUF final the same way it flags a
  * championship bout. Only a belt gets the gold tag; a final says what it is. */
 const TITLE_TAG: Record<string, { label: string; className: string }> = {
-  title: { label: "title", className: "bg-amber-100 text-amber-700" },
-  interim: { label: "interim title", className: "bg-amber-50 text-amber-600" },
+  title: { label: "title", className: "bg-warning-subtle text-warning" },
+  interim: { label: "interim title", className: "bg-warning-subtle text-warning" },
 };
 
 /** Only a belt earns a tag; a tournament or TUF final reads as noise on a
@@ -42,7 +42,7 @@ function beltTag(fight: EventFight) {
   return fight.title_type === "interim" ? TITLE_TAG.interim
     : fight.title_type === "title" ? TITLE_TAG.title : null;
 }
-const METHOD_TAG = "shrink-0 rounded-full px-1.5 py-px text-[9px] font-bold uppercase leading-4 tracking-[0.06em]";
+const METHOD_TAG = "shrink-0 rounded-full px-1.5 py-px text-[9px] font-medium leading-4 ";
 const MONTHS = [
   "January",
   "February",
@@ -85,11 +85,11 @@ const DOCK = {
   // docked beside the card they join into one panel.
   // `docked` is the breakpoint below as a media query (Tailwind's md and xl).
   card: { docked: "(min-width: 48rem)", sidebar: "md:flex md:w-72 md:shrink-0 md:flex-none lg:w-80", toggle: "md:hidden", main: "md:block", row: "md:flex-row",
-    aside: "gap-2 md:gap-0 md:rounded-2xl md:border md:border-zinc-200 md:shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
+    aside: "gap-2 md:gap-0 md:rounded-2xl md:border md:border-line ",
     head: "md:rounded-none md:border-x-0 md:border-t-0 md:shadow-none",
     list: "md:rounded-none md:border-0 md:shadow-none" },
   matchup: { docked: "(min-width: 80rem)", sidebar: "xl:flex xl:w-80 xl:shrink-0 xl:flex-none", toggle: "xl:hidden", main: "xl:block", row: "xl:flex-row",
-    aside: "gap-2 xl:gap-0 xl:rounded-2xl xl:border xl:border-zinc-200 xl:shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
+    aside: "gap-2 xl:gap-0 xl:rounded-2xl xl:border xl:border-line ",
     head: "xl:rounded-none xl:border-x-0 xl:border-t-0 xl:shadow-none",
     list: "xl:rounded-none xl:border-0 xl:shadow-none" },
 } as const;
@@ -134,18 +134,18 @@ const EventListRow = memo(function EventListRow({ event, selected, tag, anchor, 
         // Selection borrows the header nav's token outright: a
         // clean surface inside a hairline ring with a soft
         // shadow, rather than inverting to a solid block.
-        selected ? segmentedSelected : "hover:bg-zinc-50",
+        selected ? segmentedSelected : "hover:bg-surface-muted",
       ].join(" ")}
     >
       <div className="flex items-start justify-between gap-2">
         <div
           className={[
-            "flex min-w-0 items-center gap-1.5 text-[13px] font-semibold leading-5",
+            "flex min-w-0 items-center gap-1.5 text-[13px] font-medium leading-5",
             // The name is warmed only for the card being
             // pointed at, and only while the point is
             // forward-looking: a finished night is told, not
             // advertised.
-            tag === "next" ? "text-amber-700" : "text-zinc-900",
+            tag === "next" ? "text-warning" : "text-foreground",
           ].join(" ")}
         >
           <span className="min-w-0">{event.name}</span>
@@ -158,7 +158,7 @@ const EventListRow = memo(function EventListRow({ event, selected, tag, anchor, 
           </span>
         ) : null}
       </div>
-      <div className={`mt-0.5 text-xs ${selected ? "text-zinc-500" : "text-zinc-400"}`}>
+      <div className={`mt-0.5 text-xs ${selected ? "text-muted" : "text-muted"}`}>
         {event.date ? formatDateShort(event.date) : "No date"}
         {event.location ? ` · ${event.location.split(",")[0]}` : ""}
       </div>
@@ -300,7 +300,7 @@ function EventSidebar({
             the ✕ that closes the sheet back to the card sits beside it. */}
         <div className="flex items-center gap-2">
           <label className="relative block min-w-0 flex-1">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted">
               <SearchGlyph />
             </span>
             <input
@@ -312,7 +312,7 @@ function EventSidebar({
               autoCorrect="off"
               autoCapitalize="none"
               spellCheck={false}
-              className="h-10 w-full min-w-0 rounded-full border border-zinc-200 bg-white pl-9 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-9 sm:text-sm"
+              className="h-10 w-full min-w-0 rounded-full border border-line bg-surface pl-9 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted hover:border-line-strong focus:border-line-strong sm:h-9 sm:text-sm"
             />
           </label>
           <button type="button" onClick={onBack} aria-label="Close events" title="Back to card" className={`shrink-0 ${CLOSE_BUTTON} ${dock.toggle}`}>
@@ -344,12 +344,12 @@ function EventSidebar({
           // shares the panel's white surface, so a row is told apart by its
           // ring and shadow rather than by the tone it happens to sit on. A
           // phone keeps Top at the bottom, so the last card scrolls clear of it.
-          className="h-full overflow-y-auto bg-white px-2 pb-16 sm:pb-2"
+          className="h-full overflow-y-auto bg-surface px-2 pb-16 sm:pb-2"
           onClick={openEvent}
         >
           {(drawn ? groups : []).map(([yearMonth, list]) => (
             <div key={yearMonth}>
-              {yearMonth && yearMonth !== "potential" ? <div className="sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-white px-4 py-2 text-[13px] font-bold uppercase tracking-[0.1em] text-zinc-700">
+              {yearMonth && yearMonth !== "potential" ? <div className="sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-surface px-4 py-2 text-[13px] font-medium text-secondary">
                 <span>{yearMonth.slice(0, 4)}</span>
                 <span>{MONTHS[Number(yearMonth.slice(5, 7)) - 1]}</span>
               </div> : null}
@@ -365,7 +365,7 @@ function EventSidebar({
             </div>
           ))}
           {filtered.length === 0 ? (
-            <div className="px-3 py-8 text-center text-sm text-zinc-400">
+            <div className="px-3 py-8 text-center text-sm text-muted">
               {filter.trim() ? <>No {KIND_NOUN[kind]} match “{filter}”</> : <>No {KIND_NOUN[kind]} on record</>}
             </div>
           ) : null}
@@ -380,7 +380,7 @@ function EventSidebar({
             // "auto" so a page-level scroll-behavior can never reintroduce it.
             onClick={backToAnchor}
             aria-label="Scroll events back to the next card"
-            className="absolute bottom-3 left-1/2 z-20 inline-flex -translate-x-1/2 sm:bottom-auto sm:left-auto sm:right-3 sm:top-3 sm:translate-x-0 h-9 items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3.5 text-[13px] font-semibold sm:h-8 sm:px-3 sm:text-[11px] text-zinc-600 shadow-md transition hover:border-zinc-300 hover:text-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+            className="absolute bottom-3 left-1/2 z-20 inline-flex -translate-x-1/2 sm:bottom-auto sm:left-auto sm:right-3 sm:top-3 sm:translate-x-0 h-9 items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 text-[13px] font-medium sm:h-8 sm:px-3 sm:text-[11px] text-secondary shadow-md transition hover:border-line-strong hover:text-foreground "
           >
             <svg aria-hidden="true" className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none">
               <path d="M8 12V4m0 0L4.5 7.5M8 4l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -410,7 +410,7 @@ function FormDots({ side, align }: { side: FightSide; align: "left" | "right" })
       <ResultDots results={side.form_details ?? form.map((outcome) => ({ outcome, method: null }))} reverse={align === "right"} />
       {side.streak ? (
         <span
-          className={`text-[9px] font-bold tabular-nums ${side.streak.outcome === "win" ? "text-emerald-600" : side.streak.outcome === "loss" ? "text-rose-500" : "text-zinc-400"}`}
+          className={`text-[9px] font-medium tabular-nums ${side.streak.outcome === "win" ? "text-success" : side.streak.outcome === "loss" ? "text-danger" : "text-muted"}`}
           title={`On a ${side.streak.count}-fight ${side.streak.outcome === "win" ? "win" : side.streak.outcome === "loss" ? "losing" : side.streak.outcome} run going in${side.streak.complete ? " across all promotions" : " (available UFC history)"}`}
         >
           {side.streak.count}{side.streak.outcome === "win" ? "W" : side.streak.outcome === "loss" ? "L" : side.streak.outcome === "draw" ? "D" : "NC"}
@@ -423,13 +423,13 @@ function FormDots({ side, align }: { side: FightSide; align: "left" | "right" })
 function WeightMissBadge({ side }: { side: FightSide }) {
   if (!side.weight_miss) return null;
   const label = `${side.name} missed weight at ${side.weight_miss} lb`;
-  return <span className={`${METHOD_TAG} bg-rose-100 text-rose-700 tabular-nums`} title={label} aria-label={label}>{side.weight_miss}<span className="lowercase">lbs</span></span>;
+  return <span className={`${METHOD_TAG} bg-danger-subtle text-danger tabular-nums`} title={label} aria-label={label}>{side.weight_miss}<span className="lowercase">lbs</span></span>;
 }
 
 function BoutChangeBadge({ side }: { side: FightSide }) {
   const change = boutChange(side);
   if (!change) return null;
-  return <span className={`${METHOD_TAG} bg-sky-100 text-sky-700`} title={change.full} aria-label={`${side.name}: ${change.full}`}>{change.short}</span>;
+  return <span className={`${METHOD_TAG} bg-info-subtle text-info`} title={change.full} aria-label={`${side.name}: ${change.full}`}>{change.short}</span>;
 }
 
 function FighterBlock({
@@ -447,7 +447,7 @@ function FighterBlock({
 }) {
   const dimmed = past && side.outcome === "loss";
   const rank = side.ranking?.rank === "IC" || side.ranking?.rank === "I" ? "I" : rankLabel(side.ranking) || "NR";
-  const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title={rankingTitle(side.ranking, past)}>{rank}</span>;
+  const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-line bg-surface-muted px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-muted"}`} title={rankingTitle(side.ranking, past)}>{rank}</span>;
   const nameBlock = (
     <div className={`min-w-0 max-w-full ${align === "right" ? "text-right" : ""}`}>
       {/* Mirrored for the right corner: ranking outermost, then the name,
@@ -456,14 +456,14 @@ function FighterBlock({
           overlapping it. */}
       <div className={`flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
         {rankingBadge}
-        <span className={`min-w-0 break-words text-sm leading-5 font-semibold ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>
+        <span className={`min-w-0 break-words text-sm leading-5 font-medium ${dimmed ? "text-muted" : "text-foreground"}`}>
           {side.name}
         </span>
         <span className={`flex shrink-0 items-center gap-2 empty:hidden ${align === "right" ? "flex-row-reverse" : ""}`}>
           {resultTag ? (
             <span className={`${METHOD_TAG} ${outcomeClasses(side.outcome)}`}>
               {resultTag.label}
-              {resultTag.when ? <span className="ml-1 font-semibold tabular-nums opacity-70">{resultTag.when}</span> : null}
+              {resultTag.when ? <span className="ml-1 font-medium tabular-nums opacity-70">{resultTag.when}</span> : null}
             </span>
           ) : null}
           <WeightMissBadge side={side} />
@@ -471,14 +471,14 @@ function FighterBlock({
           <BonusIcons bonuses={bonuses} outcome={side.outcome} />
         </span>
       </div>
-      <div className={`mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] tabular-nums text-zinc-500 ${align === "right" ? "flex-row-reverse" : ""}`}>
-        <span className="whitespace-nowrap" title="Professional record entering this fight"><span className="font-medium text-zinc-700">{side.record || "—"}</span> pro</span>
-        <span aria-hidden="true" className="text-zinc-300">·</span>
-        <span className="whitespace-nowrap" title="UFC record entering this fight">{side.ufc_record ? <><span className="font-medium text-zinc-700">{side.ufc_record}</span> UFC</> : side.ufc_bouts === 0 ? "UFC debut" : "— UFC"}</span>
+      <div className={`mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] tabular-nums text-muted ${align === "right" ? "flex-row-reverse" : ""}`}>
+        <span className="whitespace-nowrap" title="Professional record entering this fight"><span className="font-medium text-secondary">{side.record || "—"}</span> pro</span>
+        <span aria-hidden="true" className="text-faint">·</span>
+        <span className="whitespace-nowrap" title="UFC record entering this fight">{side.ufc_record ? <><span className="font-medium text-secondary">{side.ufc_record}</span> UFC</> : side.ufc_bouts === 0 ? "UFC debut" : "— UFC"}</span>
       </div>
       <div className={`mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 ${align === "right" ? "justify-end" : ""}`}>
         <FormDots side={side} align={align} />
-        {side.age != null ? <span className="whitespace-nowrap text-[10px] tabular-nums text-zinc-400" title="Age on the date of this event">Age {side.age}</span> : null}
+        {side.age != null ? <span className="whitespace-nowrap text-[10px] tabular-nums text-muted" title="Age on the date of this event">Age {side.age}</span> : null}
       </div>
     </div>
   );
@@ -521,11 +521,11 @@ function CenterBlock({ fight, past }: { fight: EventFight; past: boolean }) {
           the point of the line, and the centre column is narrow enough that
           "KO/TKO · R1 · 2:54" would lose its tail to an ellipsis. */}
       {past ? (
-        <div className="mt-1.5 max-w-full text-balance text-center text-[10px] font-medium leading-4 text-zinc-500" title={fight.method_details ?? result}>
+        <div className="mt-1.5 max-w-full text-balance text-center text-[10px] font-medium leading-4 text-muted" title={fight.method_details ?? result}>
           {result || "Result"}
         </div>
       ) : expected ? (
-        <div className="mt-1.5 max-w-full truncate text-center text-[10px] font-medium tabular-nums text-zinc-400" title="Approximate start in your time zone. Usually 30 minutes per bout (40 for five-round bouts), adjusted to fit before the next segment with a 10-minute transition. Rounded to 5 minutes; finishes and broadcast delays can change actual starts.">
+        <div className="mt-1.5 max-w-full truncate text-center text-[10px] font-medium tabular-nums text-muted" title="Approximate start in your time zone. Usually 30 minutes per bout (40 for five-round bouts), adjusted to fit before the next segment with a 10-minute transition. Rounded to 5 minutes; finishes and broadcast delays can change actual starts.">
           ~{expected}
         </div>
       ) : null}
@@ -548,14 +548,14 @@ function FightRow({ fight, past, eventId, live = false }: { fight: EventFight; p
       {/* The dot and the word both say live, so neither colour nor
           motion carries it alone. */}
       {live ? <>
-        <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-        <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">Live</span>
-        <span className="text-[10px] text-zinc-300" aria-hidden="true">·</span>
+        <span className="live-dot h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
+        <span className="text-[10px] font-medium text-success">Live</span>
+        <span className="text-[10px] text-faint" aria-hidden="true">·</span>
       </> : null}
-      <span className="text-[10px] font-medium text-zinc-500">{divisionName(fight.weight_class, fight.catch_weight)}</span>
-      {fight.scheduled_rounds ? <span className="text-[10px] font-medium text-zinc-400">{roundsLabel(fight.scheduled_rounds)}</span> : null}
+      <span className="text-[10px] font-medium text-muted">{divisionName(fight.weight_class, fight.catch_weight)}</span>
+      {fight.scheduled_rounds ? <span className="text-[10px] font-medium text-muted">{roundsLabel(fight.scheduled_rounds)}</span> : null}
       {beltTag(fight) ? (
-        <span className={`rounded px-1 py-px text-[9px] font-bold uppercase ${beltTag(fight)!.className}`}>
+        <span className={`rounded px-1 py-px text-[9px] font-medium ${beltTag(fight)!.className}`}>
           {beltTag(fight)!.label}
         </span>
       ) : null}
@@ -577,7 +577,7 @@ function FightRow({ fight, past, eventId, live = false }: { fight: EventFight; p
         event.preventDefault();
         open();
       }}
-      className={`group block w-full cursor-pointer px-3 text-left transition-colors @3xl:px-4 ${live ? "py-2.5 hover:bg-emerald-50/60 @3xl:py-3" : "py-2 hover:bg-zinc-50 @3xl:py-1.5"}`}
+      className={`group block w-full cursor-pointer px-3 text-left transition-colors @3xl:px-4 ${live ? "py-2.5 hover:bg-success-subtle/60 @3xl:py-3" : "py-2 hover:bg-surface-muted @3xl:py-1.5"}`}
     >
       <div className="@3xl:hidden"><CompactFightRow fight={fight} done={done} live={live} /></div>
       <div className="hidden grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 @3xl:grid">
@@ -613,22 +613,22 @@ function CompactSide({ side, fight, done, other }: { side: FightSide; fight: Eve
       <Avatar src={side.photo_url} name={side.name} size="sm" outcome={side.outcome} />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-          {rank ? <span className={`text-[10px] font-semibold tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-400"}`} title={rankingTitle(side.ranking, done)}>{rank}</span> : null}
-          <span className={`text-[14px] font-semibold leading-5 ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>{side.name}</span>
+          {rank ? <span className={`text-[10px] font-medium tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-muted"}`} title={rankingTitle(side.ranking, done)}>{rank}</span> : null}
+          <span className={`text-[14px] font-medium leading-5 ${dimmed ? "text-muted" : "text-foreground"}`}>{side.name}</span>
           {tag ? (
             <span className={`${METHOD_TAG} ${outcomeClasses(side.outcome)}`}>
               {tag.label}
-              {tag.when ? <span className="ml-1 font-semibold tabular-nums opacity-70">{tag.when}</span> : null}
+              {tag.when ? <span className="ml-1 font-medium tabular-nums opacity-70">{tag.when}</span> : null}
             </span>
           ) : null}
           <WeightMissBadge side={side} />
           <BoutChangeBadge side={side} />
           <BonusIcons bonuses={fight.bonuses} outcome={side.outcome} />
         </div>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] leading-4 tabular-nums text-zinc-500">
-          <span className="whitespace-nowrap" title="Professional record entering this fight"><span className="font-medium text-zinc-700">{side.record || "—"}</span> pro</span>
-          <span className="whitespace-nowrap" title="UFC record entering this fight">{side.ufc_record ? <><span className="font-medium text-zinc-700">{side.ufc_record}</span> UFC</> : side.ufc_bouts === 0 ? "UFC debut" : "— UFC"}</span>
-          {side.age != null ? <span className="whitespace-nowrap text-zinc-400" title="Age on the date of this event">Age {side.age}</span> : null}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] leading-4 tabular-nums text-muted">
+          <span className="whitespace-nowrap" title="Professional record entering this fight"><span className="font-medium text-secondary">{side.record || "—"}</span> pro</span>
+          <span className="whitespace-nowrap" title="UFC record entering this fight">{side.ufc_record ? <><span className="font-medium text-secondary">{side.ufc_record}</span> UFC</> : side.ufc_bouts === 0 ? "UFC debut" : "— UFC"}</span>
+          {side.age != null ? <span className="whitespace-nowrap text-muted" title="Age on the date of this event">Age {side.age}</span> : null}
           <FormDots side={side} align="left" />
         </div>
       </div>
@@ -638,7 +638,7 @@ function CompactSide({ side, fight, done, other }: { side: FightSide; fight: Eve
         leg={moneylineLeg(done || fight.potential ? undefined : fight.id, fightLabel, corner, side.name, price)}
         value={price || "-"}
         name={side.name}
-        className={`odds-pair w-14 shrink-0 rounded-md border py-0.5 text-center text-[12px] font-semibold tabular-nums ${price ? "" : "text-zinc-300"} ${other.outcome === "win" ? "opacity-60" : ""}`}
+        className={`odds-pair w-14 shrink-0 rounded-md border py-0.5 text-center text-[12px] font-medium tabular-nums ${price ? "" : "text-faint"} ${other.outcome === "win" ? "opacity-60" : ""}`}
       />
     </div>
   );
@@ -656,14 +656,14 @@ function CompactFightRow({ fight, done, live }: { fight: EventFight; done: boole
   const result = done && !tagged ? formatMethod(fight.method, fight.round, fight.time) : "";
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-1.5 text-[10px] leading-4 text-zinc-400">
+      <div className="flex items-center gap-1.5 text-[10px] leading-4 text-muted">
         {live ? <>
-          <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-          <span className="font-bold uppercase tracking-[0.14em] text-emerald-700">Live</span>
+          <span className="live-dot h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
+          <span className="font-medium text-success">Live</span>
         </> : null}
-        <span className="font-medium text-zinc-500">{divisionName(fight.weight_class, fight.catch_weight)}</span>
+        <span className="font-medium text-muted">{divisionName(fight.weight_class, fight.catch_weight)}</span>
         {fight.scheduled_rounds ? <span>{roundsLabel(fight.scheduled_rounds)}</span> : null}
-        {title ? <span className={`rounded px-1 py-px text-[9px] font-bold uppercase leading-3 ${title.className}`}>{title.label}</span> : null}
+        {title ? <span className={`rounded px-1 py-px text-[9px] font-medium leading-3 ${title.className}`}>{title.label}</span> : null}
         {result ? <span className="ml-auto text-right" title={fight.method_details ?? result}>{result}</span> : null}
         {expected ? <span className="ml-auto tabular-nums" title="Approximate start in your time zone.">~{expected}</span> : null}
       </div>
@@ -694,10 +694,10 @@ function CardMoneyline({ fightId, f1, f2, f1Name, f2Name }: {
   if (!f1 && !f2) return null;
   const fightLabel = `${f1Name} vs ${f2Name}`;
   return (
-    <div className="grid w-full max-w-[14rem] grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] overflow-hidden rounded-md border border-zinc-200 text-center dark:border-zinc-700">
-      <Moneyline leg={moneylineLeg(fightId, fightLabel, 1, f1Name, f1)} value={f1} name={f1Name} fill="left" className="px-2 py-1 text-[13px] font-semibold tabular-nums" />
-      <span className="self-stretch bg-zinc-200 dark:bg-zinc-700" aria-hidden="true" />
-      <Moneyline leg={moneylineLeg(fightId, fightLabel, 2, f2Name, f2)} value={f2} name={f2Name} fill="right" className="px-2 py-1 text-[13px] font-semibold tabular-nums" />
+    <div className="grid w-full max-w-[14rem] grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] overflow-hidden rounded-md border border-line text-center">
+      <Moneyline leg={moneylineLeg(fightId, fightLabel, 1, f1Name, f1)} value={f1} name={f1Name} fill="left" className="px-2 py-1 text-[13px] font-medium tabular-nums" />
+      <span className="self-stretch bg-track" aria-hidden="true" />
+      <Moneyline leg={moneylineLeg(fightId, fightLabel, 2, f2Name, f2)} value={f2} name={f2Name} fill="right" className="px-2 py-1 text-[13px] font-medium tabular-nums" />
     </div>
   );
 }
@@ -727,7 +727,7 @@ function CardOddsRow({ fight, eventId, live, past, format }: { fight: EventFight
   // the matchup list shows, absent once the fight is underway or done.
   const expected = !done ? clockTime(fight.starts_at) : null;
   return (
-    <div className={`@container overflow-hidden rounded-2xl border bg-white dark:bg-zinc-900 ${live ? "border-emerald-300 dark:border-emerald-700" : "border-zinc-200 dark:border-zinc-800"}`}>
+    <div className={`@container overflow-hidden rounded-2xl border bg-surface ${live ? "border-success-line" : "border-line"}`}>
       {/* A plain div, not a link: the moneyline below carries real buttons of
           its own, and a button can't nest inside an anchor. Its own click
           still opens the matchup, same as a link would. */}
@@ -740,10 +740,10 @@ function CardOddsRow({ fight, eventId, live, past, format }: { fight: EventFight
           event.preventDefault();
           open();
         }}
-        className="grid grid-cols-[minmax(0,1fr)_8.5rem_minmax(0,1fr)] items-center gap-2 bg-zinc-50 px-3 py-2.5 @[34rem]:grid-cols-[minmax(0,1fr)_15rem_minmax(0,1fr)] @[34rem]:gap-3 @[34rem]:py-3 transition-colors hover:bg-zinc-100 dark:bg-zinc-800/50 dark:hover:bg-zinc-800 @[34rem]:px-5"
+        className="grid grid-cols-[minmax(0,1fr)_8.5rem_minmax(0,1fr)] items-center gap-2 bg-surface-muted px-3 py-2.5 @[34rem]:grid-cols-[minmax(0,1fr)_15rem_minmax(0,1fr)] @[34rem]:gap-3 @[34rem]:py-3 transition-colors hover:bg-surface-strong @[34rem]:px-5"
       >
         <span className="flex min-w-0 items-center justify-end gap-1.5">
-          <span className="min-w-0 text-right text-[13px] font-semibold leading-4 text-zinc-900 [overflow-wrap:anywhere] dark:text-zinc-100 @[34rem]:text-sm @[34rem]:leading-5">{fight.f1.name}</span>
+          <span className="min-w-0 text-right text-[13px] font-medium leading-4 text-foreground [overflow-wrap:anywhere] @[34rem]:text-sm @[34rem]:leading-5">{fight.f1.name}</span>
           <Avatar src={fight.f1.photo_url} name={fight.f1.name} size="xs" outcome={fight.f1.outcome} />
         </span>
         {/* A fixed-width column, not content-sized: every card's grid tracks
@@ -754,12 +754,12 @@ function CardOddsRow({ fight, eventId, live, past, format }: { fight: EventFight
           {live || fight.scheduled_rounds || beltTag(fight) ? (
             <div className="flex w-full flex-wrap items-center justify-center gap-1.5">
               {live ? <>
-                <span className="live-dot h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
-                <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">Live</span>
+                <span className="live-dot h-1.5 w-1.5 shrink-0 rounded-full bg-success" aria-hidden="true" />
+                <span className="shrink-0 text-[10px] font-medium text-success">Live</span>
               </> : null}
-              {fight.scheduled_rounds ? <span className="whitespace-nowrap text-[10px] font-medium text-zinc-400">{roundsLabel(fight.scheduled_rounds)}</span> : null}
+              {fight.scheduled_rounds ? <span className="whitespace-nowrap text-[10px] font-medium text-muted">{roundsLabel(fight.scheduled_rounds)}</span> : null}
               {beltTag(fight) ? (
-                <span className={`shrink-0 rounded px-1 py-px text-[9px] font-bold uppercase ${beltTag(fight)!.className}`}>
+                <span className={`shrink-0 rounded px-1 py-px text-[9px] font-medium ${beltTag(fight)!.className}`}>
                   {beltTag(fight)!.label}
                 </span>
               ) : null}
@@ -768,7 +768,7 @@ function CardOddsRow({ fight, eventId, live, past, format }: { fight: EventFight
           <CardMoneyline fightId={done || fight.potential ? undefined : fight.id} f1={f1Odds} f2={f2Odds} f1Name={fight.f1.name} f2Name={fight.f2.name} />
           {fight.weight_class || expected ? (
             <span
-              className="w-full whitespace-nowrap text-center text-[10px] font-medium tabular-nums text-zinc-400"
+              className="w-full whitespace-nowrap text-center text-[10px] font-medium tabular-nums text-muted"
               title={expected ? "Approximate start in your time zone. Usually 30 minutes per bout (40 for five-round bouts), adjusted to fit before the next segment with a 10-minute transition. Rounded to 5 minutes; finishes and broadcast delays can change actual starts." : undefined}
             >
               {divisionName(fight.weight_class, fight.catch_weight)}
@@ -779,7 +779,7 @@ function CardOddsRow({ fight, eventId, live, past, format }: { fight: EventFight
         </div>
         <span className="flex min-w-0 items-center justify-start gap-1.5">
           <Avatar src={fight.f2.photo_url} name={fight.f2.name} size="xs" outcome={fight.f2.outcome} />
-          <span className="min-w-0 text-[13px] font-semibold leading-4 text-zinc-900 [overflow-wrap:anywhere] dark:text-zinc-100 @[34rem]:text-sm @[34rem]:leading-5">{fight.f2.name}</span>
+          <span className="min-w-0 text-[13px] font-medium leading-4 text-foreground [overflow-wrap:anywhere] @[34rem]:text-sm @[34rem]:leading-5">{fight.f2.name}</span>
         </span>
       </div>
       {hasProps ? (
@@ -795,12 +795,12 @@ function CardOddsRow({ fight, eventId, live, past, format }: { fight: EventFight
 /** Row tags (taggedEvent picks at most one). Done is deliberately muted:
  * only Live and Next point at something to watch. */
 const STATUS_TAG = {
-  live: { label: "Live", className: "bg-emerald-100 text-emerald-700" },
-  done: { label: "Done", className: "bg-zinc-100 text-zinc-500" },
-  next: { label: "Next", className: "bg-amber-100 text-amber-700" },
+  live: { label: "Live", className: "bg-success-subtle text-success" },
+  done: { label: "Done", className: "bg-surface-strong text-muted" },
+  next: { label: "Next", className: "bg-warning-subtle text-warning" },
 } as const;
 
-const TAG_SHAPE = "shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em]";
+const TAG_SHAPE = "shrink-0 rounded-full px-2 py-0.5 text-[9px] font-medium ";
 
 const SEGMENT_LABEL: Record<CardSegment, string> = {
   main: "Main card",
@@ -827,10 +827,10 @@ function SegmentBreak({ segment, at }: { segment: CardSegment; at: number | null
   const clock = clockTime(at);
   return (
     // The containing row supplies a matching top rule at segment boundaries.
-    <div className="flex items-center justify-between gap-3 border-b border-zinc-200 bg-white px-3 py-1.5 @[34rem]:px-6 @[34rem]:py-2.5">
-      <h2 className="min-w-0 text-sm font-semibold leading-5 tracking-tight text-zinc-900">{SEGMENT_LABEL[segment]}</h2>
+    <div className="flex items-center justify-between gap-3 border-b border-line bg-surface px-3 py-1.5 @[34rem]:px-6 @[34rem]:py-2.5">
+      <h2 className="min-w-0 text-sm font-medium leading-5 tracking-tight text-foreground">{SEGMENT_LABEL[segment]}</h2>
       {clock ? (
-        <span className="shrink-0 rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-medium leading-4 tabular-nums text-zinc-600 @[34rem]:py-1" title="Announced start, in your time zone">
+        <span className="shrink-0 rounded-md border border-line bg-surface px-2 py-0.5 text-[11px] font-medium leading-4 tabular-nums text-secondary @[34rem]:py-1" title="Announced start, in your time zone">
           {clock}
         </span>
       ) : null}
@@ -842,18 +842,18 @@ function SegmentBreak({ segment, at }: { segment: CardSegment; at: number | null
  *  that did. A fighter links to their profile when they have one. */
 function CancelledBouts({ bouts }: { bouts: CancelledBout[] }) {
   const name = (side: CancelledBout["f1"]) => side.id
-    ? <Link to={`/fighters/${side.id}`} className="transition hover:text-zinc-900 dark:hover:text-zinc-100">{side.name}{"\u00a0"}<span aria-hidden="true">↗</span></Link>
+    ? <Link to={`/fighters/${side.id}`} className="transition hover:text-foreground">{side.name}{"\u00a0"}<span aria-hidden="true">↗</span></Link>
     : side.name;
   return (
-    <div className="border-t border-zinc-200">
-      <div className="border-b border-zinc-200 bg-white px-3 py-1.5 @[34rem]:px-6 @[34rem]:py-2.5">
-        <h2 className="text-sm font-semibold leading-5 tracking-tight text-zinc-900">Cancelled</h2>
+    <div className="border-t border-line">
+      <div className="border-b border-line bg-surface px-3 py-1.5 @[34rem]:px-6 @[34rem]:py-2.5">
+        <h2 className="text-sm font-medium leading-5 tracking-tight text-foreground">Cancelled</h2>
       </div>
-      <ul className="divide-y divide-zinc-100">
+      <ul className="divide-y divide-line-subtle">
         {bouts.map((bout) => (
           <li key={`${bout.f1.name}-${bout.f2.name}`} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 px-3 py-2.5 @[34rem]:px-6">
-            <span className="min-w-0 text-sm font-medium text-zinc-600">{name(bout.f1)} <span className="font-normal text-zinc-400">vs</span> {name(bout.f2)}</span>
-            <span className="min-w-0 text-[11px] text-zinc-400">{[bout.division, bout.reason].filter(Boolean).join(" · ")}</span>
+            <span className="min-w-0 text-sm font-medium text-secondary">{name(bout.f1)} <span className="font-normal text-muted">vs</span> {name(bout.f2)}</span>
+            <span className="min-w-0 text-[11px] text-muted">{[bout.division, bout.reason].filter(Boolean).join(" · ")}</span>
           </li>
         ))}
       </ul>
@@ -875,18 +875,18 @@ function eventNeighbours(events: EventListItem[], id: string): { prev: EventList
   return { prev: byDate[at - 1] ?? null, next: byDate[at + 1] ?? null };
 }
 
-const STEP = "inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
+const STEP = "inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-xs font-medium transition";
 function StepLink({ event, direction, className = STEP }: { event: EventListItem | null; direction: "prev" | "next"; className?: string }) {
   const { settings } = useSettings();
   const label = direction === "prev" ? "Prev" : "Next";
   const glyph = direction === "prev" ? <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />;
-  if (!event) return <span className={`${className} text-zinc-300`} aria-disabled="true">{direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}</span>;
+  if (!event) return <span className={`${className} text-faint`} aria-disabled="true">{direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}</span>;
   return (
     <Link
       to={`/events/${event.id}`}
       title={`${event.name} · ${formatDateShort(event.date)}`}
       onPointerEnter={() => prefetch(withRanking(`/api/events/${event.id}`, settings.rankingSource))}
-      className={`${className} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}
+      className={`${className} text-secondary hover:bg-surface-strong hover:text-foreground`}
     >
       {direction === "prev" ? glyph : null}{label}{direction === "next" ? glyph : null}
     </Link>
@@ -956,19 +956,19 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
       previous={<StepLink event={nav.prev} direction="prev" className={NAV_STEP} />}
       // Reading the whole card's odds, the way out is back to the card.
       center={oddsCard
-        ? <Link to={`/events/${eventId}`} className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+        ? <Link to={`/events/${eventId}`} className={`${NAV_STEP} text-secondary hover:bg-surface-strong hover:text-foreground`}>
           <List className="h-3.5 w-3.5" aria-hidden="true" />Card
         </Link>
         // Events stays centred; the order toggle hangs off its right.
         : <span className="relative inline-flex">
           <button type="button" aria-controls="events-sidebar" aria-expanded={false} onClick={nav.onBrowse}
-            className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+            className={`${NAV_STEP} text-secondary hover:bg-surface-strong hover:text-foreground`}>
             <List className="h-3.5 w-3.5" aria-hidden="true" />Events
           </button>
           <button type="button" data-nav-extra onClick={() => update("cardOrder", openerFirst ? "main" : "opener")}
             aria-label={openerFirst ? "Opener first; show the main event first" : "Main event first; show the opener first"}
             title={openerFirst ? "Opener first" : "Main event first"}
-            className="absolute left-full top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950">
+            className="absolute left-full top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-muted transition hover:bg-surface-strong hover:text-foreground">
             {openerFirst ? <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />}
           </button>
         </span>}
@@ -982,8 +982,8 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
         {navigation}
         <div className={`flex min-h-0 flex-1 items-center justify-center ${shell}`}>
           {loading
-            ? <div role="status" className="appear-late text-sm text-zinc-400">Loading…</div>
-            : <div className="text-sm text-zinc-400">Could not load this event.</div>}
+            ? <div role="status" className="appear-late text-sm text-muted">Loading…</div>
+            : <div className="text-sm text-muted">Could not load this event.</div>}
         </div>
       </div>
     );
@@ -1020,14 +1020,14 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
             the right, centred against it, one per line at every width. */}
         <div className="flex items-center justify-between gap-3 px-3 py-2.5 @[34rem]:gap-5 @[34rem]:px-5 @[34rem]:py-3.5">
           <div className="min-w-0">
-            <h1 className="text-balance text-base font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-xl @[64rem]:text-2xl">{event.name}</h1>
-            <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[34rem]:gap-x-2 @[34rem]:text-xs">
+            <h1 className="text-balance text-base font-medium leading-tight tracking-tight text-foreground @[34rem]:text-xl @[64rem]:text-2xl">{event.name}</h1>
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-muted @[34rem]:gap-x-2 @[34rem]:text-xs">
               {event.date ? (
-                <span className="whitespace-nowrap font-medium text-zinc-600">
+                <span className="whitespace-nowrap font-medium text-secondary">
                   <span className="@[48rem]:hidden">{formatDateShort(event.date)}</span>
                   <span className="hidden @[48rem]:inline">{formatDate(event.date)}</span>
                 </span>
-              ) : <span className="whitespace-nowrap font-medium text-zinc-600">No date</span>}
+              ) : <span className="whitespace-nowrap font-medium text-secondary">No date</span>}
               <EventPlace venue={event.venue} location={event.location} locationSlug={event.location_slug} />
             </div>
           </div>
@@ -1035,10 +1035,10 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
             {schedule.length ? (
               <dl className="grid grid-cols-[auto_auto] items-baseline gap-x-3 gap-y-0.5 text-xs leading-4 @[34rem]:text-[13px] @[34rem]:leading-5 @[48rem]:gap-x-4">
                 {schedule.map(({ segment, at }) => (
-                  <div key={segment} className="contents text-zinc-500" title={clockTimeWithZone(at) ?? undefined}>
+                  <div key={segment} className="contents text-muted" title={clockTimeWithZone(at) ?? undefined}>
                     <dt className="text-left"><span className="@[34rem]:hidden">{SEGMENT_SHORT[segment]}</span><span className="hidden @[34rem]:inline">{SEGMENT_LABEL[segment]}</span></dt>
                     <dd className="flex items-baseline justify-end gap-1.5 whitespace-nowrap tabular-nums">
-                      <span className="font-semibold text-zinc-800"><span className="@[48rem]:hidden">{clockTime(at)?.replace(":00 ", " ")}</span><span className="hidden @[48rem]:inline">{clockTimeWithZone(at)}</span></span>
+                      <span className="font-medium text-foreground"><span className="@[48rem]:hidden">{clockTime(at)?.replace(":00 ", " ")}</span><span className="hidden @[48rem]:inline">{clockTimeWithZone(at)}</span></span>
                     </dd>
                   </div>
                 ))}
@@ -1047,14 +1047,14 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
             {results.length ? (
               <dl className="grid grid-cols-[auto_auto] items-baseline gap-x-3 gap-y-0.5 text-xs leading-4 @[34rem]:text-[13px] @[34rem]:leading-5 @[48rem]:gap-x-4">
                 {results.map(({ label, count }) => (
-                  <div key={label} className="contents text-zinc-500">
+                  <div key={label} className="contents text-muted">
                     <dt className="text-left">{label}</dt>
-                    <dd className="text-right font-semibold tabular-nums text-zinc-800">{count}</dd>
+                    <dd className="text-right font-medium tabular-nums text-foreground">{count}</dd>
                   </div>
                 ))}
               </dl>
             ) : null}
-            {isLive && error ? <span role="status" className="text-[11px] text-zinc-500">Connection interrupted; retrying…</span> : null}
+            {isLive && error ? <span role="status" className="text-[11px] text-muted">Connection interrupted; retrying…</span> : null}
           </div>
         </div>
       </section>
@@ -1082,17 +1082,17 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
       ) : (
         <section className={`${shell} shrink-0 overflow-hidden`}>
           {event.fights.length === 0 ? (
-            <div className="px-6 py-10 text-center text-sm text-zinc-400">{event.potential ? "No potential matchups have odds available yet." : "Fight card not announced yet."}</div>
+            <div className="px-6 py-10 text-center text-sm text-muted">{event.potential ? "No potential matchups have odds available yet." : "Fight card not announced yet."}</div>
           ) : (
             cardFights.map((fight, index) => {
               const newSegment = Boolean(fight.segment) && fight.segment !== cardFights[index - 1]?.segment;
               return (
-                <div key={fight.id} className={index === 0 ? "" : newSegment ? "border-t border-zinc-200" : "border-t border-zinc-100"}>
+                <div key={fight.id} className={index === 0 ? "" : newSegment ? "border-t border-line" : "border-t border-line-subtle"}>
                   {newSegment ? <SegmentBreak segment={fight.segment!} at={segmentStart(event.schedule, fight.segment!)} /> : null}
                   {/* The bout on now is boxed off from the rows around it. Its live
                       marker sits with the weight class in the centre column, so the
                       box holds one row that centres like every other. */}
-                  <div className={fight.id === liveId ? "m-1.5 overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/30" : ""}>
+                  <div className={fight.id === liveId ? "m-1.5 overflow-hidden rounded-xl border border-success-line bg-success-subtle/30" : ""}>
                     <FightRow fight={fight} live={fight.id === liveId} past={past || fight.f1.outcome != null || fight.f2.outcome != null} eventId={event.id} />
                   </div>
                 </div>
@@ -1160,14 +1160,14 @@ export default function EventsPage() {
   if (error && !events) {
     return (
       <>{statModal}
-      <div className="flex h-full items-center justify-center text-sm text-zinc-500">
+      <div className="flex h-full items-center justify-center text-sm text-muted">
         Backend unreachable — is the server running on port 8000?
       </div>
       </>
     );
   }
   if (loading || !events) {
-    return <>{statModal}<div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading events…</div></>;
+    return <>{statModal}<div role="status" className="appear-late flex h-full items-center justify-center text-sm text-muted">Loading events…</div></>;
   }
 
   return (
@@ -1180,7 +1180,7 @@ export default function EventsPage() {
           aria-expanded={mobileEventsOpen}
           aria-controls="events-sidebar"
           onClick={() => setMobileEventsOpen((open) => !open)}
-          className={`${shell} flex shrink-0 items-center gap-1.5 px-4 py-2 text-left text-xs font-semibold text-zinc-700 ${dock.toggle}`}
+          className={`${shell} flex shrink-0 items-center gap-1.5 px-4 py-2 text-left text-xs font-medium text-secondary ${dock.toggle}`}
         >
           {mobileEventsOpen ? <><ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />Back to card</> : <><List className="h-3.5 w-3.5" aria-hidden="true" />Events</>}
         </button>
@@ -1199,7 +1199,7 @@ export default function EventsPage() {
           <EventPane eventId={shownEventId} oddsMode={oddsMode} nav={{ ...eventNeighbours(events, shownEventId), onBrowse: browseEvents }} />
         ) : (
           <div className={`flex h-full items-center justify-center ${shell}`}>
-            <div className="text-sm text-zinc-400">Select an event.</div>
+            <div className="text-sm text-muted">Select an event.</div>
           </div>
         )}
       </main>

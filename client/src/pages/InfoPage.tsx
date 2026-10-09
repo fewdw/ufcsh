@@ -20,8 +20,8 @@ function Section({ id, children }: { id: (typeof SECTIONS)[number]["id"]; childr
   const title = SECTIONS.find((section) => section.id === id)!.title;
   return (
     <section id={id} aria-labelledby={`${id}-title`} className={`${PANEL} scroll-mt-3 px-4 py-4 sm:px-6 sm:py-5`}>
-      <h2 id={`${id}-title`} className="text-base font-semibold tracking-tight text-zinc-950">{title}</h2>
-      <div className="mt-2 space-y-2.5 text-[13px] leading-6 text-zinc-700 [&_a]:font-medium [&_a]:text-blue-600 dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:decoration-current [&_a]:underline-offset-2 [&_li]:ml-4 [&_li]:list-disc [&_strong]:font-semibold [&_strong]:text-zinc-900">
+      <h2 id={`${id}-title`} className="text-base font-medium tracking-tight text-foreground">{title}</h2>
+      <div className="mt-2 space-y-2.5 text-[13px] leading-6 text-secondary [&_a]:font-medium [&_a]:text-info  [&_a]:underline [&_a]:decoration-current [&_a]:underline-offset-2 [&_li]:ml-4 [&_li]:list-disc [&_strong]:font-medium [&_strong]:text-foreground">
         {children}
       </div>
     </section>
@@ -44,7 +44,7 @@ export default function InfoPage() {
             <ul className="flex flex-wrap gap-1 lg:flex-col lg:gap-0">
               {SECTIONS.map((section) => (
                 <li key={section.id}>
-                  <a href={`#${section.id}`} className="block rounded-lg px-2 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900">{section.title}</a>
+                  <a href={`#${section.id}`} className="block rounded-lg px-2 py-1 text-xs font-medium text-secondary hover:bg-surface-strong hover:text-foreground">{section.title}</a>
                 </li>
               ))}
             </ul>
@@ -68,7 +68,7 @@ export default function InfoPage() {
                 </li>
               ))}
             </ul>
-            <p className="text-xs text-zinc-500">Press <Keys keys={["?"]} /> for help. Shortcuts pause while you type.</p>
+            <p className="text-xs text-muted">Press <Keys keys={["?"]} /> for help. Shortcuts pause while you type.</p>
           </Section>
 
           <Section id="community">

@@ -22,13 +22,13 @@ export default function Freshness({
   const age = relativeAge(at);
   if (!age) {
     return missing == null ? null : (
-      <span className="text-[11px] font-medium text-amber-700" role="status">{label} {missing}</span>
+      <span className="text-[11px] font-medium text-warning" role="status">{label} {missing}</span>
     );
   }
   const stale = Date.now() - at! > staleAfterHours * 3_600_000;
   return (
     <span
-      className={`text-[11px] tabular-nums ${stale ? "font-medium text-amber-700" : "text-zinc-400"}`}
+      className={`text-[11px] tabular-nums ${stale ? "font-medium text-warning" : "text-muted"}`}
       title={`${label} ${exactTime(at)}${stale ? `\nThat is more than ${staleAfterHours} hours ago; the background sync may be failing.` : ""}`}
       role={stale ? "status" : undefined}
     >

@@ -53,14 +53,14 @@ function resultBadgeLetter(outcome: HistoryRow["outcome"], upcoming: boolean): s
 
 /** Finishes use deep colours; decisions use light colours, all with white letters. */
 function resultBadgeClasses(outcome: HistoryRow["outcome"], upcoming: boolean, method: string | null): string {
-  if (upcoming) return "bg-sky-100 text-sky-700";
+  if (upcoming) return "bg-info-subtle text-info";
   const decision = isDecision(method);
   switch (outcome) {
-    case "win": return decision ? "bg-emerald-400 text-white" : "bg-emerald-800 text-white";
-    case "loss": return decision ? "bg-rose-300 text-white" : "bg-rose-800 text-white";
-    case "draw": return decision ? "bg-amber-300 text-white" : "bg-amber-700 text-white";
-    case "nc": return "bg-zinc-400 text-white";
-    default: return "bg-zinc-200 text-zinc-500";
+    case "win": return decision ? "bg-win-3 text-photo-ink" : "bg-win-1 text-photo-ink";
+    case "loss": return decision ? "bg-loss-3 text-photo-ink" : "bg-loss-1 text-photo-ink";
+    case "draw": return decision ? "bg-warning text-photo-ink" : "bg-result-draw text-photo-ink";
+    case "nc": return "bg-muted text-photo-ink";
+    default: return "bg-track text-muted";
   }
 }
 
@@ -119,8 +119,8 @@ function RecordWheel({ history, scope, record }: { history: (HistoryRow | Profes
 
   return (
     <div className="flex min-w-0 flex-col items-center gap-2">
-      <div className="text-sm font-semibold tabular-nums text-zinc-900" title={scope === "ufc" ? "Current UFC-only record" : "Current verified complete professional record"}>
-        <span className="text-[10px] font-bold text-zinc-400">{scope === "ufc" ? "UFC" : "PRO"}</span> {record}
+      <div className="text-sm font-medium tabular-nums text-foreground" title={scope === "ufc" ? "Current UFC-only record" : "Current verified complete professional record"}>
+        <span className="text-[10px] font-medium text-muted">{scope === "ufc" ? "UFC" : "PRO"}</span> {record}
       </div>
       {bouts.length ? <div className="flex flex-col items-center gap-2 sm:flex-row sm:gap-3">
         <div
@@ -129,39 +129,39 @@ function RecordWheel({ history, scope, record }: { history: (HistoryRow | Profes
           role="img"
           aria-label={`${bouts.length} ${scope === "ufc" ? "UFC" : "professional"} bouts by result and method`}
         >
-          <div className="grid h-10 w-10 place-items-center rounded-full bg-white text-center shadow-[0_0_0_1px_rgba(0,0,0,0.04)] sm:h-12 sm:w-12">
-            <span className="text-sm font-semibold tabular-nums text-zinc-900">{bouts.length}<span className="block text-[8px] font-bold uppercase tracking-wider text-zinc-400">{scope === "ufc" ? "UFC" : "PRO"}</span></span>
+          <div className="grid h-10 w-10 place-items-center rounded-full bg-surface text-center shadow-[0_0_0_1px_rgba(0,0,0,0.04)] sm:h-12 sm:w-12">
+            <span className="text-sm font-medium tabular-nums text-foreground">{bouts.length}<span className="block text-[8px] font-medium text-muted">{scope === "ufc" ? "UFC" : "PRO"}</span></span>
           </div>
         </div>
         <div>
           <div className="grid grid-cols-2 gap-x-4">
             <div>
-              <div className="mb-1 text-[8px] font-bold uppercase tracking-wider text-emerald-700">
+              <div className="mb-1 text-[8px] font-medium text-success">
                 Wins ({winRows.reduce((total, segment) => total + segment.count, 0)})
               </div>
               {winRows.map((segment) => (
-                <div key={segment.key} className="flex items-center gap-1.5 text-[9px] leading-4 text-zinc-500">
+                <div key={segment.key} className="flex items-center gap-1.5 text-[9px] leading-4 text-muted">
                   <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: segment.color }} />
-                  <span className="whitespace-nowrap"><strong className="font-semibold text-zinc-700">{segment.count}</strong> {segment.label}</span>
+                  <span className="whitespace-nowrap"><strong className="font-medium text-secondary">{segment.count}</strong> {segment.label}</span>
                 </div>
               ))}
             </div>
             <div>
-              <div className="mb-1 text-[8px] font-bold uppercase tracking-wider text-rose-700">
+              <div className="mb-1 text-[8px] font-medium text-danger">
                 Losses ({lossRows.reduce((total, segment) => total + segment.count, 0)})
               </div>
               {lossRows.map((segment) => (
-                <div key={segment.key} className="flex items-center gap-1.5 text-[9px] leading-4 text-zinc-500">
+                <div key={segment.key} className="flex items-center gap-1.5 text-[9px] leading-4 text-muted">
                   <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: segment.color }} />
-                  <span className="whitespace-nowrap"><strong className="font-semibold text-zinc-700">{segment.count}</strong> {segment.label}</span>
+                  <span className="whitespace-nowrap"><strong className="font-medium text-secondary">{segment.count}</strong> {segment.label}</span>
                 </div>
               ))}
             </div>
           </div>
           {extras.some((segment) => segment.count > 0) ? (
-            <div className="mt-1.5 flex gap-3 border-t border-zinc-100 pt-1.5">
+            <div className="mt-1.5 flex gap-3 border-t border-line-subtle pt-1.5">
               {extras.filter((segment) => segment.count > 0).map((segment) => (
-                <div key={segment.key} className="flex items-center gap-1.5 text-[9px] text-zinc-500">
+                <div key={segment.key} className="flex items-center gap-1.5 text-[9px] text-muted">
                   <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: segment.color }} />
                   <span>{segment.count} {segment.count === 1 ? segment.one : segment.label}</span>
                 </div>
@@ -191,8 +191,8 @@ function EnteringRecords({
       className={`flex min-w-0 flex-wrap gap-x-2 tabular-nums ${className}`}
       title={`${name}'s records entering this fight${career ? " from verified complete professional history" : ""}`}
     >
-      <span className={career ? "" : "text-zinc-400"}><span className="font-bold text-zinc-400">REC</span> {career?.text ?? "—"}</span>
-      <span className={ufc ? "" : "text-zinc-400"}><span className="font-bold text-zinc-400">UFC</span> {ufc?.text ?? "—"}</span>
+      <span className={career ? "" : "text-muted"}><span className="font-medium text-muted">REC</span> {career?.text ?? "—"}</span>
+      <span className={ufc ? "" : "text-muted"}><span className="font-medium text-muted">UFC</span> {ufc?.text ?? "—"}</span>
     </span>
   );
 }
@@ -201,7 +201,7 @@ function EnteringRecords({
  *  page with a second column from `lg` up, so how much room a bout actually has
  *  is not something the window width can answer. The divider carries more of
  *  the load at card width, where it is the only line marking where one ends. */
-const BOUT_LIST = "@container divide-y divide-zinc-100 pb-2 @3xl:divide-zinc-50";
+const BOUT_LIST = "@container divide-y divide-line-subtle pb-2 @3xl:divide-line-subtle";
 
 /** The awards this fighter took home, which the result line does not say, and
  *  in red the performance award the opponent earned on them. */
@@ -224,7 +224,7 @@ function weightMisses(row: HistoryRow | ProfessionalHistoryRow) {
     { who: "Missed weight", name: "This fighter", pounds: row.weight_miss?.fighter },
     { who: `${lastName(row.opponent.name)} missed weight`, name: row.opponent.name, pounds: row.weight_miss?.opponent },
   ].filter((miss) => miss.pounds != null).map((miss) => (
-    <span key={miss.who} className="font-semibold text-rose-700" title={`${miss.name} missed weight${miss.pounds ? ` at ${miss.pounds} lb` : ""}`}>
+    <span key={miss.who} className="font-medium text-danger" title={`${miss.name} missed weight${miss.pounds ? ` at ${miss.pounds} lb` : ""}`}>
       {miss.who}{miss.pounds ? ` · ${miss.pounds} lb` : ""}
     </span>
   ));
@@ -262,7 +262,7 @@ function FactRun({ children, className = "" }: { children: ReactNode; className?
       {facts.map((fact, index) => (
         <span key={index} className={`min-w-0 ${className}`}>
           {fact}
-          {index < facts.length - 1 ? <span className="pr-1.5 text-zinc-300" aria-hidden="true">{"\u00A0·"}</span> : null}
+          {index < facts.length - 1 ? <span className="pr-1.5 text-faint" aria-hidden="true">{"\u00A0·"}</span> : null}
         </span>
       ))}
     </>
@@ -287,26 +287,26 @@ function boutFields(row: HistoryRow | ProfessionalHistoryRow) {
       : "source_url" in row.opponent ? row.opponent.source_url : null,
     eventTo: row.event_id ? `/events/${row.event_id}` : null,
     eventHref: "event_url" in row ? row.event_url : null,
-    narrativeClass: row.title_type === "interim" ? "text-belt-interim" : row.title_type === "title" ? "text-belt" : "text-zinc-500",
+    narrativeClass: row.title_type === "interim" ? "text-belt-interim" : row.title_type === "title" ? "text-belt" : "text-muted",
   };
 }
 
 function PromotionLabel({ row, move }: { row: HistoryRow | ProfessionalHistoryRow; move?: DivisionMove }) {
   const program = row.title_type === "tuf" ? "TUF" : fightProgram(row.event_name);
-  if (program) return <>{program === "TUF" && row.promotion !== "outside" ? <><DivisionLabel division={divisionName(row.weight_class, row.catch_weight)} move={move} /> · </> : null}<span className={`font-semibold ${program === "TUF" ? "text-amber-700 dark:text-amber-300" : "text-cyan-700 dark:text-cyan-300"}`}
+  if (program) return <>{program === "TUF" && row.promotion !== "outside" ? <><DivisionLabel division={divisionName(row.weight_class, row.catch_weight)} move={move} /> · </> : null}<span className={`font-medium ${program === "TUF" ? "text-warning" : "text-cyan-700 dark:text-cyan-300"}`}
     title={program === "TUF" ? "The Ultimate Fighter event; this label does not imply the fighter competed on the show."
       : `${program} appearance; participation or a win alone does not confirm a UFC contract.`}>
     {program === "TUF" && row.title_type === "tuf" ? "TUF final" : program === "TUF" && /\bfinale\b/i.test(row.event_name) ? "TUF finale" : program}
   </span></>;
-  return row.promotion === "outside" ? <span className="font-semibold text-violet-500">Outside UFC</span>
+  return row.promotion === "outside" ? <span className="font-medium text-special">Outside UFC</span>
     : <DivisionLabel division={divisionName(row.weight_class, row.catch_weight)} move={move} />;
 }
 
 function RosterBand({ band }: { band: CareerBand }) {
   const content = <><span>{band.label}</span>{band.date ? <span className="font-normal opacity-75">{band.observed ? "Observed " : ""}{formatDateShortWithYear(band.date)}</span> : null}</>;
-  const className = `flex min-h-12 flex-wrap items-center justify-center gap-x-2 px-4 py-3 text-sm font-semibold leading-6 @3xl:min-h-9 @3xl:py-1.5 ${band.signing
-    ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
-    : "bg-zinc-50 text-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-300"}`;
+  const className = `flex min-h-12 flex-wrap items-center justify-center gap-x-2 px-4 py-3 text-sm font-medium leading-6 @3xl:min-h-9 @3xl:py-1.5 ${band.signing
+    ? "bg-success-subtle text-success "
+    : "bg-surface-muted text-secondary"}`;
   return <div className={className} title={band.detail}>{content}<span className="sr-only">{band.detail}</span></div>;
 }
 
@@ -325,21 +325,21 @@ function RankTag({ ranking, who, division }: { ranking: HistoryRow["rank"]; who:
   const label = `${ranking.rank === "C" ? "C" : ranking.rank === "IC" ? "IC" : `#${ranking.rank}`}${elsewhere}`;
   const held = ranking.rank === "C" ? "Champion" : ranking.rank === "IC" ? "Interim champion" : `#${ranking.rank}`;
   return (
-    <span className={`shrink-0 whitespace-nowrap text-[11px] font-semibold tabular-nums ${ranking.rank === "C" ? "text-belt" : ranking.rank === "IC" ? "text-belt-interim" : "text-zinc-500"}`}
+    <span className={`shrink-0 whitespace-nowrap text-[11px] font-medium tabular-nums ${ranking.rank === "C" ? "text-belt" : ranking.rank === "IC" ? "text-belt-interim" : "text-muted"}`}
       title={`${who}: ${held} · ${ranking.division}, going into this fight`}>{label}</span>
   );
 }
 
 function DivisionLabel({ division, move }: { division: string; move?: DivisionMove }) {
   if (!move) return <span>{division}</span>;
-  return <span className="font-semibold text-zinc-700">{move.direction === "up" ? "↑ Up to" : "↓ Down to"} {move.to}</span>;
+  return <span className="font-medium text-secondary">{move.direction === "up" ? "↑ Up to" : "↓ Down to"} {move.to}</span>;
 }
 
 function DivisionCell({ to, className, children }: { to: string | null; className: string; children: ReactNode }) {
   return to ? <Link to={to} title="Open rankings" className={`${className} ${HIT}`}>{children}</Link> : <div className={className}>{children}</div>;
 }
 
-const HIT = "transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900";
+const HIT = "transition-colors hover:bg-surface-muted ";
 
 /** A bout packed into three bands (who, how, where) for narrow screens, where
  *  the full table would not fit. Each band is its own target and runs the full
@@ -347,7 +347,7 @@ const HIT = "transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-vi
  *  the row lands on one of the three and never in a gap between them. The
  *  lower two are indented past the result badge, lining their text up under
  *  the opponent's name. */
-const BAND = "flex min-w-0 px-4 transition-colors hover:bg-zinc-50 active:bg-zinc-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-zinc-900";
+const BAND = "flex min-w-0 px-4 transition-colors hover:bg-surface-muted active:bg-surface-strong focus-visible:-outline-offset-2 ";
 const BAND_INDENT = "pl-[3.125rem]";
 
 function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHistoryRow; fighterName: string; move?: DivisionMove }) {
@@ -361,14 +361,14 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
         className={`${BAND} items-center gap-2.5 py-1.5`}
       >
         <span
-          className={`grid h-6 min-w-6 shrink-0 place-items-center rounded-full px-1 text-[10px] font-bold leading-none ${resultBadgeClasses(row.outcome, row.upcoming, row.method)}`}
+          className={`grid h-6 min-w-6 shrink-0 place-items-center rounded-full px-1 text-[10px] font-medium leading-none ${resultBadgeClasses(row.outcome, row.upcoming, row.method)}`}
           title={bout.result}
           aria-hidden="true"
         >
           {resultBadgeLetter(row.outcome, row.upcoming)}
         </span>
         <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-          <span className="min-w-0 break-words text-[15px] font-semibold leading-6 text-zinc-900">{row.opponent.name}</span>
+          <span className="min-w-0 break-words text-[15px] font-medium leading-6 text-foreground">{row.opponent.name}</span>
           {"opponent_rank" in row ? <RankTag ranking={row.opponent_rank} who={row.opponent.name} division={row.weight_class} /> : null}
           {/* Both closing lines are here, and position is what says whose is
               whose: the opponent's sits against their name, the fighter's on the
@@ -376,12 +376,12 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
               other's, so each also carries the name in a tooltip and spells the
               whole thing out for a screen reader. */}
           {bout.opponentOdds ? (
-            <span className="shrink-0 text-[11px] font-semibold tabular-nums text-zinc-400" title={`${row.opponent.name} closing odds`}>
+            <span className="shrink-0 text-[11px] font-medium tabular-nums text-muted" title={`${row.opponent.name} closing odds`}>
               <span className="sr-only">{row.opponent.name} closing odds </span>{bout.opponentOdds}
             </span>
           ) : null}
           {row.opponent_form ? <OpponentForm form={row.opponent_form} /> : null}
-          <EnteringRecords career={row.opponent_career_record_before} ufc={row.opponent_record_before} name={row.opponent.name} className="basis-full text-[10px] font-semibold leading-4 text-zinc-500" />
+          <EnteringRecords career={row.opponent_career_record_before} ufc={row.opponent_record_before} name={row.opponent.name} className="basis-full text-[10px] font-medium leading-4 text-muted" />
         </span>
       </BoutLink>
 
@@ -389,7 +389,7 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
         to={bout.fightTo}
         href={bout.fightHref}
         label={`Open ${row.opponent.name} matchup`}
-        className={`${BAND} ${BAND_INDENT} items-baseline py-1.5 text-xs leading-5 text-zinc-500`}
+        className={`${BAND} ${BAND_INDENT} items-baseline py-1.5 text-xs leading-5 text-muted`}
       >
         <span className="sr-only">{bout.result}</span>
         <span className="flex min-w-0 flex-1 flex-wrap items-center">
@@ -397,7 +397,7 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
             <span className="font-medium">{bout.method}</span>
             {bout.contender ? null : <PromotionLabel row={row} move={move} />}
             {"rank" in row && row.rank ? <RankTag ranking={row.rank} who={fighterName} division={row.weight_class} /> : null}
-            {row.title_narrative ? <span className={`font-semibold ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
+            {row.title_narrative ? <span className={`font-medium ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
             {weightMisses(row)}
             {/* The awards belong to the fight, so they close its run rather
                 than take a line of their own that no tap would reach. */}
@@ -410,11 +410,11 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
             The fighter's own records entering the bout sit under the price. */}
         <span className="flex shrink-0 flex-col items-end pl-2">
           {bout.fighterOdds ? (
-            <span className="font-semibold tabular-nums text-zinc-400" title={`${fighterName} closing odds`}>
+            <span className="font-medium tabular-nums text-muted" title={`${fighterName} closing odds`}>
               <span className="sr-only">{fighterName} closing odds </span>{bout.fighterOdds}
             </span>
           ) : null}
-          <EnteringRecords career={row.career_record_before} ufc={row.record_before} name={fighterName} className="justify-end text-[10px] font-medium leading-4 text-zinc-400" />
+          <EnteringRecords career={row.career_record_before} ufc={row.record_before} name={fighterName} className="justify-end text-[10px] font-medium leading-4 text-muted" />
         </span>
       </BoutLink>
 
@@ -426,8 +426,8 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
       >
         {/* The name takes the slack, so every date in the list lands on the
             same right edge and the column of dates can be read straight down. */}
-        <span className={`min-w-0 flex-1 break-words text-xs leading-5 ${bout.contender ? "text-cyan-700 dark:text-cyan-300" : "text-zinc-600"}`}>{row.event_name}</span>
-        <span className="shrink-0 text-[11px] leading-5 tabular-nums text-zinc-400">{formatDateShortWithYear(row.date)}</span>
+        <span className={`min-w-0 flex-1 break-words text-xs leading-5 ${bout.contender ? "text-cyan-700 dark:text-cyan-300" : "text-secondary"}`}>{row.event_name}</span>
+        <span className="shrink-0 text-[11px] leading-5 tabular-nums text-muted">{formatDateShortWithYear(row.date)}</span>
       </BoutLink>
     </div>
   );
@@ -448,7 +448,7 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
       >
         <span className="flex w-full min-w-0 items-center gap-2.5">
           <span
-            className={`grid h-7 min-w-7 shrink-0 place-items-center self-center rounded-full px-1 text-[11px] font-bold leading-none ${resultBadgeClasses(row.outcome, row.upcoming, row.method)}`}
+            className={`grid h-7 min-w-7 shrink-0 place-items-center self-center rounded-full px-1 text-[11px] font-medium leading-none ${resultBadgeClasses(row.outcome, row.upcoming, row.method)}`}
             title={bout.result}
             aria-hidden="true"
           >
@@ -457,10 +457,10 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
           <span className="sr-only">{bout.result}</span>
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-baseline gap-1.5">
-              <span className="min-w-0 flex-1 text-[11px] font-medium leading-5 text-zinc-500 [overflow-wrap:anywhere]">{bout.method}</span>
-              {bout.fighterOdds ? <span className="shrink-0 text-[10px] font-semibold tabular-nums text-zinc-400" title={`${fighterName} closing odds`}>{bout.fighterOdds}</span> : null}
+              <span className="min-w-0 flex-1 text-[11px] font-medium leading-5 text-muted [overflow-wrap:anywhere]">{bout.method}</span>
+              {bout.fighterOdds ? <span className="shrink-0 text-[10px] font-medium tabular-nums text-muted" title={`${fighterName} closing odds`}>{bout.fighterOdds}</span> : null}
             </span>
-            <EnteringRecords career={row.career_record_before} ufc={row.record_before} name={fighterName} className="mt-0.5 w-full text-[10px] font-medium leading-4 text-zinc-400" />
+            <EnteringRecords career={row.career_record_before} ufc={row.record_before} name={fighterName} className="mt-0.5 w-full text-[10px] font-medium leading-4 text-muted" />
           </span>
         </span>
       </BoutLink>
@@ -473,12 +473,12 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
       >
         <span className="block min-w-0">
           <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-            <span className="min-w-0 break-words text-sm font-semibold leading-5 text-zinc-900">{row.opponent.name}</span>
+            <span className="min-w-0 break-words text-sm font-medium leading-5 text-foreground">{row.opponent.name}</span>
             {"opponent_rank" in row ? <RankTag ranking={row.opponent_rank} who={row.opponent.name} division={row.weight_class} /> : null}
-            {bout.opponentOdds ? <span className="shrink-0 text-[10px] font-semibold tabular-nums text-zinc-400" title={`${row.opponent.name} closing odds`}>{bout.opponentOdds}</span> : null}
+            {bout.opponentOdds ? <span className="shrink-0 text-[10px] font-medium tabular-nums text-muted" title={`${row.opponent.name} closing odds`}>{bout.opponentOdds}</span> : null}
           </span>
           <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            <EnteringRecords career={row.opponent_career_record_before} ufc={row.opponent_record_before} name={row.opponent.name} className="text-[10px] font-semibold leading-4 text-zinc-500" />
+            <EnteringRecords career={row.opponent_career_record_before} ufc={row.opponent_record_before} name={row.opponent.name} className="text-[10px] font-medium leading-4 text-muted" />
             {row.opponent_form ? <OpponentForm form={row.opponent_form} /> : null}
           </span>
           <BoutNotes row={row} />
@@ -486,11 +486,11 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
       </BoutLink>
 
       {/* A ranked division opens the rankings at its list. */}
-      <DivisionCell to={bout.outside ? null : rankingsLink(row.weight_class)} className={`${cell} flex-col justify-start border-l border-zinc-100 text-left`}>
-        <span className="block break-words text-[11px] leading-5 text-zinc-500">
+      <DivisionCell to={bout.outside ? null : rankingsLink(row.weight_class)} className={`${cell} flex-col justify-start border-l border-line-subtle text-left`}>
+        <span className="block break-words text-[11px] leading-5 text-muted">
           {bout.contender ? null : <PromotionLabel row={row} move={move} />}
           {"rank" in row && row.rank ? <> <RankTag ranking={row.rank} who={fighterName} division={row.weight_class} /></> : null}
-          {row.title_narrative ? <span className={`block font-semibold leading-4 ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
+          {row.title_narrative ? <span className={`block font-medium leading-4 ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
           {weightMisses(row).map((miss) => <span key={miss.key} className="mt-1 block leading-4">{miss}</span>)}
         </span>
       </DivisionCell>
@@ -499,10 +499,10 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
         to={bout.eventTo}
         href={bout.eventHref}
         label={`Open ${row.event_name}`}
-        className={`${cell} flex-col justify-start border-l border-zinc-100 text-right ${HIT}`}
+        className={`${cell} flex-col justify-start border-l border-line-subtle text-right ${HIT}`}
       >
-        <span className={`block break-words text-xs font-medium leading-5 ${bout.contender ? "text-cyan-700 dark:text-cyan-300" : "text-zinc-600"}`}>{row.event_name}</span>
-        <span className="mt-0.5 block text-[11px] tabular-nums text-zinc-400">{formatDateShortWithYear(row.date)}</span>
+        <span className={`block break-words text-xs font-medium leading-5 ${bout.contender ? "text-cyan-700 dark:text-cyan-300" : "text-secondary"}`}>{row.event_name}</span>
+        <span className="mt-0.5 block text-[11px] tabular-nums text-muted">{formatDateShortWithYear(row.date)}</span>
       </BoutLink>
     </>
   );
@@ -536,28 +536,28 @@ function Records({ records }: { records: FighterRecord[] }) {
   return (
     <section className={shell}>
       <PanelHeading title="Top Records" />
-      <div className="divide-y divide-zinc-50 py-1">
+      <div className="divide-y divide-line-subtle py-1">
         {records.map((record) => (
           <div key={`${record.key}:${record.scope}`} className="flex items-center gap-3 px-4 py-2">
             <span
-              className={`grid h-8 w-10 shrink-0 place-items-center rounded-lg text-xs font-bold tabular-nums ${
+              className={`grid h-8 w-10 shrink-0 place-items-center rounded-lg text-xs font-medium tabular-nums ${
                 record.rank === 1
-                  ? "bg-amber-100 text-belt ring-1 ring-inset ring-amber-200"
+                  ? "bg-warning-subtle text-belt ring-1 ring-inset ring-warning-line"
                   : record.rank <= 3
-                    ? "bg-zinc-900 text-white"
-                    : "bg-zinc-100 text-zinc-600"
+                    ? "bg-foreground text-background"
+                    : "bg-surface-strong text-secondary"
               }`}
               title={`${place(record)} of ${record.field.toLocaleString("en-US")} fighters who qualify`}
             >
               {place(record)}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-[13px] font-semibold leading-tight text-zinc-900">{record.label}</span>
-              <span className="mt-0.5 block text-[11px] leading-tight text-zinc-400">
+              <span className="block text-[13px] font-medium leading-tight text-foreground">{record.label}</span>
+              <span className="mt-0.5 block text-[11px] leading-tight text-muted">
                 {record.scope} · {record.detail}
               </span>
             </span>
-            <span className="shrink-0 text-right text-base font-semibold tabular-nums text-zinc-950">
+            <span className="shrink-0 text-right text-base font-medium tabular-nums text-foreground">
               {formatValue(record.value, record.format)}
             </span>
           </div>
@@ -576,8 +576,8 @@ function BioGrid({ bio, className = "" }: { bio: [string, ReactNode][]; classNam
     <dl className={`grid grid-cols-3 gap-x-4 gap-y-2.5 @[56rem]:grid-cols-6 ${className}`}>
       {bio.map(([label, value]) => (
         <div key={label} className={`min-w-0 ${wide[label] ?? ""}`} title={label === "Age" ? "Current age today" : undefined}>
-          <dt className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">{label}</dt>
-          <dd className="text-sm font-medium tabular-nums text-zinc-800">{value}</dd>
+          <dt className="text-[10px] font-medium text-muted">{label}</dt>
+          <dd className="text-sm font-medium tabular-nums text-foreground">{value}</dd>
         </div>
       ))}
     </dl>
@@ -597,15 +597,15 @@ function BonusTally({ fight, perf, against }: { fight: number; perf: number; aga
         <span className={`${BONUS_TAG} gap-0 px-0 text-[11px]`}>
           {parts.map((part, index) => (
             <span key={part.key} title={`${part.count} × ${part.title}`}
-              className={`inline-flex items-baseline gap-1 px-2 ${index ? "border-l border-amber-400/60" : ""}`}>
-              {part.label}<span className="font-bold tabular-nums">{part.count}</span>
+              className={`inline-flex items-baseline gap-1 px-2 ${index ? "border-l border-warning/60" : ""}`}>
+              {part.label}<span className="font-medium tabular-nums">{part.count}</span>
             </span>
           ))}
         </span>
       ) : null}
       {against ? (
         <span className={`${BONUS_AGAINST_TAG} gap-1 px-2 text-[11px]`} title={`${against} × Performance bonus for the opponent`}>
-          {PERF_AWARD.perf.short} against<span className="font-bold tabular-nums">{against}</span>
+          {PERF_AWARD.perf.short} against<span className="font-medium tabular-nums">{against}</span>
         </span>
       ) : null}
     </span>
@@ -656,11 +656,11 @@ function FighterNews({ fighterId, name, first }: { fighterId: string; name: stri
       {!list.first ? (
         list.error
           ? <div className="p-4"><RequestNotice onRetry={() => void list.retry()}>Couldn’t load the news.</RequestNotice></div>
-          : <div role="status" className="appear-late px-5 py-6 text-sm text-zinc-400">Loading the news…</div>
+          : <div role="status" className="appear-late px-5 py-6 text-sm text-muted">Loading the news…</div>
       ) : list.items.length ? (
         <div className="px-4 sm:px-5">{list.items.map((story) => <NewsRow key={story.url} story={story} fighterId={fighterId} summaries={summaries} />)}</div>
       ) : (
-        <div className="px-5 py-6 text-sm text-zinc-400">No news about {name} in the last month.</div>
+        <div className="px-5 py-6 text-sm text-muted">No news about {name} in the last month.</div>
       )}
       <LoadMore list={list} />
     </section>
@@ -713,13 +713,13 @@ export default function FighterPage() {
   const statModal = <CareerStatModal fighters={fighterId ? [{ id: fighterId, name: fighter?.name ?? "" }] : []} />;
 
   if (loading && !fighter) {
-    return <>{statModal}<div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading fighter…</div></>;
+    return <>{statModal}<div role="status" className="appear-late flex h-full items-center justify-center text-sm text-muted">Loading fighter…</div></>;
   }
   if (error && !fighter) {
     return <>{statModal}<div className="p-5"><RequestNotice onRetry={retry}>Couldn’t load this fighter. Please try again.</RequestNotice></div></>;
   }
   if (!fighter) {
-    return <>{statModal}<div className="flex h-full items-center justify-center text-sm text-zinc-400">Fighter not found.</div></>;
+    return <>{statModal}<div className="flex h-full items-center justify-center text-sm text-muted">Fighter not found.</div></>;
   }
 
   const upcoming = fighter.history.filter((h) => h.upcoming);
@@ -771,17 +771,17 @@ export default function FighterPage() {
               <div className="min-w-0 flex-1">
                 {/* The flag is held to the last word of the name, so it never
                     wraps onto a line by itself. */}
-                <h1 className="text-balance break-words text-xl font-semibold leading-tight tracking-tight text-zinc-950 @[30rem]:text-2xl @[56rem]:text-3xl">
+                <h1 className="text-balance break-words text-xl font-medium leading-tight tracking-tight text-foreground @[30rem]:text-2xl @[56rem]:text-3xl">
                   {fighter.name}
                   {fighter.country_code || fighter.country ? <>{"\u00a0"}<Flag code={fighter.country_code} name={fighter.country} className="text-[0.8em]" /></> : null}
                 </h1>
-                {fighter.nickname ? <div className="mt-0.5 text-sm text-zinc-400">“{fighter.nickname}”</div> : null}
+                {fighter.nickname ? <div className="mt-0.5 text-sm text-muted">“{fighter.nickname}”</div> : null}
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-sm empty:hidden">
                   {/* With a verified history the records head their wheels below;
                       until then the pro record has no wheel, so it stays here. */}
-                  {fighter.record_verified ? null : <span className="font-semibold tabular-nums text-zinc-900" title="Professional record"><span className="text-[10px] font-bold text-zinc-400">PRO</span> {fighter.record}</span>}
+                  {fighter.record_verified ? null : <span className="font-medium tabular-nums text-foreground" title="Professional record"><span className="text-[10px] font-medium text-muted">PRO</span> {fighter.record}</span>}
                   {fighter.ranking ? (
-                    <span title="Current ranking from the source chosen on the Rankings page" className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${fighter.ranking.rank === "C" ? "bg-amber-100 text-belt" : fighter.ranking.rank === "IC" ? "bg-slate-100 text-belt-interim" : "bg-zinc-100 text-zinc-600"}`}>
+                    <span title="Current ranking from the source chosen on the Rankings page" className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${fighter.ranking.rank === "C" ? "bg-warning-subtle text-belt" : fighter.ranking.rank === "IC" ? "bg-surface-strong text-belt-interim" : "bg-surface-strong text-secondary"}`}>
                       {fighter.ranking.rank === "C" ? "Champion" : fighter.ranking.rank === "IC" ? "Interim champion" : `#${fighter.ranking.rank}`} · {fighter.ranking.division}
                     </span>
                   ) : null}
@@ -794,7 +794,7 @@ export default function FighterPage() {
             {/* Both records at once, side by side while the card is wide
                 enough and stacked when it is not. The professional wheel
                 waits until that history is verified. */}
-            <div className="hidden items-start justify-center gap-x-6 gap-y-5 border-t border-zinc-100 pt-3 empty:hidden sm:flex-wrap sm:gap-x-10 sm:pt-4 lg:flex">
+            <div className="hidden items-start justify-center gap-x-6 gap-y-5 border-t border-line-subtle pt-3 empty:hidden sm:flex-wrap sm:gap-x-10 sm:pt-4 lg:flex">
               {wheels}
             </div>
           </div>
@@ -830,7 +830,7 @@ export default function FighterPage() {
         </> : <section className={shell}>
           <PanelHeading title="Fights" subtitle={allFights.length.toLocaleString()} />
           {!fighter.record_verified ? (
-            <div className="px-4 pb-1 pt-3 text-xs text-zinc-500 sm:px-5">Outside-UFC history is still syncing; UFC bouts are shown now.</div>
+            <div className="px-4 pb-1 pt-3 text-xs text-muted sm:px-5">Outside-UFC history is still syncing; UFC bouts are shown now.</div>
           ) : null}
           <div className={BOUT_LIST}>
             {allFights.length ? (
@@ -841,7 +841,7 @@ export default function FighterPage() {
                 </Fragment>
               ))
             ) : (
-              <div className="px-5 py-6 text-sm text-zinc-400">No fights on record.</div>
+              <div className="px-5 py-6 text-sm text-muted">No fights on record.</div>
             )}
           </div>
           {bands[allFights.length].map((band, index) => <RosterBand key={index} band={band} />)}

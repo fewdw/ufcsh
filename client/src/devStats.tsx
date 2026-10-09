@@ -96,9 +96,9 @@ export function DevStatsOverlay() {
   };
   return createPortal(
     <button type="button" onClick={copy} title="Copy debug info"
-      className="fixed bottom-[calc(env(safe-area-inset-bottom)+4.25rem)] right-2 z-50 sm:bottom-2 flex max-w-[16rem] flex-col items-start gap-0.5 rounded-lg bg-zinc-900/90 px-2 py-1.5 text-left font-mono text-[10px] leading-tight text-zinc-100 shadow-lg backdrop-blur">
-      <span className="flex items-center gap-1 font-semibold">
-        {copied ? <Check className="h-3 w-3 text-emerald-400" aria-hidden="true" /> : <SquareTerminal className="h-3 w-3" aria-hidden="true" />}
+      className="fixed bottom-[calc(env(safe-area-inset-bottom)+4.25rem)] right-2 z-50 sm:bottom-2 flex max-w-[16rem] flex-col items-start gap-0.5 rounded-lg bg-foreground/90 px-2 py-1.5 text-left font-mono text-[10px] leading-tight text-background shadow-lg backdrop-blur">
+      <span className="flex items-center gap-1 font-medium">
+        {copied ? <Check className="h-3 w-3 text-success" aria-hidden="true" /> : <SquareTerminal className="h-3 w-3" aria-hidden="true" />}
         {copied ? "Copied" : "Dev · tap to copy"}
       </span>
       <span>{innerWidth}×{innerHeight} · {breakpoint(innerWidth)} · @{devicePixelRatio}x</span>

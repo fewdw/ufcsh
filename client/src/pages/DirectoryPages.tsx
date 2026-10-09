@@ -47,11 +47,11 @@ function OrderControl<K extends string>({ options, order, label }: {
   return (
     <div className="flex shrink-0 items-center gap-0.5">
       <select value={order.sort} onChange={(event) => order.setSort(event.target.value as K)} aria-label={label}
-        className="h-8 rounded-full border border-zinc-200 bg-zinc-50 pl-3 pr-7 text-[13px] font-medium text-zinc-700 outline-none hover:border-zinc-300 focus:border-zinc-400 sm:text-xs">
+        className="h-8 rounded-full border border-line bg-surface-muted pl-3 pr-7 text-[13px] font-medium text-secondary outline-none hover:border-line-strong focus:border-line-strong sm:text-xs">
         {options.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
       </select>
       <button type="button" onClick={order.flip} title={title} aria-label={`${title}; reverse the order`}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950">
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted transition hover:bg-surface-strong hover:text-foreground">
         {up ? <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />}
       </button>
     </div>
@@ -148,11 +148,11 @@ export function OfficialsPage() {
             {list.map((entry) => {
               const shown = rate ? rate(entry as Judge) : null;
               return (
-                <li key={entry.slug} className="border-b border-zinc-100">
-                  <Link to={`/${kind}/${entry.slug}`} className="flex items-baseline justify-between gap-2 px-4 py-2 hover:bg-zinc-50 sm:px-5">
-                    <span className="min-w-0 truncate text-[13px] font-medium text-zinc-900">{entry.name}</span>
-                    <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">
-                      {rate ? <span className="font-semibold text-zinc-700" title={JUDGE_RATE_TITLE[judgeOrder.sort as keyof typeof JUDGE_RATE_TITLE]}>{shown === null ? "–" : `${shown.toFixed(1)}%`}</span> : null}
+                <li key={entry.slug} className="border-b border-line-subtle">
+                  <Link to={`/${kind}/${entry.slug}`} className="flex items-baseline justify-between gap-2 px-4 py-2 hover:bg-surface-muted sm:px-5">
+                    <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{entry.name}</span>
+                    <span className="shrink-0 text-[11px] tabular-nums text-muted">
+                      {rate ? <span className="font-medium text-secondary" title={JUDGE_RATE_TITLE[judgeOrder.sort as keyof typeof JUDGE_RATE_TITLE]}>{shown === null ? "–" : `${shown.toFixed(1)}%`}</span> : null}
                       {rate ? " · " : ""}{entry.n.toLocaleString()} · {years(entry.first, entry.last)}
                     </span>
                   </Link>
@@ -160,7 +160,7 @@ export function OfficialsPage() {
               );
             })}
           </ul>
-          {!list.length ? <p className="px-5 py-8 text-center text-sm text-zinc-500">No officials match these filters.</p> : null}
+          {!list.length ? <p className="px-5 py-8 text-center text-sm text-muted">No officials match these filters.</p> : null}
         </section>
       </div>
     </div>
@@ -203,13 +203,13 @@ function usePlaces<T extends Place>(places: T[] | undefined, text: (place: T) =>
 /** A venue or a city: its name, where it is, and its cards. */
 function PlaceRow({ to, name, detail, events, upcoming }: { to: string; name: string; detail: string; events: number; upcoming: number }) {
   return (
-    <li className="border-b border-zinc-100">
-      <Link to={to} className="flex items-baseline justify-between gap-2 px-4 py-2 hover:bg-zinc-50 sm:px-5">
+    <li className="border-b border-line-subtle">
+      <Link to={to} className="flex items-baseline justify-between gap-2 px-4 py-2 hover:bg-surface-muted sm:px-5">
         <span className="min-w-0">
-          <span className="block truncate text-[13px] font-medium text-zinc-900">{name}</span>
-          <span className="block truncate text-[11px] text-zinc-400">{detail}</span>
+          <span className="block truncate text-[13px] font-medium text-foreground">{name}</span>
+          <span className="block truncate text-[11px] text-muted">{detail}</span>
         </span>
-        <span className="shrink-0 text-[11px] tabular-nums text-zinc-500">{events}{upcoming ? ` + ${upcoming} upcoming` : ""}</span>
+        <span className="shrink-0 text-[11px] tabular-nums text-muted">{events}{upcoming ? ` + ${upcoming} upcoming` : ""}</span>
       </Link>
     </li>
   );
@@ -243,7 +243,7 @@ export function VenuesPage() {
               <PlaceRow key={venue.slug} to={`/venues/${venue.slug}`} name={venue.name} detail={[venue.city, venue.country].filter(Boolean).join(", ")} events={venue.events} upcoming={venue.upcoming} />
             ))}
           </ul>
-          {!places.list.length ? <p className="px-5 py-8 text-center text-sm text-zinc-500">No venues match these filters.</p> : null}
+          {!places.list.length ? <p className="px-5 py-8 text-center text-sm text-muted">No venues match these filters.</p> : null}
         </section>
       </div>
     </div>
@@ -275,7 +275,7 @@ export function LocationsPage() {
               <PlaceRow key={location.slug} to={`/locations/${location.slug}`} name={location.city} detail={[location.state, location.country].filter(Boolean).join(", ")} events={location.events} upcoming={location.upcoming} />
             ))}
           </ul>
-          {!places.list.length ? <p className="px-5 py-8 text-center text-sm text-zinc-500">No locations match these filters.</p> : null}
+          {!places.list.length ? <p className="px-5 py-8 text-center text-sm text-muted">No locations match these filters.</p> : null}
         </section>
       </div>
     </div>

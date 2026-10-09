@@ -22,7 +22,7 @@ import { cardWinner, usernameProblem } from "../scoring";
 import type { ProfileFilter, ScorerCard, ScorerIdentity, ScorerProfile } from "../scoring";
 import { useSeo } from "../seo";
 import { useSettings, withRanking } from "../settings";
-import { BUTTON_PRIMARY, BUTTON_QUIET } from "../ui";
+import { Button } from "../components/arc/button/button";
 import FanAvatar from "../components/FanAvatar";
 
 const FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed"];
@@ -36,10 +36,8 @@ const TABS = [
   { id: "leaderboards", label: "Leaderboards", short: "Ranks" },
 ] as const;
 type Section = (typeof TABS)[number]["id"];
-const quiet = BUTTON_QUIET;
 /** The account's own actions: short enough that all three sit on one line. */
-const action = "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
-const primary = BUTTON_PRIMARY;
+const action = "inline-flex items-center gap-1.5 whitespace-nowrap rounded-[12px] px-2.5 py-1.5 text-xs font-medium text-muted transition-colors hover:bg-surface-strong hover:text-foreground disabled:opacity-40";
 
 /** A public profile. Anyone can open anyone's: the scorer is named by the
  *  username they chose, or by the one minted for them when they signed up. */
@@ -62,20 +60,20 @@ function MyProfileRedirect() {
   if (error) return <Empty message={error} />;
   if (!loading && (!accountsEnabled || !signedIn))
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 px-5 text-center text-sm text-zinc-500">
+      <div className="flex h-full flex-col items-center justify-center gap-3 px-5 text-center text-sm text-muted">
         <p>Sign in to see your scorecards and predictions.</p>
-        {accountsEnabled ? <button type="button" onClick={signIn} className={primary}>Sign in</button> : null}
-        <Link to="/info" className="text-xs font-medium text-zinc-500 underline underline-offset-2 hover:text-zinc-900">About UFC.sh</Link>
+        {accountsEnabled ? <Button variant="primary" size="sm" onClick={signIn}>Sign in</Button> : null}
+        <Link to="/info" className="text-xs font-medium text-muted underline underline-offset-2 hover:text-foreground">About UFC.sh</Link>
       </div>
     );
-  return <div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Opening your profile…</div>;
+  return <div role="status" className="appear-late flex h-full items-center justify-center text-sm text-muted">Opening your profile…</div>;
 }
 
 function Empty({ message }: { message: string }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 px-5 text-center text-sm text-zinc-500">
+    <div className="flex h-full flex-col items-center justify-center gap-3 px-5 text-center text-sm text-muted">
       <p>{message}</p>
-      <Link to="/" className="font-semibold text-zinc-900 underline">Back to events</Link>
+      <Link to="/" className="font-medium text-foreground underline">Back to events</Link>
     </div>
   );
 }
@@ -168,7 +166,7 @@ function Profile({ handle }: { handle: string }) {
   const setFilter = (next: ProfileFilter) => setParam("filter", next === DEFAULT_FILTER ? null : next);
 
   if (error && !view) return <Empty message="This profile could not be loaded." />;
-  if (!view) return <div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading profile…</div>;
+  if (!view) return <div role="status" className="appear-late flex h-full items-center justify-center text-sm text-muted">Loading profile…</div>;
   const { scorer, agreement } = view;
 
   return (
@@ -228,14 +226,14 @@ function Profile({ handle }: { handle: string }) {
             />
             <div className={data ? "" : "opacity-60 transition-opacity delay-200"}>
               {view.total === 0 ? (
-                <p className="px-5 py-10 text-center text-sm text-zinc-500">
+                <p className="px-5 py-10 text-center text-sm text-muted">
                   {scorer.cards === 0
                     ? mine ? "You haven’t scored a fight yet. Open a completed bout and use its Score tab."
                       : "This scorer hasn’t saved a card yet."
                     : query ? `Nothing matches “${query}”.` : "No cards match this filter."}
                 </p>
               ) : (
-                <ul className="divide-y divide-zinc-100">
+                <ul className="divide-y divide-line-subtle">
                   {Array.from({ length: pages }, (_, index) => (
                     index === 0
                       ? <CardRows key={index} cards={view.cards} mine={mine} onRemove={setConfirming} />
@@ -245,7 +243,7 @@ function Profile({ handle }: { handle: string }) {
                 </ul>
               )}
             </div>
-            {more ? <div ref={sentinel} role="status" className="border-t border-zinc-100 px-5 py-4 text-center text-sm text-zinc-400">
+            {more ? <div ref={sentinel} role="status" className="border-t border-line-subtle px-5 py-4 text-center text-sm text-muted">
               {/* Only while a page is on its way; otherwise the row just holds the place. */}
               <span className={ready < pages ? "appear-late" : "invisible"}>Loading more…</span>
             </div> : null}
@@ -253,9 +251,9 @@ function Profile({ handle }: { handle: string }) {
           </>}
         </div>
 
-        {removal.error ? <p role="alert" className="text-center text-xs text-rose-600">{removal.error}</p> : null}
+        {removal.error ? <p role="alert" className="text-center text-xs text-danger">{removal.error}</p> : null}
         {error ? (
-          <p role="alert" className="text-center text-xs text-rose-600">
+          <p role="alert" className="text-center text-xs text-danger">
             Couldn’t refresh. <button className="underline" onClick={retry}>Retry</button>
           </p>
         ) : null}
@@ -286,7 +284,7 @@ function SearchBox({ value, onChange }: { value: string; onChange: (value: strin
   }, [typed, onChange]);
   return (
     <label className="relative min-w-0 flex-1 sm:max-w-64">
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" aria-hidden="true" />
       <input
         type="search"
         value={typed}
@@ -299,7 +297,7 @@ function SearchBox({ value, onChange }: { value: string; onChange: (value: strin
         autoComplete="off"
         spellCheck={false}
         enterKeyHint="search"
-        className="h-9 w-full rounded-full border border-zinc-200 bg-zinc-50 pl-8 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-8 sm:text-[13px]"
+        className="h-9 w-full rounded-full border border-line bg-surface-muted pl-8 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted hover:border-line-strong focus:border-line-strong sm:h-8 sm:text-[13px]"
       />
     </label>
   );
@@ -323,9 +321,9 @@ function ScorecardFilter({ value, agreement, total, onChange }: {
   // A native select is as wide as its longest option. The chip shows only the
   // current one, with the select laid invisibly over it to open the picker.
   return (
-    <label className="relative flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 pl-3.5 pr-3 text-[13px] font-medium text-zinc-700 transition-colors focus-within:border-zinc-400 hover:border-zinc-300 sm:h-8 sm:text-xs">
-      <span className="whitespace-nowrap">{current.label} <span className="tabular-nums text-zinc-400">{current.count.toLocaleString()}</span></span>
-      <ChevronDown className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
+    <label className="relative flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-line bg-surface-muted pl-3.5 pr-3 text-[13px] font-medium text-secondary transition-colors focus-within:border-line-strong hover:border-line-strong sm:h-8 sm:text-xs">
+      <span className="whitespace-nowrap">{current.label} <span className="tabular-nums text-muted">{current.count.toLocaleString()}</span></span>
+      <ChevronDown className="h-3.5 w-3.5 text-muted" aria-hidden="true" />
       <select
         value={value}
         onChange={event => onChange(event.target.value as ProfileFilter)}
@@ -359,30 +357,30 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
             <UsernameEditor scorer={scorer} onClose={() => setEditing(false)} onRenamed={onRenamed} />
           ) : (
             <>
-              <h1 className="flex min-w-0 items-center gap-1.5 text-base font-semibold tracking-tight text-zinc-900 sm:text-lg">
+              <h1 className="flex min-w-0 items-center gap-1.5 text-base font-medium tracking-tight text-foreground sm:text-lg">
                 <span className="min-w-0 [overflow-wrap:anywhere]">{scorer.displayName}</span>
                 {mine ? (
                   <button type="button" onClick={() => setEditing(true)} title="Change username"
                     aria-label="Change username"
-                    className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-900">
+                    className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-surface-strong hover:text-foreground">
                     <Pencil className="h-3 w-3" aria-hidden="true" />
                   </button>
                 ) : null}
               </h1>
-              <p className="mt-0.5 truncate text-xs text-zinc-500">
+              <p className="mt-0.5 truncate text-xs text-muted">
                 {scorer.cards.toLocaleString()} {scorer.cards === 1 ? "fight scored" : "fights scored"}
                 {scorer.joinedAt ? ` · Joined ${formatDateShortWithYear(new Date(scorer.joinedAt).toISOString().slice(0, 10))}` : ""}
               </p>
               {owner ? (
                 // Remembered from the last visit until Clerk confirms it.
-                <p className="mt-1 min-h-4 text-xs text-zinc-500 [overflow-wrap:anywhere]">{(isLoaded ? user?.primaryEmailAddress?.emailAddress : rememberedEmail()) ?? "\u00a0"}</p>
+                <p className="mt-1 min-h-4 text-xs text-muted [overflow-wrap:anywhere]">{(isLoaded ? user?.primaryEmailAddress?.emailAddress : rememberedEmail()) ?? "\u00a0"}</p>
               ) : null}
             </>
           )}
         </div>
       </div>
       {owner ? (
-        <div className="mt-3 flex flex-wrap items-center justify-center gap-1 border-t border-zinc-100 pt-2 sm:gap-1.5">
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-1 border-t border-line-subtle pt-2 sm:gap-1.5">
           <button type="button" onClick={() => setReportOpen(true)} className={action} title="Report an issue">
             <Flag className="h-3.5 w-3.5" aria-hidden="true" />Report
           </button>
@@ -396,7 +394,7 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
             <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />Graphic (Beta)
           </Link>
           {isDevSite ? (
-            <button type="button" onClick={toggleDevStats} aria-pressed={devStats} className={`${action} ${devStats ? "!text-sky-600" : ""}`} title="Show screen size, URL and more; tap the overlay to copy it">
+            <button type="button" onClick={toggleDevStats} aria-pressed={devStats} className={`${action} ${devStats ? "!text-info" : ""}`} title="Show screen size, URL and more; tap the overlay to copy it">
               <SquareTerminal className="h-3.5 w-3.5" aria-hidden="true" />Dev stats
             </button>
           ) : null}
@@ -440,7 +438,7 @@ function CommentsVisibility({ visible, onChanged }: { visible: boolean; onChange
     <label className={`${action} cursor-pointer`} title={error || "Hide the Comments tab from your profile. Your comments stay on each fight either way."}>
       <input type="checkbox" checked={hidden} disabled={busy} onChange={event => void change(event.target.checked)} className="h-3.5 w-3.5 accent-zinc-900" />
       Hide from my profile
-      {error ? <span role="alert" className="text-rose-600">· {error}</span> : null}
+      {error ? <span role="alert" className="text-danger">· {error}</span> : null}
     </label>
   );
 }
@@ -489,16 +487,16 @@ function UsernameEditor({ scorer, onClose, onRenamed }: { scorer: ScorerIdentity
           aria-label="Username"
           aria-invalid={Boolean(error)}
           placeholder="username"
-          className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-zinc-400"
+          className="min-h-9 min-w-0 flex-1 rounded-xl border border-line-strong bg-surface px-3 text-sm outline-none focus:border-foreground"
         />
-        <button type="submit" className={primary} disabled={busy || Boolean(problem)} title="Save username">
-          {busy ? "Saving…" : <Check className="h-3.5 w-3.5" aria-hidden="true" />}
-        </button>
-        <button type="button" className={quiet} onClick={onClose} disabled={busy} aria-label="Cancel">
-          <X className="h-3.5 w-3.5" aria-hidden="true" />
-        </button>
+        <Button type="submit" variant="primary" size="sm" loading={busy} disabled={Boolean(problem)} title="Save username" aria-label="Save username">
+          <Check size={16} strokeWidth={1.75} aria-hidden="true" />
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={busy} aria-label="Cancel">
+          <X size={16} strokeWidth={1.75} aria-hidden="true" />
+        </Button>
       </div>
-      <p className={`mt-1 truncate text-[11px] ${error ? "text-rose-600" : "text-zinc-400"}`} role={error ? "alert" : undefined}>
+      <p className={`mt-1 truncate text-[11px] ${error ? "text-danger" : "text-muted"}`} role={error ? "alert" : undefined}>
         {error || problem || `ufc.sh/profiles/${value.toLowerCase()}`}
       </p>
     </form>
@@ -539,11 +537,11 @@ function CardPage({ url, mine, onRemove, onReady }: {
   useEffect(() => { if (data) onReady(); }, [data, onReady]);
   if (error && !data)
     return (
-      <li className="px-5 py-4 text-center text-sm text-rose-600">
+      <li className="px-5 py-4 text-center text-sm text-danger">
         Couldn’t load more. <button className="underline" onClick={retry}>Retry</button>
       </li>
     );
-  if (!data) return <li role="status" className="appear-late px-5 py-4 text-center text-sm text-zinc-400">Loading…</li>;
+  if (!data) return <li role="status" className="appear-late px-5 py-4 text-center text-sm text-muted">Loading…</li>;
   return <CardRows cards={data.cards} mine={mine} onRemove={onRemove} />;
 }
 
@@ -568,24 +566,24 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
         to={`/fights/${card.fightId}?tab=score`}
         onPointerEnter={warm}
         onFocus={warm}
-        className={`block ${LIST_ROW} transition-colors hover:bg-zinc-50 ${mine ? "pr-9 sm:pr-10" : ""}`}
+        className={`block ${LIST_ROW} transition-colors hover:bg-surface-muted ${mine ? "pr-9 sm:pr-10" : ""}`}
       >
         <div className="flex items-center gap-2">
           <Avatar src={fight.f1_photo} name={fight.f1_name} size="sm" outcome={fight.f1_outcome as "win" | "loss" | null} />
-          <p className="min-w-0 flex-1 truncate text-right text-sm font-semibold text-f1-ink">{fight.f1_name}</p>
-          <p className="shrink-0 text-base font-bold tabular-nums">
-            <span className={winner === 1 ? "text-f1-ink" : "text-zinc-400"}>{scored ? card.total1 : "—"}</span>
-            <span className="mx-1 text-zinc-300">–</span>
-            <span className={winner === 2 ? "text-f2-ink" : "text-zinc-400"}>{scored ? card.total2 : "—"}</span>
+          <p className="min-w-0 flex-1 truncate text-right text-sm font-medium text-f1-ink">{fight.f1_name}</p>
+          <p className="shrink-0 text-base font-medium tabular-nums">
+            <span className={winner === 1 ? "text-f1-ink" : "text-muted"}>{scored ? card.total1 : "—"}</span>
+            <span className="mx-1 text-faint">–</span>
+            <span className={winner === 2 ? "text-f2-ink" : "text-muted"}>{scored ? card.total2 : "—"}</span>
           </p>
-          <p className="min-w-0 flex-1 truncate text-sm font-semibold text-f2-ink">{fight.f2_name}</p>
+          <p className="min-w-0 flex-1 truncate text-sm font-medium text-f2-ink">{fight.f2_name}</p>
           <Avatar src={fight.f2_photo} name={fight.f2_name} size="sm" outcome={fight.f2_outcome as "win" | "loss" | null} />
         </div>
         <p className={`mt-1 truncate text-center ${LIST_META}`}>
           {fight.event_name} · {formatDateShortWithYear(fight.date)}
           {fight.weight_class ? ` · ${fight.weight_class}` : ""}
           {card.agreement ? (
-            <span className={card.agreement === "agreed" ? "text-emerald-600" : "text-rose-600"}>
+            <span className={card.agreement === "agreed" ? "text-success" : "text-danger"}>
               {" · "}{card.agreement === "agreed" ? "Agreed" : "Disagreed"}
             </span>
           ) : null}

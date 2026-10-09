@@ -31,13 +31,13 @@ const VIEWS = [
 /** The fighter page's win and loss shades, lightest last. */
 const WITH = ["#047857", "#34d399", "#a7f3d0", "#6ee7b7"];
 const AGAINST = ["#be123c", "#fb7185", "#fecdd3", "#fda4af"];
-const TOP = (index: number) => index < 3 ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600";
+const TOP = (index: number) => index < 3 ? "bg-foreground text-background" : "bg-surface-strong text-secondary";
 
 type Row = JudgeProfile["rows"][number];
 
 function Score({ f1, f2, strong }: { f1: number; f2: number; strong?: boolean }) {
   return (
-    <span className={`tabular-nums ${strong ? "text-base font-semibold text-zinc-950" : "text-xs text-zinc-500"}`}>
+    <span className={`tabular-nums ${strong ? "text-base font-medium text-foreground" : "text-xs text-muted"}`}>
       <span className={f1 > f2 ? "text-f1-ink" : ""}>{f1}</span>–<span className={f2 > f1 ? "text-f2-ink" : ""}>{f2}</span>
     </span>
   );
@@ -49,7 +49,7 @@ function FanScore({ avg1, avg2, digits = 1 }: { avg1: number; avg2: number; digi
   const lead = Math.abs(avg1 - avg2) < 0.1 ? 0 : Math.sign(avg1 - avg2);
   return (
     <span className="tabular-nums">
-      <span className={lead > 0 ? "font-semibold text-f1-ink" : ""}>{avg1.toFixed(digits)}</span>–<span className={lead < 0 ? "font-semibold text-f2-ink" : ""}>{avg2.toFixed(digits)}</span>
+      <span className={lead > 0 ? "font-medium text-f1-ink" : ""}>{avg1.toFixed(digits)}</span>–<span className={lead < 0 ? "font-medium text-f2-ink" : ""}>{avg2.toFixed(digits)}</span>
     </span>
   );
 }
@@ -67,15 +67,15 @@ function RoundTable({ row }: { row: Row }) {
   const cell = "whitespace-nowrap px-1.5 py-1 text-center tabular-nums";
   return (
     <details className={`mt-1.5 w-fit ${ROW_CONTROL}`}>
-      <summary className="cursor-pointer text-[11px] font-medium text-zinc-500 hover:text-zinc-900">Round by round</summary>
+      <summary className="cursor-pointer text-[11px] font-medium text-muted hover:text-foreground">Round by round</summary>
       <div className="mt-1.5 overflow-x-auto">
-        <table className="text-[11px] text-zinc-600">
+        <table className="text-[11px] text-secondary">
           <thead>
-            <tr className="text-[10px] uppercase tracking-[0.08em] text-zinc-400">
-              <th className="py-1 pr-1.5 text-left font-semibold">R</th>
-              <th className={`${cell} font-semibold text-zinc-700`}>Card</th>
-              {others.map((other, index) => <th key={index} className={`${cell} font-semibold`}>{other.judge ? lastName(other.judge) : `Judge ${index + 2}`}</th>)}
-              {fans ? <th className={`${cell} font-semibold text-sky-600`}>Fans</th> : null}
+            <tr className="text-[10px] text-muted">
+              <th className="py-1 pr-1.5 text-left font-medium">R</th>
+              <th className={`${cell} font-medium text-secondary`}>Card</th>
+              {others.map((other, index) => <th key={index} className={`${cell} font-medium`}>{other.judge ? lastName(other.judge) : `Judge ${index + 2}`}</th>)}
+              {fans ? <th className={`${cell} font-medium text-info`}>Fans</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -84,9 +84,9 @@ function RoundTable({ row }: { row: Row }) {
               const crowd = fans?.find((entry) => entry.round === number);
               const flag = mine && Math.max(mine.f1, mine.f2) === 10 && Math.min(mine.f1, mine.f2) === 8 ? "10–8" : mine && mine.f1 === 10 && mine.f2 === 10 ? "10–10" : null;
               return (
-                <tr key={number} className="border-t border-zinc-100">
-                  <td className="whitespace-nowrap py-1 pr-1.5 font-medium">{number}{flag ? <span className="ml-1.5 rounded bg-amber-100 px-1 text-[9px] font-semibold text-amber-800">{flag}</span> : null}</td>
-                  <td className={`${cell} font-semibold text-zinc-900`}>{mine ? <Score f1={mine.f1} f2={mine.f2} /> : "—"}</td>
+                <tr key={number} className="border-t border-line-subtle">
+                  <td className="whitespace-nowrap py-1 pr-1.5 font-medium">{number}{flag ? <span className="ml-1.5 rounded bg-warning-subtle px-1 text-[9px] font-medium text-warning">{flag}</span> : null}</td>
+                  <td className={`${cell} font-medium text-foreground`}>{mine ? <Score f1={mine.f1} f2={mine.f2} /> : "—"}</td>
                   {others.map((other, index) => {
                     const theirs = other.rounds.find((entry) => entry.round === number);
                     return <td key={index} className={cell}>{theirs ? <Score f1={theirs.f1} f2={theirs.f2} /> : "—"}</td>;
@@ -112,9 +112,9 @@ function Verdict({ row, against }: { row: Row; against: Against }) {
   const agrees = against === "fans"
     ? row.fans ? fanPick(row.fans) === mine : null
     : row.others.length === 2 ? !row.dissent : null;
-  const tone = agrees == null ? "bg-zinc-200 text-zinc-500" : agrees ? "bg-emerald-500 text-white" : "bg-rose-500 text-white";
+  const tone = agrees == null ? "bg-track text-muted" : agrees ? "bg-success text-photo-ink" : "bg-danger text-photo-ink";
   return (
-    <span className={`grid h-7 min-w-7 shrink-0 place-items-center rounded-full text-[11px] font-bold leading-none ${tone}`}
+    <span className={`grid h-7 min-w-7 shrink-0 place-items-center rounded-full text-[11px] font-medium leading-none ${tone}`}
       title={agrees == null ? `No ${against === "fans" ? "fan card" : "full panel"}` : `${agrees ? "Same winner as" : "Different winner from"} the ${against}`}>
       {agrees == null ? "–" : agrees ? "✓" : "✕"}
     </span>
@@ -129,21 +129,21 @@ function CardRow({ row, against }: { row: Row; against: Against }) {
         <Score f1={row.card.f1} f2={row.card.f2} strong />
         <span>
           {verdict}
-          {row.dissent ? <span className="font-semibold text-rose-700"> · Lone dissent</span> : null}
-          {row.ten_eights ? <span className="font-semibold text-amber-700"> · {row.ten_eights}× 10–8</span> : null}
+          {row.dissent ? <span className="font-medium text-danger"> · Lone dissent</span> : null}
+          {row.ten_eights ? <span className="font-medium text-warning"> · {row.ten_eights}× 10–8</span> : null}
         </span>
       </span>}
       f1={row.f1} f2={row.f2} division={row.division} note={row.title ? <TitleNote /> : null}
       eventName={row.event_name} date={row.date} fightId={row.fight_id}
       extra={<>
-        <p className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] leading-4 text-zinc-400">
+        <p className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] leading-4 text-muted">
           {row.others.map((other, index) => (
             <span key={index}>
-              {other.slug ? <Link to={`/judges/${other.slug}`} className={`hover:text-zinc-900 hover:underline ${ROW_CONTROL}`}>{other.judge ? lastName(other.judge) : "Judge"}</Link> : other.judge ? lastName(other.judge) : "Judge"}{" "}
+              {other.slug ? <Link to={`/judges/${other.slug}`} className={`hover:text-foreground hover:underline ${ROW_CONTROL}`}>{other.judge ? lastName(other.judge) : "Judge"}</Link> : other.judge ? lastName(other.judge) : "Judge"}{" "}
               <Score f1={other.f1} f2={other.f2} />
             </span>
           ))}
-          {row.fans ? <span title={`Average of ${row.fans.cards.toLocaleString()} fan cards`}><span className="text-sky-600">Fans</span> <FanScore avg1={row.fans.avg1} avg2={row.fans.avg2} /></span> : null}
+          {row.fans ? <span title={`Average of ${row.fans.cards.toLocaleString()} fan cards`}><span className="text-info">Fans</span> <FanScore avg1={row.fans.avg1} avg2={row.fans.avg2} /></span> : null}
         </p>
         <RoundTable row={row} />
       </>} />
@@ -202,26 +202,26 @@ export default function JudgePage() {
         ["Round cards", s.round_cards.toLocaleString()],
       ]}>
       {filtered ? (
-        <p className="mb-3 text-xs text-zinc-500">
+        <p className="mb-3 text-xs text-muted">
           {data.total.toLocaleString()} of {data.career.cards.toLocaleString()} ·{" "}
-          <button type="button" onClick={() => filters.clear(["tab", "vs"])} className="font-medium underline underline-offset-2 hover:text-zinc-900">Show all</button>
+          <button type="button" onClick={() => filters.clear(["tab", "vs"])} className="font-medium underline underline-offset-2 hover:text-foreground">Show all</button>
         </p>
       ) : null}
       <div className="grid grid-cols-3 items-start gap-2">
         <Wheel compact label="Result" groups={[
-          { title: `Agreed ${s.agreed_result}`, tone: "text-emerald-700", slices: VERDICTS.map((verdict, index) => ({ key: `w-${verdict.value}`, label: verdict.label, n: split[verdict.value].with, color: WITH[index] })) },
-          { title: `Against ${s.with_result - s.agreed_result}`, tone: "text-rose-700", slices: VERDICTS.map((verdict, index) => ({ key: `a-${verdict.value}`, label: verdict.label, n: split[verdict.value].against, color: AGAINST[index] })) },
+          { title: `Agreed ${s.agreed_result}`, tone: "text-success", slices: VERDICTS.map((verdict, index) => ({ key: `w-${verdict.value}`, label: verdict.label, n: split[verdict.value].with, color: WITH[index] })) },
+          { title: `Against ${s.with_result - s.agreed_result}`, tone: "text-danger", slices: VERDICTS.map((verdict, index) => ({ key: `a-${verdict.value}`, label: verdict.label, n: split[verdict.value].against, color: AGAINST[index] })) },
         ]} />
         <Wheel compact label="Judges" groups={[
-          { title: "Same winner", tone: "text-emerald-700", slices: [
+          { title: "Same winner", tone: "text-success", slices: [
             { key: "both", label: "Both", n: s.panel_agreement.both, color: WITH[0] },
             { key: "one", label: "One", n: s.panel_agreement.one, color: WITH[1] },
           ] },
-          { title: "Alone", tone: "text-rose-700", slices: [{ key: "none", label: "Neither", n: s.panel_agreement.none, color: AGAINST[0] }] },
+          { title: "Alone", tone: "text-danger", slices: [{ key: "none", label: "Neither", n: s.panel_agreement.none, color: AGAINST[0] }] },
         ]} />
         <Wheel compact label="Fans" groups={[
-          { title: "Same winner", tone: "text-emerald-700", slices: [{ key: "same", label: "Same", n: s.fan_cards - s.fan_pick_differs, color: WITH[0] }] },
-          { title: "Different", tone: "text-rose-700", slices: [{ key: "differ", label: "Different", n: s.fan_pick_differs, color: AGAINST[0] }] },
+          { title: "Same winner", tone: "text-success", slices: [{ key: "same", label: "Same", n: s.fan_cards - s.fan_pick_differs, color: WITH[0] }] },
+          { title: "Different", tone: "text-danger", slices: [{ key: "differ", label: "Different", n: s.fan_pick_differs, color: AGAINST[0] }] },
         ]} />
       </div>
     </IdentityCard>
@@ -275,7 +275,7 @@ export default function JudgePage() {
         <div aria-busy={stale || list.loading} className={`${BOUT_LIST} ${stale ? "opacity-60 transition-opacity delay-200" : ""}`}>
           {list.items.map((row) => <CardRow key={row.fight_id} row={row} against={against} />)}
         </div>
-      ) : <p className="px-5 py-8 text-center text-sm text-zinc-500">No cards match these filters.</p>}
+      ) : <p className="px-5 py-8 text-center text-sm text-muted">No cards match these filters.</p>}
       <LoadMore list={list} />
     </section>
   );

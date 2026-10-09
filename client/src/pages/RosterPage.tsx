@@ -36,22 +36,22 @@ function Move({ move, cut, big, fresh }: { move: RosterMove; cut: boolean; big: 
     <Avatar src={move.photo_url} name={move.name} size={big ? "sm" : "row"} />
     <span className={`min-w-0 flex-1 ${big ? "" : "xl:flex xl:items-baseline xl:justify-between xl:gap-2"}`}>
       <span className="flex min-w-0 items-center gap-1.5">
-        {fresh ? <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${cut ? "bg-rose-500" : "bg-emerald-500"}`} title="New since your last visit"><span className="sr-only">New:</span></span> : null}
-        <span className="truncate text-[13px] font-medium text-zinc-900">{move.name}</span>
+        {fresh ? <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${cut ? "bg-danger" : "bg-success"}`} title="New since your last visit"><span className="sr-only">New:</span></span> : null}
+        <span className="truncate text-[13px] font-medium text-foreground">{move.name}</span>
         {move.country ? <Flag code={move.country} name={countryName(move.country)} className="text-xs" /> : null}
       </span>
-      <span className={`block truncate text-[11px] tabular-nums text-zinc-500 ${big ? "" : "xl:shrink-0"}`}>{detail}</span>
+      <span className={`block truncate text-[11px] tabular-nums text-muted ${big ? "" : "xl:shrink-0"}`}>{detail}</span>
     </span>
     <span className="shrink-0 text-right text-[11px] leading-4">
-      {move.date ? <span className="block tabular-nums text-zinc-400">
+      {move.date ? <span className="block tabular-nums text-muted">
         {move.date.startsWith(thisYear) ? formatDateShort(move.date) : formatDateShortWithYear(move.date)}
       </span> : null}
-      {cut && move.reason ? <span className="block text-zinc-500">{move.reason}</span> : null}
+      {cut && move.reason ? <span className="block text-muted">{move.reason}</span> : null}
     </span>
   </>;
   return (
-    <li className="border-b border-zinc-100">
-      {move.fighter_id ? <Link to={`/fighters/${move.fighter_id}`} className={`${row} hover:bg-zinc-50`}>{content}</Link> : <div className={row}>{content}</div>}
+    <li className="border-b border-line-subtle">
+      {move.fighter_id ? <Link to={`/fighters/${move.fighter_id}`} className={`${row} hover:bg-surface-muted`}>{content}</Link> : <div className={row}>{content}</div>}
     </li>
   );
 }
@@ -68,16 +68,16 @@ function MoveList({ kind, moves, fresh, both }: { kind: "signed" | "cut"; moves:
   // Recent signings get their own rows, so a big row never pairs with a small one.
   const groups = cut ? [moves] : [moves.filter(recent), moves.filter((move) => !recent(move))];
   return (
-    <div className={`min-w-0 ${both ? cut ? "border-zinc-100 xl:border-l" : "xl:col-span-2" : ""}`}>
-      <div className="flex items-baseline gap-2 border-b border-zinc-100 px-4 py-2 sm:px-5">
-        <h2 className="shrink-0 text-sm font-semibold text-zinc-900">{cut ? "Cut" : "Signed"} <span className="tabular-nums text-zinc-400">{moves.length}</span></h2>
+    <div className={`min-w-0 ${both ? cut ? "border-line-subtle xl:border-l" : "xl:col-span-2" : ""}`}>
+      <div className="flex items-baseline gap-2 border-b border-line-subtle px-4 py-2 sm:px-5">
+        <h2 className="shrink-0 text-sm font-medium text-foreground">{cut ? "Cut" : "Signed"} <span className="tabular-nums text-muted">{moves.length}</span></h2>
       </div>
       {groups.map((group, index) => group.length ? (
         <ul key={index} className={`grid grid-cols-1 ${cut ? "" : "sm:grid-cols-2"}`}>
           {group.map((move) => <Move key={`${move.fighter_id ?? move.name}-${move.date}`} move={move} cut={cut} big={cut || index === 0} fresh={fresh.has(moveKey(kind, move))} />)}
         </ul>
       ) : null)}
-      {!moves.length ? <p className="px-5 py-8 text-center text-sm text-zinc-500">No one right now.</p> : null}
+      {!moves.length ? <p className="px-5 py-8 text-center text-sm text-muted">No one right now.</p> : null}
     </div>
   );
 }

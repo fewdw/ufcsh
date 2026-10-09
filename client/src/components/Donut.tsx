@@ -71,8 +71,8 @@ export function Donut({
       </svg>
       {centerValue ? (
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-          <span className={`${size < 100 ? "text-sm" : "text-xl"} font-semibold tabular-nums text-zinc-900`}>{centerValue}</span>
-          {centerLabel ? <span className="mt-0.5 max-w-[80%] truncate text-[10px] font-medium uppercase tracking-wide text-zinc-400">{centerLabel}</span> : null}
+          <span className={`${size < 100 ? "text-sm" : "text-xl"} font-medium tabular-nums text-foreground`}>{centerValue}</span>
+          {centerLabel ? <span className="mt-0.5 max-w-[80%] truncate text-[10px] font-medium text-muted">{centerLabel}</span> : null}
         </div>
       ) : null}
     </div>
@@ -87,9 +87,9 @@ export function DonutLegend({ slices, total }: { slices: Slice[]; total: number 
       {slices.map(slice => (
         <li key={slice.key} className="flex items-center gap-2 text-xs">
           <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-[3px]" style={{ background: slice.color }} />
-          <span className="min-w-0 flex-1 truncate text-zinc-600">{slice.label}</span>
-          <span className="shrink-0 tabular-nums font-medium text-zinc-900">{total ? Math.round((slice.value / total) * 100) : 0}%</span>
-          <span className="w-8 shrink-0 text-right tabular-nums text-zinc-400">{slice.value}</span>
+          <span className="min-w-0 flex-1 truncate text-secondary">{slice.label}</span>
+          <span className="shrink-0 tabular-nums font-medium text-foreground">{total ? Math.round((slice.value / total) * 100) : 0}%</span>
+          <span className="w-8 shrink-0 text-right tabular-nums text-muted">{slice.value}</span>
         </li>
       ))}
     </ul>

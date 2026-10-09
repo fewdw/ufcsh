@@ -36,8 +36,8 @@ export default function AdminAdmins({ email }: { email: string | null }) {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Administrators</h2>
-        <p className="text-xs text-zinc-500">
+        <h2 className="text-lg font-medium tracking-tight text-foreground">Administrators</h2>
+        <p className="text-xs text-muted">
           Access is by the verified email on a Clerk account. Someone added here must sign in with that exact address.
         </p>
       </div>
@@ -55,7 +55,7 @@ export default function AdminAdmins({ email }: { email: string | null }) {
           onChange={event => setValue(event.target.value)}
           placeholder="name@example.com"
           autoComplete="off"
-          className="w-64 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-zinc-400"
+          className="w-64 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-line-strong"
         />
         <button
           type="submit"
@@ -65,25 +65,25 @@ export default function AdminAdmins({ email }: { email: string | null }) {
           {busy ? "Saving…" : "Add administrator"}
         </button>
       </form>
-      {failed ? <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">{failed}</p> : null}
+      {failed ? <p className="rounded-md bg-danger-subtle px-3 py-2 text-xs text-danger">{failed}</p> : null}
 
       {loading && !data ? (
-        <div role="status" className="py-10 text-center text-sm text-zinc-400">Loading administrators…</div>
+        <div role="status" className="py-10 text-center text-sm text-muted">Loading administrators…</div>
       ) : error && !data ? (
-        <div className="flex flex-col items-center gap-2 py-10 text-sm text-zinc-500">
+        <div className="flex flex-col items-center gap-2 py-10 text-sm text-muted">
           <p>Couldn’t load the list. {error}</p>
-          <button type="button" onClick={() => void reload()} className="font-semibold text-zinc-900 underline">Retry</button>
+          <button type="button" onClick={() => void reload()} className="font-medium text-foreground underline">Retry</button>
         </div>
       ) : (
-        <ul className="divide-y divide-zinc-100 overflow-hidden rounded-xl border border-zinc-200 bg-white">
+        <ul className="divide-y divide-line-subtle overflow-hidden rounded-xl border border-line bg-surface">
           {admins.map(admin => (
             <li key={admin.email} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-zinc-900">
+                <p className="truncate text-sm font-medium text-foreground">
                   {admin.email}
-                  {admin.email === email ? <span className="ml-2 text-[11px] font-normal text-zinc-400">you</span> : null}
+                  {admin.email === email ? <span className="ml-2 text-[11px] font-normal text-muted">you</span> : null}
                 </p>
-                <p className="text-[11px] text-zinc-500">
+                <p className="text-[11px] text-muted">
                   {admin.removable
                     ? `Added ${when(admin.addedAt)}${admin.addedBy ? ` by ${admin.addedBy}` : ""}`
                     : "Set in the server environment · permanent"}
@@ -94,12 +94,12 @@ export default function AdminAdmins({ email }: { email: string | null }) {
                   type="button"
                   disabled={busy}
                   onClick={() => void change({ method: "DELETE", path: `/api/admin/admins?email=${encodeURIComponent(admin.email)}` })}
-                  className="rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
+                  className="rounded-md border border-line px-2.5 py-1.5 text-xs font-medium text-danger transition hover:bg-danger-subtle disabled:opacity-50"
                 >
                   Remove
                 </button>
               ) : (
-                <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-500">Permanent</span>
+                <span className="rounded-full bg-surface-strong px-2 py-0.5 text-[11px] font-medium text-muted">Permanent</span>
               )}
             </li>
           ))}

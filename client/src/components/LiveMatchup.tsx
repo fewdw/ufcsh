@@ -29,22 +29,22 @@ export default function LiveMatchup() {
       to={`/fights/${fight.id}`}
       state={{ eventId: data.event.id }}
       title={`${fight.f1.name} vs ${fight.f2.name} · ${data.event.name}${live ? " · on now" : at ? ` · expected ${at}` : ""}`}
-      className="flex max-w-full items-center gap-2 rounded-full border border-zinc-200 bg-white py-1 pl-2.5 pr-3 transition-colors hover:border-zinc-300 hover:bg-zinc-50"
+      className="flex max-w-full items-center gap-2 rounded-full border border-line bg-surface py-1 pl-2.5 pr-3 transition-colors hover:border-line-strong hover:bg-surface-muted"
     >
       {live ? (
-        <span className="live-dot h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
+        <span className="live-dot h-1.5 w-1.5 shrink-0 rounded-full bg-success" aria-hidden="true" />
       ) : null}
-      <span className={`shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700`}>
+      <span className={`shrink-0 text-[10px] font-medium text-success`}>
         {live ? "Live" : "Next"}
       </span>
-      <span className="truncate text-xs font-semibold text-zinc-900">{names}</span>
+      <span className="truncate text-xs font-medium text-foreground">{names}</span>
       {live && data.fight_number ? (
-        <span className="shrink-0 text-[11px] font-medium tabular-nums text-zinc-500">
+        <span className="shrink-0 text-[11px] font-medium tabular-nums text-muted">
           {data.fight_number}/{data.total_fights}
         </span>
       ) : null}
       {!live && away ? (
-        <span className="shrink-0 text-[11px] font-medium tabular-nums text-zinc-500" aria-label={`starts in ${away}`}>
+        <span className="shrink-0 text-[11px] font-medium tabular-nums text-muted" aria-label={`starts in ${away}`}>
           {away}
         </span>
       ) : null}

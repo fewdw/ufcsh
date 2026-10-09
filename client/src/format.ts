@@ -96,15 +96,15 @@ export function lastName(name: string): string {
 export function outcomeClasses(outcome: string | null | undefined): string {
   switch (outcome) {
     case "win":
-      return "bg-emerald-100 text-emerald-700";
+      return "bg-success-subtle text-success";
     case "loss":
-      return "bg-rose-100 text-rose-700";
+      return "bg-danger-subtle text-danger";
     case "draw":
-      return "bg-amber-100 text-amber-700";
+      return "bg-warning-subtle text-warning";
     case "nc":
-      return "bg-zinc-200 text-zinc-600";
+      return "bg-track text-secondary";
     default:
-      return "bg-zinc-100 text-zinc-500";
+      return "bg-surface-strong text-muted";
   }
 }
 

@@ -34,7 +34,7 @@ function HistoryTile({ row, names }: { row: Row; names: [string, string] }) {
   const sample = `${row.fights.toLocaleString()} fights`;
   const said = `${row.f1}: ${row.f1Wins} wins, ${row.f2}: ${row.f2Wins} wins, over ${sample}${row.gap ? ` with a ${row.gap}` : ""}`;
   const pct = (value: number, other: number, ink: string) => (
-    <span className={`text-sm tabular-nums ${value > other ? "font-bold" : "font-medium opacity-70"}`} style={{ color: ink }}>{value}%</span>
+    <span className={`text-sm tabular-nums ${value > other ? "font-medium" : "font-medium opacity-70"}`} style={{ color: ink }}>{value}%</span>
   );
   return (
     <div className="flex min-w-0 flex-col items-center gap-1.5 py-1 @[26rem]:gap-1 @[26rem]:py-0" title={`${names[0]}: ${row.f1} · ${names[1]}: ${row.f2}. ${said}.`}>
@@ -42,17 +42,17 @@ function HistoryTile({ row, names }: { row: Row; names: [string, string] }) {
       <div className="grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 @[26rem]:gap-x-1.5">
         <div className="flex min-w-0 flex-col items-end text-right">
           {pct(f1Pct, f2Pct, "var(--color-f1-ink)")}
-          <span className={`${CHART_TEXT} leading-tight text-zinc-600 @[26rem]:hidden`}>{row.f1}</span>
+          <span className={`${CHART_TEXT} leading-tight text-secondary @[26rem]:hidden`}>{row.f1}</span>
         </div>
         <Pie share={share} label={said} />
         <div className="flex min-w-0 flex-col items-start">
           {pct(f2Pct, f1Pct, "var(--color-f2-ink)")}
-          <span className={`${CHART_TEXT} leading-tight text-zinc-600 @[26rem]:hidden`}>{row.f2}</span>
+          <span className={`${CHART_TEXT} leading-tight text-secondary @[26rem]:hidden`}>{row.f2}</span>
         </div>
       </div>
       <span className={`hidden text-center ${CHART_TEXT} leading-tight @[26rem]:block`}>
         <span style={{ color: "var(--color-f1-ink)" }}>{row.f1}</span>
-        <span className="text-zinc-400"> vs </span>
+        <span className="text-muted"> vs </span>
         <span style={{ color: "var(--color-f2-ink)" }}>{row.f2}</span>
       </span>
       <span className={`${metaText} text-center`}>{row.gap ? `${row.gap} · ${sample}` : sample}</span>
@@ -89,8 +89,8 @@ export default function TapeHistory({ fight }: { fight: Matchup }) {
             .sort((a, b) => b.edge - a.edge)
             .map(({ row }) => <HistoryTile key={row.key} row={row} names={names} />)}
         </div>
-      ) : error ? <p className={`${CHART_TEXT} text-zinc-400`}>Could not load. <button type="button" onClick={retry} className="underline">Retry</button></p>
-        : <p className={`${CHART_TEXT} text-zinc-400`}>Loading earlier bouts…</p>}
+      ) : error ? <p className={`${CHART_TEXT} text-muted`}>Could not load. <button type="button" onClick={retry} className="underline">Retry</button></p>
+        : <p className={`${CHART_TEXT} text-muted`}>Loading earlier bouts…</p>}
     </div>
   );
 }

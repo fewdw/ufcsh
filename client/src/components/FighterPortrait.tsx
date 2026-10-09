@@ -16,16 +16,16 @@ const FRAME = {
 const HALO: Record<string, string> = {
   f1: "bg-f1/10",
   f2: "bg-f2/10",
-  none: "bg-zinc-500/10",
+  none: "bg-muted/10",
 };
 
 /** The round avatar carries the result in its ring. A cut-out has no edge to
  *  ring, so the result tints the ground it stands on instead. */
 const BASE: Record<string, string> = {
-  win: "bg-emerald-500/40",
-  loss: "bg-rose-500/35",
-  draw: "bg-amber-500/35",
-  nc: "bg-zinc-500/35",
+  win: "bg-success/40",
+  loss: "bg-danger/35",
+  draw: "bg-warning/35",
+  nc: "bg-muted/35",
 };
 
 const AVATAR_SIZE = { hero: "lg", profile: "xl" } as const;
@@ -68,7 +68,7 @@ export default function FighterPortrait({
       {glow ? <span aria-hidden="true" className={`absolute inset-x-2 bottom-12 top-3 rounded-[50%] blur-2xl ${HALO[corner]}`} /> : null}
       {glow ? <span
         aria-hidden="true"
-        className={`absolute bottom-1 h-1.5 w-3/5 rounded-[50%] blur-[3px] ${outcome ? BASE[outcome] : "bg-zinc-500/25"}`}
+        className={`absolute bottom-1 h-1.5 w-3/5 rounded-[50%] blur-[3px] ${outcome ? BASE[outcome] : "bg-muted/25"}`}
       /> : null}
       <ProgressiveImage
         key={displaySrc}

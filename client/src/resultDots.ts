@@ -16,7 +16,7 @@ export function resultDot(result: FormResult) {
   const decision = /(?:^|-)DEC$|^(?:TECHNICAL\s+)?DECISION(?:\s|\(|$)/.test(method);
   const outside = result.ufc === false;
   const label = result.outcome === "win" ? "Win" : result.outcome === "loss" ? "Loss" : result.outcome === "draw" ? "Draw" : result.outcome === "nc" ? "No contest" : "Unknown result";
-  const color = result.outcome === "win" ? "border-emerald-500 bg-emerald-500" : result.outcome === "loss" ? "border-rose-500 bg-rose-500" : result.outcome === "draw" ? "border-amber-500 bg-amber-500" : "border-[var(--color-zinc-400)] bg-zinc-400";
+  const color = result.outcome === "win" ? "border-success bg-success" : result.outcome === "loss" ? "border-danger bg-danger" : result.outcome === "draw" ? "border-warning bg-warning" : "border-muted bg-muted";
   // A square with softened corners reads as its own shape beside a circle at
   // eight pixels, where a rotated one only reads as a jagged dot.
   const shape = outside ? "rounded-[3px]" : "rounded-full";

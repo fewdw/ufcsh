@@ -5,9 +5,9 @@ import { Link } from "react-router-dom";
 import type { VenueRef } from "../api";
 import { formatDate, formatDateShort } from "../format";
 
-const DOT = <span aria-hidden="true" className="text-zinc-300">·</span>;
+const DOT = <span aria-hidden="true" className="text-faint">·</span>;
 
-const PLACE_LINK = "min-w-0 rounded text-zinc-500 transition hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 dark:hover:text-zinc-100";
+const PLACE_LINK = "min-w-0 rounded text-muted transition hover:text-foreground ";
 
 /** Date · venue · city. The venue and the city open their history, so they
  *  read as links the way the rest of the app's do: a trailing arrow and a hover. */
@@ -36,10 +36,10 @@ export function EventPlace({ venue, location, locationSlug, leading = true }: {
   );
 }
 
-export const CARD_STEP = "inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition";
+export const CARD_STEP = "inline-flex min-h-8 items-center gap-1 rounded-full px-2.5 text-xs font-medium transition";
 
 /** A step inside the card navigation: larger in the phone's pill, thin in the bar. */
-export const NAV_STEP = "inline-flex h-8 items-center gap-1 rounded-full px-3 text-[13px] font-semibold transition sm:h-7 sm:px-2.5 sm:text-xs";
+export const NAV_STEP = "inline-flex h-8 items-center gap-1 rounded-full px-3 text-[13px] font-medium transition sm:h-7 sm:px-2.5 sm:text-xs";
 
 /** Prev, the list and Next: a thin bar heading the card from a tablet up, and
  *  a pill always floating at the bottom of a phone's screen. */
@@ -73,7 +73,7 @@ export function CardNavigation({ label, previous, center, next, className = "" }
       {createPortal(
         // Taps in quick succession are each a step, never a double-tap zoom.
         <nav aria-label={label} inert={!shown}
-          className={`touch-manipulation fixed bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full border border-zinc-200 bg-white/95 p-1 shadow-lg backdrop-blur sm:hidden [&_[data-nav-extra]]:static [&_[data-nav-extra]]:translate-y-0 [&_[data-nav-extra]]:h-8 [&_[data-nav-extra]]:w-10 ${
+          className={`touch-manipulation fixed bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full border border-line bg-surface/95 p-1 shadow-lg backdrop-blur sm:hidden [&_[data-nav-extra]]:static [&_[data-nav-extra]]:translate-y-0 [&_[data-nav-extra]]:h-8 [&_[data-nav-extra]]:w-10 ${
             shown ? "" : "invisible"}`}>
           {previous}{center}{next}
         </nav>,
@@ -94,9 +94,9 @@ export function CardEventTitle({ name, date, location, locationSlug, venue, chil
   return (
     <div className="flex items-start justify-between gap-3 px-3 py-2 @[34rem]:px-6 @[48rem]:items-center @[48rem]:gap-6 @[48rem]:py-4">
       <div className="min-w-0">
-        <h1 className="text-balance text-sm font-semibold leading-tight tracking-tight text-zinc-950 @[34rem]:text-2xl">{name}</h1>
-        <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-zinc-500 @[48rem]:mt-1 @[48rem]:gap-x-2 @[48rem]:text-xs @[48rem]:leading-relaxed">
-          <span className="whitespace-nowrap font-medium text-zinc-600">
+        <h1 className="text-balance text-sm font-medium leading-tight tracking-tight text-foreground @[34rem]:text-2xl">{name}</h1>
+        <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] leading-4 text-muted @[48rem]:mt-1 @[48rem]:gap-x-2 @[48rem]:text-xs @[48rem]:leading-relaxed">
+          <span className="whitespace-nowrap font-medium text-secondary">
             <span className="@[48rem]:hidden">{date ? formatDateShort(date) : "No date"}</span>
             <span className="hidden @[48rem]:inline">{date ? formatDate(date) : "No date"}</span>
           </span>

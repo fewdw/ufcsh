@@ -7,7 +7,7 @@ export default function Flag({ code, name, className = "" }: { code: string | nu
   const label = name || (code ?? "").toUpperCase();
   if (!label) return null;
   if (!flag) {
-    return <span className={`shrink-0 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 ${className}`} title={label}>{label}</span>;
+    return <span className={`shrink-0 text-[10px] font-medium text-muted ${className}`} title={label}>{label}</span>;
   }
   return <span role="img" aria-label={label} title={label} className={`shrink-0 leading-none ${className}`}>{flag}</span>;
 }

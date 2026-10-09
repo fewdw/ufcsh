@@ -10,8 +10,8 @@ import { Calendar, CalendarCell, CalendarGrid, CalendarGridBody, CalendarGridHea
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const earliest = parseDate("2013-02-04");
-const calendarButton = "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-zinc-700 hover:bg-zinc-100 disabled:opacity-30";
-const calendarSelect = "h-11 min-w-0 rounded-lg border border-zinc-200 bg-white pl-2 pr-6 text-sm font-medium text-zinc-900";
+const calendarButton = "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-secondary hover:bg-surface-strong disabled:opacity-30";
+const calendarSelect = "h-11 min-w-0 rounded-lg border border-line bg-surface pl-2 pr-6 text-sm font-medium text-foreground";
 
 function initialDate(date: string | null) {
   try { return date ? parseDate(date) : null; } catch { return null; }
@@ -25,7 +25,7 @@ export default function RankingsDatePicker({ selectedDate, today, onView, trigge
   const [value, setValue] = useState<CalendarDate | null>(() => initialDate(selectedDate) ?? parseDate(today));
   const latest = parseDate(today);
   return <Popover data-sheet-overlay isOpen triggerRef={triggerRef} onOpenChange={open => { if (!open) onClose(); }} placement="bottom end" offset={8}
-    className="z-[80] w-[324px] max-w-[calc(100vw-16px)] overflow-auto rounded-xl border border-zinc-200 bg-white p-2 shadow-xl">
+    className="z-[80] w-[324px] max-w-[calc(100vw-16px)] overflow-auto rounded-xl border border-line bg-surface p-2 shadow-xl">
     <Dialog aria-label="Choose ranking date" className="outline-none">
       <form aria-label="View rankings by date" onSubmit={event => {
         event.preventDefault();
@@ -37,13 +37,13 @@ export default function RankingsDatePicker({ selectedDate, today, onView, trigge
         <div className="mb-2 flex items-start gap-2 text-xs">
           <DateField name="date" value={value} onChange={setValue} isRequired minValue={earliest} maxValue={latest}
             placeholderValue={latest} validationBehavior="native" className="grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)] items-center gap-2">
-            <Label className="shrink-0 whitespace-nowrap font-medium text-zinc-600">View date</Label>
-            <DateInput className="flex h-11 min-w-0 items-center justify-center rounded-lg border border-zinc-200 bg-white px-2 tabular-nums text-zinc-900 focus-within:border-sky-500 [@media(pointer:coarse)]:text-base">
-              {segment => <DateSegment segment={segment} className="rounded px-px outline-none data-[placeholder]:text-zinc-400 data-[focused]:bg-sky-100 data-[focused]:text-sky-900" />}
+            <Label className="shrink-0 whitespace-nowrap font-medium text-secondary">View date</Label>
+            <DateInput className="flex h-11 min-w-0 items-center justify-center rounded-lg border border-line bg-surface px-2 tabular-nums text-foreground focus-within:border-info-line [@media(pointer:coarse)]:text-base">
+              {segment => <DateSegment segment={segment} className="rounded px-px outline-none data-[placeholder]:text-muted data-[focused]:bg-info-subtle data-[focused]:text-info" />}
             </DateInput>
-            <FieldError className="col-span-2 text-[11px] text-red-600" />
+            <FieldError className="col-span-2 text-[11px] text-danger" />
           </DateField>
-          <button type="submit" className="h-11 shrink-0 rounded-lg bg-zinc-100 px-3 font-medium text-zinc-700 hover:bg-zinc-200">View</button>
+          <button type="submit" className="h-11 shrink-0 rounded-lg bg-surface-strong px-3 font-medium text-secondary hover:bg-track">View</button>
         </div>
         <Calendar aria-label="Ranking date" value={value} onChange={setValue} minValue={earliest} maxValue={latest}>
           <CalendarHeading className="sr-only" />
@@ -58,8 +58,8 @@ export default function RankingsDatePicker({ selectedDate, today, onView, trigge
             <Button slot="next" className={calendarButton}><ChevronRight className="h-4 w-4" /></Button>
           </header>
           <CalendarGrid className="w-full table-fixed border-collapse" weekdayStyle="short">
-            <CalendarGridHeader>{day => <CalendarHeaderCell className="h-8 text-[11px] font-medium text-zinc-500">{day}</CalendarHeaderCell>}</CalendarGridHeader>
-            <CalendarGridBody>{date => <CalendarCell date={date} className="flex h-11 w-full cursor-pointer items-center justify-center rounded-lg text-sm text-zinc-900 outline-none hover:bg-zinc-100 data-[outside-month]:invisible data-[disabled]:cursor-default data-[disabled]:opacity-30 data-[selected]:bg-sky-600 data-[selected]:text-white data-[focus-visible]:ring-2 data-[focus-visible]:ring-inset data-[focus-visible]:ring-sky-500" />}</CalendarGridBody>
+            <CalendarGridHeader>{day => <CalendarHeaderCell className="h-8 text-[11px] font-medium text-muted">{day}</CalendarHeaderCell>}</CalendarGridHeader>
+            <CalendarGridBody>{date => <CalendarCell date={date} className="flex h-11 w-full cursor-pointer items-center justify-center rounded-lg text-sm text-foreground outline-none hover:bg-surface-strong data-[outside-month]:invisible data-[disabled]:cursor-default data-[disabled]:opacity-30 data-[selected]:bg-control-on data-[selected]:text-control-glyph " />}</CalendarGridBody>
           </CalendarGrid>
         </Calendar>
       </form>

@@ -21,9 +21,9 @@ type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
 
 const primary = BUTTON_PRIMARY;
 const quiet = BUTTON_QUIET;
-const action = "inline-flex h-7 items-center gap-1 rounded-full px-2 text-[11px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
+const action = "inline-flex h-7 items-center gap-1 rounded-full px-2 text-[11px] font-medium text-muted transition-colors hover:bg-surface-strong hover:text-foreground disabled:opacity-40";
 /** The writing box, and its signed-out and muted stand-ins. */
-const box = "min-w-0 rounded-2xl border border-zinc-200 bg-white transition-colors focus-within:border-zinc-400";
+const box = "min-w-0 rounded-2xl border border-line bg-surface transition-colors focus-within:border-line-strong";
 const SORTS: { id: CommentSort; label: string }[] = [{ id: "top", label: "Top" }, { id: "new", label: "New" }, { id: "old", label: "Old" }];
 const message = (problem: unknown) => problem instanceof Error ? problem.message : "Something went wrong. Please retry.";
 const noToken: GetToken = async () => null;
@@ -238,18 +238,18 @@ function DiscussionPanel({ fightId, viewerKey, getToken, signedIn, signIn }: {
     <DiscussionContext.Provider value={discussion}>
       {!accountsEnabled ? (
         <div className={box}>
-          <p className="px-4 py-3 text-sm leading-6 text-zinc-500">Sign-in must be configured to join the discussion.</p>
+          <p className="px-4 py-3 text-sm leading-6 text-muted">Sign-in must be configured to join the discussion.</p>
         </div>
       ) : !signedIn ? (
         <div className={box}>
-          <button type="button" onClick={() => signIn?.()} className="block w-full px-4 pb-1 pt-3 text-left text-sm leading-6 text-zinc-400">Talk about the fight</button>
+          <button type="button" onClick={() => signIn?.()} className="block w-full px-4 pb-1 pt-3 text-left text-sm leading-6 text-muted">Talk about the fight</button>
           <div className="flex justify-end px-2 pb-2">
             <button type="button" className={primary} onClick={() => signIn?.()}>Sign in to comment</button>
           </div>
         </div>
       ) : muted ? (
         <div className={box}>
-          <p className="px-4 py-3 text-sm leading-6 text-amber-800" role="status">
+          <p className="px-4 py-3 text-sm leading-6 text-warning" role="status">
             A moderator has paused your commenting {muted >= Number.MAX_SAFE_INTEGER ? "permanently" : `until ${new Date(muted).toLocaleString()}`}. You can still read and report.
           </p>
         </div>
@@ -258,29 +258,29 @@ function DiscussionPanel({ fightId, viewerKey, getToken, signedIn, signIn }: {
       )}
 
       <section className={PANEL_SHELL} aria-busy={loading}>
-        <div className="flex items-center justify-end gap-2 border-b border-zinc-100 px-3 py-2 sm:px-4">
+        <div className="flex items-center justify-end gap-2 border-b border-line-subtle px-3 py-2 sm:px-4">
           {/* A permalink shows one thread; this goes back to the rest. */}
           {focus ? (
             <button type="button" onClick={showAll}
-              className="rounded-full px-2.5 py-1 text-xs font-semibold text-zinc-800 transition-colors hover:bg-zinc-100">
+              className="rounded-full px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-surface-strong">
               Show all threads
             </button>
           ) : null}
           <SortMenu sort={sort} onChange={setSort} />
         </div>
         {error && !comments ? (
-          <p className="px-5 py-10 text-center text-sm text-rose-600">{error} <button type="button" className="underline" onClick={() => void load()}>Retry</button></p>
+          <p className="px-5 py-10 text-center text-sm text-danger">{error} <button type="button" className="underline" onClick={() => void load()}>Retry</button></p>
         ) : !comments ? (
-          <p className="appear-late px-5 py-10 text-center text-sm text-zinc-400" role="status">Loading comments…</p>
+          <p className="appear-late px-5 py-10 text-center text-sm text-muted" role="status">Loading comments…</p>
         ) : !comments.length ? (
-          <p className="px-5 py-10 text-center text-sm text-zinc-500">No comments yet. Start the conversation.</p>
+          <p className="px-5 py-10 text-center text-sm text-muted">No comments yet. Start the conversation.</p>
         ) : (
-          <ul className={`divide-y divide-zinc-100 ${loading ? "opacity-60 transition-opacity delay-200" : ""}`}>
+          <ul className={`divide-y divide-line-subtle ${loading ? "opacity-60 transition-opacity delay-200" : ""}`}>
             {comments.map(node => <li key={node.id} className="px-3 py-3 sm:px-4"><Thread node={node} rootId={node.id} /></li>)}
           </ul>
         )}
         {!focus && meta && comments && meta.next < meta.threads ? (
-          <div className="border-t border-zinc-100 px-5 py-3 text-center">
+          <div className="border-t border-line-subtle px-5 py-3 text-center">
             <button type="button" onClick={() => void loadMore()} disabled={loadingMore} className={quiet}>
               {loadingMore ? "Loading…" : "Load more comments"}
             </button>
@@ -289,7 +289,7 @@ function DiscussionPanel({ fightId, viewerKey, getToken, signedIn, signIn }: {
       </section>
 
       {notice ? (
-        <div role="status" className="fixed inset-x-0 bottom-5 z-50 mx-auto w-fit max-w-[calc(100%-2rem)] rounded-full bg-zinc-900 px-4 py-2 text-xs font-medium text-white shadow-lg">
+        <div role="status" className="fixed inset-x-0 bottom-5 z-50 mx-auto w-fit max-w-[calc(100%-2rem)] rounded-full bg-foreground px-4 py-2 text-xs font-medium text-background shadow-lg">
           {notice}
         </div>
       ) : null}
@@ -303,13 +303,13 @@ function DiscussionPanel({ fightId, viewerKey, getToken, signedIn, signIn }: {
 
 function SortMenu({ sort, onChange }: { sort: CommentSort; onChange: (sort: CommentSort) => void }) {
   return (
-    <label className="relative inline-flex shrink-0 items-center gap-1 text-xs text-zinc-500">
+    <label className="relative inline-flex shrink-0 items-center gap-1 text-xs text-muted">
       Sort by:
       <select value={sort} onChange={event => onChange(event.target.value as CommentSort)}
-        className="cursor-pointer appearance-none rounded-full bg-transparent py-1 pl-1.5 pr-6 text-xs font-semibold text-zinc-800 outline-none transition-colors hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-zinc-300">
+        className="cursor-pointer appearance-none rounded-full bg-transparent py-1 pl-1.5 pr-6 text-xs font-medium text-foreground outline-none transition-colors hover:bg-surface-strong ">
         {SORTS.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
       </select>
-      <ChevronDown className="pointer-events-none absolute right-1.5 h-3.5 w-3.5 text-zinc-500" aria-hidden="true" />
+      <ChevronDown className="pointer-events-none absolute right-1.5 h-3.5 w-3.5 text-muted" aria-hidden="true" />
     </label>
   );
 }
@@ -364,12 +364,12 @@ function Composer({ initial = "", placeholder, submitLabel, autoFocus = false, o
         rows={autoFocus || initial ? 2 : 1}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="block max-h-[50vh] w-full resize-none overflow-y-auto bg-transparent px-4 pb-1 pt-3 text-sm leading-6 text-zinc-900 outline-none placeholder:text-zinc-400"
+        className="block max-h-[50vh] w-full resize-none overflow-y-auto bg-transparent px-4 pb-1 pt-3 text-sm leading-6 text-foreground outline-none placeholder:text-muted"
       />
       <div className="flex items-center gap-3 px-2 pb-2 pl-3">
         <p className="min-w-0 flex-1 text-[11px]" aria-live="polite">
-          {error ? <span role="alert" className="text-rose-600">{error}</span>
-            : text.length > COMMENT_MAX - 300 ? <span className="tabular-nums text-zinc-400">{text.length}/{COMMENT_MAX}</span> : null}
+          {error ? <span role="alert" className="text-danger">{error}</span>
+            : text.length > COMMENT_MAX - 300 ? <span className="tabular-nums text-muted">{text.length}/{COMMENT_MAX}</span> : null}
         </p>
         <div className="flex shrink-0 items-center gap-1.5">
           {onCancel ? <button type="button" onClick={onCancel} disabled={busy} className={quiet}>Cancel</button> : null}
@@ -387,9 +387,9 @@ function Composer({ initial = "", placeholder, submitLabel, autoFocus = false, o
 /** Plain text and @mentions. Nothing in a comment is ever rendered as markup. */
 function Body({ text }: { text: string }) {
   return (
-    <p className="whitespace-pre-wrap text-sm leading-6 text-zinc-800 [overflow-wrap:anywhere]">
+    <p className="whitespace-pre-wrap text-sm leading-6 text-foreground [overflow-wrap:anywhere]">
       {commentSegments(text).map((segment, index) => "mention" in segment
-        ? <Link key={index} to={`/profiles/${segment.mention.toLowerCase()}`} className="font-medium text-sky-700 hover:underline">@{segment.mention}</Link>
+        ? <Link key={index} to={`/profiles/${segment.mention.toLowerCase()}`} className="font-medium text-info hover:underline">@{segment.mention}</Link>
         : <span key={index}>{segment.text}</span>)}
     </p>
   );
@@ -402,7 +402,7 @@ function PickTag({ pick }: { pick: CommentPick }) {
   const said = `Predicted ${pick.fighter}${pick.method ? ` by ${PICK_METHOD_WORDS[pick.method]}` : ""}${pick.round ? ` in round ${pick.round}` : ""}`;
   return (
     <span title={said} aria-label={said}
-      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2 py-px text-[10px] font-semibold leading-4 tracking-wide ring-1 ring-inset ${pick.corner === 1 ? "bg-f1-soft text-f1-ink ring-f1/25" : "bg-f2-soft text-f2-ink ring-f2/25"}`}>
+      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2 py-px text-[10px] font-medium leading-4 ring-1 ring-inset ${pick.corner === 1 ? "bg-f1-soft text-f1-ink ring-f1/25" : "bg-f2-soft text-f2-ink ring-f2/25"}`}>
       {pickLabel(pick)}
     </span>
   );
@@ -413,18 +413,18 @@ function Votes({ node }: { node: CommentNode }) {
   const disabled = node.mine || node.state !== "visible" || Boolean(discussion.viewer?.mutedUntil);
   const title = node.mine ? "You can’t vote on your own comment" : undefined;
   return (
-    <div className="flex items-center rounded-full bg-zinc-50" title={title}>
+    <div className="flex items-center rounded-full bg-surface-muted" title={title}>
       <button type="button" aria-label="Upvote" aria-pressed={node.myVote === 1} disabled={disabled}
         onClick={() => discussion.vote(node, node.myVote === 1 ? 0 : 1)}
-        className={`grid h-7 w-7 place-items-center rounded-full transition-colors hover:bg-zinc-100 disabled:hover:bg-transparent ${node.myVote === 1 ? "text-orange-700" : "text-zinc-400"}`}>
+        className={`grid h-7 w-7 place-items-center rounded-full transition-colors hover:bg-surface-strong disabled:hover:bg-transparent ${node.myVote === 1 ? "text-attention" : "text-muted"}`}>
         <ArrowBigUp className={`h-4 w-4 ${node.myVote === 1 ? "fill-current" : ""}`} aria-hidden="true" />
       </button>
-      <span className={`min-w-5 text-center text-[11px] font-semibold tabular-nums ${node.myVote === 1 ? "text-orange-700" : node.myVote === -1 ? "text-sky-700" : "text-zinc-600"}`} aria-label={`Score ${node.score}`}>
+      <span className={`min-w-5 text-center text-[11px] font-medium tabular-nums ${node.myVote === 1 ? "text-attention" : node.myVote === -1 ? "text-info" : "text-secondary"}`} aria-label={`Score ${node.score}`}>
         {node.score}
       </span>
       <button type="button" aria-label="Downvote" aria-pressed={node.myVote === -1} disabled={disabled}
         onClick={() => discussion.vote(node, node.myVote === -1 ? 0 : -1)}
-        className={`grid h-7 w-7 place-items-center rounded-full transition-colors hover:bg-zinc-100 disabled:hover:bg-transparent ${node.myVote === -1 ? "text-sky-700" : "text-zinc-400"}`}>
+        className={`grid h-7 w-7 place-items-center rounded-full transition-colors hover:bg-surface-strong disabled:hover:bg-transparent ${node.myVote === -1 ? "text-info" : "text-muted"}`}>
         <ArrowBigDown className={`h-4 w-4 ${node.myVote === -1 ? "fill-current" : ""}`} aria-hidden="true" />
       </button>
     </div>
@@ -446,7 +446,7 @@ function Menu({ node, onEdit, onDelete }: { node: CommentNode; onEdit: () => voi
     return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", key, true); };
   }, [open]);
   const name = node.author?.displayName ?? "this person";
-  const item = "flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-700 hover:bg-zinc-50";
+  const item = "flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-secondary hover:bg-surface-muted";
   const choose = (run: () => void) => () => { setOpen(false); run(); };
   const copy = () => {
     const url = `${window.location.origin}${commentLink(discussion.fightId, node.id)}`;
@@ -463,10 +463,10 @@ function Menu({ node, onEdit, onDelete }: { node: CommentNode; onEdit: () => voi
         <Ellipsis className="h-4 w-4" aria-hidden="true" />
       </button>
       {open ? (
-        <div role="menu" className={`absolute left-0 z-30 w-48 ${above ? "bottom-8" : "top-8"} overflow-hidden rounded-xl border border-zinc-200 bg-white py-1 shadow-lg`}>
+        <div role="menu" className={`absolute left-0 z-30 w-48 ${above ? "bottom-8" : "top-8"} overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-lg`}>
           <button type="button" role="menuitem" className={item} onClick={choose(copy)}><Link2 className="h-3.5 w-3.5" aria-hidden="true" />Copy link</button>
           {node.editable ? <button type="button" role="menuitem" className={item} onClick={choose(onEdit)}><Pencil className="h-3.5 w-3.5" aria-hidden="true" />Edit</button> : null}
-          {node.mine ? <button type="button" role="menuitem" className={`${item} text-rose-600`} onClick={choose(onDelete)}><Trash2 className="h-3.5 w-3.5" aria-hidden="true" />Delete</button> : null}
+          {node.mine ? <button type="button" role="menuitem" className={`${item} text-danger`} onClick={choose(onDelete)}><Trash2 className="h-3.5 w-3.5" aria-hidden="true" />Delete</button> : null}
           {!node.mine && node.author ? <>
             <button type="button" role="menuitem" className={item} onClick={choose(() => discussion.report(node))}><Flag className="h-3.5 w-3.5" aria-hidden="true" />Report</button>
             {discussion.signedIn ? (
@@ -508,26 +508,26 @@ function Thread({ node, rootId }: { node: CommentNode; rootId: string }) {
 
   return (
     <div id={`comment-${node.id}`} className="scroll-mt-24">
-      <div className={`-mx-1.5 rounded-lg px-1.5 py-1 ${focused ? "bg-amber-50 ring-1 ring-amber-200" : ""}`}>
+      <div className={`-mx-1.5 rounded-lg px-1.5 py-1 ${focused ? "bg-warning-subtle ring-1 ring-warning-line" : ""}`}>
         <div className="flex min-w-0 items-center gap-2 text-xs">
           <button type="button" onClick={() => setCollapsed(value => !value)} aria-expanded={!collapsed}
             aria-label={collapsed ? "Expand comment" : "Collapse comment"}
-            className="grid h-5 w-5 shrink-0 place-items-center rounded text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700">
+            className="grid h-5 w-5 shrink-0 place-items-center rounded text-muted hover:bg-surface-strong hover:text-secondary">
             {collapsed ? <Plus className="h-3 w-3" aria-hidden="true" /> : <Minus className="h-3 w-3" aria-hidden="true" />}
           </button>
           {node.author ? (
-            <Link to={`/profiles/${node.author.handle}`} className="flex min-w-0 items-center gap-1.5 font-semibold text-zinc-800 hover:underline">
+            <Link to={`/profiles/${node.author.handle}`} className="flex min-w-0 items-center gap-1.5 font-medium text-foreground hover:underline">
               <FanAvatar src={node.author.imageUrl} name={node.author.displayName} />
               <span className="truncate">{node.author.displayName}</span>
             </Link>
-          ) : <span className="font-medium italic text-zinc-400">{node.state === "removed" ? "Removed" : "Deleted"}</span>}
+          ) : <span className="font-medium italic text-muted">{node.state === "removed" ? "Removed" : "Deleted"}</span>}
           {node.pick ? <PickTag pick={node.pick} /> : null}
-          {node.mine ? <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-500">You</span> : null}
-          {node.blocked ? <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-500">Blocked</span> : null}
-          <span title={exactTime(node.createdAt) ?? undefined} className="shrink-0 text-zinc-400">{age}</span>
-          {node.editedAt ? <span className="shrink-0 text-zinc-400" title={`Edited ${exactTime(node.editedAt) ?? ""}`}>· edited</span> : null}
+          {node.mine ? <span className="rounded bg-surface-strong px-1.5 py-0.5 text-[10px] font-medium text-muted">You</span> : null}
+          {node.blocked ? <span className="rounded bg-surface-strong px-1.5 py-0.5 text-[10px] font-medium text-muted">Blocked</span> : null}
+          <span title={exactTime(node.createdAt) ?? undefined} className="shrink-0 text-muted">{age}</span>
+          {node.editedAt ? <span className="shrink-0 text-muted" title={`Edited ${exactTime(node.editedAt) ?? ""}`}>· edited</span> : null}
           {collapsed ? (
-            <span className="shrink-0 text-zinc-400">
+            <span className="shrink-0 text-muted">
               {node.score <= COLLAPSE_SCORE && !node.blocked ? "· below threshold " : ""}
               {node.replyCount ? `· ${node.replyCount} ${node.replyCount === 1 ? "reply" : "replies"}` : ""}
             </span>
@@ -536,14 +536,14 @@ function Thread({ node, rootId }: { node: CommentNode; rootId: string }) {
 
         {collapsed ? null : (
           <div className="mt-1 pl-7">
-            {gone ? <p className="text-sm italic text-zinc-400">{node.state === "removed" ? "Removed by a moderator." : "Deleted by its author."}</p>
-              : node.state === "held" && node.body == null ? <p className="text-sm italic text-zinc-400">Hidden while a moderator reviews it.</p>
+            {gone ? <p className="text-sm italic text-muted">{node.state === "removed" ? "Removed by a moderator." : "Deleted by its author."}</p>
+              : node.state === "held" && node.body == null ? <p className="text-sm italic text-muted">Hidden while a moderator reviews it.</p>
               : editing ? (
                 <Composer initial={node.body ?? ""} placeholder="Edit your comment" submitLabel="Save" autoFocus
                   onSubmit={async body => { await discussion.edit(node.id, body); setEditing(false); }} onCancel={() => setEditing(false)} />
               ) : <>
                 <Body text={node.body ?? ""} />
-                {node.state === "held" ? <p className="mt-1 text-[11px] text-amber-700">Reported by several readers. Only you can see it until a moderator reviews it.</p> : null}
+                {node.state === "held" ? <p className="mt-1 text-[11px] text-warning">Reported by several readers. Only you can see it until a moderator reviews it.</p> : null}
               </>}
 
             {!gone && !editing ? (
@@ -554,8 +554,8 @@ function Thread({ node, rootId }: { node: CommentNode; rootId: string }) {
               </div>
             ) : null}
             {confirming && !gone ? (
-              <div className="mt-2 flex flex-wrap items-center justify-end gap-2 rounded-lg bg-zinc-50 px-3 py-2 text-xs">
-                <span className="mr-auto text-zinc-600">Delete this comment? This can’t be undone.</span>
+              <div className="mt-2 flex flex-wrap items-center justify-end gap-2 rounded-lg bg-surface-muted px-3 py-2 text-xs">
+                <span className="mr-auto text-secondary">Delete this comment? This can’t be undone.</span>
                 <button type="button" onClick={() => setConfirming(false)} disabled={busy} className={quiet}>Cancel</button>
                 <button type="button" onClick={() => void remove()} disabled={busy} className={BUTTON_DANGER}>
                   {busy ? "Deleting…" : "Delete"}
@@ -573,7 +573,7 @@ function Thread({ node, rootId }: { node: CommentNode; rootId: string }) {
       </div>
 
       {!collapsed && (node.replies.length || node.more) ? (
-        <div className="ml-2.5 mt-1 border-l border-zinc-100 pl-3 sm:pl-4">
+        <div className="ml-2.5 mt-1 border-l border-line-subtle pl-3 sm:pl-4">
           <ul className="flex flex-col gap-2 pt-1">
             {node.replies.map(child => <li key={child.id}><Thread node={child} rootId={rootId} /></li>)}
           </ul>
@@ -627,11 +627,11 @@ function ReportDialog({ node, onClose, request, onBlock }: {
     <dialog ref={dialog} onCancel={event => { event.preventDefault(); close(); }}
       onKeyDown={event => { if (event.key === "Escape") event.stopPropagation(); }}
       onClick={event => { if (event.target === event.currentTarget) close(); }}
-      className="search-dialog fixed inset-0 m-auto w-[min(28rem,calc(100%-2rem))] max-w-none rounded-2xl border border-zinc-200 bg-white p-0 text-zinc-900 shadow-2xl">
-      <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4">
+      className="search-dialog fixed inset-0 m-auto w-[min(28rem,calc(100%-2rem))] max-w-none rounded-2xl border border-line bg-surface p-0 text-foreground shadow-2xl">
+      <div className="flex items-center justify-between border-b border-line-subtle px-5 py-4">
         <div className="min-w-0">
           <h2 className={DIALOG_TITLE}>Report comment</h2>
-          {author ? <p className="mt-0.5 truncate text-xs text-zinc-500">by {author.displayName}</p> : null}
+          {author ? <p className="mt-0.5 truncate text-xs text-muted">by {author.displayName}</p> : null}
         </div>
         <button type="button" onClick={close} disabled={busy} aria-label="Close" className={`-mr-2 ${CLOSE_BUTTON}`}>
           <X className={CLOSE_ICON} aria-hidden="true" />
@@ -639,8 +639,8 @@ function ReportDialog({ node, onClose, request, onBlock }: {
       </div>
       {sent ? (
         <div className="px-5 py-6 text-center">
-          <p className="text-sm font-semibold text-zinc-900">Thanks — a moderator will review it.</p>
-          <p className="mt-1 text-sm text-zinc-500">Comments reported by several readers are hidden until they are reviewed.</p>
+          <p className="text-sm font-medium text-foreground">Thanks — a moderator will review it.</p>
+          <p className="mt-1 text-sm text-muted">Comments reported by several readers are hidden until they are reviewed.</p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             {author && !blocked ? (
               <button type="button" className={quiet} onClick={() => void onBlock(author.handle, true).then(() => setBlocked(true), problem => setError(message(problem)))}>
@@ -649,15 +649,15 @@ function ReportDialog({ node, onClose, request, onBlock }: {
             ) : null}
             <button type="button" onClick={close} className={primary}>Done</button>
           </div>
-          {error ? <p role="alert" className="mt-3 text-xs text-rose-600">{error}</p> : null}
+          {error ? <p role="alert" className="mt-3 text-xs text-danger">{error}</p> : null}
         </div>
       ) : (
         <form onSubmit={event => void submit(event)} className="space-y-4 px-5 py-5">
           <fieldset>
-            <legend className="mb-2 text-xs font-medium text-zinc-700">What’s wrong with it?</legend>
+            <legend className="mb-2 text-xs font-medium text-secondary">What’s wrong with it?</legend>
             <div className="grid gap-1 sm:grid-cols-2">
               {REPORT_REASONS.map(([value, label]) => (
-                <label key={value} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs ${reason === value ? "border-zinc-900 text-zinc-900" : "border-zinc-200 text-zinc-600 hover:border-zinc-300"}`}>
+                <label key={value} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs ${reason === value ? "border-foreground text-foreground" : "border-line text-secondary hover:border-line-strong"}`}>
                   <input type="radio" name="reason" value={value} checked={reason === value} onChange={() => setReason(value)} className="accent-zinc-900" />
                   {label}
                 </label>
@@ -665,12 +665,12 @@ function ReportDialog({ node, onClose, request, onBlock }: {
             </div>
           </fieldset>
           <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-zinc-700">Anything else? <span className="font-normal text-zinc-400">(optional)</span></span>
+            <span className="mb-1.5 block text-xs font-medium text-secondary">Anything else? <span className="font-normal text-muted">(optional)</span></span>
             <textarea value={note} onChange={event => setNote(event.target.value)} maxLength={500} rows={3}
-              className="w-full resize-y rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-400" />
+              className="w-full resize-y rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-line-strong" />
           </label>
-          {error ? <p role="alert" className="text-xs text-rose-600">{error}</p> : null}
-          <div className="flex items-center justify-end gap-2 border-t border-zinc-100 pt-4">
+          {error ? <p role="alert" className="text-xs text-danger">{error}</p> : null}
+          <div className="flex items-center justify-end gap-2 border-t border-line-subtle pt-4">
             <button type="button" onClick={close} disabled={busy} className={quiet}>Cancel</button>
             <button type="submit" disabled={busy || !reason} className={primary}>{busy ? "Sending…" : "Send report"}</button>
           </div>

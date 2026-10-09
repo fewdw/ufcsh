@@ -46,12 +46,12 @@ type Metrics = {
 
 type Level = "ok" | "warn" | "bad" | "idle";
 const TONE: Record<Level, string> = {
-  ok: "bg-emerald-50 text-emerald-700",
-  warn: "bg-amber-50 text-amber-700",
-  bad: "bg-rose-50 text-rose-700",
-  idle: "bg-zinc-100 text-zinc-500",
+  ok: "bg-success-subtle text-success",
+  warn: "bg-warning-subtle text-warning",
+  bad: "bg-danger-subtle text-danger",
+  idle: "bg-surface-strong text-muted",
 };
-const DOT: Record<Level, string> = { ok: "bg-emerald-500", warn: "bg-amber-500", bad: "bg-rose-500", idle: "bg-zinc-400" };
+const DOT: Record<Level, string> = { ok: "bg-success", warn: "bg-warning", bad: "bg-danger", idle: "bg-muted" };
 
 const whole = (value: number) => Math.round(value).toLocaleString();
 const ms = (value: number | null | undefined) => value == null ? "—"
@@ -90,13 +90,13 @@ function heartbeatAt(age: number | null): { level: Level; label: string; detail:
 
 function Card({ label, value, hint, level }: { label: string; value: string; hint?: string; level?: Level }) {
   return (
-    <div className="min-w-0 rounded-xl border border-zinc-200 bg-white px-3 py-2.5">
-      <p className="flex items-center gap-1.5 truncate text-[11px] font-medium text-zinc-500">
+    <div className="min-w-0 rounded-xl border border-line bg-surface px-3 py-2.5">
+      <p className="flex items-center gap-1.5 truncate text-[11px] font-medium text-muted">
         {level ? <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT[level]}`} /> : null}
         {label}
       </p>
-      <p className="mt-0.5 text-lg font-bold tabular-nums text-zinc-900">{value}</p>
-      {hint ? <p className="truncate text-[11px] text-zinc-400">{hint}</p> : null}
+      <p className="mt-0.5 text-lg font-medium tabular-nums text-foreground">{value}</p>
+      {hint ? <p className="truncate text-[11px] text-muted">{hint}</p> : null}
     </div>
   );
 }
@@ -116,10 +116,10 @@ function MinuteChart({ title, points, format, kind = "bar", tone = "text-series-
   const y = (value: number) => height - (value / top) * (height - 4);
   const line = points.map((point, index) => point.value == null ? null : `${(index + 0.5) * step},${y(point.value)}`).filter(Boolean).join(" ");
   return (
-    <figure className="min-w-0 rounded-xl border border-zinc-200 bg-white px-3 pb-2 pt-2.5">
+    <figure className="min-w-0 rounded-xl border border-line bg-surface px-3 pb-2 pt-2.5">
       <figcaption className="flex items-baseline justify-between gap-2 text-[11px]">
-        <span className="truncate font-medium text-zinc-500">{title}</span>
-        <span className="shrink-0 tabular-nums text-zinc-400">{total ? "total" : "now"} <b className="font-semibold text-zinc-800">{total ?? (latest == null ? "—" : format(latest))}</b> · peak {format(peak)}</span>
+        <span className="truncate font-medium text-muted">{title}</span>
+        <span className="shrink-0 tabular-nums text-muted">{total ? "total" : "now"} <b className="font-medium text-foreground">{total ?? (latest == null ? "—" : format(latest))}</b> · peak {format(peak)}</span>
       </figcaption>
       <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className={`mt-1.5 h-16 w-full ${tone}`} role="img" aria-label={`${title}, ${span}`}>
         <line x1="0" x2={width} y1={height - 0.5} y2={height - 0.5} className="stroke-plot-axis" strokeWidth="1" />
@@ -136,7 +136,7 @@ function MinuteChart({ title, points, format, kind = "bar", tone = "text-series-
           </g>
         ))}
       </svg>
-      <div className="mt-0.5 flex justify-between text-[10px] text-zinc-400">
+      <div className="mt-0.5 flex justify-between text-[10px] text-muted">
         <span>{points.length ? time(points[0].at) : ""}</span><span>{total ? (points.length ? time(points.at(-1)!.at) : "") : "now"}</span>
       </div>
     </figure>
@@ -229,8 +229,8 @@ function TrafficHistory() {
     <section className="flex flex-col gap-2">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-zinc-900">History</h3>
-          <p className="text-[11px] text-zinc-500">
+          <h3 className="text-sm font-medium text-foreground">History</h3>
+          <p className="text-[11px] text-muted">
             Saved every minute and kept across restarts{shown?.firstRecordedAt ? `, recorded since ${day(shown.firstRecordedAt, true)}` : ""}.
             {hourly ? "" : " Days are UTC."} Admin traffic is left out of the totals.
           </p>
@@ -243,7 +243,7 @@ function TrafficHistory() {
         </div>
       </div>
       {!shown || !t ? (
-        <div role="status" className="rounded-xl border border-zinc-200 bg-white py-10 text-center text-sm text-zinc-400">
+        <div role="status" className="rounded-xl border border-line bg-surface py-10 text-center text-sm text-muted">
           {loading || !error ? "Loading history…" : `Couldn’t load history. ${error}`}
         </div>
       ) : (
@@ -263,33 +263,33 @@ function TrafficHistory() {
             <MinuteChart title={`Requests per ${unit}`} points={points(point => point.requests)} format={whole} time={time} span={`last ${label}`} total={whole(t.requests)} />
             <MinuteChart title={unit === "week" ? "Visitor IPs per day (weekly average)" : `Visitor IPs per ${unit}`} points={points(point => point.visitors)} format={whole} tone="text-series-3" time={time} span={`last ${label}`} />
             <MinuteChart title="Response time (p95)" points={points(point => point.p95Ms)} format={ms} kind="line" tone="text-series-4" time={time} span={`last ${label}`} />
-            <MinuteChart title={`Errors per ${unit}`} points={points(point => point.errors)} format={whole} tone="text-rose-500" time={time} span={`last ${label}`} total={whole(t.errors)} />
+            <MinuteChart title={`Errors per ${unit}`} points={points(point => point.errors)} format={whole} tone="text-danger" time={time} span={`last ${label}`} total={whole(t.errors)} />
             <MinuteChart title={`Rate-limited per ${unit}`} points={points(point => point.throttled)} format={whole} tone="text-series-2" time={time} span={`last ${label}`} total={whole(t.throttled)} />
           </div>
-          <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+          <div className="overflow-hidden rounded-xl border border-line bg-surface">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] text-xs">
-                <thead className="bg-zinc-50 text-left text-[11px] uppercase tracking-wide text-zinc-500">
+                <thead className="bg-surface-muted text-left text-[11px] text-muted">
                   <tr>
-                    <th className="px-4 py-2 font-semibold">Route pattern, last {label}</th>
-                    {["Requests", "Share", "Views", "p95", "4xx", "429", "5xx", "≥1s"].map(name => <th key={name} className="px-3 py-2 text-right font-semibold">{name}</th>)}
+                    <th className="px-4 py-2 font-medium">Route pattern, last {label}</th>
+                    {["Requests", "Share", "Views", "p95", "4xx", "429", "5xx", "≥1s"].map(name => <th key={name} className="px-3 py-2 text-right font-medium">{name}</th>)}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-100 tabular-nums">
+                <tbody className="divide-y divide-line-subtle tabular-nums">
                   {shown.routes.map(route => (
-                    <tr key={route.route} className={route.requests && route.errors / route.requests > 0.01 ? "bg-rose-50" : route.p95Ms > 500 ? "bg-amber-50" : ""}>
-                      <td className="px-4 py-2"><b className="block font-medium text-zinc-900">{ROUTE_INFO[route.route]?.name ?? route.route}</b><code className="text-[11px] text-zinc-500">{ROUTE_INFO[route.route]?.path ?? route.route}</code></td>
-                      <td className="px-3 py-2 text-right font-semibold text-zinc-900">{whole(route.requests)}</td>
-                      <td className="px-3 py-2 text-right text-zinc-600">{percent(route.requests, t.requests)}</td>
-                      <td className="px-3 py-2 text-right text-zinc-600">{route.pageViews ? whole(route.pageViews) : "—"}</td>
-                      <td className="px-3 py-2 text-right text-zinc-800">{route.requests ? ms(route.p95Ms) : "—"}</td>
-                      <td className="px-3 py-2 text-right text-zinc-600">{route.clientErrors ? whole(route.clientErrors) : "—"}</td>
-                      <td className="px-3 py-2 text-right text-zinc-600">{route.throttled ? whole(route.throttled) : "—"}</td>
-                      <td className="px-3 py-2 text-right text-zinc-600">{route.errors ? whole(route.errors) : "—"}</td>
-                      <td className="px-3 py-2 text-right text-zinc-600">{route.slow ? whole(route.slow) : "—"}</td>
+                    <tr key={route.route} className={route.requests && route.errors / route.requests > 0.01 ? "bg-danger-subtle" : route.p95Ms > 500 ? "bg-warning-subtle" : ""}>
+                      <td className="px-4 py-2"><b className="block font-medium text-foreground">{ROUTE_INFO[route.route]?.name ?? route.route}</b><code className="text-[11px] text-muted">{ROUTE_INFO[route.route]?.path ?? route.route}</code></td>
+                      <td className="px-3 py-2 text-right font-medium text-foreground">{whole(route.requests)}</td>
+                      <td className="px-3 py-2 text-right text-secondary">{percent(route.requests, t.requests)}</td>
+                      <td className="px-3 py-2 text-right text-secondary">{route.pageViews ? whole(route.pageViews) : "—"}</td>
+                      <td className="px-3 py-2 text-right text-foreground">{route.requests ? ms(route.p95Ms) : "—"}</td>
+                      <td className="px-3 py-2 text-right text-secondary">{route.clientErrors ? whole(route.clientErrors) : "—"}</td>
+                      <td className="px-3 py-2 text-right text-secondary">{route.throttled ? whole(route.throttled) : "—"}</td>
+                      <td className="px-3 py-2 text-right text-secondary">{route.errors ? whole(route.errors) : "—"}</td>
+                      <td className="px-3 py-2 text-right text-secondary">{route.slow ? whole(route.slow) : "—"}</td>
                     </tr>
                   ))}
-                  {!shown.routes.length ? <tr><td colSpan={9} className="px-4 py-6 text-center text-zinc-400">Nothing recorded in this range yet.</td></tr> : null}
+                  {!shown.routes.length ? <tr><td colSpan={9} className="px-4 py-6 text-center text-muted">Nothing recorded in this range yet.</td></tr> : null}
                 </tbody>
               </table>
             </div>
@@ -312,12 +312,12 @@ export default function AdminHealth() {
     return () => clearInterval(timer);
   }, []);
 
-  if (loading && !data) return <div role="status" className="py-16 text-center text-sm text-zinc-400">Loading metrics…</div>;
+  if (loading && !data) return <div role="status" className="py-16 text-center text-sm text-muted">Loading metrics…</div>;
   if (!data) {
     return (
-      <div className="flex flex-col items-center gap-2 py-16 text-sm text-zinc-500">
+      <div className="flex flex-col items-center gap-2 py-16 text-sm text-muted">
         <p>Couldn’t load metrics. {error}</p>
-        <button type="button" onClick={() => void reload()} className="font-semibold text-zinc-900 underline">Retry</button>
+        <button type="button" onClick={() => void reload()} className="font-medium text-foreground underline">Retry</button>
       </div>
     );
   }
@@ -338,26 +338,26 @@ export default function AdminHealth() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Health</h2>
-          <p className="text-xs text-zinc-500">
+          <h2 className="text-lg font-medium tracking-tight text-foreground">Health</h2>
+          <p className="text-xs text-muted">
             Live from this server since it started {relativeAge(data.http.startedAt, now)} · Node {data.node.replace(/^v/, "")}
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-zinc-500">
-          <span className={error ? "text-rose-600" : ""}>{error ? `Refresh failed: ${error}` : `Updated ${Math.max(0, Math.round((now - data.generatedAt) / 1000))}s ago`}</span>
-          <button type="button" onClick={() => void reload(true)} className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 font-semibold text-zinc-700 hover:bg-zinc-50">Refresh</button>
+        <div className="flex items-center gap-2 text-xs text-muted">
+          <span className={error ? "text-danger" : ""}>{error ? `Refresh failed: ${error}` : `Updated ${Math.max(0, Math.round((now - data.generatedAt) / 1000))}s ago`}</span>
+          <button type="button" onClick={() => void reload(true)} className="rounded-lg border border-line bg-surface px-3 py-1.5 font-medium text-secondary hover:bg-surface-muted">Refresh</button>
         </div>
       </div>
 
       <section className={`rounded-xl px-4 py-3 ${TONE[overall]}`} aria-live="polite">
-        <p className="text-sm font-semibold">
+        <p className="text-sm font-medium">
           {overall === "ok" ? "Everything looks healthy." : overall === "warn" ? "Running, with something worth a look." : "Something needs attention now."}
         </p>
         <ul className="mt-2 grid gap-x-6 gap-y-1 text-xs sm:grid-cols-2 lg:grid-cols-3">
           {status.map(check => (
             <li key={check.label} className="flex min-w-0 items-start gap-1.5">
               <span aria-hidden="true" className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${DOT[check.level]}`} />
-              <span className="min-w-0"><b className="font-semibold">{check.label}</b> <span className="opacity-80">{check.detail}</span></span>
+              <span className="min-w-0"><b className="font-medium">{check.label}</b> <span className="opacity-80">{check.detail}</span></span>
             </li>
           ))}
         </ul>
@@ -381,7 +381,7 @@ export default function AdminHealth() {
         <MinuteChart title="Requests per minute" points={series(minute => minute.requests)} format={whole} />
         <MinuteChart title="Visitor IPs per minute" points={series(minute => minute.visitors)} format={whole} tone="text-series-3" />
         <MinuteChart title="Response time (p95)" points={series(minute => minute.requests ? minute.p95Ms : null)} format={ms} kind="line" tone="text-series-4" />
-        <MinuteChart title="Errors per minute" points={series(minute => minute.errors)} format={whole} tone="text-rose-500" />
+        <MinuteChart title="Errors per minute" points={series(minute => minute.errors)} format={whole} tone="text-danger" />
         <MinuteChart title="Rate-limited per minute" points={series(minute => minute.throttled)} format={whole} tone="text-series-2" />
         <MinuteChart title="Event loop delay (p95)" points={series(minute => minute.eventLoopP95Ms)} format={ms} kind="line" tone="text-series-2" />
         <MinuteChart title="CPU" points={series(minute => minute.cpuPercent)} format={value => `${Math.round(value)}%`} kind="line" />
@@ -390,90 +390,90 @@ export default function AdminHealth() {
 
       <TrafficHistory />
 
-      <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-zinc-100 px-4 py-3">
+      <section className="overflow-hidden rounded-xl border border-line bg-surface">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line-subtle px-4 py-3">
           <div>
-            <h3 className="text-sm font-semibold text-zinc-900">Page views</h3>
-            <p className="text-[11px] text-zinc-500">Counts page navigation in the app, including clicks that do not reload the browser. Routes are grouped; usernames and IDs are not stored.</p>
+            <h3 className="text-sm font-medium text-foreground">Page views</h3>
+            <p className="text-[11px] text-muted">Counts page navigation in the app, including clicks that do not reload the browser. Routes are grouped; usernames and IDs are not stored.</p>
           </div>
           <div className="flex gap-4 text-right text-xs tabular-nums">
-            <div><b className="block text-base text-zinc-900">{whole(data.http.pageViews.lastFiveMinutes)}</b><span className="text-zinc-500">last 5 min</span></div>
-            <div><b className="block text-base text-zinc-900">{whole(data.http.pageViews.lastHour)}</b><span className="text-zinc-500">last hour</span></div>
+            <div><b className="block text-base text-foreground">{whole(data.http.pageViews.lastFiveMinutes)}</b><span className="text-muted">last 5 min</span></div>
+            <div><b className="block text-base text-foreground">{whole(data.http.pageViews.lastHour)}</b><span className="text-muted">last hour</span></div>
           </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[540px] text-xs">
-            <thead className="bg-zinc-50 text-left text-[11px] uppercase tracking-wide text-zinc-500">
-              <tr><th className="px-4 py-2 font-semibold">Page</th><th className="px-3 py-2 text-right font-semibold">5 min</th><th className="px-3 py-2 text-right font-semibold">1 hour</th><th className="px-3 py-2 text-right font-semibold">Share of hour</th><th className="px-4 py-2 text-right font-semibold">Since restart</th></tr>
+            <thead className="bg-surface-muted text-left text-[11px] text-muted">
+              <tr><th className="px-4 py-2 font-medium">Page</th><th className="px-3 py-2 text-right font-medium">5 min</th><th className="px-3 py-2 text-right font-medium">1 hour</th><th className="px-3 py-2 text-right font-medium">Share of hour</th><th className="px-4 py-2 text-right font-medium">Since restart</th></tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100 tabular-nums">
+            <tbody className="divide-y divide-line-subtle tabular-nums">
               {data.http.pageViews.routes.map(row => (
                 <tr key={row.route}>
-                  <td className="px-4 py-2"><b className="block font-medium text-zinc-900">{ROUTE_INFO[row.route]?.name ?? row.route}</b><code className="text-[11px] text-zinc-500">{ROUTE_INFO[row.route]?.path ?? row.route}</code></td>
-                  <td className="px-3 py-2 text-right text-zinc-700">{whole(row.lastFiveMinutes)}</td>
-                  <td className="px-3 py-2 text-right font-semibold text-zinc-900">{whole(row.lastHour)}</td>
-                  <td className="px-3 py-2 text-right text-zinc-600">{percent(row.lastHour, data.http.pageViews.lastHour)}</td>
-                  <td className="px-4 py-2 text-right text-zinc-500">{whole(row.total)}</td>
+                  <td className="px-4 py-2"><b className="block font-medium text-foreground">{ROUTE_INFO[row.route]?.name ?? row.route}</b><code className="text-[11px] text-muted">{ROUTE_INFO[row.route]?.path ?? row.route}</code></td>
+                  <td className="px-3 py-2 text-right text-secondary">{whole(row.lastFiveMinutes)}</td>
+                  <td className="px-3 py-2 text-right font-medium text-foreground">{whole(row.lastHour)}</td>
+                  <td className="px-3 py-2 text-right text-secondary">{percent(row.lastHour, data.http.pageViews.lastHour)}</td>
+                  <td className="px-4 py-2 text-right text-muted">{whole(row.total)}</td>
                 </tr>
               ))}
-              {!data.http.pageViews.routes.length ? <tr><td colSpan={5} className="px-4 py-6 text-center text-zinc-400">No page views since this server started.</td></tr> : null}
+              {!data.http.pageViews.routes.length ? <tr><td colSpan={5} className="px-4 py-6 text-center text-muted">No page views since this server started.</td></tr> : null}
             </tbody>
           </table>
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
-        <div className="flex flex-wrap items-end justify-between gap-2 border-b border-zinc-100 px-4 py-3">
+      <section className="overflow-hidden rounded-xl border border-line bg-surface">
+        <div className="flex flex-wrap items-end justify-between gap-2 border-b border-line-subtle px-4 py-3">
           <div>
-            <h3 className="text-sm font-semibold text-zinc-900">Requests by route</h3>
-            <p className="text-[11px] text-zinc-500">Includes page loads, APIs and assets. 5xx means a server error; 404 means a missing route or item. Recent results include the current minute.</p>
+            <h3 className="text-sm font-medium text-foreground">Requests by route</h3>
+            <p className="text-[11px] text-muted">Includes page loads, APIs and assets. 5xx means a server error; 404 means a missing route or item. Recent results include the current minute.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <input value={routeSearch} onChange={event => setRouteSearch(event.target.value)} placeholder="Find a route" aria-label="Find a route" className="w-36 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs text-zinc-900 placeholder:text-zinc-400" />
-            <div className="flex rounded-lg border border-zinc-200 p-0.5 text-xs" aria-label="Request time range">
+            <input value={routeSearch} onChange={event => setRouteSearch(event.target.value)} placeholder="Find a route" aria-label="Find a route" className="w-36 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted" />
+            <div className="flex rounded-lg border border-line p-0.5 text-xs" aria-label="Request time range">
               {([ ["lastFiveMinutes", "5 min"], ["lastHour", "1 hour"] ] as const).map(([key, label]) => (
-                <button key={key} type="button" onClick={() => setRouteWindow(key)} aria-pressed={routeWindow === key} className={`rounded-md px-2.5 py-1 font-medium ${routeWindow === key ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-50"}`}>{label}</button>
+                <button key={key} type="button" onClick={() => setRouteWindow(key)} aria-pressed={routeWindow === key} className={`rounded-md px-2.5 py-1 font-medium ${routeWindow === key ? "bg-foreground text-background" : "text-secondary hover:bg-surface-muted"}`}>{label}</button>
               ))}
             </div>
           </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[790px] text-xs">
-            <thead className="bg-zinc-50 text-left text-[11px] uppercase tracking-wide text-zinc-500">
+            <thead className="bg-surface-muted text-left text-[11px] text-muted">
               <tr>
-                <th className="px-4 py-2 font-semibold">Route pattern</th>
-                {["Requests", "Share", "p95", "4xx", "404", "429", "5xx", "≥1s", "Since restart"].map(label => <th key={label} className="px-3 py-2 text-right font-semibold">{label}</th>)}
+                <th className="px-4 py-2 font-medium">Route pattern</th>
+                {["Requests", "Share", "p95", "4xx", "404", "429", "5xx", "≥1s", "Since restart"].map(label => <th key={label} className="px-3 py-2 text-right font-medium">{label}</th>)}
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100 tabular-nums">
+            <tbody className="divide-y divide-line-subtle tabular-nums">
               {routeRows.map(route => {
                 const recentRoute = route[routeWindow];
                 const failing = recentRoute.requests && recentRoute.errors / recentRoute.requests > 0.01;
                 const slow = recentRoute.p95Ms > 500;
                 return (
-                  <tr key={route.route} className={failing ? "bg-rose-50" : slow ? "bg-amber-50" : ""}>
-                    <td className="px-4 py-2"><b className="block font-medium text-zinc-900">{ROUTE_INFO[route.route]?.name ?? route.route}</b><code className="text-[11px] text-zinc-500">{ROUTE_INFO[route.route]?.path ?? route.route}</code></td>
-                    <td className="px-3 py-2 text-right font-semibold text-zinc-900">{whole(recentRoute.requests)}</td>
-                    <td className="px-3 py-2 text-right text-zinc-600">{percent(recentRoute.requests, windowTotal)}</td>
-                    <td className="px-3 py-2 text-right text-zinc-800">{recentRoute.requests ? ms(recentRoute.p95Ms) : "—"}</td>
-                    <td className="px-3 py-2 text-right text-zinc-600">{recentRoute.clientErrors || "—"}</td>
-                    <td className="px-3 py-2 text-right text-zinc-600">{recentRoute.notFound || "—"}</td>
-                    <td className="px-3 py-2 text-right text-zinc-600">{recentRoute.throttled || "—"}</td>
-                    <td className="px-3 py-2 text-right text-zinc-600">{recentRoute.errors || "—"}</td>
-                    <td className="px-3 py-2 text-right text-zinc-600">{recentRoute.slow || "—"}</td>
-                    <td className="px-3 py-2 text-right text-zinc-500">{whole(route.requests)}</td>
+                  <tr key={route.route} className={failing ? "bg-danger-subtle" : slow ? "bg-warning-subtle" : ""}>
+                    <td className="px-4 py-2"><b className="block font-medium text-foreground">{ROUTE_INFO[route.route]?.name ?? route.route}</b><code className="text-[11px] text-muted">{ROUTE_INFO[route.route]?.path ?? route.route}</code></td>
+                    <td className="px-3 py-2 text-right font-medium text-foreground">{whole(recentRoute.requests)}</td>
+                    <td className="px-3 py-2 text-right text-secondary">{percent(recentRoute.requests, windowTotal)}</td>
+                    <td className="px-3 py-2 text-right text-foreground">{recentRoute.requests ? ms(recentRoute.p95Ms) : "—"}</td>
+                    <td className="px-3 py-2 text-right text-secondary">{recentRoute.clientErrors || "—"}</td>
+                    <td className="px-3 py-2 text-right text-secondary">{recentRoute.notFound || "—"}</td>
+                    <td className="px-3 py-2 text-right text-secondary">{recentRoute.throttled || "—"}</td>
+                    <td className="px-3 py-2 text-right text-secondary">{recentRoute.errors || "—"}</td>
+                    <td className="px-3 py-2 text-right text-secondary">{recentRoute.slow || "—"}</td>
+                    <td className="px-3 py-2 text-right text-muted">{whole(route.requests)}</td>
                   </tr>
                 );
               })}
-              {!routeRows.length ? <tr><td colSpan={10} className="px-4 py-6 text-center text-zinc-400">No routes match.</td></tr> : null}
+              {!routeRows.length ? <tr><td colSpan={10} className="px-4 py-6 text-center text-muted">No routes match.</td></tr> : null}
             </tbody>
           </table>
         </div>
       </section>
 
       <div className="grid gap-2 lg:grid-cols-2">
-        <section className="rounded-xl border border-zinc-200 bg-white px-4 py-3">
-          <h3 className="text-sm font-semibold text-zinc-900">Community</h3>
+        <section className="rounded-xl border border-line bg-surface px-4 py-3">
+          <h3 className="text-sm font-medium text-foreground">Community</h3>
           <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-3">
             {([
               ["Comments, last hour", data.community.commentsLastHour],
@@ -487,14 +487,14 @@ export default function AdminHealth() {
               ["Predictions, 24 h", data.community.predictionsLastDay],
             ] as const).map(([label, value]) => (
               <div key={label} className="min-w-0">
-                <dt className="truncate text-zinc-500">{label}</dt>
-                <dd className="font-semibold tabular-nums text-zinc-900">{value == null ? "—" : whole(value)}</dd>
+                <dt className="truncate text-muted">{label}</dt>
+                <dd className="font-medium tabular-nums text-foreground">{value == null ? "—" : whole(value)}</dd>
               </div>
             ))}
           </dl>
         </section>
-        <section className="rounded-xl border border-zinc-200 bg-white px-4 py-3">
-          <h3 className="text-sm font-semibold text-zinc-900">Server internals</h3>
+        <section className="rounded-xl border border-line bg-surface px-4 py-3">
+          <h3 className="text-sm font-medium text-foreground">Server internals</h3>
           <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-3">
             {([
               ["Response cache hit rate", percent(data.cache.hits, cacheTotal)],
@@ -505,16 +505,16 @@ export default function AdminHealth() {
               ["Sync heartbeat", data.sync.heartbeatAt ? relativeAge(data.sync.heartbeatAt, now) ?? "—" : "—"],
             ] as const).map(([label, value]) => (
               <div key={label} className="min-w-0">
-                <dt className="truncate text-zinc-500">{label}</dt>
-                <dd className="truncate font-semibold tabular-nums text-zinc-900">{value}</dd>
+                <dt className="truncate text-muted">{label}</dt>
+                <dd className="truncate font-medium tabular-nums text-foreground">{value}</dd>
               </div>
             ))}
           </dl>
         </section>
       </div>
 
-      <section className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-600">
-        <h3 className="text-sm font-semibold text-zinc-900">History and alerts</h3>
+      <section className="rounded-xl border border-line bg-surface px-4 py-3 text-xs text-secondary">
+        <h3 className="text-sm font-medium text-foreground">History and alerts</h3>
         <p className="mt-1">
           The live figures cover the last hour and start over when the server restarts; History above is saved
           hourly and kept. Fourteen days of CPU and disk for the whole machine, and alerts, live in Grafana.
@@ -524,7 +524,7 @@ export default function AdminHealth() {
         </a>
         {!data.grafanaUrl ? (
           <p className="mt-1">
-            First run <code className="rounded bg-zinc-100 px-1 py-0.5 text-zinc-800">ssh -L 3001:127.0.0.1:3001 ufcsh-vps</code> on your computer,
+            First run <code className="rounded bg-surface-strong px-1 py-0.5 text-foreground">ssh -L 3001:127.0.0.1:3001 ufcsh-vps</code> on your computer,
             then use the link above and open the <b>UFC production</b> dashboard.
           </p>
         ) : null}

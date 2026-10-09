@@ -2,7 +2,7 @@ import { lazy, Suspense } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { accountsEnabled, useAccount } from "../auth";
 import { useAdminResource, type AdminSession } from "../admin";
-import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedTab } from "../components/segmented";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/arc/tabs/tabs";
 import { useSeo } from "../seo";
 import { PANEL_SHELL } from "../components/FightStats";
 
@@ -26,8 +26,8 @@ type TabId = (typeof TABS)[number]["id"];
 function Notice({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-      <p className="text-sm font-semibold text-zinc-900">{title}</p>
-      {children ? <div className="text-sm text-zinc-500">{children}</div> : null}
+      <p className="text-sm font-medium text-foreground">{title}</p>
+      {children ? <div className="text-sm text-muted">{children}</div> : null}
     </div>
   );
 }
@@ -36,13 +36,13 @@ function Notice({ title, children }: { title: string; children?: React.ReactNode
 function AdminShell({ tab, onTab }: { tab: TabId; onTab: (next: TabId) => void }) {
   const { data, error, loading } = useAdminResource<AdminSession>("/api/admin/session");
 
-  if (loading && !data) return <div role="status" className="flex h-full items-center justify-center text-sm text-zinc-400">Checking access…</div>;
+  if (loading && !data) return <div role="status" className="flex h-full items-center justify-center text-sm text-muted">Checking access…</div>;
   // The server said no: there is nothing here for this reader, so send them home.
   if (data && !data.admin) return <Navigate to="/" replace />;
   if (!data?.admin) {
     return (
       <Notice title="Couldn't check access.">
-        {error ? <p className="mt-1 text-xs text-zinc-400">{error}</p> : null}
+        {error ? <p className="mt-1 text-xs text-muted">{error}</p> : null}
       </Notice>
     );
   }
@@ -53,39 +53,17 @@ function AdminShell({ tab, onTab }: { tab: TabId; onTab: (next: TabId) => void }
   const fills = tab === "bugs";
   return (
     <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-6xl flex-col gap-3 px-2 pt-3 sm:gap-4 sm:px-5 sm:pt-4">
+      <Tabs value={tab} onValueChange={next => onTab(next as TabId)} className="flex min-h-0 flex-1 flex-col gap-3 sm:gap-4">
       <div className={`${PANEL_SHELL} shrink-0 p-1.5`}>
-        <div role="tablist" aria-label="Admin sections" className={`${segmentedGroup} w-full overflow-x-auto`}>
-          {TABS.map((item, index) => (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              id={`admin-tab-${item.id}`}
-              aria-controls="admin-tabpanel"
-              aria-selected={tab === item.id}
-              tabIndex={tab === item.id ? 0 : -1}
-              onClick={() => onTab(item.id)}
-              onKeyDown={event => {
-                if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
-                event.preventDefault();
-                const next = (index + (event.key === "ArrowRight" ? 1 : TABS.length - 1)) % TABS.length;
-                onTab(TABS[next].id);
-                event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
-              }}
-              className={`${segmentedTab} ${tab === item.id ? segmentedSelected : segmentedIdle}`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        <TabsList aria-label="Admin sections">
+          {TABS.map(item => <TabsTrigger key={item.id} value={item.id}>{item.label}</TabsTrigger>)}
+        </TabsList>
       </div>
-      <div
-        id="admin-tabpanel"
-        role="tabpanel"
-        aria-labelledby={`admin-tab-${tab}`}
-        className={`min-h-0 flex-1 overscroll-y-contain overflow-x-hidden ${fills ? "overflow-y-auto pb-6 md:flex md:flex-col md:overflow-y-visible md:pb-4" : "overflow-y-auto pb-6"}`}
+      <TabsContent
+        value={tab}
+        className={`!mt-0 min-h-0 flex-1 overscroll-y-contain overflow-x-hidden !text-foreground ${fills ? "overflow-y-auto pb-6 md:flex md:flex-col md:overflow-y-visible md:pb-4" : "overflow-y-auto pb-6"}`}
       >
-        <Suspense fallback={<div role="status" className="py-16 text-center text-sm text-zinc-400">Loading…</div>}>
+        <Suspense fallback={<div role="status" className="py-16 text-center text-sm text-muted">Loading…</div>}>
           {tab === "health" ? <AdminHealth /> : null}
           {tab === "bugs" ? <AdminBugs /> : null}
           {tab === "live" ? <AdminLive /> : null}
@@ -93,7 +71,8 @@ function AdminShell({ tab, onTab }: { tab: TabId; onTab: (next: TabId) => void }
           {tab === "flags" ? <AdminFlags /> : null}
           {tab === "comments" ? <AdminComments /> : null}
         </Suspense>
-      </div>
+      </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -112,7 +91,7 @@ export default function AdminPage() {
 
   // Without an account there is no way to be an administrator.
   if (!accountsEnabled) return <Navigate to="/" replace />;
-  if (!isLoaded) return <div role="status" className="flex h-full items-center justify-center text-sm text-zinc-400">Loading…</div>;
+  if (!isLoaded) return <div role="status" className="flex h-full items-center justify-center text-sm text-muted">Loading…</div>;
   if (!user) return <Navigate to="/" replace />;
   return <AdminShell tab={tab} onTab={onTab} />;
 }

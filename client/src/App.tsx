@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ComponentType, type MouseEvent } from "react";
+import { flushSync } from "react-dom";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import AccountButton from "./components/AccountButton";
 import CmdK from "./components/CmdK";
@@ -49,7 +50,7 @@ const RosterPage = page(pages.roster, module => module.default);
 const NewsPage = page(pages.news, module => module.default);
 const GraphicPage = page(pages.graphic, module => module.default);
 
-const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
+const NAV_ITEM = "rounded-[14px] px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
 
 // Remembered across pages and reloads, so the Admin link doesn't blink in on
 // each one. Only a hint for drawing it: the admin pages check on the server.
@@ -110,13 +111,13 @@ function MoreMenu({ pathname, active, open, setOpen }: { pathname: string; activ
         to a far link; the top padding bridges the gap below it. */}
     {open ? <div aria-hidden="true" className="absolute left-full top-0 hidden h-full w-56 [clip-path:polygon(0_0,100%_100%,0_100%)] md:block" /> : null}
     {open ? <div className="absolute right-0 top-full z-50 pt-1.5 md:left-0 md:right-auto">
-      <div className="w-max min-w-44 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg">
+      <div className="w-max min-w-44 rounded-3xl border border-line bg-surface-raised p-2 shadow-lg">
         <MoreGroups group={(label, links) => (
           <ul key={label} aria-label={label} className="flex flex-col gap-0.5">{links}</ul>
         )} item={(section, current) => (
           <li key={section.href}>
             <Link to={section.href} aria-current={current ? "page" : undefined}
-              className={`block whitespace-nowrap rounded-lg px-2 py-2 text-[13px] transition-colors min-[375px]:px-3 min-[375px]:text-sm ${current ? "bg-zinc-100 font-medium text-zinc-900" : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"}`}>
+              className={`block whitespace-nowrap rounded-[18px] px-2 py-2 text-[13px] transition-colors min-[375px]:px-3 min-[375px]:text-sm ${current ? "bg-accent-subtle font-medium text-foreground" : "text-secondary hover:bg-surface-muted hover:text-foreground"}`}>
               {section.label}
             </Link>
           </li>
@@ -160,18 +161,18 @@ function Header({ onSearch }: { onSearch: () => void }) {
   ];
 
   return (
-    <header className="relative shrink-0 border-b border-zinc-200 bg-white">
+    <header className="relative shrink-0 border-b border-line bg-surface">
       {/* One row, everything in normal flow: the logo and the nav on the left,
           the actions on the right, and the bout on now taking whatever is
           between them. Nothing is positioned over anything else, so no width
           can make two of them collide. */}
       <div className="flex w-full items-center gap-1 px-2 py-2 min-[380px]:gap-1.5 min-[380px]:px-2.5 min-[420px]:gap-2 sm:gap-3 sm:px-5 sm:py-3">
-        <Link to="/" aria-label="UFC.sh home" className={`shrink-0 text-sm font-extrabold tracking-tight min-[380px]:text-[15px] min-[420px]:text-base sm:text-lg ${isDevSite ? "text-sky-500" : "text-zinc-900"}`}>
-          UFC<span className={isDevSite ? "font-bold" : "font-bold text-zinc-400"}>.sh</span>
+        <Link to="/" aria-label="UFC.sh home" className={`shrink-0 font-[family-name:var(--font-display)] text-sm font-medium tracking-[var(--tracking-display)] min-[380px]:text-[15px] min-[420px]:text-base sm:text-lg ${isDevSite ? "text-info" : "text-foreground"}`}>
+          UFC<span className={isDevSite ? "" : "text-muted"}>.sh</span>
         </Link>
         {/* The shared pill group, tightened on a phone so the row still fits a
             320px screen with nothing clipped and nothing dropped. */}
-        <nav className="flex shrink-0 items-center gap-0.5 rounded-full bg-zinc-100 p-0.5 sm:gap-1 sm:p-1">
+        <nav className="flex shrink-0 items-center gap-0.5 rounded-xl border border-line bg-surface-muted p-0.5 sm:p-[3px]">
           {links.map((link) => (
             <Link
               key={link.href}
@@ -201,21 +202,27 @@ function Header({ onSearch }: { onSearch: () => void }) {
             type="button"
             onClick={onSearch}
             aria-label="Search fighters, events and fights"
-            className="flex h-8 w-8 items-center justify-center gap-2 rounded-full border border-zinc-200 bg-white text-sm text-zinc-400 transition-colors hover:border-zinc-300 hover:text-zinc-600 sm:h-9 sm:w-auto sm:justify-start sm:py-1.5 sm:pl-3 sm:pr-3.5"
+            className="flex h-8 w-8 items-center justify-center gap-2 rounded-[12px] border border-line bg-surface text-sm text-muted transition-colors hover:border-line-strong hover:bg-surface-muted hover:text-secondary sm:h-9 sm:w-auto sm:min-w-56 sm:justify-start sm:rounded-xl sm:py-1.5 sm:pl-3 sm:pr-2"
           >
             <SearchGlyph />
             <span className="hidden sm:inline">Search anything</span>
-            <kbd className="hidden rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 lg:inline">⌘K</kbd>
+            <kbd className="ml-auto hidden rounded-md border border-line bg-surface-muted px-1.5 py-0.5 font-sans text-xs text-muted lg:inline">⌘K</kbd>
           </button>
+          {/* Keep the theme control in the first bundle; Arc's palette is applied
+              by SettingsProvider before paint. */}
           <button
             type="button"
-            onClick={() => update("theme", dark ? "light" : "dark")}
+            onClick={() => {
+              const apply = () => update("theme", dark ? "light" : "dark");
+              if (!document.startViewTransition || window.matchMedia("(prefers-reduced-motion: reduce)").matches) apply();
+              else document.startViewTransition(() => flushSync(apply));
+            }}
             aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
             aria-pressed={dark}
             title={dark ? "Light mode" : "Dark mode"}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 sm:h-9 sm:w-9"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-[12px] border border-line bg-surface text-foreground transition-colors hover:border-line-strong hover:bg-surface-muted sm:h-9 sm:w-9"
           >
-            {dark ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
+            {dark ? <Moon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" /> : <Sun className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />}
           </button>
           {accountsEnabled ? <AccountButton /> : null}
         </div>
@@ -223,7 +230,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
 
       {/* `empty:hidden` keeps this strip off the page entirely on the days
           there is no card running, which is most of them. */}
-      <div className={`flex justify-center border-t border-zinc-100 px-2.5 py-1.5 empty:hidden ${pillFits ? "md:hidden" : ""}`}>
+      <div className={`flex justify-center border-t border-line-subtle px-2.5 py-1.5 empty:hidden ${pillFits ? "md:hidden" : ""}`}>
         <LiveMatchup />
       </div>
     </header>
@@ -286,7 +293,7 @@ export default function App() {
   return (
     <ShortcutProvider onSearch={openSearch}>
     <GraphicsProvider>
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-zinc-100 text-zinc-900">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
       <Header onSearch={openSearch} />
       {isDevSite ? <DevStatsOverlay /> : null}
       <div className="min-h-0 flex-1 overflow-hidden">
@@ -294,7 +301,7 @@ export default function App() {
             boundary: navigations run as transitions, so a page whose code is
             still on its way leaves the current one on screen until it is
             ready instead of flashing a fallback. */}
-        <Suspense fallback={<div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Loading…</div>}>
+        <Suspense fallback={<div role="status" className="appear-late flex h-full items-center justify-center text-sm text-muted">Loading…</div>}>
         <RouteErrorBoundary key={routeGroup(location.pathname)}>
         <Routes>
           <Route path="/" element={<EventsPage />} />
@@ -322,7 +329,7 @@ export default function App() {
           <Route path="/info" element={<InfoPage />} />
           <Route path="/sign-in/*" element={<AuthPage mode="sign-in" />} />
           <Route path="/sign-up/*" element={<AuthPage mode="sign-up" />} />
-          <Route path="*" element={<div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-zinc-500"><p>This page couldn’t be found.</p><Link to="/" className="font-semibold text-zinc-900 underline">Back to events</Link></div>} />
+          <Route path="*" element={<div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted"><p>This page couldn’t be found.</p><Link to="/" className="font-medium text-foreground underline">Back to events</Link></div>} />
         </Routes>
         </RouteErrorBoundary>
         </Suspense>

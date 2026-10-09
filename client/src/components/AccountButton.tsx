@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { useAccount } from "../auth";
 import { useMyProfile } from "../profile";
 
-const CONTROL = "grid h-8 w-8 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 sm:h-9 sm:w-9";
+const CONTROL = "grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line bg-surface text-muted transition-colors hover:border-line-strong hover:bg-surface-muted hover:text-foreground sm:h-9 sm:w-9";
 
 /** The account picture always opens the reader's profile, by its handle as
  *  soon as that is known so the page opens without a redirect. */

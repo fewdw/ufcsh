@@ -108,40 +108,40 @@ function activityMeta(entry: RankingEntry, dateMode: "relative" | "date", at?: s
 }
 
 function streakTone(outcome: NonNullable<RankingEntry["activity"]["current_streak"]>["outcome"]): string {
-  if (outcome === "win") return "text-emerald-600";
-  if (outcome === "loss") return "text-rose-500";
-  if (outcome === "draw") return "text-amber-600";
-  return "text-zinc-500";
+  if (outcome === "win") return "text-success";
+  if (outcome === "loss") return "text-danger";
+  if (outcome === "draw") return "text-warning";
+  return "text-muted";
 }
 
 function move(change: string | null): { label: string; cls: string } | null {
   if (!change || change === "0") return null;
-  if (change === "NR") return { label: "new", cls: "text-sky-600" };
-  if (change.startsWith("+")) return { label: `↑${change.slice(1)}`, cls: "text-emerald-600" };
-  if (change.startsWith("-")) return { label: `↓${change.slice(1)}`, cls: "text-rose-500" };
-  return { label: change, cls: "text-zinc-400" };
+  if (change === "NR") return { label: "new", cls: "text-info" };
+  if (change.startsWith("+")) return { label: `↑${change.slice(1)}`, cls: "text-success" };
+  if (change.startsWith("-")) return { label: `↓${change.slice(1)}`, cls: "text-danger" };
+  return { label: change, cls: "text-muted" };
 }
 
 function lastFightTone(outcome: RankingEntry["activity"]["last_fight_outcome"]): string {
   switch (outcome) {
     case "win":
-      return "text-emerald-500";
+      return "text-success";
     case "loss":
-      return "text-rose-400";
+      return "text-danger";
     case "draw":
-      return "text-amber-500";
+      return "text-warning";
     case "nc":
     default:
-      return "text-zinc-400";
+      return "text-muted";
   }
 }
 
 function previewFightLabel(fight: FighterPreviewFight): { label: string; cls: string } {
-  if (fight.upcoming) return { label: "Next", cls: "text-sky-600" };
+  if (fight.upcoming) return { label: "Next", cls: "text-info" };
   if (fight.outcome === "win") return { label: "W", cls: streakTone("win") };
   if (fight.outcome === "loss") return { label: "L", cls: streakTone("loss") };
   if (fight.outcome === "draw") return { label: "D", cls: streakTone("draw") };
-  return { label: "NC", cls: "text-zinc-400" };
+  return { label: "NC", cls: "text-muted" };
 }
 
 function FighterHoverPreview({ fighterId, point, at }: { fighterId: string; point: { x: number; y: number }; at?: string }) {
@@ -155,19 +155,19 @@ function FighterHoverPreview({ fighterId, point, at }: { fighterId: string; poin
     maxWidth: (flipX ? point.x : window.innerWidth - point.x) - 26,
   };
   return (
-    <aside className="pointer-events-none fixed z-[100] rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-[11px] leading-4 shadow-lg" style={style} aria-live="polite">
+    <aside className="pointer-events-none fixed z-[100] rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[11px] leading-4 shadow-lg" style={style} aria-live="polite">
       {loading || !data ? (
-        <span className="appear-late text-zinc-400">Loading…</span>
+        <span className="appear-late text-muted">Loading…</span>
       ) : (
         <div className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-baseline gap-x-2.5 gap-y-0.5 whitespace-nowrap">
           {[...data.upcoming, ...data.recent].map((fight, index) => {
             const result = previewFightLabel(fight);
             return (
               <Fragment key={fight.fight_id ?? `${fight.date}-${fight.opponent.name}-${index}`}>
-                <span className={`font-bold ${result.cls}`}>{result.label}</span>
-                <span className="font-medium text-zinc-600" title={fight.method ?? undefined}>{fight.upcoming ? "" : resultDot(fight).shortMethod}</span>
-                <span className="truncate text-zinc-900">{fight.opponent.name}</span>
-                <span className="text-zinc-400">{fight.weight_class}</span>
+                <span className={`font-medium ${result.cls}`}>{result.label}</span>
+                <span className="font-medium text-secondary" title={fight.method ?? undefined}>{fight.upcoming ? "" : resultDot(fight).shortMethod}</span>
+                <span className="truncate text-foreground">{fight.opponent.name}</span>
+                <span className="text-muted">{fight.weight_class}</span>
               </Fragment>
             );
           })}
@@ -212,10 +212,10 @@ function RankRow({
       <span
         className={`flex h-5 w-7 shrink-0 items-center justify-center text-[12px] tabular-nums ${
           isChamp
-            ? "font-bold text-amber-500"
+            ? "font-medium text-warning"
             : isInterimChamp
-              ? "rounded-md bg-slate-100 font-bold text-belt-interim ring-1 ring-inset ring-slate-200"
-              : "font-semibold text-zinc-800"
+              ? "rounded-md bg-surface-strong font-medium text-belt-interim ring-1 ring-inset ring-line"
+              : "font-medium text-foreground"
         }`}
         title={isChamp ? "Undisputed champion" : isInterimChamp ? "Interim champion" : undefined}
       >
@@ -223,11 +223,11 @@ function RankRow({
       </span>
       <Avatar src={entry.photo_url} name={entry.name} size="xs" />
       <span className="min-w-0 flex-1">
-        <span className="block text-[13px] font-medium leading-4 text-zinc-900 [overflow-wrap:anywhere]">
+        <span className="block text-[13px] font-medium leading-4 text-foreground [overflow-wrap:anywhere]">
           {entry.name}
           {ufcRecord ? (
             <span
-              className="ml-1.5 whitespace-nowrap text-[11px] font-normal tabular-nums text-zinc-600"
+              className="ml-1.5 whitespace-nowrap text-[11px] font-normal tabular-nums text-secondary"
               title={`UFC record${at ? ` as of ${formatDate(at)}` : " today"}: ${ufcRecord.wins} wins, ${ufcRecord.losses} losses, ${ufcRecord.draws} draws${ufcRecord.ncs ? `, ${ufcRecord.ncs} no contest${ufcRecord.ncs === 1 ? "" : "s"}` : ""}`}
             >
               {ufcRecord.text}
@@ -240,7 +240,7 @@ function RankRow({
             className={`block whitespace-normal text-[10px] leading-3.5 [overflow-wrap:anywhere] ${
               meta.showsLastFight
                 ? lastFightTone(entry.activity.last_fight_outcome)
-                : "text-zinc-400"
+                : "text-muted"
             }`}
           >
             {meta.hint}
@@ -249,12 +249,12 @@ function RankRow({
       </span>
       <span className="ml-auto flex shrink-0 items-center gap-1.5">
         {/* The card view's form: the last five, oldest first, then the run. */}
-        {features.movement ? <span className={`w-7 text-center text-[11px] font-semibold tabular-nums ${mv?.cls ?? ""}`}>
+        {features.movement ? <span className={`w-7 text-center text-[11px] font-medium tabular-nums ${mv?.cls ?? ""}`}>
           {mv?.label ?? ""}
         </span> : null}
         {features.top15Record && top15Record ? (
           <span
-            className="shrink-0 text-center text-[11px] font-semibold tabular-nums text-zinc-600"
+            className="shrink-0 text-center text-[11px] font-medium tabular-nums text-secondary"
             title={`Record against champions and top 15 in ${recordScope}${at ? ` as of ${formatDate(at)}` : " today"}: ${top15Record.wins} wins, ${top15Record.losses} losses, ${top15Record.draws} draws. All meetings; no contests excluded.`}
             aria-label={`Record in top 15 in ${recordScope}: ${top15Record.wins} wins, ${top15Record.losses} losses, ${top15Record.draws} draws`}
           >
@@ -264,7 +264,7 @@ function RankRow({
         {features.lastFive ? <ResultDots results={entry.activity.form ?? []} label="Last 5 professional results, oldest first" /> : null}
         {features.streaks ? (
           <span
-            className={`w-6 text-right text-[10px] font-bold tabular-nums ${entry.activity.current_streak ? streakTone(entry.activity.current_streak.outcome) : ""}`}
+            className={`w-6 text-right text-[10px] font-medium tabular-nums ${entry.activity.current_streak ? streakTone(entry.activity.current_streak.outcome) : ""}`}
             title={entry.activity.current_streak ? `Professional streak${at ? ` as of ${formatDate(at)}` : " today"}: ${entry.activity.current_streak.label}` : undefined}
           >
             {entry.activity.current_streak?.label ?? ""}
@@ -292,7 +292,7 @@ function RankRow({
   } : undefined;
   const selected = tapResults && highlightedFighter?.fighter_id === entry.fighter_id;
   const className = `flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors ${!highlightedFighter && features.activityColors ? meta.row : ""} ${selected ? "opponent-selected" : ""} ${
-    entry.fighter_id ? "hover:bg-zinc-100" : ""
+    entry.fighter_id ? "hover:bg-surface-strong" : ""
   }`;
 
   const title = nextFight
@@ -381,11 +381,11 @@ function DivisionCard({
   const borrowed = division.source !== source;
   return (
     <section data-division={division.division} className={`${shell} overflow-hidden ${targeted ? "division-target" : ""}`}>
-      <div className="flex items-center justify-between gap-2 border-b border-zinc-200 px-3.5 py-2.5">
-        <h3 className="truncate text-sm font-semibold text-zinc-900">{division.division}</h3>
+      <div className="flex items-center justify-between gap-2 border-b border-line px-3.5 py-2.5">
+        <h3 className="truncate text-sm font-medium text-foreground">{division.division}</h3>
         {borrowed ? (
           <span
-            className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200"
+            className="shrink-0 rounded-full bg-warning-subtle px-2 py-0.5 text-[10px] font-medium text-warning ring-1 ring-inset ring-warning-line"
             title={division.division.includes("Pound-for-Pound")
               ? "The meta view publishes no pound-for-pound list, so this one is the media list."
               : "Media rankings are used before the first Meta list."}
@@ -393,14 +393,14 @@ function DivisionCard({
             Media
           </span>
         ) : null}
-        {division.as_of ? <span className="shrink-0 text-[10px] text-zinc-500" title="Published list date">{formatDateShortWithYear(division.as_of)}</span> : null}
+        {division.as_of ? <span className="shrink-0 text-[10px] text-muted" title="Published list date">{formatDateShortWithYear(division.as_of)}</span> : null}
         {!division.as_of && division.weight_limit ? (
-          <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500">
+          <span className="shrink-0 rounded-full bg-surface-strong px-2 py-0.5 text-[10px] font-medium text-muted">
             {division.weight_limit}
           </span>
         ) : null}
       </div>
-      <div className="divide-y divide-zinc-50">
+      <div className="divide-y divide-line-subtle">
         {division.entries.map((entry) => (
           <RankRow
             key={`${entry.rank}-${entry.name}`}
@@ -425,11 +425,11 @@ function OpponentKey({ compact = false }: { compact?: boolean }) {
     : full;
   return (
     <>
-      <span className="text-emerald-600">{label("W", "Won")}</span>
-      <span className="text-rose-500">{label("L", "Lost")}</span>
-      <span className="text-sky-600">{label("Next", "Scheduled")}</span>
-      <span className="text-amber-600">{label("D", "Draw")}</span>
-      <span className="text-violet-600 dark:text-violet-400">{label("NC", "No contest")}</span>
+      <span className="text-success">{label("W", "Won")}</span>
+      <span className="text-danger">{label("L", "Lost")}</span>
+      <span className="text-info">{label("Next", "Scheduled")}</span>
+      <span className="text-warning">{label("D", "Draw")}</span>
+      <span className="text-special ">{label("NC", "No contest")}</span>
     </>
   );
 }
@@ -497,26 +497,26 @@ function FeaturesMenu({
     }} iconOnlyOnPhone="lg">
       {close => <>
       {/* The key to every mark in the lists, whichever are switched on. */}
-      <div className="mb-1 space-y-1.5 border-b border-zinc-100 px-4 pb-3 pt-3 text-[11px] text-zinc-500">
+      <div className="mb-1 space-y-1.5 border-b border-line-subtle px-4 pb-3 pt-3 text-[11px] text-muted">
         {/* Last 5: shape is where, fill how it ended, colour the result. */}
         <div className="grid grid-cols-3 gap-x-3 gap-y-1">
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 border-[1.5px] border-zinc-500 rounded-full bg-zinc-500" />In UFC</span>
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 border-[1.5px] border-zinc-500 rounded-full bg-zinc-500" />Finished</span>
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" />Win</span>
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 border-[1.5px] border-zinc-500 rounded-[3px] bg-zinc-500" />Outside UFC</span>
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 border-[1.5px] border-zinc-500 rounded-full" />Dec</span>
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-rose-500" />Loss</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 border-[1.5px] border-line-strong rounded-full bg-muted" />In UFC</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 border-[1.5px] border-line-strong rounded-full bg-muted" />Finished</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-success" />Win</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 border-[1.5px] border-line-strong rounded-[3px] bg-muted" />Outside UFC</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 border-[1.5px] border-line-strong rounded-full" />Dec</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-danger" />Loss</span>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">{legend}</div>
       </div>
       <div className="px-1.5">
         {[false, true].map((defaultOn) => (
           <fieldset key={String(defaultOn)} className="min-w-0 border-0 p-0 pb-2">
-            <legend className="px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+            <legend className="px-2.5 pb-1 pt-2 text-[10px] font-medium text-muted">
               Default {defaultOn ? "on" : "off"}
             </legend>
             {options.filter((option) => DEFAULT_FEATURES[option.key] === defaultOn).map((option) => (
-              <div key={option.key} className={option.key === "top15Record" ? "my-1 rounded-xl border border-zinc-200 bg-zinc-50" : undefined}>
+              <div key={option.key} className={option.key === "top15Record" ? "my-1 rounded-xl border border-line bg-surface-muted" : undefined}>
                 <SwitchRow
                   label={option.key === "hoverResults" && !canHover ? "Tap fighter results" : option.label}
                   hint={option.key === "hoverResults" && !canHover ? "Tap to highlight opponents, again for the profile."
@@ -527,7 +527,7 @@ function FeaturesMenu({
                   on={features[option.key]}
                   onChange={(on) => onChange({ ...features, [option.key]: on })} />
                 {option.key === "top15Record" ? (
-                  <div className="mx-2.5 mb-3 border-l-2 border-zinc-200 pl-3">
+                  <div className="mx-2.5 mb-3 border-l-2 border-line pl-3">
                     <SheetField label="Ranked opponents">
                       <select aria-label="Ranked opponents" value={features.top15Scope} disabled={!features.top15Record}
                         onChange={(event) => onChange({ ...features, top15Scope: event.target.value as RankingFeatures["top15Scope"] })}
@@ -543,7 +543,7 @@ function FeaturesMenu({
           </fieldset>
         ))}
       </div>
-      <div className="mt-1 grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] items-start gap-2 border-t border-zinc-100 px-4 py-3">
+      <div className="mt-1 grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto] items-start gap-2 border-t border-line-subtle px-4 py-3">
         <SheetField label="Division order">
           <select value={divisionOrder} onChange={(event) => onDivisionOrder(event.target.value as DivisionOrder)} className={SHEET_SELECT}>
             <option value="light">Lightest first</option>
@@ -740,7 +740,7 @@ export default function RankingsPage() {
               />
             </div>
           </div>
-          <div className="flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-zinc-500 lg:max-w-[60%] lg:basis-auto">
+          <div className="flex basis-full flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-muted lg:max-w-[60%] lg:basis-auto">
             {activeFeatures.activityColors ? activityKey : null}
             {activeFeatures.hoverResults ? <OpponentKey compact /> : null}
             {/* Both keys fill a phone's row; the Filters menu still shows the time. */}
@@ -752,14 +752,14 @@ export default function RankingsPage() {
           </div>
         </div>
 
-        {error && divisions ? <div role="alert" className="mb-2 text-xs text-zinc-500">Could not update rankings. Showing the last loaded list.</div> : null}
+        {error && divisions ? <div role="alert" className="mb-2 text-xs text-muted">Could not update rankings. Showing the last loaded list.</div> : null}
         {loading && divisions ? <span role="status" className="sr-only">Loading rankings…</span> : null}
-        {loading && !divisions ? <div role="status" className="appear-late p-8 text-center text-sm text-zinc-400">Loading rankings…</div>
-          : error && !divisions ? <div role="alert" className="p-8 text-center text-sm text-zinc-500">Could not load rankings. Try another date or reload.</div>
-          : !divisions?.length ? <div className="p-8 text-center text-sm text-zinc-500">{historical
+        {loading && !divisions ? <div role="status" className="appear-late p-8 text-center text-sm text-muted">Loading rankings…</div>
+          : error && !divisions ? <div role="alert" className="p-8 text-center text-sm text-muted">Could not load rankings. Try another date or reload.</div>
+          : !divisions?.length ? <div className="p-8 text-center text-sm text-muted">{historical
             ? "No published rankings are available on or before this date."
             : "Rankings not available yet — first sync may still be running."}</div>
-          : !shown.length ? <div className="p-8 text-center text-sm text-zinc-500">No rankings for these divisions on this date.</div>
+          : !shown.length ? <div className="p-8 text-center text-sm text-muted">No rankings for these divisions on this date.</div>
           : <div
           className={
             centerFilteredCards

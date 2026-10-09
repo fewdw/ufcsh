@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { SlidersHorizontal, X } from "lucide-react";
 import useSheetDrag from "../useSheetDrag";
@@ -116,16 +116,16 @@ export default function OptionsSheet({
           if (!open && Date.now() - closedAt.current < 500) return;
           setOpen((value) => !value);
         }}
-        className={`flex h-8 items-center gap-1.5 rounded-full border border-zinc-200 bg-white text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 ${iconOnlyOnPhone === "lg" ? "px-2 lg:px-3" : iconOnlyOnPhone ? "px-2 sm:px-3" : "px-3"}`}
+        className={`flex h-8 items-center gap-1.5 rounded-full border border-line bg-surface text-xs font-medium text-secondary transition hover:border-line-strong hover:bg-surface-muted ${iconOnlyOnPhone === "lg" ? "px-2 lg:px-3" : iconOnlyOnPhone ? "px-2 sm:px-3" : "px-3"}`}
       >
-        <SlidersHorizontal className="h-3.5 w-3.5 text-zinc-500" aria-hidden="true" />
+        <SlidersHorizontal className="h-3.5 w-3.5 text-muted" aria-hidden="true" />
         <span className={phoneHidden}>{label}</span>
-        {count ? <span className={`text-[10px] tabular-nums text-zinc-400 ${phoneHidden}`}>{count}</span> : null}
+        {count ? <span className={`text-[10px] tabular-nums text-muted ${phoneHidden}`}>{count}</span> : null}
       </button>
       {open ? (() => {
         const sheet = <>
           <div
-            className="fixed inset-0 z-[60] bg-zinc-950/40 backdrop-blur-[3px] sm:hidden"
+            className="fixed inset-0 z-[60] bg-scrim/40 backdrop-blur-[3px] sm:hidden"
             style={phone && dragY ? { opacity: Math.max(0, 1 - dragY / (sheetRef.current?.offsetHeight || 400)), transition: "opacity 200ms ease-out" } : undefined}
             aria-hidden="true"
             onClick={(event) => { event.preventDefault(); event.stopPropagation(); closedAt.current = Date.now(); close(); }}
@@ -135,18 +135,18 @@ export default function OptionsSheet({
             role="dialog"
             aria-label={label}
             data-sheet-scroll
-            className="fixed inset-x-0 bottom-0 z-[70] max-h-[80vh] overflow-y-auto overscroll-y-none transition-transform duration-200 motion-reduce:transition-none rounded-t-2xl border-t border-zinc-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-2xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:z-50 sm:mt-2 sm:max-h-[32rem] sm:w-80 sm:rounded-2xl sm:border sm:pb-0 sm:shadow-xl"
+            className="fixed inset-x-0 bottom-0 z-[70] max-h-[80vh] overflow-y-auto overscroll-y-none transition-transform duration-200 motion-reduce:transition-none rounded-t-2xl border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] shadow-2xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:z-50 sm:mt-2 sm:max-h-[32rem] sm:w-80 sm:rounded-2xl sm:border sm:pb-0 sm:shadow-xl"
           >
             <div
-              className="sticky top-0 z-10 bg-white px-4 pb-1 pt-3"
+              className="sticky top-0 z-10 bg-surface px-4 pb-1 pt-3"
             >
               <div className="-mt-1 mb-2 flex justify-center sm:hidden" aria-hidden="true">
-                <span className="h-1 w-9 rounded-full bg-zinc-300" />
+                <span className="h-1 w-9 rounded-full bg-line-strong" />
               </div>
               <div className="flex items-center justify-between">
                 <span className={DIALOG_TITLE}>{label}</span>
                 <div className="flex items-center gap-1">
-                  <button type="button" onClick={onReset} className="rounded-full px-2 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900">
+                  <button type="button" onClick={onReset} className="rounded-full px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-surface-strong hover:text-foreground">
                     Reset
                   </button>
                   <button type="button" onClick={() => close(true)} aria-label={`Close ${label.toLowerCase()}`} className={`-mr-2 ${CLOSE_BUTTON}`}>
@@ -164,33 +164,32 @@ export default function OptionsSheet({
   );
 }
 
-/** An on/off option: a whole-row button with a switch at its end. */
+/** Arc's switch, fetched with the sheet that shows it rather than with the
+ *  page, so its motion library stays out of the first bundle. */
+const ArcSwitch = lazy(() => import("./arc/switch/switch"));
+
+/** An on/off option: a whole-row label with Arc's switch at its end. */
 export function SwitchRow({ label, hint, on, onChange }: { label: string; hint?: string; on: boolean; onChange: (on: boolean) => void }) {
+  const id = useId();
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      onClick={() => onChange(!on)}
-      className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-zinc-50"
-    >
+    <label htmlFor={id} className="flex w-full cursor-pointer items-center gap-3 rounded-xl px-2.5 py-1 text-left transition-colors hover:bg-surface-muted">
       <span className="min-w-0 flex-1">
-        <span className="block text-[13px] font-medium text-zinc-800">{label}</span>
-        {hint ? <span className="block text-[11px] leading-4 text-zinc-400">{hint}</span> : null}
+        <span className="block text-[13px] font-medium text-foreground">{label}</span>
+        {hint ? <span id={`${id}-hint`} className="block text-[11px] leading-4 text-muted">{hint}</span> : null}
       </span>
-      <span aria-hidden="true" className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${on ? "bg-sky-500" : "bg-zinc-300"}`}>
-        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${on ? "translate-x-4" : "translate-x-0.5"}`} />
-      </span>
-    </button>
+      <Suspense fallback={<span aria-hidden="true" className={`flex h-11 shrink-0 items-center`}><span className={`flex h-6 w-[42px] items-center rounded-full p-[3px] ${on ? "bg-[var(--control-on)]" : "bg-track"}`}><span className={`h-[18px] w-[18px] rounded-full bg-[var(--control-thumb)] shadow-[var(--control-thumb-shadow)] ${on ? "translate-x-[18px] bg-[var(--control-thumb-on)]" : ""}`} /></span></span>}>
+        <ArcSwitch id={id} checked={on} onCheckedChange={onChange} aria-describedby={hint ? `${id}-hint` : undefined} />
+      </Suspense>
+    </label>
   );
 }
 
 /** A labelled select, laid out two to a row inside a sheet. */
-export const SHEET_SELECT = "h-8 w-full rounded-lg border border-zinc-200 bg-zinc-50 pl-2.5 pr-7 text-xs font-medium text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-400";
+export const SHEET_SELECT = "h-8 w-full rounded-lg border border-line bg-surface-muted pl-2.5 pr-7 text-xs font-medium text-secondary outline-none transition hover:border-line-strong focus:border-line-strong";
 
 export function SheetField({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="flex min-w-0 flex-col gap-1 text-[11px] font-medium text-zinc-500">
+    <label className="flex min-w-0 flex-col gap-1 text-[11px] font-medium text-muted">
       {label}
       {children}
     </label>

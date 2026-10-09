@@ -21,10 +21,10 @@ export default class RouteErrorBoundary extends Component<{ children: ReactNode 
   render() {
     if (!this.state.failed) return this.props.children;
     return (
-      <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 p-5 text-sm text-zinc-500">
+      <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 p-5 text-sm text-muted">
         <p>This page couldn’t load. Please try reloading it.</p>
         <button type="button" onClick={() => window.location.reload()} className={BUTTON_PRIMARY}>Reload page</button>
-        <Link to="/" className="font-semibold text-zinc-900 underline">Back to events</Link>
+        <Link to="/" className="font-medium text-foreground underline">Back to events</Link>
       </div>
     );
   }

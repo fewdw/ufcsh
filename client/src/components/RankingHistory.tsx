@@ -32,22 +32,22 @@ const RESULT_WORD: Record<string, string> = { win: "Win", loss: "Loss", draw: "D
 function FullRankings({ date, names, archives, fighterId, columns }: {
   date: string; names: string[]; archives: (RankingArchive | null)[] | null; fighterId: string; columns: number;
 }) {
-  if (!archives) return <span className="mt-2 block text-zinc-400">Loading rankings…</span>;
+  if (!archives) return <span className="mt-2 block text-muted">Loading rankings…</span>;
   return (
-    <span className="mt-1.5 grid gap-x-3 gap-y-2 border-t border-white/10 pt-1.5" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+    <span className="mt-1.5 grid gap-x-3 gap-y-2 border-t border-surface/10 pt-1.5" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
       {names.map((division, index) => {
         const archive = archives[index];
         const list = archive && rankingListOn(archive, date);
         return (
           <span key={division} className="block min-w-0">
-            <span className="block font-semibold">{division}</span>
-            {list?.as_of ? <span className="mb-0.5 block text-[10px] text-zinc-400">{formatDate(list.as_of)}</span> : null}
+            <span className="block font-medium">{division}</span>
+            {list?.as_of ? <span className="mb-0.5 block text-[10px] text-muted">{formatDate(list.as_of)}</span> : null}
             {list?.entries.length ? list.entries.map((entry) => (
-              <span key={`${entry.rank}:${entry.name}`} className={`grid grid-cols-[1.25rem_minmax(0,1fr)] gap-1 ${entry.fighter_id === fighterId ? "font-bold text-sky-300" : "text-zinc-300"}`}>
-                <span className={`tabular-nums ${entry.rank === "C" || entry.rank === "IC" ? "text-amber-300" : ""}`}>{entry.rank}</span>
+              <span key={`${entry.rank}:${entry.name}`} className={`grid grid-cols-[1.25rem_minmax(0,1fr)] gap-1 ${entry.fighter_id === fighterId ? "font-medium text-info" : "text-faint"}`}>
+                <span className={`tabular-nums ${entry.rank === "C" || entry.rank === "IC" ? "text-warning" : ""}`}>{entry.rank}</span>
                 <span>{entry.name}</span>
               </span>
-            )) : <span className="text-zinc-400">{archive ? "No published rankings." : "Rankings unavailable."}</span>}
+            )) : <span className="text-muted">{archive ? "No published rankings." : "Rankings unavailable."}</span>}
           </span>
         );
       })}
@@ -192,14 +192,14 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
   return (
     <section className={PANEL}>
       <PanelHeading title="Ranking history" aside={
-        <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-zinc-500">
+        <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted">
           <input type="checkbox" checked={showFull} onChange={(event) => { keepOpen(); update("showFullRankings", event.target.checked); setHover(null); }} className="h-3 w-3 accent-sky-500" />
           Show full rankings
         </label>
       } />
       <div className="px-4 pb-4 pt-3 sm:px-5">
         {lines.length > 1 || lines[0].division === "Pound-for-pound" ? (
-          <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-500">
+          <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted">
             {lines.map((division, index) => (
               <span key={division.division} className="inline-flex items-center gap-1.5">
                 <span aria-hidden="true" className={`w-3 border-t-2 border-solid ${SERIES[colorSlot(division.division, index)]}`} />
@@ -209,9 +209,9 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
           </div>
         ) : null}
         <div className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-x-2">
-          <div className="relative h-40 text-[10px] tabular-nums text-zinc-400" aria-hidden="true">
+          <div className="relative h-40 text-[10px] tabular-nums text-muted" aria-hidden="true">
             {TICKS.map((tick) => (
-              <span key={tick} className={`absolute right-0 -translate-y-1/2 ${tick === "C" ? "font-semibold text-belt" : ""}`} style={{ top: `${(y(tick) / HEIGHT) * 100}%` }}>{tick}</span>
+              <span key={tick} className={`absolute right-0 -translate-y-1/2 ${tick === "C" ? "font-medium text-belt" : ""}`} style={{ top: `${(y(tick) / HEIGHT) * 100}%` }}>{tick}</span>
             ))}
           </div>
           <div ref={plotRef} className="relative h-40 touch-pan-y select-none [-webkit-touch-callout:none]" onPointerMove={move} onPointerDown={down} onPointerUp={release} onPointerLeave={leave}
@@ -224,30 +224,30 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
               {paths.map((path, index) => (
                 <path key={lines[index].division} d={path} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" className={SERIES[colorSlot(lines[index].division, index)]} />
               ))}
-              {hover ? <line x1={x(hover.at)} x2={x(hover.at)} y1="0" y2={HEIGHT} className="stroke-zinc-400" strokeWidth="1" vectorEffect="non-scaling-stroke" /> : null}
+              {hover ? <line x1={x(hover.at)} x2={x(hover.at)} y1="0" y2={HEIGHT} className="stroke-muted" strokeWidth="1" vectorEffect="non-scaling-stroke" /> : null}
             </svg>
             {/* Dots in HTML stay round however the plot is stretched. */}
             {marks.map((mark) => (
               <span key={`${mark.row.date}-${mark.row.opponent.name}`} aria-hidden="true"
-                className={`pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white dark:ring-zinc-900 ${mark.row.outcome === "win" ? "bg-emerald-500" : mark.row.outcome === "loss" ? "bg-rose-500" : "bg-amber-500"}`}
+                className={`pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-surface ${mark.row.outcome === "win" ? "bg-success" : mark.row.outcome === "loss" ? "bg-danger" : "bg-warning"}`}
                 style={{ left: `${(x(mark.at) / WIDTH) * 100}%`, top: `${(mark.top / HEIGHT) * 100}%` }} />
             ))}
             {hover ? lines.map((division, index) => {
               const rank = rankOn(division.points, hover.at);
-              return rank ? <span key={division.division} aria-hidden="true" className={`absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white dark:ring-zinc-900 ${SWATCH[colorSlot(division.division, index)]}`}
+              return rank ? <span key={division.division} aria-hidden="true" className={`absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-surface ${SWATCH[colorSlot(division.division, index)]}`}
                 style={{ left: `${(x(hover.at) / WIDTH) * 100}%`, top: `${(y(rank) / HEIGHT) * 100}%` }} /> : null;
             }) : null}
           </div>
           <div />
-          <div className="relative mt-1 h-4 text-[10px] tabular-nums text-zinc-400" aria-hidden="true">
+          <div className="relative mt-1 h-4 text-[10px] tabular-nums text-muted" aria-hidden="true">
             {years.map((year) => {
               const left = (x(Date.UTC(year, 0, 1)) / WIDTH) * 100;
               return left > 4 && left < 96 ? <span key={year} className="absolute -translate-x-1/2" style={{ left: `${left}%` }}>{year}</span> : null;
             })}
           </div>
         </div>
-        <p className="mt-2 hidden text-[11px] text-zinc-400 pointer-coarse:block">Touch and hold, then slide, to see the ranking on any date.</p>
-        {notes.length ? <p className="mt-2 text-[11px] text-zinc-400">{notes.join(" ")}</p> : null}
+        <p className="mt-2 hidden text-[11px] text-muted pointer-coarse:block">Touch and hold, then slide, to see the ranking on any date.</p>
+        {notes.length ? <p className="mt-2 text-[11px] text-muted">{notes.join(" ")}</p> : null}
         <table className="sr-only">
           <caption>Ranking changes</caption>
           <tbody>
@@ -265,19 +265,19 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
           padding: "8px 10px", lineHeight: "14px", overflowY: "auto", pointerEvents: "auto",
         } : undefined}>
         {hover && hovered ? <>
-          <span className="block text-zinc-400">{formatDate(new Date(hover.at).toISOString().slice(0, 10))}</span>
+          <span className="block text-muted">{formatDate(new Date(hover.at).toISOString().slice(0, 10))}</span>
           {!showFull ? hovered.map((row) => (
             <span key={row.division} className="mt-0.5 flex justify-between gap-4">
               <span>{row.division}</span>
-              <span className="font-semibold tabular-nums">{held(row.rank ?? "NR")}</span>
+              <span className="font-medium tabular-nums">{held(row.rank ?? "NR")}</span>
             </span>
           )) : null}
           {lastFight ? (
-            <span className={`${showFull ? "mt-0.5" : "mt-1.5"} block ${hovered.length && !showFull ? "border-t border-white/10 pt-1.5" : ""}`}>
-              <span className={`font-semibold ${lastFight.row.outcome === "win" ? "text-emerald-400" : lastFight.row.outcome === "loss" ? "text-rose-400" : lastFight.row.outcome === "draw" ? "text-amber-400" : "text-zinc-300"}`}>
+            <span className={`${showFull ? "mt-0.5" : "mt-1.5"} block ${hovered.length && !showFull ? "border-t border-surface/10 pt-1.5" : ""}`}>
+              <span className={`font-medium ${lastFight.row.outcome === "win" ? "text-success" : lastFight.row.outcome === "loss" ? "text-danger" : lastFight.row.outcome === "draw" ? "text-warning" : "text-faint"}`}>
                 {RESULT_WORD[lastFight.row.outcome ?? ""] ?? "Result"}
               </span> vs {lastFight.row.opponent.name}
-              <span className="block text-zinc-400">{formatDate(lastFight.row.date)}{lastFight.row.method ? ` · ${lastFight.row.method}` : ""}</span>
+              <span className="block text-muted">{formatDate(lastFight.row.date)}{lastFight.row.method ? ` · ${lastFight.row.method}` : ""}</span>
             </span>
           ) : null}
           {showFull && activeNames.length ? <FullRankings date={new Date(hover.at).toISOString().slice(0, 10)} names={activeNames}

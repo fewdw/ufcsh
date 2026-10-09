@@ -1,7 +1,108 @@
 @import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/geist";
+/* Arc (uiarc.dev) design tokens: surfaces, text, lines, accent, status, radii,
+   type, motion and the keyboard focus ring, for light and dark. */
+@import "./components/arc/foundation.css";
 
 /* Follow the app setting, including inside browsers with a dark device theme. */
 @custom-variant dark (&:where(.dark, .dark *));
+
+/* Arc's semantic roles as Tailwind colours, so every class names a role
+   (bg-surface, text-secondary, border-line) rather than a shade. The values
+   switch with data-theme on <html>, so no class needs a dark: twin. */
+@theme inline {
+  --font-sans: var(--font-body);
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-strong: var(--surface-strong);
+  --color-foreground: var(--foreground);
+  --color-secondary: var(--text-secondary);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+  --color-line: var(--border);
+  --color-line-subtle: var(--border-subtle);
+  --color-line-strong: var(--border-strong);
+  --color-track: var(--control-track);
+  --color-accent: var(--accent);
+  --color-accent-subtle: var(--accent-subtle);
+  --color-success: var(--success);
+  --color-success-subtle: var(--success-subtle);
+  --color-success-line: var(--success-line);
+  --color-warning: var(--warning);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-warning-line: var(--warning-line);
+  --color-danger: var(--danger);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-danger-line: var(--danger-line);
+  --color-info: var(--info);
+  --color-info-subtle: var(--info-subtle);
+  --color-info-line: var(--info-line);
+  --color-special: var(--special);
+  --color-special-subtle: var(--special-subtle);
+  --color-special-line: var(--special-line);
+  --color-attention: var(--attention);
+  --color-attention-subtle: var(--attention-subtle);
+  --color-attention-line: var(--attention-line);
+  --color-control-on: var(--control-on);
+  --color-control-glyph: var(--control-glyph);
+  --color-photo-ink: oklch(100% 0 0);
+  --color-scrim: oklch(0% 0 0);
+  --color-result-win: var(--color-win-2);
+  --color-result-draw: var(--color-belt);
+  /* Arc's concentric corners, scaled to this app's denser panels. */
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+  --radius-xl: var(--radius-control);
+  --radius-2xl: 1.375rem;
+  --radius-3xl: var(--radius-panel);
+  /* Only floating layers cast a shadow; resting cards sit on a hairline. */
+  --shadow-sm: var(--shadow-resting);
+  --shadow-md: var(--shadow-raised);
+  --shadow-lg: var(--shadow-floating);
+  --shadow-xl: var(--shadow-floating);
+  --shadow-2xl: var(--shadow-floating);
+}
+
+/* Roles this app needs beyond Arc's set: a second muted fill, a faint ink for
+   separators, and status tints that stay opaque so they can be faded. */
+:root {
+  --font-geist: "Geist Variable";
+  --font-inter: "Inter Variable";
+  --text-muted: oklch(54% 0 0);
+  --info: oklch(45% .13 242);
+  --special: oklch(48% .18 295);
+  --attention: oklch(49% .13 52);
+  --info-subtle: color-mix(in oklab, var(--info) 9%, var(--surface));
+  --info-line: color-mix(in oklab, var(--info) 35%, var(--surface));
+  --special-subtle: color-mix(in oklab, var(--special) 9%, var(--surface));
+  --special-line: color-mix(in oklab, var(--special) 35%, var(--surface));
+  --attention-subtle: color-mix(in oklab, var(--attention) 10%, var(--surface));
+  --attention-line: color-mix(in oklab, var(--attention) 35%, var(--surface));
+  --surface-strong: var(--neutral-3);
+  --text-faint: var(--neutral-5);
+  --success-subtle: color-mix(in oklab, var(--success) 10%, var(--surface));
+  --success-line: color-mix(in oklab, var(--success) 35%, var(--surface));
+  --warning-subtle: color-mix(in oklab, var(--warning) 12%, var(--surface));
+  --warning-line: color-mix(in oklab, var(--warning) 40%, var(--surface));
+  --danger-subtle: color-mix(in oklab, var(--danger) 9%, var(--surface));
+  --danger-line: color-mix(in oklab, var(--danger) 35%, var(--surface));
+}
+:root[data-theme="dark"] {
+  --info: oklch(80% .1 242);
+  --special: oklch(80% .1 295);
+  --attention: oklch(82% .1 52);
+  --surface-strong: oklch(29% 0 0);
+  --text-faint: oklch(44% 0 0);
+  --success-subtle: color-mix(in oklab, var(--success) 14%, var(--surface));
+  --success-line: color-mix(in oklab, var(--success) 38%, var(--surface));
+  --warning-subtle: color-mix(in oklab, var(--warning) 14%, var(--surface));
+  --warning-line: color-mix(in oklab, var(--warning) 38%, var(--surface));
+  --danger-subtle: color-mix(in oklab, var(--danger) 14%, var(--surface));
+  --danger-line: color-mix(in oklab, var(--danger) 38%, var(--surface));
+}
 
 /* Matchup design tokens. One hue per fighter, used identically in every panel
    and every chart, so the colour is learned once and read everywhere: blue is
@@ -21,8 +122,8 @@
   --color-f2-soft: #fee2e2;
   --color-f2-deep: #991b1b;
 
-  --color-plot-track: #f4f4f5;
-  --color-plot-axis: #e4e4e7;
+  --color-plot-track: var(--surface-strong);
+  --color-plot-axis: var(--border);
 
   /* Championship bouts. Gold for the undisputed belt, steel for the interim
      one — both clear 4.5:1 on white (4.9:1 and 7.6:1). The label also spells
@@ -90,27 +191,23 @@ body {
 body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
+  background: var(--background);
+  color: var(--foreground);
+  letter-spacing: var(--tracking-body);
+  font-feature-settings: "cv11", "ss03";
+}
+
+/* Arc sets large headings in Geist; everything else stays in Inter. */
+:is(.text-2xl, .text-3xl, .text-4xl, .text-5xl) {
+  font-family: var(--font-display);
+  letter-spacing: var(--tracking-display);
 }
 
 .search-dialog::backdrop {
-  background: rgb(9 9 11 / 0.4);
+  background: oklch(0% 0 0 / 0.4);
   backdrop-filter: blur(3px);
 }
 
-:where(button, a, input, select, [tabindex]):focus-visible {
-  outline: 2px solid var(--color-series-1);
-  outline-offset: 3px;
-}
-
-/* A text field already says it has focus twice over — the caret sits in it and
-   its own border darkens — so the ring only boxes it in. Everything without a
-   caret (buttons, links, selects, checkboxes) keeps the ring. This has to be
-   unlayered like the rule above it: a Tailwind utility lives in @layer
-   utilities and would lose to that rule whatever its specificity. */
-:where(input):is([type="text"], [type="search"], [type="number"], [type="email"], [type="date"], :not([type])):focus-visible,
-textarea:focus-visible {
-  outline: none;
-}
 
 /* Safari on iOS zooms the page in whenever a field it focuses carries text
    under 16px, and every field here is deliberately smaller than that — so
@@ -160,10 +257,8 @@ select:not([multiple]):not([size]) {
   cursor: pointer;
 }
 
-/* The application predates theme tokens and intentionally uses a compact set
-   of Tailwind neutrals. These overrides remap that complete neutral palette in
-   dark mode, including interactive states, so every existing and future panel
-   participates without maintaining two copies of each component class list. */
+/* Data colours for the dark theme. Neutrals and status colours come from
+   Arc's tokens above; these are the chart and fighter hues. */
 .dark {
   color-scheme: dark;
   --color-series-1: #60a5fa;
@@ -174,8 +269,6 @@ select:not([multiple]):not([size]) {
   --color-f1-soft: #172554;
   --color-f2-ink: #fca5a5;
   --color-f2-soft: #450a0a;
-  --color-plot-track: #27272a;
-  --color-plot-axis: #3f3f46;
   --color-belt: #fbbf24;
   --color-belt-interim: #cbd5e1;
   /* The ordered round ramp runs the other way on a dark surface so its steps
@@ -186,125 +279,17 @@ select:not([multiple]):not([size]) {
   --color-round-4: #60a5fa;
   --color-round-5: #93c5fd;
 }
-.dark .bg-white { background-color: #18181b !important; }
-.dark .bg-white\/95 { background-color: rgb(24 24 27 / 0.95) !important; }
-.dark .bg-zinc-50 { background-color: #27272a !important; }
-.dark .bg-zinc-100 { background-color: #09090b !important; }
-.dark .bg-zinc-100\/50 { background-color: rgb(24 24 27 / 0.65) !important; }
-.dark .bg-zinc-50\/70,
-.dark .bg-zinc-50\/50 { background-color: rgb(39 39 42 / 0.7) !important; }
-.dark .bg-zinc-100\/90 { background-color: rgb(39 39 42 / 0.9) !important; }
-.dark .bg-zinc-200 { background-color: #3f3f46 !important; }
-.dark .bg-zinc-300 { background-color: #52525b !important; }
-.dark .bg-zinc-900 { background-color: #09090b !important; }
-.dark .text-zinc-950,
-.dark .text-zinc-900,
-.dark .text-zinc-800 { color: #f4f4f5 !important; }
-.dark .text-zinc-700,
-.dark .text-zinc-600 { color: #d4d4d8 !important; }
-.dark .text-zinc-500 { color: #a1a1aa !important; }
-.dark .text-zinc-400 { color: #a1a1aa !important; }
-.dark .text-zinc-300 { color: #71717a !important; }
-.dark .border-zinc-100 { border-color: #27272a !important; }
-.dark .border-zinc-200 { border-color: #3f3f46 !important; }
-/* Breakpoint variants carry their own class names; without these a docked
-   panel keeps its light-mode outline in dark mode. */
-.dark .md\:border-zinc-100 { border-color: #27272a !important; }
-.dark .md\:border-zinc-200,
-.dark .xl\:border-zinc-200 { border-color: #3f3f46 !important; }
-.dark .border-zinc-300,
-.dark .border-zinc-400 { border-color: #52525b !important; }
-.dark .divide-zinc-50 > :not(:last-child),
-.dark .divide-zinc-100 > :not(:last-child) { border-color: #27272a !important; }
-.dark .ring-zinc-200 { --tw-ring-color: #52525b !important; }
-.dark .bg-emerald-50 { background-color: #052e16 !important; }
-.dark .bg-emerald-100 { background-color: #064e3b !important; }
-/* The live bout's box: a faint green wash that deepens a touch on hover. */
-.dark .bg-emerald-50\/30 { background-color: rgb(16 185 129 / 0.06) !important; }
-.dark .bg-rose-50 { background-color: #4c0519 !important; }
-.dark .bg-rose-100 { background-color: #881337 !important; }
-.dark .bg-amber-50 { background-color: #451a03 !important; }
-.dark .bg-amber-100 { background-color: #78350f !important; }
-.dark .bg-amber-200 { background-color: #92400e !important; }
-.dark .bg-sky-50 { background-color: #082f49 !important; }
-.dark .bg-sky-100 { background-color: #0c4a6e !important; }
-.dark .bg-slate-100 { background-color: #1e293b !important; }
-.dark .bg-violet-100 { background-color: #2e1065 !important; }
-/* Recently active rankings rows. Violet rather than a warm hue: on a dark
-   surface orange darkens into the red that means a loss everywhere else. */
-.dark .bg-violet-50,
-.dark .bg-violet-50\/90 { background-color: rgb(76 29 149 / 0.28) !important; }
-.dark .bg-sky-50\/90 { background-color: rgb(12 74 110 / 0.45) !important; }
-.dark .border-violet-200 { border-color: #5b21b6 !important; }
-.dark .bg-orange-50,
-.dark .bg-orange-50\/90 { background-color: #431407 !important; }
-.dark .bg-amber-400\/20 { background-color: rgb(251 191 36 / 0.16) !important; }
-.dark .text-emerald-700,
-.dark .text-emerald-800 { color: #6ee7b7 !important; }
-.dark .text-rose-700,
-.dark .text-rose-800 { color: #fda4af !important; }
-.dark .text-orange-700 { color: #fdba74 !important; }
-.dark .text-amber-700,
-.dark .text-amber-800 { color: #fcd34d !important; }
-.dark .text-amber-900 { color: #fde68a !important; }
-.dark .text-sky-600,
-.dark .text-sky-700 { color: #7dd3fc !important; }
-.dark .text-violet-500,
-.dark .text-violet-600,
-.dark .text-violet-700 { color: #c4b5fd !important; }
-.dark .border-emerald-200 { border-color: #065f46 !important; }
-.dark .border-rose-200 { border-color: #9f1239 !important; }
-.dark .border-amber-200 { border-color: #92400e !important; }
-.dark .border-sky-200 { border-color: #075985 !important; }
-.dark .border-orange-200 { border-color: #9a3412 !important; }
-.dark .ring-emerald-100,
-.dark .ring-emerald-200,
-.dark .ring-emerald-500 { --tw-ring-color: #047857 !important; }
-.dark .ring-rose-100,
-.dark .ring-rose-200,
-.dark .ring-rose-500 { --tw-ring-color: #be123c !important; }
-.dark .ring-amber-100,
-.dark .ring-amber-200,
-.dark .ring-amber-500 { --tw-ring-color: #b45309 !important; }
-.dark .ring-slate-200 { --tw-ring-color: #475569 !important; }
-.dark .ring-white { --tw-ring-color: #18181b !important; }
 .dark select,
 .dark input { color-scheme: dark; }
-/* A black button on a near-black panel disappears; on the dark theme the
-   primary action inverts to a light pill instead (see ui.ts). */
-.dark .ui-primary { background-color: #f4f4f5 !important; color: #18181b !important; }
-/* A press, for the touch screens the hover rules below leave out. */
-.dark .active\:bg-zinc-100:active { background-color: #27272a !important; }
-/* Like Tailwind's own hover: variant, only where a pointer can hover. A touch
-   screen fires :hover on whatever a scrolling finger lands on. */
-@media (hover: hover) {
-  .dark .hover\:bg-emerald-50\/60:hover { background-color: rgb(16 185 129 / 0.12) !important; }
-  .dark .hover\:bg-zinc-50:hover,
-  .dark .hover\:bg-zinc-50\/80:hover,
-  .dark .hover\:bg-zinc-50\/70:hover,
-  .dark .hover\:bg-zinc-100:hover { background-color: #27272a !important; }
-  .dark .hover\:bg-zinc-200:hover,
-  .dark .hover\:bg-zinc-200\/60:hover { background-color: #3f3f46 !important; }
-  .dark .hover\:bg-white:hover,
-  .dark .hover\:bg-white\/70:hover { background-color: #27272a !important; }
-  .dark .hover\:bg-emerald-100:hover { background-color: #064e3b !important; }
-  .dark .hover\:bg-rose-100:hover { background-color: #881337 !important; }
-  .dark .hover\:bg-amber-100:hover { background-color: #78350f !important; }
-  .dark .hover\:bg-sky-100:hover { background-color: #0c4a6e !important; }
-  .dark .hover\:text-zinc-900:hover,
-  .dark .hover\:text-zinc-950:hover { color: #fff !important; }
-  .dark .ui-primary:hover { background-color: #d4d4d8 !important; }
-  .dark .ui-danger:hover { background-color: #e11d48 !important; }
-}
+
 /* Slim, quiet scrollbars for the always-scrolling panes. Only where there is
    a mouse: a styled scrollbar on a touch screen is painted in the page, under
    sticky bars like the matchup tabs, where the native overlay floats above. */
 @media (pointer: fine) {
   * {
     scrollbar-width: thin;
-    scrollbar-color: rgb(212 212 216) transparent;
+    scrollbar-color: var(--border-strong) transparent;
   }
-  .dark * { scrollbar-color: #52525b transparent; }
 }
 
 /* Chart marks settle in rather than snapping; motion carries the comparison,
@@ -441,7 +426,6 @@ select:not([multiple]):not([size]) {
 .matchup-top-card .matchup-name { font-size: clamp(17px, 1.9cqi, 22px); line-height: 1.2; }
 .matchup-top-card .matchup-market { gap: 8px; }
 .matchup-top-card .matchup-prices { width: 216px; }
-.matchup-top-card .matchup-prices .odds-pair { box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px -12px rgb(0 0 0 / 0.12); }
 @container (min-width: 58rem) {
   .matchup-top-card .matchup-fighter--left { flex-direction: row; text-align: left; }
   .matchup-top-card .matchup-fighter--right { flex-direction: row-reverse; text-align: right; }
@@ -534,31 +518,19 @@ select:not([multiple]):not([size]) {
 
 /* Follow the app's selected theme, independently of the operating system. */
 .odds-pair {
-  color: #18181b;
-  border-color: #e4e4e7;
-  background: linear-gradient(180deg, #fff, #fafafa);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.025);
+  color: var(--foreground);
+  border-color: var(--border);
+  background: var(--surface);
 }
-.odds-pair-divider { background: #e4e4e7; }
-.dark .odds-pair {
-  color: #f4f4f5;
-  border-color: #3f3f46;
-  background: linear-gradient(180deg, #27272a, #202023);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.025);
-}
-.dark .odds-pair-divider { background: #3f3f46; }
+.odds-pair-divider { background: var(--border); }
 
 /* Rankings activity. Booked is warm (something is coming), fought lately is
    cool (it just happened); neither is win/loss red or green. Tints strong
    enough to read on white, and their own values on the dark surface. */
-.activity-booked { background-color: rgb(254 243 199 / 0.75); }
-.activity-recent { background-color: rgb(224 242 254 / 0.8); }
-.activity-swatch.activity-booked { border-color: #fcd34d; }
-.activity-swatch.activity-recent { border-color: #7dd3fc; }
-.dark .activity-booked { background-color: rgb(245 158 11 / 0.14); }
-.dark .activity-recent { background-color: rgb(56 189 248 / 0.12); }
-.dark .activity-swatch.activity-booked { border-color: rgb(245 158 11 / 0.6); }
-.dark .activity-swatch.activity-recent { border-color: rgb(56 189 248 / 0.55); }
+.activity-booked { background-color: var(--warning-subtle); }
+.activity-recent { background-color: var(--info-subtle); }
+.activity-swatch.activity-booked { border-color: var(--warning-line); }
+.activity-swatch.activity-recent { border-color: var(--info-line); }
 
 /* Opponent tints, drawn as one horizontal band per result (RankingsPage). */
 :root {
@@ -577,13 +549,11 @@ select:not([multiple]):not([size]) {
   --opponent-draw: rgb(245 158 11 / 0.22);
   --opponent-nc: rgb(139 92 246 / 0.24);
 }
-.opponent-selected { box-shadow: inset 0 0 0 2px #71717a; }
-.dark .opponent-selected { box-shadow: inset 0 0 0 2px #a1a1aa; }
+.opponent-selected { box-shadow: inset 0 0 0 2px var(--text-muted); }
 
 /* A chosen method or round in the prediction form: the one solid cell in
    its row, dark on the light theme and light on the dark one. */
-.pick-option-on { background-color: #18181b; border-color: #18181b; color: #fff; }
-.dark .pick-option-on { background-color: #f4f4f5; border-color: #f4f4f5; color: #18181b; }
+.pick-option-on { background-color: var(--control-on); border-color: var(--control-on); color: var(--control-glyph); }
 
 /* A rankings card opened from a bout's weight class: outlined for a moment so
    the eye lands on it, then back to rest. The grey reads on either theme. */
@@ -592,5 +562,5 @@ select:not([multiple]):not([size]) {
 }
 
 @keyframes division-target {
-  from, 50% { box-shadow: 0 0 0 2px #a1a1aa; }
+  from, 50% { box-shadow: 0 0 0 2px var(--border-strong); }
 }

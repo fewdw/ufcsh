@@ -21,8 +21,8 @@ type Sanctions = { sanctions: { scorer: ScorerIdentity; mutedUntil: number; perm
 
 const REASON = Object.fromEntries(REPORT_REASONS) as Record<string, string>;
 const STATE_TONE: Record<CommentState, string> = {
-  visible: "bg-emerald-50 text-emerald-700", held: "bg-amber-50 text-amber-700",
-  deleted: "bg-zinc-100 text-zinc-500", removed: "bg-rose-50 text-rose-700",
+  visible: "bg-success-subtle text-success", held: "bg-warning-subtle text-warning",
+  deleted: "bg-surface-strong text-muted", removed: "bg-danger-subtle text-danger",
 };
 const STATE_LABEL: Record<CommentState, string> = { visible: "Visible", held: "Held for review", deleted: "Deleted by author", removed: "Removed" };
 const MUTES = [[1, "1 hour"], [24, "24 hours"], [168, "7 days"], [720, "30 days"], [-1, "Permanently"]] as const;
@@ -49,45 +49,45 @@ function Row({ item, onDone }: { item: Moderated; onDone: () => void }) {
   }, new Map<string, number>());
   return (
     <li className="px-4 py-4 sm:px-5">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
-        <Link to={`/profiles/${item.author.handle}`} className="font-semibold text-zinc-700 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900">{item.author.displayName}</Link>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+        <Link to={`/profiles/${item.author.handle}`} className="font-medium text-secondary underline decoration-faint underline-offset-2 hover:text-foreground">{item.author.displayName}</Link>
         <span>{item.author.comments} comments · {item.author.removed} removed</span>
-        {item.author.mutedUntil ? <span className="font-semibold text-rose-600">Muted {until(item.author.mutedUntil)}</span> : null}
-        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATE_TONE[item.state]}`}>{STATE_LABEL[item.state]}</span>
+        {item.author.mutedUntil ? <span className="font-medium text-danger">Muted {until(item.author.mutedUntil)}</span> : null}
+        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${STATE_TONE[item.state]}`}>{STATE_LABEL[item.state]}</span>
         <span>Score {item.score}</span>
         <span>{new Date(item.createdAt).toLocaleString()}</span>
         {item.fight ? (
-          <Link to={commentLink(item.fightId, item.id)} className="max-w-full truncate text-zinc-600 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900">
+          <Link to={commentLink(item.fightId, item.id)} className="max-w-full truncate text-secondary underline decoration-faint underline-offset-2 hover:text-foreground">
             {item.fight.f1_name} vs {item.fight.f2_name}
           </Link>
         ) : null}
       </div>
-      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-800 [overflow-wrap:anywhere]">{item.body || <span className="italic text-zinc-400">No text kept.</span>}</p>
+      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground [overflow-wrap:anywhere]">{item.body || <span className="italic text-muted">No text kept.</span>}</p>
       {item.removedAt ? (
-        <p className="mt-1 text-[11px] text-zinc-400">Removed by {item.removedBy ?? "an administrator"}{item.removalReason ? ` — ${item.removalReason}` : ""}</p>
+        <p className="mt-1 text-[11px] text-muted">Removed by {item.removedBy ?? "an administrator"}{item.removalReason ? ` — ${item.removalReason}` : ""}</p>
       ) : null}
 
       {item.reports.length ? (
-        <div className="mt-3 rounded-lg bg-zinc-50 px-3 py-2">
+        <div className="mt-3 rounded-lg bg-surface-muted px-3 py-2">
           <div className="flex flex-wrap gap-1.5">
             {[...tally].map(([key, count]) => (
-              <span key={key} className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-zinc-600 ring-1 ring-zinc-200">{REASON[key] ?? key} × {count}</span>
+              <span key={key} className="rounded-full bg-surface px-2 py-0.5 text-[10px] font-medium text-secondary ring-1 ring-line">{REASON[key] ?? key} × {count}</span>
             ))}
-            {!tally.size ? <span className="text-[11px] text-zinc-400">{item.reports.length} closed {item.reports.length === 1 ? "report" : "reports"}</span> : null}
+            {!tally.size ? <span className="text-[11px] text-muted">{item.reports.length} closed {item.reports.length === 1 ? "report" : "reports"}</span> : null}
           </div>
           <ul className="mt-2 space-y-1">
             {item.reports.filter(report => report.note || report.snapshot !== item.body).slice(0, 8).map((report, index) => (
-              <li key={index} className="text-[11px] text-zinc-500">
-                <span className="font-medium text-zinc-600">{report.reporter.displayName}</span> · {REASON[report.reason] ?? report.reason}
+              <li key={index} className="text-[11px] text-muted">
+                <span className="font-medium text-secondary">{report.reporter.displayName}</span> · {REASON[report.reason] ?? report.reason}
                 {report.note ? `: “${report.note}”` : ""}
-                {report.snapshot && report.snapshot !== item.body ? <span className="block text-zinc-400">When reported: “{report.snapshot}”</span> : null}
+                {report.snapshot && report.snapshot !== item.body ? <span className="block text-muted">When reported: “{report.snapshot}”</span> : null}
               </li>
             ))}
           </ul>
         </div>
       ) : null}
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-zinc-100 pt-3">
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line-subtle pt-3">
         {item.openReports || item.state === "held" ? (
           <button type="button" disabled={busy} className={button} onClick={() => void run(`/api/admin/comments/${item.id}`, { action: "dismiss" })}>Keep</button>
         ) : null}
@@ -96,24 +96,24 @@ function Row({ item, onDone }: { item: Moderated; onDone: () => void }) {
         ) : (
           <>
             <input value={reason} onChange={event => setReason(event.target.value)} maxLength={300} placeholder="Reason (optional)"
-              className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs outline-none focus:border-zinc-400 sm:max-w-56" />
+              className="min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs outline-none focus:border-line-strong sm:max-w-56" />
             <button type="button" disabled={busy} onClick={() => void run(`/api/admin/comments/${item.id}`, { action: "remove", reason })}
               className={BUTTON_DANGER}>Remove</button>
           </>
         )}
-        <span className="mx-1 hidden h-5 w-px bg-zinc-200 sm:block" aria-hidden="true" />
+        <span className="mx-1 hidden h-5 w-px bg-track sm:block" aria-hidden="true" />
         <select value={hours} onChange={event => setHours(Number(event.target.value))} aria-label="Mute length"
-          className="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 pr-7 text-xs text-zinc-700">
+          className="rounded-lg border border-line bg-surface px-2 py-1.5 pr-7 text-xs text-secondary">
           {MUTES.map(([value, label]) => <option key={value} value={value}>Mute {label.toLowerCase()}</option>)}
         </select>
-        <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+        <label className="flex items-center gap-1.5 text-[11px] text-muted">
           <input type="checkbox" checked={purge} onChange={event => setPurge(event.target.checked)} className="accent-zinc-900" />
           and remove all their comments
         </label>
         <button type="button" disabled={busy} className={button}
           onClick={() => void run(`/api/admin/commenters/${item.author.handle}`, { hours, purge, reason })}>Mute author</button>
       </div>
-      {error ? <p role="alert" className="mt-2 text-xs text-rose-600">{error}</p> : null}
+      {error ? <p role="alert" className="mt-2 text-xs text-danger">{error}</p> : null}
     </li>
   );
 }
@@ -127,18 +127,18 @@ function Muted() {
     try { await request(`/api/admin/commenters/${handle}`, { method: "PUT", body: { hours: 0 } }); await reload(true); }
     catch (failure) { setProblem(failure instanceof Error ? failure.message : String(failure)); }
   };
-  if (loading && !data) return <p className="px-5 py-12 text-center text-sm text-zinc-400">Loading…</p>;
-  if (error && !data) return <p className="px-5 py-12 text-center text-sm text-rose-600">{error}</p>;
-  if (!data?.sanctions.length) return <p className="px-5 py-12 text-center text-sm text-zinc-500">Nobody is muted.</p>;
+  if (loading && !data) return <p className="px-5 py-12 text-center text-sm text-muted">Loading…</p>;
+  if (error && !data) return <p className="px-5 py-12 text-center text-sm text-danger">{error}</p>;
+  if (!data?.sanctions.length) return <p className="px-5 py-12 text-center text-sm text-muted">Nobody is muted.</p>;
   return <>
-    {problem ? <p role="alert" className="px-5 pt-3 text-xs text-rose-600">{problem}</p> : null}
-    <ul className="divide-y divide-zinc-100">
+    {problem ? <p role="alert" className="px-5 pt-3 text-xs text-danger">{problem}</p> : null}
+    <ul className="divide-y divide-line-subtle">
       {data.sanctions.map(entry => (
         <li key={entry.scorer.publicId} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5">
-          <div className="min-w-0 text-xs text-zinc-500">
-            <Link to={`/profiles/${entry.scorer.handle}`} className="font-semibold text-zinc-800 underline decoration-zinc-300 underline-offset-2">{entry.scorer.displayName}</Link>
+          <div className="min-w-0 text-xs text-muted">
+            <Link to={`/profiles/${entry.scorer.handle}`} className="font-medium text-foreground underline decoration-faint underline-offset-2">{entry.scorer.displayName}</Link>
             <span> · muted {until(entry.mutedUntil, entry.permanent)} · by {entry.by || "an administrator"}</span>
-            {entry.reason ? <span className="block text-zinc-400">{entry.reason}</span> : null}
+            {entry.reason ? <span className="block text-muted">{entry.reason}</span> : null}
           </div>
           <button type="button" className={button} onClick={() => void lift(entry.scorer.handle)}>Unmute</button>
         </li>
@@ -150,12 +150,12 @@ function Muted() {
 function QueueList({ view, onCounts }: { view: Exclude<View, "muted">; onCounts: (counts: Queue["counts"]) => void }) {
   const { data, loading, error, reload } = useAdminResource<Queue>(`/api/admin/comments?view=${view}`, 30_000);
   useEffect(() => { if (data) onCounts(data.counts); }, [data, onCounts]);
-  if (loading && !data) return <p className="px-5 py-12 text-center text-sm text-zinc-400">Loading comments…</p>;
-  if (error && !data) return <p className="px-5 py-12 text-center text-sm text-rose-600">{error}</p>;
+  if (loading && !data) return <p className="px-5 py-12 text-center text-sm text-muted">Loading comments…</p>;
+  if (error && !data) return <p className="px-5 py-12 text-center text-sm text-danger">{error}</p>;
   if (!data?.comments.length) {
-    return <p className="px-5 py-12 text-center text-sm text-zinc-500">{view === "reported" ? "No reported comments. All clear." : "Nothing here."}</p>;
+    return <p className="px-5 py-12 text-center text-sm text-muted">{view === "reported" ? "No reported comments. All clear." : "Nothing here."}</p>;
   }
-  return <ul className="divide-y divide-zinc-100">{data.comments.map(item => <Row key={item.id} item={item} onDone={() => void reload(true)} />)}</ul>;
+  return <ul className="divide-y divide-line-subtle">{data.comments.map(item => <Row key={item.id} item={item} onDone={() => void reload(true)} />)}</ul>;
 }
 
 /** Fight discussions: what readers reported, what was posted lately, what
@@ -168,12 +168,12 @@ export default function AdminComments() {
     { id: "recent", label: "Recent" }, { id: "removed", label: "Removed" }, { id: "muted", label: "Muted" },
   ];
   return (
-    <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
-      <div className="border-b border-zinc-100 px-4 py-4 sm:px-5">
+    <section className="overflow-hidden rounded-xl border border-line bg-surface">
+      <div className="border-b border-line-subtle px-4 py-4 sm:px-5">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold text-zinc-900">Discussion moderation</h2>
-            <p className="mt-0.5 text-xs text-zinc-500">
+            <h2 className="text-base font-medium text-foreground">Discussion moderation</h2>
+            <p className="mt-0.5 text-xs text-muted">
               {counts ? `${counts.reported} reported · ${counts.held} held until reviewed` : "Loading…"}
               {" · "}Comments reported by three established accounts are held automatically.
             </p>

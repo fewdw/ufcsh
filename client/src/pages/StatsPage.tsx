@@ -14,7 +14,7 @@ import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
 import { DEFAULT_SETTINGS, statsRequest, type Method, type Metric, type StatsSettings } from "../statsDefaults";
 
 const shell = PANEL;
-const selectClass = "max-w-full rounded-full border border-zinc-200 bg-zinc-50 py-1 pl-2.5 pr-7 text-[10px] font-medium text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-400";
+const selectClass = "max-w-full rounded-full border border-line bg-surface-muted py-1 pl-2.5 pr-7 text-[10px] font-medium text-secondary outline-none transition hover:border-line-strong focus:border-line-strong";
 
 type Update = <K extends keyof StatsSettings>(key: K, value: StatsSettings[K]) => void;
 
@@ -24,10 +24,10 @@ function formatRank(rank: number | null, tied: boolean): string {
 }
 
 const CHIP_TONE: Record<string, string> = {
-  win: "bg-emerald-50 text-emerald-800 ring-emerald-100",
-  loss: "bg-rose-50 text-rose-800 ring-rose-100",
-  draw: "bg-amber-50 text-amber-800 ring-amber-100",
-  nc: "bg-zinc-100 text-zinc-600 ring-zinc-200",
+  win: "bg-success-subtle text-success ring-success-line",
+  loss: "bg-danger-subtle text-danger ring-danger-line",
+  draw: "bg-warning-subtle text-warning ring-warning-line",
+  nc: "bg-surface-strong text-secondary ring-line",
 };
 
 const CHIP_WORD: Record<string, string> = { win: "won", loss: "lost", draw: "drew", nc: "no contest" };
@@ -49,7 +49,7 @@ function Chips({ chips }: { chips: StatChip[] }) {
           key={`${chip.fight_id}-${chip.label}-${index}`}
           title={[chip.label, chip.note, chip.outcome ? CHIP_WORD[chip.outcome] : null].filter(Boolean).join(" · ")}
           className={`max-w-full truncate rounded px-1.5 py-px text-[9px] font-medium leading-4 ring-1 ring-inset ${
-            chip.outcome ? CHIP_TONE[chip.outcome] : "bg-zinc-100 text-zinc-600 ring-zinc-200"
+            chip.outcome ? CHIP_TONE[chip.outcome] : "bg-surface-strong text-secondary ring-line"
           }`}
         >
           {chip.label}
@@ -64,7 +64,7 @@ function Chips({ chips }: { chips: StatChip[] }) {
             event.stopPropagation();
             setExpanded(true);
           }}
-          className="rounded px-1.5 py-px text-[9px] font-semibold leading-4 text-zinc-500 ring-1 ring-inset ring-zinc-200 transition hover:bg-zinc-100 hover:text-zinc-900"
+          className="rounded px-1.5 py-px text-[9px] font-medium leading-4 text-muted ring-1 ring-inset ring-line transition hover:bg-surface-strong hover:text-foreground"
         >
           +{hidden}
         </button>
@@ -77,7 +77,7 @@ function Chips({ chips }: { chips: StatChip[] }) {
             event.stopPropagation();
             setExpanded(false);
           }}
-          className="rounded px-1.5 py-px text-[9px] font-semibold leading-4 text-zinc-500 ring-1 ring-inset ring-zinc-200 transition hover:bg-zinc-100 hover:text-zinc-900"
+          className="rounded px-1.5 py-px text-[9px] font-medium leading-4 text-muted ring-1 ring-inset ring-line transition hover:bg-surface-strong hover:text-foreground"
           aria-label="Hide expanded information"
         >
           Hide
@@ -624,7 +624,7 @@ const initials = (name: string) => name.split(" ").filter(Boolean).map((part) =>
 /** A fighter's photo (a bout's winner), or an official's initials. */
 function RowPortrait({ row }: { row: StatsLeader }) {
   if (row.href && !row.opponent) {
-    return <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-zinc-100 text-[9px] font-semibold text-zinc-500" aria-hidden="true">{initials(row.name)}</span>;
+    return <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-surface-strong text-[9px] font-medium text-muted" aria-hidden="true">{initials(row.name)}</span>;
   }
   return <span className="shrink-0"><Avatar src={row.photo_url} name={row.name} size="xs" /></span>;
 }
@@ -668,16 +668,16 @@ function Leaderboard({
             ))}
           </div>
         ) : (
-          <h2 className="text-[15px] font-semibold leading-6 text-zinc-950">{board.title}</h2>
+          <h2 className="text-[15px] font-medium leading-6 text-foreground">{board.title}</h2>
         )}
-        <p className="mt-1 text-[11px] leading-4 text-zinc-400">{board.description}</p>
+        <p className="mt-1 text-[11px] leading-4 text-muted">{board.description}</p>
       </div>
-      <div className="border-b border-zinc-100 px-4 pb-3">
+      <div className="border-b border-line-subtle px-4 pb-3">
         <CardControls boardKey={board.key} order={board.order} settings={settings} update={update} division={division} />
       </div>
-      <div ref={rowsScroll} className="h-[30rem] min-h-0 divide-y divide-zinc-100 overflow-y-auto">
+      <div ref={rowsScroll} className="h-[30rem] min-h-0 divide-y divide-line-subtle overflow-y-auto">
         {board.rows.length === 0 ? (
-          <div className="px-4 py-8 text-center text-xs text-zinc-400">
+          <div className="px-4 py-8 text-center text-xs text-muted">
             {fighterSelected ? "None of the selected fighters qualify for this statistic." : "Nothing matches these filters."}
           </div>
         ) : null}
@@ -688,27 +688,27 @@ function Leaderboard({
           <Link
             key={`${row.href ?? row.fighter_id}-${index}`}
             to={row.href ?? `/fighters/${row.fighter_id}`}
-            className={`grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-start gap-x-2.5 px-3 py-2 transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-zinc-900 ${pinned ? "bg-zinc-100/90 hover:bg-zinc-200/80" : "hover:bg-zinc-50"}`}
+            className={`grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-start gap-x-2.5 px-3 py-2 transition-colors [--focus-outline-offset:-2px] ${pinned ? "bg-surface-strong/90 hover:bg-track/80" : "hover:bg-surface-muted"}`}
           >
             <span
-              className={`mt-0.5 flex h-5 min-w-7 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-semibold tabular-nums ${podium ? "bg-zinc-100 text-zinc-900" : "text-zinc-400"}`}
+              className={`mt-0.5 flex h-5 min-w-7 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-medium tabular-nums ${podium ? "bg-surface-strong text-foreground" : "text-muted"}`}
               title={row.rank == null ? "Not ranked for these filters" : row.tied ? `Tied at rank ${row.rank}` : `Rank ${row.rank}`}
             >
               {formatRank(row.rank, row.tied)}
             </span>
             <RowPortrait row={row} />
             <span className="min-w-0 flex-1">
-              <span className="block min-w-0 text-sm leading-5 text-zinc-900">
+              <span className="block min-w-0 text-sm leading-5 text-foreground">
                 <span className="font-medium">{row.name}</span>
-                {row.opponent ? <> <span className="text-xs text-zinc-400">{row.opponent.verb}</span> <span className="font-medium text-zinc-600">{row.opponent.name}</span></> : null}
-                {pinned ? <span className="ml-1.5 rounded bg-zinc-200 px-1 py-px align-middle text-[7px] font-bold uppercase tracking-wider text-zinc-500">Pinned</span> : null}
+                {row.opponent ? <> <span className="text-xs text-muted">{row.opponent.verb}</span> <span className="font-medium text-secondary">{row.opponent.name}</span></> : null}
+                {pinned ? <span className="ml-1.5 rounded bg-track px-1 py-px align-middle text-[7px] font-medium text-muted">Pinned</span> : null}
               </span>
-              <span className="block text-[10px] leading-[1.35] text-zinc-400">
+              <span className="block text-[10px] leading-[1.35] text-muted">
                 {[row.division, row.detail].filter(Boolean).join(" · ")}
               </span>
               <Chips chips={row.chips ?? []} />
             </span>
-            <span className="pt-0.5 text-right text-sm font-semibold tabular-nums text-zinc-950">
+            <span className="pt-0.5 text-right text-sm font-medium tabular-nums text-foreground">
               {formatValue(row.value, board.format)}
             </span>
           </Link>
@@ -758,8 +758,8 @@ function FiltersMenu({
 }) {
   return (
     <OptionsSheet label="Filters" count={count || null} onReset={onReset} iconOnlyOnPhone>
-      <p className="px-4 pb-2 text-[11px] text-zinc-400">Applies to every card.</p>
-      <div className="grid grid-cols-2 gap-x-2 gap-y-2.5 border-b border-zinc-100 px-4 pb-3">
+      <p className="px-4 pb-2 text-[11px] text-muted">Applies to every card.</p>
+      <div className="grid grid-cols-2 gap-x-2 gap-y-2.5 border-b border-line-subtle px-4 pb-3">
         <SheetField label="From">
           <select aria-label="Starting year" value={settings.statsSince} onChange={(event) => update("statsSince", event.target.value)} className={SHEET_SELECT}>
             <option value="all">First event</option>
@@ -833,14 +833,14 @@ type ActiveFilter = { key: string; label: string; clear: () => void };
 /** A filter or a picked fighter shown above the cards, removable in one press. */
 function FilterChip({ label, onClear, children }: { label: string; onClear: () => void; children?: React.ReactNode }) {
   return (
-    <span className="flex h-7 max-w-full items-center gap-1 rounded-full border border-zinc-200 bg-zinc-50 pl-1 pr-0.5 text-[11px] font-medium text-zinc-700">
+    <span className="flex h-7 max-w-full items-center gap-1 rounded-full border border-line bg-surface-muted pl-1 pr-0.5 text-[11px] font-medium text-secondary">
       {children ?? <span className="w-1.5 shrink-0" />}
       <span className="truncate">{label}</span>
       <button
         type="button"
         aria-label={`Remove ${label}`}
         onClick={onClear}
-        className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-900"
+        className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-muted transition hover:bg-track hover:text-foreground"
       >
         <X className="h-3 w-3" aria-hidden="true" />
       </button>
@@ -928,8 +928,8 @@ export default function StatsPage() {
   if (showMoreInfo) active.push({ key: "moreInfo", label: "More info", clear: () => setShowMoreInfo(false) });
   if (!keepFullLists) active.push({ key: "fullLists", label: "Picked fighters only", clear: () => setKeepFullLists(true) });
 
-  if (loading && !dashboard) return <div role="status" className="appear-late flex h-full items-center justify-center text-sm text-zinc-400">Calculating rankings…</div>;
-  if (!dashboard) return <div className="flex h-full items-center justify-center p-4 text-sm text-zinc-400">{error ? <RequestNotice onRetry={retry}>Couldn’t load statistics.</RequestNotice> : "No statistics yet."}</div>;
+  if (loading && !dashboard) return <div role="status" className="appear-late flex h-full items-center justify-center text-sm text-muted">Calculating rankings…</div>;
+  if (!dashboard) return <div className="flex h-full items-center justify-center p-4 text-sm text-muted">{error ? <RequestNotice onRetry={retry}>Couldn’t load statistics.</RequestNotice> : "No statistics yet."}</div>;
 
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
@@ -948,12 +948,12 @@ export default function StatsPage() {
               />
             </div>
             <div className="flex shrink-0 items-center gap-1.5 sm:ml-auto sm:gap-2">
-              <span className={`text-[10px] font-medium text-zinc-400 max-sm:sr-only ${loading ? "visible" : "invisible"}`} role="status" aria-hidden={!loading}>Updating…</span>
+              <span className={`text-[10px] font-medium text-muted max-sm:sr-only ${loading ? "visible" : "invisible"}`} role="status" aria-hidden={!loading}>Updating…</span>
               <select
                 aria-label="Division"
                 value={division}
                 onChange={(event) => pickDivision(event.target.value)}
-                className="hidden h-8 max-w-44 rounded-full border border-zinc-200 bg-white pl-3 pr-7 text-xs font-medium text-zinc-700 outline-none transition hover:border-zinc-300 hover:bg-zinc-50 focus:border-zinc-400 sm:block"
+                className="hidden h-8 max-w-44 rounded-full border border-line bg-surface pl-3 pr-7 text-xs font-medium text-secondary outline-none transition hover:border-line-strong hover:bg-surface-muted focus:border-line-strong sm:block"
               >
                 <option value="all">All divisions</option>
                 {dashboard.divisions.map((name) => <option key={name} value={name}>{name}</option>)}
@@ -981,7 +981,7 @@ export default function StatsPage() {
                 onClick={reset}
                 aria-label="Reset all statistics filters"
                 title="Reset all filters"
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line bg-surface text-muted transition hover:border-line-strong hover:bg-surface-muted hover:text-foreground "
               >
                 <RotateCcw
                   className="h-3.5 w-3.5 transition-transform duration-500 ease-out"
@@ -992,7 +992,7 @@ export default function StatsPage() {
             </div>
           </div>
           {selectedFighters.length || active.length ? (
-            <div className="mt-2 flex flex-wrap gap-1.5 border-t border-zinc-100 pt-2" aria-label="Selected fighters and filters">
+            <div className="mt-2 flex flex-wrap gap-1.5 border-t border-line-subtle pt-2" aria-label="Selected fighters and filters">
               {selectedFighters.map((fighter) => (
                 <FilterChip key={fighter.id} label={fighter.name} onClear={() => setSelectedFighters(selectedFighters.filter((current) => current.id !== fighter.id))}>
                   <Avatar src={fighter.photo_url} name={fighter.name} size="xs" />

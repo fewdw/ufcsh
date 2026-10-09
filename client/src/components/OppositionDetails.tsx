@@ -15,23 +15,23 @@ import { useSettings, withRanking } from "../settings";
 
 type Fighter = { id: string; name: string };
 const resultWords: Record<string, string> = { win: "Win", loss: "Loss", draw: "Draw", nc: "No contest" };
-const linkUnderline = "decoration-[0.5px] decoration-zinc-300/60 underline-offset-2 dark:decoration-zinc-500/40";
+const linkUnderline = "decoration-[0.5px] decoration-faint/60 underline-offset-2";
 const chipTone: Record<ReturnType<typeof standingChips>[number]["kind"], string> = {
-  champion: "bg-amber-100 text-belt",
-  interim: "bg-slate-100 text-belt-interim",
-  rank: "bg-zinc-100 text-zinc-600",
-  former: "bg-amber-50 text-belt",
-  "former-interim": "bg-slate-100 text-belt-interim",
-  future: "bg-amber-50 text-belt",
-  "future-interim": "bg-slate-100 text-belt-interim",
+  champion: "bg-warning-subtle text-belt",
+  interim: "bg-surface-strong text-belt-interim",
+  rank: "bg-surface-strong text-secondary",
+  former: "bg-warning-subtle text-belt",
+  "former-interim": "bg-surface-strong text-belt-interim",
+  future: "bg-warning-subtle text-belt",
+  "future-interim": "bg-surface-strong text-belt-interim",
 };
 
 function Result({ outcome, label }: { outcome: OppositionBout["outcome"]; label?: string }) {
   const word = resultWords[outcome ?? ""] ?? "Result unknown";
-  return <span title={label ?? word} aria-label={label ?? word} className={`inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded px-1 font-bold ${outcomeClasses(outcome)}`}>{outcomeLabel(outcome) || "?"}</span>;
+  return <span title={label ?? word} aria-label={label ?? word} className={`inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded px-1 font-medium ${outcomeClasses(outcome)}`}>{outcomeLabel(outcome) || "?"}</span>;
 }
 
-const CHIP = "inline-block whitespace-nowrap rounded-full px-1.5 text-[10px] font-bold leading-4";
+const CHIP = "inline-block whitespace-nowrap rounded-full px-1.5 text-[10px] font-medium leading-4";
 
 function Chips({ standing }: { standing: Standing | null }) {
   return <>{standingChips(standing).map(chip => <span key={chip.kind} title={chip.title} className={`${CHIP} py-px ${chipTone[chip.kind]}`}><span className="sr-only">{chip.title}: </span><span aria-hidden="true">{chip.short}</span></span>)}</>;
@@ -40,7 +40,7 @@ function Chips({ standing }: { standing: Standing | null }) {
 /** A name: `to` when given, else a profile here, else their Sherdog page.
  *  Gold for anyone who held, holds or would go on to hold a UFC belt. */
 function Name({ opponent, standing, to, title, className = "" }: { opponent: { id: string | null; name: string; source_url?: string | null }; standing: Standing | null; to?: string; title?: string; className?: string }) {
-  const style = `${className} font-medium ${standing?.belt ? "text-belt" : "text-zinc-900"}`;
+  const style = `${className} font-medium ${standing?.belt ? "text-belt" : "text-foreground"}`;
   const linked = `${style} underline ${linkUnderline}`;
   if (to) return <Link to={to} title={title ?? opponent.name} className={linked}>{opponent.name}</Link>;
   if (opponent.id) return <Link to={`/fighters/${opponent.id}`} title={opponent.name} className={linked}>{opponent.name}</Link>;
@@ -57,12 +57,12 @@ function Faced({ fighter, group, current, picked, pick }: { fighter: Fighter; gr
   // Met more than once, each meeting is a tab choosing whose earlier fights
   // show beside it, under one for them all. The whole tab selects, name
   // included; only its date, marked as a link, opens the matchup.
-  const tab = (on: boolean) => `relative -mx-1.5 cursor-pointer rounded-lg px-1.5 py-1.5 ring-1 ring-inset ${on ? "bg-zinc-50 ring-zinc-300" : "ring-transparent hover:bg-zinc-50"}`;
-  const focus = "focus-visible:outline-2 focus-visible:outline-zinc-900";
+  const tab = (on: boolean) => `relative -mx-1.5 cursor-pointer rounded-lg px-1.5 py-1.5 ring-1 ring-inset ${on ? "bg-surface-muted ring-line-strong" : "ring-transparent hover:bg-surface-muted"}`;
+  const focus = "";
   const under = picked ? "pointer-events-none relative" : "";
   return <div role={picked ? "group" : undefined} aria-label={picked ? `Fights with ${group.opponent.name}` : undefined} className={picked ? "space-y-0.5" : "space-y-2"}>
-    {picked ? <button type="button" aria-pressed={picked === "all"} onClick={() => pick("all")} className={`${tab(picked === "all")} ${focus} block w-[calc(100%+0.75rem)] text-left font-medium text-zinc-700`}>All fights</button> : null}
-    {group.meetings.map(meeting => <div key={meeting.fight_id} className={`flex min-w-0 items-start gap-1.5 text-zinc-700 ${picked ? tab(picked === meeting.fight_id) : ""}`}>
+    {picked ? <button type="button" aria-pressed={picked === "all"} onClick={() => pick("all")} className={`${tab(picked === "all")} ${focus} block w-[calc(100%+0.75rem)] text-left font-medium text-secondary`}>All fights</button> : null}
+    {group.meetings.map(meeting => <div key={meeting.fight_id} className={`flex min-w-0 items-start gap-1.5 text-secondary ${picked ? tab(picked === meeting.fight_id) : ""}`}>
       {picked ? <button type="button" aria-pressed={picked === meeting.fight_id} aria-label={`${group.opponent.name}, ${formatDateShortWithYear(meeting.date)}`} onClick={() => pick(meeting.fight_id)} className={`absolute inset-0 rounded-lg ${focus}`} /> : null}
       <span className={`flex ${under}`}><Result outcome={meeting.outcome} label={boutLabel(fighter.name, meeting.outcome, group.opponent.name)} /></span>
       {/* Chips that do not fit beside the name wrap under it, not under the result. */}
@@ -72,12 +72,12 @@ function Faced({ fighter, group, current, picked, pick }: { fighter: Fighter; gr
             : <Name opponent={group.opponent} standing={meeting.standing} to={`/fights/${meeting.fight_id}?tab=matchup`} title={`${fighter.name} vs. ${group.opponent.name}`} />}
           <Chips standing={meeting.standing} />
         </span>
-        <span className="mt-1 block text-zinc-500">
+        <span className="mt-1 block text-muted">
           <span title={meeting.method ?? undefined}>{resultDot(meeting).shortMethod || "—"}</span>
-          {" · "}<span className="whitespace-nowrap tabular-nums" title={current ? "UFC record now" : "UFC record going in"}><span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(meeting.record)}</span>
+          {" · "}<span className="whitespace-nowrap tabular-nums" title={current ? "UFC record now" : "UFC record going in"}><span className="text-[9px] font-medium text-muted">UFC</span> {recordText(meeting.record)}</span>
         </span>
         {picked ? <Link to={`/fights/${meeting.fight_id}?tab=matchup`} title={`Open ${fighter.name} vs. ${group.opponent.name}`}
-          className={`pointer-events-auto mt-0.5 inline-block text-[10px] tabular-nums text-zinc-500 underline hover:text-zinc-900 ${linkUnderline}`}>{formatDateShortWithYear(meeting.date)} <span aria-hidden="true">↗</span></Link> : null}
+          className={`pointer-events-auto mt-0.5 inline-block text-[10px] tabular-nums text-muted underline hover:text-foreground ${linkUnderline}`}>{formatDateShortWithYear(meeting.date)} <span aria-hidden="true">↗</span></Link> : null}
       </span>
     </div>)}
   </div>;
@@ -91,11 +91,11 @@ function Opponent({ fighter, group, current, columns }: { fighter: Fighter; grou
   // The latest meeting unless another is chosen, or the filter has dropped the one that was.
   const picked = !tabbed ? null : choice === "all" || group.meetings.some(meeting => meeting.fight_id === choice) ? choice : group.meetings[0].fight_id;
   const shown = current ? group.meetings.slice(0, 1) : picked && picked !== "all" ? group.meetings.filter(meeting => meeting.fight_id === picked) : group.meetings;
-  return <section role="listitem" aria-label={group.opponent.name} className={`grid border-t border-zinc-200 py-2.5 ${columns}`}>
+  return <section role="listitem" aria-label={group.opponent.name} className={`grid border-t border-line py-2.5 ${columns}`}>
     <Faced fighter={fighter} group={group} current={current} picked={picked} pick={setChoice} />
     <div className="min-w-0 space-y-2">
       {shown.map(meeting => <div key={meeting.fight_id}>
-        {tabbed ? <p className="mb-1 text-zinc-500">Before {formatDateShortWithYear(meeting.date)}</p> : null}
+        {tabbed ? <p className="mb-1 text-muted">Before {formatDateShortWithYear(meeting.date)}</p> : null}
         {meeting.history.length ? <ul className="grid grid-cols-1 gap-x-3 gap-y-2 min-[440px]:grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(10rem,1fr))]">
           {meeting.history.map((bout, index) => <li key={bout.fight_id ?? `${bout.date}-${index}`} className="flex min-w-0 items-start gap-1.5">
             <Result outcome={bout.outcome} label={boutLabel(group.opponent.name, bout.outcome, bout.opponent.name)} />
@@ -104,13 +104,13 @@ function Opponent({ fighter, group, current, columns }: { fighter: Fighter; grou
                 <Name opponent={bout.opponent} standing={bout.standing} className="truncate" />
                 {bout.standing?.rank ? <span className={`${CHIP} shrink-0 tabular-nums ${chipTone.rank}`} title={standingChips(bout.standing)[0]?.title}>#{bout.standing.rank}</span> : null}
               </span>
-              <span className="block truncate text-zinc-500" title={`${bout.method || "Method unknown"} · ${formatDateShortWithYear(bout.date)}${bout.standing?.belt ? ` · ${standingChips(bout.standing).at(-1)?.title}` : ""}`}>
+              <span className="block truncate text-muted" title={`${bout.method || "Method unknown"} · ${formatDateShortWithYear(bout.date)}${bout.standing?.belt ? ` · ${standingChips(bout.standing).at(-1)?.title}` : ""}`}>
                 {bout.fight_id ? <Link to={`/fights/${bout.fight_id}`} className={`${linkUnderline} hover:underline`}>{resultDot(bout).shortMethod || "—"}</Link> : resultDot(bout).shortMethod || "—"}
-                {bout.record ? <span className="tabular-nums" title={current ? "Their UFC record now" : `Their UFC record when ${lastName(fighter.name)} fought ${lastName(group.opponent.name)}`}> · <span className="text-[9px] font-bold text-zinc-400">UFC</span> {recordText(bout.record)}</span> : null}
+                {bout.record ? <span className="tabular-nums" title={current ? "Their UFC record now" : `Their UFC record when ${lastName(fighter.name)} fought ${lastName(group.opponent.name)}`}> · <span className="text-[9px] font-medium text-muted">UFC</span> {recordText(bout.record)}</span> : null}
               </span>
             </span>
           </li>)}
-        </ul> : <p className="text-zinc-400">UFC debut.</p>}
+        </ul> : <p className="text-muted">UFC debut.</p>}
       </div>)}
     </div>
   </section>;
@@ -121,7 +121,7 @@ function Opponent({ fighter, group, current, columns }: { fighter: Fighter; grou
 function OppositionGrid({ fighter, groups, label, current }: { fighter: Fighter; groups: Group[]; label: string; current: boolean }) {
   const columns = "grid-cols-[42%_minmax(0,1fr)] gap-3 sm:grid-cols-[13rem_minmax(0,1fr)] sm:gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]";
   return <div aria-label={label} role="list" className="text-[11px] sm:text-xs">
-    <div aria-hidden="true" className={`sticky top-0 z-10 grid bg-white pb-2 font-medium text-zinc-500 ${columns}`}>
+    <div aria-hidden="true" className={`sticky top-0 z-10 grid bg-surface pb-2 font-medium text-muted ${columns}`}>
       <span>{lastName(fighter.name)} vs.</span><span>{current ? "All their UFC fights" : "Their earlier UFC fights"}</span>
     </div>
     {groups.map(group => <Opponent key={group.opponent.id ?? group.opponent.name} fighter={fighter} group={group} current={current} columns={columns} />)}
@@ -137,7 +137,7 @@ function OppositionList({ scope, fighter, before, outcome, current }: { scope: s
   const resultName = outcome === "all" ? "all results" : outcome === "win" ? "wins" : "losses";
   return <div ref={scrollRef} data-sheet-scroll className="-ml-1.5 min-h-0 flex-1 overflow-auto overscroll-x-contain overscroll-y-none pl-1.5 pr-2 [scrollbar-gutter:stable]">
     {error ? <RequestNotice onRetry={retry}>Couldn’t load opponents.</RequestNotice> : null}
-    {!data ? !error ? <p role="status" className="py-4 text-xs text-zinc-500">Loading…</p> : null : !groups.length ? <p className="py-4 text-xs text-zinc-500">{data.rows.length ? `No ${resultName}.` : "UFC debut — no earlier opponents."}</p>
+    {!data ? !error ? <p role="status" className="py-4 text-xs text-muted">Loading…</p> : null : !groups.length ? <p className="py-4 text-xs text-muted">{data.rows.length ? `No ${resultName}.` : "UFC debut — no earlier opponents."}</p>
       : <OppositionGrid fighter={fighter} groups={groups} label={`${fighter.name}: opposition, ${resultName}`} current={data.current} />}
   </div>;
 }
@@ -147,7 +147,7 @@ function OppositionModal({ id, scope, fighters, before, close }: { id: string; s
   const [outcome, setOutcome] = useHistoryState<OppositionFilter>(`${scope}:outcome`, "all");
   // On the night each opponent was met, or everything they have done since too.
   const [current, setCurrent] = useHistoryState(`${scope}:current`, false);
-  const segment = "min-h-8 flex-auto whitespace-nowrap rounded-full px-1 text-[10px] font-medium sm:px-3 sm:text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900";
+  const segment = "min-h-8 flex-auto whitespace-nowrap rounded-full px-1 text-[10px] font-medium sm:px-3 sm:text-xs ";
   return <EvidenceDialog id={id} close={close} large>
     <div className="shrink-0 px-4 pb-3 pt-3 sm:px-5">
       <div className="flex items-center justify-between gap-3">
@@ -157,7 +157,7 @@ function OppositionModal({ id, scope, fighters, before, close }: { id: string; s
       <div className="mt-2 flex flex-wrap items-center gap-1.5 sm:gap-2">
         <div role="group" aria-label="Fighter" className={`${segmentedGroup} min-w-max flex-1`}>
           {fighters.map((fighter, index) => <button key={fighter.id} type="button" aria-label={fighter.name} title={fighter.name} aria-pressed={selected === index} onClick={() => setSelected(index)}
-            className={`min-h-8 min-w-0 flex-auto whitespace-nowrap rounded-full px-1 text-[10px] font-medium sm:px-3 sm:text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${selected === index ? segmentedSelected : segmentedIdle}`}><span className="sm:hidden">{lastName(fighter.name)}</span><span className="hidden sm:inline">{fighter.name}</span></button>)}
+            className={`min-h-8 min-w-0 flex-auto whitespace-nowrap rounded-full px-1 text-[10px] font-medium sm:px-3 sm:text-xs ${selected === index ? segmentedSelected : segmentedIdle}`}><span className="sm:hidden">{lastName(fighter.name)}</span><span className="hidden sm:inline">{fighter.name}</span></button>)}
         </div>
         <div role="group" aria-label={`${lastName(fighters[selected].name)}'s results`} className={`${segmentedGroup} min-w-max flex-1`}>
           {(["all", "win", "loss"] as const).map(value => <button key={value} type="button" aria-pressed={outcome === value} onClick={() => setOutcome(value)}

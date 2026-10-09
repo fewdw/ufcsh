@@ -72,7 +72,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   // Apply the saved palette before the browser paints the application. This
   // avoids a light flash when a returning visitor has dark mode selected.
   useLayoutEffect(() => {
+    // `.dark` drives Tailwind's dark: variant, data-theme Arc's tokens.
     document.documentElement.classList.toggle("dark", settings.theme === "dark");
+    document.documentElement.dataset.theme = settings.theme;
     document.documentElement.style.colorScheme = settings.theme;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));

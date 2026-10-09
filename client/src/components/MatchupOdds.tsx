@@ -2,7 +2,7 @@
    helper shared with OddsPair.tsx so both build the same leg from a click. */
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { oddsMovement, type OddsMovement } from "../oddsMovement";
-import { lastName } from "../format";
+import { formatLine, lastName } from "../format";
 import { useTooltip } from "../tooltip";
 import { Tooltip } from "./Tooltip";
 import type { MethodOdds, OddsQuote } from "../api";
@@ -43,7 +43,7 @@ function Movement({ movement, name }: { movement: OddsMovement; name: string }) 
   const Arrow = movement.toward === "f1" ? ArrowLeft : ArrowRight;
   return (
     <span
-      className="flex flex-col items-center justify-center gap-0.5 rounded text-zinc-500"
+      className="flex flex-col items-center justify-center gap-0.5 rounded text-muted"
       tabIndex={0}
       aria-label={label}
       aria-describedby={open ? id : undefined}
@@ -71,8 +71,8 @@ type Bet = { fightId: string; fightLabel: string; market: string; selection: str
 function Price({ quote, bet }: { quote: OddsQuote | undefined; bet?: Bet }) {
   const { toggle, isSelected } = useParlay();
   const best = bestPrice(quote);
-  if (!best) return <span className="self-center text-xs text-zinc-300 dark:text-zinc-600">—</span>;
-  if (!bet) return <span className="text-[11px] font-semibold tabular-nums text-zinc-900 @[40rem]:text-xs dark:text-zinc-100">{best.line}</span>;
+  if (!best) return <span className="self-center text-xs text-faint">—</span>;
+  if (!bet) return <span className="text-[11px] font-medium tabular-nums text-foreground @[40rem]:text-xs">{formatLine(best.line)}</span>;
   const leg: ParlayLeg = { id: outcomeId(bet.outcome), fightId: bet.fightId, fightLabel: bet.fightLabel, market: bet.market, selection: bet.selection, price: best.line, outcome: bet.outcome };
   const selected = isSelected(leg.id);
   return (
@@ -81,10 +81,10 @@ function Price({ quote, bet }: { quote: OddsQuote | undefined; bet?: Bet }) {
       onClick={(event) => { event.stopPropagation(); toggle(leg); }}
       aria-pressed={selected}
       title={`${leg.selection} — click to ${selected ? "remove from" : "add to"} your parlay`}
-      className="rounded px-1 py-px text-[11px] font-semibold tabular-nums text-zinc-900 transition hover:opacity-70 @[40rem]:py-0.5 @[40rem]:text-xs dark:text-zinc-100"
+      className="rounded px-1 py-px text-[11px] font-medium tabular-nums text-foreground transition hover:opacity-70 @[40rem]:py-0.5 @[40rem]:text-xs"
       style={selected ? { boxShadow: "0 0 0 2px var(--color-series-1)" } : undefined}
     >
-      {best.line}
+      {formatLine(best.line)}
     </button>
   );
 }
@@ -123,25 +123,25 @@ function MethodMarkets({ odds, f1Name, f2Name, fightId }: { odds: MethodOdds; f1
   const totalOutcome = (side: "over" | "under"): Outcome => ({ fightId: fightId ?? "", totalRounds: { side, line: closestLine ? Number.parseFloat(closestLine.rounds) + 0.5 : 0 } });
 
   return (
-    <div className="border-t border-zinc-200 px-1.5 py-1 @[40rem]:px-2.5 @[40rem]:py-2 dark:border-zinc-700">
+    <div className="border-t border-line px-1.5 py-1 @[40rem]:px-2.5 @[40rem]:py-2">
       {visible.length ? (
         <div className="grid grid-cols-[minmax(0,1fr)_2.5rem_minmax(0,1fr)] items-center gap-x-0.5 @[40rem]:grid-cols-[minmax(0,1fr)_3.25rem_minmax(0,1fr)] @[40rem]:gap-x-1 @[40rem]:gap-y-1.5">
           {visible.map((m) => <div className="contents" key={m.label}>
             <Price quote={m.f1} bet={bet("Method", `${f1Name} by ${m.label}`, m.outcome(1))} />
-            <span className="text-[8px] font-semibold text-zinc-500 @[40rem]:text-[9px]">{m.label}</span>
+            <span className="text-[8px] font-medium text-muted @[40rem]:text-[9px]">{m.label}</span>
             <Price quote={m.f2} bet={bet("Method", `${f2Name} by ${m.label}`, m.outcome(2))} />
           </div>)}
         </div>
       ) : null}
-      {mean ? <div className="mt-1.5 text-[8px] text-zinc-400">Average closing odds</div> : null}
+      {mean ? <div className="mt-1.5 text-[8px] text-muted">Average closing odds</div> : null}
       {closestLine ? (
-        <div className={`flex flex-col @[40rem]:gap-1 ${visible.length ? "-mx-1.5 mt-1 border-t border-zinc-200 px-1.5 pt-1 @[40rem]:-mx-2.5 @[40rem]:mt-1.5 @[40rem]:px-2.5 @[40rem]:pt-1.5 dark:border-zinc-700" : ""}`}>
+        <div className={`flex flex-col @[40rem]:gap-1 ${visible.length ? "-mx-1.5 mt-1 border-t border-line px-1.5 pt-1 @[40rem]:-mx-2.5 @[40rem]:mt-1.5 @[40rem]:px-2.5 @[40rem]:pt-1.5" : ""}`}>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[8px] font-semibold text-zinc-500 @[40rem]:text-[9px]">Over {closestLine.rounds}<span className="hidden @[24rem]:inline"> rounds</span></span>
+            <span className="text-[8px] font-medium text-muted @[40rem]:text-[9px]">Over {closestLine.rounds}<span className="hidden @[24rem]:inline"> rounds</span></span>
             <Price quote={closestLine.over} bet={bet("Total rounds", `Over ${closestLine.rounds} rounds`, totalOutcome("over"))} />
           </div>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[8px] font-semibold text-zinc-500 @[40rem]:text-[9px]">Under {closestLine.rounds}<span className="hidden @[24rem]:inline"> rounds</span></span>
+            <span className="text-[8px] font-medium text-muted @[40rem]:text-[9px]">Under {closestLine.rounds}<span className="hidden @[24rem]:inline"> rounds</span></span>
             <Price quote={closestLine.under} bet={bet("Total rounds", `Under ${closestLine.rounds} rounds`, totalOutcome("under"))} />
           </div>
         </div>
@@ -188,7 +188,7 @@ function settle(result: FightResult | undefined): Settled | null {
 function OddsCell({ quote, hit, favorite, live, format, bet, dense }: { quote: OddsQuote | undefined; hit?: boolean; favorite?: boolean; live?: boolean; format: OddsFormat; bet?: Bet; dense?: boolean }) {
   const { toggle, isSelected } = useParlay();
   const price = bestPrice(quote);
-  if (!price) return <span className="text-zinc-300 dark:text-zinc-600" aria-label="No price">—</span>;
+  if (!price) return <span className="text-faint" aria-label="No price">—</span>;
   const probability = impliedProbability(price.line);
   const move = price.move;
   const leg: ParlayLeg | null = live && bet?.fightId ? { id: outcomeId(bet.outcome), fightId: bet.fightId, fightLabel: bet.fightLabel, market: bet.market, selection: bet.selection, price: price.line, outcome: bet.outcome } : null;
@@ -198,14 +198,14 @@ function OddsCell({ quote, hit, favorite, live, format, bet, dense }: { quote: O
   // no line movement keeps the same spacing as one with movement.
   const content = <>
     <span
-      className={`whitespace-nowrap rounded px-0.5 ${dense ? "py-px" : "py-0.5"} font-semibold tabular-nums tracking-tight @[28rem]:px-1 @[28rem]:tracking-normal ${hit ? "bg-emerald-100 text-emerald-700" : favorite ? "bg-amber-100 text-amber-700" : "text-zinc-900 dark:text-zinc-100"}`}
+      className={`whitespace-nowrap rounded px-0.5 ${dense ? "py-px" : "py-0.5"} font-medium tabular-nums tracking-tight @[28rem]:px-1 @[28rem]:tracking-normal ${hit ? "bg-success-subtle text-success" : favorite ? "bg-warning-subtle text-warning" : "text-foreground"}`}
       title={leg ? undefined : `${percent(probability)} implied${hit ? " · hit" : favorite ? " · most likely" : ""}`}
       style={selected ? { boxShadow: "0 0 0 2px var(--color-series-1)" } : undefined}
     >
       {formatPrice(price.line, format)}
     </span>
     {/* Every live price keeps the triangle's slot so the numbers stay aligned. */}
-    {live ? <span className={`absolute right-0 top-1/2 w-2 -translate-y-1/2 text-center text-[7px] leading-none ${move === "up" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`} {...(move ? { role: "img", "aria-label": `Line moving ${move}`, title: `Line moving ${move}` } : { "aria-hidden": true })}>{move === "up" ? "▲" : move === "down" ? "▼" : ""}</span> : null}
+    {live ? <span className={`absolute right-0 top-1/2 w-2 -translate-y-1/2 text-center text-[7px] leading-none ${move === "up" ? "text-success" : "text-danger"}`} {...(move ? { role: "img", "aria-label": `Line moving ${move}`, title: `Line moving ${move}` } : { "aria-hidden": true })}>{move === "up" ? "▲" : move === "down" ? "▼" : ""}</span> : null}
   </>;
 
   if (!leg) return <span className={`relative inline-flex items-center justify-center px-2 ${dense ? "" : "py-0.5"}`}>{content}</span>;
@@ -240,18 +240,18 @@ function OddsTable({ title, columns, groups, wideLabel = true, live, format, com
       </colgroup>
       <thead>
         <tr>
-          <th scope="col" colSpan={columns.length + 1} className={`truncate text-left text-[11px] font-semibold text-zinc-900 dark:text-zinc-100 ${compact ? "pb-1" : "pb-2"}`}>{title}</th>
+          <th scope="col" colSpan={columns.length + 1} className={`truncate text-left text-[11px] font-medium text-foreground ${compact ? "pb-1" : "pb-2"}`}>{title}</th>
         </tr>
         <tr>
           <th scope="col" aria-hidden="true" />
-          {columns.map(column => <th key={column} scope="col" className={`whitespace-nowrap text-center text-[10px] font-normal text-zinc-400 ${compact ? "pb-0.5" : "pb-1.5"}`}>{column}</th>)}
+          {columns.map(column => <th key={column} scope="col" className={`whitespace-nowrap text-center text-[10px] font-normal text-muted ${compact ? "pb-0.5" : "pb-1.5"}`}>{column}</th>)}
         </tr>
       </thead>
       {groups.map((group, groupIndex) => <tbody key={group.name ?? groupIndex}>
-        {group.name ? <tr><th scope="rowgroup" colSpan={columns.length + 1} className={`truncate pb-0.5 text-left font-semibold text-zinc-700 dark:text-zinc-300 ${groupIndex ? (compact ? "pt-1.5" : "pt-3") : (compact ? "pt-0" : "pt-0.5")}`}>{group.name}</th></tr> : null}
+        {group.name ? <tr><th scope="rowgroup" colSpan={columns.length + 1} className={`truncate pb-0.5 text-left font-medium text-secondary ${groupIndex ? (compact ? "pt-1.5" : "pt-3") : (compact ? "pt-0" : "pt-0.5")}`}>{group.name}</th></tr> : null}
         {group.rows.map(row => {
-          return <tr key={row.label} className="border-t border-zinc-100 dark:border-zinc-800">
-            <th scope="row" className={`truncate pr-2 text-left font-normal text-zinc-500 ${rowPad}`} title={row.label}>{row.label}</th>
+          return <tr key={row.label} className="border-t border-line-subtle">
+            <th scope="row" className={`truncate pr-2 text-left font-normal text-muted ${rowPad}`} title={row.label}>{row.label}</th>
             {row.cells.map((cell, index) => <td key={columns[index]} className={`text-center ${rowPad}`}>
               <OddsCell quote={cell.quote} hit={cell.hit} favorite={cell.favorite} live={live} format={format} bet={cell.bet} dense={compact} />
             </td>)}
@@ -408,8 +408,8 @@ export function Moneyline({ leg, value, name, className, fill }: { leg: ParlayLe
   const { toggle, isSelected } = useParlay();
   if (!leg) {
     return fill
-      ? <span className={`flex h-full w-full items-center justify-center ${className}`} aria-label={`${name}: ${value ?? "No odds"}`}>{value ?? "—"}</span>
-      : <span className={className} aria-label={`${name}: ${value ?? "No odds"}`}>{value ?? "—"}</span>;
+      ? <span className={`flex h-full w-full items-center justify-center ${className}`} aria-label={`${name}: ${value ?? "No odds"}`}>{value ? formatLine(value) : "—"}</span>
+      : <span className={className} aria-label={`${name}: ${value ?? "No odds"}`}>{value ? formatLine(value) : "—"}</span>;
   }
   const selected = isSelected(leg.id);
   return (
@@ -423,7 +423,7 @@ export function Moneyline({ leg, value, name, className, fill }: { leg: ParlayLe
         : `${className} rounded transition hover:opacity-70`}
       style={selected ? { boxShadow: `${fill ? "inset " : ""}0 0 0 2px var(--color-series-1)` } : undefined}
     >
-      {value}
+      {formatLine(value)}
     </button>
   );
 }
@@ -446,14 +446,14 @@ export default function MatchupOdds({ f1, f2, f1Open, f2Open, f1Name, f2Name, pr
   return (
     <div className="odds-pair w-full overflow-hidden rounded-lg border text-center" aria-label="Pre-fight betting odds">
       {f1 || f2 ? <div className="grid grid-cols-[minmax(0,1fr)_1rem_minmax(0,1fr)] items-center gap-y-0.5 px-1 py-1.5 @[40rem]:grid-cols-[minmax(0,1fr)_2rem_minmax(0,1fr)] @[40rem]:py-3">
-        <Moneyline leg={moneylineLeg(fightId, fightLabel, 1, f1Name, f1)} value={f1} name={f1Name} className="col-start-1 row-start-1 text-[11px] font-semibold leading-4 tracking-tight tabular-nums @[40rem]:text-base @[40rem]:leading-6" />
-        <Moneyline leg={moneylineLeg(fightId, fightLabel, 2, f2Name, f2)} value={f2} name={f2Name} className="col-start-3 row-start-1 text-[11px] font-semibold leading-4 tracking-tight tabular-nums @[40rem]:text-base @[40rem]:leading-6" />
+        <Moneyline leg={moneylineLeg(fightId, fightLabel, 1, f1Name, f1)} value={f1} name={f1Name} className="col-start-1 row-start-1 text-[11px] font-medium leading-4 tracking-tight tabular-nums @[40rem]:text-base @[40rem]:leading-6" />
+        <Moneyline leg={moneylineLeg(fightId, fightLabel, 2, f2Name, f2)} value={f2} name={f2Name} className="col-start-3 row-start-1 text-[11px] font-medium leading-4 tracking-tight tabular-nums @[40rem]:text-base @[40rem]:leading-6" />
         {hasOpen ? <>
-          <span className="col-start-1 row-start-2 hidden whitespace-nowrap text-[9px] leading-3 tabular-nums text-zinc-500 @[40rem]:block">{f1Open ? `from ${f1Open}` : ""}</span>
-          <span className="col-start-3 row-start-2 hidden whitespace-nowrap text-[9px] leading-3 tabular-nums text-zinc-500 @[40rem]:block">{f2Open ? `from ${f2Open}` : ""}</span>
+          <span className="col-start-1 row-start-2 hidden whitespace-nowrap text-[9px] leading-3 tabular-nums text-muted @[40rem]:block">{f1Open ? `from ${formatLine(f1Open)}` : ""}</span>
+          <span className="col-start-3 row-start-2 hidden whitespace-nowrap text-[9px] leading-3 tabular-nums text-muted @[40rem]:block">{f2Open ? `from ${formatLine(f2Open)}` : ""}</span>
         </> : null}
         <span className="col-start-2 row-start-1 row-span-2 grid self-stretch">
-          {movement ? <Movement movement={movement} name={movement.toward === "f1" ? f1Name : f2Name} /> : <span className="self-center text-[9px] text-zinc-500" aria-hidden="true">vs</span>}
+          {movement ? <Movement movement={movement} name={movement.toward === "f1" ? f1Name : f2Name} /> : <span className="self-center text-[9px] text-muted" aria-hidden="true">vs</span>}
         </span>
       </div> : null}
       {props ? <MethodMarkets odds={props} f1Name={f1Name} f2Name={f2Name} fightId={fightId} /> : null}

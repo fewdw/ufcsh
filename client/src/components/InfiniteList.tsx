@@ -162,19 +162,19 @@ export const LIST_ROW = "py-3 px-4 sm:px-5";
 /** Room for the ✕ in a row's top corner, kept to the row's first line so the
  *  lines under it still reach the right edge. */
 export const CLEAR_REMOVE = (removable: boolean) => (removable ? "pr-6" : "");
-export const LIST_TITLE = "text-sm font-semibold text-zinc-900";
-export const LIST_META = "text-xs leading-5 text-zinc-500";
-export const LIST_VALUE = "shrink-0 text-sm font-semibold tabular-nums";
+export const LIST_TITLE = "text-sm font-medium text-foreground";
+export const LIST_META = "text-xs leading-5 text-muted";
+export const LIST_VALUE = "shrink-0 text-sm font-medium tabular-nums";
 
 /** The foot of a scrolling list: where the next page is asked for. */
 export function LoadMore({ list }: { list: Pick<ReturnType<typeof useInfiniteList>, "more" | "loading" | "error" | "retry" | "sentinel"> }) {
   if (list.error && list.more) return (
-    <p className="border-t border-zinc-100 px-5 py-4 text-center text-sm text-rose-600">
+    <p className="border-t border-line-subtle px-5 py-4 text-center text-sm text-danger">
       Couldn’t load more. <button type="button" className="underline" onClick={() => void list.retry()}>Retry</button>
     </p>
   );
   if (!list.more) return null;
-  return <div ref={list.sentinel} role="status" className="border-t border-zinc-100 px-5 py-4 text-center text-sm text-zinc-400">
+  return <div ref={list.sentinel} role="status" className="border-t border-line-subtle px-5 py-4 text-center text-sm text-muted">
     <span className={list.loading ? "appear-late" : "invisible"}>Loading more…</span>
   </div>;
 }

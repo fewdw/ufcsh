@@ -51,14 +51,14 @@ export default function Avatar({
     : UFC_EMPTY_AVATAR;
   const outline =
     outcome === "win" || winner
-      ? "ring-2 ring-emerald-500"
+      ? "ring-2 ring-success"
       : outcome === "loss"
-        ? "ring-2 ring-rose-500"
+        ? "ring-2 ring-danger"
         : outcome === "draw"
-          ? "ring-2 ring-amber-500"
+          ? "ring-2 ring-warning"
           : outcome === "nc"
-            ? "ring-2 ring-zinc-700"
-            : "ring-1 ring-zinc-200";
+            ? "ring-2 ring-foreground"
+            : "ring-1 ring-line";
   const prominent = size === "xl" || size === "lg" || size === "matchup";
   return (
     <ProgressiveImage
@@ -71,7 +71,7 @@ export default function Avatar({
       onError={() => {
         if (imageSrc !== UFC_EMPTY_AVATAR) setFailed(true);
       }}
-      className={`${SIZES[size]} ${outline} shrink-0 rounded-full bg-zinc-100 object-cover object-top`}
+      className={`${SIZES[size]} ${outline} shrink-0 rounded-full bg-surface-strong object-cover object-top`}
     />
   );
 }

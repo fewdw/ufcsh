@@ -23,14 +23,14 @@ function Accuracy({ title, rate, empty }: { title: string; rate: PredictionRate;
   ];
   return (
     <figure className="flex min-w-0 flex-col items-center text-center">
-      <figcaption className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">{title}</figcaption>
+      <figcaption className="mb-1.5 text-[11px] font-medium text-muted">{title}</figcaption>
       {rate.total ? <>
         <Donut slices={slices} total={rate.total} size={72} thickness={8}
           centerValue={rate.pct == null ? undefined : `${Math.round(rate.pct)}%`} />
-        <p className="mt-1.5 text-xs leading-4 tabular-nums text-zinc-500">
-          <span className="font-semibold text-emerald-700 dark:text-emerald-400">{rate.right}</span> of {rate.total}
+        <p className="mt-1.5 text-xs leading-4 tabular-nums text-muted">
+          <span className="font-medium text-success">{rate.right}</span> of {rate.total}
         </p>
-      </> : <p className="flex h-[72px] items-center text-xs text-zinc-400">{empty}</p>}
+      </> : <p className="flex h-[72px] items-center text-xs text-muted">{empty}</p>}
     </figure>
   );
 }
@@ -38,7 +38,7 @@ function Accuracy({ title, rate, empty }: { title: string; rate: PredictionRate;
 /** Which parts of a settled call landed: W(inner), M(ethod), R(ound). */
 function Mark({ label, right }: { label: string; right: boolean }) {
   return <span aria-hidden="true" title={`${{ W: "Winner", M: "Method", R: "Round" }[label]} ${right ? "right" : "wrong"}`}
-    className={`inline-flex h-5 min-w-5 items-center justify-center rounded px-1 text-[10px] font-bold ${right ? "bg-emerald-100 text-emerald-700" : "bg-rose-50 text-rose-600"}`}>
+    className={`inline-flex h-5 min-w-5 items-center justify-center rounded px-1 text-[10px] font-medium ${right ? "bg-success-subtle text-success" : "bg-danger-subtle text-danger"}`}>
     {label}{right ? "✓" : "✗"}
   </span>;
 }
@@ -83,7 +83,7 @@ export default function ProfilePredictions({ handle, mine }: { handle: string; m
     }
   };
   const data = list.first;
-  if (!data) return <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
+  if (!data) return <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-muted`} role="status">
     {list.error ? <>{list.error} <button className="underline" onClick={() => void list.retry()}>Retry</button></> : "Loading predictions…"}
   </section>;
   const { accuracy, totals } = data;
@@ -91,8 +91,8 @@ export default function ProfilePredictions({ handle, mine }: { handle: string; m
     <section className={PANEL_SHELL}>
       <PanelHeading title="Prediction accuracy"
         subtitle={`${data.total.toLocaleString()} ${data.total === 1 ? "pick" : "picks"}`}
-        aside={<span className="whitespace-nowrap text-sm font-semibold tabular-nums text-zinc-900">
-          {totals.points.toLocaleString()} <span className="text-xs font-medium text-zinc-400">pts</span>
+        aside={<span className="whitespace-nowrap text-sm font-medium tabular-nums text-foreground">
+          {totals.points.toLocaleString()} <span className="text-xs font-medium text-muted">pts</span>
         </span>} />
       <div className="grid grid-cols-3 gap-2 px-3 py-3 sm:px-5">
         <Accuracy title="Winner" rate={accuracy.fighter} empty="None settled" />
@@ -100,7 +100,7 @@ export default function ProfilePredictions({ handle, mine }: { handle: string; m
         <Accuracy title="Round" rate={accuracy.round} empty="None called" />
       </div>
       {totals.pending || totals.void ? (
-        <p className="border-t border-zinc-100 px-4 py-2 text-xs text-zinc-500 sm:px-5">
+        <p className="border-t border-line-subtle px-4 py-2 text-xs text-muted sm:px-5">
           {totals.pending ? `${totals.pending} awaiting a result` : ""}
           {totals.pending && totals.void ? " · " : ""}
           {totals.void ? `${totals.void} void` : ""}
@@ -110,22 +110,22 @@ export default function ProfilePredictions({ handle, mine }: { handle: string; m
 
     <section className={`${PANEL_SHELL} overflow-hidden`}>
       <PanelHeading title="All predictions" subtitle={data.total ? data.total.toLocaleString() : undefined} />
-      {!data.total ? <p className="px-5 py-10 text-center text-sm text-zinc-500">{mine ? "You haven’t made a prediction yet. Open an upcoming fight and use its Predict tab." : "This fan hasn’t made any predictions yet."}</p> : <ul className="divide-y divide-zinc-100">
+      {!data.total ? <p className="px-5 py-10 text-center text-sm text-muted">{mine ? "You haven’t made a prediction yet. Open an upcoming fight and use its Predict tab." : "This fan hasn’t made any predictions yet."}</p> : <ul className="divide-y divide-line-subtle">
         {list.items.map(row => {
           // A pick can be taken back until the fight has a result.
           const removable = mine && row.result.state === "pending";
           return <li key={row.fightId} className="relative">
-          <Link to={`/fights/${row.fightId}?tab=predict`} className={`block ${LIST_ROW} transition-colors hover:bg-zinc-50`}>
+          <Link to={`/fights/${row.fightId}?tab=predict`} className={`block ${LIST_ROW} transition-colors hover:bg-surface-muted`}>
             <div className={`flex items-baseline justify-between gap-3 ${CLEAR_REMOVE(removable)}`}>
               <p className={`min-w-0 ${LIST_TITLE}`}>{predictionLabel(row.pick)}</p>
               {row.result.points == null ? null : (
-                <span className={`${LIST_VALUE} ${row.result.state === "won" ? "text-emerald-600" : row.result.state === "lost" ? "text-zinc-400" : "text-zinc-500"}`}>
+                <span className={`${LIST_VALUE} ${row.result.state === "won" ? "text-success" : row.result.state === "lost" ? "text-muted" : "text-muted"}`}>
                   {row.result.state === "void" ? "Void" : `${predictionPoints(row.result.points)} pts`}
                 </span>
               )}
             </div>
             <div className={`mt-0.5 flex items-center justify-between gap-3 ${LIST_META}`}>
-              <p className="min-w-0 truncate" title={`${row.pick.f1Name} vs ${row.pick.f2Name} · ${row.pick.eventName}`}><span className="text-zinc-700">{row.pick.f1Name} vs {row.pick.f2Name}</span> · {row.pick.eventName} · {formatDateShortWithYear(row.pick.eventDate)}</p>
+              <p className="min-w-0 truncate" title={`${row.pick.f1Name} vs ${row.pick.f2Name} · ${row.pick.eventName}`}><span className="text-secondary">{row.pick.f1Name} vs {row.pick.f2Name}</span> · {row.pick.eventName} · {formatDateShortWithYear(row.pick.eventDate)}</p>
               {row.result.state === "won" || row.result.state === "lost" ? (
                 <p className="flex shrink-0 gap-1.5 tabular-nums" aria-label={[`Winner ${row.result.fighter ? "right" : "wrong"}`, row.pick.method ? `Method ${row.result.method ? "right" : "wrong"}` : "", row.pick.round ? `Round ${row.result.round ? "right" : "wrong"}` : ""].filter(Boolean).join(", ")}>
                   <Mark label="W" right={Boolean(row.result.fighter)} />

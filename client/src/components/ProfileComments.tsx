@@ -62,7 +62,7 @@ export default function ProfileComments({ handle, mine, visible, visibilityContr
   };
 
   const data = list.first;
-  if (!data) return <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
+  if (!data) return <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-muted`} role="status">
     {list.error ? <>{list.error} <button type="button" className="underline" onClick={() => void list.retry()}>Retry</button></> : "Loading comments…"}
   </section>;
 
@@ -72,36 +72,36 @@ export default function ProfileComments({ handle, mine, visible, visibilityContr
         title="Comments"
         subtitle={data.total ? data.total.toLocaleString() : undefined}
         aside={mine ? visibilityControl ?? (
-          <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${visible ? "bg-emerald-50 text-emerald-700" : "bg-zinc-100 text-zinc-500"}`}>
+          <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${visible ? "bg-success-subtle text-success" : "bg-surface-strong text-muted"}`}>
             {visible ? "Visible on your profile" : "Only you can see this list"}
           </span>
         ) : null}
         controls={data.total > 1 ? <SortToggle sort={sort} onChange={setSort} /> : null}
       />
       {!data.total ? (
-        <p className="px-5 py-10 text-center text-sm text-zinc-500">
+        <p className="px-5 py-10 text-center text-sm text-muted">
           {mine ? "You haven’t commented yet. Open any fight and use its Discussion tab." : "No comments yet."}
         </p>
       ) : (
-        <ul className="divide-y divide-zinc-100">
+        <ul className="divide-y divide-line-subtle">
           {list.items.map(comment => (
             <li key={comment.id} className="relative">
-              <Link to={commentLink(comment.fightId, comment.id)} className={`block ${LIST_ROW} transition-colors hover:bg-zinc-50`}>
+              <Link to={commentLink(comment.fightId, comment.id)} className={`block ${LIST_ROW} transition-colors hover:bg-surface-muted`}>
                 <p className={`flex min-w-0 items-center gap-1.5 ${LIST_META} ${CLEAR_REMOVE(mine)}`}>
-                  <span className="min-w-0 truncate font-semibold text-zinc-800">
+                  <span className="min-w-0 truncate font-medium text-foreground">
                     {comment.fight ? `${comment.fight.f1_name} vs ${comment.fight.f2_name}` : "A fight"}
                   </span>
                   {comment.fight ? <span className="hidden min-w-0 truncate sm:inline">· {comment.fight.event_name}</span> : null}
                   <span className="shrink-0" title={exactTime(comment.createdAt) ?? undefined}>· {relativeAge(comment.createdAt)}</span>
                   {comment.depth > 1 ? <span className="shrink-0">· reply</span> : null}
-                  <span className="ml-auto flex shrink-0 items-center gap-0.5 font-semibold tabular-nums text-zinc-600">
+                  <span className="ml-auto flex shrink-0 items-center gap-0.5 font-medium tabular-nums text-secondary">
                     <ArrowBigUp className="h-4 w-4" aria-hidden="true" />{comment.score}
                   </span>
                 </p>
-                <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-[15px] leading-6 text-zinc-900 [overflow-wrap:anywhere]">
+                <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-[15px] leading-6 text-foreground [overflow-wrap:anywhere]">
                   {comment.body}
                 </p>
-                {comment.held ? <p className="mt-1 text-xs text-amber-700">Hidden from others while a moderator reviews it.</p> : null}
+                {comment.held ? <p className="mt-1 text-xs text-warning">Hidden from others while a moderator reviews it.</p> : null}
               </Link>
               {mine ? <RemoveX large label="Delete comment" onClick={() => { setConfirming(comment); setRemoveError(""); }} /> : null}
             </li>
@@ -155,14 +155,14 @@ function BlockedPeople() {
   return (
     <section className={`${PANEL_SHELL} overflow-hidden`}>
       <PanelHeading title="Blocked people" subtitle={`${(blocked ?? []).length}`} />
-      <p className="border-b border-zinc-100 px-5 py-2 text-xs text-zinc-500">Their comments are collapsed for you, and they can’t reply to yours.</p>
-      {error ? <p role="alert" className="px-5 py-3 text-xs text-rose-600">{error}</p> : null}
-      <ul className="divide-y divide-zinc-100">
+      <p className="border-b border-line-subtle px-5 py-2 text-xs text-muted">Their comments are collapsed for you, and they can’t reply to yours.</p>
+      {error ? <p role="alert" className="px-5 py-3 text-xs text-danger">{error}</p> : null}
+      <ul className="divide-y divide-line-subtle">
         {(blocked ?? []).map(person => (
           <li key={person.publicId} className="flex items-center justify-between gap-3 px-5 py-2.5 text-sm">
-            <Link to={`/profiles/${person.handle}`} className="min-w-0 truncate font-medium text-zinc-800 hover:underline">{person.displayName}</Link>
+            <Link to={`/profiles/${person.handle}`} className="min-w-0 truncate font-medium text-foreground hover:underline">{person.displayName}</Link>
             <button type="button" onClick={() => request("DELETE", person.handle).catch(problem => setError(problem instanceof Error ? problem.message : String(problem)))}
-              className="rounded-full px-3 py-1.5 text-xs font-medium text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900">
+              className="rounded-full px-3 py-1.5 text-xs font-medium text-muted hover:bg-surface-strong hover:text-foreground">
               Unblock
             </button>
           </li>

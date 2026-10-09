@@ -161,20 +161,20 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
         title="Your scorecard"
         aside={saved?.scorer ? (
           // Every other fight this reader has scored, at the address anyone can open.
-          <Link to={`/profiles/${saved.scorer.handle}?tab=scorecards`} className="text-xs font-medium text-zinc-500 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900">
+          <Link to={`/profiles/${saved.scorer.handle}?tab=scorecards`} className="text-xs font-medium text-muted underline decoration-faint underline-offset-2 hover:text-foreground">
             All your scorecards
           </Link>
         ) : undefined}
       />
-      {!saved && loading ? <p className="appear-late p-5 text-sm text-zinc-500">Loading…</p> : !saved ? (
-        <p role="alert" className="p-5 text-sm text-rose-600">
+      {!saved && loading ? <p className="appear-late p-5 text-sm text-muted">Loading…</p> : !saved ? (
+        <p role="alert" className="p-5 text-sm text-danger">
           {error} <button className="underline" onClick={() => void load(undefined, false)}>Retry</button>
         </p>
       ) : (
         <div className="p-4 sm:p-5">
           <fieldset disabled={busy || conflict} className="min-w-0">
             <legend className="sr-only">Round scores</legend>
-            <div className="divide-y divide-zinc-100">
+            <div className="divide-y divide-line-subtle">
               {Array.from({ length: openRounds }, (_, index) => {
                 const n = index + 1;
                 const r = rounds.find(value => value.round === n);
@@ -190,7 +190,7 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
                       aria-label={`Point deduction for ${name} in round ${n}: ${value}. Select to deduct a point.`}
                       title={`Point deduction — ${name}`}
                       onClick={() => updateRound(n, side === 1 ? { deduct1: (value + 1) % 3 } : { deduct2: (value + 1) % 3 })}
-                      className={`${DEDUCT_CELL} ${value ? `${tone} text-sm font-semibold` : "bg-zinc-100 text-[10px] font-semibold uppercase tracking-tight text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700"}`}>
+                      className={`${DEDUCT_CELL} ${value ? `${tone} text-sm font-medium` : "bg-surface-strong text-[10px] font-medium tracking-tight text-muted hover:bg-track hover:text-secondary"}`}>
                       {value ? `−${value}` : <>
                         <span className="hidden sm:inline">Deduct</span>
                         <span className="text-xs sm:hidden" aria-hidden="true">−</span>
@@ -204,12 +204,12 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
                       {deduct(1)}
                       {CHOICES.map(([a, b]) => {
                         const on = r?.f1 === a && r?.f2 === b;
-                        const tone = a === b ? "bg-zinc-300 text-zinc-900" : a > b ? "bg-f1-soft text-f1-ink" : "bg-f2-soft text-f2-ink";
+                        const tone = a === b ? "bg-line-strong text-foreground" : a > b ? "bg-f1-soft text-f1-ink" : "bg-f2-soft text-f2-ink";
                         return (
                           <button key={`${a}-${b}`} type="button" aria-pressed={on} disabled={!open}
                             aria-label={`Round ${n}: ${lastName(fight.f1.name)} ${a}, ${lastName(fight.f2.name)} ${b}`}
                             onClick={() => on ? clearRound(n) : updateRound(n, { f1: a, f2: b })}
-                            className={`${SCORE_CELL} ${on ? `${tone} font-semibold shadow-sm` : "bg-zinc-100 font-medium text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"}`}>
+                            className={`${SCORE_CELL} ${on ? `${tone} font-medium shadow-sm` : "bg-surface-strong font-medium text-muted hover:bg-track hover:text-foreground"}`}>
                             {a}<span className="mx-px opacity-40 sm:mx-0.5">–</span>{b}
                           </button>
                         );
@@ -222,15 +222,15 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
               {finish ? <FightFinishRow finish={finish} /> : null}
             </div>
           </fieldset>
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-zinc-100 pt-3">
+          <div className="mt-4 flex items-center justify-between gap-3 border-t border-line-subtle pt-3">
             <p className="flex items-baseline gap-2 tabular-nums">
               {scored.length ? <>
-                <span className="text-lg font-semibold text-f1-ink">{total1}</span>
-                <span className="text-zinc-300">–</span>
-                <span className="text-lg font-semibold text-f2-ink">{total2}</span>
+                <span className="text-lg font-medium text-f1-ink">{total1}</span>
+                <span className="text-faint">–</span>
+                <span className="text-lg font-medium text-f2-ink">{total2}</span>
                 {/* Who the card has in front, which is the point of keeping one. */}
                 {total1 === total2 ? null : (
-                  <span className={`text-[11px] font-semibold uppercase tracking-wider ${total1 > total2 ? "text-f1-ink" : "text-f2-ink"}`}>
+                  <span className={`text-[11px] font-medium ${total1 > total2 ? "text-f1-ink" : "text-f2-ink"}`}>
                     {lastName(total1 > total2 ? fight.f1.name : fight.f2.name)}
                   </span>
                 )}
@@ -245,9 +245,9 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
                 onClick={() => void submit()}>{busy ? "Saving…" : "Save"}</button>
             </div>
           </div>
-          {eligibility.state !== "completed" && eligibility.available < eligibility.scheduled ? <p className="mt-2 text-[11px] text-zinc-400">Each round opens at its horn.</p> : null}
+          {eligibility.state !== "completed" && eligibility.available < eligibility.scheduled ? <p className="mt-2 text-[11px] text-muted">Each round opens at its horn.</p> : null}
           {error ? (
-            <p role="alert" className="mt-2 text-right text-[11px] text-rose-600">
+            <p role="alert" className="mt-2 text-right text-[11px] text-danger">
               {error} {conflict ? <button className="underline" disabled={busy} onClick={() => void load(undefined, false)}>Reload</button> : null}
             </p>
           ) : null}

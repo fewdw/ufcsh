@@ -40,7 +40,7 @@ function Summary({ text }: { text: string }) {
       type="button"
       aria-expanded={open}
       onClick={() => setOpen(!open)}
-      className={`mt-1 block max-w-3xl cursor-pointer text-left text-[13px] leading-5 text-zinc-500 transition-colors hover:text-zinc-700 ${open ? "" : "line-clamp-2"}`}
+      className={`mt-1 block max-w-3xl cursor-pointer text-left text-[13px] leading-5 text-muted transition-colors hover:text-secondary ${open ? "" : "line-clamp-2"}`}
     >
       {text}
     </button>
@@ -54,29 +54,29 @@ function Summary({ text }: { text: string }) {
 export default function NewsRow({ story, fighterId, summaries }: { story: NewsStory; fighterId?: string; summaries?: boolean }) {
   const also = story.also.map((other) => other.source).join(", ");
   return (
-    <article className="border-t border-zinc-100 py-3.5 first:border-t-0 not-dark:border-zinc-200">
+    <article className="border-t border-line-subtle py-3.5 first:border-t-0">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px] leading-4">
-        <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-zinc-900">
+        <span className="text-[11px] font-medium text-foreground">
           {story.source}
-          {also ? <span className="ml-1 font-medium normal-case tracking-normal text-zinc-400" title={`Also ${also}`} aria-label={`also ${also}`}>+{story.also.length}</span> : null}
+          {also ? <span className="ml-1 font-medium normal-case tracking-normal text-muted" title={`Also ${also}`} aria-label={`also ${also}`}>+{story.also.length}</span> : null}
         </span>
         {story.fighters.filter((fighter) => fighter.id !== fighterId).map((fighter) => (
-          <Link key={fighter.id} to={`/fighters/${fighter.id}`} className="group flex items-center gap-1.5 font-medium text-zinc-600 hover:text-zinc-950">
+          <Link key={fighter.id} to={`/fighters/${fighter.id}`} className="group flex items-center gap-1.5 font-medium text-secondary hover:text-foreground">
             <Avatar src={fighter.photo_url} name={fighter.name} size="tag" />
-            <span className="decoration-zinc-400 underline-offset-2 group-hover:underline">{fighter.name}</span>
+            <span className="decoration-muted underline-offset-2 group-hover:underline">{fighter.name}</span>
           </Link>
         ))}
         {story.event ? (
-          <Link to={`/events/${story.event.id}`} className="rounded-sm bg-zinc-100 px-1.5 py-0.5 text-[11px] font-medium text-zinc-600 transition hover:bg-zinc-200 hover:text-zinc-950">
+          <Link to={`/events/${story.event.id}`} className="rounded-sm bg-surface-strong px-1.5 py-0.5 text-[11px] font-medium text-secondary transition hover:bg-track hover:text-foreground">
             {story.event.name}
           </Link>
         ) : null}
-        <time dateTime={new Date(story.published_at).toISOString()} title={exactTime(story.published_at) ?? undefined} className="tabular-nums text-zinc-400">
+        <time dateTime={new Date(story.published_at).toISOString()} title={exactTime(story.published_at) ?? undefined} className="tabular-nums text-muted">
           {age(story.published_at)}
         </time>
       </div>
-      <h3 className="mt-1.5 text-[15px] font-semibold leading-snug sm:text-[16px]">
-        <a href={story.url} {...external} className="text-zinc-950 decoration-zinc-400 decoration-1 underline-offset-[5px] hover:underline">{story.title}</a>
+      <h3 className="mt-1.5 text-[15px] font-medium leading-snug sm:text-[16px]">
+        <a href={story.url} {...external} className="text-foreground decoration-muted decoration-1 underline-offset-[5px] hover:underline">{story.title}</a>
       </h3>
       {summaries && story.summary ? <Summary text={story.summary} /> : null}
     </article>

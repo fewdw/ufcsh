@@ -19,17 +19,17 @@ const VIEWS: Option[] = [{ value: "title", label: "Title bouts" }, { value: "inc
 
 /** How bouts ended, as a fighter's record wheel splits wins and losses. */
 const wheel = (tally: RefereeTally): WheelGroup[] => [
-  { title: "Finished", tone: "text-zinc-500", slices: [
+  { title: "Finished", tone: "text-muted", slices: [
     { key: "ko", label: "KO/TKO", n: tally.counts.ko, color: "var(--color-pick-ko)" },
     { key: "sub", label: "SUB", n: tally.counts.sub, color: "var(--color-pick-sub)" },
   ] },
-  { title: "Not finished", tone: "text-zinc-500", slices: [
+  { title: "Not finished", tone: "text-muted", slices: [
     { key: "dec", label: "DEC", n: tally.counts.dec + tally.counts.draw, color: "var(--color-pick-dec)" },
     { key: "other", label: "DQ / NC", n: tally.counts.dq + tally.counts.nc + tally.counts.other, color: "var(--color-pick-none)" },
   ] },
 ];
 
-const TOP = (index: number) => index < 3 ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600";
+const TOP = (index: number) => index < 3 ? "bg-foreground text-background" : "bg-surface-strong text-secondary";
 
 export default function RefereePage() {
   const { slug = "" } = useParams();
@@ -76,7 +76,7 @@ export default function RefereePage() {
 
   const identity = (
     <IdentityCard title={data.name} subtitle="Referee"
-      badge={s.title_fights && !filtered ? <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-belt">{s.title_fights} title bouts</span> : null}
+      badge={s.title_fights && !filtered ? <span className="rounded-full bg-warning-subtle px-2.5 py-0.5 text-[11px] font-medium text-belt">{s.title_fights} title bouts</span> : null}
       facts={[
         ["Bouts", data.career.fights.toLocaleString()],
         ["Events", s.events.toLocaleString()],
@@ -86,9 +86,9 @@ export default function RefereePage() {
         ["DQs", String(s.counts.dq)],
       ]}>
       {filtered ? (
-        <p className="mb-3 text-xs text-zinc-500">
+        <p className="mb-3 text-xs text-muted">
           {data.total.toLocaleString()} of {data.career.fights.toLocaleString()} ·{" "}
-          <button type="button" onClick={() => filters.clear(["tab"])} className="font-medium underline underline-offset-2 hover:text-zinc-900">Show all</button>
+          <button type="button" onClick={() => filters.clear(["tab"])} className="font-medium underline underline-offset-2 hover:text-foreground">Show all</button>
         </p>
       ) : null}
       <div className="flex justify-center"><Wheel label="Bouts" groups={wheel(s)} /></div>
@@ -103,7 +103,7 @@ export default function RefereePage() {
       rate("Decision", s.decision_rate, b.decision_rate, "dec"),
       {
         key: "time", chip: timeGap == null ? "—" : `${timeGap > 0 ? "+" : timeGap < 0 ? "−" : ""}${Math.abs(timeGap)}s`,
-        chipClass: timeGap ? "w-14 bg-zinc-900 text-white" : "w-14 bg-zinc-100 text-zinc-600", title: "Average finish time",
+        chipClass: timeGap ? "w-14 bg-foreground text-background" : "w-14 bg-surface-strong text-secondary", title: "Average finish time",
         detail: `UFC ${b.average_stoppage_seconds != null ? formatDuration(b.average_stoppage_seconds) : "—"}`,
         value: s.average_stoppage_seconds != null ? formatDuration(s.average_stoppage_seconds) : "—",
       },
@@ -128,7 +128,7 @@ export default function RefereePage() {
       detail: `${fighter.wins} W`, value: fighter.n,
     }))} />
     <RankRows title="Disqualifications & deductions" rows={data.incidents.map((incident) => ({
-      key: incident.fight_id, chip: incident.kind === "Disqualification" ? "DQ" : "PTS", chipClass: "bg-amber-100 text-amber-800",
+      key: incident.fight_id, chip: incident.kind === "Disqualification" ? "DQ" : "PTS", chipClass: "bg-warning-subtle text-warning",
       title: <Pair f1={incident.f1} f2={incident.f2} />,
       detail: `${incident.details ? `${incident.details} · ` : ""}${incident.event_name}, ${formatDateShortWithYear(incident.date)}`, to: `/fights/${incident.fight_id}`,
       value: "",
@@ -153,10 +153,10 @@ export default function RefereePage() {
               how={formatMethod(row.method, row.round != null ? String(row.round) : null, row.time) || row.result.toUpperCase()}
               f1={row.f1} f2={row.f2} division={row.division} note={row.title ? <TitleNote /> : null}
               eventName={row.event_name} date={row.date} fightId={row.fight_id}
-              extra={row.details && row.result !== "dec" ? <p className="text-[11px] leading-4 text-zinc-400">{row.details}</p> : null} />
+              extra={row.details && row.result !== "dec" ? <p className="text-[11px] leading-4 text-muted">{row.details}</p> : null} />
           ))}
         </div>
-      ) : <p className="px-5 py-8 text-center text-sm text-zinc-500">No bouts match these filters.</p>}
+      ) : <p className="px-5 py-8 text-center text-sm text-muted">No bouts match these filters.</p>}
       <LoadMore list={list} />
     </section>
   );

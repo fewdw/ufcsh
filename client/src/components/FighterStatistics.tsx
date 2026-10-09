@@ -27,32 +27,32 @@ function byStanding(a: BoardStat, b: BoardStat): number {
 }
 
 function badgeTone(stat: BoardStat): string {
-  if (stat.unwanted) return "bg-zinc-100 text-zinc-500";
-  if (stat.rank === 1) return "bg-amber-100 text-belt ring-1 ring-inset ring-amber-200";
-  if (stat.rank <= 10) return "bg-zinc-900 text-white";
-  return "bg-zinc-100 text-zinc-600";
+  if (stat.unwanted) return "bg-surface-strong text-muted";
+  if (stat.rank === 1) return "bg-warning-subtle text-belt ring-1 ring-inset ring-warning-line";
+  if (stat.rank <= 10) return "bg-foreground text-background";
+  return "bg-surface-strong text-secondary";
 }
 
 function StatRow({ stat }: { stat: BoardStat }) {
   return (
     <li className="flex min-w-0 items-center gap-2.5 py-2">
-      <span className={`grid h-7 min-w-10 shrink-0 place-items-center rounded-md px-1 text-[11px] font-bold tabular-nums ${badgeTone(stat)}`}
+      <span className={`grid h-7 min-w-10 shrink-0 place-items-center rounded-md px-1 text-[11px] font-medium tabular-nums ${badgeTone(stat)}`}
         title={`${place(stat)} of ${stat.field.toLocaleString("en-US")} qualifying fighters${stat.tied ? " (tied)" : ""}`}>
         #{place(stat)}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[12px] font-semibold leading-4 text-zinc-800">{stat.label}</span>
-        <span className="block text-[10px] leading-4 text-zinc-400" title={stat.detail}>
+        <span className="block text-[12px] font-medium leading-4 text-foreground">{stat.label}</span>
+        <span className="block text-[10px] leading-4 text-muted" title={stat.detail}>
           of {stat.field.toLocaleString("en-US")} · {stat.unwanted ? "higher means more" : topShare(stat)} · {stat.detail}
         </span>
       </span>
-      <span className="shrink-0 text-right text-xs font-semibold tabular-nums text-zinc-900">{formatValue(stat.value, stat.format)}</span>
+      <span className="shrink-0 text-right text-xs font-medium tabular-nums text-foreground">{formatValue(stat.value, stat.format)}</span>
     </li>
   );
 }
 
 function Rows({ stats }: { stats: BoardStat[] }) {
-  return <ul className="divide-y divide-zinc-50">{stats.map((stat) => <StatRow key={stat.key} stat={stat} />)}</ul>;
+  return <ul className="divide-y divide-line-subtle">{stats.map((stat) => <StatRow key={stat.key} stat={stat} />)}</ul>;
 }
 
 /**
@@ -96,10 +96,10 @@ export default function FighterStatistics({ fighterId, history }: { fighterId: s
   return (
     <section className={`${PANEL} @container overflow-hidden`}>
       <div className="px-4 py-2.5 sm:px-5 sm:py-3">
-        <h2 className="text-sm font-semibold text-zinc-900">Statistics</h2>
+        <h2 className="text-sm font-medium text-foreground">Statistics</h2>
       </div>
 
-      <div className="border-t border-zinc-100">
+      <div className="border-t border-line-subtle">
         <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 sm:px-5">
           <div className={segmentedGroup} role="group" aria-label="Ranked against">
             <button type="button" aria-pressed={!inDivision} onClick={() => setScope("ufc")}
@@ -110,7 +110,7 @@ export default function FighterStatistics({ fighterId, history }: { fighterId: s
           </div>
           {inDivision && divisions.length ? (
             <select value={scope} onChange={(event) => setScope(event.target.value)} aria-label="Weight class"
-              className="h-8 rounded-full border border-zinc-200 bg-white pl-3 pr-7 text-xs font-medium text-zinc-700 outline-none hover:border-zinc-300 focus:border-zinc-400">
+              className="h-8 rounded-full border border-line bg-surface pl-3 pr-7 text-xs font-medium text-secondary outline-none hover:border-line-strong focus:border-line-strong">
               {divisions.map((entry) => <option key={entry.key} value={entry.key}>{entry.label} · {entry.bouts} {entry.bouts === 1 ? "bout" : "bouts"}</option>)}
             </select>
           ) : null}
@@ -123,26 +123,26 @@ export default function FighterStatistics({ fighterId, history }: { fighterId: s
             ))}
           </div>
           <label className="relative w-full">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" aria-hidden="true" />
             <input type="search" value={query} onChange={(event) => setQuery(event.target.value.slice(0, 40))}
               placeholder="Filter statistics…" aria-label="Filter statistics" autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
-              className="h-8 w-full rounded-full border border-zinc-200 bg-zinc-50 pl-8 pr-3 text-[13px] text-zinc-900 outline-none placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:text-xs" />
+              className="h-8 w-full rounded-full border border-line bg-surface-muted pl-8 pr-3 text-[13px] text-foreground outline-none placeholder:text-muted hover:border-line-strong focus:border-line-strong sm:text-xs" />
           </label>
         </div>
 
         {error ? <div className="px-4 pb-3 sm:px-5"><RequestNotice onRetry={retry}>Couldn’t update these rankings. Any figures below are from the previous selection.</RequestNotice></div> : null}
-        {!board && !error ? <p role="status" className="appear-late px-5 py-6 text-center text-xs text-zinc-400">Loading rankings…</p> : null}
+        {!board && !error ? <p role="status" className="appear-late px-5 py-6 text-center text-xs text-muted">Loading rankings…</p> : null}
 
         {board ? (
           <div className={stale ? "opacity-60 transition-opacity delay-200" : ""} aria-busy={stale}>
             {!shown.length ? (
-              <p className="px-5 py-6 text-center text-xs text-zinc-500">
+              <p className="px-5 py-6 text-center text-xs text-muted">
                 {query.trim() ? `No ranked statistic matches “${query.trim()}”.` : `No ranked statistics ${inDivision ? `at ${board.scope_label}` : "yet"}.`}
               </p>
             ) : sort === "grouped" ? (
               <div className="columns-1 gap-0 @[40rem]:columns-2" style={{ columnRule: "1px solid var(--color-plot-axis)" }}>
                 {groups.map((group) => (
-                  <section key={group.category} className="break-inside-avoid border-t border-zinc-100 px-4 py-2.5 sm:px-5">
+                  <section key={group.category} className="break-inside-avoid border-t border-line-subtle px-4 py-2.5 sm:px-5">
                     <h3 className={`${EYEBROW} flex items-baseline justify-between`}>
                       <span>{group.category}</span><span className="tabular-nums">{group.rows.length}</span>
                     </h3>
@@ -151,23 +151,23 @@ export default function FighterStatistics({ fighterId, history }: { fighterId: s
                 ))}
               </div>
             ) : (
-              <div className="border-t border-zinc-100 px-4 py-1 sm:px-5">
+              <div className="border-t border-line-subtle px-4 py-1 sm:px-5">
                 <Rows stats={wanted} />
                 {unwanted.length ? (
-                  <details className="border-t border-zinc-100 py-2">
+                  <details className="border-t border-line-subtle py-2">
                     <summary className={`${EYEBROW} cursor-pointer py-1`}>Where first isn’t a compliment · {unwanted.length}</summary>
                     <Rows stats={unwanted} />
                   </details>
                 ) : null}
               </div>
             )}
-            <details className="border-t border-zinc-100 px-4 py-3 text-xs text-zinc-500 sm:px-5">
-              <summary className="cursor-pointer font-medium text-zinc-700">Coverage & bout history</summary>
+            <details className="border-t border-line-subtle px-4 py-3 text-xs text-muted sm:px-5">
+              <summary className="cursor-pointer font-medium text-secondary">Coverage & bout history</summary>
               <p className="my-2 leading-5">Current career statistics. Every UFC bout in this scope counts. Rate rankings keep their own minimum samples, so one bout cannot top them. The history below covers this scope; some metrics use fewer bouts, as shown beside each reading. Missing data is never counted as zero.</p>
               {board.unqualified.length ? <details className="my-2"><summary className="cursor-pointer">{board.unqualified.length} readings without a qualifying sample</summary><ul className="mt-2 grid gap-1 sm:grid-cols-2">{board.unqualified.map((entry) => <li key={entry.key}>{entry.label} · unranked</li>)}</ul></details> : null}
-              <ul className="max-h-64 space-y-2 overflow-y-auto">{history.filter((row) => !row.upcoming && (board.scope === "ufc" || row.weight_class === board.scope)).map((row) => <li key={row.fight_id}><Link className="underline underline-offset-2 hover:text-zinc-900" to={`/fights/${row.fight_id}`}>{row.date} · {row.opponent.name}</Link>{row.method ? ` · ${row.method}` : ""}</li>)}</ul>
+              <ul className="max-h-64 space-y-2 overflow-y-auto">{history.filter((row) => !row.upcoming && (board.scope === "ufc" || row.weight_class === board.scope)).map((row) => <li key={row.fight_id}><Link className="underline underline-offset-2 hover:text-foreground" to={`/fights/${row.fight_id}`}>{row.date} · {row.opponent.name}</Link>{row.method ? ` · ${row.method}` : ""}</li>)}</ul>
             </details>
-            <p className="flex flex-wrap items-center gap-x-1.5 border-t border-zinc-100 px-4 py-2.5 text-[10px] leading-4 text-zinc-400 sm:px-5">
+            <p className="flex flex-wrap items-center gap-x-1.5 border-t border-line-subtle px-4 py-2.5 text-[10px] leading-4 text-muted sm:px-5">
               <span>
                 {inDivision ? `Only bouts fought at ${board.scope_label} (${board.bouts}) count, ranked against everyone else’s bouts there.` : `Every UFC bout counts (${board.bouts}), ranked against the whole promotion.`}
                 {" "}Ties share a place.
