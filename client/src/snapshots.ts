@@ -62,6 +62,16 @@ export function readSnapshot(key: string): Snapshot | null {
   } catch { return null; }
 }
 
+/** Forget every saved answer, to make room for a reader's own choices. */
+export function dropSnapshots(): void {
+  const store = storage();
+  if (!store) return;
+  const current = loadIndex(store);
+  for (const [key] of current.entries) store.removeItem(PREFIX + key);
+  current.entries = [];
+  saveIndex(store);
+}
+
 let queued = new Map<string, string>();
 let scheduled = false;
 

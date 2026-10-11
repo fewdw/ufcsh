@@ -8,6 +8,7 @@ import Avatar from "../components/Avatar";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { SITE_URL, useSeo } from "../seo";
 import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
+import { storeLocal } from "../preferences";
 import { relativeDate, useSettings, withRanking, type DateMode, type DivisionOrder, type RankingSource } from "../settings";
 import { isWomens, orderDivisions } from "../divisionOrder";
 import Freshness from "../components/Freshness";
@@ -635,11 +636,8 @@ export default function RankingsPage() {
   const pageScroll = useRouteScrollRestoration<HTMLDivElement>("rankings:page", Boolean(divisions?.length), rankingsScrollKey);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(FEATURES_KEY, JSON.stringify(features));
-    } catch {
-      // Preferences remain available for the current visit when storage is disabled.
-    }
+    // Preferences remain available for the current visit when storage is disabled.
+    storeLocal(FEATURES_KEY, JSON.stringify(features));
   }, [features]);
 
   const shown = useMemo(() => {
