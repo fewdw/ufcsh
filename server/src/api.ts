@@ -26,7 +26,7 @@ import { prepared, getMeta, setMeta, DATA_DIR, dataRevision, db } from "./db.ts"
 import { enqueueRefresh } from "./refresh-queue.ts";
 import { QueryPool } from "./query-pool.ts";
 import { ResponseCache, representation, acceptsEncoding, acceptsGzip, matchesEtag, OverloadedError, type Representation } from "./response-cache.ts";
-import { HttpObservability, pageRouteGroup } from "./observability.ts";
+import { HttpObservability, pageRouteGroup, routeGroup } from "./observability.ts";
 import { isAutomated, sourceOf } from "./visitors.ts";
 import { TrafficHistory } from "./traffic-history.ts";
 import { createRepairRunner } from "./repair-guard.ts";
@@ -2449,7 +2449,8 @@ export function startApi(port: number): http.Server {
     res.on("finish", () => {
       if (res.statusCode >= 500) failures++;
       const pathname = (req.url ?? "/").split("?")[0];
-      const key = publicApi(pathname) ? pathname.replace(/\/[a-f0-9]{16}$/i, "/:id") : "other";
+      // Fixed labels also bound rejected requests with arbitrary IDs or slugs.
+      const key = routeGroup(pathname);
       const entry = latencies.get(key) ?? { count: 0, total_ms: 0, max_ms: 0 };
       const duration = performance.now() - started;
       observability.record(req.method ?? "OTHER", pathname, res.statusCode, duration / 1000, clientAddress(req));

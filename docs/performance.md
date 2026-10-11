@@ -3,6 +3,18 @@
 Measure first, then change what the measurement points at. This page records
 the targets, how to measure against them, and the last measured results.
 
+## Security: bounded request metrics (2026-10-11)
+
+The legacy `/api/metrics` latency map kept arbitrary public-route slugs and
+nested IDs for the process lifetime, even for rejected requests. A local
+synthetic check with 10,000 distinct nonexistent judge URLs produced 10,000
+keys before the fix and one with the existing fixed `routeGroup` labels.
+No requests were sent to production for this measurement.
+
+The HTTP regression check sends 96 rejected POST requests across four resource
+families to an isolated loopback server: four metric entries now retain all 96
+requests. This bounds label cardinality; it is not a load-capacity claim.
+
 ## First page load on a phone (2026-10-08)
 
 Lighthouse 12 mobile preset (simulated slow 4G, 4× CPU) against a production

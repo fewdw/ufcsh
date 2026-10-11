@@ -92,7 +92,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-11">October 11, 2026</time></p>
             <ul>
-              <li>Other sites can no longer embed ufc.sh pages in a frame.</li>
+              <li>Stronger protection against deceptive pages that embed UFC.sh.</li>
+              <li>Traffic monitoring stays bounded when bots probe unfamiliar addresses.</li>
             </ul>
           </Section>
         </div>
