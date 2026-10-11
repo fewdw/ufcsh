@@ -105,6 +105,17 @@ export function isSummaryAgeDisagreement(issue: string): boolean {
 }
 
 /**
+ * Issues that mean UFCStats has not finished writing the bout yet: a round
+ * table that stops short, or a card row of a different age. Both appear for a
+ * few minutes after a verdict — the result is posted before the last round's
+ * rows — and settle on a later read, so they are retried rather than reported.
+ */
+export function isUnsettledSourceIssue(issue: string): boolean {
+  const short = /per round cover (\d+) of (\d+) rounds$/.exec(issue);
+  return isSummaryAgeDisagreement(issue) || (short != null && Number(short[1]) < Number(short[2]));
+}
+
+/**
  * How many rounds a bout's per-round tables must cover. UFCStats publishes
  * those rows as the rounds happen, so a page read mid-bout carries fewer than
  * the bout ends up having; the fight page itself names the round it ended in.
