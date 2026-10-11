@@ -25,6 +25,10 @@ export type AdminHandlerOptions = {
   metrics?: () => unknown;
   /** Traffic kept on disk across restarts, for one time range. */
   traffic?: (range: TrafficRange) => unknown;
+  /** Every account, with what Clerk knows about each (Admin → Accounts). */
+  accounts?: () => Promise<unknown>;
+  /** How current each data source is, and recent sync failures. */
+  syncStatus?: () => unknown;
   canAct: () => boolean;
   /** Gemini on /news: its state, and the switch that turns it off. */
   newsAi?: { status: () => unknown; set: (on: boolean) => unknown };
@@ -58,7 +62,7 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
  * whenever a token happens to expire.
  */
 export function createAdminHandler(options: AdminHandlerOptions) {
-  const { admins, scores, reports, comments, report, runAction, canAct, liveFights, metrics, traffic, newsAi } = options;
+  const { admins, scores, reports, comments, report, runAction, canAct, liveFights, metrics, traffic, accounts, syncStatus, newsAi } = options;
   const currentBout = options.currentBout ?? (() => {
     const bout = liveFights().find(fight => fight.f1_outcome == null && fight.f2_outcome == null);
     return bout ? { id: bout.id, live: false } : null;
@@ -180,6 +184,14 @@ export function createAdminHandler(options: AdminHandlerOptions) {
         const range = url.searchParams.get("range") ?? "24h";
         if (!isTrafficRange(range)) throw new ScoringError(400, "Unknown range.");
         send(traffic(range));
+      }
+      else if (route === "accounts") {
+        if (!accounts) throw new ScoringError(404, "Not found.");
+        send(await accounts());
+      }
+      else if (route === "sync") {
+        if (!syncStatus) throw new ScoringError(404, "Not found.");
+        send(syncStatus());
       }
       else if (route === "live") send(card());
       else if (liveFight) {

@@ -35,7 +35,8 @@ test("traffic history survives a restart and adds to what is already stored", ()
   assert.equal(day.series.at(-1)?.requests, 4);
   // Two visitors before the restart; the larger count is kept, never summed.
   assert.equal(day.series.at(-1)?.visitors, 2);
-  assert.equal(day.dailyVisitors.peak, 2);
+  // Daily figures cover complete days; this one is still filling up.
+  assert.equal(day.dailyVisitors.days, 0);
   assert.ok(!JSON.stringify(db.prepare("SELECT * FROM traffic_visitors").all()).includes("10.0.0"));
 });
 
