@@ -3,7 +3,7 @@ import type { BugCheck } from "./bugs.ts";
 import type { BetStore } from "./bets.ts";
 import type { CommentStore } from "./comments.ts";
 import type { PredictionStore } from "./predictions.ts";
-import type { ScoringStore } from "./scoring.ts";
+import { identifyScorer, type ScoringStore } from "./scoring.ts";
 import { clerkClient, publicAccount } from "./scoring-http.ts";
 
 /** Clerk owns accounts; this site keeps only what a profile shows. Whatever a
@@ -92,5 +92,78 @@ export function accountSyncCheck(): BugCheck {
     id: "account-sync", group: "Accounts", label: "Clerk account sync",
     description: "Deleted accounts are erased and pictures refreshed every five minutes. Retries on its own; check CLERK_SECRET_KEY if it keeps failing.",
     level: items.length ? "must" : "ok", total: items.length, items,
+  };
+}
+
+type ClerkDirectory = {
+  users: {
+    getUserList(params: { userId: string[]; limit: number }): Promise<{ data: {
+      id: string; primaryEmailAddressId: string | null; emailAddresses: { id: string; emailAddress: string }[];
+      lastSignInAt: number | null; lastActiveAt?: number | null; externalAccounts?: { provider: string }[];
+    }[] }>;
+  };
+};
+type ClerkFacts = { email: string | null; lastSignInAt: number | null; lastActiveAt: number | null; signIn: string[] };
+let clerkFacts: { at: number; byUser: Map<string, ClerkFacts> } | null = null;
+const CLERK_FACTS_MS = 5 * 60_000;
+
+/** Emails and sign-in times, which only Clerk holds. Read in batches and kept
+ *  five minutes, so paging through the list never hammers Clerk. */
+async function readClerkFacts(userIds: string[], clerk: ClerkDirectory | null): Promise<Map<string, ClerkFacts> | null> {
+  if (!clerk) return null;
+  if (clerkFacts && Date.now() - clerkFacts.at < CLERK_FACTS_MS && userIds.every(id => clerkFacts!.byUser.has(id))) return clerkFacts.byUser;
+  const byUser = new Map<string, ClerkFacts>();
+  const ids = userIds.filter(id => CLERK_ID.test(id));
+  for (let index = 0; index < ids.length; index += BATCH) {
+    const { data } = await clerk.users.getUserList({ userId: ids.slice(index, index + BATCH), limit: BATCH });
+    for (const user of data) {
+      byUser.set(user.id, {
+        email: user.emailAddresses.find(address => address.id === user.primaryEmailAddressId)?.emailAddress ?? null,
+        lastSignInAt: user.lastSignInAt ?? null, lastActiveAt: user.lastActiveAt ?? null,
+        signIn: [...new Set((user.externalAccounts ?? []).map(account => account.provider.replace(/^oauth_/, "")))],
+      });
+    }
+  }
+  clerkFacts = { at: Date.now(), byUser };
+  return byUser;
+}
+
+/** Every account for Admin → Accounts: who, since when, how active, and
+ *  whether comments are muted. Deleted accounts are listed as deleted. */
+export async function adminAccounts(stores: Pick<AccountStores, "scores">, clerk: ClerkDirectory | null = clerkClient() as unknown as ClerkDirectory | null, now = Date.now()) {
+  const rows = stores.scores.db.prepare(`
+    SELECT s.user_id, s.public_id, s.username, s.username_key, s.image_url, s.created_at, s.deleted_at, s.comments_public,
+      (SELECT COUNT(*) FROM scorecards c WHERE c.user_id = s.user_id) AS cards,
+      (SELECT MAX(updated_at) FROM scorecards c WHERE c.user_id = s.user_id) AS card_at,
+      (SELECT COUNT(*) FROM predictions p WHERE p.user_id = s.user_id AND p.pick_json IS NOT NULL) AS predictions,
+      (SELECT MAX(updated_at) FROM predictions p WHERE p.user_id = s.user_id) AS prediction_at,
+      (SELECT COUNT(*) FROM bets b WHERE b.user_id = s.user_id) AS bets,
+      (SELECT MAX(placed_at) FROM bets b WHERE b.user_id = s.user_id) AS bet_at,
+      (SELECT COUNT(*) FROM comments m WHERE m.user_id = s.user_id AND m.deleted_at IS NULL AND m.removed_at IS NULL) AS comments,
+      (SELECT MAX(created_at) FROM comments m WHERE m.user_id = s.user_id) AS comment_at,
+      (SELECT muted_until FROM commenter_sanctions x WHERE x.user_id = s.user_id AND x.muted_until > ?) AS muted_until
+    FROM scorers s ORDER BY s.created_at DESC
+  `).all(now) as Record<string, string | number | null>[];
+  let facts: Map<string, ClerkFacts> | null = null;
+  let clerkError: string | null = null;
+  try { facts = await readClerkFacts(rows.filter(row => row.deleted_at == null).map(row => String(row.user_id)), clerk); }
+  catch (error) { clerkError = error instanceof Error ? error.message : String(error); }
+  const number = (value: unknown) => value == null ? null : Number(value);
+  return {
+    generatedAt: now,
+    clerk: facts ? "ok" : clerk ? "unavailable" : "not configured",
+    clerkError,
+    accounts: rows.map(row => {
+      const fact = facts?.get(String(row.user_id));
+      const activity = [row.card_at, row.prediction_at, row.bet_at, row.comment_at].map(number).filter((at): at is number => at != null);
+      return {
+        ...identifyScorer(row as { public_id: string; username: string | null; username_key: string | null; image_url: string | null }),
+        joinedAt: number(row.created_at), deletedAt: number(row.deleted_at),
+        commentsPublic: row.comments_public === 1, mutedUntil: number(row.muted_until),
+        cards: Number(row.cards), predictions: Number(row.predictions), bets: Number(row.bets), comments: Number(row.comments),
+        lastActivityAt: activity.length ? Math.max(...activity) : null,
+        email: fact?.email ?? null, lastSignInAt: fact?.lastSignInAt ?? null, lastActiveAt: fact?.lastActiveAt ?? null, signIn: fact?.signIn ?? [],
+      };
+    }),
   };
 }

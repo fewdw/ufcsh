@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
+import { Visitors } from "./visitors.ts";
 import { ADMIN_ROUTES, MS_STEPS, addLatency, emptyLatency, estimatePercentile, mergeLatency, summarise, type Latency } from "./observability.ts";
 
 const HOUR = 3_600_000;
@@ -43,10 +44,13 @@ export class TrafficHistory {
   private readonly spans = { hour: { size: HOUR, start: 0, seen: new Set<string>() }, day: { size: DAY, start: 0, seen: new Set<string>() } };
   private finished: { span: string; start: number; visitors: number }[] = [];
   private compactedAt = -Infinity;
+  /** Unique visitors by browser, from page views (`visitors.ts`). */
+  readonly people: Visitors;
 
   constructor(db: DatabaseSync, now = Date.now) {
     this.db = db;
     this.now = now;
+    this.people = new Visitors(db, now);
     db.exec(`
       CREATE TABLE IF NOT EXISTS traffic_hours (
         hour INTEGER NOT NULL, route TEXT NOT NULL,
@@ -91,6 +95,7 @@ export class TrafficHistory {
   /** Adds what has been counted since the last flush. Visitor counts keep the
    *  larger figure, so a restart part-way through a day never lowers it. */
   flush(): void {
+    this.people.flush();
     const rows = [...this.pending.values()];
     const site = new Map<number, { hour: number; route: string; latency: Latency; views: number }>();
     for (const row of rows) {
@@ -157,6 +162,7 @@ export class TrafficHistory {
       }
     }
     this.db.prepare("DELETE FROM traffic_visitors WHERE span = 'hour' AND start < ?").run(cutoff);
+    this.people.compact();
   }
 
   /** Totals, a timeline and per-route rows for one window. Hourly for the last
@@ -188,6 +194,7 @@ export class TrafficHistory {
       const at = row.start - (row.start - since) % bucket;
       visitorBuckets.set(at, [...visitorBuckets.get(at) ?? [], row.visitors]);
     }
+    const people = this.people.summary(since, bucket, hourly);
     const series = [];
     for (let at = since; at <= now; at += bucket) {
       const row = buckets.get(at);
@@ -197,10 +204,14 @@ export class TrafficHistory {
         at, requests: latency.count, errors: latency.errors, throttled: latency.throttled, pageViews: Number(row?.views ?? 0),
         p95Ms: latency.count ? estimatePercentile(latency, 0.95) : null,
         visitors: counts.length ? Math.round(counts.reduce((sum, value) => sum + value, 0) / counts.length) : 0,
+        people: people.series.get(at)?.visitors ?? 0, returning: people.series.get(at)?.returning ?? 0,
       });
     }
-    const daily = this.db.prepare("SELECT start, visitors FROM traffic_visitors WHERE span = 'day' AND start >= ? ORDER BY visitors DESC")
-      .all(Math.floor(since / DAY) * DAY) as { start: number; visitors: number }[];
+    // Complete days only: today is still filling up, and the first recorded
+    // day started part-way through.
+    const firstDay = first == null ? null : Math.floor(first / DAY) * DAY;
+    const daily = (this.db.prepare("SELECT start, visitors FROM traffic_visitors WHERE span = 'day' AND start >= ? AND start < ? ORDER BY visitors DESC")
+      .all(Math.floor(since / DAY) * DAY, today) as { start: number; visitors: number }[]).filter(row => row.start !== firstDay);
     return {
       range, since, until: now, bucketMs: bucket, firstRecordedAt: first,
       totals: { ...summarise(latencyOf(totals)), pageViews: Number(totals.views ?? 0) },
@@ -211,6 +222,7 @@ export class TrafficHistory {
       },
       series,
       routes,
+      people: { firstRecordedAt: people.firstRecordedAt, unique: people.unique, daily: people.daily, windows: people.windows, breakdown: people.breakdown },
     };
   }
 }

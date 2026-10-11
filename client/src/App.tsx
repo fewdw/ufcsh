@@ -9,6 +9,7 @@ import { ChevronDown, Moon, Shield, Sun } from "lucide-react";
 import { accountsEnabled, useAccount } from "./auth";
 import { useAdminResource, type AdminSession } from "./admin";
 import { inMore, MORE_HOME, MoreGroups } from "./components/MoreNav";
+import { sendPageView } from "./pageViews";
 import { useSettings, withRanking } from "./settings";
 import { prefetch } from "./api";
 import { useLinkPrefetch, warmSections } from "./useLinkPrefetch";
@@ -251,10 +252,7 @@ export default function App() {
     const path = location.pathname;
     if (path === "/profiles/me" || trackedPath.current === path) return;
     trackedPath.current = path;
-    void fetch("/api/pageview", {
-      method: "POST", headers: { "Content-Type": "text/plain" }, body: path,
-      credentials: "omit", keepalive: true,
-    }).catch(() => {});
+    sendPageView(path, wasAdmin);
   }, [location.pathname]);
 
   // Colour transitions come back once the first page has been drawn (see the

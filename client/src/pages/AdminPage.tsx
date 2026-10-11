@@ -2,26 +2,47 @@ import { lazy, Suspense } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { accountsEnabled, useAccount } from "../auth";
 import { useAdminResource, type AdminSession } from "../admin";
-import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedTab } from "../components/segmented";
 import { useSeo } from "../seo";
 import { PANEL_SHELL } from "../components/FightStats";
 
-const AdminHealth = lazy(() => import("../components/AdminHealth"));
+const AdminOverview = lazy(() => import("../components/AdminOverview"));
+const AdminTraffic = lazy(() => import("../components/AdminTraffic"));
+const AdminServer = lazy(() => import("../components/AdminServer"));
+const AdminSync = lazy(() => import("../components/AdminSync"));
 const AdminBugs = lazy(() => import("../components/AdminBugs"));
 const AdminLive = lazy(() => import("../components/AdminLive"));
-const AdminAdmins = lazy(() => import("../components/AdminAdmins"));
+const AdminAccounts = lazy(() => import("../components/AdminAccounts"));
 const AdminFlags = lazy(() => import("../components/AdminFlags"));
 const AdminComments = lazy(() => import("../components/AdminComments"));
+const AdminSettings = lazy(() => import("../components/AdminSettings"));
 
-const TABS = [
-  { id: "health", label: "Health" },
-  { id: "bugs", label: "Bugs" },
-  { id: "live", label: "Live rounds" },
-  { id: "admin", label: "Admins" },
-  { id: "flags", label: "Flags" },
-  { id: "comments", label: "Comments" },
+/** The sidebar, in groups. `?tab=` names the section, so each is a link. */
+const GROUPS = [
+  { label: "Site", tabs: [
+    { id: "overview", label: "Overview" },
+    { id: "traffic", label: "Traffic" },
+    { id: "server", label: "Server" },
+  ] },
+  { label: "Data", tabs: [
+    { id: "sync", label: "Sync" },
+    { id: "bugs", label: "Bugs" },
+    { id: "live", label: "Live rounds" },
+  ] },
+  { label: "People", tabs: [
+    { id: "accounts", label: "Accounts" },
+    { id: "comments", label: "Comments" },
+    { id: "flags", label: "Flags" },
+  ] },
+  { label: "Admin", tabs: [
+    { id: "settings", label: "Settings" },
+  ] },
 ] as const;
-type TabId = (typeof TABS)[number]["id"];
+type TabId = (typeof GROUPS)[number]["tabs"][number]["id"];
+const TABS: { id: TabId; label: string }[] = GROUPS.flatMap(group => [...group.tabs]);
+/** A raised card in both themes (a dark fill would vanish into the dark page). */
+const SELECTED = "bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-200";
+/** Addresses from before the sidebar keep working. */
+const RENAMED: Record<string, TabId> = { health: "overview", admin: "settings" };
 
 function Notice({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
@@ -47,53 +68,59 @@ function AdminShell({ tab, onTab }: { tab: TabId; onTab: (next: TabId) => void }
     );
   }
 
-  // The page itself never scrolls: the tabs stay put and each tab scrolls
-  // inside the space left under them. Wide, Bugs splits that space into its
-  // own scrolling sections; on a phone it scrolls as one like the others.
+  // The page itself never scrolls: the sidebar stays put and each section
+  // scrolls inside the space beside it (under it, on a phone). Wide, Bugs
+  // splits that space into its own scrolling sections.
   const fills = tab === "bugs";
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-6xl flex-col gap-3 px-2 pt-3 sm:gap-4 sm:px-5 sm:pt-4">
-      <div className={`${PANEL_SHELL} shrink-0 p-1.5`}>
-        <div role="tablist" aria-label="Admin sections" className={`${segmentedGroup} w-full overflow-x-auto`}>
-          {TABS.map((item, index) => (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              id={`admin-tab-${item.id}`}
-              aria-controls="admin-tabpanel"
-              aria-selected={tab === item.id}
-              tabIndex={tab === item.id ? 0 : -1}
-              onClick={() => onTab(item.id)}
-              onKeyDown={event => {
-                if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
-                event.preventDefault();
-                const next = (index + (event.key === "ArrowRight" ? 1 : TABS.length - 1)) % TABS.length;
-                onTab(TABS[next].id);
-                event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
-              }}
-              className={`${segmentedTab} ${tab === item.id ? segmentedSelected : segmentedIdle}`}
-            >
-              {item.label}
-            </button>
+    <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-7xl flex-col gap-3 px-2 pt-3 sm:px-5 sm:pt-4 md:flex-row md:gap-5">
+      <nav aria-label="Admin sections" className="shrink-0 md:w-44">
+        <div className={`${PANEL_SHELL} p-1.5 md:hidden`}>
+          <div className="flex gap-1 overflow-x-auto">
+            {TABS.map(item => (
+              <button key={item.id} type="button" onClick={() => onTab(item.id)} aria-current={tab === item.id ? "page" : undefined}
+                className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium ${tab === item.id ? SELECTED : "text-zinc-600 hover:bg-zinc-100"}`}>
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="hidden flex-col gap-4 md:flex">
+          {GROUPS.map(group => (
+            <div key={group.label}>
+              <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">{group.label}</p>
+              <ul className="flex flex-col gap-0.5">
+                {group.tabs.map(item => (
+                  <li key={item.id}>
+                    <button type="button" onClick={() => onTab(item.id)} aria-current={tab === item.id ? "page" : undefined}
+                      className={`w-full rounded-lg px-3 py-1.5 text-left text-sm ${tab === item.id ? `${SELECTED} font-semibold` : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"}`}>
+                      {item.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
         </div>
-      </div>
-      <div
-        id="admin-tabpanel"
-        role="tabpanel"
-        aria-labelledby={`admin-tab-${tab}`}
-        className={`min-h-0 flex-1 overscroll-y-contain overflow-x-hidden ${fills ? "overflow-y-auto pb-6 md:flex md:flex-col md:overflow-y-visible md:pb-4" : "overflow-y-auto pb-6"}`}
+      </nav>
+      <main
+        id="admin-section"
+        aria-label={TABS.find(item => item.id === tab)?.label}
+        className={`min-h-0 min-w-0 flex-1 overscroll-y-contain overflow-x-hidden ${fills ? "overflow-y-auto pb-6 md:flex md:flex-col md:overflow-y-visible md:pb-4" : "overflow-y-auto pb-6"}`}
       >
         <Suspense fallback={<div role="status" className="py-16 text-center text-sm text-zinc-400">Loading…</div>}>
-          {tab === "health" ? <AdminHealth /> : null}
+          {tab === "overview" ? <AdminOverview /> : null}
+          {tab === "traffic" ? <AdminTraffic /> : null}
+          {tab === "server" ? <AdminServer /> : null}
+          {tab === "sync" ? <AdminSync /> : null}
           {tab === "bugs" ? <AdminBugs /> : null}
           {tab === "live" ? <AdminLive /> : null}
-          {tab === "admin" ? <AdminAdmins email={data.email} /> : null}
-          {tab === "flags" ? <AdminFlags /> : null}
+          {tab === "accounts" ? <AdminAccounts /> : null}
           {tab === "comments" ? <AdminComments /> : null}
+          {tab === "flags" ? <AdminFlags /> : null}
+          {tab === "settings" ? <AdminSettings email={data.email} /> : null}
         </Suspense>
-      </div>
+      </main>
     </div>
   );
 }
@@ -102,8 +129,8 @@ export default function AdminPage() {
   useSeo({ title: "Admin", description: "Site administration.", path: "/admin" });
   const [params, setParams] = useSearchParams();
   const { isLoaded, user } = useAccount();
-  const requested = params.get("tab");
-  const tab = (TABS.find(item => item.id === requested)?.id ?? "health") as TabId;
+  const requested = params.get("tab") ?? "";
+  const tab = (TABS.find(item => item.id === requested)?.id ?? RENAMED[requested] ?? "overview") as TabId;
   const onTab = (next: TabId) => {
     const search = new URLSearchParams(params);
     search.set("tab", next);

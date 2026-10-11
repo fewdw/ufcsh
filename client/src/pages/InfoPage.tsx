@@ -76,7 +76,7 @@ export default function InfoPage() {
           </Section>
 
           <Section id="privacy">
-            <p>Logged out: page views are counted; preferences stay in your browser.</p>
+            <p>Logged out: visits are counted anonymously with a random ID kept in your browser, plus the linking site, device type and country. IP addresses aren’t stored. Preferences stay in your browser.</p>
             <p>Logged in: Clerk handles sign-in; your account activity is saved, and your profile is public.</p>
           </Section>
 

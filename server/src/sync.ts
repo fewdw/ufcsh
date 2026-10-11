@@ -1,6 +1,7 @@
 import { startPotentialMatchupSync } from "./potential-matchups.ts";
 import { isFightDay, LIVE_EVENT_INTERVAL, liveDetailDue, fightIsComplete, fightIsUnderway } from "./live-state.ts";
 import { db, getMeta, metaAgeMs, setMeta, touchMeta } from "./db.ts";
+import { recordSyncError } from "./sync-status.ts";
 import { daysBetween, firstLastName, log, normName, todayIso } from "./util.ts";
 import {
   scrapeEventDetail,
@@ -1709,7 +1710,7 @@ type EventRow = { id: string; name: string; date: string; complete: number; deta
 function guarded(name: string, fn: () => Promise<void>): Promise<void> {
   return fn().catch((err) => {
     log(`SYNC ERROR [${name}]:`, String(err));
-    setMeta("last_sync_error", `${new Date().toISOString()} ${name}: ${String(err)}`);
+    recordSyncError(name, err);
   });
 }
 
