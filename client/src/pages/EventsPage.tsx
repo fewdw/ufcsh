@@ -18,7 +18,8 @@ import { NAV_STEP, EventPlace, CardNavigation } from "../components/CardHeader";
 import { useShortcutNav } from "../shortcuts";
 import type { Matchup } from "../api";
 import { SITE_URL, useSeo } from "../seo";
-import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
+import { useHistoryState, useRememberedState, useRouteScrollRestoration } from "../navigationState";
+import { oneOf } from "../preferences";
 import { useSettings, withRanking, type OddsFormat } from "../settings";
 import { eventKind, type EventKind } from "../eventKind";
 import SearchGlyph from "../components/SearchGlyph";
@@ -181,7 +182,7 @@ function EventSidebar({
   dock: (typeof DOCK)[keyof typeof DOCK];
 }) {
   const [filter, setFilter] = useHistoryState("events:filter", "");
-  const [kind, setKind] = useHistoryState<KindFilter>("events:kind", "all");
+  const [kind, setKind] = useRememberedState<KindFilter>("events:kind", "all", oneOf("all", "ppv", "fight_night"));
   const [showTop, setShowTop] = useState(false);
   const { settings: { rankingSource } } = useSettings();
   const navigate = useNavigate();

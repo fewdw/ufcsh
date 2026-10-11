@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { apiCache, prefetch, type EventListItem } from "./api";
 import { landingEvent } from "./liveEvent";
 import { withRanking } from "./settings";
-import { DEFAULT_STATS_REQUEST } from "./statsDefaults";
+import { openingStatsRequest } from "./statsDefaults";
 import { pageRequests } from "./pageRequests";
 import { pageFor, pages } from "./pages";
 import type { RankingSource } from "./settings";
@@ -12,11 +12,11 @@ function warm(url: URL, ranking: RankingSource) {
   if (url.origin !== window.location.origin) return;
   void pageFor(url.pathname)?.().catch(() => {});
   for (const request of pageRequests(url.pathname, url.search, ranking)) prefetch(request);
-  if (url.pathname === "/stats" && !url.search) prefetch(DEFAULT_STATS_REQUEST);
+  if (url.pathname === "/stats" && !url.search) prefetch(openingStatsRequest());
 }
 
-/** Events (the list and the card "/" opens), Rankings and Stats in their
- *  default views: shared with the header links, which warm them on a hover. */
+/** Events (the list and the card "/" opens), Rankings and Stats in the
+ *  views they open on: shared with the header links, which warm them on a hover. */
 export function warmSections(ranking: RankingSource): void {
   void apiCache.load("/api/events", 30_000).then(() => {
     const events = apiCache.read("/api/events").data as EventListItem[] | null;
@@ -24,7 +24,7 @@ export function warmSections(ranking: RankingSource): void {
     if (landing) prefetch(withRanking(`/api/events/${landing.id}`, ranking));
   });
   prefetch(withRanking("/api/rankings", ranking));
-  prefetch(DEFAULT_STATS_REQUEST);
+  prefetch(openingStatsRequest());
 }
 
 /** One delegated listener for every link in the app: pointing at a link (for

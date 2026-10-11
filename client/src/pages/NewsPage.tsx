@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { NewsPage as NewsData } from "../api";
 import { PAGE } from "../research";
 import { useSeo } from "../seo";
+import { storeLocal } from "../preferences";
 import NewsRow, { OFF_KEY, savedOff, savedSummaries, SUMMARIES_KEY } from "../components/NewsRow";
 import { fetchPage, LoadMore, useInfiniteList } from "../components/InfiniteList";
 import OptionsSheet, { SwitchRow } from "../components/OptionsSheet";
@@ -37,11 +38,11 @@ export default function NewsPage() {
   const off = useMemo(() => new Set(offList), [offList]);
   const setOff = (next: string[]) => {
     setOffList(next);
-    try { localStorage.setItem(OFF_KEY, JSON.stringify(next)); } catch { /* private mode: for this visit only */ }
+    storeLocal(OFF_KEY, JSON.stringify(next));
   };
   const setSummaries = (on: boolean) => {
     setSummariesState(on);
-    try { localStorage.setItem(SUMMARIES_KEY, on ? "1" : "0"); } catch { /* private mode: for this visit only */ }
+    storeLocal(SUMMARIES_KEY, on ? "1" : "0");
   };
   const search = useMemo(() => {
     const params = new URLSearchParams();

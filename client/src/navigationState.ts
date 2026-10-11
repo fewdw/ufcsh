@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { useLocation, useNavigationType } from "react-router-dom";
+import { readPreference, writePreference } from "./preferences.ts";
 
 type Position = { top: number; left: number };
 const SCROLL_KEY = "ufcsh:scroll:v1";
@@ -198,4 +199,12 @@ export function cardFightSearch(search: string): string {
   const params = new URLSearchParams(search);
   params.delete("comment");
   return params.size ? `?${params}` : "";
+}
+
+/** History-entry state (Back restores it) that a new visit starts from the
+ *  reader's last choice, kept across reloads and releases. */
+export function useRememberedState<T>(name: string, fallback: T, parse?: (value: unknown) => T | undefined): [T, Dispatch<SetStateAction<T>>] {
+  const [value, setValue] = useHistoryState(name, () => readPreference(name, fallback, parse));
+  useEffect(() => { writePreference(name, value, fallback); }, [name, value, fallback]);
+  return [value, setValue];
 }

@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { commentLink, type ProfileComment, type ProfileCommentSort, type ProfileComments as CommentsData } from "../discussion";
 import type { ScorerIdentity } from "../scoring";
 import { exactTime, relativeAge } from "../format";
+import { oneOf, readPreference, writePreference } from "../preferences";
 import { ConfirmRemove, RemoveX } from "./ConfirmRemove";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
 import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedOption } from "./segmented";
@@ -31,7 +32,8 @@ export default function ProfileComments({ handle, mine, visible, visibilityContr
   visibilityControl?: React.ReactNode;
 }) {
   const { getToken } = useAuth();
-  const [sort, setSort] = useState<ProfileCommentSort>("new");
+  const [sort, setSortState] = useState(() => readPreference("profile-comments:sort", "new" as ProfileCommentSort, oneOf("new", "top")));
+  const setSort = (next: ProfileCommentSort) => { setSortState(next); writePreference("profile-comments:sort", next, "new"); };
   const list = useInfiniteList({
     resetKey: `${handle}:${mine}:${visible}:${sort}`,
     source: commentsList(handle, sort, mine ? getToken : null),
