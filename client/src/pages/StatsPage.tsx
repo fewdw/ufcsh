@@ -10,8 +10,8 @@ import RequestNotice from "../components/RequestNotice";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { formatValue, PANEL } from "../components/chartTokens";
 import { useSeo } from "../seo";
-import { useHistoryState, useRouteScrollRestoration } from "../navigationState";
-import { DEFAULT_SETTINGS, statsRequest, type Method, type Metric, type StatsSettings } from "../statsDefaults";
+import { useHistoryState, useRememberedState, useRouteScrollRestoration } from "../navigationState";
+import { DEFAULT_SETTINGS, parseStatsSettings, STATS_CHOICES, statsRequest, type Method, type Metric, type StatsSettings } from "../statsDefaults";
 
 const shell = PANEL;
 const selectClass = "max-w-full rounded-full border border-zinc-200 bg-zinc-50 py-1 pl-2.5 pr-7 text-[10px] font-medium text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-400";
@@ -849,12 +849,12 @@ function FilterChip({ label, onClear, children }: { label: string; onClear: () =
 }
 
 export default function StatsPage() {
-  const [division, setDivision] = useHistoryState("stats:division", "all");
-  const [includeWomen, setIncludeWomen] = useHistoryState("stats:include-women", false);
-  const [includeInactiveFighters, setIncludeInactiveFighters] = useHistoryState("stats:include-inactive-fighters", true);
-  const [showMoreInfo, setShowMoreInfo] = useHistoryState("stats:show-more-info", false);
-  const [keepFullLists, setKeepFullLists] = useHistoryState("stats:keep-full-lists", true);
-  const [settings, setSettings] = useHistoryState<StatsSettings>("stats:settings", DEFAULT_SETTINGS);
+  const [division, setDivision] = useRememberedState("stats:division", STATS_CHOICES.division);
+  const [includeWomen, setIncludeWomen] = useRememberedState("stats:includeWomen", STATS_CHOICES.includeWomen);
+  const [includeInactiveFighters, setIncludeInactiveFighters] = useRememberedState("stats:includeInactiveFighters", STATS_CHOICES.includeInactiveFighters);
+  const [showMoreInfo, setShowMoreInfo] = useRememberedState("stats:showMoreInfo", STATS_CHOICES.showMoreInfo);
+  const [keepFullLists, setKeepFullLists] = useRememberedState("stats:keepFullLists", STATS_CHOICES.keepFullLists);
+  const [settings, setSettings] = useRememberedState<StatsSettings>("stats:settings", DEFAULT_SETTINGS, parseStatsSettings);
   const [selectedFighters, setSelectedFighters] = useHistoryState<PickedFighter[]>("stats:fighters", []);
   const [resetTurns, setResetTurns] = useState(0);
 

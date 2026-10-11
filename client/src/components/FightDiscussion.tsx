@@ -5,6 +5,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { accountsEnabled, useAccount } from "../auth";
 import { useSessionUser } from "../profile";
 import { readSnapshot, writeSnapshot } from "../snapshots";
+import { oneOf, readPreference, writePreference } from "../preferences";
 import {
   COLLAPSE_SCORE, COMMENT_MAX, REPORT_REASONS, commentLink, commentSegments, deleteNode, insertReply, pickLabel,
   replyTarget, updateEvery, updateNode,
@@ -99,7 +100,8 @@ function DiscussionPanel({ fightId, viewerKey, getToken, signedIn, signIn }: {
   const location = useLocation();
   const navigate = useNavigate();
   const focus = new URLSearchParams(location.search).get("comment");
-  const [sort, setSort] = useState<CommentSort>("top");
+  const [sort, setSortState] = useState(() => readPreference("discussion:sort", "top" as CommentSort, oneOf("top", "new", "old")));
+  const setSort = (next: CommentSort) => { setSortState(next); writePreference("discussion:sort", next, "top"); };
   const threadKey = `${viewerKey}:${fightId}:${sort}:${focus ?? ""}`;
   const [comments, setComments] = useState<CommentNode[] | null>(() => recallThread(threadKey)?.comments ?? null);
   const [meta, setMeta] = useState<Meta | null>(() => recallThread(threadKey)?.meta ?? null);
