@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { actionPercentage, fightActions, isSummaryAgeDisagreement, parseActionClock, parseActionPair, validateFightActions } from "./action-stats.ts";
+import { actionPercentage, fightActions, isSummaryAgeDisagreement, isUnsettledSourceIssue, parseActionClock, parseActionPair, validateFightActions } from "./action-stats.ts";
 import { db } from "./db.ts";
 import { contradictedFightStats } from "./sync.ts";
 
@@ -94,6 +94,23 @@ test("an out-of-date card row is a disagreement about age, not a bad parse", () 
   assert.deepEqual(stale, ["f1 significantStrikes disagrees with event summary"]);
   assert.ok(stale.every(isSummaryAgeDisagreement));
   assert.ok(!validateFightActions(summaryFor(4)).some(isSummaryAgeDisagreement), "a short round table is the fight page being stale, which re-reading the card cannot fix");
+});
+
+test("a verdict posted before the last round's rows is a page still being written", () => {
+  // UFC Fight Night: Allen vs. Duncan, Godinez vs. Souza: the result and the
+  // card totals were up while the fight page still had two of three rounds.
+  const page = JSON.parse(summaryFor(2).detail_json);
+  page.methodInfo = { ...page.methodInfo, Round: "3" };
+  const issues = validateFightActions({ ...summaryFor(2), detail_json: JSON.stringify(page), round: "3", f1_str: "67" });
+  assert.deepEqual(issues, [
+    "totals per round cover 2 of 3 rounds",
+    "significant strikes per round cover 2 of 3 rounds",
+    "f1 significantStrikes disagrees with event summary",
+  ]);
+  assert.ok(issues.every(isUnsettledSourceIssue));
+  // More rows than rounds is a bad parse, which waiting will not fix.
+  assert.ok(!isUnsettledSourceIssue("totals per round cover 4 of 3 rounds"));
+  assert.ok(!isUnsettledSourceIssue("f1 strike targets do not sum to significant strikes"));
 });
 
 /**
