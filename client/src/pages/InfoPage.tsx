@@ -90,10 +90,9 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-09">October 9, 2026</time></p>
+            <p><time dateTime="2026-10-11">October 11, 2026</time></p>
             <ul>
-              <li>Upcoming cards now say when their main-card and prelim sections are still to be confirmed.</li>
-              <li>Bout start estimates appear once every bout has a section; announced broadcast times remain visible.</li>
+              <li>Live fight stats wait quietly while UFCStats finishes posting a bout’s last round.</li>
             </ul>
           </Section>
         </div>
