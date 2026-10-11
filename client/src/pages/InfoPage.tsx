@@ -92,6 +92,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-11">October 11, 2026</time></p>
             <ul>
+              <li>Stats filters, the Events filter and comment sorting are remembered across reloads and site updates.</li>
+              <li>Visits are now counted anonymously per browser, without storing IP addresses; see Privacy.</li>
               <li>Live fight stats wait quietly while UFCStats finishes posting a bout’s last round.</li>
             </ul>
           </Section>

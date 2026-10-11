@@ -2282,7 +2282,7 @@ export function startApi(port: number): http.Server {
       };
     },
     accounts: () => adminAccounts({ scores: scoreStore }),
-    syncStatus: () => syncStatus(),
+    errors: () => ({ http: trafficHistory.errors.list(), sync: syncStatus() }),
     report: async () => {
       const report = queryPool ? JSON.parse((await queryPool.run("/api/bugs")).json) : bugReport();
       return { ...report, checks: [accountSyncCheck(), ...report.checks] };
@@ -2431,6 +2431,8 @@ export function startApi(port: number): http.Server {
   };
   let requests = 0;
   let failures = 0;
+  /** What a request that failed logged, for Admin → Errors. */
+  const failureMessages = new WeakMap<http.ServerResponse, string>();
   const latencies = new Map<string, { count: number; total_ms: number; max_ms: number }>();
   let stopping = false;
   void adoptUnversionedPhotos().catch((err) => log("photo cache migration failed:", String(err)));
@@ -2446,6 +2448,13 @@ export function startApi(port: number): http.Server {
       const entry = latencies.get(key) ?? { count: 0, total_ms: 0, max_ms: 0 };
       const duration = performance.now() - started;
       observability.record(req.method ?? "OTHER", pathname, res.statusCode, duration / 1000, clientAddress(req));
+      if (res.statusCode >= 500 || res.statusCode === 404) {
+        const referer = req.headers.referer;
+        trafficHistory.errors.record({
+          status: res.statusCode, method: req.method ?? "OTHER", path: req.url ?? "/", message: failureMessages.get(res),
+          fromSite: typeof referer === "string" && referer.startsWith(`${SITE_URL}/`),
+        });
+      }
       entry.count++; entry.total_ms += duration; entry.max_ms = Math.max(entry.max_ms, duration);
       latencies.set(key, entry);
     });
@@ -2574,6 +2583,7 @@ export function startApi(port: number): http.Server {
       await serveStatic(req, res, p === "/" ? "/index.html" : p, cache);
     } catch (err) {
       log("API ERROR:", String(err));
+      failureMessages.set(res, String(err));
       if (!res.headersSent && !res.destroyed) {
         const overloaded = err instanceof OverloadedError;
         if (overloaded) res.setHeader("Retry-After", "5");

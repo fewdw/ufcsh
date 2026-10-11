@@ -1,5 +1,7 @@
 /* oxlint-disable react/only-export-components -- the admin views share these
    small pieces and formatters from one place. */
+import { relativeAge } from "../format";
+
 /** Pieces every admin view draws with: stat cards, minute and day charts,
  *  share bars, route names and number formats. */
 
@@ -259,3 +261,28 @@ export function Loading({ children = "Loading…" }: { children?: React.ReactNod
 export const countryName = (code: string) => {
   try { return new Intl.DisplayNames([], { type: "region" }).of(code) ?? code; } catch { return code; }
 };
+
+export const stamp = (at: number) => new Date(at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+/** Server `error-log.ts`: one row per failing address. */
+export type FailingUrl = { status: number; method: string; path: string; count: number; firstAt: number; lastAt: number; message: string; fromSite: number };
+
+/** One failing address: what was asked for, how it failed, how often. */
+export function FailingUrlRow({ row, now }: { row: FailingUrl; now: number }) {
+  return (
+    <li className="px-4 py-2 text-xs">
+      <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <span className={`rounded px-1.5 font-semibold tabular-nums ${row.status >= 500 ? "bg-rose-50 text-rose-700" : "bg-zinc-100 text-zinc-600"}`}>{row.status}</span>
+        {row.method !== "GET" ? <span className="font-semibold text-zinc-500">{row.method}</span> : null}
+        <a href={row.path} target="_blank" rel="noreferrer" className="min-w-0 break-all font-mono text-[11px] text-zinc-900 hover:underline">{row.path}</a>
+        {row.fromSite ? <span className="rounded-full bg-amber-50 px-1.5 text-[10px] font-semibold text-amber-700">linked from the site</span> : null}
+      </p>
+      <p className="mt-0.5 text-zinc-500">
+        <b className="font-semibold text-zinc-700">{whole(row.count)}×</b> · last {relativeAge(row.lastAt, now)}
+        <span title={stamp(row.firstAt)}> · first {relativeAge(row.firstAt, now)}</span>
+      </p>
+      {row.message ? <p className="mt-0.5 break-words font-mono text-[11px] text-rose-700">{row.message}</p> : null}
+    </li>
+  );
+}
+

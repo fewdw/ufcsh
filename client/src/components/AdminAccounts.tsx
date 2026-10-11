@@ -7,12 +7,12 @@ import FanAvatar from "./FanAvatar";
 import { Card, Loading, ViewHead, whole } from "./adminKit";
 import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "./segmented";
 
-type Account = ScorerIdentity & {
+export type Account = ScorerIdentity & {
   joinedAt: number | null; deletedAt: number | null; commentsPublic: boolean; mutedUntil: number | null;
   cards: number; predictions: number; bets: number; comments: number; lastActivityAt: number | null;
   email: string | null; lastSignInAt: number | null; lastActiveAt: number | null; signIn: string[];
 };
-type Accounts = { generatedAt: number; clerk: "ok" | "unavailable" | "not configured"; clerkError: string | null; accounts: Account[] };
+export type Accounts = { generatedAt: number; clerk: "ok" | "unavailable" | "not configured"; clerkError: string | null; accounts: Account[] };
 
 type Show = "active" | "muted" | "deleted" | "all";
 type Sort = "joined" | "active" | "activity";
