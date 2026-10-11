@@ -2441,6 +2441,11 @@ export function startApi(port: number): http.Server {
     requests++;
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    // No other site may frame a page and steer a signed-in reader's clicks
+    // (scorecards, bets, comments, the admin panel). The policy restricts no
+    // scripts or styles, so it cannot break the app or sign-in.
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
     res.on("finish", () => {
       if (res.statusCode >= 500) failures++;
       const pathname = (req.url ?? "/").split("?")[0];
@@ -2462,11 +2467,6 @@ export function startApi(port: number): http.Server {
       if ((req.url?.length ?? 0) > 16_384) return await sendJson(req, res, { error: "URL too long" }, 414);
       const url = new URL(req.url ?? "/", "http://localhost");
       const p = url.pathname;
-      // No other site may frame the admin panel and steer an administrator's clicks.
-      if (p === "/admin" || p.startsWith("/admin/")) {
-        res.setHeader("X-Frame-Options", "DENY");
-        res.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
-      }
       if (p === "/api/pageview") {
         res.setHeader("Cache-Control", "no-store");
         if (req.method !== "POST") {

@@ -16,7 +16,11 @@ test("production HTTP uses workers, shared responses, validators and admin autho
   assert.ok(address && typeof address !== "string");
   const base = `http://127.0.0.1:${address.port}`;
   const request = (path: string, init?: RequestInit) => fetch(base + path, { ...init, signal: AbortSignal.timeout(15_000) });
-  assert.equal((await request("/healthz")).status, 200);
+  const health = await request("/healthz");
+  assert.equal(health.status, 200);
+  // Every response refuses to be framed by another site, not only /admin.
+  assert.equal(health.headers.get("x-frame-options"), "DENY");
+  assert.match(health.headers.get("content-security-policy") ?? "", /frame-ancestors 'none'/);
   let ready = false;
   // Full-archive warm-up needs headroom on a shared development host.
   const readyDeadline = Date.now() + 30_000;

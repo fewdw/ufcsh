@@ -267,6 +267,12 @@ export const stamp = (at: number) => new Date(at).toLocaleString([], { month: "s
 /** Server `error-log.ts`: one row per failing address. */
 export type FailingUrl = { status: number; method: string; path: string; count: number; firstAt: number; lastAt: number; message: string; fromSite: number };
 
+/** Anyone can request any address, so only one that stays on this site is a
+ *  link: `//host` and `/\host` would open another site from the panel. */
+const sameSite = (path: string) => {
+  try { return new URL(path, location.origin).origin === location.origin; } catch { return false; }
+};
+
 /** One failing address: what was asked for, how it failed, how often. */
 export function FailingUrlRow({ row, now }: { row: FailingUrl; now: number }) {
   return (
@@ -274,7 +280,9 @@ export function FailingUrlRow({ row, now }: { row: FailingUrl; now: number }) {
       <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <span className={`rounded px-1.5 font-semibold tabular-nums ${row.status >= 500 ? "bg-rose-50 text-rose-700" : "bg-zinc-100 text-zinc-600"}`}>{row.status}</span>
         {row.method !== "GET" ? <span className="font-semibold text-zinc-500">{row.method}</span> : null}
-        <a href={row.path} target="_blank" rel="noreferrer" className="min-w-0 break-all font-mono text-[11px] text-zinc-900 hover:underline">{row.path}</a>
+        {sameSite(row.path)
+          ? <a href={row.path} target="_blank" rel="noreferrer" className="min-w-0 break-all font-mono text-[11px] text-zinc-900 hover:underline">{row.path}</a>
+          : <span className="min-w-0 break-all font-mono text-[11px] text-zinc-900">{row.path}</span>}
         {row.fromSite ? <span className="rounded-full bg-amber-50 px-1.5 text-[10px] font-semibold text-amber-700">linked from the site</span> : null}
       </p>
       <p className="mt-0.5 text-zinc-500">
