@@ -1,6 +1,7 @@
 /** The Stats page's settings and the request they make: shared with the
- *  background prefetch, so the default dashboard can be fetched before the
- *  page is opened. */
+ *  background prefetch, so the dashboard the reader will open can be fetched
+ *  before the page is opened. */
+import { readPreference } from "./preferences.ts";
 
 export type Method = "all" | "ko" | "sub" | "finish" | "decision" | "unanimous" | "majority" | "split" | "dq";
 export type Metric = "total" | "percent";
@@ -183,8 +184,28 @@ export function statsRequest(view: StatsView): string {
   return `/api/stats?${params}`;
 }
 
-/** What the page opens on. */
-export const DEFAULT_STATS_REQUEST = statsRequest({
-  division: "all", includeWomen: false, includeInactiveFighters: true, showMoreInfo: false,
-  keepFullLists: true, settings: DEFAULT_SETTINGS, fighterIds: [],
-});
+/** Saved board options over this release's defaults: an option added since
+ *  starts at its default, and the server answers an unknown value with its own
+ *  default, so a renamed option cannot break a saved board. */
+export function parseStatsSettings(value: unknown): StatsSettings | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const merged: Record<string, string> = { ...DEFAULT_SETTINGS };
+  for (const key of Object.keys(DEFAULT_SETTINGS)) {
+    const saved = (value as Record<string, unknown>)[key];
+    if (typeof saved === "string") merged[key] = saved;
+  }
+  return merged as StatsSettings;
+}
+
+/** The page's own filters and their defaults, each saved as `stats:<key>`. */
+export type StatsChoices = Omit<StatsView, "settings" | "fighterIds">;
+export const STATS_CHOICES: StatsChoices = {
+  division: "all", includeWomen: false, includeInactiveFighters: true, showMoreInfo: false, keepFullLists: true,
+};
+
+/** What the page opens on: the reader's last choices. */
+export function openingStatsRequest(): string {
+  const choices = Object.fromEntries(Object.entries(STATS_CHOICES)
+    .map(([key, fallback]) => [key, readPreference(`stats:${key}`, fallback)])) as StatsChoices;
+  return statsRequest({ ...choices, settings: readPreference("stats:settings", DEFAULT_SETTINGS, parseStatsSettings), fighterIds: [] });
+}

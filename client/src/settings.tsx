@@ -1,6 +1,7 @@
 /* oxlint-disable react/only-export-components -- provider, hook and the small
    settings helpers intentionally share one persistent source of truth. */
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { storeLocal } from "./preferences";
 
 export type ThemeMode = "light" | "dark";
 export type RankingSource = "meta" | "media";
@@ -74,11 +75,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   useLayoutEffect(() => {
     document.documentElement.classList.toggle("dark", settings.theme === "dark");
     document.documentElement.style.colorScheme = settings.theme;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-    } catch {
-      // Settings still work for this visit when storage is unavailable.
-    }
+    // Settings still work for this visit when storage is unavailable.
+    storeLocal(STORAGE_KEY, JSON.stringify(settings));
   }, [settings]);
   // A change saved from another tab lands here too, so every open tab stays
   // on the same preferences without a reload.
