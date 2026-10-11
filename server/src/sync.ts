@@ -25,7 +25,7 @@ import {
   type BoardMatchup,
   type ScrapedMethodOdds,
 } from "./scrape/odds.ts";
-import { isSummaryAgeDisagreement, validateFightActions } from "./action-stats.ts";
+import { isSummaryAgeDisagreement, isUnsettledSourceIssue, validateFightActions } from "./action-stats.ts";
 import { correctOfficialJudges } from "./verified-scorecard-corrections.ts";
 import { cardChanges, catchweights, eventInfobox, eventSection, fetchArticleByTitle, fetchEventArticle, fetchFighterArticle, recordCatchweight, samePlace, weightMisses } from "./scrape/wikipedia.ts";
 import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
@@ -628,6 +628,13 @@ async function refreshEventSummary(fightId: string, row: Record<string, string>)
   return refreshed.f1_id === row.f1_id && refreshed.f2_id === row.f2_id ? refreshed : null;
 }
 
+/** A source that is mid-update rather than wrong. Logged, retried by the
+ *  next pass, and kept out of "Last sync error". */
+export class SourceCatchingUp extends Error {}
+
+const fightOnFightDay = (fightId: string) =>
+  isFightDay((db.prepare("SELECT e.date FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?").get(fightId) as { date: string } | undefined)?.date ?? "");
+
 async function storeFightDetail(fightId: string): Promise<void> {
   // The detail page has its own fighter order; pass ours so the scraper can map
   // every stat table onto our f1/f2 by identity instead of by column position.
@@ -637,7 +644,7 @@ async function storeFightDetail(fightId: string): Promise<void> {
   const detail = await scrapeFightDetail(
     fightId,
     row ? { f1Id: row.f1_id, f2Id: row.f2_id, f1Name: row.f1_name, f2Name: row.f2_name } : undefined,
-    isFightDay((db.prepare("SELECT e.date FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?").get(fightId) as { date: string } | undefined)?.date ?? "") ? { timeoutMs: 10_000, retries: 0 } : undefined,
+    fightOnFightDay(fightId) ? { timeoutMs: 10_000, retries: 0 } : undefined,
   );
   const latest = db.prepare("SELECT f1_id, f2_id FROM fights WHERE id = ?").get(fightId) as { f1_id: string; f2_id: string } | undefined;
   if (row && latest && (row.f1_id !== latest.f1_id || row.f2_id !== latest.f2_id)) {
@@ -665,7 +672,14 @@ async function storeFightDetail(fightId: string): Promise<void> {
       if (!refreshed) return;
       issues = validateFightActions({ ...refreshed, detail_json: detailJson });
     }
-    if (issues.length) throw new Error(`fight detail ${fightId} failed validation: ${issues.join("; ")}`);
+    if (issues.length) {
+      const message = `fight detail ${fightId} failed validation: ${issues.join("; ")}`;
+      // On fight day a bout that has just ended is still being written; the
+      // live loop reads it again within minutes. A page still wrong after
+      // fight day is a real failure, and Admin → Bugs lists what was stored.
+      if (issues.every(isUnsettledSourceIssue) && fightOnFightDay(fightId)) throw new SourceCatchingUp(message);
+      throw new Error(message);
+    }
   }
   db.prepare("UPDATE fights SET detail_json = ?, detail_fetched_at = ?, title_type = ? WHERE id = ?").run(
     detailJson,
@@ -1708,6 +1722,7 @@ type EventRow = { id: string; name: string; date: string; complete: number; deta
 
 function guarded(name: string, fn: () => Promise<void>): Promise<void> {
   return fn().catch((err) => {
+    if (err instanceof SourceCatchingUp) { log(`sync retry later [${name}]:`, err.message); return; }
     log(`SYNC ERROR [${name}]:`, String(err));
     setMeta("last_sync_error", `${new Date().toISOString()} ${name}: ${String(err)}`);
   });
