@@ -2,26 +2,49 @@ import { lazy, Suspense } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { accountsEnabled, useAccount } from "../auth";
 import { useAdminResource, type AdminSession } from "../admin";
-import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedTab } from "../components/segmented";
 import { useSeo } from "../seo";
 import { PANEL_SHELL } from "../components/FightStats";
+import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "../components/segmented";
 
-const AdminHealth = lazy(() => import("../components/AdminHealth"));
+const AdminOverview = lazy(() => import("../components/AdminOverview"));
+const AdminErrors = lazy(() => import("../components/AdminErrors"));
+const AdminTraffic = lazy(() => import("../components/AdminTraffic"));
+const AdminServer = lazy(() => import("../components/AdminServer"));
 const AdminBugs = lazy(() => import("../components/AdminBugs"));
 const AdminLive = lazy(() => import("../components/AdminLive"));
-const AdminAdmins = lazy(() => import("../components/AdminAdmins"));
+const AdminAccounts = lazy(() => import("../components/AdminAccounts"));
 const AdminFlags = lazy(() => import("../components/AdminFlags"));
 const AdminComments = lazy(() => import("../components/AdminComments"));
+const AdminSettings = lazy(() => import("../components/AdminSettings"));
 
-const TABS = [
-  { id: "health", label: "Health" },
-  { id: "bugs", label: "Bugs" },
-  { id: "live", label: "Live rounds" },
-  { id: "admin", label: "Admins" },
-  { id: "flags", label: "Flags" },
-  { id: "comments", label: "Comments" },
-] as const;
-type TabId = (typeof TABS)[number]["id"];
+/** The sidebar, most important first. A section with views opens on its
+ *  first; `?tab=` and `?view=` name them, so each is a link. */
+const SECTIONS = [
+  { id: "overview", label: "Overview", views: [] },
+  { id: "errors", label: "Errors", views: [] },
+  { id: "people", label: "People", views: [["accounts", "Accounts"], ["comments", "Comments"], ["flags", "Flags"]] },
+  { id: "data", label: "Data", views: [["bugs", "Bugs"], ["live", "Live rounds"]] },
+  { id: "traffic", label: "Traffic", views: [["visitors", "Visitors"], ["server", "Server"]] },
+  { id: "settings", label: "Settings", views: [] },
+] as const satisfies readonly { id: string; label: string; views: readonly (readonly [string, string])[] }[];
+type TabId = (typeof SECTIONS)[number]["id"];
+type Place = { tab: TabId; view: string | null };
+/** A raised card in both themes (a dark fill would vanish into the dark page). */
+const SELECTED = "bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-200";
+/** Addresses from before this layout keep working. */
+const MOVED: Record<string, Place> = {
+  health: { tab: "overview", view: null }, sync: { tab: "errors", view: null }, server: { tab: "traffic", view: "server" },
+  bugs: { tab: "data", view: "bugs" }, live: { tab: "data", view: "live" },
+  accounts: { tab: "people", view: "accounts" }, comments: { tab: "people", view: "comments" }, flags: { tab: "people", view: "flags" },
+  admin: { tab: "settings", view: null },
+};
+function place(tab: string, view: string | null): { tab: TabId; view: string | null } {
+  const moved = MOVED[tab];
+  const found = SECTIONS.find(item => item.id === (moved?.tab ?? tab)) ?? SECTIONS[0];
+  const views: readonly (readonly [string, string])[] = found.views;
+  const wanted = moved?.view ?? view;
+  return { tab: found.id, view: views.length ? (views.find(([id]) => id === wanted) ?? views[0])[0] : null };
+}
 
 function Notice({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
@@ -33,7 +56,7 @@ function Notice({ title, children }: { title: string; children?: React.ReactNode
 }
 
 /** The panel itself, mounted only once there is an account to identify. */
-function AdminShell({ tab, onTab }: { tab: TabId; onTab: (next: TabId) => void }) {
+function AdminShell({ tab, view, onPlace }: { tab: TabId; view: string | null; onPlace: (tab: TabId, view?: string) => void }) {
   const { data, error, loading } = useAdminResource<AdminSession>("/api/admin/session");
 
   if (loading && !data) return <div role="status" className="flex h-full items-center justify-center text-sm text-zinc-400">Checking access…</div>;
@@ -47,53 +70,51 @@ function AdminShell({ tab, onTab }: { tab: TabId; onTab: (next: TabId) => void }
     );
   }
 
-  // The page itself never scrolls: the tabs stay put and each tab scrolls
-  // inside the space left under them. Wide, Bugs splits that space into its
-  // own scrolling sections; on a phone it scrolls as one like the others.
-  const fills = tab === "bugs";
+  // The page itself never scrolls: the sidebar stays put and each section
+  // scrolls inside the space beside it (under it, on a phone). Wide, Bugs
+  // splits that space into its own scrolling sections.
+  const fills = tab === "data" && view === "bugs";
+  const views: readonly (readonly [string, string])[] = SECTIONS.find(item => item.id === tab)!.views;
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-6xl flex-col gap-3 px-2 pt-3 sm:gap-4 sm:px-5 sm:pt-4">
-      <div className={`${PANEL_SHELL} shrink-0 p-1.5`}>
-        <div role="tablist" aria-label="Admin sections" className={`${segmentedGroup} w-full overflow-x-auto`}>
-          {TABS.map((item, index) => (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              id={`admin-tab-${item.id}`}
-              aria-controls="admin-tabpanel"
-              aria-selected={tab === item.id}
-              tabIndex={tab === item.id ? 0 : -1}
-              onClick={() => onTab(item.id)}
-              onKeyDown={event => {
-                if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
-                event.preventDefault();
-                const next = (index + (event.key === "ArrowRight" ? 1 : TABS.length - 1)) % TABS.length;
-                onTab(TABS[next].id);
-                event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
-              }}
-              className={`${segmentedTab} ${tab === item.id ? segmentedSelected : segmentedIdle}`}
-            >
-              {item.label}
-            </button>
+    <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-7xl flex-col gap-3 px-2 pt-3 sm:px-5 sm:pt-4 md:flex-row md:gap-5">
+      <nav aria-label="Admin sections" className="shrink-0 md:w-40">
+        <ul className={`${PANEL_SHELL} flex gap-1 overflow-x-auto p-1.5 md:flex-col md:gap-0.5 md:overflow-visible md:border-0 md:bg-transparent md:p-0 md:shadow-none`}>
+          {SECTIONS.map(item => (
+            <li key={item.id} className="shrink-0">
+              <button type="button" onClick={() => onPlace(item.id)} aria-current={tab === item.id ? "page" : undefined}
+                className={`w-full rounded-lg px-3 py-1.5 text-left text-xs md:text-sm ${tab === item.id ? `${SELECTED} font-semibold` : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"}`}>
+                {item.label}
+              </button>
+            </li>
           ))}
-        </div>
-      </div>
-      <div
-        id="admin-tabpanel"
-        role="tabpanel"
-        aria-labelledby={`admin-tab-${tab}`}
-        className={`min-h-0 flex-1 overscroll-y-contain overflow-x-hidden ${fills ? "overflow-y-auto pb-6 md:flex md:flex-col md:overflow-y-visible md:pb-4" : "overflow-y-auto pb-6"}`}
+        </ul>
+      </nav>
+      <main
+        id="admin-section"
+        aria-label={SECTIONS.find(item => item.id === tab)?.label}
+        className={`flex min-h-0 min-w-0 flex-1 flex-col gap-3 overscroll-y-contain overflow-x-hidden ${fills ? "overflow-y-auto pb-6 md:overflow-y-visible md:pb-4" : "overflow-y-auto pb-6"}`}
       >
+        {views.length ? (
+          <div className={`${segmentedGroup} shrink-0 self-start`} role="tablist" aria-label="Views">
+            {views.map(([id, label]) => (
+              <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => onPlace(tab, id)}
+                className={`${segmentedOption} ${view === id ? segmentedSelected : segmentedIdle}`}>{label}</button>
+            ))}
+          </div>
+        ) : null}
         <Suspense fallback={<div role="status" className="py-16 text-center text-sm text-zinc-400">Loading…</div>}>
-          {tab === "health" ? <AdminHealth /> : null}
-          {tab === "bugs" ? <AdminBugs /> : null}
-          {tab === "live" ? <AdminLive /> : null}
-          {tab === "admin" ? <AdminAdmins email={data.email} /> : null}
-          {tab === "flags" ? <AdminFlags /> : null}
-          {tab === "comments" ? <AdminComments /> : null}
+          {tab === "overview" ? <AdminOverview /> : null}
+          {tab === "errors" ? <AdminErrors /> : null}
+          {view === "accounts" ? <AdminAccounts /> : null}
+          {view === "comments" ? <AdminComments /> : null}
+          {view === "flags" ? <AdminFlags /> : null}
+          {view === "bugs" ? <AdminBugs /> : null}
+          {view === "live" ? <AdminLive /> : null}
+          {view === "visitors" ? <AdminTraffic /> : null}
+          {view === "server" ? <AdminServer /> : null}
+          {tab === "settings" ? <AdminSettings email={data.email} /> : null}
         </Suspense>
-      </div>
+      </main>
     </div>
   );
 }
@@ -102,11 +123,11 @@ export default function AdminPage() {
   useSeo({ title: "Admin", description: "Site administration.", path: "/admin" });
   const [params, setParams] = useSearchParams();
   const { isLoaded, user } = useAccount();
-  const requested = params.get("tab");
-  const tab = (TABS.find(item => item.id === requested)?.id ?? "health") as TabId;
-  const onTab = (next: TabId) => {
+  const { tab, view } = place(params.get("tab") ?? "", params.get("view"));
+  const onPlace = (next: TabId, nextView?: string) => {
     const search = new URLSearchParams(params);
     search.set("tab", next);
+    if (nextView) search.set("view", nextView); else search.delete("view");
     setParams(search, { replace: true });
   };
 
@@ -114,5 +135,5 @@ export default function AdminPage() {
   if (!accountsEnabled) return <Navigate to="/" replace />;
   if (!isLoaded) return <div role="status" className="flex h-full items-center justify-center text-sm text-zinc-400">Loading…</div>;
   if (!user) return <Navigate to="/" replace />;
-  return <AdminShell tab={tab} onTab={onTab} />;
+  return <AdminShell tab={tab} view={view} onPlace={onPlace} />;
 }

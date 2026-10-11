@@ -25,7 +25,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY server/src ./src
 COPY --from=client-build /app/client/dist /app/client/dist
 # Private checkout permissions must not prevent the non-root app from reading its code.
-RUN chmod -R a+rX src package*.json && mkdir -p /data && chown node:node /data
+RUN chmod -R a+rX src package*.json /app/client/dist && mkdir -p /data && chown node:node /data
 USER node
 ARG APP_REVISION=unknown
 LABEL org.opencontainers.image.revision=$APP_REVISION

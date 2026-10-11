@@ -76,7 +76,7 @@ export default function InfoPage() {
           </Section>
 
           <Section id="privacy">
-            <p>Logged out: page views are counted; preferences stay in your browser.</p>
+            <p>Logged out: visits are counted anonymously with a random ID kept in your browser, plus the linking site, device type and country. IP addresses aren’t stored. Preferences stay in your browser.</p>
             <p>Logged in: Clerk handles sign-in; your account activity is saved, and your profile is public.</p>
           </Section>
 
@@ -93,6 +93,7 @@ export default function InfoPage() {
             <p><time dateTime="2026-10-11">October 11, 2026</time></p>
             <ul>
               <li>Stats filters, the Events filter and comment sorting are remembered across reloads and site updates.</li>
+              <li>Visits are now counted anonymously per browser, without storing IP addresses; see Privacy.</li>
               <li>Live fight stats wait quietly while UFCStats finishes posting a bout’s last round.</li>
             </ul>
           </Section>

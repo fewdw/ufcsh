@@ -1,6 +1,7 @@
 import { startPotentialMatchupSync } from "./potential-matchups.ts";
 import { isFightDay, LIVE_EVENT_INTERVAL, liveDetailDue, fightIsComplete, fightIsUnderway } from "./live-state.ts";
 import { db, getMeta, metaAgeMs, setMeta, touchMeta } from "./db.ts";
+import { recordSyncError } from "./sync-status.ts";
 import { daysBetween, firstLastName, log, normName, todayIso } from "./util.ts";
 import {
   scrapeEventDetail,
@@ -628,9 +629,15 @@ async function refreshEventSummary(fightId: string, row: Record<string, string>)
   return refreshed.f1_id === row.f1_id && refreshed.f2_id === row.f2_id ? refreshed : null;
 }
 
-/** A source that is mid-update rather than wrong. Logged, retried by the
- *  next pass, and kept out of "Last sync error". */
+/** A source that is mid-update or briefly unreachable rather than wrong.
+ *  Logged, retried by the next pass, and kept out of the sync errors. */
 export class SourceCatchingUp extends Error {}
+
+/** A failure that is the other site's moment, not a fault here: overloaded,
+ *  rate-limited, unreachable or slow. */
+export function isTransientUpstream(err: unknown): boolean {
+  return /HTTP (408|425|429|5\d\d)\b|fetch failed|TimeoutError|aborted due to timeout|ECONNRESET|ETIMEDOUT|socket hang up|connection already closed|server closed the connection/i.test(String(err));
+}
 
 const fightOnFightDay = (fightId: string) =>
   isFightDay((db.prepare("SELECT e.date FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?").get(fightId) as { date: string } | undefined)?.date ?? "");
@@ -1724,7 +1731,7 @@ function guarded(name: string, fn: () => Promise<void>): Promise<void> {
   return fn().catch((err) => {
     if (err instanceof SourceCatchingUp) { log(`sync retry later [${name}]:`, err.message); return; }
     log(`SYNC ERROR [${name}]:`, String(err));
-    setMeta("last_sync_error", `${new Date().toISOString()} ${name}: ${String(err)}`);
+    recordSyncError(name, err);
   });
 }
 
@@ -1917,6 +1924,10 @@ export async function tick(): Promise<void> {
           setMeta("fightodds_error", "");
         } catch (err) {
           setMeta("fightodds_error", String(err));
+          // FightOdds.io drops out for minutes at a time (Cloudflare 502s, rate
+          // limits, its database closing connections); the next pass five
+          // minutes on reads it again. Only an outage past half an hour is news.
+          if (isTransientUpstream(err) && metaAgeMs("fightodds_read_at") < 30 * 60_000) throw new SourceCatchingUp(`fightodds: ${String(err)}`);
           throw err;
         }
       }).finally(() => { fightOddsRunning = false; });

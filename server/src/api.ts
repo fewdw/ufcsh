@@ -26,7 +26,8 @@ import { prepared, getMeta, setMeta, DATA_DIR, dataRevision, db } from "./db.ts"
 import { enqueueRefresh } from "./refresh-queue.ts";
 import { QueryPool } from "./query-pool.ts";
 import { ResponseCache, representation, acceptsEncoding, acceptsGzip, matchesEtag, OverloadedError, type Representation } from "./response-cache.ts";
-import { HttpObservability } from "./observability.ts";
+import { HttpObservability, pageRouteGroup } from "./observability.ts";
+import { isAutomated, sourceOf } from "./visitors.ts";
 import { TrafficHistory } from "./traffic-history.ts";
 import { createRepairRunner } from "./repair-guard.ts";
 import { publicApi, cachePolicy, canonicalApiKey, clientAddress, RateLimiter } from "./api-policy.ts";
@@ -40,7 +41,8 @@ import { ReportStore } from "./reports.ts";
 import { createReportsHandler } from "./reports-http.ts";
 import { CommentStore } from "./comments.ts";
 import { createCommentsHandler } from "./comments-http.ts";
-import { ACCOUNT_SYNC_MS, accountSyncCheck, syncAccounts } from "./accounts.ts";
+import { ACCOUNT_SYNC_MS, accountSyncCheck, adminAccounts, syncAccounts } from "./accounts.ts";
+import { syncStatus } from "./sync-status.ts";
 import { releasedRounds } from "./live-rounds.ts";
 import { ensureImageVariant, normalizeHeadshot, variantPath, type ImageSize } from "./image-variants.ts";
 import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds, syncOddsForFight } from "./sync.ts";
@@ -2279,6 +2281,8 @@ export function startApi(port: number): http.Server {
         },
       };
     },
+    accounts: () => adminAccounts({ scores: scoreStore }),
+    errors: () => ({ http: trafficHistory.errors.list(), sync: syncStatus() }),
     report: async () => {
       const report = queryPool ? JSON.parse((await queryPool.run("/api/bugs")).json) : bugReport();
       return { ...report, checks: [accountSyncCheck(), ...report.checks] };
@@ -2427,6 +2431,8 @@ export function startApi(port: number): http.Server {
   };
   let requests = 0;
   let failures = 0;
+  /** What a request that failed logged, for Admin → Errors. */
+  const failureMessages = new WeakMap<http.ServerResponse, string>();
   const latencies = new Map<string, { count: number; total_ms: number; max_ms: number }>();
   let stopping = false;
   void adoptUnversionedPhotos().catch((err) => log("photo cache migration failed:", String(err)));
@@ -2442,6 +2448,13 @@ export function startApi(port: number): http.Server {
       const entry = latencies.get(key) ?? { count: 0, total_ms: 0, max_ms: 0 };
       const duration = performance.now() - started;
       observability.record(req.method ?? "OTHER", pathname, res.statusCode, duration / 1000, clientAddress(req));
+      if (res.statusCode >= 500 || res.statusCode === 404) {
+        const referer = req.headers.referer;
+        trafficHistory.errors.record({
+          status: res.statusCode, method: req.method ?? "OTHER", path: req.url ?? "/", message: failureMessages.get(res),
+          fromSite: typeof referer === "string" && referer.startsWith(`${SITE_URL}/`),
+        });
+      }
       entry.count++; entry.total_ms += duration; entry.max_ms = Math.max(entry.max_ms, duration);
       latencies.set(key, entry);
     });
@@ -2470,15 +2483,31 @@ export function startApi(port: number): http.Server {
         }
         if (!limiter.allow(`pageview:${clientAddress(req)}`, 30, 1)) return await sendJson(req, res, { error: "too many page views" }, 429);
         if (!req.headers["content-type"]?.startsWith("text/plain")) return await sendJson(req, res, { error: "send a page path" }, 415);
-        if (Number(req.headers["content-length"]) > 200) { req.resume(); return await sendJson(req, res, { error: "path too long" }, 413); }
+        if (Number(req.headers["content-length"]) > 400) { req.resume(); return await sendJson(req, res, { error: "path too long" }, 413); }
         const chunks: Buffer[] = [];
         let size = 0;
         for await (const chunk of req) {
           size += chunk.length;
-          if (size > 200) return await sendJson(req, res, { error: "path too long" }, 413);
+          if (size > 400) return await sendJson(req, res, { error: "path too long" }, 413);
           chunks.push(chunk);
         }
-        if (!observability.recordPageView(Buffer.concat(chunks).toString("utf8"))) return await sendJson(req, res, { error: "unknown page" }, 400);
+        // The path, then this browser's random visitor id, then — on the first
+        // page of a visit only — the referring site's host (maybe empty).
+        const [path = "", browser = "", referrer] = Buffer.concat(chunks).toString("utf8").split("\n");
+        const route = pageRouteGroup(path);
+        if (!route) return await sendJson(req, res, { error: "unknown page" }, 400);
+        // Crawlers that run the app (Googlebot does) are not readers.
+        const userAgent = String(req.headers["user-agent"] ?? "");
+        if (!isAutomated(userAgent)) {
+          observability.recordPageView(path);
+          const country = req.headers["cf-ipcountry"];
+          trafficHistory.people.visit({
+            browser: /^[A-Za-z0-9_-]{16,32}$/.test(browser) ? browser : null,
+            address: clientAddress(req), userAgent,
+            country: typeof country === "string" ? country.toUpperCase() : null,
+            entry: referrer === undefined ? null : { route, source: referrer ? sourceOf(referrer) : null },
+          });
+        }
         res.writeHead(204);
         res.end();
         return;
@@ -2554,6 +2583,7 @@ export function startApi(port: number): http.Server {
       await serveStatic(req, res, p === "/" ? "/index.html" : p, cache);
     } catch (err) {
       log("API ERROR:", String(err));
+      failureMessages.set(res, String(err));
       if (!res.headersSent && !res.destroyed) {
         const overloaded = err instanceof OverloadedError;
         if (overloaded) res.setHeader("Retry-After", "5");

@@ -8,7 +8,7 @@ import { ScoringStore, type ScoringFight } from "./scoring.ts";
 import { CommentStore } from "./comments.ts";
 import { PredictionStore } from "./predictions.ts";
 import { BetStore } from "./bets.ts";
-import { syncAccounts } from "./accounts.ts";
+import { adminAccounts, syncAccounts } from "./accounts.ts";
 
 const FIGHT = "aaaaaaaaaaaaaaaa";
 const fight: ScoringFight = {
@@ -79,4 +79,37 @@ test("an account deleted at Clerk leaves no trace but placeholders, and frees it
   // Accounts Clerk still has follow its picture; ids Clerk never issued are left alone.
   assert.equal(scores.identity(KEPT).imageUrl, IMAGE);
   assert.ok(scores.lookup("user_id", "mock_user_0001"));
+});
+
+test("Admin → Accounts lists every account with its activity and what Clerk knows", async t => {
+  const { scores, comments } = fixture(t);
+  for (const user of [GONE, KEPT]) scores.setImage(user, null, Date.now() - 86_400_000);
+  scores.setUsername(KEPT, "Kept");
+  scores.save(FIGHT, KEPT, { revision: 0, rounds });
+  comments.post(KEPT, FIGHT, { body: "Clean sweep." });
+  scores.db.prepare("INSERT INTO predictions VALUES (?, ?, 1, 1, '{}')").run(FIGHT, KEPT);
+  scores.db.prepare("UPDATE scorers SET deleted_at = 1 WHERE user_id = ?").run(GONE);
+  const directory = {
+    users: {
+      getUserList: async ({ userId }: { userId: string[] }) => ({
+        data: userId.filter(id => id === KEPT).map(id => ({
+          id, primaryEmailAddressId: "e1", emailAddresses: [{ id: "e0", emailAddress: "old@example.com" }, { id: "e1", emailAddress: "kept@example.com" }],
+          lastSignInAt: 5, lastActiveAt: 6, externalAccounts: [{ provider: "oauth_google" }],
+        })),
+      }),
+    },
+  };
+  // Clerk down: the list still loads, without emails.
+  const down = await adminAccounts({ scores }, { users: { getUserList: async () => { throw new Error("Clerk is unreachable"); } } });
+  assert.equal(down.clerk, "unavailable");
+  assert.equal(down.accounts.length, 2);
+  const { accounts, clerk: state } = await adminAccounts({ scores }, directory);
+  assert.equal(state, "ok");
+  const kept = accounts.find(account => account.username === "Kept")!;
+  assert.deepEqual([kept.cards, kept.predictions, kept.comments, kept.bets], [1, 1, 1, 0]);
+  assert.equal(kept.email, "kept@example.com");
+  assert.deepEqual(kept.signIn, ["google"]);
+  assert.ok(kept.lastActivityAt);
+  const gone = accounts.find(account => account.deletedAt != null)!;
+  assert.equal(gone.email, null, "deleted accounts are never looked up");
 });
