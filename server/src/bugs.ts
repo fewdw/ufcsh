@@ -1197,7 +1197,7 @@ function replacementsWithoutNotice(): BugCheck {
     id: "replacement-no-notice",
     group: "Fights & events",
     label: "Replacements without their days' notice",
-    description: "A replacement whose notice the event article doesn't state, so the matchup says \"Replaced X\" (or \"on short notice\") without how many days. Stated notice (\"on 10 days' notice\", \"less than two weeks before\", \"during fight week\") is read with the article. A dated cited report naming both fighters and the replacement gives \"announced N days before\", rather than claiming when the fighter accepted. The rest wait for another source.",
+    description: "A replacement whose notice the event article doesn't state, so the matchup says \"Replaced X\" (or \"on short notice\") without how many days. Stated notice (\"on 10 days' notice\", \"less than two weeks before\", \"during fight week\") is read with the article. A dated cited report naming both fighters and their replacement or withdrawal/new booking gives \"announced N days before\", rather than claiming when the fighter accepted. Individually verified primary reports are retained in replacement-announcements.ts. The rest wait for another source.",
     grade: ahead([[14, "minor"]]),
   }, rows.map((row): BugItem => ({
     key: `${row.id}:${row.name}`,

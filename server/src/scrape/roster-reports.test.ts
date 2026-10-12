@@ -39,6 +39,25 @@ test("only complete valid publication dates count, never access dates", () => {
   assert.deepEqual(citedRosterReports(citation(title, "June 2016|access-date=2016-06-15"), ["Will Brooks"]), []);
 });
 
+test("confirmed releases, retirement notifications and the UFC's full name retain explicit evidence", () => {
+  assert.equal(citedRosterReports(citation("Angela Hill confirms UFC release"), ["Angela Hill"])[0]?.kind, "released");
+  assert.equal(citedRosterReports(citation("Leonard Garcia and Bart Palaszewski confirm UFC releases"), ["Bart Palaszewski"])[0]?.kind, "released");
+  assert.equal(citedRosterReports(citation("Zabit Magomedsharipov notifies UFC of retirement"), ["Zabit Magomedsharipov"])[0]?.kind, "retired");
+  assert.equal(citedRosterReports(citation("Reza Madadi has signed with Ultimate Fighting Championship (UFC)"), ["Reza Madadi"])[0]?.kind, "signed");
+  assert.equal(citedRosterReports(citation("Carlos Ulberg earns UFC contract"), ["Carlos Ulberg"])[0]?.kind, "signed");
+  assert.equal(citedRosterReports(citation("Carlos Ulberg awarded a contract with UFC"), ["Carlos Ulberg"])[0]?.kind, "signed");
+  for (const title of [
+    "Angela Hill discusses another fighter's UFC release",
+    "Angela Hill requests her UFC release",
+    "Former UFC fighter Angela Hill notifies Bellator of retirement",
+    "Angela Hill might notify UFC of retirement",
+    "Angela Hill confirms John Smith's UFC release",
+    "Angela Hill hopes to earn UFC contract",
+    "John Smith knocks out Angela Hill to earn UFC contract",
+    "Angela Hill earns UFC title",
+  ]) assert.deepEqual(citedRosterReports(citation(title), ["Angela Hill"]), [], title);
+});
+
 test("an explicit contract date in a biography is retained independently of the citation's publication date", () => {
   const text = `===Ultimate Fighting Championship===
 
@@ -53,4 +72,17 @@ On September 1, 2016, he was booked to face another fighter at UFC 200.`;
   assert.equal(reports.length, 1);
   assert.equal(reports[0].date, "2016-06-15");
   assert.equal(reports[0].kind, "signed");
+});
+
+test("dated biography subjects can use their own surname or an explicit UFC pronoun", () => {
+  assert.equal(datedRosterStatements("On November 17, 2021, Mokaev signed with UFC.", ["Muhammad Mokaev"])[0]?.date, "2021-11-17");
+  assert.equal(datedRosterStatements("On July 3, 2014, it was announced that Murphy had signed with the UFC.", ["Lauren Murphy"])[0]?.kind, "signed");
+  assert.equal(datedRosterStatements("On December 8, 2020, it was announced that the UFC had released him.", ["Gadzhimurad Antigulov"])[0]?.kind, "released");
+  assert.equal(datedRosterStatements("On March 4, 2021, it was announced that de Freitas was released from UFC.", ["Geraldo de Freitas"])[0]?.kind, "released");
+  for (const text of [
+    "On November 17, 2021, John Mokaev signed with UFC.",
+    "On November 17, 2021, Mokaev faced John Smith, who signed with UFC.",
+    "On November 17, 2021, Mokaev hoped to sign with UFC.",
+    "On November 17, 2021, the UFC might release him.",
+  ]) assert.deepEqual(datedRosterStatements(text, ["Muhammad Mokaev"]), [], text);
 });
