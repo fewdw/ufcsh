@@ -9,7 +9,8 @@ scrape_configs:
   - job_name: ufc-app
     metrics_path: /metrics
     static_configs:
-      - targets: [app:9091]
+      # One of the two releases is idle (down) except during a deploy.
+      - targets: [app-blue:9091, app-green:9091]
   - job_name: host
     static_configs:
       - targets: [node-exporter:9100]

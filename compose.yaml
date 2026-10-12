@@ -4,40 +4,59 @@ x-logging: &bounded-logs
     max-size: "10m"
     max-file: "5"
 
+# Production runs one release at a time as app-blue or app-green. A deploy
+# starts the other one, waits until it is ready, then stops the old one; the
+# proxy sends requests only to a release whose /readyz passes (see
+# deploy/update.sh). Both build the same ufcsh-app image and share /data.
+x-app: &app
+  image: ufcsh-app
+  build:
+    context: .
+    args:
+      VITE_CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
+      VITE_CLERK_PROXY_URL: ${CLERK_PROXY_URL:-}
+      VITE_SITE_ORIGIN: https://${DOMAIN}
+  restart: unless-stopped
+  logging: *bounded-logs
+  init: true
+  # Drains for SHUTDOWN_DRAIN_MS, then finishes requests (see production.ts).
+  stop_grace_period: 20s
+  environment:
+    NODE_ENV: production
+    DATA_DIR: /data
+    SITE_ORIGIN: https://${DOMAIN}
+    API_WORKERS: ${API_WORKERS:-2}
+    NO_SYNC: ${NO_SYNC:-0}
+    DISABLE_REPAIRS: ${DISABLE_REPAIRS:-0}
+    ADMIN_TOKEN: ${ADMIN_TOKEN:?Set a private ADMIN_TOKEN in .env}
+    DEFAULT_ADMIN: ${DEFAULT_ADMIN:?Set the permanent administrator email in .env}
+    CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
+    CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
+    GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    CLERK_PROXY_URL: ${CLERK_PROXY_URL:-}
+    CLERK_AUTHORIZED_PARTIES: https://${DOMAIN}
+    METRICS_PORT: 9091
+    # /readyz fails this long before the server stops taking requests, so
+    # the proxy has moved to the release taking over.
+    SHUTDOWN_DRAIN_MS: 3000
+    # Caddy has a fixed address and overwrites X-Real-IP below.
+    TRUSTED_PROXY_IPS: 172.30.86.2,::ffff:172.30.86.2
+  volumes:
+    - app-data:/data
+
 services:
-  app:
-    build:
-      context: .
-      args:
-        VITE_CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
-        VITE_CLERK_PROXY_URL: ${CLERK_PROXY_URL:-}
-        VITE_SITE_ORIGIN: https://${DOMAIN}
-    restart: unless-stopped
-    logging: *bounded-logs
-    init: true
-    stop_grace_period: 20s
-    environment:
-      NODE_ENV: production
-      DATA_DIR: /data
-      SITE_ORIGIN: https://${DOMAIN}
-      API_WORKERS: ${API_WORKERS:-2}
-      NO_SYNC: ${NO_SYNC:-0}
-      DISABLE_REPAIRS: ${DISABLE_REPAIRS:-0}
-      ADMIN_TOKEN: ${ADMIN_TOKEN:?Set a private ADMIN_TOKEN in .env}
-      DEFAULT_ADMIN: ${DEFAULT_ADMIN:?Set the permanent administrator email in .env}
-      CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
-      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      CLERK_PROXY_URL: ${CLERK_PROXY_URL:-}
-      CLERK_AUTHORIZED_PARTIES: https://${DOMAIN}
-      METRICS_PORT: 9091
-      # Caddy has a fixed address and overwrites X-Real-IP below.
-      TRUSTED_PROXY_IPS: 172.30.86.2,::ffff:172.30.86.2
-    volumes:
-      - app-data:/data
+  app-blue:
+    <<: *app
     networks:
       web:
-        ipv4_address: 172.30.86.3
+        ipv4_address: 172.30.86.5
+      metrics:
+
+  app-green:
+    <<: *app
+    networks:
+      web:
+        ipv4_address: 172.30.86.6
       metrics:
 
   proxy:
@@ -57,9 +76,6 @@ services:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
-    depends_on:
-      app:
-        condition: service_healthy
     networks:
       web:
         ipv4_address: 172.30.86.2

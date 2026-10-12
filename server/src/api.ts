@@ -2418,7 +2418,7 @@ export function startApi(port: number): http.Server {
     const timestamp = (key: string) => Number(getMeta(key)) || null;
     return {
       generatedAt: Date.now(),
-      ready: !stopping && (!queryPool || queryPool.ready),
+      ready: !draining && (!queryPool || queryPool.ready),
       node: process.version,
       process: {
         uptimeSeconds: process.uptime(), rssBytes: memory.rss, heapUsedBytes: memory.heapUsed, heapTotalBytes: memory.heapTotal,
@@ -2438,6 +2438,7 @@ export function startApi(port: number): http.Server {
   const failureMessages = new WeakMap<http.ServerResponse, string>();
   const latencies = new Map<string, { count: number; total_ms: number; max_ms: number }>();
   let stopping = false;
+  let draining = false;
   void adoptUnversionedPhotos().catch((err) => log("photo cache migration failed:", String(err)));
   const server = http.createServer(async (req, res) => {
     const started = performance.now();
@@ -2530,7 +2531,7 @@ export function startApi(port: number): http.Server {
         return await sendJson(req, res, { error: "method not allowed" }, 405);
       }
       if (p === "/healthz" || p === "/readyz") {
-        const ready = !stopping && (!queryPool || queryPool.ready);
+        const ready = !draining && (!queryPool || queryPool.ready);
         return await sendJson(req, res, { ok: p === "/healthz" || ready }, p === "/readyz" && !ready ? 503 : 200);
       }
       if (stopping) return await sendJson(req, res, { error: "server is stopping" }, 503);
@@ -2614,7 +2615,7 @@ export function startApi(port: number): http.Server {
         cacheHits: cache.hits, cacheMisses: cache.misses, cacheEntries: cache.size, cacheBytes: cache.byteSize,
         queriesPending: queryPool?.pending ?? 0, memoryBytes: memory.rss, uptimeSeconds: process.uptime(),
         eventLoopP95Ms: eventLoop.percentile(95) / 1e6, eventLoopMaxMs: eventLoop.max / 1e6,
-        ready: !stopping && (!queryPool || queryPool.ready),
+        ready: !draining && (!queryPool || queryPool.ready),
         lastTickMs: Number(getMeta("last_tick_at")) || 0,
         heartbeatMs: Number(getMeta("sync_worker_heartbeat_at")) || 0,
         syncError: Boolean(getMeta("last_sync_error")),
@@ -2624,11 +2625,20 @@ export function startApi(port: number): http.Server {
     })
     : undefined;
   metricsServer?.listen(metricsPort, process.env.METRICS_HOST ?? "0.0.0.0");
+  // Behind the proxy, /readyz fails first and requests are still answered for
+  // SHUTDOWN_DRAIN_MS, so the proxy moves new requests to the release taking
+  // over before this one stops accepting them and finishes the rest.
+  const drainMs = Number(process.env.SHUTDOWN_DRAIN_MS ?? 0);
   const shutdown = () => {
-    if (stopping) return;
-    stopping = true;
-    server.close(() => { void queryPool?.close(); });
-    setTimeout(() => { server.closeAllConnections(); void queryPool?.close(); }, 10_000).unref();
+    if (draining) return;
+    draining = true;
+    const stop = () => {
+      stopping = true;
+      server.close(() => { void queryPool?.close(); });
+      setTimeout(() => { server.closeAllConnections(); void queryPool?.close(); }, 10_000).unref();
+    };
+    if (drainMs > 0) setTimeout(stop, drainMs);
+    else stop();
   };
   process.once("SIGTERM", shutdown);
   process.once("SIGINT", shutdown);

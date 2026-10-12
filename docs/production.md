@@ -14,19 +14,19 @@ measurements (allowed range 0–8). Start with two workers and several GB of RAM
 1. Point the hostname at the server and allow inbound ports 80 and 443.
 2. Copy `.env.example` to `.env`, set `DOMAIN`, and generate `ADMIN_TOKEN` with
    `openssl rand -hex 32`. Keep the token out of the client and source control.
-3. Run `docker compose build`.
+3. Run `docker compose build app-blue`.
 4. Seed the volume with your existing database **before the first startup**:
 
    ```sh
    node server/src/backup.ts server/data/ufc.db /tmp/ufc-launch.db
-   docker compose run --rm --no-deps --user root -v /tmp/ufc-launch.db:/seed/ufc.db:ro app sh -c 'test ! -e /data/ufc.db && cp /seed/ufc.db /data/ufc.db && chown node:node /data/ufc.db'
+   docker compose run --rm --no-deps --user root -v /tmp/ufc-launch.db:/seed/ufc.db:ro app-blue sh -c 'test ! -e /data/ufc.db && cp /seed/ufc.db /data/ufc.db && chown node:node /data/ufc.db'
    ```
 
    The command refuses to replace an existing database. You can also start with
    an empty volume, but the archive will populate in the background and pages
    will be incomplete until it does. Image files are a disposable cache and can
    be repopulated.
-5. Run `docker compose up -d` and inspect `docker compose logs -f app`.
+5. Run `./deploy/launch.sh` and inspect `docker compose logs -f app-blue`.
    Caddy provisions HTTPS automatically. Only Caddy publishes a host port.
 6. Check `/healthz` and `/readyz`. Readiness waits for every query worker to warm
    its index and record tables. It indicates application readiness, not archive
@@ -108,7 +108,7 @@ Back up with SQLite's online backup API, not a copy of a live `.db` file without
 its WAL. For example:
 
 ```sh
-docker compose exec app node src/backup.ts /data/ufc.db /data/backups/ufc-2026-09-14.db
+docker compose exec "$(./deploy/live-app.sh)" node src/backup.ts /data/ufc.db /data/backups/ufc-2026-09-14.db
 ```
 
 Use a unique filename each time, schedule this command daily, and copy backups
@@ -123,10 +123,30 @@ GitHub Actions runs CI when a draft PR is marked ready and on pushes to main.
 Feature pushes do not run Actions or replace the dev review. After a successful CI run
 on `main`, it connects through a restricted SSH key and runs
 `deploy/update.sh` automatically. That script builds with the bounded builder and shared heavy-job lock, takes a backup,
-then runs `docker compose up -d --wait`.
-Shutdown stops accepting requests and gives active HTTP requests 10 seconds to
-drain. The supervisor terminates child processes after 12 seconds if needed.
-This single-container layout can have a brief interruption during deployment.
+then hands over between two releases without stopping the site:
+
+- Production runs one release as the Compose service `app-blue` or `app-green`
+  (`./deploy/live-app.sh` prints which). Both use the `ufcsh-app` image and the
+  same `/data` volume.
+- A deploy starts the other service beside the live one. It runs migrations and
+  warms its query workers while the live one keeps serving. If it does not become
+  ready within three minutes it is stopped and the live release carries on.
+- Caddy checks `/readyz` on both every second and sends requests only to a ready
+  release. Once the new one is ready, the old one is stopped: `/readyz` fails for
+  `SHUTDOWN_DRAIN_MS` (3 s) while it still answers requests, then it stops
+  accepting them and gives active requests 10 seconds to finish. The supervisor
+  terminates child processes 12 seconds after the drain if needed.
+- Only one sync worker runs at a time (`sync-lease.ts`): the new release's
+  worker waits until the old one releases the lease on shutdown, or for 60 s
+  after a crash.
+- The old release is stopped, not removed. To roll back the code, start it with
+  `docker compose start <service>`, wait for it to be healthy, then stop the
+  other one.
+
+For about a minute both releases share the database, so migrations must keep the
+previous release working: add tables and columns, and remove or rename them only
+in a later release. The API process's own timers (live-round settling, account
+sync, news reading) are safe to run twice in that window.
 
 Before claiming a concurrent-user capacity, load-test the target host with warm
 and cold caches, varied filters, image misses, and scraping enabled. Track tail
