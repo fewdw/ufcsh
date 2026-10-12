@@ -2174,7 +2174,10 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
     }, url.searchParams.get("records") === "now") ?? undefined;
   }
   if (/^\/api\/fighters\/[a-f0-9]{16}\/stats$/i.test(p)) {
-    return hasUfcFight(id) ? fighterBoard(id, url.searchParams.get("scope") ?? "ufc", Number(url.searchParams.get("minBouts") ?? 0)) ?? undefined : undefined;
+    // Every profile asks for this beside the fighter, before it knows whether
+    // they have a completed UFC bout; a debutant has no board, which is not a 404.
+    if (!prepared("SELECT 1 FROM fighters WHERE id = ?").get(id)) return undefined;
+    return (hasUfcFight(id) && fighterBoard(id, url.searchParams.get("scope") ?? "ufc", Number(url.searchParams.get("minBouts") ?? 0))) || null;
   }
   if (p.startsWith("/api/fighters/")) return await getFighter(id, rankingType) ?? undefined;
   if (p.startsWith("/api/previews/")) {
@@ -2454,7 +2457,9 @@ export function startApi(port: number): http.Server {
       const entry = latencies.get(key) ?? { count: 0, total_ms: 0, max_ms: 0 };
       const duration = performance.now() - started;
       observability.record(req.method ?? "OTHER", pathname, res.statusCode, duration / 1000, clientAddress(req));
-      if (res.statusCode >= 500 || res.statusCode === 404) {
+      // A 503 from /readyz is Docker's health probe while a release warms up,
+      // not a reader's request that failed.
+      if ((res.statusCode >= 500 || res.statusCode === 404) && pathname !== "/readyz") {
         const referer = req.headers.referer;
         trafficHistory.errors.record({
           status: res.statusCode, method: req.method ?? "OTHER", path: req.url ?? "/", message: failureMessages.get(res),
