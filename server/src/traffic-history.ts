@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { ErrorLog } from "./error-log.ts";
 import { Visitors } from "./visitors.ts";
-import { ADMIN_ROUTES, MS_STEPS, addLatency, emptyLatency, estimatePercentile, mergeLatency, summarise, type Latency } from "./observability.ts";
+import { UNCOUNTED_ROUTES, MS_STEPS, addLatency, emptyLatency, estimatePercentile, mergeLatency, summarise, type Latency } from "./observability.ts";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
@@ -10,8 +10,8 @@ const DAY = 86_400_000;
  *  keeps a year of history to roughly one row per route per day. Longer than
  *  the week the hourly windows look back over. */
 const HOURLY_DAYS = 8;
-/** The site-wide row stored beside the routes each hour (admin traffic left
- *  out), so totals and timelines read one row per hour instead of every route. */
+/** The site-wide row stored beside the routes each hour (admin traffic and
+ *  health probes left out), so totals and timelines read one row per hour instead of every route. */
 const SITE = "*";
 /** Distinct visitors held in memory for the current hour and day. */
 const VISITOR_CAP = 200_000;
@@ -104,7 +104,7 @@ export class TrafficHistory {
     const rows = [...this.pending.values()];
     const site = new Map<number, { hour: number; route: string; latency: Latency; views: number }>();
     for (const row of rows) {
-      if (ADMIN_ROUTES.has(row.route)) continue;
+      if (UNCOUNTED_ROUTES.has(row.route)) continue;
       let total = site.get(row.hour);
       if (!total) site.set(row.hour, total = { hour: row.hour, route: SITE, latency: emptyLatency(), views: 0 });
       mergeLatency(total.latency, row.latency);

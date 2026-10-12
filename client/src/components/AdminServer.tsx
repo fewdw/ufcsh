@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useAdminResource } from "../admin";
 import { relativeAge } from "../format";
 import { BUTTON_PRIMARY } from "../ui";
-import { bytes, Card, MinuteChart, ms, percent, routeName, routePath, uptime, whole, type Metrics, type Minute } from "./adminKit";
+import { bytes, Card, MinuteChart, ms, percent, routeName, routePath, routeShare, uptime, whole, type Metrics, type Minute } from "./adminKit";
 
 /** This server right now: the last hour minute by minute, every route, and
  *  the process behind them. Starts over when the server restarts. */
@@ -138,7 +138,7 @@ export default function AdminServer() {
                   <tr key={route.route} className={failing ? "bg-rose-50" : slow ? "bg-amber-50" : ""}>
                     <td className="px-4 py-2"><b className="block font-medium text-zinc-900">{routeName(route.route)}</b><code className="text-[11px] text-zinc-500">{routePath(route.route)}</code></td>
                     <td className="px-3 py-2 text-right font-semibold text-zinc-900">{whole(recentRoute.requests)}</td>
-                    <td className="px-3 py-2 text-right text-zinc-600">{percent(recentRoute.requests, windowTotal)}</td>
+                    <td className="px-3 py-2 text-right text-zinc-600">{routeShare(route.route, recentRoute.requests, windowTotal)}</td>
                     <td className="px-3 py-2 text-right text-zinc-800">{recentRoute.requests ? ms(recentRoute.p95Ms) : "—"}</td>
                     <td className="px-3 py-2 text-right text-zinc-600">{recentRoute.clientErrors || "—"}</td>
                     <td className="px-3 py-2 text-right text-zinc-600">{recentRoute.notFound || "—"}</td>

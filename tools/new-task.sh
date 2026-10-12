@@ -9,5 +9,5 @@ common="$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir)"
 clone="$(dirname -- "$common")"
 target="$(dirname -- "$clone")/ufcsh-wt/${1#*/}"
 flock -w 600 "${UFC_GIT_LOCK:-/tmp/ufcsh-git-fetch.lock}" git -C "$repo" fetch origin
-git -C "$repo" worktree add "$target" -b "$1" origin/main
+git -C "$repo" worktree add "$target" -b "$1" origin/develop
 printf 'Task worktree: %s\n' "$target"

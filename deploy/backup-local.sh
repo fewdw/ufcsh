@@ -2,9 +2,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
-docker compose exec -T app node src/backup.ts /data/ufc.db "/data/backups/daily-ufc-$stamp.db"
-docker compose exec -T app node src/backup.ts /data/scoring.db "/data/backups/daily-scoring-$stamp.db"
-docker compose exec -T app node --input-type=module -e '
+app=$(./deploy/live-app.sh)
+docker compose exec -T "$app" node src/backup.ts /data/ufc.db "/data/backups/daily-ufc-$stamp.db"
+docker compose exec -T "$app" node src/backup.ts /data/scoring.db "/data/backups/daily-scoring-$stamp.db"
+docker compose exec -T "$app" node --input-type=module -e '
   import { readdirSync, unlinkSync } from "node:fs";
   const directory = "/data/backups";
   for (const prefix of ["daily-ufc-", "daily-scoring-"]) {

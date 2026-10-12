@@ -65,7 +65,7 @@ export default function FighterStatistics({ fighterId, history }: { fighterId: s
   const [scope, setScope] = useHistoryState<string>(`stats-scope:${fighterId}`, "ufc");
   const [query, setQuery] = useState("");
   const sort: StatsSort = settings.statsSort;
-  const { data, error, retry } = useApi<FighterBoard>(`/api/fighters/${fighterId}/stats?scope=${encodeURIComponent(scope)}&minBouts=0`);
+  const { data, error, loading, retry } = useApi<FighterBoard>(`/api/fighters/${fighterId}/stats?scope=${encodeURIComponent(scope)}&minBouts=0`);
   // Switching scope keeps the last answer on screen, dimmed, until the next
   // arrives, so the controls never jump out from under the pointer.
   const last = useRef<FighterBoard | null>(null);
@@ -131,7 +131,7 @@ export default function FighterStatistics({ fighterId, history }: { fighterId: s
         </div>
 
         {error ? <div className="px-4 pb-3 sm:px-5"><RequestNotice onRetry={retry}>Couldn’t update these rankings. Any figures below are from the previous selection.</RequestNotice></div> : null}
-        {!board && !error ? <p role="status" className="appear-late px-5 py-6 text-center text-xs text-zinc-400">Loading rankings…</p> : null}
+        {!board && !error && loading ? <p role="status" className="appear-late px-5 py-6 text-center text-xs text-zinc-400">Loading rankings…</p> : null}
 
         {board ? (
           <div className={stale ? "opacity-60 transition-opacity delay-200" : ""} aria-busy={stale}>

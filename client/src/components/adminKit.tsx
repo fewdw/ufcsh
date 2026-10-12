@@ -177,6 +177,9 @@ export const ROUTE_INFO: Record<string, { name: string; path: string }> = {
 
 export const routeName = (route: string) => ROUTE_INFO[route]?.name ?? route;
 export const routePath = (route: string) => ROUTE_INFO[route]?.path ?? route;
+/** Kept out of the site-wide totals (server `UNCOUNTED_ROUTES`), so a share of them means nothing. */
+const UNCOUNTED = new Set(["admin", "page_admin", "health", "monitoring"]);
+export const routeShare = (route: string, requests: number, total: number) => UNCOUNTED.has(route) ? "—" : percent(requests, total);
 
 export const day = (at: number, year = false) => new Date(at).toLocaleDateString([], { month: "short", day: "numeric", ...(year ? { year: "numeric" } : {}), timeZone: "UTC" });
 

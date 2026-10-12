@@ -2174,7 +2174,10 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
     }, url.searchParams.get("records") === "now") ?? undefined;
   }
   if (/^\/api\/fighters\/[a-f0-9]{16}\/stats$/i.test(p)) {
-    return hasUfcFight(id) ? fighterBoard(id, url.searchParams.get("scope") ?? "ufc", Number(url.searchParams.get("minBouts") ?? 0)) ?? undefined : undefined;
+    // Every profile asks for this beside the fighter, before it knows whether
+    // they have a completed UFC bout; a debutant has no board, which is not a 404.
+    if (!prepared("SELECT 1 FROM fighters WHERE id = ?").get(id)) return undefined;
+    return (hasUfcFight(id) && fighterBoard(id, url.searchParams.get("scope") ?? "ufc", Number(url.searchParams.get("minBouts") ?? 0))) || null;
   }
   if (p.startsWith("/api/fighters/")) return await getFighter(id, rankingType) ?? undefined;
   if (p.startsWith("/api/previews/")) {
@@ -2415,7 +2418,7 @@ export function startApi(port: number): http.Server {
     const timestamp = (key: string) => Number(getMeta(key)) || null;
     return {
       generatedAt: Date.now(),
-      ready: !stopping && (!queryPool || queryPool.ready),
+      ready: !draining && (!queryPool || queryPool.ready),
       node: process.version,
       process: {
         uptimeSeconds: process.uptime(), rssBytes: memory.rss, heapUsedBytes: memory.heapUsed, heapTotalBytes: memory.heapTotal,
@@ -2435,6 +2438,7 @@ export function startApi(port: number): http.Server {
   const failureMessages = new WeakMap<http.ServerResponse, string>();
   const latencies = new Map<string, { count: number; total_ms: number; max_ms: number }>();
   let stopping = false;
+  let draining = false;
   void adoptUnversionedPhotos().catch((err) => log("photo cache migration failed:", String(err)));
   const server = http.createServer(async (req, res) => {
     const started = performance.now();
@@ -2454,7 +2458,9 @@ export function startApi(port: number): http.Server {
       const entry = latencies.get(key) ?? { count: 0, total_ms: 0, max_ms: 0 };
       const duration = performance.now() - started;
       observability.record(req.method ?? "OTHER", pathname, res.statusCode, duration / 1000, clientAddress(req));
-      if (res.statusCode >= 500 || res.statusCode === 404) {
+      // A 503 from /readyz is Docker's health probe while a release warms up,
+      // not a reader's request that failed.
+      if ((res.statusCode >= 500 || res.statusCode === 404) && pathname !== "/readyz") {
         const referer = req.headers.referer;
         trafficHistory.errors.record({
           status: res.statusCode, method: req.method ?? "OTHER", path: req.url ?? "/", message: failureMessages.get(res),
@@ -2525,7 +2531,7 @@ export function startApi(port: number): http.Server {
         return await sendJson(req, res, { error: "method not allowed" }, 405);
       }
       if (p === "/healthz" || p === "/readyz") {
-        const ready = !stopping && (!queryPool || queryPool.ready);
+        const ready = !draining && (!queryPool || queryPool.ready);
         return await sendJson(req, res, { ok: p === "/healthz" || ready }, p === "/readyz" && !ready ? 503 : 200);
       }
       if (stopping) return await sendJson(req, res, { error: "server is stopping" }, 503);
@@ -2609,7 +2615,7 @@ export function startApi(port: number): http.Server {
         cacheHits: cache.hits, cacheMisses: cache.misses, cacheEntries: cache.size, cacheBytes: cache.byteSize,
         queriesPending: queryPool?.pending ?? 0, memoryBytes: memory.rss, uptimeSeconds: process.uptime(),
         eventLoopP95Ms: eventLoop.percentile(95) / 1e6, eventLoopMaxMs: eventLoop.max / 1e6,
-        ready: !stopping && (!queryPool || queryPool.ready),
+        ready: !draining && (!queryPool || queryPool.ready),
         lastTickMs: Number(getMeta("last_tick_at")) || 0,
         heartbeatMs: Number(getMeta("sync_worker_heartbeat_at")) || 0,
         syncError: Boolean(getMeta("last_sync_error")),
@@ -2619,11 +2625,20 @@ export function startApi(port: number): http.Server {
     })
     : undefined;
   metricsServer?.listen(metricsPort, process.env.METRICS_HOST ?? "0.0.0.0");
+  // Behind the proxy, /readyz fails first and requests are still answered for
+  // SHUTDOWN_DRAIN_MS, so the proxy moves new requests to the release taking
+  // over before this one stops accepting them and finishes the rest.
+  const drainMs = Number(process.env.SHUTDOWN_DRAIN_MS ?? 0);
   const shutdown = () => {
-    if (stopping) return;
-    stopping = true;
-    server.close(() => { void queryPool?.close(); });
-    setTimeout(() => { server.closeAllConnections(); void queryPool?.close(); }, 10_000).unref();
+    if (draining) return;
+    draining = true;
+    const stop = () => {
+      stopping = true;
+      server.close(() => { void queryPool?.close(); });
+      setTimeout(() => { server.closeAllConnections(); void queryPool?.close(); }, 10_000).unref();
+    };
+    if (drainMs > 0) setTimeout(stop, drainMs);
+    else stop();
   };
   process.once("SIGTERM", shutdown);
   process.once("SIGINT", shutdown);
