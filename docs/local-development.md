@@ -7,7 +7,7 @@ Features are built on the home server and reviewed on private Tailscale URLs.
 ## Daily use
 
 ```sh
-./tools/new-task.sh feat/example   # branch + worktree ../ufcsh-wt/example from origin/main
+./tools/new-task.sh feat/example   # branch + worktree ../ufcsh-wt/example from origin/develop
 cd ../ufcsh-wt/example
 ./start                            # prints https://HOST.TAILNET.ts.net:PORT
 ```
