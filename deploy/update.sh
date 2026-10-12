@@ -7,7 +7,12 @@ if [ -n "$(git status --porcelain)" ]; then echo 'Production checkout has uncomm
 if [[ "${UFC_HEAVY_LOCK_HELD:-0}" != 1 ]]; then
   exec ./tools/heavy.sh "$0" "$@"
 fi
-flock -w 600 /tmp/ufcsh-git-fetch.lock git pull --ff-only origin main
+if [[ "${UFC_UPDATE_PULLED:-0}" != 1 ]]; then
+  flock -w 600 /tmp/ufcsh-git-fetch.lock git pull --ff-only origin main
+  # Bash keeps reading the file it started; run the pulled one, so a change to
+  # this script applies to the release that brings it.
+  UFC_UPDATE_PULLED=1 exec "$0" "$@"
+fi
 ./deploy/build.sh app-blue
 # The release serving now (app-blue or app-green) keeps serving until the next
 # one is ready, so a deploy never stops the site.
