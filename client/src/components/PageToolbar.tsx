@@ -8,6 +8,17 @@ export default function PageToolbar({ children }: { children: ReactNode }) {
   return <header className={`${PANEL} flex flex-wrap items-center gap-2 px-2.5 py-2 sm:px-3 lg:gap-3`}>{children}</header>;
 }
 
+/** A browse list's head: its name and count, the search that narrows it and,
+ *  where the page has one, its own choice such as Signed or Cut. A phone too
+ *  narrow for all three drops the choice below rather than squeeze the search. */
+export function ListHead({ title, count, search, choice }: { title: string; count: number; search: ReactNode; choice?: ReactNode }) {
+  return <div className="flex flex-wrap items-center gap-2 border-b border-zinc-100 px-4 py-2 sm:px-5">
+    <h2 className="shrink-0 text-sm font-semibold text-zinc-900">{title} <span className="tabular-nums text-zinc-400">{count.toLocaleString()}</span></h2>
+    <div className="flex min-w-0 flex-1 basis-24">{search}</div>
+    {choice ? <div className="ml-auto shrink-0">{choice}</div> : null}
+  </div>;
+}
+
 export function ToolbarSearch({ value, onChange, label }: { value: string; onChange: (value: string) => void; label: string }) {
   return <label className="relative min-w-0 flex-1 basis-40 sm:max-w-64">
     <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" aria-hidden="true" />

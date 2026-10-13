@@ -4,10 +4,10 @@ import { useApi, type RosterMove, type RosterMoves } from "../api";
 import { daysUntil, formatDateShort, formatDateShortWithYear } from "../format";
 import { useRouteScrollRestoration } from "../navigationState";
 import { PAGE, FULL_PAGE_BODY } from "../research";
-import PageToolbar, { FilterSelect, ToolbarSearch } from "../components/PageToolbar";
+import PageToolbar, { FilterSelect, ListHead, ToolbarSearch } from "../components/PageToolbar";
 import { searchList } from "../search";
 import OptionsSheet, { SwitchRow } from "../components/OptionsSheet";
-import BrowseTabs, { BROWSE_GROUP, BROWSE_OPTION } from "../components/BrowseTabs";
+import BrowseTabs from "../components/BrowseTabs";
 import { markRosterSeen, moveKey, unseenMoves } from "../rosterSeen";
 import { useSeo } from "../seo";
 import Avatar from "../components/Avatar";
@@ -16,7 +16,7 @@ import Freshness from "../components/Freshness";
 import RequestNotice from "../components/RequestNotice";
 import { PageState } from "../components/ResearchKit";
 import { PANEL } from "../components/chartTokens";
-import { segmentedIdle, segmentedSelected } from "../components/segmented";
+import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "../components/segmented";
 
 const regions = new Intl.DisplayNames(["en"], { type: "region" });
 const HOME_NATIONS: Record<string, string> = { EN: "England", SC: "Scotland", WA: "Wales", NB: "Northern Ireland" };
@@ -63,16 +63,13 @@ const RECENT_DAYS = 3;
 const recent = (move: RosterMove) => (daysUntil(move.date ?? "") ?? -Infinity) >= -RECENT_DAYS;
 
 /** Signed and released fighters, with counts for the filtered list. */
-function MoveList({ kind, moves, fresh, controls }: { kind: "signed" | "cut"; moves: RosterMove[]; fresh: ReadonlySet<string>; controls: ReactNode }) {
+function MoveList({ kind, moves, fresh, search, choice }: { kind: "signed" | "cut"; moves: RosterMove[]; fresh: ReadonlySet<string>; search: ReactNode; choice: ReactNode }) {
   const cut = kind === "cut";
   // Recent signings get their own rows, so a big row never pairs with a small one.
   const groups = cut ? [moves] : [moves.filter(recent), moves.filter((move) => !recent(move))];
   return (
     <div className="min-w-0">
-      <div className="flex items-center gap-2 border-b border-zinc-100 px-4 py-2 sm:px-5">
-        <h2 className="shrink-0 text-sm font-semibold text-zinc-900">{cut ? "Cut" : "Signed"} <span className="tabular-nums text-zinc-400">{moves.length}</span></h2>
-        <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">{controls}</div>
-      </div>
+      <ListHead title={cut ? "Cut" : "Signed"} count={moves.length} search={search} choice={choice} />
       {groups.map((group, index) => group.length ? (
         <ul key={index} className={`grid grid-cols-1 ${cut ? "" : "sm:grid-cols-2"}`}>
           {group.map((move) => <Move key={`${move.fighter_id ?? move.name}-${move.date}`} move={move} cut={cut} big={cut || index === 0} fresh={fresh.has(moveKey(kind, move))} />)}
@@ -118,20 +115,8 @@ export default function RosterPage() {
         <h1 className="sr-only">Roster changes</h1>
         <PageToolbar>
           <BrowseTabs />
-          <div className={BROWSE_GROUP} role="group" aria-label="Roster changes">
-            {(["signed", "cut"] as const).map((option) => (
-              <button key={option} type="button" aria-pressed={list === option} onClick={() => set("tab", option === "signed" ? "" : option)}
-                className={`${BROWSE_OPTION} ${list === option ? segmentedSelected : segmentedIdle}`}>
-                {option === "signed" ? "Signed" : "Cut"}
-              </button>
-            ))}
-          </div>
-        </PageToolbar>
-        {/* The search and the filters head the list they narrow. */}
-        <section aria-label="Roster changes" className={`${PANEL} overflow-hidden`}>
-          <MoveList kind={list} moves={filtered(list)} fresh={fresh ?? NONE} controls={<>
-            <ToolbarSearch value={query} onChange={setQuery} label="Find a fighter" />
-            <OptionsSheet label="Filters" count={Number(division !== "all") + Number(country !== "all") + Number(onlyNew) || undefined}
+          <div className="ml-auto">
+            <OptionsSheet label="Filters" iconOnlyOnPhone count={Number(division !== "all") + Number(country !== "all") + Number(onlyNew) || undefined}
               onReset={() => { setQuery(""); setParams(list === "signed" ? {} : { tab: list }, { replace: true }); }}>
               <div className="space-y-3 p-4">
                 <FilterSelect label="Division" value={division} onChange={(value) => set("division", value)}
@@ -142,7 +127,20 @@ export default function RosterPage() {
                 <Freshness label="Updated" at={data.updated_at} staleAfterHours={24} />
               </div>
             </OptionsSheet>
-          </>} />
+          </div>
+        </PageToolbar>
+        {/* The list's head holds what narrows it: the search, and Signed or Cut. */}
+        <section aria-label="Roster changes" className={`${PANEL} overflow-hidden`}>
+          <MoveList kind={list} moves={filtered(list)} fresh={fresh ?? NONE}
+            search={<ToolbarSearch value={query} onChange={setQuery} label="Find a fighter" />}
+            choice={<div className={segmentedGroup} role="group" aria-label="Roster changes">
+              {(["signed", "cut"] as const).map((option) => (
+                <button key={option} type="button" aria-pressed={list === option} onClick={() => set("tab", option === "signed" ? "" : option)}
+                  className={`${segmentedOption} ${list === option ? segmentedSelected : segmentedIdle}`}>
+                  {option === "signed" ? "Signed" : "Cut"}
+                </button>
+              ))}
+            </div>} />
         </section>
       </div>
     </div>

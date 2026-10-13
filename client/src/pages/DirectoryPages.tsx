@@ -1,18 +1,18 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useApi, type LocationDirectory, type OfficialsDirectory, type VenueDirectory } from "../api";
 import { searchList } from "../search";
 import { useRouteScrollRestoration } from "../navigationState";
 import { PAGE, FULL_PAGE_BODY } from "../research";
-import PageToolbar, { FilterSelect, ToolbarSearch } from "../components/PageToolbar";
+import PageToolbar, { FilterSelect, ListHead, ToolbarSearch } from "../components/PageToolbar";
 import OptionsSheet, { SheetField, SwitchRow } from "../components/OptionsSheet";
 import { PANEL } from "../components/chartTokens";
-import BrowseTabs, { BROWSE_GROUP, BROWSE_OPTION } from "../components/BrowseTabs";
+import BrowseTabs from "../components/BrowseTabs";
 import { useSeo } from "../seo";
 import RequestNotice from "../components/RequestNotice";
 import { PageState } from "../components/ResearchKit";
-import { segmentedIdle, segmentedSelected } from "../components/segmented";
+import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "../components/segmented";
 
 const years = (first: string | null, last: string | null) => first && last ? `${first.slice(0, 4)}–${last.slice(0, 4)}` : "";
 
@@ -122,17 +122,8 @@ export function OfficialsPage() {
         <h1 className="sr-only">Judges & referees</h1>
         <PageToolbar>
           <BrowseTabs />
-          <div className={BROWSE_GROUP} role="group" aria-label="Officials">
-            {(["judges", "referees"] as const).map((option) => (
-              <button key={option} type="button" aria-pressed={kind === option} onClick={() => judgeOrder.set({ kind: option === "judges" ? null : option, sort: null, order: null })}
-                className={`${BROWSE_OPTION} ${kind === option ? segmentedSelected : segmentedIdle}`}>{option === "referees" ? "Referees" : "Judges"}</button>
-            ))}
-          </div>
-        </PageToolbar>
-        <section aria-label={kind === "referees" ? "Referees" : "Judges"} className={`${PANEL} overflow-hidden`}>
-          <ListHead title={kind === "referees" ? "Referees" : "Judges"} count={list.length}>
-            <ToolbarSearch value={query} onChange={setQuery} label={`Find a ${kind === "referees" ? "referee" : "judge"}`} />
-            <OptionsSheet label="Filters" count={Number(minimum !== "0") + Number(since !== "all") || undefined} onReset={() => { setQuery(""); judgeOrder.set({ sort: null, order: null, minimum: null, since: null }); }}>
+          <div className="ml-auto">
+            <OptionsSheet label="Filters" iconOnlyOnPhone count={Number(minimum !== "0") + Number(since !== "all") || undefined} onReset={() => { setQuery(""); judgeOrder.set({ sort: null, order: null, minimum: null, since: null }); }}>
               <div className="space-y-3 p-4">
                 <SheetField label="Sort">
                   {kind === "judges" ? <OrderControl options={JUDGE_ORDERS} order={judgeOrder} label="Order judges" /> : <OrderControl options={REFEREE_ORDERS} order={refereeOrder} label="Order referees" />}
@@ -143,7 +134,17 @@ export function OfficialsPage() {
                   options={[{ value: "all", label: "Any time" }, { value: "1", label: "This year" }, { value: "5", label: "Last 5 calendar years" }]} />
               </div>
             </OptionsSheet>
-          </ListHead>
+          </div>
+        </PageToolbar>
+        <section aria-label={kind === "referees" ? "Referees" : "Judges"} className={`${PANEL} overflow-hidden`}>
+          <ListHead title={kind === "referees" ? "Referees" : "Judges"} count={list.length}
+            search={<ToolbarSearch value={query} onChange={setQuery} label={`Find a ${kind === "referees" ? "referee" : "judge"}`} />}
+            choice={<div className={segmentedGroup} role="group" aria-label="Officials">
+              {(["judges", "referees"] as const).map((option) => (
+                <button key={option} type="button" aria-pressed={kind === option} onClick={() => judgeOrder.set({ kind: option === "judges" ? null : option, sort: null, order: null })}
+                  className={`${segmentedOption} ${kind === option ? segmentedSelected : segmentedIdle}`}>{option === "referees" ? "Referees" : "Judges"}</button>
+              ))}
+            </div>} />
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {list.map((entry) => {
               const shown = rate ? rate(entry as Judge) : null;
@@ -189,7 +190,7 @@ function usePlaces<T extends Place>(places: T[] | undefined, text: (place: T) =>
   }, [places, text, query, country, upcoming, order.sort, order.reversed]);
   const countries = useMemo(() => [...new Set((places ?? []).map((place) => place.country).filter((value): value is string => Boolean(value)))].sort(), [places]);
   return { list, query, setQuery, filters: (label: string) => (
-    <OptionsSheet label="Filters" count={Number(country !== "all") + Number(upcoming) || undefined} onReset={() => { setQuery(""); order.set({ sort: null, order: null, country: null, upcoming: null }); }}>
+    <OptionsSheet label="Filters" iconOnlyOnPhone count={Number(country !== "all") + Number(upcoming) || undefined} onReset={() => { setQuery(""); order.set({ sort: null, order: null, country: null, upcoming: null }); }}>
       <div className="space-y-3 p-4">
         <SheetField label="Sort"><OrderControl options={PLACE_ORDERS} order={order} label={label} /></SheetField>
         <FilterSelect label="Country" value={country} onChange={(value) => order.set({ country: value === "all" ? null : value })}
@@ -198,16 +199,6 @@ function usePlaces<T extends Place>(places: T[] | undefined, text: (place: T) =>
       </div>
     </OptionsSheet>
   ) };
-}
-
-/** A list's name and count, with the search and filters that narrow it. */
-function ListHead({ title, count, children }: { title: string; count: number; children: ReactNode }) {
-  return (
-    <div className="flex items-center gap-2 border-b border-zinc-100 px-4 py-2 sm:px-5">
-      <h2 className="shrink-0 text-sm font-semibold text-zinc-900">{title} <span className="tabular-nums text-zinc-400">{count.toLocaleString()}</span></h2>
-      <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">{children}</div>
-    </div>
-  );
 }
 
 /** A venue or a city: its name, where it is, and its cards. */
@@ -242,12 +233,11 @@ export function VenuesPage() {
         <h1 className="sr-only">Venues</h1>
         <PageToolbar>
           <BrowseTabs />
+          <div className="ml-auto">{places.filters("Order venues")}</div>
         </PageToolbar>
         <section aria-label="Venues" className={`${PANEL} overflow-hidden`}>
-          <ListHead title="Venues" count={places.list.length}>
-            <ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a venue, city or country" />
-            {places.filters("Order venues")}
-          </ListHead>
+          <ListHead title="Venues" count={places.list.length}
+            search={<ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a venue, city or country" />} />
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {places.list.map((venue) => (
               <PlaceRow key={venue.slug} to={`/venues/${venue.slug}`} name={venue.name} detail={[venue.city, venue.country].filter(Boolean).join(", ")} events={venue.events} upcoming={venue.upcoming} />
@@ -274,12 +264,11 @@ export function LocationsPage() {
         <h1 className="sr-only">Locations</h1>
         <PageToolbar>
           <BrowseTabs />
+          <div className="ml-auto">{places.filters("Order locations")}</div>
         </PageToolbar>
         <section aria-label="Locations" className={`${PANEL} overflow-hidden`}>
-          <ListHead title="Locations" count={places.list.length}>
-            <ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a city, state or country" />
-            {places.filters("Order locations")}
-          </ListHead>
+          <ListHead title="Locations" count={places.list.length}
+            search={<ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a city, state or country" />} />
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {places.list.map((location) => (
               <PlaceRow key={location.slug} to={`/locations/${location.slug}`} name={location.city} detail={[location.state, location.country].filter(Boolean).join(", ")} events={location.events} upcoming={location.upcoming} />
