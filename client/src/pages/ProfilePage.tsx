@@ -1,7 +1,7 @@
 import { useAuth } from "@clerk/react";
 import { Check, ChevronDown, Flag, ImageIcon, Info, LogOut, Pencil, Search, Settings, SquareTerminal, X } from "lucide-react";
 import { isDevSite, useDevStats } from "../devStats";
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiCache, prefetch, useApi } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
@@ -552,6 +552,8 @@ function CardRows({ cards, mine, onRemove }: { cards: ScorerCard[]; mine: boolea
   return <>{cards.map(card => <CardRow key={card.fightId} card={card} mine={mine} onRemove={onRemove} />)}</>;
 }
 
+const META_PIECE = "before:inline-block before:w-3 before:text-center before:content-['·']";
+
 /** One scored fight: the two fighters with the reader's own score between
  *  them, and one line saying which bout it was. The row opens that bout's
  *  Score tab, which is both where the card is read in full and where it is
@@ -608,16 +610,17 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
             </div>;
           })}
         </div>
-        {/* Each piece stays whole; a narrow phone wraps between them. */}
-        <div className={`mt-1.5 pl-[38px] sm:hidden ${LIST_META}`}>
-          <p>{fight.event_name} <span className="whitespace-nowrap">· {formatDateShortWithYear(fight.date)}</span></p>
-          {details.length || card.agreement ? <p>
-            {details.map((detail, at) => <Fragment key={at}>{at ? " " : ""}<span className="whitespace-nowrap">{at ? "· " : ""}{detail}</span></Fragment>)}
-            {card.agreement ? <>{" "}<span className={`whitespace-nowrap font-medium ${card.agreement === "agreed" ? "text-emerald-600" : "text-rose-600"}`}>
-              {details.length ? "· " : ""}{card.agreement === "agreed" ? "Agreed" : "Disagreed"}
-            </span></> : null}
-          </p> : null}
-        </div>
+        {/* Each piece stays whole and a narrow phone wraps between them; the
+            dot leading a wrapped line sits in the clipped gutter. */}
+        <div className={`mt-1.5 pl-[38px] sm:hidden ${LIST_META}`}><div className="overflow-hidden">
+          <p className="-ml-3 flex flex-wrap">
+            {[fight.event_name, formatDateShortWithYear(fight.date), ...details].map((piece, at) =>
+              <span key={at} className={`${META_PIECE} ${at ? "whitespace-nowrap" : "min-w-0"}`}>{piece}</span>)}
+            {card.agreement ? <span className={`${META_PIECE} whitespace-nowrap font-medium ${card.agreement === "agreed" ? "text-emerald-600" : "text-rose-600"}`}>
+              {card.agreement === "agreed" ? "Agreed" : "Disagreed"}
+            </span> : null}
+          </p>
+        </div></div>
       </Link>
       {mine ? <RemoveX large label={`Remove your scorecard for ${fight.f1_name} vs ${fight.f2_name}`} onClick={() => onRemove(card)} /> : null}
     </li>
