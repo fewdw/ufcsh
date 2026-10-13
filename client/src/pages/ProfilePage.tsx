@@ -313,20 +313,23 @@ function ScorecardFilter({ value, agreement, total, onChange }: {
   total: number;
   onChange: (value: ProfileFilter) => void;
 }) {
-  const options: { value: ProfileFilter; label: string; count: number }[] = [
-    { value: "all", label: "All", count: total },
-    { value: "decisions", label: "Judged", count: agreement.decisions },
-    { value: "agreed", label: "Agreed judges", count: agreement.agreed },
-    { value: "disagreed", label: "Disagreed judges", count: agreement.disagreed },
-    { value: "fans-agreed", label: "Agreed fans", count: agreement.fansAgreed },
-    { value: "fans-disagreed", label: "Disagreed fans", count: agreement.fansDisagreed },
+  // `chip` names the choice on its own; in the menu its group says against whom.
+  const options: { value: ProfileFilter; label: string; chip: string; count: number; group?: "Judges" | "Fans" }[] = [
+    { value: "decisions", label: "Judged", chip: "Judged", count: agreement.decisions },
+    { value: "agreed", label: "You agreed", chip: "Agreed with judges", count: agreement.agreed, group: "Judges" },
+    { value: "disagreed", label: "You disagreed", chip: "Disagreed with judges", count: agreement.disagreed, group: "Judges" },
+    { value: "fans-agreed", label: "You agreed", chip: "Agreed with fans", count: agreement.fansAgreed, group: "Fans" },
+    { value: "fans-disagreed", label: "You disagreed", chip: "Disagreed with fans", count: agreement.fansDisagreed, group: "Fans" },
+    { value: "all", label: "All fights", chip: "All", count: total },
   ];
   const current = options.find(option => option.value === value) ?? options[0];
+  const item = (option: (typeof options)[number]) =>
+    <option key={option.value} value={option.value}>{option.label} · {option.count.toLocaleString()}</option>;
   // A native select is as wide as its longest option. The chip shows only the
   // current one, with the select laid invisibly over it to open the picker.
   return (
     <label className="relative flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 pl-3.5 pr-3 text-[13px] font-medium text-zinc-700 transition-colors focus-within:border-zinc-400 hover:border-zinc-300 sm:h-8 sm:text-xs">
-      <span className="whitespace-nowrap">{current.label} <span className="tabular-nums text-zinc-400">{current.count.toLocaleString()}</span></span>
+      <span className="whitespace-nowrap">{current.chip} <span className="tabular-nums text-zinc-400">{current.count.toLocaleString()}</span></span>
       <ChevronDown className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
       <select
         value={value}
@@ -334,7 +337,11 @@ function ScorecardFilter({ value, agreement, total, onChange }: {
         aria-label="Filter scored fights"
         className="absolute inset-0 cursor-pointer opacity-0"
       >
-        {options.map(option => <option key={option.value} value={option.value}>{option.label} · {option.count.toLocaleString()}</option>)}
+        {item(options[0])}
+        {(["Judges", "Fans"] as const).map(group => <optgroup key={group} label={group}>
+          {options.filter(option => option.group === group).map(item)}
+        </optgroup>)}
+        {item(options[options.length - 1])}
       </select>
     </label>
   );
@@ -595,20 +602,19 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
           {card.fans && card.judges.length ? " · " : ""}
           {card.judges.length ? `Judges ${card.judges.map(judge => `${judge.f1}–${judge.f2}`).join(", ")}` : ""}
         </p> : null}
-        {/* A phone heads the row with the division and the event, then reads
-            like a scoreboard: a line per fighter, their score on this card at
-            the end, then the fans' average and each judge's. */}
-        <p className={`mb-1.5 flex items-baseline justify-between gap-3 sm:hidden ${LIST_META}`}>
-          <span className="shrink-0 font-medium text-zinc-600">{fight.weight_class ?? ""}</span>
-          <span className="min-w-0 text-balance text-right">{fight.event_name}</span>
-        </p>
+        {/* A phone reads it like a scoreboard: the division and the event head
+            the names, a line per fighter, their score on this card at the end,
+            then the fans' average and each judge's. */}
         <div className="grid items-center gap-x-1.5 gap-y-1.5 sm:hidden"
           style={{ gridTemplateColumns: `auto minmax(0,1fr) repeat(${1 + (card.fans ? 1 : 0) + card.judges.length}, auto)` }}>
+          <div className={`col-span-2 min-w-0 self-end pb-0.5 ${LIST_META}`}>
+            {fight.weight_class ? <p className="font-medium text-zinc-600">{fight.weight_class}</p> : null}
+            <p className="text-balance">{fight.event_name}</p>
+          </div>
+          <span className={`${SCORE_HEAD} self-end pb-1.5`}>You</span>
           {card.fans || card.judges.length ? <>
-            <span className="col-span-2" />
-            <span className={SCORE_HEAD}>You</span>
-            {card.fans ? <span className={`${SCORE_HEAD} pl-2`} title={`Average of ${card.fans.cards.toLocaleString()} fan ${card.fans.cards === 1 ? "card" : "cards"}`}>Fans</span> : null}
-            {card.judges.length ? <span className={`${SCORE_HEAD} pl-2`} style={{ gridColumn: `span ${card.judges.length}` }}>Judges</span> : null}
+            {card.fans ? <span className={`${SCORE_HEAD} self-end pb-1.5 pl-2`} title={`Average of ${card.fans.cards.toLocaleString()} fan ${card.fans.cards === 1 ? "card" : "cards"}`}>Fans</span> : null}
+            {card.judges.length ? <span className={`${SCORE_HEAD} self-end pb-1.5 pl-2`} style={{ gridColumn: `span ${card.judges.length}` }}>Judges</span> : null}
           </> : null}
           {([1, 2] as const).map(side => {
             const name = side === 1 ? fight.f1_name : fight.f2_name;
@@ -630,9 +636,6 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
             </Fragment>;
           })}
         </div>
-        <p className={`mt-1.5 pl-[38px] sm:hidden ${LIST_META}`}>
-          {formatDateShortWithYear(fight.date)}{fight.method ? ` · ${formatMethod(fight.method, fight.round, fight.time)}` : ""}
-        </p>
       </Link>
       {mine ? <RemoveX large label={`Remove your scorecard for ${fight.f1_name} vs ${fight.f2_name}`} onClick={() => onRemove(card)} /> : null}
     </li>
