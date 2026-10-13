@@ -1,6 +1,9 @@
+import { Fragment } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { JudgeProfile } from "../api";
-import { lastName } from "../format";
+import Avatar from "../components/Avatar";
+import { formatDateShortWithYear, lastName, outcomeClasses } from "../format";
+import { RESULT_PILL } from "../ui";
 import { PANEL } from "../components/chartTokens";
 import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "../components/segmented";
 import { gapChip, pct, officialRows, useKeptApi, useUrlFilters } from "../research";
@@ -8,7 +11,7 @@ import { SITE_URL, useSeo } from "../seo";
 import RequestNotice from "../components/RequestNotice";
 import { LoadMore, useInfiniteList } from "../components/InfiniteList";
 import {
-  BOUT_LIST, BoutRow, ROW_CONTROL, FilterSearch, FilterSelect, IdentityCard, ListHeading, NotFound, PageState, ProfileColumns, RankRows,
+  BOUT_LIST, ROW_CONTROL, FilterSearch, FilterSelect, IdentityCard, ListHeading, NotFound, PageState, ProfileColumns, RankRows,
   TitleNote, Wheel, YearBars, YearRange,
 } from "../components/ResearchKit";
 
@@ -28,9 +31,10 @@ const VIEWS = [
   { value: "rounds", label: "With rounds" },
   { value: "title", label: "Title bouts" },
 ];
-/** The fighter page's win and loss shades, lightest last. */
-const WITH = ["#047857", "#34d399", "#a7f3d0", "#6ee7b7"];
-const AGAINST = ["#be123c", "#fb7185", "#fecdd3", "#fda4af"];
+/** The fighter page's win and loss shades, lightest last; a draw is orange,
+ *  as it is everywhere else. */
+const WITH = ["#047857", "#34d399", "#a7f3d0", "#f59e0b"];
+const AGAINST = ["#be123c", "#fb7185", "#fecdd3", "#fcd34d"];
 const TOP = (index: number) => index < 3 ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600";
 
 type Row = JudgeProfile["rows"][number];
@@ -74,7 +78,12 @@ function RoundTable({ row }: { row: Row }) {
             <tr className="text-[10px] uppercase tracking-[0.08em] text-zinc-400">
               <th className="py-1 pr-1.5 text-left font-semibold">R</th>
               <th className={`${cell} font-semibold text-zinc-700`}>Card</th>
-              {others.map((other, index) => <th key={index} className={`${cell} font-semibold`}>{other.judge ? lastName(other.judge) : `Judge ${index + 2}`}</th>)}
+              {others.map((other, index) => (
+                <th key={index} className={`${cell} font-semibold`}>
+                  {other.slug ? <Link to={`/judges/${other.slug}`} className="hover:text-zinc-900 hover:underline">{other.judge ? lastName(other.judge) : "Judge"}</Link>
+                    : other.judge ? lastName(other.judge) : `Judge ${index + 2}`}
+                </th>
+              ))}
               {fans ? <th className={`${cell} font-semibold text-sky-600`}>Fans</th> : null}
             </tr>
           </thead>
@@ -104,49 +113,86 @@ function RoundTable({ row }: { row: Row }) {
 
 type Against = "judges" | "fans";
 
-/** Where a fighter's row says whether they won, this says whether the card
- *  went with the others: red for a lone dissent against the other two judges,
- *  or for a different winner from the fans. */
-function Verdict({ row, against }: { row: Row; against: Against }) {
+/** Whether the card went with the others: with both other judges, one, or
+ *  alone; or with the fans' winner or not. Null without a full panel or fan
+ *  cards to read it against. */
+function agreement(row: Row, against: Against): { label: string; agrees: boolean } | null {
   const mine = pickOf(row.card.f1, row.card.f2);
-  const agrees = against === "fans"
-    ? row.fans ? fanPick(row.fans) === mine : null
-    : row.others.length === 2 ? !row.dissent : null;
-  const tone = agrees == null ? "bg-zinc-200 text-zinc-500" : agrees ? "bg-emerald-500 text-white" : "bg-rose-500 text-white";
-  return (
-    <span className={`grid h-7 min-w-7 shrink-0 place-items-center rounded-full text-[11px] font-bold leading-none ${tone}`}
-      title={agrees == null ? `No ${against === "fans" ? "fan card" : "full panel"}` : `${agrees ? "Same winner as" : "Different winner from"} the ${against}`}>
-      {agrees == null ? "–" : agrees ? "✓" : "✕"}
-    </span>
-  );
+  if (against === "fans") {
+    if (!row.fans) return null;
+    return fanPick(row.fans) === mine ? { label: "Same winner as fans", agrees: true } : { label: "Different winner from fans", agrees: false };
+  }
+  if (row.others.length !== 2) return null;
+  const with_ = row.others.filter((other) => pickOf(other.f1, other.f2) === mine).length;
+  return with_ === 2 ? { label: "With both judges", agrees: true }
+    : with_ === 1 ? { label: "With one judge", agrees: true }
+    : { label: row.dissent ? "Lone dissent" : "Alone", agrees: false };
 }
 
-function CardRow({ row, against }: { row: Row; against: Against }) {
+const HEAD = "text-center text-[10px] font-semibold uppercase leading-none tracking-wide text-zinc-400";
+
+/** One card, read like a scoreboard: the division and card on top, a line per
+ *  fighter with this judge's total boxed (green when it went with the judges
+ *  or fans it is compared with, red when it didn't), the other two judges and
+ *  the fans' average beside it, then how the bout was decided. */
+function CardRow({ row, judge, against }: { row: Row; judge: string; against: Against }) {
   const verdict = row.verdict === "other" ? row.method ?? "Other" : VERDICTS.find((entry) => entry.value === row.verdict)?.label;
+  // A draw is orange and anything else undecided (a no contest, an overturned
+  // result) grey, as on a fighter's page.
+  const verdictTone = row.verdict === "draw" ? outcomeClasses("draw") : row.verdict === "other" ? outcomeClasses("nc") : "bg-zinc-100 text-zinc-600";
+  const agreed = agreement(row, against);
+  const box = agreed == null ? "bg-zinc-50 ring-zinc-200" : agreed.agrees ? "bg-emerald-50 ring-emerald-200" : "bg-rose-50 ring-rose-200";
+  const others = row.others.length;
+  const fansAt = 4 + others;
+  const place = (column: number, line: number) => ({ gridColumn: column, gridRow: line });
   return (
-    <BoutRow lead={<Verdict row={row} against={against} />}
-      how={<span className="flex flex-col">
-        <Score f1={row.card.f1} f2={row.card.f2} strong />
-        <span>
-          {verdict}
-          {row.dissent ? <span className="font-semibold text-rose-700"> · Lone dissent</span> : null}
-          {row.ten_eights ? <span className="font-semibold text-amber-700"> · {row.ten_eights}× 10–8</span> : null}
-        </span>
-      </span>}
-      f1={row.f1} f2={row.f2} division={row.division} note={row.title ? <TitleNote /> : null}
-      eventName={row.event_name} date={row.date} fightId={row.fight_id}
-      extra={<>
-        <p className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] leading-4 text-zinc-400">
-          {row.others.map((other, index) => (
-            <span key={index}>
-              {other.slug ? <Link to={`/judges/${other.slug}`} className={`hover:text-zinc-900 hover:underline ${ROW_CONTROL}`}>{other.judge ? lastName(other.judge) : "Judge"}</Link> : other.judge ? lastName(other.judge) : "Judge"}{" "}
-              <Score f1={other.f1} f2={other.f2} />
-            </span>
-          ))}
-          {row.fans ? <span title={`Average of ${row.fans.cards.toLocaleString()} fan cards`}><span className="text-sky-600">Fans</span> <FanScore avg1={row.fans.avg1} avg2={row.fans.avg2} /></span> : null}
-        </p>
-        <RoundTable row={row} />
-      </>} />
+    <div className={`group relative px-4 py-3 transition-colors hover:bg-zinc-50 sm:px-5`}>
+      <Link to={`/fights/${row.fight_id}`} aria-label={`${row.f1.name} vs ${row.f2.name}, ${row.event_name}`}
+        className="absolute inset-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-zinc-900" />
+      <p className="flex items-baseline justify-between gap-3 text-xs leading-5">
+        <span className="min-w-0 truncate font-medium text-zinc-600">{row.division}{row.title ? <><span className="text-zinc-300"> · </span><TitleNote /></> : null}</span>
+        <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">{formatDateShortWithYear(row.date)}</span>
+      </p>
+      <p className="truncate text-xs leading-5 text-zinc-500">{row.event_name}</p>
+      <div className="mt-2.5 grid items-center gap-x-1.5 gap-y-1.5"
+        style={{ gridTemplateColumns: `auto minmax(0,1fr) auto${others ? ` repeat(${others}, auto)` : ""}${row.fans ? " auto" : ""}` }}>
+        <span aria-hidden="true" className={`-mx-1 -my-1.5 rounded-lg ring-1 ${box}`} style={{ gridColumn: 3, gridRow: "1 / span 3" }} />
+        <span className={`${HEAD} relative px-1 text-zinc-600`} style={place(3, 1)}>{lastName(judge)}</span>
+        {others ? <span className={`${HEAD} pl-2`} style={{ gridColumn: `4 / span ${others}`, gridRow: 1 }}>Others</span> : null}
+        {row.fans ? <span className={`${HEAD} pl-2`} style={place(fansAt, 1)} title={`Average of ${row.fans.cards.toLocaleString()} fan cards`}>Fans</span> : null}
+        {([1, 2] as const).map((side) => {
+          const fighter = side === 1 ? row.f1 : row.f2;
+          const ink = side === 1 ? "text-f1-ink" : "text-f2-ink";
+          const own = (a: number, b: number) => side === 1 ? [a, b] : [b, a];
+          const tone = (a: number, b: number) => { const [mine, theirs] = own(a, b); return mine > theirs ? ink : "text-zinc-400"; };
+          const line = side + 1;
+          const [score] = own(row.card.f1, row.card.f2);
+          return (
+            <Fragment key={side}>
+              <span style={place(1, line)}><Avatar src={fighter.photo_url} name={fighter.name} size="xs" outcome={fighter.outcome} /></span>
+              <p className={`ml-1 min-w-0 truncate text-sm font-semibold leading-tight ${ink}`} style={place(2, line)}>{fighter.name}</p>
+              <p className={`relative text-center text-base font-bold leading-none tabular-nums ${tone(row.card.f1, row.card.f2)}`} style={place(3, line)}>{score}</p>
+              {row.others.map((other, index) => (
+                <p key={index} className={`${index ? "" : "pl-2"} text-center text-sm font-semibold leading-none tabular-nums ${tone(other.f1, other.f2)}`} style={place(4 + index, line)}>
+                  {own(other.f1, other.f2)[0]}
+                </p>
+              ))}
+              {row.fans ? (
+                <p className={`pl-2 text-center text-sm font-semibold leading-none tabular-nums ${Math.abs(row.fans.avg1 - row.fans.avg2) < 0.1 ? "text-zinc-400" : tone(row.fans.avg1, row.fans.avg2)}`} style={place(fansAt, line)}>
+                  {own(row.fans.avg1, row.fans.avg2)[0].toFixed(2)}
+                </p>
+              ) : null}
+            </Fragment>
+          );
+        })}
+      </div>
+      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+        <span className={`${RESULT_PILL} ${verdictTone}`}>{verdict}</span>
+        {agreed ? <span className={`${RESULT_PILL} ${outcomeClasses(agreed.agrees ? "win" : "loss")}`}>{agreed.label}</span> : null}
+        {row.ten_eights ? <span className={`${RESULT_PILL} bg-amber-100 text-amber-800`}>{row.ten_eights}× 10–8</span> : null}
+      </div>
+      <RoundTable row={row} />
+    </div>
   );
 }
 
@@ -273,7 +319,7 @@ export default function JudgePage() {
       </ListHeading>
       {list.items.length ? (
         <div aria-busy={stale || list.loading} className={`${BOUT_LIST} ${stale ? "opacity-60 transition-opacity delay-200" : ""}`}>
-          {list.items.map((row) => <CardRow key={row.fight_id} row={row} against={against} />)}
+          {list.items.map((row) => <CardRow key={row.fight_id} row={row} judge={data.name} against={against} />)}
         </div>
       ) : <p className="px-5 py-8 text-center text-sm text-zinc-500">No cards match these filters.</p>}
       <LoadMore list={list} />

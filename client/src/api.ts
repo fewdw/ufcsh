@@ -658,7 +658,7 @@ export type SearchResults = {
 
 export type OfficialFilters = { from: number | null; to: number | null; division: string | null; q: string; result: string | null; view: string | null; offset: number; limit: number };
 type Outcome = "win" | "loss" | "draw" | "nc" | null;
-type FighterRef = { id: string; name: string; outcome: Outcome };
+type FighterRef = { id: string; name: string; outcome: Outcome; photo_url: string | null };
 type Facets = { years: { first: number; last: number } | null; divisions: { division: string; n: number }[] };
 export type YearCount = { year: number; n: number; marked: number };
 type MethodCounts = Record<"ko" | "sub" | "dec" | "other", number>;
