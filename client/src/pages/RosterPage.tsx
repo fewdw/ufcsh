@@ -107,6 +107,16 @@ export default function RosterPage() {
   if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the roster changes.</RequestNotice></div>;
   if (!data) return <PageState>Loading roster changes…</PageState>;
   const moves = [...data.signed, ...data.cut];
+  const choices = (className: string) => (
+    <div className={`${segmentedGroup} ${className}`} role="group" aria-label="Roster changes">
+      {(["signed", "cut"] as const).map((option) => (
+        <button key={option} type="button" aria-pressed={list === option} onClick={() => set("tab", option === "signed" ? "" : option)}
+          className={`${segmentedOption} ${list === option ? segmentedSelected : segmentedIdle}`}>
+          {option === "signed" ? "Signed" : "Cut"}
+        </button>
+      ))}
+    </div>
+  );
   const filtered = (kind: "signed" | "cut") => data[kind].filter((move) => (division === "all" || move.division === division) && (country === "all" || move.country === country) && (!onlyNew || fresh?.has(moveKey(kind, move))));
   return (
     <div ref={scroll} className={PAGE}>
@@ -114,19 +124,13 @@ export default function RosterPage() {
         <h1 className="sr-only">Roster changes</h1>
         <PageToolbar>
           <BrowseTabs />
-          <div className={segmentedGroup} role="group" aria-label="Roster changes">
-            {(["signed", "cut"] as const).map((option) => (
-              <button key={option} type="button" aria-pressed={list === option} onClick={() => set("tab", option === "signed" ? "" : option)}
-                className={`${segmentedOption} ${list === option ? segmentedSelected : segmentedIdle}`}>
-                {option === "signed" ? "Signed" : "Cut"}
-              </button>
-            ))}
-          </div>
-          {/* Filters sits on the same line as Signed and Cut. */}
+          {/* On a phone the toolbar is one line; Signed and Cut open from Filters. */}
+          {choices("max-sm:hidden")}
           <div className="ml-auto">
-            <OptionsSheet label="Filters" count={Number(division !== "all") + Number(country !== "all") + Number(onlyNew) || undefined}
+            <OptionsSheet label="Filters" iconOnlyOnPhone count={Number(division !== "all") + Number(country !== "all") + Number(onlyNew) || undefined}
               onReset={() => setParams(list === "signed" ? {} : { tab: list }, { replace: true })}>
               <div className="space-y-3 p-4">
+                {choices("w-full sm:hidden [&>button]:flex-1")}
                 <FilterSelect label="Division" value={division} onChange={(value) => set("division", value)}
                   options={[{ value: "all", label: "All divisions" }, ...[...new Set(moves.map((move) => move.division).filter((value): value is string => Boolean(value)))].sort().map((value) => ({ value, label: value }))]} />
                 <FilterSelect label="Country" value={country} onChange={(value) => set("country", value)}

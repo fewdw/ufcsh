@@ -116,22 +116,31 @@ export function OfficialsPage() {
   }, [data, kind, query, minimum, since, rate, judgeOrder.reversed, refereeOrder.sort, refereeOrder.reversed]);
   if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the officials.</RequestNotice></div>;
   if (!data) return <PageState>Loading officials…</PageState>;
+  const searchLabel = `Find a ${kind === "referees" ? "referee" : "judge"}`;
+  const choices = (className: string) => (
+    <div className={`${segmentedGroup} ${className}`} role="group" aria-label="Officials">
+      {(["judges", "referees"] as const).map((option) => (
+        <button key={option} type="button" aria-pressed={kind === option} onClick={() => judgeOrder.set({ kind: option === "judges" ? null : option, sort: null, order: null })}
+          className={`${segmentedOption} ${kind === option ? segmentedSelected : segmentedIdle}`}>{option === "referees" ? "Referees" : "Judges"}</button>
+      ))}
+    </div>
+  );
   return (
     <div ref={scroll} className={PAGE}>
       <div className={FULL_PAGE_BODY}>
         <h1 className="sr-only">Judges & referees</h1>
         <PageToolbar>
           <BrowseTabs />
-          <div className={segmentedGroup} role="group" aria-label="Officials">
-            {(["judges", "referees"] as const).map((option) => (
-              <button key={option} type="button" aria-pressed={kind === option} onClick={() => judgeOrder.set({ kind: option === "judges" ? null : option, sort: null, order: null })}
-                className={`${segmentedOption} ${kind === option ? segmentedSelected : segmentedIdle}`}>{option === "referees" ? "Referees" : "Judges"}</button>
-            ))}
-          </div>
-          <div className="ml-auto flex min-w-0 flex-1 basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
-            <ToolbarSearch value={query} onChange={setQuery} label={`Find a ${kind === "referees" ? "referee" : "judge"}`} />
-            <OptionsSheet label="Filters" count={Number(minimum !== "0") + Number(since !== "all") || undefined} onReset={() => { setQuery(""); judgeOrder.set({ sort: null, order: null, minimum: null, since: null }); }}>
+          {/* On a phone the toolbar is one line; the rest opens from Filters. */}
+          {choices("max-sm:hidden")}
+          <div className="ml-auto flex min-w-0 items-center justify-end gap-2 sm:flex-1">
+            <ToolbarSearch value={query} onChange={setQuery} label={searchLabel} className="max-sm:hidden" />
+            <OptionsSheet label="Filters" iconOnlyOnPhone count={Number(minimum !== "0") + Number(since !== "all") + Number(Boolean(query)) || undefined} onReset={() => { setQuery(""); judgeOrder.set({ sort: null, order: null, minimum: null, since: null }); }}>
               <div className="space-y-3 p-4">
+                <div className="space-y-3 sm:hidden">
+                  {choices("w-full [&>button]:flex-1")}
+                  <div className="flex"><ToolbarSearch value={query} onChange={setQuery} label={searchLabel} /></div>
+                </div>
                 <SheetField label="Sort">
                   {kind === "judges" ? <OrderControl options={JUDGE_ORDERS} order={judgeOrder} label="Order judges" /> : <OrderControl options={REFEREE_ORDERS} order={refereeOrder} label="Order referees" />}
                 </SheetField>
@@ -188,9 +197,11 @@ function usePlaces<T extends Place>(places: T[] | undefined, text: (place: T) =>
     return order.reversed ? sorted.reverse() : sorted;
   }, [places, text, query, country, upcoming, order.sort, order.reversed]);
   const countries = useMemo(() => [...new Set((places ?? []).map((place) => place.country).filter((value): value is string => Boolean(value)))].sort(), [places]);
-  return { list, query, setQuery, filters: (label: string) => (
-    <OptionsSheet label="Filters" count={Number(country !== "all") + Number(upcoming) || undefined} onReset={() => { setQuery(""); order.set({ sort: null, order: null, country: null, upcoming: null }); }}>
+  return { list, query, setQuery, filters: (label: string, searchLabel: string) => (
+    <OptionsSheet label="Filters" iconOnlyOnPhone count={Number(country !== "all") + Number(upcoming) + Number(Boolean(query)) || undefined} onReset={() => { setQuery(""); order.set({ sort: null, order: null, country: null, upcoming: null }); }}>
       <div className="space-y-3 p-4">
+        {/* A phone's toolbar is one line, so its search is in here. */}
+        <div className="flex sm:hidden"><ToolbarSearch value={query} onChange={setQuery} label={searchLabel} /></div>
         <SheetField label="Sort"><OrderControl options={PLACE_ORDERS} order={order} label={label} /></SheetField>
         <FilterSelect label="Country" value={country} onChange={(value) => order.set({ country: value === "all" ? null : value })}
           options={[{ value: "all", label: "All countries" }, ...countries.map((value) => ({ value, label: value }))]} />
@@ -232,9 +243,9 @@ export function VenuesPage() {
         <h1 className="sr-only">Venues</h1>
         <PageToolbar>
           <BrowseTabs />
-          <div className="ml-auto flex min-w-0 flex-1 basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
-            <ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a venue, city or country" />
-            {places.filters("Order venues")}
+          <div className="ml-auto flex min-w-0 items-center justify-end gap-2 sm:flex-1">
+            <ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a venue, city or country" className="max-sm:hidden" />
+            {places.filters("Order venues", "Find a venue, city or country")}
           </div>
         </PageToolbar>
         <section aria-label="Venues" className={`${PANEL} overflow-hidden`}>
@@ -264,9 +275,9 @@ export function LocationsPage() {
         <h1 className="sr-only">Locations</h1>
         <PageToolbar>
           <BrowseTabs />
-          <div className="ml-auto flex min-w-0 flex-1 basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
-            <ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a city, state or country" />
-            {places.filters("Order locations")}
+          <div className="ml-auto flex min-w-0 items-center justify-end gap-2 sm:flex-1">
+            <ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a city, state or country" className="max-sm:hidden" />
+            {places.filters("Order locations", "Find a city, state or country")}
           </div>
         </PageToolbar>
         <section aria-label="Locations" className={`${PANEL} overflow-hidden`}>
