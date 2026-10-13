@@ -903,10 +903,18 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
 
   const cardSteps = {
     previous: <FightStepLink fight={previous} direction="prev" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} className={NAV_STEP} />,
-    center: <button type="button" onClick={closeFight} aria-keyshortcuts="Escape"
-      className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
-      <List className="h-3.5 w-3.5" aria-hidden="true" />Card
-    </button>,
+    // A phone closes the matchup from the pill, beside Card; wider screens
+    // keep the ✕ in the matchup's corner.
+    center: <>
+      <button type="button" onClick={closeFight} aria-keyshortcuts="Escape"
+        className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
+        <List className="h-3.5 w-3.5" aria-hidden="true" />Card
+      </button>
+      <button type="button" onClick={closeFight} aria-label="Close matchup and return to card" title="Close matchup"
+        className="inline-flex h-8 w-10 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950 sm:hidden">
+        <X className="h-4 w-4" aria-hidden="true" />
+      </button>
+    </>,
     next: <FightStepLink fight={next} direction="next" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} className={NAV_STEP} />,
   };
   const detailPane = (
@@ -942,7 +950,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
 
             <section data-photo-view={portraits ? "full" : "face"} className={`matchup-top-card matchup-overview @container relative overflow-hidden ${shell}`}>
               <button type="button" onClick={closeFight} aria-label="Close matchup and return to card" title="Close matchup (Esc)" aria-keyshortcuts="Escape"
-                className={`absolute right-2 top-2 z-10 ${CLOSE_BUTTON}`}>
+                className={`absolute right-2 top-2 z-10 max-sm:hidden ${CLOSE_BUTTON}`}>
                 <X className={CLOSE_ICON} aria-hidden="true" />
               </button>
 
