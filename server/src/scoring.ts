@@ -12,6 +12,8 @@ export type ScoringFight = {
   scheduled_rounds: number | null; round: string | null; time: string | null;
   method: string | null; detail_json: string | null;
   community_score_json?: string | null;
+  /** Imported round-by-round judges' cards, read when the official ones are missing. */
+  judge_rounds_json?: string | null;
   /** Naming a bout a card belongs to: a scorer's profile lists fights, not ids.
    *  The two photographs are the ones already cached for the fighter pages. */
   f1_name: string; f2_name: string; event_id: string; event_name: string; weight_class: string | null;
@@ -82,6 +84,26 @@ function cardVerdict(fight: ScoringFight, eligibility: ScoreEligibility, rounds:
   if (!decision || !official || !rounds.length || rounds.length !== eligibility.available) return { decision, agreement: null };
   const scored = total1 > total2 ? 1 : total2 > total1 ? 2 : 0;
   return { decision, agreement: scored === official ? "agreed" : "disagreed" };
+}
+
+/** The judges' final totals as the fight page shows them: the official cards,
+ *  else the imported ones. */
+export function judgeTotals(fight: ScoringFight): { f1: number; f2: number }[] {
+  const read = (json: string | null | undefined) => {
+    try {
+      const cards = JSON.parse(json ?? "null")?.judges;
+      return Array.isArray(cards) ? cards.map((card: any) => ({ f1: Number(card?.f1Score), f2: Number(card?.f2Score) }))
+        .filter(card => Number.isFinite(card.f1) && Number.isFinite(card.f2)) : [];
+    } catch { return []; }
+  };
+  const official = read(fight.detail_json);
+  return official.length ? official : read(fight.judge_rounds_json);
+}
+
+/** An average over ufc.sh's own cards and an imported aggregate, by count. */
+function weighted(localAverage: number | null, localCount: number, externalAverage: number | null, externalCount: number): number | null {
+  const count = (localAverage == null ? 0 : localCount) + (externalAverage == null ? 0 : externalCount);
+  return count ? ((localAverage ?? 0) * localCount + (externalAverage ?? 0) * externalCount) / count : null;
 }
 
 type StoredCard = { id: string; user_id: string; revision: number; updated_at: number; rounds_json: string };
@@ -374,10 +396,6 @@ export class ScoringStore {
       .get(max, max, max, max, max, max, id, max) as any;
     const imported = this.community(id, max);
     const importedCards = imported?.cards ?? 0;
-    const weighted = (localAverage: number | null, localCount: number, externalAverage: number | null, externalCount: number) => {
-      const count = (localAverage == null ? 0 : localCount) + (externalAverage == null ? 0 : externalCount);
-      return count ? ((localAverage ?? 0) * localCount + (externalAverage ?? 0) * externalCount) / count : null;
-    };
     const byRound = new Map(localRounds.map(row => [Number(row.round), row]));
     const rounds = Array.from({ length: max }, (_unused, index) => index + 1).flatMap(round => {
       const local = byRound.get(round);
@@ -405,6 +423,18 @@ export class ScoringStore {
       source: imported ? { name: imported.source, url: imported.sourceUrl } : null,
     };
     return { eligibility, rounds, totals, cards: this.fightCards(id, max) };
+  }
+  /** The fans' average final card, over complete cards only, exactly as the
+   *  fight page's total: what a profile row sets the scorer's own card beside. */
+  private fanAverage(fight: ScoringFight, max: number): { cards: number; total1: number; total2: number } | null {
+    if (!max) return null;
+    const local = this.stmt(`SELECT COUNT(*) AS cards, AVG(a) AS avg1, AVG(b) AS avg2
+      FROM (SELECT COUNT(*) AS n, SUM(f1 - deduct1) AS a, SUM(f2 - deduct2) AS b
+        FROM scores WHERE fight_id = ? AND round <= ? GROUP BY card_id) WHERE n = ?`).get(fight.id, max, max) as any;
+    const imported = parseCommunityScorecard(fight.community_score_json, max);
+    const total1 = weighted(local.avg1, Number(local.cards), imported?.avg1 ?? null, imported?.cards ?? 0);
+    const total2 = weighted(local.avg2, Number(local.cards), imported?.avg2 ?? null, imported?.cards ?? 0);
+    return total1 == null || total2 == null ? null : { cards: Number(local.cards) + (imported?.cards ?? 0), total1, total2 };
   }
   /** A source aggregate is deliberately not expanded into fake profiles. Its
    * count and averages are weighted with real ufc.sh cards at read time. */
@@ -568,7 +598,11 @@ export class ScoringStore {
     return {
       scorer: { ...this.identify(scorer), cards: all.length, joinedAt: scorer.created_at, commentsPublic: Boolean(scorer.comments_public) },
       agreement, filter, query, offset, pageSize: PROFILE_PAGE, total: matching.length,
-      cards: matching.slice(offset, offset + PROFILE_PAGE),
+      // Only the page being read is set against the fans and the judges.
+      cards: matching.slice(offset, offset + PROFILE_PAGE).map(card => {
+        const fight = fights.get(card.fightId)!;
+        return { ...card, fans: this.fanAverage(fight, card.eligibility.available), judges: judgeTotals(fight) };
+      }),
     };
   }
 }

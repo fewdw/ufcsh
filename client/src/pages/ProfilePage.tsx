@@ -1,7 +1,7 @@
 import { useAuth } from "@clerk/react";
 import { Check, ChevronDown, Flag, ImageIcon, Info, LogOut, Pencil, Search, Settings, SquareTerminal, X } from "lucide-react";
 import { isDevSite, useDevStats } from "../devStats";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiCache, prefetch, useApi } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
@@ -552,6 +552,7 @@ function CardRows({ cards, mine, onRemove }: { cards: ScorerCard[]; mine: boolea
   return <>{cards.map(card => <CardRow key={card.fightId} card={card} mine={mine} onRemove={onRemove} />)}</>;
 }
 
+const SCORE_HEAD = "text-center text-[10px] font-semibold uppercase leading-none tracking-wide text-zinc-400";
 const META_PIECE = "before:inline-block before:w-3 before:text-center before:content-['·']";
 
 /** One scored fight: the two fighters with the reader's own score between
@@ -594,20 +595,39 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
           ) : null}
           {fight.method ? ` · ${formatMethod(fight.method, fight.round, fight.time)}` : ""}
         </p>
-        {/* A phone reads it like a scoreboard: a line per fighter with their
-            score at the end, then the bout in full underneath. */}
-        <div className="grid gap-1.5 sm:hidden">
+        {card.fans || card.judges.length ? <p className={`hidden text-center tabular-nums sm:block ${LIST_META}`}>
+          {card.fans ? `Fans ${card.fans.total1.toFixed(1)}–${card.fans.total2.toFixed(1)}` : ""}
+          {card.fans && card.judges.length ? " · " : ""}
+          {card.judges.length ? `Judges ${card.judges.map(judge => `${judge.f1}–${judge.f2}`).join(", ")}` : ""}
+        </p> : null}
+        {/* A phone reads it like a scoreboard: a line per fighter, their score
+            on this card at the end, then the fans' average and each judge's. */}
+        <div className="grid items-center gap-x-1.5 gap-y-1.5 sm:hidden"
+          style={{ gridTemplateColumns: `auto minmax(0,1fr) repeat(${1 + (card.fans ? 1 : 0) + card.judges.length}, auto)` }}>
+          {card.fans || card.judges.length ? <>
+            <span className="col-span-2" />
+            <span className={SCORE_HEAD}>You</span>
+            {card.fans ? <span className={`${SCORE_HEAD} pl-2`} title={`Average of ${card.fans.cards.toLocaleString()} fan ${card.fans.cards === 1 ? "card" : "cards"}`}>Fans</span> : null}
+            {card.judges.length ? <span className={`${SCORE_HEAD} pl-2`} style={{ gridColumn: `span ${card.judges.length}` }}>Judges</span> : null}
+          </> : null}
           {([1, 2] as const).map(side => {
             const name = side === 1 ? fight.f1_name : fight.f2_name;
             const ink = side === 1 ? "text-f1-ink" : "text-f2-ink";
-            return <div key={side} className="flex items-center gap-2.5">
+            const tone = (own: number, other: number) => own > other ? ink : "text-zinc-400";
+            return <Fragment key={side}>
               <Avatar src={side === 1 ? fight.f1_photo : fight.f2_photo} name={name} size="xs"
                 outcome={(side === 1 ? fight.f1_outcome : fight.f2_outcome) as "win" | "loss" | null} />
-              <p className={`min-w-0 flex-1 text-sm font-semibold leading-tight ${ink}`}>{name}</p>
-              <p className={`shrink-0 text-base font-bold leading-none tabular-nums ${winner === side ? ink : "text-zinc-400"}`}>
+              <p className={`ml-1 min-w-0 text-sm font-semibold leading-tight ${ink}`}>{name}</p>
+              <p className={`text-center text-base font-bold leading-none tabular-nums ${winner === side ? ink : "text-zinc-400"}`}>
                 {scored ? (side === 1 ? card.total1 : card.total2) : "—"}
               </p>
-            </div>;
+              {card.fans ? <p className={`pl-2 text-center text-sm font-semibold leading-none tabular-nums ${side === 1 ? tone(card.fans.total1, card.fans.total2) : tone(card.fans.total2, card.fans.total1)}`}>
+                {(side === 1 ? card.fans.total1 : card.fans.total2).toFixed(1)}
+              </p> : null}
+              {card.judges.map((judge, at) => <p key={at} className={`${at ? "" : "pl-2"} text-center text-sm font-semibold leading-none tabular-nums ${side === 1 ? tone(judge.f1, judge.f2) : tone(judge.f2, judge.f1)}`}>
+                {side === 1 ? judge.f1 : judge.f2}
+              </p>)}
+            </Fragment>;
           })}
         </div>
         {/* Each piece stays whole and a narrow phone wraps between them; the

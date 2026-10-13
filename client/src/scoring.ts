@@ -37,6 +37,9 @@ export type ScorerCard = {
   /** Whether the bout went to the judges, and whether this card read it their
    *  way. A finish was never judged, so it is neither. */
   decision: boolean; agreement: "agreed" | "disagreed" | null;
+  /** The fans' average final card and the judges' totals, as the fight page shows them. */
+  fans: { cards: number; total1: number; total2: number } | null;
+  judges: { f1: number; f2: number }[];
   fight: ScorerCardFight;
 };
 /** Which cards the list is showing. `decisions` is the reader hiding bouts

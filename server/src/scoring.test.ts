@@ -212,6 +212,26 @@ test("public profiles list a scorer's own cards, newest first, and never name th
   assert.equal(store.profile(alice.publicId).cards.length, 0);
 });
 
+test("a profile row sets the card beside the fans' average and the judges' totals the fight page shows", t => {
+  const judged = { ...fight,
+    detail_json: JSON.stringify({ methodInfo: { "Time format": "3 Rnd (5-5-5)" }, judges: [{ judge: "A", f1Score: 29, f2Score: 28 }, { judge: "B", f1Score: 28, f2Score: 29 }] }),
+    community_score_json: JSON.stringify({ cards: 3, avg1: 28, avg2: 29, rounds: [1, 2, 3].map(round => ({ round, avg1: 9.3, avg2: 9.7 })) }) };
+  const { store, setFight } = fixture(t, judged);
+  store.save(id, "alice", { revision: 0, rounds });
+  const handle = store.identity("alice").handle;
+  const [card] = store.profile(handle).cards;
+  const totals = (store.summary(id) as any).totals;
+  assert.deepEqual(card.fans, { cards: 4, total1: totals.avg1, total2: totals.avg2 });
+  assert.equal(card.fans!.total1, (30 + 28 * 3) / 4);
+  assert.deepEqual(card.judges, [{ f1: 29, f2: 28 }, { f1: 28, f2: 29 }]);
+  // Without official cards the imported ones are read; a finish has neither.
+  setFight({ ...judged, detail_json: fight.detail_json, judge_rounds_json: JSON.stringify({ judges: [{ judge: "C", f1Score: 30, f2Score: 27 }] }) });
+  assert.deepEqual(store.profile(handle).cards[0].judges, [{ f1: 30, f2: 27 }]);
+  setFight({ ...fight, method: "SUB", round: "1" });
+  assert.deepEqual(store.profile(handle).cards[0].judges, []);
+  assert.equal(store.profile(handle).cards[0].fans, null);
+});
+
 test("a fight exposes at most its five newest ufc.sh scorecards", t => {
   const { store } = fixture(t);
   const handles: string[] = [];
