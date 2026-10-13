@@ -67,7 +67,7 @@ import { searchAliases } from "./search-aliases.ts";
 import { locationDirectory, locationOfEvent, locationPage, searchVenues, venueDirectory, venueOfEvent, venuePage } from "./venues.ts";
 import { newsView } from "./news.ts";
 import { newsAiStatus, setNewsAi, startNewsReader } from "./news-ai.ts";
-import { fighterRosterEvents, rosterMoveFighter, storedRosterMoves, ufcDepartures, ufcSignings } from "./roster-moves.ts";
+import { fighterRosterEvents, rosterMoveFighter, sameSigning, storedRosterMoves, ufcDepartures, ufcSignings, type UfcSigning } from "./roster-moves.ts";
 import type { RosterMove } from "./scrape/wikipedia.ts";
 
 const CLIENT_DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "client", "dist");
@@ -2082,7 +2082,7 @@ async function renderShare(kind: string, id: string): Promise<{ body: Buffer; et
 function rosterView() {
   const { signed, cut } = storedRosterMoves();
   const index = fightIndex();
-  const view = (move: RosterMove, fighterId: string | null) => {
+  const view = (move: RosterMove, fighterId: string | null, photo: string | null = null) => {
     const summary = fighterId ? fighterSummary(fighterId, move.name) : null;
     const indexed = fighterId ? index.fighters.get(fighterId) : undefined;
     return {
@@ -2094,7 +2094,7 @@ function rosterView() {
       reason: move.reason,
       record: summary?.record_verified ? summary.record : move.record ?? summary?.record ?? null,
       ufc_record: indexed ? recordText(indexed.ufc) : null,
-      photo_url: summary?.photo_url ?? null,
+      photo_url: summary?.photo_url ?? photo,
       fighter_id: fighterId,
     };
   };
@@ -2109,21 +2109,17 @@ function rosterView() {
   }
   // ufc.com's signings fill in who Wikipedia hasn't listed; once it does, its
   // entry (with record and date) is the one shown. The same person is matched
-  // by profile, by name, or by surname and first two letters ("Thomas" and
-  // "Tom Pagliarulo").
+  // by profile or by name (`sameSigning`).
   const signings = signed.map(move => view(move, rosterMoveFighter(move.name)));
-  const keys = (name: string) => {
-    const [first = "", ...rest] = normName(name).split(" ");
-    return rest.length ? [normName(name), `${first.slice(0, 2)} ${rest.join(" ")}`] : [normName(name)];
-  };
-  const listed = new Set<string | null>([...signed.flatMap(move => keys(move.name)), ...signings.map(move => move.fighter_id)]);
+  const listed = new Set(signings.map(move => move.fighter_id).filter(Boolean));
+  const shown: UfcSigning[] = [];
   for (const signing of ufcSignings()) {
     const fighterId = rosterMoveFighter(signing.name);
-    const own = [...keys(signing.name), ...(fighterId ? [fighterId] : [])];
-    if (own.some(key => listed.has(key))) continue;
-    own.forEach(key => listed.add(key));
+    if ((fighterId && listed.has(fighterId)) || [...signed, ...shown].some(move => sameSigning(move, signing))) continue;
+    if (fighterId) listed.add(fighterId);
+    shown.push(signing);
     signings.push(view({ date: signing.date, name: signing.name, nickname: null, country: null,
-      division: signing.division ?? (fighterId ? divisionOf(fighterId) : null), reason: null, record: null }, fighterId));
+      division: signing.division ?? (fighterId ? divisionOf(fighterId) : null), reason: null, record: null }, fighterId, signing.photo ?? null));
   }
   const newestFirst = (a: { date: string | null }, b: { date: string | null }) => (b.date ?? "").localeCompare(a.date ?? "");
   return {
