@@ -4,8 +4,7 @@ import { useApi, type RosterMove, type RosterMoves } from "../api";
 import { daysUntil, formatDateShort, formatDateShortWithYear } from "../format";
 import { useRouteScrollRestoration } from "../navigationState";
 import { PAGE, FULL_PAGE_BODY } from "../research";
-import PageToolbar, { FilterSelect, ListHead, ToolbarSearch } from "../components/PageToolbar";
-import { searchList } from "../search";
+import PageToolbar, { FilterSelect, ListHead } from "../components/PageToolbar";
 import OptionsSheet, { SwitchRow } from "../components/OptionsSheet";
 import BrowseTabs from "../components/BrowseTabs";
 import { markRosterSeen, moveKey, unseenMoves } from "../rosterSeen";
@@ -63,13 +62,13 @@ const RECENT_DAYS = 3;
 const recent = (move: RosterMove) => (daysUntil(move.date ?? "") ?? -Infinity) >= -RECENT_DAYS;
 
 /** Signed and released fighters, with counts for the filtered list. */
-function MoveList({ kind, moves, fresh, search, choice }: { kind: "signed" | "cut"; moves: RosterMove[]; fresh: ReadonlySet<string>; search: ReactNode; choice: ReactNode }) {
+function MoveList({ kind, moves, fresh, choice }: { kind: "signed" | "cut"; moves: RosterMove[]; fresh: ReadonlySet<string>; choice: ReactNode }) {
   const cut = kind === "cut";
   // Recent signings get their own rows, so a big row never pairs with a small one.
   const groups = cut ? [moves] : [moves.filter(recent), moves.filter((move) => !recent(move))];
   return (
     <div className="min-w-0">
-      <ListHead title={cut ? "Cut" : "Signed"} count={moves.length} search={search} choice={choice} />
+      <ListHead title={cut ? "Cut" : "Signed"} count={moves.length} choice={choice} />
       {groups.map((group, index) => group.length ? (
         <ul key={index} className={`grid grid-cols-1 ${cut ? "" : "sm:grid-cols-2"}`}>
           {group.map((move) => <Move key={`${move.fighter_id ?? move.name}-${move.date}`} move={move} cut={cut} big={cut || index === 0} fresh={fresh.has(moveKey(kind, move))} />)}
@@ -86,7 +85,6 @@ export default function RosterPage() {
   const [params, setParams] = useSearchParams();
   // Signed or cut, signed first; an old `?tab=signed` link still lands there.
   const list = params.get("tab") === "cut" ? "cut" : "signed";
-  const [query, setQuery] = useState("");
   const division = params.get("division") ?? "all";
   const country = params.get("country") ?? "all";
   const onlyNew = params.get("new") === "1";
@@ -107,8 +105,7 @@ export default function RosterPage() {
   if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the roster changes.</RequestNotice></div>;
   if (!data) return <PageState>Loading roster changes…</PageState>;
   const moves = [...data.signed, ...data.cut];
-  const filtered = (kind: "signed" | "cut") => searchList(data[kind], query, (move) => [move.name, move.nickname, move.division, move.country ? countryName(move.country) : null].filter(Boolean).join(" "))
-    .filter((move) => (division === "all" || move.division === division) && (country === "all" || move.country === country) && (!onlyNew || fresh?.has(moveKey(kind, move))));
+  const filtered = (kind: "signed" | "cut") => data[kind].filter((move) => (division === "all" || move.division === division) && (country === "all" || move.country === country) && (!onlyNew || fresh?.has(moveKey(kind, move))));
   return (
     <div ref={scroll} className={PAGE}>
       <div className={FULL_PAGE_BODY}>
@@ -117,7 +114,7 @@ export default function RosterPage() {
           <BrowseTabs />
           <div className="ml-auto">
             <OptionsSheet label="Filters" iconOnlyOnPhone count={Number(division !== "all") + Number(country !== "all") + Number(onlyNew) || undefined}
-              onReset={() => { setQuery(""); setParams(list === "signed" ? {} : { tab: list }, { replace: true }); }}>
+              onReset={() => setParams(list === "signed" ? {} : { tab: list }, { replace: true })}>
               <div className="space-y-3 p-4">
                 <FilterSelect label="Division" value={division} onChange={(value) => set("division", value)}
                   options={[{ value: "all", label: "All divisions" }, ...[...new Set(moves.map((move) => move.division).filter((value): value is string => Boolean(value)))].sort().map((value) => ({ value, label: value }))]} />
@@ -129,10 +126,9 @@ export default function RosterPage() {
             </OptionsSheet>
           </div>
         </PageToolbar>
-        {/* The list's head holds what narrows it: the search, and Signed or Cut. */}
+        {/* The list's head says which list it is and switches it. */}
         <section aria-label="Roster changes" className={`${PANEL} overflow-hidden`}>
           <MoveList kind={list} moves={filtered(list)} fresh={fresh ?? NONE}
-            search={<ToolbarSearch value={query} onChange={setQuery} label="Find a fighter" />}
             choice={<div className={segmentedGroup} role="group" aria-label="Roster changes">
               {(["signed", "cut"] as const).map((option) => (
                 <button key={option} type="button" aria-pressed={list === option} onClick={() => set("tab", option === "signed" ? "" : option)}

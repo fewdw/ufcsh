@@ -8,14 +8,14 @@ export default function PageToolbar({ children }: { children: ReactNode }) {
   return <header className={`${PANEL} flex flex-wrap items-center gap-2 px-2.5 py-2 sm:px-3 lg:gap-3`}>{children}</header>;
 }
 
-/** A browse list's head: its name and count, the search that narrows it and,
- *  where the page has one, its own choice such as Signed or Cut. On a phone a
- *  list with a choice keeps it beside the name and gives the search a line of
- *  its own, so neither is squeezed. */
-export function ListHead({ title, count, search, choice }: { title: string; count: number; search: ReactNode; choice?: ReactNode }) {
+/** A browse list's head: its name and count, and the search and the page's own
+ *  choice (such as Signed or Cut) where it has them. Beside a choice the search
+ *  takes a line of its own on a phone and shares the line from a tablet up;
+ *  with no choice it always has the full line under the name. */
+export function ListHead({ title, count, search, choice }: { title: string; count: number; search?: ReactNode; choice?: ReactNode }) {
   return <div className="flex flex-wrap items-center gap-2 border-b border-zinc-100 px-4 py-2 sm:px-5">
     <h2 className="shrink-0 text-sm font-semibold text-zinc-900">{title} <span className="tabular-nums text-zinc-400">{count.toLocaleString()}</span></h2>
-    <div className={`flex min-w-0 flex-1 basis-24 ${choice ? "max-sm:order-last max-sm:basis-full" : ""}`}>{search}</div>
+    {search ? <div className={`flex min-w-0 flex-1 ${choice ? "basis-24 max-sm:order-last max-sm:basis-full" : "order-last basis-full [&>label]:max-w-none"}`}>{search}</div> : null}
     {choice ? <div className="ml-auto shrink-0">{choice}</div> : null}
   </div>;
 }
