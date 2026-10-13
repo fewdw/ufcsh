@@ -9,12 +9,13 @@ export default function PageToolbar({ children }: { children: ReactNode }) {
 }
 
 /** A browse list's head: its name and count, the search that narrows it and,
- *  where the page has one, its own choice such as Signed or Cut. A phone too
- *  narrow for all three drops the choice below rather than squeeze the search. */
+ *  where the page has one, its own choice such as Signed or Cut. On a phone a
+ *  list with a choice keeps it beside the name and gives the search a line of
+ *  its own, so neither is squeezed. */
 export function ListHead({ title, count, search, choice }: { title: string; count: number; search: ReactNode; choice?: ReactNode }) {
   return <div className="flex flex-wrap items-center gap-2 border-b border-zinc-100 px-4 py-2 sm:px-5">
     <h2 className="shrink-0 text-sm font-semibold text-zinc-900">{title} <span className="tabular-nums text-zinc-400">{count.toLocaleString()}</span></h2>
-    <div className="flex min-w-0 flex-1 basis-24">{search}</div>
+    <div className={`flex min-w-0 flex-1 basis-24 ${choice ? "max-sm:order-last max-sm:basis-full" : ""}`}>{search}</div>
     {choice ? <div className="ml-auto shrink-0">{choice}</div> : null}
   </div>;
 }
