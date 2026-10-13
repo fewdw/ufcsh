@@ -3,6 +3,22 @@
 Measure first, then change what the measurement points at. This page records
 the targets, how to measure against them, and the last measured results.
 
+## Profile scorecard filters (2026-10-13)
+
+Each profile filter, search and page used to work out the scorer's whole card
+list again (bouts, rounds still scorable, fans' averages, judges' totals). On a
+copy of the dev archive, the largest profile (111 cards) took a median 21 ms of
+server time per request, so every first click on a filter paid it again
+(23–37 ms measured in the dev container, plus the network).
+
+The list is now worked out once per scorer and reused for every filter, search
+and page: a median 0.06 ms per request after the first. It is replaced at once
+by the scorer's own save, by any change to the fight database (the `analytics`
+revision) and by rounds being trimmed or opened; other fans' new cards reach the
+fans' average within a minute. At most 256 scorers' lists are kept. Opening the
+filter menu also fetches the other filters' first pages, so the choice is on
+screen without waiting for the network.
+
 ## Security: bounded request metrics (2026-10-11)
 
 The legacy `/api/metrics` latency map kept arbitrary public-route slugs and

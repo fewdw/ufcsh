@@ -114,6 +114,20 @@ function fansVerdict(decision: boolean, complete: boolean, total1: number, total
   return Math.sign(total1 - total2) === Math.sign(fans.total1 - fans.total2) ? "agreed" : "disagreed";
 }
 
+/** One card on a profile, as listed: the reader's rounds and totals beside the
+ *  bout, the fans' average card and the judges' totals. */
+type ProfileCard = {
+  fightId: string; updatedAt: number; revision: number; rounds: RoundScore[]; eligibility: ScoreEligibility;
+  total1: number; total2: number; decision: boolean; agreement: "agreed" | "disagreed" | null;
+  fans: { cards: number; total1: number; total2: number } | null; fansAgreement: "agreed" | "disagreed" | null;
+  judges: { f1: number; f2: number }[];
+  fight: {
+    id: string; f1_name: string; f2_name: string; f1_id: string; f2_id: string; f1_photo: string | null; f2_photo: string | null;
+    f1_outcome: string | null; f2_outcome: string | null; event_id: string; event_name: string; date: string;
+    weight_class: string | null; method: string | null; round: string | null; time: string | null;
+  };
+};
+
 type StoredCard = { id: string; user_id: string; revision: number; updated_at: number; rounds_json: string };
 type StoredScorer = {
   user_id: string; public_id: string; created_at: number | null;
@@ -200,6 +214,13 @@ export const PROFILE_MAX = 1000;
  *  four are decisions by definition. */
 export type ProfileFilter = "all" | "decisions" | "agreed" | "disagreed" | "fans-agreed" | "fans-disagreed";
 export const PROFILE_FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed", "fans-agreed", "fans-disagreed"];
+/** How long a scorer's worked-out list is reused while the reader filters,
+ *  searches and pages through it. Their own saves replace it at once; other
+ *  fans' cards reach it within this long, and any change to the fight
+ *  database at once. */
+export const PROFILE_LIST_TTL = 60_000;
+/** Scorers whose lists are kept at once; the least recently read go first. */
+const PROFILE_LISTS = 256;
 /** Individual cards shown under a fight, newest first. The rest are in the
  *  aggregate above them. */
 const FIGHT_CARDS = 5;
@@ -210,6 +231,10 @@ export class ScoringStore {
   /** Every statement here is fixed text run over and over, so each one is
    *  compiled once rather than on every request. */
   private statements = new Map<string, StatementSync>();
+  private lists = new Map<string, { at: number; revision: string; cards: ProfileCard[] }>();
+  /** Moves whenever the fight database changes: a result, a judge's card, the
+   *  imported fans' average. A list worked out before it moved is not reused. */
+  private revision: () => string;
   private stmt(sql: string): StatementSync {
     let statement = this.statements.get(sql);
     if (!statement) this.statements.set(sql, statement = this.db.prepare(sql));
@@ -219,8 +244,9 @@ export class ScoringStore {
    *  request rather than joined. */
   private fights: (ids: string[]) => ScoringFight[];
   private fight = (id: string): ScoringFight | undefined => this.fights([id])[0];
-  constructor(filename: string, fights: (ids: string[]) => ScoringFight[]) {
+  constructor(filename: string, fights: (ids: string[]) => ScoringFight[], revision: () => string = () => "") {
     this.fights = fights;
+    this.revision = revision;
     this.db = new DatabaseSync(filename);
     this.db.exec(`
       PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 1000;
@@ -323,6 +349,8 @@ export class ScoringStore {
     // scored for it was scored before it happened.
     const eligibility = scoringEligibility(fight, Date.now(), rounds as number);
     if (!fightIsComplete(fight) && isFightDay(fight.event_date) && eligibility.scheduled) this.trimRounds(id, eligibility.available);
+    // Every card on the bout now reads a different number of rounds.
+    this.lists.clear();
     return rounds as number;
   }
   /** How many cards hold each round of a bout, for the admin panel. */
@@ -342,7 +370,9 @@ export class ScoringStore {
     const last = Number(fight.round);
     if (!eligibility.scheduled || !Number.isInteger(last) || last < 1 || last > eligibility.scheduled) return 0;
     this.stmt("DELETE FROM live_rounds WHERE fight_id = ?").run(fight.id);
-    return this.trimRounds(fight.id, eligibility.available);
+    const removed = this.trimRounds(fight.id, eligibility.available);
+    if (removed) this.lists.clear();
+    return removed;
   }
   /** Deletes every score past round `keep`, from both the rows aggregates read
    *  and each card's own copy. Revisions are left alone, so an open editor can
@@ -386,6 +416,7 @@ export class ScoringStore {
       for (const r of submission.rounds) insert.run(cardId, id, r.round, r.f1, r.f2, r.deduct1, r.deduct2);
       this.db.exec("COMMIT");
     } catch (error) { this.db.exec("ROLLBACK"); throw error; }
+    this.lists.delete(user);
     return this.mine(id, user);
   }
   summary(id: string) {
@@ -538,6 +569,7 @@ export class ScoringStore {
    *  and picture are gone, so the name is free for anyone to claim. Run inside
    *  the caller's transaction (`forgetAccount`). */
   forget(user: string): void {
+    this.lists.delete(user);
     this.stmt("DELETE FROM scorecards WHERE user_id = ?").run(user);
     this.stmt(`UPDATE scorers SET username = NULL, username_key = NULL, username_set_at = NULL, image_url = NULL,
       comments_public = 0, deleted_at = ? WHERE user_id = ?`).run(Date.now(), user);
@@ -549,28 +581,26 @@ export class ScoringStore {
   imageSyncedAt(user: string): number {
     return this.scorer("user_id", user)?.image_synced_at ?? 0;
   }
-  /** A public profile: every fight this scorer has a card for, newest card
-   *  first, with the card itself. Rounds that are no longer scorable — a bout
-   *  scored live that later ended in a stoppage — are dropped here exactly as
-   *  they are everywhere else, so a profile and a fight page never disagree. */
-  profile(handle: string, options: { offset?: number; filter?: ProfileFilter; query?: string } = {}) {
-    // A profile answers to its username, whatever the capitalisation, and to
-    // the public id it had before any name was chosen — old links keep working.
-    const scorer = this.scorer("username_key", handle.toLowerCase()) ?? this.scorer("public_id", handle);
-    if (!scorer || scorer.deleted_at) throw new ScoringError(404, "Profile not found.");
-    const offset = Math.max(0, options.offset ?? 0);
-    const filter: ProfileFilter = PROFILE_FILTERS.includes(options.filter!) ? options.filter! : "all";
-    const query = (options.query ?? "").trim().toLowerCase().slice(0, 60);
+  /** Every card a scorer has, worked out against its bout, the fans and the
+   *  judges. The whole list is what gets counted, filtered and paged, so the
+   *  agreement tally describes every card, not the page being read; it is
+   *  worked out once and reused while the reader moves through it, and their
+   *  own saves replace it at once. */
+  private profileCards(user: string): ProfileCard[] {
+    const revision = this.revision();
+    const kept = this.lists.get(user);
+    if (kept && kept.revision === revision && Date.now() - kept.at < PROFILE_LIST_TTL) {
+      this.lists.delete(user); this.lists.set(user, kept);
+      return kept.cards;
+    }
     const scored = "EXISTS (SELECT 1 FROM scores WHERE card_id = c.id)";
-    // The whole list is read, then counted, filtered and paged: the agreement
-    // tally describes every card, not the page the reader happens to be on.
     const stored = this.stmt(`SELECT c.fight_id AS fightId, c.updated_at AS updatedAt, c.revision, c.rounds_json AS roundsJson
       FROM scorecards c WHERE c.user_id = ? AND ${scored}
       ORDER BY c.updated_at DESC, c.fight_id LIMIT ?`)
-      .all(scorer.user_id, PROFILE_MAX) as { fightId: string; updatedAt: number; revision: number; roundsJson: string }[];
+      .all(user, PROFILE_MAX) as { fightId: string; updatedAt: number; revision: number; roundsJson: string }[];
     const fights = new Map(this.fights(stored.map(card => card.fightId)).map(fight => [fight.id, fight]));
     const released = this.openRoundsFor(stored.map(card => card.fightId));
-    const all = stored.flatMap(card => {
+    const cards = stored.flatMap((card): ProfileCard[] => {
       const fight = fights.get(card.fightId);
       // A card whose bout is no longer in the fight database cannot be named or
       // opened, so it is not listed.
@@ -585,6 +615,7 @@ export class ScoringStore {
       return [{
         fightId: card.fightId, updatedAt: card.updatedAt, revision: card.revision, rounds, eligibility,
         total1, total2, ...verdict, fans, fansAgreement: fansVerdict(verdict.decision, complete, total1, total2, fans),
+        judges: judgeTotals(fight),
         fight: {
           id: fight.id, f1_name: fight.f1_name, f2_name: fight.f2_name,
           f1_id: fight.f1_id, f2_id: fight.f2_id, f1_photo: fight.f1_photo, f2_photo: fight.f2_photo,
@@ -594,6 +625,24 @@ export class ScoringStore {
         },
       }];
     });
+    this.lists.delete(user);
+    this.lists.set(user, { at: Date.now(), revision, cards });
+    if (this.lists.size > PROFILE_LISTS) this.lists.delete(this.lists.keys().next().value!);
+    return cards;
+  }
+  /** A public profile: every fight this scorer has a card for, newest card
+   *  first, with the card itself. Rounds that are no longer scorable — a bout
+   *  scored live that later ended in a stoppage — are dropped here exactly as
+   *  they are everywhere else, so a profile and a fight page never disagree. */
+  profile(handle: string, options: { offset?: number; filter?: ProfileFilter; query?: string } = {}) {
+    // A profile answers to its username, whatever the capitalisation, and to
+    // the public id it had before any name was chosen — old links keep working.
+    const scorer = this.scorer("username_key", handle.toLowerCase()) ?? this.scorer("public_id", handle);
+    if (!scorer || scorer.deleted_at) throw new ScoringError(404, "Profile not found.");
+    const offset = Math.max(0, options.offset ?? 0);
+    const filter: ProfileFilter = PROFILE_FILTERS.includes(options.filter!) ? options.filter! : "all";
+    const query = (options.query ?? "").trim().toLowerCase().slice(0, 60);
+    const all = this.profileCards(scorer.user_id);
     const agreement = {
       decisions: all.filter(card => card.agreement).length,
       agreed: all.filter(card => card.agreement === "agreed").length,
@@ -613,10 +662,7 @@ export class ScoringStore {
     return {
       scorer: { ...this.identify(scorer), cards: all.length, joinedAt: scorer.created_at, commentsPublic: Boolean(scorer.comments_public) },
       agreement, filter, query, offset, pageSize: PROFILE_PAGE, total: matching.length,
-      // Only the page being read lists the judges' cards.
-      cards: matching.slice(offset, offset + PROFILE_PAGE).map(card => {
-        return { ...card, judges: judgeTotals(fights.get(card.fightId)!) };
-      }),
+      cards: matching.slice(offset, offset + PROFILE_PAGE),
     };
   }
 }

@@ -16,9 +16,11 @@ const rounds = [1, 2, 3].map(round => ({ round, f1: 10, f2: 9, deduct1: 0, deduc
 function fixture(t: any, initial = fight) {
   const dir = mkdtempSync(path.join(tmpdir(), "ufc-scoring-"));
   let current = initial;
-  const store = new ScoringStore(path.join(dir, "scores.db"), ids => ids.filter(key => key === id).map(() => current));
+  // The fight database's revision moves whenever a bout changes, as it does in production.
+  let revision = 0;
+  const store = new ScoringStore(path.join(dir, "scores.db"), ids => ids.filter(key => key === id).map(() => current), () => String(revision));
   t.after(() => { store.db.close(); rmSync(dir, { recursive: true, force: true }); });
-  return { store, setFight: (value: ScoringFight) => { current = value; } };
+  return { store, setFight: (value: ScoringFight) => { current = value; revision++; } };
 }
 
 test("eligibility uses actual rounds and distinguishes live, future, historical and stoppages", () => {
@@ -207,8 +209,10 @@ test("public profiles list a scorer's own cards, newest first, and never name th
   // they are on the fight page.
   setFight({ ...fight, method: "KO/TKO", round: "2" });
   assert.equal(store.profile(alice.publicId).cards[0].rounds.length, 1);
-  // A card whose bout is no longer in the fight database cannot be listed.
+  // A card whose bout is no longer in the fight database cannot be listed
+  // (the bout leaving moves the fight database's revision).
   store.db.prepare("UPDATE scorecards SET fight_id = ? WHERE user_id = ?").run(other, "alice");
+  setFight({ ...fight, method: "KO/TKO", round: "2" });
   assert.equal(store.profile(alice.publicId).cards.length, 0);
 });
 
@@ -230,6 +234,35 @@ test("a profile row sets the card beside the fans' average and the judges' total
   setFight({ ...fight, method: "SUB", round: "1" });
   assert.deepEqual(store.profile(handle).cards[0].judges, []);
   assert.equal(store.profile(handle).cards[0].fans, null);
+});
+
+test("a profile's list is worked out once, and a scorer's own save or the fight database moving replaces it", t => {
+  const { store, setFight } = fixture(t);
+  store.save(id, "alice", { revision: 0, rounds });
+  const handle = store.identity("alice").handle;
+  let reads = 0;
+  const spied = store as unknown as { fights: (ids: string[]) => ScoringFight[] };
+  const load = spied.fights;
+  spied.fights = ids => { reads++; return load(ids); };
+  // How many times the list was worked out while reading it.
+  const reading = (read: () => void) => { reads = 0; read(); return reads; };
+  // Filters, searches and pages all read the one list.
+  assert.equal(reading(() => {
+    for (const filter of ["all", "decisions", "agreed", "disagreed", "fans-agreed", "fans-disagreed"] as const) store.profile(handle, { filter });
+    store.profile(handle, { query: "anna", offset: 25 });
+  }), 1);
+  // Another fan's card reaches the fans' average once the list is next worked out.
+  store.save(id, "bob", { revision: 0, rounds: rounds.map(r => ({ ...r, f1: 9, f2: 10 })) });
+  assert.equal(reading(() => assert.equal(store.profile(handle).cards[0].fans!.total1, 30)), 0);
+  // The scorer's own save shows at once.
+  store.save(id, "alice", { revision: 1, rounds: rounds.map(r => ({ ...r, f1: 10, f2: 10 })) });
+  assert.equal(reading(() => {
+    const [card] = store.profile(handle).cards;
+    assert.deepEqual([card.total1, card.total2, card.fans!.total1], [30, 30, 28.5]);
+  }), 1);
+  // So does a change to the bout.
+  setFight({ ...fight, weight_class: "Bantamweight" });
+  assert.equal(reading(() => assert.equal(store.profile(handle).cards[0].fight.weight_class, "Bantamweight")), 1);
 });
 
 test("a fight exposes at most its five newest ufc.sh scorecards", t => {

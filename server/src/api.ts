@@ -2253,7 +2253,7 @@ export function startApi(port: number): http.Server {
         f1_photo: cachedPhotoUrl(fight.f1_id, fight.f1_remote_photo),
         f2_photo: cachedPhotoUrl(fight.f2_id, fight.f2_remote_photo) }) as ScoringFight)
     : [];
-  const scoreStore = new ScoringStore(path.join(DATA_DIR, "scoring.db"), scoringFights);
+  const scoreStore = new ScoringStore(path.join(DATA_DIR, "scoring.db"), scoringFights, () => dataRevision("analytics"));
   const scoring = createScoringHandler(scoreStore);
   const predictionStore = new PredictionStore(scoreStore, predictionContext, predictionFights);
   const predictions = createPredictionsHandler(predictionStore, undefined, eventFightIds);
