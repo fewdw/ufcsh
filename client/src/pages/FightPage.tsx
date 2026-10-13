@@ -48,7 +48,7 @@ import { cardFightSearch, useRouteScrollRestoration, useTabBarAnchor } from "../
 import { SITE_URL, useSeo } from "../seo";
 import { useSettings, withRanking } from "../settings";
 import { scoreableRoundCount } from "../scoring";
-import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
+import { CLOSE_BUTTON, CLOSE_ICON, RESULT_PILL } from "../ui";
 import { useShortcutNav } from "../shortcuts";
 import { BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
 import OppositionDetails from "../components/OppositionDetails";
@@ -56,9 +56,6 @@ import TapeHistory from "../components/TapeHistory";
 import { DecisionsPanel, RoundsPanel, SideName, StrikesPanel } from "../components/FightInsights";
 
 const shell = PANEL_SHELL;
-const RESULT_PILL =
-  "inline-flex shrink-0 rounded-full px-1.5 py-px text-[9px] font-bold uppercase leading-4 tracking-[0.06em]";
-
 /** Only a confirmed title type earns a belt label. The event flag alone can
  *  be set on ordinary bouts, including the debut fights on this card. */
 function beltOf(fight: Matchup): "title" | "interim" | "tuf" | "tournament" | null {

@@ -15,14 +15,14 @@ import ProfileBets, { betsList } from "../components/ProfileBets";
 import ProfileComments, { commentsList } from "../components/ProfileComments";
 import ReportIssueDialog from "../components/ReportIssueDialog";
 import Leaderboards from "../components/Leaderboards";
-import { formatDateShortWithYear, formatMethod } from "../format";
+import { formatDateShortWithYear, formatMethod, outcomeClasses } from "../format";
 import { useRouteScrollRestoration, useTabBarAnchor } from "../navigationState";
 import { rememberedEmail, useMyProfile } from "../profile";
 import { cardWinner, usernameProblem } from "../scoring";
 import type { ProfileFilter, ScorerCard, ScorerIdentity, ScorerProfile } from "../scoring";
 import { useSeo } from "../seo";
 import { useSettings, withRanking } from "../settings";
-import { BUTTON_PRIMARY, BUTTON_QUIET } from "../ui";
+import { BUTTON_PRIMARY, BUTTON_QUIET, RESULT_PILL } from "../ui";
 import FanAvatar from "../components/FanAvatar";
 
 const FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed", "fans-agreed", "fans-disagreed"];
@@ -583,7 +583,10 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
   const { settings } = useSettings();
   const warm = () => prefetch(withRanking(`/api/fights/${card.fightId}`, settings.rankingSource));
   const scored = Boolean(card.rounds.length);
-  const finish = !card.judges.length && fight.method ? formatMethod(fight.method, fight.round, fight.time) : "";
+  // "KO/TKO R3/3 2:02", as under the winner on the matchup.
+  const scheduled = card.eligibility.scheduled && Number(fight.round) <= card.eligibility.scheduled ? `/${card.eligibility.scheduled}` : "";
+  const finish = !card.judges.length && fight.method
+    ? [fight.method, fight.round ? `R${fight.round}${scheduled}` : "", fight.time ?? ""].filter(Boolean).join(" ") : "";
   return (
     <li className="relative">
       <Link
@@ -609,7 +612,7 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
           {fight.method ? ` · ${formatMethod(fight.method, fight.round, fight.time)}` : ""}
         </p>
         {card.fans || card.judges.length ? <p className={`hidden text-center tabular-nums sm:block ${LIST_META}`}>
-          {card.fans ? `Fans ${card.fans.total1.toFixed(1)}–${card.fans.total2.toFixed(1)}` : ""}
+          {card.fans ? `Fans ${card.fans.total1.toFixed(2)}–${card.fans.total2.toFixed(2)}` : ""}
           {card.fans && card.judges.length ? " · " : ""}
           {card.judges.length ? `Judges ${card.judges.map(judge => `${judge.f1}–${judge.f2}`).join(", ")}` : ""}
         </p> : null}
@@ -640,13 +643,13 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
                 {name}
                 {/* No judges' cards: the winner's line says how it ended. */}
                 {finish && (side === 1 ? fight.f1_outcome : fight.f2_outcome) === "win"
-                  ? <span className="ml-1.5 whitespace-nowrap text-xs font-medium text-zinc-500">{finish}</span> : null}
+                  ? <span className={`${RESULT_PILL} ml-1.5 whitespace-nowrap align-[1px] tabular-nums ${outcomeClasses("win")}`}>{finish}</span> : null}
               </p>
               <p className={`text-center text-base font-bold leading-none tabular-nums ${winner === side ? ink : "text-zinc-400"}`}>
                 {scored ? (side === 1 ? card.total1 : card.total2) : "—"}
               </p>
               {card.fans ? <p className={`pl-2 text-center text-sm font-semibold leading-none tabular-nums ${side === 1 ? tone(card.fans.total1, card.fans.total2) : tone(card.fans.total2, card.fans.total1)}`}>
-                {(side === 1 ? card.fans.total1 : card.fans.total2).toFixed(1)}
+                {(side === 1 ? card.fans.total1 : card.fans.total2).toFixed(2)}
               </p> : null}
               {card.judges.map((judge, at) => <p key={at} className={`${at ? "" : "pl-2"} text-center text-sm font-semibold leading-none tabular-nums ${side === 1 ? tone(judge.f1, judge.f2) : tone(judge.f2, judge.f1)}`}>
                 {side === 1 ? judge.f1 : judge.f2}
