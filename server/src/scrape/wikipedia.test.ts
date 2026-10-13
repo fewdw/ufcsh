@@ -29,6 +29,27 @@ test("announcement dates require the right replacement direction, both names and
   assert.equal(read("Sterling replaced by Font", "2024-01-20"), "announced on fight day");
 });
 
+test("withdrawal and replacement booking headlines date the announcement in the correct direction", () => {
+  const read = (title: string) => cardChanges(article(`[[Charles Oliveira]] withdrew and was replaced by [[Alexander Volkanovski]].<ref>{{cite web|url=https://example.com/change|title=${title}|date=2024-01-11}}</ref>`), [["Alexander Volkanovski", "Islam Makhachev"]]).changes[0].notice;
+  for (const title of [
+    "Charles Oliveira out; Alexander Volkanovski now faces Islam Makhachev",
+    "With Charles Oliveira out, Alexander Volkanovski vs. Islam Makhachev booked",
+    "Charles Oliveira withdraws, Alexander Volkanovski steps into main event",
+  ]) assert.equal(read(title), "announced 9 days before", title);
+  for (const title of [
+    "Alexander Volkanovski out, Charles Oliveira faces Islam Makhachev",
+    "Charles Oliveira and Alexander Volkanovski face off outside the UFC",
+    "Charles Oliveira out, Islam Makhachev faces another fighter",
+    "Charles Oliveira could withdraw, Alexander Volkanovski might step in",
+  ]) assert.equal(read(title), null, title);
+});
+
+test("a replacement surname belongs to the preceding booking rather than a linked namesake", () => {
+  const text = article("[[Yana Santos]] was expected to face [[Norma Dumont]]. A featherweight bout between Gabriel Santos and [[Westin Wilson]] was expected at the event. However, Santos withdrew and was replaced by [[Jean Silva]].");
+  const change = cardChanges(text, [["Yana Santos", "Norma Dumont"], ["Jean Silva", "Westin Wilson"]]).changes[0];
+  assert.equal(change.replaced, "Gabriel Santos");
+});
+
 test("infobox dates read both the template and written forms", () => {
   assert.equal(infoboxDate(article("")), "2024-01-20");
   assert.equal(infoboxDate("| date = August 11, 2012\n"), "2012-08-11");

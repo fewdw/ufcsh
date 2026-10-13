@@ -90,10 +90,11 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-11">October 11, 2026</time></p>
+            <p><time dateTime="2026-10-12">October 12, 2026</time></p>
             <ul>
-              <li>Stronger protection against deceptive pages that embed UFC.sh.</li>
-              <li>Traffic monitoring stays bounded when bots probe unfamiliar addresses.</li>
+              <li>More source-backed replacement announcement dates.</li>
+              <li>Corrected replacement identities on historical cards.</li>
+              <li>Recovered missing scorecards and verified roster reports.</li>
             </ul>
           </Section>
         </div>

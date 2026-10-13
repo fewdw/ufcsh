@@ -1,5 +1,6 @@
 import { fetchHtml } from "../http.ts";
 import { editDistance, firstLastName, normName } from "../util.ts";
+import { verifiedReplacementAnnouncement } from "../replacement-announcements.ts";
 
 const API = "https://en.wikipedia.org/w/api.php";
 
@@ -284,7 +285,11 @@ function citedReplacementAnnouncements(background: string, changes: BoutChange[]
     const title = plainText(field("title"));
     const normalized = normName(title);
     const cue = /\breplaced by\b|\breplaces?\b|\breplacing\b|\b(?:steps? in|fills? in|in) for\b/.exec(normalized);
-    if (!cue || !/^https?:\/\//.test(field("url"))) continue;
+    // "Oliveira out; Volkanovski now faces Makhachev" also explicitly
+    // announces the change. A booking headline without a withdrawal does not.
+    const out = /\bout\b|\bwithdraws?\b/.exec(normalized);
+    if ((!cue && !out) || !/^https?:\/\//.test(field("url"))
+      || /\b(?:could|might|rumou?r|not replacing|not replaced)\b/.test(normalized)) continue;
     const date = citationDate(field("date"));
     if (!date) continue;
     const published = Date.parse(`${date}T12:00:00Z`);
@@ -294,8 +299,10 @@ function citedReplacementAnnouncements(background: string, changes: BoutChange[]
       if (!change.replaced || surnameOf(change.name) === surnameOf(change.replaced)) return false;
       const replacement = nameAt(title, change.name), replaced = nameAt(title, change.replaced);
       if (replacement < 0 || replaced < 0) return false;
-      return cue[0] === "replaced by" ? replaced < cue.index && replacement > cue.index
+      if (cue) return cue[0] === "replaced by" ? replaced < cue.index && replacement > cue.index
         : replacement < cue.index && replaced > cue.index;
+      return replaced < out!.index && replacement > out!.index
+        && /\b(?:in|faces?|meets?|fights?|steps?|replacement|booked|set)\b/.test(normalized.slice(out!.index));
     });
     if (matches.length !== 1) continue;
     const change = matches[0];
@@ -380,6 +387,16 @@ export function cardChanges(wikitext: string, bouts: [string, string][]): CardCh
     // "Bueno Silva" is Mayra Bueno Silva; "Rountree" is Khalil Rountree Jr.
     const tail = ` ${normName(name).split(" ").filter((word) => !SUFFIX.test(word)).join(" ")}`;
     const links = [...new Set(linked.filter((link) => ` ${normName(link).split(" ").filter((word) => !SUFFIX.test(word)).join(" ")}`.endsWith(tail)))];
+    // The latest announced pairing gives a surname its local identity. A
+    // linked namesake elsewhere on the card cannot override that booking.
+    if (!tail.trim().includes(" ")) {
+      const pair = [...booked].reverse().find(pair => pair.some(other => ` ${normName(other)}`.endsWith(tail)));
+      const local = pair?.filter(other => ` ${normName(other)}`.endsWith(tail));
+      // Prose can join adjacent unlinked names; a longer string containing
+      // the already linked identity is not a different person.
+      if (local?.length === 1 && links.length
+        && !links.some(link => normName(local[0]).endsWith(` ${normName(link)}`))) return local[0];
+    }
     if (links.length === 1) return links[0];
     // "Al-Selwady" and "Du Plessis" are one surname: Abdul-Kareem Al-Selwady,
     // Dricus du Plessis.
@@ -576,6 +593,9 @@ export function cardChanges(wikitext: string, bouts: [string, string][]): CardCh
   }));
   const changes = [...found.values()];
   citedReplacementAnnouncements(background, changes, held);
+  if (held) for (const change of changes) {
+    if (!change.notice && change.replaced) change.notice = verifiedReplacementAnnouncement(change.name, change.replaced, held);
+  }
   return { changes, cancelled };
 }
 
