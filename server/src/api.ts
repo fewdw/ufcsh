@@ -8,7 +8,7 @@ import { ScoringStore, type ScoringFight } from "./scoring.ts";
 import { createScoringHandler, scoringOrigins } from "./scoring-http.ts";
 import { PredictionStore } from "./predictions.ts";
 import { createPredictionsHandler } from "./predictions-http.ts";
-import { betContext, eventFightIds, predictionContext, predictionFights } from "./predictions-data.ts";
+import { betContext, cardPlaces, eventFightIds, predictionContext, predictionFights } from "./predictions-data.ts";
 import { BetStore } from "./bets.ts";
 import { createBetsHandler } from "./bets-http.ts";
 import { createLeaderboards } from "./leaderboards.ts";
@@ -2247,12 +2247,14 @@ export function startApi(port: number): http.Server {
         FROM fights f JOIN events e ON e.id = f.event_id
         LEFT JOIN fighters a ON a.id = f.f1_id LEFT JOIN fighters b ON b.id = f.f2_id
         WHERE f.id IN (${Array.from({ length: count }, () => "?").join(",")})`);
-  const scoringFights = (ids: string[]) => ids.length
-    ? (scoringFightsQuery(ids.length).all(...ids) as any[])
-      .map(fight => ({ ...fight,
-        f1_photo: cachedPhotoUrl(fight.f1_id, fight.f1_remote_photo),
-        f2_photo: cachedPhotoUrl(fight.f2_id, fight.f2_remote_photo) }) as ScoringFight)
-    : [];
+  const scoringFights = (ids: string[]) => {
+    if (!ids.length) return [];
+    const rows = scoringFightsQuery(ids.length).all(...ids) as any[];
+    const places = cardPlaces(rows.map(fight => fight.event_id));
+    return rows.map(fight => ({ ...fight, card_place: places.get(fight.id) ?? null,
+      f1_photo: cachedPhotoUrl(fight.f1_id, fight.f1_remote_photo),
+      f2_photo: cachedPhotoUrl(fight.f2_id, fight.f2_remote_photo) }) as ScoringFight);
+  };
   const scoreStore = new ScoringStore(path.join(DATA_DIR, "scoring.db"), scoringFights, () => dataRevision("analytics"));
   const scoring = createScoringHandler(scoreStore);
   const predictionStore = new PredictionStore(scoreStore, predictionContext, predictionFights);

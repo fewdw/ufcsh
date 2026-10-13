@@ -132,6 +132,19 @@ test("places bets at the server's price and caps the stake", t => {
   assert.match(error(() => store.place(user, { stake: 5, legs: [leg(bouts[1].id, { winner: 1 }, "-200")] })).message, /closed for betting/);
 });
 
+test("a profile lists bets in the order their bouts are fought, a parlay at its latest bout", t => {
+  const { bouts, store } = fixture(t);
+  bouts.forEach((fight, index) => { fight.card_place = index; });
+  const user = "user_1";
+  const single = (index: number) => store.place(user, { stake: 5, legs: [leg(bouts[index].id, { winner: 1 }, "-200")] });
+  single(3);
+  store.place(user, { stake: 5, legs: [leg(bouts[4].id, { winner: 1 }, "-200"), leg(bouts[1].id, { winner: 1 }, "-200")] });
+  single(0);
+  single(5);
+  const order = store.profile(store["scores"].identity(user).handle).bets.map(bet => bet.legs.map(entry => bouts.findIndex(fight => fight.id === entry.fightId)));
+  assert.deepEqual(order, [[0], [4, 1], [3], [5]]);
+});
+
 test("only the owner can remove a bet, and only while every matchup is open", t => {
   const { bouts, scores, store } = fixture(t);
   const user = "user_1";

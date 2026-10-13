@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assignPositions, assignRounds, assignSegments, cardOrder, estimatedStart, matchEventSchedule, sharesBout } from "./card-schedule.ts";
+import { assignPositions, assignRounds, assignSegments, byBoutPlace, cardOrder, estimatedStart, matchEventSchedule, sharesBout } from "./card-schedule.ts";
 import type { ScrapedEventSchedule, ScrapedSegmentBout } from "./scrape/ufccom.ts";
 
 const schedule = (slug: string, headline: string, prelims: string, main: string, early?: string): ScrapedEventSchedule => ({
@@ -168,6 +168,16 @@ test("a page that shares no bout with our card is another event's", () => {
   const fights = [{ f1_name: "Paddy Holohan", f2_name: "Louis Smolka" }, { f1_name: "Norman Parke", f2_name: "Reza Madadi" }];
   assert.equal(sharesBout(fights, [{ f1: "Louis Smolka", f2: "Paddy Holohan" }]), true);
   assert.equal(sharesBout(fights, [{ f1: "Neil Magny", f2: "Kelvin Gastelum" }, { f1: "Ricardo Lamas", f2: "Diego Sanchez" }]), false);
+});
+
+test("profiles list the newest card first, each card from its main event down", () => {
+  const bout = (id: string, event_date: string, event_id: string, card_place: number | null) => ({ id, event_date, event_id, card_place });
+  const bouts = [
+    bout("old-main", "2024-06-01", "e1", 0), bout("next-opener", "2026-11-01", "e3", 9), bout("new-co-main", "2026-10-04", "e2", 1),
+    bout("new-main", "2026-10-04", "e2", 0), bout("next-main", "2026-11-01", "e3", 0), bout("new-unplaced", "2026-10-04", "e2", null),
+  ];
+  assert.deepEqual([...bouts, undefined].sort(byBoutPlace).map(entry => entry?.id),
+    ["next-main", "next-opener", "new-main", "new-co-main", "new-unplaced", "old-main", undefined]);
 });
 
 test("cardOrder keeps a late main-card addition with the main card", () => {

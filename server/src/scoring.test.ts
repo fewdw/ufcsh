@@ -232,6 +232,19 @@ test("a profile row sets the card beside the fans' average and the judges' total
   assert.equal(store.profile(handle).cards[0].fans, null);
 });
 
+test("a profile lists its cards in the order the bouts were fought, not the order they were scored", t => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ufc-order-"));
+  const bouts = [
+    { ...fight, id: "1111111111111111", event_id: "e1", event_date: "2024-06-01", card_place: 0 },
+    { ...fight, id: "2222222222222222", event_id: "e2", event_date: "2025-03-01", card_place: 4 },
+    { ...fight, id: "3333333333333333", event_id: "e2", event_date: "2025-03-01", card_place: 0 },
+  ];
+  const store = new ScoringStore(path.join(dir, "scores.db"), ids => bouts.filter(bout => ids.includes(bout.id)));
+  t.after(() => { store.db.close(); rmSync(dir, { recursive: true, force: true }); });
+  for (const bout of [bouts[0], bouts[1], bouts[2]]) store.save(bout.id, "alice", { revision: 0, rounds });
+  assert.deepEqual(store.profile(store.identity("alice").handle).cards.map(card => card.fightId), ["3333333333333333", "2222222222222222", "1111111111111111"]);
+});
+
 test("a profile's list is worked out once, and a scorer's own save or the fight database moving replaces it", t => {
   const { store, setFight } = fixture(t);
   store.save(id, "alice", { revision: 0, rounds });

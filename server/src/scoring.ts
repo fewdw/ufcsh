@@ -2,6 +2,7 @@ import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { randomInt, randomUUID } from "node:crypto";
 import { completedScorecardRounds, parseCommunityScorecard } from "./community-scorecards.ts";
 import { fightIsComplete, fightIsUnderway, isFightDay } from "./live-state.ts";
+import { byBoutPlace } from "./card-schedule.ts";
 
 export class ScoringError extends Error {
   status: number;
@@ -12,6 +13,8 @@ export type ScoringFight = {
   scheduled_rounds: number | null; round: string | null; time: string | null;
   method: string | null; detail_json: string | null;
   community_score_json?: string | null;
+  /** Place on its card from the top, main event 0; read for profile order. */
+  card_place?: number | null;
   /** Imported round-by-round judges' cards, read when the official ones are missing. */
   judge_rounds_json?: string | null;
   /** Naming a bout a card belongs to: a scorer's profile lists fights, not ids.
@@ -582,6 +585,7 @@ export class ScoringStore {
       ORDER BY c.updated_at DESC, c.fight_id LIMIT ?`)
       .all(user, PROFILE_MAX) as { fightId: string; updatedAt: number; revision: number; roundsJson: string }[];
     const fights = new Map(this.fights(stored.map(card => card.fightId)).map(fight => [fight.id, fight]));
+    stored.sort((a, b) => byBoutPlace(fights.get(a.fightId), fights.get(b.fightId)));
     const released = this.openRoundsFor(stored.map(card => card.fightId));
     const cards = stored.flatMap((card): ProfileCard[] => {
       const fight = fights.get(card.fightId);
