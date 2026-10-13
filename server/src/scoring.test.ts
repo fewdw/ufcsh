@@ -308,6 +308,8 @@ test("a profile counts agreement over every card and lists only the ones a filte
   store.save("2222222222222222", "alice", { revision: 0, rounds });
   store.save("3333333333333333", "alice", { revision: 0, rounds: rounds.map(r => ({ ...r, f2: 10, f1: r.round === 3 ? 10 : 9 })) });
   store.save("4444444444444444", "alice", { revision: 0, rounds: rounds.slice(0, 1) });
+  // Two fans read the first bout the other way, so the fans' average does too.
+  for (const user of ["bob", "carol"]) store.save("1111111111111111", user, { revision: 0, rounds: rounds.map(r => ({ ...r, f1: 9, f2: 10 })) });
   const handle = store.identity("alice").handle;
 
   const all = store.profile(handle);
@@ -315,7 +317,9 @@ test("a profile counts agreement over every card and lists only the ones a filte
   assert.equal(all.total, 4);
   // Three judged bouts: one read the same way, two not — an even card on a
   // decision is a disagreement, since the judges named a winner.
-  assert.deepEqual(all.agreement, { decisions: 3, agreed: 1, disagreed: 2, finishes: 1 });
+  // Against the fans' average (her own card included), the first bout is the
+  // one she reads differently.
+  assert.deepEqual(all.agreement, { decisions: 3, agreed: 1, disagreed: 2, finishes: 1, fansAgreed: 2, fansDisagreed: 1 });
   assert.equal(all.cards.filter(card => card.decision).length, 3);
   // A profile with nothing but judged bouts has no finishes to hide.
   assert.equal(store.profile(handle, { query: "nothing" }).agreement.finishes, 1);
@@ -331,12 +335,15 @@ test("a profile counts agreement over every card and lists only the ones a filte
   // The tally describes the whole profile whichever slice is being read.
   assert.deepEqual(store.profile(handle, { filter: "agreed" }).agreement, all.agreement);
 
-  // Searching reads the same line the row shows: either fighter, the event or
-  // the division, in any capitalisation.
+  assert.deepEqual(store.profile(handle, { filter: "fans-disagreed" }).cards.map(c => c.fightId), ["1111111111111111"]);
+  assert.deepEqual(store.profile(handle, { filter: "fans-agreed" }).cards.map(c => c.fightId).sort(), ["2222222222222222", "3333333333333333"]);
+
+  // Searching finds either fighter, in any capitalisation, never the event or
+  // the division.
   assert.equal(store.profile(handle, { query: "anna" }).total, 4);
   assert.equal(store.profile(handle, { query: "BEA BEE" }).total, 4);
-  assert.equal(store.profile(handle, { query: "ufc 1" }).total, 4);
-  assert.equal(store.profile(handle, { query: "flywei" }).total, 4);
+  assert.equal(store.profile(handle, { query: "ufc 1" }).total, 0);
+  assert.equal(store.profile(handle, { query: "flywei" }).total, 0);
   assert.equal(store.profile(handle, { query: "nobody" }).total, 0);
   // A search narrows the list, never the tally behind the chart.
   assert.deepEqual(store.profile(handle, { query: "nobody" }).agreement, all.agreement);

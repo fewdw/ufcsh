@@ -25,7 +25,7 @@ import { useSettings, withRanking } from "../settings";
 import { BUTTON_PRIMARY, BUTTON_QUIET } from "../ui";
 import FanAvatar from "../components/FanAvatar";
 
-const FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed"];
+const FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed", "fans-agreed", "fans-disagreed"];
 /** Bouts that went to the judges are the ones a card can be read against, so
  *  the list opens on them and finishes are one checkbox away. */
 const DEFAULT_FILTER: ProfileFilter = "decisions";
@@ -291,8 +291,8 @@ function SearchBox({ value, onChange }: { value: string; onChange: (value: strin
         type="search"
         value={typed}
         onChange={event => setTyped(event.target.value.slice(0, 60))}
-        placeholder="Search fights…"
-        aria-label="Search scored fights"
+        placeholder="Search fighters…"
+        aria-label="Search scored fights by fighter"
         // Names are not words: no autocorrect, capitals or suggestions.
         autoCorrect="off"
         autoCapitalize="off"
@@ -316,8 +316,10 @@ function ScorecardFilter({ value, agreement, total, onChange }: {
   const options: { value: ProfileFilter; label: string; count: number }[] = [
     { value: "all", label: "All", count: total },
     { value: "decisions", label: "Judged", count: agreement.decisions },
-    { value: "agreed", label: "Agreed", count: agreement.agreed },
-    { value: "disagreed", label: "Disagreed", count: agreement.disagreed },
+    { value: "agreed", label: "Agreed judges", count: agreement.agreed },
+    { value: "disagreed", label: "Disagreed judges", count: agreement.disagreed },
+    { value: "fans-agreed", label: "Agreed fans", count: agreement.fansAgreed },
+    { value: "fans-disagreed", label: "Disagreed fans", count: agreement.fansDisagreed },
   ];
   const current = options.find(option => option.value === value) ?? options[0];
   // A native select is as wide as its longest option. The chip shows only the
@@ -553,7 +555,6 @@ function CardRows({ cards, mine, onRemove }: { cards: ScorerCard[]; mine: boolea
 }
 
 const SCORE_HEAD = "text-center text-[10px] font-semibold uppercase leading-none tracking-wide text-zinc-400";
-const META_PIECE = "before:inline-block before:w-3 before:text-center before:content-['·']";
 
 /** One scored fight: the two fighters with the reader's own score between
  *  them, and one line saying which bout it was. The row opens that bout's
@@ -565,7 +566,6 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
   const { settings } = useSettings();
   const warm = () => prefetch(withRanking(`/api/fights/${card.fightId}`, settings.rankingSource));
   const scored = Boolean(card.rounds.length);
-  const details = [fight.weight_class, fight.method ? formatMethod(fight.method, fight.round, fight.time) : null].filter(Boolean);
   return (
     <li className="relative">
       <Link
@@ -588,11 +588,6 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
         <p className={`mt-1 hidden truncate text-center sm:block ${LIST_META}`}>
           {fight.event_name} · {formatDateShortWithYear(fight.date)}
           {fight.weight_class ? ` · ${fight.weight_class}` : ""}
-          {card.agreement ? (
-            <span className={card.agreement === "agreed" ? "text-emerald-600" : "text-rose-600"}>
-              {" · "}{card.agreement === "agreed" ? "Agreed" : "Disagreed"}
-            </span>
-          ) : null}
           {fight.method ? ` · ${formatMethod(fight.method, fight.round, fight.time)}` : ""}
         </p>
         {card.fans || card.judges.length ? <p className={`hidden text-center tabular-nums sm:block ${LIST_META}`}>
@@ -600,8 +595,13 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
           {card.fans && card.judges.length ? " · " : ""}
           {card.judges.length ? `Judges ${card.judges.map(judge => `${judge.f1}–${judge.f2}`).join(", ")}` : ""}
         </p> : null}
-        {/* A phone reads it like a scoreboard: a line per fighter, their score
-            on this card at the end, then the fans' average and each judge's. */}
+        {/* A phone heads the row with the division and the event, then reads
+            like a scoreboard: a line per fighter, their score on this card at
+            the end, then the fans' average and each judge's. */}
+        <p className={`mb-1.5 flex items-baseline justify-between gap-3 sm:hidden ${LIST_META}`}>
+          <span className="shrink-0 font-medium text-zinc-600">{fight.weight_class ?? ""}</span>
+          <span className="min-w-0 text-right">{fight.event_name}</span>
+        </p>
         <div className="grid items-center gap-x-1.5 gap-y-1.5 sm:hidden"
           style={{ gridTemplateColumns: `auto minmax(0,1fr) repeat(${1 + (card.fans ? 1 : 0) + card.judges.length}, auto)` }}>
           {card.fans || card.judges.length ? <>
@@ -630,17 +630,9 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
             </Fragment>;
           })}
         </div>
-        {/* Each piece stays whole and a narrow phone wraps between them; the
-            dot leading a wrapped line sits in the clipped gutter. */}
-        <div className={`mt-1.5 pl-[38px] sm:hidden ${LIST_META}`}><div className="overflow-hidden">
-          <p className="-ml-3 flex flex-wrap">
-            {[fight.event_name, formatDateShortWithYear(fight.date), ...details].map((piece, at) =>
-              <span key={at} className={`${META_PIECE} ${at ? "whitespace-nowrap" : "min-w-0"}`}>{piece}</span>)}
-            {card.agreement ? <span className={`${META_PIECE} whitespace-nowrap font-medium ${card.agreement === "agreed" ? "text-emerald-600" : "text-rose-600"}`}>
-              {card.agreement === "agreed" ? "Agreed" : "Disagreed"}
-            </span> : null}
-          </p>
-        </div></div>
+        <p className={`mt-1.5 pl-[38px] sm:hidden ${LIST_META}`}>
+          {formatDateShortWithYear(fight.date)}{fight.method ? ` · ${formatMethod(fight.method, fight.round, fight.time)}` : ""}
+        </p>
       </Link>
       {mine ? <RemoveX large label={`Remove your scorecard for ${fight.f1_name} vs ${fight.f2_name}`} onClick={() => onRemove(card)} /> : null}
     </li>

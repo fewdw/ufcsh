@@ -106,6 +106,14 @@ function weighted(localAverage: number | null, localCount: number, externalAvera
   return count ? ((localAverage ?? 0) * localCount + (externalAverage ?? 0) * externalCount) / count : null;
 }
 
+/** Whether a full card on a decision named the same winner, or the same draw,
+ *  as the fans' average card. */
+function fansVerdict(decision: boolean, complete: boolean, total1: number, total2: number,
+  fans: { total1: number; total2: number } | null): "agreed" | "disagreed" | null {
+  if (!decision || !complete || !fans) return null;
+  return Math.sign(total1 - total2) === Math.sign(fans.total1 - fans.total2) ? "agreed" : "disagreed";
+}
+
 type StoredCard = { id: string; user_id: string; revision: number; updated_at: number; rounds_json: string };
 type StoredScorer = {
   user_id: string; public_id: string; created_at: number | null;
@@ -187,10 +195,11 @@ export const PROFILE_PAGE = 25;
  *  the agreement tally are bounded however many cards an account accumulates. */
 export const PROFILE_MAX = 1000;
 /** Which of a scorer's cards the list shows. `decisions` is the reader hiding
- *  bouts that ended in a finish; the other two are the halves of the agreement
- *  chart, and are decisions by definition. */
-export type ProfileFilter = "all" | "decisions" | "agreed" | "disagreed";
-export const PROFILE_FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed"];
+ *  bouts that ended in a finish; `agreed` and `disagreed` read the card against
+ *  the judges' decision, the `fans-` pair against the fans' average card. All
+ *  four are decisions by definition. */
+export type ProfileFilter = "all" | "decisions" | "agreed" | "disagreed" | "fans-agreed" | "fans-disagreed";
+export const PROFILE_FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed", "fans-agreed", "fans-disagreed"];
 /** Individual cards shown under a fight, newest first. The rest are in the
  *  aggregate above them. */
 const FIGHT_CARDS = 5;
@@ -570,9 +579,12 @@ export class ScoringStore {
       const rounds = (JSON.parse(card.roundsJson) as RoundScore[]).filter(r => r.round <= eligibility.available);
       const total1 = rounds.reduce((sum, r) => sum + r.f1 - r.deduct1, 0);
       const total2 = rounds.reduce((sum, r) => sum + r.f2 - r.deduct2, 0);
+      const verdict = cardVerdict(fight, eligibility, rounds, total1, total2);
+      const fans = this.fanAverage(fight, eligibility.available);
+      const complete = rounds.length > 0 && rounds.length === eligibility.available;
       return [{
         fightId: card.fightId, updatedAt: card.updatedAt, revision: card.revision, rounds, eligibility,
-        total1, total2, ...cardVerdict(fight, eligibility, rounds, total1, total2),
+        total1, total2, ...verdict, fans, fansAgreement: fansVerdict(verdict.decision, complete, total1, total2, fans),
         fight: {
           id: fight.id, f1_name: fight.f1_name, f2_name: fight.f2_name,
           f1_id: fight.f1_id, f2_id: fight.f2_id, f1_photo: fight.f1_photo, f2_photo: fight.f2_photo,
@@ -589,19 +601,21 @@ export class ScoringStore {
       // Bouts that ended in a finish, so a profile with none of them can drop
       // the control that hides them.
       finishes: all.filter(card => !card.decision).length,
+      fansAgreed: all.filter(card => card.fansAgreement === "agreed").length,
+      fansDisagreed: all.filter(card => card.fansAgreement === "disagreed").length,
     };
-    // The search reads the same line the row shows: both fighters, the event
-    // and the division, so what is typed is what is on screen.
+    // The search finds a fighter: either name, never the event or division.
     const matching = all.filter(card =>
-      (filter === "all" ? true : filter === "decisions" ? card.decision : card.agreement === filter)
-      && (!query || `${card.fight.f1_name} ${card.fight.f2_name} ${card.fight.event_name} ${card.fight.weight_class ?? ""}`.toLowerCase().includes(query)));
+      (filter === "all" ? true : filter === "decisions" ? card.decision
+        : filter === "fans-agreed" ? card.fansAgreement === "agreed" : filter === "fans-disagreed" ? card.fansAgreement === "disagreed"
+          : card.agreement === filter)
+      && (!query || `${card.fight.f1_name} ${card.fight.f2_name}`.toLowerCase().includes(query)));
     return {
       scorer: { ...this.identify(scorer), cards: all.length, joinedAt: scorer.created_at, commentsPublic: Boolean(scorer.comments_public) },
       agreement, filter, query, offset, pageSize: PROFILE_PAGE, total: matching.length,
-      // Only the page being read is set against the fans and the judges.
+      // Only the page being read lists the judges' cards.
       cards: matching.slice(offset, offset + PROFILE_PAGE).map(card => {
-        const fight = fights.get(card.fightId)!;
-        return { ...card, fans: this.fanAverage(fight, card.eligibility.available), judges: judgeTotals(fight) };
+        return { ...card, judges: judgeTotals(fights.get(card.fightId)!) };
       }),
     };
   }
