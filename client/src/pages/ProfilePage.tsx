@@ -600,7 +600,7 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
             the end, then the fans' average and each judge's. */}
         <p className={`mb-1.5 flex items-baseline justify-between gap-3 sm:hidden ${LIST_META}`}>
           <span className="shrink-0 font-medium text-zinc-600">{fight.weight_class ?? ""}</span>
-          <span className="min-w-0 text-right">{fight.event_name}</span>
+          <span className="min-w-0 text-balance text-right">{fight.event_name}</span>
         </p>
         <div className="grid items-center gap-x-1.5 gap-y-1.5 sm:hidden"
           style={{ gridTemplateColumns: `auto minmax(0,1fr) repeat(${1 + (card.fans ? 1 : 0) + card.judges.length}, auto)` }}>
