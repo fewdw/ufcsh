@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { dataRevision, db, getMeta, prepared, setMeta, touchMeta } from "./db.ts";
 import { hasUfcFight } from "./fighter-identity.ts";
-import { scrapeAthleteStatus, scrapeNewAthlete, scrapeNewestAthletes } from "./scrape/ufccom.ts";
+import { athleteSlug, scrapeAthleteStatus, scrapeNewAthlete, scrapeNewestAthletes } from "./scrape/ufccom.ts";
 import { articleRevision, fetchArticleByTitle, ROSTER_ARTICLE, rosterChanges, type RosterMove } from "./scrape/wikipedia.ts";
 import { givenName, log, normName } from "./util.ts";
 import { archiveRosterEvents, departureKind, storedRosterHistory, validRosterDate, type RosterHistoryEvent } from "./roster-history.ts";
@@ -154,6 +154,7 @@ function recordParts(record: string | null): [number, number, number] {
  *  has since been booked (and so has a UFCStats page) or has left the list
  *  loses it. */
 function syncSignees(signed: RosterMove[]): void {
+  const pictured = ufcSignings().filter(signing => signing.photo);
   const upsert = db.prepare(`
     INSERT INTO fighters (id, name, norm_name, nickname, wins, losses, draws, country_code, signee, birth_fetched_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
@@ -169,6 +170,11 @@ function syncSignees(signed: RosterMove[]): void {
       keep.add(id);
       // UFCStats has no page for them, so there is no birth date to fetch.
       upsert.run(id, move.name, normName(move.name), move.nickname ?? "", ...recordParts(move.record), move.country, Date.now());
+      // ufc.com's page may go by another spelling ("Roque Conceicao" for
+      // "Roque Conceição Moreira Jr."), which a search by name never finds.
+      const shown = pictured.find(signing => sameSigning(move, signing));
+      if (shown) db.prepare("UPDATE fighters SET photo_url = coalesce(photo_url, ?), photo_full_url = coalesce(photo_full_url, ?) WHERE id = ?")
+        .run(shown.photo ?? null, shown.photo_full ?? null, id);
       db.prepare("INSERT OR IGNORE INTO image_queue (fighter_id, requested_at) VALUES (?, ?)").run(id, Date.now());
     }
     for (const { id } of db.prepare("SELECT id FROM fighters WHERE signee = 1").all() as { id: string }[]) {
@@ -251,14 +257,18 @@ export function ufcDepartures(): { fighter_id: string; left_at: number }[] {
     .all(Date.now() - DEPARTURE_DAYS * 86_400_000) as { fighter_id: string; left_at: number }[];
 }
 
-/** A signing ufc.com showed us, dated the day we first saw it. */
-export type UfcSigning = { name: string; division: string | null; date: string };
+/** A signing ufc.com showed us, dated the day we first saw it, with its page's
+ *  pictures and when they were last read. Signings stored before pictures
+ *  were kept have no slug or pictures. */
+export type UfcSigning = { name: string; division: string | null; date: string;
+  slug?: string; photo?: string | null; photo_full?: string | null; read_at?: number };
 /** Every profile slug seen at the top of the newest-first list (newest last),
  *  new ones not yet reading Active with when they were last read, and the
  *  signings found. */
 type UfcSignings = { seen: string[]; pending: Record<string, number>; signed: UfcSigning[] };
 
 const PENDING_RECHECK_MS = 30 * 60_000;
+const PHOTO_RECHECK_MS = 2 * 3_600_000;
 const SEEN_KEPT = 1000;
 
 function storedUfcSignings(): UfcSignings {
@@ -301,12 +311,21 @@ export async function syncUfcSignings(readNewest = scrapeNewestAthletes, readAth
     }
     seen.add(slug);
     state.seen.push(slug);
-    state.signed.push({ name: athlete.name, division: athlete.division, date: today });
+    state.signed.push({ name: athlete.name, division: athlete.division, date: today,
+      slug, photo: athlete.headshot, photo_full: athlete.fullBody, read_at: Date.now() });
     archiveRosterEvents([{ name: athlete.name, date: today, kind: "signed", reason: null,
       source_url: `https://www.ufc.com/athlete/${slug}`, observed: true }]);
     log(`roster: ${athlete.name} signed (ufc.com)`);
   }
   const since = new Date(Date.now() - DEPARTURE_DAYS * 86_400_000).toISOString().slice(0, 10);
+  // A new profile's pictures often go up a day or two after it: one still
+  // without a headshot is read again every two hours while it is listed.
+  for (const signing of state.signed) {
+    if (signing.photo || signing.date < since || Date.now() - (signing.read_at ?? 0) < PHOTO_RECHECK_MS) continue;
+    const athlete = await readAthlete(signing.slug ?? athleteSlug(signing.name)).catch(() => null);
+    signing.read_at = Date.now();
+    if (athlete) Object.assign(signing, { photo: athlete.headshot, photo_full: athlete.fullBody });
+  }
   archiveRosterEvents(state.signed.map(signing => ({ name: signing.name, date: signing.date, kind: "signed", reason: null,
     source_url: "https://www.ufc.com/athletes/all", observed: true })));
   setMeta("ufc_signings", JSON.stringify({
@@ -315,6 +334,29 @@ export async function syncUfcSignings(readNewest = scrapeNewestAthletes, readAth
     signed: state.signed.filter(signing => signing.date >= since),
   }));
   touchMeta("ufc_signings_synced_at");
+}
+
+const SUFFIXES = new Set(["jr", "sr", "ii", "iii", "iv"]);
+const nameWords = (name: string) => normName(name).split(" ").filter(word => word && !SUFFIXES.has(word));
+const MATCH_DAYS = 60;
+
+/** Whether ufc.com's signing and Wikipedia's name the same person: the same
+ *  name, or within two months of each other and in the same division (when
+ *  both give one), the same name but for spacing ("Preston La Grange" and
+ *  "LaGrange"), or the same first name or its short form ("Tom" and
+ *  "Thomas"), with the shorter name's other words in order inside the longer ("Aieza Bertolso" and "Aieza Ramos Bertolso", "Roque Conceicao"
+ *  and "Roque Conceição Moreira Jr."). */
+export function sameSigning(move: Pick<RosterMove, "name" | "date" | "division">, signing: Pick<UfcSigning, "name" | "date" | "division">): boolean {
+  if (normName(move.name) === normName(signing.name)) return true;
+  if (move.division && signing.division && move.division !== signing.division) return false;
+  if (move.date && Math.abs(Date.parse(move.date) - Date.parse(signing.date)) > MATCH_DAYS * 86_400_000) return false;
+  const [short, long] = [nameWords(move.name), nameWords(signing.name)].sort((a, b) => a.length - b.length);
+  if (short.join("") === long.join("")) return true;
+  const [first = "", ...rest] = short, [longFirst = "", ...longRest] = long;
+  if (!rest.length || givenName(first) !== givenName(longFirst)) return false;
+  let found = 0;
+  for (const word of longRest) if (word === rest[found]) found++;
+  return found === rest.length;
 }
 
 /** Signings ufc.com showed in the last month. */

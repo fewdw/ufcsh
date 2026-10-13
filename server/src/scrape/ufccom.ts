@@ -450,10 +450,12 @@ export async function scrapeNewestAthletes(): Promise<NewestAthlete[]> {
   return athletes;
 }
 
-/** A new athlete's name, status and division, from their own page. */
-export async function scrapeNewAthlete(slug: string): Promise<{ name: string; status: AthleteStatus | null; division: string | null }> {
+export type NewAthlete = { name: string; status: AthleteStatus | null; division: string | null } & FighterImages;
+
+/** A new athlete's name, status, division and pictures, from their own page. */
+export async function scrapeNewAthlete(slug: string): Promise<NewAthlete> {
   const html = await fetchHtml(`https://www.ufc.com/athlete/${slug}`, { timeoutMs: 30000, retries: 0 });
-  return { ...parseAthleteStatus(html), division: parseAthleteDivision(html) };
+  return { ...parseAthleteStatus(html), division: parseAthleteDivision(html), ...parseAthleteImages(html) };
 }
 
 // ---------------------------------------------------------------------------
