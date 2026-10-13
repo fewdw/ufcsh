@@ -42,9 +42,21 @@ export function eventFightIds(eventId: string): string[] | undefined {
   const rows = card.all(eventId) as { id: string | null; ord: number | null; segment: string | null; card_pos: number | null }[];
   return rows.length ? cardOrder(rows).flatMap(row => row.id ? [row.id] : []) : undefined;
 }
-export function predictionFights(ids: string[]): PredictionFight[] {
+/** Each bout's place on its card from the top (main event 0), for every card
+ *  these bouts are on: a place is only known against the whole card. */
+export function cardPlaces(eventIds: string[]): Map<string, number> {
+  const places = new Map<string, number>();
+  for (const id of new Set(eventIds)) eventFightIds(id)?.forEach((fight, index) => places.set(fight, index));
+  return places;
+}
+/** `places` also reads each bout's place on its card, which costs a read of
+ *  every card involved, so only a profile's ordering asks for it. */
+export function predictionFights(ids: string[], places = false): PredictionFight[] {
   if (!ids.length) return [];
-  return prepared(`${columns} WHERE f.id IN (${ids.map(() => "?").join(",")})`).all(...ids).map(read);
+  const fights = prepared(`${columns} WHERE f.id IN (${ids.map(() => "?").join(",")})`).all(...ids).map(read);
+  if (!places) return fights;
+  const place = cardPlaces(fights.map(fight => fight.event_id));
+  return fights.map(fight => ({ ...fight, card_place: place.get(fight.id) ?? null }));
 }
 
 const moneyline = prepared("SELECT f1_close, f2_close, final FROM odds WHERE fight_id = ?");

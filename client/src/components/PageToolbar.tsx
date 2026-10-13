@@ -8,6 +8,18 @@ export default function PageToolbar({ children }: { children: ReactNode }) {
   return <header className={`${PANEL} flex flex-wrap items-center gap-2 px-2.5 py-2 sm:px-3 lg:gap-3`}>{children}</header>;
 }
 
+/** A browse list's head: its name and count, and the search and the page's own
+ *  choice (such as Signed or Cut) where it has them. Beside a choice the search
+ *  takes a line of its own on a phone and shares the line from a tablet up;
+ *  with no choice it always has the full line under the name. */
+export function ListHead({ title, count, search, choice }: { title: string; count: number; search?: ReactNode; choice?: ReactNode }) {
+  return <div className="flex flex-wrap items-center gap-2 border-b border-zinc-100 px-4 py-2 sm:px-5">
+    <h2 className="shrink-0 text-sm font-semibold text-zinc-900">{title} <span className="tabular-nums text-zinc-400">{count.toLocaleString()}</span></h2>
+    {search ? <div className={`flex min-w-0 flex-1 ${choice ? "basis-24 max-sm:order-last max-sm:basis-full" : "order-last basis-full [&>label]:max-w-none"}`}>{search}</div> : null}
+    {choice ? <div className="ml-auto shrink-0">{choice}</div> : null}
+  </div>;
+}
+
 export function ToolbarSearch({ value, onChange, label }: { value: string; onChange: (value: string) => void; label: string }) {
   return <label className="relative min-w-0 flex-1 basis-40 sm:max-w-64">
     <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
