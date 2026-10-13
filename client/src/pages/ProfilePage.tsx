@@ -621,7 +621,7 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
           {fight.weight_class ? <p className="font-medium text-zinc-600">{fight.weight_class}</p> : null}
           <p className="whitespace-nowrap" style={{ fontSize: `min(0.75rem, calc(100cqw / ${(fight.event_name.length * 0.56).toFixed(2)}))` }}>{fight.event_name}</p>
         </div>
-        <div className="mt-1 grid items-center gap-x-1.5 gap-y-1.5 sm:hidden"
+        <div className="mt-3 grid items-center gap-x-1.5 gap-y-1.5 sm:hidden"
           style={{ gridTemplateColumns: `auto minmax(0,1fr) repeat(${1 + (card.fans ? 1 : 0) + card.judges.length}, auto)` }}>
           <span className="col-span-2" />
           <span className={SCORE_HEAD}>You</span>
