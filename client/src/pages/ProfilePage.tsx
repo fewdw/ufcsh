@@ -562,6 +562,7 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
   const { settings } = useSettings();
   const warm = () => prefetch(withRanking(`/api/fights/${card.fightId}`, settings.rankingSource));
   const scored = Boolean(card.rounds.length);
+  const details = [fight.weight_class, fight.method ? formatMethod(fight.method, fight.round, fight.time) : null].filter(Boolean);
   return (
     <li className="relative">
       <Link
@@ -572,24 +573,30 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
       >
         <div className="flex items-center gap-2">
           <Avatar src={fight.f1_photo} name={fight.f1_name} size="sm" outcome={fight.f1_outcome as "win" | "loss" | null} />
-          <p className="min-w-0 flex-1 truncate text-right text-sm font-semibold text-f1-ink">{fight.f1_name}</p>
+          <p className="min-w-0 flex-1 text-balance text-right text-sm font-semibold leading-tight text-f1-ink [overflow-wrap:anywhere] sm:truncate">{fight.f1_name}</p>
           <p className="shrink-0 text-base font-bold tabular-nums">
             <span className={winner === 1 ? "text-f1-ink" : "text-zinc-400"}>{scored ? card.total1 : "—"}</span>
             <span className="mx-1 text-zinc-300">–</span>
             <span className={winner === 2 ? "text-f2-ink" : "text-zinc-400"}>{scored ? card.total2 : "—"}</span>
           </p>
-          <p className="min-w-0 flex-1 truncate text-sm font-semibold text-f2-ink">{fight.f2_name}</p>
+          <p className="min-w-0 flex-1 text-balance text-sm font-semibold leading-tight text-f2-ink [overflow-wrap:anywhere] sm:truncate">{fight.f2_name}</p>
           <Avatar src={fight.f2_photo} name={fight.f2_name} size="sm" outcome={fight.f2_outcome as "win" | "loss" | null} />
         </div>
-        <p className={`mt-1 truncate text-center ${LIST_META}`}>
-          {fight.event_name} · {formatDateShortWithYear(fight.date)}
-          {fight.weight_class ? ` · ${fight.weight_class}` : ""}
-          {card.agreement ? (
-            <span className={card.agreement === "agreed" ? "text-emerald-600" : "text-rose-600"}>
-              {" · "}{card.agreement === "agreed" ? "Agreed" : "Disagreed"}
+        {/* A phone gives the bout and the result a line each, wrapped
+            rather than cut; wider screens run them on one line. */}
+        <p className={`mt-1 text-balance text-center ${LIST_META} sm:truncate`}>
+          <span className="block sm:inline">{fight.event_name} · {formatDateShortWithYear(fight.date)}</span>
+          {details.length || card.agreement ? <>
+            <span className="hidden sm:inline"> · </span>
+            <span className="block sm:inline">
+              {details.join(" · ")}
+              {card.agreement ? (
+                <span className={card.agreement === "agreed" ? "text-emerald-600" : "text-rose-600"}>
+                  {details.length ? " · " : ""}{card.agreement === "agreed" ? "Agreed" : "Disagreed"}
+                </span>
+              ) : null}
             </span>
-          ) : null}
-          {fight.method ? ` · ${formatMethod(fight.method, fight.round, fight.time)}` : ""}
+          </> : null}
         </p>
       </Link>
       {mine ? <RemoveX large label={`Remove your scorecard for ${fight.f1_name} vs ${fight.f2_name}`} onClick={() => onRemove(card)} /> : null}
