@@ -1,7 +1,7 @@
 import { useAuth } from "@clerk/react";
 import { Check, ChevronDown, Flag, ImageIcon, Info, LogOut, Pencil, Search, Settings, SquareTerminal, X } from "lucide-react";
 import { isDevSite, useDevStats } from "../devStats";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiCache, prefetch, useApi } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
@@ -608,15 +608,14 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
             </div>;
           })}
         </div>
+        {/* Each piece stays whole; a narrow phone wraps between them. */}
         <div className={`mt-1.5 pl-[38px] sm:hidden ${LIST_META}`}>
-          <p>{fight.event_name} · {formatDateShortWithYear(fight.date)}</p>
+          <p>{fight.event_name} <span className="whitespace-nowrap">· {formatDateShortWithYear(fight.date)}</span></p>
           {details.length || card.agreement ? <p>
-            {details.join(" · ")}
-            {card.agreement ? (
-              <span className={`font-medium ${card.agreement === "agreed" ? "text-emerald-600" : "text-rose-600"}`}>
-                {details.length ? " · " : ""}{card.agreement === "agreed" ? "Agreed" : "Disagreed"}
-              </span>
-            ) : null}
+            {details.map((detail, at) => <Fragment key={at}>{at ? " " : ""}<span className="whitespace-nowrap">{at ? "· " : ""}{detail}</span></Fragment>)}
+            {card.agreement ? <>{" "}<span className={`whitespace-nowrap font-medium ${card.agreement === "agreed" ? "text-emerald-600" : "text-rose-600"}`}>
+              {details.length ? "· " : ""}{card.agreement === "agreed" ? "Agreed" : "Disagreed"}
+            </span></> : null}
           </p> : null}
         </div>
       </Link>
