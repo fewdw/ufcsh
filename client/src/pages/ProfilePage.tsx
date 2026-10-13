@@ -313,14 +313,15 @@ function ScorecardFilter({ value, agreement, total, onChange }: {
   total: number;
   onChange: (value: ProfileFilter) => void;
 }) {
-  // `chip` names the choice on its own; in the menu its group says against whom.
-  const options: { value: ProfileFilter; label: string; chip: string; count: number; group?: "Judges" | "Fans" }[] = [
-    { value: "decisions", label: "Judged", chip: "Judged", count: agreement.decisions },
-    { value: "agreed", label: "You agreed", chip: "Agreed with judges", count: agreement.agreed, group: "Judges" },
-    { value: "disagreed", label: "You disagreed", chip: "Disagreed with judges", count: agreement.disagreed, group: "Judges" },
-    { value: "fans-agreed", label: "You agreed", chip: "Agreed with fans", count: agreement.fansAgreed, group: "Fans" },
-    { value: "fans-disagreed", label: "You disagreed", chip: "Disagreed with fans", count: agreement.fansDisagreed, group: "Fans" },
-    { value: "all", label: "All fights", chip: "All", count: total },
+  // In the menu a group says against whom; the chip, beside the search box,
+  // says it with a tick or a cross before the group's name.
+  const options: { value: ProfileFilter; label: string; count: number; group?: "Judges" | "Fans"; agreed?: boolean }[] = [
+    { value: "decisions", label: "Judged", count: agreement.decisions },
+    { value: "agreed", label: "You agreed", count: agreement.agreed, group: "Judges", agreed: true },
+    { value: "disagreed", label: "You disagreed", count: agreement.disagreed, group: "Judges", agreed: false },
+    { value: "fans-agreed", label: "You agreed", count: agreement.fansAgreed, group: "Fans", agreed: true },
+    { value: "fans-disagreed", label: "You disagreed", count: agreement.fansDisagreed, group: "Fans", agreed: false },
+    { value: "all", label: "All fights", count: total },
   ];
   const current = options.find(option => option.value === value) ?? options[0];
   const item = (option: (typeof options)[number]) =>
@@ -329,7 +330,10 @@ function ScorecardFilter({ value, agreement, total, onChange }: {
   // current one, with the select laid invisibly over it to open the picker.
   return (
     <label className="relative flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 pl-3.5 pr-3 text-[13px] font-medium text-zinc-700 transition-colors focus-within:border-zinc-400 hover:border-zinc-300 sm:h-8 sm:text-xs">
-      <span className="whitespace-nowrap">{current.chip} <span className="tabular-nums text-zinc-400">{current.count.toLocaleString()}</span></span>
+      {current.group ? (current.agreed
+        ? <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
+        : <X className="h-3.5 w-3.5 text-rose-600" aria-hidden="true" />) : null}
+      <span className="whitespace-nowrap">{current.group ?? current.label} <span className="tabular-nums text-zinc-400">{current.count.toLocaleString()}</span></span>
       <ChevronDown className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
       <select
         value={value}
