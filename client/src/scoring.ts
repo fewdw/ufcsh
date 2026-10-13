@@ -8,9 +8,6 @@ export type RoundScore = { round: number; f1: number; f2: number; deduct1: numbe
 export type ScorerIdentity = { publicId: string; handle: string; username: string | null; displayName: string; imageUrl: string | null };
 export type MyScorecard = { revision: number; rounds: RoundScore[]; updatedAt: number | null; scorer: ScorerIdentity | null };
 export type ScoreEligibility = { state: "completed" | "live" | "waiting"; scheduled: number; available: number; reason: string | null };
-/** One fan's card under a fight: the totals only, since the rounds behind them
- *  are on that fan's profile. */
-export type FanCard = { scorer: ScorerIdentity; updatedAt: number; rounds: number; total1: number; total2: number };
 export type ScoreSummary = {
   eligibility: ScoreEligibility;
   rounds: { round: number; scorers: number; avg1: number; avg2: number; deduct1: number; deduct2: number; total1: number; total2: number }[];
@@ -20,7 +17,6 @@ export type ScoreSummary = {
     localCards: number; importedCards: number;
     source: { name: string; url: string } | null;
   };
-  cards: FanCard[];
 };
 
 /** A public scorer profile: every fight they have a card for, newest first.

@@ -97,7 +97,7 @@ test("external community aggregates are weighted with real local cards without i
   assert.equal(result.totals.scorers, 4);
   assert.equal(result.totals.completeCards, 4);
   assert.equal(result.totals.avg1, 28.5);
-  assert.equal(result.cards.length, 0, "an aggregate is not expanded into fake users");
+  assert.equal(result.cards, undefined, "an aggregate is not expanded into fake users");
 
   store.save(id, "alice", { revision: 0, rounds });
   result = store.summary(id) as any;
@@ -110,7 +110,6 @@ test("external community aggregates are weighted with real local cards without i
   assert.equal(result.rounds[0].total2, 9.4);
   assert.equal(result.totals.distributionCards, 1);
   assert.deepEqual([result.totals.f1, result.totals.draws, result.totals.f2], [1, 0, 0]);
-  assert.equal(result.cards.length, 1);
 });
 
 test("incompatible source totals and rounds cannot contaminate real local cards", t => {
@@ -192,18 +191,15 @@ test("public profiles list a scorer's own cards, newest first, and never name th
   assert.equal(profile.cards[0].fight.f1_photo, "/api/images/f1");
   assert.equal(profile.cards[0].fight.event_name, "UFC 1");
   assert.ok(!JSON.stringify(profile).includes("alice"));
-  // The individual cards behind a fight's average carry the same identities,
-  // so a reader can open any of them.
+  // A fight's average names nobody: no scorer, no account.
   const summary = store.summary(id) as any;
-  assert.equal(summary.cards.length, 2);
-  assert.deepEqual(summary.cards.map((c: any) => c.scorer.publicId).sort(), [alice.publicId, store.mine(id, "bob").scorer!.publicId].sort());
-  assert.ok(summary.cards.every((c: any) => c.scorer.handle === c.scorer.username.toLowerCase()));
-  assert.ok(!JSON.stringify(summary).includes("alice") && !JSON.stringify(summary).includes("bob"));
+  assert.equal(summary.totals.localCards, 2);
+  assert.ok(![alice.publicId, alice.username!, "alice", "bob"].some(name => JSON.stringify(summary).includes(name)));
 
   // A removed card leaves a tombstone behind; a profile lists scored fights.
   store.save(id, "bob", { revision: 1 }, true);
   assert.equal(store.profile(store.mine(id, "bob").scorer!.handle).cards.length, 0);
-  assert.equal((store.summary(id) as any).cards.length, 1);
+  assert.equal((store.summary(id) as any).totals.localCards, 1);
 
   // Rounds that stopped being scorable are dropped on a profile exactly as
   // they are on the fight page.
@@ -263,20 +259,6 @@ test("a profile's list is worked out once, and a scorer's own save or the fight 
   // So does a change to the bout.
   setFight({ ...fight, weight_class: "Bantamweight" });
   assert.equal(reading(() => assert.equal(store.profile(handle).cards[0].fight.weight_class, "Bantamweight")), 1);
-});
-
-test("a fight exposes at most its five newest ufc.sh scorecards", t => {
-  const { store } = fixture(t);
-  const handles: string[] = [];
-  for (let index = 0; index < 6; index++) {
-    const user = `reader${index}`;
-    store.save(id, user, { revision: 0, rounds });
-    store.db.prepare("UPDATE scorecards SET updated_at = ? WHERE fight_id = ? AND user_id = ?").run(1_000 + index, id, user);
-    handles.push(store.identity(user).handle);
-  }
-  const cards = (store.summary(id) as any).cards;
-  assert.equal(cards.length, 5);
-  assert.deepEqual(cards.map((card: any) => card.scorer.handle), handles.slice(1).reverse());
 });
 
 test("usernames are unique whatever their capitalisation, address the profile, and keep the reader's own", t => {

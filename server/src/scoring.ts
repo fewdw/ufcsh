@@ -221,9 +221,6 @@ export const PROFILE_FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "
 export const PROFILE_LIST_TTL = 60_000;
 /** Scorers whose lists are kept at once; the least recently read go first. */
 const PROFILE_LISTS = 256;
-/** Individual cards shown under a fight, newest first. The rest are in the
- *  aggregate above them. */
-const FIGHT_CARDS = 5;
 
 /** Separate WAL database: fan writes never contend with scrapers or invalidate analytics. */
 export class ScoringStore {
@@ -462,7 +459,7 @@ export class ScoringStore {
       localCards: Number(localTotals.scorers), importedCards,
       source: imported ? { name: imported.source, url: imported.sourceUrl } : null,
     };
-    return { eligibility, rounds, totals, cards: this.fightCards(id, max) };
+    return { eligibility, rounds, totals };
   }
   /** The fans' average final card, over complete cards only, exactly as the
    *  fight page's total: what a profile row sets the scorer's own card beside. */
@@ -485,20 +482,6 @@ export class ScoringStore {
     const value = parseCommunityScorecard(this.fight(id)?.community_score_json, max);
     return value ? { source: String(value.source ?? "External"), sourceUrl: String(value.sourceUrl ?? ""),
       cards: value.cards, avg1: value.avg1, avg2: value.avg2, rounds: value.rounds } : null;
-  }
-  /** The individual cards behind the average, newest first, each one a link to
-   *  the scorer's profile. Aliases only: no account ever appears here. */
-  private fightCards(id: string, max: number) {
-    return this.stmt(`SELECT s.public_id, s.username, s.username_key, s.image_url, c.updated_at AS updatedAt,
-      COUNT(v.round) AS rounds, SUM(v.f1 - v.deduct1) AS total1, SUM(v.f2 - v.deduct2) AS total2
-      FROM scorecards c JOIN scorers s ON s.user_id = c.user_id
-      JOIN scores v ON v.card_id = c.id AND v.round <= ?
-      WHERE c.fight_id = ? GROUP BY c.id ORDER BY c.updated_at DESC, c.rowid DESC LIMIT ?`)
-      .all(max, id, FIGHT_CARDS)
-      .map((row: any) => ({
-        scorer: this.identify(row as StoredScorer),
-        updatedAt: row.updatedAt, rounds: row.rounds, total1: row.total1, total2: row.total2,
-      }));
   }
   /** The scorer's own identity, minted on first use so that a reader who has
    *  not saved a card yet still has a profile to open and share. */
