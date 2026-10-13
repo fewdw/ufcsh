@@ -342,10 +342,10 @@ function ScorecardFilter({ value, agreement, total, onChange }: {
         className="absolute inset-0 cursor-pointer opacity-0"
       >
         {item(options[0])}
+        {item(options[options.length - 1])}
         {(["Judges", "Fans"] as const).map(group => <optgroup key={group} label={group}>
           {options.filter(option => option.group === group).map(item)}
         </optgroup>)}
-        {item(options[options.length - 1])}
       </select>
     </label>
   );
