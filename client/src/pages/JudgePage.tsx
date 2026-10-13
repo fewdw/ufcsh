@@ -156,7 +156,7 @@ function CardRow({ row, judge, against }: { row: Row; judge: string; against: Ag
       <p className="truncate text-xs leading-5 text-zinc-500">{row.event_name}</p>
       <div className="mt-2.5 grid items-center gap-x-1.5 gap-y-1.5"
         style={{ gridTemplateColumns: `auto minmax(0,1fr) auto${others ? ` repeat(${others}, auto)` : ""}${row.fans ? " auto" : ""}` }}>
-        <span aria-hidden="true" className={`-mx-1 -my-1.5 rounded-lg ring-1 ${box}`} style={{ gridColumn: 3, gridRow: "1 / span 3" }} />
+        <span aria-hidden="true" className={`-mx-1 -my-1.5 self-stretch rounded-lg ring-1 ${box}`} style={{ gridColumn: 3, gridRow: "1 / span 3" }} />
         <span className={`${HEAD} relative px-1 text-zinc-600`} style={place(3, 1)}>{lastName(judge)}</span>
         {others ? <span className={`${HEAD} pl-2`} style={{ gridColumn: `4 / span ${others}`, gridRow: 1 }}>Others</span> : null}
         {row.fans ? <span className={`${HEAD} pl-2`} style={place(fansAt, 1)} title={`Average of ${row.fans.cards.toLocaleString()} fan cards`}>Fans</span> : null}
