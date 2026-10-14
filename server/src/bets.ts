@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { fightIsComplete } from "./live-state.ts";
-import { predictionWindow, type PredictionContext, type PredictionFight } from "./predictions.ts";
+import { fightLock, type PredictionContext, type PredictionFight } from "./predictions.ts";
 import { ScoringError, type ScoringStore } from "./scoring.ts";
 
 /** What a leg needs to happen in its fight; the same shape the slip builds. */
@@ -235,19 +235,13 @@ export class BetStore {
   }
   /** Bets close on the same clock as predictions, so no one bets on a bout already walking out. */
   private open(context: BetContext): string | null {
-    const window = predictionWindow({ ...context, eventOpen: undefined }, this.now());
-    const locked = this.db.prepare("SELECT 1 FROM prediction_locks WHERE fight_id = ?").get(context.fight.id);
-    if (!window.open && !locked) this.db.prepare("INSERT OR IGNORE INTO prediction_locks VALUES (?, ?)").run(context.fight.id, this.now());
-    return window.open && !locked ? null : fightIsComplete(context.fight) ? "has finished" : "is closed for betting";
+    return fightLock(this.db, context, this.now()).open ? null : fightIsComplete(context.fight) ? "has finished" : "is closed for betting";
   }
   /** A bet can be taken back only while every matchup on it still accepts bets. */
   private removable(legs: StoredLeg[]): boolean {
     return legs.every(leg => {
       const context = this.context(leg.fightId);
-      if (!context) return false;
-      const window = predictionWindow({ ...context, eventOpen: undefined }, this.now());
-      const locked = this.db.prepare("SELECT 1 FROM prediction_locks WHERE fight_id = ?").get(leg.fightId);
-      return window.open && !locked;
+      return !!context && fightLock(this.db, context, this.now()).open;
     });
   }
   remove(user: string, id: string): void {
