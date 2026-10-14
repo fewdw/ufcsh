@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useApi, type AwardEntry, type AwardPerson, type AwardsDirectory, type LocationDirectory, type OfficialsDirectory, type VenueDirectory } from "../api";
 import { searchList } from "../search";
+import { formatMethod } from "../format";
 import { useRouteScrollRestoration } from "../navigationState";
 import { PAGE, FULL_PAGE_BODY } from "../research";
 import PageToolbar, { FilterSelect, ToolbarSearch } from "../components/PageToolbar";
@@ -282,7 +283,7 @@ export function LocationsPage() {
   );
 }
 
-const awardText = (award: AwardEntry) => [award.period, award.winner.name, award.opponent?.name, award.org, award.event?.name, award.note].filter(Boolean).join(" ");
+const awardText = (award: AwardEntry) => [award.period, award.winner.name, award.opponent?.name, award.org, award.event?.name].filter(Boolean).join(" ");
 
 function AwardName({ person }: { person: AwardPerson }) {
   return person.id ? <Link to={`/fighters/${person.id}`} className="hover:underline">{person.name}</Link> : <>{person.name}</>;
@@ -292,10 +293,10 @@ function AwardName({ person }: { person: AwardPerson }) {
  *  it was against and where. Fighters and bouts on record open their pages. */
 function AwardRow({ award, shared }: { award: AwardEntry; shared: boolean }) {
   const where = award.event ? (award.fight_id ? <Link to={`/fights/${award.fight_id}`} className="hover:text-zinc-700 hover:underline">{award.event.name}</Link> : award.event.name) : null;
-  const detail = [award.title, award.note, award.result].filter(Boolean).join(" · ");
+  const detail = formatMethod(award.method, award.round, null);
   return (
     <li className="flex items-baseline gap-3 border-b border-zinc-100 px-4 py-2 last:border-b-0 sm:px-5">
-      <span className="w-12 shrink-0 text-[11px] tabular-nums text-zinc-400">{award.period}</span>
+      <span className="w-8 shrink-0 text-[11px] tabular-nums text-zinc-400">{award.period}</span>
       <span className="min-w-0 flex-1">
         <span className="block text-[13px] font-medium text-zinc-900">
           <AwardName person={award.winner} />
@@ -313,7 +314,7 @@ export function AwardsPage() {
   const { data, error, retry } = useApi<AwardsDirectory>("/api/awards");
   const [query, setQuery] = useState("");
   const scroll = useRouteScrollRestoration<HTMLDivElement>("awards", Boolean(data));
-  useSeo({ title: "MMA Awards: Fighter, Fight & Knockout of the Year", description: "Every World MMA Awards winner since 2008: Fighter of the Year, Fight of the Year, Knockout, Submission, Comeback and Upset of the Year.", path: "/awards" });
+  useSeo({ title: "MMA Awards: Fighter, Fight & Knockout of the Year", description: "Sherdog's year-end awards since 2008: Fighter, Breakthrough and Comeback Fighter of the Year, and Fight, Knockout, Submission and Upset of the Year.", path: "/awards" });
   // Awards for a year are a name a row; awards for a bout need the width.
   const groups = useMemo(() => [false, true].map((bouts) => (data?.categories ?? [])
     .filter((category) => category.awards.some((award) => award.opponent) === bouts)
@@ -332,12 +333,11 @@ export function AwardsPage() {
           </div>
         </PageToolbar>
         {groups.map((categories, index) => categories.length ? (
-          <div key={index} className={`grid items-start gap-2 sm:gap-3 ${index ? "lg:grid-cols-2 2xl:grid-cols-3" : "sm:grid-cols-2 xl:grid-cols-4"}`}>
+          <div key={index} className={`grid items-start gap-2 sm:gap-3 ${index ? "lg:grid-cols-2 2xl:grid-cols-4" : "sm:grid-cols-3"}`}>
             {categories.map((category) => (
               <section key={category.id} aria-label={category.label} className={`${PANEL} overflow-hidden`}>
                 <div className="border-b border-zinc-100 px-4 py-2.5 sm:px-5 sm:py-3">
                   <h2 className="text-sm font-semibold text-zinc-900">{category.label}</h2>
-                  {category.note ? <p className="mt-0.5 text-[11px] text-zinc-400">{category.note}</p> : null}
                 </div>
                 <ul>{category.awards.map((award) => <AwardRow key={award.period} award={award} shared={category.shared} />)}</ul>
               </section>
@@ -346,7 +346,7 @@ export function AwardsPage() {
         ) : null)}
         {groups.every((categories) => !categories.length) ? <p className={`${PANEL} px-5 py-8 text-center text-sm text-zinc-500`}>No awards match this search.</p> : null}
         <p className="px-1 text-[11px] text-zinc-400">
-          <a href={data.source.url} target="_blank" rel="noreferrer" className="underline hover:text-zinc-600">{data.source.name}</a>, voted by fans and presented by Fighters Only since 2008. Since 2019 the awards honour a voting window, not a calendar year: 2019-20 covers January 2019 to June 2020, and each one since runs July to June. A promotion in brackets marks an award won outside the UFC.
+          <a href={data.source.url} target="_blank" rel="noreferrer" className="underline hover:text-zinc-600">{data.source.name}</a>, voted by Sherdog's staff each December for that calendar year. A promotion in brackets marks an award won outside the UFC.
         </p>
       </div>
     </div>

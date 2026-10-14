@@ -11,23 +11,22 @@ import { AWARDS, AWARDS_SOURCE, type AwardRow } from "./awards-data.ts";
 interface Person { name: string; id: string | null }
 interface Award {
   period: string;
-  /** The award's name that year, when it differed from the category's. */
-  title: string | null;
   winner: Person;
   opponent: Person | null;
   /** The promotion, when the award was won outside the UFC. */
   org: string | null;
-  note: string | null;
-  result: string | null;
+  /** How a bout on record ended. */
+  method: string | null;
+  round: string | null;
   event: { name: string; id: string | null } | null;
   fight_id: string | null;
 }
-export interface FighterAward { category: string; label: string; period: string; opponent: string | null; org: string | null; note: string | null; fight_id: string | null }
+export interface FighterAward { category: string; label: string; period: string; opponent: string | null; org: string | null; fight_id: string | null }
 export interface FightAward { category: string; label: string; period: string }
 interface AwardMiss { category: string; row: AwardRow; missing: string }
 
 interface Resolved {
-  directory: { source: typeof AWARDS_SOURCE; categories: { id: string; label: string; shared: boolean; note: string | null; awards: Award[] }[] };
+  directory: { source: typeof AWARDS_SOURCE; categories: { id: string; label: string; shared: boolean; awards: Award[] }[] };
   fighters: Map<string, FighterAward[]>;
   fights: Map<string, FightAward[]>;
   misses: AwardMiss[];
@@ -41,7 +40,7 @@ function resolved(): Resolved {
   if (hit) return hit;
   // Only a fighter with a UFC bout has a profile to open.
   const named = prepared(`SELECT fr.id, fr.name FROM fighters fr WHERE fr.norm_name = ? AND ${ufcFightExistsSql("fr.id", "f")}`);
-  const bout = prepared(`SELECT f.id, e.id AS event_id, e.name AS event_name FROM fights f JOIN events e ON e.id = f.event_id
+  const bout = prepared(`SELECT f.id, f.method, f.round, e.id AS event_id, e.name AS event_name FROM fights f JOIN events e ON e.id = f.event_id
     WHERE e.date = ?1 AND ((f.f1_id = ?2 AND f.f2_id = ?3) OR (f.f1_id = ?3 AND f.f2_id = ?2))`);
   const person = (name: string): Person => {
     const found = named.all(normName(name)) as { id: string; name: string }[];
@@ -53,24 +52,23 @@ function resolved(): Resolved {
     const awards = category.rows.map((row): Award => {
       const winner = person(row.winner);
       const opponent = row.opponent ? person(row.opponent) : null;
-      const fights = row.date && winner.id && opponent?.id ? bout.all(row.date, winner.id, opponent.id) as { id: string; event_id: string; event_name: string }[] : [];
+      const fights = row.date && winner.id && opponent?.id ? bout.all(row.date, winner.id, opponent.id) as { id: string; method: string | null; round: string | null; event_id: string; event_name: string }[] : [];
       const fight = fights.length === 1 ? fights[0] : null;
       // A UFC award names people and a bout the archive holds.
-      const missing = row.org ? null : !winner.id ? row.winner : row.opponent && !opponent?.id ? row.opponent : row.date && !fight ? `${row.event} (${row.date})` : null;
+      const missing = row.org ? null : !winner.id ? row.winner : row.opponent && !opponent?.id ? row.opponent : row.date && !fight ? `bout on ${row.date}` : null;
       if (missing) out.misses.push({ category: category.label, row, missing });
-      const label = row.title ?? category.label;
-      const shown = { category: category.id, label, period: row.period };
-      const mine = { ...shown, org: row.org ?? null, note: row.note ?? null, fight_id: fight?.id ?? null };
+      const shown = { category: category.id, label: category.label, period: row.period };
+      const mine = { ...shown, org: row.org ?? null, fight_id: fight?.id ?? null };
       credit(winner.id, { ...mine, opponent: opponent?.name ?? null });
       if (category.shared && opponent) credit(opponent.id, { ...mine, opponent: winner.name });
       if (fight) out.fights.set(fight.id, [...out.fights.get(fight.id) ?? [], shown]);
       return {
-        period: row.period, title: row.title ?? null, winner, opponent, org: row.org ?? null, note: row.note ?? null, result: row.result ?? null,
+        period: row.period, winner, opponent, org: row.org ?? null, method: fight?.method ?? null, round: fight?.round ?? null,
         event: fight ? { name: fight.event_name, id: fight.event_id } : row.event ? { name: row.event, id: null } : null,
         fight_id: fight?.id ?? null,
       };
     });
-    out.directory.categories.push({ id: category.id, label: category.label, shared: !!category.shared, note: category.note ?? null, awards });
+    out.directory.categories.push({ id: category.id, label: category.label, shared: !!category.shared, awards });
   }
   // A profile reads newest first across categories.
   for (const list of out.fighters.values()) list.sort((a, b) => b.period.localeCompare(a.period));

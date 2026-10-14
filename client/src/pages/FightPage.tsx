@@ -993,7 +993,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 {fight.awards?.length ? (
                   <div className="-mt-2 flex flex-wrap justify-center gap-1 pb-4">
                     {fight.awards.map((award) => (
-                      <Link key={award.category} to="/awards" title="World MMA Awards" className={BONUS_TAG.replace("cursor-default", "transition hover:bg-amber-300")}>{award.label} {award.period}</Link>
+                      <Link key={award.category} to="/awards" title="Sherdog Year-End Awards" className={BONUS_TAG.replace("cursor-default", "transition hover:bg-amber-300")}>{award.label} {award.period}</Link>
                     ))}
                   </div>
                 ) : null}

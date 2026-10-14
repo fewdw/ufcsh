@@ -203,7 +203,7 @@ function EnteringRecords({
  *  the load at card width, where it is the only line marking where one ends. */
 const BOUT_LIST = "@container divide-y divide-zinc-100 pb-2 @3xl:divide-zinc-50";
 
-/** Yearly awards (World MMA Awards), newest first. One won in a bout on
+/** Yearly awards (Sherdog Year-End Awards), newest first. One won in a bout on
  *  record opens that matchup; one won elsewhere names the promotion. */
 function FighterAwards({ awards }: { awards: FighterAward[] }) {
   return (
@@ -214,10 +214,10 @@ function FighterAwards({ awards }: { awards: FighterAward[] }) {
       </div>
       <ul className="mt-1.5 grid gap-x-4 gap-y-1 @[40rem]:grid-cols-2">
         {awards.map((award) => {
-          const against = award.opponent ? `vs. ${award.opponent}` : award.note;
+          const against = award.opponent ? `vs. ${award.opponent}` : null;
           return (
             <li key={`${award.category}-${award.period}`} className="flex min-w-0 items-baseline gap-2">
-              <span className="w-12 shrink-0 text-[11px] tabular-nums text-zinc-400">{award.period}</span>
+              <span className="w-8 shrink-0 text-[11px] tabular-nums text-zinc-400">{award.period}</span>
               <span className="min-w-0 text-[13px] font-medium text-zinc-800">
                 {award.label}
                 {against || award.org ? <span className="text-[11px] font-normal text-zinc-400">

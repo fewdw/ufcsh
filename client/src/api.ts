@@ -796,27 +796,26 @@ export type LocationDirectory = {
   locations: { slug: string; name: string; city: string; state: string | null; country: string | null; events: number; upcoming: number; last: string | null }[];
 };
 
-/** A yearly award (World MMA Awards): `id` opens a profile, `org` names the
- *  promotion when the award was won outside the UFC. */
+/** A yearly award (Sherdog Year-End Awards): `id` opens a profile, `org`
+ *  names the promotion when the award was won outside the UFC. */
 export type AwardPerson = { name: string; id: string | null };
 export type AwardEntry = {
   period: string;
-  /** The award's name that year, when it differed from the category's. */
-  title: string | null;
   winner: AwardPerson;
   opponent: AwardPerson | null;
   org: string | null;
-  note: string | null;
-  result: string | null;
+  /** How a bout on record ended. */
+  method: string | null;
+  round: string | null;
   event: { name: string; id: string | null } | null;
   fight_id: string | null;
 };
 export type AwardsDirectory = {
   source: { name: string; url: string };
   /** `shared` honours both fighters of the bout. */
-  categories: { id: string; label: string; shared: boolean; note: string | null; awards: AwardEntry[] }[];
+  categories: { id: string; label: string; shared: boolean; awards: AwardEntry[] }[];
 };
-export type FighterAward = { category: string; label: string; period: string; opponent: string | null; org: string | null; note: string | null; fight_id: string | null };
+export type FighterAward = { category: string; label: string; period: string; opponent: string | null; org: string | null; fight_id: string | null };
 
 export type VenueDirectory = {
   venues: { slug: string; name: string; former_names: string[]; city: string | null; state: string | null; country: string | null; events: number; upcoming: number; last: string | null }[];
