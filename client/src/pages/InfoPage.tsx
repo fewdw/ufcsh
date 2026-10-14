@@ -92,7 +92,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-14">October 14, 2026</time></p>
             <ul>
-              <li>Site updates now switch over only after the new version is confirmed reachable, so the site stays up.</li>
+              <li>Fighter photos load about ten times lighter and appear whole, never drawn top to bottom.</li>
+              <li>Browse pages fit every screen size.</li>
+              <li>Backups keep a fixed history, so the server's disk never fills up.</li>
             </ul>
           </Section>
         </div>
