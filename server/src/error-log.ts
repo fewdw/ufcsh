@@ -100,7 +100,11 @@ export class ErrorLog {
       since,
       serverErrors: read("status >= 500", "last_at DESC"),
       notFound: read("status = 404", "from_site DESC, count DESC"),
-      totals: { serverErrors: total("status >= 500"), notFound: total("status = 404") },
+      totals: {
+        serverErrors: total("status >= 500"), notFound: total("status = 404"),
+        /** Not-found hits that followed a link on this site: broken links, not probes. */
+        notFoundFromSite: Number((this.db.prepare("SELECT COALESCE(SUM(from_site), 0) AS n FROM http_errors WHERE last_at >= ? AND status = 404").get(since) as { n: number }).n),
+      },
     };
   }
 }
