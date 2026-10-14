@@ -322,11 +322,19 @@ export class BetStore {
     if (!scorer) throw new ScoringError(404, "Profile not found.");
     const rows = this.db.prepare("SELECT * FROM bets WHERE user_id = ? ORDER BY placed_at DESC, id").all(scorer.userId) as StoredBet[];
     const fights = this.fightsFor(rows, true);
-    // A parlay sits where its latest bout does.
-    const latest = new Map(rows.map(row => [row.id, (JSON.parse(row.legs_json) as StoredLeg[])
-      .map(leg => fights.get(leg.fightId)).sort(byBoutPlace)[0]]));
-    rows.sort((a, b) => byBoutPlace(latest.get(a.id), latest.get(b.id)));
-    const bets = rows.map(row => this.present(row, fights));
+    // Bouts in the order they are fought; one no longer on record goes last.
+    const fought = (a: PredictionFight | undefined, b: PredictionFight | undefined) => a && b ? byBoutPlace(b, a) : byBoutPlace(a, b);
+    // Open bets lead, soonest first, each placed by the next bout it is waiting
+    // on; then settled ones, the latest decided first.
+    const listed = rows.map(row => {
+      const bet = this.present(row, fights);
+      bet.legs.sort((a, b) => fought(fights.get(a.fightId), fights.get(b.fightId)));
+      const open = bet.state === "pending";
+      const leg = open ? bet.legs.find(entry => entry.state === "pending") : bet.legs.findLast(entry => entry.state !== "pending");
+      return { bet, open, bout: fights.get((leg ?? bet.legs[0]).fightId) };
+    });
+    listed.sort((a, b) => Number(b.open) - Number(a.open) || (a.open ? fought(a.bout, b.bout) : byBoutPlace(a.bout, b.bout)));
+    const bets = listed.map(entry => entry.bet);
     const count = (state: LegState) => bets.filter(bet => bet.state === state).length;
     const settled = bets.filter(bet => bet.state === "won" || bet.state === "lost");
     const cents = (values: number[]) => Math.round(values.reduce((sum, value) => sum + value * 100, 0)) / 100;
