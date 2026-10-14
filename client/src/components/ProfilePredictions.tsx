@@ -118,13 +118,8 @@ export default function ProfilePredictions({ handle, mine }: { handle: string; m
           const settled = row.result.state === "won" || row.result.state === "lost";
           return <li key={row.fightId} className="relative">
           <Link to={`/fights/${row.fightId}?tab=predict`} className={`flex items-center gap-3 ${LIST_ROW} transition-colors hover:bg-zinc-50`}>
-            <div className="flex shrink-0 flex-col gap-1 sm:flex-row">
-              {([1, 2] as const).map(side => {
-                const id = side === 1 ? row.pick.f1Id : row.pick.f2Id;
-                return <Avatar key={side} size="xs" src={side === 1 ? row.f1Photo : row.f2Photo} name={side === 1 ? row.pick.f1Name : row.pick.f2Name}
-                  outcome={row.winnerId ? (row.winnerId === id ? "win" : "loss") : null} />;
-              })}
-            </div>
+            <Avatar size="sm" src={row.pick.fighterId === row.pick.f1Id ? row.f1Photo : row.f2Photo} name={predictionName(row.pick)}
+              outcome={row.winnerId ? (row.winnerId === row.pick.fighterId ? "win" : "loss") : null} />
             <div className="min-w-0 flex-1">
               <div className={`flex items-start justify-between gap-3 ${CLEAR_REMOVE(removable)}`}>
                 <p className="flex min-w-0 flex-wrap gap-1.5" aria-label={[

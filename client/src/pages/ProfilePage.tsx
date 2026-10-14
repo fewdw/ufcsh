@@ -587,6 +587,7 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
   const scheduled = card.eligibility.scheduled && Number(fight.round) <= card.eligibility.scheduled ? `/${card.eligibility.scheduled}` : "";
   const finish = !card.judges.length && fight.method
     ? [fight.method, fight.round ? `R${fight.round}${scheduled}` : "", fight.time ?? ""].filter(Boolean).join(" ") : "";
+  const won = fight.f1_outcome === "win" || fight.f2_outcome === "win";
   // Columns a wide row leaves empty so three judges' cards always fit.
   const spare = Math.max(0, 3 - card.judges.length);
   return (
@@ -616,7 +617,8 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
             <span className="hidden sm:inline">
               {fight.weight_class ? <><span className="font-medium text-zinc-600">{fight.weight_class}</span>{" · "}</> : null}
               {fight.event_name} · {formatDateShortWithYear(fight.date)}
-              {fight.method && !finish ? ` · ${formatMethod(fight.method, fight.round, fight.time)}` : ""}
+              {/* With no winner's line to carry it, how it ended goes here. */}
+              {fight.method && !won ? ` · ${formatMethod(fight.method, fight.round, fight.time)}` : ""}
             </span>
           </p>
           <span className={SCORE_HEAD}>You</span>
@@ -634,9 +636,10 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
                 outcome={(side === 1 ? fight.f1_outcome : fight.f2_outcome) as "win" | "loss" | null} />
               <p className={`ml-1 min-w-0 text-sm font-semibold leading-tight ${ink}`}>
                 {name}
-                {/* No judges' cards: the winner's line says how it ended. */}
-                {finish && (side === 1 ? fight.f1_outcome : fight.f2_outcome) === "win"
-                  ? <span className={`${RESULT_PILL} ml-1.5 whitespace-nowrap align-[1px] tabular-nums ${outcomeClasses("win")}`}>{finish}</span> : null}
+                {/* The winner's line says how it ended. A phone has room for
+                    that only where no judges' cards take up the row. */}
+                {(finish || fight.method) && (side === 1 ? fight.f1_outcome : fight.f2_outcome) === "win"
+                  ? <span className={`${RESULT_PILL} ml-1.5 whitespace-nowrap align-[1px] tabular-nums ${outcomeClasses("win")} ${finish ? "" : "!hidden sm:!inline-flex"}`}>{finish || fight.method}</span> : null}
               </p>
               <p className={`text-center text-base font-bold leading-none tabular-nums ${winner === side ? ink : "text-zinc-400"}`}>
                 {scored ? (side === 1 ? card.total1 : card.total2) : "—"}
