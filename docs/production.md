@@ -128,14 +128,31 @@ then hands over between two releases without stopping the site:
 - Production runs one release as the Compose service `app-blue` or `app-green`
   (`./deploy/live-app.sh` prints which). Both use the `ufcsh-app` image and the
   same `/data` volume.
+- Before anything changes, the deploy checks that `deploy/Caddyfile` is valid
+  and routes to both `app-blue` and `app-green`.
 - A deploy starts the other service beside the live one. It runs migrations and
   warms its query workers while the live one keeps serving. If it does not become
   ready within three minutes it is stopped and the live release carries on.
+- Once the new release is ready, the deploy loads the current
+  `deploy/Caddyfile` into the running proxy (`caddy reload`). The mounted file
+  keeps the content the proxy started with, because a pull replaces it. If the
+  proxy's running config does not route to the new release, or the proxy cannot
+  reach its `/readyz`, the new release is stopped and the old one keeps serving.
+- The deploy never recreates the proxy, because that would drop every
+  connection. If the proxy's definition in `compose.yaml` changed, it prints a
+  warning; apply it with `docker compose up -d proxy` when a few seconds offline
+  are acceptable.
 - Caddy checks `/readyz` on both every second and sends requests only to a ready
-  release. Once the new one is ready, the old one is stopped: `/readyz` fails for
+  release. After those checks pass, the old one is stopped: `/readyz` fails for
   `SHUTDOWN_DRAIN_MS` (3 s) while it still answers requests, then it stops
   accepting them and gives active requests 10 seconds to finish. The supervisor
-  terminates child processes 12 seconds after the drain if needed.
+  terminates child processes 12 seconds after the drain if needed. The deploy
+  then checks `/readyz` through the proxy, and if that fails it starts the old
+  release again.
+- Reloading an unchanged Caddyfile does nothing. A release that changes it
+  replaces Caddy's servers, which closes idle keep-alive connections. A request
+  sent on one at that instant fails unless the client retries it on a new
+  connection.
 - Only one sync worker runs at a time (`sync-lease.ts`): the new release's
   worker waits until the old one releases the lease on shutdown, or for 60 s
   after a crash.
