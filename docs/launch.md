@@ -173,31 +173,24 @@ docker compose exec -T app node src/backfill-image-variants.ts
    `ADMIN_TOKEN` and `GRAFANA_ADMIN_PASSWORD` private. Rebuild using
    `./deploy/update.sh` so the browser bundle gets the new Clerk key and
    canonical URL.
-4. In Cloudflare **Caching → Cache Rules**, create one rule with **Edit
-   expression** and the expression below. Set **Eligible for cache**, **Edge
-   TTL → Use cache-control header if present, bypass cache if not**, and keep
-   the default cache key including the full query string. Leave Browser TTL at
-   Respect origin. The rule matches only public GET routes. The app's headers
-   set a 2–3 second edge TTL for live data and a long TTL for images/assets.
+4. In Cloudflare, keep **Always Use HTTPS** and **Bot Fight Mode** off: Caddy
+   redirects HTTP to HTTPS itself, and its Let's Encrypt renewals (HTTP-01)
+   must reach it on port 80 unchallenged. Set **Browser Cache TTL** to
+   *Respect existing headers* and turn **Email Address Obfuscation** off, so
+   the app's own `Cache-Control` and HTML pass through unchanged.
 
-   ```text
-   http.request.method eq "GET" and (
-     starts_with(http.request.uri.path, "/assets/") or
-     starts_with(http.request.uri.path, "/api/images/") or
-     http.request.uri.path eq "/api/live" or
-     http.request.uri.path eq "/api/events" or
-     http.request.uri.path eq "/api/rankings" or
-     starts_with(http.request.uri.path, "/api/events/") or
-     starts_with(http.request.uri.path, "/api/fighters/") or
-     (starts_with(http.request.uri.path, "/api/fights/") and
-       (not (http.request.uri.path contains "/scores") or
-        ends_with(http.request.uri.path, "/scores")))
-   )
-   ```
+   In **Caching → Cache Rules**, create one rule for fighter photos, which are
+   versioned and served `immutable`: expression
+   `starts_with(http.request.uri.path, "/api/images/")`, **Eligible for
+   cache**, Edge and Browser TTL respecting the origin, default cache key
+   (full query string). `/assets/*` and `/og/*.jpg` are cached by Cloudflare's
+   default file-extension rule. API JSON is not cached at the edge.
 
-   The client adds a one-time query key after saving a score so its immediate
-   summary read misses an old edge entry. Verify `CF-Cache-Status` becomes `HIT`
-   on repeated public GETs and never `HIT` for `/scores/mine` or `/api/admin`.
+   Production has run this way since 2026-10-14. If traffic ever needs the API
+   cached too, the app already sends a 2-second `s-maxage` on public live data;
+   extend the rule only after checking that every matched route sends
+   `private` or `no-store` for personal answers, and confirm `CF-Cache-Status`
+   is never `HIT` for `/scores/mine`, `/predictions/mine` or `/api/admin`.
 5. Before inviting 5,000 active users, test the real VPS with score polling,
    score writes, scraping enabled and cache misses. Watch p95/p99 latency,
    request queue, 429/503 rates, host CPU/RAM, and CDN hit ratio. Raise host
@@ -223,7 +216,10 @@ rclone config
 Create a remote named `r2`, choose S3 then Cloudflare R2, enter the two keys,
 and set the endpoint shown by R2. Check that `rclone version` is at least 1.59;
 use the [official installer](https://rclone.org/install/) if Ubuntu supplied
-an older version. Add `BACKUP_REMOTE=r2:ufcsh-backups` to the VPS `.env`, then:
+an older version. Add `no_head = true` to the remote: rclone 1.60 checks each
+upload with a `?versionId=` request that R2 answers with 501 Not Implemented
+(each upload's MD5 is still checked). Add `BACKUP_REMOTE=r2:ufcsh-backups` to
+the VPS `.env`, then:
 
 ```sh
 cd ~/ufcsh
