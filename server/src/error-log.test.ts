@@ -27,7 +27,7 @@ test("failing addresses are kept by exact URL across a restart, then forgotten a
   assert.equal(list.serverErrors[0].lastAt, clock);
   // A broken link on the site outranks a probe that is hit more often.
   assert.deepEqual(list.notFound.map(row => row.path), ["/fighters/ffffffffffffffff", "/wp-login.php"]);
-  assert.deepEqual(list.totals, { serverErrors: 3, notFound: 3 });
+  assert.deepEqual(list.totals, { serverErrors: 3, notFound: 3, notFoundFromSite: 1 });
 
   clock += 8 * DAY;
   second.compact();
