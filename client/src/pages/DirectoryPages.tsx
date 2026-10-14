@@ -1,16 +1,17 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown } from "lucide-react";
 import { useApi, type AwardEntry, type AwardsDirectory, type LocationDirectory, type OfficialsDirectory, type VenueDirectory } from "../api";
 import { searchList } from "../search";
 import { formatMethod } from "../format";
-import { useRouteScrollRestoration } from "../navigationState";
+import { useRememberedState, useRouteScrollRestoration } from "../navigationState";
 import { PAGE, FULL_PAGE_BODY } from "../research";
-import PageToolbar, { FilterSelect, ListHead, ToolbarSearch } from "../components/PageToolbar";
+import PageToolbar, { BROWSE_WIDE, FilterSelect, ListHead, ToolbarSearch } from "../components/PageToolbar";
 import OptionsSheet, { SheetField, SwitchRow } from "../components/OptionsSheet";
 import { PANEL } from "../components/chartTokens";
 import BrowseTabs from "../components/BrowseTabs";
 import { useSeo } from "../seo";
+import useMediaQuery from "../useMediaQuery";
 import RequestNotice from "../components/RequestNotice";
 import { PageState } from "../components/ResearchKit";
 import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "../components/segmented";
@@ -103,6 +104,7 @@ export function OfficialsPage() {
   const [query, setQuery] = useState("");
   const minimum = ["10", "50", "100"].includes(params.get("minimum") ?? "") ? params.get("minimum")! : "0";
   const since = ["1", "5"].includes(params.get("since") ?? "") ? params.get("since")! : "all";
+  const wide = useMediaQuery(BROWSE_WIDE);
   const scroll = useRouteScrollRestoration<HTMLDivElement>("officials", Boolean(data));
   useSeo({ title: "UFC Judges & Referees", description: "Every UFC judge and referee on record: scorecards, agreement, stoppages and the bouts behind each number.", path: "/officials" });
   const rate = kind === "judges" && judgeOrder.sort !== "name" ? JUDGE_RATE[judgeOrder.sort] : null;
@@ -117,35 +119,35 @@ export function OfficialsPage() {
   }, [data, kind, query, minimum, since, rate, judgeOrder.reversed, refereeOrder.sort, refereeOrder.reversed]);
   if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the officials.</RequestNotice></div>;
   if (!data) return <PageState>Loading officials…</PageState>;
+  const choice = <div className={segmentedGroup} role="group" aria-label="Officials">
+    {(["judges", "referees"] as const).map((option) => (
+      <button key={option} type="button" aria-pressed={kind === option} onClick={() => judgeOrder.set({ kind: option === "judges" ? null : option, sort: null, order: null })}
+        className={`${segmentedOption} ${kind === option ? segmentedSelected : segmentedIdle}`}>{option === "referees" ? "Referees" : "Judges"}</button>
+    ))}
+  </div>;
+  const filters = <OptionsSheet label="Filters" iconOnlyOnPhone count={Number(minimum !== "0") + Number(since !== "all") || undefined} onReset={() => { setQuery(""); judgeOrder.set({ sort: null, order: null, minimum: null, since: null }); }}>
+    <div className="space-y-3 p-4">
+      <SheetField label="Sort">
+        {kind === "judges" ? <OrderControl options={JUDGE_ORDERS} order={judgeOrder} label="Order judges" /> : <OrderControl options={REFEREE_ORDERS} order={refereeOrder} label="Order referees" />}
+      </SheetField>
+      <FilterSelect label="Minimum bouts" value={minimum} onChange={(value) => judgeOrder.set({ minimum: value === "0" ? null : value })}
+        options={[{ value: "0", label: "Any experience" }, ...[10, 50, 100].map((n) => ({ value: String(n), label: `${n}+ bouts` }))]} />
+      <FilterSelect label="Active" value={since} onChange={(value) => judgeOrder.set({ since: value === "all" ? null : value })}
+        options={[{ value: "all", label: "Any time" }, { value: "1", label: "This year" }, { value: "5", label: "Last 5 calendar years" }]} />
+    </div>
+  </OptionsSheet>;
   return (
     <div ref={scroll} className={PAGE}>
       <div className={FULL_PAGE_BODY}>
         <h1 className="sr-only">Judges & referees</h1>
         <PageToolbar>
           <BrowseTabs />
-          <div className="ml-auto">
-            <OptionsSheet label="Filters" iconOnlyOnPhone count={Number(minimum !== "0") + Number(since !== "all") || undefined} onReset={() => { setQuery(""); judgeOrder.set({ sort: null, order: null, minimum: null, since: null }); }}>
-              <div className="space-y-3 p-4">
-                <SheetField label="Sort">
-                  {kind === "judges" ? <OrderControl options={JUDGE_ORDERS} order={judgeOrder} label="Order judges" /> : <OrderControl options={REFEREE_ORDERS} order={refereeOrder} label="Order referees" />}
-                </SheetField>
-                <FilterSelect label="Minimum bouts" value={minimum} onChange={(value) => judgeOrder.set({ minimum: value === "0" ? null : value })}
-                  options={[{ value: "0", label: "Any experience" }, ...[10, 50, 100].map((n) => ({ value: String(n), label: `${n}+ bouts` }))]} />
-                <FilterSelect label="Active" value={since} onChange={(value) => judgeOrder.set({ since: value === "all" ? null : value })}
-                  options={[{ value: "all", label: "Any time" }, { value: "1", label: "This year" }, { value: "5", label: "Last 5 calendar years" }]} />
-              </div>
-            </OptionsSheet>
-          </div>
+          {wide ? <div className="ml-auto flex items-center gap-2">{choice}{filters}</div> : null}
         </PageToolbar>
         <section aria-label={kind === "referees" ? "Referees" : "Judges"} className={`${PANEL} overflow-hidden`}>
           <ListHead title={kind === "referees" ? "Referees" : "Judges"} count={list.length}
             search={<ToolbarSearch value={query} onChange={setQuery} label={`Find a ${kind === "referees" ? "referee" : "judge"}`} />}
-            choice={<div className={segmentedGroup} role="group" aria-label="Officials">
-              {(["judges", "referees"] as const).map((option) => (
-                <button key={option} type="button" aria-pressed={kind === option} onClick={() => judgeOrder.set({ kind: option === "judges" ? null : option, sort: null, order: null })}
-                  className={`${segmentedOption} ${kind === option ? segmentedSelected : segmentedIdle}`}>{option === "referees" ? "Referees" : "Judges"}</button>
-              ))}
-            </div>} />
+            choice={wide ? null : choice} filters={wide ? null : filters} />
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {list.map((entry) => {
               const shown = rate ? rate(entry as Judge) : null;
@@ -224,6 +226,7 @@ const locationText = (location: LocationDirectory["locations"][number]) => locat
 export function VenuesPage() {
   const { data, error, retry } = useApi<VenueDirectory>("/api/venues");
   const places = usePlaces(data?.venues, venueText);
+  const wide = useMediaQuery(BROWSE_WIDE);
   const scroll = useRouteScrollRestoration<HTMLDivElement>("venues", Boolean(data));
   useSeo({ title: "UFC Venues", description: "Every arena and venue that has hosted a UFC event, with the cards held there and attendance.", path: "/venues" });
   if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the venues.</RequestNotice></div>;
@@ -234,11 +237,12 @@ export function VenuesPage() {
         <h1 className="sr-only">Venues</h1>
         <PageToolbar>
           <BrowseTabs />
-          <div className="ml-auto">{places.filters("Order venues")}</div>
+          {wide ? <div className="ml-auto">{places.filters("Order venues")}</div> : null}
         </PageToolbar>
         <section aria-label="Venues" className={`${PANEL} overflow-hidden`}>
           <ListHead title="Venues" count={places.list.length}
-            search={<ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a venue, city or country" />} />
+            search={<ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a venue or city" />}
+            filters={wide ? null : places.filters("Order venues")} />
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {places.list.map((venue) => (
               <PlaceRow key={venue.slug} to={`/venues/${venue.slug}`} name={venue.name} detail={[venue.city, venue.country].filter(Boolean).join(", ")} events={venue.events} upcoming={venue.upcoming} />
@@ -255,6 +259,7 @@ export function VenuesPage() {
 export function LocationsPage() {
   const { data, error, retry } = useApi<LocationDirectory>("/api/locations");
   const places = usePlaces(data?.locations, locationText);
+  const wide = useMediaQuery(BROWSE_WIDE);
   const scroll = useRouteScrollRestoration<HTMLDivElement>("locations", Boolean(data));
   useSeo({ title: "UFC Locations", description: "Every city that has hosted a UFC event, with the cards held there, the venues, title fights and upcoming events.", path: "/locations" });
   if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the locations.</RequestNotice></div>;
@@ -265,11 +270,12 @@ export function LocationsPage() {
         <h1 className="sr-only">Locations</h1>
         <PageToolbar>
           <BrowseTabs />
-          <div className="ml-auto">{places.filters("Order locations")}</div>
+          {wide ? <div className="ml-auto">{places.filters("Order locations")}</div> : null}
         </PageToolbar>
         <section aria-label="Locations" className={`${PANEL} overflow-hidden`}>
           <ListHead title="Locations" count={places.list.length}
-            search={<ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a city, state or country" />} />
+            search={<ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a city" />}
+            filters={wide ? null : places.filters("Order locations")} />
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {places.list.map((location) => (
               <PlaceRow key={location.slug} to={`/locations/${location.slug}`} name={location.city} detail={[location.state, location.country].filter(Boolean).join(", ")} events={location.events} upcoming={location.upcoming} />
@@ -305,10 +311,16 @@ function AwardRow({ award, shared }: { award: AwardEntry; shared: boolean }) {
   return <li>{to ? <Link to={to} className={`${row} hover:bg-zinc-50`}>{body}</Link> : <div className={row}>{body}</div>}</li>;
 }
 
+const NONE_OPEN: string[] = [];
+const openIds = (value: unknown) => Array.isArray(value) && value.every((id) => typeof id === "string") ? value as string[] : undefined;
+
 /** The yearly awards, one card a category as Rankings has one a division,
- *  newest first. */
+ *  newest first. On a phone, where the cards stack, each starts closed and
+ *  opens with a tap; the cards a reader leaves open stay open next time. */
 export function AwardsPage() {
   const { data, error, retry } = useApi<AwardsDirectory>("/api/awards");
+  const stacked = !useMediaQuery("(min-width: 640px)");
+  const [open, setOpen] = useRememberedState("awards:open", NONE_OPEN, openIds);
   const scroll = useRouteScrollRestoration<HTMLDivElement>("awards", Boolean(data));
   useSeo({ title: "MMA Awards: Fighter, Fight & Knockout of the Year", description: "Sherdog's year-end awards since 2008: Fighter, Breakthrough and Comeback Fighter of the Year, and Fight, Knockout, Submission and Upset of the Year.", path: "/awards" });
   if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the awards.</RequestNotice></div>;
@@ -321,14 +333,28 @@ export function AwardsPage() {
           <BrowseTabs />
         </PageToolbar>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-4">
-          {data.categories.map((category) => (
-            <section key={category.id} aria-label={category.label} className={`${PANEL} overflow-hidden`}>
-              <div className="border-b border-zinc-200 px-3.5 py-2.5">
-                <h2 className="truncate text-sm font-semibold text-zinc-900">{category.label}</h2>
-              </div>
-              <ul className="divide-y divide-zinc-50">{category.awards.map((award) => <AwardRow key={award.period} award={award} shared={category.shared} />)}</ul>
-            </section>
-          ))}
+          {data.categories.map((category) => {
+            const shown = !stacked || open.includes(category.id);
+            return (
+              <section key={category.id} aria-label={category.label} className={`${PANEL} overflow-hidden`}>
+                {stacked ? (
+                  <h2 className={shown ? "border-b border-zinc-200" : ""}>
+                    <button type="button" aria-expanded={shown}
+                      onClick={() => setOpen((current) => shown ? current.filter((id) => id !== category.id) : [...current, category.id])}
+                      className="flex w-full items-center justify-between gap-2 px-3.5 py-3 text-left text-sm font-semibold text-zinc-900 hover:bg-zinc-50">
+                      <span className="truncate">{category.label}</span>
+                      <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition-transform ${shown ? "rotate-180" : ""}`} aria-hidden="true" />
+                    </button>
+                  </h2>
+                ) : (
+                  <div className="border-b border-zinc-200 px-3.5 py-2.5">
+                    <h2 className="truncate text-sm font-semibold text-zinc-900">{category.label}</h2>
+                  </div>
+                )}
+                {shown ? <ul className="divide-y divide-zinc-50">{category.awards.map((award) => <AwardRow key={award.period} award={award} shared={category.shared} />)}</ul> : null}
+              </section>
+            );
+          })}
         </div>
         <p className="px-1 text-[11px] text-zinc-400">
           <a href={data.source.url} target="_blank" rel="noreferrer" className="underline hover:text-zinc-600">{data.source.name}</a>, voted by Sherdog's staff each December for that calendar year. A promotion in brackets marks an award won outside the UFC.

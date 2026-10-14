@@ -8,15 +8,19 @@ export default function PageToolbar({ children }: { children: ReactNode }) {
   return <header className={`${PANEL} flex flex-wrap items-center gap-2 px-2.5 py-2 sm:px-3 lg:gap-3`}>{children}</header>;
 }
 
-/** A browse list's head: its name and count, and the search and the page's own
- *  choice (such as Signed or Cut) where it has them. Beside a choice the search
- *  takes a line of its own on a phone and shares the line from a tablet up;
- *  with no choice it always has the full line under the name. */
-export function ListHead({ title, count, search, choice }: { title: string; count: number; search?: ReactNode; choice?: ReactNode }) {
+/** Below md a browse page's choice (such as Signed or Cut) and its Filters
+ *  sit in the list's head, leaving the Browse tabs a line of their own; from
+ *  md up they join the tabs. */
+export const BROWSE_WIDE = "(min-width: 768px)";
+
+/** A browse list's head: its name and count, then the search, the page's own
+ *  choice and its Filters where it has them. The search sits beside the name;
+ *  next to a choice it takes a line of its own on a phone. */
+export function ListHead({ title, count, search, choice, filters }: { title: string; count: number; search?: ReactNode; choice?: ReactNode; filters?: ReactNode }) {
   return <div className="flex flex-wrap items-center gap-2 border-b border-zinc-100 px-4 py-2 sm:px-5">
     <h2 className="shrink-0 text-sm font-semibold text-zinc-900">{title} <span className="tabular-nums text-zinc-400">{count.toLocaleString()}</span></h2>
-    {search ? <div className={`flex min-w-0 flex-1 ${choice ? "basis-24 max-sm:order-last max-sm:basis-full" : "order-last basis-full [&>label]:max-w-none"}`}>{search}</div> : null}
-    {choice ? <div className="ml-auto shrink-0">{choice}</div> : null}
+    {search ? <div className={`flex min-w-0 flex-1 basis-24 ${choice ? "max-sm:order-last max-sm:basis-full" : ""}`}>{search}</div> : null}
+    {choice || filters ? <div className="ml-auto flex shrink-0 items-center gap-2">{choice}{filters}</div> : null}
   </div>;
 }
 
