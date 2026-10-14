@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { getMeta, setMeta } from "./db.ts";
-import { recordSyncError, syncStatus } from "./sync-status.ts";
+import { recentSyncError, recordSyncError, syncStatus } from "./sync-status.ts";
 
 test("sync errors are kept newest first, grouped by job, and sources say when they are late", () => {
   const saved = { errors: getMeta("sync_errors"), last: getMeta("last_sync_error"), tick: getMeta("last_tick_at") };
@@ -18,6 +18,10 @@ test("sync errors are kept newest first, grouped by job, and sources say when th
     assert.equal(status.errorsLastDay, 2);
     assert.deepEqual(status.failingLastDay.map(job => [job.kind, job.count]), [["live_stats", 1], ["fightodds", 1]]);
     assert.equal(status.sources.find(source => source.name === "Scheduler pass")?.late, true);
+    // Monitoring reads a failure as current for ten minutes, not until the
+    // next rankings sync clears `last_sync_error`.
+    assert.equal(recentSyncError(now), true);
+    assert.equal(recentSyncError(now + 10 * 60_000), false);
   } finally {
     setMeta("sync_errors", saved.errors ?? "");
     setMeta("last_sync_error", saved.last ?? "");
