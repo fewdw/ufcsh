@@ -9,12 +9,12 @@ const TABS = [
   { href: "/awards", label: "Awards" },
 ] as const;
 
-/** On a phone the tabs share one line with the Filters button: they stretch to
- *  fill it and sit tighter, a size smaller below 400px and again below 380px,
- *  where five would otherwise push the button to a second line. Anything
- *  narrower scrolls the tabs sideways instead of wrapping. */
+/** On a phone the tabs have the toolbar to themselves (the page's Filters sit
+ *  in its list head): they stretch to fill it and sit tighter, a size smaller
+ *  below 360px and again below 340px. Anything narrower scrolls the tabs
+ *  sideways instead of wrapping. */
 const BROWSE_GROUP = `${segmentedGroup} shrink-0 max-sm:min-w-0 max-sm:flex-1 max-sm:basis-0 max-sm:gap-0.5 max-sm:overflow-x-auto max-sm:[scrollbar-width:none]`;
-const BROWSE_OPTION = `${segmentedOption} inline-flex items-center max-sm:flex-auto max-sm:shrink-0 max-sm:justify-center max-sm:px-1 max-[399px]:text-xs max-[379px]:text-[11px]`;
+const BROWSE_OPTION = `${segmentedOption} inline-flex items-center max-sm:flex-auto max-sm:shrink-0 max-sm:justify-center max-sm:px-1 max-[359px]:text-xs max-[339px]:text-[11px]`;
 
 /** Browse navigation inside each directory's toolbar. */
 export default function BrowseTabs() {

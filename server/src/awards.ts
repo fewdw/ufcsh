@@ -8,7 +8,8 @@ import { AWARDS, AWARDS_SOURCE, type AwardRow } from "./awards-data.ts";
  *  a profile and each UFC bout to its matchup, for the Awards directory, a
  *  fighter's profile and the matchup itself. */
 
-interface Person { name: string; id: string | null }
+/** `photo` is the profile picture, for a winner with a profile. */
+interface Person { name: string; id: string | null; photo: string | null }
 interface Award {
   period: string;
   winner: Person;
@@ -39,12 +40,12 @@ function resolved(): Resolved {
   const hit = cache.get("awards", version);
   if (hit) return hit;
   // Only a fighter with a UFC bout has a profile to open.
-  const named = prepared(`SELECT fr.id, fr.name FROM fighters fr WHERE fr.norm_name = ? AND ${ufcFightExistsSql("fr.id", "f")}`);
+  const named = prepared(`SELECT fr.id, fr.name, fr.photo_url AS photo FROM fighters fr WHERE fr.norm_name = ? AND ${ufcFightExistsSql("fr.id", "f")}`);
   const bout = prepared(`SELECT f.id, f.method, f.round, e.id AS event_id, e.name AS event_name FROM fights f JOIN events e ON e.id = f.event_id
     WHERE e.date = ?1 AND ((f.f1_id = ?2 AND f.f2_id = ?3) OR (f.f1_id = ?3 AND f.f2_id = ?2))`);
   const person = (name: string): Person => {
-    const found = named.all(normName(name)) as { id: string; name: string }[];
-    return found.length === 1 ? found[0] : { name, id: null };
+    const found = named.all(normName(name)) as { id: string; name: string; photo: string | null }[];
+    return found.length === 1 ? found[0] : { name, id: null, photo: null };
   };
   const out: Resolved = { directory: { source: AWARDS_SOURCE, categories: [] }, fighters: new Map(), fights: new Map(), misses: [] };
   const credit = (id: string | null, award: FighterAward) => { if (id) out.fighters.set(id, [...out.fighters.get(id) ?? [], award]); };

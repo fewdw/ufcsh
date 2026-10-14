@@ -16,7 +16,7 @@ async function worker(): Promise<void> {
   for (let name; (name = queue.shift());) {
     const original = path.join(directory, name);
     try {
-      for (const size of ["tiny", "small"] as const) {
+      for (const size of ["tiny", "small", "large"] as const) {
         const target = variantPath(original, size);
         try {
           if ((await fs.stat(target)).size > 0) continue;

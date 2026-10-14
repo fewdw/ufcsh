@@ -33,11 +33,20 @@ export function orderDivisions<T extends Division>(divisions: T[], order: Divisi
   });
 }
 
-/** The divisions the UFC ranks, spelled as a bout's weight class spells them. */
-const RANKED = new Set([
+/** The divisions the UFC ranks, spelled as a bout's weight class spells them:
+ *  the men's lightest to heaviest, then the women's. */
+const RANKED_ORDER = [
   "Flyweight", "Bantamweight", "Featherweight", "Lightweight", "Welterweight", "Middleweight", "Light Heavyweight", "Heavyweight",
   "Women's Strawweight", "Women's Flyweight", "Women's Bantamweight",
-]);
+];
+const RANKED = new Set(RANKED_ORDER);
+
+/** Division names lightest to heaviest, the men's before the women's; one the
+ *  UFC doesn't rank ends its half, by name. */
+export function byDivisionName(a: string, b: string): number {
+  const place = (division: string) => RANKED.has(division) ? RANKED_ORDER.indexOf(division) : RANKED_ORDER.length;
+  return Number(isWomens(a)) - Number(isWomens(b)) || place(a) - place(b) || a.localeCompare(b);
+}
 
 /** The rankings page opened at a division, or null for one with no list. */
 export const rankingsLink = (division: string) => RANKED.has(division) ? `/rankings?division=${encodeURIComponent(division)}` : null;

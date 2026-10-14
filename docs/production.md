@@ -111,8 +111,19 @@ its WAL. For example:
 docker compose exec "$(./deploy/live-app.sh)" node src/backup.ts /data/ufc.db /data/backups/ufc-2026-09-14.db
 ```
 
-Use a unique filename each time, schedule this command daily, and copy backups
-off the host with your backup service. A backup on the same disk is insufficient.
+Use a unique filename each time and copy backups off the host with your backup
+service. A backup on the same disk is insufficient.
+
+Disk use stays flat without anyone looking after it. Every copy in
+`/data/backups` (daily, per deploy, before a repair) is thinned once a day by
+the app (`server/src/backup-retention.ts`): all copies from the last day, then
+the newest of each day for a week, of each week for eight weeks, of each month
+for a year, and of each year forever, about thirty per database. The daily
+`ufcsh-backup` timer also runs `deploy/housekeeping.sh`, which keeps two dev
+review images besides the running one, removes untagged images and caps the
+build cache at 4 GB. To restore a copy, stop the app and put the `.db` file in
+place of `/data/ufc.db` (or `scoring.db`), removing that database's `-wal` and
+`-shm` files.
 The command checks integrity and refuses to overwrite an existing backup.
 Rehearse restoration into a new volume with the service stopped, then check
 record counts, representative pages, and sync freshness before switching over.
