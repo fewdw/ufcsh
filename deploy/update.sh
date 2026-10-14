@@ -73,4 +73,6 @@ if ! curl -fsSk -o /dev/null --max-time 15 --retry 3 --retry-all-errors --resolv
   exit 1
 fi
 docker compose --profile observability up -d --no-build --wait --wait-timeout 180 prometheus node-exporter grafana
+# Prometheus keeps its scrape targets and alert rules until told to reload them.
+docker compose --profile observability kill -s SIGHUP prometheus
 docker compose --profile observability ps
