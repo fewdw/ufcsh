@@ -138,7 +138,13 @@ export default function ProfilePredictions({ handle, mine }: { handle: string; m
                   </span>
                 )}
               </div>
-              <p className={`mt-1 truncate ${LIST_META}`} title={`${row.pick.f1Name} vs ${row.pick.f2Name} · ${row.pick.eventName}`}><span className="text-zinc-700">{row.pick.f1Name} vs {row.pick.f2Name}</span> · {row.pick.eventName} · {formatDateShortWithYear(row.pick.eventDate)}</p>
+              {/* One line on a wide screen; a phone gives the bout a line and
+                  the event and date the next. */}
+              <p className={`mt-1 sm:truncate ${LIST_META}`} title={`${row.pick.f1Name} vs ${row.pick.f2Name} · ${row.pick.eventName}`}>
+                <span className="block truncate text-zinc-700 sm:inline">{row.pick.f1Name} vs {row.pick.f2Name}</span>
+                <span className="hidden sm:inline"> · </span>
+                <span className="block truncate sm:inline">{row.pick.eventName} · {formatDateShortWithYear(row.pick.eventDate)}</span>
+              </p>
               {row.result.reason ? <p className={`mt-0.5 ${LIST_META}`}>{row.result.reason}</p> : null}
             </div>
           </Link>
