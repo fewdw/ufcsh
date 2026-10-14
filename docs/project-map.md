@@ -43,7 +43,7 @@ copy of the local archive (`DATA_DIR`).
 | Area | Files |
 | --- | --- |
 | Shell, routes, header | `App.tsx`, `main.tsx` |
-| More menu, one column (Stats, News, Browse); Browse tabs Roster, Officials, Venues, Locations, Awards; Graphic (Beta) opens from the profile | `components/MoreNav.tsx`, `components/BrowseTabs.tsx`; page `GraphicPage.tsx` |
+| More menu, one column (Stats, News, Browse); Browse tabs Roster, Officials, Venues, Locations, Awards (below md a page's choice and Filters sit in its list head; `ListHead` in `PageToolbar.tsx`); Graphic (Beta) opens from the profile | `components/MoreNav.tsx`, `components/BrowseTabs.tsx`; page `GraphicPage.tsx` |
 | Admin link in the header (admins only) | `App.tsx` (`AdminLink`) |
 | News page (newest first, Settings: summaries and outlet toggles); a fighter's News tab | `pages/NewsPage.tsx`, `components/NewsRow.tsx`; `FighterNews` in `pages/FighterPage.tsx` |
 | Data fetching and polling | `api.ts` (types + `useApi`), `requestCache.ts`, `polling.ts`; early data in `index.html`, link prefetch in `useLinkPrefetch.ts` + `pageRequests.ts`, page chunks in `pages.ts`, answers kept across reloads in `snapshots.ts` |
@@ -56,7 +56,7 @@ copy of the local archive (`DATA_DIR`).
 | Keyboard shortcuts | `shortcuts.tsx` |
 | Roster changes | `pages/RosterPage.tsx` |
 | About / support / changelog | `pages/InfoPage.tsx` |
-| Shared definitions | `careerMetrics.ts` (how-they-fight rates), `format.ts`, `ui.ts`, `components/segmented.ts`, `components/chartTokens.ts` |
+| Shared definitions | `careerMetrics.ts` (how-they-fight rates), `format.ts`, `ui.ts`, `useMediaQuery.ts`, `components/segmented.ts`, `components/chartTokens.ts` |
 | Styles and dark theme | `index.css` |
 
 ## Docs

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { orderDivisions } from "../src/divisionOrder.ts";
+import { byDivisionName, orderDivisions } from "../src/divisionOrder.ts";
 
 const divisions = [
   { division: "Men's Pound-for-Pound", weight_limit: "" },
@@ -34,4 +34,12 @@ test("the men's half always comes first, whatever order the source sent", () => 
     const men = orderDivisions(shuffled, order).filter((d) => !d.division.startsWith("Women's")).length;
     assert.equal(women, men, "every women's division sits after every men's one");
   }
+});
+
+test("division names run lightest to heaviest, the women's after the men's", () => {
+  const shuffled = ["Women's Featherweight", "Heavyweight", "Women's Strawweight", "Catch Weight", "Flyweight", "Light Heavyweight", "Women's Bantamweight", "Lightweight"];
+  assert.deepEqual([...shuffled].sort(byDivisionName), [
+    "Flyweight", "Lightweight", "Light Heavyweight", "Heavyweight", "Catch Weight",
+    "Women's Strawweight", "Women's Bantamweight", "Women's Featherweight",
+  ]);
 });

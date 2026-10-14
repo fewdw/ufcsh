@@ -41,9 +41,9 @@ test("awards won elsewhere keep their promotion and link only fighters with a pr
   const page = award("knockout", 2016);
   assert.equal(page.org, "Bellator");
   assert.ok(page.winner.id, "Michael Page later fought in the UFC");
-  assert.deepEqual([page.opponent, page.fight_id, page.method, page.event], [{ name: "Evangelista Santos", id: null }, null, null, { name: "Bellator 158", id: null }]);
+  assert.deepEqual([page.opponent, page.fight_id, page.method, page.event], [{ name: "Evangelista Santos", id: null, photo: null }, null, null, { name: "Bellator 158", id: null }]);
   const ditcheva = award("breakthrough-fighter", 2024);
-  assert.deepEqual([ditcheva.winner, ditcheva.org], [{ name: "Dakota Ditcheva", id: null }, "PFL"]);
+  assert.deepEqual([ditcheva.winner, ditcheva.org], [{ name: "Dakota Ditcheva", id: null, photo: null }, "PFL"]);
 });
 
 test("a profile and a matchup carry their awards", () => {

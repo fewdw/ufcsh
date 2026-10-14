@@ -798,7 +798,7 @@ export type LocationDirectory = {
 
 /** A yearly award (Sherdog Year-End Awards): `id` opens a profile, `org`
  *  names the promotion when the award was won outside the UFC. */
-export type AwardPerson = { name: string; id: string | null };
+export type AwardPerson = { name: string; id: string | null; photo: string | null };
 export type AwardEntry = {
   period: string;
   winner: AwardPerson;
