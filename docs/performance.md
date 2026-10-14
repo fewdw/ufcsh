@@ -66,7 +66,7 @@ What changed, by the measurement that pointed at it:
   (35 → 16 KB, 96 → 39 KB, pixel-identical) with hashed, immutable URLs.
 
 Checked and left alone: fonts are system fonts (Barlow loads only in the
-graphics builder); photos are already WebP, sized, versioned and lazy below
+graphics builder); photo placeholders and small copies are already WebP, sized, versioned and lazy below
 the fold; static assets already carry `immutable`. Building `Intl` formatters
 lazily would save nothing: Chromium spends ~100 ms (4× CPU) on whichever is
 built first. The largest remaining cost is Clerk: ~650 ms of main-thread time
@@ -302,7 +302,14 @@ stats, officials, venues, judges and profiles.
   default data (events + the landing card, rankings, stats) after that.
 - Fighter photos remember which copy is already in the browser's cache
   (versioned URLs, cached for a year), so a reload paints the sharp copy
-  directly instead of placeholder then photo.
+  directly instead of placeholder then photo. A remembered copy that has left
+  the cache stays hidden until fully loaded and falls back to the placeholder
+  after 150 ms, so no photo ever paints top to bottom while downloading.
+- The sharp level is a full-resolution WebP (`?size=large`, quality 85),
+  not UFC's non-interlaced PNG. Measured on 12 photos from one card
+  (2026-10-14): full bodies 329–394 KB → 32–53 KB, headshots 130–167 KB →
+  16–22 KB, visually identical. The PNG stays available for the graphics
+  builder and share images.
 - Every remaining loading line stays invisible for its first 350 ms
   (`.appear-late`), and a list refreshing in place dims only after 200 ms.
 
@@ -366,7 +373,7 @@ four filter combinations, before the response cache.
 Route-level code splitting, hover prefetch, one shared request per URL with
 stale-while-revalidate, polling with jitter and backoff that stops in hidden
 tabs, a bounded server response cache, per-visitor rate limits with a stricter
-bucket for expensive routes, and image variants (`?size=tiny|small`).
+bucket for expensive routes, and image variants (`?size=tiny|small|large`).
 
 ## Not yet claimed
 

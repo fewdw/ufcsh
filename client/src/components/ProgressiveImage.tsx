@@ -8,8 +8,10 @@ type Level = { url: string; covers: number };
 const SMALL_HEIGHT = { head: 160, full: 320 };
 const CLERK_SMALL = 128;
 
-/** Fighter photos: a placeholder, a small copy and the original. Fan portraits
- *  get the same ladder from Clerk's image CDN. Anything else loads as is. */
+/** Fighter photos: a placeholder, a small copy and a full-size WebP (UFC's
+ *  originals are PNGs ten times the size, which paint top to bottom as they
+ *  download). Fan portraits get the same ladder from Clerk's image CDN.
+ *  Anything else loads as is. */
 function imageLevels(src: string): Level[] {
   const fighter = /^\/api\/images\/[a-f0-9]{16}(\/full)?(?:\?|$)/i.exec(src);
   if (fighter) {
@@ -17,7 +19,7 @@ function imageLevels(src: string): Level[] {
     return [
       { url: `${src}${join}size=tiny`, covers: 0 },
       { url: `${src}${join}size=small`, covers: SMALL_HEIGHT[fighter[1] ? "full" : "head"] },
-      { url: src, covers: Infinity },
+      { url: `${src}${join}size=large`, covers: Infinity },
     ];
   }
   try {
@@ -51,7 +53,10 @@ const decoded = new Set<string>((() => {
   } catch { return []; }
 })());
 let saving = 0;
+/** Copies decoded since this page opened: the browser holds them in memory. */
+const decodedHere = new Set<string>();
 function markDecoded(url: string) {
+  decodedHere.add(url);
   if (decoded.has(url)) return;
   decoded.add(url);
   if (saving) return;
@@ -74,6 +79,15 @@ function ImageForSource({ src, onLoad, onError, loading, decoding, ...props }: P
   const [level, setLevel] = useState(() => firstLevel(levels));
   // A copy the browser already holds is drawn with the page, not after it.
   const [cached] = useState(() => decoded.has(levels[level].url));
+  // A sharp copy remembered from an earlier visit may have left the browser's
+  // cache since. It stays hidden until fully loaded, so it never paints top to
+  // bottom while downloading; if it is slow, the placeholder takes its place.
+  const [visible, setVisible] = useState(() => level === 0 || decodedHere.has(levels[level].url));
+  useEffect(() => {
+    if (visible) return;
+    const timer = window.setTimeout(() => { setLevel(0); setVisible(true); }, 150);
+    return () => window.clearTimeout(timer);
+  }, [visible]);
   const [needed, setNeeded] = useState<number | null>(null);
 
   useEffect(() => {
@@ -94,8 +108,10 @@ function ImageForSource({ src, onLoad, onError, loading, decoding, ...props }: P
     loading={cached ? "eager" : loading}
     decoding={cached ? "sync" : decoding}
     src={levels[level].url}
+    style={visible ? props.style : { ...props.style, opacity: 0 }}
     onLoad={event => {
       markDecoded(levels[level].url);
+      setVisible(true);
       const box = event.currentTarget;
       setNeeded(Math.ceil(Math.max(box.clientHeight, box.clientWidth * 0.625) * (window.devicePixelRatio || 1)));
       onLoad?.(event);

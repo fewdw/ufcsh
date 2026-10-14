@@ -1634,7 +1634,7 @@ export type PhotoVariant = "head" | "full";
  */
 async function discardOldPhotos(id: string, suffix: string, keep: string): Promise<void> {
   // Anchored so the headshot's own prefix cannot sweep up the full body's files.
-  const belongsHere = new RegExp(`^${id}${suffix.replace(".", "\\.")}\\.(?:([0-9a-f]+)\\.)?(?:img|type|tiny\\.webp|small\\.webp)$`);
+  const belongsHere = new RegExp(`^${id}${suffix.replace(".", "\\.")}\\.(?:([0-9a-f]+)\\.)?(?:img|type|tiny\\.webp|small\\.webp|large\\.webp)$`);
   try {
     for (const name of await fs.readdir(IMAGE_CACHE)) {
       const match = belongsHere.exec(name);
@@ -1760,7 +1760,8 @@ async function loadFighterImage(id: string, variant: PhotoVariant): Promise<Cach
 }
 
 /** Placeholders are a few hundred bytes and small copies a few KB, so every
- *  fighter's pair fits in memory and never touches the disk twice. */
+ *  fighter's pair fits in memory and never touches the disk twice. Large
+ *  copies are read from disk each time, like the originals. */
 const variantMemory = new Map<string, Buffer>();
 async function fighterImageVariant(id: string, variant: PhotoVariant, size: ImageSize): Promise<Buffer | null> {
   const file = fighterImageFile(id, variant);
@@ -1776,6 +1777,7 @@ async function fighterImageVariant(id: string, variant: PhotoVariant, size: Imag
     if (!image) return null;
     data = await ensureImageVariant(image.imagePath, size, image.data);
   }
+  if (size === "large") return data;
   variantMemory.set(target, data);
   if (variantMemory.size > 10_000) variantMemory.delete(variantMemory.keys().next().value!);
   return data;
@@ -2561,7 +2563,7 @@ export function startApi(port: number): http.Server {
       if (imageRequest) {
         if (!/^\/api\/images\/[a-f0-9]{16}(\/full)?$/i.test(p)) return await sendJson(req, res, { error: "not found" }, 404);
         const size = url.searchParams.get("size");
-        if (size !== null && size !== "tiny" && size !== "small") return await sendJson(req, res, { error: "invalid image size" }, 400);
+        if (size !== null && size !== "tiny" && size !== "small" && size !== "large") return await sendJson(req, res, { error: "invalid image size" }, 400);
         return await serveFighterImage(res, part(3), part(4) === "full" ? "full" : "head", size,
           /^[a-f0-9]{12}$/.test(url.searchParams.get("v") ?? ""));
       }
