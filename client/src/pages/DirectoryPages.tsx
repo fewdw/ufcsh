@@ -38,8 +38,9 @@ function useOrder<K extends string>(options: readonly { key: K }[]) {
   };
 }
 
-function OrderControl<K extends string>({ options, order, label }: {
-  options: readonly { key: K; label: string }[]; order: { sort: K; reversed: boolean; setSort: (key: K) => void; flip: () => void }; label: string;
+/** The sort, and unless `fixed`, an arrow that reverses it. */
+function OrderControl<K extends string>({ options, order, label, fixed = false }: {
+  options: readonly { key: K; label: string }[]; order: { sort: K; reversed: boolean; setSort: (key: K) => void; flip: () => void }; label: string; fixed?: boolean;
 }) {
   const alphabetical = order.sort === ("name" as K);
   // Descending is the natural read for a count or a rate, ascending for names.
@@ -52,10 +53,10 @@ function OrderControl<K extends string>({ options, order, label }: {
         className="h-8 rounded-full border border-zinc-200 bg-zinc-50 pl-3 pr-7 text-[13px] font-medium text-zinc-700 outline-none hover:border-zinc-300 focus:border-zinc-400 sm:text-xs">
         {options.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
       </select>
-      <button type="button" onClick={order.flip} title={title} aria-label={`${title}; reverse the order`}
+      {fixed ? null : <button type="button" onClick={order.flip} title={title} aria-label={`${title}; reverse the order`}
         className="inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950">
         {up ? <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />}
-      </button>
+      </button>}
     </div>
   );
 }
@@ -76,13 +77,14 @@ const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompar
 const byBouts = (a: { n: number; name: string }, b: { n: number; name: string }) => b.n - a.n || byName(a, b);
 
 const JUDGE_ORDERS = [
+  { key: "bouts", label: "Number of bouts" },
   { key: "all", label: "Agrees with everyone" },
   { key: "judges", label: "Agrees with judges" },
   { key: "fans", label: "Agrees with fans" },
   { key: "name", label: "A–Z" },
 ] as const;
 const REFEREE_ORDERS = [
-  { key: "bouts", label: "Most bouts" },
+  { key: "bouts", label: "Number of bouts" },
   { key: "name", label: "A–Z" },
 ] as const;
 type Judge = OfficialsDirectory["judges"][number];
@@ -93,8 +95,9 @@ const JUDGE_RATE_TITLE = {
   fans: "Picked the same winner as the fans' scorecards",
 };
 
-/** Every judge and referee on record, each opening their record. Judges are
- *  ranked by how often their winner matches everyone else's. */
+/** Every judge and referee on record, each opening their record, most bouts
+ *  first. Judges can also be ranked by how often their winner matches
+ *  everyone else's. Each order reads one way only: most first, or A to Z. */
 export function OfficialsPage() {
   const { data, error, retry } = useApi<OfficialsDirectory>("/api/officials");
   const [params] = useSearchParams();
@@ -107,16 +110,16 @@ export function OfficialsPage() {
   const wide = useMediaQuery(BROWSE_WIDE);
   const scroll = useRouteScrollRestoration<HTMLDivElement>("officials", Boolean(data));
   useSeo({ title: "UFC Judges & Referees", description: "Every UFC judge and referee on record: scorecards, agreement, stoppages and the bouts behind each number.", path: "/officials" });
-  const rate = kind === "judges" && judgeOrder.sort !== "name" ? JUDGE_RATE[judgeOrder.sort] : null;
+  const rate = kind === "judges" && judgeOrder.sort !== "name" && judgeOrder.sort !== "bouts" ? JUDGE_RATE[judgeOrder.sort] : null;
   const list = useMemo(() => {
     const matches = <T extends { name: string; n: number; last: string | null }>(entries: T[]) => searchList(entries, query, (entry) => entry.name)
       .filter((entry) => entry.n >= Number(minimum) && (since === "all" || Boolean(entry.last && entry.last >= `${new Date().getFullYear() - Number(since) + 1}-01-01`)));
     if (!data) return [];
     if (kind === "referees") {
-      return ordered(matches(data.referees), (entry) => refereeOrder.sort === "name" ? entry.name : entry.n, refereeOrder.reversed, byBouts);
+      return ordered(matches(data.referees), (entry) => refereeOrder.sort === "name" ? entry.name : entry.n, false, byBouts);
     }
-    return ordered(matches(data.judges), (entry) => rate ? rate(entry) : entry.name, judgeOrder.reversed, byBouts);
-  }, [data, kind, query, minimum, since, rate, judgeOrder.reversed, refereeOrder.sort, refereeOrder.reversed]);
+    return ordered(matches(data.judges), (entry) => rate ? rate(entry) : judgeOrder.sort === "name" ? entry.name : entry.n, false, byBouts);
+  }, [data, kind, query, minimum, since, rate, judgeOrder.sort, refereeOrder.sort]);
   if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the officials.</RequestNotice></div>;
   if (!data) return <PageState>Loading officials…</PageState>;
   const choice = <div className={segmentedGroup} role="group" aria-label="Officials">
@@ -128,7 +131,7 @@ export function OfficialsPage() {
   const filters = <OptionsSheet label="Filters" iconOnlyOnPhone count={Number(minimum !== "0") + Number(since !== "all") || undefined} onReset={() => { setQuery(""); judgeOrder.set({ sort: null, order: null, minimum: null, since: null }); }}>
     <div className="space-y-3 p-4">
       <SheetField label="Sort">
-        {kind === "judges" ? <OrderControl options={JUDGE_ORDERS} order={judgeOrder} label="Order judges" /> : <OrderControl options={REFEREE_ORDERS} order={refereeOrder} label="Order referees" />}
+        {kind === "judges" ? <OrderControl options={JUDGE_ORDERS} order={judgeOrder} label="Order judges" fixed /> : <OrderControl options={REFEREE_ORDERS} order={refereeOrder} label="Order referees" fixed />}
       </SheetField>
       <FilterSelect label="Minimum bouts" value={minimum} onChange={(value) => judgeOrder.set({ minimum: value === "0" ? null : value })}
         options={[{ value: "0", label: "Any experience" }, ...[10, 50, 100].map((n) => ({ value: String(n), label: `${n}+ bouts` }))]} />

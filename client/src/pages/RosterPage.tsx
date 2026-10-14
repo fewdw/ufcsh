@@ -2,10 +2,10 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useApi, type RosterMove, type RosterMoves } from "../api";
 import { daysUntil, formatDateShort, formatDateShortWithYear } from "../format";
+import { byDivisionName } from "../divisionOrder";
 import { useRouteScrollRestoration } from "../navigationState";
 import { PAGE, FULL_PAGE_BODY } from "../research";
-import PageToolbar, { BROWSE_WIDE, FilterSelect, ListHead } from "../components/PageToolbar";
-import OptionsSheet, { SwitchRow } from "../components/OptionsSheet";
+import PageToolbar, { BROWSE_WIDE, ListHead } from "../components/PageToolbar";
 import BrowseTabs from "../components/BrowseTabs";
 import { markRosterSeen, moveKey, unseenMoves } from "../rosterSeen";
 import { useSeo } from "../seo";
@@ -64,15 +64,15 @@ const recent = (move: RosterMove) => (daysUntil(move.date ?? "") ?? -Infinity) >
 
 /** Signed and released fighters, with counts for the filtered list. Signings
  *  take two columns when the list has the page's width to itself. */
-function MoveList({ kind, moves, fresh, choice, filters, half = false }: {
-  kind: "signed" | "cut"; moves: RosterMove[]; fresh: ReadonlySet<string>; choice?: ReactNode; filters?: ReactNode; half?: boolean;
+function MoveList({ kind, moves, fresh, choice, search, half = false }: {
+  kind: "signed" | "cut"; moves: RosterMove[]; fresh: ReadonlySet<string>; choice?: ReactNode; search?: ReactNode; half?: boolean;
 }) {
   const cut = kind === "cut";
   // Recent signings get their own rows, so a big row never pairs with a small one.
   const groups = cut ? [moves] : [moves.filter(recent), moves.filter((move) => !recent(move))];
   return (
     <div className="min-w-0">
-      <ListHead title={cut ? "Cut" : "Signed"} count={moves.length} choice={choice} filters={filters} />
+      <ListHead title={cut ? "Cut" : "Signed"} count={moves.length} choice={choice} search={search} />
       {groups.map((group, index) => group.length ? (
         <ul key={index} className={`grid grid-cols-1 ${cut || half ? "" : "sm:grid-cols-2"}`}>
           {group.map((move) => <Move key={`${move.fighter_id ?? move.name}-${move.date}`} move={move} cut={cut} big={cut || index === 0} fresh={fresh.has(moveKey(kind, move))} />)}
@@ -86,15 +86,14 @@ function MoveList({ kind, moves, fresh, choice, filters, half = false }: {
 // From lg up Signed and Cut sit side by side, so neither needs choosing.
 const SPLIT = "(min-width: 1024px)";
 
-/** Roster filters work at every screen size and stay in the address. */
+/** The roster's one filter, a division, works at every screen size and stays
+ *  in the address. */
 export default function RosterPage() {
   const { data, error, retry } = useApi<RosterMoves>("/api/roster");
   const [params, setParams] = useSearchParams();
   // Signed or cut, signed first; an old `?tab=signed` link still lands there.
   const list = params.get("tab") === "cut" ? "cut" : "signed";
   const division = params.get("division") ?? "all";
-  const country = params.get("country") ?? "all";
-  const onlyNew = params.get("new") === "1";
   const set = (key: string, value: string) => setParams((current) => {
     const next = new URLSearchParams(current);
     if (value === "all" || !value) next.delete(key); else next.set(key, value);
@@ -113,8 +112,8 @@ export default function RosterPage() {
   useSeo({ title: "UFC Roster Changes", description: "Fighters the UFC has recently signed and recently released, with division, record and date.", path: "/roster" });
   if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the roster changes.</RequestNotice></div>;
   if (!data) return <PageState>Loading roster changes…</PageState>;
-  const moves = [...data.signed, ...data.cut];
-  const filtered = (kind: "signed" | "cut") => data[kind].filter((move) => (division === "all" || move.division === division) && (country === "all" || move.country === country) && (!onlyNew || fresh?.has(moveKey(kind, move))));
+  const divisions = [...new Set([...data.signed, ...data.cut].map((move) => move.division).filter((value): value is string => Boolean(value)))].sort(byDivisionName);
+  const filtered = (kind: "signed" | "cut") => data[kind].filter((move) => division === "all" || move.division === division);
   const choice = <div className={segmentedGroup} role="group" aria-label="Roster changes">
     {(["signed", "cut"] as const).map((option) => (
       <button key={option} type="button" aria-pressed={list === option} onClick={() => set("tab", option === "signed" ? "" : option)}
@@ -123,24 +122,18 @@ export default function RosterPage() {
       </button>
     ))}
   </div>;
-  const filters = <OptionsSheet label="Filters" iconOnlyOnPhone count={Number(division !== "all") + Number(country !== "all") + Number(onlyNew) || undefined}
-    onReset={() => setParams(list === "signed" ? {} : { tab: list }, { replace: true })}>
-    <div className="space-y-3 p-4">
-      <FilterSelect label="Division" value={division} onChange={(value) => set("division", value)}
-        options={[{ value: "all", label: "All divisions" }, ...[...new Set(moves.map((move) => move.division).filter((value): value is string => Boolean(value)))].sort().map((value) => ({ value, label: value }))]} />
-      <FilterSelect label="Country" value={country} onChange={(value) => set("country", value)}
-        options={[{ value: "all", label: "All countries" }, ...[...new Set(moves.map((move) => move.country).filter((value): value is string => Boolean(value)))].map((value) => ({ value, label: countryName(value) })).sort((a, b) => a.label.localeCompare(b.label))]} />
-      <SwitchRow label="New since last visit" on={onlyNew} onChange={(on) => set("new", on ? "1" : "")} />
-      <Freshness label="Updated" at={data.updated_at} staleAfterHours={24} />
-    </div>
-  </OptionsSheet>;
+  const divisionPicker = <select value={division} onChange={(event) => set("division", event.target.value)} aria-label="Division"
+    className="h-9 w-full rounded-full border border-zinc-200 bg-zinc-50 pl-3 pr-7 text-[13px] font-medium text-zinc-700 outline-none hover:border-zinc-300 focus:border-zinc-400 sm:h-8 sm:w-auto sm:text-xs">
+    <option value="all">All divisions</option>
+    {divisions.map((value) => <option key={value} value={value}>{value}</option>)}
+  </select>;
   return (
     <div ref={scroll} className={PAGE}>
       <div className={FULL_PAGE_BODY}>
         <h1 className="sr-only">Roster changes</h1>
         <PageToolbar>
           <BrowseTabs />
-          {wide ? <div className="ml-auto flex items-center gap-2">{split ? null : choice}{filters}</div> : null}
+          {split ? <div className="ml-auto">{divisionPicker}</div> : wide ? <div className="ml-auto">{choice}</div> : null}
         </PageToolbar>
         {split ? (
           <div className="grid grid-cols-2 items-start gap-3">
@@ -153,9 +146,10 @@ export default function RosterPage() {
         ) : (
           // The list's head says which list it is and switches it.
           <section aria-label="Roster changes" className={`${PANEL} overflow-hidden`}>
-            <MoveList kind={list} moves={filtered(list)} fresh={fresh ?? NONE} choice={wide ? null : choice} filters={wide ? null : filters} />
+            <MoveList kind={list} moves={filtered(list)} fresh={fresh ?? NONE} choice={wide ? null : choice} search={divisionPicker} />
           </section>
         )}
+        <p className="px-1"><Freshness label="Updated" at={data.updated_at} staleAfterHours={24} /></p>
       </div>
     </div>
   );
