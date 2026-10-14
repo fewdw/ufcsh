@@ -11,6 +11,7 @@ import OptionsSheet, { SwitchRow } from "../components/OptionsSheet";
 import { PANEL } from "../components/chartTokens";
 import BrowseTabs from "../components/BrowseTabs";
 import { useSeo } from "../seo";
+import Avatar from "../components/Avatar";
 import useMediaQuery from "../useMediaQuery";
 import RequestNotice from "../components/RequestNotice";
 import { PageState } from "../components/ResearchKit";
@@ -262,21 +263,27 @@ export function LocationsPage() {
   );
 }
 
-/** One year's winner: the fighter (and promotion, outside the UFC), then who
- *  it was against and where. The whole row opens the matchup for a bout on
- *  record, or the profile for a fighter's award; a row with neither is plain.
- *  Every row is the same height and never wraps, so the cards line up. */
+/** One year's winner: the fighter's photo (both fighters' for an award they
+ *  share) and name, the promotion in violet when it was won outside the UFC
+ *  as a profile marks such a bout, then who it was against and where. The
+ *  whole row opens the matchup for a bout on record, or the profile for a
+ *  fighter's award; a row with neither is plain. Every row is the same height
+ *  and never wraps, so the cards line up. */
 function AwardRow({ award, shared }: { award: AwardEntry; shared: boolean }) {
   const detail = [formatMethod(award.method, award.round, null), award.event?.name].filter(Boolean).join(" · ");
-  const names = [award.winner.name, award.org ? `(${award.org})` : "", award.opponent ? `${shared ? "vs." : "def."} ${award.opponent.name}` : ""].filter(Boolean).join(" ");
+  const names = [award.winner.name, award.org ?? "", award.opponent ? `${shared ? "vs." : "def."} ${award.opponent.name}` : ""].filter(Boolean).join(" ");
   const to = award.opponent ? (award.fight_id ? `/fights/${award.fight_id}` : null) : award.winner.id ? `/fighters/${award.winner.id}` : null;
   const row = "flex h-12 items-center gap-2.5 px-3.5";
   const body = <>
     <span className="w-8 shrink-0 text-[11px] tabular-nums text-zinc-400">{award.period}</span>
+    <span className="flex shrink-0 -space-x-2.5">
+      <Avatar src={award.winner.photo} name={award.winner.name} size="xs" />
+      {shared && award.opponent ? <Avatar src={award.opponent.photo} name={award.opponent.name} size="xs" /> : null}
+    </span>
     <span className="min-w-0 flex-1">
       <span className="block truncate text-[13px] font-medium text-zinc-900" title={names}>
         {award.winner.name}
-        {award.org ? <span className="font-normal text-zinc-500"> ({award.org})</span> : null}
+        {award.org ? <span className="font-semibold text-violet-500" title={`Won outside the UFC, in ${award.org}`}> {award.org}</span> : null}
         {award.opponent ? <><span className="font-normal text-zinc-400"> {shared ? "vs." : "def."} </span>{award.opponent.name}</> : null}
       </span>
       {detail ? <span className="block truncate text-[11px] text-zinc-400" title={detail}>{detail}</span> : null}
