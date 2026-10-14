@@ -295,7 +295,7 @@ function AwardRow({ award, shared }: { award: AwardEntry; shared: boolean }) {
   const detail = [award.title, award.note, award.result].filter(Boolean).join(" · ");
   return (
     <li className="flex items-baseline gap-3 border-b border-zinc-100 px-4 py-2 last:border-b-0 sm:px-5">
-      <span className="w-8 shrink-0 text-[11px] tabular-nums text-zinc-400">{award.period}</span>
+      <span className="w-12 shrink-0 text-[11px] tabular-nums text-zinc-400">{award.period}</span>
       <span className="min-w-0 flex-1">
         <span className="block text-[13px] font-medium text-zinc-900">
           <AwardName person={award.winner} />
@@ -346,7 +346,7 @@ export function AwardsPage() {
         ) : null)}
         {groups.every((categories) => !categories.length) ? <p className={`${PANEL} px-5 py-8 text-center text-sm text-zinc-500`}>No awards match this search.</p> : null}
         <p className="px-1 text-[11px] text-zinc-400">
-          <a href={data.source.url} target="_blank" rel="noreferrer" className="underline hover:text-zinc-600">{data.source.name}</a>, voted by fans and presented by Fighters Only since 2008. The 2019 awards cover January 2019 to June 2020; each year since runs from July to the following June. A promotion in brackets marks an award won outside the UFC.
+          <a href={data.source.url} target="_blank" rel="noreferrer" className="underline hover:text-zinc-600">{data.source.name}</a>, voted by fans and presented by Fighters Only since 2008. Since 2019 the awards honour a voting window, not a calendar year: 2019-20 covers January 2019 to June 2020, and each one since runs July to June. A promotion in brackets marks an award won outside the UFC.
         </p>
       </div>
     </div>
