@@ -90,11 +90,13 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-12">October 12, 2026</time></p>
+            <p><time dateTime="2026-10-13">October 13, 2026</time></p>
             <ul>
-              <li>More source-backed replacement announcement dates.</li>
-              <li>Corrected replacement identities on historical cards.</li>
-              <li>Recovered missing scorecards and verified roster reports.</li>
+              <li>Sherdog Year-End Awards under Browse, on profiles and on matchups.</li>
+              <li>Profile scorecards show fans and judges side by side, with agreement filters.</li>
+              <li>Clearer judge profiles, bets and predictions; close a matchup from the phone's bottom bar.</li>
+              <li>Roster signings merged across name spellings, with ufc.com photos on profiles.</li>
+              <li>Site updates no longer cause downtime.</li>
             </ul>
           </Section>
         </div>
