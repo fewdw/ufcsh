@@ -1,7 +1,7 @@
 import { useAuth } from "@clerk/react";
 import { Check, ChevronDown, Flag, ImageIcon, Info, LogOut, Pencil, Search, Settings, SquareTerminal, X } from "lucide-react";
 import { isDevSite, useDevStats } from "../devStats";
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiCache, prefetch, useApi } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
@@ -587,6 +587,8 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
   const scheduled = card.eligibility.scheduled && Number(fight.round) <= card.eligibility.scheduled ? `/${card.eligibility.scheduled}` : "";
   const finish = !card.judges.length && fight.method
     ? [fight.method, fight.round ? `R${fight.round}${scheduled}` : "", fight.time ?? ""].filter(Boolean).join(" ") : "";
+  // Columns a wide row leaves empty so three judges' cards always fit.
+  const spare = Math.max(0, 3 - card.judges.length);
   return (
     <li className="relative">
       <Link
@@ -595,43 +597,34 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
         onFocus={warm}
         className={`block ${LIST_ROW} transition-colors hover:bg-zinc-50 ${mine ? "pr-9 sm:pr-10" : ""}`}
       >
-        <div className="hidden items-center gap-2 sm:flex">
-          <Avatar src={fight.f1_photo} name={fight.f1_name} size="sm" outcome={fight.f1_outcome as "win" | "loss" | null} />
-          <p className="min-w-0 flex-1 truncate text-right text-sm font-semibold text-f1-ink">{fight.f1_name}</p>
-          <p className="shrink-0 text-base font-bold tabular-nums">
-            <span className={winner === 1 ? "text-f1-ink" : "text-zinc-400"}>{scored ? card.total1 : "—"}</span>
-            <span className="mx-1 text-zinc-300">–</span>
-            <span className={winner === 2 ? "text-f2-ink" : "text-zinc-400"}>{scored ? card.total2 : "—"}</span>
-          </p>
-          <p className="min-w-0 flex-1 truncate text-sm font-semibold text-f2-ink">{fight.f2_name}</p>
-          <Avatar src={fight.f2_photo} name={fight.f2_name} size="sm" outcome={fight.f2_outcome as "win" | "loss" | null} />
-        </div>
-        <p className={`mt-1 hidden truncate text-center sm:block ${LIST_META}`}>
-          {fight.event_name} · {formatDateShortWithYear(fight.date)}
-          {fight.weight_class ? ` · ${fight.weight_class}` : ""}
-          {fight.method ? ` · ${formatMethod(fight.method, fight.round, fight.time)}` : ""}
-        </p>
-        {card.fans || card.judges.length ? <p className={`hidden text-center tabular-nums sm:block ${LIST_META}`}>
-          {card.fans ? `Fans ${card.fans.total1.toFixed(2)}–${card.fans.total2.toFixed(2)}` : ""}
-          {card.fans && card.judges.length ? " · " : ""}
-          {card.judges.length ? `Judges ${card.judges.map(judge => `${judge.f1}–${judge.f2}`).join(", ")}` : ""}
-        </p> : null}
-        {/* A phone reads it like a scoreboard: the division, then the event on
-            one line, shrunk only when its name is too long for the width; then
-            a line per fighter, their score on this card at the end, then the
-            fans' average and each judge's. */}
+        {/* Read like a scoreboard: a line per fighter, their score on this card
+            at the end, then the fans' average and each judge's. A phone puts
+            the division, then the event, on lines of their own above it, the
+            event shrunk only when its name is too long for the width. */}
         <div className={`@container sm:hidden ${LIST_META}`}>
           {fight.weight_class ? <p className="font-medium text-zinc-600">{fight.weight_class}</p> : null}
           <p className="whitespace-nowrap" style={{ fontSize: `min(0.75rem, calc(100cqw / ${(fight.event_name.length * 0.56).toFixed(2)}))` }}>{fight.event_name}</p>
         </div>
-        <div className="mt-3 grid items-center gap-x-1.5 gap-y-1.5 sm:hidden"
-          style={{ gridTemplateColumns: `auto minmax(0,1fr) repeat(${1 + (card.fans ? 1 : 0) + card.judges.length}, auto)` }}>
-          <span className="col-span-2" />
+        {/* A wide screen has room for the bout on the headings' line, and keeps
+            every row's columns in the same place whatever the bout has. */}
+        <div className="mt-3 grid grid-cols-[var(--cols)] items-center gap-x-1.5 gap-y-1.5 sm:mt-0 sm:grid-cols-[var(--wide)] sm:gap-x-2"
+          style={{
+            "--cols": `auto minmax(0,1fr) repeat(${1 + (card.fans ? 1 : 0) + card.judges.length}, auto)`,
+            "--wide": `auto minmax(0,1fr) 2.5rem 4rem repeat(${card.judges.length + spare}, 1.75rem)`,
+          } as CSSProperties}>
+          <p className={`col-span-2 min-w-0 truncate ${LIST_META}`}>
+            <span className="hidden sm:inline">
+              {fight.weight_class ? <><span className="font-medium text-zinc-600">{fight.weight_class}</span>{" · "}</> : null}
+              {fight.event_name} · {formatDateShortWithYear(fight.date)}
+              {fight.method && !finish ? ` · ${formatMethod(fight.method, fight.round, fight.time)}` : ""}
+            </span>
+          </p>
           <span className={SCORE_HEAD}>You</span>
-          {card.fans || card.judges.length ? <>
-            {card.fans ? <span className={`${SCORE_HEAD} pl-2`} title={`Average of ${card.fans.cards.toLocaleString()} fan ${card.fans.cards === 1 ? "card" : "cards"}`}>Fans</span> : null}
-            {card.judges.length ? <span className={`${SCORE_HEAD} pl-2`} style={{ gridColumn: `span ${card.judges.length}` }}>Judges</span> : null}
-          </> : null}
+          {card.fans
+            ? <span className={`${SCORE_HEAD} pl-2 sm:pl-0`} title={`Average of ${card.fans.cards.toLocaleString()} fan ${card.fans.cards === 1 ? "card" : "cards"}`}>Fans</span>
+            : <span className="hidden sm:block" />}
+          {card.judges.length ? <span className={`${SCORE_HEAD} pl-2 sm:pl-0`} style={{ gridColumn: `span ${card.judges.length}` }}>Judges</span> : null}
+          {spare ? <span className="hidden sm:block" style={{ gridColumn: `span ${spare}` }} /> : null}
           {([1, 2] as const).map(side => {
             const name = side === 1 ? fight.f1_name : fight.f2_name;
             const ink = side === 1 ? "text-f1-ink" : "text-f2-ink";
@@ -648,12 +641,13 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
               <p className={`text-center text-base font-bold leading-none tabular-nums ${winner === side ? ink : "text-zinc-400"}`}>
                 {scored ? (side === 1 ? card.total1 : card.total2) : "—"}
               </p>
-              {card.fans ? <p className={`pl-2 text-center text-sm font-semibold leading-none tabular-nums ${side === 1 ? tone(card.fans.total1, card.fans.total2) : tone(card.fans.total2, card.fans.total1)}`}>
+              {card.fans ? <p className={`pl-2 text-center text-sm font-semibold leading-none tabular-nums sm:pl-0 ${side === 1 ? tone(card.fans.total1, card.fans.total2) : tone(card.fans.total2, card.fans.total1)}`}>
                 {(side === 1 ? card.fans.total1 : card.fans.total2).toFixed(2)}
-              </p> : null}
-              {card.judges.map((judge, at) => <p key={at} className={`${at ? "" : "pl-2"} text-center text-sm font-semibold leading-none tabular-nums ${side === 1 ? tone(judge.f1, judge.f2) : tone(judge.f2, judge.f1)}`}>
+              </p> : <span className="hidden sm:block" />}
+              {card.judges.map((judge, at) => <p key={at} className={`${at ? "" : "pl-2 sm:pl-0"} text-center text-sm font-semibold leading-none tabular-nums ${side === 1 ? tone(judge.f1, judge.f2) : tone(judge.f2, judge.f1)}`}>
                 {side === 1 ? judge.f1 : judge.f2}
               </p>)}
+              {spare ? <span className="hidden sm:block" style={{ gridColumn: `span ${spare}` }} /> : null}
             </Fragment>;
           })}
         </div>

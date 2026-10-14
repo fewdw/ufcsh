@@ -132,17 +132,27 @@ test("places bets at the server's price and caps the stake", t => {
   assert.match(error(() => store.place(user, { stake: 5, legs: [leg(bouts[1].id, { winner: 1 }, "-200")] })).message, /closed for betting/);
 });
 
-test("a profile lists bets in the order their bouts are fought, a parlay at its latest bout", t => {
+test("a profile lists open bets by the next bout each is waiting on, then settled ones latest first", t => {
   const { bouts, store } = fixture(t);
   bouts.forEach((fight, index) => { fight.card_place = index; });
   const user = "user_1";
   const single = (index: number) => store.place(user, { stake: 5, legs: [leg(bouts[index].id, { winner: 1 }, "-200")] });
+  const parlay = (...indexes: number[]) => store.place(user, { stake: 5, legs: indexes.map(index => leg(bouts[index].id, { winner: 1 }, "-200")) });
+  const order = () => store.profile(store["scores"].identity(user).handle).bets.map(bet => bet.legs.map(entry => bouts.findIndex(fight => fight.id === entry.fightId)));
   single(3);
-  store.place(user, { stake: 5, legs: [leg(bouts[4].id, { winner: 1 }, "-200"), leg(bouts[1].id, { winner: 1 }, "-200")] });
+  parlay(1, 4);
   single(0);
   single(5);
-  const order = store.profile(store["scores"].identity(user).handle).bets.map(bet => bet.legs.map(entry => bouts.findIndex(fight => fight.id === entry.fightId)));
-  assert.deepEqual(order, [[0], [4, 1], [3], [5]]);
+  parlay(0, 5, 2);
+  // The card is fought from the bottom up, and so are a parlay's legs.
+  assert.deepEqual(order(), [[5], [5, 2, 0], [4, 1], [3], [0]]);
+
+  const win = (index: number, side: 1 | 2 = 1) => Object.assign(bouts[index], {
+    f1_outcome: side === 1 ? "win" : "loss", f2_outcome: side === 1 ? "loss" : "win", method: "U-DEC", round: "3" });
+  // A parlay moves to the first leg still to come; a lost one is settled
+  // whatever is left on it.
+  win(5); win(4, 2); win(3);
+  assert.deepEqual(order(), [[5, 2, 0], [0], [3], [4, 1], [5]]);
 });
 
 test("only the owner can remove a bet, and only while every matchup is open", t => {
