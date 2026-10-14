@@ -90,13 +90,9 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-13">October 13, 2026</time></p>
+            <p><time dateTime="2026-10-14">October 14, 2026</time></p>
             <ul>
-              <li>Sherdog Year-End Awards under Browse, on profiles and on matchups.</li>
-              <li>Profile scorecards show fans and judges side by side, with agreement filters.</li>
-              <li>Clearer judge profiles, bets and predictions; close a matchup from the phone's bottom bar.</li>
-              <li>Roster signings merged across name spellings, with ufc.com photos on profiles.</li>
-              <li>Site updates no longer cause downtime.</li>
+              <li>Site updates now switch over only after the new version is confirmed reachable, so the site stays up.</li>
             </ul>
           </Section>
         </div>
