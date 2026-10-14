@@ -82,3 +82,11 @@ export const fighterAwards = (id: string): FighterAward[] => resolved().fighters
 export const fightAwards = (id: string): FightAward[] => resolved().fights.get(id) ?? [];
 /** UFC awards whose fighter or bout the archive no longer finds. */
 export const awardMisses = (): AwardMiss[] => resolved().misses;
+
+/** The award year not yet in the list once Sherdog has published it: its
+ *  articles run through December and the complete list follows in early
+ *  January, so mid-January is when the year before is due. */
+export function awardYearDue(today: string): number | null {
+  const next = Number(AWARDS[0].rows[0].period) + 1;
+  return today >= `${next + 1}-01-15` ? next : null;
+}

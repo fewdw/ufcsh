@@ -6,7 +6,8 @@ import { validateFightActions } from "./action-stats.ts";
 import { americanLine, fightIndex, impliedProbability, professionalBouts } from "./fight-index.ts";
 import { fighterNamed, hasUfcFight, ufcFightExistsSql } from "./fighter-identity.ts";
 import { SEARCH_ALIASES } from "./search-aliases.ts";
-import { awardMisses } from "./awards.ts";
+import { awardMisses, awardYearDue } from "./awards.ts";
+import { AWARDS_SOURCE } from "./awards-data.ts";
 import { normName } from "./util.ts";
 import { noContestUnexplained } from "./no-contest.ts";
 import { pageNamesFighter } from "./scrape/odds.ts";
@@ -806,6 +807,24 @@ function awardLinkMisses(): BugCheck {
     links: [],
     actions: [],
   })));
+}
+
+function awardYearMissing(): BugCheck {
+  const year = awardYearDue(new Date().toISOString().slice(0, 10));
+  return check({
+    id: "award-year-missing",
+    group: "Fighters",
+    label: "Awards missing the latest year",
+    description: "Sherdog has published its year-end awards and server/src/awards-data.ts does not have them yet. Read each award's article from the index and add one row per category at the top of its list; the awards test then checks every UFC bout against the archive.",
+    grade: "must",
+  }, year ? [{
+    key: String(year),
+    title: `${year} awards are not in the list`,
+    subtitle: "One row to add in each category",
+    facts: [],
+    links: [{ label: AWARDS_SOURCE.name, href: AWARDS_SOURCE.url }],
+    actions: [],
+  }] : []);
 }
 
 // ---------------------------------------------------------------------------
@@ -1833,6 +1852,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     sharedCareerProfiles(),
     searchAliasMisses(),
     awardLinkMisses(),
+    awardYearMissing(),
     rosterMovesUnread(),
     rosterHistoryGaps(),
     newsFeedsUnread(),

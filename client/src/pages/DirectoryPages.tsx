@@ -283,43 +283,38 @@ export function LocationsPage() {
   );
 }
 
-const awardText = (award: AwardEntry) => [award.period, award.winner.name, award.opponent?.name, award.org, award.event?.name].filter(Boolean).join(" ");
-
 function AwardName({ person }: { person: AwardPerson }) {
   return person.id ? <Link to={`/fighters/${person.id}`} className="hover:underline">{person.name}</Link> : <>{person.name}</>;
 }
 
 /** One year's winner: the fighter (and promotion, outside the UFC), then who
- *  it was against and where. Fighters and bouts on record open their pages. */
+ *  it was against and where. Fighters and bouts on record open their pages.
+ *  Every row is the same height and never wraps, so the cards line up. */
 function AwardRow({ award, shared }: { award: AwardEntry; shared: boolean }) {
   const where = award.event ? (award.fight_id ? <Link to={`/fights/${award.fight_id}`} className="hover:text-zinc-700 hover:underline">{award.event.name}</Link> : award.event.name) : null;
   const detail = formatMethod(award.method, award.round, null);
+  const names = [award.winner.name, award.org ? `(${award.org})` : "", award.opponent ? `${shared ? "vs." : "def."} ${award.opponent.name}` : ""].filter(Boolean).join(" ");
   return (
-    <li className="flex items-baseline gap-3 border-b border-zinc-100 px-4 py-2 last:border-b-0 sm:px-5">
+    <li className="flex h-12 items-center gap-2.5 px-3.5">
       <span className="w-8 shrink-0 text-[11px] tabular-nums text-zinc-400">{award.period}</span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[13px] font-medium text-zinc-900">
+        <span className="block truncate text-[13px] font-medium text-zinc-900" title={names}>
           <AwardName person={award.winner} />
           {award.org ? <span className="font-normal text-zinc-500"> ({award.org})</span> : null}
           {award.opponent ? <><span className="font-normal text-zinc-400"> {shared ? "vs." : "def."} </span><AwardName person={award.opponent} /></> : null}
         </span>
-        {detail || where ? <span className="block text-[11px] text-zinc-400">{detail}{detail && where ? " · " : ""}{where}</span> : null}
+        {detail || where ? <span className="block truncate text-[11px] text-zinc-400" title={award.event?.name}>{detail}{detail && where ? " · " : ""}{where}</span> : null}
       </span>
     </li>
   );
 }
 
-/** The yearly awards, one panel a category, newest first. */
+/** The yearly awards, one card a category as Rankings has one a division,
+ *  newest first. */
 export function AwardsPage() {
   const { data, error, retry } = useApi<AwardsDirectory>("/api/awards");
-  const [query, setQuery] = useState("");
   const scroll = useRouteScrollRestoration<HTMLDivElement>("awards", Boolean(data));
   useSeo({ title: "MMA Awards: Fighter, Fight & Knockout of the Year", description: "Sherdog's year-end awards since 2008: Fighter, Breakthrough and Comeback Fighter of the Year, and Fight, Knockout, Submission and Upset of the Year.", path: "/awards" });
-  // Awards for a year are a name a row; awards for a bout need the width.
-  const groups = useMemo(() => [false, true].map((bouts) => (data?.categories ?? [])
-    .filter((category) => category.awards.some((award) => award.opponent) === bouts)
-    .map((category) => ({ ...category, awards: searchList(category.awards, query, awardText) }))
-    .filter((category) => category.awards.length)), [data, query]);
   if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the awards.</RequestNotice></div>;
   if (!data) return <PageState>Loading awards…</PageState>;
   return (
@@ -328,23 +323,17 @@ export function AwardsPage() {
         <h1 className="sr-only">Awards</h1>
         <PageToolbar>
           <BrowseTabs />
-          <div className="ml-auto flex min-w-0 flex-1 basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
-            <ToolbarSearch value={query} onChange={setQuery} label="Find a fighter, event or year" />
-          </div>
         </PageToolbar>
-        {groups.map((categories, index) => categories.length ? (
-          <div key={index} className={`grid items-start gap-2 sm:gap-3 ${index ? "lg:grid-cols-2 2xl:grid-cols-4" : "sm:grid-cols-3"}`}>
-            {categories.map((category) => (
-              <section key={category.id} aria-label={category.label} className={`${PANEL} overflow-hidden`}>
-                <div className="border-b border-zinc-100 px-4 py-2.5 sm:px-5 sm:py-3">
-                  <h2 className="text-sm font-semibold text-zinc-900">{category.label}</h2>
-                </div>
-                <ul>{category.awards.map((award) => <AwardRow key={award.period} award={award} shared={category.shared} />)}</ul>
-              </section>
-            ))}
-          </div>
-        ) : null)}
-        {groups.every((categories) => !categories.length) ? <p className={`${PANEL} px-5 py-8 text-center text-sm text-zinc-500`}>No awards match this search.</p> : null}
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-4">
+          {data.categories.map((category) => (
+            <section key={category.id} aria-label={category.label} className={`${PANEL} overflow-hidden`}>
+              <div className="border-b border-zinc-200 px-3.5 py-2.5">
+                <h2 className="truncate text-sm font-semibold text-zinc-900">{category.label}</h2>
+              </div>
+              <ul className="divide-y divide-zinc-50">{category.awards.map((award) => <AwardRow key={award.period} award={award} shared={category.shared} />)}</ul>
+            </section>
+          ))}
+        </div>
         <p className="px-1 text-[11px] text-zinc-400">
           <a href={data.source.url} target="_blank" rel="noreferrer" className="underline hover:text-zinc-600">{data.source.name}</a>, voted by Sherdog's staff each December for that calendar year. A promotion in brackets marks an award won outside the UFC.
         </p>

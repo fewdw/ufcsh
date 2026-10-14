@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { awardMisses, awardsDirectory, fightAwards, fighterAwards } from "./awards.ts";
+import { awardMisses, awardsDirectory, awardYearDue, fightAwards, fighterAwards } from "./awards.ts";
 import { AWARDS } from "./awards-data.ts";
 import { db } from "./db.ts";
 
@@ -58,4 +58,11 @@ test("a profile and a matchup carry their awards", () => {
   assert.deepEqual(van.map((entry) => entry.label), ["Fighter of the Year", "Breakthrough Fighter of the Year", "Fight of the Year"]);
   const cerrone = fighterAwards(award("fight", 2009).opponent!.id!).find((entry) => entry.period === "2009");
   assert.deepEqual([cerrone?.opponent, cerrone?.org, cerrone?.fight_id], ["Benson Henderson", "WEC", null]);
+});
+
+test("the next year's awards are asked for from mid-January, and not before", () => {
+  const newest = Number(AWARDS[0].rows[0].period);
+  assert.equal(awardYearDue(`${newest + 1}-12-31`), null);
+  assert.equal(awardYearDue(`${newest + 2}-01-14`), null);
+  assert.equal(awardYearDue(`${newest + 2}-01-15`), newest + 1);
 });
