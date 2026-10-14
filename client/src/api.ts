@@ -439,6 +439,8 @@ export type Matchup = {
   odds: FightOdds;
   /** perf_kind names the award: Performance, or the pre-2014 Knockout / Submission of the Night. */
   bonuses: { perf: boolean; perf_kind?: "perf" | "ko" | "sub"; fotn: boolean };
+  /** Yearly awards this bout won. */
+  awards?: { category: string; label: string; period: string }[];
   detail: FightDetailBlock | null;
   common_opponents: { opponent: { id: string; name: string }; f1_fights: HistoryRow[]; f2_fights: HistoryRow[] }[];
   head_to_head: HistoryRow[];
@@ -500,6 +502,8 @@ export type FighterProfile = {
   /** Every verified professional bout; UFC rows retain their richer local data. */
   pro_history: ProfessionalHistoryRow[];
   roster_events?: CareerRosterEvent[];
+  /** Yearly awards, newest first. */
+  awards?: FighterAward[];
   /** UFC-only history, including verified source-only UFC rows. */
   history: (HistoryRow | ProfessionalHistoryRow)[];
 };
@@ -791,6 +795,28 @@ export type LocationPage = Omit<VenuePage, "former_names" | "location_slug"> & {
 export type LocationDirectory = {
   locations: { slug: string; name: string; city: string; state: string | null; country: string | null; events: number; upcoming: number; last: string | null }[];
 };
+
+/** A yearly award (World MMA Awards): `id` opens a profile, `org` names the
+ *  promotion when the award was won outside the UFC. */
+export type AwardPerson = { name: string; id: string | null };
+export type AwardEntry = {
+  period: string;
+  /** The award's name that year, when it differed from the category's. */
+  title: string | null;
+  winner: AwardPerson;
+  opponent: AwardPerson | null;
+  org: string | null;
+  note: string | null;
+  result: string | null;
+  event: { name: string; id: string | null } | null;
+  fight_id: string | null;
+};
+export type AwardsDirectory = {
+  source: { name: string; url: string };
+  /** `shared` honours both fighters of the bout. */
+  categories: { id: string; label: string; shared: boolean; note: string | null; awards: AwardEntry[] }[];
+};
+export type FighterAward = { category: string; label: string; period: string; opponent: string | null; org: string | null; note: string | null; fight_id: string | null };
 
 export type VenueDirectory = {
   venues: { slug: string; name: string; former_names: string[]; city: string | null; state: string | null; country: string | null; events: number; upcoming: number; last: string | null }[];

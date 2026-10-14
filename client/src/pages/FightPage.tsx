@@ -988,6 +988,15 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     <FighterHero side={fight.f2} align="right" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} past={fight.status === "past"} />
                   </div>
                 </div>
+                {/* Yearly awards honour the bout, so they sit under both corners,
+                    drawn up into the hero's own bottom padding. */}
+                {fight.awards?.length ? (
+                  <div className="-mt-2 flex flex-wrap justify-center gap-1 pb-4">
+                    {fight.awards.map((award) => (
+                      <Link key={award.category} to="/awards" title="World MMA Awards" className={BONUS_TAG.replace("cursor-default", "transition hover:bg-amber-300")}>{award.label} {award.period}</Link>
+                    ))}
+                  </div>
+                ) : null}
 
               </div>
             </section>

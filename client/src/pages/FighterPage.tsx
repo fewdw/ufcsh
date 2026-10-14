@@ -4,7 +4,7 @@ import { CareerStatModal } from "../components/CareerStatDetails";
 import { Children, Fragment, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../api";
-import type { CompleteRecordBefore, FighterProfile, FighterRecord, HistoryRow, NewsPage, ProfessionalHistoryRow } from "../api";
+import type { CompleteRecordBefore, FighterAward, FighterProfile, FighterRecord, HistoryRow, NewsPage, ProfessionalHistoryRow } from "../api";
 import { divisionName, formatDateShortWithYear, formatLine, formatMethod, isDecision, lastName } from "../format";
 import { formatValue, PANEL } from "../components/chartTokens";
 import FighterPortrait from "../components/FighterPortrait";
@@ -202,6 +202,36 @@ function EnteringRecords({
  *  is not something the window width can answer. The divider carries more of
  *  the load at card width, where it is the only line marking where one ends. */
 const BOUT_LIST = "@container divide-y divide-zinc-100 pb-2 @3xl:divide-zinc-50";
+
+/** Yearly awards (World MMA Awards), newest first. One won in a bout on
+ *  record opens that matchup; one won elsewhere names the promotion. */
+function FighterAwards({ awards }: { awards: FighterAward[] }) {
+  return (
+    <div className="border-t border-zinc-100 pt-3 sm:pt-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Awards</h2>
+        <Link to="/awards" className="text-[11px] text-zinc-400 transition hover:text-zinc-700">All awards</Link>
+      </div>
+      <ul className="mt-1.5 grid gap-x-4 gap-y-1 @[40rem]:grid-cols-2">
+        {awards.map((award) => {
+          const against = award.opponent ? `vs. ${award.opponent}` : award.note;
+          return (
+            <li key={`${award.category}-${award.period}`} className="flex min-w-0 items-baseline gap-2">
+              <span className="w-12 shrink-0 text-[11px] tabular-nums text-zinc-400">{award.period}</span>
+              <span className="min-w-0 text-[13px] font-medium text-zinc-800">
+                {award.label}
+                {against || award.org ? <span className="text-[11px] font-normal text-zinc-400">
+                  {against ? <> {award.fight_id ? <Link to={`/fights/${award.fight_id}`} className="hover:text-zinc-700 hover:underline">{against}</Link> : against}</> : null}
+                  {award.org ? ` (${award.org})` : null}
+                </span> : null}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
 
 /** The awards this fighter took home, which the result line does not say, and
  *  in red the performance award the opponent earned on them. */
@@ -791,6 +821,7 @@ export default function FighterPage() {
               </div>
             </div>
             <BioGrid bio={bio} className="@[40rem]:hidden" />
+            {fighter.awards?.length ? <FighterAwards awards={fighter.awards} /> : null}
             {/* Both records at once, side by side while the card is wide
                 enough and stacked when it is not. The professional wheel
                 waits until that history is verified. */}
