@@ -64,6 +64,7 @@ import { renderShareImage, type ShareCard, type SharePhoto } from "./og-images.t
 export { pageSeo, sitemap };
 import { judgeProfile, officialSlug, officialsDirectory, refereeProfile, searchOfficials } from "./officials.ts";
 import { searchAliases } from "./search-aliases.ts";
+import { awardsDirectory, fightAwards, fighterAwards } from "./awards.ts";
 import { locationDirectory, locationOfEvent, locationPage, searchVenues, venueDirectory, venueOfEvent, venuePage } from "./venues.ts";
 import { newsView } from "./news.ts";
 import { newsAiStatus, setNewsAi, startNewsReader } from "./news-ai.ts";
@@ -1052,6 +1053,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
       perf_kind: PERF_BONUS_KIND[f.perf_bonus] ?? (f.detail_json && JSON.parse(f.detail_json)?.bonuses?.perfKind) ?? "perf",
       fotn: !!f.fotn_bonus || !!(f.detail_json && JSON.parse(f.detail_json)?.bonuses?.fotn),
     },
+    awards: potential ? [] : fightAwards(f.id),
     detail,
     common_opponents: common,
     head_to_head: headToHead,
@@ -1139,6 +1141,7 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     insights: { rounds: roundOutcomes(indexedFighter?.fights ?? [], fr.id), strikes: roundStrikes(indexedFighter?.fights ?? [], fr.id), decisions: decisionScores(indexedFighter?.fights ?? [], fr.id) },
     history: mergedUfcHistory,
     roster_events: fighterRosterEvents(fr.id),
+    awards: fighterAwards(fr.id),
     // The professional list shows the same ranks on its UFC bouts.
     pro_history: proHistory.map((row) => {
       const ranked = row.fight_id ? mergedUfcHistory.find((entry) => entry.fight_id === row.fight_id) : undefined;
@@ -2145,6 +2148,7 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
     return tapeHistory(fightIndex(), bout.f1_id ?? "", bout.f2_id ?? "", bout.event_date, Number(bout.ord) || 0);
   }
   if (p.startsWith("/api/fights/")) return await getFight(id, rankingType) ?? undefined;
+  if (p === "/api/awards") return awardsDirectory();
   if (p === "/api/officials") return officialsDirectory();
   if (p.startsWith("/api/judges/")) return judgeProfile(id, url.searchParams) ?? undefined;
   if (p.startsWith("/api/referees/")) return refereeProfile(id, url.searchParams) ?? undefined;
@@ -2361,7 +2365,7 @@ export function startApi(port: number): http.Server {
     clearInterval(warmLists);
     if (!queryPool) return;
     for (const path of ["/api/events", "/api/live", "/api/stats", "/api/rankings?ranking=media", "/api/rankings?ranking=meta",
-      "/api/officials", "/api/venues", "/api/locations", "/api/news"]) {
+      "/api/officials", "/api/venues", "/api/locations", "/api/news", "/api/awards"]) {
       void publicAnswer(new URL(path, "http://localhost")).catch(() => {});
     }
   }, 1000);

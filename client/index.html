@@ -24,7 +24,7 @@
         else if ((m = /^\/fights\/([a-f0-9]{16})$/.exec(path))) urls.push("/api/events", ranked("/api/fights/" + m[1]));
         else if ((m = /^\/fighters\/([a-f0-9]{16})$/.exec(path))) urls.push(ranked("/api/fighters/" + m[1]), "/api/fighters/" + m[1] + "/stats?scope=ufc&minBouts=0");
         else if (path === "/rankings") urls.push(ranked("/api/rankings"));
-        else if (path === "/officials" || path === "/venues" || path === "/locations") urls.push("/api" + path);
+        else if (path === "/officials" || path === "/venues" || path === "/locations" || path === "/awards") urls.push("/api" + path);
         else if (!location.search && (m = /^\/(judges|referees|venues|locations)\/([a-z0-9-]{1,80})$/.exec(path))) urls.push("/api/" + m[1] + "/" + m[2]);
         var responses = {};
         urls.forEach(function (url) { responses[url] = fetch(url).catch(function () { return null; }); });
@@ -104,7 +104,7 @@
           : /^\/judges\//.test(path) ? "JudgePage"
           : /^\/referees\//.test(path) ? "RefereePage"
           : /^\/(venues|locations)\//.test(path) ? "VenuePage"
-          : path === "/officials" || path === "/venues" || path === "/locations" ? "DirectoryPages"
+          : path === "/officials" || path === "/venues" || path === "/locations" || path === "/awards" ? "DirectoryPages"
           : null;
         (chunks[page] || []).forEach(function (name) {
           var link = document.createElement("link");
