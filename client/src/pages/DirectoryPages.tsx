@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowDown, ArrowUp, ChevronDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useApi, type AwardEntry, type AwardsDirectory, type LocationDirectory, type OfficialsDirectory, type VenueDirectory } from "../api";
 import { searchList } from "../search";
 import { formatMethod } from "../format";
 import { useRememberedState, useRouteScrollRestoration } from "../navigationState";
 import { PAGE, FULL_PAGE_BODY } from "../research";
 import PageToolbar, { BROWSE_WIDE, FilterSelect, ListHead, ToolbarSearch } from "../components/PageToolbar";
-import OptionsSheet, { SheetField, SwitchRow } from "../components/OptionsSheet";
+import OptionsSheet, { SwitchRow } from "../components/OptionsSheet";
 import { PANEL } from "../components/chartTokens";
 import BrowseTabs from "../components/BrowseTabs";
 import { useSeo } from "../seo";
@@ -18,58 +18,32 @@ import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } fro
 
 const years = (first: string | null, last: string | null) => first && last ? `${first.slice(0, 4)}–${last.slice(0, 4)}` : "";
 
-/** A list's order: one of `options`, each read high to low (A–Z reads A
- *  first), and an arrow that flips it. Both live in the address, so coming
- *  back from a profile returns to the same list. */
+/** A list's order: one of `options`, each read one way only (most first, or
+ *  A to Z). It lives in the address, so coming back from a profile returns to
+ *  the same list. */
 function useOrder<K extends string>(options: readonly { key: K }[]) {
   const [params, setParams] = useSearchParams();
   const sort = options.find((option) => option.key === params.get("sort"))?.key ?? options[0].key;
-  const reversed = params.get("order") === "reverse";
   const set = (next: Record<string, string | null>) => setParams((current) => {
     const out = new URLSearchParams(current);
     for (const [key, value] of Object.entries(next)) if (value) out.set(key, value); else out.delete(key);
     return out;
   }, { replace: true });
-  return {
-    sort, reversed,
-    setSort: (key: K) => set({ sort: key === options[0].key ? null : key, order: null }),
-    flip: () => set({ order: reversed ? null : "reverse" }),
-    set,
-  };
+  return { sort, setSort: (key: K) => set({ sort: key === options[0].key ? null : key }), set };
 }
 
-/** The sort, and unless `fixed`, an arrow that reverses it. */
-function OrderControl<K extends string>({ options, order, label, fixed = false }: {
-  options: readonly { key: K; label: string }[]; order: { sort: K; reversed: boolean; setSort: (key: K) => void; flip: () => void }; label: string; fixed?: boolean;
-}) {
-  const alphabetical = order.sort === ("name" as K);
-  // Descending is the natural read for a count or a rate, ascending for names.
-  // The arrow points up for highest (or Z) first, down for lowest (or A) first.
-  const up = alphabetical ? order.reversed : !order.reversed;
-  const title = alphabetical ? (order.reversed ? "Z to A" : "A to Z") : (order.reversed ? "Lowest first" : "Highest first");
-  return (
-    <div className="flex shrink-0 items-center gap-0.5">
-      <select value={order.sort} onChange={(event) => order.setSort(event.target.value as K)} aria-label={label}
-        className="h-8 rounded-full border border-zinc-200 bg-zinc-50 pl-3 pr-7 text-[13px] font-medium text-zinc-700 outline-none hover:border-zinc-300 focus:border-zinc-400 sm:text-xs">
-        {options.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
-      </select>
-      {fixed ? null : <button type="button" onClick={order.flip} title={title} aria-label={`${title}; reverse the order`}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950">
-        {up ? <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />}
-      </button>}
-    </div>
-  );
+function SortSelect<K extends string>({ options, order }: { options: readonly { key: K; label: string }[]; order: { sort: K; setSort: (key: K) => void } }) {
+  return <FilterSelect label="Sort" value={order.sort} onChange={(value) => order.setSort(value as K)} options={options.map((option) => ({ value: option.key, label: option.label }))} />;
 }
 
 /** Sorts by `value`, high first (low first for text), entries without one
- *  last either way, ties by `tie`. */
-function ordered<T>(list: T[], value: (entry: T) => number | string | null, reversed: boolean, tie: (a: T, b: T) => number) {
-  const sign = reversed ? -1 : 1;
+ *  last, ties by `tie`. */
+function ordered<T>(list: T[], value: (entry: T) => number | string | null, tie: (a: T, b: T) => number) {
   return [...list].sort((a, b) => {
     const x = value(a), y = value(b);
     if (x === null || y === null) return x === y ? tie(a, b) : x === null ? 1 : -1;
     const by = typeof x === "string" ? x.localeCompare(String(y)) : Number(y) - Number(x);
-    return by ? sign * by : tie(a, b);
+    return by || tie(a, b);
   });
 }
 
@@ -116,23 +90,21 @@ export function OfficialsPage() {
       .filter((entry) => entry.n >= Number(minimum) && (since === "all" || Boolean(entry.last && entry.last >= `${new Date().getFullYear() - Number(since) + 1}-01-01`)));
     if (!data) return [];
     if (kind === "referees") {
-      return ordered(matches(data.referees), (entry) => refereeOrder.sort === "name" ? entry.name : entry.n, false, byBouts);
+      return ordered(matches(data.referees), (entry) => refereeOrder.sort === "name" ? entry.name : entry.n, byBouts);
     }
-    return ordered(matches(data.judges), (entry) => rate ? rate(entry) : judgeOrder.sort === "name" ? entry.name : entry.n, false, byBouts);
+    return ordered(matches(data.judges), (entry) => rate ? rate(entry) : judgeOrder.sort === "name" ? entry.name : entry.n, byBouts);
   }, [data, kind, query, minimum, since, rate, judgeOrder.sort, refereeOrder.sort]);
   if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the officials.</RequestNotice></div>;
   if (!data) return <PageState>Loading officials…</PageState>;
   const choice = <div className={segmentedGroup} role="group" aria-label="Officials">
     {(["judges", "referees"] as const).map((option) => (
-      <button key={option} type="button" aria-pressed={kind === option} onClick={() => judgeOrder.set({ kind: option === "judges" ? null : option, sort: null, order: null })}
+      <button key={option} type="button" aria-pressed={kind === option} onClick={() => judgeOrder.set({ kind: option === "judges" ? null : option, sort: null })}
         className={`${segmentedOption} ${kind === option ? segmentedSelected : segmentedIdle}`}>{option === "referees" ? "Referees" : "Judges"}</button>
     ))}
   </div>;
-  const filters = <OptionsSheet label="Filters" iconOnlyOnPhone count={Number(minimum !== "0") + Number(since !== "all") || undefined} onReset={() => { setQuery(""); judgeOrder.set({ sort: null, order: null, minimum: null, since: null }); }}>
+  const filters = <OptionsSheet label="Filters" iconOnlyOnPhone count={Number(minimum !== "0") + Number(since !== "all") || undefined} onReset={() => { setQuery(""); judgeOrder.set({ sort: null, minimum: null, since: null }); }}>
     <div className="space-y-3 p-4">
-      <SheetField label="Sort">
-        {kind === "judges" ? <OrderControl options={JUDGE_ORDERS} order={judgeOrder} label="Order judges" fixed /> : <OrderControl options={REFEREE_ORDERS} order={refereeOrder} label="Order referees" fixed />}
-      </SheetField>
+      {kind === "judges" ? <SortSelect options={JUDGE_ORDERS} order={judgeOrder} /> : <SortSelect options={REFEREE_ORDERS} order={refereeOrder} />}
       <FilterSelect label="Minimum bouts" value={minimum} onChange={(value) => judgeOrder.set({ minimum: value === "0" ? null : value })}
         options={[{ value: "0", label: "Any experience" }, ...[10, 50, 100].map((n) => ({ value: String(n), label: `${n}+ bouts` }))]} />
       <FilterSelect label="Active" value={since} onChange={(value) => judgeOrder.set({ since: value === "all" ? null : value })}
@@ -191,14 +163,13 @@ function usePlaces<T extends Place>(places: T[] | undefined, text: (place: T) =>
   const [query, setQuery] = useState("");
   const list = useMemo(() => {
     const filtered = searchList(places ?? [], query, text).filter((place) => (country === "all" || place.country === country) && (!upcoming || place.upcoming > 0));
-    const sorted = filtered.sort(order.sort === "name" ? byName : busiest);
-    return order.reversed ? sorted.reverse() : sorted;
-  }, [places, text, query, country, upcoming, order.sort, order.reversed]);
+    return filtered.sort(order.sort === "name" ? byName : busiest);
+  }, [places, text, query, country, upcoming, order.sort]);
   const countries = useMemo(() => [...new Set((places ?? []).map((place) => place.country).filter((value): value is string => Boolean(value)))].sort(), [places]);
-  return { list, query, setQuery, filters: (label: string) => (
-    <OptionsSheet label="Filters" iconOnlyOnPhone count={Number(country !== "all") + Number(upcoming) || undefined} onReset={() => { setQuery(""); order.set({ sort: null, order: null, country: null, upcoming: null }); }}>
+  return { list, query, setQuery, filters: (
+    <OptionsSheet label="Filters" iconOnlyOnPhone count={Number(country !== "all") + Number(upcoming) || undefined} onReset={() => { setQuery(""); order.set({ sort: null, country: null, upcoming: null }); }}>
       <div className="space-y-3 p-4">
-        <SheetField label="Sort"><OrderControl options={PLACE_ORDERS} order={order} label={label} /></SheetField>
+        <SortSelect options={PLACE_ORDERS} order={order} />
         <FilterSelect label="Country" value={country} onChange={(value) => order.set({ country: value === "all" ? null : value })}
           options={[{ value: "all", label: "All countries" }, ...countries.map((value) => ({ value, label: value }))]} />
         <SwitchRow label="Upcoming cards only" on={upcoming} onChange={(on) => order.set({ upcoming: on ? "1" : null })} />
@@ -240,12 +211,12 @@ export function VenuesPage() {
         <h1 className="sr-only">Venues</h1>
         <PageToolbar>
           <BrowseTabs />
-          {wide ? <div className="ml-auto">{places.filters("Order venues")}</div> : null}
+          {wide ? <div className="ml-auto">{places.filters}</div> : null}
         </PageToolbar>
         <section aria-label="Venues" className={`${PANEL} overflow-hidden`}>
           <ListHead title="Venues" count={places.list.length}
             search={<ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a venue or city" />}
-            filters={wide ? null : places.filters("Order venues")} />
+            filters={wide ? null : places.filters} />
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {places.list.map((venue) => (
               <PlaceRow key={venue.slug} to={`/venues/${venue.slug}`} name={venue.name} detail={[venue.city, venue.country].filter(Boolean).join(", ")} events={venue.events} upcoming={venue.upcoming} />
@@ -273,12 +244,12 @@ export function LocationsPage() {
         <h1 className="sr-only">Locations</h1>
         <PageToolbar>
           <BrowseTabs />
-          {wide ? <div className="ml-auto">{places.filters("Order locations")}</div> : null}
+          {wide ? <div className="ml-auto">{places.filters}</div> : null}
         </PageToolbar>
         <section aria-label="Locations" className={`${PANEL} overflow-hidden`}>
           <ListHead title="Locations" count={places.list.length}
             search={<ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a city" />}
-            filters={wide ? null : places.filters("Order locations")} />
+            filters={wide ? null : places.filters} />
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {places.list.map((location) => (
               <PlaceRow key={location.slug} to={`/locations/${location.slug}`} name={location.city} detail={[location.state, location.country].filter(Boolean).join(", ")} events={location.events} upcoming={location.upcoming} />
@@ -359,9 +330,6 @@ export function AwardsPage() {
             );
           })}
         </div>
-        <p className="px-1 text-[11px] text-zinc-400">
-          <a href={data.source.url} target="_blank" rel="noreferrer" className="underline hover:text-zinc-600">{data.source.name}</a>, voted by Sherdog's staff each December for that calendar year. A promotion in brackets marks an award won outside the UFC.
-        </p>
       </div>
     </div>
   );
