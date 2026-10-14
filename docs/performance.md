@@ -3,6 +3,38 @@
 Measure first, then change what the measurement points at. This page records
 the targets, how to measure against them, and the last measured results.
 
+## Production baseline and worker memory (2026-10-14)
+
+Five days of saved prod traffic (Oct 9–14, one event weekend): about 195,000
+requests, nearly a third of them health probes. Of the 145,000 from readers,
+46% were images. The site-wide average was
+10.6 ms; the busiest hour was about 15,000 requests (4/s). The slowest routes
+by average were admin (180 ms), `/api/stats` (143 ms), share images (247 ms)
+and profiles (76 ms). Over 7 days the event loop's p95 never passed 27 ms, and
+the response cache hit 36% of the time.
+
+`/api/stats`: on a copy of the Oct 7 prod archive, a warm `getStats` takes
+16 ms (one division) to 190 ms (`moreInfo=1`); the first build is 2.2 s,
+done at startup. It runs in a query worker, so it never holds up other
+readers. With about 170 Stats page views in those five days, it was left
+as is.
+
+Memory: the app used 2.0–2.7 GB RSS in prod on an 8 GB host that also runs
+dev, buildkit and Grafana (lowest available memory over 7 days: 1.15 GB). A
+local production-shaped server on the same archive, measured over its
+process tree, after two 30 s cold load mixes at concurrency 50:
+
+| `API_WORKERS` | Ready | After mix 1 | After mix 2 | Cold mix |
+| --- | --- | --- | --- | --- |
+| 2 (prod) | 1,246 MB | 1,881 MB | 2,027 MB | 5,374 req/s, p99 14 ms |
+| 1 | 782 MB | 1,317 MB | 1,488 MB | 831 req/s, p99 1,540 ms |
+
+Each query worker costs about 460–540 MB, mostly its own fight index, and
+the response caches add about 750 MB as they fill. One worker would still be
+far above prod's peak, but it has none of the headroom, so prod stays at 2.
+If memory gets tight, shrinking the per-worker fight index is the lever,
+not the worker count.
+
 ## Profile scorecard filters (2026-10-13)
 
 Each profile filter, search and page used to work out the scorer's whole card
