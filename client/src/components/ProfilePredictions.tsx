@@ -1,7 +1,7 @@
 import { useAuth } from "@clerk/react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { formatDateShortWithYear, lastName } from "../format";
+import { formatDateShortWithYear } from "../format";
 import { METHOD_LABEL, predictionLabel, predictionName, predictionPoints } from "../predictions";
 import type { PredictionRate, ProfilePredictions as PredictionsData } from "../predictions";
 import Avatar from "./Avatar";
@@ -128,7 +128,7 @@ export default function ProfilePredictions({ handle, mine }: { handle: string; m
                   settled && row.pick.method ? `method ${row.result.method ? "right" : "wrong"}` : "",
                   settled && row.pick.round ? `round ${row.result.round ? "right" : "wrong"}` : "",
                 ].filter(Boolean).join(", ")}>
-                  <Call label={lastName(predictionName(row.pick))} right={settled ? Boolean(row.result.fighter) : null} />
+                  <Call label={predictionName(row.pick)} right={settled ? Boolean(row.result.fighter) : null} />
                   {row.pick.method ? <Call label={METHOD_LABEL[row.pick.method]} right={settled ? Boolean(row.result.method) : null} /> : null}
                   {row.pick.round ? <Call label={`Round ${row.pick.round}`} right={settled ? Boolean(row.result.round) : null} /> : null}
                 </p>
