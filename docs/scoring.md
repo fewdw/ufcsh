@@ -1,10 +1,9 @@
 # Fan scorecards
 
 Every completed matchup has a **Score** tab, alongside Result, Matchup and Odds.
-The tab also appears on fight day. It holds three panels: the community
-scorecard, which is the fan average in decimals; the individual fan cards behind
-it, each linking to that scorer's [profile](#profiles); and the reader's own
-card. Reading any of them never requires an account.
+The tab also appears on fight day. It holds two panels: the community
+scorecard, which is the fan average in decimals, and the reader's own card.
+Reading either never requires an account.
 
 The account itself lives in the header, beside the theme switch: a person icon
 that opens Clerk's sign-in dialog, and once signed in the reader's avatar with
@@ -97,10 +96,8 @@ any profile — no account is needed to read one. The page is tabbed, with
 **Scorecards** the only section so far; `?tab=scorecards` addresses it, and the
 bar is there because it is what the next section arrives into.
 
-A profile is reached from **My scorecards** in the header's account menu, from
-**All your scorecards** on the reader's own card, and from the **Fan scorecards**
-panel under a fight, which lists the individual cards behind the community
-average and links each one to its scorer.
+A profile is reached from **My scorecards** in the header's account menu and from
+**All your scorecards** on the reader's own card.
 
 ### Usernames
 
@@ -147,28 +144,35 @@ it is changed: rescoring a fight is one click from the list. On the reader's own
 profile each row carries a quiet **×** in its corner, which opens a dialog
 before anything is deleted.
 
-A **search box** narrows the list by either fighter, the event or the division,
-in any capitalisation. It searches every card on the profile rather than the
-page on screen, and is applied on the server alongside the filter.
+Each row sets the card beside the **fans' average** (the same number as the
+fight's community scorecard, two decimals) and each **judge's** total (the
+official cards, else imported ones). A bout with no judges' cards shows how it
+ended after the winner's name.
 
-An **agreement** chart sits above the list: of the bouts that went to the
-judges, how many this scorer read the same way. Either half of it — green for
-agreed, red for disagreed — opens the cards behind it. A card agrees only if the
-bout was a decision, was scored to its last available round, and named the same
-winner; an even card on a decision disagrees, because the judges named one. A
-finish is neither: it was never judged. The list therefore opens on judged bouts
-only, and a **Hide finishes** checkbox — on by default — brings the rest back.
-A profile that has never scored a finish has nothing to hide, so it is not
-offered the checkbox at all. The list is titled **Scored fights** whatever it is
-filtered to; the counts beneath it say how much of the profile is showing.
+A **search box** narrows the list by either fighter's name, in any
+capitalisation. It searches every card on the profile rather than the page on
+screen, and is applied on the server alongside the filter.
 
-Changing a filter, clicking the chart or typing in the search box never blanks
+The **filter** opens on **Judged** (bouts that went to the judges); then **All
+fights**, and under **Judges** and **Fans**, the cards where the reader agreed or
+disagreed. A card agrees with the judges only if the bout was a decision, was
+scored to its last available round, and named the same winner; an even card on
+a decision disagrees, because the judges named one. It agrees with the fans
+under the same conditions when it names the same winner, or draw, as the fans'
+average card. A finish is neither: it was never judged. The list is titled
+**Scored fights** whatever it is filtered to; the counts beside it say how much
+of the profile is showing.
+
+Changing a filter or typing in the search box never blanks
 the page: the previous answer stays on screen, dimmed, until the next arrives.
 
 The tally always describes the whole profile, not the page being read. The list
 loads a page at a time as it is scrolled, one request at a time, so a profile
 with hundreds of cards opens as quickly as one with five. A profile considers
 its **1000 most recent cards**; beyond that the oldest are not listed or counted.
+The whole list is worked out once per scorer and reused for every filter, search
+and page; the scorer's own save or any change to the fight database replaces it
+at once, and other fans' new cards reach the fans' average within a minute.
 
 Profiles show the same rounds the fight page does. A round that stopped being
 scorable (a bout scored live that later ended in a stoppage) is dropped from a
@@ -177,7 +181,7 @@ profile exactly as it is from the fight's own panels, so the two never disagree.
 ## API and security
 
 ```text
-GET    /api/fights/:id/scores                public summary, including recent individual cards
+GET    /api/fights/:id/scores                public summary: the community average, by round and in total
 GET    /api/fights/:id/scores/mine           authenticated saved card
 PUT    /api/fights/:id/scores/mine           { revision, rounds }
 DELETE /api/fights/:id/scores/mine           { revision }

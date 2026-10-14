@@ -1,12 +1,15 @@
 import { prepared } from "./db.ts";
 import { cardOrder } from "./card-schedule.ts";
+import { cachedPhotoUrl } from "./fighter-identity.ts";
 import { parseScheduledRounds } from "./fight-index.ts";
 import type { PredictionContext, PredictionFight } from "./predictions.ts";
 import type { BetContext, BetMarkets } from "./bets.ts";
 
 const columns = `SELECT f.*, e.name AS event_name, e.date AS event_date, e.complete AS event_complete,
-  e.early_prelims_at, e.prelims_at, e.main_card_at, o.f1_close AS f1_line, o.f2_close AS f2_line
-  FROM fights f JOIN events e ON e.id = f.event_id LEFT JOIN odds o ON o.fight_id = f.id`;
+  e.early_prelims_at, e.prelims_at, e.main_card_at, o.f1_close AS f1_line, o.f2_close AS f2_line,
+  a.photo_url AS f1_remote_photo, b.photo_url AS f2_remote_photo
+  FROM fights f JOIN events e ON e.id = f.event_id LEFT JOIN odds o ON o.fight_id = f.id
+  LEFT JOIN fighters a ON a.id = f.f1_id LEFT JOIN fighters b ON b.id = f.f2_id`;
 const one = prepared(`${columns} WHERE f.id = ?`);
 const event = prepared(`${columns} WHERE f.event_id = ? ORDER BY f.ord DESC`);
 function read(row: any): PredictionFight {
@@ -15,7 +18,8 @@ function read(row: any): PredictionFight {
   const times = [row.early_prelims_at, row.prelims_at, row.main_card_at].filter((time): time is number => Number.isFinite(time) && time > 0);
   const sectionStart = row.segment === "early" ? row.early_prelims_at
     : row.segment === "prelims" ? row.prelims_at : row.segment === "main" ? row.main_card_at : null;
-  return { ...row, event_start: times.length ? Math.min(...times) : null,
+  return { ...row, f1_photo: cachedPhotoUrl(row.f1_id, row.f1_remote_photo), f2_photo: cachedPhotoUrl(row.f2_id, row.f2_remote_photo),
+    event_start: times.length ? Math.min(...times) : null,
     section_start: Number.isFinite(sectionStart) && sectionStart > 0 ? sectionStart : null,
     scheduled_rounds: detail?.methodInfo?.["Time format"] ? parseScheduledRounds(row, detail) : row.scheduled_rounds ?? null };
 }
@@ -42,9 +46,21 @@ export function eventFightIds(eventId: string): string[] | undefined {
   const rows = card.all(eventId) as { id: string | null; ord: number | null; segment: string | null; card_pos: number | null }[];
   return rows.length ? cardOrder(rows).flatMap(row => row.id ? [row.id] : []) : undefined;
 }
-export function predictionFights(ids: string[]): PredictionFight[] {
+/** Each bout's place on its card from the top (main event 0), for every card
+ *  these bouts are on: a place is only known against the whole card. */
+export function cardPlaces(eventIds: string[]): Map<string, number> {
+  const places = new Map<string, number>();
+  for (const id of new Set(eventIds)) eventFightIds(id)?.forEach((fight, index) => places.set(fight, index));
+  return places;
+}
+/** `places` also reads each bout's place on its card, which costs a read of
+ *  every card involved, so only a profile's ordering asks for it. */
+export function predictionFights(ids: string[], places = false): PredictionFight[] {
   if (!ids.length) return [];
-  return prepared(`${columns} WHERE f.id IN (${ids.map(() => "?").join(",")})`).all(...ids).map(read);
+  const fights = prepared(`${columns} WHERE f.id IN (${ids.map(() => "?").join(",")})`).all(...ids).map(read);
+  if (!places) return fights;
+  const place = cardPlaces(fights.map(fight => fight.event_id));
+  return fights.map(fight => ({ ...fight, card_place: place.get(fight.id) ?? null }));
 }
 
 const moneyline = prepared("SELECT f1_close, f2_close, final FROM odds WHERE fight_id = ?");

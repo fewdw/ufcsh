@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { fightIsComplete } from "./live-state.ts";
 import { predictionWindow, type PredictionContext, type PredictionFight } from "./predictions.ts";
 import { ScoringError, type ScoringStore } from "./scoring.ts";
+import { byBoutPlace } from "./card-schedule.ts";
 
 /** What a leg needs to happen in its fight; the same shape the slip builds. */
 export type Outcome = {
@@ -214,10 +215,11 @@ export class BetStore {
   private db: DatabaseSync;
   private scores: ScoringStore;
   private context: (id: string) => BetContext | undefined;
-  private readFights: (ids: string[]) => PredictionFight[];
+  /** `places` also reads each bout's place on its card, for a profile's order. */
+  private readFights: (ids: string[], places?: boolean) => PredictionFight[];
   private now: () => number;
   constructor(scores: ScoringStore, context: (id: string) => BetContext | undefined,
-    readFights: (ids: string[]) => PredictionFight[], now = Date.now) {
+    readFights: (ids: string[], places?: boolean) => PredictionFight[], now = Date.now) {
     this.db = scores.db;
     this.scores = scores;
     this.context = context;
@@ -306,11 +308,11 @@ export class BetStore {
       state: result.state, net: result.net / 100, payout: result.payout / 100,
       legs: legs.map((leg, index) => ({ ...leg, state: result.legStates[index] })) };
   }
-  private fightsFor(rows: StoredBet[]) {
+  private fightsFor(rows: StoredBet[], places = false) {
     const ids = [...new Set(rows.flatMap(row => (JSON.parse(row.legs_json) as StoredLeg[]).map(leg => leg.fightId)))];
     const fights = new Map<string, PredictionFight>();
     for (let index = 0; index < ids.length; index += 500) {
-      for (const fight of this.readFights(ids.slice(index, index + 500))) fights.set(fight.id, fight);
+      for (const fight of this.readFights(ids.slice(index, index + 500), places)) fights.set(fight.id, fight);
     }
     return fights;
   }
@@ -319,8 +321,20 @@ export class BetStore {
     const scorer = this.scores.lookup("handle", handle);
     if (!scorer) throw new ScoringError(404, "Profile not found.");
     const rows = this.db.prepare("SELECT * FROM bets WHERE user_id = ? ORDER BY placed_at DESC, id").all(scorer.userId) as StoredBet[];
-    const fights = this.fightsFor(rows);
-    const bets = rows.map(row => this.present(row, fights));
+    const fights = this.fightsFor(rows, true);
+    // Bouts in the order they are fought; one no longer on record goes last.
+    const fought = (a: PredictionFight | undefined, b: PredictionFight | undefined) => a && b ? byBoutPlace(b, a) : byBoutPlace(a, b);
+    // Open bets lead, soonest first, each placed by the next bout it is waiting
+    // on; then settled ones, the latest decided first.
+    const listed = rows.map(row => {
+      const bet = this.present(row, fights);
+      bet.legs.sort((a, b) => fought(fights.get(a.fightId), fights.get(b.fightId)));
+      const open = bet.state === "pending";
+      const leg = open ? bet.legs.find(entry => entry.state === "pending") : bet.legs.findLast(entry => entry.state !== "pending");
+      return { bet, open, bout: fights.get((leg ?? bet.legs[0]).fightId) };
+    });
+    listed.sort((a, b) => Number(b.open) - Number(a.open) || (a.open ? fought(a.bout, b.bout) : byBoutPlace(a.bout, b.bout)));
+    const bets = listed.map(entry => entry.bet);
     const count = (state: LegState) => bets.filter(bet => bet.state === state).length;
     const settled = bets.filter(bet => bet.state === "won" || bet.state === "lost");
     const cents = (values: number[]) => Math.round(values.reduce((sum, value) => sum + value * 100, 0)) / 100;

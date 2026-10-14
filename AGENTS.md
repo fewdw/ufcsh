@@ -15,7 +15,7 @@ small/large screens. Prefer the smallest maintainable solution.
 
 - Every task gets its own branch and worktree: `./tools/new-task.sh feat/NAME`
   (`feat`, `bug`, `perf`, `chore`) creates `../ufcsh-wt/NAME` from fresh
-  `origin/main`. Work only there.
+  `origin/develop`. Work only there.
 - `docs/project-map.md` says which file owns which feature. Read only what the
   task needs, with bounded searches and output.
 
@@ -49,21 +49,32 @@ small/large screens. Prefer the smallest maintainable solution.
   could break needs an admin Bugs category (`server/src/bugs.ts`) and a repair
   action where available.
 
+## Branches
+
+- `main` is production: every push deploys ufc.sh. `develop` collects finished
+  features and is never deleted. Tasks branch from `develop`; PRs target it.
+- **"Merge" / "merge to develop"** (a task PR): update it against `develop`,
+  squash-merge, then clean up (below). Production is unchanged.
+- **"Merge to main"** (a release): on `develop`, replace the entire changelog in
+  `client/src/pages/InfoPage.tsx` with the release date and a few short lines,
+  push, open a PR `develop` → `main`, get CI green, and merge it with a **merge
+  commit** (never squash). Then fast-forward `develop` to `main`.
+- A PR that already targets `main` (an urgent fix) is released the same way:
+  changelog, CI, merge; then bring `develop` up to `main`.
+
 ## Finish
 
-- Commit, push, and open a **draft PR** to `main` without asking. Report the PR,
-  the preview URL, and what was verified.
+- Commit, push, and open a **draft PR** to `develop` without asking. Report the
+  PR, the preview URL, and what was verified.
 - Pushes run no CI. CI runs when a draft PR is marked ready, and on `main`. Before
   marking ready, confirm the PR `headRefOid` matches local `HEAD`. To check a new
   revision: `gh pr ready --undo` then `gh pr ready`.
-- Merge/push to `main` only with explicit user authorization. Before that merge,
-  update the branch against current `main`, replace the entire changelog in
-  `client/src/pages/InfoPage.tsx` with the release date and a few short lines,
-  push, then request final CI. Production deploys after successful main checks.
-  Never run `deploy/update.sh` unless asked.
+- Merge only when the user says so, and to `main` only when they say "merge to
+  main". Production deploys after successful main checks. Never run
+  `deploy/update.sh` unless asked.
 - After a merge: `./start stop`, release dev if this branch was on it
   (`./deploy/dev-review.sh release BRANCH` on the VPS), remove the worktree, and
-  delete the local/remote branches.
+  delete the local/remote task branches (never `develop` or `main`).
 
 ## Secrets
 

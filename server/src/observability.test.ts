@@ -45,12 +45,12 @@ test("the dashboard snapshot keeps an hour by the minute and estimates latency p
   assert.equal(snapshot.routes.find(route => route.route === "fight_detail")!.throttled, 1);
 
   assert.equal(snapshot.timeline.length, 60);
-  const first = snapshot.timeline.find(minute => minute.requests === 103)!;
-  assert.equal(first.visitors, 4, "health checks are not visitors");
+  const first = snapshot.timeline.find(minute => minute.requests === 102)!;
+  assert.equal(first.visitors, 4, "health checks are neither requests nor visitors");
   assert.equal(first.eventLoopP95Ms, 12);
   assert.equal(snapshot.timeline.at(-1)!.requests, 1);
   assert.equal(snapshot.lastFiveMinutes.requests, 1);
-  assert.equal(snapshot.lastHour.requests, 104);
+  assert.equal(snapshot.lastHour.requests, 103);
   assert.equal(snapshot.lastHour.visitors, 5);
   assert.equal(snapshot.sinceStart.errors, 1, "admin errors stay out of the site-wide totals");
   assert.equal(snapshot.lastHour.maxMs, 200, "admin latency stays out of the site-wide totals");

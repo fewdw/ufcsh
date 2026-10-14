@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAdminResource } from "../admin";
 import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "./segmented";
 import {
-  Card, countryName, day, Loading, MinuteChart, ms, percent, RANGES, routeName, routePath, SectionHead, ShareList, ViewHead, whole,
+  Card, countryName, day, Loading, MinuteChart, ms, percent, RANGES, routeName, routePath, routeShare, SectionHead, ShareList, ViewHead, whole,
   type Traffic, type TrafficRange,
 } from "./adminKit";
 
@@ -91,7 +91,7 @@ export default function AdminTraffic() {
                       <tr key={route.route} className={route.requests && route.errors / route.requests > 0.01 ? "bg-rose-50" : route.p95Ms > 500 ? "bg-amber-50" : ""}>
                         <td className="px-4 py-2"><b className="block font-medium text-zinc-900">{routeName(route.route)}</b><code className="text-[11px] text-zinc-500">{routePath(route.route)}</code></td>
                         <td className="px-3 py-2 text-right font-semibold text-zinc-900">{whole(route.requests)}</td>
-                        <td className="px-3 py-2 text-right text-zinc-600">{percent(route.requests, t.requests)}</td>
+                        <td className="px-3 py-2 text-right text-zinc-600">{routeShare(route.route, route.requests, t.requests)}</td>
                         <td className="px-3 py-2 text-right text-zinc-600">{route.pageViews ? whole(route.pageViews) : "—"}</td>
                         <td className="px-3 py-2 text-right text-zinc-800">{route.requests ? ms(route.p95Ms) : "—"}</td>
                         <td className="px-3 py-2 text-right text-zinc-600">{route.clientErrors ? whole(route.clientErrors) : "—"}</td>

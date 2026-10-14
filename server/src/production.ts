@@ -19,7 +19,9 @@ const stop = (code: number) => {
   stopping = true;
   exitCode = code;
   for (const child of children) child.kill("SIGTERM");
-  setTimeout(() => { for (const child of children) child.kill("SIGKILL"); }, 12_000).unref();
+  // The API drains first (SHUTDOWN_DRAIN_MS), then has 10 s to finish requests.
+  const drainMs = Math.max(0, Number(process.env.SHUTDOWN_DRAIN_MS) || 0);
+  setTimeout(() => { for (const child of children) child.kill("SIGKILL"); }, drainMs + 12_000).unref();
 };
 for (const child of children) {
   child.on("error", error => { console.error("production process failed:", error); stop(1); });

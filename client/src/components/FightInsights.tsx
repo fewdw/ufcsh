@@ -214,7 +214,8 @@ export function StrikesPanel({ fighters }: { fighters: Insightful[] }) {
 /** What a fighter's UFC decisions read on the cards on average, theirs then
  *  the opponent's, over every judge's card and every bout's fan average:
  *  three- and five-round bouts apart, their totals not being on one scale.
- *  The bar is the margin, from losing every round to winning every round. */
+ *  The bar is the margin, winning every round on the left to losing every
+ *  round on the right. */
 export function DecisionsPanel({ fighters }: { fighters: Insightful[] }) {
   const two = fighters.length > 1;
   const scored = fighters.some(fighter => fighter.insights?.decisions?.length);
@@ -248,10 +249,10 @@ export function DecisionsPanel({ fighters }: { fighters: Insightful[] }) {
               </dd>
               <dd aria-hidden="true" className="mt-1.5">
                 <span className="relative block h-2 rounded-full bg-zinc-100">
-                  {margin ? <span className={`absolute inset-y-0 ${margin > 0 ? `left-1/2 rounded-r-full ${WON}` : `right-1/2 rounded-l-full ${LOST}`}`} style={{ width: `${Math.max(1.5, reach)}%` }} /> : null}
+                  {margin ? <span className={`absolute inset-y-0 ${margin > 0 ? `right-1/2 rounded-l-full ${WON}` : `left-1/2 rounded-r-full ${LOST}`}`} style={{ width: `${Math.max(1.5, reach)}%` }} /> : null}
                   <span className="absolute inset-y-[-2px] left-1/2 w-px -translate-x-1/2 bg-zinc-400" />
                 </span>
-                <span className={`mt-1 flex justify-between ${metaText}`}><span>−{rounds}</span><span>Even</span><span>+{rounds}</span></span>
+                <span className={`mt-1 flex justify-between ${metaText}`}><span>+{rounds}</span><span>Even</span><span>−{rounds}</span></span>
               </dd>
             </div>;
           })}

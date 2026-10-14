@@ -2,6 +2,7 @@ import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { randomInt, randomUUID } from "node:crypto";
 import { completedScorecardRounds, parseCommunityScorecard } from "./community-scorecards.ts";
 import { fightIsComplete, fightIsUnderway, isFightDay } from "./live-state.ts";
+import { byBoutPlace } from "./card-schedule.ts";
 
 export class ScoringError extends Error {
   status: number;
@@ -12,6 +13,10 @@ export type ScoringFight = {
   scheduled_rounds: number | null; round: string | null; time: string | null;
   method: string | null; detail_json: string | null;
   community_score_json?: string | null;
+  /** Place on its card from the top, main event 0; read for profile order. */
+  card_place?: number | null;
+  /** Imported round-by-round judges' cards, read when the official ones are missing. */
+  judge_rounds_json?: string | null;
   /** Naming a bout a card belongs to: a scorer's profile lists fights, not ids.
    *  The two photographs are the ones already cached for the fighter pages. */
   f1_name: string; f2_name: string; event_id: string; event_name: string; weight_class: string | null;
@@ -83,6 +88,48 @@ function cardVerdict(fight: ScoringFight, eligibility: ScoreEligibility, rounds:
   const scored = total1 > total2 ? 1 : total2 > total1 ? 2 : 0;
   return { decision, agreement: scored === official ? "agreed" : "disagreed" };
 }
+
+/** The judges' final totals as the fight page shows them: the official cards,
+ *  else the imported ones. */
+export function judgeTotals(fight: ScoringFight): { f1: number; f2: number }[] {
+  const read = (json: string | null | undefined) => {
+    try {
+      const cards = JSON.parse(json ?? "null")?.judges;
+      return Array.isArray(cards) ? cards.map((card: any) => ({ f1: Number(card?.f1Score), f2: Number(card?.f2Score) }))
+        .filter(card => Number.isFinite(card.f1) && Number.isFinite(card.f2)) : [];
+    } catch { return []; }
+  };
+  const official = read(fight.detail_json);
+  return official.length ? official : read(fight.judge_rounds_json);
+}
+
+/** An average over ufc.sh's own cards and an imported aggregate, by count. */
+function weighted(localAverage: number | null, localCount: number, externalAverage: number | null, externalCount: number): number | null {
+  const count = (localAverage == null ? 0 : localCount) + (externalAverage == null ? 0 : externalCount);
+  return count ? ((localAverage ?? 0) * localCount + (externalAverage ?? 0) * externalCount) / count : null;
+}
+
+/** Whether a full card on a decision named the same winner, or the same draw,
+ *  as the fans' average card. */
+function fansVerdict(decision: boolean, complete: boolean, total1: number, total2: number,
+  fans: { total1: number; total2: number } | null): "agreed" | "disagreed" | null {
+  if (!decision || !complete || !fans) return null;
+  return Math.sign(total1 - total2) === Math.sign(fans.total1 - fans.total2) ? "agreed" : "disagreed";
+}
+
+/** One card on a profile, as listed: the reader's rounds and totals beside the
+ *  bout, the fans' average card and the judges' totals. */
+type ProfileCard = {
+  fightId: string; updatedAt: number; revision: number; rounds: RoundScore[]; eligibility: ScoreEligibility;
+  total1: number; total2: number; decision: boolean; agreement: "agreed" | "disagreed" | null;
+  fans: { cards: number; total1: number; total2: number } | null; fansAgreement: "agreed" | "disagreed" | null;
+  judges: { f1: number; f2: number }[];
+  fight: {
+    id: string; f1_name: string; f2_name: string; f1_id: string; f2_id: string; f1_photo: string | null; f2_photo: string | null;
+    f1_outcome: string | null; f2_outcome: string | null; event_id: string; event_name: string; date: string;
+    weight_class: string | null; method: string | null; round: string | null; time: string | null;
+  };
+};
 
 type StoredCard = { id: string; user_id: string; revision: number; updated_at: number; rounds_json: string };
 type StoredScorer = {
@@ -165,13 +212,18 @@ export const PROFILE_PAGE = 25;
  *  the agreement tally are bounded however many cards an account accumulates. */
 export const PROFILE_MAX = 1000;
 /** Which of a scorer's cards the list shows. `decisions` is the reader hiding
- *  bouts that ended in a finish; the other two are the halves of the agreement
- *  chart, and are decisions by definition. */
-export type ProfileFilter = "all" | "decisions" | "agreed" | "disagreed";
-export const PROFILE_FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed"];
-/** Individual cards shown under a fight, newest first. The rest are in the
- *  aggregate above them. */
-const FIGHT_CARDS = 5;
+ *  bouts that ended in a finish; `agreed` and `disagreed` read the card against
+ *  the judges' decision, the `fans-` pair against the fans' average card. All
+ *  four are decisions by definition. */
+export type ProfileFilter = "all" | "decisions" | "agreed" | "disagreed" | "fans-agreed" | "fans-disagreed";
+export const PROFILE_FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed", "fans-agreed", "fans-disagreed"];
+/** How long a scorer's worked-out list is reused while the reader filters,
+ *  searches and pages through it. Their own saves replace it at once; other
+ *  fans' cards reach it within this long, and any change to the fight
+ *  database at once. */
+export const PROFILE_LIST_TTL = 60_000;
+/** Scorers whose lists are kept at once; the least recently read go first. */
+const PROFILE_LISTS = 256;
 
 /** Separate WAL database: fan writes never contend with scrapers or invalidate analytics. */
 export class ScoringStore {
@@ -179,6 +231,10 @@ export class ScoringStore {
   /** Every statement here is fixed text run over and over, so each one is
    *  compiled once rather than on every request. */
   private statements = new Map<string, StatementSync>();
+  private lists = new Map<string, { at: number; revision: string; cards: ProfileCard[] }>();
+  /** Moves whenever the fight database changes: a result, a judge's card, the
+   *  imported fans' average. A list worked out before it moved is not reused. */
+  private revision: () => string;
   private stmt(sql: string): StatementSync {
     let statement = this.statements.get(sql);
     if (!statement) this.statements.set(sql, statement = this.db.prepare(sql));
@@ -188,8 +244,9 @@ export class ScoringStore {
    *  request rather than joined. */
   private fights: (ids: string[]) => ScoringFight[];
   private fight = (id: string): ScoringFight | undefined => this.fights([id])[0];
-  constructor(filename: string, fights: (ids: string[]) => ScoringFight[]) {
+  constructor(filename: string, fights: (ids: string[]) => ScoringFight[], revision: () => string = () => "") {
     this.fights = fights;
+    this.revision = revision;
     this.db = new DatabaseSync(filename);
     this.db.exec(`
       PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 1000;
@@ -292,6 +349,8 @@ export class ScoringStore {
     // scored for it was scored before it happened.
     const eligibility = scoringEligibility(fight, Date.now(), rounds as number);
     if (!fightIsComplete(fight) && isFightDay(fight.event_date) && eligibility.scheduled) this.trimRounds(id, eligibility.available);
+    // Every card on the bout now reads a different number of rounds.
+    this.lists.clear();
     return rounds as number;
   }
   /** How many cards hold each round of a bout, for the admin panel. */
@@ -311,7 +370,9 @@ export class ScoringStore {
     const last = Number(fight.round);
     if (!eligibility.scheduled || !Number.isInteger(last) || last < 1 || last > eligibility.scheduled) return 0;
     this.stmt("DELETE FROM live_rounds WHERE fight_id = ?").run(fight.id);
-    return this.trimRounds(fight.id, eligibility.available);
+    const removed = this.trimRounds(fight.id, eligibility.available);
+    if (removed) this.lists.clear();
+    return removed;
   }
   /** Deletes every score past round `keep`, from both the rows aggregates read
    *  and each card's own copy. Revisions are left alone, so an open editor can
@@ -355,6 +416,7 @@ export class ScoringStore {
       for (const r of submission.rounds) insert.run(cardId, id, r.round, r.f1, r.f2, r.deduct1, r.deduct2);
       this.db.exec("COMMIT");
     } catch (error) { this.db.exec("ROLLBACK"); throw error; }
+    this.lists.delete(user);
     return this.mine(id, user);
   }
   summary(id: string) {
@@ -374,10 +436,6 @@ export class ScoringStore {
       .get(max, max, max, max, max, max, id, max) as any;
     const imported = this.community(id, max);
     const importedCards = imported?.cards ?? 0;
-    const weighted = (localAverage: number | null, localCount: number, externalAverage: number | null, externalCount: number) => {
-      const count = (localAverage == null ? 0 : localCount) + (externalAverage == null ? 0 : externalCount);
-      return count ? ((localAverage ?? 0) * localCount + (externalAverage ?? 0) * externalCount) / count : null;
-    };
     const byRound = new Map(localRounds.map(row => [Number(row.round), row]));
     const rounds = Array.from({ length: max }, (_unused, index) => index + 1).flatMap(round => {
       const local = byRound.get(round);
@@ -404,7 +462,19 @@ export class ScoringStore {
       localCards: Number(localTotals.scorers), importedCards,
       source: imported ? { name: imported.source, url: imported.sourceUrl } : null,
     };
-    return { eligibility, rounds, totals, cards: this.fightCards(id, max) };
+    return { eligibility, rounds, totals };
+  }
+  /** The fans' average final card, over complete cards only, exactly as the
+   *  fight page's total: what a profile row sets the scorer's own card beside. */
+  private fanAverage(fight: ScoringFight, max: number): { cards: number; total1: number; total2: number } | null {
+    if (!max) return null;
+    const local = this.stmt(`SELECT COUNT(*) AS cards, AVG(a) AS avg1, AVG(b) AS avg2
+      FROM (SELECT COUNT(*) AS n, SUM(f1 - deduct1) AS a, SUM(f2 - deduct2) AS b
+        FROM scores WHERE fight_id = ? AND round <= ? GROUP BY card_id) WHERE n = ?`).get(fight.id, max, max) as any;
+    const imported = parseCommunityScorecard(fight.community_score_json, max);
+    const total1 = weighted(local.avg1, Number(local.cards), imported?.avg1 ?? null, imported?.cards ?? 0);
+    const total2 = weighted(local.avg2, Number(local.cards), imported?.avg2 ?? null, imported?.cards ?? 0);
+    return total1 == null || total2 == null ? null : { cards: Number(local.cards) + (imported?.cards ?? 0), total1, total2 };
   }
   /** A source aggregate is deliberately not expanded into fake profiles. Its
    * count and averages are weighted with real ufc.sh cards at read time. */
@@ -415,20 +485,6 @@ export class ScoringStore {
     const value = parseCommunityScorecard(this.fight(id)?.community_score_json, max);
     return value ? { source: String(value.source ?? "External"), sourceUrl: String(value.sourceUrl ?? ""),
       cards: value.cards, avg1: value.avg1, avg2: value.avg2, rounds: value.rounds } : null;
-  }
-  /** The individual cards behind the average, newest first, each one a link to
-   *  the scorer's profile. Aliases only: no account ever appears here. */
-  private fightCards(id: string, max: number) {
-    return this.stmt(`SELECT s.public_id, s.username, s.username_key, s.image_url, c.updated_at AS updatedAt,
-      COUNT(v.round) AS rounds, SUM(v.f1 - v.deduct1) AS total1, SUM(v.f2 - v.deduct2) AS total2
-      FROM scorecards c JOIN scorers s ON s.user_id = c.user_id
-      JOIN scores v ON v.card_id = c.id AND v.round <= ?
-      WHERE c.fight_id = ? GROUP BY c.id ORDER BY c.updated_at DESC, c.rowid DESC LIMIT ?`)
-      .all(max, id, FIGHT_CARDS)
-      .map((row: any) => ({
-        scorer: this.identify(row as StoredScorer),
-        updatedAt: row.updatedAt, rounds: row.rounds, total1: row.total1, total2: row.total2,
-      }));
   }
   /** The scorer's own identity, minted on first use so that a reader who has
    *  not saved a card yet still has a profile to open and share. */
@@ -499,6 +555,7 @@ export class ScoringStore {
    *  and picture are gone, so the name is free for anyone to claim. Run inside
    *  the caller's transaction (`forgetAccount`). */
   forget(user: string): void {
+    this.lists.delete(user);
     this.stmt("DELETE FROM scorecards WHERE user_id = ?").run(user);
     this.stmt(`UPDATE scorers SET username = NULL, username_key = NULL, username_set_at = NULL, image_url = NULL,
       comments_public = 0, deleted_at = ? WHERE user_id = ?`).run(Date.now(), user);
@@ -509,6 +566,56 @@ export class ScoringStore {
   }
   imageSyncedAt(user: string): number {
     return this.scorer("user_id", user)?.image_synced_at ?? 0;
+  }
+  /** Every card a scorer has, worked out against its bout, the fans and the
+   *  judges. The whole list is what gets counted, filtered and paged, so the
+   *  agreement tally describes every card, not the page being read; it is
+   *  worked out once and reused while the reader moves through it, and their
+   *  own saves replace it at once. */
+  private profileCards(user: string): ProfileCard[] {
+    const revision = this.revision();
+    const kept = this.lists.get(user);
+    if (kept && kept.revision === revision && Date.now() - kept.at < PROFILE_LIST_TTL) {
+      this.lists.delete(user); this.lists.set(user, kept);
+      return kept.cards;
+    }
+    const scored = "EXISTS (SELECT 1 FROM scores WHERE card_id = c.id)";
+    const stored = this.stmt(`SELECT c.fight_id AS fightId, c.updated_at AS updatedAt, c.revision, c.rounds_json AS roundsJson
+      FROM scorecards c WHERE c.user_id = ? AND ${scored}
+      ORDER BY c.updated_at DESC, c.fight_id LIMIT ?`)
+      .all(user, PROFILE_MAX) as { fightId: string; updatedAt: number; revision: number; roundsJson: string }[];
+    const fights = new Map(this.fights(stored.map(card => card.fightId)).map(fight => [fight.id, fight]));
+    stored.sort((a, b) => byBoutPlace(fights.get(a.fightId), fights.get(b.fightId)));
+    const released = this.openRoundsFor(stored.map(card => card.fightId));
+    const cards = stored.flatMap((card): ProfileCard[] => {
+      const fight = fights.get(card.fightId);
+      // A card whose bout is no longer in the fight database cannot be named or
+      // opened, so it is not listed.
+      if (!fight) return [];
+      const eligibility = scoringEligibility(fight, Date.now(), released.get(card.fightId) ?? 0);
+      const rounds = (JSON.parse(card.roundsJson) as RoundScore[]).filter(r => r.round <= eligibility.available);
+      const total1 = rounds.reduce((sum, r) => sum + r.f1 - r.deduct1, 0);
+      const total2 = rounds.reduce((sum, r) => sum + r.f2 - r.deduct2, 0);
+      const verdict = cardVerdict(fight, eligibility, rounds, total1, total2);
+      const fans = this.fanAverage(fight, eligibility.available);
+      const complete = rounds.length > 0 && rounds.length === eligibility.available;
+      return [{
+        fightId: card.fightId, updatedAt: card.updatedAt, revision: card.revision, rounds, eligibility,
+        total1, total2, ...verdict, fans, fansAgreement: fansVerdict(verdict.decision, complete, total1, total2, fans),
+        judges: judgeTotals(fight),
+        fight: {
+          id: fight.id, f1_name: fight.f1_name, f2_name: fight.f2_name,
+          f1_id: fight.f1_id, f2_id: fight.f2_id, f1_photo: fight.f1_photo, f2_photo: fight.f2_photo,
+          f1_outcome: fight.f1_outcome, f2_outcome: fight.f2_outcome,
+          event_id: fight.event_id, event_name: fight.event_name, date: fight.event_date,
+          weight_class: fight.weight_class, method: fight.method, round: fight.round, time: fight.time,
+        },
+      }];
+    });
+    this.lists.delete(user);
+    this.lists.set(user, { at: Date.now(), revision, cards });
+    if (this.lists.size > PROFILE_LISTS) this.lists.delete(this.lists.keys().next().value!);
+    return cards;
   }
   /** A public profile: every fight this scorer has a card for, newest card
    *  first, with the card itself. Rounds that are no longer scorable — a bout
@@ -522,36 +629,7 @@ export class ScoringStore {
     const offset = Math.max(0, options.offset ?? 0);
     const filter: ProfileFilter = PROFILE_FILTERS.includes(options.filter!) ? options.filter! : "all";
     const query = (options.query ?? "").trim().toLowerCase().slice(0, 60);
-    const scored = "EXISTS (SELECT 1 FROM scores WHERE card_id = c.id)";
-    // The whole list is read, then counted, filtered and paged: the agreement
-    // tally describes every card, not the page the reader happens to be on.
-    const stored = this.stmt(`SELECT c.fight_id AS fightId, c.updated_at AS updatedAt, c.revision, c.rounds_json AS roundsJson
-      FROM scorecards c WHERE c.user_id = ? AND ${scored}
-      ORDER BY c.updated_at DESC, c.fight_id LIMIT ?`)
-      .all(scorer.user_id, PROFILE_MAX) as { fightId: string; updatedAt: number; revision: number; roundsJson: string }[];
-    const fights = new Map(this.fights(stored.map(card => card.fightId)).map(fight => [fight.id, fight]));
-    const released = this.openRoundsFor(stored.map(card => card.fightId));
-    const all = stored.flatMap(card => {
-      const fight = fights.get(card.fightId);
-      // A card whose bout is no longer in the fight database cannot be named or
-      // opened, so it is not listed.
-      if (!fight) return [];
-      const eligibility = scoringEligibility(fight, Date.now(), released.get(card.fightId) ?? 0);
-      const rounds = (JSON.parse(card.roundsJson) as RoundScore[]).filter(r => r.round <= eligibility.available);
-      const total1 = rounds.reduce((sum, r) => sum + r.f1 - r.deduct1, 0);
-      const total2 = rounds.reduce((sum, r) => sum + r.f2 - r.deduct2, 0);
-      return [{
-        fightId: card.fightId, updatedAt: card.updatedAt, revision: card.revision, rounds, eligibility,
-        total1, total2, ...cardVerdict(fight, eligibility, rounds, total1, total2),
-        fight: {
-          id: fight.id, f1_name: fight.f1_name, f2_name: fight.f2_name,
-          f1_id: fight.f1_id, f2_id: fight.f2_id, f1_photo: fight.f1_photo, f2_photo: fight.f2_photo,
-          f1_outcome: fight.f1_outcome, f2_outcome: fight.f2_outcome,
-          event_id: fight.event_id, event_name: fight.event_name, date: fight.event_date,
-          weight_class: fight.weight_class, method: fight.method, round: fight.round, time: fight.time,
-        },
-      }];
-    });
+    const all = this.profileCards(scorer.user_id);
     const agreement = {
       decisions: all.filter(card => card.agreement).length,
       agreed: all.filter(card => card.agreement === "agreed").length,
@@ -559,12 +637,15 @@ export class ScoringStore {
       // Bouts that ended in a finish, so a profile with none of them can drop
       // the control that hides them.
       finishes: all.filter(card => !card.decision).length,
+      fansAgreed: all.filter(card => card.fansAgreement === "agreed").length,
+      fansDisagreed: all.filter(card => card.fansAgreement === "disagreed").length,
     };
-    // The search reads the same line the row shows: both fighters, the event
-    // and the division, so what is typed is what is on screen.
+    // The search finds a fighter: either name, never the event or division.
     const matching = all.filter(card =>
-      (filter === "all" ? true : filter === "decisions" ? card.decision : card.agreement === filter)
-      && (!query || `${card.fight.f1_name} ${card.fight.f2_name} ${card.fight.event_name} ${card.fight.weight_class ?? ""}`.toLowerCase().includes(query)));
+      (filter === "all" ? true : filter === "decisions" ? card.decision
+        : filter === "fans-agreed" ? card.fansAgreement === "agreed" : filter === "fans-disagreed" ? card.fansAgreement === "disagreed"
+          : card.agreement === filter)
+      && (!query || `${card.fight.f1_name} ${card.fight.f2_name}`.toLowerCase().includes(query)));
     return {
       scorer: { ...this.identify(scorer), cards: all.length, joinedAt: scorer.created_at, commentsPublic: Boolean(scorer.comments_public) },
       agreement, filter, query, offset, pageSize: PROFILE_PAGE, total: matching.length,
