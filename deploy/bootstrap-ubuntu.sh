@@ -25,6 +25,13 @@ EOF
 apt-get update
 apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 systemctl enable --now docker
+# Security updates install unattended; ones that need a reboot get it at the
+# quietest hour (UTC). Every container restarts on its own.
+cat > /etc/apt/apt.conf.d/52ufcsh-auto-reboot <<'EOF'
+// ufc.sh: apply kernel and library security updates at the quietest hour.
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "08:00";
+EOF
 if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != root ]; then
   usermod -aG docker "$SUDO_USER"
   echo "Reconnect SSH once so $SUDO_USER receives Docker group access."

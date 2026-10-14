@@ -44,6 +44,7 @@ import { createCommentsHandler } from "./comments-http.ts";
 import { ACCOUNT_SYNC_MS, accountSyncCheck, adminAccounts, syncAccounts } from "./accounts.ts";
 import { syncStatus } from "./sync-status.ts";
 import { releasedRounds } from "./live-rounds.ts";
+import { pruneBackups } from "./backup-retention.ts";
 import { ensureImageVariant, normalizeHeadshot, variantPath, type ImageSize } from "./image-variants.ts";
 import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds, syncOddsForFight } from "./sync.ts";
 import { BackgroundRefresh } from "./background-refresh.ts";
@@ -2321,6 +2322,15 @@ export function startApi(port: number): http.Server {
       .catch(error => log("account sync failed:", String(error)));
   }, ACCOUNT_SYNC_MS);
   accountSync.unref();
+  // Old database copies are thinned out every day (backup-retention.ts), so
+  // backups never fill the disk however long the site runs unattended.
+  const thinBackups = () => void pruneBackups(DATA_DIR)
+    .then(({ removed, moved, freedBytes }) => {
+      if (removed || moved) log(`backups: removed ${removed} old copies (${(freedBytes / 1e9).toFixed(2)} GB), moved ${moved}`);
+    })
+    .catch(error => log("backup retention failed:", String(error)));
+  setTimeout(thinBackups, 10 * 60_000).unref();
+  setInterval(thinBackups, 86_400_000).unref();
   const workerCount = Number(process.env.API_WORKERS ?? (process.env.NODE_ENV === "production" ? 2 : 0));
   if (!Number.isInteger(workerCount) || workerCount < 0 || workerCount > 8) throw new Error("API_WORKERS must be an integer from 0 to 8");
   let refresher: NodeJS.Timeout | undefined;

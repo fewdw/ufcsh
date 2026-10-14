@@ -2,6 +2,7 @@ import { completedScorecardRounds, validCommunityScorecard } from "./community-s
 import { DatabaseSync, backup } from "node:sqlite";
 import { realpathSync } from "node:fs";
 import { hasCompleteJudgeRounds, hasDistinctJudgeNames, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
+import { preChangeBackupPath } from "./backup-retention.ts";
 
 /** Restore source-backed scorecards from another archive without replacing
  * fights, user data, or already complete cards. Both databases retain their
@@ -86,7 +87,7 @@ if (import.meta.main) {
   const target = new DatabaseSync(targetFile, { readOnly: !apply });
   try {
     if (apply) {
-      const destination = `${targetFile}.scorecards-${Date.now()}.db`;
+      const destination = await preChangeBackupPath(targetFile, "scorecards");
       await backup(target, destination);
       const copy = new DatabaseSync(destination, { readOnly: true });
       try {
