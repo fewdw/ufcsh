@@ -42,7 +42,12 @@ export type ProfilePredictions = {
   total: number; offset: number; pageSize: number;
   totals: { points: number; won: number; lost: number; pending: number; void: number };
   accuracy: { fighter: PredictionRate; method: PredictionRate; round: PredictionRate };
-  predictions: { fightId: string; revision: number; updatedAt: number; pick: PredictionPick; result: PredictionResult }[];
+  predictions: {
+    fightId: string; revision: number; updatedAt: number; pick: PredictionPick; result: PredictionResult;
+    f1Photo: string | null; f2Photo: string | null;
+    /** Who won, once the bout has a winner. */
+    winnerId: string | null;
+  }[];
 };
 export const predictionPoints = (points: number) => `${points > 0 ? "+" : ""}${points.toLocaleString()}`;
 export const predictionName = (pick: PredictionPick) => pick.fighterId === pick.f1Id ? pick.f1Name : pick.f2Name;

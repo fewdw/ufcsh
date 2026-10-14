@@ -13,6 +13,7 @@ export type PredictionFight = {
   f1_line: string | null; f2_line: string | null;
   /** Place on its card from the top, main event 0; read for profile order. */
   card_place?: number | null;
+  f1_photo?: string | null; f2_photo?: string | null;
 };
 /** `eventOpen` is false for cards further out than the predicting window. */
 export type PredictionContext = { fight: PredictionFight; bouts: PredictionFight[]; eventOpen?: boolean };
@@ -342,8 +343,13 @@ export class PredictionStore {
     stored.sort((a, b) => byBoutPlace(fights.get(a.fight_id), fights.get(b.fight_id)));
     const predictions = stored.map(row => {
       const pick = JSON.parse(row.pick_json!) as Pick;
+      const fight = fights.get(row.fight_id);
+      // By fighter, not corner: a pick names corners as the bout stood then.
+      const photo = (id: string) => (fight?.f1_id === id ? fight.f1_photo : fight?.f2_id === id ? fight.f2_photo : null) ?? null;
       return { fightId: row.fight_id, revision: row.revision, updatedAt: row.updated_at, pick,
-        result: predictionResult(pick, fights.get(row.fight_id)) };
+        f1Photo: photo(pick.f1Id), f2Photo: photo(pick.f2Id),
+        winnerId: fight && fightIsComplete(fight) ? (fight.f1_outcome === "win" ? fight.f1_id : fight.f2_outcome === "win" ? fight.f2_id : null) : null,
+        result: predictionResult(pick, fight) };
     });
     // Accuracy is counted over settled picks only: pending and void bouts are
     // not calls the fan got right or wrong.

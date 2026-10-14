@@ -1,13 +1,14 @@
 import { useAuth } from "@clerk/react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { formatDateShortWithYear } from "../format";
-import { predictionLabel, predictionPoints } from "../predictions";
+import { formatDateShortWithYear, lastName } from "../format";
+import { METHOD_LABEL, predictionLabel, predictionName, predictionPoints } from "../predictions";
 import type { PredictionRate, ProfilePredictions as PredictionsData } from "../predictions";
+import Avatar from "./Avatar";
 import { ConfirmRemove, RemoveX } from "./ConfirmRemove";
 import { Donut, type Slice } from "./Donut";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
-import { fetchPage, LIST_META, CLEAR_REMOVE, LIST_ROW, LIST_TITLE, LIST_VALUE, LoadMore, useInfiniteList, type ListSource } from "./InfiniteList";
+import { fetchPage, LIST_META, CLEAR_REMOVE, LIST_ROW, LIST_VALUE, LoadMore, useInfiniteList, type ListSource } from "./InfiniteList";
 
 const RIGHT = "var(--color-pick-right)";
 const WRONG = "var(--color-pick-wrong)";
@@ -35,11 +36,11 @@ function Accuracy({ title, rate, empty }: { title: string; rate: PredictionRate;
   );
 }
 
-/** Which parts of a settled call landed: W(inner), M(ethod), R(ound). */
-function Mark({ label, right }: { label: string; right: boolean }) {
-  return <span aria-hidden="true" title={`${{ W: "Winner", M: "Method", R: "Round" }[label]} ${right ? "right" : "wrong"}`}
-    className={`inline-flex h-5 min-w-5 items-center justify-center rounded px-1 text-[10px] font-bold ${right ? "bg-emerald-100 text-emerald-700" : "bg-rose-50 text-rose-600"}`}>
-    {label}{right ? "✓" : "✗"}
+/** One part of a call — the fighter, the method, the round — in its own
+ *  words: green or red once it is settled, plain while it is still open. */
+function Call({ label, right }: { label: string; right: boolean | null }) {
+  return <span className={`inline-flex h-5 items-center whitespace-nowrap rounded px-1.5 text-[11px] font-semibold ${right == null ? "bg-zinc-100 text-zinc-700" : right ? "bg-emerald-100 text-emerald-700" : "bg-rose-50 text-rose-600"}`}>
+    {label}{right == null ? null : <span aria-hidden="true" className="ml-0.5">{right ? "✓" : "✗"}</span>}
   </span>;
 }
 
@@ -114,27 +115,37 @@ export default function ProfilePredictions({ handle, mine }: { handle: string; m
         {list.items.map(row => {
           // A pick can be taken back until the fight has a result.
           const removable = mine && row.result.state === "pending";
+          const settled = row.result.state === "won" || row.result.state === "lost";
           return <li key={row.fightId} className="relative">
-          <Link to={`/fights/${row.fightId}?tab=predict`} className={`block ${LIST_ROW} transition-colors hover:bg-zinc-50`}>
-            <div className={`flex items-baseline justify-between gap-3 ${CLEAR_REMOVE(removable)}`}>
-              <p className={`min-w-0 ${LIST_TITLE}`}>{predictionLabel(row.pick)}</p>
-              {row.result.points == null ? null : (
-                <span className={`${LIST_VALUE} ${row.result.state === "won" ? "text-emerald-600" : row.result.state === "lost" ? "text-zinc-400" : "text-zinc-500"}`}>
-                  {row.result.state === "void" ? "Void" : `${predictionPoints(row.result.points)} pts`}
-                </span>
-              )}
+          <Link to={`/fights/${row.fightId}?tab=predict`} className={`flex items-center gap-3 ${LIST_ROW} transition-colors hover:bg-zinc-50`}>
+            <div className="flex shrink-0 flex-col gap-1 sm:flex-row">
+              {([1, 2] as const).map(side => {
+                const id = side === 1 ? row.pick.f1Id : row.pick.f2Id;
+                return <Avatar key={side} size="xs" src={side === 1 ? row.f1Photo : row.f2Photo} name={side === 1 ? row.pick.f1Name : row.pick.f2Name}
+                  outcome={row.winnerId ? (row.winnerId === id ? "win" : "loss") : null} />;
+              })}
             </div>
-            <div className={`mt-0.5 flex items-center justify-between gap-3 ${LIST_META}`}>
-              <p className="min-w-0 truncate" title={`${row.pick.f1Name} vs ${row.pick.f2Name} · ${row.pick.eventName}`}><span className="text-zinc-700">{row.pick.f1Name} vs {row.pick.f2Name}</span> · {row.pick.eventName} · {formatDateShortWithYear(row.pick.eventDate)}</p>
-              {row.result.state === "won" || row.result.state === "lost" ? (
-                <p className="flex shrink-0 gap-1.5 tabular-nums" aria-label={[`Winner ${row.result.fighter ? "right" : "wrong"}`, row.pick.method ? `Method ${row.result.method ? "right" : "wrong"}` : "", row.pick.round ? `Round ${row.result.round ? "right" : "wrong"}` : ""].filter(Boolean).join(", ")}>
-                  <Mark label="W" right={Boolean(row.result.fighter)} />
-                  {row.pick.method ? <Mark label="M" right={Boolean(row.result.method)} /> : null}
-                  {row.pick.round ? <Mark label="R" right={Boolean(row.result.round)} /> : null}
+            <div className="min-w-0 flex-1">
+              <div className={`flex items-start justify-between gap-3 ${CLEAR_REMOVE(removable)}`}>
+                <p className="flex min-w-0 flex-wrap gap-1.5" aria-label={[
+                  `${predictionLabel(row.pick)}`,
+                  settled ? `winner ${row.result.fighter ? "right" : "wrong"}` : "",
+                  settled && row.pick.method ? `method ${row.result.method ? "right" : "wrong"}` : "",
+                  settled && row.pick.round ? `round ${row.result.round ? "right" : "wrong"}` : "",
+                ].filter(Boolean).join(", ")}>
+                  <Call label={lastName(predictionName(row.pick))} right={settled ? Boolean(row.result.fighter) : null} />
+                  {row.pick.method ? <Call label={METHOD_LABEL[row.pick.method]} right={settled ? Boolean(row.result.method) : null} /> : null}
+                  {row.pick.round ? <Call label={`Round ${row.pick.round}`} right={settled ? Boolean(row.result.round) : null} /> : null}
                 </p>
-              ) : null}
+                {row.result.points == null ? null : (
+                  <span className={`${LIST_VALUE} ${row.result.state === "won" ? "text-emerald-600" : row.result.state === "lost" ? "text-zinc-400" : "text-zinc-500"}`}>
+                    {row.result.state === "void" ? "Void" : `${predictionPoints(row.result.points)} pts`}
+                  </span>
+                )}
+              </div>
+              <p className={`mt-1 truncate ${LIST_META}`} title={`${row.pick.f1Name} vs ${row.pick.f2Name} · ${row.pick.eventName}`}><span className="text-zinc-700">{row.pick.f1Name} vs {row.pick.f2Name}</span> · {row.pick.eventName} · {formatDateShortWithYear(row.pick.eventDate)}</p>
+              {row.result.reason ? <p className={`mt-0.5 ${LIST_META}`}>{row.result.reason}</p> : null}
             </div>
-            {row.result.reason ? <p className={`mt-0.5 ${LIST_META}`}>{row.result.reason}</p> : null}
           </Link>
           {removable ? <RemoveX large label={`Remove your prediction for ${row.pick.f1Name} vs ${row.pick.f2Name}`} onClick={() => { setConfirming(row); setRemoveError(""); }} /> : null}
         </li>;
