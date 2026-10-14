@@ -346,7 +346,7 @@ export function AwardsPage() {
         ) : null)}
         {groups.every((categories) => !categories.length) ? <p className={`${PANEL} px-5 py-8 text-center text-sm text-zinc-500`}>No awards match this search.</p> : null}
         <p className="px-1 text-[11px] text-zinc-400">
-          <a href={data.source.url} target="_blank" rel="noreferrer" className="underline hover:text-zinc-600">{data.source.name}</a>, voted by fans and presented by Fighters Only since 2008. From 2021 a year's awards cover July of the year before to June; 2020 covers January 2019 to June 2020, so there is no 2019. A promotion in brackets marks an award won outside the UFC.
+          <a href={data.source.url} target="_blank" rel="noreferrer" className="underline hover:text-zinc-600">{data.source.name}</a>, voted by fans and presented by Fighters Only since 2008. The 2019 awards cover January 2019 to June 2020; each year since runs from July to the following June. A promotion in brackets marks an award won outside the UFC.
         </p>
       </div>
     </div>
