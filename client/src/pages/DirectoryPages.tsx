@@ -295,7 +295,7 @@ function AwardRow({ award, shared }: { award: AwardEntry; shared: boolean }) {
   const detail = [award.title, award.note, award.result].filter(Boolean).join(" · ");
   return (
     <li className="flex items-baseline gap-3 border-b border-zinc-100 px-4 py-2 last:border-b-0 sm:px-5">
-      <span className="w-12 shrink-0 text-[11px] tabular-nums text-zinc-400">{award.period}</span>
+      <span className="w-8 shrink-0 text-[11px] tabular-nums text-zinc-400">{award.period}</span>
       <span className="min-w-0 flex-1">
         <span className="block text-[13px] font-medium text-zinc-900">
           <AwardName person={award.winner} />
@@ -346,7 +346,7 @@ export function AwardsPage() {
         ) : null)}
         {groups.every((categories) => !categories.length) ? <p className={`${PANEL} px-5 py-8 text-center text-sm text-zinc-500`}>No awards match this search.</p> : null}
         <p className="px-1 text-[11px] text-zinc-400">
-          <a href={data.source.url} target="_blank" rel="noreferrer" className="underline hover:text-zinc-600">{data.source.name}</a>, voted by fans and presented by Fighters Only since 2008. A promotion in brackets marks an award won outside the UFC.
+          <a href={data.source.url} target="_blank" rel="noreferrer" className="underline hover:text-zinc-600">{data.source.name}</a>, voted by fans and presented by Fighters Only since 2008. From 2021 a year's awards cover July of the year before to June; 2020 covers January 2019 to June 2020, so there is no 2019. A promotion in brackets marks an award won outside the UFC.
         </p>
       </div>
     </div>

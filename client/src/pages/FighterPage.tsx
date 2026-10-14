@@ -217,7 +217,7 @@ function FighterAwards({ awards }: { awards: FighterAward[] }) {
           const against = award.opponent ? `vs. ${award.opponent}` : award.note;
           return (
             <li key={`${award.category}-${award.period}`} className="flex min-w-0 items-baseline gap-2">
-              <span className="w-12 shrink-0 text-[11px] tabular-nums text-zinc-400">{award.period}</span>
+              <span className="w-8 shrink-0 text-[11px] tabular-nums text-zinc-400">{award.period}</span>
               <span className="min-w-0 text-[13px] font-medium text-zinc-800">
                 {award.label}
                 {against || award.org ? <span className="text-[11px] font-normal text-zinc-400">
