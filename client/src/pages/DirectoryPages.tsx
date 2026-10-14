@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ArrowDown, ArrowUp } from "lucide-react";
-import { useApi, type AwardEntry, type AwardPerson, type AwardsDirectory, type LocationDirectory, type OfficialsDirectory, type VenueDirectory } from "../api";
+import { useApi, type AwardEntry, type AwardsDirectory, type LocationDirectory, type OfficialsDirectory, type VenueDirectory } from "../api";
 import { searchList } from "../search";
 import { formatMethod } from "../format";
 import { useRouteScrollRestoration } from "../navigationState";
@@ -283,30 +283,27 @@ export function LocationsPage() {
   );
 }
 
-function AwardName({ person }: { person: AwardPerson }) {
-  return person.id ? <Link to={`/fighters/${person.id}`} className="hover:underline">{person.name}</Link> : <>{person.name}</>;
-}
-
 /** One year's winner: the fighter (and promotion, outside the UFC), then who
- *  it was against and where. Fighters and bouts on record open their pages.
+ *  it was against and where. The whole row opens the matchup for a bout on
+ *  record, or the profile for a fighter's award; a row with neither is plain.
  *  Every row is the same height and never wraps, so the cards line up. */
 function AwardRow({ award, shared }: { award: AwardEntry; shared: boolean }) {
-  const where = award.event ? (award.fight_id ? <Link to={`/fights/${award.fight_id}`} className="hover:text-zinc-700 hover:underline">{award.event.name}</Link> : award.event.name) : null;
-  const detail = formatMethod(award.method, award.round, null);
+  const detail = [formatMethod(award.method, award.round, null), award.event?.name].filter(Boolean).join(" · ");
   const names = [award.winner.name, award.org ? `(${award.org})` : "", award.opponent ? `${shared ? "vs." : "def."} ${award.opponent.name}` : ""].filter(Boolean).join(" ");
-  return (
-    <li className="flex h-12 items-center gap-2.5 px-3.5">
-      <span className="w-8 shrink-0 text-[11px] tabular-nums text-zinc-400">{award.period}</span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-medium text-zinc-900" title={names}>
-          <AwardName person={award.winner} />
-          {award.org ? <span className="font-normal text-zinc-500"> ({award.org})</span> : null}
-          {award.opponent ? <><span className="font-normal text-zinc-400"> {shared ? "vs." : "def."} </span><AwardName person={award.opponent} /></> : null}
-        </span>
-        {detail || where ? <span className="block truncate text-[11px] text-zinc-400" title={award.event?.name}>{detail}{detail && where ? " · " : ""}{where}</span> : null}
+  const to = award.opponent ? (award.fight_id ? `/fights/${award.fight_id}` : null) : award.winner.id ? `/fighters/${award.winner.id}` : null;
+  const row = "flex h-12 items-center gap-2.5 px-3.5";
+  const body = <>
+    <span className="w-8 shrink-0 text-[11px] tabular-nums text-zinc-400">{award.period}</span>
+    <span className="min-w-0 flex-1">
+      <span className="block truncate text-[13px] font-medium text-zinc-900" title={names}>
+        {award.winner.name}
+        {award.org ? <span className="font-normal text-zinc-500"> ({award.org})</span> : null}
+        {award.opponent ? <><span className="font-normal text-zinc-400"> {shared ? "vs." : "def."} </span>{award.opponent.name}</> : null}
       </span>
-    </li>
-  );
+      {detail ? <span className="block truncate text-[11px] text-zinc-400" title={detail}>{detail}</span> : null}
+    </span>
+  </>;
+  return <li>{to ? <Link to={to} className={`${row} hover:bg-zinc-50`}>{body}</Link> : <div className={row}>{body}</div>}</li>;
 }
 
 /** The yearly awards, one card a category as Rankings has one a division,
