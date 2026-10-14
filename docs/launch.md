@@ -227,10 +227,15 @@ cd ~/ufcsh
 rclone lsf r2:ufcsh-backups
 ```
 
-The script takes checked SQLite snapshots of both databases and uploads them
-under a timestamp. In R2, set an object lifecycle rule to delete objects after
-30 days to stay within the 10 GB-month Standard free tier at the current roughly
-82 MB database size. Install the daily systemd timer:
+The script takes checked SQLite snapshots of both databases, compresses them
+with zstd (`ufc.db` 108 MB becomes about 15 MB) and uploads them under a
+timestamp. After a successful upload it keeps the 14 newest snapshots and the
+first of each of the last 12 months, about 0.4 GB in all, and deletes the
+oldest if the bucket ever passes 8 GB, under R2's 10 GB free tier.
+`./deploy/backup-offsite.sh --plan < names` prints what retention would delete
+from a list of snapshot names. In R2, set an object lifecycle rule to delete
+objects after 400 days, a backstop in case the script stops pruning. Install the
+daily systemd timer (zstd ships with Ubuntu):
 
 ```sh
 sudo install -m 644 deploy/systemd/ufcsh-offsite.service /etc/systemd/system/
@@ -241,6 +246,7 @@ sudo systemctl start ufcsh-offsite.service
 ```
 
 Check `journalctl -u ufcsh-offsite.service -n 30 --no-pager` and the bucket after the first scheduled
-run. Restore a snapshot by stopping the app, copying both files into the app
-volume as `node`, then restarting and checking `/readyz` and representative
-scores. Keep the R2 token private and separate from the Git repository.
+run. Restore a snapshot by downloading it (`rclone copy r2:ufcsh-backups/STAMP
+DIR`), decompressing both files (`zstd -d`), stopping the app, copying both
+files into the app volume as `node`, then restarting and checking `/readyz` and
+representative scores. Keep the R2 token private and separate from the Git repository.
