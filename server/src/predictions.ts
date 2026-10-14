@@ -78,6 +78,23 @@ export function predictionWindow(context: PredictionContext, now = Date.now()) {
     closesAt: closesAt != null && Number.isFinite(closesAt) ? closesAt : null };
 }
 
+/** A lock keeps a bout closed once it has started closing on the night, even if
+ * the live feed regresses afterwards. A card further out than the predicting
+ * window has not closed, it has yet to open: it writes no lock, and a lock on
+ * an open bout from more than a day before its event is not from the night
+ * and is dropped. */
+const EARLY_LOCK_MS = 24 * 3_600_000;
+export function fightLock(db: DatabaseSync, context: PredictionContext, now: number) {
+  const id = context.fight.id;
+  const window = predictionWindow({ ...context, eventOpen: undefined }, now);
+  let lockedAt = (db.prepare("SELECT locked_at FROM prediction_locks WHERE fight_id = ?").get(id) as { locked_at: number } | undefined)?.locked_at ?? null;
+  if (lockedAt != null && window.open && lockedAt < (window.eventStartsAt ?? 0) - EARLY_LOCK_MS) {
+    db.prepare("DELETE FROM prediction_locks WHERE fight_id = ?").run(id);
+    lockedAt = null;
+  } else if (lockedAt == null && !window.open) db.prepare("INSERT OR IGNORE INTO prediction_locks VALUES (?, ?)").run(id, now);
+  return { open: window.open && lockedAt == null, lockedAt };
+}
+
 const samePair = (pick: Pick, fight: PredictionFight) => pick.eventId === fight.event_id
   && [pick.f1Id, pick.f2Id].sort().join(":") === [fight.f1_id, fight.f2_id].sort().join(":");
 
@@ -142,11 +159,10 @@ export class PredictionStore {
     const context = this.context(id);
     if (!context) throw new ScoringError(404, "Fight not found.");
     const window = predictionWindow(context, this.now());
-    const lock = this.db.prepare("SELECT locked_at FROM prediction_locks WHERE fight_id = ?").get(id) as { locked_at: number } | undefined;
-    if (!window.open && !lock) this.db.prepare("INSERT OR IGNORE INTO prediction_locks VALUES (?, ?)").run(id, this.now());
-    if (lock) { window.open = false; window.reason = "Predictions are closed for this fight."; }
+    const { lockedAt } = fightLock(this.db, context, this.now());
+    if (lockedAt != null) { window.open = false; window.reason = "Predictions are closed for this fight."; }
     const fight = context.fight;
-    return { ...window, lockedAt: lock?.locked_at ?? (!window.open ? this.now() : null),
+    return { ...window, lockedAt: lockedAt ?? (!window.open ? this.now() : null),
       matchupKey: `${fight.event_id}:${fight.f1_id}:${fight.f2_id}`,
       scheduledRounds: fight.scheduled_rounds,
       // Either fighter can always be picked. Odds are a separate tab and never

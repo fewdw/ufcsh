@@ -132,6 +132,19 @@ test("places bets at the server's price and caps the stake", t => {
   assert.match(error(() => store.place(user, { stake: 5, legs: [leg(bouts[1].id, { winner: 1 }, "-200")] })).message, /closed for betting/);
 });
 
+test("a card beyond the predicting window still takes bets, and a lock left from it is dropped", t => {
+  const { bouts, scores, store } = fixture(t);
+  const far = new PredictionStore(scores, id => { const fight = bouts.find(row => row.id === id); return fight && { fight, bouts, eventOpen: false }; },
+    ids => bouts.filter(row => ids.includes(row.id)), () => now);
+  const locks = () => (scores.db.prepare("SELECT COUNT(*) AS n FROM prediction_locks").get() as { n: number }).n;
+  assert.equal(far.summary(bouts[4].id).open, false);
+  assert.equal(locks(), 0);
+  // Written by earlier versions whenever a far-off matchup was viewed.
+  scores.db.prepare("INSERT INTO prediction_locks VALUES (?, ?)").run(bouts[4].id, now - 3 * 86_400_000);
+  assert.equal(store.place("user_1", { stake: 5, legs: [leg(bouts[4].id, { winner: 1 }, "-200")] }).state, "pending");
+  assert.equal(locks(), 0);
+});
+
 test("a profile lists open bets by the next bout each is waiting on, then settled ones latest first", t => {
   const { bouts, store, clock } = fixture(t);
   bouts.forEach((fight, index) => { fight.card_place = index; });
