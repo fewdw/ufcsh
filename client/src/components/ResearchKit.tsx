@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Search } from "lucide-react";
 import { PANEL } from "./chartTokens";
 import OptionsSheet, { SHEET_SELECT, SheetField } from "./OptionsSheet";
 import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedTab } from "./segmented";
 import type { YearCount } from "../api";
 import { formatDateShortWithYear } from "../format";
-import { useRouteScrollRestoration } from "../navigationState";
+import { useRouteScrollRestoration, useTabBarAnchor } from "../navigationState";
 import { METHOD_COLOR, type Option } from "../research";
 
 /**
@@ -56,7 +56,11 @@ export function Panel({ title, subtitle, children, aside }: { title: string; sub
 
 /** Two columns on a wide window, each its own scroller, as a fighter's page
  *  is: the person and their figures on the left, the bouts on the right. On a
- *  narrow one the identity stays on top and the two become tabs. */
+ *  narrow one the identity stays on top and the two become tabs, and the tab
+ *  bar stays where the reader had it, as on a fighter's page: a tab, filter or
+ *  comparison picked re-reads the page and can change the height of what sits
+ *  above it (the filtered count, the wheels), which would otherwise move the
+ *  bar and the list's own pills under the reader's thumb. */
 export function ProfileColumns({ scope, ready, identity, stats, list, listLabel, tab, onTab }: {
   scope: string; ready: boolean; identity: ReactNode; stats: ReactNode; list: ReactNode; listLabel: string;
   tab: "list" | "stats"; onTab: (tab: "list" | "stats") => void;
@@ -64,15 +68,21 @@ export function ProfileColumns({ scope, ready, identity, stats, list, listLabel,
   const page = useRouteScrollRestoration<HTMLDivElement>(`${scope}:page`, ready);
   const main = useRouteScrollRestoration<HTMLDivElement>(`${scope}:main`, ready);
   const side = useRouteScrollRestoration<HTMLDivElement>(`${scope}:side`, ready);
+  const { pathname, search } = useLocation();
+  const bar = useRef<HTMLDivElement>(null);
+  const anchor = useTabBarAnchor(pathname, search);
+  // Every choice starts with a press, a key or a select changing (the Filters
+  // sheet's included); scrolling lets go. Hidden on a wide window: nothing to hold.
+  const hold = () => { if (bar.current?.getClientRects().length) anchor.keep(bar.current); };
   const column = "min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]";
   return (
-    <div ref={page} className="h-full overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable] lg:overflow-hidden">
+    <div ref={page} onPointerDownCapture={hold} onKeyDownCapture={hold} onChangeCapture={hold} className="h-full overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable] lg:overflow-hidden">
       <div className="flex flex-col gap-3 p-3 pb-8 lg:h-full lg:pb-3">
         <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(24rem,5fr)_minmax(0,7fr)] lg:grid-rows-[minmax(0,1fr)]">
           <div ref={main} className={`flex ${column}`}>
             {identity}
             <div className={`${PANEL} p-1.5 lg:hidden`}>
-              <div role="tablist" aria-label="Sections" className={`${segmentedGroup} w-full`}>
+              <div ref={bar} role="tablist" aria-label="Sections" className={`${segmentedGroup} w-full`}>
                 {([["list", listLabel], ["stats", "Stats"]] as const).map(([key, label]) => (
                   <button key={key} type="button" role="tab" aria-selected={key === tab} onClick={() => onTab(key)}
                     className={`${segmentedTab} ${key === tab ? segmentedSelected : segmentedIdle}`}>

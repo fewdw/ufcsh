@@ -201,6 +201,18 @@ export function estimatedStart(
 
 const SEGMENT_RANK: Record<CardSegment, number> = { main: 0, prelims: 1, early: 2 };
 
+/** A bout as a profile lists it: its card's date and id, and its place on that
+ *  card from the top (main event 0), as `cardOrder` reads it. */
+export type BoutPlace = { event_date: string; event_id: string; card_place?: number | null };
+/** How a profile orders bouts, whatever the list: the newest card first, and on
+ *  each card the order it is billed, main event first — the order they were
+ *  fought, latest first. A bout no longer in the fight database goes last. */
+export function byBoutPlace(a: BoutPlace | undefined, b: BoutPlace | undefined): number {
+  if (!a || !b) return a ? -1 : b ? 1 : 0;
+  return b.event_date.localeCompare(a.event_date) || b.event_id.localeCompare(a.event_id)
+    || (a.card_place ?? Infinity) - (b.card_place ?? Infinity);
+}
+
 /** A card top to bottom, as it is fought in reverse: main card, prelims, then
  *  early prelims, each in ufc.com's order. UFCStats appends a late addition to
  *  the bottom of its list (`ord`) wherever ufc.com books it, so `ord` alone is

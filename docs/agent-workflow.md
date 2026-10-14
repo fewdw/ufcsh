@@ -24,7 +24,7 @@ Run on the VPS in `/home/ubuntu/ufcsh-dev` (from the home server, through
   waiting, the container keeps running and the slot is free. Don't release a live
   review merely because the chat ended.
 - A production deploy also advances the queue when the owner's commit is in the
-  released `main`, so merges made on GitHub need no manual release.
+  released `main`. A merge into `develop` deploys nothing, so release the slot.
 - A failed or killed deploy keeps the slot with a `failed`/`deploying` status;
   retry the owner or use `priority`/`next`.
 - Requests pin the pushed SHA, and the selector verifies the running container's

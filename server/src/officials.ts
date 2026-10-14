@@ -238,7 +238,7 @@ function facets(fights: Officiated[]) {
 
 function fighterRef(fight: IndexedFight, index: 0 | 1) {
   const side = fight.sides[index];
-  return { id: side.id, name: side.name, outcome: side.outcome };
+  return { id: side.id, name: side.name, outcome: side.outcome, photo_url: fightIndex().fighters.get(side.id)?.photoUrl ?? null };
 }
 
 // ---------------------------------------------------------------------------

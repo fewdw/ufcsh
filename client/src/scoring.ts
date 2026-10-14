@@ -8,9 +8,6 @@ export type RoundScore = { round: number; f1: number; f2: number; deduct1: numbe
 export type ScorerIdentity = { publicId: string; handle: string; username: string | null; displayName: string; imageUrl: string | null };
 export type MyScorecard = { revision: number; rounds: RoundScore[]; updatedAt: number | null; scorer: ScorerIdentity | null };
 export type ScoreEligibility = { state: "completed" | "live" | "waiting"; scheduled: number; available: number; reason: string | null };
-/** One fan's card under a fight: the totals only, since the rounds behind them
- *  are on that fan's profile. */
-export type FanCard = { scorer: ScorerIdentity; updatedAt: number; rounds: number; total1: number; total2: number };
 export type ScoreSummary = {
   eligibility: ScoreEligibility;
   rounds: { round: number; scorers: number; avg1: number; avg2: number; deduct1: number; deduct2: number; total1: number; total2: number }[];
@@ -20,7 +17,6 @@ export type ScoreSummary = {
     localCards: number; importedCards: number;
     source: { name: string; url: string } | null;
   };
-  cards: FanCard[];
 };
 
 /** A public scorer profile: every fight they have a card for, newest first.
@@ -37,17 +33,22 @@ export type ScorerCard = {
   /** Whether the bout went to the judges, and whether this card read it their
    *  way. A finish was never judged, so it is neither. */
   decision: boolean; agreement: "agreed" | "disagreed" | null;
+  /** The fans' average final card and the judges' totals, as the fight page
+   *  shows them, and whether a full card on a decision read it the fans' way. */
+  fans: { cards: number; total1: number; total2: number } | null;
+  fansAgreement: "agreed" | "disagreed" | null;
+  judges: { f1: number; f2: number }[];
   fight: ScorerCardFight;
 };
 /** Which cards the list is showing. `decisions` is the reader hiding bouts
  *  that ended in a finish; the other two are the halves of the chart. */
-export type ProfileFilter = "all" | "decisions" | "agreed" | "disagreed";
+export type ProfileFilter = "all" | "decisions" | "agreed" | "disagreed" | "fans-agreed" | "fans-disagreed";
 export type ScorerProfile = {
   scorer: ScorerIdentity & { cards: number; joinedAt: number | null;
     /** Whether their discussion comments are listed on the profile. */
     commentsPublic: boolean };
   /** Over every card on the profile, not just the page being read. */
-  agreement: { decisions: number; agreed: number; disagreed: number; finishes: number };
+  agreement: { decisions: number; agreed: number; disagreed: number; finishes: number; fansAgreed: number; fansDisagreed: number };
   filter: ProfileFilter; query: string; offset: number; pageSize: number; total: number; cards: ScorerCard[];
 };
 /** The same rule the server enforces, so the field can answer before it asks. */

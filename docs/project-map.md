@@ -23,6 +23,7 @@ client (`client/`) renders every page.
 | Profile records and full stat rankings | `records.ts` (`fighterRecords`, `fighterBoard`, `milestonesWithinReach`) |
 | Ranking history (every official list since Feb 2013; ranks entering past bouts, profile chart) | `ranking-history.ts` (archive + Wayback backfill, snapshots from the rankings sync, confirmed undisputed title results shown from fight day without altering official lists); `ranking-archive.ts` (compact division archives preloaded for full chart tooltips); chart `client/src/components/RankingHistory.tsx`; missing history and title evidence in Admin → Bugs |
 | Judges and referees | `officials.ts` (name merging, profiles, directory, search) |
+| Yearly awards (Sherdog Year-End Awards: Fighter, Breakthrough and Comeback Fighter, Fight, Knockout, Submission and Upset of the Year) | `awards-data.ts` (the winners, edited by hand each January from Sherdog's articles), `awards.ts` (links each to a profile and bout; serves the Awards directory, a profile's awards and a matchup's tags); rows that stop matching, and a year not yet added, in Admin → Bugs |
 | Venues and locations | `venues.ts` (identity from ufc.com venue ids + Wikipedia names; locations group cards by the billed city and country) |
 | Roster changes (signings, releases) | `roster-moves.ts` (stored read + profile links, ufc.com newest-profile watch); `roster-history.ts` retains dated source evidence; shared `roster-timeline.ts` drives profile bands and the searchable Admin → Bugs backlog for unknown dates/reasons; `import-roster-history.ts` reads weekly roster revisions, `import-roster-reports.ts` retains dated biography evidence through `scrape/roster-reports.ts`; current reports parsed in `scrape/wikipedia.ts` (`rosterChanges`) and `scrape/ufccom.ts` (`parseNewestAthletes`) |
 | Admin data-quality board | `bugs.ts` (checks and repair actions), `admin-http.ts`, `repair-guard.ts` |
@@ -30,7 +31,7 @@ client (`client/`) renders every page.
 | Admin traffic and visitors (live last hour; saved history 24 hours to all time; unique visitors by browser, sources, devices, countries) | `observability.ts` (in memory), `traffic-history.ts` (hourly rows in `scoring.db`, folded to days after 8 days), `visitors.ts` (hashed browser ids for 35 days, then daily totals); client `pageViews.ts` sends the signal |
 | Admin errors, sync status and accounts | `error-log.ts` (each 5xx/404 address, kept 7 days), `sync-status.ts` (source freshness, last 50 sync errors), `accounts.ts` (`adminAccounts`) |
 | Accounts, scoring, predictions, bets, comments | `accounts.ts` (Clerk deletions and picture sync), `scoring*.ts`, `predictions*.ts`, `bets*.ts`, `comments*.ts`, `moderation.ts` |
-| Background sync | `sync.ts` (scheduler `tick`), `sync-worker.ts`, `career-records.ts`, `verdict-import.ts` |
+| Background sync | `sync.ts` (scheduler `tick`), `sync-worker.ts` (one at a time via `sync-lease.ts`), `career-records.ts`, `verdict-import.ts` |
 | Scrapers | `scrape/ufcstats.ts`, `scrape/ufccom.ts` (schedules, segments, venue/broadcast/referee feed), `scrape/wikipedia.ts` (weigh-ins, infobox, background, replacements and short notice via `boutChanges`, stored by `syncEventWikiInfo`), `scrape/fightodds.ts` (upcoming moneylines and props, matched by UFCStats id; every 5 and 30 min), `scrape/odds.ts` (BestFightOdds: fallback, archive), `scrape/sherdog.ts`, `scrape/verdict.ts`, `scrape/mmadecisions.ts` |
 | Database schema and migrations | `db.ts` |
 
@@ -42,14 +43,14 @@ copy of the local archive (`DATA_DIR`).
 | Area | Files |
 | --- | --- |
 | Shell, routes, header | `App.tsx`, `main.tsx` |
-| More menu, one column (Stats, News, Browse); Browse tabs Roster, Officials, Venues, Locations; Graphic (Beta) opens from the profile | `components/MoreNav.tsx`, `components/BrowseTabs.tsx`; page `GraphicPage.tsx` |
+| More menu, one column (Stats, News, Browse); Browse tabs Roster, Officials, Venues, Locations, Awards; Graphic (Beta) opens from the profile | `components/MoreNav.tsx`, `components/BrowseTabs.tsx`; page `GraphicPage.tsx` |
 | Admin link in the header (admins only) | `App.tsx` (`AdminLink`) |
 | News page (newest first, Settings: summaries and outlet toggles); a fighter's News tab | `pages/NewsPage.tsx`, `components/NewsRow.tsx`; `FighterNews` in `pages/FighterPage.tsx` |
 | Data fetching and polling | `api.ts` (types + `useApi`), `requestCache.ts`, `polling.ts`; early data in `index.html`, link prefetch in `useLinkPrefetch.ts` + `pageRequests.ts`, page chunks in `pages.ts`, answers kept across reloads in `snapshots.ts` |
 | Page choices kept across reloads and releases (Stats filters and board options, Events tier, comment sorts; `useRememberedState`) | `preferences.ts`, `navigationState.ts`; site-wide Settings in `settings.tsx` |
 | Events and matchups | `pages/EventsPage.tsx`, `pages/FightPage.tsx`, `components/FightRail.tsx`, `components/FightStats.tsx`; opponent-record drilldown in `components/OppositionDetails.tsx`, the round that decided a decision in `decidingRound.ts`, shared career-evidence dialog in `components/EvidenceDialog.tsx` |
 | Fighter profiles | `pages/FighterPage.tsx`, `fighterTimeline.ts` (roster bands + DWCS/Road to UFC/TUF labels), `components/FighterStatistics.tsx`, `components/FighterCareerStats.tsx`, `components/FightInsights.tsx` (By round, Average strikes by round, Average scorecards; Records and Statistics sit in the profile's Records tab, Against the odds; also on the matchup); shared career-stat evidence modals in `components/CareerStatDetails.tsx`, with shareable URL controls in `careerMetrics.ts` |
-| Officials, venues and locations | `pages/JudgePage.tsx`, `pages/RefereePage.tsx`, `pages/VenuePage.tsx` (venue and location pages), `pages/DirectoryPages.tsx`, shared pieces in `components/ResearchKit.tsx` and `research.ts` |
+| Officials, venues, locations and awards | `pages/JudgePage.tsx`, `pages/RefereePage.tsx`, `pages/VenuePage.tsx` (venue and location pages), `pages/DirectoryPages.tsx` (the lists, and the Awards page), shared pieces in `components/ResearchKit.tsx` and `research.ts` |
 | Typed list filters (spacing, word order and typos forgiven), Roster "new since last visit" | `search.ts` (server twin: `searchList` in `server/src/fuzzy.ts`), `rosterSeen.ts` |
 | Graphics builder | `graphicsLauncher.tsx` (open from anywhere), `components/GraphicsBuilder.tsx` (dialog), `graphics/presets.ts` (the starting points), `graphics/build.ts` (data and picks → graphic), `graphics/render.ts` (templates), `graphics/draw.ts` (themes, texture, type and shared marks), `graphics/fonts.ts` (Barlow Condensed, self-hosted in `public/fonts`), `graphics/export.ts` |
 | Keyboard shortcuts | `shortcuts.tsx` |
@@ -69,5 +70,6 @@ copy of the local archive (`DATA_DIR`).
 `AGENTS.md` owns agent rules. `start` owns local previews, `tools/new-task.sh`
 task worktrees, `tools/heavy.sh` heavy-command limits. `deploy/dev-review.sh` +
 `dev-review.ts` own the shared dev queue, `deploy/build.sh` the bounded Docker
-builder. `.github/workflows/ci.yml` owns PR checks and production releases;
+builder. `deploy/update.sh` releases production without downtime by handing over
+between `app-blue` and `app-green` (`deploy/live-app.sh`, `deploy/Caddyfile`). `.github/workflows/ci.yml` owns PR checks and production releases;
 `deploy-dev.yml` is the manual dev override.

@@ -6,6 +6,8 @@ import { validateFightActions } from "./action-stats.ts";
 import { americanLine, fightIndex, impliedProbability, professionalBouts } from "./fight-index.ts";
 import { fighterNamed, hasUfcFight, ufcFightExistsSql } from "./fighter-identity.ts";
 import { SEARCH_ALIASES } from "./search-aliases.ts";
+import { awardMisses, awardYearDue } from "./awards.ts";
+import { AWARDS_SOURCE } from "./awards-data.ts";
 import { normName } from "./util.ts";
 import { noContestUnexplained } from "./no-contest.ts";
 import { pageNamesFighter } from "./scrape/odds.ts";
@@ -788,6 +790,41 @@ function searchAliasMisses(): BugCheck {
       actions: [],
     }];
   }));
+}
+
+function awardLinkMisses(): BugCheck {
+  return check({
+    id: "award-link-misses",
+    group: "Fighters",
+    label: "Awards that miss a fighter or bout",
+    description: "A UFC award in server/src/awards-data.ts names a fighter or a dated bout the archive no longer finds, so it shows without a link and is missing from the profile and matchup. Fix the name or date in the file.",
+    grade: "minor",
+  }, awardMisses().map((miss): BugItem => ({
+    key: `${miss.category}:${miss.row.period}`,
+    title: `${miss.category} ${miss.row.period}`,
+    subtitle: `Not found: ${miss.missing}`,
+    facts: [["Winner", miss.row.winner], ...(miss.row.opponent ? [["Opponent", miss.row.opponent] as [string, string]] : [])],
+    links: [],
+    actions: [],
+  })));
+}
+
+function awardYearMissing(): BugCheck {
+  const year = awardYearDue(new Date().toISOString().slice(0, 10));
+  return check({
+    id: "award-year-missing",
+    group: "Fighters",
+    label: "Awards missing the latest year",
+    description: "Sherdog has published its year-end awards and server/src/awards-data.ts does not have them yet. Read each award's article from the index and add one row per category at the top of its list; the awards test then checks every UFC bout against the archive.",
+    grade: "must",
+  }, year ? [{
+    key: String(year),
+    title: `${year} awards are not in the list`,
+    subtitle: "One row to add in each category",
+    facts: [],
+    links: [{ label: AWARDS_SOURCE.name, href: AWARDS_SOURCE.url }],
+    actions: [],
+  }] : []);
 }
 
 // ---------------------------------------------------------------------------
@@ -1814,6 +1851,8 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     duplicateFighters(),
     sharedCareerProfiles(),
     searchAliasMisses(),
+    awardLinkMisses(),
+    awardYearMissing(),
     rosterMovesUnread(),
     rosterHistoryGaps(),
     newsFeedsUnread(),

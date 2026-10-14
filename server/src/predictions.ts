@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { fightIsComplete, fightIsUnderway } from "./live-state.ts";
-import { cardOrder } from "./card-schedule.ts";
+import { byBoutPlace, cardOrder } from "./card-schedule.ts";
 import { ScoringError, type ScoringStore } from "./scoring.ts";
 
 export type PredictionMethod = "ko" | "submission" | "decision";
@@ -11,6 +11,9 @@ export type PredictionFight = {
   f1_outcome: string | null; f2_outcome: string | null;
   method: string | null; round: string | null; detail_json: string | null;
   f1_line: string | null; f2_line: string | null;
+  /** Place on its card from the top, main event 0; read for profile order. */
+  card_place?: number | null;
+  f1_photo?: string | null; f2_photo?: string | null;
 };
 /** `eventOpen` is false for cards further out than the predicting window. */
 export type PredictionContext = { fight: PredictionFight; bouts: PredictionFight[]; eventOpen?: boolean };
@@ -130,10 +133,11 @@ export class PredictionStore {
   private db: DatabaseSync;
   private scores: ScoringStore;
   private context: (id: string) => PredictionContext | undefined;
-  private readFights: (ids: string[]) => PredictionFight[];
+  /** `places` also reads each bout's place on its card, for a profile's order. */
+  private readFights: (ids: string[], places?: boolean) => PredictionFight[];
   private now: () => number;
   constructor(scores: ScoringStore, context: (id: string) => PredictionContext | undefined,
-    readFights: (ids: string[]) => PredictionFight[], now = Date.now) {
+    readFights: (ids: string[], places?: boolean) => PredictionFight[], now = Date.now) {
     this.db = scores.db;
     this.scores = scores;
     this.context = context;
@@ -350,12 +354,18 @@ export class PredictionStore {
     const stored = this.db.prepare("SELECT * FROM predictions WHERE user_id = ? AND pick_json IS NOT NULL ORDER BY updated_at DESC, fight_id").all(scorer.user_id) as StoredPrediction[];
     const fights = new Map<string, PredictionFight>();
     for (let index = 0; index < stored.length; index += 500) {
-      for (const fight of this.readFights(stored.slice(index, index + 500).map(row => row.fight_id))) fights.set(fight.id, fight);
+      for (const fight of this.readFights(stored.slice(index, index + 500).map(row => row.fight_id), true)) fights.set(fight.id, fight);
     }
+    stored.sort((a, b) => byBoutPlace(fights.get(a.fight_id), fights.get(b.fight_id)));
     const predictions = stored.map(row => {
       const pick = JSON.parse(row.pick_json!) as Pick;
+      const fight = fights.get(row.fight_id);
+      // By fighter, not corner: a pick names corners as the bout stood then.
+      const photo = (id: string) => (fight?.f1_id === id ? fight.f1_photo : fight?.f2_id === id ? fight.f2_photo : null) ?? null;
       return { fightId: row.fight_id, revision: row.revision, updatedAt: row.updated_at, pick,
-        result: predictionResult(pick, fights.get(row.fight_id)) };
+        f1Photo: photo(pick.f1Id), f2Photo: photo(pick.f2Id),
+        winnerId: fight && fightIsComplete(fight) ? (fight.f1_outcome === "win" ? fight.f1_id : fight.f2_outcome === "win" ? fight.f2_id : null) : null,
+        result: predictionResult(pick, fight) };
     });
     // Accuracy is counted over settled picks only: pending and void bouts are
     // not calls the fan got right or wrong.

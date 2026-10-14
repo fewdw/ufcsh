@@ -26,13 +26,13 @@ test("traffic history survives a restart and adds to what is already stored", ()
   second.record("GET", "/api/events", 200, 0.004, "10.0.0.1");
 
   const day = history.summary("24h");
-  assert.equal(day.totals.requests, 4, "admin requests stay out of the totals");
+  assert.equal(day.totals.requests, 3, "admin requests and health checks stay out of the totals");
   assert.equal(day.totals.errors, 1);
   assert.equal(day.totals.pageViews, 1);
   assert.equal(day.routes.find(route => route.route === "events_list")?.requests, 3);
   assert.equal(day.routes.find(route => route.route === "admin")?.requests, 1);
   assert.equal(day.series.length, 24);
-  assert.equal(day.series.at(-1)?.requests, 4);
+  assert.equal(day.series.at(-1)?.requests, 3);
   // Two visitors before the restart; the larger count is kept, never summed.
   assert.equal(day.series.at(-1)?.visitors, 2);
   // Daily figures cover complete days; this one is still filling up.

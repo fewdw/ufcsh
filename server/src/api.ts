@@ -8,7 +8,7 @@ import { ScoringStore, type ScoringFight } from "./scoring.ts";
 import { createScoringHandler, scoringOrigins } from "./scoring-http.ts";
 import { PredictionStore } from "./predictions.ts";
 import { createPredictionsHandler } from "./predictions-http.ts";
-import { betContext, eventFightIds, predictionContext, predictionFights } from "./predictions-data.ts";
+import { betContext, cardPlaces, eventFightIds, predictionContext, predictionFights } from "./predictions-data.ts";
 import { BetStore } from "./bets.ts";
 import { createBetsHandler } from "./bets-http.ts";
 import { createLeaderboards } from "./leaderboards.ts";
@@ -64,10 +64,11 @@ import { renderShareImage, type ShareCard, type SharePhoto } from "./og-images.t
 export { pageSeo, sitemap };
 import { judgeProfile, officialSlug, officialsDirectory, refereeProfile, searchOfficials } from "./officials.ts";
 import { searchAliases } from "./search-aliases.ts";
+import { awardsDirectory, fightAwards, fighterAwards } from "./awards.ts";
 import { locationDirectory, locationOfEvent, locationPage, searchVenues, venueDirectory, venueOfEvent, venuePage } from "./venues.ts";
 import { newsView } from "./news.ts";
 import { newsAiStatus, setNewsAi, startNewsReader } from "./news-ai.ts";
-import { fighterRosterEvents, rosterMoveFighter, storedRosterMoves, ufcDepartures, ufcSignings } from "./roster-moves.ts";
+import { fighterRosterEvents, rosterMoveFighter, sameSigning, storedRosterMoves, ufcDepartures, ufcSignings, type UfcSigning } from "./roster-moves.ts";
 import type { RosterMove } from "./scrape/wikipedia.ts";
 
 const CLIENT_DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "client", "dist");
@@ -1052,6 +1053,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
       perf_kind: PERF_BONUS_KIND[f.perf_bonus] ?? (f.detail_json && JSON.parse(f.detail_json)?.bonuses?.perfKind) ?? "perf",
       fotn: !!f.fotn_bonus || !!(f.detail_json && JSON.parse(f.detail_json)?.bonuses?.fotn),
     },
+    awards: potential ? [] : fightAwards(f.id),
     detail,
     common_opponents: common,
     head_to_head: headToHead,
@@ -1139,6 +1141,7 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     insights: { rounds: roundOutcomes(indexedFighter?.fights ?? [], fr.id), strikes: roundStrikes(indexedFighter?.fights ?? [], fr.id), decisions: decisionScores(indexedFighter?.fights ?? [], fr.id) },
     history: mergedUfcHistory,
     roster_events: fighterRosterEvents(fr.id),
+    awards: fighterAwards(fr.id),
     // The professional list shows the same ranks on its UFC bouts.
     pro_history: proHistory.map((row) => {
       const ranked = row.fight_id ? mergedUfcHistory.find((entry) => entry.fight_id === row.fight_id) : undefined;
@@ -2082,7 +2085,7 @@ async function renderShare(kind: string, id: string): Promise<{ body: Buffer; et
 function rosterView() {
   const { signed, cut } = storedRosterMoves();
   const index = fightIndex();
-  const view = (move: RosterMove, fighterId: string | null) => {
+  const view = (move: RosterMove, fighterId: string | null, photo: string | null = null) => {
     const summary = fighterId ? fighterSummary(fighterId, move.name) : null;
     const indexed = fighterId ? index.fighters.get(fighterId) : undefined;
     return {
@@ -2094,7 +2097,7 @@ function rosterView() {
       reason: move.reason,
       record: summary?.record_verified ? summary.record : move.record ?? summary?.record ?? null,
       ufc_record: indexed ? recordText(indexed.ufc) : null,
-      photo_url: summary?.photo_url ?? null,
+      photo_url: summary?.photo_url ?? photo,
       fighter_id: fighterId,
     };
   };
@@ -2109,21 +2112,17 @@ function rosterView() {
   }
   // ufc.com's signings fill in who Wikipedia hasn't listed; once it does, its
   // entry (with record and date) is the one shown. The same person is matched
-  // by profile, by name, or by surname and first two letters ("Thomas" and
-  // "Tom Pagliarulo").
+  // by profile or by name (`sameSigning`).
   const signings = signed.map(move => view(move, rosterMoveFighter(move.name)));
-  const keys = (name: string) => {
-    const [first = "", ...rest] = normName(name).split(" ");
-    return rest.length ? [normName(name), `${first.slice(0, 2)} ${rest.join(" ")}`] : [normName(name)];
-  };
-  const listed = new Set<string | null>([...signed.flatMap(move => keys(move.name)), ...signings.map(move => move.fighter_id)]);
+  const listed = new Set(signings.map(move => move.fighter_id).filter(Boolean));
+  const shown: UfcSigning[] = [];
   for (const signing of ufcSignings()) {
     const fighterId = rosterMoveFighter(signing.name);
-    const own = [...keys(signing.name), ...(fighterId ? [fighterId] : [])];
-    if (own.some(key => listed.has(key))) continue;
-    own.forEach(key => listed.add(key));
+    if ((fighterId && listed.has(fighterId)) || [...signed, ...shown].some(move => sameSigning(move, signing))) continue;
+    if (fighterId) listed.add(fighterId);
+    shown.push(signing);
     signings.push(view({ date: signing.date, name: signing.name, nickname: null, country: null,
-      division: signing.division ?? (fighterId ? divisionOf(fighterId) : null), reason: null, record: null }, fighterId));
+      division: signing.division ?? (fighterId ? divisionOf(fighterId) : null), reason: null, record: null }, fighterId, signing.photo ?? null));
   }
   const newestFirst = (a: { date: string | null }, b: { date: string | null }) => (b.date ?? "").localeCompare(a.date ?? "");
   return {
@@ -2149,6 +2148,7 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
     return tapeHistory(fightIndex(), bout.f1_id ?? "", bout.f2_id ?? "", bout.event_date, Number(bout.ord) || 0);
   }
   if (p.startsWith("/api/fights/")) return await getFight(id, rankingType) ?? undefined;
+  if (p === "/api/awards") return awardsDirectory();
   if (p === "/api/officials") return officialsDirectory();
   if (p.startsWith("/api/judges/")) return judgeProfile(id, url.searchParams) ?? undefined;
   if (p.startsWith("/api/referees/")) return refereeProfile(id, url.searchParams) ?? undefined;
@@ -2174,7 +2174,10 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
     }, url.searchParams.get("records") === "now") ?? undefined;
   }
   if (/^\/api\/fighters\/[a-f0-9]{16}\/stats$/i.test(p)) {
-    return hasUfcFight(id) ? fighterBoard(id, url.searchParams.get("scope") ?? "ufc", Number(url.searchParams.get("minBouts") ?? 0)) ?? undefined : undefined;
+    // Every profile asks for this beside the fighter, before it knows whether
+    // they have a completed UFC bout; a debutant has no board, which is not a 404.
+    if (!prepared("SELECT 1 FROM fighters WHERE id = ?").get(id)) return undefined;
+    return (hasUfcFight(id) && fighterBoard(id, url.searchParams.get("scope") ?? "ufc", Number(url.searchParams.get("minBouts") ?? 0))) || null;
   }
   if (p.startsWith("/api/fighters/")) return await getFighter(id, rankingType) ?? undefined;
   if (p.startsWith("/api/previews/")) {
@@ -2244,13 +2247,15 @@ export function startApi(port: number): http.Server {
         FROM fights f JOIN events e ON e.id = f.event_id
         LEFT JOIN fighters a ON a.id = f.f1_id LEFT JOIN fighters b ON b.id = f.f2_id
         WHERE f.id IN (${Array.from({ length: count }, () => "?").join(",")})`);
-  const scoringFights = (ids: string[]) => ids.length
-    ? (scoringFightsQuery(ids.length).all(...ids) as any[])
-      .map(fight => ({ ...fight,
-        f1_photo: cachedPhotoUrl(fight.f1_id, fight.f1_remote_photo),
-        f2_photo: cachedPhotoUrl(fight.f2_id, fight.f2_remote_photo) }) as ScoringFight)
-    : [];
-  const scoreStore = new ScoringStore(path.join(DATA_DIR, "scoring.db"), scoringFights);
+  const scoringFights = (ids: string[]) => {
+    if (!ids.length) return [];
+    const rows = scoringFightsQuery(ids.length).all(...ids) as any[];
+    const places = cardPlaces(rows.map(fight => fight.event_id));
+    return rows.map(fight => ({ ...fight, card_place: places.get(fight.id) ?? null,
+      f1_photo: cachedPhotoUrl(fight.f1_id, fight.f1_remote_photo),
+      f2_photo: cachedPhotoUrl(fight.f2_id, fight.f2_remote_photo) }) as ScoringFight);
+  };
+  const scoreStore = new ScoringStore(path.join(DATA_DIR, "scoring.db"), scoringFights, () => dataRevision("analytics"));
   const scoring = createScoringHandler(scoreStore);
   const predictionStore = new PredictionStore(scoreStore, predictionContext, predictionFights);
   const predictions = createPredictionsHandler(predictionStore, undefined, eventFightIds);
@@ -2360,7 +2365,7 @@ export function startApi(port: number): http.Server {
     clearInterval(warmLists);
     if (!queryPool) return;
     for (const path of ["/api/events", "/api/live", "/api/stats", "/api/rankings?ranking=media", "/api/rankings?ranking=meta",
-      "/api/officials", "/api/venues", "/api/locations", "/api/news"]) {
+      "/api/officials", "/api/venues", "/api/locations", "/api/news", "/api/awards"]) {
       void publicAnswer(new URL(path, "http://localhost")).catch(() => {});
     }
   }, 1000);
@@ -2415,7 +2420,7 @@ export function startApi(port: number): http.Server {
     const timestamp = (key: string) => Number(getMeta(key)) || null;
     return {
       generatedAt: Date.now(),
-      ready: !stopping && (!queryPool || queryPool.ready),
+      ready: !draining && (!queryPool || queryPool.ready),
       node: process.version,
       process: {
         uptimeSeconds: process.uptime(), rssBytes: memory.rss, heapUsedBytes: memory.heapUsed, heapTotalBytes: memory.heapTotal,
@@ -2435,6 +2440,7 @@ export function startApi(port: number): http.Server {
   const failureMessages = new WeakMap<http.ServerResponse, string>();
   const latencies = new Map<string, { count: number; total_ms: number; max_ms: number }>();
   let stopping = false;
+  let draining = false;
   void adoptUnversionedPhotos().catch((err) => log("photo cache migration failed:", String(err)));
   const server = http.createServer(async (req, res) => {
     const started = performance.now();
@@ -2454,7 +2460,9 @@ export function startApi(port: number): http.Server {
       const entry = latencies.get(key) ?? { count: 0, total_ms: 0, max_ms: 0 };
       const duration = performance.now() - started;
       observability.record(req.method ?? "OTHER", pathname, res.statusCode, duration / 1000, clientAddress(req));
-      if (res.statusCode >= 500 || res.statusCode === 404) {
+      // A 503 from /readyz is Docker's health probe while a release warms up,
+      // not a reader's request that failed.
+      if ((res.statusCode >= 500 || res.statusCode === 404) && pathname !== "/readyz") {
         const referer = req.headers.referer;
         trafficHistory.errors.record({
           status: res.statusCode, method: req.method ?? "OTHER", path: req.url ?? "/", message: failureMessages.get(res),
@@ -2525,7 +2533,7 @@ export function startApi(port: number): http.Server {
         return await sendJson(req, res, { error: "method not allowed" }, 405);
       }
       if (p === "/healthz" || p === "/readyz") {
-        const ready = !stopping && (!queryPool || queryPool.ready);
+        const ready = !draining && (!queryPool || queryPool.ready);
         return await sendJson(req, res, { ok: p === "/healthz" || ready }, p === "/readyz" && !ready ? 503 : 200);
       }
       if (stopping) return await sendJson(req, res, { error: "server is stopping" }, 503);
@@ -2609,7 +2617,7 @@ export function startApi(port: number): http.Server {
         cacheHits: cache.hits, cacheMisses: cache.misses, cacheEntries: cache.size, cacheBytes: cache.byteSize,
         queriesPending: queryPool?.pending ?? 0, memoryBytes: memory.rss, uptimeSeconds: process.uptime(),
         eventLoopP95Ms: eventLoop.percentile(95) / 1e6, eventLoopMaxMs: eventLoop.max / 1e6,
-        ready: !stopping && (!queryPool || queryPool.ready),
+        ready: !draining && (!queryPool || queryPool.ready),
         lastTickMs: Number(getMeta("last_tick_at")) || 0,
         heartbeatMs: Number(getMeta("sync_worker_heartbeat_at")) || 0,
         syncError: Boolean(getMeta("last_sync_error")),
@@ -2619,11 +2627,20 @@ export function startApi(port: number): http.Server {
     })
     : undefined;
   metricsServer?.listen(metricsPort, process.env.METRICS_HOST ?? "0.0.0.0");
+  // Behind the proxy, /readyz fails first and requests are still answered for
+  // SHUTDOWN_DRAIN_MS, so the proxy moves new requests to the release taking
+  // over before this one stops accepting them and finishes the rest.
+  const drainMs = Number(process.env.SHUTDOWN_DRAIN_MS ?? 0);
   const shutdown = () => {
-    if (stopping) return;
-    stopping = true;
-    server.close(() => { void queryPool?.close(); });
-    setTimeout(() => { server.closeAllConnections(); void queryPool?.close(); }, 10_000).unref();
+    if (draining) return;
+    draining = true;
+    const stop = () => {
+      stopping = true;
+      server.close(() => { void queryPool?.close(); });
+      setTimeout(() => { server.closeAllConnections(); void queryPool?.close(); }, 10_000).unref();
+    };
+    if (drainMs > 0) setTimeout(stop, drainMs);
+    else stop();
   };
   process.once("SIGTERM", shutdown);
   process.once("SIGINT", shutdown);

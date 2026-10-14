@@ -2,7 +2,8 @@ groups:
   - name: ufc-production
     rules:
       - alert: AppUnavailable
-        expr: up{job="ufc-app"} == 0 or ufc_ready == 0
+        # Only one of app-blue and app-green runs outside a deploy.
+        expr: max(up{job="ufc-app"}) == 0 or max(ufc_ready) == 0
         for: 2m
         labels: {severity: critical}
         annotations:

@@ -28,8 +28,18 @@
     }
   }
   handle {
-    reverse_proxy app:8000 {
+    # One release runs, two while a deploy hands over (deploy/update.sh).
+    # Requests go only to a release whose /readyz passes: the new one once it
+    # has warmed up, never the old one once it starts draining. A request that
+    # cannot connect tries the other release.
+    reverse_proxy app-blue:8000 app-green:8000 {
       header_up X-Real-IP {client_ip}
+      lb_policy first
+      lb_try_duration 10s
+      lb_try_interval 250ms
+      health_uri /readyz
+      health_interval 1s
+      health_timeout 2s
     }
   }
 }

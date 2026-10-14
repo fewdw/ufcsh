@@ -48,7 +48,7 @@ import { cardFightSearch, useRouteScrollRestoration, useTabBarAnchor } from "../
 import { SITE_URL, useSeo } from "../seo";
 import { useSettings, withRanking } from "../settings";
 import { scoreableRoundCount } from "../scoring";
-import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
+import { CLOSE_BUTTON, CLOSE_ICON, RESULT_PILL } from "../ui";
 import { useShortcutNav } from "../shortcuts";
 import { BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
 import OppositionDetails from "../components/OppositionDetails";
@@ -56,9 +56,6 @@ import TapeHistory from "../components/TapeHistory";
 import { DecisionsPanel, RoundsPanel, SideName, StrikesPanel } from "../components/FightInsights";
 
 const shell = PANEL_SHELL;
-const RESULT_PILL =
-  "inline-flex shrink-0 rounded-full px-1.5 py-px text-[9px] font-bold uppercase leading-4 tracking-[0.06em]";
-
 /** Only a confirmed title type earns a belt label. The event flag alone can
  *  be set on ordinary bouts, including the debut fights on this card. */
 function beltOf(fight: Matchup): "title" | "interim" | "tuf" | "tournament" | null {
@@ -903,6 +900,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
 
   const cardSteps = {
     previous: <FightStepLink fight={previous} direction="prev" eventId={fight.event.id} returnDepth={eventReturnDepth} search={navSearch} className={NAV_STEP} />,
+    // Card closes the matchup; a phone has no other ✕.
     center: <button type="button" onClick={closeFight} aria-keyshortcuts="Escape"
       className={`${NAV_STEP} text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950`}>
       <List className="h-3.5 w-3.5" aria-hidden="true" />Card
@@ -942,7 +940,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
 
             <section data-photo-view={portraits ? "full" : "face"} className={`matchup-top-card matchup-overview @container relative overflow-hidden ${shell}`}>
               <button type="button" onClick={closeFight} aria-label="Close matchup and return to card" title="Close matchup (Esc)" aria-keyshortcuts="Escape"
-                className={`absolute right-2 top-2 z-10 ${CLOSE_BUTTON}`}>
+                className={`absolute right-2 top-2 z-10 max-sm:hidden ${CLOSE_BUTTON}`}>
                 <X className={CLOSE_ICON} aria-hidden="true" />
               </button>
 
@@ -988,6 +986,15 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     <FighterHero side={fight.f2} align="right" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} past={fight.status === "past"} />
                   </div>
                 </div>
+                {/* Yearly awards honour the bout, so they sit under both corners,
+                    drawn up into the hero's own bottom padding. */}
+                {fight.awards?.length ? (
+                  <div className="-mt-2 flex flex-wrap justify-center gap-1 pb-4">
+                    {fight.awards.map((award) => (
+                      <Link key={award.category} to="/awards" title="Sherdog Year-End Awards" className={BONUS_TAG.replace("cursor-default", "transition hover:bg-amber-300")}>{award.label} {award.period}</Link>
+                    ))}
+                  </div>
+                ) : null}
 
               </div>
             </section>

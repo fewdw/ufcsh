@@ -81,9 +81,11 @@ type Minute = { at: number; traffic: Latency; routes: Map<string, Latency>; view
 const TIMELINE_MINUTES = 60;
 /** Distinct visitors are counted per minute up to this many, then capped. */
 const VISITORS_PER_MINUTE = 100_000;
-/** Admin traffic keeps its own route rows but stays out of the site-wide
- *  totals, so the admin dashboard's own slow queries never look like an outage. */
-export const ADMIN_ROUTES = new Set(["admin", "page_admin"]);
+/** Admin traffic, health probes (Docker and the proxy check /readyz every few
+ *  seconds) and monitoring keep their own route rows but stay out of the
+ *  site-wide totals: they are not readers, and the admin dashboard's own slow
+ *  queries must never look like an outage. */
+export const UNCOUNTED_ROUTES = new Set(["admin", "page_admin", "health", "monitoring"]);
 
 export function addLatency(entry: Latency, status: number, ms: number) {
   entry.count++;
@@ -176,12 +178,12 @@ export class HttpObservability {
     addLatency(perRoute, status, ms);
     this.routes.set(route, perRoute);
     const minute = this.minute();
-    const admin = ADMIN_ROUTES.has(route);
-    if (!admin) addLatency(minute.traffic, status, ms);
+    const uncounted = UNCOUNTED_ROUTES.has(route);
+    if (!uncounted) addLatency(minute.traffic, status, ms);
     const minuteRoute = minute.routes.get(route) ?? emptyLatency();
     addLatency(minuteRoute, status, ms);
     minute.routes.set(route, minuteRoute);
-    const counted = visitor && !admin && route !== "health" && route !== "monitoring" ? visitor : undefined;
+    const counted = visitor && !uncounted ? visitor : undefined;
     if (counted && minute.visitors.size < VISITORS_PER_MINUTE) minute.visitors.add(counted);
     this.history?.record(route, status, ms, counted);
     const verb = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(method) ? method : "OTHER";
@@ -224,7 +226,7 @@ export class HttpObservability {
       return { ...summarise(traffic), visitors: visitors.size };
     };
     const total = emptyLatency();
-    for (const [route, entry] of this.routes) if (!ADMIN_ROUTES.has(route)) mergeLatency(total, entry);
+    for (const [route, entry] of this.routes) if (!UNCOUNTED_ROUTES.has(route)) mergeLatency(total, entry);
     const lastFiveMinutes = this.minutes.filter(minute => minute.at >= current - 4 * 60_000);
     const lastHourMinutes = this.minutes.filter(minute => minute.at >= current - 59 * 60_000);
     const windowRoutes = (window: Minute[]) => {

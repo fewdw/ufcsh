@@ -1,7 +1,7 @@
 import { useAuth } from "@clerk/react";
 import { Check, ChevronDown, Flag, ImageIcon, Info, LogOut, Pencil, Search, Settings, SquareTerminal, X } from "lucide-react";
 import { isDevSite, useDevStats } from "../devStats";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiCache, prefetch, useApi } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
@@ -15,17 +15,17 @@ import ProfileBets, { betsList } from "../components/ProfileBets";
 import ProfileComments, { commentsList } from "../components/ProfileComments";
 import ReportIssueDialog from "../components/ReportIssueDialog";
 import Leaderboards from "../components/Leaderboards";
-import { formatDateShortWithYear, formatMethod } from "../format";
+import { formatDateShortWithYear, formatMethod, outcomeClasses } from "../format";
 import { useRouteScrollRestoration, useTabBarAnchor } from "../navigationState";
 import { rememberedEmail, useMyProfile } from "../profile";
 import { cardWinner, usernameProblem } from "../scoring";
 import type { ProfileFilter, ScorerCard, ScorerIdentity, ScorerProfile } from "../scoring";
 import { useSeo } from "../seo";
 import { useSettings, withRanking } from "../settings";
-import { BUTTON_PRIMARY, BUTTON_QUIET } from "../ui";
+import { BUTTON_PRIMARY, BUTTON_QUIET, RESULT_PILL } from "../ui";
 import FanAvatar from "../components/FanAvatar";
 
-const FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed"];
+const FILTERS: ProfileFilter[] = ["all", "decisions", "agreed", "disagreed", "fans-agreed", "fans-disagreed"];
 /** Bouts that went to the judges are the ones a card can be read against, so
  *  the list opens on them and finishes are one checkbox away. */
 const DEFAULT_FILTER: ProfileFilter = "decisions";
@@ -84,10 +84,11 @@ function Profile({ handle }: { handle: string }) {
   const [search, setSearch] = useSearchParams();
   const filter = (FILTERS.find(value => value === search.get("filter")) ?? DEFAULT_FILTER) as ProfileFilter;
   const query = (search.get("q") ?? "").slice(0, 60);
-  const pageUrl = useCallback(
-    (offset: number) => `/api/profiles/${encodeURIComponent(handle)}?filter=${filter}&q=${encodeURIComponent(query)}&offset=${offset}`,
-    [filter, handle, query],
+  const listUrl = useCallback(
+    (list: ProfileFilter, offset: number) => `/api/profiles/${encodeURIComponent(handle)}?filter=${list}&q=${encodeURIComponent(query)}&offset=${offset}`,
+    [handle, query],
   );
+  const pageUrl = useCallback((offset: number) => listUrl(filter, offset), [listUrl, filter]);
   const { data, error, retry } = useApi<ScorerProfile>(pageUrl(0));
   // Changing a filter or typing in the search box must not blank the page: the
   // last answer stays on screen, dimmed, until the next one arrives.
@@ -222,7 +223,9 @@ function Profile({ handle }: { handle: string }) {
               controls={
                 <div className="flex w-full items-center gap-2">
                   <SearchBox value={query} onChange={value => setParam("q", value || null)} />
-                  <ScorecardFilter value={filter} agreement={agreement} total={scorer.cards} onChange={setFilter} />
+                  <ScorecardFilter value={filter} agreement={agreement} total={scorer.cards} onChange={setFilter}
+                    // Opening the menu fetches every other choice, so the one picked is already here.
+                    onOpen={() => FILTERS.forEach(list => { if (list !== filter) prefetch(listUrl(list, 0)); })} />
                 </div>
               }
             />
@@ -291,8 +294,8 @@ function SearchBox({ value, onChange }: { value: string; onChange: (value: strin
         type="search"
         value={typed}
         onChange={event => setTyped(event.target.value.slice(0, 60))}
-        placeholder="Search fights…"
-        aria-label="Search scored fights"
+        placeholder="Search fighters…"
+        aria-label="Search scored fights by fighter"
         // Names are not words: no autocorrect, capitals or suggestions.
         autoCorrect="off"
         autoCapitalize="off"
@@ -307,32 +310,48 @@ function SearchBox({ value, onChange }: { value: string; onChange: (value: strin
 
 /** Agreement is a list filter, so it lives with search instead of taking over
  * a full card above the results. Counts make each compact option unambiguous. */
-function ScorecardFilter({ value, agreement, total, onChange }: {
+function ScorecardFilter({ value, agreement, total, onChange, onOpen }: {
   value: ProfileFilter;
   agreement: ScorerProfile["agreement"];
   total: number;
   onChange: (value: ProfileFilter) => void;
+  onOpen: () => void;
 }) {
-  const options: { value: ProfileFilter; label: string; count: number }[] = [
-    { value: "all", label: "All", count: total },
+  // In the menu a group says against whom; the chip, beside the search box,
+  // says it with a tick or a cross before the group's name.
+  const options: { value: ProfileFilter; label: string; count: number; group?: "Judges" | "Fans"; agreed?: boolean }[] = [
     { value: "decisions", label: "Judged", count: agreement.decisions },
-    { value: "agreed", label: "Agreed", count: agreement.agreed },
-    { value: "disagreed", label: "Disagreed", count: agreement.disagreed },
+    { value: "agreed", label: "You agreed", count: agreement.agreed, group: "Judges", agreed: true },
+    { value: "disagreed", label: "You disagreed", count: agreement.disagreed, group: "Judges", agreed: false },
+    { value: "fans-agreed", label: "You agreed", count: agreement.fansAgreed, group: "Fans", agreed: true },
+    { value: "fans-disagreed", label: "You disagreed", count: agreement.fansDisagreed, group: "Fans", agreed: false },
+    { value: "all", label: "All fights", count: total },
   ];
   const current = options.find(option => option.value === value) ?? options[0];
+  const item = (option: (typeof options)[number]) =>
+    <option key={option.value} value={option.value}>{option.label} · {option.count.toLocaleString()}</option>;
   // A native select is as wide as its longest option. The chip shows only the
   // current one, with the select laid invisibly over it to open the picker.
   return (
     <label className="relative flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 pl-3.5 pr-3 text-[13px] font-medium text-zinc-700 transition-colors focus-within:border-zinc-400 hover:border-zinc-300 sm:h-8 sm:text-xs">
-      <span className="whitespace-nowrap">{current.label} <span className="tabular-nums text-zinc-400">{current.count.toLocaleString()}</span></span>
+      {current.group ? (current.agreed
+        ? <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
+        : <X className="h-3.5 w-3.5 text-rose-600" aria-hidden="true" />) : null}
+      <span className="whitespace-nowrap">{current.group ?? current.label} <span className="tabular-nums text-zinc-400">{current.count.toLocaleString()}</span></span>
       <ChevronDown className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
       <select
         value={value}
         onChange={event => onChange(event.target.value as ProfileFilter)}
+        onPointerDown={onOpen}
+        onFocus={onOpen}
         aria-label="Filter scored fights"
         className="absolute inset-0 cursor-pointer opacity-0"
       >
-        {options.map(option => <option key={option.value} value={option.value}>{option.label} · {option.count.toLocaleString()}</option>)}
+        {item(options[0])}
+        {item(options[options.length - 1])}
+        {(["Judges", "Fans"] as const).map(group => <optgroup key={group} label={group}>
+          {options.filter(option => option.group === group).map(item)}
+        </optgroup>)}
       </select>
     </label>
   );
@@ -552,6 +571,8 @@ function CardRows({ cards, mine, onRemove }: { cards: ScorerCard[]; mine: boolea
   return <>{cards.map(card => <CardRow key={card.fightId} card={card} mine={mine} onRemove={onRemove} />)}</>;
 }
 
+const SCORE_HEAD = "text-center text-[10px] font-semibold uppercase leading-none tracking-wide text-zinc-400";
+
 /** One scored fight: the two fighters with the reader's own score between
  *  them, and one line saying which bout it was. The row opens that bout's
  *  Score tab, which is both where the card is read in full and where it is
@@ -562,6 +583,13 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
   const { settings } = useSettings();
   const warm = () => prefetch(withRanking(`/api/fights/${card.fightId}`, settings.rankingSource));
   const scored = Boolean(card.rounds.length);
+  // "KO/TKO R3/3 2:02", as under the winner on the matchup.
+  const scheduled = card.eligibility.scheduled && Number(fight.round) <= card.eligibility.scheduled ? `/${card.eligibility.scheduled}` : "";
+  const finish = !card.judges.length && fight.method
+    ? [fight.method, fight.round ? `R${fight.round}${scheduled}` : "", fight.time ?? ""].filter(Boolean).join(" ") : "";
+  const won = fight.f1_outcome === "win" || fight.f2_outcome === "win";
+  // Columns a wide row leaves empty so three judges' cards always fit.
+  const spare = Math.max(0, 3 - card.judges.length);
   return (
     <li className="relative">
       <Link
@@ -570,27 +598,62 @@ function CardRow({ card, mine, onRemove }: { card: ScorerCard; mine: boolean; on
         onFocus={warm}
         className={`block ${LIST_ROW} transition-colors hover:bg-zinc-50 ${mine ? "pr-9 sm:pr-10" : ""}`}
       >
-        <div className="flex items-center gap-2">
-          <Avatar src={fight.f1_photo} name={fight.f1_name} size="sm" outcome={fight.f1_outcome as "win" | "loss" | null} />
-          <p className="min-w-0 flex-1 truncate text-right text-sm font-semibold text-f1-ink">{fight.f1_name}</p>
-          <p className="shrink-0 text-base font-bold tabular-nums">
-            <span className={winner === 1 ? "text-f1-ink" : "text-zinc-400"}>{scored ? card.total1 : "—"}</span>
-            <span className="mx-1 text-zinc-300">–</span>
-            <span className={winner === 2 ? "text-f2-ink" : "text-zinc-400"}>{scored ? card.total2 : "—"}</span>
-          </p>
-          <p className="min-w-0 flex-1 truncate text-sm font-semibold text-f2-ink">{fight.f2_name}</p>
-          <Avatar src={fight.f2_photo} name={fight.f2_name} size="sm" outcome={fight.f2_outcome as "win" | "loss" | null} />
+        {/* Read like a scoreboard: a line per fighter, their score on this card
+            at the end, then the fans' average and each judge's. A phone puts
+            the division, then the event, on lines of their own above it, the
+            event shrunk only when its name is too long for the width. */}
+        <div className={`@container sm:hidden ${LIST_META}`}>
+          {fight.weight_class ? <p className="font-medium text-zinc-600">{fight.weight_class}</p> : null}
+          <p className="whitespace-nowrap" style={{ fontSize: `min(0.75rem, calc(100cqw / ${(fight.event_name.length * 0.56).toFixed(2)}))` }}>{fight.event_name}</p>
         </div>
-        <p className={`mt-1 truncate text-center ${LIST_META}`}>
-          {fight.event_name} · {formatDateShortWithYear(fight.date)}
-          {fight.weight_class ? ` · ${fight.weight_class}` : ""}
-          {card.agreement ? (
-            <span className={card.agreement === "agreed" ? "text-emerald-600" : "text-rose-600"}>
-              {" · "}{card.agreement === "agreed" ? "Agreed" : "Disagreed"}
+        {/* A wide screen has room for the bout on the headings' line, and keeps
+            every row's columns in the same place whatever the bout has. */}
+        <div className="mt-3 grid grid-cols-[var(--cols)] items-center gap-x-1.5 gap-y-1.5 sm:mt-0 sm:grid-cols-[var(--wide)] sm:gap-x-2"
+          style={{
+            "--cols": `auto minmax(0,1fr) repeat(${1 + (card.fans ? 1 : 0) + card.judges.length}, auto)`,
+            "--wide": `auto minmax(0,1fr) 2.5rem 4rem repeat(${card.judges.length + spare}, 1.75rem)`,
+          } as CSSProperties}>
+          <p className={`col-span-2 min-w-0 truncate ${LIST_META}`}>
+            <span className="hidden sm:inline">
+              {fight.weight_class ? <><span className="font-medium text-zinc-600">{fight.weight_class}</span>{" · "}</> : null}
+              {fight.event_name} · {formatDateShortWithYear(fight.date)}
+              {/* With no winner's line to carry it, how it ended goes here. */}
+              {fight.method && !won ? ` · ${formatMethod(fight.method, fight.round, fight.time)}` : ""}
             </span>
-          ) : null}
-          {fight.method ? ` · ${formatMethod(fight.method, fight.round, fight.time)}` : ""}
-        </p>
+          </p>
+          <span className={SCORE_HEAD}>You</span>
+          {card.fans
+            ? <span className={`${SCORE_HEAD} pl-2 sm:pl-0`} title={`Average of ${card.fans.cards.toLocaleString()} fan ${card.fans.cards === 1 ? "card" : "cards"}`}>Fans</span>
+            : <span className="hidden sm:block" />}
+          {card.judges.length ? <span className={`${SCORE_HEAD} pl-2 sm:pl-0`} style={{ gridColumn: `span ${card.judges.length}` }}>Judges</span> : null}
+          {spare ? <span className="hidden sm:block" style={{ gridColumn: `span ${spare}` }} /> : null}
+          {([1, 2] as const).map(side => {
+            const name = side === 1 ? fight.f1_name : fight.f2_name;
+            const ink = side === 1 ? "text-f1-ink" : "text-f2-ink";
+            const tone = (own: number, other: number) => own > other ? ink : "text-zinc-400";
+            return <Fragment key={side}>
+              <Avatar src={side === 1 ? fight.f1_photo : fight.f2_photo} name={name} size="xs"
+                outcome={(side === 1 ? fight.f1_outcome : fight.f2_outcome) as "win" | "loss" | null} />
+              <p className={`ml-1 min-w-0 text-sm font-semibold leading-tight ${ink}`}>
+                {name}
+                {/* The winner's line says how it ended. A phone has room for
+                    that only where no judges' cards take up the row. */}
+                {(finish || fight.method) && (side === 1 ? fight.f1_outcome : fight.f2_outcome) === "win"
+                  ? <span className={`${RESULT_PILL} ml-1.5 whitespace-nowrap align-[1px] tabular-nums ${outcomeClasses("win")} ${finish ? "" : "!hidden sm:!inline-flex"}`}>{finish || fight.method}</span> : null}
+              </p>
+              <p className={`text-center text-base font-bold leading-none tabular-nums ${winner === side ? ink : "text-zinc-400"}`}>
+                {scored ? (side === 1 ? card.total1 : card.total2) : "—"}
+              </p>
+              {card.fans ? <p className={`pl-2 text-center text-sm font-semibold leading-none tabular-nums sm:pl-0 ${side === 1 ? tone(card.fans.total1, card.fans.total2) : tone(card.fans.total2, card.fans.total1)}`}>
+                {(side === 1 ? card.fans.total1 : card.fans.total2).toFixed(2)}
+              </p> : <span className="hidden sm:block" />}
+              {card.judges.map((judge, at) => <p key={at} className={`${at ? "" : "pl-2 sm:pl-0"} text-center text-sm font-semibold leading-none tabular-nums ${side === 1 ? tone(judge.f1, judge.f2) : tone(judge.f2, judge.f1)}`}>
+                {side === 1 ? judge.f1 : judge.f2}
+              </p>)}
+              {spare ? <span className="hidden sm:block" style={{ gridColumn: `span ${spare}` }} /> : null}
+            </Fragment>;
+          })}
+        </div>
       </Link>
       {mine ? <RemoveX large label={`Remove your scorecard for ${fight.f1_name} vs ${fight.f2_name}`} onClick={() => onRemove(card)} /> : null}
     </li>

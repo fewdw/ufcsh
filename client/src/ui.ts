@@ -27,6 +27,9 @@ export const EYEBROW = "text-[10px] font-semibold uppercase tracking-[0.14em] te
  *  hover. Pair it with `CLOSE_ICON` on the lucide X inside. */
 export const CLOSE_BUTTON = "grid h-9 w-9 shrink-0 place-items-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40";
 export const CLOSE_ICON = "h-[18px] w-[18px]";
+/** How a bout ended, in a small coloured pill: "KO/TKO R1/3 3:12". */
+export const RESULT_PILL =
+  "inline-flex shrink-0 rounded-full px-1.5 py-px text-[9px] font-bold uppercase leading-4 tracking-[0.06em]";
 
 /** A dialog's or sheet's own title. */
 export const DIALOG_TITLE = "text-base font-semibold text-zinc-900";

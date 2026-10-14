@@ -1,11 +1,8 @@
-import { Link } from "react-router-dom";
 import type { Matchup } from "../api";
 import { apiCache, useApi } from "../api";
-import { lastName } from "../format";
-import { cardWinner, decimalScore, fightFinish } from "../scoring";
-import type { FanCard, ScoreSummary } from "../scoring";
+import { decimalScore, fightFinish } from "../scoring";
+import type { ScoreSummary } from "../scoring";
 import { PANEL_SHELL, PanelHeading, sectionLabel } from "./FightStats";
-import FanAvatar from "./FanAvatar";
 // Part of the matchup page's own code: a lazily loaded editor held the Score
 // tab on a fallback for at least React's 300 ms reveal throttle.
 import ScoreEditor from "./ScoreEditor";
@@ -13,7 +10,7 @@ import FightFinishRow from "./FightFinishRow";
 
 
 /** The community card and the reader's scoring controls. Result uses
- *  communityOnly to show existing scores without the editor or fan list. */
+ *  communityOnly to show existing scores without the editor. */
 export default function FightScoring({ fight, communityOnly = false }: { fight: Matchup; communityOnly?: boolean }) {
   const { data, error, retry } = useApi<ScoreSummary>(`/api/fights/${fight.id}/scores`, 5_000);
   // Result includes existing community scores, while Score keeps the full
@@ -85,46 +82,9 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
         </div>
         {eligibility.reason ? <p className="border-t border-zinc-100 px-5 py-3 text-xs text-zinc-500">{eligibility.reason}</p> : null}
       </section>
-      {!communityOnly && data.cards.length ? <FanCards fight={fight} cards={data.cards} localCards={totals.localCards} totalScorers={totals.scorers} /> : null}
       {!communityOnly && eligibility.available > 0 ? (
         <ScoreEditor fight={fight} eligibility={eligibility} onSaved={() => { void apiCache.loadAfterWrite(`/api/fights/${fight.id}/scores`); }} />
       ) : null}
     </>
-  );
-}
-
-/** The cards behind the average, newest first. Each one opens its scorer's
- *  public profile: every other fight they have scored. */
-function FanCards({ fight, cards, localCards, totalScorers }: { fight: Matchup; cards: FanCard[]; localCards: number; totalScorers: number }) {
-  return (
-    <section className={PANEL_SHELL}>
-      <PanelHeading
-        title="Fan scorecards"
-        subtitle={`${cards.length < localCards ? `${cards.length} of ` : ""}${localCards.toLocaleString()}${totalScorers > localCards ? ` · ${totalScorers.toLocaleString()} total` : ""}`}
-      />
-      <ul className="grid grid-flow-col auto-cols-[minmax(10.5rem,1fr)] overflow-x-auto border-t border-zinc-100 sm:auto-cols-[minmax(12rem,1fr)] xl:grid-cols-5 xl:auto-cols-auto xl:overflow-visible">
-        {cards.map(card => {
-          const winner = cardWinner(card);
-          return (
-            <li key={card.scorer.publicId} className="min-w-0 border-r border-zinc-100 last:border-r-0">
-              <Link to={`/profiles/${card.scorer.handle}?tab=scorecards`} className="block min-w-0 px-4 py-3 transition-colors hover:bg-zinc-50">
-                <span className="flex min-w-0 items-center gap-2">
-                  <FanAvatar src={card.scorer.imageUrl} name={card.scorer.displayName} />
-                  <span className="min-w-0 truncate text-sm font-medium text-zinc-700">{card.scorer.displayName}</span>
-                  <span className="ml-auto flex shrink-0 items-baseline gap-1 text-sm tabular-nums">
-                    <span className={winner === 1 ? "font-semibold text-f1-ink" : "text-zinc-400"}>{card.total1}</span>
-                    <span className="text-zinc-300" aria-hidden="true">–</span>
-                    <span className={winner === 2 ? "font-semibold text-f2-ink" : "text-zinc-400"}>{card.total2}</span>
-                  </span>
-                </span>
-                <span className={`mt-2 block truncate ${sectionLabel}`}>
-                  {winner === 0 ? "Even card" : `${lastName(winner === 1 ? fight.f1.name : fight.f2.name)} ahead`}
-                </span>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
   );
 }

@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ArrowDown, ArrowUp } from "lucide-react";
-import { useApi, type LocationDirectory, type OfficialsDirectory, type VenueDirectory } from "../api";
+import { useApi, type AwardEntry, type AwardsDirectory, type LocationDirectory, type OfficialsDirectory, type VenueDirectory } from "../api";
 import { searchList } from "../search";
+import { formatMethod } from "../format";
 import { useRouteScrollRestoration } from "../navigationState";
 import { PAGE, FULL_PAGE_BODY } from "../research";
-import PageToolbar, { FilterSelect, ToolbarSearch } from "../components/PageToolbar";
+import PageToolbar, { FilterSelect, ListHead, ToolbarSearch } from "../components/PageToolbar";
 import OptionsSheet, { SheetField, SwitchRow } from "../components/OptionsSheet";
 import { PANEL } from "../components/chartTokens";
 import BrowseTabs from "../components/BrowseTabs";
@@ -122,15 +123,8 @@ export function OfficialsPage() {
         <h1 className="sr-only">Judges & referees</h1>
         <PageToolbar>
           <BrowseTabs />
-          <div className={segmentedGroup} role="group" aria-label="Officials">
-            {(["judges", "referees"] as const).map((option) => (
-              <button key={option} type="button" aria-pressed={kind === option} onClick={() => judgeOrder.set({ kind: option === "judges" ? null : option, sort: null, order: null })}
-                className={`${segmentedOption} ${kind === option ? segmentedSelected : segmentedIdle}`}>{option === "referees" ? "Referees" : "Judges"}</button>
-            ))}
-          </div>
-          <div className="ml-auto flex min-w-0 flex-1 basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
-            <ToolbarSearch value={query} onChange={setQuery} label={`Find a ${kind === "referees" ? "referee" : "judge"}`} />
-            <OptionsSheet label="Filters" count={Number(minimum !== "0") + Number(since !== "all") || undefined} onReset={() => { setQuery(""); judgeOrder.set({ sort: null, order: null, minimum: null, since: null }); }}>
+          <div className="ml-auto">
+            <OptionsSheet label="Filters" iconOnlyOnPhone count={Number(minimum !== "0") + Number(since !== "all") || undefined} onReset={() => { setQuery(""); judgeOrder.set({ sort: null, order: null, minimum: null, since: null }); }}>
               <div className="space-y-3 p-4">
                 <SheetField label="Sort">
                   {kind === "judges" ? <OrderControl options={JUDGE_ORDERS} order={judgeOrder} label="Order judges" /> : <OrderControl options={REFEREE_ORDERS} order={refereeOrder} label="Order referees" />}
@@ -144,6 +138,14 @@ export function OfficialsPage() {
           </div>
         </PageToolbar>
         <section aria-label={kind === "referees" ? "Referees" : "Judges"} className={`${PANEL} overflow-hidden`}>
+          <ListHead title={kind === "referees" ? "Referees" : "Judges"} count={list.length}
+            search={<ToolbarSearch value={query} onChange={setQuery} label={`Find a ${kind === "referees" ? "referee" : "judge"}`} />}
+            choice={<div className={segmentedGroup} role="group" aria-label="Officials">
+              {(["judges", "referees"] as const).map((option) => (
+                <button key={option} type="button" aria-pressed={kind === option} onClick={() => judgeOrder.set({ kind: option === "judges" ? null : option, sort: null, order: null })}
+                  className={`${segmentedOption} ${kind === option ? segmentedSelected : segmentedIdle}`}>{option === "referees" ? "Referees" : "Judges"}</button>
+              ))}
+            </div>} />
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {list.map((entry) => {
               const shown = rate ? rate(entry as Judge) : null;
@@ -189,7 +191,7 @@ function usePlaces<T extends Place>(places: T[] | undefined, text: (place: T) =>
   }, [places, text, query, country, upcoming, order.sort, order.reversed]);
   const countries = useMemo(() => [...new Set((places ?? []).map((place) => place.country).filter((value): value is string => Boolean(value)))].sort(), [places]);
   return { list, query, setQuery, filters: (label: string) => (
-    <OptionsSheet label="Filters" count={Number(country !== "all") + Number(upcoming) || undefined} onReset={() => { setQuery(""); order.set({ sort: null, order: null, country: null, upcoming: null }); }}>
+    <OptionsSheet label="Filters" iconOnlyOnPhone count={Number(country !== "all") + Number(upcoming) || undefined} onReset={() => { setQuery(""); order.set({ sort: null, order: null, country: null, upcoming: null }); }}>
       <div className="space-y-3 p-4">
         <SheetField label="Sort"><OrderControl options={PLACE_ORDERS} order={order} label={label} /></SheetField>
         <FilterSelect label="Country" value={country} onChange={(value) => order.set({ country: value === "all" ? null : value })}
@@ -232,12 +234,11 @@ export function VenuesPage() {
         <h1 className="sr-only">Venues</h1>
         <PageToolbar>
           <BrowseTabs />
-          <div className="ml-auto flex min-w-0 flex-1 basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
-            <ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a venue, city or country" />
-            {places.filters("Order venues")}
-          </div>
+          <div className="ml-auto">{places.filters("Order venues")}</div>
         </PageToolbar>
         <section aria-label="Venues" className={`${PANEL} overflow-hidden`}>
+          <ListHead title="Venues" count={places.list.length}
+            search={<ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a venue, city or country" />} />
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {places.list.map((venue) => (
               <PlaceRow key={venue.slug} to={`/venues/${venue.slug}`} name={venue.name} detail={[venue.city, venue.country].filter(Boolean).join(", ")} events={venue.events} upcoming={venue.upcoming} />
@@ -264,12 +265,11 @@ export function LocationsPage() {
         <h1 className="sr-only">Locations</h1>
         <PageToolbar>
           <BrowseTabs />
-          <div className="ml-auto flex min-w-0 flex-1 basis-full flex-wrap items-center justify-end gap-2 sm:basis-auto">
-            <ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a city, state or country" />
-            {places.filters("Order locations")}
-          </div>
+          <div className="ml-auto">{places.filters("Order locations")}</div>
         </PageToolbar>
         <section aria-label="Locations" className={`${PANEL} overflow-hidden`}>
+          <ListHead title="Locations" count={places.list.length}
+            search={<ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a city, state or country" />} />
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {places.list.map((location) => (
               <PlaceRow key={location.slug} to={`/locations/${location.slug}`} name={location.city} detail={[location.state, location.country].filter(Boolean).join(", ")} events={location.events} upcoming={location.upcoming} />
@@ -277,6 +277,62 @@ export function LocationsPage() {
           </ul>
           {!places.list.length ? <p className="px-5 py-8 text-center text-sm text-zinc-500">No locations match these filters.</p> : null}
         </section>
+      </div>
+    </div>
+  );
+}
+
+/** One year's winner: the fighter (and promotion, outside the UFC), then who
+ *  it was against and where. The whole row opens the matchup for a bout on
+ *  record, or the profile for a fighter's award; a row with neither is plain.
+ *  Every row is the same height and never wraps, so the cards line up. */
+function AwardRow({ award, shared }: { award: AwardEntry; shared: boolean }) {
+  const detail = [formatMethod(award.method, award.round, null), award.event?.name].filter(Boolean).join(" · ");
+  const names = [award.winner.name, award.org ? `(${award.org})` : "", award.opponent ? `${shared ? "vs." : "def."} ${award.opponent.name}` : ""].filter(Boolean).join(" ");
+  const to = award.opponent ? (award.fight_id ? `/fights/${award.fight_id}` : null) : award.winner.id ? `/fighters/${award.winner.id}` : null;
+  const row = "flex h-12 items-center gap-2.5 px-3.5";
+  const body = <>
+    <span className="w-8 shrink-0 text-[11px] tabular-nums text-zinc-400">{award.period}</span>
+    <span className="min-w-0 flex-1">
+      <span className="block truncate text-[13px] font-medium text-zinc-900" title={names}>
+        {award.winner.name}
+        {award.org ? <span className="font-normal text-zinc-500"> ({award.org})</span> : null}
+        {award.opponent ? <><span className="font-normal text-zinc-400"> {shared ? "vs." : "def."} </span>{award.opponent.name}</> : null}
+      </span>
+      {detail ? <span className="block truncate text-[11px] text-zinc-400" title={detail}>{detail}</span> : null}
+    </span>
+  </>;
+  return <li>{to ? <Link to={to} className={`${row} hover:bg-zinc-50`}>{body}</Link> : <div className={row}>{body}</div>}</li>;
+}
+
+/** The yearly awards, one card a category as Rankings has one a division,
+ *  newest first. */
+export function AwardsPage() {
+  const { data, error, retry } = useApi<AwardsDirectory>("/api/awards");
+  const scroll = useRouteScrollRestoration<HTMLDivElement>("awards", Boolean(data));
+  useSeo({ title: "MMA Awards: Fighter, Fight & Knockout of the Year", description: "Sherdog's year-end awards since 2008: Fighter, Breakthrough and Comeback Fighter of the Year, and Fight, Knockout, Submission and Upset of the Year.", path: "/awards" });
+  if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the awards.</RequestNotice></div>;
+  if (!data) return <PageState>Loading awards…</PageState>;
+  return (
+    <div ref={scroll} className={PAGE}>
+      <div className={FULL_PAGE_BODY}>
+        <h1 className="sr-only">Awards</h1>
+        <PageToolbar>
+          <BrowseTabs />
+        </PageToolbar>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-4">
+          {data.categories.map((category) => (
+            <section key={category.id} aria-label={category.label} className={`${PANEL} overflow-hidden`}>
+              <div className="border-b border-zinc-200 px-3.5 py-2.5">
+                <h2 className="truncate text-sm font-semibold text-zinc-900">{category.label}</h2>
+              </div>
+              <ul className="divide-y divide-zinc-50">{category.awards.map((award) => <AwardRow key={award.period} award={award} shared={category.shared} />)}</ul>
+            </section>
+          ))}
+        </div>
+        <p className="px-1 text-[11px] text-zinc-400">
+          <a href={data.source.url} target="_blank" rel="noreferrer" className="underline hover:text-zinc-600">{data.source.name}</a>, voted by Sherdog's staff each December for that calendar year. A promotion in brackets marks an award won outside the UFC.
+        </p>
       </div>
     </div>
   );
