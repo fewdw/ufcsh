@@ -2,6 +2,7 @@ import { DatabaseSync, backup } from "node:sqlite";
 import { readFileSync, readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { cardChanges, eventInfobox, eventSection, infoboxDate, namesCard, samePlace } from "./scrape/wikipedia.ts";
+import { preChangeBackupPath } from "./backup-retention.ts";
 
 /** Replay retained public article revisions against a baseline, updating only
  * replacement identities and missing announcements. Never imports db.ts,
@@ -103,7 +104,7 @@ if (import.meta.main) {
   const target = new DatabaseSync(targetFile, { readOnly: !apply });
   try {
     if (apply) {
-      const destination = `${targetFile}.event-changes-${Date.now()}.db`;
+      const destination = await preChangeBackupPath(targetFile, "event-changes");
       await backup(target, destination);
       const copy = new DatabaseSync(destination, { readOnly: true });
       try {
