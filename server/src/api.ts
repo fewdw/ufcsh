@@ -42,7 +42,7 @@ import { createReportsHandler } from "./reports-http.ts";
 import { CommentStore } from "./comments.ts";
 import { createCommentsHandler } from "./comments-http.ts";
 import { ACCOUNT_SYNC_MS, accountSyncCheck, adminAccounts, syncAccounts } from "./accounts.ts";
-import { syncStatus } from "./sync-status.ts";
+import { recentSyncError, syncStatus } from "./sync-status.ts";
 import { releasedRounds } from "./live-rounds.ts";
 import { pruneBackups } from "./backup-retention.ts";
 import { ensureImageVariant, normalizeHeadshot, variantPath, type ImageSize } from "./image-variants.ts";
@@ -2632,7 +2632,7 @@ export function startApi(port: number): http.Server {
         ready: !draining && (!queryPool || queryPool.ready),
         lastTickMs: Number(getMeta("last_tick_at")) || 0,
         heartbeatMs: Number(getMeta("sync_worker_heartbeat_at")) || 0,
-        syncError: Boolean(getMeta("last_sync_error")),
+        syncError: recentSyncError(),
       });
       res.writeHead(200, { "Content-Type": "text/plain; version=0.0.4; charset=utf-8", "Cache-Control": "no-store" });
       res.end(output);

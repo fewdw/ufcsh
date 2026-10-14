@@ -37,6 +37,13 @@ export function recordSyncError(job: string, error: unknown, now = Date.now()): 
   setMeta("sync_errors", JSON.stringify([{ at: now, job, error: String(error).slice(0, 500) }, ...savedErrors()].slice(0, KEPT)));
 }
 
+/** Whether a sync job failed in the last ten minutes, for monitoring. Not
+ *  `last_sync_error`, which only the six-hourly rankings sync clears, so one
+ *  passing failure would read as failing for hours. */
+export function recentSyncError(now = Date.now()): boolean {
+  return savedErrors().some(error => now - error.at < 10 * MINUTE);
+}
+
 /** "live_stats 4f0f…" and "upcoming_event UFC 320" are one kind of job each. */
 const jobKind = (job: string) => job.split(" ")[0];
 

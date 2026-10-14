@@ -21,11 +21,13 @@ groups:
         annotations:
           summary: The full data refresh has not completed in 15 minutes.
       - alert: SyncSourceError
+        # 1 while a sync job failed in the last 10 minutes: a single failure
+        # that retries cleanly never fires; one that keeps failing does.
         expr: ufc_sync_error == 1
-        for: 5m
+        for: 15m
         labels: {severity: warning}
         annotations:
-          summary: The scraper has recorded an upstream sync error.
+          summary: Sync jobs have kept failing for 15 minutes (Admin → Errors).
       - alert: ElevatedServerErrors
         expr: sum(rate(ufc_http_requests_total{code=~"5..",route!~"admin|page_admin"}[5m])) > 1
         for: 5m
