@@ -13,7 +13,7 @@ import { fetchPage, LIST_META, CLEAR_REMOVE, LIST_ROW, LIST_VALUE, LoadMore, use
 const RIGHT = "var(--color-pick-right)";
 const WRONG = "var(--color-pick-wrong)";
 
-/** One accuracy ring: how often this part of a call was right. Three sit
+/** One accuracy pie: how often this part of a call was right. Three sit
  *  in a row at every width, each small enough to leave room for the list. */
 function Accuracy({ title, rate, empty }: { title: string; rate: PredictionRate; empty: string }) {
   const slices: Slice[] = [
@@ -26,12 +26,14 @@ function Accuracy({ title, rate, empty }: { title: string; rate: PredictionRate;
     <figure className="flex min-w-0 flex-col items-center text-center">
       <figcaption className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">{title}</figcaption>
       {rate.total ? <>
-        <Donut slices={slices} total={rate.total} size={72} thickness={8}
-          centerValue={rate.pct == null ? undefined : `${Math.round(rate.pct)}%`} />
-        <p className="mt-1.5 text-xs leading-4 tabular-nums text-zinc-500">
-          <span className="font-semibold text-emerald-700 dark:text-emerald-400">{rate.right}</span> of {rate.total}
+        {/* Filled, not a ring: at this size the share is the whole picture,
+            and the figure beneath says it in numbers. */}
+        <Donut slices={slices} total={rate.total} size={44} thickness={22} />
+        <p className="mt-1.5 whitespace-nowrap text-xs leading-4 tabular-nums text-zinc-500">
+          <span className="font-semibold text-emerald-700 dark:text-emerald-400">{rate.right}</span>/{rate.total}
+          {rate.pct == null ? null : <> ({Math.round(rate.pct)}%)</>}
         </p>
-      </> : <p className="flex h-[72px] items-center text-xs text-zinc-400">{empty}</p>}
+      </> : <p className="flex h-[44px] items-center text-xs text-zinc-400">{empty}</p>}
     </figure>
   );
 }
