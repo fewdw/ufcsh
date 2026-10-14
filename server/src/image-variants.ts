@@ -2,16 +2,18 @@ import { promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 
-export type ImageSize = "tiny" | "small";
+export type ImageSize = "tiny" | "small" | "large";
 
 /** Pixel heights. Headshots are 520×325 and full bodies 460×700; `small`
  *  covers every avatar up to 80 CSS px on a 2× screen, `tiny` is a placeholder
- *  of a few hundred bytes that paints while the sharper copies load. */
+ *  of a few hundred bytes that paints while the sharper copies load. `large`
+ *  is the full picture as WebP: it looks the same as UFC's PNG at a tenth of
+ *  the bytes (a full body ~30 KB, not ~350 KB). */
 export const VARIANT_HEIGHT = {
-  head: { tiny: 20, small: 160 },
-  full: { tiny: 40, small: 320 },
+  head: { tiny: 20, small: 160, large: 325 },
+  full: { tiny: 40, small: 320, large: 700 },
 } as const;
-const QUALITY = { tiny: 40, small: 72 } as const;
+const QUALITY = { tiny: 40, small: 72, large: 85 } as const;
 
 const pending = new Map<string, Promise<Buffer>>();
 
