@@ -12,7 +12,7 @@ export type SyncStatus = {
   failingLastDay: { kind: string; count: number; lastAt: number }[];
 };
 export type Errors = {
-  http: { since: number; serverErrors: FailingUrl[]; notFound: FailingUrl[]; totals: { serverErrors: number; notFound: number } };
+  http: { since: number; serverErrors: FailingUrl[]; notFound: FailingUrl[]; totals: { serverErrors: number; notFound: number; notFoundFromSite: number } };
   sync: SyncStatus;
 };
 
@@ -98,7 +98,7 @@ export default function AdminErrors() {
       </section>
 
       <section className="flex flex-col gap-2">
-        <SectionHead title={`Not found · ${whole(http.totals.notFound)}`} note="Addresses that do not exist (404). Links from this site first; the rest are mostly bots probing for other software." />
+        <SectionHead title={`Not found · ${whole(http.totals.notFoundFromSite)} from links on this site · ${whole(http.totals.notFound)} in all`} note="Addresses that do not exist (404). Links from this site first; the rest are mostly bots probing for other software." />
         <List empty="Nothing missing in the last 7 days.">
           {notFound.map(row => <FailingUrlRow key={`${row.status} ${row.method} ${row.path}`} row={row} now={now} />)}
         </List>
