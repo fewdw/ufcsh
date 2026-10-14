@@ -92,9 +92,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-14">October 14, 2026</time></p>
             <ul>
-              <li>Fighter photos load about ten times lighter and appear whole, never drawn top to bottom.</li>
-              <li>Browse pages fit every screen size.</li>
-              <li>Backups keep a fixed history, so the server's disk never fills up.</li>
+              <li>Fighter photos are served from a network near you, so pages fill in faster.</li>
+              <li>Saving ufc.sh to an iPhone home screen shows its icon.</li>
+              <li>Every day's data is also backed up off-site, with a year of monthly copies.</li>
             </ul>
           </Section>
         </div>
