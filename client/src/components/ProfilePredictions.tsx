@@ -6,7 +6,7 @@ import { METHOD_LABEL, predictionLabel, predictionName, predictionPoints } from 
 import type { PredictionRate, ProfilePredictions as PredictionsData } from "../predictions";
 import Avatar from "./Avatar";
 import { ConfirmRemove, RemoveX } from "./ConfirmRemove";
-import { Donut, type Slice } from "./Donut";
+import { Pie, type Slice } from "./Pie";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
 import { fetchPage, LIST_META, CLEAR_REMOVE, LIST_ROW, LIST_VALUE, LoadMore, useInfiniteList, type ListSource } from "./InfiniteList";
 
@@ -28,7 +28,7 @@ function Accuracy({ title, rate, empty }: { title: string; rate: PredictionRate;
       {rate.total ? <>
         {/* Filled, not a ring: at this size the share is the whole picture,
             and the figure beneath says it in numbers. */}
-        <Donut slices={slices} total={rate.total} size={44} thickness={22} />
+        <Pie slices={slices} total={rate.total} />
         <p className="mt-1.5 whitespace-nowrap text-xs leading-4 tabular-nums text-zinc-500">
           <span className="font-semibold text-emerald-700 dark:text-emerald-400">{rate.right}</span>/{rate.total}
           {rate.pct == null ? null : <> ({Math.round(rate.pct)}%)</>}
