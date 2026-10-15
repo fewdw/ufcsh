@@ -87,6 +87,17 @@ test("P4P is omitted if never ranked there and works without a divisional line",
   assert.equal(rankingChart(undefined, [debut]), null);
 });
 
+test("never-ranked fighters have no chart while formerly ranked fighters keep their history", () => {
+  const unranked = { division: "Lightweight", points: [{ date: "2018-01-01", rank: null }] };
+  assert.equal(rankingChart({ ...timeline, divisions: [], p4p: [] }, [debut, last]), null);
+  assert.equal(rankingChart({ ...timeline, divisions: [unranked], p4p: unranked.points }, [debut, last]), null);
+  const chart = rankingChart({ ...timeline, divisions: [unranked, timeline.divisions[0]], p4p: [] }, [debut, last])!;
+  assert.deepEqual(chart.lines.map(line => line.division), ["Featherweight"]);
+  const former = rankingChart({ ...timeline, p4p: [] }, [debut, { date: "2020-07-01", outcome: "loss" }])!;
+  assert.equal(rankOn(former.lines[0].points, former.end), null);
+  assert.ok(former.lines[0].points.some(point => point.rank === "11"));
+});
+
 test("a division stops when off the list and restarts without spikes or NR lines", () => {
   const points = [
     { date: "2020-01-01", rank: null },
