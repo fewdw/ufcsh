@@ -13,6 +13,8 @@ const timeline = {
 };
 const debut = { date: "2016-11-26", outcome: "win" };
 const last = { date: "2021-07-10", outcome: "loss" };
+/** Off every list since 2020. */
+const retired = { ...timeline, p4p: [], divisions: [{ division: "Featherweight", points: timeline.divisions[0].points.slice(0, 2) }] };
 
 test("preloaded lists select the last publication without leaking future ranks or removed divisions", () => {
   const archive = {
@@ -46,10 +48,10 @@ test("archive keys reuse divisions between fighters and keep P4P on the correct 
   assert.equal(rankingArchiveUrl("Pound-for-pound", true, "meta"), rankingArchiveUrl("Pound-for-pound", true, "media"));
 });
 
-test("the chart spans exactly the first and last completed UFC fights", () => {
+test("the chart starts at the UFC debut and holds a current rank through the newest list", () => {
   const chart = rankingChart(timeline, [last, debut])!;
   assert.equal(chart.start, rankingTime(debut.date));
-  assert.equal(chart.end, rankingTime(last.date));
+  assert.equal(chart.end, rankingTime(timeline.through));
   const featherweight = chart.lines[0];
   assert.equal(rankOn(featherweight.points, chart.start), null);
   assert.equal(rankOn(featherweight.points, rankingTime("2018-07-16") - 1), null);
@@ -58,13 +60,21 @@ test("the chart spans exactly the first and last completed UFC fights", () => {
   assert.equal(rankOn(featherweight.points, chart.end), "1");
   assert.equal(chart.lines[1].division, "Pound-for-pound");
   assert.equal(rankOn(chart.lines[1].points, chart.start), null);
-  assert.equal(rankOn(chart.lines[1].points, chart.end), "9");
+  assert.equal(rankOn(chart.lines[1].points, rankingTime(last.date)), "9");
+  assert.equal(rankOn(chart.lines[1].points, chart.end), null);
   assert.ok(chart.lines.every(line => line.points.every(point => rankingTime(point.date) <= chart.end)));
   assert.equal(timeline.divisions[0].points[0].date, "2018-07-16", "the API timeline is unchanged");
 });
 
+test("unranked fighters end at the last fight; a rank lost after it ends at the drop", () => {
+  assert.equal(rankingChart(retired, [debut, last])!.end, rankingTime(last.date));
+  const chart = rankingChart(retired, [debut, { date: "2019-06-01", outcome: "win" }])!;
+  assert.equal(chart.end, rankingTime("2020-01-01"));
+  assert.equal(rankOn(chart.lines[0].points, chart.end - 1), "11");
+});
+
 test("outside UFC and upcoming bouts do not extend either end of the chart", () => {
-  const chart = rankingChart(timeline, [debut, last,
+  const chart = rankingChart(retired, [debut, last,
     { date: "2012-01-01", outcome: "win", promotion: "outside" },
     { date: "2026-10-01", outcome: null, upcoming: true },
     { date: "2026-01-01", outcome: "win", promotion: "outside" },
@@ -93,7 +103,7 @@ test("never-ranked fighters have no chart while formerly ranked fighters keep th
   assert.equal(rankingChart({ ...timeline, divisions: [unranked], p4p: unranked.points }, [debut, last]), null);
   const chart = rankingChart({ ...timeline, divisions: [unranked, timeline.divisions[0]], p4p: [] }, [debut, last])!;
   assert.deepEqual(chart.lines.map(line => line.division), ["Featherweight"]);
-  const former = rankingChart({ ...timeline, p4p: [] }, [debut, { date: "2020-07-01", outcome: "loss" }])!;
+  const former = rankingChart(retired, [debut, { date: "2020-07-01", outcome: "loss" }])!;
   assert.equal(rankOn(former.lines[0].points, former.end), null);
   assert.ok(former.lines[0].points.some(point => point.rank === "11"));
 });
