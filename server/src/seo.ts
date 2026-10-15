@@ -52,6 +52,7 @@ const STATIC_PAGES: Record<string, { title: string; description: string }> = {
   "/officials": { title: "UFC Judges & Referees | ufc.sh", description: "Every UFC judge and referee on record: scorecards, agreement, dissents, stoppages and the bouts behind each number." },
   "/venues": { title: "UFC Venues | ufc.sh", description: "Every arena that has hosted a UFC event, with the cards held there, attendance and upcoming events." },
   "/locations": { title: "UFC Locations | ufc.sh", description: "Every city that has hosted a UFC event, with the cards held there, the venues, title fights and upcoming events." },
+  "/controversial": { title: "Controversial UFC Decisions: Closest Fights & Robberies | ufc.sh", description: "Every UFC decision the fans' scorecards call close or got the other way, with each judge's card, the fans' average round by round and what the stats say." },
   "/awards": { title: "MMA Awards: Fighter, Fight & Knockout of the Year | ufc.sh", description: "Sherdog's year-end awards since 2008: Fighter, Breakthrough and Comeback Fighter of the Year, and Fight, Knockout, Submission and Upset of the Year." },
   "/news": { title: "UFC News: Latest from Every Outlet | ufc.sh", description: "The latest UFC news from MMA Fighting, Sherdog, BBC Sport, The Guardian and more, in one list: top stories first, every headline linked to its source." },
   "/roster": { title: "UFC Roster Changes: Signings & Releases | ufc.sh", description: "Fighters the UFC has recently signed and recently released, with division, record and date." },

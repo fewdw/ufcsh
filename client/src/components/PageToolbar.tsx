@@ -13,6 +13,10 @@ export default function PageToolbar({ children }: { children: ReactNode }) {
  *  md up they join the tabs. */
 export const BROWSE_WIDE = "(min-width: 768px)";
 
+/** From lg up the Browse tabs name judges and referees apart, so the
+ *  officials page needs no choice of its own. */
+export const BROWSE_FLAT = "(min-width: 1024px)";
+
 /** A browse list's head: its name and count, then the search, the page's own
  *  choice and its Filters where it has them. The search sits beside the name;
  *  next to a choice it takes a line of its own on a phone. */

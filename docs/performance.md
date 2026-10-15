@@ -532,3 +532,22 @@ row, then sorting them by route. A site-wide row per hour serves totals and
 the timeline, the `(route, hour)` key lets the route table stream groups
 without a sort, and route hours fold into days after eight days (29k rows a
 year instead of about 447k).
+
+## Judging analysis (2026-10-15)
+
+`server/src/judging.ts` is built once per officials index and venue data,
+on a dev archive snapshot (33,050 judged rounds with their numbers):
+
+| Step | Cost |
+| --- | --- |
+| Build (round edges, stats model fit, controversy, per-judge entries) | ~300 ms |
+| `/api/controversial`, first page / one judge's | 2.5 / 0.9 ms |
+| A matchup's `judging` block | 1.6 ms |
+| A judge's leanings under year filters | 2–3 ms |
+| `/api/stats`: Fights → Controversial / Judges → What they score for | +28 / +40 ms over the other Fights boards (~107 ms) |
+
+The first build took ~1 s: `venueOfEvent` checks the venue index's version
+with a query on every call, 4,000 times. Reading `venueIndex()` once per
+build fixed it. The leanings board likewise reads the state once for every
+judge (it was +125 ms).
+

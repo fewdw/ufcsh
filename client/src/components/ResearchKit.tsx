@@ -55,15 +55,21 @@ export function Panel({ title, subtitle, children, aside }: { title: string; sub
 }
 
 /** Two columns on a wide window, each its own scroller, as a fighter's page
- *  is: the person and their figures on the left, the bouts on the right. On a
- *  narrow one the identity stays on top and the two become tabs, and the tab
+ *  is: the person and their figures on the left, the bouts on the right. A
+ *  page with more than one list (a judge's scorecards and their controversial
+ *  bouts) switches them with tabs over that column, as a fighter's fights,
+ *  records and news are. On a narrow one the identity stays on top and every
+ *  list and the stats become tabs, and the tab
  *  bar stays where the reader had it, as on a fighter's page: a tab, filter or
  *  comparison picked re-reads the page and can change the height of what sits
  *  above it (the filtered count, the wheels), which would otherwise move the
  *  bar and the list's own pills under the reader's thumb. */
-export function ProfileColumns({ scope, ready, identity, stats, list, listLabel, tab, onTab }: {
+export function ProfileColumns({ scope, ready, identity, stats, list, listLabel, tab, onTab, lists = [] }: {
   scope: string; ready: boolean; identity: ReactNode; stats: ReactNode; list: ReactNode; listLabel: string;
-  tab: "list" | "stats"; onTab: (tab: "list" | "stats") => void;
+  /** "list", "stats", or the key of one of `lists`. */
+  tab: string; onTab: (tab: string) => void;
+  /** Lists beside the first, each a tab of its own; `list` is the one `tab` names. */
+  lists?: { key: string; label: string }[];
 }) {
   const page = useRouteScrollRestoration<HTMLDivElement>(`${scope}:page`, ready);
   const main = useRouteScrollRestoration<HTMLDivElement>(`${scope}:main`, ready);
@@ -75,6 +81,13 @@ export function ProfileColumns({ scope, ready, identity, stats, list, listLabel,
   // sheet's included); scrolling lets go. Hidden on a wide window: nothing to hold.
   const hold = () => { if (bar.current?.getClientRects().length) anchor.keep(bar.current); };
   const column = "min-w-0 flex-col gap-3 [&>*]:shrink-0 lg:overflow-x-hidden lg:overflow-y-auto lg:overscroll-y-contain lg:pr-1 lg:[scrollbar-gutter:stable]";
+  const listTabs = [{ key: "list", label: listLabel }, ...lists];
+  const tabButton = (key: string, label: string, selected: boolean) => (
+    <button key={key} type="button" role="tab" aria-selected={selected} onClick={() => onTab(key)}
+      className={`${segmentedTab} ${selected ? segmentedSelected : segmentedIdle}`}>
+      {label}
+    </button>
+  );
   return (
     <div ref={page} onPointerDownCapture={hold} onKeyDownCapture={hold} onChangeCapture={hold} className="h-full overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable] lg:overflow-hidden">
       <div className="flex flex-col gap-3 p-3 pb-8 lg:h-full lg:pb-3">
@@ -83,17 +96,21 @@ export function ProfileColumns({ scope, ready, identity, stats, list, listLabel,
             {identity}
             <div className={`${PANEL} p-1.5 lg:hidden`}>
               <div ref={bar} role="tablist" aria-label="Sections" className={`${segmentedGroup} w-full`}>
-                {([["list", listLabel], ["stats", "Stats"]] as const).map(([key, label]) => (
-                  <button key={key} type="button" role="tab" aria-selected={key === tab} onClick={() => onTab(key)}
-                    className={`${segmentedTab} ${key === tab ? segmentedSelected : segmentedIdle}`}>
-                    {label}
-                  </button>
-                ))}
+                {[...listTabs, { key: "stats", label: "Stats" }].map((entry) => tabButton(entry.key, entry.label, entry.key === tab))}
               </div>
             </div>
             <div className={`${tab === "stats" ? "contents" : "hidden lg:contents"} [&>*]:shrink-0`}>{stats}</div>
           </div>
-          <div ref={side} className={`${tab === "list" ? "flex" : "hidden lg:flex"} ${column}`}>{list}</div>
+          <div ref={side} className={`${tab !== "stats" ? "flex" : "hidden lg:flex"} ${column}`}>
+            {lists.length ? (
+              <div className={`${PANEL} hidden p-1.5 lg:block`}>
+                <div role="tablist" aria-label="Lists" className={`${segmentedGroup} w-full`}>
+                  {listTabs.map((entry) => tabButton(entry.key, entry.label, entry.key === (tab === "stats" ? "list" : tab)))}
+                </div>
+              </div>
+            ) : null}
+            {list}
+          </div>
         </div>
       </div>
     </div>

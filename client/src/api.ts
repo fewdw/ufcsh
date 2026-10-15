@@ -263,6 +263,8 @@ export type EventFight = {
   f2: FightSide;
   odds: FightOdds;
   bonuses: { perf: boolean; fotn: boolean };
+  /** The main reason the fans' cards make this decision controversial. */
+  controversy?: "fans_other" | "rounds_total" | "close" | null;
 };
 
 /** Where a card is staged, once the promotion's feed or the event article has said. */
@@ -441,6 +443,15 @@ export type Matchup = {
   bonuses: { perf: boolean; perf_kind?: "perf" | "ko" | "sub"; fotn: boolean };
   /** Yearly awards this bout won. */
   awards?: { category: string; label: string; period: string }[];
+  /** On a decision: the stats card, the fans' controversy and each judge's leanings, judges in card order. */
+  judging?: {
+    stats: StatsCard | null;
+    numbers: FightNumbers | null;
+    controversy: ControversyRow | null;
+    home: { side: "f1" | "f2"; country: string | null } | null;
+    judges: ({ name: string; slug: string | null; bouts: number; notes: JudgeNote[];
+      worst: { fight_id: string; event_name: string; date: string; f1: string; f2: string; card: { f1: number; f2: number }; fans: { avg1: number; avg2: number } } | null } | null)[];
+  } | null;
   detail: FightDetailBlock | null;
   common_opponents: { opponent: { id: string; name: string }; f1_fights: HistoryRow[]; f2_fights: HistoryRow[] }[];
   head_to_head: HistoryRow[];
@@ -678,6 +689,108 @@ export type JudgeSummary = {
     missing_round_cards: number;
 };
 
+/** A rate beside the other judges' on the same rounds or bouts; `notable`
+ *  when the gap is large and unlikely to be chance. */
+export type Leaning = { n: number; rate: number | null; others_rate: number | null; diff: number | null; z: number; notable: boolean };
+export type JudgeNote = { key: string; title: string; detail: string };
+
+/** What a judge rewards when the numbers pull two ways, and how they compare. */
+export type JudgeDna = {
+  rounds: number;
+  bouts: number;
+  tiebreaks: (Leaning & { key: string; x: string; y: string; about: string; clash: string; field_rate: number | null })[];
+  stats: Leaning;
+  strikes: Leaning;
+  control: Leaning;
+  home: Leaning & { fans_rate: number | null; fans_n: number };
+  fans: Leaning;
+  notes: JudgeNote[];
+};
+
+/** The card an average UFC judge would give each round from its numbers: `p`
+ *  is the chance it goes to the first corner. */
+export type StatsCard = { rounds: { round: number; p: number }[]; f1: number; f2: number; pick: number };
+
+type RoundScore = { round: number; f1: number; f2: number };
+
+/** Each corner's significant strikes landed and control seconds, by round and
+ *  in all; control is null where it wasn't recorded. */
+export type FightNumbers = {
+  rounds: { round: number; seconds: number; sig: [number, number]; ctrl: [number, number] | null }[];
+  sig: [number, number];
+  ctrl: [number, number] | null;
+  seconds: number;
+};
+
+/** A decision the fans' cards make controversial, with every card beside them. */
+export type ControversyRow = {
+  fight_id: string; event_id: string; event_name: string; date: string; division: string; title: boolean; scheduled_rounds: number;
+  verdict: "unanimous" | "split" | "majority" | "draw" | "other"; method: string | null;
+  f1: FighterRef; f2: FighterRef;
+  cards: { judge: string; slug: string | null; f1: number; f2: number; rounds: RoundScore[] }[];
+  fans: { cards: number; avg1: number; avg2: number; rounds: { round: number; avg1: number; avg2: number }[] };
+  stats: StatsCard | null;
+  numbers: FightNumbers | null;
+  margin: number;
+  fan_rounds: [number, number];
+  signals: { close: boolean; fans_other: boolean; rounds_total: boolean; stats_other: boolean };
+  /** On a judge's list: which card is theirs, and whether it went against the fans. */
+  mine: number | null;
+  against_fans: boolean | null;
+};
+
+export type ControversialShow = "all" | "close" | "fans-other" | "rounds-total" | "stats-other" | "against-fans";
+export type ControversialSort = "closest" | "widest" | "newest";
+
+export type ControversialList = {
+  judge: { slug: string; name: string } | null;
+  filters: OfficialFilters & { show: ControversialShow; sort: ControversialSort };
+  facets: Facets;
+  counts: Partial<Record<ControversialShow, number>>;
+  min_crowd: number;
+  close_margin: number;
+  model: { rounds: number; accuracy: number; worth: { head: number; kd: number; td: number; ctrl: number; sub: number } };
+  total: number;
+  offset: number;
+  limit: number;
+  rows: ControversyRow[];
+};
+
+/** A fighter who won 2+ rounds and was ahead on the fans' average card who got finished. */
+export type ComebackRow = {
+  fight_id: string; event_id: string; event_name: string; date: string; division: string; title: boolean; scheduled_rounds: number;
+  method: string | null; method_details: string | null; round: number | null; time: string | null;
+  f1: FighterRef; f2: FighterRef;
+  leader: "f1" | "f2";
+  /** Completed rounds the fans gave the fighter who was ahead, and the winner. */
+  rounds_won: [number, number];
+  /** Points the fans had the fighter who was ahead up by, over those rounds. */
+  lead: number;
+  fans: { cards: number; avg1: number; avg2: number; rounds: { round: number; avg1: number; avg2: number }[] };
+  numbers: FightNumbers | null;
+  stats: StatsCard | null;
+};
+
+export type ComebacksList = {
+  view: "comebacks";
+  filters: OfficialFilters & { title: boolean; rounds: 3 | 5 | null };
+  facets: Facets;
+  min_crowd: number;
+  total: number;
+  offset: number;
+  limit: number;
+  rows: ComebackRow[];
+};
+
+/** Fighters from a country at events held in it: decisions they won, and
+ *  how often the fans and the stats had them winning the same bouts. */
+export type HomeRecord = {
+  country: string; names: string[]; decisions: number; won: number; rate: number;
+  fans: { n: number; home: number; rate: number | null; judges_rate: number | null; won_against_fans: number };
+  stats: { n: number; home: number; rate: number | null; judges_rate: number | null };
+  odds: { n: number; favourites: number; underdogs: number; rate: number | null; favourite_rate: number | null; judges_rate: number | null };
+};
+
 export type JudgeProfile = {
   kind: "judge";
   slug: string;
@@ -703,7 +816,11 @@ export type JudgeProfile = {
     others: { judge: string; slug: string | null; f1: number; f2: number; rounds: { round: number; f1: number; f2: number }[] }[];
     fans: { cards: number; avg1: number; avg2: number; rounds: { round: number; avg1: number; avg2: number }[] } | null;
     dissent: boolean; agreed_result: boolean | null; ten_eights: number;
+    numbers: FightNumbers | null; stats: StatsCard | null;
   }[];
+  dna: JudgeDna;
+  /** Their bouts on the Controversial tab under the same filters. */
+  controversial: number;
 };
 
 export type RefereeTally = {
@@ -789,6 +906,7 @@ export type VenuePage = {
 
 export type LocationPage = Omit<VenuePage, "former_names" | "location_slug"> & {
   city: string;
+  home: HomeRecord | null;
   venues: { slug: string; name: string; events: number; upcoming: number }[];
 };
 

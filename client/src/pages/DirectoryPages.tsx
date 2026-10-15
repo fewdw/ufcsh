@@ -5,8 +5,8 @@ import { useApi, type AwardEntry, type AwardsDirectory, type LocationDirectory, 
 import { searchList } from "../search";
 import { formatMethod } from "../format";
 import { useRememberedState, useRouteScrollRestoration } from "../navigationState";
-import { PAGE, FULL_PAGE_BODY } from "../research";
-import PageToolbar, { BROWSE_WIDE, FilterSelect, ListHead, ToolbarSearch } from "../components/PageToolbar";
+import { BROWSE_LIST, BROWSE_PAGE, FULL_PAGE_BODY } from "../research";
+import PageToolbar, { BROWSE_FLAT, BROWSE_WIDE, FilterSelect, ListHead, ToolbarSearch } from "../components/PageToolbar";
 import OptionsSheet, { SwitchRow } from "../components/OptionsSheet";
 import { PANEL } from "../components/chartTokens";
 import BrowseTabs from "../components/BrowseTabs";
@@ -83,7 +83,10 @@ export function OfficialsPage() {
   const minimum = ["10", "50", "100"].includes(params.get("minimum") ?? "") ? params.get("minimum")! : "0";
   const since = ["1", "5"].includes(params.get("since") ?? "") ? params.get("since")! : "all";
   const wide = useMediaQuery(BROWSE_WIDE);
+  // From lg up Judges and Referees are Browse tabs of their own.
+  const flat = useMediaQuery(BROWSE_FLAT);
   const scroll = useRouteScrollRestoration<HTMLDivElement>("officials", Boolean(data));
+  const listScroll = useRouteScrollRestoration<HTMLElement>("officials:list", Boolean(data));
   useSeo({ title: "UFC Judges & Referees", description: "Every UFC judge and referee on record: scorecards, agreement, stoppages and the bouts behind each number.", path: "/officials" });
   const rate = kind === "judges" && judgeOrder.sort !== "name" && judgeOrder.sort !== "bouts" ? JUDGE_RATE[judgeOrder.sort] : null;
   const list = useMemo(() => {
@@ -113,14 +116,14 @@ export function OfficialsPage() {
     </div>
   </OptionsSheet>;
   return (
-    <div ref={scroll} className={PAGE}>
+    <div ref={scroll} className={BROWSE_PAGE}>
       <div className={FULL_PAGE_BODY}>
         <h1 className="sr-only">Judges & referees</h1>
         <PageToolbar>
           <BrowseTabs />
-          {wide ? <div className="ml-auto flex items-center gap-2">{choice}{filters}</div> : null}
+          {wide ? <div className="ml-auto flex items-center gap-2">{flat ? null : choice}{filters}</div> : null}
         </PageToolbar>
-        <section aria-label={kind === "referees" ? "Referees" : "Judges"} className={`${PANEL} overflow-hidden`}>
+        <section ref={listScroll} aria-label={kind === "referees" ? "Referees" : "Judges"} className={`${PANEL} overflow-hidden ${BROWSE_LIST}`}>
           <ListHead title={kind === "referees" ? "Referees" : "Judges"} count={list.length}
             search={<ToolbarSearch value={query} onChange={setQuery} label={`Find a ${kind === "referees" ? "referee" : "judge"}`} />}
             choice={wide ? null : choice} filters={wide ? null : filters} />
@@ -203,18 +206,19 @@ export function VenuesPage() {
   const places = usePlaces(data?.venues, venueText);
   const wide = useMediaQuery(BROWSE_WIDE);
   const scroll = useRouteScrollRestoration<HTMLDivElement>("venues", Boolean(data));
+  const listScroll = useRouteScrollRestoration<HTMLElement>("venues:list", Boolean(data));
   useSeo({ title: "UFC Venues", description: "Every arena and venue that has hosted a UFC event, with the cards held there and attendance.", path: "/venues" });
   if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the venues.</RequestNotice></div>;
   if (!data) return <PageState>Loading venues…</PageState>;
   return (
-    <div ref={scroll} className={PAGE}>
+    <div ref={scroll} className={BROWSE_PAGE}>
       <div className={FULL_PAGE_BODY}>
         <h1 className="sr-only">Venues</h1>
         <PageToolbar>
           <BrowseTabs />
           {wide ? <div className="ml-auto">{places.filters}</div> : null}
         </PageToolbar>
-        <section aria-label="Venues" className={`${PANEL} overflow-hidden`}>
+        <section ref={listScroll} aria-label="Venues" className={`${PANEL} overflow-hidden ${BROWSE_LIST}`}>
           <ListHead title="Venues" count={places.list.length}
             search={<ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a venue or city" />}
             filters={wide ? null : places.filters} />
@@ -236,18 +240,19 @@ export function LocationsPage() {
   const places = usePlaces(data?.locations, locationText);
   const wide = useMediaQuery(BROWSE_WIDE);
   const scroll = useRouteScrollRestoration<HTMLDivElement>("locations", Boolean(data));
+  const listScroll = useRouteScrollRestoration<HTMLElement>("locations:list", Boolean(data));
   useSeo({ title: "UFC Locations", description: "Every city that has hosted a UFC event, with the cards held there, the venues, title fights and upcoming events.", path: "/locations" });
   if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the locations.</RequestNotice></div>;
   if (!data) return <PageState>Loading locations…</PageState>;
   return (
-    <div ref={scroll} className={PAGE}>
+    <div ref={scroll} className={BROWSE_PAGE}>
       <div className={FULL_PAGE_BODY}>
         <h1 className="sr-only">Locations</h1>
         <PageToolbar>
           <BrowseTabs />
           {wide ? <div className="ml-auto">{places.filters}</div> : null}
         </PageToolbar>
-        <section aria-label="Locations" className={`${PANEL} overflow-hidden`}>
+        <section ref={listScroll} aria-label="Locations" className={`${PANEL} overflow-hidden ${BROWSE_LIST}`}>
           <ListHead title="Locations" count={places.list.length}
             search={<ToolbarSearch value={places.query} onChange={places.setQuery} label="Find a city" />}
             filters={wide ? null : places.filters} />
@@ -303,39 +308,44 @@ export function AwardsPage() {
   const stacked = !useMediaQuery("(min-width: 640px)");
   const [open, setOpen] = useRememberedState("awards:open", NONE_OPEN, openIds);
   const scroll = useRouteScrollRestoration<HTMLDivElement>("awards", Boolean(data));
+  const listScroll = useRouteScrollRestoration<HTMLDivElement>("awards:list", Boolean(data));
   useSeo({ title: "MMA Awards: Fighter, Fight & Knockout of the Year", description: "Sherdog's year-end awards since 2008: Fighter, Breakthrough and Comeback Fighter of the Year, and Fight, Knockout, Submission and Upset of the Year.", path: "/awards" });
   if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the awards.</RequestNotice></div>;
   if (!data) return <PageState>Loading awards…</PageState>;
   return (
-    <div ref={scroll} className={PAGE}>
+    <div ref={scroll} className={BROWSE_PAGE}>
       <div className={FULL_PAGE_BODY}>
         <h1 className="sr-only">Awards</h1>
         <PageToolbar>
           <BrowseTabs />
         </PageToolbar>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-4">
-          {data.categories.map((category) => {
-            const shown = !stacked || open.includes(category.id);
-            return (
-              <section key={category.id} aria-label={category.label} className={`${PANEL} overflow-hidden`}>
-                {stacked ? (
-                  <h2 className={shown ? "border-b border-zinc-200" : ""}>
-                    <button type="button" aria-expanded={shown}
-                      onClick={() => setOpen((current) => shown ? current.filter((id) => id !== category.id) : [...current, category.id])}
-                      className="flex w-full items-center justify-between gap-2 px-3.5 py-3 text-left text-sm font-semibold text-zinc-900 hover:bg-zinc-50">
-                      <span className="truncate">{category.label}</span>
-                      <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition-transform ${shown ? "rotate-180" : ""}`} aria-hidden="true" />
-                    </button>
-                  </h2>
-                ) : (
-                  <div className="border-b border-zinc-200 px-3.5 py-2.5">
-                    <h2 className="truncate text-sm font-semibold text-zinc-900">{category.label}</h2>
-                  </div>
-                )}
-                {shown ? <ul className="divide-y divide-zinc-50">{category.awards.map((award) => <AwardRow key={award.period} award={award} shared={category.shared} />)}</ul> : null}
-              </section>
-            );
-          })}
+        {/* The scroller wraps the grid: a grid that scrolls itself would squeeze
+            its rows to fit the screen instead. */}
+        <div ref={listScroll} className={BROWSE_LIST}>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-4">
+            {data.categories.map((category) => {
+              const shown = !stacked || open.includes(category.id);
+              return (
+                <section key={category.id} aria-label={category.label} className={`${PANEL} overflow-hidden`}>
+                  {stacked ? (
+                    <h2 className={shown ? "border-b border-zinc-200" : ""}>
+                      <button type="button" aria-expanded={shown}
+                        onClick={() => setOpen((current) => shown ? current.filter((id) => id !== category.id) : [...current, category.id])}
+                        className="flex w-full items-center justify-between gap-2 px-3.5 py-3 text-left text-sm font-semibold text-zinc-900 hover:bg-zinc-50">
+                        <span className="truncate">{category.label}</span>
+                        <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition-transform ${shown ? "rotate-180" : ""}`} aria-hidden="true" />
+                      </button>
+                    </h2>
+                  ) : (
+                    <div className="border-b border-zinc-200 px-3.5 py-2.5">
+                      <h2 className="truncate text-sm font-semibold text-zinc-900">{category.label}</h2>
+                    </div>
+                  )}
+                  {shown ? <ul className="divide-y divide-zinc-50">{category.awards.map((award) => <AwardRow key={award.period} award={award} shared={category.shared} />)}</ul> : null}
+                </section>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

@@ -24,6 +24,7 @@ import { storedRosterHistory, validRosterDate } from "./roster-history.ts";
 import { careerBands } from "./roster-timeline.ts";
 import { feedStatus, newsAiOff, newsToJudge, syncNews } from "./news.ts";
 import { judgeNews } from "./news-ai.ts";
+import { judging } from "./judging.ts";
 import { NEWS_FEEDS } from "./scrape/news.ts";
 import { ROSTER_ARTICLE, samePlace } from "./scrape/wikipedia.ts";
 import {
@@ -880,6 +881,30 @@ function decisionsWithoutJudgeRounds(): BugCheck {
     facts: [["Official totals", fight.detail_json?.includes('"judges"') ? "yes" : "no"], ["Verdict checked", ago(fight.verdict_checked_at)]],
     links: [{ label: "Verdict events", href: "https://verdictmma.com/events" }],
     actions: linkedEvents.has(fight.event_id) ? [{ id: "verdict", label: "Re-read scorecards", target: fight.id }] : [],
+  })));
+}
+
+/** Decisions with round cards whose UFCStats round tables are missing or
+ *  unreadable: they have no stats card, and their rounds are left out of every
+ *  judge's "How they score" and the stats model behind it. */
+function decisionsWithoutStatsCard(): BugCheck {
+  const state = judging();
+  const missing = [...state.fights].filter(([, entry]) => !entry.stats && entry.officiated.cards.some((card) => card.rounds.length)).map(([id]) => id);
+  const rows = missing.length ? db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, f.method, f.detail_fetched_at
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE f.id IN (${missing.map(() => "?").join(",")})
+    ORDER BY e.date DESC
+  `).all(...missing) as (FightRow & { method: string; detail_fetched_at: number | null })[] : [];
+  return check({
+    id: "decision-no-stats-card",
+    group: "Scorecards",
+    label: "Decisions without round-by-round stats",
+    description: "Decisions with judges' round cards but no complete UFCStats round tables (significant strikes, head and ground strikes, control). They get no stats card on the matchup or the Controversial list, and their rounds are left out of each judge's scoring tendencies. Re-fetching the fight detail usually fixes it.",
+    grade: recent([[7, "minor"]]),
+  }, rows.map((fight) => fightItem(fight, {
+    facts: [["Method", fight.method], ["Detail fetched", ago(fight.detail_fetched_at)]],
+    actions: [{ id: "detail", label: "Re-fetch fight detail", target: fight.id }],
   })));
 }
 
@@ -1824,6 +1849,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
   // that will cause wrong data, then gaps on upcoming cards, then history.
   const checks = [
     decisionsWithoutJudgeRounds(),
+    decisionsWithoutStatsCard(),
     fightsWithoutCommunityScores(),
     invalidCommunityScores(),
     verdictImportErrors(),

@@ -550,10 +550,19 @@ function CardControls({ boardKey, order, settings, update, division }: { boardKe
         <>
           <Select label="Fights statistic" value={settings.fightsMode} onChange={(value) => update("fightsMode", value as StatsSettings["fightsMode"])}>
             <option value="disputed">Most disputed decisions</option>
+            <option value="controversial">Controversial decisions</option>
             <option value="upsets">Biggest upsets</option>
             <option value="action">Most action</option>
             <option value="fastest">Fastest finishes</option>
           </Select>
+          {settings.fightsMode === "controversial" ? (
+            <Select label="Controversial by" value={settings.controversyMeasure} onChange={(value) => update("controversyMeasure", value as StatsSettings["controversyMeasure"])}>
+              <option value="closest">Closest by the fans</option>
+              <option value="robbery">Fans had the other winner</option>
+              <option value="rounds">Fans' rounds vs their total</option>
+              <option value="stats">The stats had the loser</option>
+            </Select>
+          ) : null}
           {settings.fightsMode === "action" ? (
             <Select label="Total or pace" value={settings.fightsAction} onChange={(value) => update("fightsAction", value as StatsSettings["fightsAction"])}>
               <option value="total">Total strikes</option>
@@ -577,8 +586,24 @@ function CardControls({ boardKey, order, settings, update, division }: { boardKe
             <option value="dissents">Lone dissents</option>
             <option value="splits">Split decisions judged</option>
             <option value="cards">Cards scored</option>
+            <option value="leanings">What they score for</option>
           </Select>
-          {settings.judgesMode === "agreement" || settings.judgesMode === "dissents" ? (
+          {settings.judgesMode === "leanings" ? (
+            <Select label="Leaning" value={settings.judgeLeaning} onChange={(value) => update("judgeLeaning", value as StatsSettings["judgeLeaning"])}>
+              <option value="control">Control over striking</option>
+              <option value="takedowns">Takedowns over striking</option>
+              <option value="damage">Damage over volume</option>
+              <option value="pressure">Pressure over accuracy</option>
+              <option value="submissions">Submission attempts over striking</option>
+              <option value="ground">Ground strikes over standing</option>
+              <option value="stats">Matching the stats</option>
+              <option value="strikes">Following the strike count</option>
+              <option value="controlLead">Following control time</option>
+              <option value="home">Home fighters</option>
+              <option value="fans">Differing from the fans</option>
+            </Select>
+          ) : null}
+          {settings.judgesMode === "agreement" || settings.judgesMode === "dissents" || settings.judgesMode === "leanings" ? (
             <Select label="Order" value={settings.officialsOrder} onChange={(value) => update("officialsOrder", value as StatsSettings["officialsOrder"])}>
               <option value="high">Highest first</option>
               <option value="low">Lowest first</option>

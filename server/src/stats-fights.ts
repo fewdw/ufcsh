@@ -1,5 +1,6 @@
 import { fightIndex, type IndexedFight } from "./fight-index.ts";
 import { crowdPick, officialsIndex, pick, resultClass, resultPick, type Officiated } from "./officials.ts";
+import { controversyCandidates, judgeLeanings, TIEBREAKS, type TiebreakKey } from "./judging.ts";
 import type { Chip, LeaderRow, Leaderboard } from "./stats.ts";
 
 /**
@@ -12,8 +13,10 @@ import type { Chip, LeaderRow, Leaderboard } from "./stats.ts";
  */
 
 type Group = "fights" | "judges" | "referees";
-type FightsMode = "disputed" | "upsets" | "action" | "fastest";
-type JudgesMode = "agreement" | "dissents" | "splits" | "cards";
+type FightsMode = "disputed" | "controversial" | "upsets" | "action" | "fastest";
+type JudgesMode = "agreement" | "dissents" | "splits" | "cards" | "leanings";
+type Controversy = "closest" | "robbery" | "rounds" | "stats";
+type Leaning = TiebreakKey | "stats" | "strikes" | "controlLead" | "home" | "fans";
 type RefereesMode = "finishRate" | "stoppageTime" | "bouts";
 
 // Fewer bouts than these in the filtered years, and an official's rate is not ranked.
@@ -94,7 +97,8 @@ export function fightsBoard(bouts: IndexedFight[], params: URLSearchParams, limi
     ({ group: "fights", key: "fights", title, description, format, rows });
 
   if (group === "judges") {
-    const judgesMode = mode<JudgesMode>("judgesMode", ["agreement", "dissents", "splits", "cards"], "agreement");
+    const judgesMode = mode<JudgesMode>("judgesMode", ["agreement", "dissents", "splits", "cards", "leanings"], "agreement");
+    if (judgesMode === "leanings") return leaningsBoard(bouts, mode<Leaning>("judgeLeaning", [...TIEBREAKS.map((tiebreak) => tiebreak.key), "stats", "strikes", "controlLead", "home", "fans"], "control"), lowFirst, limit);
     const judges = new Map<string, { slug: string; name: string; cards: number; compared: number; agreed: number; panels: number; dissents: number; splits: number; first: string; last: string }>();
     const people = officialsIndex().judges;
     for (const fight of bouts) {
@@ -121,7 +125,7 @@ export function fightsBoard(bouts: IndexedFight[], params: URLSearchParams, limi
       }
     }
     type Entry = typeof judges extends Map<string, infer E> ? E : never;
-    const spec: Record<JudgesMode, { title: string; description: string; format: Leaderboard["format"]; value: (e: Entry) => number; eligible: (e: Entry) => boolean; detail: (e: Entry) => string; ordered: boolean }> = {
+    const spec: Record<Exclude<JudgesMode, "leanings">, { title: string; description: string; format: Leaderboard["format"]; value: (e: Entry) => number; eligible: (e: Entry) => boolean; detail: (e: Entry) => string; ordered: boolean }> = {
       agreement: {
         title: lowFirst ? "Judges most out of step" : "Judges most in step",
         description: `how often a judge's winner matched each other judge on the panel · ${MIN_OFFICIAL_BOUTS}+ cards`,
@@ -209,7 +213,7 @@ export function fightsBoard(bouts: IndexedFight[], params: URLSearchParams, limi
     return board(chosen.title, chosen.description, chosen.format, rows);
   }
 
-  const fightsMode = mode<FightsMode>("fightsMode", ["disputed", "upsets", "action", "fastest"], "disputed");
+  const fightsMode = mode<FightsMode>("fightsMode", ["disputed", "controversial", "upsets", "action", "fastest"], "disputed");
   const perMinute = mode("fightsAction", ["total", "perMinute"] as const, "total") === "perMinute";
   const fastestMethod = mode("fastestMethod", ["finish", "ko", "sub"] as const, "finish");
   const newest = (a: IndexedFight, b: IndexedFight) => b.date.localeCompare(a.date) || a.ord - b.ord;
@@ -221,6 +225,48 @@ export function fightsBoard(bouts: IndexedFight[], params: URLSearchParams, limi
     const fans = officiated.fans!;
     return `fans ${cardText(rounded(fans.avg1), rounded(fans.avg2), flipped)}`;
   };
+
+  if (fightsMode === "controversial") {
+    const measure = mode<Controversy>("controversyMeasure", ["closest", "robbery", "rounds", "stats"], "closest");
+    const all = controversyCandidates(bouts);
+    const fanText2 = (fans: { avg1: number; avg2: number }, flipped: boolean) => `fans ${flipped ? `${fans.avg2.toFixed(2)}–${fans.avg1.toFixed(2)}` : `${fans.avg1.toFixed(2)}–${fans.avg2.toFixed(2)}`}`;
+    const detailOf = (officiated: Officiated, flipped: boolean, extra: string) => {
+      const cards = officiated.cards.map((card) => cardText(card.f1, card.f2, flipped)).join(", ");
+      return [cards, extra, eventText(officiated.fight)].filter(Boolean).join(" · ");
+    };
+    if (measure === "stats") {
+      const picked = all.filter((entry) => entry.stats?.pick && resultPick(entry.fight) && entry.stats.pick !== resultPick(entry.fight));
+      const loserRounds = (entry: (typeof picked)[number]) => {
+        const loser = resultPick(entry.fight) === 1 ? "f2" : "f1";
+        return entry.stats![loser] - entry.stats![loser === "f1" ? "f2" : "f1"];
+      };
+      const rows = ranked(picked, loserRounds, false, (a, b) => {
+        const lean = (entry: (typeof picked)[number]) => entry.stats!.rounds.reduce((sum, round) => sum + Math.abs(round.p - 0.5), 0);
+        return lean(b) - lean(a) || newest(a.fight, b.fight);
+      }, limit).map(({ item, value, rank, tied }) => {
+        const flipped = corners(item.fight).flipped;
+        const won = flipped ? [item.stats!.f2, item.stats!.f1] : [item.stats!.f1, item.stats!.f2];
+        const fans = item.officiated.fans && item.officiated.fans.cards >= 30 ? fanText2(item.officiated.fans, flipped) : "";
+        return { ...fightRow(item.fight, detailOf(item.officiated, flipped, [`stats ${won[0]}–${won[1]} rounds`, fans].filter(Boolean).join(" · ")), moreInfo ? judgeChips(item.officiated, flipped) : []), value, rank, tied };
+      });
+      return board("The stats had the loser", "decisions the stats card scored for the official loser, by rounds; the stats card is what an average UFC judge gives a round with those numbers", "number", rows);
+    }
+    const wanted = all.filter((entry) => entry.controversy && (measure === "closest" ? true : measure === "robbery" ? entry.controversy.fansOther : entry.controversy.roundsTotal));
+    const rows = ranked(wanted, (entry) => entry.controversy!.margin, measure !== "robbery", (a, b) => b.controversy!.fans.cards - a.controversy!.fans.cards || newest(a.fight, b.fight), limit)
+      .map(({ item, value, rank, tied }) => {
+        const flipped = corners(item.fight).flipped;
+        const controversy = item.controversy!;
+        const rounds = flipped ? [controversy.fanRounds[1], controversy.fanRounds[0]] : controversy.fanRounds;
+        const extra = [fanText2(controversy.fans, flipped), measure === "rounds" ? `fans' rounds ${rounds[0]}–${rounds[1]}` : ""].filter(Boolean).join(" · ");
+        return { ...fightRow(item.fight, detailOf(item.officiated, flipped, extra), moreInfo ? judgeChips(item.officiated, flipped) : []), value, rank, tied };
+      });
+    const titles: Record<Exclude<Controversy, "stats">, [string, string]> = {
+      closest: ["Closest decisions by the fans", "points between the fans' average totals · 30+ fan cards"],
+      robbery: ["Biggest robberies by the fans", "decisions the fans' average card gave to the other fighter, by points between the fans' totals · 30+ fan cards"],
+      rounds: ["Fans' rounds against their total", "one fighter won more rounds on the fans' average card, the other its total · 30+ fan cards"],
+    };
+    return board(titles[measure][0], titles[measure][1], "decimal", rows);
+  }
 
   if (fightsMode === "disputed") {
     type Candidate = { fight: IndexedFight; officiated: Officiated; flipped: boolean; value: number; fansDiffer: boolean };
@@ -281,4 +327,42 @@ export function fightsBoard(bouts: IndexedFight[], params: URLSearchParams, limi
   ));
   const noun = fastestMethod === "ko" ? "KO/TKOs" : fastestMethod === "sub" ? "submissions" : "finishes";
   return board(`Fastest ${noun}`, `elapsed fight time of the quickest ${noun}`, "time", rows);
+}
+
+// Fewer rounds (or cards, for home fighters and the fans) than these and a
+// judge's leaning isn't ranked.
+const MIN_LEANING_ROUNDS = 30;
+const MIN_LEANING_CARDS = 20;
+
+/** Judges by how much more (or less) than the other judges on the same
+ *  rounds or bouts they went one way: with control over striking, with the
+ *  stats, with the home fighter, against the fans. */
+function leaningsBoard(bouts: IndexedFight[], leaning: Leaning, lowFirst: boolean, limit: number): Leaderboard {
+  const tiebreak = TIEBREAKS.find((entry) => entry.key === leaning);
+  const read = (dna: ReturnType<typeof judgeLeanings>[number]["dna"]) => tiebreak ? dna.tiebreaks.find((entry) => entry.key === tiebreak.key)!
+    : leaning === "stats" ? dna.stats : leaning === "strikes" ? dna.strikes : leaning === "controlLead" ? dna.control : leaning === "home" ? dna.home : dna.fans;
+  const byRound = Boolean(tiebreak) || leaning === "stats" || leaning === "strikes" || leaning === "controlLead";
+  const minimum = byRound ? MIN_LEANING_ROUNDS : MIN_LEANING_CARDS;
+  const unit = byRound ? "rounds" : "cards";
+  const eligible = judgeLeanings(bouts).filter(({ dna }) => read(dna).n >= minimum && read(dna).diff != null);
+  const rows = ranked(eligible, ({ dna }) => read(dna).diff!, lowFirst, (a, b) => read(b.dna).n - read(a.dna).n || a.identity.name.localeCompare(b.identity.name), limit)
+    .map(({ item, value, rank, tied }) => {
+      const figure = read(item.dna);
+      return {
+        fighter_id: item.identity.slug, name: item.identity.name, photo_url: null, division: "",
+        detail: `${figure.rate}% vs ${figure.others_rate}% for the other judges · ${figure.n.toLocaleString("en-US")} ${unit}${"notable" in figure && figure.notable ? " · clear" : ""}`,
+        chips: [], href: `/judges/${item.identity.slug}`, value, rank, tied,
+      };
+    });
+  const titles: Record<Leaning, [string, string, string]> = Object.fromEntries([
+    ...TIEBREAKS.map((entry) => [entry.key, [`Judges who favour ${entry.x} over ${entry.y}`, `Judges who favour ${entry.y} over ${entry.x}`,
+      `points more often than the other judges on the same rounds that a judge gave the round to ${entry.x}, when ${entry.about}`]]),
+    ["stats", ["Judges closest to the stats", "Judges furthest from the stats", "points more often than the other judges on the same rounds that a judge matched the stats card, on rounds it clearly gave one fighter"]],
+    ["strikes", ["Judges who follow the strike count most", "Judges who follow the strike count least", "points more often than the other judges on the same rounds that a judge gave the round to the fighter who landed 3+ more significant strikes"]],
+    ["controlLead", ["Judges who follow control time most", "Judges who follow control time least", "points more often than the other judges on the same rounds that a judge gave the round to the fighter with a minute or more of extra control"]],
+    ["home", ["Judges kindest to home fighters", "Judges toughest on home fighters", "points more often than the other judges on the same bouts that a judge's card went to the one fighter from the host country"]],
+    ["fans", ["Judges who differ from the fans most", "Judges closest to the fans", "points more often than the other judges on the same bouts that a judge picked a different winner from the fans · 30+ fan cards"]],
+  ]) as Record<Leaning, [string, string, string]>;
+  const [high, low, description] = titles[leaning];
+  return { group: "fights", key: "fights", title: lowFirst ? low : high, description: `${description} · ${minimum}+ ${unit}`, format: "signed", rows };
 }
