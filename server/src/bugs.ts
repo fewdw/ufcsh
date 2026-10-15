@@ -10,6 +10,8 @@ import { awardMisses, awardYearDue } from "./awards.ts";
 import { AWARDS_SOURCE } from "./awards-data.ts";
 import { normName } from "./util.ts";
 import { noContestUnexplained } from "./no-contest.ts";
+import { weighInDivision } from "./weigh-in-division.ts";
+import { VERIFIED_NON_REPLACEMENTS } from "./replacement-announcements.ts";
 import { pageNamesFighter } from "./scrape/odds.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
@@ -1109,7 +1111,8 @@ function weightMissesUnderLimit(): BugCheck {
   `).all() as { id: string; event_id: string; f1_name: string; f2_name: string; weight_class: string;
     f1_weight_miss: string | null; f2_weight_miss: string | null; event_name: string; date: string; wiki_title: string | null }[];
   const items = rows.flatMap((fight) => {
-    const limit = DIVISION_LIMITS[fight.weight_class.replace(/^Women's /, "")];
+    const division = weighInDivision(fight.id, fight.weight_class);
+    const limit = DIVISION_LIMITS[division.replace(/^Women's /, "")];
     return ([[fight.f1_name, fight.f1_weight_miss], [fight.f2_name, fight.f2_weight_miss]] as const)
       .filter(([, pounds]) => limit != null && pounds && Number(pounds) <= limit)
       .map(([name, pounds]): BugItem => ({
@@ -1117,7 +1120,7 @@ function weightMissesUnderLimit(): BugCheck {
         title: `${name}: ${pounds} lb at ${fight.weight_class}`,
         subtitle: `${fight.f1_name} vs ${fight.f2_name} · ${fight.event_name}`,
         date: fight.date,
-        facts: [["Recorded weight", `${pounds} lb`], ["Division limit", `${limit} lb`]],
+        facts: [["Recorded weight", `${pounds} lb`], ["Weigh-in division", division], ["Division limit", `${limit} lb`]],
         links: [
           ...fightLinks(fight.id),
           ...(fight.wiki_title ? [{ label: "Event article", href: `https://en.wikipedia.org/wiki/${encodeURIComponent(fight.wiki_title.replace(/ /g, "_"))}` }] : []),
@@ -1129,7 +1132,7 @@ function weightMissesUnderLimit(): BugCheck {
     id: "weight-miss-under-limit",
     group: "Fights & events",
     label: "Missed weight at or under the division limit",
-    description: "A fighter is marked as missing weight at a weight that makes the bout's division. Usually the article's sentence was about someone else (a namesake, or another bout on the card); sometimes the bout really moved up a division after the miss. Re-reading queues the event's weigh-ins for the next background pass.",
+    description: "A fighter is marked as missing weight at a weight that makes the weigh-in division. Confirmed bouts moved up a division after the miss are checked against their original limit. Usually the article's sentence was about someone else (a namesake, or another bout on the card). Re-reading queues the event's weigh-ins for the next background pass.",
     grade: "minor",
   }, items);
 }
@@ -1161,6 +1164,22 @@ function catchweightsWithoutLimit(): BugCheck {
     ],
     actions: [{ id: "catchweight", label: "Re-check now", target: fight.id }],
   })));
+}
+
+function replacementIdentityConflicts(): BugCheck {
+  const items = VERIFIED_NON_REPLACEMENTS.flatMap(report => {
+    const rows = db.prepare(`SELECT ${FIGHT_COLUMNS} FROM fights f JOIN events e ON e.id = f.event_id
+      WHERE e.date = ? AND ((f.f1_name = ? AND f.f1_replaced = ?) OR (f.f2_name = ? AND f.f2_replaced = ?))`)
+      .all(report.eventDate, report.name, report.replaced, report.name, report.replaced) as FightRow[];
+    return rows.map(fight => fightItem(fight, {
+      facts: [["Incorrect replacement", `${report.name} for ${report.replaced}`]],
+      links: [{ label: "Verified report", href: report.source }],
+      actions: [{ id: "article", label: "Re-read event article", target: fight.event_id }],
+    }));
+  });
+  return check({ id: "replacement-identity-conflicts", group: "Fights & events", label: "Confirmed replacement identity errors",
+    description: "The original report names a different replacement. Re-read the event article to remove the incorrect association while preserving the actual bout.",
+    grade: "must" }, items);
 }
 
 function replacementsUnnamed(): BugCheck {
@@ -1834,6 +1853,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     eventsWithoutWiki(),
     weightMissesUnderLimit(),
     catchweightsWithoutLimit(),
+    replacementIdentityConflicts(),
     replacementsUnnamed(),
     replacementsWithoutNotice(),
     replacedWithoutProfile(),

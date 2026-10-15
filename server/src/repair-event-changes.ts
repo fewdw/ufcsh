@@ -3,6 +3,7 @@ import { readFileSync, readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { cardChanges, eventInfobox, eventSection, infoboxDate, namesCard, samePlace } from "./scrape/wikipedia.ts";
 import { preChangeBackupPath } from "./backup-retention.ts";
+import { invalidReplacement } from "./replacement-announcements.ts";
 
 /** Replay retained public article revisions against a baseline, updating only
  * replacement identities and missing announcements. Never imports db.ts,
@@ -14,6 +15,7 @@ type Fight = {
   method: string | null; round: string | null;
   f1_replaced: string | null; f2_replaced: string | null;
   f1_notice: string | null; f2_notice: string | null;
+  f1_short_notice: number | null; f2_short_notice: number | null;
 };
 const identity = ["event_id", "f1_id", "f2_id", "f1_name", "f2_name", "method", "round"] as const;
 
@@ -21,7 +23,7 @@ export function repairEventChanges(baseline: DatabaseSync, target: DatabaseSync,
   const result = { articles: 0, fights: 0, names: 0, notices: 0, conflicts: 0, rejected: 0 };
   const plans: { fight: Fight; fields: [string, string | null][]; names: number; notices: number }[] = [];
   const unchanged = (fight: Fight, current: Fight | undefined) => current && identity.every(key => current[key] === fight[key])
-    && ["f1", "f2"].every(side => ["replaced", "notice"].every(field => {
+    && ["f1", "f2"].every(side => ["replaced", "notice", "short_notice"].every(field => {
       const key = `${side}_${field}` as keyof Fight;
       return current[key] === fight[key];
     }));
@@ -47,6 +49,11 @@ export function repairEventChanges(baseline: DatabaseSync, target: DatabaseSync,
         let names = 0, notices = 0;
         for (const side of ["f1", "f2"] as const) {
           const change = changes.find(change => change.name === fight[`${side}_name`]);
+          if (invalidReplacement(fight[`${side}_name`], fight[`${side}_replaced`], event.date) && !change?.replaced) {
+            fields.push([`${side}_replaced`, null], [`${side}_replaced_id`, null], [`${side}_notice`, null], [`${side}_short_notice`, null]);
+            names++;
+            continue;
+          }
           if (!change?.replaced?.includes(" ")) continue;
           if (change.replaced !== fight[`${side}_replaced`]) {
             fields.push([`${side}_replaced`, change.replaced], [`${side}_replaced_id`, null]);

@@ -55,6 +55,8 @@ test("confirmed releases, retirement notifications and the UFC's full name retai
     "Angela Hill hopes to earn UFC contract",
     "John Smith knocks out Angela Hill to earn UFC contract",
     "Angela Hill earns UFC title",
+    "UFC vet Gabriel Gonzaga says he's retired unless six figure contract's tabled",
+    "UFC veteran Rick Story announces his retirement from MMA",
   ]) assert.deepEqual(citedRosterReports(citation(title), ["Angela Hill"]), [], title);
 });
 
@@ -85,4 +87,44 @@ test("dated biography subjects can use their own surname or an explicit UFC pron
     "On November 17, 2021, Mokaev hoped to sign with UFC.",
     "On November 17, 2021, the UFC might release him.",
   ]) assert.deepEqual(datedRosterStatements(text, ["Muhammad Mokaev"]), [], text);
+});
+
+test("headings, later sentences and contract-first dates retain exact contract reports", () => {
+  const text = `===Ultimate Fighting Championship===
+On August 11, 2016, it was announced that Grasso had signed with the Ultimate Fighting Championship.
+
+An earlier fight was cancelled. On March 21, 2024, Grasso was released from her UFC contract.
+
+Grasso was released from the UFC on August 20, 2025 following a contractual dispute.`;
+  assert.deepEqual(datedRosterStatements(text, ["Alexa Grasso"]).map(row => [row.date, row.kind]), [
+    ["2016-08-11", "signed"], ["2024-03-21", "released"], ["2025-08-20", "released"],
+  ]);
+  assert.equal(datedRosterStatements("It was announced on January 17, 2017, that Grasso had signed with the UFC.", ["Alexa Grasso"])[0]?.date, "2017-01-17");
+});
+
+test("fight dates, future announcements and another person's change cannot date a contract", () => {
+  for (const text of [
+    "On August 11, 2016, Grasso lost to John Smith and was subsequently released from the UFC.",
+    "On August 11, 2016, Grasso faced John Smith, who signed with the UFC.",
+    "Grasso faced John Smith on August 11, 2016, and was subsequently released from the UFC.",
+    "On August 11, 2016, Grasso announced that she will retire from the UFC after her next fight.",
+    "On August 11, 2016, John Grasso was released from the UFC.",
+  ]) assert.deepEqual(datedRosterStatements(text, ["Alexa Grasso"]), [], text);
+});
+
+test("promotion pronouns and retirement reports require the UFC's own section", () => {
+  const report = "On January 26, 2015, Corassani announced his retirement from mixed martial arts.";
+  assert.equal(datedRosterStatements(`===Ultimate Fighting Championship===\n${report}`, ["Akira Corassani"])[0]?.kind, "retired");
+  assert.deepEqual(datedRosterStatements(`===Bellator MMA===\n${report}`, ["Akira Corassani"]), []);
+  assert.deepEqual(datedRosterStatements(`===Ultimate Fighting Championship===\n===Post-UFC===\n${report}`, ["Akira Corassani"]), []);
+  assert.deepEqual(datedRosterStatements(`===Ultimate Fighting Championship===\n====Bellator MMA====\n${report}`, ["Akira Corassani"]), []);
+  assert.equal(datedRosterStatements("===Ultimate Fighting Championship===\nOn July 3, 2014, Murphy was released by the promotion.", ["Lauren Murphy"])[0]?.kind, "released");
+  assert.deepEqual(datedRosterStatements("===Bellator MMA===\nOn July 3, 2014, Murphy was released by the promotion.", ["Lauren Murphy"]), []);
+});
+
+test("parting ways preserves a departure without asserting a release", () => {
+  const report = citedRosterReports(citation("Derek Brunson and UFC part ways, fight with Roman Dolidze scrapped", "2023-09-14"), ["Derek Brunson"])[0];
+  assert.equal(report?.kind, "departed");
+  assert.equal(report?.reason, "Parted ways");
+  assert.deepEqual(citedRosterReports(citation("After parting ways with UFC, Ben Saunders interested in fighting for RIZIN"), ["Ben Saunders"]), []);
 });

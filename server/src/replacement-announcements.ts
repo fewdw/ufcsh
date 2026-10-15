@@ -1,9 +1,12 @@
 import { normName } from "./util.ts";
+import { readFileSync } from "node:fs";
 
 /** Checked primary reports whose bodies identify the replacement, but whose
  * citation headlines do not. Dates match publisher metadata and date the
  * announcement, never the fighter's acceptance. */
 export const VERIFIED_REPLACEMENT_REPORTS = [
+  ...JSON.parse(readFileSync(new URL("./replacement-reports.json", import.meta.url), "utf8")) as
+    { eventDate: string; name: string; replaced: string; date: string; source: string }[],
   { eventDate: "2017-12-02", name: "Jose Aldo", replaced: "Frankie Edgar", date: "2017-11-11",
     source: "https://www.mmafighting.com/2017/11/11/16633192/max-holloway-vs-jose-aldo-2-slated-as-new-ufc-218-main-event" },
   { eventDate: "2018-06-01", name: "David Teymur", replaced: "Leonardo Santos", date: "2018-05-01",
@@ -17,6 +20,30 @@ export const VERIFIED_REPLACEMENT_REPORTS = [
   { eventDate: "2026-07-18", name: "Anna Melisano", replaced: "Veronica Hardy", date: "2026-07-06",
     source: "https://www.mmafighting.com/ufc/497873/michael-bispings-no-1-tuf-34-pick-steps-in-to-save-fight-at-ufc-oklahoma-city" },
 ];
+
+/** A checked report may complete or correct a replacement's identity. */
+export function verifiedReplacementIdentity(name: string, eventDate: string): string | null {
+  const names = new Set(VERIFIED_REPLACEMENT_REPORTS.filter(report => report.eventDate === eventDate
+    && normName(report.name) === normName(name)).map(report => report.replaced));
+  return names.size === 1 ? [...names][0] : null;
+}
+
+/** Exact source-backed identity conflicts; never a general absence heuristic. */
+export const VERIFIED_NON_REPLACEMENTS = [
+  { eventDate: "2022-10-29", name: "Christian Rodriguez", replaced: "Drakkar Klose",
+    source: "https://mmajunkie.usatoday.com/2022/10/ufc-news-drakkar-klose-out-mark-madsen-meets-grant-dawson-fight-night-on-nov-5" },
+  { eventDate: "2016-11-19", name: "Rogerio Nogueira", replaced: "Alexander Gustafsson",
+    source: "https://www.mmafighting.com/2016/9/30/13127398/alexander-gustafsson-out-ryan-bader-in-vs-rogerio-nogueira-at-ufc" },
+  { eventDate: "2020-09-05", name: "Montana De La Rosa", replaced: "Macy Chiasson",
+    source: "https://globoesporte.globo.com/combate/noticia/com-menos-de-duas-semanas-para-a-luta-karol-rosa-ganha-vaga-e-enfrenta-sijara-eubanks-no-ufc.ghtml" },
+  { eventDate: "2013-06-08", name: "Rony Jason", replaced: "John Hathaway",
+    source: "https://mmajunkie.usatoday.com/2013/04/jason-high-replaces-john-hathaway-meets-erick-silva-at-ufc-on-fuel-tv-10" },
+];
+
+export function invalidReplacement(name: string, replaced: string | null, eventDate: string): boolean {
+  return !!replaced && VERIFIED_NON_REPLACEMENTS.some(report => report.eventDate === eventDate
+    && normName(report.name) === normName(name) && normName(report.replaced) === normName(replaced));
+}
 
 export function verifiedReplacementAnnouncement(name: string, replaced: string, eventDate: string): string | null {
   const reports = VERIFIED_REPLACEMENT_REPORTS.filter(report => report.eventDate === eventDate
