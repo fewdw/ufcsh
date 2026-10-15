@@ -1150,12 +1150,11 @@ function ControversyLine({ row }: { row: NonNullable<NonNullable<Matchup["judgin
   );
 }
 
-/** What each judge on the card usually rewards, in up to three lines, and
- *  the card of theirs the fans disputed most. A judge with too few scored
- *  rounds to say anything is left out. */
+/** Every named judge on the card, their scoring notes where supported,
+ *  and the card of theirs the fans disputed most. */
 function JudgeNotes({ judges, divided }: { judges: NonNullable<Matchup["judging"]>["judges"]; divided: boolean }) {
   const [open, setOpen] = useState(false);
-  const shown = judges.filter((judge): judge is NonNullable<typeof judge> => Boolean(judge && (judge.notes.length || judge.worst)));
+  const shown = judges.filter((judge): judge is NonNullable<typeof judge> => Boolean(judge));
   if (!shown.length) return null;
   // Folded to a single Show more, right under the controversy line.
   const toggle = (
@@ -1175,7 +1174,7 @@ function JudgeNotes({ judges, divided }: { judges: NonNullable<Matchup["judging"
           <div key={judge.name} className="min-w-0">
             <p className="text-xs font-semibold text-zinc-900">
               {judge.slug ? <Link to={`/judges/${judge.slug}`} className="hover:underline">{judge.name}</Link> : judge.name}
-              {judge.bouts ? <span className="font-normal text-zinc-400"> · {judge.bouts.toLocaleString()} {judge.bouts === 1 ? "bout" : "bouts"} with rounds</span> : null}
+              <span className="font-normal text-zinc-400"> · {judge.bouts.toLocaleString()} {judge.bouts === 1 ? "bout" : "bouts"} with rounds</span>
             </p>
             {judge.notes.length ? (
               <ul className="mt-1.5 space-y-1.5">
@@ -1186,7 +1185,7 @@ function JudgeNotes({ judges, divided }: { judges: NonNullable<Matchup["judging"
                   </li>
                 ))}
               </ul>
-            ) : null}
+            ) : <p className="mt-1.5 text-[11px] leading-snug text-zinc-500">Not enough scored rounds to describe scoring tendencies.</p>}
             {judge.worst ? (
               <Link to={`/fights/${judge.worst.fight_id}`} className="mt-1.5 block text-[11px] leading-snug text-zinc-500 hover:text-zinc-900">
                 <span className="font-medium text-rose-700">Most disputed card:</span> {lastName(judge.worst.f1)} vs {lastName(judge.worst.f2)}{" "}
