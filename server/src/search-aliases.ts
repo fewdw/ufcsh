@@ -23,6 +23,7 @@ export const SEARCH_ALIASES: Record<string, string[]> = {
   "Joanna Jedrzejczyk": ["JJ", "Joanna Champion"],
   "Michael Page": ["MVP"],
   "Antonio Carlos Junior": ["ACJ", "Shoeface"],
+  "Benoit Saint Denis": ["BSD", "Benoit St. Denis"],
 
   // Other nicknames
   "Aljamain Sterling": ["Aljo", "Funkmaster"],

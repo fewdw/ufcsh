@@ -92,9 +92,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-15">October 15, 2026</time></p>
             <ul>
-              <li>More sourced signing dates and replacement announcements in fighter histories.</li>
-              <li>Corrected replacement identities and missed-weight checks.</li>
-              <li>Recovered historical community scorecards.</li>
+              <li>Search finds Benoit Saint Denis by “BSD” or “St. Denis”.</li>
             </ul>
           </Section>
         </div>
