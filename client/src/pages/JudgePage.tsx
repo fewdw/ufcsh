@@ -1,17 +1,18 @@
 import { Fragment } from "react";
 import { Link, useParams } from "react-router-dom";
-import type { JudgeProfile } from "../api";
+import type { ControversialList, ControversialShow, JudgeProfile } from "../api";
 import Avatar from "../components/Avatar";
 import { formatDateShortWithYear, lastName, outcomeClasses } from "../format";
 import { RESULT_PILL } from "../ui";
 import { PANEL } from "../components/chartTokens";
 import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "../components/segmented";
 import { gapChip, pct, officialRows, useKeptApi, useUrlFilters } from "../research";
+import ControversyRow, { ControversyMethod, SHOW_LABELS, SORTS } from "../components/ControversyRow";
 import { SITE_URL, useSeo } from "../seo";
 import RequestNotice from "../components/RequestNotice";
 import { LoadMore, useInfiniteList } from "../components/InfiniteList";
 import {
-  BOUT_LIST, ROW_CONTROL, FilterSearch, FilterSelect, IdentityCard, ListHeading, NotFound, PageState, ProfileColumns, RankRows,
+  BOUT_LIST, ROW_CONTROL, FilterSearch, FilterSelect, IdentityCard, ListHeading, NotFound, PageState, Panel, ProfileColumns, RankRows,
   TitleNote, Wheel, YearBars, YearRange,
 } from "../components/ResearchKit";
 
@@ -196,10 +197,109 @@ function CardRow({ row, judge, against }: { row: Row; judge: string; against: Ag
   );
 }
 
+/** The judge's bouts the fans' cards make controversial, and every card of
+ *  theirs that went against a clear crowd, under the page's own year,
+ *  division and search filters. */
+function JudgeControversial({ slug, judge, data, filters }: { slug: string; judge: string; data: JudgeProfile; filters: ReturnType<typeof useUrlFilters> }) {
+  const query = new URLSearchParams(filters.query);
+  for (const key of ["view", "result"]) query.delete(key);
+  query.set("judge", slug);
+  const url = `/api/controversial?${query}`;
+  const { data: listed, stale } = useKeptApi<ControversialList>(url, `controversial:${slug}`);
+  const list = useInfiniteList({
+    resetKey: url,
+    load: (offset) => officialRows<ControversialList>(url, offset),
+    items: (page) => page.rows,
+    itemKey: (row) => row.fight_id,
+  });
+  const show = (filters.params.get("show") ?? null) as ControversialShow | null;
+  const sort = filters.params.get("sort") ?? "closest";
+  const narrowing = [filters.params.get("from"), filters.params.get("to"), filters.params.get("division"), show].filter(Boolean).length;
+  return (
+    <section className={PANEL}>
+      <ListHeading
+        title={
+          <span className={`${segmentedGroup} inline-flex`} role="group" aria-label="Order">
+            {SORTS.map((option) => (
+              <button key={option.value} type="button" aria-pressed={sort === option.value} title={option.title}
+                onClick={() => filters.set("sort", option.value === "closest" ? null : option.value)}
+                className={`${segmentedOption} ${sort === option.value ? segmentedSelected : segmentedIdle}`}>{option.label}</button>
+            ))}
+          </span>
+        }
+        count={listed ? listed.total.toLocaleString() : "…"} active={narrowing} onReset={() => filters.clear(["q", "tab", "sort"])}
+        search={<FilterSearch value={filters.params.get("q") ?? ""} onChange={(value) => filters.set("q", value || null)} placeholder="Search events or fighters" />}>
+        <YearRange years={data.career.years} from={filters.params.get("from")} to={filters.params.get("to")} onChange={filters.set} />
+        <FilterSelect label="Division" value={filters.params.get("division")} all="All divisions" onChange={(value) => filters.set("division", value)}
+          options={data.career.divisions.map((entry) => ({ value: entry.division, label: `${entry.division} (${entry.n})` }))} />
+        <FilterSelect label="Show" value={show} all={`Everything (${listed?.counts.all ?? 0})`} onChange={(value) => filters.set("show", value)}
+          options={(Object.keys(SHOW_LABELS) as ControversialShow[]).filter((key) => key !== "all" && listed?.counts[key] != null)
+            .map((key) => ({ value: key, label: `${key === "against-fans" ? "Against the fans" : SHOW_LABELS[key]} (${listed!.counts[key]!.toLocaleString()})` }))} />
+      </ListHeading>
+      {listed ? <ControversyMethod data={listed} /> : null}
+      {list.items.length ? (
+        <div aria-busy={stale || list.loading} className={`${BOUT_LIST} ${stale ? "opacity-60 transition-opacity delay-200" : ""}`}>
+          {list.items.map((row) => <ControversyRow key={row.fight_id} row={row} judge={judge} />)}
+        </div>
+      ) : list.loading || !listed ? <p className="px-5 py-8 text-center text-sm text-zinc-400">Loading…</p>
+        : <p className="px-5 py-8 text-center text-sm text-zinc-500">No controversial cards under these filters.</p>}
+      <LoadMore list={list} />
+    </section>
+  );
+}
+
+const cap = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/** What the judge rewards when the numbers pull two ways, each beside the
+ *  other judges on the very same rounds. Only a gap that is large and
+ *  unlikely to be chance gets the dark chip. */
+function ScoringDna({ dna }: { dna: JudgeProfile["dna"] }) {
+  const chip = (leaning: { rate: number | null; others_rate: number | null; notable: boolean }) => {
+    const gap = gapChip(leaning.rate, leaning.others_rate);
+    return leaning.notable ? gap : { ...gap, chipClass: "w-14 bg-zinc-100 text-zinc-500" };
+  };
+  const hint = "Points above or below the other judges on the same rounds; dark when the gap is large and unlikely to be chance";
+  const rows = [
+    ...dna.tiebreaks.filter((tiebreak) => tiebreak.n >= 10).map((tiebreak) => ({
+      key: tiebreak.key, ...chip(tiebreak), title: `${cap(tiebreak.x)} over ${tiebreak.y}`, value: pct(tiebreak.rate),
+      detail: `${tiebreak.n.toLocaleString()} rounds with ${tiebreak.clash} · others ${pct(tiebreak.others_rate)}`,
+      hint: `Rounds where ${tiebreak.about}. ${hint}.`,
+    })),
+    ...(dna.stats.n >= 10 ? [{
+      key: "stats", ...chip(dna.stats), title: "Matched the stats", value: pct(dna.stats.rate),
+      detail: `${dna.stats.n.toLocaleString()} rounds the stats clearly gave one fighter · others ${pct(dna.stats.others_rate)}`,
+      hint: `The stats card is what an average UFC judge gives a round with those numbers. ${hint}.`,
+    }] : []),
+    ...(dna.home.n >= 5 ? [{
+      key: "home", ...chip(dna.home), title: "Gave it to the home fighter", value: pct(dna.home.rate),
+      detail: `${dna.home.n.toLocaleString()} cards with one fighter from the host country · others ${pct(dna.home.others_rate)}${dna.home.fans_n ? ` · fans ${pct(dna.home.fans_rate)}` : ""}`,
+      hint: `Bouts where only one fighter came from the country the event was held in. ${hint}.`,
+    }] : []),
+  ];
+  return <>
+    <Panel title="How they score" subtitle={dna.rounds ? `${dna.rounds.toLocaleString()} rounds · ${dna.bouts.toLocaleString()} bouts` : undefined}>
+      {dna.notes.length ? (
+        <ul className="space-y-2.5 px-4 py-3 sm:px-5">
+          {dna.notes.map((note) => (
+            <li key={note.key}>
+              <p className="text-[13px] font-semibold leading-tight text-zinc-900">{note.title}</p>
+              <p className="mt-0.5 text-[11px] leading-snug text-zinc-500">{note.detail}</p>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="px-4 py-3 text-xs text-zinc-500 sm:px-5">Not enough scored rounds with their numbers to say yet.</p>}
+    </Panel>
+    <RankRows title="When the numbers pull two ways" subtitle="vs the same rounds" rows={rows} />
+  </>;
+}
+
 export default function JudgePage() {
   const { slug = "" } = useParams();
   const filters = useUrlFilters();
-  const url = `/api/judges/${encodeURIComponent(slug)}${filters.query ? `?${filters.query}` : ""}`;
+  // The Controversial tab's own order and choice don't change the profile.
+  const own = new URLSearchParams(filters.query);
+  for (const key of ["show", "sort"]) own.delete(key);
+  const url = `/api/judges/${encodeURIComponent(slug)}${own.size ? `?${own}` : ""}`;
   const { data, error, loading, stale, retry } = useKeptApi<JudgeProfile>(url, slug);
   const list = useInfiniteList({
     resetKey: url,
@@ -226,7 +326,8 @@ export default function JudgePage() {
   const narrowing = [f.from, f.to, f.division, f.result, f.view].filter(Boolean).length;
   const filtered = Boolean(narrowing || f.q);
   const years = data.career.years;
-  const tab = filters.params.get("tab") === "stats" ? "stats" : "list";
+  const requested = filters.params.get("tab");
+  const tab = requested === "stats" || requested === "controversial" ? requested : "list";
   const split = data.verdict_split;
   const against: Against = filters.params.get("vs") === "fans" ? "fans" : "judges";
   const b = data.baseline;
@@ -283,6 +384,7 @@ export default function JudgePage() {
       rate("fans-differ", "Different winner from fans", s.fan_pick_differ_rate, b.fan_pick_differ_rate, s.fan_cards ? `${s.fan_pick_differs} of ${s.fan_cards}` : null),
       rate("fan-rounds-differ", "Different rounds from fans", s.fan_round_differ_rate, b.fan_round_differ_rate, s.fan_rounds ? `${s.fan_rounds_differ} of ${s.fan_rounds}` : null),
     ].map((row) => ({ ...row, selected: f.view === row.key, onSelect: () => filters.set("view", f.view === row.key ? null : row.key) }))} />
+    <ScoringDna dna={data.dna} />
     <RankRows title="Their usual cards" rows={data.score_lines.map((line) => ({
       key: line.score, chip: line.score, title: `${line.n.toLocaleString()} cards`, value: pct(s.cards ? Math.round((line.n / s.cards) * 1000) / 10 : null),
     }))} />
@@ -327,7 +429,9 @@ export default function JudgePage() {
   );
 
   return (
-    <ProfileColumns scope="judge" ready={Boolean(data)} identity={identity} stats={stats} list={cards} listLabel="Scorecards"
-      tab={tab} onTab={(next) => filters.set("tab", next === "stats" ? "stats" : null)} />
+    <ProfileColumns scope="judge" ready={Boolean(data)} identity={identity} stats={stats} listLabel="Scorecards"
+      list={tab === "controversial" ? <JudgeControversial slug={slug} judge={data.name} data={data} filters={filters} /> : cards}
+      lists={[{ key: "controversial", label: `Controversial (${data.controversial.toLocaleString()})` }]}
+      tab={tab} onTab={(next) => filters.set("tab", next === "list" ? null : next)} />
   );
 }

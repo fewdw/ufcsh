@@ -1,5 +1,5 @@
 import { Link, useParams } from "react-router-dom";
-import { useApi, type LocationPage as LocationData, type VenuePage as VenueData } from "../api";
+import { useApi, type HomeRecord, type LocationPage as LocationData, type VenuePage as VenueData } from "../api";
 import { clockTimeWithZone, formatDate, formatDateShort, formatMethod, offsetLabel, venueClock } from "../format";
 import { PANEL } from "../components/chartTokens";
 import { gapChip, pct, useUrlFilters } from "../research";
@@ -9,7 +9,7 @@ import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } fro
 import { searchList } from "../search";
 import {
   BOUT_LIST, BoutRow, FilterSearch, FilterSelect, IdentityCard, ListHeading, MethodCircle, NotFound, PageState, Panel,
-  ProfileColumns, RankRows, TitleNote, Wheel, YearBars, YearRange, type WheelGroup,
+  ProfileColumns, RankRows, TitleNote, Wheel, YearBars, YearRange, type RankRow, type WheelGroup,
 } from "../components/ResearchKit";
 
 type Results = VenueData["results"];
@@ -71,6 +71,29 @@ export function LocationPage() {
 }
 
 /** A venue or a city: every card held there, and what happened at them. */
+/** Do fighters from the host country do better on the cards here? Their
+ *  decisions at every UFC event in the country, and the fans' and the stats'
+ *  winners on the same bouts. A chip is how many points more often the
+ *  judges had the home fighter winning than the fans or the stats did. */
+function HomeFighters({ home }: { home: HomeRecord }) {
+  const who = home.names.length > 1 ? `${home.country} (${home.names.join(", ")})` : home.country;
+  const rows: RankRow[] = [{
+    key: "judges", title: "Won on the judges' cards", value: pct(home.rate),
+    detail: `${home.won.toLocaleString()} of ${home.decisions.toLocaleString()} decisions with one fighter from ${who}`,
+  }];
+  if (home.fans.n) rows.push({
+    key: "fans", ...gapChip(home.fans.judges_rate, home.fans.rate), title: "The fans had them winning", value: pct(home.fans.rate),
+    detail: `${home.fans.home.toLocaleString()} of ${home.fans.n.toLocaleString()} with 30+ fan cards · the judges ${pct(home.fans.judges_rate)}${home.fans.won_against_fans ? ` · ${home.fans.won_against_fans} won against the fans` : ""}`,
+    hint: "Points more often the judges had the home fighter winning than the fans did, on the same bouts",
+  });
+  if (home.stats.n) rows.push({
+    key: "stats", ...gapChip(home.stats.judges_rate, home.stats.rate), title: "The stats had them winning", value: pct(home.stats.rate),
+    detail: `${home.stats.home.toLocaleString()} of ${home.stats.n.toLocaleString()} · the judges ${pct(home.stats.judges_rate)}`,
+    hint: "The stats card is what an average UFC judge gives each round from its numbers. The chip is how many points more often the judges had the home fighter winning, on the same bouts",
+  });
+  return <RankRows title="Home fighters" subtitle={`Every UFC event in ${home.country}`} rows={rows} />;
+}
+
 function PlacePage({ kind }: { kind: "venue" | "location" }) {
   const { slug = "" } = useParams();
   const path = `/${kind === "venue" ? "venues" : "locations"}/${slug}`;
@@ -162,6 +185,7 @@ function PlacePage({ kind }: { kind: "venue" | "location" }) {
       rate("Submission", data.results.sub, data.ufc_results.sub),
       rate("Decision", data.results.dec, data.ufc_results.dec),
     ]} />
+    {location?.home ? <HomeFighters home={location.home} /> : null}
     <YearBars title="Cards by year" data={[...byYear.values()].sort((a, b) => a.year - b.year)} unit="cards" marked="with a title bout"
       from={from} to={to} onPick={filters.pickYear} />
     {location?.venues.length ? <RankRows title="Venues" rows={location.venues.map((entry) => ({

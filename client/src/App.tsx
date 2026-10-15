@@ -45,6 +45,7 @@ const OfficialsPage = page(pages.directories, module => module.OfficialsPage);
 const VenuesPage = page(pages.directories, module => module.VenuesPage);
 const LocationsPage = page(pages.directories, module => module.LocationsPage);
 const AwardsPage = page(pages.directories, module => module.AwardsPage);
+const ControversialPage = page(pages.controversial, module => module.default);
 const LocationPage = page(pages.venue, module => module.LocationPage);
 const InfoPage = page(pages.info, module => module.default);
 const RosterPage = page(pages.roster, module => module.default);
@@ -306,6 +307,7 @@ export default function App() {
           <Route path="/venues" element={<VenuesPage />} />
           <Route path="/locations" element={<LocationsPage />} />
           <Route path="/awards" element={<AwardsPage />} />
+          <Route path="/controversial" element={<ControversialPage />} />
           <Route path="/roster" element={<RosterPage />} />
           <Route path="/judges/:slug" element={<JudgePage />} />
           <Route path="/referees/:slug" element={<RefereePage />} />

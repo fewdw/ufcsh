@@ -6,7 +6,7 @@ import { searchList } from "../search";
 import { formatMethod } from "../format";
 import { useRememberedState, useRouteScrollRestoration } from "../navigationState";
 import { PAGE, FULL_PAGE_BODY } from "../research";
-import PageToolbar, { BROWSE_WIDE, FilterSelect, ListHead, ToolbarSearch } from "../components/PageToolbar";
+import PageToolbar, { BROWSE_FLAT, BROWSE_WIDE, FilterSelect, ListHead, ToolbarSearch } from "../components/PageToolbar";
 import OptionsSheet, { SwitchRow } from "../components/OptionsSheet";
 import { PANEL } from "../components/chartTokens";
 import BrowseTabs from "../components/BrowseTabs";
@@ -83,6 +83,8 @@ export function OfficialsPage() {
   const minimum = ["10", "50", "100"].includes(params.get("minimum") ?? "") ? params.get("minimum")! : "0";
   const since = ["1", "5"].includes(params.get("since") ?? "") ? params.get("since")! : "all";
   const wide = useMediaQuery(BROWSE_WIDE);
+  // From lg up Judges and Referees are Browse tabs of their own.
+  const flat = useMediaQuery(BROWSE_FLAT);
   const scroll = useRouteScrollRestoration<HTMLDivElement>("officials", Boolean(data));
   useSeo({ title: "UFC Judges & Referees", description: "Every UFC judge and referee on record: scorecards, agreement, stoppages and the bouts behind each number.", path: "/officials" });
   const rate = kind === "judges" && judgeOrder.sort !== "name" && judgeOrder.sort !== "bouts" ? JUDGE_RATE[judgeOrder.sort] : null;
@@ -118,7 +120,7 @@ export function OfficialsPage() {
         <h1 className="sr-only">Judges & referees</h1>
         <PageToolbar>
           <BrowseTabs />
-          {wide ? <div className="ml-auto flex items-center gap-2">{choice}{filters}</div> : null}
+          {wide ? <div className="ml-auto flex items-center gap-2">{flat ? null : choice}{filters}</div> : null}
         </PageToolbar>
         <section aria-label={kind === "referees" ? "Referees" : "Judges"} className={`${PANEL} overflow-hidden`}>
           <ListHead title={kind === "referees" ? "Referees" : "Judges"} count={list.length}

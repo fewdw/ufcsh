@@ -507,6 +507,19 @@ function resultTag(fight: EventFight, outcome: FightSide["outcome"]): { label: s
   return { label: fight.method === "CNC" ? "NC" : fight.method.toUpperCase(), when: when || null };
 }
 
+const CONTROVERSY: Record<NonNullable<EventFight["controversy"]>, { tone: string; title: string }> = {
+  fans_other: { tone: "bg-rose-100 text-rose-700", title: "Controversial: the fans' average scorecard had the other winner" },
+  rounds_total: { tone: "bg-violet-100 text-violet-700", title: "Controversial: one fighter won more rounds on the fans' average scorecard, the other its total" },
+  close: { tone: "bg-amber-100 text-amber-800", title: "Controversial: the fans' average totals were under half a point apart" },
+};
+
+/** A decision the fans' cards call into question, coloured by why. */
+function ControversyTag({ fight }: { fight: EventFight }) {
+  if (!fight.controversy) return null;
+  const { tone, title } = CONTROVERSY[fight.controversy];
+  return <span className={`rounded px-1 py-px text-[9px] font-bold uppercase leading-3 ${tone}`} title={title}>Controversial</span>;
+}
+
 function CenterBlock({ fight, past, cancellation }: { fight: EventFight; past: boolean; cancellation?: CancelledBout }) {
   const f1Odds = fight.odds?.f1.close ?? null;
   const f2Odds = fight.odds?.f2.close ?? null;
@@ -562,6 +575,7 @@ function FightRow({ fight, past, eventId, live = false, cancellation }: { fight:
           {beltTag(fight)!.label}
         </span>
       ) : null}
+      <ControversyTag fight={fight} />
     </div>
   );
 
@@ -672,6 +686,7 @@ function CompactFightRow({ fight, done, live, cancellation }: { fight: EventFigh
         <span className="font-medium text-zinc-500">{divisionName(fight.weight_class, fight.catch_weight)}</span>
         {fight.scheduled_rounds ? <span>{roundsLabel(fight.scheduled_rounds)}</span> : null}
         {title ? <span className={`rounded px-1 py-px text-[9px] font-bold uppercase leading-3 ${title.className}`}>{title.label}</span> : null}
+        <ControversyTag fight={fight} />
         {cancellation ? <span className="ml-auto font-semibold text-red-700 dark:text-red-300">Cancelled</span> : null}
         {result ? <span className="ml-auto text-right" title={fight.method_details ?? result}>{result}</span> : null}
         {expected ? <span className="ml-auto tabular-nums" title="Approximate start in your time zone.">~{expected}</span> : null}

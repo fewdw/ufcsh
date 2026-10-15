@@ -7,6 +7,8 @@ import type { CareerBefore, ComparisonBlock, FightDetailBlock, Matchup, RoundBlo
 import { useApi } from "../api";
 import { decimalScore, type ScoreSummary } from "../scoring";
 import { lastName } from "../format";
+import { RESULT_PILL } from "../ui";
+import { SIGNAL_TONE, signalPills } from "./ControversyRow";
 import { Tooltip as TipBubble } from "./Tooltip";
 import { useTooltip } from "../tooltip";
 import { GRAPPLING_METRICS, metricView, profileText, resultView, STRIKING_METRICS, type ProfileMetric } from "../careerMetrics";
@@ -1120,14 +1122,70 @@ export function Scorecards({ fight }: { fight: Matchup }) {
   const fans = data && data.totals.avg1 != null && data.totals.avg2 != null ? data.totals : null;
   if (!judges?.length) return null;
   const decided = decidingRound(judges, fight.f1.outcome === "win" ? "f1" : fight.f2.outcome === "win" ? "f2" : null);
+  const judging = fight.judging ?? null;
   return (
     <section className={`${shell} @container overflow-hidden`}>
       <PanelHeading title="Scorecards" />
-      <ScorecardTable fight={fight} judges={judges} fans={fans} rounds={data?.rounds ?? []} decided={decided} />
+      <ScorecardTable fight={fight} judges={judges} fans={fans} rounds={data?.rounds ?? []} decided={decided} stats={judging?.stats ?? null} />
       {decided ? <p className="border-t border-zinc-100 px-4 py-2 text-center text-[11px] leading-4 text-zinc-500 sm:px-5">
         <span className="font-semibold text-zinc-900">Round {decided} decided the fight.</span> The judges split on it, and scored the other way it changes the winner.
       </p> : null}
+      {judging?.controversy ? <ControversyLine row={judging.controversy} /> : null}
+      {judging ? <JudgeNotes judges={judging.judges} /> : null}
     </section>
+  );
+}
+
+/** Why the fans' cards make this decision controversial, and the way to the rest. */
+function ControversyLine({ row }: { row: NonNullable<NonNullable<Matchup["judging"]>["controversy"]> }) {
+  const pills = signalPills(row);
+  if (!pills.length) return null;
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-1.5 border-t border-zinc-100 px-4 py-2 sm:px-5">
+      <span className="text-[11px] font-semibold text-zinc-900">Controversial</span>
+      {pills.map((pill) => <span key={pill.key} className={`${RESULT_PILL} ${SIGNAL_TONE[pill.key]}`} title={pill.title}>{pill.label}</span>)}
+      <Link to="/controversial" className="text-[11px] font-medium text-zinc-500 underline-offset-2 hover:text-zinc-900 hover:underline">All controversial decisions</Link>
+    </div>
+  );
+}
+
+/** What each judge on the card usually rewards, in up to three lines, and
+ *  the card of theirs the fans disputed most. A judge with too few scored
+ *  rounds to say anything is left out. */
+function JudgeNotes({ judges }: { judges: NonNullable<Matchup["judging"]>["judges"] }) {
+  const shown = judges.filter((judge): judge is NonNullable<typeof judge> => Boolean(judge && (judge.notes.length || judge.worst)));
+  if (!shown.length) return null;
+  return (
+    <div className="border-t border-zinc-100 px-4 py-3 sm:px-5">
+      <h3 className={`mb-2 ${sectionLabel}`}>How these judges score</h3>
+      <div className="grid gap-x-6 gap-y-4 @[44rem]:grid-cols-3">
+        {shown.map((judge) => (
+          <div key={judge.name} className="min-w-0">
+            <p className="text-xs font-semibold text-zinc-900">
+              {judge.slug ? <Link to={`/judges/${judge.slug}`} className="hover:underline">{judge.name}</Link> : judge.name}
+              {judge.bouts ? <span className="font-normal text-zinc-400"> · {judge.bouts.toLocaleString()} {judge.bouts === 1 ? "bout" : "bouts"} with rounds</span> : null}
+            </p>
+            {judge.notes.length ? (
+              <ul className="mt-1.5 space-y-1.5">
+                {judge.notes.map((note) => (
+                  <li key={note.key} className="text-[11px] leading-snug">
+                    <span className="font-medium text-zinc-800">{note.title}</span>
+                    <span className="block text-zinc-500">{note.detail}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {judge.worst ? (
+              <Link to={`/fights/${judge.worst.fight_id}`} className="mt-1.5 block text-[11px] leading-snug text-zinc-500 hover:text-zinc-900">
+                <span className="font-medium text-rose-700">Most disputed card:</span> {lastName(judge.worst.f1)} vs {lastName(judge.worst.f2)}{" "}
+                <span className="tabular-nums">({judge.worst.card.f1}–{judge.worst.card.f2}, fans {judge.worst.fans.avg1.toFixed(2)}–{judge.worst.fans.avg2.toFixed(2)})</span>{" "}
+                <span aria-hidden="true">↗</span>
+              </Link>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1146,19 +1204,33 @@ function ScorePair({ f1, f2, text, size }: { f1: number; f2: number; text: (valu
   );
 }
 
+/** A round as the stats read it: the favoured fighter's chance, in their colour. */
+function StatsRound({ p }: { p: number | null }) {
+  if (p == null) return <span className="text-[11px] text-zinc-300">—</span>;
+  const side: Side | null = p > 0.5 ? "f1" : p < 0.5 ? "f2" : null;
+  return (
+    <span className="text-[11px] font-semibold tabular-nums @[32rem]:text-xs" style={side ? { color: SIDE[side].ink } : undefined}>
+      {Math.round((side === "f2" ? 1 - p : p) * 100)}%
+    </span>
+  );
+}
+
 /** Every card as one table: judges (and the fans) across, the
  *  total first and each round under it, so the round names are printed once. */
-function ScorecardTable({ fight, judges, fans, rounds, decided }: {
+function ScorecardTable({ fight, judges, fans, rounds, decided, stats }: {
   fight: Matchup;
   judges: Judge[];
   fans: ScoreSummary["totals"] | null;
   rounds: ScoreSummary["rounds"];
   decided: number | null;
+  /** The card an average judge would give each round from its numbers. */
+  stats: NonNullable<Matchup["judging"]>["stats"];
 }) {
   const location = useLocation();
   const roundCount = Math.max(0, ...judges.map((judge) => judge.rounds?.length ?? 0), fans ? rounds.length : 0);
   const places = fans && !(Number.isInteger(fans.avg1!) && Number.isInteger(fans.avg2!)) ? 2 : 0;
-  const columns = judges.length + (fans ? 1 : 0);
+  const columns = judges.length + (fans ? 1 : 0) + (stats ? 1 : 0);
+  const statsTitle = "Stats: the round an average UFC judge gives these numbers, with how sure it is; the total counts the rounds";
   const cell = "flex min-w-0 items-center justify-center px-0.5";
   return (
     <div
@@ -1181,6 +1253,9 @@ function ScorecardTable({ fight, judges, fans, rounds, decided }: {
           {fans.completeCards.toLocaleString()} {fans.completeCards === 1 ? "fan" : "fans"}
         </Link>
       ) : null}
+      {stats ? (
+        <span title={statsTitle} className="line-clamp-2 px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] text-zinc-400 @[32rem]:text-[10px] @[32rem]:leading-4">Stats</span>
+      ) : null}
 
       <span aria-hidden="true" />
       {judges.map((judge, index) => (
@@ -1191,6 +1266,11 @@ function ScorecardTable({ fight, judges, fans, rounds, decided }: {
       {fans ? (
         <span className={`${cell} py-1.5`} aria-label={`Fans: ${lastName(fight.f1.name)} ${fans.avg1!.toFixed(places)}, ${lastName(fight.f2.name)} ${fans.avg2!.toFixed(places)}`}>
           <ScorePair f1={fans.avg1!} f2={fans.avg2!} text={(value) => value.toFixed(places)} size={places ? "text-[13px] @[44rem]:text-xl" : "text-lg @[32rem]:text-2xl"} />
+        </span>
+      ) : null}
+      {stats ? (
+        <span className={`${cell} py-1.5`} title={statsTitle} aria-label={`Stats: ${lastName(fight.f1.name)} ${stats.f1} rounds, ${lastName(fight.f2.name)} ${stats.f2}`}>
+          <ScorePair f1={stats.f1} f2={stats.f2} text={String} size="text-[13px] @[44rem]:text-xl" />
         </span>
       ) : null}
 
@@ -1208,6 +1288,11 @@ function ScorecardTable({ fight, judges, fans, rounds, decided }: {
           {fans ? (
             <span className={`${cell} border-t border-zinc-100 py-1`}>
               {rounds[index] ? <ScorePair f1={rounds[index].total1} f2={rounds[index].total2} text={decimalScore} size="text-[11px] @[32rem]:text-xs" /> : <span className="text-[11px] text-zinc-300">—</span>}
+            </span>
+          ) : null}
+          {stats ? (
+            <span className={`${cell} border-t border-zinc-100 py-1`}>
+              <StatsRound p={stats.rounds[index]?.p ?? null} />
             </span>
           ) : null}
         </Fragment>
