@@ -36,7 +36,9 @@ export const rankingTime = (date: string) => Date.parse(`${date}T00:00:00Z`);
 type RankingLine = RankingTimeline["divisions"][number];
 type Bout = { date: string; promotion?: string; outcome: string | null; upcoming?: boolean };
 
-/** Fit the chart to completed UFC fights. P4P is a separate series only if ever ranked. */
+/** Start at the UFC debut and run to the last completed UFC fight, or later
+ * when ranks moved after it: a current rank holds to the newest list, and a
+ * rank lost since ends where it dropped. P4P is a separate series only if ever ranked. */
 export function rankingChart(timeline: RankingTimeline | undefined, history: Bout[]) {
   if (!timeline) return null;
   const lines: RankingLine[] = timeline.divisions.filter((line) => line.points.some((point) => point.rank != null));
@@ -48,7 +50,10 @@ export function rankingChart(timeline: RankingTimeline | undefined, history: Bou
     .map((bout) => bout.date).sort();
   if (!dates.length) return null;
   const startDate = dates[0];
-  const endDate = dates.at(-1)!;
+  const endDate = [dates.at(-1)!, ...lines.flatMap((line) => {
+    const final = line.points.at(-1)!;
+    return final.rank == null ? [final.date] : [final.date, timeline.through];
+  })].filter((date): date is string => !!date).sort().at(-1)!;
   return {
     start: rankingTime(startDate),
     end: rankingTime(endDate),

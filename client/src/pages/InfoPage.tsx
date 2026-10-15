@@ -92,10 +92,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-15">October 15, 2026</time></p>
             <ul>
-              <li>Browse → Controversial: fan-vs-judge disagreements, closest calls and comeback finishes.</li>
-              <li>Judging analysis on judge profiles, matchups, event cards and Stats → Fights.</li>
-              <li>Compact community scorecard, one line per fighter.</li>
-              <li>Ranking history sits below the fighter card and is hidden for never-ranked fighters.</li>
+              <li>Ranking history now shows a fighter’s current rank, including ranks earned in their latest fight.</li>
             </ul>
           </Section>
         </div>
