@@ -92,7 +92,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-15">October 15, 2026</time></p>
             <ul>
-              <li>Ranking history now shows a fighter's current rank, including ranks earned in their latest fight.</li>
+              <li>Ranking history now shows a fighter’s current rank, including ranks earned in their latest fight.</li>
             </ul>
           </Section>
         </div>
