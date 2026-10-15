@@ -1166,34 +1166,28 @@ function ControversyLine({ row }: { row: NonNullable<NonNullable<Matchup["judgin
   );
 }
 
-/** Every named judge on the card, their scoring notes where supported,
- *  and the card of theirs the fans disputed most. */
+/** Every named judge on the card, a line per scoring habit (the evidence on
+ *  hover), and the card of theirs the fans disputed most. */
 function JudgeNotes({ judges, divided }: { judges: NonNullable<NonNullable<Matchup["judging"]>["judges"][number]>[]; divided: boolean }) {
   return (
     <div className={`px-4 pb-3 sm:px-5 ${divided ? "border-t border-zinc-100 pt-3" : "pt-1"}`}>
       <h3 className={`mb-2 ${sectionLabel}`}>How these judges score</h3>
-      <div className="grid gap-x-6 gap-y-4 @[44rem]:grid-cols-3">
+      <div className="grid gap-x-6 gap-y-3 @[44rem]:grid-cols-3">
         {judges.map((judge) => (
-          <div key={judge.name} className="min-w-0">
+          <div key={judge.name} className="min-w-0 text-[11px] leading-snug">
             <p className="text-xs font-semibold text-zinc-900">
               {judge.slug ? <Link to={`/judges/${judge.slug}`} className="hover:underline">{judge.name}</Link> : judge.name}
-              <span className="font-normal text-zinc-400"> · {judge.bouts.toLocaleString()} {judge.bouts === 1 ? "bout" : "bouts"} with rounds</span>
+              <span className="font-normal text-zinc-400"> · {judge.bouts.toLocaleString()} {judge.bouts === 1 ? "bout" : "bouts"}</span>
             </p>
             {judge.notes.length ? (
-              <ul className="mt-1.5 space-y-1.5">
-                {judge.notes.map((note) => (
-                  <li key={note.key} className="text-[11px] leading-snug">
-                    <span className="font-medium text-zinc-800">{note.title}</span>
-                    <span className="block text-zinc-500">{note.detail}</span>
-                  </li>
-                ))}
+              <ul className="mt-1 space-y-0.5 text-zinc-600">
+                {judge.notes.map((note) => <li key={note.key} title={note.detail}>{note.title}</li>)}
               </ul>
-            ) : <p className="mt-1.5 text-[11px] leading-snug text-zinc-500">Not enough scored rounds to describe scoring tendencies.</p>}
+            ) : <p className="mt-1 text-zinc-500">Too few scored rounds to read.</p>}
             {judge.worst ? (
-              <Link to={`/fights/${judge.worst.fight_id}`} className="mt-1.5 block text-[11px] leading-snug text-zinc-500 hover:text-zinc-900">
-                <span className="font-medium text-rose-700">Most disputed card:</span> {lastName(judge.worst.f1)} vs {lastName(judge.worst.f2)}{" "}
-                <span className="tabular-nums">({judge.worst.card.f1}–{judge.worst.card.f2}, fans {judge.worst.fans.avg1.toFixed(2)}–{judge.worst.fans.avg2.toFixed(2)})</span>{" "}
-                <span aria-hidden="true">↗</span>
+              <Link to={`/fights/${judge.worst.fight_id}`} className="mt-1 block text-zinc-500 hover:text-zinc-900"
+                title={`Their card ${judge.worst.card.f1}–${judge.worst.card.f2}, the fans ${judge.worst.fans.avg1.toFixed(2)}–${judge.worst.fans.avg2.toFixed(2)}`}>
+                <span className="font-medium text-rose-700">Most disputed:</span> {lastName(judge.worst.f1)} vs {lastName(judge.worst.f2)} <span aria-hidden="true">↗</span>
               </Link>
             ) : null}
           </div>
