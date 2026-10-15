@@ -71,3 +71,16 @@ provenance. Valid existing cards are preserved; timestamps are not transferred.
 Source freshness ages naturally on an isolated snapshot with sync disabled;
 those stale-source warnings are not production regressions. Diagnostic grades,
 item limits and coverage requirements are preserved.
+
+## Verification
+
+- All 531 server tests pass against a separate private archive copy.
+- All 145 client tests, server TypeScript, client lint and production build pass.
+- GitHub PR checks pass at the exact reviewed head.
+- A second rehearsal starts from a fresh production backup and repeats all
+  114 bout repairs without conflicts. The scorecard transfer adds three cards;
+  repeating both tools changes nothing. The repaired fresh copy reports 3,756
+  Not bad, 3,212 OK and no Must or confirmed replacement identity conflicts.
+- Regression cases cover unrelated headliners, wrong fighter identities,
+  incomplete/conditional contract evidence, wrong event dates, unchanged exact
+  notice, changed live fields, safe removals and idempotent replay.

@@ -90,11 +90,11 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-14">October 14, 2026</time></p>
+            <p><time dateTime="2026-10-15">October 15, 2026</time></p>
             <ul>
-              <li>Fighter photos are served from a network near you, so pages fill in faster.</li>
-              <li>Saving ufc.sh to an iPhone home screen shows its icon.</li>
-              <li>Every day's data is also backed up off-site, with a year of monthly copies.</li>
+              <li>More sourced signing dates and replacement announcements in fighter histories.</li>
+              <li>Corrected replacement identities and missed-weight checks.</li>
+              <li>Recovered historical community scorecards.</li>
             </ul>
           </Section>
         </div>
