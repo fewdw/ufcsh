@@ -39,7 +39,7 @@ type Bout = { date: string; promotion?: string; outcome: string | null; upcoming
 /** Fit the chart to completed UFC fights. P4P is a separate series only if ever ranked. */
 export function rankingChart(timeline: RankingTimeline | undefined, history: Bout[]) {
   if (!timeline) return null;
-  const lines: RankingLine[] = timeline.divisions.filter((line) => line.points.length);
+  const lines: RankingLine[] = timeline.divisions.filter((line) => line.points.some((point) => point.rank != null));
   if (timeline.p4p?.some((point) => point.rank != null)) {
     lines.push({ division: "Pound-for-pound", points: timeline.p4p });
   }
