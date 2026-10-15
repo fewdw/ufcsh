@@ -43,10 +43,11 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
           ) : undefined}
         />
         {/* One line per fighter, a column per round and the total last, the
-            way the fight list reads a card. */}
+            way the fight list reads a card. The scores sit centred in the panel:
+            an empty column the width of the names balances them on the right. */}
         <div className="@container overflow-x-auto">
           <div className="grid px-4 pb-3 pt-2 tabular-nums @[32rem]:px-5"
-            style={{ gridTemplateColumns: `minmax(4.5rem, 1fr) repeat(${rows + (finish ? 1 : 0)}, minmax(2.25rem, 3.5rem)) minmax(3rem, 4.5rem)` }}>
+            style={{ gridTemplateColumns: `minmax(4.5rem, 1fr) repeat(${rows + (finish ? 1 : 0)}, minmax(2.25rem, 3.5rem)) minmax(3rem, 4.5rem) minmax(0, 1fr)` }}>
             <span />
             {Array.from({ length: rows }, (_, index) => (
               <span key={index} className={`self-end py-1 text-center ${sectionLabel} !text-[9px] !tracking-normal ${index < eligibility.available ? "" : "opacity-50"}`}>R{index + 1}</span>
@@ -57,6 +58,7 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
               </span>
             ) : null}
             <span className={`self-end py-1 text-center ${sectionLabel} !text-[9px] !tracking-normal`}>Total</span>
+            <span />
             {([1, 2] as const).map((side) => {
               const fighter = side === 1 ? fight.f1 : fight.f2;
               const ink = side === 1 ? "text-f1-ink" : "text-f2-ink";
@@ -86,6 +88,7 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
                   <span className={`flex items-center justify-center border-t border-zinc-100 py-2 text-base @[32rem]:text-lg ${lead(total[0], total[1])}`}>
                     {decimalScore(total[0])}
                   </span>
+                  <span className="border-t border-zinc-100" />
                 </Fragment>
               );
             })}
