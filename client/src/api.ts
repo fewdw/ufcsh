@@ -496,6 +496,7 @@ export type FighterProfile = {
   photo_full_url: string | null;
   ranking: { division: string; rank: string; rank_change: string | null } | null;
   ranking_history?: RankingTimeline;
+  yearly_strikes?: { year: number; bouts: number; fights: number; landed: number | null; absorbed: number | null }[];
   records: FighterRecord[];
   career_stats: CareerTotals;
   insights: FightInsights;

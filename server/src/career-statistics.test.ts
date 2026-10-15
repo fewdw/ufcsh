@@ -121,5 +121,8 @@ test("data revisions refresh cached profile averages after a source correction",
     const evidence: any = await resolvePublicApi(new URL(`http://localhost/api/fighters/${fighterId}/career-stats`));
     assert.equal(after.career_stats.sigLanded, before.career_stats.sigLanded + 1);
     assert.deepEqual(after.career_stats, evidence.totals);
+    const affected = (profile: any) => profile.yearly_strikes.find((year: any) => year.year === fight.year);
+    assert(affected(after).landed > affected(before).landed, "the corrected year's rate refreshes with the profile");
+    assert.deepEqual(after.yearly_strikes.filter((year: any) => year.year !== fight.year), before.yearly_strikes.filter((year: any) => year.year !== fight.year));
   } finally { db.exec("ROLLBACK"); }
 });

@@ -1,12 +1,52 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { decisionScores, roundOutcomes, roundStrikes, type RoundOutcome } from "./fight-insights.ts";
+import { decisionScores, roundOutcomes, roundStrikes, yearlyStrikes, type RoundOutcome } from "./fight-insights.ts";
+import { careerStatistics } from "./career-statistics.ts";
 import { fightIndex, type IndexedFight } from "./fight-index.ts";
 
 const bout = (outcome: string, method: string, round: number | null, scheduledRounds = 3) => ({
   id: "fight", date: "2025-01-01", method, round, scheduledRounds,
   sides: [{ id: "a", name: "A", outcome }, { id: "b", name: "B", outcome: outcome === "win" ? "loss" : outcome === "loss" ? "win" : outcome }],
 }) as unknown as IndexedFight;
+
+test("yearly strikes use total recorded time, preserve zero rates, and exclude unpaired or missing samples", () => {
+  const struck = (year: number, seconds: number | null, landed: number | null, absorbed: number | null, reverse = false) => {
+    const actions = (count: number | null) => count == null ? {} : { significantStrikes: { scored: count, attempted: null } };
+    const sides = [{ id: "a", actions: actions(landed) }, { id: "b", actions: actions(absorbed) }];
+    return { ...bout("nc", "Overturned", 1), year, elapsed: seconds, sides: reverse ? sides.reverse() : sides } as unknown as IndexedFight;
+  };
+  assert.deepEqual(yearlyStrikes([
+    struck(2025, 60, 30, 10),
+    struck(2023, 300, 0, 0),
+    struck(2025, 540, 30, 20, true),
+    struck(2025, 300, null, 999),
+    struck(2025, 300, 999, null),
+    struck(2025, null, 999, 999),
+    struck(2025, 0, 999, 999),
+    struck(2026, null, 10, 10),
+  ], "a"), [
+    { year: 2023, bouts: 1, fights: 1, landed: 0, absorbed: 0 },
+    { year: 2025, bouts: 6, fights: 2, landed: 6, absorbed: 3 },
+    { year: 2026, bouts: 1, fights: 0, landed: null, absorbed: null },
+  ]);
+  assert.deepEqual(yearlyStrikes([], "a"), []);
+});
+
+test("archive: every year's strike rates agree with career-stat evidence for the same bouts", () => {
+  const index = fightIndex();
+  for (const fighter of index.fighters.values()) {
+    const evidence = careerStatistics(index, fighter.id)!;
+    for (const year of yearlyStrikes(fighter.fights, fighter.id)) {
+      const rows = evidence.rows.filter(row => Number(row.date.slice(0, 4)) === year.year);
+      const samples = rows.filter(row => row.totals.seconds > 0);
+      const seconds = samples.reduce((sum, row) => sum + row.totals.seconds, 0);
+      assert.equal(year.bouts, rows.length, fighter.name);
+      assert.equal(year.fights, samples.length, fighter.name);
+      assert.equal(year.landed, seconds ? samples.reduce((sum, row) => sum + row.totals.sigLanded, 0) / seconds * 60 : null, fighter.name);
+      assert.equal(year.absorbed, seconds ? samples.reduce((sum, row) => sum + row.totals.sigAbsorbed, 0) / seconds * 60 : null, fighter.name);
+    }
+  }
+});
 
 test("round outcomes: finishes in their round, decisions past every round, no contests left out", () => {
   const result = roundOutcomes([

@@ -1003,7 +1003,7 @@ function careerStatGaps(): BugCheck {
   }).reverse();
   return check({
     id: "career-stat-gaps", group: "Fighters", label: "Career statistics missing samples",
-    description: "Completed bouts missing attempt counts, recorded actions or fight time. Those samples are excluded from the corresponding career averages. Re-fetch the event and fight detail when the source has the data; some older bouts never recorded every statistic.",
+    description: "Completed bouts missing attempt counts, recorded actions or fight time. Those samples are excluded from the corresponding career averages and yearly strike rates. Re-fetch the event and fight detail when the source has the data; some older bouts never recorded every statistic.",
     grade: "minor",
   }, items);
 }

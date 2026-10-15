@@ -1,6 +1,6 @@
 import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, potentialMatchups, potentialFight } from "./potential-matchups.ts";
 import { careerStatistics } from "./career-statistics.ts";
-import { decisionScores, roundOutcomes, roundStrikes } from "./fight-insights.ts";
+import { decisionScores, roundOutcomes, roundStrikes, yearlyStrikes } from "./fight-insights.ts";
 import { opposition } from "./opposition.ts";
 import { tapeHistory } from "./tape-history.ts";
 import { eventStatus, fightIsComplete, fightIsUnderway, isFightDay, liveDetailDue } from "./live-state.ts";
@@ -1135,6 +1135,7 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     photo_full_url: cachedFullPhotoUrl(fr.id, fr.photo_full_url),
     ranking: ranking ?? null,
     ranking_history: rankingTimeline(fr.id, rankingType),
+    yearly_strikes: yearlyStrikes(indexedFighter?.fights ?? [], fr.id),
     // Where this fighter sits at the top of the sport, recomputed from the
     // same index the leaderboards use, so it moves the moment a result lands.
     records,

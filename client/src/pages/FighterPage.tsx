@@ -16,6 +16,7 @@ import RequestNotice from "../components/RequestNotice";
 import { BONUS_AGAINST_TAG, BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
 import FighterStatistics from "../components/FighterStatistics";
 import RankingHistory from "../components/RankingHistory";
+import YearlyStrikes from "../components/YearlyStrikes";
 import { fetchPage, LoadMore, useInfiniteList } from "../components/InfiniteList";
 import NewsRow, { savedOff, savedSummaries } from "../components/NewsRow";
 import { PanelHeading } from "../components/FightStats";
@@ -842,13 +843,14 @@ export default function FighterPage() {
         <ProfileTabs tabs={fought ? ["fights", "stats", "records", "news"] : ["fights", "news"]} current={tab} onSelect={selectTab} news={news?.total ?? null} className="lg:hidden" />
 
         {fought ? <div className={`${tab === "stats" ? "contents" : "hidden lg:contents"} [&>*]:shrink-0`}>
+          <RankingHistory key={fighter.id} timeline={fighter.ranking_history} history={fighter.history} fighterId={fighter.id} />
           <FighterCareerStats fighterId={fighter.id} name={fighter.name} totals={fighter.career_stats} />
+          <YearlyStrikes key={`strikes-${fighter.id}`} years={fighter.yearly_strikes} />
           {fighter.insights?.rounds ? <div className="grid grid-cols-2 gap-3">
             <RoundsPanel fighters={[fighter]} />
             <DecisionsPanel fighters={[fighter]} />
           </div> : null}
           <StrikesPanel fighters={[fighter]} />
-          <RankingHistory key={fighter.id} timeline={fighter.ranking_history} history={fighter.history} fighterId={fighter.id} />
         </div> : null}
         </div>
 

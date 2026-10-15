@@ -1,5 +1,30 @@
 import { parseCommunityScorecard } from "./community-scorecards.ts";
+import { fightCareerTotals } from "./career-metrics.ts";
 import { opponentOf, sideOf, type IndexedFight } from "./fight-index.ts";
+
+export type YearlyStrikes = { year: number; bouts: number; fights: number; landed: number | null; absorbed: number | null };
+
+/** Calendar-year rates, weighted by recorded fight time, using the same paired
+ * samples as career stats. A year without usable samples has no rate. */
+export function yearlyStrikes(fights: IndexedFight[], fighterId: string): YearlyStrikes[] {
+  const years = new Map<number, { bouts: number; fights: number; seconds: number; landed: number; absorbed: number }>();
+  for (const fight of fights) {
+    const sum = years.get(fight.year) ?? { bouts: 0, fights: 0, seconds: 0, landed: 0, absorbed: 0 };
+    years.set(fight.year, sum);
+    sum.bouts++;
+    const sample = fightCareerTotals(fight.elapsed, sideOf(fight, fighterId).actions, opponentOf(fight, fighterId).actions);
+    if (sample.seconds <= 0) continue;
+    sum.fights += sample.statBouts;
+    sum.seconds += sample.seconds;
+    sum.landed += sample.sigLanded;
+    sum.absorbed += sample.sigAbsorbed;
+  }
+  return [...years].sort(([a], [b]) => a - b).map(([year, sum]) => ({
+    year, bouts: sum.bouts, fights: sum.fights,
+    landed: sum.seconds > 0 ? sum.landed / sum.seconds * 60 : null,
+    absorbed: sum.seconds > 0 ? sum.absorbed / sum.seconds * 60 : null,
+  }));
+}
 
 /** One round of a fighter's UFC bouts: finishes won and lost in it, and the
  *  bouts that carried on past it (into the next round or to the cards). */
