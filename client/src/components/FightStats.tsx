@@ -1,15 +1,14 @@
 import CareerStatDetails from "./CareerStatDetails";
 import { decidingRound } from "../decidingRound";
 import { PANEL } from "./chartTokens";
-import { Fragment, useState } from "react";
+import { Fragment } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type { CareerBefore, ComparisonBlock, FightDetailBlock, Matchup, RoundBlock } from "../api";
 import { useApi } from "../api";
 import { decimalScore, type ScoreSummary } from "../scoring";
 import { lastName } from "../format";
 import { RESULT_PILL } from "../ui";
-import { CONTROL_TITLE, SIGNAL_TONE, STATS_TITLE, STRIKES_TITLE, controlShare, signalPills } from "./ControversyRow";
-import { ChevronDown } from "lucide-react";
+import { SIGNAL_TONE, signalPills } from "./ControversyRow";
 import { Tooltip as TipBubble } from "./Tooltip";
 import { useTooltip } from "../tooltip";
 import { GRAPPLING_METRICS, metricView, profileText, resultView, STRIKING_METRICS, type ProfileMetric } from "../careerMetrics";
@@ -1121,32 +1120,17 @@ export function Scorecards({ fight }: { fight: Matchup }) {
   // The fans' card belongs beside the judges', including its round scores.
   const { data } = useApi<ScoreSummary>(judges?.length ? `/api/fights/${fight.id}/scores` : null);
   const fans = data && data.totals.avg1 != null && data.totals.avg2 != null ? data.totals : null;
-  const [open, setOpen] = useState(false);
   if (!judges?.length) return null;
   const decided = decidingRound(judges, fight.f1.outcome === "win" ? "f1" : fight.f2.outcome === "win" ? "f2" : null);
   const judging = fight.judging ?? null;
-  const numbers = judging?.numbers ?? null;
-  const stats = judging?.stats ?? null;
-  const grid = { fight, judges, fans, rounds: data?.rounds ?? [], decided };
   return (
     <section className={`${shell} @container overflow-hidden`}>
       <PanelHeading title="Scorecards" />
-      <ScoreGrid {...grid} numbers={null} stats={null} />
+      <ScoreGrid fight={fight} judges={judges} fans={fans} rounds={data?.rounds ?? []} decided={decided} />
       {decided ? <p className="border-t border-zinc-100 px-4 py-2 text-center text-[11px] leading-4 text-zinc-500 sm:px-5">
         <span className="font-semibold text-zinc-900">Round {decided} decided the fight.</span> The judges split on it, and scored the other way it changes the winner.
       </p> : null}
       {judging?.controversy ? <ControversyLine row={judging.controversy} /> : null}
-      {/* Strikes, control and stats fold under one Show more. */}
-      {numbers || stats ? (
-        <div className={`pb-2 ${judging?.controversy ? "" : "border-t border-zinc-100 pt-2"}`}>
-          <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
-            className="mx-auto flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-50">
-            {open ? "Show less" : "Show more"}
-            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
-          </button>
-        </div>
-      ) : null}
-      {open && (numbers || stats) ? <ScoreGrid {...grid} judges={[]} fans={null} numbers={numbers} stats={stats} /> : null}
     </section>
   );
 }
@@ -1179,42 +1163,20 @@ function ScorePair({ f1, f2, text, size }: { f1: number; f2: number; text: (valu
   );
 }
 
-/** A round as the stats read it: the favoured fighter's chance, in their colour. */
-function StatsRound({ p }: { p: number | null }) {
-  if (p == null) return <span className="text-[11px] text-zinc-300">—</span>;
-  const side: Side | null = p > 0.5 ? "f1" : p < 0.5 ? "f2" : null;
-  return (
-    <span className="text-[11px] font-semibold tabular-nums @[32rem]:text-xs" style={side ? { color: SIDE[side].ink } : undefined}>
-      {Math.round((side === "f2" ? 1 - p : p) * 100)}%
-    </span>
-  );
-}
-
 /** Every card as one table: judges (and the fans) across, the total first
- *  and each round under it, so the round names are printed once. The
- *  strikes, control and stats get a grid of their own under Show more. */
-function ScoreGrid({ fight, judges, fans, rounds, decided, stats, numbers }: {
+ *  and each round under it, so the round names are printed once. */
+function ScoreGrid({ fight, judges, fans, rounds, decided }: {
   fight: Matchup;
   judges: Judge[];
   fans: ScoreSummary["totals"] | null;
   rounds: ScoreSummary["rounds"];
   decided: number | null;
-  /** The card an average judge would give each round from its numbers. */
-  stats: NonNullable<Matchup["judging"]>["stats"];
-  /** Each corner's significant strikes and control, by round and in all. */
-  numbers: NonNullable<Matchup["judging"]>["numbers"];
 }) {
   const location = useLocation();
-  const roundCount = Math.max(0, ...judges.map((judge) => judge.rounds?.length ?? 0), fans ? rounds.length : 0, numbers?.rounds.length ?? 0, stats?.rounds.length ?? 0);
+  const roundCount = Math.max(0, ...judges.map((judge) => judge.rounds?.length ?? 0), fans ? rounds.length : 0);
   const places = fans && !(Number.isInteger(fans.avg1!) && Number.isInteger(fans.avg2!)) ? 2 : 0;
-  const control = numbers?.ctrl ? numbers : null;
-  const columns = judges.length + (fans ? 1 : 0) + (numbers ? 1 : 0) + (control ? 1 : 0) + (stats ? 1 : 0);
-  const statsTitle = STATS_TITLE;
-  // Seven columns on a phone: the judges' totals step down a size to fit.
-  const totalSize = columns > 5 ? "text-[15px] @[40rem]:text-2xl" : "text-lg @[32rem]:text-2xl";
-  const smallTotal = "text-[12px] @[44rem]:text-xl";
-  const head = "line-clamp-2 self-end px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] text-zinc-400 @[32rem]:text-[10px] @[32rem]:leading-4";
-  const empty = <span className="text-[11px] text-zinc-300">—</span>;
+  const columns = judges.length + (fans ? 1 : 0);
+  const totalSize = "text-lg @[32rem]:text-2xl";
   const cell = "flex min-w-0 items-center justify-center px-0.5";
   return (
     <div
@@ -1237,9 +1199,6 @@ function ScoreGrid({ fight, judges, fans, rounds, decided, stats, numbers }: {
           {fans.completeCards.toLocaleString()} {fans.completeCards === 1 ? "fan" : "fans"}
         </Link>
       ) : null}
-      {numbers ? <span title={STRIKES_TITLE} className={head}>Strikes</span> : null}
-      {control ? <span title={CONTROL_TITLE} className={head}>Control</span> : null}
-      {stats ? <span title={statsTitle} className={head}>Stats</span> : null}
 
       <span aria-hidden="true" />
       {judges.map((judge, index) => (
@@ -1249,22 +1208,7 @@ function ScoreGrid({ fight, judges, fans, rounds, decided, stats, numbers }: {
       ))}
       {fans ? (
         <span className={`${cell} py-1.5`} aria-label={`Fans: ${lastName(fight.f1.name)} ${fans.avg1!.toFixed(places)}, ${lastName(fight.f2.name)} ${fans.avg2!.toFixed(places)}`}>
-          <ScorePair f1={fans.avg1!} f2={fans.avg2!} text={(value) => value.toFixed(places)} size={places ? (columns > 5 ? smallTotal : "text-[13px] @[44rem]:text-xl") : totalSize} />
-        </span>
-      ) : null}
-      {numbers ? (
-        <span className={`${cell} py-1.5`} title={STRIKES_TITLE} aria-label={`Significant strikes: ${lastName(fight.f1.name)} ${numbers.sig[0]}, ${lastName(fight.f2.name)} ${numbers.sig[1]}`}>
-          <ScorePair f1={numbers.sig[0]} f2={numbers.sig[1]} text={String} size={smallTotal} />
-        </span>
-      ) : null}
-      {control ? (
-        <span className={`${cell} py-1.5`} title="Control time as a share of the whole fight" aria-label={`Control: ${lastName(fight.f1.name)} ${controlShare(control.ctrl![0], control.seconds)}% of the fight, ${lastName(fight.f2.name)} ${controlShare(control.ctrl![1], control.seconds)}%`}>
-          <ScorePair f1={controlShare(control.ctrl![0], control.seconds)} f2={controlShare(control.ctrl![1], control.seconds)} text={(value) => `${value}%`} size={smallTotal} />
-        </span>
-      ) : null}
-      {stats ? (
-        <span className={`${cell} py-1.5`} title={statsTitle} aria-label={`Stats: ${lastName(fight.f1.name)} ${stats.f1} rounds, ${lastName(fight.f2.name)} ${stats.f2}`}>
-          <ScorePair f1={stats.f1} f2={stats.f2} text={String} size={columns > 5 ? smallTotal : "text-[13px] @[44rem]:text-xl"} />
+          <ScorePair f1={fans.avg1!} f2={fans.avg2!} text={(value) => value.toFixed(places)} size={places ? "text-[13px] @[44rem]:text-xl" : totalSize} />
         </span>
       ) : null}
 
@@ -1282,22 +1226,6 @@ function ScoreGrid({ fight, judges, fans, rounds, decided, stats, numbers }: {
           {fans ? (
             <span className={`${cell} border-t border-zinc-100 py-1`}>
               {rounds[index] ? <ScorePair f1={rounds[index].total1} f2={rounds[index].total2} text={decimalScore} size="text-[11px] @[32rem]:text-xs" /> : <span className="text-[11px] text-zinc-300">—</span>}
-            </span>
-          ) : null}
-          {numbers ? (
-            <span className={`${cell} border-t border-zinc-100 py-1`}>
-              {numbers.rounds[index] ? <ScorePair f1={numbers.rounds[index].sig[0]} f2={numbers.rounds[index].sig[1]} text={String} size="text-[11px] @[32rem]:text-xs" /> : empty}
-            </span>
-          ) : null}
-          {control ? (
-            <span className={`${cell} border-t border-zinc-100 py-1`}>
-              {control.rounds[index]?.ctrl ? <ScorePair f1={controlShare(control.rounds[index].ctrl![0], control.rounds[index].seconds)} f2={controlShare(control.rounds[index].ctrl![1], control.rounds[index].seconds)}
-                text={(value) => `${value}%`} size="text-[10px] @[32rem]:text-xs" /> : empty}
-            </span>
-          ) : null}
-          {stats ? (
-            <span className={`${cell} border-t border-zinc-100 py-1`}>
-              <StatsRound p={stats.rounds[index]?.p ?? null} />
             </span>
           ) : null}
         </Fragment>
