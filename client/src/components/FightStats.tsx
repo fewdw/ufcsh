@@ -1127,7 +1127,6 @@ export function Scorecards({ fight }: { fight: Matchup }) {
   const judging = fight.judging ?? null;
   const numbers = judging?.numbers ?? null;
   const stats = judging?.stats ?? null;
-  const notes = (judging?.judges ?? []).filter((judge): judge is NonNullable<typeof judge> => Boolean(judge));
   const grid = { fight, judges, fans, rounds: data?.rounds ?? [], decided };
   return (
     <section className={`${shell} @container overflow-hidden`}>
@@ -1137,8 +1136,8 @@ export function Scorecards({ fight }: { fight: Matchup }) {
         <span className="font-semibold text-zinc-900">Round {decided} decided the fight.</span> The judges split on it, and scored the other way it changes the winner.
       </p> : null}
       {judging?.controversy ? <ControversyLine row={judging.controversy} /> : null}
-      {/* Strikes, control, stats and the judges' notes fold under one Show more. */}
-      {numbers || stats || notes.length ? (
+      {/* Strikes, control and stats fold under one Show more. */}
+      {numbers || stats ? (
         <div className={`pb-2 ${judging?.controversy ? "" : "border-t border-zinc-100 pt-2"}`}>
           <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
             className="mx-auto flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-50">
@@ -1148,7 +1147,6 @@ export function Scorecards({ fight }: { fight: Matchup }) {
         </div>
       ) : null}
       {open && (numbers || stats) ? <ScoreGrid {...grid} judges={[]} fans={null} numbers={numbers} stats={stats} /> : null}
-      {open && notes.length ? <JudgeNotes judges={notes} divided={Boolean(numbers || stats)} /> : null}
     </section>
   );
 }
@@ -1162,43 +1160,6 @@ function ControversyLine({ row }: { row: NonNullable<NonNullable<Matchup["judgin
       <span className="text-[11px] font-semibold text-zinc-900">Controversial</span>
       {pills.map((pill) => <span key={pill.key} className={`${RESULT_PILL} ${SIGNAL_TONE[pill.key]}`} title={pill.title}>{pill.label}</span>)}
       <Link to="/controversial" className="text-[11px] font-medium text-zinc-500 underline-offset-2 hover:text-zinc-900 hover:underline">All controversial decisions</Link>
-    </div>
-  );
-}
-
-/** What a judge's habit is about, in the words the server's notes use, to pick out in bold. */
-const HABIT_TERMS = /(submission attempts|ground strikes|standing strikes|control time|strike count|home fighters|the numbers|the fans|control|striking|takedowns|damage|volume|pressure|accuracy)/;
-
-function HabitLine({ title }: { title: string }) {
-  return <>{title.split(HABIT_TERMS).map((part, index) => index % 2 ? <strong key={index} className="font-semibold text-zinc-900">{part}</strong> : part)}</>;
-}
-
-/** Every named judge on the card, a line per scoring habit (the evidence on
- *  hover), and the card of theirs the fans disputed most. */
-function JudgeNotes({ judges, divided }: { judges: NonNullable<NonNullable<Matchup["judging"]>["judges"][number]>[]; divided: boolean }) {
-  return (
-    <div className={`px-4 pb-3 sm:px-5 ${divided ? "border-t border-zinc-100 pt-3" : "pt-1"}`}>
-      <div className="grid gap-x-6 gap-y-3 @[44rem]:grid-cols-3">
-        {judges.map((judge) => (
-          <div key={judge.name} className="min-w-0 text-[11px] leading-snug">
-            <p className="text-xs font-semibold text-zinc-900">
-              {judge.slug ? <Link to={`/judges/${judge.slug}`} className="hover:underline">{judge.name}</Link> : judge.name}
-              <span className="font-normal text-zinc-400"> · {judge.bouts.toLocaleString()} {judge.bouts === 1 ? "bout" : "bouts"}</span>
-            </p>
-            {judge.notes.length ? (
-              <ul className="mt-1 space-y-0.5 text-zinc-600">
-                {judge.notes.map((note) => <li key={note.key} title={note.detail}><HabitLine title={note.title} /></li>)}
-              </ul>
-            ) : <p className="mt-1 text-zinc-500">Too few scored rounds to read.</p>}
-            {judge.worst ? (
-              <Link to={`/fights/${judge.worst.fight_id}`} className="mt-1 block text-zinc-500 hover:text-zinc-900"
-                title={`Their card ${judge.worst.card.f1}–${judge.worst.card.f2}, the fans ${judge.worst.fans.avg1.toFixed(2)}–${judge.worst.fans.avg2.toFixed(2)}`}>
-                <span className="font-medium text-rose-700">Most disputed:</span> {lastName(judge.worst.f1)} vs {lastName(judge.worst.f2)} <span aria-hidden="true">↗</span>
-              </Link>
-            ) : null}
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
