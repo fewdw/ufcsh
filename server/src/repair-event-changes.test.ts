@@ -15,9 +15,10 @@ function fixture(t: { after: (callback: () => void) => void }) {
   db.exec(`CREATE TABLE events (id TEXT, date TEXT, wiki_title TEXT, location TEXT);
     INSERT INTO events VALUES ('event', '2024-01-20', 'UFC example', 'Las Vegas, Nevada');
     CREATE TABLE fights (id TEXT, event_id TEXT, f1_id TEXT, f2_id TEXT, f1_name TEXT, f2_name TEXT, method TEXT, round TEXT,
-      f1_replaced TEXT, f2_replaced TEXT, f1_notice TEXT, f2_notice TEXT, f1_replaced_id TEXT, f2_replaced_id TEXT);
+      f1_replaced TEXT, f2_replaced TEXT, f1_notice TEXT, f2_notice TEXT, f1_replaced_id TEXT, f2_replaced_id TEXT,
+      f1_short_notice INTEGER, f2_short_notice INTEGER);
     INSERT INTO fights VALUES ('bout', 'event', 'jean', 'westin', 'Jean Silva', 'Westin Wilson', 'KO/TKO', '1',
-      'Yana Santos', NULL, NULL, NULL, 'yana', NULL);`);
+      'Yana Santos', NULL, NULL, NULL, 'yana', NULL, NULL, NULL);`);
   return db;
 }
 
@@ -65,4 +66,18 @@ test("an existing exact notice survives a source replay", t => {
   const result = repairEventChanges(baseline, target, [article], true);
   assert.equal(result.names, 1); assert.equal(result.notices, 0);
   assert.equal(target.prepare("SELECT f1_notice FROM fights").get()?.f1_notice, "3 days");
+});
+
+test("a confirmed wrong replacement is removed with its dependent fields and remains idempotent", t => {
+  const baseline = fixture(t), target = fixture(t);
+  for (const db of [baseline, target]) db.exec(`UPDATE events SET date = '2022-10-29';
+    UPDATE fights SET f1_name = 'Christian Rodriguez', f2_name = 'Joshua Weems', f1_replaced = 'Drakkar Klose', f1_notice = '10 days';`);
+  const source = { ...article, text: `{{Infobox MMA event\n|date=October 29, 2022\n|city=Las Vegas\n}}
+Christian Rodriguez was expected to face Garrett Armfield. However, Armfield withdrew and was replaced by Joshua Weems.
+==Results==
+Christian Rodriguez vs Joshua Weems` };
+  assert.equal(repairEventChanges(baseline, target, [source], true).names, 2);
+  const row = target.prepare("SELECT f1_replaced, f1_notice, f1_replaced_id, f1_short_notice FROM fights").get();
+  assert.deepEqual({ ...row }, { f1_replaced: null, f1_notice: null, f1_replaced_id: null, f1_short_notice: null });
+  assert.equal(repairEventChanges(baseline, target, [source], true).fights, 0);
 });

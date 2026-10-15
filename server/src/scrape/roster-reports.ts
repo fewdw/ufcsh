@@ -13,8 +13,9 @@ export function citedRosterReports(wikitext: string, names: string[]): Report[] 
   const signing = new RegExp(`\\b(?:signs?|signed|joins?|joined|inks?|inked)(?: ${modifiers}){0,12} ufc\\b(?! (?:\\d|fight|on|lineup))`);
   const award = /\b(?:earns?|earned) (?:a )?ufc contracts?\b|\bawarded (?:a )?contracts? (?:with|by) (?:the )?ufc\b/;
   const ufcSigning = /\bufc(?: (?:has|had|officially|reportedly)){0,3} (?:signs|signed|inks|inked)\b/;
-  const leaving = /\b(?:released|cut) (?:from|by) (?:the )?ufc\b|\b(?:announces?|confirms?|reveals?) (?:his |her )?ufc releases?\b/;
+  const leaving = /\b(?:released|cut) (?:from|by) (?:(?:the|his|her) )?ufc\b|\b(?:announces?|confirms?|reveals?) (?:his |her )?ufc releases?\b/;
   const ufcLeaving = /\bufc(?: (?:has|had|officially|reportedly)){0,3} (?:releases|released|cuts|cut)\b/;
+  const departed = /\b(?:and (?:the )?ufc (?:have |had )?part(?:ed)? ways|part(?:s|ed|ing)? ways with (?:the )?ufc|(?:is |was |are |were )?no longer under contract with (?:the )?ufc)\b/;
   const positions = (title: string): { start: number; end: number }[] => {
     const words = title.split(" ");
     const result: { start: number; end: number }[] = [];
@@ -38,14 +39,15 @@ export function citedRosterReports(wikitext: string, names: string[]): Report[] 
     const who = positions(title);
     const url = field("url");
     if (!who.length || !/^https?:\/\//.test(url) || /\/forums?\b|reddit\.com/i.test(url)
-      || /\b(?:not|never|denies|denied|rumor|rumour|could|might|set to|expected to|hopes? to|aims? to|wants? to|will (?:sign|earn|join))\b/.test(title)) continue;
+      || /\b(?:not|never|denies|denied|rumor|rumour|could|might|unless|conditional|would (?:sign|earn|join|retire)|set to|expected to|hopes? to|aims? to|wants? to|will (?:sign|earn|join))\b/.test(title)) continue;
     const date = citationDate(field("date"));
     if (!date) continue;
+    const otherAction = /\b(?:vs|meets?|met|faces?|faced|fought|against|replaces?|replaced|signs?|signed|joins?|joined|releases?|released|cuts?|cut|defeats?|defeated|lost|wins?|won|beats?|beat)\b/;
     const subject = (pattern: RegExp, after = false) => {
       const match = pattern.exec(title);
       return match && who.some(person => after
-        ? person.start >= match.index + match[0].length && !/\b(?:vs|meets|faces|against|replaces|signs?|joins?|releases?|cuts?)\b/.test(title.slice(match.index + match[0].length, person.start))
-        : person.end <= match.index && !/\b(?:vs|meets|faces|against|replaces|signs?|joins?|releases?|cuts?)\b/.test(title.slice(person.end, match.index)));
+        ? person.start >= match.index + match[0].length && !otherAction.test(title.slice(match.index + match[0].length, person.start))
+        : person.end <= match.index && !otherAction.test(title.slice(person.end, match.index)));
     };
     const awarded = award.exec(title);
     const directAward = awarded && who.some(person => person.end <= awarded.index
@@ -54,39 +56,60 @@ export function citedRosterReports(wikitext: string, names: string[]): Report[] 
       reports.push({ date, kind: "signed", reason: null, source_url: url });
     } else if (subject(leaving) || subject(ufcLeaving, true)) {
       reports.push({ date, kind: "released", reason: "Released", source_url: url });
+    } else if (subject(departed)) {
+      reports.push({ date, kind: "departed", reason: "Parted ways", source_url: url });
     } else if (/\bufc\b/.test(title) && !/\b(?:former|vet|veteran|bellator|pfl|rizin|will|plans|return|returns|retirement fight|final fight)\b/.test(title)
-      && subject(/\b(?:announces? (?:his |her )?retirement|retires?|retired|notifies (?:the )?ufc of (?:his |her )?retirement)\b/)) {
+      && subject(/\b(?:announc(?:es?|ed) (?:his |her )?retirement|retires?|retired|notifies (?:the )?ufc of (?:his |her )?retirement)\b/)) {
       reports.push({ date, kind: "retired", reason: "Retired", source_url: url });
     }
   }
   return reports;
 }
 
-/** An exact date stated at the start of a biography paragraph. Bare months,
+/** An exact contract date stated in a biography sentence. Bare months,
  * citation publication dates and dates of booked bouts are never substituted
  * for the stated contract date. An opening he/she refers to the biography's
  * subject; a named opponent is still checked by the citation-title matcher. */
 export function datedRosterStatements(wikitext: string, names: string[]): Report[] {
   const reports: Report[] = [];
   const narrative = wikitext.split(/==\s*(?:Professional )?(?:Mixed martial arts|MMA) record\s*==/i)[0];
-  for (const paragraph of narrative.split(/\n\s*\n/)) {
-    const text = plainText(paragraph).replace(/\s+/g, " ").trim();
-    const opening = /^On ((?:[A-Z][a-z]+ \d{1,2},? \d{4}|\d{1,2} [A-Z][a-z]+ \d{4})),? (.+?)(?:\.(?: |$)|$)/.exec(text);
-    if (!opening) continue;
-    let statement = opening[2].replace(/^it was (?:announced|reported|confirmed),? that /i, "");
-    // Biography prose commonly uses its subject's surname: "Mokaev signed",
-    // "it was announced that Murphy had signed". Only the opening subject
-    // can be expanded; a different full name or a later opponent stays intact.
-    const subject = /^((?:[\p{L}'’.-]+ ){0,3}?[\p{L}'’.-]+)(?= (?:was|is|has|had|signed|joined|announced|confirmed|revealed|retired|notified|earned|awarded)\b)/u.exec(statement);
-    const written = normName(subject?.[1]);
-    if (subject && (/^(?:he|she)$/.test(written) || names.some(name => normName(name) === written
-      || (written.length >= 4 && normName(name).endsWith(` ${written}`))))) {
-      statement = names[0] + statement.slice(subject[1].length);
+  const date = "(?:[A-Z][a-z]+ \\d{1,2},? \\d{4}|\\d{1,2} [A-Z][a-z]+ \\d{4})";
+  let ufcLevel = 0;
+  for (const block of narrative.split(/(^={2,}[^\n]*={2,}\s*$)/m)) {
+    const heading = /^(={2,})\s*(.*?)\s*\1\s*$/.exec(block);
+    if (heading) {
+      if (heading[1].length <= ufcLevel || /post.ufc|bellator|rizin|professional fighters league|bare knuckle/i.test(heading[2])) ufcLevel = 0;
+      if (/^(?:return to (?:the )?)?(?:ultimate fighting championship|ufc)(?:\s*\([\d– -]+\))?$/i.test(heading[2])) ufcLevel = heading[1].length;
+      continue;
     }
-    statement = statement.replace(/^((?:the )?UFC (?:had |has )?(?:released|signed) )(?:him|her)\b/i, `$1${names[0]}`);
-    // This synthetic citation only reuses the date/subject/action validation;
-    // the retained source is the actual biography revision, set by the importer.
-    reports.push(...citedRosterReports(`<ref>{{cite web|title=${statement}|date=${opening[1]}|url=https://en.wikipedia.org/}}</ref>`, names));
+    for (const paragraph of block.split(/\n\s*\n/)) {
+      const text = plainText(paragraph).replace(/\s+/g, " ").trim();
+      for (let sentence of text.split(/(?<=[.!?])(?<!\bJr\.)(?<!\bSr\.)\s+(?=[A-Z])/)) {
+        // "The promotion" has a clear antecedent only inside the UFC's own
+        // section, and never when the sentence introduces another promotion.
+        if (ufcLevel && !/bellator|rizin|\bPFL\b|\bONE\b|bare.knuckle|\bWWE\b/i.test(sentence)) {
+          sentence = sentence.replace(/\bthe (?:promotion|organization)\b/gi, "the UFC");
+          if (/\b(?:announced (?:his |her )?retirement from (?:mixed martial arts|MMA)|retired from (?:mixed martial arts|MMA))\b/i.test(sentence)) sentence += " (UFC)";
+        }
+        const opening = new RegExp(`^On (${date}),? (.+)$`).exec(sentence)
+          ?? new RegExp(`^It was (?:announced|reported|confirmed) on (${date}),? that (.+)$`, "i").exec(sentence);
+        const ending = new RegExp(`^(.+? (?:was |had been |has been )?(?:released|cut|signed|joined) (?:from |by |with |to )?(?:(?:the|his|her) )?(?:UFC|Ultimate Fighting Championship)(?: contract)? on (${date}))(?=[.,; ]|$)`, "i").exec(sentence);
+        if (!opening && !ending) continue;
+        const reportedDate = opening?.[1] ?? ending![2];
+        let statement = (opening?.[2] ?? ending![1].slice(0, ending![1].lastIndexOf(" on ")))
+          .replace(/^it was (?:announced|reported|confirmed|revealed),? that /i, "");
+        // Only expand the opening biography subject; other full names and
+        // names of later opponents retain their own identities.
+        const subject = /^((?:[\p{L}'’.-]+ ){0,3}?[\p{L}'’.-]+)(?= (?:was|is|has|had|signed|joined|announced|confirmed|revealed|retired|notified|earned|awarded)\b)/u.exec(statement);
+        const written = normName(subject?.[1]);
+        if (subject && (/^(?:he|she)$/.test(written) || names.some(name => normName(name) === written
+          || (written.length >= 4 && normName(name).endsWith(` ${written}`))))) {
+          statement = names[0] + statement.slice(subject[1].length);
+        }
+        statement = statement.replace(/^((?:the )?UFC (?:had |has )?(?:released|signed) )(?:him|her)\b/i, `$1${names[0]}`);
+        reports.push(...citedRosterReports(`<ref>{{cite web|title=${statement}|date=${reportedDate}|url=https://en.wikipedia.org/}}</ref>`, names));
+      }
+    }
   }
   return reports;
 }

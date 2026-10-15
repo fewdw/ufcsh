@@ -43,8 +43,13 @@ const WIKIPEDIA: RosterHistoryEvent[] = ([
   source_url: `https://en.wikipedia.org/w/index.php?oldid=${revision}`,
 }));
 
+const CONTRACTS: RosterHistoryEvent[] = (JSON.parse(readFileSync(new URL("./roster-history-contracts.json", import.meta.url), "utf8")) as
+  [string, string, string, number][]).map(([name, date, source_url]) => ({
+  name, date, kind: "signed", reason: "Awarded UFC contract on Dana White's Contender Series", source_url, observed: false,
+}));
+
 export function storedRosterHistory(): RosterHistoryEvent[] {
-  return [...VERIFIED, ...WIKIPEDIA, ...JSON.parse(getMeta("roster_history") ?? "[]") as RosterHistoryEvent[]];
+  return [...VERIFIED, ...WIKIPEDIA, ...CONTRACTS, ...JSON.parse(getMeta("roster_history") ?? "[]") as RosterHistoryEvent[]];
 }
 
 /** Keep dated reports after the rolling recent-roster lists drop them. Names

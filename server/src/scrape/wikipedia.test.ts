@@ -479,3 +479,12 @@ test("a bout replaced by another bout, or a sentence about a later card, names n
   ].join(" "));
   assert.deepEqual(cardChanges(text, [["Sarah Kaufman", "Jessica Eye"], ["Frank Mir", "Antonio Rodrigo Nogueira"]]).changes, []);
 });
+
+test("a moved bout's event title cannot name another fighter as its replacement", () => {
+  const text = `[[Drakkar Klose]] was expected to face [[Mark Madsen]]. However, Klose pulled out due to an injury.
+He was replaced by [[Grant Dawson]] and the bout was moved to [[UFC Fight Night: Rodriguez vs. Lemos]] a week later.
+Garrett Armfield and Christian Rodriguez were expected to meet in a bantamweight bout. However, Armfield pulled out due to a staph infection. He was replaced by Joshua Weems.`;
+  const { changes } = cardChanges(text, [["Christian Rodriguez", "Joshua Weems"]]);
+  assert.equal(changes.some(change => change.name === "Christian Rodriguez"), false);
+  assert.equal(changes.find(change => change.name === "Joshua Weems")?.replaced, "Garrett Armfield");
+});
