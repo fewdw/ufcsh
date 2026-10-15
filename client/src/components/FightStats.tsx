@@ -1166,6 +1166,13 @@ function ControversyLine({ row }: { row: NonNullable<NonNullable<Matchup["judgin
   );
 }
 
+/** What a judge's habit is about, in the words the server's notes use, to pick out in bold. */
+const HABIT_TERMS = /(submission attempts|ground strikes|standing strikes|control time|strike count|home fighters|the numbers|the fans|control|striking|takedowns|damage|volume|pressure|accuracy)/;
+
+function HabitLine({ title }: { title: string }) {
+  return <>{title.split(HABIT_TERMS).map((part, index) => index % 2 ? <strong key={index} className="font-semibold text-zinc-900">{part}</strong> : part)}</>;
+}
+
 /** Every named judge on the card, a line per scoring habit (the evidence on
  *  hover), and the card of theirs the fans disputed most. */
 function JudgeNotes({ judges, divided }: { judges: NonNullable<NonNullable<Matchup["judging"]>["judges"][number]>[]; divided: boolean }) {
@@ -1180,7 +1187,7 @@ function JudgeNotes({ judges, divided }: { judges: NonNullable<NonNullable<Match
             </p>
             {judge.notes.length ? (
               <ul className="mt-1 space-y-0.5 text-zinc-600">
-                {judge.notes.map((note) => <li key={note.key} title={note.detail}>{note.title}</li>)}
+                {judge.notes.map((note) => <li key={note.key} title={note.detail}><HabitLine title={note.title} /></li>)}
               </ul>
             ) : <p className="mt-1 text-zinc-500">Too few scored rounds to read.</p>}
             {judge.worst ? (
