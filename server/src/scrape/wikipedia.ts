@@ -1,6 +1,6 @@
 import { fetchHtml } from "../http.ts";
 import { editDistance, firstLastName, normName } from "../util.ts";
-import { verifiedReplacementAnnouncement } from "../replacement-announcements.ts";
+import { invalidReplacement, verifiedReplacementAnnouncement, verifiedReplacementIdentity } from "../replacement-announcements.ts";
 
 const API = "https://en.wikipedia.org/w/api.php";
 
@@ -369,7 +369,14 @@ export function cardChanges(wikitext: string, bouts: [string, string][]): CardCh
   const linked = [...withoutRefs(background).matchAll(/\[\[(?:[^|\]]*\|)?([^\]]*)\]\]/g)].map((match) => match[1].trim())
     .filter((text) => /^[\p{L}'’. -]+$/u.test(text) && text.split(" ").length <= 4 && !/\b(?:UFC|Championship|Champion|Bellator|Fight|Event|Season)\b/.test(text));
   // "UFC 279: Chimaev vs. Diaz" stays in one sentence.
-  const prose = plainText(background).replace(/\n\*+\s*/g, ". ").replace(/\s+/g, " ");
+  // Event titles contain fighters' names too. Keep the event cue for history
+  // checks, but do not read a title's headliner as a person in this sentence.
+  const peopleProse = background.replace(/\[\[([^\]]+)\]\]/g, (link, content: string) => {
+    const target = content.split("|")[0];
+    return /^UFC(?: \d+| (?:Fight Night|on |Live\b))/.test(target) ? "UFC event"
+      : /^The Ultimate Fighter[: ]/.test(target) ? "The Ultimate Fighter" : link;
+  });
+  const prose = plainText(peopleProse).replace(/\n\*+\s*/g, ". ").replace(/\s+/g, " ");
   const sentences = prose.split(/(?<=[.!?])(?<!\bvs\.)\s+(?=[A-Z])/);
   const people = cardPeople(bouts.flat());
   const held = infoboxDate(wikitext);
@@ -591,6 +598,16 @@ export function cardChanges(wikitext: string, bouts: [string, string][]): CardCh
     reason: pair.withdrew ? `${pair.withdrew.who} withdrew${short(pair.withdrew.why) ? ` (${short(pair.withdrew.why)})` : ""}`
       : short(pair.reason) ? `${pair.reason![0].toUpperCase()}${pair.reason!.slice(1)}` : null,
   }));
+  if (held) for (const person of people) {
+    const previous = found.get(person.name);
+    if (previous && invalidReplacement(person.name, previous.replaced, held)) found.delete(person.name);
+    const identity = verifiedReplacementIdentity(person.name, held);
+    if (!identity) continue;
+    const prior = found.get(person.name);
+    found.set(person.name, { name: person.name, replaced: identity,
+      shortNotice: prior?.shortNotice ?? false,
+      notice: prior?.replaced && normName(prior.replaced) !== normName(identity) ? null : prior?.notice ?? null });
+  }
   const changes = [...found.values()];
   citedReplacementAnnouncements(background, changes, held);
   if (held) for (const change of changes) {

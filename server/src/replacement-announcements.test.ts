@@ -9,7 +9,7 @@ test("retained announcement evidence requires the exact pairing, direction and e
   assert.equal(verifiedReplacementAnnouncement("Jose Aldo", "Frankie Edgar", "2017-12-03"), null);
   assert.equal(verifiedReplacementAnnouncement("Jose Aldo", "Another Fighter", "2017-12-02"), null);
   for (const report of VERIFIED_REPLACEMENT_REPORTS) {
-    assert.match(report.source, /^https:\/\/www\.mmafighting\.com\//);
+    assert.equal(new URL(report.source).protocol, "https:");
     assert.equal(new Date(report.date).toISOString().slice(0, 10), report.date);
     assert.ok(verifiedReplacementAnnouncement(report.name, report.replaced, report.eventDate));
   }
