@@ -156,8 +156,11 @@ export function numbersOf(fight: IndexedFight) {
   const [a, b] = fight.sides;
   const count = Math.min(a.rounds.length, b.rounds.length);
   if (!count) return null;
+  // Every round is five minutes but a finishing one, which ends with the fight.
+  const last = fight.elapsed != null ? Math.max(1, fight.elapsed - 300 * (count - 1)) : 300;
   const rounds = Array.from({ length: count }, (_, i) => ({
     round: i + 1,
+    seconds: i === count - 1 ? Math.min(300, last) : 300,
     sig: [a.rounds[i].sig, b.rounds[i].sig] as [number, number],
     ctrl: a.rounds[i].ctrl != null && b.rounds[i].ctrl != null ? [a.rounds[i].ctrl!, b.rounds[i].ctrl!] as [number, number] : null,
   }));
@@ -167,8 +170,6 @@ export function numbersOf(fight: IndexedFight) {
     rounds,
     sig: [sum((round) => round.sig[0]), sum((round) => round.sig[1])] as [number, number],
     ctrl: controlled ? [sum((round) => round.ctrl![0]), sum((round) => round.ctrl![1])] as [number, number] : null,
-    // A decision goes the distance: five minutes a round.
-    round_seconds: 300,
     seconds: fight.elapsed ?? count * 300,
   };
 }
@@ -703,6 +704,7 @@ export function homeRecord(country: string) {
   const index = officialsIndex();
   const state = judging();
   let decisions = 0, won = 0, fansN = 0, fansHome = 0, fansWon = 0, statsN = 0, statsHome = 0, statsWon = 0, againstFans = 0;
+  let oddsN = 0, oddsExpected = 0, favourites = 0, underdogs = 0, oddsWon = 0;
   for (const officiated of index.fights) {
     const entry = state.fights.get(officiated.fight.id);
     if (!entry?.home || entry.country !== country) continue;
@@ -717,6 +719,16 @@ export function homeRecord(country: string) {
       if (result === entry.home) fansWon += 1;
       if (result === entry.home && crowd !== entry.home) againstFans += 1;
     }
+    // The closing line without the bookmaker's margin: the home fighter's chance.
+    const [a, b] = officiated.fight.sides;
+    if (a.prob != null && b.prob != null && a.prob + b.prob > 0) {
+      const chance = (entry.home > 0 ? a.prob : b.prob) / (a.prob + b.prob);
+      oddsN += 1;
+      oddsExpected += chance;
+      if (chance > 0.5) favourites += 1;
+      if (chance < 0.5) underdogs += 1;
+      if (result === entry.home) oddsWon += 1;
+    }
     if (entry.stats?.pick) {
       statsN += 1;
       if (entry.stats.pick === entry.home) statsHome += 1;
@@ -729,6 +741,8 @@ export function homeRecord(country: string) {
     // Each beside the judges' result on the very same bouts.
     fans: { n: fansN, home: fansHome, rate: fansN ? round1(fansHome / fansN) : null, judges_rate: fansN ? round1(fansWon / fansN) : null, won_against_fans: againstFans },
     stats: { n: statsN, home: statsHome, rate: statsN ? round1(statsHome / statsN) : null, judges_rate: statsN ? round1(statsWon / statsN) : null },
+    // What the closing odds expected of the home fighters on the same bouts.
+    odds: { n: oddsN, favourites, underdogs, rate: oddsN ? round1(oddsExpected / oddsN) : null, favourite_rate: oddsN ? round1(favourites / oddsN) : null, judges_rate: oddsN ? round1(oddsWon / oddsN) : null },
   };
 }
 
@@ -771,4 +785,76 @@ export function judgeExtras(slug: string, params: URLSearchParams) {
     if (controversy.controversial || (mine && controversy.fanPick !== 0 && pick(mine.f1, mine.f2) !== controversy.fanPick)) controversial += 1;
   }
   return { dna: judgeDna(identity.key, keep), controversial };
+}
+
+// ---------------------------------------------------------------------------
+// comebacks: won at least two rounds on the fans' cards, then finished
+
+/** The eventual loser must have won at least two completed rounds AND be
+ *  ahead on points. A 2–1 round split can still be a draw or loss on points. */
+export function comebackLead({ fight, fans }: Pick<Officiated, "fight" | "fans">) {
+  if ((fight.method !== "KO/TKO" && fight.method !== "SUB") || (fight.round ?? 0) < 3 || !fans || fans.cards < MIN_CROWD) return null;
+  const loser = fight.sides[0].outcome === "loss" ? 0 : fight.sides[1].outcome === "loss" ? 1 : null;
+  if (loser == null || fight.sides[1 - loser].outcome !== "win") return null;
+  const completed = fans.rounds.filter((round) => round.round < fight.round!);
+  if (completed.length !== fight.round! - 1 || completed.some((round, i) => round.round !== i + 1)) return null;
+  const margins = completed.map((round) => (loser === 0 ? round.avg1 - round.avg2 : round.avg2 - round.avg1));
+  const won: [number, number] = [margins.filter((margin) => margin > 0).length, margins.filter((margin) => margin < 0).length];
+  const lead = Math.round(margins.reduce((sum, margin) => sum + margin, 0) * 100) / 100;
+  return won[0] >= 2 && won[0] > won[1] && lead > 0 ? { loser, won, lead } : null;
+}
+
+/** Most rounds won first, then the widest points lead over completed rounds. */
+export function comebacksList(params: URLSearchParams) {
+  const index = officialsIndex();
+  const state = judging();
+  const filters = parseOfficialFilters(params);
+  const titleOnly = params.get("title") === "1";
+  const rounds = params.get("rounds") === "3" ? 3 : params.get("rounds") === "5" ? 5 : null;
+  const all = index.fights.flatMap((officiated) => {
+    const lead = comebackLead(officiated);
+    return lead ? [{ officiated, ...lead }] : [];
+  });
+  const found = searched(all.map((item) => item.officiated), filters.q);
+  const chosen = all.filter((item) => matchesBase(item.officiated, filters, found)
+    && (!titleOnly || isTitle(item.officiated.fight)) && (!rounds || item.officiated.fight.scheduledRounds === rounds));
+  chosen.sort((a, b) => b.won[0] - a.won[0] || b.lead - a.lead || b.officiated.fight.date.localeCompare(a.officiated.fight.date));
+  const page = chosen.slice(filters.offset, filters.offset + filters.limit);
+  return {
+    view: "comebacks",
+    filters: { ...filters, q: params.get("q") ?? "", title: titleOnly, rounds },
+    facets: facets(all.map((item) => item.officiated)),
+    min_crowd: MIN_CROWD,
+    total: chosen.length,
+    offset: filters.offset,
+    limit: filters.limit,
+    rows: page.map(({ officiated, loser, won, lead }) => {
+      const { fight, fans } = officiated;
+      const completed = fans!.rounds.filter((round) => round.round < fight.round!);
+      const edges = edgesOf(officiated);
+      const statsRounds = edges.slice(0, fight.round! - 1).flatMap((edge, i) => (edge ? [{ round: i + 1, p: probability(state.model.weights, edge) }] : []));
+      return {
+        fight_id: fight.id, event_id: fight.eventId, event_name: fight.eventName, date: fight.date,
+        division: fight.weightClass, title: isTitle(fight), scheduled_rounds: fight.scheduledRounds,
+        method: fight.method, method_details: fight.methodDetails, round: fight.round, time: fight.time,
+        f1: fighterRef(fight, 0), f2: fighterRef(fight, 1),
+        /** The corner that was ahead and got finished. */
+        leader: loser === 0 ? "f1" : "f2",
+        rounds_won: won,
+        lead,
+        fans: {
+          cards: fans!.cards, rounds: completed,
+          avg1: Math.round(completed.reduce((sum, round) => sum + round.avg1, 0) * 100) / 100,
+          avg2: Math.round(completed.reduce((sum, round) => sum + round.avg2, 0) * 100) / 100,
+        },
+        numbers: numbersOf(fight),
+        stats: statsRounds.length === fight.round! - 1 ? {
+          rounds: statsRounds.map((round) => ({ ...round, p: Math.round(round.p * 100) / 100 })),
+          f1: statsRounds.filter((round) => round.p > 0.5).length,
+          f2: statsRounds.filter((round) => round.p < 0.5).length,
+          pick: Math.sign(statsRounds.reduce((sum, round) => sum + Math.sign(round.p - 0.5), 0)),
+        } : null,
+      };
+    }),
+  };
 }

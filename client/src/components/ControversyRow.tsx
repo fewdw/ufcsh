@@ -3,9 +3,9 @@ import { Fragment } from "react";
 type RoundScore = { round: number; f1: number; f2: number };
 import { Link } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
-import type { ControversialList, ControversialShow, ControversialSort, ControversyRow as Row, FightNumbers, StatsCard } from "../api";
+import type { ComebackRow as Comeback, ControversialList, ControversialShow, ControversialSort, ControversyRow as Row, FightNumbers, StatsCard } from "../api";
 import Avatar from "./Avatar";
-import { formatDateShortWithYear, lastName, outcomeClasses } from "../format";
+import { formatDateShortWithYear, formatMethod, lastName, outcomeClasses } from "../format";
 import { RESULT_PILL } from "../ui";
 import { ROW_CONTROL, TitleNote } from "./ResearchKit";
 
@@ -119,7 +119,7 @@ export function RoundByRound({ cards, fans, numbers, stats }: {
                   })}
                   {fans ? <td className={cell}>{crowd ? <Pair f1={crowd.avg1} f2={crowd.avg2} text={(value) => value.toFixed(2)} /> : "—"}</td> : null}
                   {numbers ? <td className={cell}>{counted ? <Pair f1={counted.sig[0]} f2={counted.sig[1]} /> : "—"}</td> : null}
-                  {control ? <td className={cell}>{counted?.ctrl ? <Pair f1={controlShare(counted.ctrl[0], control.round_seconds)} f2={controlShare(counted.ctrl[1], control.round_seconds)} text={percent} /> : "—"}</td> : null}
+                  {control ? <td className={cell}>{counted?.ctrl ? <Pair f1={controlShare(counted.ctrl[0], counted.seconds)} f2={controlShare(counted.ctrl[1], counted.seconds)} text={percent} /> : "—"}</td> : null}
                   {stats ? <td className={cell}>{read ? <StatsRound p={read.p} /> : "—"}</td> : null}
                 </tr>
               );
@@ -254,5 +254,68 @@ export function ControversyMethod({ data }: { data: Pick<ControversialList, "min
       Decisions with {data.min_crowd}+ fan cards where the fans are under {data.close_margin} apart, had the other winner, or gave
       one fighter more rounds but the other the total. Stats: an average judge's card from each round's numbers ({data.model.accuracy}% agreement).
     </p>
+  );
+}
+
+/** A fighter who was ahead on the fans' cards and got finished: the fans'
+ *  total over the completed rounds, each corner's strikes and control over
+ *  the whole fight, the rounds the stats gave each, how it ended, and every
+ *  round folded under Round by Round. */
+export function ComebackRow({ row }: { row: Comeback }) {
+  const leader = row.leader === "f1" ? row.f1 : row.f2;
+  const winner = row.leader === "f1" ? row.f2 : row.f1;
+  const numbers = row.numbers;
+  const wideOnly = "hidden @[30rem]:block";
+  const place = (column: number, line: number) => ({ gridColumn: column, gridRow: line });
+  const columns = 1 + (numbers ? 1 : 0) + (numbers?.ctrl ? 1 : 0) + (row.stats ? 1 : 0);
+  const completed = (row.round ?? 1) - 1;
+  return (
+    <div className="@container group relative px-4 py-3 transition-colors hover:bg-zinc-50 sm:px-5">
+      <Link to={`/fights/${row.fight_id}`} aria-label={`${row.f1.name} vs ${row.f2.name}, ${row.event_name}`}
+        className="absolute inset-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-zinc-900" />
+      <p className="flex items-baseline justify-between gap-3 text-xs leading-5">
+        <span className="min-w-0 truncate font-medium text-zinc-600">{row.division}{row.title ? <><span className="text-zinc-300"> · </span><TitleNote /></> : null}</span>
+        <span className="shrink-0 text-[11px] tabular-nums text-zinc-400">{formatDateShortWithYear(row.date)}</span>
+      </p>
+      <p className="truncate text-xs leading-5 text-zinc-500">{row.event_name}</p>
+      <div className="mt-2.5 grid items-center gap-x-1.5 gap-y-1.5" style={{ gridTemplateColumns: `auto minmax(0,1fr) repeat(${columns}, auto)` }}>
+        <span className={`${HEAD} pl-2 text-sky-600`} style={place(3, 1)} title={`Average of ${row.fans.cards.toLocaleString()} fan cards over the ${completed} completed rounds`}>Fans</span>
+        {numbers ? <span className={`${HEAD} ${wideOnly} pl-2`} style={place(4, 1)} title={STRIKES_TITLE}>Strikes</span> : null}
+        {numbers?.ctrl ? <span className={`${HEAD} ${wideOnly} pl-2`} style={place(5, 1)} title="Control time as a share of the whole fight">Control</span> : null}
+        {row.stats ? <span className={`${HEAD} pl-2`} style={place(3 + columns - 1, 1)} title="Completed rounds an average UFC judge would give each fighter from the numbers">Stats</span> : null}
+        {([1, 2] as const).map((side) => {
+          const fighter = side === 1 ? row.f1 : row.f2;
+          const ink = side === 1 ? "text-f1-ink" : "text-f2-ink";
+          const own = (a: number, b: number) => (side === 1 ? [a, b] : [b, a]);
+          const tone = (a: number, b: number) => { const [ours, theirs] = own(a, b); return ours > theirs ? ink : "text-zinc-400"; };
+          const line = side + 1;
+          return (
+            <Fragment key={side}>
+              <span style={place(1, line)}><Avatar src={fighter.photo_url} name={fighter.name} size="xs" outcome={fighter.outcome} /></span>
+              <p className={`ml-1 min-w-0 truncate text-sm font-semibold leading-tight ${ink}`} style={place(2, line)} title={fighter.name}>
+                <span className="@[30rem]:hidden">{lastName(fighter.name)}</span><span className="hidden @[30rem]:inline">{fighter.name}</span>
+              </p>
+              <p className={`pl-2 text-center text-sm font-semibold leading-none tabular-nums ${tone(row.fans.avg1, row.fans.avg2)}`} style={place(3, line)}>
+                {own(row.fans.avg1, row.fans.avg2)[0].toFixed(2)}
+              </p>
+              {numbers ? <p className={`${wideOnly} pl-2 text-center text-sm font-semibold leading-none tabular-nums ${tone(numbers.sig[0], numbers.sig[1])}`} style={place(4, line)}>{own(numbers.sig[0], numbers.sig[1])[0]}</p> : null}
+              {numbers?.ctrl ? (
+                <p className={`${wideOnly} pl-2 text-center text-sm font-semibold leading-none tabular-nums ${tone(numbers.ctrl[0], numbers.ctrl[1])}`} style={place(5, line)}>
+                  {controlShare(own(numbers.ctrl[0], numbers.ctrl[1])[0], numbers.seconds)}%
+                </p>
+              ) : null}
+              {row.stats ? <p className={`pl-2 text-center text-sm font-semibold leading-none tabular-nums ${tone(row.stats.f1, row.stats.f2)}`} style={place(3 + columns - 1, line)}>{own(row.stats.f1, row.stats.f2)[0]}</p> : null}
+            </Fragment>
+          );
+        })}
+      </div>
+      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+        <span className={`${RESULT_PILL} ${outcomeClasses("win")}`} title={row.method_details ?? undefined}>{lastName(winner.name)} · {formatMethod(row.method, row.round != null ? String(row.round) : null, row.time)}</span>
+        <span className={`${RESULT_PILL} ${SIGNAL_TONE.fans_other}`} title={`${leader.name} won ${row.rounds_won[0]} of the ${completed} completed rounds on the fans' average card, ahead by ${row.lead.toFixed(2)} points`}>
+          {lastName(leader.name)} up {row.rounds_won[0]}–{row.rounds_won[1]} with the fans
+        </span>
+      </div>
+      <RoundByRound cards={[]} fans={row.fans} numbers={numbers} stats={row.stats} />
+    </div>
   );
 }

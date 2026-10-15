@@ -319,29 +319,33 @@ export function AwardsPage() {
         <PageToolbar>
           <BrowseTabs />
         </PageToolbar>
-        <div ref={listScroll} className={`grid grid-cols-1 content-start gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-4 ${BROWSE_LIST}`}>
-          {data.categories.map((category) => {
-            const shown = !stacked || open.includes(category.id);
-            return (
-              <section key={category.id} aria-label={category.label} className={`${PANEL} overflow-hidden`}>
-                {stacked ? (
-                  <h2 className={shown ? "border-b border-zinc-200" : ""}>
-                    <button type="button" aria-expanded={shown}
-                      onClick={() => setOpen((current) => shown ? current.filter((id) => id !== category.id) : [...current, category.id])}
-                      className="flex w-full items-center justify-between gap-2 px-3.5 py-3 text-left text-sm font-semibold text-zinc-900 hover:bg-zinc-50">
-                      <span className="truncate">{category.label}</span>
-                      <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition-transform ${shown ? "rotate-180" : ""}`} aria-hidden="true" />
-                    </button>
-                  </h2>
-                ) : (
-                  <div className="border-b border-zinc-200 px-3.5 py-2.5">
-                    <h2 className="truncate text-sm font-semibold text-zinc-900">{category.label}</h2>
-                  </div>
-                )}
-                {shown ? <ul className="divide-y divide-zinc-50">{category.awards.map((award) => <AwardRow key={award.period} award={award} shared={category.shared} />)}</ul> : null}
-              </section>
-            );
-          })}
+        {/* The scroller wraps the grid: a grid that scrolls itself would squeeze
+            its rows to fit the screen instead. */}
+        <div ref={listScroll} className={BROWSE_LIST}>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-4">
+            {data.categories.map((category) => {
+              const shown = !stacked || open.includes(category.id);
+              return (
+                <section key={category.id} aria-label={category.label} className={`${PANEL} overflow-hidden`}>
+                  {stacked ? (
+                    <h2 className={shown ? "border-b border-zinc-200" : ""}>
+                      <button type="button" aria-expanded={shown}
+                        onClick={() => setOpen((current) => shown ? current.filter((id) => id !== category.id) : [...current, category.id])}
+                        className="flex w-full items-center justify-between gap-2 px-3.5 py-3 text-left text-sm font-semibold text-zinc-900 hover:bg-zinc-50">
+                        <span className="truncate">{category.label}</span>
+                        <ChevronDown className={`h-4 w-4 shrink-0 text-zinc-400 transition-transform ${shown ? "rotate-180" : ""}`} aria-hidden="true" />
+                      </button>
+                    </h2>
+                  ) : (
+                    <div className="border-b border-zinc-200 px-3.5 py-2.5">
+                      <h2 className="truncate text-sm font-semibold text-zinc-900">{category.label}</h2>
+                    </div>
+                  )}
+                  {shown ? <ul className="divide-y divide-zinc-50">{category.awards.map((award) => <AwardRow key={award.period} award={award} shared={category.shared} />)}</ul> : null}
+                </section>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

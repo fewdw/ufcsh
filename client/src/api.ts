@@ -716,10 +716,9 @@ type RoundScore = { round: number; f1: number; f2: number };
 /** Each corner's significant strikes landed and control seconds, by round and
  *  in all; control is null where it wasn't recorded. */
 export type FightNumbers = {
-  rounds: { round: number; sig: [number, number]; ctrl: [number, number] | null }[];
+  rounds: { round: number; seconds: number; sig: [number, number]; ctrl: [number, number] | null }[];
   sig: [number, number];
   ctrl: [number, number] | null;
-  round_seconds: number;
   seconds: number;
 };
 
@@ -757,12 +756,39 @@ export type ControversialList = {
   rows: ControversyRow[];
 };
 
+/** A fighter who won 2+ rounds and was ahead on the fans' average card who got finished. */
+export type ComebackRow = {
+  fight_id: string; event_id: string; event_name: string; date: string; division: string; title: boolean; scheduled_rounds: number;
+  method: string | null; method_details: string | null; round: number | null; time: string | null;
+  f1: FighterRef; f2: FighterRef;
+  leader: "f1" | "f2";
+  /** Completed rounds the fans gave the fighter who was ahead, and the winner. */
+  rounds_won: [number, number];
+  /** Points the fans had the fighter who was ahead up by, over those rounds. */
+  lead: number;
+  fans: { cards: number; avg1: number; avg2: number; rounds: { round: number; avg1: number; avg2: number }[] };
+  numbers: FightNumbers | null;
+  stats: StatsCard | null;
+};
+
+export type ComebacksList = {
+  view: "comebacks";
+  filters: OfficialFilters & { title: boolean; rounds: 3 | 5 | null };
+  facets: Facets;
+  min_crowd: number;
+  total: number;
+  offset: number;
+  limit: number;
+  rows: ComebackRow[];
+};
+
 /** Fighters from a country at events held in it: decisions they won, and
  *  how often the fans and the stats had them winning the same bouts. */
 export type HomeRecord = {
   country: string; names: string[]; decisions: number; won: number; rate: number;
   fans: { n: number; home: number; rate: number | null; judges_rate: number | null; won_against_fans: number };
   stats: { n: number; home: number; rate: number | null; judges_rate: number | null };
+  odds: { n: number; favourites: number; underdogs: number; rate: number | null; favourite_rate: number | null; judges_rate: number | null };
 };
 
 export type JudgeProfile = {

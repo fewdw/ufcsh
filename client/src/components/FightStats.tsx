@@ -1132,7 +1132,7 @@ export function Scorecards({ fight }: { fight: Matchup }) {
         <span className="font-semibold text-zinc-900">Round {decided} decided the fight.</span> The judges split on it, and scored the other way it changes the winner.
       </p> : null}
       {judging?.controversy ? <ControversyLine row={judging.controversy} /> : null}
-      {judging ? <JudgeNotes judges={judging.judges} /> : null}
+      {judging ? <JudgeNotes judges={judging.judges} divided={!judging.controversy} /> : null}
     </section>
   );
 }
@@ -1153,13 +1153,23 @@ function ControversyLine({ row }: { row: NonNullable<NonNullable<Matchup["judgin
 /** What each judge on the card usually rewards, in up to three lines, and
  *  the card of theirs the fans disputed most. A judge with too few scored
  *  rounds to say anything is left out. */
-function JudgeNotes({ judges }: { judges: NonNullable<Matchup["judging"]>["judges"] }) {
+function JudgeNotes({ judges, divided }: { judges: NonNullable<Matchup["judging"]>["judges"]; divided: boolean }) {
   const [open, setOpen] = useState(false);
   const shown = judges.filter((judge): judge is NonNullable<typeof judge> => Boolean(judge && (judge.notes.length || judge.worst)));
   if (!shown.length) return null;
+  // Folded to a single Show more, right under the controversy line.
+  const toggle = (
+    <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
+      className="mx-auto flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-50">
+      {open ? "Show less" : "Show more"}
+      <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
+    </button>
+  );
+  if (!open) return <div className={`pb-2 ${divided ? "border-t border-zinc-100 pt-2" : ""}`}>{toggle}</div>;
   return (
-    <div className="border-t border-zinc-100 px-4 py-3 sm:px-5">
-      <h3 className={`mb-2 ${sectionLabel}`}>How these judges score</h3>
+    <div className={`px-4 pb-3 sm:px-5 ${divided ? "border-t border-zinc-100 pt-2" : ""}`}>
+      {toggle}
+      <h3 className={`mb-2 mt-2 ${sectionLabel}`}>How these judges score</h3>
       <div className="grid gap-x-6 gap-y-4 @[44rem]:grid-cols-3">
         {shown.map((judge) => (
           <div key={judge.name} className="min-w-0">
@@ -1172,12 +1182,12 @@ function JudgeNotes({ judges }: { judges: NonNullable<Matchup["judging"]>["judge
                 {judge.notes.map((note) => (
                   <li key={note.key} className="text-[11px] leading-snug">
                     <span className="font-medium text-zinc-800">{note.title}</span>
-                    {open ? <span className="block text-zinc-500">{note.detail}</span> : null}
+                    <span className="block text-zinc-500">{note.detail}</span>
                   </li>
                 ))}
               </ul>
             ) : null}
-            {open && judge.worst ? (
+            {judge.worst ? (
               <Link to={`/fights/${judge.worst.fight_id}`} className="mt-1.5 block text-[11px] leading-snug text-zinc-500 hover:text-zinc-900">
                 <span className="font-medium text-rose-700">Most disputed card:</span> {lastName(judge.worst.f1)} vs {lastName(judge.worst.f2)}{" "}
                 <span className="tabular-nums">({judge.worst.card.f1}–{judge.worst.card.f2}, fans {judge.worst.fans.avg1.toFixed(2)}–{judge.worst.fans.avg2.toFixed(2)})</span>{" "}
@@ -1187,11 +1197,6 @@ function JudgeNotes({ judges }: { judges: NonNullable<Matchup["judging"]>["judge
           </div>
         ))}
       </div>
-      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
-        className="mx-auto mt-2 flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-50">
-        {open ? "Show less" : "Show more"}
-        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
-      </button>
     </div>
   );
 }
@@ -1336,7 +1341,7 @@ function ScoreGrid({ fight, judges, fans, rounds, decided, stats, numbers }: {
           ) : null}
           {control ? (
             <span className={`${cell} border-t border-zinc-100 py-1`}>
-              {control.rounds[index]?.ctrl ? <ScorePair f1={controlShare(control.rounds[index].ctrl![0], control.round_seconds)} f2={controlShare(control.rounds[index].ctrl![1], control.round_seconds)}
+              {control.rounds[index]?.ctrl ? <ScorePair f1={controlShare(control.rounds[index].ctrl![0], control.rounds[index].seconds)} f2={controlShare(control.rounds[index].ctrl![1], control.rounds[index].seconds)}
                 text={(value) => `${value}%`} size="text-[10px] @[32rem]:text-xs" /> : empty}
             </span>
           ) : null}

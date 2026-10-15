@@ -86,6 +86,11 @@ function HomeFighters({ home }: { home: HomeRecord }) {
     detail: `${home.fans.home.toLocaleString()} of ${home.fans.n.toLocaleString()} with 30+ fan cards · the judges ${pct(home.fans.judges_rate)}${home.fans.won_against_fans ? ` · ${home.fans.won_against_fans} won against the fans` : ""}`,
     hint: "Points more often the judges had the home fighter winning than the fans did, on the same bouts",
   });
+  if (home.odds?.n) rows.push({
+    key: "odds", ...gapChip(home.odds.judges_rate, home.odds.rate), title: "Expected wins from closing odds", value: pct(home.odds.rate),
+    detail: `Favourite in ${home.odds.favourites.toLocaleString()} of ${home.odds.n.toLocaleString()} (${pct(home.odds.favourite_rate)}) · ${home.odds.underdogs.toLocaleString()} underdogs${home.odds.n > home.odds.favourites + home.odds.underdogs ? ` · ${home.odds.n - home.odds.favourites - home.odds.underdogs} evenly matched` : ""} · the judges ${pct(home.odds.judges_rate)}`,
+    hint: "Their average chance on the closing odds without the bookmaker's margin. The chip is how many points more often the judges had the home fighter winning than the odds expected, on the same bouts",
+  });
   if (home.stats.n) rows.push({
     key: "stats", ...gapChip(home.stats.judges_rate, home.stats.rate), title: "The stats had them winning", value: pct(home.stats.rate),
     detail: `${home.stats.home.toLocaleString()} of ${home.stats.n.toLocaleString()} · the judges ${pct(home.stats.judges_rate)}`,

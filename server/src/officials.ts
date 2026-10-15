@@ -28,7 +28,8 @@ export type Officiated = {
   cards: Card[];
   fans: FanCard | null;
   /** Significant strikes landed to the head and on the ground, per corner and
-   *  round, on decisions only (UFCStats' second round table); null without it. */
+   *  round, on decisions and late finishes (UFCStats' second round table);
+   *  null without it. */
   zones: [Zones[], Zones[]] | null;
   /** UFCStats' own "Details" line: the finishing technique, a foul, a deduction. */
   details: string | null;
@@ -136,7 +137,8 @@ function officiatedOf(fight: IndexedFight): Officiated {
   const referee = typeof detail?.methodInfo?.Referee === "string" && detail.methodInfo.Referee.trim() ? displayName(detail.methodInfo.Referee) : null;
   return {
     fight, referee, refereeKey: officialKey(referee), cards, fans,
-    zones: fight.method?.endsWith("-DEC") ? zonesOf(detail) : null,
+    // Decisions for the stats card, finishes after two rounds for the comebacks.
+    zones: fight.method?.endsWith("-DEC") || ((fight.method === "KO/TKO" || fight.method === "SUB") && (fight.round ?? 0) >= 3) ? zonesOf(detail) : null,
     details: typeof detail?.detailsText === "string" && detail.detailsText.trim() ? detail.detailsText.trim() : null,
   };
 }

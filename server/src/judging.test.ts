@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fightIndex } from "./fight-index.ts";
-import { crowdPick, officialsIndex, pick, resultPick } from "./officials.ts";
+import { fightIndex, type IndexedFight } from "./fight-index.ts";
+import { crowdPick, isTitle, officialsIndex, pick, resultPick, type FanCard } from "./officials.ts";
 import {
-  CLOSE_MARGIN, MIN_CROWD, TIEBREAKS, controversialList, edgesOf, fitModel, homeRecord, judgeDna, judging, matchupJudging,
+  CLOSE_MARGIN, MIN_CROWD, TIEBREAKS, comebackLead, comebacksList, controversialList, edgesOf, fitModel, homeRecord, judgeDna, judging, matchupJudging, numbersOf,
   type Edge,
 } from "./judging.ts";
 
@@ -156,4 +156,90 @@ test("the list opens widest first, and each row's numbers add up round by round"
       assert.ok(numbers.ctrl[0] + numbers.ctrl[1] <= numbers.seconds + 5, row.fight_id);
     }
   }
+});
+
+
+test("comebacks require two completed rounds won and an actual points lead, in either corner", () => {
+  const fight = { method: "KO/TKO", round: 4, sides: [{ outcome: "win" }, { outcome: "loss" }] } as IndexedFight;
+  const fans = (scores: [number, number][], cards = MIN_CROWD): FanCard => ({
+    cards, source: "test", url: null,
+    avg1: scores.reduce((sum, round) => sum + round[0], 0),
+    avg2: scores.reduce((sum, round) => sum + round[1], 0),
+    rounds: scores.map(([avg1, avg2], i) => ({ round: i + 1, avg1, avg2 })),
+  });
+  const card = fans([[9, 10], [9, 10], [10, 9]]);
+  assert.deepEqual(comebackLead({ fight, fans: card }), { loser: 1, won: [2, 1], lead: 1 });
+  assert.deepEqual(comebackLead({ fight: { ...fight, sides: [...fight.sides].reverse() as IndexedFight["sides"] },
+    fans: fans([[10, 9], [10, 9], [9, 10]]) }), { loser: 0, won: [2, 1], lead: 1 });
+  // Two rounds won can still mean tied or behind after a 10–8 or 10–7.
+  for (const lost of [8, 7]) assert.equal(comebackLead({ fight, fans: fans([[9, 10], [9, 10], [10, lost]]) }), null);
+  assert.equal(comebackLead({ fight: { ...fight, round: 2 }, fans: fans([[9, 10]]) }), null);
+  assert.equal(comebackLead({ fight, fans: fans([[9, 10], [9, 10]]) }), null, "missing round");
+  assert.equal(comebackLead({ fight, fans: fans([[9, 10], [9, 10], [10, 9]], MIN_CROWD - 1) }), null);
+  for (const method of ["U-DEC", "DQ", "Overturned"]) assert.equal(comebackLead({ fight: { ...fight, method }, fans: card }), null);
+  assert.equal(comebackLead({ fight, fans: null }), null);
+});
+
+test("comeback lists rank rounds won then domination, paginate, and apply title and booked-round filters", () => {
+  const first = comebacksList(new URLSearchParams());
+  const rows = [...first.rows];
+  for (let offset = first.limit; offset < first.total; offset += first.limit) {
+    rows.push(...comebacksList(new URLSearchParams({ offset: String(offset) })).rows);
+  }
+  assert.equal(rows.length, first.total);
+  assert.equal(new Set(rows.map(row => row.fight_id)).size, rows.length);
+  for (const row of rows) {
+    assert.ok(row.rounds_won[0] >= 2 && row.rounds_won[0] > row.rounds_won[1] && row.lead > 0);
+    assert.equal(row.fans.rounds.length, row.round! - 1);
+    assert.ok(row.fans.rounds.every(round => round.round < row.round!));
+    assert.equal((row.leader === "f1" ? row.f1 : row.f2).outcome, "loss");
+    const leading = row.leader === "f1" ? row.fans.avg1 - row.fans.avg2 : row.fans.avg2 - row.fans.avg1;
+    assert.ok(Math.abs(leading - row.lead) < 0.001);
+  }
+  for (let i = 1; i < rows.length; i++) {
+    const prev = rows[i - 1], next = rows[i];
+    assert.ok(prev.rounds_won[0] > next.rounds_won[0] || (prev.rounds_won[0] === next.rounds_won[0] && prev.lead >= next.lead));
+  }
+  for (const rounds of ["3", "5"]) {
+    const filtered = comebacksList(new URLSearchParams({ rounds, title: "1" }));
+    const expected = rows.filter(row => row.scheduled_rounds === Number(rounds) && isTitle(fightIndex().byId.get(row.fight_id)!));
+    assert.equal(filtered.total, expected.length);
+    assert.deepEqual(filtered.rows.map(row => row.fight_id), expected.slice(0, first.limit).map(row => row.fight_id));
+  }
+  if (rows.length) {
+    const row = rows[0];
+    const search = comebacksList(new URLSearchParams({ q: row.f1.name, from: row.date.slice(0, 4), to: row.date.slice(0, 4), division: row.division }));
+    assert.ok(search.rows.some(found => found.fight_id === row.fight_id));
+    assert.ok(search.rows.every(found => found.date.slice(0, 4) === row.date.slice(0, 4) && found.division === row.division));
+  }
+});
+
+test("a finishing round's control uses its actual duration", () => {
+  const round = { sig: 5, ctrl: 30 };
+  const fight = { round: 3, elapsed: 660, sides: [{ rounds: [round, round, round] }, { rounds: [round, round, round] }] } as IndexedFight;
+  const numbers = numbersOf(fight)!;
+  assert.deepEqual(numbers.rounds.map(round => round.seconds), [300, 300, 60]);
+  assert.equal(numbers.seconds, 660);
+  assert.deepEqual(numbers.ctrl, [90, 90]);
+});
+
+test("home closing odds compare the same decisions and normalize both corners' prices", () => {
+  const state = judging();
+  let n = 0, favourites = 0, underdogs = 0, wins = 0, expected = 0;
+  for (const { fight } of officialsIndex().fights) {
+    const entry = state.fights.get(fight.id);
+    if (entry?.country !== "USA" || !entry.home || !resultPick(fight)) continue;
+    const [a, b] = fight.sides;
+    if (a.prob == null || b.prob == null) continue;
+    const chance = (entry.home > 0 ? a.prob : b.prob) / (a.prob + b.prob);
+    n++;
+    favourites += Number(chance > 0.5);
+    underdogs += Number(chance < 0.5);
+    wins += Number(resultPick(fight) === entry.home);
+    expected += chance;
+  }
+  const record = homeRecord("USA");
+  if (!record) return;
+  const pct = (value: number) => n ? Math.round(value / n * 1000) / 10 : null;
+  assert.deepEqual(record.odds, { n, favourites, underdogs, rate: pct(expected), favourite_rate: pct(favourites), judges_rate: pct(wins) });
 });
