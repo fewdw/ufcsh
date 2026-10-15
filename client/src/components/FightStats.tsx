@@ -1171,7 +1171,6 @@ function ControversyLine({ row }: { row: NonNullable<NonNullable<Matchup["judgin
 function JudgeNotes({ judges, divided }: { judges: NonNullable<NonNullable<Matchup["judging"]>["judges"][number]>[]; divided: boolean }) {
   return (
     <div className={`px-4 pb-3 sm:px-5 ${divided ? "border-t border-zinc-100 pt-3" : "pt-1"}`}>
-      <h3 className={`mb-2 ${sectionLabel}`}>How these judges score</h3>
       <div className="grid gap-x-6 gap-y-3 @[44rem]:grid-cols-3">
         {judges.map((judge) => (
           <div key={judge.name} className="min-w-0 text-[11px] leading-snug">
