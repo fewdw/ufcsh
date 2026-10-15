@@ -43,10 +43,11 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
           ) : undefined}
         />
         {/* One line per fighter, a column per round and the total last, the
-            way the fight list reads a card, centred in the panel. */}
+            way the fight list reads a card. The scores sit centred in the panel:
+            an empty column the width of the names balances them on the right. */}
         <div className="@container overflow-x-auto">
-          <div className="mx-auto grid w-fit max-w-full px-4 pb-3 pt-2 tabular-nums @[32rem]:px-5"
-            style={{ gridTemplateColumns: `minmax(4.5rem, auto) repeat(${rows + (finish ? 1 : 0)}, minmax(2.25rem, 3.5rem)) minmax(3rem, 4.5rem)` }}>
+          <div className="grid px-4 pb-3 pt-2 tabular-nums @[32rem]:px-5"
+            style={{ gridTemplateColumns: `minmax(4.5rem, 1fr) repeat(${rows + (finish ? 1 : 0)}, minmax(2.25rem, 3.5rem)) minmax(3rem, 4.5rem) minmax(0, 1fr)` }}>
             <span />
             {Array.from({ length: rows }, (_, index) => (
               <span key={index} className={`self-end py-1 text-center ${sectionLabel} !text-[9px] !tracking-normal ${index < eligibility.available ? "" : "opacity-50"}`}>R{index + 1}</span>
@@ -57,6 +58,7 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
               </span>
             ) : null}
             <span className={`self-end py-1 text-center ${sectionLabel} !text-[9px] !tracking-normal`}>Total</span>
+            <span />
             {([1, 2] as const).map((side) => {
               const fighter = side === 1 ? fight.f1 : fight.f2;
               const ink = side === 1 ? "text-f1-ink" : "text-f2-ink";
@@ -65,7 +67,7 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
               const total = side === 1 ? [totals.avg1, totals.avg2] : [totals.avg2, totals.avg1];
               return (
                 <Fragment key={side}>
-                  <span className={`flex min-w-0 items-center border-t border-zinc-100 py-2 pr-4 text-sm font-medium @[32rem]:pr-8 ${side === 1 ? "text-f1" : "text-f2"}`} title={fighter.name}>
+                  <span className={`flex min-w-0 items-center border-t border-zinc-100 py-2 pr-2 text-sm font-medium ${side === 1 ? "text-f1" : "text-f2"}`} title={fighter.name}>
                     <span className="truncate @[36rem]:hidden">{lastName(fighter.name)}</span>
                     <span className="hidden truncate @[36rem]:inline">{fighter.name}</span>
                   </span>
@@ -86,6 +88,7 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
                   <span className={`flex items-center justify-center border-t border-zinc-100 py-2 text-base @[32rem]:text-lg ${lead(total[0], total[1])}`}>
                     {decimalScore(total[0])}
                   </span>
+                  <span className="border-t border-zinc-100" />
                 </Fragment>
               );
             })}
