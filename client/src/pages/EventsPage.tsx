@@ -479,9 +479,11 @@ function FighterBlock({
         <span aria-hidden="true" className="text-zinc-300">·</span>
         <span className="whitespace-nowrap" title="UFC record entering this fight">{side.ufc_record ? <><span className="font-medium text-zinc-700">{side.ufc_record}</span> UFC</> : side.ufc_bouts === 0 ? "UFC debut" : "— UFC"}</span>
       </div>
+      {/* Mirrored like the records above: the age sits nearest the photo on both sides. */}
       <div className={`mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 ${align === "right" ? "justify-end" : ""}`}>
-        <FormDots side={side} align={align} />
+        {align === "right" ? <FormDots side={side} align={align} /> : null}
         {side.age != null ? <span className="whitespace-nowrap text-[10px] tabular-nums text-zinc-400" title="Age on the date of this event">Age {side.age}</span> : null}
+        {align === "right" ? null : <FormDots side={side} align={align} />}
       </div>
     </div>
   );
