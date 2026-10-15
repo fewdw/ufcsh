@@ -843,12 +843,12 @@ export default function FighterPage() {
 
         {fought ? <div className={`${tab === "stats" ? "contents" : "hidden lg:contents"} [&>*]:shrink-0`}>
           <FighterCareerStats fighterId={fighter.id} name={fighter.name} totals={fighter.career_stats} />
+          <RankingHistory key={fighter.id} timeline={fighter.ranking_history} history={fighter.history} fighterId={fighter.id} />
           {fighter.insights?.rounds ? <div className="grid grid-cols-2 gap-3">
             <RoundsPanel fighters={[fighter]} />
             <DecisionsPanel fighters={[fighter]} />
           </div> : null}
           <StrikesPanel fighters={[fighter]} />
-          <RankingHistory key={fighter.id} timeline={fighter.ranking_history} history={fighter.history} fighterId={fighter.id} />
         </div> : null}
         </div>
 
