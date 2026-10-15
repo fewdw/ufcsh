@@ -446,6 +446,7 @@ export type Matchup = {
   /** On a decision: the stats card, the fans' controversy and each judge's leanings, judges in card order. */
   judging?: {
     stats: StatsCard | null;
+    numbers: FightNumbers | null;
     controversy: ControversyRow | null;
     home: { side: "f1" | "f2"; country: string | null } | null;
     judges: ({ name: string; slug: string | null; bouts: number; notes: JudgeNote[];
@@ -699,6 +700,8 @@ export type JudgeDna = {
   bouts: number;
   tiebreaks: (Leaning & { key: string; x: string; y: string; about: string; clash: string; field_rate: number | null })[];
   stats: Leaning;
+  strikes: Leaning;
+  control: Leaning;
   home: Leaning & { fans_rate: number | null; fans_n: number };
   fans: Leaning;
   notes: JudgeNote[];
@@ -710,6 +713,16 @@ export type StatsCard = { rounds: { round: number; p: number }[]; f1: number; f2
 
 type RoundScore = { round: number; f1: number; f2: number };
 
+/** Each corner's significant strikes landed and control seconds, by round and
+ *  in all; control is null where it wasn't recorded. */
+export type FightNumbers = {
+  rounds: { round: number; sig: [number, number]; ctrl: [number, number] | null }[];
+  sig: [number, number];
+  ctrl: [number, number] | null;
+  round_seconds: number;
+  seconds: number;
+};
+
 /** A decision the fans' cards make controversial, with every card beside them. */
 export type ControversyRow = {
   fight_id: string; event_id: string; event_name: string; date: string; division: string; title: boolean; scheduled_rounds: number;
@@ -718,6 +731,7 @@ export type ControversyRow = {
   cards: { judge: string; slug: string | null; f1: number; f2: number; rounds: RoundScore[] }[];
   fans: { cards: number; avg1: number; avg2: number; rounds: { round: number; avg1: number; avg2: number }[] };
   stats: StatsCard | null;
+  numbers: FightNumbers | null;
   margin: number;
   fan_rounds: [number, number];
   signals: { close: boolean; fans_other: boolean; rounds_total: boolean; stats_other: boolean };
@@ -776,6 +790,7 @@ export type JudgeProfile = {
     others: { judge: string; slug: string | null; f1: number; f2: number; rounds: { round: number; f1: number; f2: number }[] }[];
     fans: { cards: number; avg1: number; avg2: number; rounds: { round: number; avg1: number; avg2: number }[] } | null;
     dissent: boolean; agreed_result: boolean | null; ten_eights: number;
+    numbers: FightNumbers | null; stats: StatsCard | null;
   }[];
   dna: JudgeDna;
   /** Their bouts on the Controversial tab under the same filters. */

@@ -81,7 +81,7 @@ export type StatsSettings = {
   fightsAction: "total" | "perMinute";
   fastestMethod: "finish" | "ko" | "sub";
   judgesMode: "agreement" | "dissents" | "splits" | "cards" | "leanings";
-  judgeLeaning: "control" | "takedowns" | "damage" | "pressure" | "submissions" | "ground" | "stats" | "home" | "fans";
+  judgeLeaning: "control" | "takedowns" | "damage" | "pressure" | "submissions" | "ground" | "stats" | "strikes" | "controlLead" | "home" | "fans";
   refereesMode: "finishRate" | "stoppageTime" | "bouts";
   officialsOrder: "high" | "low";
   // Fighter cards read either way where the server offers it

@@ -1,14 +1,15 @@
 import CareerStatDetails from "./CareerStatDetails";
 import { decidingRound } from "../decidingRound";
 import { PANEL } from "./chartTokens";
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type { CareerBefore, ComparisonBlock, FightDetailBlock, Matchup, RoundBlock } from "../api";
 import { useApi } from "../api";
 import { decimalScore, type ScoreSummary } from "../scoring";
 import { lastName } from "../format";
 import { RESULT_PILL } from "../ui";
-import { SIGNAL_TONE, signalPills } from "./ControversyRow";
+import { CONTROL_TITLE, SIGNAL_TONE, STATS_TITLE, STRIKES_TITLE, controlShare, signalPills } from "./ControversyRow";
+import { ChevronDown } from "lucide-react";
 import { Tooltip as TipBubble } from "./Tooltip";
 import { useTooltip } from "../tooltip";
 import { GRAPPLING_METRICS, metricView, profileText, resultView, STRIKING_METRICS, type ProfileMetric } from "../careerMetrics";
@@ -1126,7 +1127,7 @@ export function Scorecards({ fight }: { fight: Matchup }) {
   return (
     <section className={`${shell} @container overflow-hidden`}>
       <PanelHeading title="Scorecards" />
-      <ScorecardTable fight={fight} judges={judges} fans={fans} rounds={data?.rounds ?? []} decided={decided} stats={judging?.stats ?? null} />
+      <ScorecardTable fight={fight} judges={judges} fans={fans} rounds={data?.rounds ?? []} decided={decided} stats={judging?.stats ?? null} numbers={judging?.numbers ?? null} />
       {decided ? <p className="border-t border-zinc-100 px-4 py-2 text-center text-[11px] leading-4 text-zinc-500 sm:px-5">
         <span className="font-semibold text-zinc-900">Round {decided} decided the fight.</span> The judges split on it, and scored the other way it changes the winner.
       </p> : null}
@@ -1153,6 +1154,7 @@ function ControversyLine({ row }: { row: NonNullable<NonNullable<Matchup["judgin
  *  the card of theirs the fans disputed most. A judge with too few scored
  *  rounds to say anything is left out. */
 function JudgeNotes({ judges }: { judges: NonNullable<Matchup["judging"]>["judges"] }) {
+  const [open, setOpen] = useState(false);
   const shown = judges.filter((judge): judge is NonNullable<typeof judge> => Boolean(judge && (judge.notes.length || judge.worst)));
   if (!shown.length) return null;
   return (
@@ -1170,12 +1172,12 @@ function JudgeNotes({ judges }: { judges: NonNullable<Matchup["judging"]>["judge
                 {judge.notes.map((note) => (
                   <li key={note.key} className="text-[11px] leading-snug">
                     <span className="font-medium text-zinc-800">{note.title}</span>
-                    <span className="block text-zinc-500">{note.detail}</span>
+                    {open ? <span className="block text-zinc-500">{note.detail}</span> : null}
                   </li>
                 ))}
               </ul>
             ) : null}
-            {judge.worst ? (
+            {open && judge.worst ? (
               <Link to={`/fights/${judge.worst.fight_id}`} className="mt-1.5 block text-[11px] leading-snug text-zinc-500 hover:text-zinc-900">
                 <span className="font-medium text-rose-700">Most disputed card:</span> {lastName(judge.worst.f1)} vs {lastName(judge.worst.f2)}{" "}
                 <span className="tabular-nums">({judge.worst.card.f1}–{judge.worst.card.f2}, fans {judge.worst.fans.avg1.toFixed(2)}–{judge.worst.fans.avg2.toFixed(2)})</span>{" "}
@@ -1185,6 +1187,11 @@ function JudgeNotes({ judges }: { judges: NonNullable<Matchup["judging"]>["judge
           </div>
         ))}
       </div>
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
+        className="mx-auto mt-2 flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-50">
+        {open ? "Show less" : "Show more"}
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
+      </button>
     </div>
   );
 }
@@ -1217,7 +1224,21 @@ function StatsRound({ p }: { p: number | null }) {
 
 /** Every card as one table: judges (and the fans) across, the
  *  total first and each round under it, so the round names are printed once. */
-function ScorecardTable({ fight, judges, fans, rounds, decided, stats }: {
+/** The scorecards as one table on a wide panel. On a narrow one the judges
+ *  and the fans keep the first, and the strikes, control and stats get a
+ *  second under it, so no column is squeezed. */
+function ScorecardTable(props: Parameters<typeof ScoreGrid>[0]) {
+  if (!props.numbers && !props.stats) return <ScoreGrid {...props} />;
+  return <>
+    <div className="@[40rem]:hidden">
+      <ScoreGrid {...props} numbers={null} stats={null} />
+      <ScoreGrid {...props} judges={[]} fans={null} />
+    </div>
+    <div className="hidden @[40rem]:block"><ScoreGrid {...props} /></div>
+  </>;
+}
+
+function ScoreGrid({ fight, judges, fans, rounds, decided, stats, numbers }: {
   fight: Matchup;
   judges: Judge[];
   fans: ScoreSummary["totals"] | null;
@@ -1225,12 +1246,20 @@ function ScorecardTable({ fight, judges, fans, rounds, decided, stats }: {
   decided: number | null;
   /** The card an average judge would give each round from its numbers. */
   stats: NonNullable<Matchup["judging"]>["stats"];
+  /** Each corner's significant strikes and control, by round and in all. */
+  numbers: NonNullable<Matchup["judging"]>["numbers"];
 }) {
   const location = useLocation();
-  const roundCount = Math.max(0, ...judges.map((judge) => judge.rounds?.length ?? 0), fans ? rounds.length : 0);
+  const roundCount = Math.max(0, ...judges.map((judge) => judge.rounds?.length ?? 0), fans ? rounds.length : 0, numbers?.rounds.length ?? 0, stats?.rounds.length ?? 0);
   const places = fans && !(Number.isInteger(fans.avg1!) && Number.isInteger(fans.avg2!)) ? 2 : 0;
-  const columns = judges.length + (fans ? 1 : 0) + (stats ? 1 : 0);
-  const statsTitle = "Stats: the round an average UFC judge gives these numbers, with how sure it is; the total counts the rounds";
+  const control = numbers?.ctrl ? numbers : null;
+  const columns = judges.length + (fans ? 1 : 0) + (numbers ? 1 : 0) + (control ? 1 : 0) + (stats ? 1 : 0);
+  const statsTitle = STATS_TITLE;
+  // Seven columns on a phone: the judges' totals step down a size to fit.
+  const totalSize = columns > 5 ? "text-[15px] @[40rem]:text-2xl" : "text-lg @[32rem]:text-2xl";
+  const smallTotal = "text-[12px] @[44rem]:text-xl";
+  const head = "line-clamp-2 px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] text-zinc-400 @[32rem]:text-[10px] @[32rem]:leading-4";
+  const empty = <span className="text-[11px] text-zinc-300">—</span>;
   const cell = "flex min-w-0 items-center justify-center px-0.5";
   return (
     <div
@@ -1253,24 +1282,34 @@ function ScorecardTable({ fight, judges, fans, rounds, decided, stats }: {
           {fans.completeCards.toLocaleString()} {fans.completeCards === 1 ? "fan" : "fans"}
         </Link>
       ) : null}
-      {stats ? (
-        <span title={statsTitle} className="line-clamp-2 px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] text-zinc-400 @[32rem]:text-[10px] @[32rem]:leading-4">Stats</span>
-      ) : null}
+      {numbers ? <span title={STRIKES_TITLE} className={head}>Strikes</span> : null}
+      {control ? <span title={CONTROL_TITLE} className={head}>Control</span> : null}
+      {stats ? <span title={statsTitle} className={head}>Stats</span> : null}
 
       <span aria-hidden="true" />
       {judges.map((judge, index) => (
         <span key={`total-${index}`} className={`${cell} py-1.5`} aria-label={`${judge.judge || `Judge ${index + 1}`}: ${lastName(fight.f1.name)} ${judge.f1Score}, ${lastName(fight.f2.name)} ${judge.f2Score}`}>
-          <ScorePair f1={judge.f1Score} f2={judge.f2Score} text={String} size="text-lg @[32rem]:text-2xl" />
+          <ScorePair f1={judge.f1Score} f2={judge.f2Score} text={String} size={totalSize} />
         </span>
       ))}
       {fans ? (
         <span className={`${cell} py-1.5`} aria-label={`Fans: ${lastName(fight.f1.name)} ${fans.avg1!.toFixed(places)}, ${lastName(fight.f2.name)} ${fans.avg2!.toFixed(places)}`}>
-          <ScorePair f1={fans.avg1!} f2={fans.avg2!} text={(value) => value.toFixed(places)} size={places ? "text-[13px] @[44rem]:text-xl" : "text-lg @[32rem]:text-2xl"} />
+          <ScorePair f1={fans.avg1!} f2={fans.avg2!} text={(value) => value.toFixed(places)} size={places ? (columns > 5 ? smallTotal : "text-[13px] @[44rem]:text-xl") : totalSize} />
+        </span>
+      ) : null}
+      {numbers ? (
+        <span className={`${cell} py-1.5`} title={STRIKES_TITLE} aria-label={`Significant strikes: ${lastName(fight.f1.name)} ${numbers.sig[0]}, ${lastName(fight.f2.name)} ${numbers.sig[1]}`}>
+          <ScorePair f1={numbers.sig[0]} f2={numbers.sig[1]} text={String} size={smallTotal} />
+        </span>
+      ) : null}
+      {control ? (
+        <span className={`${cell} py-1.5`} title="Control time as a share of the whole fight" aria-label={`Control: ${lastName(fight.f1.name)} ${controlShare(control.ctrl![0], control.seconds)}% of the fight, ${lastName(fight.f2.name)} ${controlShare(control.ctrl![1], control.seconds)}%`}>
+          <ScorePair f1={controlShare(control.ctrl![0], control.seconds)} f2={controlShare(control.ctrl![1], control.seconds)} text={(value) => `${value}%`} size={smallTotal} />
         </span>
       ) : null}
       {stats ? (
         <span className={`${cell} py-1.5`} title={statsTitle} aria-label={`Stats: ${lastName(fight.f1.name)} ${stats.f1} rounds, ${lastName(fight.f2.name)} ${stats.f2}`}>
-          <ScorePair f1={stats.f1} f2={stats.f2} text={String} size="text-[13px] @[44rem]:text-xl" />
+          <ScorePair f1={stats.f1} f2={stats.f2} text={String} size={columns > 5 ? smallTotal : "text-[13px] @[44rem]:text-xl"} />
         </span>
       ) : null}
 
@@ -1288,6 +1327,17 @@ function ScorecardTable({ fight, judges, fans, rounds, decided, stats }: {
           {fans ? (
             <span className={`${cell} border-t border-zinc-100 py-1`}>
               {rounds[index] ? <ScorePair f1={rounds[index].total1} f2={rounds[index].total2} text={decimalScore} size="text-[11px] @[32rem]:text-xs" /> : <span className="text-[11px] text-zinc-300">—</span>}
+            </span>
+          ) : null}
+          {numbers ? (
+            <span className={`${cell} border-t border-zinc-100 py-1`}>
+              {numbers.rounds[index] ? <ScorePair f1={numbers.rounds[index].sig[0]} f2={numbers.rounds[index].sig[1]} text={String} size="text-[11px] @[32rem]:text-xs" /> : empty}
+            </span>
+          ) : null}
+          {control ? (
+            <span className={`${cell} border-t border-zinc-100 py-1`}>
+              {control.rounds[index]?.ctrl ? <ScorePair f1={controlShare(control.rounds[index].ctrl![0], control.round_seconds)} f2={controlShare(control.rounds[index].ctrl![1], control.round_seconds)}
+                text={(value) => `${value}%`} size="text-[10px] @[32rem]:text-xs" /> : empty}
             </span>
           ) : null}
           {stats ? (

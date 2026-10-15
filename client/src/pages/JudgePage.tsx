@@ -7,12 +7,12 @@ import { RESULT_PILL } from "../ui";
 import { PANEL } from "../components/chartTokens";
 import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "../components/segmented";
 import { gapChip, pct, officialRows, useKeptApi, useUrlFilters } from "../research";
-import ControversyRow, { ControversyMethod, SHOW_LABELS, SORTS } from "../components/ControversyRow";
+import ControversyRow, { ControversyMethod, DEFAULT_SORT, RoundByRound, SHOW_LABELS, SORTS } from "../components/ControversyRow";
 import { SITE_URL, useSeo } from "../seo";
 import RequestNotice from "../components/RequestNotice";
 import { LoadMore, useInfiniteList } from "../components/InfiniteList";
 import {
-  BOUT_LIST, ROW_CONTROL, FilterSearch, FilterSelect, IdentityCard, ListHeading, NotFound, PageState, Panel, ProfileColumns, RankRows,
+  BOUT_LIST, FilterSearch, FilterSelect, IdentityCard, ListHeading, NotFound, PageState, Panel, ProfileColumns, RankRows,
   TitleNote, Wheel, YearBars, YearRange,
 } from "../components/ResearchKit";
 
@@ -40,77 +40,8 @@ const TOP = (index: number) => index < 3 ? "bg-zinc-900 text-white" : "bg-zinc-1
 
 type Row = JudgeProfile["rows"][number];
 
-function Score({ f1, f2, strong }: { f1: number; f2: number; strong?: boolean }) {
-  return (
-    <span className={`tabular-nums ${strong ? "text-base font-semibold text-zinc-950" : "text-xs text-zinc-500"}`}>
-      <span className={f1 > f2 ? "text-f1-ink" : ""}>{f1}</span>–<span className={f2 > f1 ? "text-f2-ink" : ""}>{f2}</span>
-    </span>
-  );
-}
-
-/** The crowd's average, the side they had ahead in that side's colour. A gap
- *  under a tenth of a point is as even as a crowd gets. */
-function FanScore({ avg1, avg2, digits = 1 }: { avg1: number; avg2: number; digits?: number }) {
-  const lead = Math.abs(avg1 - avg2) < 0.1 ? 0 : Math.sign(avg1 - avg2);
-  return (
-    <span className="tabular-nums">
-      <span className={lead > 0 ? "font-semibold text-f1-ink" : ""}>{avg1.toFixed(digits)}</span>–<span className={lead < 0 ? "font-semibold text-f2-ink" : ""}>{avg2.toFixed(digits)}</span>
-    </span>
-  );
-}
-
 const pickOf = (f1: number, f2: number) => Math.sign(f1 - f2);
 const fanPick = (fans: { avg1: number; avg2: number }) => Math.abs(fans.avg1 - fans.avg2) < 0.1 ? 0 : Math.sign(fans.avg1 - fans.avg2);
-
-/** Every round side by side: this judge, the other two, and the crowd —
- *  whichever of them scored rounds. */
-function RoundTable({ row }: { row: Row }) {
-  const numbers = [...new Set([...row.card.rounds, ...row.others.flatMap((other) => other.rounds), ...(row.fans?.rounds ?? [])].map((round) => round.round))].sort((a, b) => a - b);
-  if (!numbers.length) return null;
-  const others = row.others;
-  const fans = row.fans?.rounds.length ? row.fans.rounds : null;
-  const cell = "whitespace-nowrap px-1.5 py-1 text-center tabular-nums";
-  return (
-    <details className={`mt-1.5 w-fit ${ROW_CONTROL}`}>
-      <summary className="cursor-pointer text-[11px] font-medium text-zinc-500 hover:text-zinc-900">Round by round</summary>
-      <div className="mt-1.5 overflow-x-auto">
-        <table className="text-[11px] text-zinc-600">
-          <thead>
-            <tr className="text-[10px] uppercase tracking-[0.08em] text-zinc-400">
-              <th className="py-1 pr-1.5 text-left font-semibold">R</th>
-              <th className={`${cell} font-semibold text-zinc-700`}>Card</th>
-              {others.map((other, index) => (
-                <th key={index} className={`${cell} font-semibold`}>
-                  {other.slug ? <Link to={`/judges/${other.slug}`} className="hover:text-zinc-900 hover:underline">{other.judge ? lastName(other.judge) : "Judge"}</Link>
-                    : other.judge ? lastName(other.judge) : `Judge ${index + 2}`}
-                </th>
-              ))}
-              {fans ? <th className={`${cell} font-semibold text-sky-600`}>Fans</th> : null}
-            </tr>
-          </thead>
-          <tbody>
-            {numbers.map((number) => {
-              const mine = row.card.rounds.find((entry) => entry.round === number);
-              const crowd = fans?.find((entry) => entry.round === number);
-              const flag = mine && Math.max(mine.f1, mine.f2) === 10 && Math.min(mine.f1, mine.f2) === 8 ? "10–8" : mine && mine.f1 === 10 && mine.f2 === 10 ? "10–10" : null;
-              return (
-                <tr key={number} className="border-t border-zinc-100">
-                  <td className="whitespace-nowrap py-1 pr-1.5 font-medium">{number}{flag ? <span className="ml-1.5 rounded bg-amber-100 px-1 text-[9px] font-semibold text-amber-800">{flag}</span> : null}</td>
-                  <td className={`${cell} font-semibold text-zinc-900`}>{mine ? <Score f1={mine.f1} f2={mine.f2} /> : "—"}</td>
-                  {others.map((other, index) => {
-                    const theirs = other.rounds.find((entry) => entry.round === number);
-                    return <td key={index} className={cell}>{theirs ? <Score f1={theirs.f1} f2={theirs.f2} /> : "—"}</td>;
-                  })}
-                  {fans ? <td className={cell}>{crowd ? <FanScore avg1={crowd.avg1} avg2={crowd.avg2} digits={2} /> : "—"}</td> : null}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </details>
-  );
-}
 
 type Against = "judges" | "fans";
 
@@ -192,7 +123,12 @@ function CardRow({ row, judge, against }: { row: Row; judge: string; against: Ag
         {agreed ? <span className={`${RESULT_PILL} ${outcomeClasses(agreed.agrees ? "win" : "loss")}`}>{agreed.label}</span> : null}
         {row.ten_eights ? <span className={`${RESULT_PILL} bg-amber-100 text-amber-800`}>{row.ten_eights}× 10–8</span> : null}
       </div>
-      <RoundTable row={row} />
+      <RoundByRound
+        cards={[
+          { label: lastName(judge), slug: null, f1: row.card.f1, f2: row.card.f2, rounds: row.card.rounds, mine: true },
+          ...row.others.map((other, index) => ({ label: other.judge ? lastName(other.judge) : `Judge ${index + 2}`, slug: other.slug, f1: other.f1, f2: other.f2, rounds: other.rounds })),
+        ]}
+        fans={row.fans} numbers={row.numbers} stats={row.stats} />
     </div>
   );
 }
@@ -213,7 +149,7 @@ function JudgeControversial({ slug, judge, data, filters }: { slug: string; judg
     itemKey: (row) => row.fight_id,
   });
   const show = (filters.params.get("show") ?? null) as ControversialShow | null;
-  const sort = filters.params.get("sort") ?? "closest";
+  const sort = filters.params.get("sort") ?? DEFAULT_SORT;
   const narrowing = [filters.params.get("from"), filters.params.get("to"), filters.params.get("division"), show].filter(Boolean).length;
   return (
     <section className={PANEL}>
@@ -222,7 +158,7 @@ function JudgeControversial({ slug, judge, data, filters }: { slug: string; judg
           <span className={`${segmentedGroup} inline-flex`} role="group" aria-label="Order">
             {SORTS.map((option) => (
               <button key={option.value} type="button" aria-pressed={sort === option.value} title={option.title}
-                onClick={() => filters.set("sort", option.value === "closest" ? null : option.value)}
+                onClick={() => filters.set("sort", option.value === DEFAULT_SORT ? null : option.value)}
                 className={`${segmentedOption} ${sort === option.value ? segmentedSelected : segmentedIdle}`}>{option.label}</button>
             ))}
           </span>
@@ -235,8 +171,8 @@ function JudgeControversial({ slug, judge, data, filters }: { slug: string; judg
         <FilterSelect label="Show" value={show} all={`Everything (${listed?.counts.all ?? 0})`} onChange={(value) => filters.set("show", value)}
           options={(Object.keys(SHOW_LABELS) as ControversialShow[]).filter((key) => key !== "all" && listed?.counts[key] != null)
             .map((key) => ({ value: key, label: `${key === "against-fans" ? "Against the fans" : SHOW_LABELS[key]} (${listed!.counts[key]!.toLocaleString()})` }))} />
+        {listed ? <ControversyMethod data={listed} /> : null}
       </ListHeading>
-      {listed ? <ControversyMethod data={listed} /> : null}
       {list.items.length ? (
         <div aria-busy={stale || list.loading} className={`${BOUT_LIST} ${stale ? "opacity-60 transition-opacity delay-200" : ""}`}>
           {list.items.map((row) => <ControversyRow key={row.fight_id} row={row} judge={judge} />)}
@@ -269,6 +205,16 @@ function ScoringDna({ dna }: { dna: JudgeProfile["dna"] }) {
       key: "stats", ...chip(dna.stats), title: "Matched the stats", value: pct(dna.stats.rate),
       detail: `${dna.stats.n.toLocaleString()} rounds the stats clearly gave one fighter · others ${pct(dna.stats.others_rate)}`,
       hint: `The stats card is what an average UFC judge gives a round with those numbers. ${hint}.`,
+    }] : []),
+    ...(dna.strikes.n >= 10 ? [{
+      key: "strikes", ...chip(dna.strikes), title: "Went with the strike leader", value: pct(dna.strikes.rate),
+      detail: `${dna.strikes.n.toLocaleString()} rounds where one fighter landed 3+ more significant strikes · others ${pct(dna.strikes.others_rate)}`,
+      hint: `${hint}.`,
+    }] : []),
+    ...(dna.control.n >= 10 ? [{
+      key: "control-lead", ...chip(dna.control), title: "Went with the control leader", value: pct(dna.control.rate),
+      detail: `${dna.control.n.toLocaleString()} rounds where one fighter had a minute or more of extra control · others ${pct(dna.control.others_rate)}`,
+      hint: `${hint}.`,
     }] : []),
     ...(dna.home.n >= 5 ? [{
       key: "home", ...chip(dna.home), title: "Gave it to the home fighter", value: pct(dna.home.rate),
@@ -375,6 +321,7 @@ export default function JudgePage() {
   );
 
   const stats = <>
+    <ScoringDna dna={data.dna} />
     <RankRows title="Against other judges" rows={[
       rate("agreed", "Picked the winner", s.agreed_result_rate, b.agreed_result_rate, `${s.agreed_result.toLocaleString()} of ${s.with_result.toLocaleString()}`),
       rate("dissents", "Lone dissents", s.dissent_rate, b.dissent_rate, `${s.dissents} of ${s.panels.toLocaleString()}`),
@@ -384,7 +331,6 @@ export default function JudgePage() {
       rate("fans-differ", "Different winner from fans", s.fan_pick_differ_rate, b.fan_pick_differ_rate, s.fan_cards ? `${s.fan_pick_differs} of ${s.fan_cards}` : null),
       rate("fan-rounds-differ", "Different rounds from fans", s.fan_round_differ_rate, b.fan_round_differ_rate, s.fan_rounds ? `${s.fan_rounds_differ} of ${s.fan_rounds}` : null),
     ].map((row) => ({ ...row, selected: f.view === row.key, onSelect: () => filters.set("view", f.view === row.key ? null : row.key) }))} />
-    <ScoringDna dna={data.dna} />
     <RankRows title="Their usual cards" rows={data.score_lines.map((line) => ({
       key: line.score, chip: line.score, title: `${line.n.toLocaleString()} cards`, value: pct(s.cards ? Math.round((line.n / s.cards) * 1000) / 10 : null),
     }))} />

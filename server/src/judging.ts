@@ -1,4 +1,6 @@
-import type { IndexedFight } from "./fight-index.ts";
+import { fightIndex, type IndexedFight } from "./fight-index.ts";
+
+const fightIndexById = () => fightIndex().byId;
 import {
   crowdPick, facets, fighterRef, isTitle, matchesBase, officialsIndex, parseOfficialFilters, pick, resultPick, searched, verdictOf,
   type Card, type FanCard, type Identity, type Officiated,
@@ -143,6 +145,43 @@ const probability = (weights: number[], edge: Edge) => 1 / (1 + Math.exp(-FEATUR
 
 /** Rounds the stats give one fighter with at least this probability count as clear. */
 const CLEAR = 0.6;
+/** A round's strike leader: 3+ more significant strikes landed; its control leader: a minute more. */
+const STRIKE_LEAD = 3;
+const CONTROL_LEAD = 60;
+
+/** Each corner's significant strikes landed and control time, round by round
+ *  and in all, with the seconds fought, for the scorecards' Strikes and
+ *  Control columns. Control is null where UFCStats didn't record it. */
+export function numbersOf(fight: IndexedFight) {
+  const [a, b] = fight.sides;
+  const count = Math.min(a.rounds.length, b.rounds.length);
+  if (!count) return null;
+  const rounds = Array.from({ length: count }, (_, i) => ({
+    round: i + 1,
+    sig: [a.rounds[i].sig, b.rounds[i].sig] as [number, number],
+    ctrl: a.rounds[i].ctrl != null && b.rounds[i].ctrl != null ? [a.rounds[i].ctrl!, b.rounds[i].ctrl!] as [number, number] : null,
+  }));
+  const sum = (pickOf: (round: (typeof rounds)[number]) => number) => rounds.reduce((total, round) => total + pickOf(round), 0);
+  const controlled = rounds.every((round) => round.ctrl);
+  return {
+    rounds,
+    sig: [sum((round) => round.sig[0]), sum((round) => round.sig[1])] as [number, number],
+    ctrl: controlled ? [sum((round) => round.ctrl![0]), sum((round) => round.ctrl![1])] as [number, number] : null,
+    // A decision goes the distance: five minutes a round.
+    round_seconds: 300,
+    seconds: fight.elapsed ?? count * 300,
+  };
+}
+
+/** A judge's page rows with each bout's numbers and stats card, for its round-by-round table. */
+export function withNumbers<T extends { fight_id: string }>(rows: T[]) {
+  const state = judging();
+  const index = fightIndexById();
+  return rows.map((row) => {
+    const fight = index.get(row.fight_id);
+    return { ...row, numbers: fight ? numbersOf(fight) : null, stats: state.fights.get(row.fight_id)?.stats ?? null };
+  });
+}
 
 export type StatsCard = { rounds: { round: number; p: number }[]; f1: number; f2: number; pick: number };
 
@@ -212,7 +251,11 @@ function controversyOf(officiated: Officiated, stats: StatsCard | null): Controv
 // the index: built once per officials index
 
 type Paired = { mine: number; others: number | null };
-type RoundEntry = { fight: IndexedFight; tiebreaks: Partial<Record<TiebreakKey, Paired>>; stats: Paired | null };
+type RoundEntry = {
+  fight: IndexedFight; tiebreaks: Partial<Record<TiebreakKey, Paired>>; stats: Paired | null;
+  /** Whether the round went to the fighter who landed 3+ more significant strikes, and to the one with a minute more control. */
+  strikes: Paired | null; control: Paired | null;
+};
 type CardEntry = { officiated: Officiated; card: Card; home: Paired | null; homeFans: number | null; fans: Paired | null };
 type FightJudging = { officiated: Officiated; edges: (Edge | null)[]; stats: StatsCard | null; controversy: Controversy | null; home: number; country: string | null };
 
@@ -301,7 +344,7 @@ function build(): Judging {
         if (!edge || !mineRound) continue;
         const theirs = others.map((other) => other.rounds.find((entry) => entry.round === round.round)).filter((entry) => entry && entry.f1 !== entry.f2)
           .map((entry) => pick(entry!.f1, entry!.f2));
-        const roundEntry: RoundEntry = { fight, tiebreaks: {}, stats: null };
+        const roundEntry: RoundEntry = { fight, tiebreaks: {}, stats: null, strikes: null, control: null };
         for (const tiebreak of TIEBREAKS) {
           const side = tiebreakSide(tiebreak, edge);
           if (!side) continue;
@@ -314,6 +357,9 @@ function build(): Judging {
           const statsSide = p > 0.5 ? 1 : -1;
           roundEntry.stats = { mine: Number(mineRound === statsSide), others: theirs.length ? mean(theirs.map((value) => Number(value === statsSide))) : null };
         }
+        const leader = (side: number): Paired => ({ mine: Number(mineRound === side), others: theirs.length ? mean(theirs.map((value) => Number(value === side))) : null });
+        if (Math.abs(edge.sig) >= STRIKE_LEAD) roundEntry.strikes = leader(Math.sign(edge.sig));
+        if (Math.abs(edge.ctrl) >= CONTROL_LEAD) roundEntry.control = leader(Math.sign(edge.ctrl));
         const roundList = rounds.get(card.key) ?? [];
         roundList.push(roundEntry);
         rounds.set(card.key, roundList);
@@ -372,6 +418,10 @@ export type JudgeDna = {
   bouts: number;
   tiebreaks: (Leaning & { key: TiebreakKey; x: string; y: string; about: string; clash: string; field_rate: number | null })[];
   stats: Leaning;
+  /** Rounds given to the fighter who landed 3+ more significant strikes. */
+  strikes: Leaning;
+  /** Rounds given to the fighter with a minute or more of extra control. */
+  control: Leaning;
   home: Leaning & { fans_rate: number | null; fans_n: number };
   fans: Leaning;
   notes: Note[];
@@ -411,6 +461,16 @@ function notesOf(dna: Omit<JudgeDna, "notes">): Note[] {
       key: "stats", z: Math.abs(dna.stats.z),
       title: high ? "Scores by the numbers more than most" : "Often scores against the numbers",
       detail: `Matched the stats on ${pctText(dna.stats.rate)} of ${plural(dna.stats.n, "round")} they clearly gave one fighter · the other judges ${pctText(dna.stats.others_rate)}`,
+    });
+  }
+  for (const [key, what] of [["strikes", "the strike count"], ["control", "control time"]] as const) {
+    const figure = dna[key];
+    if (!figure.notable || figure.rate == null) continue;
+    const high = figure.diff! > 0;
+    notable.push({
+      key, z: Math.abs(figure.z),
+      title: high ? `Follows ${what} more than most` : `Follows ${what} less than most`,
+      detail: `Gave the round to the ${key === "strikes" ? "fighter who landed 3+ more strikes" : "fighter with a minute more control"} ${pctText(figure.rate)} of the time in ${plural(figure.n, "round")} · the other judges ${pctText(figure.others_rate)}`,
     });
   }
   if (dna.home.notable && dna.home.rate != null) {
@@ -469,6 +529,8 @@ export function judgeDna(key: string, keep?: (fight: IndexedFight) => boolean, s
     bouts: new Set(rounds.map((entry) => entry.fight.id)).size,
     tiebreaks,
     stats: leaning(rounds.flatMap((entry) => (entry.stats ? [entry.stats] : [])), MIN_ROUNDS),
+    strikes: leaning(rounds.flatMap((entry) => (entry.strikes ? [entry.strikes] : [])), MIN_ROUNDS),
+    control: leaning(rounds.flatMap((entry) => (entry.control ? [entry.control] : [])), MIN_ROUNDS),
     home: {
       ...leaning(homeCards.map((entry) => entry.home!), MIN_CARDS),
       fans_rate: homeFans.length ? round1(mean(homeFans.map((entry) => entry.homeFans!))) : null,
@@ -506,7 +568,7 @@ export function worstCard(key: string, except?: string) {
 
 const SHOWS = ["all", "close", "fans-other", "rounds-total", "stats-other", "against-fans"] as const;
 type Show = (typeof SHOWS)[number];
-const SORTS = ["closest", "widest", "newest"] as const;
+const SORTS = ["widest", "closest", "newest"] as const;
 type Sort = (typeof SORTS)[number];
 
 type Listed = { officiated: Officiated; controversy: Controversy; mine: Card | null; againstFans: boolean };
@@ -526,7 +588,7 @@ export function controversialList(params: URLSearchParams): unknown | null {
   const state = judging();
   const filters = parseOfficialFilters(params);
   const show: Show = SHOWS.find((value) => value === params.get("show")) ?? "all";
-  const sort: Sort = SORTS.find((value) => value === params.get("sort")) ?? "closest";
+  const sort: Sort = SORTS.find((value) => value === params.get("sort")) ?? "widest";
   const judgeSlug = params.get("judge");
   const judge: Identity | null = judgeSlug ? index.judgeSlugs.get(judgeSlug) ?? null : null;
   if (judgeSlug && !judge) return null;
@@ -588,6 +650,7 @@ export function controversyRow(officiated: Officiated, controversy: Controversy,
     margin: controversy.margin,
     fan_rounds: controversy.fanRounds,
     signals: { close: controversy.close, fans_other: controversy.fansOther, rounds_total: controversy.roundsTotal, stats_other: controversy.statsOther },
+    numbers: numbersOf(fight),
     mine: mineIndex >= 0 ? mineIndex : null,
     against_fans: mine ? controversy.fanPick !== 0 && pick(mine.f1, mine.f2) !== controversy.fanPick : null,
   };
@@ -624,6 +687,7 @@ export function matchupJudging(fightId: string) {
   });
   return {
     stats: entry.stats,
+    numbers: numbersOf(officiated.fight),
     controversy: entry.controversy ? controversyRow(officiated, entry.controversy) : null,
     home: entry.home ? { side: entry.home > 0 ? "f1" : "f2", country: entry.country } : null,
     judges,

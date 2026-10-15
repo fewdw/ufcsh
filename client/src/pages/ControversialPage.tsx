@@ -1,10 +1,10 @@
 import type { ControversialList, ControversialShow } from "../api";
-import { PAGE, FULL_PAGE_BODY, officialRows, useKeptApi, useUrlFilters } from "../research";
+import { BROWSE_LIST, BROWSE_PAGE, FULL_PAGE_BODY, officialRows, useKeptApi, useUrlFilters } from "../research";
 import PageToolbar, { BROWSE_WIDE, FilterSelect, ListHead, ToolbarSearch } from "../components/PageToolbar";
 import OptionsSheet from "../components/OptionsSheet";
 import { PANEL } from "../components/chartTokens";
 import BrowseTabs from "../components/BrowseTabs";
-import ControversyRow, { ControversyMethod, SHOW_LABELS, SORTS } from "../components/ControversyRow";
+import ControversyRow, { ControversyMethod, DEFAULT_SORT, SHOW_LABELS, SORTS } from "../components/ControversyRow";
 import { LoadMore, useInfiniteList } from "../components/InfiniteList";
 import { PageState } from "../components/ResearchKit";
 import RequestNotice from "../components/RequestNotice";
@@ -14,7 +14,7 @@ import useMediaQuery from "../useMediaQuery";
 import { useSeo } from "../seo";
 
 /** Browse → Controversial: every decision the fans' cards call into question,
- *  closest first. */
+ *  the fans' widest disagreements first. */
 export default function ControversialPage() {
   const filters = useUrlFilters();
   const url = `/api/controversial${filters.query ? `?${filters.query}` : ""}`;
@@ -27,6 +27,7 @@ export default function ControversialPage() {
   });
   const wide = useMediaQuery(BROWSE_WIDE);
   const scroll = useRouteScrollRestoration<HTMLDivElement>("controversial", Boolean(data));
+  const listScroll = useRouteScrollRestoration<HTMLElement>("controversial:list", Boolean(data));
   useSeo({
     title: "Controversial UFC Decisions: Closest Fights & Robberies",
     description: "Every UFC decision the fans' scorecards call close or got the other way, with each judge's card, the fans' average round by round and what the stats say.",
@@ -43,7 +44,7 @@ export default function ControversialPage() {
     <div className={segmentedGroup} role="group" aria-label="Order">
       {SORTS.map((option) => (
         <button key={option.value} type="button" aria-pressed={f.sort === option.value} title={option.title}
-          onClick={() => filters.set("sort", option.value === "closest" ? null : option.value)}
+          onClick={() => filters.set("sort", option.value === DEFAULT_SORT ? null : option.value)}
           className={`${segmentedOption} ${f.sort === option.value ? segmentedSelected : segmentedIdle}`}>{option.label}</button>
       ))}
     </div>
@@ -60,22 +61,22 @@ export default function ControversialPage() {
           options={[{ value: "all", label: "Any year" }, ...yearOptions.map((year) => ({ value: year, label: year }))]} />
         <FilterSelect label="Division" value={f.division ?? "all"} onChange={(value) => filters.set("division", value === "all" ? null : value)}
           options={[{ value: "all", label: "All divisions" }, ...data.facets.divisions.map((entry) => ({ value: entry.division, label: `${entry.division} (${entry.n})` }))]} />
+        <ControversyMethod data={data} />
       </div>
     </OptionsSheet>
   );
   return (
-    <div ref={scroll} className={PAGE}>
+    <div ref={scroll} className={BROWSE_PAGE}>
       <div className={FULL_PAGE_BODY}>
         <h1 className="sr-only">Controversial decisions</h1>
         <PageToolbar>
           <BrowseTabs />
           {wide ? <div className="ml-auto flex items-center gap-2">{choice}{sheet}</div> : null}
         </PageToolbar>
-        <section aria-label="Controversial decisions" className={`${PANEL} overflow-hidden`}>
+        <section ref={listScroll} aria-label="Controversial decisions" className={`${PANEL} overflow-hidden ${BROWSE_LIST}`}>
           <ListHead title="Controversial" count={data.total}
             search={<ToolbarSearch value={filters.params.get("q") ?? ""} onChange={(value) => filters.set("q", value || null)} label="Find a fighter or event" />}
             choice={wide ? null : choice} filters={wide ? null : sheet} />
-          <ControversyMethod data={data} />
           {list.items.length ? (
             <ul aria-busy={stale || list.loading} className={`grid grid-cols-1 xl:grid-cols-2 ${stale ? "opacity-60 transition-opacity delay-200" : ""}`}>
               {list.items.map((row) => (

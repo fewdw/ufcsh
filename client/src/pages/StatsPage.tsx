@@ -597,6 +597,8 @@ function CardControls({ boardKey, order, settings, update, division }: { boardKe
               <option value="submissions">Submission attempts over striking</option>
               <option value="ground">Ground strikes over standing</option>
               <option value="stats">Matching the stats</option>
+              <option value="strikes">Following the strike count</option>
+              <option value="controlLead">Following control time</option>
               <option value="home">Home fighters</option>
               <option value="fans">Differing from the fans</option>
             </Select>

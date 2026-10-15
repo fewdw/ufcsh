@@ -4,7 +4,7 @@ import { useApi, type RosterMove, type RosterMoves } from "../api";
 import { daysUntil, formatDateShort, formatDateShortWithYear } from "../format";
 import { byDivisionName } from "../divisionOrder";
 import { useRouteScrollRestoration } from "../navigationState";
-import { PAGE, FULL_PAGE_BODY } from "../research";
+import { BROWSE_LIST, BROWSE_PAGE, FULL_PAGE_BODY } from "../research";
 import PageToolbar, { BROWSE_WIDE, ListHead } from "../components/PageToolbar";
 import BrowseTabs from "../components/BrowseTabs";
 import { markRosterSeen, moveKey, unseenMoves } from "../rosterSeen";
@@ -102,6 +102,10 @@ export default function RosterPage() {
   const wide = useMediaQuery(BROWSE_WIDE);
   const split = useMediaQuery(SPLIT);
   const scroll = useRouteScrollRestoration<HTMLDivElement>("roster", Boolean(data));
+  // From lg each list scrolls by itself, so each keeps its own place.
+  const signedScroll = useRouteScrollRestoration<HTMLElement>("roster:signed", Boolean(data));
+  const cutScroll = useRouteScrollRestoration<HTMLElement>("roster:cut", Boolean(data));
+  const listScroll = useRouteScrollRestoration<HTMLElement>("roster:list", Boolean(data));
   // What was new when the page opened keeps its dot for this visit.
   const [fresh, setFresh] = useState<ReadonlySet<string> | null>(null);
   useEffect(() => {
@@ -128,7 +132,7 @@ export default function RosterPage() {
     {divisions.map((value) => <option key={value} value={value}>{value}</option>)}
   </select>;
   return (
-    <div ref={scroll} className={PAGE}>
+    <div ref={scroll} className={BROWSE_PAGE}>
       <div className={FULL_PAGE_BODY}>
         <h1 className="sr-only">Roster changes</h1>
         <PageToolbar>
@@ -136,16 +140,16 @@ export default function RosterPage() {
           {split ? <div className="ml-auto">{divisionPicker}</div> : wide ? <div className="ml-auto">{choice}</div> : null}
         </PageToolbar>
         {split ? (
-          <div className="grid grid-cols-2 items-start gap-3">
+          <div className="grid grid-cols-2 items-start gap-3 lg:min-h-0 lg:grid-rows-[minmax(0,1fr)]">
             {(["signed", "cut"] as const).map((kind) => (
-              <section key={kind} aria-label={kind === "signed" ? "Signed" : "Cut"} className={`${PANEL} overflow-hidden`}>
+              <section key={kind} ref={kind === "signed" ? signedScroll : cutScroll} aria-label={kind === "signed" ? "Signed" : "Cut"} className={`${PANEL} overflow-hidden lg:max-h-full ${BROWSE_LIST}`}>
                 <MoveList kind={kind} moves={filtered(kind)} fresh={fresh ?? NONE} half />
               </section>
             ))}
           </div>
         ) : (
           // The list's head says which list it is and switches it.
-          <section aria-label="Roster changes" className={`${PANEL} overflow-hidden`}>
+          <section ref={listScroll} aria-label="Roster changes" className={`${PANEL} overflow-hidden ${BROWSE_LIST}`}>
             <MoveList kind={list} moves={filtered(list)} fresh={fresh ?? NONE} choice={wide ? null : choice} search={divisionPicker} />
           </section>
         )}

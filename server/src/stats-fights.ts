@@ -16,7 +16,7 @@ type Group = "fights" | "judges" | "referees";
 type FightsMode = "disputed" | "controversial" | "upsets" | "action" | "fastest";
 type JudgesMode = "agreement" | "dissents" | "splits" | "cards" | "leanings";
 type Controversy = "closest" | "robbery" | "rounds" | "stats";
-type Leaning = TiebreakKey | "stats" | "home" | "fans";
+type Leaning = TiebreakKey | "stats" | "strikes" | "controlLead" | "home" | "fans";
 type RefereesMode = "finishRate" | "stoppageTime" | "bouts";
 
 // Fewer bouts than these in the filtered years, and an official's rate is not ranked.
@@ -98,7 +98,7 @@ export function fightsBoard(bouts: IndexedFight[], params: URLSearchParams, limi
 
   if (group === "judges") {
     const judgesMode = mode<JudgesMode>("judgesMode", ["agreement", "dissents", "splits", "cards", "leanings"], "agreement");
-    if (judgesMode === "leanings") return leaningsBoard(bouts, mode<Leaning>("judgeLeaning", [...TIEBREAKS.map((tiebreak) => tiebreak.key), "stats", "home", "fans"], "control"), lowFirst, limit);
+    if (judgesMode === "leanings") return leaningsBoard(bouts, mode<Leaning>("judgeLeaning", [...TIEBREAKS.map((tiebreak) => tiebreak.key), "stats", "strikes", "controlLead", "home", "fans"], "control"), lowFirst, limit);
     const judges = new Map<string, { slug: string; name: string; cards: number; compared: number; agreed: number; panels: number; dissents: number; splits: number; first: string; last: string }>();
     const people = officialsIndex().judges;
     for (const fight of bouts) {
@@ -340,9 +340,10 @@ const MIN_LEANING_CARDS = 20;
 function leaningsBoard(bouts: IndexedFight[], leaning: Leaning, lowFirst: boolean, limit: number): Leaderboard {
   const tiebreak = TIEBREAKS.find((entry) => entry.key === leaning);
   const read = (dna: ReturnType<typeof judgeLeanings>[number]["dna"]) => tiebreak ? dna.tiebreaks.find((entry) => entry.key === tiebreak.key)!
-    : leaning === "stats" ? dna.stats : leaning === "home" ? dna.home : dna.fans;
-  const minimum = tiebreak || leaning === "stats" ? MIN_LEANING_ROUNDS : MIN_LEANING_CARDS;
-  const unit = tiebreak || leaning === "stats" ? "rounds" : "cards";
+    : leaning === "stats" ? dna.stats : leaning === "strikes" ? dna.strikes : leaning === "controlLead" ? dna.control : leaning === "home" ? dna.home : dna.fans;
+  const byRound = Boolean(tiebreak) || leaning === "stats" || leaning === "strikes" || leaning === "controlLead";
+  const minimum = byRound ? MIN_LEANING_ROUNDS : MIN_LEANING_CARDS;
+  const unit = byRound ? "rounds" : "cards";
   const eligible = judgeLeanings(bouts).filter(({ dna }) => read(dna).n >= minimum && read(dna).diff != null);
   const rows = ranked(eligible, ({ dna }) => read(dna).diff!, lowFirst, (a, b) => read(b.dna).n - read(a.dna).n || a.identity.name.localeCompare(b.identity.name), limit)
     .map(({ item, value, rank, tied }) => {
@@ -357,6 +358,8 @@ function leaningsBoard(bouts: IndexedFight[], leaning: Leaning, lowFirst: boolea
     ...TIEBREAKS.map((entry) => [entry.key, [`Judges who favour ${entry.x} over ${entry.y}`, `Judges who favour ${entry.y} over ${entry.x}`,
       `points more often than the other judges on the same rounds that a judge gave the round to ${entry.x}, when ${entry.about}`]]),
     ["stats", ["Judges closest to the stats", "Judges furthest from the stats", "points more often than the other judges on the same rounds that a judge matched the stats card, on rounds it clearly gave one fighter"]],
+    ["strikes", ["Judges who follow the strike count most", "Judges who follow the strike count least", "points more often than the other judges on the same rounds that a judge gave the round to the fighter who landed 3+ more significant strikes"]],
+    ["controlLead", ["Judges who follow control time most", "Judges who follow control time least", "points more often than the other judges on the same rounds that a judge gave the round to the fighter with a minute or more of extra control"]],
     ["home", ["Judges kindest to home fighters", "Judges toughest on home fighters", "points more often than the other judges on the same bouts that a judge's card went to the one fighter from the host country"]],
     ["fans", ["Judges who differ from the fans most", "Judges closest to the fans", "points more often than the other judges on the same bouts that a judge picked a different winner from the fans · 30+ fan cards"]],
   ]) as Record<Leaning, [string, string, string]>;

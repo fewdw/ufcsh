@@ -1,6 +1,9 @@
 import { Fragment } from "react";
+
+type RoundScore = { round: number; f1: number; f2: number };
 import { Link } from "react-router-dom";
-import type { ControversialList, ControversialShow, ControversialSort, ControversyRow as Row } from "../api";
+import { ChevronDown } from "lucide-react";
+import type { ControversialList, ControversialShow, ControversialSort, ControversyRow as Row, FightNumbers, StatsCard } from "../api";
 import Avatar from "./Avatar";
 import { formatDateShortWithYear, lastName, outcomeClasses } from "../format";
 import { RESULT_PILL } from "../ui";
@@ -41,10 +44,11 @@ export function signalPills(row: Pick<Row, "signals" | "margin" | "fans" | "fan_
 
 const HEAD = "text-center text-[10px] font-semibold uppercase leading-none tracking-wide text-zinc-400";
 
-function Score({ f1, f2 }: { f1: number; f2: number }) {
+/** Two numbers, the larger in its corner's colour. */
+function Pair({ f1, f2, text = String }: { f1: number; f2: number; text?: (value: number) => string }) {
   return (
     <span className="tabular-nums">
-      <span className={f1 > f2 ? "font-semibold text-f1-ink" : ""}>{f1}</span>–<span className={f2 > f1 ? "font-semibold text-f2-ink" : ""}>{f2}</span>
+      <span className={f1 > f2 ? "font-semibold text-f1-ink" : ""}>{text(f1)}</span>–<span className={f2 > f1 ? "font-semibold text-f2-ink" : ""}>{text(f2)}</span>
     </span>
   );
 }
@@ -56,49 +60,78 @@ function StatsRound({ p }: { p: number }) {
   return <span className={`font-semibold tabular-nums ${first ? "text-f1-ink" : "text-f2-ink"}`}>{Math.round((first ? p : 1 - p) * 100)}%</span>;
 }
 
-/** Every round across: the judges, the fans and the stats. */
-function RoundTable({ row }: { row: Row }) {
-  const numbers = [...new Set([...row.cards.flatMap((card) => card.rounds), ...row.fans.rounds, ...(row.stats?.rounds ?? [])].map((round) => round.round))].sort((a, b) => a - b);
-  if (!numbers.length) return null;
+/** Control as a share of the time: a round's five minutes, or the whole fight. */
+export const controlShare = (seconds: number, of: number) => (of > 0 ? Math.round((seconds / of) * 100) : 0);
+const percent = (value: number) => `${value}%`;
+
+export const STRIKES_TITLE = "Significant strikes landed";
+export const CONTROL_TITLE = "Control time as a share of the round, and of the whole fight in the total";
+export const STATS_TITLE = "Stats: the round an average UFC judge gives these numbers, with how sure it is; the total counts the rounds";
+
+type RoundCard = { label: string; slug: string | null; f1: number; f2: number; rounds: RoundScore[]; mine?: boolean };
+
+/** Every round across, folded under a centred "Round by Round": the judges,
+ *  the fans, each corner's strikes and control, and the stats, with the
+ *  totals last. */
+export function RoundByRound({ cards, fans, numbers, stats }: {
+  cards: RoundCard[];
+  fans: { avg1: number; avg2: number; rounds: { round: number; avg1: number; avg2: number }[] } | null;
+  numbers: FightNumbers | null;
+  stats: StatsCard | null;
+}) {
+  const numbersRound = [...new Set([...cards.flatMap((card) => card.rounds), ...(fans?.rounds ?? []), ...(numbers?.rounds ?? []), ...(stats?.rounds ?? [])].map((round) => round.round))].sort((a, b) => a - b);
+  if (!numbersRound.length) return null;
   const cell = "whitespace-nowrap px-1.5 py-1 text-center tabular-nums";
+  const control = numbers?.rounds.some((round) => round.ctrl) ? numbers : null;
   return (
-    <details className={`mt-1.5 w-fit ${ROW_CONTROL}`}>
-      <summary className="cursor-pointer text-[11px] font-medium text-zinc-500 hover:text-zinc-900">Round by round</summary>
-      <div className="mt-1.5 overflow-x-auto">
-        <table className="text-[11px] text-zinc-600">
+    <details className={`group/rounds mt-1 ${ROW_CONTROL}`}>
+      <summary className="mx-auto flex w-fit cursor-pointer list-none items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-50 [&::-webkit-details-marker]:hidden">
+        Round by Round
+        <ChevronDown className="h-3.5 w-3.5 transition-transform group-open/rounds:rotate-180" aria-hidden="true" />
+      </summary>
+      <div className="mt-1 overflow-x-auto">
+        <table className="mx-auto text-[11px] text-zinc-600">
           <thead>
             <tr className="text-[10px] uppercase tracking-[0.08em] text-zinc-400">
               <th className="py-1 pr-1.5 text-left font-semibold">R</th>
-              {row.cards.map((card, index) => (
-                <th key={index} className={`${cell} font-semibold ${row.mine === index ? "text-zinc-700" : ""}`}>
-                  {card.slug ? <Link to={`/judges/${card.slug}`} className="hover:text-zinc-900 hover:underline">{card.judge ? lastName(card.judge) : `Judge ${index + 1}`}</Link>
-                    : card.judge ? lastName(card.judge) : `Judge ${index + 1}`}
+              {cards.map((card, index) => (
+                <th key={index} className={`${cell} font-semibold ${card.mine ? "text-zinc-700" : ""}`}>
+                  {card.slug && !card.mine ? <Link to={`/judges/${card.slug}`} className="hover:text-zinc-900 hover:underline">{card.label}</Link> : card.label}
                 </th>
               ))}
-              <th className={`${cell} font-semibold text-sky-600`}>Fans</th>
-              {row.stats ? <th className={`${cell} font-semibold`} title="What an average UFC judge gives a round with these numbers">Stats</th> : null}
+              {fans ? <th className={`${cell} font-semibold text-sky-600`}>Fans</th> : null}
+              {numbers ? <th className={`${cell} font-semibold`} title={STRIKES_TITLE}>Strikes</th> : null}
+              {control ? <th className={`${cell} font-semibold`} title={CONTROL_TITLE}>Control</th> : null}
+              {stats ? <th className={`${cell} font-semibold`} title={STATS_TITLE}>Stats</th> : null}
             </tr>
           </thead>
           <tbody>
-            {numbers.map((number) => {
-              const crowd = row.fans.rounds.find((entry) => entry.round === number);
-              const stats = row.stats?.rounds.find((entry) => entry.round === number);
+            {numbersRound.map((number) => {
+              const crowd = fans?.rounds.find((entry) => entry.round === number);
+              const counted = numbers?.rounds.find((entry) => entry.round === number);
+              const read = stats?.rounds.find((entry) => entry.round === number);
               return (
                 <tr key={number} className="border-t border-zinc-100">
                   <td className="py-1 pr-1.5 font-medium">{number}</td>
-                  {row.cards.map((card, index) => {
+                  {cards.map((card, index) => {
                     const round = card.rounds.find((entry) => entry.round === number);
-                    return <td key={index} className={`${cell} ${row.mine === index ? "font-semibold text-zinc-900" : ""}`}>{round ? <Score f1={round.f1} f2={round.f2} /> : "—"}</td>;
+                    return <td key={index} className={`${cell} ${card.mine ? "font-semibold text-zinc-900" : ""}`}>{round ? <Pair f1={round.f1} f2={round.f2} /> : "—"}</td>;
                   })}
-                  <td className={cell}>
-                    {crowd ? <span className="tabular-nums">
-                      <span className={crowd.avg1 > crowd.avg2 ? "font-semibold text-f1-ink" : ""}>{crowd.avg1.toFixed(2)}</span>–<span className={crowd.avg2 > crowd.avg1 ? "font-semibold text-f2-ink" : ""}>{crowd.avg2.toFixed(2)}</span>
-                    </span> : "—"}
-                  </td>
-                  {row.stats ? <td className={cell}>{stats ? <StatsRound p={stats.p} /> : "—"}</td> : null}
+                  {fans ? <td className={cell}>{crowd ? <Pair f1={crowd.avg1} f2={crowd.avg2} text={(value) => value.toFixed(2)} /> : "—"}</td> : null}
+                  {numbers ? <td className={cell}>{counted ? <Pair f1={counted.sig[0]} f2={counted.sig[1]} /> : "—"}</td> : null}
+                  {control ? <td className={cell}>{counted?.ctrl ? <Pair f1={controlShare(counted.ctrl[0], control.round_seconds)} f2={controlShare(counted.ctrl[1], control.round_seconds)} text={percent} /> : "—"}</td> : null}
+                  {stats ? <td className={cell}>{read ? <StatsRound p={read.p} /> : "—"}</td> : null}
                 </tr>
               );
             })}
+            <tr className="border-t border-zinc-200 font-medium">
+              <td className="py-1 pr-1.5 text-[10px] uppercase tracking-[0.08em] text-zinc-400">All</td>
+              {cards.map((card, index) => <td key={index} className={`${cell} ${card.mine ? "font-semibold text-zinc-900" : ""}`}><Pair f1={card.f1} f2={card.f2} /></td>)}
+              {fans ? <td className={cell}><Pair f1={fans.avg1} f2={fans.avg2} text={(value) => value.toFixed(2)} /></td> : null}
+              {numbers ? <td className={cell}><Pair f1={numbers.sig[0]} f2={numbers.sig[1]} /></td> : null}
+              {control ? <td className={cell}>{control.ctrl ? <Pair f1={controlShare(control.ctrl[0], control.seconds)} f2={controlShare(control.ctrl[1], control.seconds)} text={percent} /> : "—"}</td> : null}
+              {stats ? <td className={cell}><Pair f1={stats.f1} f2={stats.f2} /></td> : null}
+            </tr>
           </tbody>
         </table>
       </div>
@@ -115,7 +148,12 @@ export default function ControversyRow({ row, judge }: { row: Row; judge?: strin
   const box = mine == null ? null : row.against_fans ? "bg-rose-50 ring-rose-200" : "bg-emerald-50 ring-emerald-200";
   const judgesAt = 3;
   const fansAt = judgesAt + row.cards.length;
-  const statsAt = fansAt + 1;
+  // Strikes and control join the numbers once the row is wide enough.
+  const numbers = row.numbers;
+  const strikesAt = fansAt + 1;
+  const controlAt = fansAt + 2;
+  const statsAt = fansAt + (numbers ? 3 : 1);
+  const wideOnly = "hidden @[40rem]:block";
   const place = (column: number, line: number) => ({ gridColumn: column, gridRow: line });
   const fanEven = Math.abs(row.fans.avg1 - row.fans.avg2) < 0.1;
   return (
@@ -128,7 +166,7 @@ export default function ControversyRow({ row, judge }: { row: Row; judge?: strin
       </p>
       <p className="truncate text-xs leading-5 text-zinc-500">{row.event_name}</p>
       <div className="mt-2.5 grid items-center gap-x-1.5 gap-y-1.5"
-        style={{ gridTemplateColumns: `auto minmax(0,1fr) repeat(${row.cards.length}, auto) auto${row.stats ? " auto" : ""}` }}>
+        style={{ gridTemplateColumns: `auto minmax(0,1fr) repeat(${row.cards.length}, auto) auto${numbers ? " auto auto" : ""}${row.stats ? " auto" : ""}` }}>
         {box && mine != null ? <span aria-hidden="true" className={`-mx-1 -my-1.5 self-stretch rounded-lg ring-1 ${box}`} style={{ gridColumn: judgesAt + mine, gridRow: "1 / span 3" }} /> : null}
         {row.cards.map((card, index) => (
           <span key={index} className={`${HEAD} relative max-w-9 truncate px-0.5 @[30rem]:max-w-none @[30rem]:px-1 ${index === mine ? "text-zinc-600" : ""}`} style={place(judgesAt + index, 1)} title={card.judge || undefined}>
@@ -136,6 +174,10 @@ export default function ControversyRow({ row, judge }: { row: Row; judge?: strin
           </span>
         ))}
         <span className={`${HEAD} pl-1 text-sky-600 @[30rem]:pl-2`} style={place(fansAt, 1)} title={`Average of ${row.fans.cards.toLocaleString()} fan cards`}>Fans</span>
+        {numbers ? <>
+          <span className={`${HEAD} ${wideOnly} pl-2`} style={place(strikesAt, 1)} title={STRIKES_TITLE}>Strikes</span>
+          <span className={`${HEAD} ${wideOnly} pl-2`} style={place(controlAt, 1)} title="Control time as a share of the whole fight">Control</span>
+        </> : null}
         {row.stats ? <span className={`${HEAD} pl-1 @[30rem]:pl-2`} style={place(statsAt, 1)} title="Rounds an average UFC judge would give each fighter from the numbers">Stats</span> : null}
         {([1, 2] as const).map((side) => {
           const fighter = side === 1 ? row.f1 : row.f2;
@@ -157,6 +199,14 @@ export default function ControversyRow({ row, judge }: { row: Row; judge?: strin
               <p className={`pl-1 text-center text-sm font-semibold leading-none tabular-nums @[30rem]:pl-2 ${fanEven ? "text-zinc-500" : tone(row.fans.avg1, row.fans.avg2)}`} style={place(fansAt, line)}>
                 {own(row.fans.avg1, row.fans.avg2)[0].toFixed(2)}
               </p>
+              {numbers ? <>
+                <p className={`${wideOnly} pl-2 text-center text-sm font-semibold leading-none tabular-nums ${tone(numbers.sig[0], numbers.sig[1])}`} style={place(strikesAt, line)}>
+                  {own(numbers.sig[0], numbers.sig[1])[0]}
+                </p>
+                <p className={`${wideOnly} pl-2 text-center text-sm font-semibold leading-none tabular-nums ${numbers.ctrl ? tone(numbers.ctrl[0], numbers.ctrl[1]) : "text-zinc-400"}`} style={place(controlAt, line)}>
+                  {numbers.ctrl ? `${controlShare(own(numbers.ctrl[0], numbers.ctrl[1])[0], numbers.seconds)}%` : "—"}
+                </p>
+              </> : null}
               {row.stats ? (
                 <p className={`pl-1 text-center text-sm font-semibold leading-none tabular-nums @[30rem]:pl-2 ${tone(row.stats.f1, row.stats.f2)}`} style={place(statsAt, line)}>
                   {own(row.stats.f1, row.stats.f2)[0]}
@@ -173,7 +223,9 @@ export default function ControversyRow({ row, judge }: { row: Row; judge?: strin
         ) : null}
         {signalPills(row).map((pill) => <span key={pill.key} className={`${RESULT_PILL} ${SIGNAL_TONE[pill.key]}`} title={pill.title}>{pill.label}</span>)}
       </div>
-      <RoundTable row={row} />
+      <RoundByRound
+        cards={row.cards.map((card, index) => ({ label: card.judge ? lastName(card.judge) : `Judge ${index + 1}`, slug: card.slug, f1: card.f1, f2: card.f2, rounds: card.rounds, mine: index === row.mine }))}
+        fans={row.fans} numbers={row.numbers} stats={row.stats} />
     </div>
   );
 }
@@ -187,31 +239,20 @@ export const SHOW_LABELS: Record<ControversialShow, string> = {
   "stats-other": "The stats had the other winner",
   "against-fans": "Their card against the fans",
 };
+/** Widest first by default: with the fans' winner the other way, the biggest robberies lead. */
 export const SORTS: { value: ControversialSort; label: string; title: string }[] = [
-  { value: "closest", label: "Closest", title: "The fans' two totals nearest first" },
   { value: "widest", label: "Widest", title: "The fans' two totals furthest apart first: with “Fans had the other winner”, the biggest robberies" },
+  { value: "closest", label: "Closest", title: "The fans' two totals nearest first" },
   { value: "newest", label: "Newest", title: "Most recent first" },
 ];
+export const DEFAULT_SORT: ControversialSort = "widest";
 
-/** How the list is made, folded under its head: the fans' rule and what the
- *  stats card is, in strike terms. */
+/** How the list is made, in two lines, at the foot of its Filters. */
 export function ControversyMethod({ data }: { data: Pick<ControversialList, "min_crowd" | "close_margin" | "model"> }) {
-  const { model } = data;
   return (
-    <details className="border-b border-zinc-100 px-4 py-2 text-xs leading-5 text-zinc-500 sm:px-5">
-      <summary className="cursor-pointer font-medium text-zinc-600 hover:text-zinc-900">How decisions are picked</summary>
-      <p className="mt-1.5">
-        Decisions with {data.min_crowd}+ fan scorecards where the fans' average totals are under {data.close_margin} points apart,
-        the fans had someone other than the official winner, or one fighter won more rounds on the fans' card while the other won its total.
-      </p>
-      <p className="mt-1.5">
-        <span className="font-medium text-zinc-700">Stats</span> is the card an average UFC judge would give each round from its numbers,
-        learned from {model.rounds.toLocaleString()} rounds the judges scored; it matches their round {model.accuracy}% of the time.
-        To that average judge a knockdown is worth about {model.worth.kd} significant strikes, a minute of control {model.worth.ctrl},
-        a submission attempt {model.worth.sub}, a takedown {model.worth.td}, and a strike to the head {model.worth.head}.
-        It can't see how hard a strike landed, so treat it as one more opinion.
-      </p>
-    </details>
+    <p className="col-span-2 text-[11px] leading-4 text-zinc-500">
+      Decisions with {data.min_crowd}+ fan cards where the fans are under {data.close_margin} apart, had the other winner, or gave
+      one fighter more rounds but the other the total. Stats: an average judge's card from each round's numbers ({data.model.accuracy}% agreement).
+    </p>
   );
 }
-

@@ -64,7 +64,7 @@ import { injectPageSeo, pageSeo, SITE_URL, sitemap, type PageSeo } from "./seo.t
 import { renderShareImage, type ShareCard, type SharePhoto } from "./og-images.ts";
 export { pageSeo, sitemap };
 import { judgeProfile, officialSlug, officialsDirectory, refereeProfile, searchOfficials } from "./officials.ts";
-import { controversialList, controversyLabel, homeRecord, judgeExtras, matchupJudging } from "./judging.ts";
+import { controversialList, controversyLabel, homeRecord, judgeExtras, matchupJudging, withNumbers } from "./judging.ts";
 import { searchAliases } from "./search-aliases.ts";
 import { awardsDirectory, fightAwards, fighterAwards } from "./awards.ts";
 import { locationDirectory, locationOfEvent, locationPage, searchVenues, venueDirectory, venueOfEvent, venuePage } from "./venues.ts";
@@ -2161,7 +2161,7 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   if (p === "/api/controversial") return controversialList(url.searchParams) ?? undefined;
   if (p.startsWith("/api/judges/")) {
     const profile = judgeProfile(id, url.searchParams);
-    return profile ? { ...profile, ...judgeExtras(id, url.searchParams) } : undefined;
+    return profile ? { ...profile, rows: withNumbers((profile as { rows: { fight_id: string }[] }).rows), ...judgeExtras(id, url.searchParams) } : undefined;
   }
   if (p.startsWith("/api/referees/")) return refereeProfile(id, url.searchParams) ?? undefined;
   if (p === "/api/venues") return venueDirectory();

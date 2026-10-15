@@ -141,3 +141,19 @@ test("home records count decisions with one fighter from the host country", () =
   assert.ok(record.fans.won_against_fans <= record.fans.n);
   assert.equal(homeRecord("Atlantis"), null);
 });
+
+test("the list opens widest first, and each row's numbers add up round by round", () => {
+  const list = controversialList(new URLSearchParams()) as any;
+  assert.equal(list.filters.sort, "widest");
+  for (let i = 1; i < list.rows.length; i++) assert.ok(list.rows[i].margin <= list.rows[i - 1].margin, "widest first");
+  for (const row of list.rows) {
+    const numbers = row.numbers;
+    if (!numbers) continue;
+    assert.deepEqual(numbers.sig, [0, 1].map((side) => numbers.rounds.reduce((sum: number, round: any) => sum + round.sig[side], 0)));
+    if (numbers.ctrl) {
+      assert.deepEqual(numbers.ctrl, [0, 1].map((side) => numbers.rounds.reduce((sum: number, round: any) => sum + round.ctrl[side], 0)));
+      // Two fighters can't control more than the whole fight between them.
+      assert.ok(numbers.ctrl[0] + numbers.ctrl[1] <= numbers.seconds + 5, row.fight_id);
+    }
+  }
+});
