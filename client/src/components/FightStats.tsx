@@ -1121,18 +1121,34 @@ export function Scorecards({ fight }: { fight: Matchup }) {
   // The fans' card belongs beside the judges', including its round scores.
   const { data } = useApi<ScoreSummary>(judges?.length ? `/api/fights/${fight.id}/scores` : null);
   const fans = data && data.totals.avg1 != null && data.totals.avg2 != null ? data.totals : null;
+  const [open, setOpen] = useState(false);
   if (!judges?.length) return null;
   const decided = decidingRound(judges, fight.f1.outcome === "win" ? "f1" : fight.f2.outcome === "win" ? "f2" : null);
   const judging = fight.judging ?? null;
+  const numbers = judging?.numbers ?? null;
+  const stats = judging?.stats ?? null;
+  const notes = (judging?.judges ?? []).filter((judge): judge is NonNullable<typeof judge> => Boolean(judge));
+  const grid = { fight, judges, fans, rounds: data?.rounds ?? [], decided };
   return (
     <section className={`${shell} @container overflow-hidden`}>
       <PanelHeading title="Scorecards" />
-      <ScorecardTable fight={fight} judges={judges} fans={fans} rounds={data?.rounds ?? []} decided={decided} stats={judging?.stats ?? null} numbers={judging?.numbers ?? null} />
+      <ScoreGrid {...grid} numbers={null} stats={null} />
       {decided ? <p className="border-t border-zinc-100 px-4 py-2 text-center text-[11px] leading-4 text-zinc-500 sm:px-5">
         <span className="font-semibold text-zinc-900">Round {decided} decided the fight.</span> The judges split on it, and scored the other way it changes the winner.
       </p> : null}
       {judging?.controversy ? <ControversyLine row={judging.controversy} /> : null}
-      {judging ? <JudgeNotes judges={judging.judges} divided={!judging.controversy} /> : null}
+      {/* Strikes, control, stats and the judges' notes fold under one Show more. */}
+      {numbers || stats || notes.length ? (
+        <div className={`pb-2 ${judging?.controversy ? "" : "border-t border-zinc-100 pt-2"}`}>
+          <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
+            className="mx-auto flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-50">
+            {open ? "Show less" : "Show more"}
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
+      {open && (numbers || stats) ? <ScoreGrid {...grid} judges={[]} fans={null} numbers={numbers} stats={stats} /> : null}
+      {open && notes.length ? <JudgeNotes judges={notes} divided={Boolean(numbers || stats)} /> : null}
     </section>
   );
 }
@@ -1152,25 +1168,12 @@ function ControversyLine({ row }: { row: NonNullable<NonNullable<Matchup["judgin
 
 /** Every named judge on the card, their scoring notes where supported,
  *  and the card of theirs the fans disputed most. */
-function JudgeNotes({ judges, divided }: { judges: NonNullable<Matchup["judging"]>["judges"]; divided: boolean }) {
-  const [open, setOpen] = useState(false);
-  const shown = judges.filter((judge): judge is NonNullable<typeof judge> => Boolean(judge));
-  if (!shown.length) return null;
-  // Folded to a single Show more, right under the controversy line.
-  const toggle = (
-    <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
-      className="mx-auto flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-50">
-      {open ? "Show less" : "Show more"}
-      <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
-    </button>
-  );
-  if (!open) return <div className={`pb-2 ${divided ? "border-t border-zinc-100 pt-2" : ""}`}>{toggle}</div>;
+function JudgeNotes({ judges, divided }: { judges: NonNullable<NonNullable<Matchup["judging"]>["judges"][number]>[]; divided: boolean }) {
   return (
-    <div className={`px-4 pb-3 sm:px-5 ${divided ? "border-t border-zinc-100 pt-2" : ""}`}>
-      {toggle}
-      <h3 className={`mb-2 mt-2 ${sectionLabel}`}>How these judges score</h3>
+    <div className={`px-4 pb-3 sm:px-5 ${divided ? "border-t border-zinc-100 pt-3" : "pt-1"}`}>
+      <h3 className={`mb-2 ${sectionLabel}`}>How these judges score</h3>
       <div className="grid gap-x-6 gap-y-4 @[44rem]:grid-cols-3">
-        {shown.map((judge) => (
+        {judges.map((judge) => (
           <div key={judge.name} className="min-w-0">
             <p className="text-xs font-semibold text-zinc-900">
               {judge.slug ? <Link to={`/judges/${judge.slug}`} className="hover:underline">{judge.name}</Link> : judge.name}
@@ -1226,22 +1229,9 @@ function StatsRound({ p }: { p: number | null }) {
   );
 }
 
-/** Every card as one table: judges (and the fans) across, the
- *  total first and each round under it, so the round names are printed once. */
-/** The scorecards as one table on a wide panel. On a narrow one the judges
- *  and the fans keep the first, and the strikes, control and stats get a
- *  second under it, so no column is squeezed. */
-function ScorecardTable(props: Parameters<typeof ScoreGrid>[0]) {
-  if (!props.numbers && !props.stats) return <ScoreGrid {...props} />;
-  return <>
-    <div className="@[40rem]:hidden">
-      <ScoreGrid {...props} numbers={null} stats={null} />
-      <ScoreGrid {...props} judges={[]} fans={null} />
-    </div>
-    <div className="hidden @[40rem]:block"><ScoreGrid {...props} /></div>
-  </>;
-}
-
+/** Every card as one table: judges (and the fans) across, the total first
+ *  and each round under it, so the round names are printed once. The
+ *  strikes, control and stats get a grid of their own under Show more. */
 function ScoreGrid({ fight, judges, fans, rounds, decided, stats, numbers }: {
   fight: Matchup;
   judges: Judge[];
@@ -1262,7 +1252,7 @@ function ScoreGrid({ fight, judges, fans, rounds, decided, stats, numbers }: {
   // Seven columns on a phone: the judges' totals step down a size to fit.
   const totalSize = columns > 5 ? "text-[15px] @[40rem]:text-2xl" : "text-lg @[32rem]:text-2xl";
   const smallTotal = "text-[12px] @[44rem]:text-xl";
-  const head = "line-clamp-2 px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] text-zinc-400 @[32rem]:text-[10px] @[32rem]:leading-4";
+  const head = "line-clamp-2 self-end px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] text-zinc-400 @[32rem]:text-[10px] @[32rem]:leading-4";
   const empty = <span className="text-[11px] text-zinc-300">—</span>;
   const cell = "flex min-w-0 items-center justify-center px-0.5";
   return (
@@ -1274,15 +1264,15 @@ function ScoreGrid({ fight, judges, fans, rounds, decided, stats, numbers }: {
       {judges.map((judge, index) => {
         const slug = fight.officials?.judges[index];
         const name = judge.judge ? <><span className="@[40rem]:hidden">{lastName(judge.judge)}</span><span className="hidden @[40rem]:inline">{judge.judge}</span></> : `Judge ${index + 1}`;
-        const label = "line-clamp-2 break-words px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] @[32rem]:text-[10px] @[32rem]:leading-4";
+        const label = "line-clamp-2 self-end break-words px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] @[32rem]:text-[10px] @[32rem]:leading-4";
         // Each name opens that judge's record: every card they have scored.
         return slug
           ? <Link key={`name-${index}`} to={`/judges/${slug}`} title={`${judge.judge} — every card they have scored`}
-              className={`${label} text-zinc-500 transition hover:text-zinc-900 dark:hover:text-zinc-100`}>{name} <span aria-hidden="true">↗</span></Link>
+              className={`${label} text-zinc-500 transition hover:text-zinc-900 dark:hover:text-zinc-100`}>{name}{"\u00a0"}<span aria-hidden="true">↗</span></Link>
           : <span key={`name-${index}`} className={`${label} text-zinc-400`} title={judge.judge || undefined}>{name}</span>;
       })}
       {fans ? (
-        <Link to={{ search: "?tab=score" }} replace state={location.state} className="line-clamp-2 px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] text-sky-600 underline-offset-2 hover:underline">
+        <Link to={{ search: "?tab=score" }} replace state={location.state} className="line-clamp-2 self-end px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] text-sky-600 underline-offset-2 hover:underline">
           {fans.completeCards.toLocaleString()} {fans.completeCards === 1 ? "fan" : "fans"}
         </Link>
       ) : null}
