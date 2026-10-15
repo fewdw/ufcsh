@@ -64,6 +64,7 @@ import { injectPageSeo, pageSeo, SITE_URL, sitemap, type PageSeo } from "./seo.t
 import { renderShareImage, type ShareCard, type SharePhoto } from "./og-images.ts";
 export { pageSeo, sitemap };
 import { judgeProfile, officialSlug, officialsDirectory, refereeProfile, searchOfficials } from "./officials.ts";
+import { comebacksList, controversialList, controversyLabel, homeRecord, judgeExtras, matchupJudging, withNumbers } from "./judging.ts";
 import { searchAliases } from "./search-aliases.ts";
 import { awardsDirectory, fightAwards, fighterAwards } from "./awards.ts";
 import { locationDirectory, locationOfEvent, locationPage, searchVenues, venueDirectory, venueOfEvent, venuePage } from "./venues.ts";
@@ -390,6 +391,8 @@ function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingTy
       perf: !!f.perf_bonus || !!detail?.bonuses?.perf,
       fotn: !!f.fotn_bonus || !!detail?.bonuses?.fotn,
     },
+    // The main reason the fans' cards make a decision controversial, if they do.
+    controversy: f.method?.endsWith("-DEC") ? controversyLabel(f.id) : null,
   };
   if (includeDetail) base.detail = detail;
   return base;
@@ -1055,6 +1058,8 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
       fotn: !!f.fotn_bonus || !!(f.detail_json && JSON.parse(f.detail_json)?.bonuses?.fotn),
     },
     awards: potential ? [] : fightAwards(f.id),
+    // The stats card, the fans' controversy and each judge's leanings.
+    judging: !potential && f.method?.endsWith("-DEC") ? matchupJudging(f.id) : null,
     detail,
     common_opponents: common,
     head_to_head: headToHead,
@@ -2153,12 +2158,22 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   if (p.startsWith("/api/fights/")) return await getFight(id, rankingType) ?? undefined;
   if (p === "/api/awards") return awardsDirectory();
   if (p === "/api/officials") return officialsDirectory();
-  if (p.startsWith("/api/judges/")) return judgeProfile(id, url.searchParams) ?? undefined;
+  if (p === "/api/controversial") {
+    return (url.searchParams.get("view") === "comebacks" ? comebacksList(url.searchParams) : controversialList(url.searchParams)) ?? undefined;
+  }
+  if (p.startsWith("/api/judges/")) {
+    const profile = judgeProfile(id, url.searchParams);
+    return profile ? { ...profile, rows: withNumbers((profile as { rows: { fight_id: string }[] }).rows), ...judgeExtras(id, url.searchParams) } : undefined;
+  }
   if (p.startsWith("/api/referees/")) return refereeProfile(id, url.searchParams) ?? undefined;
   if (p === "/api/venues") return venueDirectory();
   if (p.startsWith("/api/venues/")) return venuePage(id) ?? undefined;
   if (p === "/api/locations") return locationDirectory();
-  if (p.startsWith("/api/locations/")) return locationPage(id) ?? undefined;
+  if (p.startsWith("/api/locations/")) {
+    // Fighters from the location's country on the cards at every event held in it.
+    const page = locationPage(id) as { country: string | null } | null;
+    return page ? { ...page, home: page.country ? homeRecord(page.country) : null } : undefined;
+  }
   if (/^\/api\/fighters\/[a-f0-9]{16}\/(career-stats|opposition)$/i.test(p)) {
     if (!hasUfcFight(id)) return undefined;
     const beforeId = url.searchParams.get("before");

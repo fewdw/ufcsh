@@ -11,7 +11,6 @@ import { useSettings } from "../settings";
 
 /** Slots follow the division in the order the fighter was first ranked in it. */
 const SERIES = ["text-series-1", "text-series-2", "text-series-3", "text-series-4"];
-const SWATCH = ["bg-series-1", "bg-series-2", "bg-series-3", "bg-series-4"];
 
 const WIDTH = 600;
 // Leave a little hover room after the latest result.
@@ -232,11 +231,6 @@ export default function RankingHistory({ timeline, history = [], fighterId }: { 
                 className={`pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ring-white dark:ring-zinc-900 ${mark.row.outcome === "win" ? "bg-emerald-500" : mark.row.outcome === "loss" ? "bg-rose-500" : "bg-amber-500"}`}
                 style={{ left: `${(x(mark.at) / WIDTH) * 100}%`, top: `${(mark.top / HEIGHT) * 100}%` }} />
             ))}
-            {hover ? lines.map((division, index) => {
-              const rank = rankOn(division.points, hover.at);
-              return rank ? <span key={division.division} aria-hidden="true" className={`absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-white dark:ring-zinc-900 ${SWATCH[colorSlot(division.division, index)]}`}
-                style={{ left: `${(x(hover.at) / WIDTH) * 100}%`, top: `${(y(rank) / HEIGHT) * 100}%` }} /> : null;
-            }) : null}
           </div>
           <div />
           <div className="relative mt-1 h-4 text-[10px] tabular-nums text-zinc-400" aria-hidden="true">

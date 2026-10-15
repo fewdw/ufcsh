@@ -842,13 +842,13 @@ export default function FighterPage() {
         <ProfileTabs tabs={fought ? ["fights", "stats", "records", "news"] : ["fights", "news"]} current={tab} onSelect={selectTab} news={news?.total ?? null} className="lg:hidden" />
 
         {fought ? <div className={`${tab === "stats" ? "contents" : "hidden lg:contents"} [&>*]:shrink-0`}>
+          <RankingHistory key={fighter.id} timeline={fighter.ranking_history} history={fighter.history} fighterId={fighter.id} />
           <FighterCareerStats fighterId={fighter.id} name={fighter.name} totals={fighter.career_stats} />
           {fighter.insights?.rounds ? <div className="grid grid-cols-2 gap-3">
             <RoundsPanel fighters={[fighter]} />
             <DecisionsPanel fighters={[fighter]} />
           </div> : null}
           <StrikesPanel fighters={[fighter]} />
-          <RankingHistory key={fighter.id} timeline={fighter.ranking_history} history={fighter.history} fighterId={fighter.id} />
         </div> : null}
         </div>
 

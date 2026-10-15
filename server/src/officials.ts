@@ -18,8 +18,8 @@ import { givenName, normName } from "./util.ts";
 export type Kind = "judge" | "referee";
 
 type Round = { round: number; f1: number; f2: number };
-type Card = { judge: string; key: string | null; f1: number; f2: number; rounds: Round[] };
-type FanCard = { cards: number; avg1: number; avg2: number; rounds: { round: number; avg1: number; avg2: number }[]; source: string; url: string | null };
+export type Card = { judge: string; key: string | null; f1: number; f2: number; rounds: Round[] };
+export type FanCard = { cards: number; avg1: number; avg2: number; rounds: { round: number; avg1: number; avg2: number }[]; source: string; url: string | null };
 
 export type Officiated = {
   fight: IndexedFight;
@@ -27,11 +27,15 @@ export type Officiated = {
   refereeKey: string | null;
   cards: Card[];
   fans: FanCard | null;
+  /** Significant strikes landed to the head and on the ground, per corner and
+   *  round, on decisions and late finishes (UFCStats' second round table);
+   *  null without it. */
+  zones: [Zones[], Zones[]] | null;
   /** UFCStats' own "Details" line: the finishing technique, a foul, a deduction. */
   details: string | null;
 };
 
-type Identity = { key: string; slug: string; name: string; fights: Officiated[] };
+export type Identity = { key: string; slug: string; name: string; fights: Officiated[] };
 
 type OfficialsIndex = {
   version: string;
@@ -89,6 +93,27 @@ function parseJson(text: unknown): any {
   try { return JSON.parse(text); } catch { return null; }
 }
 
+type Zones = { head: number; ground: number };
+
+/** Each corner's head and ground strikes landed, round by round, or null when
+ *  the table is missing or any cell can't be read. */
+function zonesOf(detail: any): [Zones[], Zones[]] | null {
+  const block = detail?.sigStrikesRounds;
+  if (!Array.isArray(block?.labels) || !Array.isArray(block?.rounds) || !block.rounds.length) return null;
+  const column = (label: string) => block.labels.findIndex((entry: unknown) => String(entry).toLowerCase() === label);
+  const head = column("head");
+  const ground = column("ground");
+  if (head < 0 || ground < 0) return null;
+  const landed = (value: unknown) => {
+    const match = String(value ?? "").trim().match(/^(\d+)\s+of\s+\d+$/i);
+    return match ? Number(match[1]) : null;
+  };
+  const corner = (key: "f1" | "f2") => block.rounds.map((round: any) => ({ head: landed(round?.[key]?.[head]), ground: landed(round?.[key]?.[ground]) }));
+  const sides = [corner("f1"), corner("f2")];
+  return sides.every((rounds) => rounds.every((round: { head: number | null; ground: number | null }) => round.head != null && round.ground != null))
+    ? sides as [Zones[], Zones[]] : null;
+}
+
 function officiatedOf(fight: IndexedFight): Officiated {
   const detail = parseJson(fight.row.detail_json);
   const imported = parseJson(fight.row.judge_rounds_json);
@@ -112,6 +137,8 @@ function officiatedOf(fight: IndexedFight): Officiated {
   const referee = typeof detail?.methodInfo?.Referee === "string" && detail.methodInfo.Referee.trim() ? displayName(detail.methodInfo.Referee) : null;
   return {
     fight, referee, refereeKey: officialKey(referee), cards, fans,
+    // Decisions for the stats card, finishes after two rounds for the comebacks.
+    zones: fight.method?.endsWith("-DEC") || ((fight.method === "KO/TKO" || fight.method === "SUB") && (fight.round ?? 0) >= 3) ? zonesOf(detail) : null,
     details: typeof detail?.detailsText === "string" && detail.detailsText.trim() ? detail.detailsText.trim() : null,
   };
 }
@@ -190,11 +217,11 @@ export function parseOfficialFilters(params: URLSearchParams): OfficialFilters {
 }
 
 /** The bouts a typed search finds among these, or null when nothing is typed. */
-function searched(fights: Officiated[], q: string): Set<Officiated> | null {
+export function searched(fights: Officiated[], q: string): Set<Officiated> | null {
   return q ? new Set(searchList(fights, q, ({ fight }) => `${fight.eventName} ${fight.sides[0].name} ${fight.sides[1].name}`)) : null;
 }
 
-function matchesBase(officiated: Officiated, filters: OfficialFilters, found: Set<Officiated> | null = null): boolean {
+export function matchesBase(officiated: Officiated, filters: OfficialFilters, found: Set<Officiated> | null = null): boolean {
   const { fight } = officiated;
   if (filters.from != null && fight.year < filters.from) return false;
   if (filters.to != null && fight.year > filters.to) return false;
@@ -205,7 +232,7 @@ function matchesBase(officiated: Officiated, filters: OfficialFilters, found: Se
 
 const pct = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : null);
 
-const isTitle = (fight: IndexedFight) => fight.titleFight && (fight.titleType === "title" || fight.titleType === "interim");
+export const isTitle = (fight: IndexedFight) => fight.titleFight && (fight.titleType === "title" || fight.titleType === "interim");
 
 /** Bouts a year across the whole career under every filter but the years, so
  * the chart that picks a year never shrinks to the year picked. */
@@ -221,7 +248,7 @@ function byYear<T>(items: T[], fightOf: (item: T) => IndexedFight, marked: (item
   return [...years.values()].sort((a, b) => a.year - b.year);
 }
 
-function facets(fights: Officiated[]) {
+export function facets(fights: Officiated[]) {
   const divisions = new Map<string, number>();
   let first = 9999;
   let last = 0;
@@ -236,7 +263,7 @@ function facets(fights: Officiated[]) {
   };
 }
 
-function fighterRef(fight: IndexedFight, index: 0 | 1) {
+export function fighterRef(fight: IndexedFight, index: 0 | 1) {
   const side = fight.sides[index];
   return { id: side.id, name: side.name, outcome: side.outcome, photo_url: fightIndex().fighters.get(side.id)?.photoUrl ?? null };
 }
@@ -244,9 +271,9 @@ function fighterRef(fight: IndexedFight, index: 0 | 1) {
 // ---------------------------------------------------------------------------
 // judges
 
-type Verdict = "unanimous" | "split" | "majority" | "draw" | "other";
+export type Verdict = "unanimous" | "split" | "majority" | "draw" | "other";
 
-function verdictOf(fight: IndexedFight): Verdict {
+export function verdictOf(fight: IndexedFight): Verdict {
   if (fight.sides[0].outcome === "draw") return "draw";
   if (fight.method === "U-DEC") return "unanimous";
   if (fight.method === "S-DEC") return "split";

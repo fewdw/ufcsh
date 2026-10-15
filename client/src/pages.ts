@@ -26,6 +26,7 @@ export const pages = {
   referee: loader(() => import("./pages/RefereePage")),
   venue: loader(() => import("./pages/VenuePage")),
   directories: loader(() => import("./pages/DirectoryPages")),
+  controversial: loader(() => import("./pages/ControversialPage")),
   info: loader(() => import("./pages/InfoPage")),
   roster: loader(() => import("./pages/RosterPage")),
   news: loader(() => import("./pages/NewsPage")),
@@ -43,6 +44,7 @@ export function pageFor(pathname: string): PageLoader | null {
   if (pathname.startsWith("/referees/")) return pages.referee;
   if (pathname.startsWith("/venues/") || pathname.startsWith("/locations/")) return pages.venue;
   if (pathname === "/officials" || pathname === "/venues" || pathname === "/locations" || pathname === "/awards") return pages.directories;
+  if (pathname === "/controversial") return pages.controversial;
   if (pathname === "/info") return pages.info;
   if (pathname === "/roster") return pages.roster;
   if (pathname === "/news") return pages.news;

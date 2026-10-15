@@ -76,10 +76,12 @@ export type StatsSettings = {
   favoriteMetric: "rate" | "losses";
   // Fights: bouts, judges and referees
   fightsGroup: "fights" | "judges" | "referees";
-  fightsMode: "disputed" | "upsets" | "action" | "fastest";
+  fightsMode: "disputed" | "controversial" | "upsets" | "action" | "fastest";
+  controversyMeasure: "closest" | "robbery" | "rounds" | "stats";
   fightsAction: "total" | "perMinute";
   fastestMethod: "finish" | "ko" | "sub";
-  judgesMode: "agreement" | "dissents" | "splits" | "cards";
+  judgesMode: "agreement" | "dissents" | "splits" | "cards" | "leanings";
+  judgeLeaning: "control" | "takedowns" | "damage" | "pressure" | "submissions" | "ground" | "stats" | "strikes" | "controlLead" | "home" | "fans";
   refereesMode: "finishRate" | "stoppageTime" | "bouts";
   officialsOrder: "high" | "low";
   // Fighter cards read either way where the server offers it
@@ -154,9 +156,11 @@ export const DEFAULT_SETTINGS: StatsSettings = {
   favoriteMetric: "rate",
   fightsGroup: "fights",
   fightsMode: "disputed",
+  controversyMeasure: "closest",
   fightsAction: "total",
   fastestMethod: "finish",
   judgesMode: "agreement",
+  judgeLeaning: "control",
   refereesMode: "finishRate",
   officialsOrder: "high",
   recordOrder: "high",

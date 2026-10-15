@@ -4,6 +4,7 @@ import { db } from "./db.ts";
 import { careerBefore, completeRecordBefore, fightIndex, impliedProbability, opponentOf, winProfit } from "./fight-index.ts";
 import { getRankings } from "./api.ts";
 import { getStats } from "./stats.ts";
+import { fightJudging } from "./judging.ts";
 import { fighterRecords, fighterStats } from "./records.ts";
 
 /**
@@ -251,6 +252,9 @@ test("every board returns ranked, ordered rows and a description", () => {
     "fightsMode=upsets", "fightsMode=action&fightsAction=perMinute", "fightsMode=fastest&fastestMethod=ko",
     "fightsGroup=judges", "fightsGroup=judges&officialsOrder=low", "fightsGroup=judges&judgesMode=dissents",
     "fightsGroup=referees&refereesMode=stoppageTime", "fightsGroup=referees&refereesMode=bouts",
+    "fightsMode=controversial", "fightsMode=controversial&controversyMeasure=robbery",
+    "fightsMode=controversial&controversyMeasure=rounds", "fightsMode=controversial&controversyMeasure=stats",
+    "fightsGroup=judges&judgesMode=leanings", "fightsGroup=judges&judgesMode=leanings&judgeLeaning=home&officialsOrder=low",
   ];
   for (const query of queries) {
     for (const entry of stats(query).leaderboards) {
@@ -394,6 +398,16 @@ test("a disputed decision's gap is the spread of its own judges' cards, and one 
     assert.equal(row.value, Math.max(...judges) - Math.min(...judges), row.name);
     const winner = fight.sides[0].outcome === "win" ? 1 : fight.sides[1].outcome === "win" ? -1 : 0;
     assert.ok(judges.some((margin) => Math.sign(margin) !== winner), `${row.name}: every card agreed`);
+  }
+});
+
+test("the stats had the loser on every bout its board names", () => {
+  for (const row of board("fightsMode=controversial&controversyMeasure=stats", "fights").rows) {
+    const fight = index.byId.get(row.href!.slice(8))!;
+    const stats = fightJudging(fight.id)!.stats!;
+    const winner = fight.sides[0].outcome === "win" ? 1 : -1;
+    assert.equal(stats.pick, -winner, row.name);
+    assert.equal(row.value, (winner === 1 ? stats.f2 - stats.f1 : stats.f1 - stats.f2), row.name);
   }
 });
 
