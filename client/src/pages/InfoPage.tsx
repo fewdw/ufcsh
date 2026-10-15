@@ -92,7 +92,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-15">October 15, 2026</time></p>
             <ul>
-              <li>Ranking history now shows a fighter’s current rank, including ranks earned in their latest fight.</li>
+              <li>Scorecards are simpler: judges’ and fans’ cards stand alone, with strikes, control and stats under Show more.</li>
+              <li>Judge notes show one line per habit, with the evidence on hover.</li>
+              <li>The community scorecard is centred, and fight cards show the left fighter’s age in the same place as the right.</li>
             </ul>
           </Section>
         </div>
