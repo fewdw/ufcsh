@@ -431,9 +431,7 @@ function listEvents(): unknown {
 /** The bout on now for a running card (fought bottom-up, so the lowest one
  * without a result), or null when nothing is running. `live` is whether it has
  * started: numbers already published settle it, and so does a round opened
- * from the admin panel. Otherwise the announced start does — once it has
- * passed we assume the bout is under way — and with no time at all a card
- * that has produced a result is a card being fought. */
+ * from the admin panel. Nothing else does; until then it is next. */
 function currentBout() {
   const e = prepared(`SELECT * FROM events WHERE complete = 0
     AND date >= date('now', '-1 day') AND date <= date('now') ORDER BY date DESC LIMIT 1`).get() as EventRow | undefined;
