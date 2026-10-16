@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Matchup } from "../src/api.ts";
-import { blindRounds, fightFinish, scoreableRoundCount } from "../src/scoring.ts";
+import { fightFinish, scoreableRoundCount } from "../src/scoring.ts";
 
 const fight = (patch: Partial<Matchup>): Matchup => ({
   status: "past",
@@ -66,14 +66,4 @@ test("a round released from the admin panel shows Score without waiting for the 
   for (const value of [null, undefined, -1, 1.5]) {
     assert.equal(scoreableRoundCount({ ...live, rounds_open: value as number }), 0, `ignores ${value}`);
   }
-});
-
-test("blind scoring hides closed rounds the reader has neither scored nor revealed", () => {
-  const view = { blind: true, closed: 3, scored: [1], revealedThrough: 0 };
-  assert.deepEqual(blindRounds(view), [2, 3]);
-  assert.deepEqual(blindRounds({ ...view, scored: [1, 2, 3] }), [], "a full card sees everything");
-  assert.deepEqual(blindRounds({ ...view, revealedThrough: 2 }), [3], "a reveal covers the rounds closed when it was chosen");
-  assert.deepEqual(blindRounds({ ...view, scored: null }), [1, 2, 3], "nothing shows before the reader's card has loaded");
-  assert.deepEqual(blindRounds({ ...view, blind: false }), [], "off, signed out, or not live in live-only mode");
-  assert.deepEqual(blindRounds({ ...view, closed: 0 }), [], "a round being fought is the server's to hide");
 });

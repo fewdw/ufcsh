@@ -110,15 +110,3 @@ export function fightFinish(fight: Matchup, eligibility: ScoreEligibility): Fini
   if (!side) return null;
   return { round, side, name: side === 1 ? fight.f1.name : fight.f2.name, method: fight.method, time: fight.time };
 }
-
-/** Closed rounds the reader has neither scored nor chosen to see: blind
- *  scoring keeps the crowd's numbers off them so the reader's card is their
- *  own. Until their card has loaded (`scored` null), every closed round is
- *  treated as unscored, so nothing flashes into view. */
-export function blindRounds({ blind, closed, scored, revealedThrough }: {
-  blind: boolean; closed: number; scored: number[] | null; revealedThrough: number;
-}): number[] {
-  if (!blind) return [];
-  return Array.from({ length: closed }, (_, index) => index + 1)
-    .filter((round) => round > revealedThrough && !scored?.includes(round));
-}

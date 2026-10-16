@@ -25,11 +25,7 @@ const CELL = "rounded-xl py-2.5 text-center tabular-nums transition disabled:opa
 // none of them is ever squeezed narrower than the score printed on it.
 const SCORE_CELL = `${CELL} min-w-fit flex-1 basis-0 whitespace-nowrap px-0.5 text-[11px] min-[380px]:text-xs sm:px-1 sm:text-sm`;
 const DEDUCT_CELL = `${CELL} w-8 shrink-0 px-0.5 min-[380px]:w-9 sm:w-14`;
-type Props = {
-  fight: Matchup; eligibility: ScoreSummary["eligibility"]; onSaved: () => void;
-  /** The rounds on the reader's saved card, whenever it loads or changes. */
-  onCard?: (rounds: number[]) => void;
-};
+type Props = { fight: Matchup; eligibility: ScoreSummary["eligibility"]; onSaved: () => void };
 
 /** The account itself lives in the header; this is the same session, scoped to
  *  one matchup. */
@@ -61,7 +57,7 @@ function Gate(props: Props) {
   );
 }
 
-function Editor({ fight, eligibility, onSaved, onCard, userId }: Props & { userId: string }) {
+function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: string }) {
   const { getToken } = useAuth();
   // The last card seen here is shown at once and fetched again behind it.
   const [seed] = useState(() => recallMine<MyScorecard>(userId, `scorecard:${fight.id}`));
@@ -84,7 +80,6 @@ function Editor({ fight, eligibility, onSaved, onCard, userId }: Props & { userI
   const storageKey = `ufc-score:${userId}:${fight.id}`;
   const url = `/api/fights/${fight.id}/scores/mine`;
   const dirty = saved !== null && JSON.stringify(rounds) !== JSON.stringify(saved.rounds);
-  useEffect(() => { if (saved) onCard?.(saved.rounds.map((round) => round.round)); }, [saved, onCard]);
   const request = useCallback(async (method = "GET", body?: unknown, signal?: AbortSignal) => {
     const token = await getToken();
     if (!token) throw new Error("Your session expired. Sign in again.");
