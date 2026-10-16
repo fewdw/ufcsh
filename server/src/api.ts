@@ -431,9 +431,7 @@ function listEvents(): unknown {
 /** The bout on now for a running card (fought bottom-up, so the lowest one
  * without a result), or null when nothing is running. `live` is whether it has
  * started: numbers already published settle it, and so does a round opened
- * from the admin panel. Otherwise the announced start does — once it has
- * passed we assume the bout is under way — and with no time at all a card
- * that has produced a result is a card being fought. */
+ * from the admin panel. Nothing else does; until then it is next. */
 function currentBout() {
   const e = prepared(`SELECT * FROM events WHERE complete = 0
     AND date >= date('now', '-1 day') AND date <= date('now') ORDER BY date DESC LIMIT 1`).get() as EventRow | undefined;
@@ -443,7 +441,10 @@ function currentBout() {
   if (!bout) return null;
   const starts_at = estimatedStart(fights.map(scheduledBout), Number(bout.ord) || 0, segmentTimes(e));
   const completed = fights.filter(fightIsComplete).length;
-  const live = fightIsUnderway(bout) || releasedRounds(bout.id) > 0 || (starts_at != null ? Date.now() >= starts_at : completed > 0);
+  // Live only on evidence the bout has started: UFCStats publishing its round
+  // totals, or an admin opening a round to score. An estimated start passing,
+  // or the bout before it ending, only means it is next.
+  const live = fightIsUnderway(bout) || releasedRounds(bout.id) > 0;
   return { event: e, fights, bout, starts_at, completed, live };
 }
 
@@ -546,6 +547,8 @@ async function getEvent(id: string, rankingType: RankingType): Promise<unknown |
     odds_freshness: oddsFreshness(e.id),
     fights: fights.map((f) => ({ ...fightRowToJson(f, false, e.date, rankingType), starts_at: startsAt(f) })),
     cancelled: cancelledBouts(e, rankingType),
+    // The bout confirmed to be on now, as the header's pill has it.
+    live_fight_id: (() => { const current = currentBout(); return current?.live && current.event.id === e.id ? current.bout.id : null; })(),
   };
 }
 

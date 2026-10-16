@@ -292,6 +292,9 @@ export type EventDetail = {
   fights: EventFight[];
   /** Bouts announced for this card that never happened on it. */
   cancelled?: CancelledBout[];
+  /** The bout confirmed to be on now: its statistics are being published, or
+   *  an admin has opened a round to score. Never inferred from the clock. */
+  live_fight_id?: string | null;
 };
 
 export type CancelledBout = {
