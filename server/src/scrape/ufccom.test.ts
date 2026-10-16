@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { athleteSlug, parseAthleteDivision, parseAthleteImages, parseAthleteStatus, parseCardRounds, parseFightIds, parseNewestAthletes, parseRankingsHtml, parseSearchAthlete, scrapeFighterImages } from "./ufccom.ts";
+import { athleteSlug, parseAthleteDivision, parseAthleteImages, parseAthleteStatus, parseCardRounds, parseEventFeedId, parseFightIds, parseNewestAthletes, parseRankingsHtml, parseSearchAthlete, scrapeEventCard, scrapeFighterImages } from "./ufccom.ts";
 
 const MEDIA_LABELS = [
   "Men's Pound-for-Pound",
@@ -268,6 +268,71 @@ test("the event page's fight ids are read in card order, once each", () => {
     <div class="c-listing-fight" data-fmid="13017"></div><div class="c-listing-fight" data-fmid="x"></div>`;
   assert.deepEqual(parseFightIds(html), [13017, 13018]);
 });
+
+const eventSettings = (settings: unknown) => `<script type="application/json" data-drupal-selector="drupal-settings-json">${JSON.stringify(settings)}</script>`;
+
+test("reads the event's feed id from page settings, never from a fight or ticker", () => {
+  // Configuration from UFC 333 and Moicano vs Nolan, 2026-10-16.
+  assert.equal(parseEventFeedId(eventSettings({ eventLiveStats: { event_fmid: "1336" } })), 1336);
+  assert.equal(parseEventFeedId(eventSettings({ eventLiveStats: { event_fmid: "1339" } })), 1339);
+  assert.equal(parseEventFeedId('<div class="c-listing-fight" data-fmid="13313"></div><div id="c-listing-ticker" data-fmid="999"></div>'), null);
+  for (const id of [null, "", 0, -1, "not-an-id", 1.5]) {
+    assert.equal(parseEventFeedId(eventSettings({ eventLiveStats: { event_fmid: id } })), null);
+  }
+  assert.equal(parseEventFeedId(eventSettings({})), null);
+  assert.equal(parseEventFeedId('<script data-drupal-selector="drupal-settings-json">{broken</script>'), null);
+});
+
+const eventCardHtml = `<div class="fight-card"><div class="c-listing-fight" data-fmid="13313">
+  <div class="c-listing-fight__names-row"><span class="c-listing-fight__corner-name">Renato Moicano</span>
+  <span class="c-listing-fight__corner-name">Tom Nolan</span></div></div></div>`;
+const eventFeed = { LiveEventDetail: { EventId: 1339, Location: { Venue: "Meta Apex", City: "Las Vegas" }, FightCard: [{
+  FightId: 13313, FightOrder: 1, RuleSet: { PossibleRounds: 5, Description: "5 Rnd (5-5-5-5-5)" },
+  Fighters: [{ Name: { FirstName: "Renato", LastName: "Moicano" } }, { Name: { FirstName: "Tom", LastName: "Nolan" } }],
+}] } };
+
+test("sync reads the event feed without depending on the broken first fight feed", async (t) => {
+  const visited: string[] = [];
+  t.mock.method(globalThis, "fetch", async (input: string) => {
+    visited.push(input);
+    if (input === "https://www.ufc.com/event/ufc-fight-night-october-31-2026") {
+      return new Response(eventCardHtml + eventSettings({ eventLiveStats: { event_fmid: "1339" } }));
+    }
+    assert.equal(input, "https://d29dxerjsp82wz.cloudfront.net/api/v3/event/live/1339.json");
+    return Response.json(eventFeed);
+  });
+  const card = await scrapeEventCard("ufc-fight-night-october-31-2026");
+  assert.equal(visited.length, 2);
+  assert.deepEqual(card.segments, [{ segment: "main", f1: "Renato Moicano", f2: "Tom Nolan" }]);
+  assert.equal(card.rounds?.[0].rounds, 5);
+  assert.equal(card.info?.venue, "Meta Apex");
+});
+
+test("older pages without event settings still discover the feed through a fight", async (t) => {
+  const visited: string[] = [];
+  t.mock.method(globalThis, "fetch", async (input: string) => {
+    visited.push(input);
+    if (input === "https://www.ufc.com/event/legacy-card") return new Response(eventCardHtml);
+    if (input === "https://d29dxerjsp82wz.cloudfront.net/api/v3/fight/live/13313.json") {
+      return Response.json({ LiveFightDetail: { Event: { EventId: 1339 } } });
+    }
+    assert.equal(input, "https://d29dxerjsp82wz.cloudfront.net/api/v3/event/live/1339.json");
+    return Response.json(eventFeed);
+  });
+  const card = await scrapeEventCard("legacy-card");
+  assert.equal(visited.length, 3);
+  assert.equal(card.info?.eventId, 1339);
+  assert.equal(card.rounds?.[0].rounds, 5);
+});
+
+for (const [label, feed] of [["an empty", { LiveEventDetail: {} }], ["another event's", { LiveEventDetail: { EventId: 1336 } }]] as const) {
+  test(`${label} event feed fails instead of returning data that clears stored rounds`, async (t) => {
+    t.mock.method(globalThis, "fetch", async (input: string) => input.includes("www.ufc.com")
+      ? new Response(eventCardHtml + eventSettings({ eventLiveStats: { event_fmid: "1339" } }))
+      : Response.json(feed));
+    await assert.rejects(scrapeEventCard("bad-feed"), /event 1339 returned no matching event/);
+  });
+}
 
 test("a bout's rounds are kept only when the feed states them consistently", () => {
   const fighter = (first: string, last: string) => ({ Name: { FirstName: first, LastName: last } });
