@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { db } from "./db.ts";
 import { fightIndex, type IndexedFight } from "./fight-index.ts";
 import { crowdPick, isTitle, officialsIndex, pick, resultPick, type FanCard } from "./officials.ts";
 import {
@@ -121,6 +122,17 @@ test("a judge's control-versus-striking rate is a plain count of their own round
   const notes = judgeDna(judge.key).notes;
   assert.ok(notes.length <= 3);
   for (const note of notes) assert.match(note.detail, /\d/);
+});
+
+test("a sync check that finds nothing new keeps the judging state", () => {
+  const before = judging();
+  const event = db.prepare("SELECT id, venue_checked_at FROM events ORDER BY date DESC LIMIT 1").get() as { id: string; venue_checked_at: number | null };
+  try {
+    db.prepare("UPDATE events SET venue_checked_at = ? WHERE id = ?").run(Date.now(), event.id);
+    assert.equal(judging(), before);
+  } finally {
+    db.prepare("UPDATE events SET venue_checked_at = ? WHERE id = ?").run(event.venue_checked_at, event.id);
+  }
 });
 
 test("a matchup's judging names each judge in card order", () => {
