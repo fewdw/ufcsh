@@ -594,3 +594,19 @@ select:not([multiple]):not([size]) {
 @keyframes division-target {
   from, 50% { box-shadow: 0 0 0 2px #a1a1aa; }
 }
+
+/* Comfortable density, the default (Compact in the More menu turns it off).
+   The small print goes a size up and the muted greys a step darker, the same
+   way dark mode remaps the palette. A size given per breakpoint or container
+   is left alone, since it already grows where there is room, and so is a
+   colour that changes on hover or another state. */
+.comfortable .text-\[9px\]:not([class*=":text-xs"], [class*=":text-sm"], [class*=":text-base"], [class*=":text-lg"], [class*=":text-\[1"], [class*=":text-\[9"]) { font-size: 10.5px; }
+.comfortable .text-\[10px\]:not([class*=":text-xs"], [class*=":text-sm"], [class*=":text-base"], [class*=":text-lg"], [class*=":text-\[1"]) { font-size: 11.5px; }
+.comfortable .text-\[11px\]:not([class*=":text-xs"], [class*=":text-sm"], [class*=":text-base"], [class*=":text-lg"], [class*=":text-\[1"]) { font-size: 12.5px; }
+.comfortable .text-xs:not([class*=":text-sm"], [class*=":text-base"], [class*=":text-lg"], [class*=":text-\[1"]) { font-size: 13px; }
+.comfortable:not(.dark) .text-zinc-300:not([class*=":text-zinc"], [role="tooltip"] *, .bg-zinc-900 *) { color: #a1a1aa; }
+.comfortable:not(.dark) .text-zinc-400:not([class*=":text-zinc"], [role="tooltip"] *, .bg-zinc-900 *) { color: #71717a; }
+.comfortable:not(.dark) .text-zinc-500:not([class*=":text-zinc"], [role="tooltip"] *, .bg-zinc-900 *) { color: #52525b; }
+.comfortable.dark .text-zinc-400:not([class*=":text-zinc"]),
+.comfortable.dark .text-zinc-500:not([class*=":text-zinc"]) { color: #c4c4cc !important; }
+.comfortable.dark .text-zinc-300:not([class*=":text-zinc"]) { color: #8b8b94 !important; }
