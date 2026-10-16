@@ -59,6 +59,16 @@ export function scoringEligibility(fight: ScoringFight, now = Date.now(), opened
   return { state, scheduled, available, reason: available ? null : "Waiting for the live feed to report a round. Scores open automatically; the feed can lag the broadcast." };
 }
 
+/**
+ * Rounds whose scores anyone else may see. While a bout is live, the newest
+ * open round may still be being fought (the feed publishes a round as it
+ * happens), so it stays private to each scorer until the next round opens or
+ * the result lands: nobody's card is shaped by the crowd's mid-round.
+ */
+export function closedRounds(eligibility: ScoreEligibility): number {
+  return eligibility.state === "live" ? Math.max(0, eligibility.available - 1) : eligibility.available;
+}
+
 export function validateSubmission(body: unknown, eligibility: ScoreEligibility): { revision: number; rounds: RoundScore[] } {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new ScoringError(400, "Invalid scorecard.");
   const { revision, rounds } = body as Record<string, unknown>;
@@ -421,7 +431,8 @@ export class ScoringStore {
   }
   summary(id: string) {
     const eligibility = this.eligibility(id);
-    const max = eligibility.available;
+    // Only closed rounds are aggregated: a round being fought is nobody's yet.
+    const max = closedRounds(eligibility);
     const localRounds = this.stmt(`SELECT round, COUNT(*) AS scorers,
       AVG(f1) AS avg1, AVG(f2) AS avg2, AVG(deduct1) AS deduct1, AVG(deduct2) AS deduct2,
       AVG(f1 - deduct1) AS total1, AVG(f2 - deduct2) AS total2
@@ -462,7 +473,7 @@ export class ScoringStore {
       localCards: Number(localTotals.scorers), importedCards,
       source: imported ? { name: imported.source, url: imported.sourceUrl } : null,
     };
-    return { eligibility, rounds, totals };
+    return { eligibility, closed: max, rounds, totals };
   }
   /** The fans' average final card, over complete cards only, exactly as the
    *  fight page's total: what a profile row sets the scorer's own card beside. */
@@ -593,11 +604,13 @@ export class ScoringStore {
       // opened, so it is not listed.
       if (!fight) return [];
       const eligibility = scoringEligibility(fight, Date.now(), released.get(card.fightId) ?? 0);
-      const rounds = (JSON.parse(card.roundsJson) as RoundScore[]).filter(r => r.round <= eligibility.available);
+      // A profile is public, so a live card shows its closed rounds only.
+      const closed = closedRounds(eligibility);
+      const rounds = (JSON.parse(card.roundsJson) as RoundScore[]).filter(r => r.round <= closed);
       const total1 = rounds.reduce((sum, r) => sum + r.f1 - r.deduct1, 0);
       const total2 = rounds.reduce((sum, r) => sum + r.f2 - r.deduct2, 0);
       const verdict = cardVerdict(fight, eligibility, rounds, total1, total2);
-      const fans = this.fanAverage(fight, eligibility.available);
+      const fans = this.fanAverage(fight, closed);
       const complete = rounds.length > 0 && rounds.length === eligibility.available;
       return [{
         fightId: card.fightId, updatedAt: card.updatedAt, revision: card.revision, rounds, eligibility,

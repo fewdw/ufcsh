@@ -9,6 +9,8 @@ export type DateMode = "relative" | "date";
 export type DivisionOrder = "light" | "heavy";
 /** How a betting price displays: the American line or decimal payout. */
 export type OddsFormat = "american" | "decimal";
+/** When the community's rounds stay hidden until the reader has scored them. */
+export type BlindScoring = "live" | "always" | "off";
 
 export type AppSettings = {
   theme: ThemeMode;
@@ -25,6 +27,7 @@ export type AppSettings = {
   cardOrder: CardOrder;
   /** Tale of the tape shows how each difference has gone in earlier bouts. */
   tapeAdvanced: boolean;
+  blindScoring: BlindScoring;
 };
 
 export type CardOrder = "main" | "opener";
@@ -41,6 +44,7 @@ const DEFAULTS: AppSettings = {
   statsSort: "grouped",
   cardOrder: "main",
   tapeAdvanced: false,
+  blindScoring: "live",
 };
 const STORAGE_KEY = "ufcsh:settings:v1";
 
@@ -57,6 +61,7 @@ function loadSettings(): AppSettings {
       statsSort: saved?.statsSort === "best" ? "best" : "grouped",
       cardOrder: saved?.cardOrder === "opener" ? "opener" : "main",
       tapeAdvanced: saved?.tapeAdvanced === true,
+      blindScoring: saved?.blindScoring === "always" || saved?.blindScoring === "off" ? saved.blindScoring : "live",
     };
   } catch {
     return DEFAULTS;

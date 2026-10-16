@@ -10,6 +10,9 @@ export type MyScorecard = { revision: number; rounds: RoundScore[]; updatedAt: n
 export type ScoreEligibility = { state: "completed" | "live" | "waiting"; scheduled: number; available: number; reason: string | null };
 export type ScoreSummary = {
   eligibility: ScoreEligibility;
+  /** Rounds the community's scores are shown for. While a bout is live the
+   *  newest open round may still be being fought, so it is left out. */
+  closed?: number;
   rounds: { round: number; scorers: number; avg1: number; avg2: number; deduct1: number; deduct2: number; total1: number; total2: number }[];
   totals: {
     scorers: number; completeCards: number; avg1: number | null; avg2: number | null;
@@ -106,4 +109,16 @@ export function fightFinish(fight: Matchup, eligibility: ScoreEligibility): Fini
   const side = fight.f1.outcome === "win" ? 1 : fight.f2.outcome === "win" ? 2 : null;
   if (!side) return null;
   return { round, side, name: side === 1 ? fight.f1.name : fight.f2.name, method: fight.method, time: fight.time };
+}
+
+/** Closed rounds the reader has neither scored nor chosen to see: blind
+ *  scoring keeps the crowd's numbers off them so the reader's card is their
+ *  own. Until their card has loaded (`scored` null), every closed round is
+ *  treated as unscored, so nothing flashes into view. */
+export function blindRounds({ blind, closed, scored, revealedThrough }: {
+  blind: boolean; closed: number; scored: number[] | null; revealedThrough: number;
+}): number[] {
+  if (!blind) return [];
+  return Array.from({ length: closed }, (_, index) => index + 1)
+    .filter((round) => round > revealedThrough && !scored?.includes(round));
 }

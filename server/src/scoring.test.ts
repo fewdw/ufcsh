@@ -142,10 +142,22 @@ test("live partial cards have separate per-round samples and cannot include futu
   store.save(id, "alice", { revision: 0, rounds: rounds.slice(0, 1) });
   store.save(id, "bob", { revision: 0, rounds: rounds.slice(0, 2) });
   let summary = store.summary(id) as any;
+  // Round 2 is the newest open round and may still be being fought: it is
+  // scored, but nobody sees it until round 3 opens or the result lands.
+  assert.equal(summary.closed, 1);
   assert.equal(summary.totals.scorers, 2);
+  assert.equal(summary.totals.completeCards, 2);
+  assert.equal(summary.totals.avg1, 10);
+  assert.deepEqual(summary.rounds.map((r: any) => r.scorers), [2]);
+  assert.equal(store.mine(id, "bob").rounds.length, 2, "a scorer always sees their own round");
+  assert.deepEqual(store.profile(store.identity("bob").handle)!.cards[0].rounds.map((r: any) => r.round), [1], "a public profile shows closed rounds only");
+  setFight({ ...live, detail_json: JSON.stringify({ type: "past", totalsRounds: { rounds: [{}, {}, {}] } }) });
+  summary = store.summary(id) as any;
+  assert.equal(summary.closed, 2, "round 2 closes when round 3 opens");
+  assert.deepEqual(summary.rounds.map((r: any) => r.scorers), [2, 1]);
   assert.equal(summary.totals.completeCards, 1);
   assert.equal(summary.totals.avg1, 20);
-  assert.deepEqual(summary.rounds.map((r: any) => r.scorers), [2, 1]);
+  setFight(live);
   assert.throws(() => store.save(id, "alice", { revision: 1, rounds }), /available rounds/);
   setFight({ ...fight, method: "KO/TKO", round: "2" });
   summary = store.summary(id) as any;
