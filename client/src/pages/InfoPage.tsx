@@ -92,7 +92,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-15">October 15, 2026</time></p>
             <ul>
-              <li>The fan scorecard no longer ends with a count of cards for each fighter.</li>
+              <li>Matchups and event pages load faster again.</li>
+              <li>On Stats, changing a card’s option dims only that card while it updates.</li>
             </ul>
           </Section>
         </div>

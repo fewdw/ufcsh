@@ -275,9 +275,8 @@ let cached: Judging | null = null;
 
 const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
 
-function build(): Judging {
+function build(venues: ReturnType<typeof venueIndex>): Judging {
   const index = officialsIndex();
-  const venues = venueIndex();
   const decisions = index.fights.filter((officiated) => isDecision(officiated.fight));
   const edges = new Map(decisions.map((officiated) => [officiated, edgesOf(officiated)]));
 
@@ -370,9 +369,23 @@ function build(): Judging {
   return { version: index.version, model, fights, rounds, cards, field, dna: new Map() };
 }
 
+/** Judging reads only each event's country from the venue index, whose
+ *  version also moves whenever sync re-checks an event. Keying on the
+ *  countries keeps a check that changes nothing from rebuilding everything. */
+const countries = new WeakMap<ReturnType<typeof venueIndex>, string>();
+function countriesOf(venues: ReturnType<typeof venueIndex>): string {
+  let key = countries.get(venues);
+  if (key === undefined) {
+    key = [...venues.byEvent].map(([eventId, venue]) => `${eventId}:${venue.country ?? ""}`).sort().join("|");
+    countries.set(venues, key);
+  }
+  return key;
+}
+
 export function judging(): Judging {
-  const version = `${officialsIndex().version}|${venueIndex().version}`;
-  if (cached?.version !== version) cached = { ...build(), version };
+  const venues = venueIndex();
+  const version = `${officialsIndex().version}|${countriesOf(venues)}`;
+  if (cached?.version !== version) cached = { ...build(venues), version };
   return cached;
 }
 

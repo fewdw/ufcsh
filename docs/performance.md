@@ -551,3 +551,10 @@ with a query on every call, 4,000 times. Reading `venueIndex()` once per
 build fixed it. The leanings board likewise reads the state once for every
 judge (it was +125 ms).
 
+In production the state was keyed on the venue index's version, which moves
+every few minutes as sync re-checks upcoming events. Each check made the next
+matchup or event card rebuild it in every query worker: fight detail p95 went
+from ~150 ms to ~900 ms after the release (admin Speed warning). Keying on each
+event's country instead keeps it: the first matchup after a no-op check went
+from ~250 ms to ~26 ms (the venue index's own rebuild) on the dev snapshot.
+
