@@ -72,8 +72,6 @@ export type LiveOddsAnswer = {
     method: string | null;
     round: string | null;
     time: string | null;
-    prefight: [number, number] | null;
-    url: string | null;
     remaining_ms: number;
   } | null;
 };

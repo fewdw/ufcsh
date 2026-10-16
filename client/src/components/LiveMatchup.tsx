@@ -89,8 +89,8 @@ function Chance({ value, other }: { value: number; other: number }) {
   );
 }
 
-/** The bout that just ended: who won and how, flagged as an upset when
- *  Polymarket had the winner behind before the walkout. */
+/** The bout that just ended: who won and how. A draw's label is orange, the
+ *  colour draws wear on the card. */
 function ResultPill({ result }: { result: NonNullable<LiveOddsAnswer["finished"]> }) {
   const names = [lastName(result.f1_name), lastName(result.f2_name)];
   // A decision always went the distance; its round says nothing.
@@ -99,21 +99,15 @@ function ResultPill({ result }: { result: NonNullable<LiveOddsAnswer["finished"]
   const headline = result.winner == null
     ? `${names[0]} vs ${names[1]}`
     : `${names[result.winner! - 1]} def. ${names[2 - result.winner!]}`;
-  const before = result.prefight && result.winner ? result.prefight[result.winner - 1] : null;
-  const winnerName = result.winner ? (result.winner === 1 ? result.f1_name : result.f2_name) : "";
-  const upset = before != null && before < 0.5 && percent(before) !== "50%";
   return (
     <Link
       to={`/fights/${result.id}`}
-      title={`${headline}${how ? ` · ${how}` : ""}${before != null ? ` · Polymarket gave ${winnerName} ${percent(before)} before the fight` : ""}`}
+      title={`${label === "Final" ? "" : `${label} · `}${headline}${how ? ` · ${how}` : ""}`}
       className={PILL}
     >
-      <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">{label}</span>
+      <span className={`shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] ${label === "Draw" ? "text-orange-700" : "text-zinc-500"}`}>{label}</span>
       <span className="truncate text-xs font-semibold text-zinc-900">{headline}</span>
       {how ? <span className="shrink-0 text-[11px] font-medium text-zinc-500">{how}</span> : null}
-      {upset ? (
-        <span className="shrink-0 rounded bg-amber-100 px-1 py-px text-[9px] font-bold uppercase text-amber-700">Upset</span>
-      ) : null}
     </Link>
   );
 }

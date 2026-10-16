@@ -16,6 +16,7 @@ import { percent } from "./liveOdds";
  * server code fight night uses.
  */
 export type Scene = "next" | "live" | "none" | "final";
+export type Outcome = "f1" | "f2" | "draw" | "nc";
 export type PreviewSettings = {
   on: boolean;
   scene: Scene;
@@ -23,10 +24,11 @@ export type PreviewSettings = {
   /** The first fighter's chance, 0–100. */
   chance: number;
   moving: boolean;
-  winner: 1 | 2 | 0;
+  outcome: Outcome;
   method: string;
-  /** The winner-to-be's chance before the walkout, 0–100. */
-  prefight: number;
+  round: number;
+  /** Long names, to see how the pill truncates. */
+  longNames: boolean;
   fight: { id: string; f1: string; f2: string } | null;
 };
 
@@ -34,9 +36,18 @@ const KEY = "ufcsh:live-preview";
 const EVENT = "ufcsh:live-preview";
 const DEFAULTS: PreviewSettings = {
   on: false, scene: "live", source: "mock", chance: 50, moving: false,
-  winner: 2, method: "KO/TKO", prefight: 51, fight: null,
+  outcome: "f2", method: "KO/TKO", round: 2, longNames: false, fight: null,
 };
 const MOCK_NAMES: [string, string] = ["Alexander Volkanovski", "Movsar Evloev"];
+const LONG_NAMES: [string, string] = ["Jean-Paul Lebosnoyani", "Mahammadali Osmanli"];
+/** Every outcome and method the archive holds, so each pill can be seen. */
+const METHODS: Record<Outcome, string[]> = {
+  f1: ["KO/TKO", "SUB", "U-DEC", "S-DEC", "M-DEC", "DQ"],
+  f2: ["KO/TKO", "SUB", "U-DEC", "S-DEC", "M-DEC", "DQ"],
+  draw: ["U-DEC", "S-DEC", "M-DEC"],
+  nc: ["Overturned", "CNC"],
+};
+const decision = (method: string) => method.endsWith("DEC");
 
 let cachedText: string | null = null;
 let cached: PreviewSettings = DEFAULTS;
@@ -70,7 +81,7 @@ export function useLivePreview(): { card: LiveCard; answer: LiveOddsAnswer | nul
   if (!s.on) return null;
   const real = s.source === "real" && s.fight;
   const id = real ? s.fight!.id : "0000000000000000";
-  const [f1, f2] = real ? [s.fight!.f1, s.fight!.f2] : MOCK_NAMES;
+  const [f1, f2] = real ? [s.fight!.f1, s.fight!.f2] : s.longNames ? LONG_NAMES : MOCK_NAMES;
   const fighter = (name: string) => ({ id: "", name, profile_eligible: false, nickname: "", record: "", photo_url: null, ranking: null });
   const card = {
     event: { id: "", name: "Live preview", date: "", location: "", status: "current" },
@@ -84,12 +95,11 @@ export function useLivePreview(): { card: LiveCard; answer: LiveOddsAnswer | nul
   const odds = s.scene === "none" ? null : { f1: chance, f2: 1 - chance, url: "https://polymarket.com/sports/ufc", closed: false };
   const finished = s.scene !== "final" ? null : {
     id, f1_name: f1, f2_name: f2,
-    f1_outcome: s.winner === 0 ? "draw" : s.winner === 1 ? "win" : "loss",
-    f2_outcome: s.winner === 0 ? "draw" : s.winner === 2 ? "win" : "loss",
-    winner: s.winner === 0 ? null : s.winner,
-    method: s.winner === 0 ? "S-DEC" : s.method, round: s.method.includes("DEC") || s.winner === 0 ? "5" : "2", time: "3:12",
-    prefight: s.winner === 2 ? [1 - s.prefight / 100, s.prefight / 100] as [number, number] : [s.prefight / 100, 1 - s.prefight / 100] as [number, number],
-    url: null, remaining_ms: 5 * 60_000,
+    f1_outcome: s.outcome === "f1" ? "win" : s.outcome === "f2" ? "loss" : s.outcome,
+    f2_outcome: s.outcome === "f2" ? "win" : s.outcome === "f1" ? "loss" : s.outcome,
+    winner: s.outcome === "f1" ? 1 as const : s.outcome === "f2" ? 2 as const : null,
+    method: s.method, round: String(decision(s.method) ? 3 : s.round), time: "3:12",
+    remaining_ms: 5 * 60_000,
   };
   return { card, answer: { fight_id: id, odds, finished }, oddsUrl: null };
 }
@@ -109,7 +119,6 @@ function useMovingPrice(s: PreviewSettings) {
 }
 
 const SCENES: [Scene, string][] = [["next", "Next"], ["live", "Live"], ["none", "No market"], ["final", "Result"]];
-const METHODS = ["KO/TKO", "SUB", "U-DEC"];
 const chip = (on: boolean) => `rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors ${on ? "bg-zinc-100 text-zinc-900" : "text-zinc-400 hover:text-zinc-100"}`;
 
 /** The panel pinned bottom left while the preview is on. */
@@ -120,7 +129,8 @@ export function LivePreviewPanel() {
   const { data: matchup } = useApi<{ f1: { name: string }; f2: { name: string } }>(s.on && pageFight ? `/api/fights/${pageFight}` : null);
   useMovingPrice(s);
   if (!s.on) return null;
-  const names = s.source === "real" && s.fight ? [s.fight.f1, s.fight.f2] : MOCK_NAMES;
+  const names = s.source === "real" && s.fight ? [s.fight.f1, s.fight.f2] : s.longNames ? LONG_NAMES : MOCK_NAMES;
+  const methods = METHODS[s.outcome] ?? METHODS.f2;
   const mock = s.source === "mock";
   return createPortal(
     <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+4.25rem)] left-2 z-50 flex w-[17rem] flex-col gap-2 rounded-lg bg-zinc-900/95 p-2.5 font-mono text-[11px] leading-tight text-zinc-100 shadow-lg backdrop-blur sm:bottom-2">
@@ -145,25 +155,34 @@ export function LivePreviewPanel() {
               <button key={scene} type="button" className={chip(s.scene === scene)} onClick={() => updatePreview({ scene })}>{label}</button>
             ))}
           </div>
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="text-zinc-400">Names</span>
+            <button type="button" className={chip(!s.longNames)} onClick={() => updatePreview({ longNames: false })}>Short</button>
+            <button type="button" className={chip(s.longNames)} onClick={() => updatePreview({ longNames: true })}>Long</button>
+          </div>
           {s.scene === "final" ? (
             <>
               <div className="flex flex-wrap items-center gap-1">
-                <span className="text-zinc-400">Winner</span>
-                {([[1, names[0]], [2, names[1]], [0, "Draw"]] as const).map(([winner, name]) => (
-                  <button key={winner} type="button" className={chip(s.winner === winner)} onClick={() => updatePreview({ winner })}>{winner ? name.split(" ").at(-1) : name}</button>
+                <span className="text-zinc-400">Result</span>
+                {([["f1", names[0].split(" ").at(-1)], ["f2", names[1].split(" ").at(-1)], ["draw", "Draw"], ["nc", "No contest"]] as const).map(([outcome, label]) => (
+                  <button key={outcome} type="button" className={chip(s.outcome === outcome)}
+                    onClick={() => updatePreview({ outcome, method: METHODS[outcome].includes(s.method) ? s.method : METHODS[outcome][0] })}>{label}</button>
                 ))}
               </div>
               <div className="flex flex-wrap items-center gap-1">
                 <span className="text-zinc-400">By</span>
-                {METHODS.map((method) => (
+                {methods.map((method) => (
                   <button key={method} type="button" className={chip(s.method === method)} onClick={() => updatePreview({ method })}>{method}</button>
                 ))}
               </div>
-              <label className="flex items-center gap-2">
-                <span className="w-24 shrink-0 text-zinc-400">Winner pre-fight</span>
-                <input type="range" min={1} max={99} value={s.prefight} onChange={(e) => updatePreview({ prefight: Number(e.target.value) })} className="min-w-0 flex-1" />
-                <span className="w-8 text-right tabular-nums">{s.prefight}%</span>
-              </label>
+              {!decision(s.method) ? (
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="text-zinc-400">Round</span>
+                  {[1, 2, 3, 4, 5].map((round) => (
+                    <button key={round} type="button" className={chip(s.round === round)} onClick={() => updatePreview({ round })}>{round}</button>
+                  ))}
+                </div>
+              ) : null}
             </>
           ) : s.scene !== "none" ? (
             <>

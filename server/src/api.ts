@@ -454,9 +454,8 @@ function currentBout() {
 function polymarketBout(): LiveBout | null {
   const current = currentBout();
   if (!current) return null;
-  const { event, bout, starts_at, completed, live } = current;
-  return { id: bout.id, date: event.date, f1: fighterNames(bout.f1_id, bout.f1_name), f2: fighterNames(bout.f2_id, bout.f2_name),
-    underway: live, opener: completed === 0, starts_at };
+  const { event, bout, live } = current;
+  return { id: bout.id, date: event.date, f1: fighterNames(bout.f1_id, bout.f1_name), f2: fighterNames(bout.f2_id, bout.f2_name), underway: live };
 }
 
 function boutResult(id: string): FinishedBout | null {
