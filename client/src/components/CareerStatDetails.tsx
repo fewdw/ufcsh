@@ -91,10 +91,12 @@ function StatModal({ id, fighters, before, selection, update }: {
 
   return <EvidenceDialog id={id} close={close} wide={matchup}>
       <div className="shrink-0 px-4 pb-3 pt-3 sm:px-5">
-        <h2 id={`${id}-title`} title={currentView.label} tabIndex={-1} autoFocus style={{ outline: "none" }} className={`${DIALOG_TITLE} truncate`}>{currentView.label}</h2>
         {/* Closed by Escape, the backdrop or dragging the sheet down. */}
-        <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-          <p className="text-[11px] text-zinc-400">{before ? cutoff ? `Before ${formatDate(cutoff.date)}` : "Before this fight" : "UFC career"}</p>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 id={`${id}-title`} title={currentView.label} tabIndex={-1} autoFocus style={{ outline: "none" }} className={`${DIALOG_TITLE} leading-snug`}>{currentView.label}</h2>
+            <p className="mt-0.5 text-[11px] text-zinc-400">{before ? cutoff ? `Before ${formatDate(cutoff.date)}` : "Before this fight" : "UFC career"}</p>
+          </div>
           {orders.length > 1 ? <select aria-label="Sort opponents" value={sort.order} onChange={event => setSort({ ...sort, order: event.target.value as EvidenceOrder })}
             className="h-9 w-24 shrink-0 rounded-full border-0 bg-zinc-100 pl-3 pr-6 text-xs font-medium text-zinc-700 focus-visible:outline-2 focus-visible:outline-zinc-900">
             {orders.map(order => <option key={order} value={order}>{order === "recent" ? "Recent" : order === "descending" ? "Highest" : "Lowest"}</option>)}
