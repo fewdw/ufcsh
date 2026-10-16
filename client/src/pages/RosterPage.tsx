@@ -6,15 +6,13 @@ import { byDivisionName } from "../divisionOrder";
 import { useRouteScrollRestoration } from "../navigationState";
 import { BROWSE_LIST, BROWSE_PAGE, FULL_PAGE_BODY } from "../research";
 import PageToolbar, { BROWSE_WIDE, ListHead } from "../components/PageToolbar";
-import BrowseTabs from "../components/BrowseTabs";
+import BrowseTabs, { BrowsePending } from "../components/BrowseTabs";
 import { markRosterSeen, moveKey, unseenMoves } from "../rosterSeen";
 import { useSeo } from "../seo";
 import useMediaQuery from "../useMediaQuery";
 import Avatar from "../components/Avatar";
 import Flag from "../components/Flag";
 import Freshness from "../components/Freshness";
-import RequestNotice from "../components/RequestNotice";
-import { PageState } from "../components/ResearchKit";
 import { PANEL } from "../components/chartTokens";
 import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "../components/segmented";
 
@@ -114,8 +112,7 @@ export default function RosterPage() {
     markRosterSeen(data);
   }, [data]);
   useSeo({ title: "UFC Roster Changes", description: "Fighters the UFC has recently signed and recently released, with division, record and date.", path: "/roster" });
-  if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the roster changes.</RequestNotice></div>;
-  if (!data) return <PageState>Loading roster changes…</PageState>;
+  if (!data) return <BrowsePending onRetry={retry} loading="Loading roster changes…" failed={error ? "Couldn’t load the roster changes." : null} />;
   const divisions = [...new Set([...data.signed, ...data.cut].map((move) => move.division).filter((value): value is string => Boolean(value)))].sort(byDivisionName);
   const filtered = (kind: "signed" | "cut") => data[kind].filter((move) => division === "all" || move.division === division);
   const choice = <div className={segmentedGroup} role="group" aria-label="Roster changes">

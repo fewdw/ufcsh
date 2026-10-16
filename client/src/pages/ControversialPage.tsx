@@ -5,11 +5,9 @@ import { BROWSE_LIST, BROWSE_PAGE, FULL_PAGE_BODY, officialRows, useKeptApi, use
 import PageToolbar, { BROWSE_WIDE, FilterSelect, ListHead, ToolbarSearch } from "../components/PageToolbar";
 import OptionsSheet from "../components/OptionsSheet";
 import { PANEL } from "../components/chartTokens";
-import BrowseTabs from "../components/BrowseTabs";
+import BrowseTabs, { BrowsePending } from "../components/BrowseTabs";
 import ControversyRow, { ComebackRow, ControversyMethod, DEFAULT_SORT, SHOW_LABELS, SORTS } from "../components/ControversyRow";
 import { LoadMore, useInfiniteList } from "../components/InfiniteList";
-import { PageState } from "../components/ResearchKit";
-import RequestNotice from "../components/RequestNotice";
 import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "../components/segmented";
 import { useRouteScrollRestoration } from "../navigationState";
 import useMediaQuery from "../useMediaQuery";
@@ -55,8 +53,7 @@ export default function ControversialPage() {
     description: "Every UFC decision the fans' scorecards call close or got the other way, with each judge's card, the fans' average round by round and what the stats say.",
     path: "/controversial",
   });
-  if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the decisions.</RequestNotice></div>;
-  if (!data) return <PageState>Loading decisions…</PageState>;
+  if (!data) return <BrowsePending onRetry={retry} loading="Loading decisions…" failed={error ? "Couldn’t load the decisions." : null} />;
 
   const decisions = "view" in data ? null : data;
   const f = data.filters;

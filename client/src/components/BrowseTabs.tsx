@@ -1,6 +1,10 @@
+import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedOption } from "./segmented";
-import { BROWSE_FLAT } from "./PageToolbar";
+import PageToolbar, { BROWSE_FLAT } from "./PageToolbar";
+import { PANEL } from "./chartTokens";
+import RequestNotice from "./RequestNotice";
+import { BROWSE_PAGE, FULL_PAGE_BODY } from "../research";
 import useMediaQuery from "../useMediaQuery";
 
 type Tab = { href: string; label: string; current: (pathname: string, kind: string | null) => boolean };
@@ -46,5 +50,25 @@ export default function BrowseTabs() {
         );
       })}
     </nav>
+  );
+}
+
+/** A Browse page before its list arrives (`loading`) or when it fails
+ *  (`failed`): the toolbar and tabs stay where they are, so switching tabs on
+ *  a slow connection waits only in the list's place. */
+export function BrowsePending({ loading, failed, onRetry }: { loading: ReactNode; failed?: ReactNode; onRetry: () => void }) {
+  return (
+    <div className={BROWSE_PAGE}>
+      <div className={FULL_PAGE_BODY}>
+        <PageToolbar>
+          <BrowseTabs />
+        </PageToolbar>
+        {failed ? <RequestNotice onRetry={onRetry}>{failed}</RequestNotice> : (
+          <div role="status" className={`${PANEL} flex min-h-40 items-center justify-center px-5 text-center text-sm text-zinc-400 lg:min-h-0 lg:flex-1`}>
+            <span className="appear-late">{loading}</span>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
