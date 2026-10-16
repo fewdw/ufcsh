@@ -10,6 +10,9 @@ export type MyScorecard = { revision: number; rounds: RoundScore[]; updatedAt: n
 export type ScoreEligibility = { state: "completed" | "live" | "waiting"; scheduled: number; available: number; reason: string | null };
 export type ScoreSummary = {
   eligibility: ScoreEligibility;
+  /** Rounds the community's scores are shown for. While a bout is live the
+   *  newest open round may still be being fought, so it is left out. */
+  closed?: number;
   rounds: { round: number; scorers: number; avg1: number; avg2: number; deduct1: number; deduct2: number; total1: number; total2: number }[];
   totals: {
     scorers: number; completeCards: number; avg1: number | null; avg2: number | null;

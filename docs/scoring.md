@@ -78,6 +78,13 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   result lands, rounds the bout never reached and a stoppage round are deleted,
   not just hidden, and the hand-opened count is cleared — checked every 15
   seconds, and only for a well-formed result.
+- **Blind scoring** is automatic and only while a bout is live. The newest
+  open round may still be being fought (the feed publishes a round as it
+  happens), so its scores are left out of everything public — the community
+  card, its totals and public profiles — until the next round opens or the
+  result lands (`closedRounds` in `server/src/scoring.ts`, `closed` in the
+  summary). Each scorer always sees their own. Once a round ends, everyone
+  sees every score for it; there is no setting.
 - Live users can save a consecutive partial card, then add the next round or edit
   earlier scores. Once a result arrives, the same card becomes a completed-fight
   card. If a round becomes ineligible after a stoppage, all reads and aggregates
