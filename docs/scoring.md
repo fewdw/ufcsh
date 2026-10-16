@@ -63,8 +63,15 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   reports them; the editor unlocks each one on its own as the tab polls. The current round may be available: users should save after the
   horn. Unobserved future rounds cannot be submitted. This is community scoring,
   not an official clock or a permanently locked live judging competition.
+- A bout is called **Live** (the header's pill, its row on the card, the
+  admin panel) only on evidence it has started: UFCStats publishing its round
+  totals, or an admin opening a round. Until then it is **Next**, with a
+  countdown to its estimated start, then "due" once that has passed; the
+  clock and the previous result never make it live. From the announced card
+  start, the sync checks the opener's page too, so it can be confirmed before
+  any result exists.
 - The admin panel's **Live rounds** tab shows one bout: the one the header's
-  LIVE tag names (the opening bout, then whichever follows the last result),
+  pill names (the opening bout, then whichever follows the last result),
   with Prev/Next for a feed that is late with a result. That bout's Score tab
   appears as soon as it starts, rounds locked until opened. Closing a round
   by hand deletes the scores entered for it (the panel asks first). When the

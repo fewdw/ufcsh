@@ -15,18 +15,15 @@ export function landingEvent<T extends { id: string; date: string; status: strin
 }
 
 /**
- * The bout on now. A live card fills in from the bottom up — the opening bout
- * is the last row and picks up its result first — so the bout on now is the
- * lowest row still without one. Only once a result has landed, though:
- * "current" starts at midnight, hours before the card itself does.
+ * The bout on now: only the one the server has confirmed is under way (its
+ * statistics are being published, or an admin opened a round to score). The
+ * bout after the last result is only next until then, however late it runs.
  */
-export function liveFightId(event: Pick<EventDetail, "status" | "card_stats" | "fights">): string | null {
-  if (event.status !== "current" || !event.card_stats.completed_fights) return null;
-  for (let i = event.fights.length - 1; i >= 0; i--) {
-    const fight = event.fights[i];
-    if (fight.method == null && fight.f1.outcome == null && fight.f2.outcome == null) return fight.id;
-  }
-  return null;
+export function liveFightId(event: Pick<EventDetail, "status" | "live_fight_id" | "fights">): string | null {
+  if (event.status !== "current" || !event.live_fight_id) return null;
+  const fight = event.fights.find((each) => each.id === event.live_fight_id);
+  // A result that lands between polls ends it here before the server says so.
+  return fight && fight.method == null && fight.f1.outcome == null && fight.f2.outcome == null ? fight.id : null;
 }
 
 /** The single tag in the event list: a card being fought outranks one

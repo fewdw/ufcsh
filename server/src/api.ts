@@ -443,7 +443,10 @@ function currentBout() {
   if (!bout) return null;
   const starts_at = estimatedStart(fights.map(scheduledBout), Number(bout.ord) || 0, segmentTimes(e));
   const completed = fights.filter(fightIsComplete).length;
-  const live = fightIsUnderway(bout) || releasedRounds(bout.id) > 0 || (starts_at != null ? Date.now() >= starts_at : completed > 0);
+  // Live only on evidence the bout has started: UFCStats publishing its round
+  // totals, or an admin opening a round to score. An estimated start passing,
+  // or the bout before it ending, only means it is next.
+  const live = fightIsUnderway(bout) || releasedRounds(bout.id) > 0;
   return { event: e, fights, bout, starts_at, completed, live };
 }
 
@@ -546,6 +549,8 @@ async function getEvent(id: string, rankingType: RankingType): Promise<unknown |
     odds_freshness: oddsFreshness(e.id),
     fights: fights.map((f) => ({ ...fightRowToJson(f, false, e.date, rankingType), starts_at: startsAt(f) })),
     cancelled: cancelledBouts(e, rankingType),
+    // The bout confirmed to be on now, as the header's pill has it.
+    live_fight_id: (() => { const current = currentBout(); return current?.live && current.event.id === e.id ? current.bout.id : null; })(),
   };
 }
 

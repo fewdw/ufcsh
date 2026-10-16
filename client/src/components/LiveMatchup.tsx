@@ -20,15 +20,16 @@ export default function LiveMatchup() {
   const names = `${lastName(fight.f1.name)} vs ${lastName(fight.f2.name)}`;
   const away = countdown(startsAt, now);
   const at = clockTime(startsAt);
-  // Once the estimated start has passed we take the bout to be under way, so
-  // "next" is only ever shown ahead of a walkout that has not happened yet.
-  const live = data.live || !away;
+  // Live only once the server has confirmed it. An estimated start passing
+  // says nothing about whether the bout has begun, so it stays next: "due".
+  const { live } = data;
+  const due = !live && startsAt != null && !away;
 
   return (
     <Link
       to={`/fights/${fight.id}`}
       state={{ eventId: data.event.id }}
-      title={`${fight.f1.name} vs ${fight.f2.name} · ${data.event.name}${live ? " · on now" : at ? ` · expected ${at}` : ""}`}
+      title={`${fight.f1.name} vs ${fight.f2.name} · ${data.event.name}${live ? " · on now" : at ? ` · expected around ${at}` : ""}`}
       className="flex max-w-full items-center gap-2 rounded-full border border-zinc-200 bg-white py-1 pl-2.5 pr-3 transition-colors hover:border-zinc-300 hover:bg-zinc-50"
     >
       {live ? (
@@ -48,6 +49,7 @@ export default function LiveMatchup() {
           {away}
         </span>
       ) : null}
+      {due ? <span className="shrink-0 text-[11px] font-medium text-zinc-500">due</span> : null}
     </Link>
   );
 }
