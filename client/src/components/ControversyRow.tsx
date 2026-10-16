@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 
 type RoundScore = { round: number; f1: number; f2: number };
 import { Link } from "react-router-dom";
@@ -27,7 +27,7 @@ export const SIGNAL_TONE = {
 } as const;
 
 /** Why a decision is controversial, as short pills: "Fans 0.04 apart",
- *  "Fans had Dudakova", "More fan rounds: Rosales", "Stats had Soliz". */
+ *  "Fans had Dudakova", "More fan rounds: Rosales", "Stats judge had Soliz". */
 export function signalPills(row: Pick<Row, "signals" | "margin" | "fans" | "fan_rounds" | "stats" | "f1" | "f2">) {
   const name = (side: number) => lastName(side > 0 ? row.f1.name : row.f2.name);
   const fanPick = Math.abs(row.fans.avg1 - row.fans.avg2) < 0.1 ? 0 : Math.sign(row.fans.avg1 - row.fans.avg2);
@@ -38,26 +38,35 @@ export function signalPills(row: Pick<Row, "signals" | "margin" | "fans" | "fan_
     pills.push({ key: "rounds_total", label: `More fan rounds: ${name(more)}`, title: `${name(more)} won ${Math.max(...row.fan_rounds)} rounds on the fans' average card, but lost its total` });
   }
   if (row.signals.close) pills.push({ key: "close", label: `Fans ${row.margin.toFixed(2)} apart`, title: "Points between the fans' two average totals" });
-  if (row.signals.stats_other && row.stats?.pick) pills.push({ key: "stats_other", label: `Stats had ${name(row.stats.pick)}`, title: "What an average UFC judge gives a round with these numbers, round by round, had the other fighter" });
+  if (row.signals.stats_other && row.stats?.pick) pills.push({ key: "stats_other", label: `Stats judge had ${name(row.stats.pick)}`, title: `${STATS_JUDGE}. Round by round, it had the other fighter winning` });
   return pills;
 }
 
 const HEAD = "text-center text-[10px] font-semibold uppercase leading-none tracking-wide text-zinc-400";
 
-/** Two numbers, the larger in its corner's colour. */
+/** Two numbers, the larger in its corner's colour and the other faded, so a
+ *  column reads as a run of colours: who took each round. */
 function Pair({ f1, f2, text = String }: { f1: number; f2: number; text?: (value: number) => string }) {
   return (
     <span className="tabular-nums">
-      <span className={f1 > f2 ? "font-semibold text-f1-ink" : ""}>{text(f1)}</span>–<span className={f2 > f1 ? "font-semibold text-f2-ink" : ""}>{text(f2)}</span>
+      <span className={f1 > f2 ? "font-semibold text-f1-ink" : f1 < f2 ? "text-zinc-400" : ""}>{text(f1)}</span>
+      <span className="text-zinc-300">–</span>
+      <span className={f2 > f1 ? "font-semibold text-f2-ink" : f2 < f1 ? "text-zinc-400" : ""}>{text(f2)}</span>
     </span>
   );
 }
 
-/** A round as the stats read it: the favoured fighter's chance, in their colour. */
-function StatsRound({ p }: { p: number }) {
-  if (p === 0.5) return <span className="tabular-nums text-zinc-400">50%</span>;
-  const first = p > 0.5;
-  return <span className={`font-semibold tabular-nums ${first ? "text-f1-ink" : "text-f2-ink"}`}>{Math.round((first ? p : 1 - p) * 100)}%</span>;
+/** Below this, the stats judge's round is a coin flip either way. */
+const TOSS_UP = 0.55;
+
+/** A round as the stats judge reads it: how sure an average judge would be
+ *  of the favoured fighter, in their colour; near even, a muted toss-up. */
+function StatsRound({ p, f1, f2 }: { p: number; f1: string; f2: string }) {
+  const first = p >= 0.5;
+  const sure = Math.round((first ? p : 1 - p) * 100);
+  const name = first ? f1 : f2;
+  if (Math.max(p, 1 - p) < TOSS_UP) return <span className="tabular-nums text-zinc-400" title={`Toss-up: ${sure}% for ${name}`}>{sure}%</span>;
+  return <span className={`font-semibold tabular-nums ${first ? "text-f1-ink" : "text-f2-ink"}`} title={`${sure}% for ${name}`}>{sure}%</span>;
 }
 
 /** Control as a share of the time: a round's five minutes, or the whole fight. */
@@ -66,75 +75,113 @@ const percent = (value: number) => `${value}%`;
 
 export const STRIKES_TITLE = "Significant strikes landed";
 export const CONTROL_TITLE = "Control time as a share of the round, and of the whole fight in the total";
-export const STATS_TITLE = "Stats: the round an average UFC judge gives these numbers, with how sure it is; the total counts the rounds";
+/** What the stats judge is, wherever it appears. */
+export const STATS_JUDGE = "The stats judge is an average UFC judge reading only the numbers: who it would give the round to from the strikes, knockdowns, takedowns, control and submission attempts";
+export const STATS_TITLE = `${STATS_JUDGE}, and how sure; the total counts the rounds`;
 
 type RoundCard = { label: string; slug: string | null; f1: number; f2: number; rounds: RoundScore[]; mine?: boolean };
 
-/** Every round across, folded under a centred "Round by Round": the judges,
- *  the fans, each corner's strikes and control, and the stats, with the
- *  totals last. */
-export function RoundByRound({ cards, fans, numbers, stats }: {
+/** Every round, folded under a centred "Round by Round", as two small tables
+ *  side by side, or one above the other on a narrow screen: the scores (each
+ *  judge and the fans) and the numbers (each corner's strikes and control, and
+ *  the stats judge), each with its totals last. Nothing scrolls sideways. */
+export function RoundByRound({ cards, fans, numbers, stats, names }: {
   cards: RoundCard[];
   fans: { avg1: number; avg2: number; rounds: { round: number; avg1: number; avg2: number }[] } | null;
   numbers: FightNumbers | null;
   stats: StatsCard | null;
+  /** The two fighters' last names, for the stats judge's tooltips. */
+  names: [string, string];
 }) {
   const numbersRound = [...new Set([...cards.flatMap((card) => card.rounds), ...(fans?.rounds ?? []), ...(numbers?.rounds ?? []), ...(stats?.rounds ?? [])].map((round) => round.round))].sort((a, b) => a - b);
   if (!numbersRound.length) return null;
-  const cell = "whitespace-nowrap px-1.5 py-1 text-center tabular-nums";
+  const cell = "whitespace-nowrap px-2 py-1.5 text-center tabular-nums";
+  const head = "whitespace-nowrap px-2 pb-1.5 text-center font-semibold";
+  const roundCell = "py-1.5 pr-2 text-left font-medium text-zinc-500";
+  const scores = cards.length > 0 || fans != null;
   const control = numbers?.rounds.some((round) => round.ctrl) ? numbers : null;
+  const counted = numbers != null || stats != null;
+  const table = (header: ReactNode, row: (number: number) => ReactNode, total: ReactNode) => (
+    <table className="text-xs text-zinc-600">
+      <thead>
+        <tr className="text-[10px] uppercase tracking-[0.08em] text-zinc-400">
+          <th className="pb-1.5 pr-2 text-left font-semibold" title="Round">Rd</th>
+          {header}
+        </tr>
+      </thead>
+      <tbody>
+        {numbersRound.map((number) => (
+          <tr key={number} className="border-t border-zinc-100">
+            <td className={roundCell}>{number}</td>
+            {row(number)}
+          </tr>
+        ))}
+        <tr className="border-t border-zinc-200">
+          <td className="py-1.5 pr-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-400">Total</td>
+          {total}
+        </tr>
+      </tbody>
+    </table>
+  );
   return (
     <details className={`group/rounds mt-1 ${ROW_CONTROL}`}>
       <summary className="mx-auto flex w-fit cursor-pointer list-none items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium text-zinc-500 hover:bg-zinc-50 [&::-webkit-details-marker]:hidden">
         Round by Round
         <ChevronDown className="h-3.5 w-3.5 transition-transform group-open/rounds:rotate-180" aria-hidden="true" />
       </summary>
-      <div className="mt-1 overflow-x-auto">
-        <table className="mx-auto text-[11px] text-zinc-600">
-          <thead>
-            <tr className="text-[10px] uppercase tracking-[0.08em] text-zinc-400">
-              <th className="py-1 pr-1.5 text-left font-semibold">R</th>
-              {cards.map((card, index) => (
-                <th key={index} className={`${cell} font-semibold ${card.mine ? "text-zinc-700" : ""}`}>
-                  {card.slug && !card.mine ? <Link to={`/judges/${card.slug}`} className="hover:text-zinc-900 hover:underline">{card.label}</Link> : card.label}
-                </th>
-              ))}
-              {fans ? <th className={`${cell} font-semibold text-sky-600`}>Fans</th> : null}
-              {numbers ? <th className={`${cell} font-semibold`} title={STRIKES_TITLE}>Strikes</th> : null}
-              {control ? <th className={`${cell} font-semibold`} title={CONTROL_TITLE}>Control</th> : null}
-              {stats ? <th className={`${cell} font-semibold`} title={STATS_TITLE}>Stats</th> : null}
-            </tr>
-          </thead>
-          <tbody>
-            {numbersRound.map((number) => {
-              const crowd = fans?.rounds.find((entry) => entry.round === number);
-              const counted = numbers?.rounds.find((entry) => entry.round === number);
-              const read = stats?.rounds.find((entry) => entry.round === number);
-              return (
-                <tr key={number} className="border-t border-zinc-100">
-                  <td className="py-1 pr-1.5 font-medium">{number}</td>
-                  {cards.map((card, index) => {
-                    const round = card.rounds.find((entry) => entry.round === number);
-                    return <td key={index} className={`${cell} ${card.mine ? "font-semibold text-zinc-900" : ""}`}>{round ? <Pair f1={round.f1} f2={round.f2} /> : "—"}</td>;
-                  })}
-                  {fans ? <td className={cell}>{crowd ? <Pair f1={crowd.avg1} f2={crowd.avg2} text={(value) => value.toFixed(2)} /> : "—"}</td> : null}
-                  {numbers ? <td className={cell}>{counted ? <Pair f1={counted.sig[0]} f2={counted.sig[1]} /> : "—"}</td> : null}
-                  {control ? <td className={cell}>{counted?.ctrl ? <Pair f1={controlShare(counted.ctrl[0], counted.seconds)} f2={controlShare(counted.ctrl[1], counted.seconds)} text={percent} /> : "—"}</td> : null}
-                  {stats ? <td className={cell}>{read ? <StatsRound p={read.p} /> : "—"}</td> : null}
-                </tr>
-              );
-            })}
-            <tr className="border-t border-zinc-200 font-medium">
-              <td className="py-1 pr-1.5 text-[10px] uppercase tracking-[0.08em] text-zinc-400">All</td>
-              {cards.map((card, index) => <td key={index} className={`${cell} ${card.mine ? "font-semibold text-zinc-900" : ""}`}><Pair f1={card.f1} f2={card.f2} /></td>)}
-              {fans ? <td className={cell}><Pair f1={fans.avg1} f2={fans.avg2} text={(value) => value.toFixed(2)} /></td> : null}
-              {numbers ? <td className={cell}><Pair f1={numbers.sig[0]} f2={numbers.sig[1]} /></td> : null}
-              {control ? <td className={cell}>{control.ctrl ? <Pair f1={controlShare(control.ctrl[0], control.seconds)} f2={controlShare(control.ctrl[1], control.seconds)} text={percent} /> : "—"}</td> : null}
-              {stats ? <td className={cell}><Pair f1={stats.f1} f2={stats.f2} /></td> : null}
-            </tr>
-          </tbody>
-        </table>
+      <div className="mt-1 flex flex-wrap items-start justify-center gap-x-10 gap-y-4">
+        {scores ? table(
+          <>
+            {cards.map((card, index) => (
+              <th key={index} className={`${head} ${card.mine ? "text-zinc-700" : ""}`}>
+                {card.slug && !card.mine ? <Link to={`/judges/${card.slug}`} className="hover:text-zinc-900 hover:underline">{card.label}</Link> : card.label}
+              </th>
+            ))}
+            {fans ? <th className={`${head} text-sky-600`}>Fans</th> : null}
+          </>,
+          (number) => {
+            const crowd = fans?.rounds.find((entry) => entry.round === number);
+            return <>
+              {cards.map((card, index) => {
+                const round = card.rounds.find((entry) => entry.round === number);
+                return <td key={index} className={`${cell} ${card.mine ? "bg-zinc-50" : ""}`}>{round ? <Pair f1={round.f1} f2={round.f2} /> : "—"}</td>;
+              })}
+              {fans ? <td className={cell}>{crowd ? <Pair f1={crowd.avg1} f2={crowd.avg2} text={(value) => value.toFixed(2)} /> : "—"}</td> : null}
+            </>;
+          },
+          <>
+            {cards.map((card, index) => <td key={index} className={`${cell} ${card.mine ? "bg-zinc-50" : ""}`}><Pair f1={card.f1} f2={card.f2} /></td>)}
+            {fans ? <td className={cell}><Pair f1={fans.avg1} f2={fans.avg2} text={(value) => value.toFixed(2)} /></td> : null}
+          </>,
+        ) : null}
+        {counted ? table(
+          <>
+            {numbers ? <th className={head} title={STRIKES_TITLE}>Strikes</th> : null}
+            {control ? <th className={head} title={CONTROL_TITLE}>Control</th> : null}
+            {stats ? <th className={head} title={STATS_TITLE}>Stats judge</th> : null}
+          </>,
+          (number) => {
+            const round = numbers?.rounds.find((entry) => entry.round === number);
+            const read = stats?.rounds.find((entry) => entry.round === number);
+            return <>
+              {numbers ? <td className={cell}>{round ? <Pair f1={round.sig[0]} f2={round.sig[1]} /> : "—"}</td> : null}
+              {control ? <td className={cell}>{round?.ctrl ? <Pair f1={controlShare(round.ctrl[0], round.seconds)} f2={controlShare(round.ctrl[1], round.seconds)} text={percent} /> : "—"}</td> : null}
+              {stats ? <td className={cell}>{read ? <StatsRound p={read.p} f1={names[0]} f2={names[1]} /> : "—"}</td> : null}
+            </>;
+          },
+          <>
+            {numbers ? <td className={cell}><Pair f1={numbers.sig[0]} f2={numbers.sig[1]} /></td> : null}
+            {control ? <td className={cell}>{control.ctrl ? <Pair f1={controlShare(control.ctrl[0], control.seconds)} f2={controlShare(control.ctrl[1], control.seconds)} text={percent} /> : "—"}</td> : null}
+            {stats ? <td className={cell} title="Rounds the stats judge gives each fighter"><Pair f1={stats.f1} f2={stats.f2} /></td> : null}
+          </>,
+        ) : null}
       </div>
+      {stats ? (
+        <p className="mx-auto mt-2 max-w-md text-center text-[11px] leading-4 text-zinc-500">
+          <span className="font-semibold text-zinc-600">Stats judge:</span> an average UFC judge reading only the numbers, and how
+          sure it would be of each round. Under {Math.round(TOSS_UP * 100)}% is a toss-up, shown in grey.
+        </p>
+      ) : null}
     </details>
   );
 }
@@ -178,7 +225,7 @@ export default function ControversyRow({ row, judge }: { row: Row; judge?: strin
           <span className={`${HEAD} ${wideOnly} pl-2`} style={place(strikesAt, 1)} title={STRIKES_TITLE}>Strikes</span>
           <span className={`${HEAD} ${wideOnly} pl-2`} style={place(controlAt, 1)} title="Control time as a share of the whole fight">Control</span>
         </> : null}
-        {row.stats ? <span className={`${HEAD} pl-1 @[30rem]:pl-2`} style={place(statsAt, 1)} title="Rounds an average UFC judge would give each fighter from the numbers">Stats</span> : null}
+        {row.stats ? <span className={`${HEAD} pl-1 @[30rem]:pl-2`} style={place(statsAt, 1)} title={`Rounds each fighter gets from the stats judge. ${STATS_JUDGE}`}>Stats<br />judge</span> : null}
         {([1, 2] as const).map((side) => {
           const fighter = side === 1 ? row.f1 : row.f2;
           const ink = side === 1 ? "text-f1-ink" : "text-f2-ink";
@@ -225,7 +272,7 @@ export default function ControversyRow({ row, judge }: { row: Row; judge?: strin
       </div>
       <RoundByRound
         cards={row.cards.map((card, index) => ({ label: card.judge ? lastName(card.judge) : `Judge ${index + 1}`, slug: card.slug, f1: card.f1, f2: card.f2, rounds: card.rounds, mine: index === row.mine }))}
-        fans={row.fans} numbers={row.numbers} stats={row.stats} />
+        fans={row.fans} numbers={row.numbers} stats={row.stats} names={[lastName(row.f1.name), lastName(row.f2.name)]} />
     </div>
   );
 }
@@ -236,7 +283,7 @@ export const SHOW_LABELS: Record<ControversialShow, string> = {
   "close": "Fans under half a point apart",
   "fans-other": "Fans had the other winner",
   "rounds-total": "Fans' rounds against their total",
-  "stats-other": "The stats had the other winner",
+  "stats-other": "The stats judge had the other winner",
   "against-fans": "Their card against the fans",
 };
 /** Widest first by default: with the fans' winner the other way, the biggest robberies lead. */
@@ -252,7 +299,7 @@ export function ControversyMethod({ data }: { data: Pick<ControversialList, "min
   return (
     <p className="col-span-2 text-[11px] leading-4 text-zinc-500">
       Decisions with {data.min_crowd}+ fan cards where the fans are under {data.close_margin} apart, had the other winner, or gave
-      one fighter more rounds but the other the total. Stats: an average judge's card from each round's numbers ({data.model.accuracy}% agreement).
+      one fighter more rounds but the other the total. Stats judge: an average judge's card from only each round's numbers ({data.model.accuracy}% agreement with the judges' rounds).
     </p>
   );
 }
@@ -282,7 +329,7 @@ export function ComebackRow({ row }: { row: Comeback }) {
         <span className={`${HEAD} pl-2 text-sky-600`} style={place(3, 1)} title={`Average of ${row.fans.cards.toLocaleString()} fan cards over the ${completed} completed rounds`}>Fans</span>
         {numbers ? <span className={`${HEAD} ${wideOnly} pl-2`} style={place(4, 1)} title={STRIKES_TITLE}>Strikes</span> : null}
         {numbers?.ctrl ? <span className={`${HEAD} ${wideOnly} pl-2`} style={place(5, 1)} title="Control time as a share of the whole fight">Control</span> : null}
-        {row.stats ? <span className={`${HEAD} pl-2`} style={place(3 + columns - 1, 1)} title="Completed rounds an average UFC judge would give each fighter from the numbers">Stats</span> : null}
+        {row.stats ? <span className={`${HEAD} pl-2`} style={place(3 + columns - 1, 1)} title={`Completed rounds each fighter gets from the stats judge. ${STATS_JUDGE}`}>Stats<br />judge</span> : null}
         {([1, 2] as const).map((side) => {
           const fighter = side === 1 ? row.f1 : row.f2;
           const ink = side === 1 ? "text-f1-ink" : "text-f2-ink";
@@ -315,7 +362,7 @@ export function ComebackRow({ row }: { row: Comeback }) {
           {lastName(leader.name)} up {row.rounds_won[0]}–{row.rounds_won[1]} with the fans
         </span>
       </div>
-      <RoundByRound cards={[]} fans={row.fans} numbers={numbers} stats={row.stats} />
+      <RoundByRound cards={[]} fans={row.fans} numbers={numbers} stats={row.stats} names={[lastName(row.f1.name), lastName(row.f2.name)]} />
     </div>
   );
 }

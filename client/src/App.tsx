@@ -4,20 +4,22 @@ import AccountButton from "./components/AccountButton";
 import CmdK from "./components/CmdK";
 import SearchGlyph from "./components/SearchGlyph";
 import LiveMatchup from "./components/LiveMatchup";
-import { segmentedIdle, segmentedSelected } from "./components/segmented";
-import { ChevronDown, Moon, Shield, Sun } from "lucide-react";
+import { segmentedGroup, segmentedIdle, segmentedSelected } from "./components/segmented";
+import { ChevronDown, Flag, Moon, Shield, Sun } from "lucide-react";
 import { accountsEnabled, useAccount } from "./auth";
 import { useAdminResource, type AdminSession } from "./admin";
 import { inMore, MORE_HOME, MoreGroups } from "./components/MoreNav";
 import { sendPageView } from "./pageViews";
-import { useSettings, withRanking } from "./settings";
+import { useSettings, withRanking, type Density } from "./settings";
 import { prefetch } from "./api";
 import { useLinkPrefetch, warmSections } from "./useLinkPrefetch";
 import { pages, type PageLoader } from "./pages";
 import RouteErrorBoundary from "./components/RouteErrorBoundary";
 import ParlaySlip from "./components/ParlaySlip";
+import ReportIssueDialog from "./components/ReportIssueDialog";
 import { ShortcutProvider } from "./shortcuts";
 import { DevStatsOverlay, isDevSite } from "./devStats";
+import { LivePreviewPanel } from "./livePreview";
 import { GraphicsProvider } from "./graphicsLauncher";
 
 /** A route's page: rendered directly once its code is in hand (the usual case,
@@ -83,8 +85,10 @@ function AdminLink({ active }: { active: boolean }) {
 
 /** The rest of the site, one pill after the sections. From `md` up a mouse
  *  opens its groups on hover and a press opens Stats; a tap or a key opens
- *  them. On a phone they open under the button, flush with its right edge. */
-function MoreMenu({ pathname, active, open, setOpen }: { pathname: string; active: boolean; open: boolean; setOpen: (open: boolean) => void }) {
+ *  them. On a phone they open under the button, flush with its right edge.
+ *  Report sits last, under a rule: it opens the report form about the page
+ *  being read rather than going anywhere. */
+function MoreMenu({ pathname, active, open, setOpen, onReport }: { pathname: string; active: boolean; open: boolean; setOpen: (open: boolean) => void; onReport?: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => setOpen(false), [pathname, setOpen]);
   useEffect(() => {
@@ -125,9 +129,41 @@ function MoreMenu({ pathname, active, open, setOpen }: { pathname: string; activ
             </Link>
           </li>
         )} />
+        <DensityChoice />
+        {onReport ? <div className="mt-1 border-t border-zinc-100 pt-1">
+          <button type="button" onClick={() => { setOpen(false); onReport(); }}
+            className="flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-2 py-2 text-left text-[13px] text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-900 min-[375px]:px-3 min-[375px]:text-sm">
+            <Flag className="h-3.5 w-3.5" aria-hidden="true" />Report an issue
+          </button>
+        </div> : null}
       </div>
     </div> : null}
   </div>;
+}
+
+const DENSITIES: { id: Density; label: string; title: string }[] = [
+  { id: "compact", label: "Compact", title: "Smaller text, more on screen" },
+  { id: "comfortable", label: "Comfortable", title: "Larger small print and stronger contrast" },
+];
+
+/** Text size, last in More: Comfortable sets the small print a size up and
+ *  darkens the muted greys; Compact is the original, tighter layout. */
+function DensityChoice() {
+  const { settings, update } = useSettings();
+  return (
+    <div className="mt-1 border-t border-zinc-100 px-2 pb-1 pt-2 min-[375px]:px-3">
+      <p className="mb-1.5 text-[11px] font-medium text-zinc-500">Text</p>
+      <div className={segmentedGroup} role="group" aria-label="Text size">
+        {DENSITIES.map((option) => (
+          <button key={option.id} type="button" title={option.title} aria-pressed={settings.density === option.id}
+            onClick={() => update("density", option.id)}
+            className={`flex-1 rounded-full px-2.5 py-1 text-xs font-medium transition ${settings.density === option.id ? segmentedSelected : segmentedIdle}`}>
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function Header({ onSearch }: { onSearch: () => void }) {
@@ -135,6 +171,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
   const { settings, update } = useSettings();
   const dark = settings.theme === "dark";
   const [moreOpen, setMoreOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   // The bout on now sits mid-row only while it fits whole; the moment its
   // names would be cut, it drops to its own line instead.
   const slotRef = useRef<HTMLDivElement>(null);
@@ -190,7 +227,8 @@ function Header({ onSearch }: { onSearch: () => void }) {
             </Link>
           ))}
           {accountsEnabled ? <AdminLink active={isAdmin && !moreOpen} /> : null}
-          <MoreMenu pathname={pathname} active={isMore} open={moreOpen} setOpen={setMoreOpen} />
+          <MoreMenu pathname={pathname} active={isMore} open={moreOpen} setOpen={setMoreOpen}
+            onReport={accountsEnabled ? () => setReportOpen(true) : undefined} />
         </nav>
 
         {/* The middle of the row from `md` up, and its own line below that —
@@ -230,6 +268,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
       <div className={`flex justify-center border-t border-zinc-100 px-2.5 py-1.5 empty:hidden ${pillFits ? "md:hidden" : ""}`}>
         <LiveMatchup />
       </div>
+      {accountsEnabled ? <ReportIssueDialog open={reportOpen} onClose={() => setReportOpen(false)} /> : null}
     </header>
   );
 }
@@ -299,6 +338,7 @@ export default function App() {
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-zinc-100 text-zinc-900">
       <Header onSearch={openSearch} />
       {isDevSite ? <DevStatsOverlay /> : null}
+      {isDevSite ? <LivePreviewPanel /> : null}
       <div className="min-h-0 flex-1 overflow-hidden">
         {/* One boundary for the whole app, outside the per-section error
             boundary: navigations run as transitions, so a page whose code is

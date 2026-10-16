@@ -1,6 +1,7 @@
 import { useAuth } from "@clerk/react";
-import { Check, ChevronDown, Flag, ImageIcon, Info, LogOut, Pencil, Search, Settings, SquareTerminal, X } from "lucide-react";
+import { Check, ChevronDown, Flag, ImageIcon, Info, LogOut, Pencil, Radio, Search, Settings, SquareTerminal, X } from "lucide-react";
 import { isDevSite, useDevStats } from "../devStats";
+import { updatePreview, usePreviewSettings } from "../livePreview";
 import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiCache, prefetch, useApi } from "../api";
@@ -365,6 +366,7 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
   const [reportOpen, setReportOpen] = useState(false);
   const { isLoaded, user, manage, signOut } = useAccount();
   const [devStats, toggleDevStats] = useDevStats();
+  const livePreview = usePreviewSettings().on;
   // The owner's row stays up while Clerk loads after a reload: `mine` already
   // comes from the identity this browser remembers, and Clerk queues a
   // "manage" or "sign out" pressed before it is ready.
@@ -417,6 +419,11 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
           {isDevSite ? (
             <button type="button" onClick={toggleDevStats} aria-pressed={devStats} className={`${action} ${devStats ? "!text-sky-600" : ""}`} title="Show screen size, URL and more; tap the overlay to copy it">
               <SquareTerminal className="h-3.5 w-3.5" aria-hidden="true" />Dev stats
+            </button>
+          ) : null}
+          {isDevSite ? (
+            <button type="button" onClick={() => updatePreview({ on: !livePreview })} aria-pressed={livePreview} className={`${action} ${livePreview ? "!text-sky-600" : ""}`} title="Show the header's live pill with mock or real Polymarket odds">
+              <Radio className="h-3.5 w-3.5" aria-hidden="true" />Live preview
             </button>
           ) : null}
           <button type="button" onClick={signOut} className={action}>

@@ -57,6 +57,25 @@ export type LiveCard = {
   };
 };
 
+/** /api/live/odds: Polymarket's price for the bout on now (each side's
+ *  implied chance, 0–1), and the bout that just ended, held a few minutes. */
+export type LiveOddsAnswer = {
+  fight_id: string | null;
+  odds: { f1: number; f2: number; url: string; closed: boolean } | null;
+  finished: {
+    id: string;
+    f1_name: string;
+    f2_name: string;
+    f1_outcome: string | null;
+    f2_outcome: string | null;
+    winner: 1 | 2 | null;
+    method: string | null;
+    round: string | null;
+    time: string | null;
+    remaining_ms: number;
+  } | null;
+};
+
 export type FightSide = {
   /** Pounds as text, empty when unknown, null when made or unread. */
   weight_miss?: string | null;
@@ -430,6 +449,8 @@ export type Matchup = {
   weight_class: string;
   /** The agreed limit of a catchweight bout, in pounds, once known. */
   catch_weight?: number | null;
+  /** The division's median career rates walking into this bout. */
+  division_medians?: DivisionMedians | null;
   /** Rounds the bout is booked for; null for a format with no round count. */
   scheduled_rounds: number | null;
   title_fight: boolean;
@@ -512,6 +533,8 @@ export type FighterProfile = {
   ranking_history?: RankingTimeline;
   records: FighterRecord[];
   career_stats: CareerTotals;
+  /** Their current division's median career rates over the last three years. */
+  division_medians?: DivisionMedians | null;
   insights: FightInsights;
   /** Every verified professional bout; UFC rows retain their richer local data. */
   pro_history: ProfessionalHistoryRow[];
@@ -712,6 +735,10 @@ export type JudgeDna = {
 
 /** The card an average UFC judge would give each round from its numbers: `p`
  *  is the chance it goes to the first corner. */
+/** A division's median career rates, by metric key, over its active fighters:
+ *  everyone with 3+ UFC bouts with statistics in it from `from` up to `to`. */
+export type DivisionMedians = { division: string; from: string; to: string; fighters: number; values: Record<string, number | null> };
+
 export type StatsCard = { rounds: { round: number; p: number }[]; f1: number; f2: number; pick: number };
 
 type RoundScore = { round: number; f1: number; f2: number };
