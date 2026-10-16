@@ -25,7 +25,6 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
     );
   const { eligibility, totals } = data;
   const live = eligibility.state === "live";
-  const verdict = totals.completeCards > 0;
   // A stopped fight's remaining rounds were never fought: the finish is the
   // last line of the card, in place of rows that could never carry a score.
   const finish = fightFinish(fight, eligibility);
@@ -94,17 +93,6 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
             })}
           </div>
         </div>
-        {verdict && totals.distributionCards > 0 ? (
-          <p className="border-t border-zinc-100 px-4 py-2 text-center text-[11px] leading-4 text-zinc-500 tabular-nums sm:px-5"
-            aria-label={`${totals.f1} cards for ${fight.f1.name}, ${totals.draws} even, ${totals.f2} for ${fight.f2.name}`}>
-            Cards <span className="font-semibold text-f1-ink">{totals.f1}</span> {lastName(fight.f1.name)}
-            <span className="text-zinc-300" aria-hidden="true"> · </span>
-            <span className="font-semibold text-zinc-600 dark:text-zinc-300">{totals.draws}</span> even
-            <span className="text-zinc-300" aria-hidden="true"> · </span>
-            <span className="font-semibold text-f2-ink">{totals.f2}</span> {lastName(fight.f2.name)}
-            {totals.distributionCards < totals.completeCards ? <span className="block text-[10px] text-zinc-400">Outcome split from {totals.distributionCards.toLocaleString()} ufc.sh {totals.distributionCards === 1 ? "card" : "cards"}</span> : null}
-          </p>
-        ) : null}
         {eligibility.reason ? <p className="border-t border-zinc-100 px-5 py-3 text-xs text-zinc-500">{eligibility.reason}</p> : null}
       </section>
       {!communityOnly && eligibility.available > 0 ? (
