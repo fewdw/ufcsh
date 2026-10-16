@@ -47,7 +47,8 @@ import { recentSyncError, syncStatus } from "./sync-status.ts";
 import { releasedRounds } from "./live-rounds.ts";
 import { pruneBackups } from "./backup-retention.ts";
 import { ensureImageVariant, normalizeHeadshot, variantPath, type ImageSize } from "./image-variants.ts";
-import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds, syncOddsForFight } from "./sync.ts";
+import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds, syncOddsForFight, fighterNames } from "./sync.ts";
+import { boutOdds, LiveOddsService, scanUpcoming, upcomingBouts, type FinishedBout, type LiveBout } from "./polymarket.ts";
 import { BackgroundRefresh } from "./background-refresh.ts";
 import { VersionCache } from "./version-cache.ts";
 import { fuzzyScore, fuzzyTarget, splitMatchup, type FuzzyTarget } from "./fuzzy.ts";
@@ -447,6 +448,20 @@ function currentBout() {
   // or the bout before it ending, only means it is next.
   const live = fightIsUnderway(bout) || releasedRounds(bout.id) > 0;
   return { event: e, fights, bout, starts_at, completed, live };
+}
+
+/** The bout on now as the Polymarket matcher needs it. */
+function polymarketBout(): LiveBout | null {
+  const current = currentBout();
+  if (!current) return null;
+  const { event, bout, starts_at, completed, live } = current;
+  return { id: bout.id, date: event.date, f1: fighterNames(bout.f1_id, bout.f1_name), f2: fighterNames(bout.f2_id, bout.f2_name),
+    underway: live, opener: completed === 0, starts_at };
+}
+
+function boutResult(id: string): FinishedBout | null {
+  const row = prepared(`SELECT id, f1_name, f2_name, f1_outcome, f2_outcome, method, round, time FROM fights WHERE id = ?`).get(id) as FinishedBout | undefined;
+  return row && fightIsComplete(row) ? row : null;
 }
 
 function liveCard(rankingType: RankingType): unknown | null {
@@ -2357,6 +2372,16 @@ export function startApi(port: number): http.Server {
     .catch(error => log("backup retention failed:", String(error)));
   setTimeout(thinBackups, 10 * 60_000).unref();
   setInterval(thinBackups, 86_400_000).unref();
+  // Polymarket's live price is read here, on the main thread, so every reader
+  // shares one price and one "just finished" moment (polymarket.ts).
+  const liveOdds = new LiveOddsService({ current: polymarketBout, result: boutResult });
+  const previewOdds = process.env.NODE_ENV !== "production" || SITE_URL === "https://dev.ufc.sh";
+  if (process.env.NO_SYNC !== "1") {
+    // Fight week: every bout should have a market; Admin → Bugs lists the ones that don't.
+    const scan = () => void scanUpcoming(upcomingBouts(fighterNames)).catch(error => log("polymarket scan failed:", String(error)));
+    setTimeout(scan, 60_000).unref();
+    setInterval(scan, 30 * 60_000).unref();
+  }
   const workerCount = Number(process.env.API_WORKERS ?? (process.env.NODE_ENV === "production" ? 2 : 0));
   if (!Number.isInteger(workerCount) || workerCount < 0 || workerCount > 8) throw new Error("API_WORKERS must be an integer from 0 to 8");
   let refresher: NodeJS.Timeout | undefined;
@@ -2604,6 +2629,17 @@ export function startApi(port: number): http.Server {
           /^[a-f0-9]{12}$/.test(url.searchParams.get("v") ?? ""));
       }
       if ((url.searchParams.get("q")?.length ?? 0) > 120) return await sendJson(req, res, { error: "search query too long" }, 400);
+      if (p === "/api/live/odds") {
+        // ?fight= prices any bout, for previewing the pill on a dev site.
+        const fightId = url.searchParams.get("fight");
+        if (fightId === null) return await sendJson(req, res, await liveOdds.answer());
+        if (!previewOdds || !/^[a-f0-9]{16}$/i.test(fightId)) return await sendJson(req, res, { error: "not found" }, 404);
+        const row = prepared("SELECT f.id, f.f1_id, f.f1_name, f.f2_id, f.f2_name, e.date FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?")
+          .get(fightId) as { id: string; f1_id: string; f1_name: string; f2_id: string; f2_name: string; date: string } | undefined;
+        if (!row) return await sendJson(req, res, { error: "not found" }, 404);
+        const odds = await boutOdds({ id: row.id, date: row.date, f1: fighterNames(row.f1_id, row.f1_name), f2: fighterNames(row.f2_id, row.f2_name) });
+        return await sendJson(req, res, { fight_id: row.id, odds, finished: null });
+      }
       if (publicApi(p)) {
         return sendRepresentation(req, res, await publicAnswer(url), cachePolicy(url).control);
       }

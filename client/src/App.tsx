@@ -19,6 +19,7 @@ import ParlaySlip from "./components/ParlaySlip";
 import ReportIssueDialog from "./components/ReportIssueDialog";
 import { ShortcutProvider } from "./shortcuts";
 import { DevStatsOverlay, isDevSite } from "./devStats";
+import { LivePreviewPanel } from "./livePreview";
 import { GraphicsProvider } from "./graphicsLauncher";
 
 /** A route's page: rendered directly once its code is in hand (the usual case,
@@ -337,6 +338,7 @@ export default function App() {
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-zinc-100 text-zinc-900">
       <Header onSearch={openSearch} />
       {isDevSite ? <DevStatsOverlay /> : null}
+      {isDevSite ? <LivePreviewPanel /> : null}
       <div className="min-h-0 flex-1 overflow-hidden">
         {/* One boundary for the whole app, outside the per-section error
             boundary: navigations run as transitions, so a page whose code is
