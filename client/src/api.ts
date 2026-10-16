@@ -427,6 +427,8 @@ export type Matchup = {
   weight_class: string;
   /** The agreed limit of a catchweight bout, in pounds, once known. */
   catch_weight?: number | null;
+  /** The division's median career rates walking into this bout. */
+  division_medians?: DivisionMedians | null;
   /** Rounds the bout is booked for; null for a format with no round count. */
   scheduled_rounds: number | null;
   title_fight: boolean;
@@ -509,6 +511,8 @@ export type FighterProfile = {
   ranking_history?: RankingTimeline;
   records: FighterRecord[];
   career_stats: CareerTotals;
+  /** Their current division's median career rates over the last three years. */
+  division_medians?: DivisionMedians | null;
   insights: FightInsights;
   /** Every verified professional bout; UFC rows retain their richer local data. */
   pro_history: ProfessionalHistoryRow[];
@@ -709,6 +713,10 @@ export type JudgeDna = {
 
 /** The card an average UFC judge would give each round from its numbers: `p`
  *  is the chance it goes to the first corner. */
+/** A division's median career rates, by metric key, over its active fighters:
+ *  everyone with 3+ UFC bouts with statistics in it from `from` up to `to`. */
+export type DivisionMedians = { division: string; from: string; to: string; fighters: number; values: Record<string, number | null> };
+
 export type StatsCard = { rounds: { round: number; p: number }[]; f1: number; f2: number; pick: number };
 
 type RoundScore = { round: number; f1: number; f2: number };

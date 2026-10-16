@@ -558,3 +558,10 @@ from ~150 ms to ~900 ms after the release (admin Speed warning). Keying on each
 event's country instead keeps it: the first matchup after a no-op check went
 from ~250 ms to ~26 ms (the venue index's own rebuild) on the dev snapshot.
 
+
+## Division medians (2026-10-16)
+
+`divisionMedians` (`server/src/division-medians.ts`) takes one pass over the
+fight index: 1.46 ms per call over 8,935 bouts (50 Lightweight windows, dev-pc,
+archive copy). Answers are cached per index version, division and window end
+(400 entries), so a profile or matchup pays it once until the data changes.

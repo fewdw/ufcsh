@@ -1,3 +1,4 @@
+import { MedianKey, MedianTick } from "./DivisionMedian";
 import CareerStatDetails from "./CareerStatDetails";
 import { decidingRound } from "../decidingRound";
 import { PANEL } from "./chartTokens";
@@ -965,16 +966,20 @@ function ProfileRow({
   fight,
   metric,
   careers,
+  median,
 }: {
   fight: Matchup;
   metric: ProfileMetric;
   careers: Record<Side, CareerBefore | null>;
+  /** The division's median, drawn as a tick on both bars. */
+  median: number | null;
 }) {
   const values: Record<Side, number | null> = {
     f1: careers.f1 ? metric.value(careers.f1) : null,
     f2: careers.f2 ? metric.value(careers.f2) : null,
   };
-  const scale = Math.max(values.f1 ?? 0, values.f2 ?? 0, 0.0001);
+  // The median shares the bars' scale, so a tick past both bars still fits.
+  const scale = Math.max(values.f1 ?? 0, values.f2 ?? 0, median ?? 0, 0.0001);
   const both = values.f1 != null && values.f2 != null;
   const ahead: Side | null = !both || values.f1 === values.f2
     ? null
@@ -988,13 +993,14 @@ function ProfileRow({
         <span className="@[40rem]:hidden">{metric.short}</span>
         <span className="hidden @[40rem]:inline">{metric.label}</span>
         {metric.better === "low" ? <span className="text-zinc-400"> ↓</span> : null}
+        {median != null ? <span className="hidden text-zinc-400 @[40rem]:inline"> · median {profileText(median, metric.format)}</span> : null}
       </span>
       <span className="grid grid-cols-2 items-center gap-x-1 @[40rem]:gap-x-1.5">
         {SIDES.map((side) => {
           const value = values[side];
           const width = value == null ? 3 : Math.max(3, (value / scale) * 100);
           const bar = (
-            <span key={`${side}-bar`} className={`flex h-2 items-center bg-plot-track @[40rem]:h-3 ${side === "f1" ? "justify-end" : "border-l border-plot-axis"}`}>
+            <span key={`${side}-bar`} className={`relative flex h-2 items-center bg-plot-track @[40rem]:h-3 ${side === "f1" ? "justify-end" : "border-l border-plot-axis"}`}>
               <span
                 className={`stat-bar plot-grow block h-full ${side === "f1" ? "rounded-l-[3px]" : "rounded-r-[3px]"}`}
                 data-stat-side={side}
@@ -1004,6 +1010,7 @@ function ProfileRow({
                   opacity: ahead && ahead !== side ? 0.55 : 1,
                 }}
               />
+              {median != null ? <MedianTick at={(median / scale) * 100} from={side === "f1" ? "right" : "left"} /> : null}
             </span>
           );
           const figure = (
@@ -1093,6 +1100,7 @@ export function CareerProfile({ fight }: { fight: Matchup }) {
   ];
   const anyTracked = tracked(careers.f1) + tracked(careers.f2) > 0;
   if (!anyTracked) return null;
+  const medians = fight.division_medians ?? null;
 
   return (
     <section className={`${shell} @container overflow-hidden`}>
@@ -1102,11 +1110,12 @@ export function CareerProfile({ fight }: { fight: Matchup }) {
           <div key={group.key} className="min-w-0">
             <div className={`pb-0.5 pt-1 text-center ${sectionLabel}`}>{group.label}</div>
             {group.metrics.map((metric) => (
-              <ProfileRow key={metric.key} fight={fight} metric={metric} careers={careers} />
+              <ProfileRow key={metric.key} fight={fight} metric={metric} careers={careers} median={medians?.values[metric.key] ?? null} />
             ))}
           </div>
         ))}
       </div>
+      {medians ? <MedianKey medians={medians} before /> : null}
       <MethodProfile fight={fight} careers={careers} />
     </section>
   );
