@@ -45,6 +45,12 @@ export default function OverlayPage() {
   );
 }
 
+/** The overlay drawn in place, for the Score tab's dialog. Not framed: the
+ *  site refuses to be framed, its own pages included. */
+export function OverlayPreview({ fightId }: { fightId: string }) {
+  return <div style={{ zoom: 0.7 } as React.CSSProperties}><PinnedBout id={fightId} theme={THEMES.dark} /></div>;
+}
+
 /** Whichever bout the card is on now, changing over as each one ends. */
 function FollowCard({ theme }: { theme: Theme }) {
   const { data } = useApi<LiveCard | null>("/api/live", 15_000);

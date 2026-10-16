@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Check, Copy, MonitorPlay, X } from "lucide-react";
 import { BUTTON_QUIET, CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
+
+// The overlay's own chunk, loaded only when the dialog opens.
+const OverlayPreview = lazy(() => import("../pages/OverlayPage").then((module) => ({ default: module.OverlayPreview })));
 
 /** One address to copy, with what it does. */
 function Address({ label, hint, url }: { label: string; hint: string; url: string }) {
@@ -58,12 +61,10 @@ export default function OverlayButton({ fightId }: { fightId: string }) {
           <div className="space-y-4 px-5 py-5">
             {/* What appears on stream, over a checkerboard: the card is all
                 there is, everything around it is transparent. */}
-            <div className="overflow-hidden rounded-xl border border-zinc-200"
+            <div className="flex h-28 items-start overflow-hidden rounded-xl border border-zinc-200 p-2"
               style={{ background: "repeating-conic-gradient(#d4d4d8 0 25%, #f4f4f5 0 50%) 0 0 / 16px 16px" }}>
-              {/* Shown smaller so the whole card fits a phone. The frame's
-                  colour scheme matches the overlay's, or a dark page would
-                  paint an opaque backdrop behind it. */}
-              <iframe title="Overlay preview" src={`/overlay/${fightId}?scale=0.7`} className="block h-28 w-full" style={{ colorScheme: "normal" }} />
+              {/* Shown smaller so the whole card fits a phone. */}
+              <Suspense fallback={null}><OverlayPreview fightId={fightId} /></Suspense>
             </div>
             <Address label="Follows the card" url={`${origin}/overlay`}
               hint="Moves to each bout as it starts: set it up once for the whole card." />
