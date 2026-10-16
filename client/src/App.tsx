@@ -32,6 +32,7 @@ function page<M, P extends object>(load: PageLoader<M>, pick: (module: M) => Com
 }
 
 const EventsPage = page(pages.events, module => module.default);
+const OverlayPage = page(pages.overlay, module => module.default);
 const FighterPage = page(pages.fighter, module => module.default);
 const RankingsPage = page(pages.rankings, module => module.default);
 const StatsPage = page(pages.stats, module => module.default);
@@ -283,6 +284,15 @@ export default function App() {
   }, []);
 
   const openSearch = useCallback(() => setSearchOpen(true), []);
+  // A stream overlay is the card alone: no header, no page behind it.
+  if (location.pathname === "/overlay" || location.pathname.startsWith("/overlay/")) return (
+    <Suspense fallback={null}>
+      <Routes>
+        <Route path="/overlay" element={<OverlayPage />} />
+        <Route path="/overlay/:fightId" element={<OverlayPage />} />
+      </Routes>
+    </Suspense>
+  );
   return (
     <ShortcutProvider onSearch={openSearch}>
     <GraphicsProvider>
