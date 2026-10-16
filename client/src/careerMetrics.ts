@@ -25,6 +25,9 @@ export type EvidenceColumn = { heading: string; title: string; value: (row: Evid
 const COUNT_HEADINGS: Record<string, string> = { slpm: "Landed", sapm: "Taken", subs: "Subs", knockdowns: "KD", accuracy: "Landed", defense: "Avoided" };
 const tdAccuracy = ({ takedowns: td }: EvidenceSample) => td?.attempted ? td.scored / td.attempted * 100 : null;
 const control: EvidenceColumn = { heading: "Ctrl", title: "Control time", value: row => row.control_seconds, text: row => clock(row.control_seconds) };
+// Takedown defense pairs with how long the opponent held the fighter down; known only when both corners' control was recorded.
+const controlled = ({ totals }: EvidenceSample) => totals.controlBouts ? totals.controlledSeconds : null;
+const opponentControl: EvidenceColumn = { heading: "Opp. ctrl", title: "Opponent's control time", value: controlled, text: row => clock(controlled(row)) };
 
 /** One bout's figures per column; takedown offense shows accuracy rather than a per-time rate. */
 export function evidenceColumns(metric: ProfileMetric): EvidenceColumn[] {
@@ -37,7 +40,7 @@ export function evidenceColumns(metric: ProfileMetric): EvidenceColumn[] {
     { heading: "Acc.", title: "Takedown accuracy", value: tdAccuracy, text: row => profileText(tdAccuracy(row), "percent") },
     control,
   ];
-  if (metric.key === "tddef") return [{ heading: "Stop", title: "Takedowns stopped / attempted", value: count, text: fraction }, value("Def."), control];
+  if (metric.key === "tddef") return [{ heading: "Stop", title: "Takedowns stopped / attempted", value: count, text: fraction }, value("Def."), opponentControl];
   if (metric.format === "share") return [{ heading: "Control", title: "Control time", value: count, text: row => clock(count(row)) }, value("%", "Share of fight time")];
   if (metric.format === "percent") return [{ heading: COUNT_HEADINGS[metric.key], title: `${metric.counted} / attempts`, value: count, text: fraction }, value("%")];
   return [
