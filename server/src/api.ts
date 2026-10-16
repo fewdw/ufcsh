@@ -1,5 +1,6 @@
 import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, potentialMatchups, potentialFight } from "./potential-matchups.ts";
 import { careerStatistics } from "./career-statistics.ts";
+import { cachedDivisionMedians, currentDivision } from "./division-medians.ts";
 import { decisionScores, roundOutcomes, roundStrikes } from "./fight-insights.ts";
 import { opposition } from "./opposition.ts";
 import { tapeHistory } from "./tape-history.ts";
@@ -1041,6 +1042,8 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     rounds_open: releasedRounds(f.id),
     weight_class: f.weight_class,
     catch_weight: f.catch_weight ?? null,
+    /** The division's middle walking into this bout, for the career bars. */
+    division_medians: potential ? null : cachedDivisionMedians(index, f.weight_class ?? "", f.event_date),
     title_fight: !!f.title_fight,
     /** Which kind: a belt, an interim belt, or a tournament/TUF final, which
      * carries the same flag at the source but is not a championship bout. */
@@ -1147,6 +1150,11 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     // same index the leaderboards use, so it moves the moment a result lands.
     records,
     career_stats: careerStatistics(index, fr.id)?.totals,
+    // Their current division's middle over the last three years, today included.
+    division_medians: (() => {
+      const division = currentDivision(index, fr.id);
+      return division ? cachedDivisionMedians(index, division, new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)) : null;
+    })(),
     insights: { rounds: roundOutcomes(indexedFighter?.fights ?? [], fr.id), strikes: roundStrikes(indexedFighter?.fights ?? [], fr.id), decisions: decisionScores(indexedFighter?.fights ?? [], fr.id) },
     history: mergedUfcHistory,
     roster_events: fighterRosterEvents(fr.id),
