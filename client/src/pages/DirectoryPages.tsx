@@ -9,12 +9,10 @@ import { BROWSE_LIST, BROWSE_PAGE, FULL_PAGE_BODY } from "../research";
 import PageToolbar, { BROWSE_FLAT, BROWSE_WIDE, FilterSelect, ListHead, ToolbarSearch } from "../components/PageToolbar";
 import OptionsSheet, { SwitchRow } from "../components/OptionsSheet";
 import { PANEL } from "../components/chartTokens";
-import BrowseTabs from "../components/BrowseTabs";
+import BrowseTabs, { BrowsePending } from "../components/BrowseTabs";
 import { useSeo } from "../seo";
 import Avatar from "../components/Avatar";
 import useMediaQuery from "../useMediaQuery";
-import RequestNotice from "../components/RequestNotice";
-import { PageState } from "../components/ResearchKit";
 import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "../components/segmented";
 
 const years = (first: string | null, last: string | null) => first && last ? `${first.slice(0, 4)}–${last.slice(0, 4)}` : "";
@@ -98,8 +96,7 @@ export function OfficialsPage() {
     }
     return ordered(matches(data.judges), (entry) => rate ? rate(entry) : judgeOrder.sort === "name" ? entry.name : entry.n, byBouts);
   }, [data, kind, query, minimum, since, rate, judgeOrder.sort, refereeOrder.sort]);
-  if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the officials.</RequestNotice></div>;
-  if (!data) return <PageState>Loading officials…</PageState>;
+  if (!data) return <BrowsePending onRetry={retry} loading="Loading officials…" failed={error ? "Couldn’t load the officials." : null} />;
   const choice = <div className={segmentedGroup} role="group" aria-label="Officials">
     {(["judges", "referees"] as const).map((option) => (
       <button key={option} type="button" aria-pressed={kind === option} onClick={() => judgeOrder.set({ kind: option === "judges" ? null : option, sort: null })}
@@ -208,8 +205,7 @@ export function VenuesPage() {
   const scroll = useRouteScrollRestoration<HTMLDivElement>("venues", Boolean(data));
   const listScroll = useRouteScrollRestoration<HTMLElement>("venues:list", Boolean(data));
   useSeo({ title: "UFC Venues", description: "Every arena and venue that has hosted a UFC event, with the cards held there and attendance.", path: "/venues" });
-  if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the venues.</RequestNotice></div>;
-  if (!data) return <PageState>Loading venues…</PageState>;
+  if (!data) return <BrowsePending onRetry={retry} loading="Loading venues…" failed={error ? "Couldn’t load the venues." : null} />;
   return (
     <div ref={scroll} className={BROWSE_PAGE}>
       <div className={FULL_PAGE_BODY}>
@@ -242,8 +238,7 @@ export function LocationsPage() {
   const scroll = useRouteScrollRestoration<HTMLDivElement>("locations", Boolean(data));
   const listScroll = useRouteScrollRestoration<HTMLElement>("locations:list", Boolean(data));
   useSeo({ title: "UFC Locations", description: "Every city that has hosted a UFC event, with the cards held there, the venues, title fights and upcoming events.", path: "/locations" });
-  if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the locations.</RequestNotice></div>;
-  if (!data) return <PageState>Loading locations…</PageState>;
+  if (!data) return <BrowsePending onRetry={retry} loading="Loading locations…" failed={error ? "Couldn’t load the locations." : null} />;
   return (
     <div ref={scroll} className={BROWSE_PAGE}>
       <div className={FULL_PAGE_BODY}>
@@ -310,8 +305,7 @@ export function AwardsPage() {
   const scroll = useRouteScrollRestoration<HTMLDivElement>("awards", Boolean(data));
   const listScroll = useRouteScrollRestoration<HTMLDivElement>("awards:list", Boolean(data));
   useSeo({ title: "MMA Awards: Fighter, Fight & Knockout of the Year", description: "Sherdog's year-end awards since 2008: Fighter, Breakthrough and Comeback Fighter of the Year, and Fight, Knockout, Submission and Upset of the Year.", path: "/awards" });
-  if (error && !data) return <div className="p-4"><RequestNotice onRetry={retry}>Couldn’t load the awards.</RequestNotice></div>;
-  if (!data) return <PageState>Loading awards…</PageState>;
+  if (!data) return <BrowsePending onRetry={retry} loading="Loading awards…" failed={error ? "Couldn’t load the awards." : null} />;
   return (
     <div ref={scroll} className={BROWSE_PAGE}>
       <div className={FULL_PAGE_BODY}>
