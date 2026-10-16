@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { RotateCcw, X } from "lucide-react";
 import OptionsSheet, { SHEET_SELECT, SheetField, SwitchRow } from "../components/OptionsSheet";
 import { useApi } from "../api";
@@ -17,6 +17,8 @@ const shell = PANEL;
 const selectClass = "max-w-full rounded-full border border-zinc-200 bg-zinc-50 py-1 pl-2.5 pr-7 text-[10px] font-medium text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-400";
 
 type Update = <K extends keyof StatsSettings>(key: K, value: StatsSettings[K]) => void;
+/** Card options that more than one card reads. */
+const SHARED_CARD_SETTINGS: Partial<Record<keyof StatsSettings, string[]>> = { championScope: ["record", "context"] };
 
 function formatRank(rank: number | null, tied: boolean): string {
   if (rank == null) return "NR";
@@ -658,6 +660,8 @@ function Leaderboard({
   board,
   settings,
   update,
+  stale,
+  busy,
   fighterSelected,
   pinnedFighterIds,
   division,
@@ -665,6 +669,8 @@ function Leaderboard({
   board: StatsDashboard["leaderboards"][number];
   settings: StatsSettings;
   update: Update;
+  stale: boolean;
+  busy: boolean;
   fighterSelected: boolean;
   pinnedFighterIds: ReadonlySet<string>;
   division: string;
@@ -676,7 +682,7 @@ function Leaderboard({
     // with every card on the same line of the grid: each header row takes the
     // height of the tallest card beside it, so titles, definitions, controls
     // and the first ranked row all line up without reserving empty space.
-    <section className={`${shell} row-span-3 grid min-w-0 grid-rows-subgrid gap-0 overflow-hidden`}>
+    <section aria-busy={busy} className={`${shell} row-span-3 grid min-w-0 grid-rows-subgrid gap-0 overflow-hidden transition-opacity ${stale ? "opacity-70 delay-200" : ""}`}>
       <div className="px-4 pb-1 pt-3.5" title={board.description}>
         {group ? (
           <div className={`${segmentedGroup} inline-flex`} role="group" aria-label={group.label}>
@@ -883,10 +889,11 @@ export default function StatsPage() {
   const [selectedFighters, setSelectedFighters] = useHistoryState<PickedFighter[]>("stats:fighters", []);
   const [resetTurns, setResetTurns] = useState(0);
 
-  const request = useMemo(() => statsRequest({
-    division, includeWomen, includeInactiveFighters, showMoreInfo, keepFullLists, settings,
+  const viewOf = (next: StatsSettings) => statsRequest({
+    division, includeWomen, includeInactiveFighters, showMoreInfo, keepFullLists, settings: next,
     fighterIds: selectedFighters.map((fighter) => fighter.id),
-  }), [division, includeWomen, includeInactiveFighters, showMoreInfo, keepFullLists, selectedFighters, settings]);
+  });
+  const request = viewOf(settings);
 
   const { data, loading, error, retry } = useApi<StatsDashboard>(request, 5 * 60_000);
   const [displayed, setDisplayed] = useState<StatsDashboard | null>(null);
@@ -902,6 +909,24 @@ export default function StatsPage() {
     () => keepFullLists ? new Set(selectedFighters.map((fighter) => fighter.id)) : new Set<string>(),
     [keepFullLists, selectedFighters],
   );
+
+  // A card's own option reloads every card, but only that card's numbers can
+  // change: it alone dims, for as long as the request it started is the one
+  // loading. Any other change leaves `cardChange` behind and dims them all.
+  const [cardChange, setCardChange] = useState<{ request: string; boards: ReadonlySet<string> } | null>(null);
+  // One option can set two settings at once; the second builds on the first.
+  const building = useRef<{ from: StatsSettings; next: StatsSettings } | null>(null);
+  const updateCard = (boardKey: string): Update => (key, value) => {
+    const base = building.current?.from === settings ? building.current.next : settings;
+    building.current = { from: settings, next: { ...base, [key]: value } };
+    const next = viewOf(building.current.next);
+    const boards = new Set([boardKey, ...(SHARED_CARD_SETTINGS[key] ?? [])]);
+    if ((loading || error) && cardChange?.request === request) for (const board of cardChange.boards) boards.add(board);
+    setCardChange({ request: next, boards });
+    update(key, value);
+  };
+  const stale = Boolean(loading || error);
+  const staleBoards = stale && cardChange?.request === request ? cardChange.boards : null;
 
   const pageScroll = useRouteScrollRestoration<HTMLDivElement>("stats:page", Boolean(dashboard));
   useSeo({
@@ -1030,13 +1055,15 @@ export default function StatsPage() {
 
         {error ? <div className="mb-3"><RequestNotice onRetry={retry}>Couldn’t update statistics. The last successful results are shown.</RequestNotice></div> : null}
 
-        <div aria-busy={loading} className={`grid grid-cols-1 gap-3 transition-opacity lg:grid-cols-2 xl:grid-cols-3 ${loading || error ? "opacity-70 delay-200" : ""}`}>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
           {orderedBoards.map((board) => (
             <Leaderboard
               key={board.key}
               board={board}
               settings={settings}
-              update={update}
+              update={updateCard(board.key)}
+              stale={stale && (!staleBoards || staleBoards.has(board.key))}
+              busy={Boolean(loading) && (!staleBoards || staleBoards.has(board.key))}
               fighterSelected={selectedFighters.length > 0}
               pinnedFighterIds={pinnedFighterIds}
               division={division}
