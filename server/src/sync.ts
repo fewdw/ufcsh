@@ -289,9 +289,9 @@ export async function syncEventSegments(eventId: string): Promise<void> {
   const positions = assignPositions(fights, card.segments);
   const setPosition = db.prepare("UPDATE fights SET card_pos = ? WHERE id = ?");
   for (const fight of fights) setPosition.run(positions.get(fight.id) ?? null, fight.id);
-  // The feed is reached through the page's first fight, and ufc.com has linked
-  // fights to another event's feed (UFC 239's under the Minneapolis card). A
-  // feed that shares no bout with ours says nothing about this card.
+  // ufc.com has linked pages to another event's feed (UFC 239's under the
+  // Minneapolis card). A feed that shares no bout with ours says nothing
+  // about this card.
   const foreign = Boolean(card.info && (!samePlace(card.info.city, event.location.split(",")[0])
     || (card.info.bouts.length && fights.length && !sharesBout(fights, card.info.bouts))));
   // A bout the feed no longer identifies loses its length: a booking that
