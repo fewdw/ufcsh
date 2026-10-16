@@ -62,20 +62,10 @@ export type EvidenceView = {
   description?: string;
   columns: { heading: string; title: string; value?: (row: EvidenceRow) => number | null; text: (row: EvidenceRow) => string }[];
   include: (row: EvidenceRow) => boolean;
-  /** Nothing happened in this bout for the stat, hidden by "Hide empty". */
-  empty?: (row: EvidenceRow) => boolean;
   headline: (data: CareerStatistics) => string;
 };
 
 export type EvidenceCategory = { label: string; views: { key: string; label: string; view: EvidenceView }[] };
-
-/** Takedowns are empty only when none were tried (0/0, not 0/1); percentages
- *  already leave out bouts without attempts; counts and time are empty at zero. */
-function emptyBout(metric: ProfileMetric): (row: EvidenceRow) => boolean {
-  if (metric.key === "td" || metric.key === "tdacc") return ({ takedowns: td }) => !td || (td.scored === 0 && !td.attempted);
-  if (metric.format === "percent") return () => false;
-  return row => metric.sample(row.totals).count === 0;
-}
 
 export const metricView = (metric: ProfileMetric): EvidenceView => ({
   key: metric.key,
@@ -83,7 +73,6 @@ export const metricView = (metric: ProfileMetric): EvidenceView => ({
   description: metric.explanation,
   columns: evidenceColumns(metric),
   include: row => metric.sample(row.totals).total > 0,
-  empty: emptyBout(metric),
   headline: data => profileText(metric.value(data.totals), metric.format),
 });
 

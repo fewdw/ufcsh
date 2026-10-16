@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { careerStatSearch, careerStatSelection, evidenceColumns, metricView, orderEvidence, GRAPPLING_METRICS } from "../src/careerMetrics.ts";
+import { careerStatSearch, careerStatSelection, evidenceColumns, orderEvidence, GRAPPLING_METRICS } from "../src/careerMetrics.ts";
 import { fightCareerTotals } from "../../server/src/career-metrics.ts";
 import type { CareerStatistics } from "../src/api.ts";
 
@@ -33,19 +33,6 @@ test("defense evidence shows stopped attempts and the opponent's control time", 
   assert.deepEqual(evidenceFigures(metric("tddef"), row(6, 197)), ["4/6", "67%", "4:05"]);
   assert.equal(evidenceValue(metric("tddef"), row(6, 0), 2), 245);
   assert.deepEqual(evidenceFigures(metric("tddef"), row(6, null)), ["4/6", "67%", "—"]);
-});
-
-test("hide empty drops 0/0 takedowns but keeps 0/1, and zero counts or control", () => {
-  const empty = (key: string, sample: ReturnType<typeof row>) => metricView(metric(key)).empty!(sample);
-  const none = row(0, 0), missed = row(1, 0);
-  none.takedowns!.scored = 0; missed.takedowns!.scored = 0;
-  assert.equal(empty("td", none), true);
-  assert.equal(empty("td", missed), false);
-  assert.equal(empty("td", row(6, 197)), false);
-  assert.equal(empty("control", row(6, 0)), true);
-  assert.equal(empty("control", row(6, 197)), false);
-  assert.equal(empty("subs", row(6, 197)), true);
-  assert.equal(empty("tddef", row(6, 197)), false);
 });
 
 test("column sorting uses numeric values, keeps unknowns last and restores recency", () => {
