@@ -562,7 +562,7 @@ function CardControls({ boardKey, order, settings, update, division }: { boardKe
               <option value="closest">Closest by the fans</option>
               <option value="robbery">Fans had the other winner</option>
               <option value="rounds">Fans' rounds vs their total</option>
-              <option value="stats">The stats had the loser</option>
+              <option value="stats">The stats judge had the loser</option>
             </Select>
           ) : null}
           {settings.fightsMode === "action" ? (
@@ -598,7 +598,7 @@ function CardControls({ boardKey, order, settings, update, division }: { boardKe
               <option value="pressure">Pressure over accuracy</option>
               <option value="submissions">Submission attempts over striking</option>
               <option value="ground">Ground strikes over standing</option>
-              <option value="stats">Matching the stats</option>
+              <option value="stats">Matching the stats judge</option>
               <option value="strikes">Following the strike count</option>
               <option value="controlLead">Following control time</option>
               <option value="home">Home fighters</option>

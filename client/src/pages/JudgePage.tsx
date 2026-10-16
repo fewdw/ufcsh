@@ -128,7 +128,7 @@ function CardRow({ row, judge, against }: { row: Row; judge: string; against: Ag
           { label: lastName(judge), slug: null, f1: row.card.f1, f2: row.card.f2, rounds: row.card.rounds, mine: true },
           ...row.others.map((other, index) => ({ label: other.judge ? lastName(other.judge) : `Judge ${index + 2}`, slug: other.slug, f1: other.f1, f2: other.f2, rounds: other.rounds })),
         ]}
-        fans={row.fans} numbers={row.numbers} stats={row.stats} />
+        fans={row.fans} numbers={row.numbers} stats={row.stats} names={[lastName(row.f1.name), lastName(row.f2.name)]} />
     </div>
   );
 }
@@ -202,9 +202,9 @@ function ScoringDna({ dna }: { dna: JudgeProfile["dna"] }) {
       hint: `Rounds where ${tiebreak.about}. ${hint}.`,
     })),
     ...(dna.stats.n >= 10 ? [{
-      key: "stats", ...chip(dna.stats), title: "Matched the stats", value: pct(dna.stats.rate),
-      detail: `${dna.stats.n.toLocaleString()} rounds the stats clearly gave one fighter · others ${pct(dna.stats.others_rate)}`,
-      hint: `The stats card is what an average UFC judge gives a round with those numbers. ${hint}.`,
+      key: "stats", ...chip(dna.stats), title: "Matched the stats judge", value: pct(dna.stats.rate),
+      detail: `${dna.stats.n.toLocaleString()} rounds the stats judge clearly gave one fighter · others ${pct(dna.stats.others_rate)}`,
+      hint: `The stats judge is an average UFC judge reading only the numbers. ${hint}.`,
     }] : []),
     ...(dna.strikes.n >= 10 ? [{
       key: "strikes", ...chip(dna.strikes), title: "Went with the strike leader", value: pct(dna.strikes.rate),

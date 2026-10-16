@@ -249,7 +249,7 @@ export function fightsBoard(bouts: IndexedFight[], params: URLSearchParams, limi
         const fans = item.officiated.fans && item.officiated.fans.cards >= 30 ? fanText2(item.officiated.fans, flipped) : "";
         return { ...fightRow(item.fight, detailOf(item.officiated, flipped, [`stats ${won[0]}–${won[1]} rounds`, fans].filter(Boolean).join(" · ")), moreInfo ? judgeChips(item.officiated, flipped) : []), value, rank, tied };
       });
-      return board("The stats had the loser", "decisions the stats card scored for the official loser, by rounds; the stats card is what an average UFC judge gives a round with those numbers", "number", rows);
+      return board("The stats judge had the loser", "decisions the stats judge scored for the official loser, by rounds; the stats judge is an average UFC judge reading only each round's numbers", "number", rows);
     }
     const wanted = all.filter((entry) => entry.controversy && (measure === "closest" ? true : measure === "robbery" ? entry.controversy.fansOther : entry.controversy.roundsTotal));
     const rows = ranked(wanted, (entry) => entry.controversy!.margin, measure !== "robbery", (a, b) => b.controversy!.fans.cards - a.controversy!.fans.cards || newest(a.fight, b.fight), limit)
