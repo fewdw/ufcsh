@@ -9,6 +9,7 @@ import { SEARCH_ALIASES } from "./search-aliases.ts";
 import { awardMisses, awardYearDue } from "./awards.ts";
 import { AWARDS_SOURCE } from "./awards-data.ts";
 import { normName } from "./util.ts";
+import { SCAN_KEY, scanUpcoming, upcomingBouts, type ScanResult } from "./polymarket.ts";
 import { noContestUnexplained } from "./no-contest.ts";
 import { weighInDivision } from "./weigh-in-division.ts";
 import { VERIFIED_NON_REPLACEMENTS } from "./replacement-announcements.ts";
@@ -206,6 +207,30 @@ function upcomingMoneyline(): BugCheck {
       ...fighterBfoLinks(fight),
     ],
     actions: [{ id: "odds", label: "Re-fetch odds", target: fight.id }],
+  })));
+}
+
+/** Bouts this week Polymarket has no market for, from the API's half-hourly
+ *  scan; without one the live pill shows no percentages for that bout. */
+function polymarketMissing(): BugCheck {
+  let scan: ScanResult | null = null;
+  try { scan = JSON.parse(getMeta(SCAN_KEY) ?? "null"); } catch { /* never scanned */ }
+  const missing = Object.entries(scan?.fights ?? {}).filter(([, slug]) => slug === null).map(([id]) => id);
+  const rows = missing.length ? db.prepare(`
+    SELECT ${FIGHT_COLUMNS} FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE f.id IN (${missing.map(() => "?").join(",")}) AND e.complete = 0 AND f.f1_outcome IS NULL AND f.f2_outcome IS NULL
+    ORDER BY e.date ASC, f.ord ASC
+  `).all(...missing) as FightRow[] : [];
+  return check({
+    id: "odds-polymarket",
+    group: "Odds",
+    label: "Bouts this week without a Polymarket market",
+    description: "The live pill shows Polymarket's price for the bout on now. Each bout is matched by date and both fighters' names; these found no market, or more than one. Polymarket usually lists a card about two weeks out and adds a replacement bout within a day. If the bout is listed there under other names, add the spelling to the name matching (polymarket.ts). Scanned every 30 minutes.",
+    grade: ahead([[1, "must"], [7, "minor"]]),
+  }, rows.map((fight) => fightItem(fight, {
+    facts: [["Last scanned", ago(scan?.at)], ...aliasFact(fight)],
+    links: [{ label: "Polymarket UFC", href: "https://polymarket.com/sports/ufc/games" }],
+    actions: [{ id: "polymarket", label: "Scan again", target: "all" }],
   })));
 }
 
@@ -1858,6 +1883,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     fightOddsUnread(),
     potentialMatchupGaps(),
     upcomingMoneyline(),
+    polymarketMissing(),
     pastMoneyline(),
     upcomingProps(),
     pastProps(),
@@ -1935,7 +1961,7 @@ function newsUnjudged(): BugCheck {
   }, items);
 }
 
-export type BugActionId = "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names";
+export type BugActionId = "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -2018,6 +2044,11 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
     case "ufc-status":
       db.prepare("UPDATE ufc_status SET url = NULL, checked_at = 0 WHERE fighter_id = ?").run(target);
       return { ok: true, message: "Queued; ufc.com is searched again on the next pass." };
+    case "polymarket": {
+      const { fights } = await scanUpcoming(upcomingBouts(fighterNames));
+      const missing = Object.values(fights).filter((slug) => slug === null).length;
+      return { ok: true, message: `Scanned ${Object.keys(fights).length} bouts; ${missing} without a market.` };
+    }
     case "news":
       await syncNews();
       return { ok: true, message: "Read every outlet again." };

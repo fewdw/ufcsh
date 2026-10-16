@@ -51,7 +51,7 @@ export function futureDayLabel(date: string, now = Date.now()): string | null {
 /** Outside records spell decisions out ("Decision (Unanimous)"); UFC rows
  *  already say U-DEC. One spelling keeps a fighter's list reading as one. */
 const DECISIONS: Record<string, string> = { unanimous: "U-DEC", split: "S-DEC", majority: "M-DEC" };
-function shortDecision(method: string): string {
+export function shortDecision(method: string): string {
   const match = /^decision(?:\s*\((unanimous|split|majority)\))?$/i.exec(method.trim());
   if (!match) return method;
   return match[1] ? DECISIONS[match[1].toLowerCase()] : "DEC";

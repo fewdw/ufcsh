@@ -57,6 +57,27 @@ export type LiveCard = {
   };
 };
 
+/** /api/live/odds: Polymarket's price for the bout on now (each side's
+ *  implied chance, 0–1), and the bout that just ended, held a few minutes. */
+export type LiveOddsAnswer = {
+  fight_id: string | null;
+  odds: { f1: number; f2: number; url: string; closed: boolean } | null;
+  finished: {
+    id: string;
+    f1_name: string;
+    f2_name: string;
+    f1_outcome: string | null;
+    f2_outcome: string | null;
+    winner: 1 | 2 | null;
+    method: string | null;
+    round: string | null;
+    time: string | null;
+    prefight: [number, number] | null;
+    url: string | null;
+    remaining_ms: number;
+  } | null;
+};
+
 export type FightSide = {
   /** Pounds as text, empty when unknown, null when made or unread. */
   weight_miss?: string | null;
