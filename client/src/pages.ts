@@ -31,6 +31,7 @@ export const pages = {
   roster: loader(() => import("./pages/RosterPage")),
   news: loader(() => import("./pages/NewsPage")),
   graphic: loader(() => import("./pages/GraphicPage")),
+  overlay: loader(() => import("./pages/OverlayPage")),
 };
 
 /** The page a pathname opens, if it is one of ours. */
@@ -49,6 +50,7 @@ export function pageFor(pathname: string): PageLoader | null {
   if (pathname === "/roster") return pages.roster;
   if (pathname === "/news") return pages.news;
   if (pathname === "/graphic") return pages.graphic;
+  if (pathname === "/overlay" || pathname.startsWith("/overlay/")) return pages.overlay;
   if (pathname === "/admin" || pathname.startsWith("/admin/")) return pages.admin;
   if (pathname.startsWith("/sign-in") || pathname.startsWith("/sign-up")) return pages.auth;
   return null;

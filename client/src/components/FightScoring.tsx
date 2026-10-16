@@ -8,6 +8,7 @@ import { PANEL_SHELL, PanelHeading, sectionLabel } from "./FightStats";
 // Part of the matchup page's own code: a lazily loaded editor held the Score
 // tab on a fallback for at least React's 300 ms reveal throttle.
 import ScoreEditor from "./ScoreEditor";
+import OverlayButton from "./OverlayButton";
 import { lastName } from "../format";
 
 
@@ -113,6 +114,7 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
             <Lock className="mt-1 h-3 w-3 shrink-0" aria-hidden="true" />Round {fighting} stays hidden from everyone until it ends, so nobody's card follows the crowd.
           </p>
         ) : null}
+        {!communityOnly ? <div className="flex justify-end border-t border-zinc-100 px-5 py-2.5"><OverlayButton fightId={fight.id} /></div> : null}
       </section>
       {!communityOnly && eligibility.available > 0 ? (
         <ScoreEditor fight={fight} eligibility={eligibility} onSaved={() => { void apiCache.loadAfterWrite(`/api/fights/${fight.id}/scores`); }} />

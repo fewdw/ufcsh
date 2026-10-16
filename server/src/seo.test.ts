@@ -32,3 +32,12 @@ test("page metadata is escaped and the preview becomes a large image", () => {
   assert.match(out, /og:image" content="https:\/\/ufc.sh\/og\/site.jpg"/);
   assert.match(out, /<noscript><p>hi<\/p>/);
 });
+
+test("stream overlays load for a streaming tool but are never indexed", () => {
+  for (const path of ["/overlay", "/overlay/7a2c841693b54dd7"]) {
+    const seo = pageSeo(path);
+    assert.equal(seo.status ?? 200, 200, path);
+    assert.equal(seo.noindex, true, path);
+  }
+  assert.equal(pageSeo("/overlay/not-a-fight").status, 404);
+});

@@ -54,6 +54,7 @@ copy of the local archive (`DATA_DIR`).
 | Controversial decisions and comeback finishes (Browse tab, a judge's Controversial tab, the matchup's controversy line) | `pages/ControversialPage.tsx`, shared row and method note in `components/ControversyRow.tsx`; matchup pieces in `components/FightStats.tsx` (`Scorecards`) |
 | Officials, venues, locations and awards | `pages/JudgePage.tsx` (Scorecards and Controversial tabs, "How they score"), `pages/RefereePage.tsx`, `pages/VenuePage.tsx` (venue and location pages), `pages/DirectoryPages.tsx` (the lists, and the Awards page), shared pieces in `components/ResearchKit.tsx` and `research.ts` |
 | Typed list filters (spacing, word order and typos forgiven), Roster "new since last visit" | `search.ts` (server twin: `searchList` in `server/src/fuzzy.ts`), `rosterSeen.ts` |
+| Stream overlay (`/overlay`, `/overlay/:fightId`: the fans' live scorecard for OBS; Score tab button) | `pages/OverlayPage.tsx`, `components/OverlayButton.tsx`; see `docs/scoring.md` |
 | Graphics builder | `graphicsLauncher.tsx` (open from anywhere), `components/GraphicsBuilder.tsx` (dialog), `graphics/presets.ts` (the starting points), `graphics/build.ts` (data and picks → graphic), `graphics/render.ts` (templates), `graphics/draw.ts` (themes, texture, type and shared marks), `graphics/fonts.ts` (Barlow Condensed, self-hosted in `public/fonts`), `graphics/export.ts` |
 | Keyboard shortcuts | `shortcuts.tsx` |
 | Roster changes | `pages/RosterPage.tsx` |

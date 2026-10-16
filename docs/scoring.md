@@ -287,3 +287,15 @@ production-network benchmark. All fixture data is removed afterward.
 
 `npm test --prefix server`, `npm test --prefix client`, client build/lint and
 server TypeScript checking cover the surrounding application.
+
+## Stream overlay
+
+`/overlay` is the fans' scorecard alone, for a browser source in OBS or any
+streaming tool: no header, nothing behind the card, refreshed every five
+seconds. It follows whichever bout `/api/live` names, so one source covers a
+whole card; `/overlay/:fightId` holds one bout. `?theme=light` swaps the dark
+card for a light one and `?scale=` (0.5–4) sizes it. It reads the same public
+summary as the Score tab, so the round being fought shows ••• until it ends.
+The Score tab's **Stream overlay** button gives both addresses, a preview and
+the OBS steps. Overlay pages answer 200 but are never indexed (`seo.ts`).
+Page: `client/src/pages/OverlayPage.tsx`; button: `components/OverlayButton.tsx`.
