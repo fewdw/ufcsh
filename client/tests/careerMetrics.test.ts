@@ -13,7 +13,7 @@ function row(attempted: number | null, control: number | null): CareerStatistics
   return {
     fight_id: "fight", date: "2025-01-01", event_name: "Event", opponent: { id: "opponent", name: "Opponent" },
     takedowns, control_seconds: control,
-    totals: fightCareerTotals(300, { ...sig, takedowns }, { ...sig, takedowns: { scored: 2, attempted: 6 } }),
+    totals: fightCareerTotals(300, { ...sig, takedowns, ...control === null ? {} : { control: { scored: control } } }, { ...sig, takedowns: { scored: 2, attempted: 6 }, control: { scored: 245 } }),
   };
 }
 
@@ -29,8 +29,10 @@ test("unknown attempts or control stay unknown; recorded zero control is shown",
   assert.deepEqual(evidenceFigures(metric("td"), zero), ["0/0", "—", "0:00"]);
 });
 
-test("defense evidence shows stopped attempts and the defender's control time", () => {
-  assert.deepEqual(evidenceFigures(metric("tddef"), row(6, 197)), ["4/6", "67%", "3:17"]);
+test("defense evidence shows stopped attempts and the opponent's control time", () => {
+  assert.deepEqual(evidenceFigures(metric("tddef"), row(6, 197)), ["4/6", "67%", "4:05"]);
+  assert.equal(evidenceValue(metric("tddef"), row(6, 0), 2), 245);
+  assert.deepEqual(evidenceFigures(metric("tddef"), row(6, null)), ["4/6", "67%", "—"]);
 });
 
 test("column sorting uses numeric values, keeps unknowns last and restores recency", () => {
