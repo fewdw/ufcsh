@@ -2,7 +2,7 @@ import { db, getMeta, setMeta } from "./db.ts";
 import { log, normName } from "./util.ts";
 
 /**
- * Polymarket's price for the bout on now, shown beside the live pill, and the
+ * Polymarket's price for the bout on now, shown in the live pill, and the
  * result of the bout that just ended for a few minutes after it.
  *
  * Read from Polymarket's public APIs (no key): Gamma lists a date's UFC
@@ -26,9 +26,6 @@ export const ODDS_TTL_MS = 2_000;
 export const ODDS_MAX_AGE_MS = 15_000;
 /** How long the result of the bout that just ended stays up. */
 export const HOLD_MS = 5 * 60_000;
-/** After the previous result lands, the walkout is still minutes away: prices
- *  seen in this window are the pre-fight line. */
-const PREFIGHT_WINDOW_MS = 3 * 60_000;
 const MARKETS_TTL_MS = 10 * 60_000;
 /** A bout without a market is looked for again this often (late replacements). */
 const MISSING_RETRY_MS = 60_000;
@@ -229,9 +226,6 @@ export type LiveBout = BoutNames & {
   /** Really under way (UFCStats has round numbers, or rounds were released),
    *  not just past its estimated start. */
   underway: boolean;
-  /** No bout on the card has finished yet. */
-  opener: boolean;
-  starts_at: number | null;
 };
 export type FinishedBout = {
   id: string; f1_name: string; f2_name: string;
@@ -244,16 +238,12 @@ export type LiveOddsAnswer = {
   odds: LiveOdds | null;
   finished: (FinishedBout & {
     winner: 1 | 2 | null;
-    /** Polymarket's pre-fight price for each side; null when not seen. */
-    prefight: Pair | null;
-    url: string | null;
     /** Milliseconds the result has left on screen. */
     remaining_ms: number;
   }) | null;
 };
 
-type Seen = { id: string; since: number; trusted: boolean; prefight: Pair | null; url: string | null };
-type State = { current: Seen | null; finished: (Omit<Seen, "since" | "trusted"> & { at: number }) | null };
+type State = { current: string | null; finished: { id: string; at: number } | null };
 
 export type LiveOddsDeps = {
   current: () => LiveBout | null;
@@ -301,7 +291,9 @@ export class LiveOddsService {
     if (this.state) return this.state;
     try {
       const parsed = JSON.parse(this.deps.load() ?? "null");
-      if (parsed && typeof parsed === "object") this.state = { current: parsed.current ?? null, finished: parsed.finished ?? null };
+      if (parsed && typeof parsed === "object") {
+        this.state = { current: typeof parsed.current === "string" ? parsed.current : null, finished: parsed.finished ?? null };
+      }
     } catch { /* starts empty */ }
     return this.state ??= { current: null, finished: null };
   }
@@ -310,13 +302,13 @@ export class LiveOddsService {
    *  the one that just finished. Only a change we saw happen can date it. */
   private advance(state: State, bout: LiveBout | null, now: number): boolean {
     const id = bout?.id ?? null;
-    if (state.current?.id === id) return false;
+    if (state.current === id) return false;
     const previous = state.current;
-    const ended = previous ? this.deps.result(previous.id) : null;
+    const ended = previous ? this.deps.result(previous) : null;
     // No bout right now but the last one has no result: a blip, not a change.
     if (!id && !ended) return false;
-    if (previous && ended) state.finished = { id: previous.id, at: now, prefight: previous.prefight, url: previous.url };
-    state.current = id ? { id, since: now, trusted: Boolean(ended), prefight: null, url: null } : null;
+    if (previous && ended) state.finished = { id: previous, at: now };
+    state.current = id;
     return true;
   }
 
@@ -324,7 +316,7 @@ export class LiveOddsService {
     const now = this.deps.now();
     const state = this.loadState();
     const bout = this.deps.current();
-    let changed = this.advance(state, bout, now);
+    const changed = this.advance(state, bout, now);
 
     let odds: LiveOdds | null = null;
     if (bout) {
@@ -334,17 +326,6 @@ export class LiveOddsService {
         const [f1, f2] = found.reversed ? [pair[1], pair[0]] : pair;
         odds = { f1, f2, url: found.market.url, closed: found.market.closed };
       }
-      const seen = state.current;
-      if (seen && found && seen.url !== found.market.url) { seen.url = found.market.url; changed = true; }
-      // The pre-fight line: just after the previous result (the walkout is
-      // still minutes off), or for the opener, any time before the card starts.
-      const beforeWalkout = !bout.underway && (
-        (seen?.trusted && now - seen.since < PREFIGHT_WINDOW_MS)
-        || (bout.opener && bout.starts_at != null && now < bout.starts_at));
-      if (seen && odds && beforeWalkout && !odds.closed) {
-        const next: Pair = [odds.f1, odds.f2];
-        if (seen.prefight?.[0] !== next[0] || seen.prefight?.[1] !== next[1]) { seen.prefight = next; changed = true; }
-      }
     }
 
     let finished: LiveOddsAnswer["finished"] = null;
@@ -353,7 +334,7 @@ export class LiveOddsService {
       const result = this.deps.result(held.id);
       if (result) {
         const winner = result.f1_outcome === "win" ? 1 : result.f2_outcome === "win" ? 2 : null;
-        finished = { ...result, winner, prefight: held.prefight, url: held.url, remaining_ms: HOLD_MS - (now - held.at) };
+        finished = { ...result, winner, remaining_ms: HOLD_MS - (now - held.at) };
       }
     }
     if (changed) {

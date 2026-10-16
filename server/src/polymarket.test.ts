@@ -82,11 +82,10 @@ test("prices follow Polymarket's own rule: midpoint, or last trade past a 10¢ s
 // ---------------------------------------------------------------------------
 // a card, minute by minute
 
-const T0 = Date.parse("2026-10-24T22:00:00Z");
 const MIN = 60_000;
 
 function card() {
-  let now = T0 - 30 * MIN;
+  let now = Date.parse("2026-10-24T21:30:00Z");
   let stored: string | null = null;
   let current: LiveBout | null = null;
   let price: Pair | null = [0.6, 0.4];
@@ -94,7 +93,7 @@ function card() {
   let reads = 0;
   const results = new Map<string, FinishedBout>();
   const bout = (id: string, extra: Partial<LiveBout> = {}): LiveBout => ({
-    id, date: "2026-10-24", f1: [`${id} One`], f2: [`${id} Two`], underway: false, opener: false, starts_at: null, ...extra,
+    id, date: "2026-10-24", f1: [`${id} One`], f2: [`${id} Two`], underway: false, ...extra,
   });
   const service = () => new LiveOddsService({
     current: () => current,
@@ -118,12 +117,12 @@ function card() {
   };
 }
 
-test("live odds: the opener's pre-fight line, the result held, then the next bout", async () => {
+test("live odds: prices for the bout on now, the result held, then the next bout", async () => {
   const c = card();
   let live = c.service();
-  c.current = c.bout("a", { opener: true, starts_at: T0 });
+  c.current = c.bout("a");
 
-  // Before the card: Polymarket lists the pair the other way round.
+  // Polymarket lists the pair the other way round.
   let answer = await live.answer();
   assert.equal(answer.fight_id, "a");
   assert.deepEqual(answer.odds && [answer.odds.f1, answer.odds.f2], [0.4, 0.6]);
@@ -133,9 +132,8 @@ test("live odds: the opener's pre-fight line, the result held, then the next bou
   await live.answer(); await live.answer();
   assert.equal(c.reads, 1);
 
-  // The line moves before the walkout, then the bout starts and swings.
-  c.advance(ODDS_TTL_MS); c.price = [0.55, 0.45]; await live.answer();
-  c.advance(31 * MIN); c.current = c.bout("a", { opener: true, starts_at: T0, underway: true }); c.price = [0.9, 0.1];
+  // The bout starts and the price swings.
+  c.advance(30 * MIN); c.current = c.bout("a", { underway: true }); c.price = [0.9, 0.1];
   answer = await live.answer();
   assert.deepEqual(answer.odds && [answer.odds.f1, answer.odds.f2], [0.1, 0.9]);
 
@@ -149,27 +147,27 @@ test("live odds: the opener's pre-fight line, the result held, then the next bou
   assert.equal(answer.fight_id, "b");
   assert.equal(answer.finished?.id, "a");
   assert.equal(answer.finished?.winner, 2);
-  assert.deepEqual(answer.finished?.prefight, [0.45, 0.55], "the last price before the opener's start");
-  assert.equal(answer.finished?.url, "https://polymarket.com/event/a");
+  assert.equal(answer.finished?.method, "KO/TKO");
   assert.equal(answer.finished?.remaining_ms, HOLD_MS);
+  assert.deepEqual(answer.odds && [answer.odds.f1, answer.odds.f2], [0.7, 0.3]);
 
   // Still held a few minutes on, gone after HOLD_MS.
-  c.advance(4 * MIN); c.price = [0.2, 0.8];
+  c.advance(4 * MIN);
   assert.equal((await live.answer()).finished?.id, "a");
   c.advance(HOLD_MS - 4 * MIN);
   assert.equal((await live.answer()).finished, null);
 
-  // B's walkout is after the window: its pre-fight line is the price seen
-  // just after A's result, not one from during the fight.
-  c.advance(10 * MIN); c.current = c.bout("b", { underway: true }); c.price = [0.95, 0.05];
+  // The main event: once it has a result nothing is current, and its result
+  // still shows.
+  c.advance(10 * MIN); c.current = c.bout("b", { underway: true });
   await live.answer();
   c.finish("b", 1);
   c.advance(5 * MIN); c.current = null;
   answer = await live.answer();
   assert.equal(answer.fight_id, null);
   assert.equal(answer.odds, null);
-  assert.equal(answer.finished?.id, "b", "the main event's result shows after the card is over");
-  assert.deepEqual(answer.finished?.prefight, [0.7, 0.3], "seen just after the result, not later");
+  assert.equal(answer.finished?.id, "b");
+  assert.equal(answer.finished?.winner, 1);
 });
 
 test("live odds: the hold ends when the next bout is under way, and a blip changes nothing", async () => {
@@ -188,17 +186,6 @@ test("live odds: the hold ends when the next bout is under way, and a blip chang
   const answer = await live.answer();
   assert.equal(answer.fight_id, "b");
   assert.equal(answer.finished, null);
-});
-
-test("live odds: first seen mid-card, no pre-fight line is invented", async () => {
-  const c = card();
-  const live = c.service();
-  c.current = c.bout("a", { underway: false }); await live.answer();
-  c.finish("a", 1);
-  c.advance(MIN); c.current = null;
-  const answer = await live.answer();
-  assert.equal(answer.finished?.id, "a");
-  assert.equal(answer.finished?.prefight, null);
 });
 
 test("live odds: a failed read keeps the last price briefly, then shows none", async () => {
