@@ -2,6 +2,8 @@ import { useAuth } from "@clerk/react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { BUTTON_PRIMARY, BUTTON_QUIET, CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
+import { useAccount } from "../auth";
+import { useSessionUser } from "../profile";
 
 const CATEGORIES = [
   ["problem", "Something is broken"],
@@ -12,9 +14,13 @@ const CATEGORIES = [
   ["other", "Other"],
 ] as const;
 
-/** The report form, as a dialog over the page it's about. */
+/** The report form, as a dialog over the page it's about. Reports come from
+ *  an account, so a signed-out reader gets the same dialog asking them to
+ *  sign in, which returns them to this page. */
 export default function ReportIssueDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { getToken } = useAuth();
+  const { signIn } = useAccount();
+  const { userId } = useSessionUser();
   const dialog = useRef<HTMLDialogElement>(null);
   const title = useRef<HTMLInputElement>(null);
   const [category, setCategory] = useState("problem");
@@ -69,7 +75,14 @@ export default function ReportIssueDialog({ open, onClose }: { open: boolean; on
         <X className={CLOSE_ICON} aria-hidden="true" />
       </button>
     </div>
-    {sent ? <div className="px-5 py-8 text-center">
+    {!userId ? <div className="px-5 py-8 text-center">
+      <p className="text-sm font-semibold text-zinc-900">Sign in to send a report</p>
+      <p className="mt-1 text-sm text-zinc-500">Reports come from an account, which keeps spam out. You will come back to this page.</p>
+      <div className="mt-5 flex items-center justify-center gap-2">
+        <button type="button" onClick={close} className={BUTTON_QUIET}>Cancel</button>
+        <button type="button" onClick={() => { close(); signIn(); }} className={BUTTON_PRIMARY}>Sign in</button>
+      </div>
+    </div> : sent ? <div className="px-5 py-8 text-center">
       <p className="text-sm font-semibold text-zinc-900">Report sent</p>
       <p className="mt-1 text-sm text-zinc-500">An administrator can now review it.</p>
       <button type="button" onClick={close} className={`mt-5 ${BUTTON_PRIMARY}`}>Close</button>

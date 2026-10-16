@@ -5,7 +5,7 @@ import CmdK from "./components/CmdK";
 import SearchGlyph from "./components/SearchGlyph";
 import LiveMatchup from "./components/LiveMatchup";
 import { segmentedIdle, segmentedSelected } from "./components/segmented";
-import { ChevronDown, Moon, Shield, Sun } from "lucide-react";
+import { ChevronDown, Flag, Moon, Shield, Sun } from "lucide-react";
 import { accountsEnabled, useAccount } from "./auth";
 import { useAdminResource, type AdminSession } from "./admin";
 import { inMore, MORE_HOME, MoreGroups } from "./components/MoreNav";
@@ -16,6 +16,7 @@ import { useLinkPrefetch, warmSections } from "./useLinkPrefetch";
 import { pages, type PageLoader } from "./pages";
 import RouteErrorBoundary from "./components/RouteErrorBoundary";
 import ParlaySlip from "./components/ParlaySlip";
+import ReportIssueDialog from "./components/ReportIssueDialog";
 import { ShortcutProvider } from "./shortcuts";
 import { DevStatsOverlay, isDevSite } from "./devStats";
 import { GraphicsProvider } from "./graphicsLauncher";
@@ -83,8 +84,10 @@ function AdminLink({ active }: { active: boolean }) {
 
 /** The rest of the site, one pill after the sections. From `md` up a mouse
  *  opens its groups on hover and a press opens Stats; a tap or a key opens
- *  them. On a phone they open under the button, flush with its right edge. */
-function MoreMenu({ pathname, active, open, setOpen }: { pathname: string; active: boolean; open: boolean; setOpen: (open: boolean) => void }) {
+ *  them. On a phone they open under the button, flush with its right edge.
+ *  Report sits last, under a rule: it opens the report form about the page
+ *  being read rather than going anywhere. */
+function MoreMenu({ pathname, active, open, setOpen, onReport }: { pathname: string; active: boolean; open: boolean; setOpen: (open: boolean) => void; onReport?: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => setOpen(false), [pathname, setOpen]);
   useEffect(() => {
@@ -125,6 +128,12 @@ function MoreMenu({ pathname, active, open, setOpen }: { pathname: string; activ
             </Link>
           </li>
         )} />
+        {onReport ? <div className="mt-1 border-t border-zinc-100 pt-1">
+          <button type="button" onClick={() => { setOpen(false); onReport(); }}
+            className="flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-2 py-2 text-left text-[13px] text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-900 min-[375px]:px-3 min-[375px]:text-sm">
+            <Flag className="h-3.5 w-3.5" aria-hidden="true" />Report an issue
+          </button>
+        </div> : null}
       </div>
     </div> : null}
   </div>;
@@ -135,6 +144,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
   const { settings, update } = useSettings();
   const dark = settings.theme === "dark";
   const [moreOpen, setMoreOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   // The bout on now sits mid-row only while it fits whole; the moment its
   // names would be cut, it drops to its own line instead.
   const slotRef = useRef<HTMLDivElement>(null);
@@ -190,7 +200,8 @@ function Header({ onSearch }: { onSearch: () => void }) {
             </Link>
           ))}
           {accountsEnabled ? <AdminLink active={isAdmin && !moreOpen} /> : null}
-          <MoreMenu pathname={pathname} active={isMore} open={moreOpen} setOpen={setMoreOpen} />
+          <MoreMenu pathname={pathname} active={isMore} open={moreOpen} setOpen={setMoreOpen}
+            onReport={accountsEnabled ? () => setReportOpen(true) : undefined} />
         </nav>
 
         {/* The middle of the row from `md` up, and its own line below that —
@@ -230,6 +241,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
       <div className={`flex justify-center border-t border-zinc-100 px-2.5 py-1.5 empty:hidden ${pillFits ? "md:hidden" : ""}`}>
         <LiveMatchup />
       </div>
+      {accountsEnabled ? <ReportIssueDialog open={reportOpen} onClose={() => setReportOpen(false)} /> : null}
     </header>
   );
 }
