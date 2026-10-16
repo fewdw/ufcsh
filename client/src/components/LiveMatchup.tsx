@@ -89,8 +89,8 @@ function Chance({ value, other }: { value: number; other: number }) {
   );
 }
 
-/** The bout that just ended: who won, how, and what Polymarket gave the winner
- *  before the walkout — an upset flagged when the market had them behind. */
+/** The bout that just ended: who won and how, flagged as an upset when
+ *  Polymarket had the winner behind before the walkout. */
 function ResultPill({ result }: { result: NonNullable<LiveOddsAnswer["finished"]> }) {
   const names = [lastName(result.f1_name), lastName(result.f2_name)];
   // A decision always went the distance; its round says nothing.
@@ -108,16 +108,9 @@ function ResultPill({ result }: { result: NonNullable<LiveOddsAnswer["finished"]
       title={`${headline}${how ? ` · ${how}` : ""}${before != null ? ` · Polymarket gave ${winnerName} ${percent(before)} before the fight` : ""}`}
       className={PILL}
     >
-      {/* On a phone the headline and the market's verdict come first; "def."
-          already says it is over, and the method is a tap away. */}
-      <span className={`shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500 ${result.winner ? "max-sm:hidden" : ""}`}>{label}</span>
+      <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">{label}</span>
       <span className="truncate text-xs font-semibold text-zinc-900">{headline}</span>
-      {how ? <span className="shrink-0 text-[11px] font-medium text-zinc-500 max-sm:hidden">{how}</span> : null}
-      {before != null ? (
-        <span className="shrink-0 text-[11px] font-medium tabular-nums text-zinc-500">
-          {percent(before)} pre-fight
-        </span>
-      ) : null}
+      {how ? <span className="shrink-0 text-[11px] font-medium text-zinc-500">{how}</span> : null}
       {upset ? (
         <span className="shrink-0 rounded bg-amber-100 px-1 py-px text-[9px] font-bold uppercase text-amber-700">Upset</span>
       ) : null}
