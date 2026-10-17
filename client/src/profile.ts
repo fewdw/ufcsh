@@ -31,7 +31,7 @@ const publish = (next: Partial<State>) => {
  *  identity is offered; after, only the one for the signed-in account. */
 const IDENTITY_KEY = "ufcsh:my-identity:v1";
 let saved: { userId: string; identity: ScorerIdentity; email?: string } | null | undefined;
-export function rememberedIdentity(userId?: string): ScorerIdentity | null {
+function rememberedIdentity(userId?: string): ScorerIdentity | null {
   if (saved === undefined) {
     try { saved = JSON.parse(localStorage.getItem(IDENTITY_KEY) ?? "null"); } catch { saved = null; }
   }

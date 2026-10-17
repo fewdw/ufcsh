@@ -9,7 +9,7 @@ export type TipAnchor = { x: number; y: number; above: boolean };
 const HALF_WIDTH = 132;
 const BELOW_SPACE = 96;
 
-export function anchorFrom(box: DOMRect): TipAnchor {
+function anchorFrom(box: DOMRect): TipAnchor {
   const above = box.bottom + BELOW_SPACE > window.innerHeight;
   return {
     x: Math.min(Math.max(box.left + box.width / 2, HALF_WIDTH + 8), Math.max(HALF_WIDTH + 8, window.innerWidth - HALF_WIDTH - 8)),

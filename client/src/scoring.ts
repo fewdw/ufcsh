@@ -55,7 +55,6 @@ export type ScorerProfile = {
   filter: ProfileFilter; query: string; offset: number; pageSize: number; total: number; cards: ScorerCard[];
 };
 /** The same rule the server enforces, so the field can answer before it asks. */
-export const USERNAME_PATTERN = /^[A-Za-z0-9]{3,20}$/;
 export const usernameProblem = (value: string): string | null =>
   !value ? "Choose a username."
     : /[^A-Za-z0-9]/.test(value) ? "Letters and digits only — no spaces or punctuation."

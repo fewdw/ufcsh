@@ -70,14 +70,14 @@ function StatsRound({ p, f1, f2 }: { p: number; f1: string; f2: string }) {
 }
 
 /** Control as a share of the time: a round's five minutes, or the whole fight. */
-export const controlShare = (seconds: number, of: number) => (of > 0 ? Math.round((seconds / of) * 100) : 0);
+const controlShare = (seconds: number, of: number) => (of > 0 ? Math.round((seconds / of) * 100) : 0);
 const percent = (value: number) => `${value}%`;
 
-export const STRIKES_TITLE = "Significant strikes landed";
-export const CONTROL_TITLE = "Control time as a share of the round, and of the whole fight in the total";
+const STRIKES_TITLE = "Significant strikes landed";
+const CONTROL_TITLE = "Control time as a share of the round, and of the whole fight in the total";
 /** What the stats judge is, wherever it appears. */
-export const STATS_JUDGE = "The stats judge is an average UFC judge reading only the numbers: who it would give the round to from the strikes, knockdowns, takedowns, control and submission attempts";
-export const STATS_TITLE = `${STATS_JUDGE}, and how sure; the total counts the rounds`;
+const STATS_JUDGE = "The stats judge is an average UFC judge reading only the numbers: who it would give the round to from the strikes, knockdowns, takedowns, control and submission attempts";
+const STATS_TITLE = `${STATS_JUDGE}, and how sure; the total counts the rounds`;
 
 type RoundCard = { label: string; slug: string | null; f1: number; f2: number; rounds: RoundScore[]; mine?: boolean };
 
