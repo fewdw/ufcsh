@@ -111,6 +111,12 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
             })}
           </div>
         </div>
+        {totals.importedCards > 0 && totals.source ? (
+          <p className="border-t border-zinc-100 px-4 py-3 text-xs text-zinc-500 @[32rem]:px-5">
+            Includes {totals.importedCards.toLocaleString()} {totals.importedCards === 1 ? "card" : "cards"} from{" "}
+            {totals.source.url ? <a href={totals.source.url} target="_blank" rel="noreferrer" className="font-medium text-zinc-700 underline-offset-2 hover:underline">{totals.source.name}{"\u00a0"}<span aria-hidden="true">↗</span></a> : totals.source.name}
+          </p>
+        ) : null}
         {eligibility.reason ? <p className="border-t border-zinc-100 px-5 py-3 text-xs text-zinc-500">{eligibility.reason}</p> : null}
         {fighting ? (
           <p className="flex items-start gap-1.5 border-t border-zinc-100 px-4 py-3 text-xs leading-5 text-zinc-500 @[32rem]:px-5">
