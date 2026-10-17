@@ -89,8 +89,8 @@ export function createAdminHandler(options: AdminHandlerOptions) {
       openRounds: released,
       /** Started by the feed's own word, which the panel cannot take back. */
       underway: fightIsUnderway(fight),
-      /** Marked live from the panel. */
-      marked: scores.markedLive(fight.id),
+      /** The panel's live switch: 1 marked live, -1 held at Next, 0 untouched. */
+      mark: scores.liveMark(fight.id),
       available: eligibility.available,
       state: eligibility.state,
       /** Cards holding each round, kept while a round is closed again. */

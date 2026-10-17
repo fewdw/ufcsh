@@ -35,8 +35,8 @@ function LivePill({ card, odds }: { card: LiveCard | null; odds: LiveOddsAnswer 
   const { fight } = card;
   const away = countdown(startsAt, now);
   const at = clockTime(startsAt);
-  // Live only once the server has confirmed it. An estimated start passing
-  // says nothing about whether the bout has begun, so it stays next: "due".
+  // The server's word: the bout after a result is on, the opener from the
+  // card's start. Next only before then, or while an admin holds it.
   const { live } = card;
   const due = !live && startsAt != null && !away;
   // Hours before the card, "Next" overstates it: the opener says what it is.
@@ -67,7 +67,8 @@ function LivePill({ card, odds }: { card: LiveCard | null; odds: LiveOddsAnswer 
         <span className="truncate font-semibold text-zinc-900">{two}</span>
         {price ? <span className="sr-only">, Polymarket odds</span> : null}
       </span>
-      {live && card.fight_number ? (
+      {/* How far through the card, whatever the bout is called. */}
+      {card.fight_number ? (
         <span className="shrink-0 text-[11px] font-medium tabular-nums text-zinc-500">
           {card.fight_number}/{card.total_fights}
         </span>

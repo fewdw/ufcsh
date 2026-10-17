@@ -556,28 +556,28 @@ test("released rounds are stored per bout and drive what the store will accept",
   assert.throws(() => store.setOpenRounds("ffffffffffffffff", 1, "owner@example.com"), ScoringError, "a bout that is not in the database cannot be opened");
 });
 
-test("an admin's live mark is kept apart from the rounds and cleared by the result", (t) => {
+test("an admin's live switch is kept apart from the rounds and cleared by the result", (t) => {
   const today = new Date().toISOString().slice(0, 10);
   const live = { ...fight, f1_outcome: null, f2_outcome: null, event_date: today, method: null, round: null, detail_json: '{"type":"future"}' };
   const { store, setFight } = fixture(t, live);
-  assert.equal(store.markedLive(id), false);
+  assert.equal(store.liveMark(id), 0);
   assert.equal(store.markLive(id, true, "owner@example.com"), true);
-  assert.equal(store.markedLive(id), true);
+  assert.equal(store.liveMark(id), 1);
   assert.equal(store.eligibility(id).available, 0, "marking it live opens no round");
   // Opening and closing rounds leaves the mark alone, and the mark the rounds.
   store.setOpenRounds(id, 2, "owner@example.com");
   store.setOpenRounds(id, 0, "owner@example.com");
-  assert.equal(store.markedLive(id), true);
+  assert.equal(store.liveMark(id), 1);
   store.setOpenRounds(id, 1, "owner@example.com");
   store.markLive(id, false, "owner@example.com");
-  assert.deepEqual({ live: store.markedLive(id), open: store.openRounds(id) }, { live: false, open: 1 }, "a mistake is taken back");
+  assert.deepEqual({ live: store.liveMark(id), open: store.openRounds(id) }, { live: -1, open: 1 }, "switched off, it is held at Next");
   for (const bad of [1, "true", null, undefined]) assert.throws(() => store.markLive(id, bad, "owner@example.com"), ScoringError, `rejects ${bad}`);
   assert.throws(() => store.markLive("ffffffffffffffff", true, "owner@example.com"), ScoringError);
   store.markLive(id, true, "owner@example.com");
   const decision = { ...live, f1_outcome: "win", f2_outcome: "loss", method: "U-DEC", round: "3", time: "5:00", detail_json: '{"type":"past"}' };
   setFight(decision);
   store.settle(decision);
-  assert.equal(store.markedLive(id), false, "the result clears the mark");
+  assert.equal(store.liveMark(id), 0, "the result clears the mark");
 });
 
 test("a scoring database from before the live mark gains it in place", (t) => {
@@ -591,7 +591,7 @@ test("a scoring database from before the live mark gains it in place", (t) => {
   old.close();
   const store = new ScoringStore(file, () => [], () => "0");
   t.after(() => store.db.close());
-  assert.deepEqual({ open: store.openRounds(id), live: store.markedLive(id) }, { open: 2, live: false });
+  assert.deepEqual({ open: store.openRounds(id), live: store.liveMark(id) }, { open: 2, live: 0 });
 });
 
 test("a result deletes rounds the bout never reached; closing a round by hand only hides its scores", (t) => {

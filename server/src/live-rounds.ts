@@ -2,9 +2,9 @@ import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { DATA_DIR } from "./db.ts";
 
-/** Rounds the admin panel released for a bout, and whether it marked the bout
- * live, read through a read-only connection to the scoring database. Missing
- * file or table = none. */
+/** Rounds the admin panel released for a bout, and its live switch, read
+ * through a read-only connection to the scoring database. Missing file or
+ * table = none. */
 let reader: DatabaseSync | undefined;
 let retryAt = 0;
 const RETRY_MS = 5_000;
@@ -41,9 +41,9 @@ export function releasedRounds(fightId: string): number {
   return liveRow(fightId)?.rounds ?? 0;
 }
 
-/** Whether the bout has started on the admin panel's word: a round opened, or
- *  the bout marked live before any round was. */
-export function adminLive(fightId: string): boolean {
+/** What the admin panel has said about a bout: rounds it opened, and its
+ *  live switch (1 marked live, -1 held at Next, 0 left to the card). */
+export function adminLive(fightId: string): { rounds: number; mark: number } {
   const row = liveRow(fightId);
-  return Boolean(row && (row.rounds > 0 || row.live));
+  return { rounds: row?.rounds ?? 0, mark: Math.sign(row?.live ?? 0) };
 }

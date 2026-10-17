@@ -23,8 +23,8 @@ export type AdminLiveFight = {
   openRounds: number;
   /** Started by the feed's own word, which the panel cannot take back. */
   underway: boolean;
-  /** Marked live by hand from this panel. */
-  marked: boolean;
+  /** This panel's live switch: 1 marked live, -1 held at Next, 0 left to the card. */
+  mark: -1 | 0 | 1;
   /** What a reader can actually score: the larger of the two, capped. */
   available: number;
   state: "completed" | "live" | "waiting";

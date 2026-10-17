@@ -152,9 +152,9 @@ test("live odds: prices for the bout on now, the result held, then the next bout
   assert.deepEqual(answer.odds && [answer.odds.f1, answer.odds.f2], [0.7, 0.3]);
 
   // Still held a few minutes on, gone after HOLD_MS.
-  c.advance(4 * MIN);
+  c.advance(HOLD_MS - MIN);
   assert.equal((await live.answer()).finished?.id, "a");
-  c.advance(HOLD_MS - 4 * MIN);
+  c.advance(MIN);
   assert.equal((await live.answer()).finished, null);
 
   // The main event: once it has a result nothing is current, and its result

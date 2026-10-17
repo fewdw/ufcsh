@@ -64,20 +64,22 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   horn. Unobserved future rounds cannot be submitted. This is community scoring,
   not an official clock or a permanently locked live judging competition.
 - A bout is called **Live** (the header's pill, its row on the card, the
-  admin panel) only on evidence it has started: UFCStats publishing its round
-  totals, or an admin marking it live or opening a round. Until then it is **Next**, with a
-  countdown to its estimated start, then "due" once that has passed; the
-  clock and the previous result never make it live. From the announced card
-  start, the sync checks the opener's page too, so it can be confirmed before
-  any result exists.
+  admin panel) once the bout before it has a result: the header shows that
+  result (**Final**) for two minutes, then the next bout as Live with its place
+  on the card (3/13). The opener is Live from the card's announced start, and
+  the first bout of a later segment from that segment's start (prelims
+  finishing early leave the main card's opener at **Next** with a countdown).
+  Evidence — UFCStats publishing round totals, an admin opening a round or
+  marking it live — makes it Live at once and ends the Final early. The rule
+  is `boutIsLive` in `server/src/live-state.ts`. From the announced card
+  start, the sync checks the opener's page too.
 - The admin panel's **Live rounds** tab shows one bout: the one the header's
   pill names (the opening bout, then whichever follows the last result),
   with Prev/Next for a feed that is late with a result. That bout's Score tab
   appears as soon as it starts, rounds locked until opened. Above its rounds,
-  a **Live** switch marks the bout started at the walkout or bell, before any
-  round opens; switching it off takes back a mark made by mistake (it cannot
-  undo the feed's evidence or an open round, and the result clears it). The
-  mark sits beside the hand-opened rounds in `scoring.db` (`live_rounds.live`)
+  a **Live** switch starts the bout early or, switched off, holds it at Next
+  when the card's rule calls it live too soon (it cannot undo the feed's
+  evidence or an open round, and the result clears it). The mark sits beside the hand-opened rounds in `scoring.db` (`live_rounds.live`)
   and moves only the bout the pill names. The same switches
   sit at the bottom of that bout's Score tab for administrators
   (`components/LiveRoundSwitches.tsx`, `ScoreRoundControls.tsx`; the server

@@ -73,7 +73,7 @@ export default function AdminLive() {
         ) : null}
       </div>
 
-      <LiveRoundSwitches key={fight.id} fight={fight} onNow={onNow} onChanged={setData} onFailed={() => void reload(true)} />
+      <LiveRoundSwitches key={fight.id} fight={fight} live={onNow ? Boolean(data?.current?.live) : null} onChanged={setData} onFailed={() => void reload(true)} />
     </section>
   );
 }
