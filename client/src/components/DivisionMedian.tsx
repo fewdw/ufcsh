@@ -10,15 +10,13 @@ export function MedianTick({ at, from = "left" }: { at: number; from?: "left" | 
   );
 }
 
-/** What the tick is, said once under the bars that carry it. */
-export function MedianKey({ medians, before }: { medians: DivisionMedians; before: boolean }) {
+/** What the tick is, said once in the panel's heading; the hover says
+ *  which fighters make up the median. */
+export function MedianLabel({ medians, before }: { medians: DivisionMedians; before: boolean }) {
   return (
-    <p className="flex items-start gap-2 border-t border-zinc-100 px-4 py-2 text-[11px] leading-4 text-zinc-500">
-      <span aria-hidden="true" className="relative mt-0.5 inline-block h-3 w-0.5 shrink-0 rounded-full bg-plot-median" />
-      <span>
-        <span className="font-semibold text-zinc-700">Division median:</span> the middle of {medians.fighters} {medians.division} fighters
-        with 3+ UFC bouts {before ? "in the 3 years before this fight" : "in the last 3 years"}, each counted once.
-      </span>
-    </p>
+    <span title={`The middle of ${medians.fighters} ${medians.division} fighters with 3+ UFC bouts ${before ? "in the 3 years before this fight" : "in the last 3 years"}, each counted once`}>
+      <span aria-hidden="true" className="mr-1.5 inline-block h-3 w-0.5 rounded-full bg-plot-median align-[-2px]" />
+      Weight class median
+    </span>
   );
 }

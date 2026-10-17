@@ -61,7 +61,7 @@ copy of the local archive (`DATA_DIR`).
 | Roster changes | `pages/RosterPage.tsx` |
 | About / support / changelog | `pages/InfoPage.tsx` |
 | Shared definitions | `careerMetrics.ts` (how-they-fight rates), `format.ts`, `ui.ts`, `useMediaQuery.ts`, `components/segmented.ts`, `components/chartTokens.ts` |
-| Styles, dark theme and Comfortable density (root `comfortable` class: small print a size up, muted greys darker; Text choice in More) | `index.css`, `settings.tsx`, early class in `index.html` |
+| Styles, dark theme and Comfortable type (small print a size up, muted greys darker) | `index.css`, `settings.tsx`, early theme class in `index.html` |
 
 ## Docs
 

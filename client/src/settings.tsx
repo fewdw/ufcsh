@@ -9,9 +9,6 @@ export type DateMode = "relative" | "date";
 export type DivisionOrder = "light" | "heavy";
 /** How a betting price displays: the American line or decimal payout. */
 export type OddsFormat = "american" | "decimal";
-/** How dense the type is: Comfortable sets the small print a size up and
- *  darkens the muted greys; Compact is the original, tighter layout. */
-export type Density = "comfortable" | "compact";
 
 export type AppSettings = {
   theme: ThemeMode;
@@ -28,7 +25,6 @@ export type AppSettings = {
   cardOrder: CardOrder;
   /** Tale of the tape shows how each difference has gone in earlier bouts. */
   tapeAdvanced: boolean;
-  density: Density;
 };
 
 export type CardOrder = "main" | "opener";
@@ -45,7 +41,6 @@ const DEFAULTS: AppSettings = {
   statsSort: "grouped",
   cardOrder: "main",
   tapeAdvanced: false,
-  density: "comfortable",
 };
 const STORAGE_KEY = "ufcsh:settings:v1";
 
@@ -62,7 +57,6 @@ function loadSettings(): AppSettings {
       statsSort: saved?.statsSort === "best" ? "best" : "grouped",
       cardOrder: saved?.cardOrder === "opener" ? "opener" : "main",
       tapeAdvanced: saved?.tapeAdvanced === true,
-      density: saved?.density === "compact" ? "compact" : "comfortable",
     };
   } catch {
     return DEFAULTS;
@@ -80,7 +74,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   // avoids a light flash when a returning visitor has dark mode selected.
   useLayoutEffect(() => {
     document.documentElement.classList.toggle("dark", settings.theme === "dark");
-    document.documentElement.classList.toggle("comfortable", settings.density !== "compact");
     document.documentElement.style.colorScheme = settings.theme;
     // Settings still work for this visit when storage is unavailable.
     storeLocal(STORAGE_KEY, JSON.stringify(settings));

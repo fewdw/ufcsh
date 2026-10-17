@@ -41,14 +41,13 @@ function Movement({ movement, name }: { movement: OddsMovement; name: string }) 
   const { at, id, open, handlers } = useTooltip();
   // Prices are all we observe: they show where the market moved, not how
   // much was bet or why.
-  const label = `Price moved ${movement.points} points toward ${lastName(name)} since the opening line`;
-  const detail = "Points of implied win chance, from the opening line to the latest";
+  const label = `Moved ${movement.points} pts toward ${lastName(name)}`;
   const Arrow = movement.toward === "f1" ? ArrowLeft : ArrowRight;
   return (
     <span
       className="flex flex-col items-center justify-center gap-0.5 rounded text-zinc-500"
       tabIndex={0}
-      aria-label={`${label}. ${detail}.`}
+      aria-label={`Price moved ${movement.points} points toward ${lastName(name)} since the opening line`}
       aria-describedby={open ? id : undefined}
       {...handlers}
       onKeyDown={(event) => {
@@ -58,7 +57,7 @@ function Movement({ movement, name }: { movement: OddsMovement; name: string }) 
     >
       <Arrow className="h-3.5 w-3.5 @[40rem]:h-4 @[40rem]:w-4" strokeWidth={1.5} aria-hidden="true" />
       <span className="text-[9px] font-medium leading-3 tabular-nums">{movement.points}</span>
-      <Tooltip id={id} at={at}>{label}<span className="mt-1 block font-normal text-zinc-400">{detail}</span></Tooltip>
+      <Tooltip id={id} at={at}>{label}</Tooltip>
     </span>
   );
 }

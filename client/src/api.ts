@@ -43,7 +43,7 @@ export type LiveCard = {
   total_fights: number;
   /** The bout's place on the card counted from the opener; the main event is total_fights. */
   fight_number: number;
-  /** Under way — either its numbers are already out or its start has passed. */
+  /** Under way — its numbers are already out or a round was opened by hand. */
   live: boolean;
   starts_at: number | null;
   fight: {

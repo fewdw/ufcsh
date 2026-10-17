@@ -1,4 +1,4 @@
-import { MedianKey, MedianTick } from "./DivisionMedian";
+import { MedianLabel, MedianTick } from "./DivisionMedian";
 import CareerStatDetails from "./CareerStatDetails";
 import { decidingRound } from "../decidingRound";
 import { PANEL } from "./chartTokens";
@@ -1104,7 +1104,10 @@ export function CareerProfile({ fight }: { fight: Matchup }) {
 
   return (
     <section className={`${shell} @container overflow-hidden`}>
-      <PanelHeading title="Career stats" subtitle="UFC · Before this fight" />
+      <PanelHeading title="Career stats" subtitle={<>
+        {medians ? <><MedianLabel medians={medians} before /> · </> : null}
+        <span className="max-sm:hidden">Stats are before this fight</span><span className="sm:hidden">Before this fight</span>
+      </>} />
       <div className="grid grid-cols-2 gap-x-4 px-3 pb-1 pt-1.5 @[40rem]:gap-x-8 @[40rem]:px-4 @[40rem]:pt-2">
         {groups.map((group) => (
           <div key={group.key} className="min-w-0">
@@ -1115,7 +1118,6 @@ export function CareerProfile({ fight }: { fight: Matchup }) {
           </div>
         ))}
       </div>
-      {medians ? <MedianKey medians={medians} before /> : null}
       <MethodProfile fight={fight} careers={careers} />
     </section>
   );
