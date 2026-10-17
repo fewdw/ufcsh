@@ -11,8 +11,11 @@ export default defineConfig({
   plugins: [
     {
       name: "site-origin-html",
-      transformIndexHtml(html) {
-        return html.replaceAll("__SITE_ORIGIN__", (process.env.VITE_SITE_ORIGIN || "https://ufc.sh").replace(/\/$/, ""));
+      transformIndexHtml(html, { server }) {
+        const origin = (process.env.VITE_SITE_ORIGIN || "https://ufc.sh").replace(/\/$/, "");
+        // A blue tab icon on dev.ufc.sh and local previews, as `isDevSite` in src/devStats.tsx.
+        if (server || origin === "https://dev.ufc.sh") html = html.replace('href="/favicon.svg"', 'href="/favicon-dev.svg"');
+        return html.replaceAll("__SITE_ORIGIN__", origin);
       },
     },
     {
