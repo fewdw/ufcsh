@@ -4,7 +4,7 @@ import { cachedDivisionMedians, currentDivision } from "./division-medians.ts";
 import { decisionScores, roundOutcomes, roundStrikes } from "./fight-insights.ts";
 import { opposition } from "./opposition.ts";
 import { tapeHistory } from "./tape-history.ts";
-import { eventStatus, fightIsComplete, fightIsUnderway, isFightDay, liveDetailDue } from "./live-state.ts";
+import { boutIsLive, eventStatus, fightIsComplete, fightIsUnderway, isFightDay, liveDetailDue } from "./live-state.ts";
 import { ScoringStore, type ScoringFight } from "./scoring.ts";
 import { createScoringHandler, scoringOrigins } from "./scoring-http.ts";
 import { PredictionStore } from "./predictions.ts";
@@ -431,9 +431,10 @@ function listEvents(): unknown {
 }
 
 /** The bout on now for a running card (fought bottom-up, so the lowest one
- * without a result), or null when nothing is running. `live` is whether it has
- * started: numbers already published settle it, and so does the admin panel
- * marking it live or opening a round. Nothing else does; until then it is next. */
+ * without a result), or null when nothing is running. `started` is evidence it
+ * has begun: UFCStats publishing its round totals, or the admin panel marking
+ * it live or opening a round. `live` is what the site calls it (`boutIsLive`):
+ * the header shows the previous result for a couple of minutes first. */
 function currentBout() {
   const e = prepared(`SELECT * FROM events WHERE complete = 0
     AND date >= date('now', '-1 day') AND date <= date('now') ORDER BY date DESC LIMIT 1`).get() as EventRow | undefined;
@@ -443,19 +444,22 @@ function currentBout() {
   if (!bout) return null;
   const starts_at = estimatedStart(fights.map(scheduledBout), Number(bout.ord) || 0, segmentTimes(e));
   const completed = fights.filter(fightIsComplete).length;
-  // Live only on evidence the bout has started: UFCStats publishing its round
-  // totals, or an admin marking it live or opening a round to score. An
-  // estimated start passing, or the bout before it ending, only means it is next.
-  const live = fightIsUnderway(bout) || adminLive(bout.id);
-  return { event: e, fights, bout, starts_at, completed, live };
+  const admin = adminLive(bout.id);
+  const started = fightIsUnderway(bout) || admin.rounds > 0 || admin.mark > 0;
+  const live = boutIsLive({
+    started, held: admin.mark < 0, completed, startsAt: starts_at,
+    segmentStart: bout.segment ? segmentTimes(e)[bout.segment as keyof SegmentTimes] : null,
+  });
+  return { event: e, fights, bout, starts_at, completed, live, started };
 }
 
 /** The bout on now as the Polymarket matcher needs it. */
 function polymarketBout(): LiveBout | null {
   const current = currentBout();
   if (!current) return null;
-  const { event, bout, live } = current;
-  return { id: bout.id, date: event.date, f1: fighterNames(bout.f1_id, bout.f1_name), f2: fighterNames(bout.f2_id, bout.f2_name), underway: live };
+  // Only evidence ends the previous result's hold early, never the card's rule.
+  const { event, bout, started } = current;
+  return { id: bout.id, date: event.date, f1: fighterNames(bout.f1_id, bout.f1_name), f2: fighterNames(bout.f2_id, bout.f2_name), underway: started };
 }
 
 function boutResult(id: string): FinishedBout | null {

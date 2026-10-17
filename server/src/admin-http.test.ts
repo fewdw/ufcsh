@@ -158,16 +158,16 @@ test("opening a round releases it for scoring and reports the bout back", async 
   }
 });
 
-test("marking the bout live is reported back and can be taken back", async (t) => {
+test("the live switch is reported back and can hold the bout at Next", async (t) => {
   const { request, scores } = await fixture(t);
   const put = (body: unknown) => request(`live/${FIGHT}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  assert.equal((await (await request("live")).json() as any).fights[0].marked, false);
+  assert.equal((await (await request("live")).json() as any).fights[0].mark, 0);
   const marked = await put({ live: true });
   assert.equal(marked.status, 200);
-  assert.deepEqual((({ marked, underway, openRounds }) => ({ marked, underway, openRounds }))((await marked.json() as any).fights[0]),
-    { marked: true, underway: false, openRounds: 0 }, "no round opens with it");
-  assert.equal(scores.markedLive(FIGHT), true);
-  assert.equal((await (await put({ live: false })).json() as any).fights[0].marked, false);
+  assert.deepEqual((({ mark, underway, openRounds }) => ({ mark, underway, openRounds }))((await marked.json() as any).fights[0]),
+    { mark: 1, underway: false, openRounds: 0 }, "no round opens with it");
+  assert.equal(scores.liveMark(FIGHT), 1);
+  assert.equal((await (await put({ live: false })).json() as any).fights[0].mark, -1);
   for (const live of ["true", 1, null]) assert.equal((await put({ live })).status, 400, `rejects ${live}`);
 });
 

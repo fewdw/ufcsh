@@ -15,9 +15,8 @@ export function landingEvent<T extends { id: string; date: string; status: strin
 }
 
 /**
- * The bout on now: only the one the server has confirmed is under way (its
- * statistics are being published, or an admin opened a round to score). The
- * bout after the last result is only next until then, however late it runs.
+ * The bout on now, as the server calls it: the one after the last result, the
+ * opener from the card's announced start, or one with evidence it has begun.
  */
 export function liveFightId(event: Pick<EventDetail, "status" | "live_fight_id" | "fights">): string | null {
   if (event.status !== "current" || !event.live_fight_id) return null;

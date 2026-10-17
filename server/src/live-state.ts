@@ -27,6 +27,22 @@ export function fightIsComplete(fight: { f1_outcome?: string | null; f2_outcome?
 export function fightIsUnderway(fight: { detail_json: string | null; f1_outcome?: string | null; f2_outcome?: string | null }): boolean {
   return !fightIsComplete(fight) && !!fight.detail_json && fight.detail_json.includes('"type":"past"');
 }
+/**
+ * Whether the site calls the bout on now Live. Evidence it has started always
+ * does. Otherwise a running card is taken to be fighting the bout after its
+ * last result — results arrive as bouts end, and the next walkout follows — and
+ * the opener once its announced start has passed. A segment whose announced
+ * start is still ahead (prelims finishing early before the main card) waits
+ * for it, and an administrator can hold the bout at Next.
+ */
+export function boutIsLive(bout: {
+  started: boolean; held: boolean; completed: number;
+  startsAt: number | null; segmentStart: number | null;
+}, now = Date.now()): boolean {
+  if (bout.started) return true;
+  if (bout.held || (bout.segmentStart != null && now < bout.segmentStart)) return false;
+  return bout.completed > 0 || (bout.startsAt != null && now >= bout.startsAt);
+}
 export function liveDetailDue(fight: { detail_fetched_at: number | null; detail_json: string | null; f1_outcome?: string | null; f2_outcome?: string | null }, now = Date.now()): boolean {
   if (!fight.detail_fetched_at || !fight.detail_json) return true;
   // A known result must immediately replace a cached pre-fight comparison.

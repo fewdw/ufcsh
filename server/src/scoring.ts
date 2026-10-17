@@ -290,8 +290,8 @@ export class ScoringStore {
         updated_by TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL
       );
     `);
-    // An administrator's word that the bout on now has started, for a walkout
-    // the feed has not caught yet. Added after the table, so added in place.
+    // An administrator's word on the bout on now: 1 started, -1 not yet (held
+    // at Next), 0 left to the card. Added after the table, so added in place.
     if (!(this.db.prepare("PRAGMA table_info(live_rounds)").all() as { name: string }[]).some(column => column.name === "live")) {
       this.db.exec("ALTER TABLE live_rounds ADD COLUMN live INTEGER NOT NULL DEFAULT 0");
     }
@@ -367,20 +367,22 @@ export class ScoringStore {
     this.lists.clear();
     return rounds as number;
   }
-  /** Whether an administrator has marked this bout as started. */
-  markedLive(id: string): boolean {
+  /** An administrator's live switch for this bout: 1 marked live, -1 held at
+   *  Next, 0 never touched. */
+  liveMark(id: string): -1 | 0 | 1 {
     const row = this.stmt("SELECT live FROM live_rounds WHERE fight_id = ?").get(id) as { live: number } | undefined;
-    return Boolean(row?.live);
+    return Math.sign(row?.live ?? 0) as -1 | 0 | 1;
   }
-  /** Mark the bout started, or take back a mark made by mistake. Its rounds
-   *  are left as they are; the result clears the mark with them. */
+  /** Mark the bout started, or hold it at Next when the card would call it
+   *  live too early. Its rounds are left as they are; the result clears the
+   *  mark with them. */
   markLive(id: string, live: unknown, by: string): boolean {
     if (typeof live !== "boolean") throw new ScoringError(400, "Send { live: true | false }.");
     if (!this.fight(id)) throw new ScoringError(404, "Fight not found.");
     this.stmt(`INSERT INTO live_rounds (fight_id, rounds, updated_by, updated_at, live) VALUES (?, 0, ?, ?, ?)
       ON CONFLICT(fight_id) DO UPDATE SET live = excluded.live,
         updated_by = excluded.updated_by, updated_at = excluded.updated_at`)
-      .run(id, by, Date.now(), live ? 1 : 0);
+      .run(id, by, Date.now(), live ? 1 : -1);
     return live;
   }
   /** How many cards hold each round of a bout, for the admin panel. */

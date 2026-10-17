@@ -6,13 +6,15 @@ import { useAdminRequest, type AdminLiveCard, type AdminLiveFight } from "../adm
  * One bout's live switch and round switches, shared by Admin → Live rounds and
  * the Score tab. The server checks the administrator on every change; this
  * only draws them. Closing a round hides its scores and reopening it brings
- * them back, so a round opened by mistake costs nobody their card; a bout
- * marked live by mistake goes back to Next the same way.
+ * them back, so a round opened by mistake costs nobody their card. The bout
+ * after a result goes live by itself; the switch starts one early or holds it
+ * at Next.
  */
-export default function LiveRoundSwitches({ fight, onNow, onChanged, onFailed }: {
+export default function LiveRoundSwitches({ fight, live, onChanged, onFailed }: {
   fight: AdminLiveFight;
-  /** The bout the header's pill names: the only one the live switch moves. */
-  onNow: boolean;
+  /** Whether the site calls it Live, for the bout the header's pill names (the
+   *  only one the live switch moves); null for any other. */
+  live: boolean | null;
   onChanged: (card: AdminLiveCard) => void;
   onFailed: () => void;
 }) {
@@ -37,22 +39,23 @@ export default function LiveRoundSwitches({ fight, onNow, onChanged, onFailed }:
   };
 
   if (fight.complete) return <p className="mt-6 text-center text-sm text-zinc-500">This bout is over; its rounds follow the result.</p>;
-  // Live on any evidence, as the server has it; only the hand-set mark is this switch's to take back.
+  const onNow = live != null;
+  // Evidence it has started is not this switch's to take back.
   const evidence = fight.underway ? "feed" : fight.openRounds > 0 ? "round open" : null;
-  const live = evidence != null || fight.marked;
+  const how = evidence ?? (fight.mark > 0 ? "marked" : fight.mark < 0 ? "held" : live ? "auto" : "next");
   const liveSwitch = onNow ? (
     <button
       type="button"
       disabled={busy || evidence != null}
-      onClick={() => void change({ live: !fight.marked })}
-      title={evidence ? `Live: ${evidence === "feed" ? "the feed has started publishing it" : "a round is open"}` : live ? "Marked live by mistake? Back to Next" : "Mark live when the bout starts"}
+      onClick={() => void change({ live: !live })}
+      title={evidence ? `Live: ${evidence === "feed" ? "the feed has started publishing it" : "a round is open"}` : live ? "Not started yet? Hold it at Next" : "Mark live now"}
       className={`mx-auto mt-6 flex min-h-12 w-full max-w-md items-center justify-center gap-2 rounded-xl text-sm font-semibold transition disabled:cursor-default ${
         live ? "bg-emerald-600 text-white hover:bg-emerald-700 disabled:hover:bg-emerald-600" : "border border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50"
       } ${busy ? "opacity-60" : ""}`}
     >
       {live ? <span className="live-dot h-1.5 w-1.5 rounded-full bg-white" aria-hidden="true" /> : null}
       {live ? "Live" : "Mark live"}
-      <span className={`text-[10px] font-medium ${live ? "text-white/70" : "text-zinc-400"}`}>{evidence ?? (live ? "on" : "next")}</span>
+      <span className={`text-[10px] font-medium ${live ? "text-white/70" : "text-zinc-400"}`}>{how}</span>
     </button>
   ) : null;
   if (!rows) {
@@ -100,7 +103,7 @@ export default function LiveRoundSwitches({ fight, onNow, onChanged, onFailed }:
         })}
       </div>
       <p className="mx-auto mt-4 max-w-md text-center text-[11px] leading-relaxed text-zinc-400">
-        {onNow ? "Mark the bout live when it starts; until then the site calls it Next. " : ""}Open a round at its horn.
+        {onNow ? "The bout after a result goes live by itself, a couple of minutes after the result shows; switch it off to hold it at Next. " : ""}Open a round at its horn.
         Rounds the live feed publishes open by themselves and stay open.
         Closing a round opened by mistake hides its scores; reopening it brings them back.
         When the result lands, rounds the bout never reached — and a stoppage round — are deleted.
