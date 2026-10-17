@@ -70,6 +70,7 @@ export default function NewsPage() {
   return (
     <div className={PAGE}>
       <div className="mx-auto w-full max-w-5xl px-4 pb-16 pt-4 sm:px-6 lg:px-8">
+        <h1 className="sr-only">UFC news</h1>
         <div className="flex items-center gap-2 pb-2">
           <div className="min-w-0 flex-1 sm:max-w-80"><FilterSearch value={query} onChange={setQuery} placeholder="Search the news" /></div>
           <Settings sources={first.sources} off={off} setOff={setOff} summaries={summaries} setSummaries={setSummaries} />

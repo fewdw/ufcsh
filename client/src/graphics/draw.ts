@@ -266,7 +266,7 @@ export function rankWidth(ctx: Ctx, rank: string, size: number): number {
 let flagsWork: boolean | null = null;
 /** Flags are emoji: drawn in colour on phones and Macs, but as two bare
  *  letters where the system has no colour-emoji font. Those systems get none. */
-export function flagsDrawable(): boolean {
+function flagsDrawable(): boolean {
   if (flagsWork != null) return flagsWork;
   try {
     const probe = document.createElement("canvas");

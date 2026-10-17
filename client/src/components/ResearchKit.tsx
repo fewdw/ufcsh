@@ -17,26 +17,6 @@ import { METHOD_COLOR, type Option } from "../research";
  * rows and bout rows, so they read as one part of the app.
  */
 
-/** Name first, then one line of facts separated by dots, with at most one
- *  action beside it. Used by the directories. */
-export function PageHeader({ title, meta, children, aside }: { title: string; meta: ReactNode[]; children?: ReactNode; aside?: ReactNode }) {
-  const facts = meta.filter(Boolean);
-  return (
-    <header className={`${PANEL} flex flex-wrap items-start justify-between gap-x-4 gap-y-3 px-4 py-4 sm:px-6 sm:py-5`}>
-      <div className="min-w-0">
-        <h1 className="text-balance break-words text-xl font-semibold tracking-tight text-zinc-950 sm:text-2xl">{title}</h1>
-        {facts.length ? (
-          <p className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs leading-5 text-zinc-500 sm:text-sm">
-            {facts.map((fact, index) => <span key={index} className="contents">{index ? <span aria-hidden="true" className="text-zinc-300">·</span> : null}<span className="min-w-0">{fact}</span></span>)}
-          </p>
-        ) : null}
-        {children ? <div className="mt-1 text-xs leading-5 text-zinc-400">{children}</div> : null}
-      </div>
-      {aside ? <div className="flex shrink-0 flex-wrap items-center gap-2">{aside}</div> : null}
-    </header>
-  );
-}
-
 export function Panel({ title, subtitle, children, aside }: { title: string; subtitle?: ReactNode; children: ReactNode; aside?: ReactNode }) {
   return (
     <section className={`${PANEL} overflow-hidden`}>

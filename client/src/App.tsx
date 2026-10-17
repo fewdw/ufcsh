@@ -20,7 +20,6 @@ import ReportIssueDialog from "./components/ReportIssueDialog";
 import { ShortcutProvider } from "./shortcuts";
 import { DevStatsOverlay, isDevSite } from "./devStats";
 import { LivePreviewPanel } from "./livePreview";
-import { GraphicsProvider } from "./graphicsLauncher";
 
 /** A route's page: rendered directly once its code is in hand (the usual case,
  *  since every page's code is fetched in the background), through Suspense
@@ -334,7 +333,6 @@ export default function App() {
   );
   return (
     <ShortcutProvider onSearch={openSearch}>
-    <GraphicsProvider>
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-zinc-100 text-zinc-900">
       <Header onSearch={openSearch} />
       {isDevSite ? <DevStatsOverlay /> : null}
@@ -374,7 +372,7 @@ export default function App() {
           <Route path="/info" element={<InfoPage />} />
           <Route path="/sign-in/*" element={<AuthPage mode="sign-in" />} />
           <Route path="/sign-up/*" element={<AuthPage mode="sign-up" />} />
-          <Route path="*" element={<div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-zinc-500"><p>This page couldn’t be found.</p><Link to="/" className="font-semibold text-zinc-900 underline">Back to events</Link></div>} />
+          <Route path="*" element={<div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-zinc-500"><h1>This page couldn’t be found.</h1><Link to="/" className="font-semibold text-zinc-900 underline">Back to events</Link></div>} />
         </Routes>
         </RouteErrorBoundary>
         </Suspense>
@@ -382,7 +380,6 @@ export default function App() {
       <CmdK open={searchOpen} onClose={() => setSearchOpen(false)} />
       <ParlaySlip />
     </div>
-    </GraphicsProvider>
     </ShortcutProvider>
   );
 }

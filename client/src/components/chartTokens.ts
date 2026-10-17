@@ -34,12 +34,4 @@ export function formatValue(value: number | null | undefined, format: Format = "
   }
 }
 
-/** Compact form for an axis tick or a tight cell: 12.4K, 1.2M. */
-export function compact(value: number): string {
-  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-  if (Math.abs(value) >= 10_000) return `${Math.round(value / 1000)}K`;
-  if (Math.abs(value) >= 1000) return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}K`;
-  return value.toLocaleString("en-US");
-}
-
 export const PANEL = "rounded-2xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]";

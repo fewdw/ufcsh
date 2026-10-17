@@ -2,9 +2,9 @@ import { useEffect, useSyncExternalStore } from "react";
 import type { LiveOddsAnswer } from "./api";
 
 /** How often the pill asks; the server reads Polymarket at most every 2s. */
-export const ODDS_POLL_MS = 3_000;
+const ODDS_POLL_MS = 3_000;
 /** An answer older than this is not shown: a stale price reads as a live one. */
-export const ODDS_FRESH_MS = 15_000;
+const ODDS_FRESH_MS = 15_000;
 /** Keep asking this long after the card leaves /api/live, so the main event's
  *  result is still caught. */
 const LINGER_MS = 90_000;

@@ -80,7 +80,7 @@ export function togglesFor(kind: Kind, board?: FighterBoard | null, fight?: Matc
 }
 
 /** Exact available quotes, including sportsbook, without inventing markets. */
-export function specificOdds(fight: Matchup) {
+function specificOdds(fight: Matchup) {
   const props = fight.odds?.props;
   if (!props) return [];
   const entries = [
@@ -111,7 +111,7 @@ function rankBadge(side: MatchupSide | FighterProfile): string | null {
 const rankMark = (side: { ranking: FightSide["ranking"] }) => side.ranking?.rank ? String(side.ranking.rank).replace(/^#/, "") : null;
 
 /** The surname a poster prints, keeping a Jr. or III: "Rosas Jr.". */
-export function surname(name: string): string {
+function surname(name: string): string {
   const words = name.trim().split(/\s+/);
   const suffix = words.length > 2 && /^(?:jr|sr)\.?$|^(?:ii|iii|iv)$/i.test(words.at(-1)!) ? words.at(-1)! : null;
   const last = lastName(name);
@@ -170,7 +170,7 @@ function communitySplit(fight: { f1: { id: string }; f2: { id: string } }, commu
 }
 
 /** The market's view: each side's implied chance with the bookmaker's margin taken out. */
-export function oddsSplit(odds: { f1: { close: string | null }; f2: { close: string | null } } | null | undefined, label: string): Split | null {
+function oddsSplit(odds: { f1: { close: string | null }; f2: { close: string | null } } | null | undefined, label: string): Split | null {
   const a = odds?.f1.close;
   const b = odds?.f2.close;
   if (!a || !b || !/^[+-]\d+$/.test(a) || !/^[+-]\d+$/.test(b)) return null;

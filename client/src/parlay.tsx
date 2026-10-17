@@ -44,7 +44,7 @@ export function outcomeId(outcome: Outcome): string {
  *  the entire point of a parlay. This only blocks outcomes that are
  *  impossible together, not merely correlated ones (two picks that both
  *  happen to come true whenever the same thing happens are left alone). */
-export function outcomesConflict(a: Outcome, b: Outcome): boolean {
+function outcomesConflict(a: Outcome, b: Outcome): boolean {
   if (a.fightId !== b.fightId) return false;
   if (a.winner && b.winner && a.winner !== b.winner) return true;
   if (a.decision !== undefined && b.decision !== undefined && a.decision !== b.decision) return true;

@@ -3,7 +3,7 @@ import { useEffect } from "react";
 const SITE_NAME = "ufc.sh";
 export const SITE_URL = (import.meta.env.VITE_SITE_ORIGIN || "https://ufc.sh").replace(/\/$/, "");
 const DEFAULT_DESCRIPTION =
-  "The #1 UFC data platform: fight cards, matchup odds, results, fighter statistics and current rankings in one fast interface.";
+  "UFC data for hardcore fans: fight cards, matchup odds, results, fighter statistics and current rankings in one fast interface.";
 
 function setMeta(selector: string, attribute: "name" | "property", key: string, content: string): void {
   let element = document.head.querySelector<HTMLMetaElement>(selector);
@@ -29,7 +29,7 @@ export function useSeo({
   structuredData?: Record<string, unknown>;
 }): void {
   useEffect(() => {
-    const fullTitle = title ? `${title} | ${SITE_NAME}` : `#1 UFC Data Platform: Events, Odds, Stats & Rankings | ${SITE_NAME}`;
+    const fullTitle = title ? `${title} | ${SITE_NAME}` : `UFC Data: Events, Odds, Stats & Rankings | ${SITE_NAME}`;
     const canonicalUrl = `${SITE_URL}${path ?? window.location.pathname}`;
 
     document.title = fullTitle;

@@ -103,10 +103,6 @@ export function useShortcutNav(nav: ShortcutNav | null) {
   }, [key, setNav]);
 }
 
-export function useShortcutHelp() {
-  return useContext(ShortcutContext).openHelp;
-}
-
 export function Keys({ keys }: { keys: string[] }) {
   return (
     <span className="inline-flex shrink-0 gap-1">

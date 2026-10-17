@@ -164,7 +164,7 @@ export function CompareRow({
 /** Identity is never colour-alone: every panel names both fighters, and names
  *  them in the order it places them — first fighter left, second right, in the
  *  legend exactly as in the rows and the charts below it. */
-export function Legend({
+function Legend({
   fight,
   mutedSides = {},
 }: {
@@ -762,7 +762,7 @@ function StrikeSplitColumns({
   );
 }
 
-export function FightTotals({ fight, grouped = false }: { fight: Matchup; grouped?: boolean }) {
+function FightTotals({ fight, grouped = false }: { fight: Matchup; grouped?: boolean }) {
   const totals = fight.detail?.type === "past" ? fight.detail.totals : undefined;
   const strikeDistribution = fight.detail?.type === "past" ? fight.detail.sigStrikes : undefined;
   const seconds = fightSeconds(fight);
@@ -910,7 +910,7 @@ const ROUND_WIDTH: Record<number, string> = {
   5: "w-1/3 @[54rem]:w-1/5",
 };
 
-export function RoundByRound({ fight, grouped = false }: { fight: Matchup; grouped?: boolean }) {
+function RoundByRound({ fight, grouped = false }: { fight: Matchup; grouped?: boolean }) {
   const blocks = fight.detail?.type === "past" ? fight.detail.totalsRounds : undefined;
   const count = blocks?.rounds.length ?? 0;
   const width = ROUND_WIDTH[Math.min(Math.max(count, 1), 5)];

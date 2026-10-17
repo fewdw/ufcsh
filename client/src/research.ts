@@ -4,7 +4,6 @@ import { useSearchParams } from "react-router-dom";
 
 /** Layout and helpers shared by the research pages (officials, venues). */
 export const PAGE = "h-full overflow-y-auto overflow-x-hidden";
-export const PAGE_BODY = "mx-auto flex w-full max-w-5xl flex-col gap-3 p-2 pb-10 sm:p-3 lg:p-4";
 export const FULL_PAGE_BODY = "flex w-full flex-col gap-2 p-2 pb-10 sm:gap-3 sm:p-3 lg:h-full lg:pb-3";
 /** A Browse page: on a large screen the page itself never scrolls; the
  *  toolbar stays put and each list that doesn't fit (`BROWSE_LIST`) scrolls

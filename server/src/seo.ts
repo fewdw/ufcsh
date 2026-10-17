@@ -38,8 +38,8 @@ const xmlEscape = (value: string) => value.replace(/[<>&'"]/g, (char) => XML_ENT
 
 const SITE_IMAGE = `${SITE_URL}/og/site.jpg`;
 const DEFAULT: Omit<PageSeo, "canonical"> = {
-  title: "#1 UFC Data Platform: Events, Odds, Stats & Rankings | ufc.sh",
-  description: "The #1 UFC data platform: fight cards, matchup odds, results, fighter statistics and current rankings in one fast interface.",
+  title: "UFC Data: Events, Odds, Stats & Rankings | ufc.sh",
+  description: "UFC data for hardcore fans: fight cards, matchup odds, results, fighter statistics and current rankings in one fast interface.",
   type: "website",
   image: SITE_IMAGE,
   status: 200,
