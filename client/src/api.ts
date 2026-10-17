@@ -443,6 +443,8 @@ export type Matchup = {
   live?: boolean;
   /** This bout is the one being fought right now. */
   in_progress?: boolean;
+  /** The card's next bout, not started yet. */
+  up_next?: boolean;
   stats_updated_at?: number | null;
   /** Rounds an administrator has released for scoring, ahead of the live feed. */
   rounds_open?: number | null;

@@ -43,9 +43,12 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
         <PanelHeading
           title="Community scorecard"
           subtitle={`${totals.scorers.toLocaleString()} ${totals.scorers === 1 ? "scorer" : "scorers"}`}
-          aside={live ? (
-            <span className="flex items-center gap-1.5 text-xs text-emerald-600">
-              <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />Live
+          aside={live || !communityOnly ? (
+            <span className="flex items-center gap-3">
+              {live ? <span className="flex items-center gap-1.5 text-xs text-emerald-600">
+                <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />Live
+              </span> : null}
+              {!communityOnly ? <OverlayButton fightId={fight.id} followsCard={Boolean(fight.in_progress || fight.up_next)} /> : null}
             </span>
           ) : undefined}
         />
@@ -114,7 +117,6 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
             <Lock className="mt-1 h-3 w-3 shrink-0" aria-hidden="true" />Round {fighting} stays hidden from everyone until it ends, so nobody's card follows the crowd.
           </p>
         ) : null}
-        {!communityOnly ? <div className="flex justify-end border-t border-zinc-100 px-5 py-2.5"><OverlayButton fightId={fight.id} /></div> : null}
       </section>
       {!communityOnly && eligibility.available > 0 ? (
         <ScoreEditor fight={fight} eligibility={eligibility} onSaved={() => { void apiCache.loadAfterWrite(`/api/fights/${fight.id}/scores`); }} />
