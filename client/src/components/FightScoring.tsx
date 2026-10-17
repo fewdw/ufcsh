@@ -9,6 +9,8 @@ import { PANEL_SHELL, PanelHeading, sectionLabel } from "./FightStats";
 // tab on a fallback for at least React's 300 ms reveal throttle.
 import ScoreEditor from "./ScoreEditor";
 import OverlayButton from "./OverlayButton";
+import ScoreRoundControls from "./ScoreRoundControls";
+import { wasAdmin } from "../admin";
 import { lastName } from "../format";
 
 
@@ -127,6 +129,7 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
       {!communityOnly && eligibility.available > 0 ? (
         <ScoreEditor fight={fight} eligibility={eligibility} onSaved={() => { void apiCache.loadAfterWrite(`/api/fights/${fight.id}/scores`); }} />
       ) : null}
+      {!communityOnly && wasAdmin() ? <ScoreRoundControls fightId={fight.id} /> : null}
     </>
   );
 }

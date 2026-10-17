@@ -555,7 +555,7 @@ test("released rounds are stored per bout and drive what the store will accept",
   assert.throws(() => store.setOpenRounds("ffffffffffffffff", 1, "owner@example.com"), ScoringError, "a bout that is not in the database cannot be opened");
 });
 
-test("a result deletes rounds the bout never reached; closing a round by hand deletes its scores", (t) => {
+test("a result deletes rounds the bout never reached; closing a round by hand only hides its scores", (t) => {
   const today = new Date().toISOString().slice(0, 10);
   const live = { ...fight, f1_outcome: null, f2_outcome: null, event_date: today, method: null, round: null, detail_json: '{"type":"future"}' };
   const { store, setFight } = fixture(t, live);
@@ -564,18 +564,27 @@ test("a result deletes rounds the bout never reached; closing a round by hand de
   store.save(id, "alice", { revision: 0, rounds });
   store.save(id, "bob", { revision: 0, rounds: rounds.slice(0, 2) });
   assert.deepEqual(store.roundCounts(id), { 1: 2, 2: 2, 3: 1 });
-  // Closing round 3 by hand removes what was scored for it.
+  // Closing round 3 by hand hides what was scored for it, and keeps it.
   store.setOpenRounds(id, 2, "owner@example.com");
-  assert.deepEqual(store.roundCounts(id), { 1: 2, 2: 2 });
-  assert.equal(store.mine(id, "alice").rounds.length, 2);
+  assert.deepEqual(store.roundCounts(id), { 1: 2, 2: 2, 3: 1 });
+  const hidden = store.mine(id, "alice");
+  assert.equal(hidden.rounds.length, 2);
+  assert.ok(store.summary(id).rounds.every(r => r.round <= 1), "only closed rounds are public");
+  // A save while it is closed does not drop the hidden round.
+  store.save(id, "alice", { revision: hidden.revision, rounds: rounds.slice(0, 2) });
+  assert.deepEqual(store.roundCounts(id), { 1: 2, 2: 2, 3: 1 });
+  // Reopening it brings the scores back.
+  store.setOpenRounds(id, 3, "owner@example.com");
+  assert.equal(store.mine(id, "alice").rounds.length, 3);
+  store.setOpenRounds(id, 2, "owner@example.com");
   // An unusable result settles nothing.
   setFight({ ...live, f1_outcome: "win", f2_outcome: "loss", method: "KO/TKO", round: null });
   assert.equal(store.settle({ ...live, f1_outcome: "win", f2_outcome: "loss", method: "KO/TKO", round: null }), 0);
-  assert.deepEqual(store.roundCounts(id), { 1: 2, 2: 2 });
-  // A round-two stoppage: round two was never judged.
+  assert.deepEqual(store.roundCounts(id), { 1: 2, 2: 2, 3: 1 });
+  // A round-two stoppage: round two was never judged, round three never fought.
   const stopped = { ...live, f1_outcome: "win", f2_outcome: "loss", method: "KO/TKO", round: "2", detail_json: '{"type":"past"}' };
   setFight(stopped);
-  assert.equal(store.settle(stopped), 2);
+  assert.equal(store.settle(stopped), 3);
   assert.deepEqual(store.roundCounts(id), { 1: 2 });
   assert.equal(store.openRounds(id), 0, "the hand-opened rounds close with the result");
   const alice = store.mine(id, "alice");
