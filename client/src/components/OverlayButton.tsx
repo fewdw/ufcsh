@@ -53,9 +53,16 @@ export default function OverlayButton({ fightId, followsCard }: { fightId: strin
     <>
       <span className="flex items-center gap-0.5">
         <button type="button" onClick={copy} title={`${url} · OBS → Sources → Browser, 560 × 160`}
-          className="flex items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 py-1 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900">
-          {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" /> : <MonitorPlay className="h-3.5 w-3.5" aria-hidden="true" />}
-          {copied ? "Copied" : <><span className="max-sm:hidden">Copy OBS URL for your stream</span><span className="sm:hidden">OBS URL</span></>}
+          className="grid whitespace-nowrap rounded-md px-1.5 py-1 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900">
+          {/* Both labels share one cell, so the button keeps its width and
+              nothing beside it moves when Copied takes over, centred. */}
+          <span className={`flex items-center gap-1.5 [grid-area:1/1] ${copied ? "invisible" : ""}`}>
+            <MonitorPlay className="h-3.5 w-3.5" aria-hidden="true" />
+            <span className="max-sm:hidden">Copy OBS URL for your stream</span><span className="sm:hidden">OBS URL</span>
+          </span>
+          <span className={`flex items-center justify-center gap-1.5 [grid-area:1/1] ${copied ? "" : "invisible"}`} aria-live="polite">
+            <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />{copied ? "Copied" : ""}
+          </span>
         </button>
         <button type="button" onClick={() => setOpen(true)} aria-label="Stream overlay setup" title="Preview and setup"
           className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-900">
