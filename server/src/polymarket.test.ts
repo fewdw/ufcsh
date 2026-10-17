@@ -125,7 +125,7 @@ function card() {
     get reads() { return reads; },
     advance(ms: number) { now += ms; },
     finish(id: string, winner: 1 | 2) {
-      results.set(id, { id, f1_name: `${id} One`, f2_name: `${id} Two`, f1_outcome: winner === 1 ? "win" : "loss", f2_outcome: winner === 2 ? "win" : "loss", method: "KO/TKO", round: "2", time: "1:03" });
+      results.set(id, { id, f1_name: `${id} One`, f2_name: `${id} Two`, f1_outcome: winner === 1 ? "win" : "loss", f2_outcome: winner === 2 ? "win" : "loss", method: "KO/TKO", round: "2", time: "1:03", fight_number: 3, total_fights: 12 });
     },
   };
 }

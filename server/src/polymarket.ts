@@ -25,7 +25,7 @@ export const ODDS_TTL_MS = 2_000;
 /** A price older than this is not shown at all. */
 export const ODDS_MAX_AGE_MS = 15_000;
 /** How long the result of the bout that just ended stays up. */
-export const HOLD_MS = 2 * 60_000;
+export const HOLD_MS = 3 * 60_000;
 const MARKETS_TTL_MS = 10 * 60_000;
 /** A bout without a market is looked for again this often (late replacements). */
 const MISSING_RETRY_MS = 60_000;
@@ -241,6 +241,8 @@ export type FinishedBout = {
   id: string; f1_name: string; f2_name: string;
   f1_outcome: string | null; f2_outcome: string | null;
   method: string | null; round: string | null; time: string | null;
+  /** Its place on the card counted from the opener, as /api/live's. */
+  fight_number: number | null; total_fights: number | null;
 };
 export type LiveOdds = { f1: number; f2: number; url: string; closed: boolean };
 export type LiveOddsAnswer = {
