@@ -43,7 +43,7 @@ export type LiveCard = {
   total_fights: number;
   /** The bout's place on the card counted from the opener; the main event is total_fights. */
   fight_number: number;
-  /** Under way — either its numbers are already out or its start has passed. */
+  /** Under way — its numbers are already out or a round was opened by hand. */
   live: boolean;
   starts_at: number | null;
   fight: {
@@ -443,6 +443,8 @@ export type Matchup = {
   live?: boolean;
   /** This bout is the one being fought right now. */
   in_progress?: boolean;
+  /** The card's next bout, not started yet. */
+  up_next?: boolean;
   stats_updated_at?: number | null;
   /** Rounds an administrator has released for scoring, ahead of the live feed. */
   rounds_open?: number | null;

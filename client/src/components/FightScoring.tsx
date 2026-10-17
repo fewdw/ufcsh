@@ -43,9 +43,12 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
         <PanelHeading
           title="Community scorecard"
           subtitle={`${totals.scorers.toLocaleString()} ${totals.scorers === 1 ? "scorer" : "scorers"}`}
-          aside={live ? (
-            <span className="flex items-center gap-1.5 text-xs text-emerald-600">
-              <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />Live
+          aside={live || !communityOnly ? (
+            <span className="flex items-center gap-3">
+              {live ? <span className="flex items-center gap-1.5 text-xs text-emerald-600">
+                <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />Live
+              </span> : null}
+              {!communityOnly ? <OverlayButton fightId={fight.id} followsCard={Boolean(fight.in_progress || fight.up_next)} /> : null}
             </span>
           ) : undefined}
         />
@@ -108,13 +111,18 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
             })}
           </div>
         </div>
+        {totals.importedCards > 0 && totals.source ? (
+          <p className="border-t border-zinc-100 px-4 py-3 text-xs text-zinc-500 @[32rem]:px-5">
+            Includes {totals.importedCards.toLocaleString()} {totals.importedCards === 1 ? "card" : "cards"} from{" "}
+            {totals.source.url ? <a href={totals.source.url} target="_blank" rel="noreferrer" className="font-medium text-zinc-700 underline-offset-2 hover:underline">{totals.source.name}{"\u00a0"}<span aria-hidden="true">↗</span></a> : totals.source.name}
+          </p>
+        ) : null}
         {eligibility.reason ? <p className="border-t border-zinc-100 px-5 py-3 text-xs text-zinc-500">{eligibility.reason}</p> : null}
         {fighting ? (
           <p className="flex items-start gap-1.5 border-t border-zinc-100 px-4 py-3 text-xs leading-5 text-zinc-500 @[32rem]:px-5">
             <Lock className="mt-1 h-3 w-3 shrink-0" aria-hidden="true" />Round {fighting} stays hidden from everyone until it ends, so nobody's card follows the crowd.
           </p>
         ) : null}
-        {!communityOnly ? <div className="flex justify-end border-t border-zinc-100 px-5 py-2.5"><OverlayButton fightId={fight.id} /></div> : null}
       </section>
       {!communityOnly && eligibility.available > 0 ? (
         <ScoreEditor fight={fight} eligibility={eligibility} onSaved={() => { void apiCache.loadAfterWrite(`/api/fights/${fight.id}/scores`); }} />

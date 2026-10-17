@@ -4,13 +4,13 @@ import AccountButton from "./components/AccountButton";
 import CmdK from "./components/CmdK";
 import SearchGlyph from "./components/SearchGlyph";
 import LiveMatchup from "./components/LiveMatchup";
-import { segmentedGroup, segmentedIdle, segmentedSelected } from "./components/segmented";
+import { segmentedIdle, segmentedSelected } from "./components/segmented";
 import { ChevronDown, Flag, Moon, Shield, Sun } from "lucide-react";
 import { accountsEnabled, useAccount } from "./auth";
 import { useAdminResource, type AdminSession } from "./admin";
 import { inMore, MORE_HOME, MoreGroups } from "./components/MoreNav";
 import { sendPageView } from "./pageViews";
-import { useSettings, withRanking, type Density } from "./settings";
+import { useSettings, withRanking } from "./settings";
 import { prefetch } from "./api";
 import { useLinkPrefetch, warmSections } from "./useLinkPrefetch";
 import { pages, type PageLoader } from "./pages";
@@ -128,7 +128,6 @@ function MoreMenu({ pathname, active, open, setOpen, onReport }: { pathname: str
             </Link>
           </li>
         )} />
-        <DensityChoice />
         {onReport ? <div className="mt-1 border-t border-zinc-100 pt-1">
           <button type="button" onClick={() => { setOpen(false); onReport(); }}
             className="flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-2 py-2 text-left text-[13px] text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-900 min-[375px]:px-3 min-[375px]:text-sm">
@@ -138,31 +137,6 @@ function MoreMenu({ pathname, active, open, setOpen, onReport }: { pathname: str
       </div>
     </div> : null}
   </div>;
-}
-
-const DENSITIES: { id: Density; label: string; title: string }[] = [
-  { id: "compact", label: "Compact", title: "Smaller text, more on screen" },
-  { id: "comfortable", label: "Comfortable", title: "Larger small print and stronger contrast" },
-];
-
-/** Text size, last in More: Comfortable sets the small print a size up and
- *  darkens the muted greys; Compact is the original, tighter layout. */
-function DensityChoice() {
-  const { settings, update } = useSettings();
-  return (
-    <div className="mt-1 border-t border-zinc-100 px-2 pb-1 pt-2 min-[375px]:px-3">
-      <p className="mb-1.5 text-[11px] font-medium text-zinc-500">Text</p>
-      <div className={segmentedGroup} role="group" aria-label="Text size">
-        {DENSITIES.map((option) => (
-          <button key={option.id} type="button" title={option.title} aria-pressed={settings.density === option.id}
-            onClick={() => update("density", option.id)}
-            className={`flex-1 rounded-full px-2.5 py-1 text-xs font-medium transition ${settings.density === option.id ? segmentedSelected : segmentedIdle}`}>
-            {option.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 function Header({ onSearch }: { onSearch: () => void }) {
