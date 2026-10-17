@@ -65,7 +65,7 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   not an official clock or a permanently locked live judging competition.
 - A bout is called **Live** (the header's pill, its row on the card, the
   admin panel) once the bout before it has a result: the header shows that
-  result (**Final**) for two minutes, then the next bout as Live with its place
+  result (**Final**) for three minutes, then the next bout as Live with its place
   on the card (3/13). The opener is Live from the card's announced start, and
   the first bout of a later segment from that segment's start (prelims
   finishing early leave the main card's opener at **Next** with a countdown).

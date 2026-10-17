@@ -99,7 +99,7 @@ export function useLivePreview(): { card: LiveCard; answer: LiveOddsAnswer | nul
     f2_outcome: s.outcome === "f2" ? "win" : s.outcome === "f1" ? "loss" : s.outcome,
     winner: s.outcome === "f1" ? 1 as const : s.outcome === "f2" ? 2 as const : null,
     method: s.method, round: String(decision(s.method) ? 3 : s.round), time: "3:12",
-    fight_number: 12, total_fights: 12, remaining_ms: 2 * 60_000,
+    fight_number: 12, total_fights: 12, remaining_ms: 3 * 60_000,
   };
   return { card, answer: { fight_id: id, odds, finished }, oddsUrl: null };
 }
