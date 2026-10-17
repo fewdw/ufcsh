@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  displayPrice, HOLD_MS, LiveOddsService, matchMarket, nameMatch, ODDS_MAX_AGE_MS, ODDS_TTL_MS, parseMarkets,
+  displayPrices, HOLD_MS, LiveOddsService, matchMarket, nameMatch, ODDS_MAX_AGE_MS, ODDS_TTL_MS, parseMarkets,
   type FinishedBout, type LiveBout, type Market, type Pair,
 } from "./polymarket.ts";
 
@@ -69,14 +69,27 @@ test("a bout matches one market only, in either corner order", () => {
 
 test("prices follow Polymarket's own rule: midpoint, or last trade past a 10¢ spread", () => {
   const book = (bids: string[], asks: string[], last?: string) => ({ asset_id: "t", bids: bids.map((price) => ({ price })), asks: asks.map((price) => ({ price })), last_trade_price: last });
+  // Each side's book mirrors the other's, as the CLOB returns them.
+  const pair = (bids: string[], asks: string[], last?: string) => displayPrices(
+    book(bids, asks, last),
+    book(asks.map((p) => String(1 - Number(p))), bids.map((p) => String(1 - Number(p))), last),
+  )?.map((p) => Math.round(p * 1e6) / 1e6) ?? null;
   // The order book behind the 50% in the screenshot: best bid 0.49, best ask 0.50.
-  assert.equal(displayPrice(book(["0.47", "0.48", "0.49"], ["0.52", "0.51", "0.5"], "0.500")), 0.495);
-  assert.equal(displayPrice(book(["0.40"], ["0.50"], "0.47")), 0.45);
-  assert.equal(displayPrice(book(["0.30"], ["0.55"], "0.47")), 0.47);
-  assert.equal(displayPrice(book([], [], "0.62")), 0.62);
-  assert.equal(displayPrice(book(["0.30"], ["0.55"])), null);
-  assert.equal(displayPrice(book(["2"], ["x"], "-1")), null);
-  assert.equal(displayPrice(undefined), null);
+  assert.deepEqual(pair(["0.47", "0.48", "0.49"], ["0.52", "0.51", "0.5"], "0.500"), [0.495, 0.505]);
+  assert.deepEqual(pair(["0.40"], ["0.50"], "0.47"), [0.45, 0.55]);
+  assert.deepEqual(pair(["0.30"], ["0.55"], "0.47"), [0.47, 0.53]);
+  assert.deepEqual(pair([], [], "0.62"), [0.62, 0.38]);
+  assert.equal(pair(["0.30"], ["0.55"]), null);
+  assert.equal(displayPrices(book(["2"], ["x"], "-1"), undefined), null);
+  assert.equal(displayPrices(undefined, undefined), null);
+  // Cerminara vs Stiller in round 1: no one left selling Cerminara, both
+  // tokens' last trade 0.99. That trade was Cerminara's, not Stiller's too.
+  assert.deepEqual(pair(["0.99"], [], "0.990"), [0.99, 0.01]);
+  assert.deepEqual(pair([], ["0.01"], "0.990"), [0.01, 0.99]);
+  // A last trade written in the other outcome's terms (Malott by KO, last 0.76).
+  assert.deepEqual(pair(["0.10"], ["0.23"], "0.760"), [0.24, 0.76]);
+  // One book missing still prices both sides from the other.
+  assert.deepEqual(displayPrices(undefined, book(["0.46"], ["0.47"]))?.map((p) => Math.round(p * 1e6) / 1e6), [0.535, 0.465]);
 });
 
 // ---------------------------------------------------------------------------

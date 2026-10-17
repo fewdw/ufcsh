@@ -137,16 +137,27 @@ export function matchMarket(markets: Market[], f1: string[], f2: string[]): { ma
   return found.length === 1 ? found[0] : null;
 }
 
-/** What Polymarket itself shows for an outcome: the midpoint of the best bid
- *  and ask, or the last trade when they are more than 10¢ apart. */
-export function displayPrice(book: Book | undefined): number | null {
-  if (!book) return null;
-  const bids = (book.bids ?? []).map((o) => price(o?.price)).filter((p): p is number => p != null);
-  const asks = (book.asks ?? []).map((o) => price(o?.price)).filter((p): p is number => p != null);
-  const bid = bids.length ? Math.max(...bids) : null;
-  const ask = asks.length ? Math.min(...asks) : null;
-  if (bid != null && ask != null && ask >= bid && ask - bid <= 0.1 + 1e-9) return (bid + ask) / 2;
-  return price(book.last_trade_price);
+/** What Polymarket itself shows for a market's two outcomes: the midpoint
+ *  of the best bid and ask, or the last trade when they are more than 10¢
+ *  apart. An order for one outcome is an order for the other at 1 − price,
+ *  so the two books are read as one and the pair always adds up to 1. The
+ *  CLOB writes one last trade for the whole market on both tokens, in either
+ *  outcome's terms, so it goes to the outcome whose prices it sits nearer:
+ *  a one-sided book once showed 99% for both fighters. */
+export function displayPrices(first: Book | undefined, second: Book | undefined): Pair | null {
+  const best = (orders: { price: string }[] | undefined, pick: (...values: number[]) => number) => {
+    const prices = (orders ?? []).map((o) => price(o?.price)).filter((p): p is number => p != null);
+    return prices.length ? pick(...prices) : null;
+  };
+  const flip = (p: number | null) => (p == null ? null : 1 - p);
+  const either = (a: number | null, b: number | null, pick: (...values: number[]) => number) => (a == null ? b : b == null ? a : pick(a, b));
+  const bid = either(best(first?.bids, Math.max), flip(best(second?.asks, Math.min)), Math.max);
+  const ask = either(best(first?.asks, Math.min), flip(best(second?.bids, Math.max)), Math.min);
+  if (bid != null && ask != null && ask >= bid && ask - bid <= 0.1 + 1e-9) return [(bid + ask) / 2, 1 - (bid + ask) / 2];
+  const last = price(first?.last_trade_price) ?? price(second?.last_trade_price);
+  if (last == null) return null;
+  const off = (p: number) => Math.max(bid == null ? 0 : bid - p, ask == null ? 0 : p - ask, 0);
+  return off(1 - last) < off(last) ? [1 - last, last] : [last, 1 - last];
 }
 
 async function getJson(url: string, init: RequestInit = {}, timeoutMs = 5_000): Promise<unknown> {
@@ -212,9 +223,8 @@ export async function findMarket(bout: BoutNames, now = Date.now()): Promise<{ m
  *  Gamma's settled prices stand in for it. */
 async function readPrices(market: Market): Promise<[number, number] | null> {
   const books = list(await getJson(`${CLOB}/books`, { method: "POST", body: JSON.stringify(market.tokens.map((token_id) => ({ token_id }))) }, 4_000)) as Book[];
-  const a = displayPrice(books.find((b) => b?.asset_id === market.tokens[0]));
-  const b = displayPrice(books.find((b) => b?.asset_id === market.tokens[1]));
-  if (a != null && b != null) return [a, b];
+  const pair = displayPrices(books.find((b) => b?.asset_id === market.tokens[0]), books.find((b) => b?.asset_id === market.tokens[1]));
+  if (pair) return pair;
   const fresh = (await marketsFor(market.date, 30_000)).find((m) => m.slug === market.slug);
   return fresh?.closed && fresh.prices ? fresh.prices : null;
 }
