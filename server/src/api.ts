@@ -44,7 +44,7 @@ import { CommentStore } from "./comments.ts";
 import { createCommentsHandler } from "./comments-http.ts";
 import { ACCOUNT_SYNC_MS, accountSyncCheck, adminAccounts, syncAccounts } from "./accounts.ts";
 import { recentSyncError, syncStatus } from "./sync-status.ts";
-import { releasedRounds } from "./live-rounds.ts";
+import { adminLive, releasedRounds } from "./live-rounds.ts";
 import { pruneBackups } from "./backup-retention.ts";
 import { ensureImageVariant, normalizeHeadshot, variantPath, type ImageSize } from "./image-variants.ts";
 import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds, syncOddsForFight, fighterNames } from "./sync.ts";
@@ -432,8 +432,8 @@ function listEvents(): unknown {
 
 /** The bout on now for a running card (fought bottom-up, so the lowest one
  * without a result), or null when nothing is running. `live` is whether it has
- * started: numbers already published settle it, and so does a round opened
- * from the admin panel. Nothing else does; until then it is next. */
+ * started: numbers already published settle it, and so does the admin panel
+ * marking it live or opening a round. Nothing else does; until then it is next. */
 function currentBout() {
   const e = prepared(`SELECT * FROM events WHERE complete = 0
     AND date >= date('now', '-1 day') AND date <= date('now') ORDER BY date DESC LIMIT 1`).get() as EventRow | undefined;
@@ -444,9 +444,9 @@ function currentBout() {
   const starts_at = estimatedStart(fights.map(scheduledBout), Number(bout.ord) || 0, segmentTimes(e));
   const completed = fights.filter(fightIsComplete).length;
   // Live only on evidence the bout has started: UFCStats publishing its round
-  // totals, or an admin opening a round to score. An estimated start passing,
-  // or the bout before it ending, only means it is next.
-  const live = fightIsUnderway(bout) || releasedRounds(bout.id) > 0;
+  // totals, or an admin marking it live or opening a round to score. An
+  // estimated start passing, or the bout before it ending, only means it is next.
+  const live = fightIsUnderway(bout) || adminLive(bout.id);
   return { event: e, fights, bout, starts_at, completed, live };
 }
 

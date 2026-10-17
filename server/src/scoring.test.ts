@@ -7,6 +7,7 @@ import http from "node:http";
 import { once } from "node:events";
 import { spawn } from "node:child_process";
 import { generateKeyPairSync, sign } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import { normalizeUsername, scoringEligibility, ScoringStore, ScoringError, UsernameError, validateSubmission, type ScoringFight } from "./scoring.ts";
 import { authenticateScorer, createScoringHandler } from "./scoring-http.ts";
 
@@ -553,6 +554,44 @@ test("released rounds are stored per bout and drive what the store will accept",
   assert.equal(store.eligibility(id).available, 1);
   for (const bad of [-1, 6, 1.5, "2", null]) assert.throws(() => store.setOpenRounds(id, bad, "owner@example.com"), ScoringError, `rejects ${bad}`);
   assert.throws(() => store.setOpenRounds("ffffffffffffffff", 1, "owner@example.com"), ScoringError, "a bout that is not in the database cannot be opened");
+});
+
+test("an admin's live mark is kept apart from the rounds and cleared by the result", (t) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const live = { ...fight, f1_outcome: null, f2_outcome: null, event_date: today, method: null, round: null, detail_json: '{"type":"future"}' };
+  const { store, setFight } = fixture(t, live);
+  assert.equal(store.markedLive(id), false);
+  assert.equal(store.markLive(id, true, "owner@example.com"), true);
+  assert.equal(store.markedLive(id), true);
+  assert.equal(store.eligibility(id).available, 0, "marking it live opens no round");
+  // Opening and closing rounds leaves the mark alone, and the mark the rounds.
+  store.setOpenRounds(id, 2, "owner@example.com");
+  store.setOpenRounds(id, 0, "owner@example.com");
+  assert.equal(store.markedLive(id), true);
+  store.setOpenRounds(id, 1, "owner@example.com");
+  store.markLive(id, false, "owner@example.com");
+  assert.deepEqual({ live: store.markedLive(id), open: store.openRounds(id) }, { live: false, open: 1 }, "a mistake is taken back");
+  for (const bad of [1, "true", null, undefined]) assert.throws(() => store.markLive(id, bad, "owner@example.com"), ScoringError, `rejects ${bad}`);
+  assert.throws(() => store.markLive("ffffffffffffffff", true, "owner@example.com"), ScoringError);
+  store.markLive(id, true, "owner@example.com");
+  const decision = { ...live, f1_outcome: "win", f2_outcome: "loss", method: "U-DEC", round: "3", time: "5:00", detail_json: '{"type":"past"}' };
+  setFight(decision);
+  store.settle(decision);
+  assert.equal(store.markedLive(id), false, "the result clears the mark");
+});
+
+test("a scoring database from before the live mark gains it in place", (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ufc-scoring-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, "scores.db");
+  const old = new DatabaseSync(file);
+  old.exec(`CREATE TABLE live_rounds (fight_id TEXT PRIMARY KEY, rounds INTEGER NOT NULL CHECK(rounds BETWEEN 0 AND 5),
+    updated_by TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL)`);
+  old.prepare("INSERT INTO live_rounds VALUES (?, 2, '', 0)").run(id);
+  old.close();
+  const store = new ScoringStore(file, () => [], () => "0");
+  t.after(() => store.db.close());
+  assert.deepEqual({ open: store.openRounds(id), live: store.markedLive(id) }, { open: 2, live: false });
 });
 
 test("a result deletes rounds the bout never reached; closing a round by hand only hides its scores", (t) => {

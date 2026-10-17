@@ -290,6 +290,11 @@ export class ScoringStore {
         updated_by TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL
       );
     `);
+    // An administrator's word that the bout on now has started, for a walkout
+    // the feed has not caught yet. Added after the table, so added in place.
+    if (!(this.db.prepare("PRAGMA table_info(live_rounds)").all() as { name: string }[]).some(column => column.name === "live")) {
+      this.db.exec("ALTER TABLE live_rounds ADD COLUMN live INTEGER NOT NULL DEFAULT 0");
+    }
     // Scorers gained a chosen name and a picture after the first release; the
     // columns are added in place so an existing database keeps its cards.
     const columns = new Set((this.db.prepare("PRAGMA table_info(scorers)").all() as { name: string }[]).map(column => column.name));
@@ -354,13 +359,29 @@ export class ScoringStore {
     }
     const fight = this.fight(id);
     if (!fight) throw new ScoringError(404, "Fight not found.");
-    this.stmt(`INSERT INTO live_rounds VALUES (?, ?, ?, ?)
+    this.stmt(`INSERT INTO live_rounds (fight_id, rounds, updated_by, updated_at) VALUES (?, ?, ?, ?)
       ON CONFLICT(fight_id) DO UPDATE SET rounds = excluded.rounds,
         updated_by = excluded.updated_by, updated_at = excluded.updated_at`)
       .run(id, rounds as number, by, Date.now());
     // Every card on the bout now reads a different number of rounds.
     this.lists.clear();
     return rounds as number;
+  }
+  /** Whether an administrator has marked this bout as started. */
+  markedLive(id: string): boolean {
+    const row = this.stmt("SELECT live FROM live_rounds WHERE fight_id = ?").get(id) as { live: number } | undefined;
+    return Boolean(row?.live);
+  }
+  /** Mark the bout started, or take back a mark made by mistake. Its rounds
+   *  are left as they are; the result clears the mark with them. */
+  markLive(id: string, live: unknown, by: string): boolean {
+    if (typeof live !== "boolean") throw new ScoringError(400, "Send { live: true | false }.");
+    if (!this.fight(id)) throw new ScoringError(404, "Fight not found.");
+    this.stmt(`INSERT INTO live_rounds (fight_id, rounds, updated_by, updated_at, live) VALUES (?, 0, ?, ?, ?)
+      ON CONFLICT(fight_id) DO UPDATE SET live = excluded.live,
+        updated_by = excluded.updated_by, updated_at = excluded.updated_at`)
+      .run(id, by, Date.now(), live ? 1 : 0);
+    return live;
   }
   /** How many cards hold each round of a bout, for the admin panel. */
   roundCounts(id: string): Record<number, number> {
