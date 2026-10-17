@@ -7,7 +7,7 @@ import LiveMatchup from "./components/LiveMatchup";
 import { segmentedIdle, segmentedSelected } from "./components/segmented";
 import { ChevronDown, Flag, Moon, Shield, Sun } from "lucide-react";
 import { accountsEnabled, useAccount } from "./auth";
-import { useAdminResource, type AdminSession } from "./admin";
+import { rememberAdmin, useAdminResource, wasAdmin, type AdminSession } from "./admin";
 import { inMore, MORE_HOME, MoreGroups } from "./components/MoreNav";
 import { sendPageView } from "./pageViews";
 import { useSettings, withRanking } from "./settings";
@@ -56,23 +56,13 @@ const GraphicPage = page(pages.graphic, module => module.default);
 
 const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
 
-// Remembered across pages and reloads, so the Admin link doesn't blink in on
-// each one. Only a hint for drawing it: the admin pages check on the server.
-const ADMIN_KEY = "ufcsh:admin:v1";
-let wasAdmin = (() => { try { return localStorage.getItem(ADMIN_KEY) === "1"; } catch { return false; } })();
-function rememberAdmin(admin: boolean) {
-  if (admin === wasAdmin) return;
-  wasAdmin = admin;
-  try { if (admin) localStorage.setItem(ADMIN_KEY, "1"); else localStorage.removeItem(ADMIN_KEY); } catch { /* private mode: this visit only */ }
-}
-
 /** Admin, just before More, as a shield: listed only for the few who have it. */
 function AdminLink({ active }: { active: boolean }) {
   const { isLoaded, user } = useAccount();
   const { data } = useAdminResource<AdminSession>(isLoaded && user ? "/api/admin/session" : null);
   if (data) rememberAdmin(data.admin);
   else if (isLoaded && !user) rememberAdmin(false);
-  if (!wasAdmin) return null;
+  if (!wasAdmin()) return null;
   const load = () => { void pages.admin().catch(() => {}); };
   return (
     <Link to="/admin" aria-label="Admin" title="Admin" aria-current={active ? "page" : undefined} onPointerEnter={load} onFocus={load} onTouchStart={load}
@@ -267,7 +257,7 @@ export default function App() {
     const path = location.pathname;
     if (path === "/profiles/me" || trackedPath.current === path) return;
     trackedPath.current = path;
-    sendPageView(path, wasAdmin);
+    sendPageView(path, wasAdmin());
   }, [location.pathname]);
 
   // Colour transitions come back once the first page has been drawn (see the

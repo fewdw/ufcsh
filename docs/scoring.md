@@ -73,9 +73,12 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
 - The admin panel's **Live rounds** tab shows one bout: the one the header's
   pill names (the opening bout, then whichever follows the last result),
   with Prev/Next for a feed that is late with a result. That bout's Score tab
-  appears as soon as it starts, rounds locked until opened. Closing a round
-  by hand deletes the scores entered for it (the panel asks first). When the
-  result lands, rounds the bout never reached and a stoppage round are deleted,
+  appears as soon as it starts, rounds locked until opened. The same switches
+  sit at the bottom of that bout's Score tab for administrators
+  (`components/LiveRoundSwitches.tsx`, `ScoreRoundControls.tsx`; the server
+  checks the administrator on every change). Closing a round by hand only
+  hides its scores — for a round opened by mistake — and reopening it brings
+  them back; a scorer saving meanwhile keeps theirs. When the result lands, rounds the bout never reached and a stoppage round are deleted,
   not just hidden, and the hand-opened count is cleared — checked every 15
   seconds, and only for a well-formed result.
 - **Blind scoring** is automatic and only while a bout is live. The newest

@@ -57,7 +57,7 @@ export function scoringEligibility(fight: ScoringFight, now = Date.now(), opened
   // The feed may include the current round. Never unlock unobserved future rounds.
   const available = live ? Math.min(scheduled, Math.max(observed, released)) : 0;
   // Scores open on their own, from the feed or the admin panel.
-  return { state, scheduled, available, reason: available ? null : live ? "Waiting for the round to end." : "Scoring opens when the fight starts." };
+  return { state, scheduled, available, reason: available ? null : live ? "Waiting for the round to end." : "Scoring opens when rounds end." };
 }
 
 /**
@@ -345,7 +345,9 @@ export class ScoringStore {
     return new Map(rows.map(row => [row.fight_id, row.rounds]));
   }
   /** Release rounds 1..n for scoring, or take them back with a lower number.
-   *  The feed's own count is never lowered by this — only this hand-set one. */
+   *  The feed's own count is never lowered by this — only this hand-set one.
+   *  Closing only hides: a round opened by mistake keeps what was scored for
+   *  it, and reopening it brings those scores back. */
   setOpenRounds(id: string, rounds: unknown, by: string): number {
     if (!Number.isInteger(rounds) || (rounds as number) < 0 || (rounds as number) > 5) {
       throw new ScoringError(400, "Open between zero and five rounds.");
@@ -356,10 +358,6 @@ export class ScoringStore {
       ON CONFLICT(fight_id) DO UPDATE SET rounds = excluded.rounds,
         updated_by = excluded.updated_by, updated_at = excluded.updated_at`)
       .run(id, rounds as number, by, Date.now());
-    // A round closed by hand on a live bout was opened too early: whatever was
-    // scored for it was scored before it happened.
-    const eligibility = scoringEligibility(fight, Date.now(), rounds as number);
-    if (!fightIsComplete(fight) && isFightDay(fight.event_date) && eligibility.scheduled) this.trimRounds(id, eligibility.available);
     // Every card on the bout now reads a different number of rounds.
     this.lists.clear();
     return rounds as number;
@@ -418,13 +416,18 @@ export class ScoringStore {
       const card = this.stmt("SELECT * FROM scorecards WHERE fight_id = ? AND user_id = ?").get(id, user) as StoredCard | undefined;
       if ((card?.revision ?? 0) !== submission.revision) throw new ScoringError(409, "Your scorecard changed in another tab. Reload your saved card before editing.");
       if (remove && !card) { this.db.exec("COMMIT"); return this.mine(id, user); }
+      // Rounds closed again by hand are hidden, not gone: a save made meanwhile
+      // keeps them for when they reopen. A result settles them instead.
+      const hidden = !remove && card && eligibility.state !== "completed"
+        ? (JSON.parse(card.rounds_json) as RoundScore[]).filter(r => r.round > eligibility.available) : [];
+      const kept = [...submission.rounds, ...hidden];
       const cardId = card?.id ?? randomUUID();
       this.stmt(`INSERT INTO scorecards VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(fight_id, user_id) DO UPDATE SET revision = excluded.revision, updated_at = excluded.updated_at, rounds_json = excluded.rounds_json`)
-        .run(cardId, id, user, submission.revision + 1, Date.now(), JSON.stringify(submission.rounds));
+        .run(cardId, id, user, submission.revision + 1, Date.now(), JSON.stringify(kept));
       this.stmt("DELETE FROM scores WHERE card_id = ?").run(cardId);
       const insert = this.stmt("INSERT INTO scores VALUES (?, ?, ?, ?, ?, ?, ?)");
-      for (const r of submission.rounds) insert.run(cardId, id, r.round, r.f1, r.f2, r.deduct1, r.deduct2);
+      for (const r of kept) insert.run(cardId, id, r.round, r.f1, r.f2, r.deduct1, r.deduct2);
       this.db.exec("COMMIT");
     } catch (error) { this.db.exec("ROLLBACK"); throw error; }
     this.lists.delete(user);

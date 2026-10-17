@@ -88,7 +88,7 @@ export function createAdminHandler(options: AdminHandlerOptions) {
       openRounds: released,
       available: eligibility.available,
       state: eligibility.state,
-      /** Cards holding each round, so closing one says what it deletes. */
+      /** Cards holding each round, kept while a round is closed again. */
       scored: scores.roundCounts(fight.id),
     };
   };
