@@ -463,8 +463,12 @@ function polymarketBout(): LiveBout | null {
 }
 
 function boutResult(id: string): FinishedBout | null {
-  const row = prepared(`SELECT id, f1_name, f2_name, f1_outcome, f2_outcome, method, round, time FROM fights WHERE id = ?`).get(id) as FinishedBout | undefined;
-  return row && fightIsComplete(row) ? row : null;
+  const row = prepared(`SELECT id, event_id, ord, f1_name, f2_name, f1_outcome, f2_outcome, method, round, time FROM fights WHERE id = ?`).get(id) as (Omit<FinishedBout, "fight_number" | "total_fights"> & { event_id: string; ord: number }) | undefined;
+  if (!row || !fightIsComplete(row)) return null;
+  const { event_id, ord, ...result } = row;
+  // Counted the way liveCard counts: the opener is 1, the main event last.
+  const place = prepared(`SELECT COUNT(*) AS total, SUM(ord >= ?) AS number FROM fights WHERE event_id = ?`).get(ord, event_id) as { total: number; number: number | null };
+  return { ...result, fight_number: place.number || null, total_fights: place.total || null };
 }
 
 function liveCard(rankingType: RankingType): unknown | null {

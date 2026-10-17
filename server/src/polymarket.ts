@@ -241,6 +241,8 @@ export type FinishedBout = {
   id: string; f1_name: string; f2_name: string;
   f1_outcome: string | null; f2_outcome: string | null;
   method: string | null; round: string | null; time: string | null;
+  /** Its place on the card counted from the opener, as /api/live's. */
+  fight_number: number | null; total_fights: number | null;
 };
 export type LiveOdds = { f1: number; f2: number; url: string; closed: boolean };
 export type LiveOddsAnswer = {

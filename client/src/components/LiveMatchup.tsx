@@ -107,12 +107,18 @@ function ResultPill({ result }: { result: NonNullable<LiveOddsAnswer["finished"]
   return (
     <Link
       to={`/fights/${result.id}`}
-      title={`${label === "Final" ? "" : `${label} · `}${headline}${how ? ` · ${how}` : ""}`}
+      title={`${label === "Final" ? "" : `${label} · `}${headline}${how ? ` · ${how}` : ""}${result.fight_number ? ` · bout ${result.fight_number} of ${result.total_fights}` : ""}`}
       className={PILL}
     >
       <span className={`shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] ${label === "Draw" ? "text-orange-700" : "text-zinc-500"}`}>{label}</span>
       <span className="truncate text-xs font-semibold text-zinc-900">{headline}</span>
       {how ? <span className="shrink-0 text-[11px] font-medium text-zinc-500">{how}</span> : null}
+      {/* Which bout it was, as the live pill says. */}
+      {result.fight_number ? (
+        <span className="shrink-0 text-[11px] font-medium tabular-nums text-zinc-500">
+          {result.fight_number}/{result.total_fights}
+        </span>
+      ) : null}
     </Link>
   );
 }
