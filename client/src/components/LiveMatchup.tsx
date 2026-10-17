@@ -8,6 +8,8 @@ import { useNow } from "../useNow";
 
 /** Up next shows only inside this window; further out, a countdown is noise. */
 const NEXT_WINDOW_MS = 12 * 3_600_000;
+/** Before the card begins, the opener is "next" only this close to its start. */
+const OPENER_NEXT_MS = 10 * 60_000;
 
 const PILL = "flex max-w-full items-center gap-2 rounded-full border border-zinc-200 bg-white py-1 pl-2.5 pr-3 transition-colors hover:border-zinc-300 hover:bg-zinc-50";
 
@@ -37,6 +39,8 @@ function LivePill({ card, odds }: { card: LiveCard | null; odds: LiveOddsAnswer 
   // says nothing about whether the bout has begun, so it stays next: "due".
   const { live } = card;
   const due = !live && startsAt != null && !away;
+  // Hours before the card, "Next" overstates it: the opener says what it is.
+  const opener = !live && card.completed_fights === 0 && startsAt != null && startsAt - now > OPENER_NEXT_MS;
   // Only a price for this very bout: /api/live and the odds move on separately.
   const price = odds?.fight_id === fight.id ? odds.odds : null;
   const [one, two] = [lastName(fight.f1.name), lastName(fight.f2.name)];
@@ -52,8 +56,8 @@ function LivePill({ card, odds }: { card: LiveCard | null; odds: LiveOddsAnswer 
       {live ? (
         <span className="live-dot h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
       ) : null}
-      <span className={`shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700`}>
-        {live ? "Live" : "Next"}
+      <span className={`shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] ${opener ? "text-zinc-500" : "text-emerald-700"}`}>
+        {live ? "Live" : opener ? "Opener" : "Next"}
       </span>
       <span className="flex min-w-0 items-center gap-1 text-xs">
         <span className="truncate font-semibold text-zinc-900">{one}</span>

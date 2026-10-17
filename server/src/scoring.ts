@@ -56,7 +56,8 @@ export function scoringEligibility(fight: ScoringFight, now = Date.now(), opened
   const observed = Math.max(detail?.totalsRounds?.rounds?.length ?? 0, detail?.sigStrikesRounds?.rounds?.length ?? 0);
   // The feed may include the current round. Never unlock unobserved future rounds.
   const available = live ? Math.min(scheduled, Math.max(observed, released)) : 0;
-  return { state, scheduled, available, reason: available ? null : "Waiting for the live feed to report a round. Scores open automatically; the feed can lag the broadcast." };
+  // Scores open on their own, from the feed or the admin panel.
+  return { state, scheduled, available, reason: available ? null : live ? "Waiting for the round to end." : "Scoring opens when the fight starts." };
 }
 
 /**

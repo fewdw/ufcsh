@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { Check, Copy, MonitorPlay, X } from "lucide-react";
+import { Check, CircleHelp, Copy, MonitorPlay, X } from "lucide-react";
 import { BUTTON_QUIET, CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE } from "../ui";
 
 // The overlay's own chunk, loaded only when the dialog opens.
@@ -29,10 +29,12 @@ function Address({ label, hint, url }: { label: string; hint: string; url: strin
   );
 }
 
-/** How a streamer puts the fans' live scorecard on screen: the two overlay
- *  addresses, a preview of what appears, and the OBS steps. */
-export default function OverlayButton({ fightId }: { fightId: string }) {
+/** How a streamer puts the fans' live scorecard on screen: one click copies
+ *  the overlay's address (the one that follows the card, for tonight's bouts),
+ *  and the ? beside it opens both addresses, a preview and the OBS steps. */
+export default function OverlayButton({ fightId, followsCard }: { fightId: string; followsCard: boolean }) {
   const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const node = dialog.current;
@@ -40,12 +42,33 @@ export default function OverlayButton({ fightId }: { fightId: string }) {
     else if (!open && node?.open) node.close();
   }, [open]);
   const origin = window.location.origin;
+  const url = followsCard ? `${origin}/overlay` : `${origin}/overlay/${fightId}`;
+  const copy = () => {
+    void navigator.clipboard?.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => setOpen(true));
+  };
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 transition-colors hover:text-zinc-900">
-        <MonitorPlay className="h-3.5 w-3.5" aria-hidden="true" />Stream overlay
-      </button>
+      <span className="flex items-center gap-0.5">
+        <button type="button" onClick={copy} title={`${url} · OBS → Sources → Browser, 560 × 160`}
+          className="grid whitespace-nowrap rounded-md px-1.5 py-1 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900">
+          {/* Both labels share one cell, so the button keeps its width and
+              nothing beside it moves when Copied takes over, centred. */}
+          <span className={`flex items-center gap-1.5 [grid-area:1/1] ${copied ? "invisible" : ""}`}>
+            <MonitorPlay className="h-3.5 w-3.5" aria-hidden="true" />
+            <span className="max-sm:hidden">Copy OBS URL for your stream</span><span className="sm:hidden">OBS URL</span>
+          </span>
+          <span className={`flex items-center justify-center gap-1.5 [grid-area:1/1] ${copied ? "" : "invisible"}`} aria-live="polite">
+            <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />{copied ? "Copied" : ""}
+          </span>
+        </button>
+        <button type="button" onClick={() => setOpen(true)} aria-label="Stream overlay setup" title="Preview and setup"
+          className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-900">
+          <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
+      </span>
       <dialog ref={dialog} onClose={() => setOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setOpen(false); }}
         className="search-dialog fixed inset-0 m-auto max-h-[calc(100dvh-2rem)] w-[min(34rem,calc(100%-2rem))] max-w-none overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-0 text-zinc-900 shadow-2xl">
         {open ? <>

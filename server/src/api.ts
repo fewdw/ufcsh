@@ -925,6 +925,14 @@ function fightInProgress(f: { id: string; event_date: string; f1_outcome: string
   return fightIsComplete(prepared("SELECT f1_outcome, f2_outcome FROM fights WHERE id = ?").get(f.id) as { f1_outcome: string | null; f2_outcome: string | null } | undefined ?? {});
 }
 
+/** The bout the card moves to next, before it starts: its Score tab opens
+ * early, so a streamer can set up the overlay ahead of the bell. */
+function fightUpNext(f: { id: string; event_date: string; f1_outcome: string | null; f2_outcome: string | null }): boolean {
+  if (fightIsComplete(f) || !isFightDay(f.event_date)) return false;
+  const current = currentBout();
+  return current != null && !current.live && current.bout.id === f.id;
+}
+
 async function getFight(id: string, rankingType: RankingType): Promise<unknown | null> {
   const potential = id.startsWith("potential-") ? potentialMatchups().find(row => row.id === id) : null;
   const f = potential ? potentialFight(potential) : prepared(`
@@ -1050,6 +1058,7 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     prediction_available: !potential && (fightIsComplete(f) || predictionContext(f.id)?.eventOpen !== false),
     live: !potential && isFightDay(f.event_date),
     in_progress: !potential && fightInProgress(f),
+    up_next: !potential && fightUpNext(f),
     stats_updated_at: f.detail_fetched_at,
     /** Rounds the admin panel has released for scoring, so a reader watching a
      *  live card sees the Score tab open without reloading the page. */
