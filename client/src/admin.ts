@@ -21,6 +21,10 @@ export type AdminLiveFight = {
   feedRounds: number;
   /** Rounds released by hand from this panel. */
   openRounds: number;
+  /** Started by the feed's own word, which the panel cannot take back. */
+  underway: boolean;
+  /** Marked live by hand from this panel. */
+  marked: boolean;
   /** What a reader can actually score: the larger of the two, capped. */
   available: number;
   state: "completed" | "live" | "waiting";

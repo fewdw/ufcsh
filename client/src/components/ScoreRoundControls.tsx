@@ -28,6 +28,7 @@ export default function ScoreRoundControls({ fightId }: { fightId: string }) {
       <div className="px-4 pb-5 @[32rem]:px-5">
         <LiveRoundSwitches
           fight={fight}
+          onNow={data?.current?.id === fightId}
           onChanged={card => { setData(card); refresh(); }}
           onFailed={() => { void reload(true); refresh(); }}
         />

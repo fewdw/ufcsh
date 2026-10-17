@@ -2,8 +2,9 @@ import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { DATA_DIR } from "./db.ts";
 
-/** Rounds the admin panel released for a bout, read through a read-only
- * connection to the scoring database. Missing file or table = none. */
+/** Rounds the admin panel released for a bout, and whether it marked the bout
+ * live, read through a read-only connection to the scoring database. Missing
+ * file or table = none. */
 let reader: DatabaseSync | undefined;
 let retryAt = 0;
 const RETRY_MS = 5_000;
@@ -21,17 +22,28 @@ function connection(): DatabaseSync | undefined {
   }
 }
 
-export function releasedRounds(fightId: string): number {
+function liveRow(fightId: string): { rounds: number; live: number } | undefined {
   const db = connection();
-  if (!db) return 0;
+  if (!db) return undefined;
   try {
-    const row = db.prepare("SELECT rounds FROM live_rounds WHERE fight_id = ?").get(fightId) as { rounds: number } | undefined;
-    return row?.rounds ?? 0;
+    return db.prepare("SELECT rounds, live FROM live_rounds WHERE fight_id = ?").get(fightId) as { rounds: number; live: number } | undefined;
   } catch {
-    // The table arrives with the first release; until then there is nothing.
+    // The table (or its live column) arrives with the API process's startup;
+    // until then there is nothing.
     try { reader?.close(); } catch { /* already gone */ }
     reader = undefined;
     retryAt = Date.now() + RETRY_MS;
-    return 0;
+    return undefined;
   }
+}
+
+export function releasedRounds(fightId: string): number {
+  return liveRow(fightId)?.rounds ?? 0;
+}
+
+/** Whether the bout has started on the admin panel's word: a round opened, or
+ *  the bout marked live before any round was. */
+export function adminLive(fightId: string): boolean {
+  const row = liveRow(fightId);
+  return Boolean(row && (row.rounds > 0 || row.live));
 }
