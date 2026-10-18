@@ -39,6 +39,7 @@ import { fighterNamed } from "./fighter-identity.ts";
 import { americanLine, impliedProbability } from "./fight-index.ts";
 import { consistentMoneyline } from "./method-odds.ts";
 import { decisionFromCards } from "./judge-scorecards.ts";
+import { syncCancelledBouts } from "./cancelled-bouts.ts";
 import { boutLines, boutProps, fightOddsBoard, fightOddsEvents, fightOddsOpeners, fightOddsProps, matchBout } from "./scrape/fightodds.ts";
 
 const HOUR = 3600_000;
@@ -1986,6 +1987,12 @@ export async function tick(): Promise<void> {
     }
     if (!methodOddsBackfillRunning) {
       void guarded("method_odds_backfill", async () => { await syncMethodOddsBackfill(20); });
+    }
+    // 11b. Cancelled bouts from FightOdds.io's boards: the archive once, a
+    //      batch a pass, and every coming card each six hours.
+    if (metaAgeMs("cancelled_bouts_at") > 10 * 60_000) {
+      touchMeta("cancelled_bouts_at");
+      void guarded("cancelled_bouts", async () => { await syncCancelledBouts(); });
     }
 
     // 12. Birth dates, in parallel on the ufcstats queue. Live results share

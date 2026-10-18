@@ -55,6 +55,7 @@ import { fuzzyScore, fuzzyTarget, splitMatchup, type FuzzyTarget } from "./fuzzy
 import { WEIGHT_LIMITS, type RankingType } from "./scrape/ufccom.ts";
 import { getStats } from "./stats.ts";
 import { titleNarratives } from "./titles.ts";
+import { cancelledBoutsOf } from "./cancelled-bouts.ts";
 import { fighterBoard, fighterRecords } from "./records.ts";
 import { ufcFightExistsSql, fighterNamed, hasUfcFight, recordText, currentRecord, cachedPhotoUrl, cachedFullPhotoUrl, photoVersion } from "./fighter-identity.ts";
 export { hasUfcFight };
@@ -710,6 +711,7 @@ function fighterHistory(fighterId: string, includeOpponentForm = false): unknown
     const opponentName = isF1 ? f.f2_name : f.f1_name;
     const fighterClose = isF1 ? f.f1_close : f.f2_close;
     const opponentClose = isF1 ? f.f2_close : f.f1_close;
+    const detail = f.detail_json ? JSON.parse(f.detail_json) : null;
     return {
       promotion: "ufc" as const,
       fight_id: f.id,
@@ -718,12 +720,13 @@ function fighterHistory(fighterId: string, includeOpponentForm = false): unknown
       date: f.event_date,
       weight_class: f.weight_class,
       catch_weight: f.catch_weight ?? null,
-      scheduled_rounds: scheduledRounds(f, f.detail_json ? JSON.parse(f.detail_json) : null),
+      scheduled_rounds: scheduledRounds(f, detail),
       title_fight: !!f.title_fight,
       title_type: f.title_type || null,
       title_narrative: narratives.get(f.id) ?? null,
       outcome: isF1 ? f.f1_outcome : f.f2_outcome,
       method: f.method,
+      method_detail: finishDetailText(f.method, detail, f.method_details),
       round: f.round,
       time: f.time,
       opponent: { id: opponentId, name: opponentName },
@@ -754,6 +757,14 @@ function fighterHistory(fighterId: string, includeOpponentForm = false): unknown
 }
 
 const PERF_BONUS_KIND: Record<number, "perf" | "ko" | "sub"> = { 1: "perf", 2: "ko", 3: "sub" };
+
+/** How a bout that didn't go to the judges ended: the fight page's full line
+ *  ("Knee to Head In Clinch"), else the card's short one ("Knee"). */
+function finishDetailText(method: string | null, detail: any, short: string | null): string | null {
+  if (!method || /DEC$/i.test(method)) return null;
+  const full = typeof detail?.detailsText === "string" ? detail.detailsText.trim() : "";
+  return full || short?.trim() || null;
+}
 
 type SourceCareerRow = {
   source_bout_key: string;
@@ -1188,6 +1199,8 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     })(),
     insights: { rounds: roundOutcomes(indexedFighter?.fights ?? [], fr.id), strikes: roundStrikes(indexedFighter?.fights ?? [], fr.id), decisions: decisionScores(indexedFighter?.fights ?? [], fr.id) },
     history: mergedUfcHistory,
+    // Bookings that fell through; the profile shows them only when asked.
+    cancelled: cancelledBoutsOf(fr.id, [...history, ...proHistory]),
     roster_events: fighterRosterEvents(fr.id),
     awards: fighterAwards(fr.id),
     // The professional list shows the same ranks on its UFC bouts.
