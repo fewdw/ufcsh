@@ -31,6 +31,7 @@ import { correctOfficialJudges } from "./verified-scorecard-corrections.ts";
 import { cardChanges, catchweights, eventInfobox, eventSection, fetchArticleByTitle, fetchEventArticle, fetchFighterArticle, recordCatchweight, samePlace, weightMisses } from "./scrape/wikipedia.ts";
 import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
 import { syncVerdictScorecards } from "./verdict-import.ts";
+import { syncVerdictLive, VERDICT_LIVE_MS } from "./verdict-live.ts";
 import { syncRosterMoves, syncUfcSignings, syncUfcStatuses } from "./roster-moves.ts";
 import { syncNews } from "./news.ts";
 import { backfillRankingHistory, recordScrapedRankings } from "./ranking-history.ts";
@@ -1989,6 +1990,9 @@ export function startScheduler(): void {
   // Verdict MMA round cards and community scorecards, on their own clock so a
   // long tick can't hold back a fight-night tally. The pass decides what is due.
   setInterval(() => void guarded("verdict_scorecards", async () => { await syncVerdictScorecards(); }), 30_000);
+  // The bout being fought on Verdict: its rounds open ours, its fans' average
+  // joins the Score tab (verdict-live.ts). Idle unless a card is on today.
+  setInterval(() => void guarded("verdict_live", () => syncVerdictLive()), VERDICT_LIVE_MS);
   void tick();
   // Full historical totals power Actions attempts, accuracy, targets, position,
   // and control. Run continuously in the background and resume after restarts.

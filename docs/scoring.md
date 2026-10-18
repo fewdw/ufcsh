@@ -63,6 +63,15 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   reports them; the editor unlocks each one on its own as the tab polls. The current round may be available: users should save after the
   horn. Unobserved future rounds cannot be submitted. This is community scoring,
   not an official clock or a permanently locked live judging competition.
+- **Verdict MMA live.** While a card is on, the sync reads Verdict's page for
+  the bout it has on every 15 seconds (`server/src/verdict-live.ts`, stored as
+  `fights.verdict_live_json`, which never moves the analytics revision). A
+  round Verdict starts opens here like the feed's and makes the bout Live; a
+  round it ends is public at once, before the next starts (only while Verdict
+  still has the bout on: its stoppage round also reads as ended). Its fans'
+  average — thousands of cards — joins ours for those rounds, and the total
+  once it covers every closed round; the finished tally from
+  `verdict-import.ts` replaces it after the result.
 - A bout is called **Live** (the header's pill, its row on the card, the
   admin panel) once the bout before it has a result: the header shows that
   result (**Final**) for three minutes, then the next bout as Live with its place

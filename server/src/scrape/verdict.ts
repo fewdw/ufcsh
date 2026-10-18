@@ -233,3 +233,65 @@ export function parseVerdictFightPage(html: string): VerdictFightPage | null {
   });
   return { ...names, judges, community };
 }
+
+export type VerdictLiveRound = { round: number; status: number };
+export type VerdictLiveFight = VerdictEventFight & { status: number; rounds: VerdictLiveRound[] };
+
+/** Nuxt's flattened hydration payload, with a resolver for its index links. */
+function nuxtPayload(html: string): { flat: any[]; value: (index: unknown) => any } | null {
+  const payload = html.match(/<script type="application\/json"[^>]*id="__NUXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)?.[1];
+  if (!payload) return null;
+  let flat: any[];
+  try { flat = JSON.parse(payload); } catch { return null; }
+  const value = (index: unknown): any => {
+    const resolved = typeof index === "number" && index >= 0 ? flat[index] : index;
+    // Vue's reactive wrappers serialise as ["Reactive", index].
+    return Array.isArray(resolved) && ["Reactive", "ShallowReactive", "Ref", "ShallowRef"].includes(resolved[0]) ? value(resolved[1]) : resolved;
+  };
+  return { flat, value };
+}
+
+/**
+ * Where one Verdict card stands while it is being fought: each bout's status
+ * (0 upcoming, 1 being fought, 3 over) and each round's (0 not started, 1
+ * being fought, 2 or more over and open to its scorers). A page repeats fight
+ * models from other cards in its rails, so only this card's are read, and a
+ * model listing its rounds wins over a bare copy of the same bout.
+ */
+export function parseVerdictLiveCard(html: string, eventId: number): VerdictLiveFight[] {
+  const nuxt = nuxtPayload(html);
+  if (!nuxt) return [];
+  const { value, flat } = nuxt;
+  const fighterName = (index: unknown): string => {
+    const fighter = value(index);
+    return fighter && typeof fighter === "object" ? cleanText(`${value(fighter.fighterFirstName) ?? ""} ${value(fighter.fighterLastName) ?? ""}`) : "";
+  };
+  const fights = new Map<number, VerdictLiveFight>();
+  for (const candidate of flat) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) continue;
+    if (!("eventID" in candidate) || !("fightNumber" in candidate) || !("fightStatus" in candidate) || !("fighter1" in candidate)) continue;
+    if (Number(value(candidate.eventID)) !== eventId) continue;
+    const fightNumber = Number(value(candidate.fightNumber));
+    const status = Number(value(candidate.fightStatus));
+    const list = value(candidate.rounds);
+    const rounds = (Array.isArray(list) ? list : []).flatMap((item: unknown): VerdictLiveRound[] => {
+      const round = value(item);
+      const number = Number(value(round?.roundNumber));
+      const roundStatus = Number(value(round?.roundStatus));
+      return Number.isInteger(number) && number >= 1 && number <= 5 && Number.isInteger(roundStatus) ? [{ round: number, status: roundStatus }] : [];
+    }).sort((a, b) => a.round - b.round);
+    const f1Name = fighterName(candidate.fighter1);
+    const f2Name = fighterName(candidate.fighter2);
+    if (!Number.isInteger(fightNumber) || fightNumber < 1 || !Number.isInteger(status) || !f1Name || !f2Name) continue;
+    const known = fights.get(fightNumber);
+    if (!known || (!known.rounds.length && rounds.length)) fights.set(fightNumber, { eventId, fightNumber, f1Name, f2Name, status, rounds });
+  }
+  return [...fights.values()];
+}
+
+/** The rendered page ends where the hydration payload starts; reading only
+ * that part keeps a live poll's HTML parse small. */
+export const verdictRendered = (html: string): string => {
+  const end = html.indexOf('<script type="application/json"');
+  return end < 0 ? html : html.slice(0, end);
+};

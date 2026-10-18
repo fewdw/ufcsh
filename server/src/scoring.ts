@@ -1,7 +1,7 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { randomInt, randomUUID } from "node:crypto";
 import { completedScorecardRounds, parseCommunityScorecard } from "./community-scorecards.ts";
-import { fightIsComplete, fightIsUnderway, isFightDay } from "./live-state.ts";
+import { fightIsComplete, fightIsUnderway, isFightDay, verdictLive } from "./live-state.ts";
 import { byBoutPlace } from "./card-schedule.ts";
 
 export class ScoringError extends Error {
@@ -13,6 +13,8 @@ export type ScoringFight = {
   scheduled_rounds: number | null; round: string | null; time: string | null;
   method: string | null; detail_json: string | null;
   community_score_json?: string | null;
+  /** Verdict MMA's rounds and fans' average while the bout is fought. */
+  verdict_live_json?: string | null;
   /** Place on its card from the top, main event 0; read for profile order. */
   card_place?: number | null;
   /** Imported round-by-round judges' cards, read when the official ones are missing. */
@@ -23,7 +25,11 @@ export type ScoringFight = {
   f1_id: string; f2_id: string; f1_photo: string | null; f2_photo: string | null;
 };
 export type RoundScore = { round: number; f1: number; f2: number; deduct1: number; deduct2: number };
-export type ScoreEligibility = { state: "completed" | "live" | "waiting"; scheduled: number; available: number; reason: string | null };
+export type ScoreEligibility = {
+  state: "completed" | "live" | "waiting"; scheduled: number; available: number; reason: string | null;
+  /** Live rounds Verdict MMA has seen end: over, even if the next has not started. */
+  ended?: number;
+};
 
 /**
  * How much of a bout can be scored right now. `opened` is how many rounds an
@@ -53,21 +59,27 @@ export function scoringEligibility(fight: ScoringFight, now = Date.now(), opened
     const available = Number.isInteger(last) && last >= 1 && last <= scheduled ? completedScorecardRounds(fight) : 0;
     return { state, scheduled, available, reason: available ? null : "This fight has no completed rounds to score." };
   }
-  const observed = Math.max(detail?.totalsRounds?.rounds?.length ?? 0, detail?.sigStrikesRounds?.rounds?.length ?? 0);
+  // Verdict MMA starts each round as it is fought, like the feed, and also
+  // says when it ended. Its stoppage round reads as ended once the bout is
+  // over, so that word only counts while Verdict has the bout on.
+  const verdict = verdictLive(fight);
+  const observed = Math.max(detail?.totalsRounds?.rounds?.length ?? 0, detail?.sigStrikesRounds?.rounds?.length ?? 0, verdict?.started ?? 0);
   // The feed may include the current round. Never unlock unobserved future rounds.
   const available = live ? Math.min(scheduled, Math.max(observed, released)) : 0;
-  // Scores open on their own, from the feed or the admin panel.
-  return { state, scheduled, available, reason: available ? null : live ? "Waiting for the round to end." : "Scoring opens when rounds end." };
+  const ended = live && verdict?.status === 1 ? Math.min(available, verdict.ended) : 0;
+  // Scores open on their own, from the feed, Verdict or the admin panel.
+  return { state, scheduled, available, ...(ended ? { ended } : {}), reason: available ? null : live ? "Waiting for the round to end." : "Scoring opens when rounds end." };
 }
 
 /**
  * Rounds whose scores anyone else may see. While a bout is live, the newest
  * open round may still be being fought (the feed publishes a round as it
- * happens), so it stays private to each scorer until the next round opens or
- * the result lands: nobody's card is shaped by the crowd's mid-round.
+ * happens), so it stays private to each scorer until the next round opens,
+ * Verdict MMA says it ended, or the result lands: nobody's card is shaped by
+ * the crowd's mid-round.
  */
 export function closedRounds(eligibility: ScoreEligibility): number {
-  return eligibility.state === "live" ? Math.max(0, eligibility.available - 1) : eligibility.available;
+  return eligibility.state === "live" ? Math.max(0, eligibility.available - 1, eligibility.ended ?? 0) : eligibility.available;
 }
 
 export function validateSubmission(body: unknown, eligibility: ScoreEligibility): { revision: number; rounds: RoundScore[] } {
@@ -489,12 +501,16 @@ export class ScoringStore {
         total2: weighted(local?.total2 ?? null, Number(local?.scorers ?? 0), external?.avg2 ?? null, importedCards),
       }];
     });
-    const completeCards = Number(localTotals.completeCards) + importedCards;
+    // A live source card that has not reached every closed round yet adds to
+    // those rounds, never to a total over rounds it lacks.
+    const whole = imported?.rounds.length === max ? imported : null;
+    const wholeCards = whole ? importedCards : 0;
+    const completeCards = Number(localTotals.completeCards) + wholeCards;
     const totals = {
       scorers: Number(localTotals.scorers) + importedCards,
       completeCards,
-      avg1: weighted(localTotals.avg1, Number(localTotals.completeCards), imported?.avg1 ?? null, importedCards),
-      avg2: weighted(localTotals.avg2, Number(localTotals.completeCards), imported?.avg2 ?? null, importedCards),
+      avg1: weighted(localTotals.avg1, Number(localTotals.completeCards), whole?.avg1 ?? null, wholeCards),
+      avg2: weighted(localTotals.avg2, Number(localTotals.completeCards), whole?.avg2 ?? null, wholeCards),
       f1: Number(localTotals.f1), f2: Number(localTotals.f2), draws: Number(localTotals.draws),
       distributionCards: Number(localTotals.completeCards),
       localCards: Number(localTotals.scorers), importedCards,
@@ -515,14 +531,22 @@ export class ScoringStore {
     return total1 == null || total2 == null ? null : { cards: Number(local.cards) + (imported?.cards ?? 0), total1, total2 };
   }
   /** A source aggregate is deliberately not expanded into fake profiles. Its
-   * count and averages are weighted with real ufc.sh cards at read time. */
+   * count and averages are weighted with real ufc.sh cards at read time.
+   * Until the finished tally is imported, Verdict MMA's live one stands in,
+   * over the closed rounds it has. */
   private community(id: string, max: number): {
     source: string; sourceUrl: string; cards: number; avg1: number; avg2: number;
     rounds: { round: number; avg1: number; avg2: number }[];
   } | null {
-    const value = parseCommunityScorecard(this.fight(id)?.community_score_json, max);
-    return value ? { source: String(value.source ?? "External"), sourceUrl: String(value.sourceUrl ?? ""),
-      cards: value.cards, avg1: value.avg1, avg2: value.avg2, rounds: value.rounds } : null;
+    const fight = this.fight(id);
+    const value = parseCommunityScorecard(fight?.community_score_json, max);
+    if (value) return { source: String(value.source ?? "External"), sourceUrl: String(value.sourceUrl ?? ""),
+      cards: value.cards, avg1: value.avg1, avg2: value.avg2, rounds: value.rounds };
+    const live = verdictLive(fight);
+    const rounds = live?.community?.rounds.filter(round => round.round <= max) ?? [];
+    if (!live?.community || !rounds.length) return null;
+    const sum = (key: "avg1" | "avg2") => rounds.reduce((total, round) => total + round[key], 0);
+    return { source: "Verdict MMA", sourceUrl: live.sourceUrl, cards: live.community.cards, avg1: sum("avg1"), avg2: sum("avg2"), rounds };
   }
   /** The scorer's own identity, minted on first use so that a reader who has
    *  not saved a card yet still has a profile to open and share. */

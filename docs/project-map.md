@@ -33,7 +33,7 @@ client (`client/`) renders every page.
 | Admin traffic and visitors (live last hour; saved history 24 hours to all time; unique visitors by browser, sources, devices, countries) | `observability.ts` (in memory), `traffic-history.ts` (hourly rows in `scoring.db`, folded to days after 8 days), `visitors.ts` (hashed browser ids for 35 days, then daily totals); client `pageViews.ts` sends the signal |
 | Admin errors, sync status and accounts | `error-log.ts` (each 5xx/404 address, kept 7 days), `sync-status.ts` (source freshness, last 50 sync errors), `accounts.ts` (`adminAccounts`) |
 | Accounts, scoring, predictions, bets, comments | `accounts.ts` (Clerk deletions and picture sync), `scoring*.ts`, `predictions*.ts`, `bets*.ts`, `comments*.ts`, `moderation.ts` |
-| Background sync | `sync.ts` (scheduler `tick`), `sync-worker.ts` (one at a time via `sync-lease.ts`), `career-records.ts`, `verdict-import.ts` |
+| Background sync | `sync.ts` (scheduler `tick`), `sync-worker.ts` (one at a time via `sync-lease.ts`), `career-records.ts`, `verdict-import.ts`, `verdict-live.ts` (the bout Verdict MMA has on: rounds and fans' average every 15 s) |
 | Scrapers | `scrape/ufcstats.ts`, `scrape/ufccom.ts` (schedules, segments, venue/broadcast/referee feed), `scrape/wikipedia.ts` (weigh-ins, infobox, background, replacements and short notice via `boutChanges`, stored by `syncEventWikiInfo`), `scrape/fightodds.ts` (upcoming moneylines and props, matched by UFCStats id; every 5 and 30 min), `scrape/odds.ts` (BestFightOdds: fallback, archive), `scrape/sherdog.ts`, `scrape/verdict.ts`, `scrape/mmadecisions.ts` |
 | Database schema and migrations | `db.ts` |
 

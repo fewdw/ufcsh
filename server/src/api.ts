@@ -2290,7 +2290,7 @@ async function repairSnapshot(day: string): Promise<void> {
 function liveFights(): AdminLiveFight[] {
   return cardOrder(prepared(`
     SELECT f.id, f.ord, f.segment, f.card_pos, f.f1_name, f.f2_name, f.weight_class, f.scheduled_rounds,
-      f.round, f.time, f.method, f.detail_json, f.f1_outcome, f.f2_outcome,
+      f.round, f.time, f.method, f.detail_json, f.verdict_live_json, f.f1_outcome, f.f2_outcome,
       f.f1_id, f.f2_id, NULL AS f1_photo, NULL AS f2_photo,
       e.id AS event_id, e.name AS event_name, e.date AS event_date
     FROM fights f JOIN events e ON e.id = f.event_id
