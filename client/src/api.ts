@@ -524,6 +524,8 @@ export type ProfileCancelledBout = {
   /** id only when the opponent has a profile. */
   opponent: { id: string | null; name: string };
   reason: string | null;
+  /** The same two fighters' bout within a year after: the booking moved there. */
+  moved_to: { fight_id: string; date: string; event_name: string } | null;
   source_url: string;
 };
 

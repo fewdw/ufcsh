@@ -128,6 +128,9 @@ export type CancelledBout = {
   opponent: { id: string | null; name: string };
   /** Why, from the event's Wikipedia article, when it says. */
   reason: string | null;
+  /** The same two fighters' bout within a year after, fought or booked:
+   *  the booking moved to that card rather than falling through. */
+  moved_to: { fight_id: string; date: string; event_name: string } | null;
   source_url: string;
 };
 
@@ -164,6 +167,10 @@ export function cancelledBoutsOf(fighterId: string, fought: Fought[]): Cancelled
   `).all(fighterId, fighterId) as Stored[];
   if (!rows.length) return [];
   const eventsOn = prepared("SELECT id FROM events WHERE date = ?");
+  const nextMeeting = prepared(`SELECT f.id AS fight_id, e.date, e.name AS event_name FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE ((f.f1_id = ? AND f.f2_id = ?) OR (f.f1_id = ? AND f.f2_id = ?))
+      AND e.date > date(?, '+1 day') AND e.date <= date(?, '+1 year')
+    ORDER BY e.date LIMIT 1`);
   const divisionAt = prepared(`SELECT f.weight_class FROM fights f JOIN events e ON e.id = f.event_id
     WHERE (f.f1_id = ? OR f.f2_id = ?) AND f.weight_class NOT IN ('', 'Catch Weight')
     ORDER BY abs(julianday(e.date) - julianday(?)) LIMIT 1`);
@@ -189,6 +196,7 @@ export function cancelledBoutsOf(fighterId: string, fought: Fought[]): Cancelled
       event_id: cards.length === 1 && !/-cancell?ed$/.test(row.board_slug ?? "") ? cards[0].id : null,
       weight_class: bookedDivision(row.weight_class, [division(fighterId, row.date), division(opponent.id, row.date)]),
       opponent: { id: opponent.id && hasUfcFight(opponent.id) ? opponent.id : null, name: opponent.name },
+      moved_to: opponent.id ? (nextMeeting.get(fighterId, opponent.id, opponent.id, fighterId, row.date, row.date) as CancelledBout["moved_to"] | undefined) ?? null : null,
       reason: articleReason(articles.all(row.date, row.date) as { cancelled_json: string }[], fighterId, opponent),
       source_url: `https://fightodds.io/fights/${row.slug}/odds`,
     });

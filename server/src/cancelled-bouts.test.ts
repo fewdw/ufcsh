@@ -122,7 +122,17 @@ test("profiles list each booking that fell through once, by identity, with the a
     assert.equal(withdrew.weight_class, "Lightweight");
     assert.equal(withdrew.source_url, "https://fightodds.io/fights/alpha-vs-bravo-1/odds");
     assert.equal(directory.opponent.id, null, "no profile link for a fighter without a UFC bout");
+    assert.equal(withdrew.moved_to, null);
     assert.equal(profile.history[0].method_detail, "Knee to Head In Clinch");
+
+    // Bravo and Alpha meet on 2001-06-01: both earlier bookings moved there.
+    db.prepare("INSERT INTO events (id, name, date, complete) VALUES ('cbe0000000000003', 'Later Fixture Card', '2001-06-01', 0)").run();
+    db.prepare(`INSERT INTO fights (id, event_id, ord, weight_class, f1_id, f1_name, f2_id, f2_name)
+      VALUES ('cbb0000000000002', 'cbe0000000000003', 1, 'Lightweight', ?, 'Bravo Fixturefighter', ?, 'Alpha Fixturefighter')`).run(bravo, alpha);
+    const moved_ = await resolvePublicApi(new URL(`http://localhost/api/fighters/${alpha}`)) as any;
+    assert.deepEqual(moved_.cancelled.map((row: any) => row.moved_to?.fight_id ?? null), ["cbb0000000000002", "cbb0000000000002", null],
+      "a booked rematch within a year makes both earlier bookings moves; Delta's stays cancelled");
+    assert.equal(moved_.cancelled[0].moved_to.event_name, "Later Fixture Card");
 
     storeCancelledBoard({ pk: 990001, date: "2001-03-01", name: "Board fixture-card" }, first.slice(0, 2));
     const reread = await resolvePublicApi(new URL(`http://localhost/api/fighters/${alpha}`)) as any;

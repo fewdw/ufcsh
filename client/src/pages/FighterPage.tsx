@@ -543,13 +543,19 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
 
 /** A booking that fell through, muted and in the bout list's own two shapes:
  *  who it was against, that it was cancelled (and why, when the event article
- *  says), and the card it was booked for. */
+ *  says) or moved to a later card, and the card it was booked for. */
 function CancelledRowView({ bout }: { bout: ProfileCancelledBout }) {
-  const badge = <span className="grid h-6 min-w-6 shrink-0 place-items-center rounded-full bg-zinc-100 px-1 text-[10px] font-bold leading-none text-zinc-400 @3xl:h-7 @3xl:min-w-7 @3xl:text-[11px]" title="Cancelled" aria-hidden="true">C</span>;
+  const status = bout.moved_to ? "Moved" : "Cancelled";
+  const badge = <span className="grid h-6 min-w-6 shrink-0 place-items-center rounded-full bg-zinc-100 px-1 text-[10px] font-bold leading-none text-zinc-400 @3xl:h-7 @3xl:min-w-7 @3xl:text-[11px]" title={status} aria-hidden="true">{status[0]}</span>;
   const opponentTo = bout.opponent.id ? `/fighters/${bout.opponent.id}` : null;
   const eventTo = bout.event_id ? `/events/${bout.event_id}` : null;
+  // A moved bout leads to the one they had; a cancelled one to the source.
+  const statusTo = bout.moved_to ? `/fights/${bout.moved_to.fight_id}` : null;
+  const statusLabel = bout.moved_to ? `Open ${bout.opponent.name} matchup on ${bout.moved_to.event_name}` : `Cancelled bout with ${bout.opponent.name} on FightOdds.io`;
+  const movedTo = bout.moved_to ? <span title={bout.moved_to.event_name}>to {formatDateShortWithYear(bout.moved_to.date)}</span> : null;
   const what = <FactRun>
-    <span className="font-medium">Cancelled</span>
+    <span className="font-medium">{status}</span>
+    {movedTo}
     {bout.weight_class ? <span>{bout.weight_class}</span> : null}
     {bout.reason ? <span>{bout.reason}</span> : null}
   </FactRun>;
@@ -561,7 +567,7 @@ function CancelledRowView({ bout }: { bout: ProfileCancelledBout }) {
           {badge}
           <span className="min-w-0 break-words text-[15px] font-semibold leading-6 text-zinc-500">{bout.opponent.name}</span>
         </BoutLink>
-        <BoutLink href={bout.source_url} label={`Cancelled bout with ${bout.opponent.name} on FightOdds.io`} className={`${BAND} ${BAND_INDENT} items-baseline py-1.5 text-xs leading-5`}>
+        <BoutLink to={statusTo} href={bout.source_url} label={statusLabel} className={`${BAND} ${BAND_INDENT} items-baseline py-1.5 text-xs leading-5`}>
           <span className="flex min-w-0 flex-1 flex-wrap items-center">{what}</span>
         </BoutLink>
         <BoutLink to={eventTo} label={`Open ${bout.event_name}`} className={`${BAND} ${BAND_INDENT} items-baseline gap-x-2 py-1.5`}>
@@ -569,10 +575,11 @@ function CancelledRowView({ bout }: { bout: ProfileCancelledBout }) {
           <span className="shrink-0 text-[11px] leading-5 tabular-nums">{formatDateShortWithYear(bout.date)}</span>
         </BoutLink>
       </div>
-      <BoutLink href={bout.source_url} label={`Cancelled bout with ${bout.opponent.name} on FightOdds.io`} className={`${cell} items-center gap-2.5 ${HIT}`}>
+      <BoutLink to={statusTo} href={bout.source_url} label={statusLabel} className={`${cell} items-center gap-2.5 ${HIT}`}>
         {badge}
-        <span className="flex min-w-0 flex-1 flex-wrap items-center text-[11px] leading-5">
-          <span className="font-medium">Cancelled</span>
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1 text-[11px] leading-5">
+          <span className="font-medium">{status}</span>
+          {movedTo}
           {bout.reason ? <span className="basis-full leading-4 [overflow-wrap:anywhere]">{bout.reason}</span> : null}
         </span>
       </BoutLink>
@@ -609,7 +616,7 @@ function withCancelled(rows: { date?: string; node: ReactNode }[], cancelled: Pr
 function CancelledSwitch({ count, on, onChange }: { count: number; on: boolean; onChange: (on: boolean) => void }) {
   return (
     <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)}
-      title={`${on ? "Hide" : "Show"} ${count} cancelled ${count === 1 ? "bout" : "bouts"}`}
+      title={`${on ? "Hide" : "Show"} ${count} cancelled or moved ${count === 1 ? "booking" : "bookings"}`}
       className="-my-1 flex items-center gap-2 rounded-full py-1 pl-2.5 pr-1.5 text-[11px] font-medium text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-800">
       <span>Cancelled <span className="tabular-nums text-zinc-400">{count}</span></span>
       <span aria-hidden="true" className={`relative inline-flex h-4 w-7 shrink-0 rounded-full transition-colors ${on ? "bg-sky-500" : "bg-zinc-300"}`}>
