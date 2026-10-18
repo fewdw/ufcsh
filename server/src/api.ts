@@ -1945,7 +1945,10 @@ async function readStatic(filePath: string): Promise<StaticFile | null> {
 export async function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, pathname: string, pages?: ResponseCache): Promise<void> {
   let filePath = path.join(CLIENT_DIST, path.normalize(pathname).replace(/^([/\\])+/, ""));
   if (filePath !== CLIENT_DIST && !filePath.startsWith(CLIENT_DIST + path.sep)) filePath = path.join(CLIENT_DIST, "index.html");
-  const file = await readStatic(filePath);
+  // The document itself is never sent raw: "/" and "/index.html" fall through
+  // to the SEO fill below, so the homepage carries its link-preview image too.
+  const document = filePath === path.join(CLIENT_DIST, "index.html");
+  const file = document ? null : await readStatic(filePath);
   if (file) {
     const immutable = pathname.startsWith("/assets/");
     const headers: Record<string, string | number> = {
@@ -1970,7 +1973,7 @@ export async function serveStatic(req: http.IncomingMessage, res: http.ServerRes
   }
   // Never send the SPA document for a missing script, stylesheet or image.
   // In particular, HTML under /assets/ must not be cached as immutable JS.
-  if (pathname.startsWith("/assets/") || path.extname(pathname)) {
+  if (!document && (pathname.startsWith("/assets/") || path.extname(pathname))) {
     res.writeHead(404, { "Content-Type": "text/plain", "Cache-Control": "no-store" });
     res.end("Asset not found");
     return;
