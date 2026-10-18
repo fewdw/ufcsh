@@ -272,7 +272,7 @@ export type FailingUrl = { status: number; method: string; path: string; count: 
 
 /** Anyone can request any address, so only one that stays on this site is a
  *  link: `//host` and `/\host` would open another site from the panel. */
-const sameSite = (path: string) => {
+export const sameSite = (path: string) => {
   try { return new URL(path, location.origin).origin === location.origin; } catch { return false; }
 };
 

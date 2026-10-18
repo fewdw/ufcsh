@@ -27,7 +27,7 @@ import { prepared, getMeta, setMeta, DATA_DIR, dataRevision, db } from "./db.ts"
 import { enqueueRefresh } from "./refresh-queue.ts";
 import { QueryPool } from "./query-pool.ts";
 import { ResponseCache, representation, acceptsEncoding, acceptsGzip, matchesEtag, OverloadedError, type Representation } from "./response-cache.ts";
-import { HttpObservability, pageRouteGroup, routeGroup } from "./observability.ts";
+import { HttpObservability, UNCOUNTED_ROUTES, pageRouteGroup, routeGroup } from "./observability.ts";
 import { isAutomated, sourceOf } from "./visitors.ts";
 import { TrafficHistory } from "./traffic-history.ts";
 import { createRepairRunner } from "./repair-guard.ts";
@@ -2350,6 +2350,7 @@ export function startApi(port: number): http.Server {
     },
     accounts: () => adminAccounts({ scores: scoreStore }),
     errors: () => ({ http: trafficHistory.errors.list(), sync: syncStatus() }),
+    slow: () => trafficHistory.slow.list(),
     report: async () => {
       const report = queryPool ? JSON.parse((await queryPool.run("/api/bugs")).json) : bugReport();
       return { ...report, checks: [accountSyncCheck(), ...report.checks] };
@@ -2519,6 +2520,9 @@ export function startApi(port: number): http.Server {
   let failures = 0;
   /** What a request that failed logged, for Admin → Errors. */
   const failureMessages = new WeakMap<http.ServerResponse, string>();
+  /** How long a public API answer took to come from the cache or a query
+   *  worker, for Admin → Slow. */
+  const answerTimes = new WeakMap<http.ServerResponse, number>();
   const latencies = new Map<string, { count: number; total_ms: number; max_ms: number }>();
   let stopping = false;
   let draining = false;
@@ -2548,6 +2552,11 @@ export function startApi(port: number): http.Server {
         trafficHistory.errors.record({
           status: res.statusCode, method: req.method ?? "OTHER", path: req.url ?? "/", message: failureMessages.get(res),
           fromSite: typeof referer === "string" && referer.startsWith(`${SITE_URL}/`),
+        });
+      }
+      if (!UNCOUNTED_ROUTES.has(key)) {
+        trafficHistory.slow.record({
+          method: req.method ?? "OTHER", path: req.url ?? "/", route: key, status: res.statusCode, ms: duration, answerMs: answerTimes.get(res),
         });
       }
       entry.count++; entry.total_ms += duration; entry.max_ms = Math.max(entry.max_ms, duration);
@@ -2659,7 +2668,10 @@ export function startApi(port: number): http.Server {
         return await sendJson(req, res, { fight_id: row.id, odds, finished: null });
       }
       if (publicApi(p)) {
-        return sendRepresentation(req, res, await publicAnswer(url), cachePolicy(url).control);
+        const asked = performance.now();
+        const answer = await publicAnswer(url);
+        answerTimes.set(res, performance.now() - asked);
+        return sendRepresentation(req, res, answer, cachePolicy(url).control);
       }
       if (p === "/api/status" || p === "/api/metrics") {
         if (!isAdmin(req)) return await sendJson(req, res, { error: "authentication required" }, 401);

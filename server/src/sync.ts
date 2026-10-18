@@ -85,9 +85,13 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
   }
   const complete =
     detail.fights.length > 0 && detail.fights.every((f) => f.f1.outcome !== null);
+  // A finished card is read again every two minutes through fight day; only
+  // the read that completes it, or one that changes a result, is news.
+  let resultsChanged = false;
 
   db.exec("BEGIN");
   try {
+    const wasComplete = (db.prepare("SELECT complete FROM events WHERE id = ?").get(detail.id) as { complete: number } | undefined)?.complete === 1;
     db.prepare(
       `UPDATE events SET name = COALESCE(NULLIF(?, ''), name), date = COALESCE(NULLIF(?, ''), date),
          location = COALESCE(NULLIF(?, ''), location), complete = ?, detail_fetched_at = ? WHERE id = ?`,
@@ -98,6 +102,10 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
       .prepare("SELECT id, f1_id, f2_id, f1_outcome, f2_outcome, detail_json FROM fights WHERE event_id = ?")
       .all(detail.id) as { id: string; f1_id: string; f2_id: string; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null }[];
     const previous = new Map(existing.map(f => [f.id, f]));
+    resultsChanged = !wasComplete || detail.fights.some(f => {
+      const old = previous.get(f.id);
+      return !old || old.f1_outcome !== f.f1.outcome || old.f2_outcome !== f.f2.outcome;
+    });
     for (const row of existing) {
       if (!currentIds.has(row.id)) {
         db.prepare("DELETE FROM fights WHERE id = ?").run(row.id);
@@ -192,7 +200,7 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
     throw err;
   }
 
-  if (complete) {
+  if (complete && resultsChanged) {
     setMeta("roster_stale", "1"); // records changed -> refresh roster soon
     staleCareerRecords(detail.fights.flatMap((fight) => [fight.f1.id, fight.f2.id]));
   }
@@ -1728,9 +1736,20 @@ async function syncAthleteDirectory(): Promise<void> {
 
 type EventRow = { id: string; name: string; date: string; complete: number; detail_fetched_at: number | null };
 
-function guarded(name: string, fn: () => Promise<void>): Promise<void> {
-  return fn().catch((err) => {
+/** The live loop reads each page again within a minute, so one slow or
+ *  refused answer from the source is its moment, not a fault: a live job is
+ *  recorded as failing only when it fails this many times in a row. */
+const LIVE_TRANSIENT_GRACE = 3;
+const transientFailures = new Map<string, number>();
+
+function guarded(name: string, fn: () => Promise<void>, transientGrace = 0): Promise<void> {
+  return fn().then(() => { transientFailures.delete(name); }, (err) => {
     if (err instanceof SourceCatchingUp) { log(`sync retry later [${name}]:`, err.message); return; }
+    if (transientGrace && isTransientUpstream(err)) {
+      const failures = (transientFailures.get(name) ?? 0) + 1;
+      transientFailures.set(name, failures);
+      if (failures < transientGrace) { log(`sync retry later [${name}] (${failures}/${transientGrace}):`, String(err)); return; }
+    }
     log(`SYNC ERROR [${name}]:`, String(err));
     recordSyncError(name, err);
   });
@@ -1767,7 +1786,7 @@ export async function syncLiveEvents(): Promise<void> {
       const fights = db.prepare(`SELECT id, f1_outcome, f2_outcome, detail_json, detail_fetched_at FROM fights
         WHERE event_id = ? AND (f1_outcome IS NOT NULL OR f2_outcome IS NOT NULL)
         ORDER BY detail_fetched_at ASC`).all(event.id) as { id: string; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; detail_fetched_at: number | null }[];
-      for (const fight of fights) if (liveDetailDue(fight)) await guarded(`live_stats ${fight.id}`, () => syncFightDetail(fight.id));
+      for (const fight of fights) if (liveDetailDue(fight)) await guarded(`live_stats ${fight.id}`, () => syncFightDetail(fight.id), LIVE_TRANSIENT_GRACE);
       // The bout being fought now has no result yet, so the query above never
       // reaches it — and it is the one whose numbers are moving. UFCStats
       // publishes its round totals as they happen, so keep it warm rather than
@@ -1781,7 +1800,7 @@ export async function syncLiveEvents(): Promise<void> {
           WHERE event_id = ? ORDER BY ord`)
           .all(event.id) as { id: string; ord: number; segment: string | null; card_pos: number | null; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; detail_fetched_at: number | null }[])
           .findLast((fight) => fight.f1_outcome == null && fight.f2_outcome == null);
-        if (underway && liveDetailDue(underway)) await guarded(`live_stats ${underway.id}`, () => syncFightDetail(underway.id));
+        if (underway && liveDetailDue(underway)) await guarded(`live_stats ${underway.id}`, () => syncFightDetail(underway.id), LIVE_TRANSIENT_GRACE);
       }
     }
   } finally { liveTicking = false; }

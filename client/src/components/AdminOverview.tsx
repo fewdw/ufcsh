@@ -28,7 +28,7 @@ function checks(data: Metrics, errors: Errors | null, now: number): Check[] {
     { level: data.ready ? "ok" : "bad", label: "Server", detail: data.ready ? "Ready to serve" : "Not ready: query workers are starting or the server is stopping", to: section("traffic", "server") },
     { level: errorRate > 0.05 ? "bad" : errorRate > 0.01 ? "warn" : "ok", label: "Server errors", to: section("errors"),
       detail: `${percent(recent.errors, recent.requests)} of requests in the last 5 minutes${failing.length ? ` · ${failing.length} failing ${failing.length === 1 ? "address" : "addresses"} today` : ""}` },
-    { level: recent.p95Ms > 1000 ? "bad" : recent.p95Ms > 300 ? "warn" : "ok", label: "Speed", detail: `95% of requests answered within ${ms(recent.p95Ms)}`, to: section("traffic", "server") },
+    { level: recent.p95Ms > 1000 ? "bad" : recent.p95Ms > 300 ? "warn" : "ok", label: "Speed", detail: `95% of requests answered within ${ms(recent.p95Ms)}`, to: section("slow") },
     { level: data.process.eventLoopP95Ms > 200 ? "bad" : data.process.eventLoopP95Ms > 50 ? "warn" : "ok", label: "Responsiveness", detail: `Event loop delay ${ms(data.process.eventLoopP95Ms)} (p95)`, to: section("traffic", "server") },
     { level: data.queries.pending > 100 ? "bad" : data.queries.pending > 20 ? "warn" : "ok", label: "Query queue", detail: `${data.queries.pending} waiting`, to: section("traffic", "server") },
     heartbeatAge == null

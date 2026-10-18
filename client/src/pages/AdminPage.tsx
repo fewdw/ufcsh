@@ -8,6 +8,7 @@ import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } fro
 
 const AdminOverview = lazy(() => import("../components/AdminOverview"));
 const AdminErrors = lazy(() => import("../components/AdminErrors"));
+const AdminSlow = lazy(() => import("../components/AdminSlow"));
 const AdminTraffic = lazy(() => import("../components/AdminTraffic"));
 const AdminServer = lazy(() => import("../components/AdminServer"));
 const AdminBugs = lazy(() => import("../components/AdminBugs"));
@@ -22,6 +23,7 @@ const AdminSettings = lazy(() => import("../components/AdminSettings"));
 const SECTIONS = [
   { id: "overview", label: "Overview", views: [] },
   { id: "errors", label: "Errors", views: [] },
+  { id: "slow", label: "Slow requests", views: [] },
   { id: "people", label: "People", views: [["accounts", "Accounts"], ["comments", "Comments"], ["flags", "Flags"]] },
   { id: "data", label: "Data", views: [["bugs", "Bugs"], ["live", "Live rounds"]] },
   { id: "traffic", label: "Traffic", views: [["visitors", "Visitors"], ["server", "Server"]] },
@@ -105,6 +107,7 @@ function AdminShell({ tab, view, onPlace }: { tab: TabId; view: string | null; o
         <Suspense fallback={<div role="status" className="py-16 text-center text-sm text-zinc-400">Loading…</div>}>
           {tab === "overview" ? <AdminOverview /> : null}
           {tab === "errors" ? <AdminErrors /> : null}
+          {tab === "slow" ? <AdminSlow /> : null}
           {view === "accounts" ? <AdminAccounts /> : null}
           {view === "comments" ? <AdminComments /> : null}
           {view === "flags" ? <AdminFlags /> : null}

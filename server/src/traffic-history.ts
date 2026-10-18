@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { ErrorLog } from "./error-log.ts";
+import { SlowLog } from "./slow-log.ts";
 import { Visitors } from "./visitors.ts";
 import { UNCOUNTED_ROUTES, MS_STEPS, addLatency, emptyLatency, estimatePercentile, mergeLatency, summarise, type Latency } from "./observability.ts";
 
@@ -49,12 +50,15 @@ export class TrafficHistory {
   readonly people: Visitors;
   /** Each failing address (`error-log.ts`). */
   readonly errors: ErrorLog;
+  /** Each slow address (`slow-log.ts`). */
+  readonly slow: SlowLog;
 
   constructor(db: DatabaseSync, now = Date.now) {
     this.db = db;
     this.now = now;
     this.people = new Visitors(db, now);
     this.errors = new ErrorLog(db, now);
+    this.slow = new SlowLog(db, now);
     db.exec(`
       CREATE TABLE IF NOT EXISTS traffic_hours (
         hour INTEGER NOT NULL, route TEXT NOT NULL,
@@ -101,6 +105,7 @@ export class TrafficHistory {
   flush(): void {
     this.people.flush();
     this.errors.flush();
+    this.slow.flush();
     const rows = [...this.pending.values()];
     const site = new Map<number, { hour: number; route: string; latency: Latency; views: number }>();
     for (const row of rows) {
@@ -169,6 +174,7 @@ export class TrafficHistory {
     this.db.prepare("DELETE FROM traffic_visitors WHERE span = 'hour' AND start < ?").run(cutoff);
     this.people.compact();
     this.errors.compact();
+    this.slow.compact();
   }
 
   /** Totals, a timeline and per-route rows for one window. Hourly for the last
