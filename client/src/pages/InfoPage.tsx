@@ -100,10 +100,12 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-15">October 15, 2026</time></p>
+            <p><time dateTime="2026-10-17">October 17, 2026</time></p>
             <ul>
-              <li>Matchups and event pages load faster again.</li>
-              <li>On Stats, changing a card’s option dims only that card while it updates.</li>
+              <li>Score each round blind while it’s fought, and show the fans’ live scorecard on stream with the OBS overlay.</li>
+              <li>Live marks a bout only once it has started, and the Final pill says which bout ended.</li>
+              <li>Live odds no longer show 99% for both fighters when a book is one-sided.</li>
+              <li>Clearer career stat details, steadier Browse tabs, and new privacy and terms sections.</li>
             </ul>
           </Section>
         </div>
