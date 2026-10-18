@@ -341,6 +341,9 @@ export type HistoryRow = {
   title_narrative: string | null;
   outcome: "win" | "loss" | "draw" | "nc" | null;
   method: string | null;
+  /** How a finish came, as UFCStats words it ("Knee to Head In Clinch"); UFC
+   *  bouts that didn't go to the judges only. */
+  method_detail?: string | null;
   round: string | null;
   time: string | null;
   opponent: { id: string; name: string };
@@ -511,6 +514,21 @@ export type CareerRosterEvent = {
   observed: boolean;
 };
 
+export type ProfileCancelledBout = {
+  key: string;
+  date: string;
+  event_name: string;
+  /** The card it was booked for, when it went ahead without the bout. */
+  event_id: string | null;
+  weight_class: string;
+  /** id only when the opponent has a profile. */
+  opponent: { id: string | null; name: string };
+  reason: string | null;
+  /** The same two fighters' bout within a year after: the booking moved there. */
+  moved_to: { fight_id: string; date: string; event_name: string } | null;
+  source_url: string;
+};
+
 export type FighterProfile = {
   refreshing?: boolean;
   id: string;
@@ -542,6 +560,8 @@ export type FighterProfile = {
   insights: FightInsights;
   /** Every verified professional bout; UFC rows retain their richer local data. */
   pro_history: ProfessionalHistoryRow[];
+  /** UFC bookings that fell through, newest first. */
+  cancelled?: ProfileCancelledBout[];
   roster_events?: CareerRosterEvent[];
   /** Yearly awards, newest first. */
   awards?: FighterAward[];
