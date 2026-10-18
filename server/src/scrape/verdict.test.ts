@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseVerdictEventPage, parseVerdictFightPage } from "./verdict.ts";
+import { parseVerdictEventPage, parseVerdictFightPage, parseVerdictLiveCard } from "./verdict.ts";
 
 test("Verdict event pages expose dated numbered and client-side fight cards", () => {
   const page = parseVerdictEventPage(`
@@ -50,4 +50,30 @@ test("a stoppage's community card keeps the rounds scored before it", () => {
     cards: 6481, f1Name: "Vera", f2Name: "Jourdain", avg1: 19.82, avg2: 17.85,
     rounds: [{ round: 1, avg1: 9.83, avg2: 9.16 }, { round: 2, avg1: 9.98, avg2: 8.69 }],
   });
+});
+
+test("a live Verdict card names the bout on and each round's status, from its own card only", () => {
+  // Nuxt's flattened payload: every value is an index into the array.
+  const flat: unknown[] = [];
+  const at = (value: unknown) => flat.push(value) - 1;
+  const fighter = (first: string, last: string) => at({ fighterFirstName: at(first), fighterLastName: at(last) });
+  const round = (roundNumber: number, roundStatus: number) => at({ roundNumber: at(roundNumber), roundStatus: at(roundStatus) });
+  const model = (eventID: number, fightNumber: number, fightStatus: number, rounds: number[], names: [string, string, string, string]) => at({
+    eventID: at(eventID), fightNumber: at(fightNumber), fightStatus: at(fightStatus),
+    fighter1: fighter(names[0], names[1]), fighter2: fighter(names[2], names[3]),
+    rounds: at(["Reactive", at(rounds)]),
+  });
+  const buckley: [string, string, string, string] = ["Joaquin", "Buckley", "Mike", "Malott"];
+  model(1936, 4, 1, [], buckley); // the card's bare copy
+  model(1936, 4, 1, [round(1, 3), round(2, 1), round(3, 0)], buckley);
+  model(1936, 5, 3, [round(1, 3), round(2, 3), round(3, 3)], ["Erin", "Blanchfield", "Jasmine", "Jasudavicius"]);
+  model(1955, 1, 0, [], ["Alexander", "Volkanovski", "Movsar", "Evloev"]); // a rail's other card
+  const html = `<html><body></body><script type="application/json" data-nuxt-data="nuxt-app" id="__NUXT_DATA__">${JSON.stringify(flat)}</script></html>`;
+  assert.deepEqual(parseVerdictLiveCard(html, 1936), [
+    { eventId: 1936, fightNumber: 4, f1Name: "Joaquin Buckley", f2Name: "Mike Malott", status: 1,
+      rounds: [{ round: 1, status: 3 }, { round: 2, status: 1 }, { round: 3, status: 0 }] },
+    { eventId: 1936, fightNumber: 5, f1Name: "Erin Blanchfield", f2Name: "Jasmine Jasudavicius", status: 3,
+      rounds: [{ round: 1, status: 3 }, { round: 2, status: 3 }, { round: 3, status: 3 }] },
+  ]);
+  assert.deepEqual(parseVerdictLiveCard("<html></html>", 1936), []);
 });

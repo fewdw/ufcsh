@@ -24,8 +24,23 @@ export function fightIsComplete(fight: { f1_outcome?: string | null; f2_outcome?
  * layout is being fought right now: UFCStats publishes round-by-round totals
  * while it happens and only adds the verdict at the end.
  */
-export function fightIsUnderway(fight: { detail_json: string | null; f1_outcome?: string | null; f2_outcome?: string | null }): boolean {
-  return !fightIsComplete(fight) && !!fight.detail_json && fight.detail_json.includes('"type":"past"');
+export function fightIsUnderway(fight: { detail_json: string | null; verdict_live_json?: string | null; f1_outcome?: string | null; f2_outcome?: string | null }): boolean {
+  return !fightIsComplete(fight) && ((!!fight.detail_json && fight.detail_json.includes('"type":"past"'))
+    || (verdictLive(fight)?.started ?? 0) > 0);
+}
+/** Verdict MMA's word on a bout being fought (`verdict-live.ts`), in our
+ * corner order: its status (1 being fought, 3 over), the rounds it has
+ * started and ended, and its fans' average over the ended ones. */
+export type VerdictLive = {
+  sourceUrl: string; status: number; started: number; ended: number;
+  community: { cards: number; avg1: number; avg2: number; rounds: { round: number; avg1: number; avg2: number }[] } | null;
+};
+export function verdictLive(fight: { verdict_live_json?: string | null } | undefined): VerdictLive | null {
+  if (!fight?.verdict_live_json) return null;
+  try {
+    const value = JSON.parse(fight.verdict_live_json);
+    return [value?.status, value?.started, value?.ended].every(Number.isInteger) ? value : null;
+  } catch { return null; }
 }
 /**
  * Whether the site calls the bout on now Live. Evidence it has started always
