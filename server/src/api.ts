@@ -2013,8 +2013,7 @@ type ShareCardData = (Exclude<ShareCard, { kind: "versus" } | { kind: "single" }
  *  site. Read where the fight index lives (a query worker in production). */
 export function shareCardData(kind: string, id: string): ShareCardData | null {
   if (kind === "site") {
-    return { kind: "list", eyebrow: "Independent UFC research", title: "UFC.sh", subtitle: "Cards, odds, rankings and every number behind them",
-      items: ["Fight cards and live results", "Matchup context and fighter rankings", "Judges, referees and venues"], footer: SITE_URL.replace(/^https?:\/\//, "") };
+    return { kind: "site", tagline: "Events, odds, stats and rankings" };
   }
   if (kind === "events" && id === POTENTIAL_EVENT_ID) {
     const fights = potentialMatchups();
