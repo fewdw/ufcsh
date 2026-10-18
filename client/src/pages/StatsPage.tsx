@@ -14,7 +14,7 @@ import { useHistoryState, useRememberedState, useRouteScrollRestoration } from "
 import { DEFAULT_SETTINGS, parseStatsSettings, STATS_CHOICES, statsRequest, type Method, type Metric, type StatsSettings } from "../statsDefaults";
 
 const shell = PANEL;
-const selectClass = "max-w-full rounded-full border border-zinc-200 bg-zinc-50 py-1 pl-2.5 pr-7 text-[10px] font-medium text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-400";
+const selectClass = "max-w-full ui-control rounded-xl border border-zinc-200 bg-zinc-50 py-1 pl-2.5 pr-7 text-[10px] font-medium text-zinc-700 outline-none transition hover:border-zinc-300 focus:border-zinc-400";
 
 type Update = <K extends keyof StatsSettings>(key: K, value: StatsSettings[K]) => void;
 /** Card options that more than one card reads. */
@@ -864,7 +864,7 @@ type ActiveFilter = { key: string; label: string; clear: () => void };
 /** A filter or a picked fighter shown above the cards, removable in one press. */
 function FilterChip({ label, onClear, children }: { label: string; onClear: () => void; children?: React.ReactNode }) {
   return (
-    <span className="flex h-7 max-w-full items-center gap-1 rounded-full border border-zinc-200 bg-zinc-50 pl-1 pr-0.5 text-[11px] font-medium text-zinc-700">
+    <span className="flex h-7 max-w-full items-center gap-1 ui-control rounded-xl border border-zinc-200 bg-zinc-50 pl-1 pr-0.5 text-[11px] font-medium text-zinc-700">
       {children ?? <span className="w-1.5 shrink-0" />}
       <span className="truncate">{label}</span>
       <button
@@ -1004,7 +1004,7 @@ export default function StatsPage() {
                 aria-label="Division"
                 value={division}
                 onChange={(event) => pickDivision(event.target.value)}
-                className="hidden h-8 max-w-44 rounded-full border border-zinc-200 bg-white pl-3 pr-7 text-xs font-medium text-zinc-700 outline-none transition hover:border-zinc-300 hover:bg-zinc-50 focus:border-zinc-400 sm:block"
+                className="hidden h-8 max-w-44 ui-control rounded-xl border border-zinc-200 bg-white pl-3 pr-7 text-xs font-medium text-zinc-700 outline-none transition hover:border-zinc-300 hover:bg-zinc-50 focus:border-zinc-400 sm:block"
               >
                 <option value="all">All divisions</option>
                 {dashboard.divisions.map((name) => <option key={name} value={name}>{name}</option>)}
@@ -1032,7 +1032,7 @@ export default function StatsPage() {
                 onClick={reset}
                 aria-label="Reset all statistics filters"
                 title="Reset all filters"
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+                className="grid h-8 w-8 shrink-0 place-items-center ui-control rounded-xl border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
               >
                 <RotateCcw
                   className="h-3.5 w-3.5 transition-transform duration-500 ease-out"

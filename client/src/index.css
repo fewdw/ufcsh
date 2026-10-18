@@ -3,6 +3,107 @@
 /* Follow the app setting, including inside browsers with a dark device theme. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Self-hosted so the interface keeps the same metrics on every device. */
+@font-face {
+  font-family: Inter;
+  src: url("/fonts/inter/InterVariable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@theme {
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.25rem;
+  --color-zinc-50: #f8f8f7;
+  --color-zinc-100: #f2f2f0;
+  --color-zinc-200: #e5e5e2;
+  --color-zinc-300: #d2d2cf;
+  --color-zinc-400: #858581;
+  --color-zinc-500: #6b6b67;
+  --color-zinc-600: #555551;
+  --color-zinc-700: #41413e;
+  --color-zinc-800: #2c2c29;
+  --color-zinc-900: #1c1c1a;
+  --color-zinc-950: #111110;
+}
+
+:root {
+  color-scheme: light;
+  --app-canvas: #f5f5f3;
+  --app-surface: #fff;
+  --app-subtle: #f8f8f7;
+  --app-line: #e5e5e2;
+  --app-selected: #fff;
+  --app-shadow: 0 2px 8px rgb(25 25 20 / 0.025);
+  --app-selection-shadow: 0 0 0 1px rgb(25 25 20 / 0.07), 0 2px 4px rgb(25 25 20 / 0.06);
+}
+
+.dark {
+  --app-canvas: #101011;
+  --app-surface: #1b1b1d;
+  --app-subtle: #222224;
+  --app-line: #343437;
+  --app-selected: #303033;
+  --app-shadow: 0 2px 8px rgb(0 0 0 / 0.08);
+  --app-selection-shadow: 0 0 0 1px #414145, 0 2px 4px rgb(0 0 0 / 0.15);
+}
+
+/* Components own their surface; breakpoint utilities can still flatten a
+   panel when it docks. Charts and result colours retain their data meanings. */
+@layer components {
+  .ui-panel { box-shadow: var(--app-shadow); }
+  .ui-control { transition-duration: 160ms; }
+  .ui-segmented { background-color: var(--app-subtle); box-shadow: inset 0 0 0 1px var(--app-line); }
+  .ui-selected { box-shadow: var(--app-selection-shadow); }
+}
+
+.app-shell { background-color: var(--app-canvas); }
+.app-header { z-index: 50; box-shadow: 0 1px 8px rgb(25 25 20 / 0.025); }
+.app-wordmark { letter-spacing: -0.055em; }
+.app-wordmark::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  background: #dc2626;
+  clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%);
+  vertical-align: 2px;
+}
+.app-shell h1 { letter-spacing: -0.035em; }
+.app-shell h2 { letter-spacing: -0.025em; }
+.event-month { font-size: 10px; font-weight: 600; letter-spacing: 0.12em; padding-top: 18px; padding-bottom: 9px; }
+.event-list-row { padding-top: 11px; padding-bottom: 11px; }
+.event-list-row[aria-current="page"] { background-color: var(--app-subtle); }
+.event-summary { position: relative; }
+.event-summary::before { content: ""; position: absolute; left: 0; top: 22%; bottom: 22%; width: 3px; background: var(--color-zinc-900); border-radius: 0 3px 3px 0; }
+.event-fight-row { padding-top: 14px; padding-bottom: 14px; }
+.event-segment { background-color: var(--app-subtle); }
+.event-segment h2 { font-size: 12px; font-weight: 650; letter-spacing: -0.01em; }
+.ui-segmented :is(button, a) { border-radius: var(--radius-lg); }
+.ui-control:is(input, select, textarea) { box-shadow: 0 1px 2px rgb(25 25 20 / 0.025); }
+.ui-control:is(input, select, textarea):focus { border-color: var(--color-zinc-500); box-shadow: 0 0 0 3px rgb(113 113 105 / 0.1); }
+
+@media (min-width: 640px) {
+  .event-summary > div { padding-top: 20px; padding-bottom: 20px; }
+}
+
+/* Keep room for the account and admin controls on the smallest phones. */
+@media (max-width: 379px) {
+  .app-wordmark::before { display: none; }
+  .app-header nav.ui-segmented { gap: 0; }
+  .app-header nav.ui-segmented > a,
+  .app-header nav.ui-segmented > div > a { padding-inline: 4px; }
+}
+@media (max-width: 359px) {
+  .app-header > div:first-child { column-gap: 3px; }
+  .app-header nav.ui-segmented > a,
+  .app-header nav.ui-segmented > div > a { padding-inline: 2px; }
+}
+
 /* Matchup design tokens. One hue per fighter, used identically in every panel
    and every chart, so the colour is learned once and read everywhere: blue is
    the first fighter, red the second. Colour is never the only thing carrying
@@ -189,10 +290,10 @@ select:not([multiple]):not([size]) {
   --color-round-4: #60a5fa;
   --color-round-5: #93c5fd;
 }
-.dark .bg-white { background-color: #18181b !important; }
-.dark .bg-white\/95 { background-color: rgb(24 24 27 / 0.95) !important; }
-.dark .bg-zinc-50 { background-color: #27272a !important; }
-.dark .bg-zinc-100 { background-color: #09090b !important; }
+.dark .bg-white { background-color: var(--app-surface) !important; }
+.dark .bg-white\/95 { background-color: rgb(27 27 29 / 0.95) !important; }
+.dark .bg-zinc-50 { background-color: var(--app-subtle) !important; }
+.dark .bg-zinc-100 { background-color: var(--app-canvas) !important; }
 .dark .bg-zinc-100\/50 { background-color: rgb(24 24 27 / 0.65) !important; }
 .dark .bg-zinc-50\/70,
 .dark .bg-zinc-50\/50 { background-color: rgb(39 39 42 / 0.7) !important; }
@@ -209,7 +310,7 @@ select:not([multiple]):not([size]) {
 .dark .text-zinc-400 { color: #a1a1aa !important; }
 .dark .text-zinc-300 { color: #71717a !important; }
 .dark .border-zinc-100 { border-color: #27272a !important; }
-.dark .border-zinc-200 { border-color: #3f3f46 !important; }
+.dark .border-zinc-200 { border-color: var(--app-line) !important; }
 /* Breakpoint variants carry their own class names; without these a docked
    panel keeps its light-mode outline in dark mode. */
 .dark .md\:border-zinc-100 { border-color: #27272a !important; }
@@ -270,11 +371,15 @@ select:not([multiple]):not([size]) {
 .dark .ring-amber-200,
 .dark .ring-amber-500 { --tw-ring-color: #b45309 !important; }
 .dark .ring-slate-200 { --tw-ring-color: #475569 !important; }
-.dark .ring-white { --tw-ring-color: #18181b !important; }
+.dark .ring-white { --tw-ring-color: var(--app-surface) !important; }
 .dark select,
 .dark input { color-scheme: dark; }
-/* A black button on a near-black panel disappears; on the dark theme the
-   primary action inverts to a light pill instead (see ui.ts). */
+/* Shared component surfaces stay distinct from their containing panels. */
+.dark .ui-selected.bg-white { background-color: var(--app-selected) !important; }
+.dark .event-segment.bg-white { background-color: var(--app-subtle) !important; }
+.dark .app-shell.bg-zinc-100 { background-color: var(--app-canvas) !important; }
+.dark .event-summary::before { background-color: #d4d4d8; }
+/* Primary actions invert against dark panels (see ui.ts). */
 .dark .ui-primary { background-color: #f4f4f5 !important; color: #18181b !important; }
 /* A press, for the touch screens the hover rules below leave out. */
 .dark .active\:bg-zinc-100:active { background-color: #27272a !important; }
@@ -538,18 +643,18 @@ select:not([multiple]):not([size]) {
 /* Follow the app's selected theme, independently of the operating system. */
 .odds-pair {
   color: #18181b;
-  border-color: #e4e4e7;
-  background: linear-gradient(180deg, #fff, #fafafa);
+  border-color: var(--app-line);
+  background: var(--app-surface);
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.025);
 }
-.odds-pair-divider { background: #e4e4e7; }
+.odds-pair-divider { background: var(--app-line); }
 .dark .odds-pair {
   color: #f4f4f5;
-  border-color: #3f3f46;
-  background: linear-gradient(180deg, #27272a, #202023);
+  border-color: var(--app-line);
+  background: var(--app-subtle);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.025);
 }
-.dark .odds-pair-divider { background: #3f3f46; }
+.dark .odds-pair-divider { background: var(--app-line); }
 
 /* Rankings activity. Booked is warm (something is coming), fought lately is
    cool (it just happened); neither is win/loss red or green. Tints strong

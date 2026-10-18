@@ -28,7 +28,7 @@ export function OddsFormatTabs({ format, onChange }: { format: OddsFormat; onCha
           type="button"
           aria-pressed={format === option.id}
           onClick={() => onChange(option.id)}
-          className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition ${format === option.id ? segmentedSelected : segmentedIdle}`}
+          className={`rounded-lg px-2 py-0.5 text-[10px] font-medium transition ${format === option.id ? segmentedSelected : segmentedIdle}`}
         >
           {option.label}
         </button>

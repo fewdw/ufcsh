@@ -303,7 +303,7 @@ function SearchBox({ value, onChange }: { value: string; onChange: (value: strin
         autoComplete="off"
         spellCheck={false}
         enterKeyHint="search"
-        className="h-9 w-full rounded-full border border-zinc-200 bg-zinc-50 pl-8 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-8 sm:text-[13px]"
+        className="h-9 w-full ui-control rounded-xl border border-zinc-200 bg-zinc-50 pl-8 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-8 sm:text-[13px]"
       />
     </label>
   );
@@ -334,7 +334,7 @@ function ScorecardFilter({ value, agreement, total, onChange, onOpen }: {
   // A native select is as wide as its longest option. The chip shows only the
   // current one, with the select laid invisibly over it to open the picker.
   return (
-    <label className="relative flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 pl-3.5 pr-3 text-[13px] font-medium text-zinc-700 transition-colors focus-within:border-zinc-400 hover:border-zinc-300 sm:h-8 sm:text-xs">
+    <label className="relative flex h-9 shrink-0 cursor-pointer items-center gap-1.5 ui-control rounded-xl border border-zinc-200 bg-zinc-50 pl-3.5 pr-3 text-[13px] font-medium text-zinc-700 transition-colors focus-within:border-zinc-400 hover:border-zinc-300 sm:h-8 sm:text-xs">
       {current.group ? (current.agreed
         ? <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
         : <X className="h-3.5 w-3.5 text-rose-600" aria-hidden="true" />) : null}

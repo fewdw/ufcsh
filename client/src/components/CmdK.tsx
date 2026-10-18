@@ -199,7 +199,7 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
             placeholder="Search fighters, events, matchups…"
             className="min-w-0 flex-1 bg-transparent py-4 text-sm text-zinc-900 outline-none placeholder:text-zinc-400"
           />
-          <button type="button" aria-label="Close search" onClick={onClose} className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-zinc-500 hover:bg-zinc-100"><X className="h-4 w-4" aria-hidden="true" /></button>
+          <button type="button" aria-label="Close search" onClick={onClose} className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-zinc-500 hover:bg-zinc-100"><X className="h-4 w-4" aria-hidden="true" /></button>
         </div>
         <div className="min-h-0 overflow-y-auto overscroll-y-contain p-2" ref={selection.listRef} tabIndex={-1}>
           <div id={selection.listId} role="listbox" aria-label={trimmed ? "Search results" : "Quick navigation"} aria-busy={searching}>

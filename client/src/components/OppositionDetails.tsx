@@ -31,7 +31,7 @@ function Result({ outcome, label }: { outcome: OppositionBout["outcome"]; label?
   return <span title={label ?? word} aria-label={label ?? word} className={`inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded px-1 font-bold ${outcomeClasses(outcome)}`}>{outcomeLabel(outcome) || "?"}</span>;
 }
 
-const CHIP = "inline-block whitespace-nowrap rounded-full px-1.5 text-[10px] font-bold leading-4";
+const CHIP = "inline-block whitespace-nowrap rounded-lg px-1.5 text-[10px] font-bold leading-4";
 
 function Chips({ standing }: { standing: Standing | null }) {
   return <>{standingChips(standing).map(chip => <span key={chip.kind} title={chip.title} className={`${CHIP} py-px ${chipTone[chip.kind]}`}><span className="sr-only">{chip.title}: </span><span aria-hidden="true">{chip.short}</span></span>)}</>;
@@ -147,7 +147,7 @@ function OppositionModal({ id, scope, fighters, before, close }: { id: string; s
   const [outcome, setOutcome] = useHistoryState<OppositionFilter>(`${scope}:outcome`, "all");
   // On the night each opponent was met, or everything they have done since too.
   const [current, setCurrent] = useHistoryState(`${scope}:current`, false);
-  const segment = "min-h-8 flex-auto whitespace-nowrap rounded-full px-1 text-[10px] font-medium sm:px-3 sm:text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900";
+  const segment = "min-h-8 flex-auto whitespace-nowrap rounded-lg px-1 text-[10px] font-medium sm:px-3 sm:text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900";
   return <EvidenceDialog id={id} close={close} large>
     <div className="shrink-0 px-4 pb-3 pt-3 sm:px-5">
       <div className="flex items-center justify-between gap-3">
@@ -157,7 +157,7 @@ function OppositionModal({ id, scope, fighters, before, close }: { id: string; s
       <div className="mt-2 flex flex-wrap items-center gap-1.5 sm:gap-2">
         <div role="group" aria-label="Fighter" className={`${segmentedGroup} min-w-max flex-1`}>
           {fighters.map((fighter, index) => <button key={fighter.id} type="button" aria-label={fighter.name} title={fighter.name} aria-pressed={selected === index} onClick={() => setSelected(index)}
-            className={`min-h-8 min-w-0 flex-auto whitespace-nowrap rounded-full px-1 text-[10px] font-medium sm:px-3 sm:text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${selected === index ? segmentedSelected : segmentedIdle}`}><span className="sm:hidden">{lastName(fighter.name)}</span><span className="hidden sm:inline">{fighter.name}</span></button>)}
+            className={`min-h-8 min-w-0 flex-auto whitespace-nowrap rounded-lg px-1 text-[10px] font-medium sm:px-3 sm:text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${selected === index ? segmentedSelected : segmentedIdle}`}><span className="sm:hidden">{lastName(fighter.name)}</span><span className="hidden sm:inline">{fighter.name}</span></button>)}
         </div>
         <div role="group" aria-label={`${lastName(fighters[selected].name)}'s results`} className={`${segmentedGroup} min-w-max flex-1`}>
           {(["all", "win", "loss"] as const).map(value => <button key={value} type="button" aria-pressed={outcome === value} onClick={() => setOutcome(value)}

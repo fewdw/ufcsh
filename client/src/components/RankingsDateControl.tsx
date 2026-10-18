@@ -2,7 +2,7 @@ import { lazy, Suspense, useRef, useState } from "react";
 import { CalendarDays, RotateCcw } from "lucide-react";
 
 const RankingsDatePicker = lazy(() => import("./RankingsDatePicker"));
-const iconButton = "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:bg-zinc-50";
+const iconButton = "flex h-8 w-8 shrink-0 items-center justify-center ui-control rounded-xl border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:bg-zinc-50";
 
 export default function RankingsDateControl({ selectedDate, today, onView, variant = "toolbar" }: {
   selectedDate: string | null; today: string; onView: (date: string | null) => void;

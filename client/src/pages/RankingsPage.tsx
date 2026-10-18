@@ -687,7 +687,7 @@ export default function RankingsPage() {
         {/* Division tabs sit before Filters; phone tabs scroll when space is tight. */}
         <div className={`${shell} mb-2 flex flex-wrap items-center gap-2 px-2.5 py-2.5 sm:mb-3 sm:px-3 sm:py-3 lg:gap-3`}>
           <div className="flex min-w-0 flex-1 items-center gap-3 lg:contents">
-            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto overscroll-x-contain py-1.5 [scrollbar-width:none] lg:contents" aria-label="Ranking tabs">
+            <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-2 overflow-x-auto overscroll-x-contain py-1.5 [scrollbar-width:none] lg:contents" aria-label="Ranking tabs">
               <div className={`${segmentedGroup} shrink-0 p-1`} role="group" aria-label="Ranking view">
                 {SOURCES.map((source) => (
                   <button
@@ -696,7 +696,7 @@ export default function RankingsPage() {
                     aria-pressed={settings.rankingSource === source.key}
                     onClick={() => { setHighlightedId(null); update("rankingSource", source.key); }}
                     title={source.help}
-                    className={`rounded-full px-2 py-1 text-xs font-medium transition sm:px-3 lg:px-3.5 ${
+                    className={`rounded-lg px-1.5 py-1 text-xs font-medium transition sm:px-3 lg:px-3.5 ${
                       settings.rankingSource === source.key ? segmentedSelected : segmentedIdle
                     }`}
                   >
@@ -711,7 +711,7 @@ export default function RankingsPage() {
                     type="button"
                     aria-pressed={view === f.key}
                     onClick={() => { setHighlightedId(null); setView(f.key); }}
-                    className={`rounded-full px-1.5 py-1 text-xs font-medium transition min-[375px]:px-2 sm:px-3 lg:px-3.5 ${
+                    className={`rounded-lg px-1 py-1 text-xs font-medium transition min-[375px]:px-1.5 sm:px-3 lg:px-3.5 ${
                       view === f.key ? segmentedSelected : segmentedIdle
                     }`}
                   >

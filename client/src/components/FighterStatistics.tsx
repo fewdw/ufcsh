@@ -110,7 +110,7 @@ export default function FighterStatistics({ fighterId, history }: { fighterId: s
           </div>
           {inDivision && divisions.length ? (
             <select value={scope} onChange={(event) => setScope(event.target.value)} aria-label="Weight class"
-              className="h-8 rounded-full border border-zinc-200 bg-white pl-3 pr-7 text-xs font-medium text-zinc-700 outline-none hover:border-zinc-300 focus:border-zinc-400">
+              className="h-8 ui-control rounded-xl border border-zinc-200 bg-white pl-3 pr-7 text-xs font-medium text-zinc-700 outline-none hover:border-zinc-300 focus:border-zinc-400">
               {divisions.map((entry) => <option key={entry.key} value={entry.key}>{entry.label} · {entry.bouts} {entry.bouts === 1 ? "bout" : "bouts"}</option>)}
             </select>
           ) : null}
@@ -126,7 +126,7 @@ export default function FighterStatistics({ fighterId, history }: { fighterId: s
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
             <input type="search" value={query} onChange={(event) => setQuery(event.target.value.slice(0, 40))}
               placeholder="Filter statistics…" aria-label="Filter statistics" autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
-              className="h-8 w-full rounded-full border border-zinc-200 bg-zinc-50 pl-8 pr-3 text-[13px] text-zinc-900 outline-none placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:text-xs" />
+              className="h-8 w-full ui-control rounded-xl border border-zinc-200 bg-zinc-50 pl-8 pr-3 text-[13px] text-zinc-900 outline-none placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:text-xs" />
           </label>
         </div>
 

@@ -53,7 +53,7 @@ function Row({ item, onDone }: { item: Moderated; onDone: () => void }) {
         <Link to={`/profiles/${item.author.handle}`} className="font-semibold text-zinc-700 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900">{item.author.displayName}</Link>
         <span>{item.author.comments} comments · {item.author.removed} removed</span>
         {item.author.mutedUntil ? <span className="font-semibold text-rose-600">Muted {until(item.author.mutedUntil)}</span> : null}
-        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATE_TONE[item.state]}`}>{STATE_LABEL[item.state]}</span>
+        <span className={`rounded-lg px-2 py-0.5 text-[10px] font-semibold ${STATE_TONE[item.state]}`}>{STATE_LABEL[item.state]}</span>
         <span>Score {item.score}</span>
         <span>{new Date(item.createdAt).toLocaleString()}</span>
         {item.fight ? (
@@ -71,7 +71,7 @@ function Row({ item, onDone }: { item: Moderated; onDone: () => void }) {
         <div className="mt-3 rounded-lg bg-zinc-50 px-3 py-2">
           <div className="flex flex-wrap gap-1.5">
             {[...tally].map(([key, count]) => (
-              <span key={key} className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-zinc-600 ring-1 ring-zinc-200">{REASON[key] ?? key} × {count}</span>
+              <span key={key} className="rounded-lg bg-white px-2 py-0.5 text-[10px] font-semibold text-zinc-600 ring-1 ring-zinc-200">{REASON[key] ?? key} × {count}</span>
             ))}
             {!tally.size ? <span className="text-[11px] text-zinc-400">{item.reports.length} closed {item.reports.length === 1 ? "report" : "reports"}</span> : null}
           </div>
@@ -182,7 +182,7 @@ export default function AdminComments() {
         <div role="tablist" aria-label="Moderation views" className={`${segmentedGroup} mt-4 w-full`}>
           {views.map(option => (
             <button key={option.id} type="button" role="tab" aria-selected={view === option.id} onClick={() => setView(option.id)}
-              className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition ${view === option.id ? segmentedSelected : segmentedIdle}`}>
+              className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-medium transition ${view === option.id ? segmentedSelected : segmentedIdle}`}>
               {option.label}
             </button>
           ))}

@@ -4,7 +4,7 @@ import AccountButton from "./components/AccountButton";
 import CmdK from "./components/CmdK";
 import SearchGlyph from "./components/SearchGlyph";
 import LiveMatchup from "./components/LiveMatchup";
-import { segmentedIdle, segmentedSelected } from "./components/segmented";
+import { segmentedGroup, segmentedIdle, segmentedSelected } from "./components/segmented";
 import { ChevronDown, Flag, Moon, Shield, Sun } from "lucide-react";
 import { accountsEnabled, useAccount } from "./auth";
 import { rememberAdmin, useAdminResource, wasAdmin, type AdminSession } from "./admin";
@@ -54,7 +54,7 @@ const RosterPage = page(pages.roster, module => module.default);
 const NewsPage = page(pages.news, module => module.default);
 const GraphicPage = page(pages.graphic, module => module.default);
 
-const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
+const NAV_ITEM = "ui-control rounded-lg px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
 
 /** Admin, just before More, as a shield: listed only for the few who have it. */
 function AdminLink({ active }: { active: boolean }) {
@@ -164,18 +164,18 @@ function Header({ onSearch }: { onSearch: () => void }) {
   ];
 
   return (
-    <header className="relative shrink-0 border-b border-zinc-200 bg-white">
+    <header className="app-header relative shrink-0 border-b border-zinc-200 bg-white">
       {/* One row, everything in normal flow: the logo and the nav on the left,
           the actions on the right, and the bout on now taking whatever is
           between them. Nothing is positioned over anything else, so no width
           can make two of them collide. */}
-      <div className="flex w-full items-center gap-1 px-2 py-2 min-[380px]:gap-1.5 min-[380px]:px-2.5 min-[420px]:gap-2 sm:gap-3 sm:px-5 sm:py-3">
-        <Link to="/" aria-label="UFC.sh home" className={`shrink-0 text-sm font-extrabold tracking-tight min-[380px]:text-[15px] min-[420px]:text-base sm:text-lg ${isDevSite ? "text-sky-500" : "text-zinc-900"}`}>
-          UFC<span className={isDevSite ? "font-bold" : "font-bold text-zinc-400"}>.sh</span>
+      <div className="flex w-full items-center gap-1 px-2 py-2 min-[380px]:gap-1.5 min-[380px]:px-2.5 min-[420px]:gap-2 sm:gap-3 sm:px-5 sm:py-3.5">
+        <Link to="/" aria-label="UFC.sh home" className="app-wordmark shrink-0 text-sm font-extrabold tracking-tight text-zinc-900 min-[380px]:text-[15px] min-[420px]:text-base sm:text-lg" title={isDevSite ? "UFC.sh · Development preview" : undefined}>
+          UFC<span className="font-medium text-zinc-500">.sh</span>
         </Link>
         {/* The shared pill group, tightened on a phone so the row still fits a
             320px screen with nothing clipped and nothing dropped. */}
-        <nav className="flex shrink-0 items-center gap-0.5 rounded-full bg-zinc-100 p-0.5 sm:gap-1 sm:p-1">
+        <nav className={`${segmentedGroup} shrink-0 gap-0.5 p-0.5 sm:gap-1 sm:p-1`}>
           {links.map((link) => (
             <Link
               key={link.href}
@@ -206,7 +206,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
             type="button"
             onClick={onSearch}
             aria-label="Search fighters, events and fights"
-            className="flex h-8 w-8 items-center justify-center gap-2 rounded-full border border-zinc-200 bg-white text-sm text-zinc-400 transition-colors hover:border-zinc-300 hover:text-zinc-600 sm:h-9 sm:w-auto sm:justify-start sm:py-1.5 sm:pl-3 sm:pr-3.5"
+            className="ui-control flex h-8 w-8 items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white text-sm text-zinc-400 transition-colors hover:border-zinc-300 hover:text-zinc-600 sm:h-9 sm:w-auto sm:justify-start sm:py-1.5 sm:pl-3 sm:pr-3.5"
           >
             <SearchGlyph />
             <span className="hidden sm:inline">Search anything</span>
@@ -218,7 +218,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
             aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
             aria-pressed={dark}
             title={dark ? "Light mode" : "Dark mode"}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 sm:h-9 sm:w-9"
+            className="ui-control grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-zinc-200 bg-white text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 sm:h-9 sm:w-9"
           >
             {dark ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />}
           </button>
@@ -297,7 +297,7 @@ export default function App() {
   );
   return (
     <ShortcutProvider onSearch={openSearch}>
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-zinc-100 text-zinc-900">
+    <div className="app-shell flex h-full min-h-0 flex-col overflow-hidden bg-zinc-100 text-zinc-900">
       <Header onSearch={openSearch} />
       {isDevSite ? <DevStatsOverlay /> : null}
       {isDevSite ? <LivePreviewPanel /> : null}

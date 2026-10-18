@@ -124,7 +124,7 @@ export default function RosterPage() {
     ))}
   </div>;
   const divisionPicker = <select value={division} onChange={(event) => set("division", event.target.value)} aria-label="Division"
-    className="h-9 w-full rounded-full border border-zinc-200 bg-zinc-50 pl-3 pr-7 text-[13px] font-medium text-zinc-700 outline-none hover:border-zinc-300 focus:border-zinc-400 sm:h-8 sm:w-auto sm:text-xs">
+    className="h-9 w-full ui-control rounded-xl border border-zinc-200 bg-zinc-50 pl-3 pr-7 text-[13px] font-medium text-zinc-700 outline-none hover:border-zinc-300 focus:border-zinc-400 sm:h-8 sm:w-auto sm:text-xs">
     <option value="all">All divisions</option>
     {divisions.map((value) => <option key={value} value={value}>{value}</option>)}
   </select>;

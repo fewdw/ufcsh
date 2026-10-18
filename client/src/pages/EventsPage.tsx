@@ -131,7 +131,7 @@ const EventListRow = memo(function EventListRow({ event, selected, tag, anchor, 
       data-anchor={anchor ? "" : undefined}
       aria-current={selected ? "page" : undefined}
       className={[
-        "scroll-mt-10 rounded-xl border border-transparent px-3 py-2 transition-colors",
+        "event-list-row scroll-mt-10 rounded-xl border border-transparent px-3 py-2 transition-colors",
         // Selection borrows the header nav's token outright: a
         // clean surface inside a hairline ring with a soft
         // shadow, rather than inverting to a solid block.
@@ -313,7 +313,7 @@ function EventSidebar({
               autoCorrect="off"
               autoCapitalize="none"
               spellCheck={false}
-              className="h-10 w-full min-w-0 rounded-full border border-zinc-200 bg-white pl-9 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-9 sm:text-sm"
+              className="h-10 w-full min-w-0 ui-control rounded-xl border border-zinc-200 bg-zinc-50 pl-9 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-9 sm:text-sm"
             />
           </label>
           <button type="button" onClick={onBack} aria-label="Close events" title="Back to card" className={`shrink-0 ${CLOSE_BUTTON} ${dock.toggle}`}>
@@ -328,7 +328,7 @@ function EventSidebar({
               aria-pressed={kind === option.value}
               onClick={() => setKind(option.value)}
               title={`${option.title} · ${countByKind[option.value]}`}
-              className={`min-h-8 flex-1 whitespace-nowrap rounded-full px-2 py-1.5 text-[13px] font-medium transition sm:min-h-0 sm:py-1 sm:text-xs ${
+              className={`min-h-8 flex-1 whitespace-nowrap rounded-lg px-2 py-1.5 text-[13px] font-medium transition sm:min-h-0 sm:py-1 sm:text-xs ${
                 kind === option.value ? segmentedSelected : segmentedIdle
               }`}
             >
@@ -350,7 +350,7 @@ function EventSidebar({
         >
           {(drawn ? groups : []).map(([yearMonth, list]) => (
             <div key={yearMonth}>
-              {yearMonth && yearMonth !== "potential" ? <div className="sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-white px-4 py-2 text-[13px] font-bold uppercase tracking-[0.1em] text-zinc-700">
+              {yearMonth && yearMonth !== "potential" ? <div className="event-month sticky top-0 z-10 -mx-2 mb-1 flex items-baseline gap-2 bg-white px-4 py-2 text-[13px] font-bold uppercase tracking-[0.1em] text-zinc-700">
                 <span>{yearMonth.slice(0, 4)}</span>
                 <span>{MONTHS[Number(yearMonth.slice(5, 7)) - 1]}</span>
               </div> : null}
@@ -596,7 +596,7 @@ function FightRow({ fight, past, eventId, live = false, cancellation }: { fight:
         event.preventDefault();
         open();
       }}
-      className={`group block w-full px-3 text-left transition-colors @3xl:px-4 ${cancellation ? "bg-red-50 py-2 @3xl:py-1.5 dark:bg-red-950/40" : live ? "cursor-pointer py-2.5 hover:bg-emerald-50/60 @3xl:py-3" : "cursor-pointer py-2 hover:bg-zinc-50 @3xl:py-1.5"}`}
+      className={`event-fight-row group block w-full px-3 text-left transition-colors @3xl:px-4 ${cancellation ? "bg-red-50 py-2 @3xl:py-1.5 dark:bg-red-950/40" : live ? "cursor-pointer py-2.5 hover:bg-emerald-50/60 @3xl:py-3" : "cursor-pointer py-2 hover:bg-zinc-50 @3xl:py-1.5"}`}
     >
       <div className="@3xl:hidden"><CompactFightRow fight={fight} done={done} live={live} cancellation={cancellation} /></div>
       <div className="hidden grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-4 gap-y-1 @3xl:grid">
@@ -854,7 +854,7 @@ function SegmentBreak({ segment, at }: { segment: CardSegment | null; at: number
   const clock = clockTime(at);
   return (
     // The containing row supplies a matching top rule at segment boundaries.
-    <div className="flex items-center justify-between gap-3 border-b border-zinc-200 bg-white px-3 py-1.5 @[34rem]:px-6 @[34rem]:py-2.5">
+    <div className="event-segment flex items-center justify-between gap-3 border-b border-zinc-200 bg-white px-3 py-1.5 @[34rem]:px-6 @[34rem]:py-2.5">
       <h2 className="min-w-0 text-sm font-semibold leading-5 tracking-tight text-zinc-900">{segment ? SEGMENT_LABEL[segment] : "Fight card"}</h2>
       {clock ? (
         <span className="shrink-0 rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-medium leading-4 tabular-nums text-zinc-600 @[34rem]:py-1" title="Announced start, in your time zone">
@@ -1050,7 +1050,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
   return (
     <div ref={eventScroll} className={pane}>
       {navigation}
-      <section className={`${shell} shrink-0 overflow-hidden`}>
+      <section className={`${shell} event-summary shrink-0 overflow-hidden`}>
         {/* The name, date and place on the left; the card's start times on
             the right, centred against it, one per line at every width. */}
         <div className="flex items-center justify-between gap-3 px-3 py-2.5 @[34rem]:gap-5 @[34rem]:px-5 @[34rem]:py-3.5">

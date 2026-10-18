@@ -116,7 +116,7 @@ export default function OptionsSheet({
           if (!open && Date.now() - closedAt.current < 500) return;
           setOpen((value) => !value);
         }}
-        className={`flex h-8 items-center gap-1.5 rounded-full border border-zinc-200 bg-white text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 ${iconOnlyOnPhone === "lg" ? "px-2 lg:px-3" : iconOnlyOnPhone ? "px-2 sm:px-3" : "px-3"}`}
+        className={`flex h-8 items-center gap-1.5 ui-control rounded-xl border border-zinc-200 bg-white text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 ${iconOnlyOnPhone === "lg" ? "px-2 lg:px-3" : iconOnlyOnPhone ? "px-2 sm:px-3" : "px-3"}`}
       >
         <SlidersHorizontal className="h-3.5 w-3.5 text-zinc-500" aria-hidden="true" />
         <span className={phoneHidden}>{label}</span>

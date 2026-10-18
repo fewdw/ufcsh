@@ -98,21 +98,21 @@ function StatModal({ id, fighters, before, selection, update }: {
             <p className="mt-0.5 text-[11px] text-zinc-400">{before ? cutoff ? `Before ${formatDate(cutoff.date)}` : "Before this fight" : "UFC career"}</p>
           </div>
           {orders.length > 1 ? <select aria-label="Sort opponents" value={sort.order} onChange={event => setSort({ ...sort, order: event.target.value as EvidenceOrder })}
-            className="h-9 w-24 shrink-0 rounded-full border-0 bg-zinc-100 pl-3 pr-6 text-xs font-medium text-zinc-700 focus-visible:outline-2 focus-visible:outline-zinc-900">
+            className="h-9 w-24 shrink-0 rounded-lg border-0 bg-zinc-100 pl-3 pr-6 text-xs font-medium text-zinc-700 focus-visible:outline-2 focus-visible:outline-zinc-900">
             {orders.map(order => <option key={order} value={order}>{order === "recent" ? "Recent" : order === "descending" ? "Highest" : "Lowest"}</option>)}
           </select> : null}
         </div>
         <div role="group" aria-label="Statistic category" className="mt-3 flex flex-wrap items-center gap-2">
-          {EVIDENCE_CATEGORIES.filter(group => results ? group.label === "Results" : group.label !== "Results").map(group => <div key={group.label} role="group" aria-label={group.label} className={`max-w-full items-stretch gap-0.5 bg-zinc-100 p-1 sm:flex sm:w-auto sm:gap-1 sm:rounded-full ${group.label === "Results" ? "flex w-auto rounded-full" : "grid w-full grid-cols-5 rounded-2xl"}`}>
+          {EVIDENCE_CATEGORIES.filter(group => results ? group.label === "Results" : group.label !== "Results").map(group => <div key={group.label} role="group" aria-label={group.label} className={`max-w-full items-stretch gap-0.5 bg-zinc-100 p-1 sm:flex sm:w-auto sm:gap-1 sm:rounded-lg ${group.label === "Results" ? "flex w-auto rounded-lg" : "grid w-full grid-cols-5 rounded-2xl"}`}>
             {group.views.map(option => <button key={option.key} type="button" aria-pressed={currentView.label === option.view.label} aria-label={option.view.label} title={option.view.label} onClick={() => changeView(option.view)}
-              className={`min-h-9 min-w-0 rounded-xl px-1 py-1 text-[11px] font-medium leading-tight transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 sm:min-h-7 sm:whitespace-nowrap sm:rounded-full sm:px-2.5 sm:py-0 sm:text-xs ${group.label === "Results" ? "px-3" : ""} ${currentView.label === option.view.label ? segmentedSelected : segmentedIdle}`}>
+              className={`min-h-9 min-w-0 rounded-xl px-1 py-1 text-[11px] font-medium leading-tight transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 sm:min-h-7 sm:whitespace-nowrap sm:rounded-lg sm:px-2.5 sm:py-0 sm:text-xs ${group.label === "Results" ? "px-3" : ""} ${currentView.label === option.view.label ? segmentedSelected : segmentedIdle}`}>
               {option.label}
             </button>)}
           </div>)}
         </div>
         {matchup && !results ? <div role="group" aria-label="Fighter" className={`${segmentedGroup} mt-3 h-10 lg:hidden`}>
           {fighters.map((fighter, index) => <button key={fighter.id} type="button" aria-pressed={selected === index} onClick={() => update({ ...selection, fighter: index })}
-            className={`min-h-8 min-w-0 flex-1 truncate rounded-full px-2 py-1.5 text-xs font-medium ${selected === index ? segmentedSelected : segmentedIdle}`}>{fighter.name}</button>)}
+            className={`min-h-8 min-w-0 flex-1 truncate rounded-lg px-2 py-1.5 text-xs font-medium ${selected === index ? segmentedSelected : segmentedIdle}`}>{fighter.name}</button>)}
         </div> : null}
       </div>
       <div className={`grid min-h-0 flex-1 gap-4 px-4 pb-4 sm:px-5 ${results && matchup ? "grid-rows-2 lg:grid-rows-1" : "grid-rows-[minmax(0,1fr)]"} ${matchup ? "lg:grid-cols-2" : ""}`}>

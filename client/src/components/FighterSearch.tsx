@@ -84,7 +84,7 @@ export default function FighterSearch({
     <div ref={rootRef} className="relative z-40 w-full" onBlur={(event) => {
       if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
     }}>
-      <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition focus-within:border-zinc-400">
+      <div className="ui-control overflow-hidden rounded-xl border border-zinc-200 bg-white transition focus-within:border-zinc-400">
         {showSelected && selected.length ? (
           <div ref={listRef} className={`space-y-1 overflow-y-auto overscroll-y-contain border-b border-zinc-100 p-1 pr-2 [scrollbar-gutter:stable] ${compact ? "max-h-24" : "max-h-[4.25rem]"}`}>
             {selected.map((fighter) => (
@@ -95,7 +95,7 @@ export default function FighterSearch({
                   type="button"
                   aria-label={`Remove ${fighter.name}`}
                   onClick={() => onChange(selected.filter((current) => current.id !== fighter.id))}
-                  className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-sm text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-800"
+                  className="grid h-6 w-6 shrink-0 place-items-center rounded-lg text-sm text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-800"
                 >
                   ×
                 </button>
