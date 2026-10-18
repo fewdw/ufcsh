@@ -562,7 +562,7 @@ function CardControls({ boardKey, order, settings, update, division }: { boardKe
               <option value="closest">Closest by the fans</option>
               <option value="robbery">Fans had the other winner</option>
               <option value="rounds">Fans' rounds vs their total</option>
-              <option value="stats">The stats had the loser</option>
+              <option value="stats">The stats judge had the loser</option>
             </Select>
           ) : null}
           {settings.fightsMode === "action" ? (
@@ -598,7 +598,7 @@ function CardControls({ boardKey, order, settings, update, division }: { boardKe
               <option value="pressure">Pressure over accuracy</option>
               <option value="submissions">Submission attempts over striking</option>
               <option value="ground">Ground strikes over standing</option>
-              <option value="stats">Matching the stats</option>
+              <option value="stats">Matching the stats judge</option>
               <option value="strikes">Following the strike count</option>
               <option value="controlLead">Following control time</option>
               <option value="home">Home fighters</option>
@@ -984,6 +984,7 @@ export default function StatsPage() {
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto">
       <main className="mx-auto max-w-[100rem] p-2 pb-8 sm:p-3">
+        <h1 className="sr-only">UFC statistics and leaderboards</h1>
         <section className={`${shell} relative z-30 mb-2 px-2.5 py-2 sm:mb-3 sm:px-3`}>
           <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1 sm:max-w-80">

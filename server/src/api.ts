@@ -1,9 +1,10 @@
 import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, potentialMatchups, potentialFight } from "./potential-matchups.ts";
 import { careerStatistics } from "./career-statistics.ts";
+import { cachedDivisionMedians, currentDivision } from "./division-medians.ts";
 import { decisionScores, roundOutcomes, roundStrikes } from "./fight-insights.ts";
 import { opposition } from "./opposition.ts";
 import { tapeHistory } from "./tape-history.ts";
-import { eventStatus, fightIsComplete, fightIsUnderway, isFightDay, liveDetailDue } from "./live-state.ts";
+import { boutIsLive, eventStatus, fightIsComplete, fightIsUnderway, isFightDay, liveDetailDue } from "./live-state.ts";
 import { ScoringStore, type ScoringFight } from "./scoring.ts";
 import { createScoringHandler, scoringOrigins } from "./scoring-http.ts";
 import { PredictionStore } from "./predictions.ts";
@@ -43,10 +44,11 @@ import { CommentStore } from "./comments.ts";
 import { createCommentsHandler } from "./comments-http.ts";
 import { ACCOUNT_SYNC_MS, accountSyncCheck, adminAccounts, syncAccounts } from "./accounts.ts";
 import { recentSyncError, syncStatus } from "./sync-status.ts";
-import { releasedRounds } from "./live-rounds.ts";
+import { adminLive, releasedRounds } from "./live-rounds.ts";
 import { pruneBackups } from "./backup-retention.ts";
 import { ensureImageVariant, normalizeHeadshot, variantPath, type ImageSize } from "./image-variants.ts";
-import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds, syncOddsForFight } from "./sync.ts";
+import { syncEventDetail, syncFightDetail, syncFighterBirthDate, refreshLiveEvent, syncLiveEvents, ensureFightMethodOdds, syncOddsForFight, fighterNames } from "./sync.ts";
+import { boutOdds, LiveOddsService, scanUpcoming, upcomingBouts, type FinishedBout, type LiveBout } from "./polymarket.ts";
 import { BackgroundRefresh } from "./background-refresh.ts";
 import { VersionCache } from "./version-cache.ts";
 import { fuzzyScore, fuzzyTarget, splitMatchup, type FuzzyTarget } from "./fuzzy.ts";
@@ -429,11 +431,10 @@ function listEvents(): unknown {
 }
 
 /** The bout on now for a running card (fought bottom-up, so the lowest one
- * without a result), or null when nothing is running. `live` is whether it has
- * started: numbers already published settle it, and so does a round opened
- * from the admin panel. Otherwise the announced start does — once it has
- * passed we assume the bout is under way — and with no time at all a card
- * that has produced a result is a card being fought. */
+ * without a result), or null when nothing is running. `started` is evidence it
+ * has begun: UFCStats publishing its round totals, or the admin panel marking
+ * it live or opening a round. `live` is what the site calls it (`boutIsLive`):
+ * the header shows the previous result for a couple of minutes first. */
 function currentBout() {
   const e = prepared(`SELECT * FROM events WHERE complete = 0
     AND date >= date('now', '-1 day') AND date <= date('now') ORDER BY date DESC LIMIT 1`).get() as EventRow | undefined;
@@ -443,8 +444,31 @@ function currentBout() {
   if (!bout) return null;
   const starts_at = estimatedStart(fights.map(scheduledBout), Number(bout.ord) || 0, segmentTimes(e));
   const completed = fights.filter(fightIsComplete).length;
-  const live = fightIsUnderway(bout) || releasedRounds(bout.id) > 0 || (starts_at != null ? Date.now() >= starts_at : completed > 0);
-  return { event: e, fights, bout, starts_at, completed, live };
+  const admin = adminLive(bout.id);
+  const started = fightIsUnderway(bout) || admin.rounds > 0 || admin.mark > 0;
+  const live = boutIsLive({
+    started, held: admin.mark < 0, completed, startsAt: starts_at,
+    segmentStart: bout.segment ? segmentTimes(e)[bout.segment as keyof SegmentTimes] : null,
+  });
+  return { event: e, fights, bout, starts_at, completed, live, started };
+}
+
+/** The bout on now as the Polymarket matcher needs it. */
+function polymarketBout(): LiveBout | null {
+  const current = currentBout();
+  if (!current) return null;
+  // Only evidence ends the previous result's hold early, never the card's rule.
+  const { event, bout, started } = current;
+  return { id: bout.id, date: event.date, f1: fighterNames(bout.f1_id, bout.f1_name), f2: fighterNames(bout.f2_id, bout.f2_name), underway: started };
+}
+
+function boutResult(id: string): FinishedBout | null {
+  const row = prepared(`SELECT id, event_id, ord, f1_name, f2_name, f1_outcome, f2_outcome, method, round, time FROM fights WHERE id = ?`).get(id) as (Omit<FinishedBout, "fight_number" | "total_fights"> & { event_id: string; ord: number }) | undefined;
+  if (!row || !fightIsComplete(row)) return null;
+  const { event_id, ord, ...result } = row;
+  // Counted the way liveCard counts: the opener is 1, the main event last.
+  const place = prepared(`SELECT COUNT(*) AS total, SUM(ord >= ?) AS number FROM fights WHERE event_id = ?`).get(ord, event_id) as { total: number; number: number | null };
+  return { ...result, fight_number: place.number || null, total_fights: place.total || null };
 }
 
 function liveCard(rankingType: RankingType): unknown | null {
@@ -546,6 +570,8 @@ async function getEvent(id: string, rankingType: RankingType): Promise<unknown |
     odds_freshness: oddsFreshness(e.id),
     fights: fights.map((f) => ({ ...fightRowToJson(f, false, e.date, rankingType), starts_at: startsAt(f) })),
     cancelled: cancelledBouts(e, rankingType),
+    // The bout confirmed to be on now, as the header's pill has it.
+    live_fight_id: (() => { const current = currentBout(); return current?.live && current.event.id === e.id ? current.bout.id : null; })(),
   };
 }
 
@@ -907,6 +933,14 @@ function fightInProgress(f: { id: string; event_date: string; f1_outcome: string
   return fightIsComplete(prepared("SELECT f1_outcome, f2_outcome FROM fights WHERE id = ?").get(f.id) as { f1_outcome: string | null; f2_outcome: string | null } | undefined ?? {});
 }
 
+/** The bout the card moves to next, before it starts: its Score tab opens
+ * early, so a streamer can set up the overlay ahead of the bell. */
+function fightUpNext(f: { id: string; event_date: string; f1_outcome: string | null; f2_outcome: string | null }): boolean {
+  if (fightIsComplete(f) || !isFightDay(f.event_date)) return false;
+  const current = currentBout();
+  return current != null && !current.live && current.bout.id === f.id;
+}
+
 async function getFight(id: string, rankingType: RankingType): Promise<unknown | null> {
   const potential = id.startsWith("potential-") ? potentialMatchups().find(row => row.id === id) : null;
   const f = potential ? potentialFight(potential) : prepared(`
@@ -1032,12 +1066,15 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     prediction_available: !potential && (fightIsComplete(f) || predictionContext(f.id)?.eventOpen !== false),
     live: !potential && isFightDay(f.event_date),
     in_progress: !potential && fightInProgress(f),
+    up_next: !potential && fightUpNext(f),
     stats_updated_at: f.detail_fetched_at,
     /** Rounds the admin panel has released for scoring, so a reader watching a
      *  live card sees the Score tab open without reloading the page. */
     rounds_open: releasedRounds(f.id),
     weight_class: f.weight_class,
     catch_weight: f.catch_weight ?? null,
+    /** The division's middle walking into this bout, for the career bars. */
+    division_medians: potential ? null : cachedDivisionMedians(index, f.weight_class ?? "", f.event_date),
     title_fight: !!f.title_fight,
     /** Which kind: a belt, an interim belt, or a tournament/TUF final, which
      * carries the same flag at the source but is not a championship bout. */
@@ -1144,6 +1181,11 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     // same index the leaderboards use, so it moves the moment a result lands.
     records,
     career_stats: careerStatistics(index, fr.id)?.totals,
+    // Their current division's middle over the last three years, today included.
+    division_medians: (() => {
+      const division = currentDivision(index, fr.id);
+      return division ? cachedDivisionMedians(index, division, new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)) : null;
+    })(),
     insights: { rounds: roundOutcomes(indexedFighter?.fights ?? [], fr.id), strikes: roundStrikes(indexedFighter?.fights ?? [], fr.id), decisions: decisionScores(indexedFighter?.fights ?? [], fr.id) },
     history: mergedUfcHistory,
     roster_events: fighterRosterEvents(fr.id),
@@ -2346,6 +2388,16 @@ export function startApi(port: number): http.Server {
     .catch(error => log("backup retention failed:", String(error)));
   setTimeout(thinBackups, 10 * 60_000).unref();
   setInterval(thinBackups, 86_400_000).unref();
+  // Polymarket's live price is read here, on the main thread, so every reader
+  // shares one price and one "just finished" moment (polymarket.ts).
+  const liveOdds = new LiveOddsService({ current: polymarketBout, result: boutResult });
+  const previewOdds = process.env.NODE_ENV !== "production" || SITE_URL === "https://dev.ufc.sh";
+  if (process.env.NO_SYNC !== "1") {
+    // Fight week: every bout should have a market; Admin → Bugs lists the ones that don't.
+    const scan = () => void scanUpcoming(upcomingBouts(fighterNames)).catch(error => log("polymarket scan failed:", String(error)));
+    setTimeout(scan, 60_000).unref();
+    setInterval(scan, 30 * 60_000).unref();
+  }
   const workerCount = Number(process.env.API_WORKERS ?? (process.env.NODE_ENV === "production" ? 2 : 0));
   if (!Number.isInteger(workerCount) || workerCount < 0 || workerCount > 8) throw new Error("API_WORKERS must be an integer from 0 to 8");
   let refresher: NodeJS.Timeout | undefined;
@@ -2593,6 +2645,17 @@ export function startApi(port: number): http.Server {
           /^[a-f0-9]{12}$/.test(url.searchParams.get("v") ?? ""));
       }
       if ((url.searchParams.get("q")?.length ?? 0) > 120) return await sendJson(req, res, { error: "search query too long" }, 400);
+      if (p === "/api/live/odds") {
+        // ?fight= prices any bout, for previewing the pill on a dev site.
+        const fightId = url.searchParams.get("fight");
+        if (fightId === null) return await sendJson(req, res, await liveOdds.answer());
+        if (!previewOdds || !/^[a-f0-9]{16}$/i.test(fightId)) return await sendJson(req, res, { error: "not found" }, 404);
+        const row = prepared("SELECT f.id, f.f1_id, f.f1_name, f.f2_id, f.f2_name, e.date FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?")
+          .get(fightId) as { id: string; f1_id: string; f1_name: string; f2_id: string; f2_name: string; date: string } | undefined;
+        if (!row) return await sendJson(req, res, { error: "not found" }, 404);
+        const odds = await boutOdds({ id: row.id, date: row.date, f1: fighterNames(row.f1_id, row.f1_name), f2: fighterNames(row.f2_id, row.f2_name) });
+        return await sendJson(req, res, { fight_id: row.id, odds, finished: null });
+      }
       if (publicApi(p)) {
         return sendRepresentation(req, res, await publicAnswer(url), cachePolicy(url).control);
       }

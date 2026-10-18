@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { Lock } from "lucide-react";
 import type { Matchup } from "../api";
 import { apiCache, useApi } from "../api";
 import { decimalScore, fightFinish } from "../scoring";
@@ -7,11 +8,17 @@ import { PANEL_SHELL, PanelHeading, sectionLabel } from "./FightStats";
 // Part of the matchup page's own code: a lazily loaded editor held the Score
 // tab on a fallback for at least React's 300 ms reveal throttle.
 import ScoreEditor from "./ScoreEditor";
+import OverlayButton from "./OverlayButton";
+import ScoreRoundControls from "./ScoreRoundControls";
+import { wasAdmin } from "../admin";
 import { lastName } from "../format";
 
 
 /** The community card and the reader's scoring controls. Result uses
- *  communityOnly to show existing scores without the editor. */
+ *  communityOnly to show existing scores without the editor.
+ *
+ *  Blind scoring, automatic and only while a bout is live: the round being
+ *  fought is hidden from everyone (the server leaves it out) until it ends. */
 export default function FightScoring({ fight, communityOnly = false }: { fight: Matchup; communityOnly?: boolean }) {
   const { data, error, retry } = useApi<ScoreSummary>(`/api/fights/${fight.id}/scores`, 5_000);
   // Result includes existing community scores, while Score keeps the full
@@ -29,15 +36,21 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
   // last line of the card, in place of rows that could never carry a score.
   const finish = fightFinish(fight, eligibility);
   const rows = eligibility.state === "completed" ? eligibility.available : eligibility.scheduled;
+  const closed = Math.min(data.closed ?? eligibility.available, eligibility.available);
+  // The newest open round of a live bout, still private to each scorer.
+  const fighting = live && eligibility.available > closed ? closed + 1 : null;
   return (
     <>
       <section className={PANEL_SHELL}>
         <PanelHeading
           title="Community scorecard"
           subtitle={`${totals.scorers.toLocaleString()} ${totals.scorers === 1 ? "scorer" : "scorers"}`}
-          aside={live ? (
-            <span className="flex items-center gap-1.5 text-xs text-emerald-600">
-              <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />Live
+          aside={live || !communityOnly ? (
+            <span className="flex items-center gap-3">
+              {live ? <span className="flex items-center gap-1.5 text-xs text-emerald-600">
+                <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />Live
+              </span> : null}
+              {!communityOnly ? <OverlayButton fightId={fight.id} followsCard={Boolean(fight.in_progress || fight.up_next)} /> : null}
             </span>
           ) : undefined}
         />
@@ -71,10 +84,17 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
                     <span className="hidden truncate @[36rem]:inline">{fighter.name}</span>
                   </span>
                   {Array.from({ length: rows }, (_, index) => {
-                    const row = data.rounds.find(item => item.round === index + 1);
+                    const round = index + 1;
+                    const row = data.rounds.find(item => item.round === round);
                     const [mine, theirs] = side === 1 ? [row?.total1, row?.total2] : [row?.total2, row?.total1];
+                    const cell = `flex items-center justify-center border-t border-zinc-100 py-2 text-xs @[32rem]:text-sm`;
+                    if (round === fighting) return (
+                      <span key={index} className={cell} title={`Round ${round} stays hidden from everyone until it ends`}>
+                        <Lock className="h-3.5 w-3.5 text-zinc-300" aria-label="Hidden until the round ends" />
+                      </span>
+                    );
                     return (
-                      <span key={index} className={`flex items-center justify-center border-t border-zinc-100 py-2 text-xs @[32rem]:text-sm ${lead(mine, theirs)} ${index < eligibility.available ? "" : "opacity-50"}`}>
+                      <span key={index} className={`${cell} ${lead(mine, theirs)} ${index < eligibility.available ? "" : "opacity-50"}`}>
                         {decimalScore(mine)}
                       </span>
                     );
@@ -93,11 +113,23 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
             })}
           </div>
         </div>
+        {totals.importedCards > 0 && totals.source ? (
+          <p className="border-t border-zinc-100 px-4 py-3 text-xs text-zinc-500 @[32rem]:px-5">
+            Includes {totals.importedCards.toLocaleString()} {totals.importedCards === 1 ? "card" : "cards"} from{" "}
+            {totals.source.url ? <a href={totals.source.url} target="_blank" rel="noreferrer" className="font-medium text-zinc-700 underline-offset-2 hover:underline">{totals.source.name}{"\u00a0"}<span aria-hidden="true">↗</span></a> : totals.source.name}
+          </p>
+        ) : null}
         {eligibility.reason ? <p className="border-t border-zinc-100 px-5 py-3 text-xs text-zinc-500">{eligibility.reason}</p> : null}
+        {fighting ? (
+          <p className="flex items-start gap-1.5 border-t border-zinc-100 px-4 py-3 text-xs leading-5 text-zinc-500 @[32rem]:px-5">
+            <Lock className="mt-1 h-3 w-3 shrink-0" aria-hidden="true" />Round {fighting} stays hidden from everyone until it ends, so nobody's card follows the crowd.
+          </p>
+        ) : null}
       </section>
       {!communityOnly && eligibility.available > 0 ? (
         <ScoreEditor fight={fight} eligibility={eligibility} onSaved={() => { void apiCache.loadAfterWrite(`/api/fights/${fight.id}/scores`); }} />
       ) : null}
+      {!communityOnly && wasAdmin() ? <ScoreRoundControls fightId={fight.id} /> : null}
     </>
   );
 }

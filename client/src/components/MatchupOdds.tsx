@@ -39,13 +39,15 @@ export function OddsFormatTabs({ format, onChange }: { format: OddsFormat; onCha
 
 function Movement({ movement, name }: { movement: OddsMovement; name: string }) {
   const { at, id, open, handlers } = useTooltip();
-  const label = `Money moved ${movement.points} points toward ${lastName(name)}`;
+  // Prices are all we observe: they show where the market moved, not how
+  // much was bet or why.
+  const label = `Moved ${movement.points} pts toward ${lastName(name)}`;
   const Arrow = movement.toward === "f1" ? ArrowLeft : ArrowRight;
   return (
     <span
       className="flex flex-col items-center justify-center gap-0.5 rounded text-zinc-500"
       tabIndex={0}
-      aria-label={label}
+      aria-label={`Price moved ${movement.points} points toward ${lastName(name)} since the opening line`}
       aria-describedby={open ? id : undefined}
       {...handlers}
       onKeyDown={(event) => {

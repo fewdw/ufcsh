@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { RateLimiter, clientAddress } from "./api-policy.ts";
 import { authenticateScorer, scoringOrigins, scorerEmail } from "./scoring-http.ts";
+import { fightIsUnderway } from "./live-state.ts";
 import { ScoringError, scoringEligibility, type ScoringFight, type ScoringStore } from "./scoring.ts";
 import type { AdminStore } from "./admins.ts";
 import type { ReportStore } from "./reports.ts";
@@ -86,9 +87,13 @@ export function createAdminHandler(options: AdminHandlerOptions) {
       /** What the feed has published by itself, which the panel cannot lower. */
       feedRounds: Math.max(detail?.totalsRounds?.rounds?.length ?? 0, detail?.sigStrikesRounds?.rounds?.length ?? 0),
       openRounds: released,
+      /** Started by the feed's own word, which the panel cannot take back. */
+      underway: fightIsUnderway(fight),
+      /** The panel's live switch: 1 marked live, -1 held at Next, 0 untouched. */
+      mark: scores.liveMark(fight.id),
       available: eligibility.available,
       state: eligibility.state,
-      /** Cards holding each round, so closing one says what it deletes. */
+      /** Cards holding each round, kept while a round is closed again. */
       scored: scores.roundCounts(fight.id),
     };
   };
@@ -195,12 +200,13 @@ export function createAdminHandler(options: AdminHandlerOptions) {
       }
       else if (route === "live") send(card());
       else if (liveFight) {
-        const body = await readBody(req) as { rounds?: unknown };
+        const body = await readBody(req) as { rounds?: unknown; live?: unknown };
         // Only a bout on today's card, and never one that is already over.
         const fight = liveFights().find(candidate => candidate.id === liveFight[1]);
         if (!fight) throw new ScoringError(404, "Fight not found.");
         if (fight.f1_outcome != null || fight.f2_outcome != null) throw new ScoringError(409, "This bout is over; its rounds follow the result.");
-        scores.setOpenRounds(fight.id, body?.rounds, email ?? "");
+        if (body && typeof body === "object" && "live" in body) scores.markLive(fight.id, body.live, email ?? "");
+        else scores.setOpenRounds(fight.id, body?.rounds, email ?? "");
         send(card());
       }
       else throw new ScoringError(404, "Not found.");

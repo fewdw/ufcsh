@@ -21,6 +21,10 @@ export type AdminLiveFight = {
   feedRounds: number;
   /** Rounds released by hand from this panel. */
   openRounds: number;
+  /** Started by the feed's own word, which the panel cannot take back. */
+  underway: boolean;
+  /** This panel's live switch: 1 marked live, -1 held at Next, 0 left to the card. */
+  mark: -1 | 0 | 1;
   /** What a reader can actually score: the larger of the two, capped. */
   available: number;
   state: "completed" | "live" | "waiting";
@@ -30,6 +34,17 @@ export type AdminLiveFight = {
 /** Today's card, opening bout first, and the bout on now — the one the site's
  *  LIVE tag names. `live` is whether it has started. */
 export type AdminLiveCard = { current: { id: string; live: boolean } | null; fights: AdminLiveFight[] };
+
+// Remembered across pages and reloads, so admin-only controls don't blink in
+// on each one. Only a hint for drawing them: every admin route checks on the server.
+const ADMIN_KEY = "ufcsh:admin:v1";
+let admin = (() => { try { return localStorage.getItem(ADMIN_KEY) === "1"; } catch { return false; } })();
+export function wasAdmin() { return admin; }
+export function rememberAdmin(next: boolean) {
+  if (next === admin) return;
+  admin = next;
+  try { if (next) localStorage.setItem(ADMIN_KEY, "1"); else localStorage.removeItem(ADMIN_KEY); } catch { /* private mode: this visit only */ }
+}
 
 /** Every admin request carries the reader's Clerk session token. Cookies are
  *  never enough: the server accepts an explicit bearer token only. */

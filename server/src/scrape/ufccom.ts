@@ -556,6 +556,19 @@ const LIVE_CARD_API = "https://d29dxerjsp82wz.cloudfront.net/api/v3";
 
 export type ScrapedBoutRounds = { fightId: number; order: number; f1: string; f2: string; rounds: number };
 
+/** The event page's own live-stats configuration identifies its feed directly. */
+export function parseEventFeedId(html: string): number | null {
+  const $ = cheerio.load(html);
+  for (const script of $('script[data-drupal-selector="drupal-settings-json"]').toArray()) {
+    try {
+      const settings = JSON.parse($(script).text());
+      const id = Number(settings?.eventLiveStats?.event_fmid);
+      if (Number.isSafeInteger(id) && id > 0) return id;
+    } catch { /* Older pages can omit usable live-stats settings. */ }
+  }
+  return null;
+}
+
 /** The promotion's fight ids, in card order, as the event page lists them. */
 export function parseFightIds(html: string): number[] {
   const $ = cheerio.load(html);
@@ -663,9 +676,16 @@ export async function scrapeEventCard(slug: string): Promise<{ segments: Scraped
   const segments = parseEventSegments(html);
   const fightIds = parseFightIds(html);
   if (!fightIds.length) return { segments, rounds: null, info: null };
-  const fight = await fetchJson(`${LIVE_CARD_API}/fight/live/${fightIds[0]}.json`) as any;
-  const eventId = Number(fight?.LiveFightDetail?.Event?.EventId);
-  if (!Number.isInteger(eventId) || eventId < 1) throw new Error(`ufc.com fight ${fightIds[0]} named no event`);
+  // A listed fight can have a broken or empty feed even while its event feed
+  // is complete. Use the page's event id; keep fight lookup for older pages.
+  let eventId = parseEventFeedId(html);
+  if (eventId === null) {
+    const fight = await fetchJson(`${LIVE_CARD_API}/fight/live/${fightIds[0]}.json`) as any;
+    eventId = Number(fight?.LiveFightDetail?.Event?.EventId);
+    if (!Number.isSafeInteger(eventId) || eventId < 1) throw new Error(`ufc.com fight ${fightIds[0]} named no event`);
+  }
   const feed = await fetchJson(`${LIVE_CARD_API}/event/live/${eventId}.json`);
-  return { segments, rounds: parseCardRounds(feed, fightIds), info: parseEventInfo(feed) };
+  const info = parseEventInfo(feed);
+  if (info?.eventId !== eventId) throw new Error(`ufc.com event ${eventId} returned no matching event`);
+  return { segments, rounds: parseCardRounds(feed, fightIds), info };
 }

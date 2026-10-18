@@ -5,9 +5,9 @@ import CmdK from "./components/CmdK";
 import SearchGlyph from "./components/SearchGlyph";
 import LiveMatchup from "./components/LiveMatchup";
 import { segmentedIdle, segmentedSelected } from "./components/segmented";
-import { ChevronDown, Moon, Shield, Sun } from "lucide-react";
+import { ChevronDown, Flag, Moon, Shield, Sun } from "lucide-react";
 import { accountsEnabled, useAccount } from "./auth";
-import { useAdminResource, type AdminSession } from "./admin";
+import { rememberAdmin, useAdminResource, wasAdmin, type AdminSession } from "./admin";
 import { inMore, MORE_HOME, MoreGroups } from "./components/MoreNav";
 import { sendPageView } from "./pageViews";
 import { useSettings, withRanking } from "./settings";
@@ -16,9 +16,10 @@ import { useLinkPrefetch, warmSections } from "./useLinkPrefetch";
 import { pages, type PageLoader } from "./pages";
 import RouteErrorBoundary from "./components/RouteErrorBoundary";
 import ParlaySlip from "./components/ParlaySlip";
+import ReportIssueDialog from "./components/ReportIssueDialog";
 import { ShortcutProvider } from "./shortcuts";
 import { DevStatsOverlay, isDevSite } from "./devStats";
-import { GraphicsProvider } from "./graphicsLauncher";
+import { LivePreviewPanel } from "./livePreview";
 
 /** A route's page: rendered directly once its code is in hand (the usual case,
  *  since every page's code is fetched in the background), through Suspense
@@ -32,6 +33,7 @@ function page<M, P extends object>(load: PageLoader<M>, pick: (module: M) => Com
 }
 
 const EventsPage = page(pages.events, module => module.default);
+const OverlayPage = page(pages.overlay, module => module.default);
 const FighterPage = page(pages.fighter, module => module.default);
 const RankingsPage = page(pages.rankings, module => module.default);
 const StatsPage = page(pages.stats, module => module.default);
@@ -54,23 +56,13 @@ const GraphicPage = page(pages.graphic, module => module.default);
 
 const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
 
-// Remembered across pages and reloads, so the Admin link doesn't blink in on
-// each one. Only a hint for drawing it: the admin pages check on the server.
-const ADMIN_KEY = "ufcsh:admin:v1";
-let wasAdmin = (() => { try { return localStorage.getItem(ADMIN_KEY) === "1"; } catch { return false; } })();
-function rememberAdmin(admin: boolean) {
-  if (admin === wasAdmin) return;
-  wasAdmin = admin;
-  try { if (admin) localStorage.setItem(ADMIN_KEY, "1"); else localStorage.removeItem(ADMIN_KEY); } catch { /* private mode: this visit only */ }
-}
-
 /** Admin, just before More, as a shield: listed only for the few who have it. */
 function AdminLink({ active }: { active: boolean }) {
   const { isLoaded, user } = useAccount();
   const { data } = useAdminResource<AdminSession>(isLoaded && user ? "/api/admin/session" : null);
   if (data) rememberAdmin(data.admin);
   else if (isLoaded && !user) rememberAdmin(false);
-  if (!wasAdmin) return null;
+  if (!wasAdmin()) return null;
   const load = () => { void pages.admin().catch(() => {}); };
   return (
     <Link to="/admin" aria-label="Admin" title="Admin" aria-current={active ? "page" : undefined} onPointerEnter={load} onFocus={load} onTouchStart={load}
@@ -82,8 +74,10 @@ function AdminLink({ active }: { active: boolean }) {
 
 /** The rest of the site, one pill after the sections. From `md` up a mouse
  *  opens its groups on hover and a press opens Stats; a tap or a key opens
- *  them. On a phone they open under the button, flush with its right edge. */
-function MoreMenu({ pathname, active, open, setOpen }: { pathname: string; active: boolean; open: boolean; setOpen: (open: boolean) => void }) {
+ *  them. On a phone they open under the button, flush with its right edge.
+ *  Report sits last, under a rule: it opens the report form about the page
+ *  being read rather than going anywhere. */
+function MoreMenu({ pathname, active, open, setOpen, onReport }: { pathname: string; active: boolean; open: boolean; setOpen: (open: boolean) => void; onReport?: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => setOpen(false), [pathname, setOpen]);
   useEffect(() => {
@@ -124,6 +118,12 @@ function MoreMenu({ pathname, active, open, setOpen }: { pathname: string; activ
             </Link>
           </li>
         )} />
+        {onReport ? <div className="mt-1 border-t border-zinc-100 pt-1">
+          <button type="button" onClick={() => { setOpen(false); onReport(); }}
+            className="flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-2 py-2 text-left text-[13px] text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-900 min-[375px]:px-3 min-[375px]:text-sm">
+            <Flag className="h-3.5 w-3.5" aria-hidden="true" />Report an issue
+          </button>
+        </div> : null}
       </div>
     </div> : null}
   </div>;
@@ -134,6 +134,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
   const { settings, update } = useSettings();
   const dark = settings.theme === "dark";
   const [moreOpen, setMoreOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   // The bout on now sits mid-row only while it fits whole; the moment its
   // names would be cut, it drops to its own line instead.
   const slotRef = useRef<HTMLDivElement>(null);
@@ -189,7 +190,8 @@ function Header({ onSearch }: { onSearch: () => void }) {
             </Link>
           ))}
           {accountsEnabled ? <AdminLink active={isAdmin && !moreOpen} /> : null}
-          <MoreMenu pathname={pathname} active={isMore} open={moreOpen} setOpen={setMoreOpen} />
+          <MoreMenu pathname={pathname} active={isMore} open={moreOpen} setOpen={setMoreOpen}
+            onReport={accountsEnabled ? () => setReportOpen(true) : undefined} />
         </nav>
 
         {/* The middle of the row from `md` up, and its own line below that —
@@ -229,6 +231,7 @@ function Header({ onSearch }: { onSearch: () => void }) {
       <div className={`flex justify-center border-t border-zinc-100 px-2.5 py-1.5 empty:hidden ${pillFits ? "md:hidden" : ""}`}>
         <LiveMatchup />
       </div>
+      {accountsEnabled ? <ReportIssueDialog open={reportOpen} onClose={() => setReportOpen(false)} /> : null}
     </header>
   );
 }
@@ -254,7 +257,7 @@ export default function App() {
     const path = location.pathname;
     if (path === "/profiles/me" || trackedPath.current === path) return;
     trackedPath.current = path;
-    sendPageView(path, wasAdmin);
+    sendPageView(path, wasAdmin());
   }, [location.pathname]);
 
   // Colour transitions come back once the first page has been drawn (see the
@@ -283,12 +286,21 @@ export default function App() {
   }, []);
 
   const openSearch = useCallback(() => setSearchOpen(true), []);
+  // A stream overlay is the card alone: no header, no page behind it.
+  if (location.pathname === "/overlay" || location.pathname.startsWith("/overlay/")) return (
+    <Suspense fallback={null}>
+      <Routes>
+        <Route path="/overlay" element={<OverlayPage />} />
+        <Route path="/overlay/:fightId" element={<OverlayPage />} />
+      </Routes>
+    </Suspense>
+  );
   return (
     <ShortcutProvider onSearch={openSearch}>
-    <GraphicsProvider>
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-zinc-100 text-zinc-900">
       <Header onSearch={openSearch} />
       {isDevSite ? <DevStatsOverlay /> : null}
+      {isDevSite ? <LivePreviewPanel /> : null}
       <div className="min-h-0 flex-1 overflow-hidden">
         {/* One boundary for the whole app, outside the per-section error
             boundary: navigations run as transitions, so a page whose code is
@@ -324,7 +336,7 @@ export default function App() {
           <Route path="/info" element={<InfoPage />} />
           <Route path="/sign-in/*" element={<AuthPage mode="sign-in" />} />
           <Route path="/sign-up/*" element={<AuthPage mode="sign-up" />} />
-          <Route path="*" element={<div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-zinc-500"><p>This page couldn’t be found.</p><Link to="/" className="font-semibold text-zinc-900 underline">Back to events</Link></div>} />
+          <Route path="*" element={<div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-zinc-500"><h1>This page couldn’t be found.</h1><Link to="/" className="font-semibold text-zinc-900 underline">Back to events</Link></div>} />
         </Routes>
         </RouteErrorBoundary>
         </Suspense>
@@ -332,7 +344,6 @@ export default function App() {
       <CmdK open={searchOpen} onClose={() => setSearchOpen(false)} />
       <ParlaySlip />
     </div>
-    </GraphicsProvider>
     </ShortcutProvider>
   );
 }

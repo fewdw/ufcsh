@@ -92,9 +92,9 @@ function HomeFighters({ home }: { home: HomeRecord }) {
     hint: "Their average chance on the closing odds without the bookmaker's margin. The chip is how many points more often the judges had the home fighter winning than the odds expected, on the same bouts",
   });
   if (home.stats.n) rows.push({
-    key: "stats", ...gapChip(home.stats.judges_rate, home.stats.rate), title: "The stats had them winning", value: pct(home.stats.rate),
+    key: "stats", ...gapChip(home.stats.judges_rate, home.stats.rate), title: "The stats judge had them winning", value: pct(home.stats.rate),
     detail: `${home.stats.home.toLocaleString()} of ${home.stats.n.toLocaleString()} · the judges ${pct(home.stats.judges_rate)}`,
-    hint: "The stats card is what an average UFC judge gives each round from its numbers. The chip is how many points more often the judges had the home fighter winning, on the same bouts",
+    hint: "The stats judge is an average UFC judge reading only each round's numbers. The chip is how many points more often the judges had the home fighter winning, on the same bouts",
   });
   return <RankRows title="Home fighters" subtitle={`Every UFC event in ${home.country}`} rows={rows} />;
 }

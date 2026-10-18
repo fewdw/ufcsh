@@ -23,6 +23,8 @@
 
   --color-plot-track: #f4f4f5;
   --color-plot-axis: #e4e4e7;
+  /* A division median's tick: drawn over either fighter's bar. */
+  --color-plot-median: #18181b;
 
   /* Championship bouts. Gold for the undisputed belt, steel for the interim
      one — both clear 4.5:1 on white (4.9:1 and 7.6:1). The label also spells
@@ -176,6 +178,7 @@ select:not([multiple]):not([size]) {
   --color-f2-soft: #450a0a;
   --color-plot-track: #27272a;
   --color-plot-axis: #3f3f46;
+  --color-plot-median: #f4f4f5;
   --color-belt: #fbbf24;
   --color-belt-interim: #cbd5e1;
   /* The ordered round ramp runs the other way on a dark surface so its steps
@@ -594,3 +597,18 @@ select:not([multiple]):not([size]) {
 @keyframes division-target {
   from, 50% { box-shadow: 0 0 0 2px #a1a1aa; }
 }
+
+/* Comfortable type: the small print goes a size up and the muted greys a
+   step darker, the same way dark mode remaps the palette. A size given per
+   breakpoint or container is left alone, since it already grows where there
+   is room, and so is a colour that changes on hover or another state. */
+:root .text-\[9px\]:not([class*=":text-xs"], [class*=":text-sm"], [class*=":text-base"], [class*=":text-lg"], [class*=":text-\[1"], [class*=":text-\[9"]) { font-size: 10.5px; }
+:root .text-\[10px\]:not([class*=":text-xs"], [class*=":text-sm"], [class*=":text-base"], [class*=":text-lg"], [class*=":text-\[1"]) { font-size: 11.5px; }
+:root .text-\[11px\]:not([class*=":text-xs"], [class*=":text-sm"], [class*=":text-base"], [class*=":text-lg"], [class*=":text-\[1"]) { font-size: 12.5px; }
+:root .text-xs:not([class*=":text-sm"], [class*=":text-base"], [class*=":text-lg"], [class*=":text-\[1"]) { font-size: 13px; }
+:root:not(.dark) .text-zinc-300:not([class*=":text-zinc"], [role="tooltip"] *, .bg-zinc-900 *) { color: #a1a1aa; }
+:root:not(.dark) .text-zinc-400:not([class*=":text-zinc"], [role="tooltip"] *, .bg-zinc-900 *) { color: #71717a; }
+:root:not(.dark) .text-zinc-500:not([class*=":text-zinc"], [role="tooltip"] *, .bg-zinc-900 *) { color: #52525b; }
+:root.dark .text-zinc-400:not([class*=":text-zinc"]),
+:root.dark .text-zinc-500:not([class*=":text-zinc"]) { color: #c4c4cc !important; }
+:root.dark .text-zinc-300:not([class*=":text-zinc"]) { color: #8b8b94 !important; }

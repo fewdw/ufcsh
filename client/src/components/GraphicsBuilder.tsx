@@ -1,6 +1,6 @@
 import { useAuth } from "@clerk/react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Check, ChevronRight, Copy, Download, ImageIcon, Search, Share2, X } from "lucide-react";
+import { Check, ChevronRight, Copy, Download, ImageIcon, Search, Share2 } from "lucide-react";
 import { useApi, type EventDetail, type EventListItem, type FighterBoard, type FighterProfile, type Matchup } from "../api";
 import { accountsEnabled } from "../auth";
 import type { Bet, ProfileBets } from "../bets";
@@ -12,12 +12,11 @@ import { graphicBlob } from "../graphics/export";
 import type { MyPrediction, PredictionDistribution, PredictionPick, PredictionResult, PredictionSummary } from "../predictions";
 import { useMyProfile } from "../profile";
 import type { ScorerIdentity } from "../scoring";
-import type { GraphicSubject } from "../graphicsLauncher";
 import { formatDateShortWithYear } from "../format";
 import { landingEvent } from "../liveEvent";
 import { useSettings, withRanking } from "../settings";
 import { parseSearch, useSearch } from "../useSearch";
-import { BUTTON_PRIMARY, BUTTON_SECONDARY, CLOSE_BUTTON, CLOSE_ICON, DIALOG_TITLE, EYEBROW } from "../ui";
+import { BUTTON_PRIMARY, BUTTON_SECONDARY, DIALOG_TITLE, EYEBROW } from "../ui";
 import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "./segmented";
 
 /** A card's picks as the server sends them: every bout, and the reader's own when signed in. */
@@ -123,24 +122,16 @@ const chipIdle = "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 h
  * drawn in the browser from data the site already serves, and every image
  * carries its source line, its date and the site's mark.
  */
-export default function GraphicsBuilder({ initial, onClose, inline = false }: {
-  initial: GraphicSubject;
-  /** Absent on the /graphic page, where the builder is the page. */
-  onClose?: () => void;
-  inline?: boolean;
-}) {
+export default function GraphicsBuilder() {
   const { settings } = useSettings();
-  const dialog = useRef<HTMLDialogElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const [kind, setKind] = useState<Kind>(initial?.kind ?? "matchup");
-  const [presetId, setPresetId] = useState(() => PRESETS.find((preset) => preset.kind === (initial?.kind ?? "matchup"))?.id ?? "tape");
-  const [subject, setSubject] = useState<Subject | null>(initial
-    ? { kind: initial.kind === "fighter" ? "fighter" : initial.kind === "event" ? "event" : "fight", id: initial.id, label: "" }
-    : null);
+  const [kind, setKind] = useState<Kind>("matchup");
+  const [presetId, setPresetId] = useState(() => PRESETS.find((preset) => preset.kind === "matchup")?.id ?? "tape");
+  const [subject, setSubject] = useState<Subject | null>(null);
   const [format, setFormat] = useState<Format>("portrait");
   // The fight-night red reads best in a feed; the others are one tap away.
   const [theme, setTheme] = useState<Theme>("red");
-  const [photoMode, setPhotoMode] = useState<PhotoMode>(() => PRESETS.find((preset) => preset.kind === (initial?.kind ?? "matchup"))?.photo ?? "full");
+  const [photoMode, setPhotoMode] = useState<PhotoMode>(() => PRESETS.find((preset) => preset.kind === "matchup")?.photo ?? "full");
   const [account, setAccount] = useState<Account>({ identity: null, signedIn: false });
   const [mine, setMine] = useState<MineEntry | null>(null);
   const [betId, setBetId] = useState<string | null>(null);
@@ -152,17 +143,6 @@ export default function GraphicsBuilder({ initial, onClose, inline = false }: {
   const [drawing, setDrawing] = useState(false);
   // On a phone the pinned preview lets go while the keyboard is up, so the field stays in view.
   const [typing, setTyping] = useState(false);
-
-  useEffect(() => {
-    if (inline) return;
-    const node = dialog.current;
-    const trigger = document.activeElement;
-    node?.showModal();
-    return () => {
-      node?.close();
-      if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus({ preventScroll: true });
-    };
-  }, [inline]);
 
   // With nothing chosen, start on the headline bout of the card the site opens on.
   const { data: events } = useApi<EventListItem[]>(subject ? null : "/api/events");
@@ -355,7 +335,6 @@ export default function GraphicsBuilder({ initial, onClose, inline = false }: {
             <h2 id="graphics-title" className={`${DIALOG_TITLE} flex items-center gap-2`}><ImageIcon className="h-4 w-4 text-zinc-400" aria-hidden="true" />Generate graphic</h2>
             <p className="mt-0.5 hidden truncate text-xs text-zinc-500 sm:block">Choose what it shows, then copy or download. Every image carries its sources and the UFC.sh mark.</p>
           </div>
-          {onClose ? <button type="button" onClick={onClose} aria-label="Close graphics builder" className={`-mr-2 ${CLOSE_BUTTON}`}><X className={CLOSE_ICON} aria-hidden="true" /></button> : null}
         </div>
 
         {/* Phones: the preview stays pinned over the scrolling controls, so a
@@ -478,13 +457,5 @@ export default function GraphicsBuilder({ initial, onClose, inline = false }: {
       </div>
     </>
   );
-  if (inline) return <section aria-labelledby="graphics-title" className="h-full overflow-hidden bg-white text-zinc-900">{body}</section>;
-  return (
-    <dialog ref={dialog} aria-labelledby="graphics-title"
-      onCancel={(event) => { event.preventDefault(); onClose?.(); }}
-      onClick={(event) => { if (event.target === event.currentTarget) onClose?.(); }}
-      className="search-dialog fixed inset-0 m-auto h-dvh max-h-none w-screen max-w-none overflow-hidden rounded-none border-zinc-200 bg-white p-0 text-zinc-900 shadow-2xl sm:h-[min(calc(100dvh-2rem),56rem)] sm:w-[min(calc(100vw-2rem),72rem)] sm:rounded-2xl sm:border">
-      {body}
-    </dialog>
-  );
+  return <section aria-labelledby="graphics-title" className="h-full overflow-hidden bg-white text-zinc-900">{body}</section>;
 }

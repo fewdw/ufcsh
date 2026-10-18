@@ -103,6 +103,10 @@ Metrics include cache hits/misses and bytes, queued queries, HTTP failures,
 per-route mean/maximum latency, event-loop delay, process memory, and uptime.
 Monitor source timestamps and the sync worker heartbeat from `/api/status` as well
 as readiness. A healthy HTTP server does not imply the upstream feeds are fresh.
+Prometheus alerts need a contact point to reach anyone, and nothing on the VPS
+can report the VPS being down: `.github/workflows/uptime.yml` checks `/readyz`
+and the home page from GitHub every 10 minutes, and GitHub emails the owner when
+a run fails.
 
 Back up with SQLite's online backup API, not a copy of a live `.db` file without
 its WAL. For example:

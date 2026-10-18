@@ -7,6 +7,7 @@ import http from "node:http";
 import { once } from "node:events";
 import { spawn } from "node:child_process";
 import { generateKeyPairSync, sign } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import { normalizeUsername, scoringEligibility, ScoringStore, ScoringError, UsernameError, validateSubmission, type ScoringFight } from "./scoring.ts";
 import { authenticateScorer, createScoringHandler } from "./scoring-http.ts";
 
@@ -142,10 +143,22 @@ test("live partial cards have separate per-round samples and cannot include futu
   store.save(id, "alice", { revision: 0, rounds: rounds.slice(0, 1) });
   store.save(id, "bob", { revision: 0, rounds: rounds.slice(0, 2) });
   let summary = store.summary(id) as any;
+  // Round 2 is the newest open round and may still be being fought: it is
+  // scored, but nobody sees it until round 3 opens or the result lands.
+  assert.equal(summary.closed, 1);
   assert.equal(summary.totals.scorers, 2);
+  assert.equal(summary.totals.completeCards, 2);
+  assert.equal(summary.totals.avg1, 10);
+  assert.deepEqual(summary.rounds.map((r: any) => r.scorers), [2]);
+  assert.equal(store.mine(id, "bob").rounds.length, 2, "a scorer always sees their own round");
+  assert.deepEqual(store.profile(store.identity("bob").handle)!.cards[0].rounds.map((r: any) => r.round), [1], "a public profile shows closed rounds only");
+  setFight({ ...live, detail_json: JSON.stringify({ type: "past", totalsRounds: { rounds: [{}, {}, {}] } }) });
+  summary = store.summary(id) as any;
+  assert.equal(summary.closed, 2, "round 2 closes when round 3 opens");
+  assert.deepEqual(summary.rounds.map((r: any) => r.scorers), [2, 1]);
   assert.equal(summary.totals.completeCards, 1);
   assert.equal(summary.totals.avg1, 20);
-  assert.deepEqual(summary.rounds.map((r: any) => r.scorers), [2, 1]);
+  setFight(live);
   assert.throws(() => store.save(id, "alice", { revision: 1, rounds }), /available rounds/);
   setFight({ ...fight, method: "KO/TKO", round: "2" });
   summary = store.summary(id) as any;
@@ -543,7 +556,45 @@ test("released rounds are stored per bout and drive what the store will accept",
   assert.throws(() => store.setOpenRounds("ffffffffffffffff", 1, "owner@example.com"), ScoringError, "a bout that is not in the database cannot be opened");
 });
 
-test("a result deletes rounds the bout never reached; closing a round by hand deletes its scores", (t) => {
+test("an admin's live switch is kept apart from the rounds and cleared by the result", (t) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const live = { ...fight, f1_outcome: null, f2_outcome: null, event_date: today, method: null, round: null, detail_json: '{"type":"future"}' };
+  const { store, setFight } = fixture(t, live);
+  assert.equal(store.liveMark(id), 0);
+  assert.equal(store.markLive(id, true, "owner@example.com"), true);
+  assert.equal(store.liveMark(id), 1);
+  assert.equal(store.eligibility(id).available, 0, "marking it live opens no round");
+  // Opening and closing rounds leaves the mark alone, and the mark the rounds.
+  store.setOpenRounds(id, 2, "owner@example.com");
+  store.setOpenRounds(id, 0, "owner@example.com");
+  assert.equal(store.liveMark(id), 1);
+  store.setOpenRounds(id, 1, "owner@example.com");
+  store.markLive(id, false, "owner@example.com");
+  assert.deepEqual({ live: store.liveMark(id), open: store.openRounds(id) }, { live: -1, open: 1 }, "switched off, it is held at Next");
+  for (const bad of [1, "true", null, undefined]) assert.throws(() => store.markLive(id, bad, "owner@example.com"), ScoringError, `rejects ${bad}`);
+  assert.throws(() => store.markLive("ffffffffffffffff", true, "owner@example.com"), ScoringError);
+  store.markLive(id, true, "owner@example.com");
+  const decision = { ...live, f1_outcome: "win", f2_outcome: "loss", method: "U-DEC", round: "3", time: "5:00", detail_json: '{"type":"past"}' };
+  setFight(decision);
+  store.settle(decision);
+  assert.equal(store.liveMark(id), 0, "the result clears the mark");
+});
+
+test("a scoring database from before the live mark gains it in place", (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), "ufc-scoring-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, "scores.db");
+  const old = new DatabaseSync(file);
+  old.exec(`CREATE TABLE live_rounds (fight_id TEXT PRIMARY KEY, rounds INTEGER NOT NULL CHECK(rounds BETWEEN 0 AND 5),
+    updated_by TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL)`);
+  old.prepare("INSERT INTO live_rounds VALUES (?, 2, '', 0)").run(id);
+  old.close();
+  const store = new ScoringStore(file, () => [], () => "0");
+  t.after(() => store.db.close());
+  assert.deepEqual({ open: store.openRounds(id), live: store.liveMark(id) }, { open: 2, live: 0 });
+});
+
+test("a result deletes rounds the bout never reached; closing a round by hand only hides its scores", (t) => {
   const today = new Date().toISOString().slice(0, 10);
   const live = { ...fight, f1_outcome: null, f2_outcome: null, event_date: today, method: null, round: null, detail_json: '{"type":"future"}' };
   const { store, setFight } = fixture(t, live);
@@ -552,18 +603,27 @@ test("a result deletes rounds the bout never reached; closing a round by hand de
   store.save(id, "alice", { revision: 0, rounds });
   store.save(id, "bob", { revision: 0, rounds: rounds.slice(0, 2) });
   assert.deepEqual(store.roundCounts(id), { 1: 2, 2: 2, 3: 1 });
-  // Closing round 3 by hand removes what was scored for it.
+  // Closing round 3 by hand hides what was scored for it, and keeps it.
   store.setOpenRounds(id, 2, "owner@example.com");
-  assert.deepEqual(store.roundCounts(id), { 1: 2, 2: 2 });
-  assert.equal(store.mine(id, "alice").rounds.length, 2);
+  assert.deepEqual(store.roundCounts(id), { 1: 2, 2: 2, 3: 1 });
+  const hidden = store.mine(id, "alice");
+  assert.equal(hidden.rounds.length, 2);
+  assert.ok(store.summary(id).rounds.every(r => r.round <= 1), "only closed rounds are public");
+  // A save while it is closed does not drop the hidden round.
+  store.save(id, "alice", { revision: hidden.revision, rounds: rounds.slice(0, 2) });
+  assert.deepEqual(store.roundCounts(id), { 1: 2, 2: 2, 3: 1 });
+  // Reopening it brings the scores back.
+  store.setOpenRounds(id, 3, "owner@example.com");
+  assert.equal(store.mine(id, "alice").rounds.length, 3);
+  store.setOpenRounds(id, 2, "owner@example.com");
   // An unusable result settles nothing.
   setFight({ ...live, f1_outcome: "win", f2_outcome: "loss", method: "KO/TKO", round: null });
   assert.equal(store.settle({ ...live, f1_outcome: "win", f2_outcome: "loss", method: "KO/TKO", round: null }), 0);
-  assert.deepEqual(store.roundCounts(id), { 1: 2, 2: 2 });
-  // A round-two stoppage: round two was never judged.
+  assert.deepEqual(store.roundCounts(id), { 1: 2, 2: 2, 3: 1 });
+  // A round-two stoppage: round two was never judged, round three never fought.
   const stopped = { ...live, f1_outcome: "win", f2_outcome: "loss", method: "KO/TKO", round: "2", detail_json: '{"type":"past"}' };
   setFight(stopped);
-  assert.equal(store.settle(stopped), 2);
+  assert.equal(store.settle(stopped), 3);
   assert.deepEqual(store.roundCounts(id), { 1: 2 });
   assert.equal(store.openRounds(id), 0, "the hand-opened rounds close with the result");
   const alice = store.mine(id, "alice");

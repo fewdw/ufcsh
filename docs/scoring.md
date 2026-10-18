@@ -63,14 +63,38 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   reports them; the editor unlocks each one on its own as the tab polls. The current round may be available: users should save after the
   horn. Unobserved future rounds cannot be submitted. This is community scoring,
   not an official clock or a permanently locked live judging competition.
+- A bout is called **Live** (the header's pill, its row on the card, the
+  admin panel) once the bout before it has a result: the header shows that
+  result (**Final**) for three minutes, then the next bout as Live with its place
+  on the card (3/13). The opener is Live from the card's announced start, and
+  the first bout of a later segment from that segment's start (prelims
+  finishing early leave the main card's opener at **Next** with a countdown).
+  Evidence — UFCStats publishing round totals, an admin opening a round or
+  marking it live — makes it Live at once and ends the Final early. The rule
+  is `boutIsLive` in `server/src/live-state.ts`. From the announced card
+  start, the sync checks the opener's page too.
 - The admin panel's **Live rounds** tab shows one bout: the one the header's
-  LIVE tag names (the opening bout, then whichever follows the last result),
+  pill names (the opening bout, then whichever follows the last result),
   with Prev/Next for a feed that is late with a result. That bout's Score tab
-  appears as soon as it starts, rounds locked until opened. Closing a round
-  by hand deletes the scores entered for it (the panel asks first). When the
-  result lands, rounds the bout never reached and a stoppage round are deleted,
+  appears as soon as it starts, rounds locked until opened. Above its rounds,
+  a **Live** switch starts the bout early or, switched off, holds it at Next
+  when the card's rule calls it live too soon (it cannot undo the feed's
+  evidence or an open round, and the result clears it). The mark sits beside the hand-opened rounds in `scoring.db` (`live_rounds.live`)
+  and moves only the bout the pill names. The same switches
+  sit at the bottom of that bout's Score tab for administrators
+  (`components/LiveRoundSwitches.tsx`, `ScoreRoundControls.tsx`; the server
+  checks the administrator on every change). Closing a round by hand only
+  hides its scores — for a round opened by mistake — and reopening it brings
+  them back; a scorer saving meanwhile keeps theirs. When the result lands, rounds the bout never reached and a stoppage round are deleted,
   not just hidden, and the hand-opened count is cleared — checked every 15
   seconds, and only for a well-formed result.
+- **Blind scoring** is automatic and only while a bout is live. The newest
+  open round may still be being fought (the feed publishes a round as it
+  happens), so its scores are left out of everything public — the community
+  card, its totals and public profiles — until the next round opens or the
+  result lands (`closedRounds` in `server/src/scoring.ts`, `closed` in the
+  summary). Each scorer always sees their own. Once a round ends, everyone
+  sees every score for it; there is no setting.
 - Live users can save a consecutive partial card, then add the next round or edit
   earlier scores. Once a result arrives, the same card becomes a completed-fight
   card. If a round becomes ineligible after a stoppage, all reads and aggregates
@@ -273,3 +297,15 @@ production-network benchmark. All fixture data is removed afterward.
 
 `npm test --prefix server`, `npm test --prefix client`, client build/lint and
 server TypeScript checking cover the surrounding application.
+
+## Stream overlay
+
+`/overlay` is the fans' scorecard alone, for a browser source in OBS or any
+streaming tool: no header, nothing behind the card, refreshed every five
+seconds. It follows whichever bout `/api/live` names, so one source covers a
+whole card; `/overlay/:fightId` holds one bout. `?theme=light` swaps the dark
+card for a light one and `?scale=` (0.5–4) sizes it. It reads the same public
+summary as the Score tab, so the round being fought shows ••• until it ends.
+The Score tab's **Stream overlay** button gives both addresses, a preview and
+the OBS steps. Overlay pages answer 200 but are never indexed (`seo.ts`).
+Page: `client/src/pages/OverlayPage.tsx`; button: `components/OverlayButton.tsx`.

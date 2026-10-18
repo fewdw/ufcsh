@@ -4,7 +4,7 @@ import type { ScorerIdentity } from "./scoring";
 /** A comment (1), a reply to it (2), and a reply to that (3). The server
  *  refuses anything deeper; a reply to a third-level comment is posted beside
  *  it, addressed to its author. */
-export const MAX_DEPTH = 3;
+const MAX_DEPTH = 3;
 export const COMMENT_MAX = 2000;
 /** At or below this score a comment starts collapsed. */
 export const COLLAPSE_SCORE = -5;

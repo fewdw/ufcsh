@@ -43,7 +43,7 @@ export type LiveCard = {
   total_fights: number;
   /** The bout's place on the card counted from the opener; the main event is total_fights. */
   fight_number: number;
-  /** Under way — either its numbers are already out or its start has passed. */
+  /** Under way — its numbers are already out or a round was opened by hand. */
   live: boolean;
   starts_at: number | null;
   fight: {
@@ -55,6 +55,27 @@ export type LiveCard = {
     f1: LiveFighter;
     f2: LiveFighter;
   };
+};
+
+/** /api/live/odds: Polymarket's price for the bout on now (each side's
+ *  implied chance, 0–1), and the bout that just ended, held a few minutes. */
+export type LiveOddsAnswer = {
+  fight_id: string | null;
+  odds: { f1: number; f2: number; url: string; closed: boolean } | null;
+  finished: {
+    id: string;
+    f1_name: string;
+    f2_name: string;
+    f1_outcome: string | null;
+    f2_outcome: string | null;
+    winner: 1 | 2 | null;
+    method: string | null;
+    round: string | null;
+    time: string | null;
+    fight_number: number | null;
+    total_fights: number | null;
+    remaining_ms: number;
+  } | null;
 };
 
 export type FightSide = {
@@ -292,6 +313,9 @@ export type EventDetail = {
   fights: EventFight[];
   /** Bouts announced for this card that never happened on it. */
   cancelled?: CancelledBout[];
+  /** The bout on now, as the header's pill calls it: the one after the last
+   *  result, the opener from the card's start, or one with evidence it has begun. */
+  live_fight_id?: string | null;
 };
 
 export type CancelledBout = {
@@ -421,12 +445,16 @@ export type Matchup = {
   live?: boolean;
   /** This bout is the one being fought right now. */
   in_progress?: boolean;
+  /** The card's next bout, not started yet. */
+  up_next?: boolean;
   stats_updated_at?: number | null;
   /** Rounds an administrator has released for scoring, ahead of the live feed. */
   rounds_open?: number | null;
   weight_class: string;
   /** The agreed limit of a catchweight bout, in pounds, once known. */
   catch_weight?: number | null;
+  /** The division's median career rates walking into this bout. */
+  division_medians?: DivisionMedians | null;
   /** Rounds the bout is booked for; null for a format with no round count. */
   scheduled_rounds: number | null;
   title_fight: boolean;
@@ -509,6 +537,8 @@ export type FighterProfile = {
   ranking_history?: RankingTimeline;
   records: FighterRecord[];
   career_stats: CareerTotals;
+  /** Their current division's median career rates over the last three years. */
+  division_medians?: DivisionMedians | null;
   insights: FightInsights;
   /** Every verified professional bout; UFC rows retain their richer local data. */
   pro_history: ProfessionalHistoryRow[];
@@ -709,6 +739,10 @@ export type JudgeDna = {
 
 /** The card an average UFC judge would give each round from its numbers: `p`
  *  is the chance it goes to the first corner. */
+/** A division's median career rates, by metric key, over its active fighters:
+ *  everyone with 3+ UFC bouts with statistics in it from `from` up to `to`. */
+export type DivisionMedians = { division: string; from: string; to: string; fighters: number; values: Record<string, number | null> };
+
 export type StatsCard = { rounds: { round: number; p: number }[]; f1: number; f2: number; pick: number };
 
 type RoundScore = { round: number; f1: number; f2: number };

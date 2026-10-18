@@ -289,9 +289,9 @@ export async function syncEventSegments(eventId: string): Promise<void> {
   const positions = assignPositions(fights, card.segments);
   const setPosition = db.prepare("UPDATE fights SET card_pos = ? WHERE id = ?");
   for (const fight of fights) setPosition.run(positions.get(fight.id) ?? null, fight.id);
-  // The feed is reached through the page's first fight, and ufc.com has linked
-  // fights to another event's feed (UFC 239's under the Minneapolis card). A
-  // feed that shares no bout with ours says nothing about this card.
+  // ufc.com has linked pages to another event's feed (UFC 239's under the
+  // Minneapolis card). A feed that shares no bout with ours says nothing
+  // about this card.
   const foreign = Boolean(card.info && (!samePlace(card.info.city, event.location.split(",")[0])
     || (card.info.bouts.length && fights.length && !sharesBout(fights, card.info.bouts))));
   // A bout the feed no longer identifies loses its length: a booking that
@@ -1756,7 +1756,9 @@ export async function syncLiveEvents(): Promise<void> {
   if (liveTicking) return;
   liveTicking = true;
   try {
-    const events = db.prepare("SELECT id, date FROM events WHERE date >= date('now', '-1 day') AND date <= date('now') ORDER BY date DESC").all() as { id: string; date: string }[];
+    const events = db.prepare(`SELECT id, date, main_card_at, prelims_at, early_prelims_at FROM events
+      WHERE date >= date('now', '-1 day') AND date <= date('now') ORDER BY date DESC`)
+      .all() as { id: string; date: string; main_card_at: number | null; prelims_at: number | null; early_prelims_at: number | null }[];
     for (const event of events) {
       await guarded(`live_event ${event.id}`, () => refreshLiveEvent(event.id));
       // Pick up results during the card, without waiting for the main event.
@@ -1770,7 +1772,10 @@ export async function syncLiveEvents(): Promise<void> {
       // publishes its round totals as they happen, so keep it warm rather than
       // waiting for a reader to ask for it. A card fills in from the bottom up,
       // so that bout is the lowest on the card still without an outcome.
-      if (fights.length) {
+      // Before the first result, the opener is watched from the announced
+      // start: its page turning into statistics is what confirms it is live.
+      const announced = [event.main_card_at, event.prelims_at, event.early_prelims_at].filter((at): at is number => at != null);
+      if (fights.length || announced.some((at) => at <= Date.now())) {
         const underway = cardOrder(db.prepare(`SELECT id, ord, segment, card_pos, f1_outcome, f2_outcome, detail_json, detail_fetched_at FROM fights
           WHERE event_id = ? ORDER BY ord`)
           .all(event.id) as { id: string; ord: number; segment: string | null; card_pos: number | null; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; detail_fetched_at: number | null }[])

@@ -77,7 +77,7 @@ export function Card({ label, value, hint, level }: { label: string; value: stri
 }
 
 /** An hour, minute by minute. Bars count things; a line tracks a level. */
-export const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 export function MinuteChart({ title, points, format, kind = "bar", tone = "text-series-1", time = clock, span = "last 60 minutes", total }: {
   title: string; points: { at: number; value: number | null }[]; format: (value: number) => string;
   kind?: "bar" | "line"; tone?: string; time?: (at: number) => string; span?: string;
@@ -118,7 +118,7 @@ export function MinuteChart({ title, points, format, kind = "bar", tone = "text-
   );
 }
 
-export const ROUTE_INFO: Record<string, { name: string; path: string }> = {
+const ROUTE_INFO: Record<string, { name: string; path: string }> = {
   page_home: { name: "Events home", path: "/" },
   page_event: { name: "Event pages", path: "/events/:eventId" },
   page_fight: { name: "Fight pages", path: "/fights/:fightId" },

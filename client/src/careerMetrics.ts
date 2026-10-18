@@ -22,27 +22,32 @@ export function orderEvidence<T>(rows: T[], order: EvidenceOrder, value: (row: T
 
 export type EvidenceColumn = { heading: string; title: string; value: (row: EvidenceSample) => number | null; text: (row: EvidenceSample) => string };
 
-const COUNT_HEADINGS: Record<string, string> = { slpm: "Landed", sapm: "Taken", subs: "Subs", knockdowns: "KD", accuracy: "Landed", defense: "Avoided" };
+const COUNT_HEADINGS: Record<string, string> = { slpm: "Landed", sapm: "Absorbed", subs: "Attempts", knockdowns: "KD", accuracy: "Landed", defense: "Avoided" };
 const tdAccuracy = ({ takedowns: td }: EvidenceSample) => td?.attempted ? td.scored / td.attempted * 100 : null;
-const control: EvidenceColumn = { heading: "Ctrl", title: "Control time", value: row => row.control_seconds, text: row => clock(row.control_seconds) };
+const control: EvidenceColumn = { heading: "Control", title: "Control time", value: row => row.control_seconds, text: row => clock(row.control_seconds) };
+// Takedown defense pairs with how long the opponent held the fighter down; known only when both corners' control was recorded.
+const controlled = ({ totals }: EvidenceSample) => totals.controlBouts ? totals.controlledSeconds : null;
+const opponentControl: EvidenceColumn = { heading: "Controlled", title: "Time the opponent controlled them", value: controlled, text: row => clock(controlled(row)) };
 
 /** One bout's figures per column; takedown offense shows accuracy rather than a per-time rate. */
 export function evidenceColumns(metric: ProfileMetric): EvidenceColumn[] {
   const count = (row: EvidenceSample) => metric.sample(row.totals).count;
   const total = (row: EvidenceSample) => metric.sample(row.totals).total;
   const fraction = (row: EvidenceSample) => `${count(row)}/${total(row)}`;
-  const value = (heading: string, title = metric.label): EvidenceColumn => ({ heading, title, value: row => metric.value(row.totals), text: row => profileText(metric.value(row.totals), metric.format) });
+  // Rates keep two decimals so a column lines up.
+  const text = (value: number | null) => metric.format === "rate" && value != null ? value.toFixed(2) : profileText(value, metric.format);
+  const value = (heading: string, title = metric.label): EvidenceColumn => ({ heading, title, value: row => metric.value(row.totals), text: row => text(metric.value(row.totals)) });
   if (metric.key === "td" || metric.key === "tdacc") return [
-    { heading: "TD", title: "Takedowns landed / attempted", value: row => row.takedowns?.scored ?? null, text: ({ takedowns: td }) => td ? `${td.scored}/${td.attempted ?? "—"}` : "—" },
-    { heading: "Acc.", title: "Takedown accuracy", value: tdAccuracy, text: row => profileText(tdAccuracy(row), "percent") },
+    { heading: "Landed", title: "Takedowns landed / attempted", value: row => row.takedowns?.scored ?? null, text: ({ takedowns: td }) => td ? `${td.scored}/${td.attempted ?? "—"}` : "—" },
+    { heading: "%", title: "Takedown accuracy", value: tdAccuracy, text: row => profileText(tdAccuracy(row), "percent") },
     control,
   ];
-  if (metric.key === "tddef") return [{ heading: "Stop", title: "Takedowns stopped / attempted", value: count, text: fraction }, value("Def."), control];
+  if (metric.key === "tddef") return [{ heading: "Stopped", title: "Takedowns stopped / attempted", value: count, text: fraction }, value("%"), opponentControl];
   if (metric.format === "share") return [{ heading: "Control", title: "Control time", value: count, text: row => clock(count(row)) }, value("%", "Share of fight time")];
   if (metric.format === "percent") return [{ heading: COUNT_HEADINGS[metric.key], title: `${metric.counted} / attempts`, value: count, text: fraction }, value("%")];
   return [
     { heading: COUNT_HEADINGS[metric.key], title: metric.counted, value: count, text: row => String(count(row)) },
-    value(metric.factor === 60 ? "/ min" : "/ 15m"),
+    value(metric.factor === 60 ? "/ min" : "/ 15 min"),
     { heading: "Time", title: "Fight time", value: total, text: row => clock(total(row)) },
   ];
 }
@@ -80,9 +85,16 @@ export const resultView = (outcome: "win" | "loss"): EvidenceView => ({
   headline: data => String(data.rows.filter(row => row.outcome === outcome).length),
 });
 
+/** Plain words for the modal's categories; soft hyphens let the long ones
+ *  break on a phone, where each sits in a fifth of the row. */
+const CATEGORY_LABELS: Record<string, string> = {
+  slpm: "Strikes landed", sapm: "Strikes absorbed", accuracy: "Striking accuracy", defense: "Strikes avoided", knockdowns: "Knock\u00addowns",
+  td: "Take\u00addowns", tdacc: "Takedown accuracy", tddef: "Takedown defense", subs: "Sub attempts", control: "Control time",
+};
+
 export const EVIDENCE_CATEGORIES: EvidenceCategory[] = [
   ...[{ label: "Striking", metrics: STRIKING_METRICS }, { label: "Grappling", metrics: GRAPPLING_METRICS }]
-    .map(group => ({ label: group.label, views: group.metrics.map(metric => ({ key: metric.key, label: metric.short, view: metricView(metric) })) })),
+    .map(group => ({ label: group.label, views: group.metrics.map(metric => ({ key: metric.key, label: CATEGORY_LABELS[metric.key] ?? metric.short, view: metricView(metric) })) })),
   { label: "Results", views: [
     { key: "wins", label: "Wins", view: resultView("win") },
     { key: "losses", label: "Losses", view: resultView("loss") },

@@ -683,6 +683,7 @@ export default function RankingsPage() {
   return (
     <div ref={pageScroll} className="h-full overflow-y-auto" aria-busy={loading}>
       <div className="p-2 pb-8 sm:p-3">
+        <h1 className="sr-only">UFC rankings</h1>
         {/* Division tabs sit before Filters; phone tabs scroll when space is tight. */}
         <div className={`${shell} mb-2 flex flex-wrap items-center gap-2 px-2.5 py-2.5 sm:mb-3 sm:px-3 sm:py-3 lg:gap-3`}>
           <div className="flex min-w-0 flex-1 items-center gap-3 lg:contents">

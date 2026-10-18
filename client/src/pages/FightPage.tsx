@@ -885,9 +885,10 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     ...(fight.status === "past" || fight.in_progress || hasStats ? ["fight" as const] : []),
     "matchup",
     ...(hasOddsMarkets(fight.odds?.props, fight.f1.name, fight.f2.name) ? ["odds" as const] : []),
-    // The bout on now has its Score tab from the moment it starts, rounds
-    // locked until the feed or the admin panel opens them.
-    ...(scoreableRoundCount(fight) > 0 || fight.in_progress ? ["score" as const] : []),
+    // The card's next bout and the one on now have their Score tab before a
+    // round opens: the rounds wait for the feed or the admin panel, and a
+    // streamer can copy the overlay in time.
+    ...(scoreableRoundCount(fight) > 0 || fight.in_progress || fight.up_next ? ["score" as const] : []),
     ...(predictionTabVisible(fight, predictions, Boolean(predictionError)) ? ["predict" as const] : []),
     ...(!fight.potential ? ["discussion" as const] : []),
   ];

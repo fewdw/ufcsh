@@ -38,8 +38,8 @@ const xmlEscape = (value: string) => value.replace(/[<>&'"]/g, (char) => XML_ENT
 
 const SITE_IMAGE = `${SITE_URL}/og/site.jpg`;
 const DEFAULT: Omit<PageSeo, "canonical"> = {
-  title: "#1 UFC Data Platform: Events, Odds, Stats & Rankings | ufc.sh",
-  description: "The #1 UFC data platform: fight cards, matchup odds, results, fighter statistics and current rankings in one fast interface.",
+  title: "UFC Data: Events, Odds, Stats & Rankings | ufc.sh",
+  description: "UFC data for hardcore fans: fight cards, matchup odds, results, fighter statistics and current rankings in one fast interface.",
   type: "website",
   image: SITE_IMAGE,
   status: 200,
@@ -71,6 +71,8 @@ export function pageSeo(pathname: string): PageSeo {
   const fixed = STATIC_PAGES[pathname];
   if (fixed) return { ...DEFAULT, ...fixed, canonical: `${SITE_URL}${pathname}` };
   if (pathname === "/admin" || pathname === "/admin/bugs" || /^\/sign-(in|up)(\/|$)/.test(pathname)) return { ...home, noindex: true };
+  // Stream overlays are for a streaming tool's browser, not for search.
+  if (pathname === "/overlay" || /^\/overlay\/[a-f0-9]{16}$/.test(pathname)) return { ...home, title: "Live fan scorecard overlay | ufc.sh", noindex: true };
   const parts = pathname.split("/");
   const id = decodeURIComponent(parts[2] ?? "");
   if (parts.length !== 3 || !id) return notFound();

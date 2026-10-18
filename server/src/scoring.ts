@@ -56,7 +56,18 @@ export function scoringEligibility(fight: ScoringFight, now = Date.now(), opened
   const observed = Math.max(detail?.totalsRounds?.rounds?.length ?? 0, detail?.sigStrikesRounds?.rounds?.length ?? 0);
   // The feed may include the current round. Never unlock unobserved future rounds.
   const available = live ? Math.min(scheduled, Math.max(observed, released)) : 0;
-  return { state, scheduled, available, reason: available ? null : "Waiting for the live feed to report a round. Scores open automatically; the feed can lag the broadcast." };
+  // Scores open on their own, from the feed or the admin panel.
+  return { state, scheduled, available, reason: available ? null : live ? "Waiting for the round to end." : "Scoring opens when rounds end." };
+}
+
+/**
+ * Rounds whose scores anyone else may see. While a bout is live, the newest
+ * open round may still be being fought (the feed publishes a round as it
+ * happens), so it stays private to each scorer until the next round opens or
+ * the result lands: nobody's card is shaped by the crowd's mid-round.
+ */
+export function closedRounds(eligibility: ScoreEligibility): number {
+  return eligibility.state === "live" ? Math.max(0, eligibility.available - 1) : eligibility.available;
 }
 
 export function validateSubmission(body: unknown, eligibility: ScoreEligibility): { revision: number; rounds: RoundScore[] } {
@@ -279,6 +290,11 @@ export class ScoringStore {
         updated_by TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL
       );
     `);
+    // An administrator's word on the bout on now: 1 started, -1 not yet (held
+    // at Next), 0 left to the card. Added after the table, so added in place.
+    if (!(this.db.prepare("PRAGMA table_info(live_rounds)").all() as { name: string }[]).some(column => column.name === "live")) {
+      this.db.exec("ALTER TABLE live_rounds ADD COLUMN live INTEGER NOT NULL DEFAULT 0");
+    }
     // Scorers gained a chosen name and a picture after the first release; the
     // columns are added in place so an existing database keeps its cards.
     const columns = new Set((this.db.prepare("PRAGMA table_info(scorers)").all() as { name: string }[]).map(column => column.name));
@@ -334,24 +350,40 @@ export class ScoringStore {
     return new Map(rows.map(row => [row.fight_id, row.rounds]));
   }
   /** Release rounds 1..n for scoring, or take them back with a lower number.
-   *  The feed's own count is never lowered by this — only this hand-set one. */
+   *  The feed's own count is never lowered by this — only this hand-set one.
+   *  Closing only hides: a round opened by mistake keeps what was scored for
+   *  it, and reopening it brings those scores back. */
   setOpenRounds(id: string, rounds: unknown, by: string): number {
     if (!Number.isInteger(rounds) || (rounds as number) < 0 || (rounds as number) > 5) {
       throw new ScoringError(400, "Open between zero and five rounds.");
     }
     const fight = this.fight(id);
     if (!fight) throw new ScoringError(404, "Fight not found.");
-    this.stmt(`INSERT INTO live_rounds VALUES (?, ?, ?, ?)
+    this.stmt(`INSERT INTO live_rounds (fight_id, rounds, updated_by, updated_at) VALUES (?, ?, ?, ?)
       ON CONFLICT(fight_id) DO UPDATE SET rounds = excluded.rounds,
         updated_by = excluded.updated_by, updated_at = excluded.updated_at`)
       .run(id, rounds as number, by, Date.now());
-    // A round closed by hand on a live bout was opened too early: whatever was
-    // scored for it was scored before it happened.
-    const eligibility = scoringEligibility(fight, Date.now(), rounds as number);
-    if (!fightIsComplete(fight) && isFightDay(fight.event_date) && eligibility.scheduled) this.trimRounds(id, eligibility.available);
     // Every card on the bout now reads a different number of rounds.
     this.lists.clear();
     return rounds as number;
+  }
+  /** An administrator's live switch for this bout: 1 marked live, -1 held at
+   *  Next, 0 never touched. */
+  liveMark(id: string): -1 | 0 | 1 {
+    const row = this.stmt("SELECT live FROM live_rounds WHERE fight_id = ?").get(id) as { live: number } | undefined;
+    return Math.sign(row?.live ?? 0) as -1 | 0 | 1;
+  }
+  /** Mark the bout started, or hold it at Next when the card would call it
+   *  live too early. Its rounds are left as they are; the result clears the
+   *  mark with them. */
+  markLive(id: string, live: unknown, by: string): boolean {
+    if (typeof live !== "boolean") throw new ScoringError(400, "Send { live: true | false }.");
+    if (!this.fight(id)) throw new ScoringError(404, "Fight not found.");
+    this.stmt(`INSERT INTO live_rounds (fight_id, rounds, updated_by, updated_at, live) VALUES (?, 0, ?, ?, ?)
+      ON CONFLICT(fight_id) DO UPDATE SET live = excluded.live,
+        updated_by = excluded.updated_by, updated_at = excluded.updated_at`)
+      .run(id, by, Date.now(), live ? 1 : -1);
+    return live;
   }
   /** How many cards hold each round of a bout, for the admin panel. */
   roundCounts(id: string): Record<number, number> {
@@ -407,13 +439,18 @@ export class ScoringStore {
       const card = this.stmt("SELECT * FROM scorecards WHERE fight_id = ? AND user_id = ?").get(id, user) as StoredCard | undefined;
       if ((card?.revision ?? 0) !== submission.revision) throw new ScoringError(409, "Your scorecard changed in another tab. Reload your saved card before editing.");
       if (remove && !card) { this.db.exec("COMMIT"); return this.mine(id, user); }
+      // Rounds closed again by hand are hidden, not gone: a save made meanwhile
+      // keeps them for when they reopen. A result settles them instead.
+      const hidden = !remove && card && eligibility.state !== "completed"
+        ? (JSON.parse(card.rounds_json) as RoundScore[]).filter(r => r.round > eligibility.available) : [];
+      const kept = [...submission.rounds, ...hidden];
       const cardId = card?.id ?? randomUUID();
       this.stmt(`INSERT INTO scorecards VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(fight_id, user_id) DO UPDATE SET revision = excluded.revision, updated_at = excluded.updated_at, rounds_json = excluded.rounds_json`)
-        .run(cardId, id, user, submission.revision + 1, Date.now(), JSON.stringify(submission.rounds));
+        .run(cardId, id, user, submission.revision + 1, Date.now(), JSON.stringify(kept));
       this.stmt("DELETE FROM scores WHERE card_id = ?").run(cardId);
       const insert = this.stmt("INSERT INTO scores VALUES (?, ?, ?, ?, ?, ?, ?)");
-      for (const r of submission.rounds) insert.run(cardId, id, r.round, r.f1, r.f2, r.deduct1, r.deduct2);
+      for (const r of kept) insert.run(cardId, id, r.round, r.f1, r.f2, r.deduct1, r.deduct2);
       this.db.exec("COMMIT");
     } catch (error) { this.db.exec("ROLLBACK"); throw error; }
     this.lists.delete(user);
@@ -421,7 +458,8 @@ export class ScoringStore {
   }
   summary(id: string) {
     const eligibility = this.eligibility(id);
-    const max = eligibility.available;
+    // Only closed rounds are aggregated: a round being fought is nobody's yet.
+    const max = closedRounds(eligibility);
     const localRounds = this.stmt(`SELECT round, COUNT(*) AS scorers,
       AVG(f1) AS avg1, AVG(f2) AS avg2, AVG(deduct1) AS deduct1, AVG(deduct2) AS deduct2,
       AVG(f1 - deduct1) AS total1, AVG(f2 - deduct2) AS total2
@@ -462,7 +500,7 @@ export class ScoringStore {
       localCards: Number(localTotals.scorers), importedCards,
       source: imported ? { name: imported.source, url: imported.sourceUrl } : null,
     };
-    return { eligibility, rounds, totals };
+    return { eligibility, closed: max, rounds, totals };
   }
   /** The fans' average final card, over complete cards only, exactly as the
    *  fight page's total: what a profile row sets the scorer's own card beside. */
@@ -593,11 +631,13 @@ export class ScoringStore {
       // opened, so it is not listed.
       if (!fight) return [];
       const eligibility = scoringEligibility(fight, Date.now(), released.get(card.fightId) ?? 0);
-      const rounds = (JSON.parse(card.roundsJson) as RoundScore[]).filter(r => r.round <= eligibility.available);
+      // A profile is public, so a live card shows its closed rounds only.
+      const closed = closedRounds(eligibility);
+      const rounds = (JSON.parse(card.roundsJson) as RoundScore[]).filter(r => r.round <= closed);
       const total1 = rounds.reduce((sum, r) => sum + r.f1 - r.deduct1, 0);
       const total2 = rounds.reduce((sum, r) => sum + r.f2 - r.deduct2, 0);
       const verdict = cardVerdict(fight, eligibility, rounds, total1, total2);
-      const fans = this.fanAverage(fight, eligibility.available);
+      const fans = this.fanAverage(fight, closed);
       const complete = rounds.length > 0 && rounds.length === eligibility.available;
       return [{
         fightId: card.fightId, updatedAt: card.updatedAt, revision: card.revision, rounds, eligibility,
