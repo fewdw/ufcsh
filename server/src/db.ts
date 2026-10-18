@@ -677,6 +677,33 @@ if (!db.prepare("SELECT 1 FROM pragma_table_info('news') WHERE name = 'ai_keep'"
   db.exec("ALTER TABLE news ADD COLUMN ai_same TEXT");
   db.exec("ALTER TABLE news ADD COLUMN ai_summary TEXT NOT NULL DEFAULT ''");
 }
+// Bookings that fell through, as FightOdds.io's boards keep them on the card
+// they were booked for (cancelled-bouts.ts). Ids are UFCStats', as the board
+// files each corner; a corner it hasn't linked is matched by name, or left null.
+db.exec(`CREATE TABLE IF NOT EXISTS cancelled_bouts (
+  slug         TEXT PRIMARY KEY,
+  board_pk     INTEGER NOT NULL,
+  date         TEXT NOT NULL,
+  event_name   TEXT NOT NULL,
+  weight_class TEXT NOT NULL DEFAULT '',
+  f1_id        TEXT,
+  f2_id        TEXT,
+  f1_name      TEXT NOT NULL,
+  f2_name      TEXT NOT NULL,
+  checked_at   INTEGER NOT NULL
+)`);
+db.exec("CREATE INDEX IF NOT EXISTS idx_cancelled_bouts_f1 ON cancelled_bouts(f1_id)");
+db.exec("CREATE INDEX IF NOT EXISTS idx_cancelled_bouts_f2 ON cancelled_bouts(f2_id)");
+db.exec("CREATE INDEX IF NOT EXISTS idx_cancelled_bouts_board ON cancelled_bouts(board_pk)");
+// Each FightOdds.io UFC board and when its cancelled bouts were last read.
+db.exec(`CREATE TABLE IF NOT EXISTS cancelled_boards (
+  pk       INTEGER PRIMARY KEY,
+  date     TEXT NOT NULL,
+  slug     TEXT NOT NULL,
+  name     TEXT NOT NULL,
+  read_at  INTEGER,
+  error    TEXT NOT NULL DEFAULT ''
+)`);
 db.exec("CREATE TABLE IF NOT EXISTS data_revisions (key TEXT PRIMARY KEY, value INTEGER NOT NULL)");
 for (const key of ["analytics", "profiles", "search"]) {
   db.prepare("INSERT OR IGNORE INTO data_revisions VALUES (?, 0)").run(key);
@@ -692,6 +719,7 @@ const revisionTables: Record<string, string[]> = {
   career_bouts: ["analytics", "profiles"],
   rankings: ["profiles"],
   ranking_history: ["profiles"],
+  cancelled_bouts: ["profiles"],
 };
 for (const [table, revisions] of Object.entries(revisionTables)) {
   const checkTimestamps = new Set(["detail_fetched_at", "birth_fetched_at", "photo_checked_at", "bfo_checked_at", "bfo_final_at",

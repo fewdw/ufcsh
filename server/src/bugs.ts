@@ -17,6 +17,7 @@ import { pageNamesFighter } from "./scrape/odds.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
 import { importVerdictEvent } from "./verdict-import.ts";
+import { readCancelledBoardList, syncCancelledBouts } from "./cancelled-bouts.ts";
 import { repairJudgeNames } from "./repair-judge-names.ts";
 import { mergedByHand, officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
@@ -876,6 +877,125 @@ function decisionsWithoutJudges(): BugCheck {
   }, rows.map((fight) => fightItem(fight, {
     facts: [["Method", fight.method], ["Detail fetched", ago(fight.detail_fetched_at)]],
     actions: [{ id: "detail", label: "Re-fetch fight detail", target: fight.id }],
+  })));
+}
+
+/** Finishes with no line saying how they came. UFCStats prints none for most
+ *  doctor and corner stoppages, so an old one is usually all the source has. */
+function finishesWithoutDetail(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, f.method, f.method_details, f.detail_fetched_at
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 1 AND f.method IN ('KO/TKO', 'SUB', 'DQ')
+      AND COALESCE(TRIM(json_extract(f.detail_json, '$.detailsText')), '') = ''
+    ORDER BY e.date DESC
+  `).all() as (FightRow & { method: string; method_details: string | null; detail_fetched_at: number | null })[];
+  return check({
+    id: "finish-no-detail",
+    group: "Fights & events",
+    label: "Finishes without how they ended",
+    description: "KO/TKOs, submissions and disqualifications whose UFCStats fight page gives no detail line (\"Knee to Head In Clinch\", \"Rear Naked Choke\"), so the profile's bout row shows only the method, or the card's one-word version when it has one. UFCStats leaves the line blank for most doctor and corner stoppages; for a bout just fought, re-fetching usually fills it.",
+    grade: recent([[3, "must"]], "minor"),
+  }, rows.map((fight) => fightItem(fight, {
+    facts: [["Method", fight.method], ["Card's short line", fight.method_details || "none"], ["Detail fetched", ago(fight.detail_fetched_at)]],
+    actions: [{ id: "detail", label: "Re-fetch fight detail", target: fight.id }],
+  })));
+}
+
+/** FightOdds.io boards whose cancelled bouts couldn't be read, and cards we
+ *  list that it has no board for: their cancellations are missing. */
+function cancelledBoutsUnread(): BugCheck {
+  const items: BugItem[] = [];
+  const listedAt = Number(getMeta("cancelled_boards_listed_at")) || null;
+  const listError = getMeta("cancelled_boards_error");
+  if (listError || !listedAt || Date.now() - listedAt > 2 * 86_400_000) {
+    items.push({
+      key: "list",
+      title: "FightOdds.io UFC event list",
+      subtitle: listError || (listedAt ? "Not read in two days" : "Never read"),
+      date: new Date().toISOString().slice(0, 10),
+      facts: [["Last read", ago(listedAt)]],
+      links: [{ label: "FightOdds.io", href: "https://fightodds.io/upcoming-mma-events/ufc" }],
+      actions: [{ id: "cancelled", label: "Read again", target: "list" }],
+    });
+  }
+  const boards = db.prepare(`SELECT pk, date, slug, name, read_at, error FROM cancelled_boards
+    WHERE error != '' OR read_at IS NULL ORDER BY date DESC`).all() as { pk: number; date: string; slug: string; name: string; read_at: number | null; error: string }[];
+  const unread = boards.filter((board) => !board.error);
+  for (const board of boards.filter((board) => board.error)) {
+    items.push({
+      key: `board:${board.pk}`,
+      title: board.name,
+      subtitle: board.error,
+      date: board.date,
+      facts: [["Last read", ago(board.read_at)]],
+      links: [{ label: "FightOdds.io", href: `https://fightodds.io/mma-events/${board.pk}/${board.slug}/odds` }],
+      actions: [{ id: "cancelled", label: "Re-read board", target: String(board.pk) }],
+    });
+  }
+  // The archive is read a batch at a time; until it's through, one line says so.
+  if (unread.length) {
+    items.push({
+      key: "unread",
+      title: `${unread.length.toLocaleString("en-US")} ${unread.length === 1 ? "board" : "boards"} not read yet`,
+      subtitle: `Newest: ${unread[0].name}`,
+      date: unread[0].date,
+      facts: [["Oldest", unread.at(-1)!.date]],
+      links: [],
+      actions: [{ id: "cancelled", label: "Read newest now", target: String(unread[0].pk) }],
+    });
+  }
+  // A card we list with no board on its date: FightOdds.io keeps boards for
+  // every UFC card since 2008, so a missing one is a gap, not the source's age.
+  const orphans = listedAt ? db.prepare(`SELECT e.id, e.name, e.date FROM events e
+    WHERE e.date >= '2008-01-01' AND e.date <= date('now', '+21 days')
+      AND NOT EXISTS (SELECT 1 FROM cancelled_boards b WHERE b.date BETWEEN date(e.date, '-1 day') AND date(e.date, '+1 day'))
+    ORDER BY e.date DESC`).all() as { id: string; name: string; date: string }[] : [];
+  for (const event of orphans) {
+    items.push({
+      key: `event:${event.id}`,
+      title: event.name,
+      subtitle: "No FightOdds.io board on this date",
+      date: event.date,
+      facts: [],
+      links: [eventLink(event.id), { label: "FightOdds.io", href: "https://fightodds.io/upcoming-mma-events/ufc" }],
+      actions: [{ id: "cancelled", label: "Re-read event list", target: "list" }],
+    });
+  }
+  return check({
+    id: "cancelled-unread",
+    group: "Fights & events",
+    label: "Cancelled bouts not read",
+    description: "Profiles list a fighter's cancelled bouts (behind the Cancelled switch on Fights) from FightOdds.io, which keeps every bout ever posted to a UFC card and flags the ones that fell through, with both fighters linked to their UFCStats page. Its board list is read daily, each coming card every six hours and every past card once after it's over. Listed here: the board list or a board that failed (check the error; \"Unknown query\" means FightOdds.io rebuilt its app, see the FightOdds.io check under Odds), boards the archive pass hasn't reached yet, and cards we list that have no board on their date, whose cancellations are missing.",
+    grade: (item) => item.key === "list" ? "must"
+      : item.key === "unread" ? "ok"
+        : (daysFrom(item.date) ?? -999) >= -3 ? "must" : "minor",
+  }, items);
+}
+
+/** Cancelled bouts with a corner we couldn't tie to a fighter: they're missing
+ *  from that fighter's profile. */
+function cancelledBoutsUnlinked(): BugCheck {
+  const rows = db.prepare(`SELECT slug, board_pk, date, event_name, weight_class, f1_id, f2_id, f1_name, f2_name
+    FROM cancelled_bouts WHERE f1_id IS NULL OR f2_id IS NULL ORDER BY date DESC`).all() as
+    { slug: string; board_pk: number; date: string; event_name: string; weight_class: string; f1_id: string | null; f2_id: string | null; f1_name: string; f2_name: string }[];
+  return check({
+    id: "cancelled-unlinked",
+    group: "Fights & events",
+    label: "Cancelled bouts with an unknown fighter",
+    description: "A cancelled bout whose corner FightOdds.io hasn't linked to a UFCStats page, and whose name matches no fighter we hold (or more than one), so it's missing from that fighter's profile. Usually a fighter whose UFC debut never happened. Once FightOdds.io links the corner or the fighter reaches UFCStats, re-reading the board fixes it.",
+    grade: (item) => (daysFrom(item.date) ?? -999) >= -7 ? "minor" : "ok",
+  }, rows.map((row) => ({
+    key: row.slug,
+    title: `${row.f1_name} vs ${row.f2_name}`,
+    subtitle: `${row.event_name}${row.weight_class ? ` · ${row.weight_class}` : ""}`,
+    date: row.date,
+    facts: [["Unknown", [row.f1_id ? "" : row.f1_name, row.f2_id ? "" : row.f2_name].filter(Boolean).join(", ")]],
+    links: [
+      ...[[row.f1_id, row.f1_name], [row.f2_id, row.f2_name]].filter(([id]) => id && hasUfcFight(id)).map(([id, name]) => fighterLink(id!, name!)),
+      { label: "FightOdds.io", href: `https://fightodds.io/fights/${row.slug}/odds` },
+    ],
+    actions: [{ id: "cancelled", label: "Re-read board", target: String(row.board_pk) }],
   })));
 }
 
@@ -1902,6 +2022,9 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     careerStatGaps(),
     upcomingWithoutSegment(),
     decisionsWithoutJudges(),
+    finishesWithoutDetail(),
+    cancelledBoutsUnread(),
+    cancelledBoutsUnlinked(),
     eventsWithoutWiki(),
     weightMissesUnderLimit(),
     catchweightsWithoutLimit(),
@@ -1961,7 +2084,7 @@ function newsUnjudged(): BugCheck {
   }, items);
 }
 
-export type BugActionId = "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket";
+export type BugActionId = "cancelled" | "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -2030,6 +2153,11 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
     case "detail":
       await syncFightDetail(target);
       return { ok: true, message: "Fight detail re-fetched." };
+    case "cancelled": {
+      if (target === "list") return { ok: true, message: `Event list read: ${await readCancelledBoardList()} UFC boards.` };
+      const result = await syncCancelledBouts({ pk: Number(target) });
+      return { ok: true, message: `Board read: ${result.bouts} cancelled ${result.bouts === 1 ? "bout" : "bouts"}.` };
+    }
     case "segments": {
       await syncEventSegments(target);
       const row = db.prepare("SELECT ufc_slug FROM events WHERE id = ?").get(target) as { ufc_slug: string | null } | undefined;

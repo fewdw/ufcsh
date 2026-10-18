@@ -1,11 +1,11 @@
 import FighterCareerStats from "../components/FighterCareerStats";
 import { DecisionsPanel, RoundsPanel, StrikesPanel } from "../components/FightInsights";
 import { CareerStatModal } from "../components/CareerStatDetails";
-import { Children, Fragment, type ReactNode } from "react";
+import { Children, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../api";
-import type { CompleteRecordBefore, FighterAward, FighterProfile, FighterRecord, HistoryRow, NewsPage, ProfessionalHistoryRow } from "../api";
-import { divisionName, formatDateShortWithYear, formatLine, formatMethod, isDecision, lastName } from "../format";
+import type { CompleteRecordBefore, FighterAward, FighterProfile, FighterRecord, HistoryRow, NewsPage, ProfessionalHistoryRow, ProfileCancelledBout } from "../api";
+import { divisionName, finishDetail, formatDateShortWithYear, formatLine, formatMethod, isDecision, lastName } from "../format";
 import { formatValue, PANEL } from "../components/chartTokens";
 import FighterPortrait from "../components/FighterPortrait";
 import Flag from "../components/Flag";
@@ -20,7 +20,7 @@ import { fetchPage, LoadMore, useInfiniteList } from "../components/InfiniteList
 import NewsRow, { savedOff, savedSummaries } from "../components/NewsRow";
 import { PanelHeading } from "../components/FightStats";
 import { SITE_URL, useSeo } from "../seo";
-import { useRouteScrollRestoration, useTabBarAnchor } from "../navigationState";
+import { useRememberedState, useRouteScrollRestoration, useTabBarAnchor } from "../navigationState";
 import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedTab } from "../components/segmented";
 import { outsideFighterUrl, useSettings, withRanking } from "../settings";
 import { careerBands, fightProgram, type CareerBand } from "../fighterTimeline";
@@ -305,6 +305,7 @@ function boutFields(row: HistoryRow | ProfessionalHistoryRow) {
   return {
     result: row.upcoming ? "Upcoming" : historyResultLabel(row.outcome),
     method: (row.upcoming ? "Scheduled" : formatMethod(row.method, row.round, row.time)) || "Result pending",
+    detail: row.upcoming ? "" : finishDetail(row.method_detail),
     fighterOdds: formatLine(row.closing_odds?.fighter),
     opponentOdds: formatLine(row.closing_odds?.opponent),
     outside,
@@ -425,6 +426,7 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
         <span className="flex min-w-0 flex-1 flex-wrap items-center">
           <FactRun>
             <span className="font-medium">{bout.method}</span>
+            {bout.detail ? <span>{bout.detail}</span> : null}
             {bout.contender ? null : <PromotionLabel row={row} move={move} />}
             {"rank" in row && row.rank ? <RankTag ranking={row.rank} who={fighterName} division={row.weight_class} /> : null}
             {row.title_narrative ? <span className={`font-semibold ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
@@ -490,6 +492,7 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
               <span className="min-w-0 flex-1 text-[11px] font-medium leading-5 text-zinc-500 [overflow-wrap:anywhere]">{bout.method}</span>
               {bout.fighterOdds ? <span className="shrink-0 text-[10px] font-semibold tabular-nums text-zinc-400" title={`${fighterName} closing odds`}>{bout.fighterOdds}</span> : null}
             </span>
+            {bout.detail ? <span className="block text-[11px] leading-4 text-zinc-500 [overflow-wrap:anywhere]">{bout.detail}</span> : null}
             <EnteringRecords career={row.career_record_before} ufc={row.record_before} name={fighterName} className="mt-0.5 w-full text-[10px] font-medium leading-4 text-zinc-400" />
           </span>
         </span>
@@ -535,6 +538,84 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
         <span className="mt-0.5 block text-[11px] tabular-nums text-zinc-400">{formatDateShortWithYear(row.date)}</span>
       </BoutLink>
     </>
+  );
+}
+
+/** A booking that fell through, muted and in the bout list's own two shapes:
+ *  who it was against, that it was cancelled (and why, when the event article
+ *  says), and the card it was booked for. */
+function CancelledRowView({ bout }: { bout: ProfileCancelledBout }) {
+  const badge = <span className="grid h-6 min-w-6 shrink-0 place-items-center rounded-full bg-zinc-100 px-1 text-[10px] font-bold leading-none text-zinc-400 @3xl:h-7 @3xl:min-w-7 @3xl:text-[11px]" title="Cancelled" aria-hidden="true">C</span>;
+  const opponentTo = bout.opponent.id ? `/fighters/${bout.opponent.id}` : null;
+  const eventTo = bout.event_id ? `/events/${bout.event_id}` : null;
+  const what = <FactRun>
+    <span className="font-medium">Cancelled</span>
+    {bout.weight_class ? <span>{bout.weight_class}</span> : null}
+    {bout.reason ? <span>{bout.reason}</span> : null}
+  </FactRun>;
+  const cell = "hidden min-w-0 px-3 py-2.5 @3xl:flex";
+  return (
+    <div className="grid grid-cols-1 items-stretch text-zinc-400 @3xl:grid-cols-[13rem_minmax(11rem,1.1fr)_7rem_minmax(12rem,1.3fr)]">
+      <div className="flex flex-col py-1.5 @3xl:hidden">
+        <BoutLink to={opponentTo} label={`Open ${bout.opponent.name} profile`} className={`${BAND} items-center gap-2.5 py-1.5`}>
+          {badge}
+          <span className="min-w-0 break-words text-[15px] font-semibold leading-6 text-zinc-500">{bout.opponent.name}</span>
+        </BoutLink>
+        <BoutLink href={bout.source_url} label={`Cancelled bout with ${bout.opponent.name} on FightOdds.io`} className={`${BAND} ${BAND_INDENT} items-baseline py-1.5 text-xs leading-5`}>
+          <span className="flex min-w-0 flex-1 flex-wrap items-center">{what}</span>
+        </BoutLink>
+        <BoutLink to={eventTo} label={`Open ${bout.event_name}`} className={`${BAND} ${BAND_INDENT} items-baseline gap-x-2 py-1.5`}>
+          <span className="min-w-0 flex-1 break-words text-xs leading-5">{bout.event_name}</span>
+          <span className="shrink-0 text-[11px] leading-5 tabular-nums">{formatDateShortWithYear(bout.date)}</span>
+        </BoutLink>
+      </div>
+      <BoutLink href={bout.source_url} label={`Cancelled bout with ${bout.opponent.name} on FightOdds.io`} className={`${cell} items-center gap-2.5 ${HIT}`}>
+        {badge}
+        <span className="flex min-w-0 flex-1 flex-wrap items-center text-[11px] leading-5">
+          <span className="font-medium">Cancelled</span>
+          {bout.reason ? <span className="basis-full leading-4 [overflow-wrap:anywhere]">{bout.reason}</span> : null}
+        </span>
+      </BoutLink>
+      <BoutLink to={opponentTo} label={`Open ${bout.opponent.name} profile`} className={`${cell} items-center ${HIT}`}>
+        <span className="min-w-0 break-words text-sm font-semibold leading-5 text-zinc-500">{bout.opponent.name}</span>
+      </BoutLink>
+      <div className={`${cell} border-l border-zinc-100 text-[11px] leading-5`}>{bout.weight_class}</div>
+      <BoutLink to={eventTo} label={`Open ${bout.event_name}`} className={`${cell} flex-col justify-start border-l border-zinc-100 text-right ${HIT}`}>
+        <span className="block break-words text-xs font-medium leading-5">{bout.event_name}</span>
+        <span className="mt-0.5 block text-[11px] tabular-nums">{formatDateShortWithYear(bout.date)}</span>
+      </BoutLink>
+    </div>
+  );
+}
+
+/** Cancelled bouts slotted into the list by date: above any row (bout or
+ *  roster band) they are newer than, below the ones on their own date. */
+function withCancelled(rows: { date?: string; node: ReactNode }[], cancelled: ProfileCancelledBout[]): ReactNode[] {
+  const out: ReactNode[] = [];
+  let next = 0;
+  for (const row of rows) {
+    while (row.date && next < cancelled.length && cancelled[next].date > row.date) {
+      out.push(<CancelledRowView key={`cancelled-${cancelled[next].key}`} bout={cancelled[next]} />);
+      next++;
+    }
+    out.push(row.node);
+  }
+  for (const bout of cancelled.slice(next)) out.push(<CancelledRowView key={`cancelled-${bout.key}`} bout={bout} />);
+  return out;
+}
+
+/** The switch in the Fights heading. Off by default: a cancelled booking is
+ *  not a fight, so the list is the record until asked otherwise. */
+function CancelledSwitch({ count, on, onChange }: { count: number; on: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)}
+      title={`${on ? "Hide" : "Show"} ${count} cancelled ${count === 1 ? "bout" : "bouts"}`}
+      className="-my-1 flex items-center gap-2 rounded-full py-1 pl-2.5 pr-1.5 text-[11px] font-medium text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-800">
+      <span>Cancelled <span className="tabular-nums text-zinc-400">{count}</span></span>
+      <span aria-hidden="true" className={`relative inline-flex h-4 w-7 shrink-0 rounded-full transition-colors ${on ? "bg-sky-500" : "bg-zinc-300"}`}>
+        <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform ${on ? "translate-x-3.5" : "translate-x-0.5"}`} />
+      </span>
+    </button>
   );
 }
 
@@ -720,6 +801,7 @@ export default function FighterPage() {
   };
   // Read with the fighter: the tab shows how many stories there are.
   const { data: news } = useApi<NewsPage>(fighterId ? newsUrl(fighterId) : null);
+  const [showCancelled, setShowCancelled] = useRememberedState("profile:showCancelled", false);
   useSeo({
     title: fighter ? `${fighter.name} — Record & Fight History` : "UFC Fighter Profile",
     description: fighter
@@ -757,6 +839,7 @@ export default function FighterPage() {
   const allFights = [...upcoming, ...past].sort((a, b) => b.date.localeCompare(a.date));
   const bands = careerBands(allFights, fighter.roster_events);
   const moves = divisionMoves(fighter.history);
+  const cancelled = showCancelled ? fighter.cancelled ?? [] : [];
 
   const done = fighter.history.filter((h) => !h.upcoming);
   const fightBonuses = done.filter((h) => h.bonuses?.fotn).length;
@@ -859,19 +942,21 @@ export default function FighterPage() {
           <Records records={fighter.records ?? []} />
           <FighterStatistics fighterId={fighter.id} history={fighter.history} />
         </> : <section className={shell}>
-          <PanelHeading title="Fights" subtitle={allFights.length.toLocaleString()} />
+          <PanelHeading title="Fights" subtitle={allFights.length.toLocaleString()}
+            aside={fighter.cancelled?.length ? <CancelledSwitch count={fighter.cancelled.length} on={showCancelled} onChange={setShowCancelled} /> : null} />
           {!fighter.record_verified ? (
             <div className="px-4 pb-1 pt-3 text-xs text-zinc-500 sm:px-5">Outside-UFC history is still syncing; UFC bouts are shown now.</div>
           ) : null}
           <div className={BOUT_LIST}>
-            {allFights.length ? (
-              allFights.map((row, index) => (
-                <Fragment key={row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`}>
-                  {bands[index].map((band, bandIndex) => <RosterBand key={bandIndex} band={band} />)}
-                  <HistoryRowView row={row} fighterName={fighter.name} move={row.fight_id ? moves.get(row.fight_id) : undefined} />
-                </Fragment>
-              ))
-            ) : (
+            {allFights.length || cancelled.length ? withCancelled([
+              ...allFights.flatMap((row, index) => {
+                const key = row.fight_id ?? `${row.date}-${row.opponent.name}-${index}`;
+                return [
+                  ...bands[index].map((band, bandIndex) => ({ date: band.date, node: <RosterBand key={`${key}-band-${bandIndex}`} band={band} /> })),
+                  { date: row.date, node: <HistoryRowView key={key} row={row} fighterName={fighter.name} move={row.fight_id ? moves.get(row.fight_id) : undefined} /> },
+                ];
+              }),
+            ], cancelled) : (
               <div className="px-5 py-6 text-sm text-zinc-400">No fights on record.</div>
             )}
           </div>

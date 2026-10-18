@@ -45,10 +45,48 @@ type RawBout = {
   straightOffers: RawOffers;
 };
 
+/** Every UFC event FightOdds.io has a board for, oldest first. */
+export async function fightOddsAllEvents(): Promise<(FightOddsEvent & { name: string })[]> {
+  type Page = { promotion: { events: { edges: { node: FightOddsEvent & { name: string } }[]; pageInfo: { hasNextPage: boolean; endCursor: string } } } | null };
+  const events: (FightOddsEvent & { name: string })[] = [];
+  let after: string | null = null;
+  for (let page = 0; page < 50; page++) {
+    const data: Page = await query<Page>(EventsPromotionQuery, { promotionSlug: "ufc", dateGte: "1993-01-01", first: 100, orderBy: "date", after });
+    if (!data.promotion) throw new Error("FightOdds.io has no UFC promotion");
+    events.push(...data.promotion.events.edges.map((edge) => edge.node));
+    if (!data.promotion.events.pageInfo.hasNextPage) return events;
+    after = data.promotion.events.pageInfo.endCursor;
+  }
+  throw new Error("FightOdds.io event list did not end");
+}
+
+type CappingBout = Omit<RawBout, "straightOffers"> & { weightClass?: { weightClass: string | null } | null };
+export type Capping = { eventOffers: { fightOffers: { edges: { node: { fight: CappingBout; straightOffers: RawOffers } }[] } } | null };
+
+/** A bout the board still lists but flags as cancelled: FightOdds.io keeps
+ *  every booking that fell through on the card it was booked for. */
+export type FightOddsCancelled = { slug: string; url: string; weightClass: string; f1: FightOddsCorner; f2: FightOddsCorner };
+
+export function cancelledOnBoard(capping: Capping): FightOddsCancelled[] {
+  return capping.eventOffers!.fightOffers.edges
+    .map(({ node }) => node.fight)
+    .filter((fight) => fight.isCancelled)
+    .map((fight) => {
+      const { slug, url, f1, f2 } = parseBout({ ...fight, straightOffers: { edges: [] } });
+      return { slug, url, weightClass: fight.weightClass?.weightClass?.trim() ?? "", f1, f2 };
+    });
+}
+
+/** The cancelled bouts on one event's board. */
+export async function fightOddsCancelled(pk: number): Promise<FightOddsCancelled[]> {
+  const capping = await query<Capping>(CappingTableQrQuery, { eventPk: pk });
+  if (!capping.eventOffers) throw new Error(`FightOdds.io board ${pk} is missing`);
+  return cancelledOnBoard(capping);
+}
+
 /** Every bout on an event's odds board with each book's moneyline. Only the
  *  app's capping table carries UFCStats links; its event table counts props. */
 export async function fightOddsBoard(pk: number): Promise<FightOddsBout[]> {
-  type Capping = { eventOffers: { fightOffers: { edges: { node: { fight: Omit<RawBout, "straightOffers">; straightOffers: RawOffers } }[] } } | null };
   type Offers = { eventOfferTable: { fightOffers: { edges: { node: { slug: string; propCount: number | null } }[] } } | null };
   const capping = await query<Capping>(CappingTableQrQuery, { eventPk: pk });
   const offers = await query<Offers>(EventOfferTableQrQuery, { eventPk: pk });

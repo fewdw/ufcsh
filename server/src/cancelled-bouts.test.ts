@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { db } from "./db.ts";
 import { resolvePublicApi } from "./api.ts";
+import { boardDue, storeCancelledBoard } from "./cancelled-bouts.ts";
 
 // The API needs the same historical context as a normal row, even when the
 // fighter actually fought a replacement on the cancellation's event date.
@@ -62,5 +63,71 @@ test("cancelled card rows retain profiles and only results before the event", as
     assert.deepEqual(malformed.cancelled, []);
   } finally {
     db.exec("ROLLBACK TO cancelled_card; RELEASE cancelled_card");
+  }
+});
+
+test("a board is read until its card is over, then once more, then left alone", () => {
+  const day = 86_400_000;
+  const card = Date.parse("2030-06-01T00:00:00Z");
+  assert.equal(boardDue({ date: "2030-06-01", read_at: null }, card - 30 * day), true);
+  assert.equal(boardDue({ date: "2030-06-01", read_at: card - 10 * day }, card - 10 * day + 3_600_000), false);
+  assert.equal(boardDue({ date: "2030-06-01", read_at: card - 10 * day }, card - 10 * day + 7 * 3_600_000), true);
+  assert.equal(boardDue({ date: "2030-06-01", read_at: card }, card + 2 * day), true, "read once after the card is over");
+  assert.equal(boardDue({ date: "2030-06-01", read_at: card + 2 * day }, card + 400 * day), false);
+});
+
+test("profiles list each booking that fell through once, by identity, with the article's reason", async () => {
+  db.exec("SAVEPOINT cancelled_profile");
+  try {
+    const [alpha, bravo, charlie, delta] = ["cbf0000000000011", "cbf0000000000012", "cbf0000000000013", "cbf0000000000014"];
+    for (const [id, name] of [[alpha, "Alpha Fixturefighter"], [bravo, "Bravo Fixturefighter"], [charlie, "Charlie Fixturefighter"], [delta, "Delta Fixturedirectory"]]) {
+      db.prepare("INSERT INTO fighters (id, name, norm_name) VALUES (?, ?, lower(?))").run(id, name, name);
+    }
+    db.prepare("INSERT INTO events (id, name, date, complete, detail_fetched_at) VALUES ('cbe0000000000001', 'Fixture Card', '2001-03-01', 1, 1)").run();
+    db.prepare("INSERT INTO events (id, name, date, complete, detail_fetched_at) VALUES ('cbe0000000000002', 'Other Fixture Card', '2001-05-01', 1, 1)").run();
+    db.prepare(`INSERT INTO fights (id, event_id, ord, weight_class, f1_id, f1_name, f2_id, f2_name, f1_outcome, f2_outcome, method, method_details, round, time, detail_json)
+      VALUES ('cbb0000000000001', 'cbe0000000000001', 1, 'Lightweight', ?, 'Alpha Fixturefighter', ?, 'Charlie Fixturefighter', 'win', 'loss', 'KO/TKO', 'Knee', '2', '2:32', ?)`)
+      .run(alpha, charlie, JSON.stringify({ detailsText: "Knee to Head In Clinch" }));
+    db.prepare("UPDATE events SET cancelled_json = ? WHERE id = 'cbe0000000000001'").run(JSON.stringify([
+      { f1: "Bravo Fixturefighter", f2: "Alpha Fixturefighter", f1_id: bravo, f2_id: alpha, division: "Lightweight", reason: "Bravo Fixturefighter withdrew (injury)" },
+    ]));
+    for (const [pk, date, slug] of [[990001, "2001-03-01", "fixture-card"], [990002, "2001-05-01", "fixture-card-cancelled"]] as const) {
+      db.prepare("INSERT INTO cancelled_boards (pk, date, slug, name) VALUES (?, ?, ?, ?)").run(pk, date, slug, `Board ${slug}`);
+    }
+    const corner = (id: string | null, name: string) => ({ id, name, last: name.split(" ").at(-1)! });
+    const bout = (slug: string, a: ReturnType<typeof corner>, b: ReturnType<typeof corner>) =>
+      ({ slug, url: `https://fightodds.io/fights/${slug}/odds`, weightClass: "Lightweight", f1: a, f2: b });
+    const A = corner(alpha, "Alpha Fixturefighter");
+    const first = [
+      bout("alpha-vs-bravo-1", A, corner(bravo, "Bravo Fixturefighter")),
+      bout("bravo-vs-alpha-2", corner(bravo, "Bravo Fixturefighter"), A),
+      bout("alpha-vs-delta-3", A, corner(null, "Delta Fixturedirectory")),
+      bout("alpha-vs-charlie-4", A, corner(charlie, "Charlie Fixturefighter")),
+    ];
+    storeCancelledBoard({ pk: 990001, date: "2001-03-01", name: "Board fixture-card" }, first);
+    storeCancelledBoard({ pk: 990002, date: "2001-05-01", name: "Board fixture-card-cancelled" }, [bout("alpha-vs-bravo-5", A, corner(bravo, "Bravo Fixturefighter"))]);
+    assert.equal((db.prepare("SELECT f2_id FROM cancelled_bouts WHERE slug = 'alpha-vs-delta-3'").get() as { f2_id: string }).f2_id, delta,
+      "a corner the board hasn't linked is matched by name");
+
+    const profile = await resolvePublicApi(new URL(`http://localhost/api/fighters/${alpha}`)) as any;
+    assert.deepEqual(profile.cancelled.map((row: any) => [row.date, row.opponent.name]), [
+      ["2001-05-01", "Bravo Fixturefighter"],
+      ["2001-03-01", "Bravo Fixturefighter"],
+      ["2001-03-01", "Delta Fixturedirectory"],
+    ], "the swapped duplicate and the bout they fought are left out");
+    const [moved, withdrew, directory] = profile.cancelled;
+    assert.equal(moved.event_id, null, "a card cancelled outright links no card on its date");
+    assert.equal(withdrew.event_id, "cbe0000000000001");
+    assert.equal(withdrew.reason, "Bravo Fixturefighter withdrew (injury)");
+    assert.equal(withdrew.weight_class, "Lightweight");
+    assert.equal(withdrew.source_url, "https://fightodds.io/fights/alpha-vs-bravo-1/odds");
+    assert.equal(directory.opponent.id, null, "no profile link for a fighter without a UFC bout");
+    assert.equal(profile.history[0].method_detail, "Knee to Head In Clinch");
+
+    storeCancelledBoard({ pk: 990001, date: "2001-03-01", name: "Board fixture-card" }, first.slice(0, 2));
+    const reread = await resolvePublicApi(new URL(`http://localhost/api/fighters/${alpha}`)) as any;
+    assert.deepEqual(reread.cancelled.map((row: any) => row.key), ["alpha-vs-bravo-5", "alpha-vs-bravo-1"], "a bout the board no longer flags drops out");
+  } finally {
+    db.exec("ROLLBACK TO cancelled_profile; RELEASE cancelled_profile");
   }
 });
