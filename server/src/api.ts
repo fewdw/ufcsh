@@ -27,7 +27,7 @@ import { prepared, getMeta, setMeta, DATA_DIR, dataRevision, db } from "./db.ts"
 import { enqueueRefresh } from "./refresh-queue.ts";
 import { QueryPool } from "./query-pool.ts";
 import { ResponseCache, representation, acceptsEncoding, acceptsGzip, matchesEtag, OverloadedError, type Representation } from "./response-cache.ts";
-import { HttpObservability, pageRouteGroup, routeGroup } from "./observability.ts";
+import { HttpObservability, UNCOUNTED_ROUTES, pageRouteGroup, routeGroup } from "./observability.ts";
 import { isAutomated, sourceOf } from "./visitors.ts";
 import { TrafficHistory } from "./traffic-history.ts";
 import { createRepairRunner } from "./repair-guard.ts";
@@ -55,6 +55,7 @@ import { fuzzyScore, fuzzyTarget, splitMatchup, type FuzzyTarget } from "./fuzzy
 import { WEIGHT_LIMITS, type RankingType } from "./scrape/ufccom.ts";
 import { getStats } from "./stats.ts";
 import { titleNarratives } from "./titles.ts";
+import { cancelledBoutsOf } from "./cancelled-bouts.ts";
 import { fighterBoard, fighterRecords } from "./records.ts";
 import { ufcFightExistsSql, fighterNamed, hasUfcFight, recordText, currentRecord, cachedPhotoUrl, cachedFullPhotoUrl, photoVersion } from "./fighter-identity.ts";
 export { hasUfcFight };
@@ -710,6 +711,7 @@ function fighterHistory(fighterId: string, includeOpponentForm = false): unknown
     const opponentName = isF1 ? f.f2_name : f.f1_name;
     const fighterClose = isF1 ? f.f1_close : f.f2_close;
     const opponentClose = isF1 ? f.f2_close : f.f1_close;
+    const detail = f.detail_json ? JSON.parse(f.detail_json) : null;
     return {
       promotion: "ufc" as const,
       fight_id: f.id,
@@ -718,12 +720,13 @@ function fighterHistory(fighterId: string, includeOpponentForm = false): unknown
       date: f.event_date,
       weight_class: f.weight_class,
       catch_weight: f.catch_weight ?? null,
-      scheduled_rounds: scheduledRounds(f, f.detail_json ? JSON.parse(f.detail_json) : null),
+      scheduled_rounds: scheduledRounds(f, detail),
       title_fight: !!f.title_fight,
       title_type: f.title_type || null,
       title_narrative: narratives.get(f.id) ?? null,
       outcome: isF1 ? f.f1_outcome : f.f2_outcome,
       method: f.method,
+      method_detail: finishDetailText(f.method, detail, f.method_details),
       round: f.round,
       time: f.time,
       opponent: { id: opponentId, name: opponentName },
@@ -754,6 +757,14 @@ function fighterHistory(fighterId: string, includeOpponentForm = false): unknown
 }
 
 const PERF_BONUS_KIND: Record<number, "perf" | "ko" | "sub"> = { 1: "perf", 2: "ko", 3: "sub" };
+
+/** How a bout that didn't go to the judges ended: the fight page's full line
+ *  ("Knee to Head In Clinch"), else the card's short one ("Knee"). */
+function finishDetailText(method: string | null, detail: any, short: string | null): string | null {
+  if (!method || /DEC$/i.test(method)) return null;
+  const full = typeof detail?.detailsText === "string" ? detail.detailsText.trim() : "";
+  return full || short?.trim() || null;
+}
 
 type SourceCareerRow = {
   source_bout_key: string;
@@ -1188,6 +1199,8 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     })(),
     insights: { rounds: roundOutcomes(indexedFighter?.fights ?? [], fr.id), strikes: roundStrikes(indexedFighter?.fights ?? [], fr.id), decisions: decisionScores(indexedFighter?.fights ?? [], fr.id) },
     history: mergedUfcHistory,
+    // Bookings that fell through; the profile shows them only when asked.
+    cancelled: cancelledBoutsOf(fr.id, [...history, ...proHistory]),
     roster_events: fighterRosterEvents(fr.id),
     awards: fighterAwards(fr.id),
     // The professional list shows the same ranks on its UFC bouts.
@@ -1945,7 +1958,10 @@ async function readStatic(filePath: string): Promise<StaticFile | null> {
 export async function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, pathname: string, pages?: ResponseCache): Promise<void> {
   let filePath = path.join(CLIENT_DIST, path.normalize(pathname).replace(/^([/\\])+/, ""));
   if (filePath !== CLIENT_DIST && !filePath.startsWith(CLIENT_DIST + path.sep)) filePath = path.join(CLIENT_DIST, "index.html");
-  const file = await readStatic(filePath);
+  // The document itself is never sent raw: "/" and "/index.html" fall through
+  // to the SEO fill below, so the homepage carries its link-preview image too.
+  const document = filePath === path.join(CLIENT_DIST, "index.html");
+  const file = document ? null : await readStatic(filePath);
   if (file) {
     const immutable = pathname.startsWith("/assets/");
     const headers: Record<string, string | number> = {
@@ -1970,7 +1986,7 @@ export async function serveStatic(req: http.IncomingMessage, res: http.ServerRes
   }
   // Never send the SPA document for a missing script, stylesheet or image.
   // In particular, HTML under /assets/ must not be cached as immutable JS.
-  if (pathname.startsWith("/assets/") || path.extname(pathname)) {
+  if (!document && (pathname.startsWith("/assets/") || path.extname(pathname))) {
     res.writeHead(404, { "Content-Type": "text/plain", "Cache-Control": "no-store" });
     res.end("Asset not found");
     return;
@@ -2010,8 +2026,7 @@ type ShareCardData = (Exclude<ShareCard, { kind: "versus" } | { kind: "single" }
  *  site. Read where the fight index lives (a query worker in production). */
 export function shareCardData(kind: string, id: string): ShareCardData | null {
   if (kind === "site") {
-    return { kind: "list", eyebrow: "Independent UFC research", title: "UFC.sh", subtitle: "Cards, odds, rankings and every number behind them",
-      items: ["Fight cards and live results", "Matchup context and fighter rankings", "Judges, referees and venues"], footer: SITE_URL.replace(/^https?:\/\//, "") };
+    return { kind: "site", tagline: "Events, odds, stats and rankings" };
   }
   if (kind === "events" && id === POTENTIAL_EVENT_ID) {
     const fights = potentialMatchups();
@@ -2290,7 +2305,7 @@ async function repairSnapshot(day: string): Promise<void> {
 function liveFights(): AdminLiveFight[] {
   return cardOrder(prepared(`
     SELECT f.id, f.ord, f.segment, f.card_pos, f.f1_name, f.f2_name, f.weight_class, f.scheduled_rounds,
-      f.round, f.time, f.method, f.detail_json, f.f1_outcome, f.f2_outcome,
+      f.round, f.time, f.method, f.detail_json, f.verdict_live_json, f.f1_outcome, f.f2_outcome,
       f.f1_id, f.f2_id, NULL AS f1_photo, NULL AS f2_photo,
       e.id AS event_id, e.name AS event_name, e.date AS event_date
     FROM fights f JOIN events e ON e.id = f.event_id
@@ -2348,6 +2363,7 @@ export function startApi(port: number): http.Server {
     },
     accounts: () => adminAccounts({ scores: scoreStore }),
     errors: () => ({ http: trafficHistory.errors.list(), sync: syncStatus() }),
+    slow: () => trafficHistory.slow.list(),
     report: async () => {
       const report = queryPool ? JSON.parse((await queryPool.run("/api/bugs")).json) : bugReport();
       return { ...report, checks: [accountSyncCheck(), ...report.checks] };
@@ -2517,6 +2533,9 @@ export function startApi(port: number): http.Server {
   let failures = 0;
   /** What a request that failed logged, for Admin → Errors. */
   const failureMessages = new WeakMap<http.ServerResponse, string>();
+  /** How long a public API answer took to come from the cache or a query
+   *  worker, for Admin → Slow. */
+  const answerTimes = new WeakMap<http.ServerResponse, number>();
   const latencies = new Map<string, { count: number; total_ms: number; max_ms: number }>();
   let stopping = false;
   let draining = false;
@@ -2546,6 +2565,11 @@ export function startApi(port: number): http.Server {
         trafficHistory.errors.record({
           status: res.statusCode, method: req.method ?? "OTHER", path: req.url ?? "/", message: failureMessages.get(res),
           fromSite: typeof referer === "string" && referer.startsWith(`${SITE_URL}/`),
+        });
+      }
+      if (!UNCOUNTED_ROUTES.has(key)) {
+        trafficHistory.slow.record({
+          method: req.method ?? "OTHER", path: req.url ?? "/", route: key, status: res.statusCode, ms: duration, answerMs: answerTimes.get(res),
         });
       }
       entry.count++; entry.total_ms += duration; entry.max_ms = Math.max(entry.max_ms, duration);
@@ -2657,7 +2681,10 @@ export function startApi(port: number): http.Server {
         return await sendJson(req, res, { fight_id: row.id, odds, finished: null });
       }
       if (publicApi(p)) {
-        return sendRepresentation(req, res, await publicAnswer(url), cachePolicy(url).control);
+        const asked = performance.now();
+        const answer = await publicAnswer(url);
+        answerTimes.set(res, performance.now() - asked);
+        return sendRepresentation(req, res, answer, cachePolicy(url).control);
       }
       if (p === "/api/status" || p === "/api/metrics") {
         if (!isAdmin(req)) return await sendJson(req, res, { error: "authentication required" }, 401);

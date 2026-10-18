@@ -31,6 +31,7 @@ import { correctOfficialJudges } from "./verified-scorecard-corrections.ts";
 import { cardChanges, catchweights, eventInfobox, eventSection, fetchArticleByTitle, fetchEventArticle, fetchFighterArticle, recordCatchweight, samePlace, weightMisses } from "./scrape/wikipedia.ts";
 import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
 import { syncVerdictScorecards } from "./verdict-import.ts";
+import { syncVerdictLive, VERDICT_LIVE_MS } from "./verdict-live.ts";
 import { syncRosterMoves, syncUfcSignings, syncUfcStatuses } from "./roster-moves.ts";
 import { syncNews } from "./news.ts";
 import { backfillRankingHistory, recordScrapedRankings } from "./ranking-history.ts";
@@ -38,6 +39,7 @@ import { fighterNamed } from "./fighter-identity.ts";
 import { americanLine, impliedProbability } from "./fight-index.ts";
 import { consistentMoneyline } from "./method-odds.ts";
 import { decisionFromCards } from "./judge-scorecards.ts";
+import { syncCancelledBouts } from "./cancelled-bouts.ts";
 import { boutLines, boutProps, fightOddsBoard, fightOddsEvents, fightOddsOpeners, fightOddsProps, matchBout } from "./scrape/fightodds.ts";
 
 const HOUR = 3600_000;
@@ -84,9 +86,13 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
   }
   const complete =
     detail.fights.length > 0 && detail.fights.every((f) => f.f1.outcome !== null);
+  // A finished card is read again every two minutes through fight day; only
+  // the read that completes it, or one that changes a result, is news.
+  let resultsChanged = false;
 
   db.exec("BEGIN");
   try {
+    const wasComplete = (db.prepare("SELECT complete FROM events WHERE id = ?").get(detail.id) as { complete: number } | undefined)?.complete === 1;
     db.prepare(
       `UPDATE events SET name = COALESCE(NULLIF(?, ''), name), date = COALESCE(NULLIF(?, ''), date),
          location = COALESCE(NULLIF(?, ''), location), complete = ?, detail_fetched_at = ? WHERE id = ?`,
@@ -97,6 +103,10 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
       .prepare("SELECT id, f1_id, f2_id, f1_outcome, f2_outcome, detail_json FROM fights WHERE event_id = ?")
       .all(detail.id) as { id: string; f1_id: string; f2_id: string; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null }[];
     const previous = new Map(existing.map(f => [f.id, f]));
+    resultsChanged = !wasComplete || detail.fights.some(f => {
+      const old = previous.get(f.id);
+      return !old || old.f1_outcome !== f.f1.outcome || old.f2_outcome !== f.f2.outcome;
+    });
     for (const row of existing) {
       if (!currentIds.has(row.id)) {
         db.prepare("DELETE FROM fights WHERE id = ?").run(row.id);
@@ -191,7 +201,7 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
     throw err;
   }
 
-  if (complete) {
+  if (complete && resultsChanged) {
     setMeta("roster_stale", "1"); // records changed -> refresh roster soon
     staleCareerRecords(detail.fights.flatMap((fight) => [fight.f1.id, fight.f2.id]));
   }
@@ -1727,9 +1737,20 @@ async function syncAthleteDirectory(): Promise<void> {
 
 type EventRow = { id: string; name: string; date: string; complete: number; detail_fetched_at: number | null };
 
-function guarded(name: string, fn: () => Promise<void>): Promise<void> {
-  return fn().catch((err) => {
+/** The live loop reads each page again within a minute, so one slow or
+ *  refused answer from the source is its moment, not a fault: a live job is
+ *  recorded as failing only when it fails this many times in a row. */
+const LIVE_TRANSIENT_GRACE = 3;
+const transientFailures = new Map<string, number>();
+
+function guarded(name: string, fn: () => Promise<void>, transientGrace = 0): Promise<void> {
+  return fn().then(() => { transientFailures.delete(name); }, (err) => {
     if (err instanceof SourceCatchingUp) { log(`sync retry later [${name}]:`, err.message); return; }
+    if (transientGrace && isTransientUpstream(err)) {
+      const failures = (transientFailures.get(name) ?? 0) + 1;
+      transientFailures.set(name, failures);
+      if (failures < transientGrace) { log(`sync retry later [${name}] (${failures}/${transientGrace}):`, String(err)); return; }
+    }
     log(`SYNC ERROR [${name}]:`, String(err));
     recordSyncError(name, err);
   });
@@ -1766,7 +1787,7 @@ export async function syncLiveEvents(): Promise<void> {
       const fights = db.prepare(`SELECT id, f1_outcome, f2_outcome, detail_json, detail_fetched_at FROM fights
         WHERE event_id = ? AND (f1_outcome IS NOT NULL OR f2_outcome IS NOT NULL)
         ORDER BY detail_fetched_at ASC`).all(event.id) as { id: string; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; detail_fetched_at: number | null }[];
-      for (const fight of fights) if (liveDetailDue(fight)) await guarded(`live_stats ${fight.id}`, () => syncFightDetail(fight.id));
+      for (const fight of fights) if (liveDetailDue(fight)) await guarded(`live_stats ${fight.id}`, () => syncFightDetail(fight.id), LIVE_TRANSIENT_GRACE);
       // The bout being fought now has no result yet, so the query above never
       // reaches it — and it is the one whose numbers are moving. UFCStats
       // publishes its round totals as they happen, so keep it warm rather than
@@ -1780,7 +1801,7 @@ export async function syncLiveEvents(): Promise<void> {
           WHERE event_id = ? ORDER BY ord`)
           .all(event.id) as { id: string; ord: number; segment: string | null; card_pos: number | null; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; detail_fetched_at: number | null }[])
           .findLast((fight) => fight.f1_outcome == null && fight.f2_outcome == null);
-        if (underway && liveDetailDue(underway)) await guarded(`live_stats ${underway.id}`, () => syncFightDetail(underway.id));
+        if (underway && liveDetailDue(underway)) await guarded(`live_stats ${underway.id}`, () => syncFightDetail(underway.id), LIVE_TRANSIENT_GRACE);
       }
     }
   } finally { liveTicking = false; }
@@ -1967,6 +1988,12 @@ export async function tick(): Promise<void> {
     if (!methodOddsBackfillRunning) {
       void guarded("method_odds_backfill", async () => { await syncMethodOddsBackfill(20); });
     }
+    // 11b. Cancelled bouts from FightOdds.io's boards: the archive once, a
+    //      batch a pass, and every coming card each six hours.
+    if (metaAgeMs("cancelled_bouts_at") > 10 * 60_000) {
+      touchMeta("cancelled_bouts_at");
+      void guarded("cancelled_bouts", async () => { await syncCancelledBouts(); });
+    }
 
     // 12. Birth dates, in parallel on the ufcstats queue. Live results share
     //     that queue, but each page is one request so nothing waits long.
@@ -1989,6 +2016,9 @@ export function startScheduler(): void {
   // Verdict MMA round cards and community scorecards, on their own clock so a
   // long tick can't hold back a fight-night tally. The pass decides what is due.
   setInterval(() => void guarded("verdict_scorecards", async () => { await syncVerdictScorecards(); }), 30_000);
+  // The bout being fought on Verdict: its rounds open ours, its fans' average
+  // joins the Score tab (verdict-live.ts). Idle unless a card is on today.
+  setInterval(() => void guarded("verdict_live", () => syncVerdictLive()), VERDICT_LIVE_MS);
   void tick();
   // Full historical totals power Actions attempts, accuracy, targets, position,
   // and control. Run continuously in the background and resume after restarts.

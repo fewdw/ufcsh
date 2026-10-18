@@ -100,12 +100,12 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-17">October 17, 2026</time></p>
+            <p><time dateTime="2026-10-18">October 18, 2026</time></p>
             <ul>
-              <li>Score each round blind while it’s fought, and show the fans’ live scorecard on stream with the OBS overlay.</li>
-              <li>Live marks a bout only once it has started, and the Final pill says which bout ended.</li>
-              <li>Live odds no longer show 99% for both fighters when a book is one-sided.</li>
-              <li>Clearer career stat details, steadier Browse tabs, and new privacy and terms sections.</li>
+              <li>Live rounds open with Verdict MMA, and its fans’ scores join the Score tab.</li>
+              <li>Fighter profiles show how each finish came, with a switch for cancelled or moved bouts.</li>
+              <li>Cleaner scorecards and a simpler image when sharing the homepage.</li>
+              <li>Faster event and fight pages, with slow requests listed in Admin.</li>
             </ul>
           </Section>
         </div>

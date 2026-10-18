@@ -11,6 +11,11 @@ import {
 
 const DAY = 86_400_000;
 const SOURCE = "sherdog";
+/** A stored bout's columns after its fighter and source. */
+const BOUT_COLUMNS = [
+  "source_bout_key", "source_order", "date", "outcome", "opponent_name", "opponent_norm", "opponent_url",
+  "event_name", "event_url", "method", "round", "time", "is_ufc", "ufc_fight_id",
+];
 
 export type LocalFighter = {
   id: string;
@@ -340,21 +345,24 @@ function storeVerified(fighterId: string, value: VerifiedCandidate): void {
     db.prepare(`UPDATE fighters SET country = ?, country_code = ?, birthplace = ?,
       birth_date = CASE WHEN birth_date = '' THEN ? ELSE birth_date END WHERE id = ?`)
       .run(value.profile.country || null, value.profile.countryCode || null, value.profile.birthplace || null, birthDate, fighterId);
-    db.prepare("DELETE FROM career_bouts WHERE fighter_id = ? AND source = ?").run(fighterId, SOURCE);
-    const insert = db.prepare(`
-      INSERT INTO career_bouts (
-        fighter_id, source, source_bout_key, source_order, date, outcome,
-        opponent_name, opponent_norm, opponent_url, event_name, event_url,
-        method, round, time, is_ufc, ufc_fight_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    for (const bout of value.bouts) {
-      insert.run(
-        fighterId, SOURCE, bout.key, bout.sourceOrder, bout.date, bout.outcome,
-        bout.opponentName, normName(bout.opponentName), bout.opponentUrl,
-        bout.eventName, bout.eventUrl, bout.method, bout.round, bout.time,
-        bout.isUfc ? 1 : 0, bout.ufcFightId,
-      );
+    const rows = value.bouts.map((bout) => [
+      bout.key, bout.sourceOrder, bout.date, bout.outcome,
+      bout.opponentName, normName(bout.opponentName), bout.opponentUrl,
+      bout.eventName, bout.eventUrl, bout.method, bout.round, bout.time,
+      bout.isUfc ? 1 : 0, bout.ufcFightId,
+    ]);
+    // Most refreshes find the history as stored. Rewriting it anyway would
+    // bump the data revision, so every query worker would rebuild its indexes
+    // and every cached page would go cold for nothing.
+    const stored = (db.prepare("SELECT COUNT(*) AS n FROM career_bouts WHERE fighter_id = ? AND source = ?")
+      .get(fighterId, SOURCE) as { n: number }).n;
+    const same = db.prepare(`SELECT 1 FROM career_bouts WHERE fighter_id = ? AND source = ? AND
+      ${BOUT_COLUMNS.map((column) => `${column} IS ?`).join(" AND ")}`);
+    if (stored !== rows.length || !rows.every((row) => same.get(fighterId, SOURCE, ...row))) {
+      db.prepare("DELETE FROM career_bouts WHERE fighter_id = ? AND source = ?").run(fighterId, SOURCE);
+      const insert = db.prepare(`INSERT INTO career_bouts (fighter_id, source, ${BOUT_COLUMNS.join(", ")})
+        VALUES (${["?", "?", ...BOUT_COLUMNS.map(() => "?")].join(", ")})`);
+      for (const row of rows) insert.run(fighterId, SOURCE, ...row);
     }
     db.prepare(`
       INSERT INTO career_profiles (

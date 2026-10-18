@@ -66,6 +66,17 @@ export function formatMethod(method: string | null, round: string | null, time: 
   return parts.join(" · ");
 }
 
+/** How a finish came, in UFCStats' words: "Knee to Head In Clinch", "Rear
+ *  Naked Choke". The source prints strike, target and position side by side,
+ *  so a blank strike leaves "to Corner Stoppage" and a blank target "Slam to
+ *  On Ground"; both read without the stray "to". */
+export function finishDetail(text: string | null | undefined): string {
+  return (text ?? "").replace(/\s+/g, " ").trim()
+    .replace(/^to\b\s*/i, "")
+    .replace(/\bto (?=(?:On|From|In|At)\b)/g, "")
+    .trim();
+}
+
 export function isDecision(method: string | null | undefined): boolean {
   return /dec$|decision/i.test((method ?? "").trim());
 }

@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { RateLimiter, clientAddress } from "./api-policy.ts";
 import { authenticateScorer, scoringOrigins, scorerEmail } from "./scoring-http.ts";
-import { fightIsUnderway } from "./live-state.ts";
+import { fightIsUnderway, verdictLive } from "./live-state.ts";
 import { ScoringError, scoringEligibility, type ScoringFight, type ScoringStore } from "./scoring.ts";
 import type { AdminStore } from "./admins.ts";
 import type { ReportStore } from "./reports.ts";
@@ -30,6 +30,8 @@ export type AdminHandlerOptions = {
   accounts?: () => Promise<unknown>;
   /** Failing addresses, recent sync failures and how current each source is. */
   errors?: () => unknown;
+  /** Addresses that answered slowly, by address and by route (Admin → Slow). */
+  slow?: () => unknown;
   canAct: () => boolean;
   /** Gemini on /news: its state, and the switch that turns it off. */
   newsAi?: { status: () => unknown; set: (on: boolean) => unknown };
@@ -63,7 +65,7 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
  * whenever a token happens to expire.
  */
 export function createAdminHandler(options: AdminHandlerOptions) {
-  const { admins, scores, reports, comments, report, runAction, canAct, liveFights, metrics, traffic, accounts, errors, newsAi } = options;
+  const { admins, scores, reports, comments, report, runAction, canAct, liveFights, metrics, traffic, accounts, errors, slow, newsAi } = options;
   const currentBout = options.currentBout ?? (() => {
     const bout = liveFights().find(fight => fight.f1_outcome == null && fight.f2_outcome == null);
     return bout ? { id: bout.id, live: false } : null;
@@ -84,8 +86,8 @@ export function createAdminHandler(options: AdminHandlerOptions) {
       event: { id: fight.event_id, name: fight.event_name, date: fight.event_date },
       complete: fight.f1_outcome != null || fight.f2_outcome != null,
       scheduled: eligibility.scheduled,
-      /** What the feed has published by itself, which the panel cannot lower. */
-      feedRounds: Math.max(detail?.totalsRounds?.rounds?.length ?? 0, detail?.sigStrikesRounds?.rounds?.length ?? 0),
+      /** What the feed and Verdict MMA have started by themselves, which the panel cannot lower. */
+      feedRounds: Math.max(detail?.totalsRounds?.rounds?.length ?? 0, detail?.sigStrikesRounds?.rounds?.length ?? 0, verdictLive(fight)?.started ?? 0),
       openRounds: released,
       /** Started by the feed's own word, which the panel cannot take back. */
       underway: fightIsUnderway(fight),
@@ -197,6 +199,10 @@ export function createAdminHandler(options: AdminHandlerOptions) {
       else if (route === "errors") {
         if (!errors) throw new ScoringError(404, "Not found.");
         send(errors());
+      }
+      else if (route === "slow") {
+        if (!slow) throw new ScoringError(404, "Not found.");
+        send(slow());
       }
       else if (route === "live") send(card());
       else if (liveFight) {

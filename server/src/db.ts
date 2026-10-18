@@ -254,6 +254,10 @@ for (const [name, type] of [
   ["verdict_checked_at", "INTEGER"],
   // Why the last Verdict read of this bout failed; NULL once one succeeds.
   ["verdict_error", "TEXT"],
+  // Verdict's word on a bout being fought: its rounds and the fans' average
+  // so far (verdict-live.ts). Rewritten every few seconds on fight night, so
+  // it never moves the analytics revision.
+  ["verdict_live_json", "TEXT"],
 ] as const) {
   if (!fightColumns.some((column) => column.name === name)) {
     db.exec(`ALTER TABLE fights ADD COLUMN ${name} ${type}`);
@@ -673,6 +677,33 @@ if (!db.prepare("SELECT 1 FROM pragma_table_info('news') WHERE name = 'ai_keep'"
   db.exec("ALTER TABLE news ADD COLUMN ai_same TEXT");
   db.exec("ALTER TABLE news ADD COLUMN ai_summary TEXT NOT NULL DEFAULT ''");
 }
+// Bookings that fell through, as FightOdds.io's boards keep them on the card
+// they were booked for (cancelled-bouts.ts). Ids are UFCStats', as the board
+// files each corner; a corner it hasn't linked is matched by name, or left null.
+db.exec(`CREATE TABLE IF NOT EXISTS cancelled_bouts (
+  slug         TEXT PRIMARY KEY,
+  board_pk     INTEGER NOT NULL,
+  date         TEXT NOT NULL,
+  event_name   TEXT NOT NULL,
+  weight_class TEXT NOT NULL DEFAULT '',
+  f1_id        TEXT,
+  f2_id        TEXT,
+  f1_name      TEXT NOT NULL,
+  f2_name      TEXT NOT NULL,
+  checked_at   INTEGER NOT NULL
+)`);
+db.exec("CREATE INDEX IF NOT EXISTS idx_cancelled_bouts_f1 ON cancelled_bouts(f1_id)");
+db.exec("CREATE INDEX IF NOT EXISTS idx_cancelled_bouts_f2 ON cancelled_bouts(f2_id)");
+db.exec("CREATE INDEX IF NOT EXISTS idx_cancelled_bouts_board ON cancelled_bouts(board_pk)");
+// Each FightOdds.io UFC board and when its cancelled bouts were last read.
+db.exec(`CREATE TABLE IF NOT EXISTS cancelled_boards (
+  pk       INTEGER PRIMARY KEY,
+  date     TEXT NOT NULL,
+  slug     TEXT NOT NULL,
+  name     TEXT NOT NULL,
+  read_at  INTEGER,
+  error    TEXT NOT NULL DEFAULT ''
+)`);
 db.exec("CREATE TABLE IF NOT EXISTS data_revisions (key TEXT PRIMARY KEY, value INTEGER NOT NULL)");
 for (const key of ["analytics", "profiles", "search"]) {
   db.prepare("INSERT OR IGNORE INTO data_revisions VALUES (?, 0)").run(key);
@@ -688,11 +719,12 @@ const revisionTables: Record<string, string[]> = {
   career_bouts: ["analytics", "profiles"],
   rankings: ["profiles"],
   ranking_history: ["profiles"],
+  cancelled_bouts: ["profiles"],
 };
 for (const [table, revisions] of Object.entries(revisionTables)) {
   const checkTimestamps = new Set(["detail_fetched_at", "birth_fetched_at", "photo_checked_at", "bfo_checked_at", "bfo_final_at",
     "schedule_fetched_at", "segments_fetched_at", "wiki_checked_at", "fetched_at", "checked_at",
-    "venue_checked_at", "wiki_info_checked_at", "catch_weight_checked_at", "verdict_checked_at", "verdict_error"]);
+    "venue_checked_at", "wiki_info_checked_at", "catch_weight_checked_at", "verdict_checked_at", "verdict_error", "verdict_live_json"]);
   const columns = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[])
     .map(row => row.name).filter(name => !checkTimestamps.has(name));
   const update = `UPDATE data_revisions SET value = value + 1 WHERE key IN (${revisions.map(key => `'${key}'`).join(",")});`;

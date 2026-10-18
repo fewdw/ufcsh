@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { boutLines, boutProps, consensusLine, matchBout, parseBout, type FightOddsBout, type RawProp } from "./fightodds.ts";
+import { boutLines, boutProps, cancelledOnBoard, consensusLine, matchBout, parseBout, type FightOddsBout, type RawProp } from "./fightodds.ts";
 
 const silva = { firstName: "Natalia Cristina", lastName: "da Silva", fightmetricUrl: "http://www.ufcstats.com/fighter-details/262d32ebda89efc4" };
 const wang = { firstName: "Cong", lastName: "Wang", fightmetricUrl: null };
@@ -109,4 +109,18 @@ test("board props become the matchup's markets, in our corners and wording", () 
     "Fight ends in submission in round 1 +2500",
     "Wang Cong wins by TKO/KO in round 3 +3500",
   ]);
+});
+
+test("a board's cancelled bouts keep both corners' UFCStats ids and the division", () => {
+  const fight = (slug: string, isCancelled: boolean, f2 = wang) => ({ node: { straightOffers: { edges: [] }, fight: {
+    slug, isCancelled, fighter1: silva, fighter2: f2, weightClass: { weightClass: " Women's Flyweight " },
+  } } });
+  const cancelled = cancelledOnBoard({ eventOffers: { fightOffers: { edges: [fight("fought-1", false), fight("dropped-2", true)] } } });
+  assert.deepEqual(cancelled, [{
+    slug: "dropped-2",
+    url: "https://fightodds.io/fights/dropped-2/odds",
+    weightClass: "Women's Flyweight",
+    f1: { id: "262d32ebda89efc4", name: "Natalia Cristina da Silva", last: "da Silva" },
+    f2: { id: null, name: "Cong Wang", last: "Wang" },
+  }]);
 });

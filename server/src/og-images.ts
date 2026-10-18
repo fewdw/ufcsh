@@ -1,10 +1,12 @@
+import { fileURLToPath } from "node:url";
 import sharp, { type OverlayOptions } from "sharp";
 
 /**
  * Link-preview images, 1200×630, drawn on the server so a shared fighter,
  * bout or card shows what it is about rather than the site's logo. Text is
- * SVG rasterised by sharp (the container ships DejaVu Sans); pictures come
- * from the local photo cache and are composited on top.
+ * SVG rasterised by sharp (the container ships DejaVu Sans), except the
+ * homepage card's bundled Inter; pictures come from the local photo cache and
+ * are composited on top.
  */
 
 export const OG_WIDTH = 1200;
@@ -14,7 +16,8 @@ export type SharePhoto = { data: Buffer; full: boolean } | null;
 export type ShareCard =
   | { kind: "versus"; eyebrow: string; f1: string; f2: string; f1Line: string; f2Line: string; center: string; footer: string; photos: [SharePhoto, SharePhoto] }
   | { kind: "single"; eyebrow: string; title: string; lines: string[]; footer: string; photo: SharePhoto }
-  | { kind: "list"; eyebrow: string; title: string; subtitle: string; items: string[]; footer: string };
+  | { kind: "list"; eyebrow: string; title: string; subtitle: string; items: string[]; footer: string }
+  | { kind: "site"; tagline: string };
 
 const FONT = "DejaVu Sans, Inter, Arial, sans-serif";
 const escape = (value: string) => value.replace(/[<>&'"]/g, (char) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" }[char]!));
@@ -59,7 +62,32 @@ async function photoLayer(photo: SharePhoto, width: number, height: number): Pro
   }
 }
 
+// Inter (OFL), subset to Latin, set by Pango from the file itself so the
+// homepage card looks the same on any host whatever fonts it has installed.
+const INTER_BOLD = fileURLToPath(new URL("fonts/Inter-Bold.ttf", import.meta.url));
+const INTER_REGULAR = fileURLToPath(new URL("fonts/Inter-Regular.ttf", import.meta.url));
+
+const pangoText = (markup: string, fontfile: string, font: string) =>
+  sharp({ text: { text: markup, fontfile, font, rgba: true, dpi: 72 } }).png().toBuffer({ resolveWithObject: true });
+
+/** The homepage card: the wordmark and one line, white on black. */
+async function renderSiteImage(tagline: string): Promise<Buffer> {
+  const [mark, line] = await Promise.all([
+    pangoText('<span letter_spacing="-5000"><span foreground="#ffffff">UFC</span><span foreground="#71717a">.sh</span></span>', INTER_BOLD, "Inter Bold 150"),
+    pangoText(`<span foreground="#a1a1aa">${escape(tagline)}</span>`, INTER_REGULAR, "Inter 36"),
+  ]);
+  const gap = 36;
+  const top = Math.round((OG_HEIGHT - mark.info.height - gap - line.info.height) / 2);
+  return sharp({ create: { width: OG_WIDTH, height: OG_HEIGHT, channels: 3, background: "#000000" } })
+    .composite([
+      { input: mark.data, left: Math.round((OG_WIDTH - mark.info.width) / 2), top },
+      { input: line.data, left: Math.round((OG_WIDTH - line.info.width) / 2), top: top + mark.info.height + gap },
+    ])
+    .jpeg({ quality: 90, mozjpeg: true }).toBuffer();
+}
+
 export async function renderShareImage(card: ShareCard): Promise<Buffer> {
+  if (card.kind === "site") return renderSiteImage(card.tagline);
   const overlays: OverlayOptions[] = [];
   let inner = "";
   if (card.kind === "versus") {

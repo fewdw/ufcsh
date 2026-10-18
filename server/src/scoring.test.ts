@@ -39,6 +39,41 @@ test("eligibility uses actual rounds and distinguishes live, future, historical 
   assert.equal(scoringEligibility({ ...live, detail_json: '{"type":"future"}' }).available, 0);
 });
 
+test("Verdict MMA's live rounds open ours and its fans' average joins the closed rounds", t => {
+  const today = new Date().toISOString().slice(0, 10);
+  const verdict = (value: object) => JSON.stringify({ sourceUrl: "https://verdictmma.com/event/1/fight/4", status: 1, started: 2, ended: 1,
+    community: { cards: 1800, avg1: 9.8, avg2: 9.2, rounds: [{ round: 1, avg1: 9.8, avg2: 9.2 }] }, ...value });
+  // Nothing from UFCStats yet: Verdict alone has round 2 under way.
+  const live: ScoringFight = { ...fight, f1_outcome: null, f2_outcome: null, round: null, method: null, event_date: today,
+    scheduled_rounds: 5, detail_json: null, verdict_live_json: verdict({}) };
+  assert.deepEqual(scoringEligibility(live), { state: "live", scheduled: 5, available: 2, ended: 1, reason: null });
+  // Between rounds Verdict has ended round 2 before round 3 starts: it is public at once.
+  assert.equal(scoringEligibility({ ...live, verdict_live_json: verdict({ ended: 2 }) }).ended, 2);
+  // A finished bout's stoppage round also reads as ended, so that word only counts while Verdict has it on.
+  assert.equal(scoringEligibility({ ...live, verdict_live_json: verdict({ status: 3, ended: 2 }) }).ended, undefined);
+  assert.equal(scoringEligibility({ ...live, event_date: "2099-01-01" }).available, 0);
+
+  const { store, setFight } = fixture(t, live);
+  store.save(id, "alice", { revision: 0, rounds: [{ round: 1, f1: 10, f2: 9, deduct1: 0, deduct2: 0 }, { round: 2, f1: 9, f2: 10, deduct1: 0, deduct2: 0 }] });
+  let summary = store.summary(id) as any;
+  assert.equal(summary.closed, 1);
+  assert.deepEqual(summary.rounds.map((r: any) => [r.round, r.scorers]), [[1, 1801]]);
+  assert.ok(Math.abs(summary.rounds[0].avg1 - (10 + 9.8 * 1800) / 1801) < 1e-9);
+  assert.equal(summary.totals.completeCards, 1801);
+  // Round 2 is over on Verdict but its fans' average has not arrived: it adds
+  // to no total, and the local card covering both rounds still counts.
+  setFight({ ...live, verdict_live_json: verdict({ ended: 2 }) });
+  summary = store.summary(id) as any;
+  assert.equal(summary.closed, 2);
+  assert.deepEqual(summary.rounds.map((r: any) => [r.round, r.scorers]), [[1, 1801], [2, 1]]);
+  assert.equal(summary.totals.completeCards, 1);
+  assert.equal(summary.totals.avg1, 19);
+  // A finished tally, once imported, replaces the live one.
+  setFight({ ...live, f1_outcome: "win", f2_outcome: "loss", method: "U-DEC", round: "5", detail_json: JSON.stringify({ type: "past" }),
+    community_score_json: JSON.stringify({ cards: 5000, avg1: 48, avg2: 47, rounds: [1, 2, 3, 4, 5].map(round => ({ round, avg1: 9.6, avg2: 9.4 })) }) });
+  assert.equal((store.summary(id) as any).totals.importedCards, 5000);
+});
+
 test("server rejects incomplete cards, skipped and duplicate rounds, invalid scores and deductions", () => {
   const eligibility = scoringEligibility(fight);
   const invalid = [null, {}, { revision: -1, rounds }, { revision: 0, rounds: [] }, { revision: 0, rounds: rounds.slice(0, 2) },
