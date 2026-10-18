@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { db } from "./db.ts";
 import { resolvePublicApi } from "./api.ts";
-import { boardDue, storeCancelledBoard } from "./cancelled-bouts.ts";
+import { boardDue, bookedDivision, storeCancelledBoard } from "./cancelled-bouts.ts";
 
 // The API needs the same historical context as a normal row, even when the
 // fighter actually fought a replacement on the cancellation's event date.
@@ -130,4 +130,14 @@ test("profiles list each booking that fell through once, by identity, with the a
   } finally {
     db.exec("ROLLBACK TO cancelled_profile; RELEASE cancelled_profile");
   }
+});
+
+test("a cancelled bout's division is the board's only where the fighters bear it out", () => {
+  assert.equal(bookedDivision("Bantamweight", ["Women's Bantamweight", "Women's Bantamweight"]), "Women's Bantamweight");
+  assert.equal(bookedDivision("Middleweight", ["Welterweight", "Middleweight"]), "Middleweight", "one moving up");
+  assert.equal(bookedDivision("Welterweight", ["Heavyweight", "Heavyweight"]), "Heavyweight", "the board is wrong");
+  assert.equal(bookedDivision("Welterweight", ["Lightweight", "Middleweight"]), "", "no guess");
+  assert.equal(bookedDivision("", ["Flyweight", "Flyweight"]), "Flyweight");
+  assert.equal(bookedDivision("", ["Flyweight", undefined]), "");
+  assert.equal(bookedDivision("Catchweight", ["Flyweight", "Bantamweight"]), "Catch Weight");
 });

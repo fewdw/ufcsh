@@ -135,6 +135,23 @@ type Stored = { slug: string; board_pk: number; date: string; event_name: string
   f1_id: string | null; f2_id: string | null; f1_name: string; f2_name: string; board_slug: string | null };
 type Fought = { date: string; opponent: { id?: string | null; name: string } };
 
+/** The division a cancelled bout was booked at. The board's own is a guide,
+ *  not a fact: it never says "Women's", is blank on some bouts and wrong on
+ *  others. It's kept where it matches a corner's division at the time (the
+ *  bout nearest the date), else the two corners' shared one is used, and with
+ *  neither nothing is said rather than a guess. */
+export function bookedDivision(listed: string, corners: (string | null | undefined)[]): string {
+  if (/^catch ?weight$/i.test(listed.trim())) return "Catch Weight";
+  const known = corners.filter((division): division is string => !!division && division !== "Catch Weight");
+  const plain = (division: string) => division.replace(/^Women's /, "");
+  const shared = known.length === 2 && known[0] === known[1] ? known[0] : "";
+  const board = plain(listed.trim());
+  if (board && known.some((division) => plain(division) === board)) {
+    return known.some((division) => division.startsWith("Women's")) ? `Women's ${board}` : board;
+  }
+  return shared;
+}
+
 const dayDiff = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / DAY;
 
 /** A fighter's cancelled bouts, newest first. A bout the board flags but the
@@ -147,6 +164,10 @@ export function cancelledBoutsOf(fighterId: string, fought: Fought[]): Cancelled
   `).all(fighterId, fighterId) as Stored[];
   if (!rows.length) return [];
   const eventsOn = prepared("SELECT id FROM events WHERE date = ?");
+  const divisionAt = prepared(`SELECT f.weight_class FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE (f.f1_id = ? OR f.f2_id = ?) AND f.weight_class NOT IN ('', 'Catch Weight')
+    ORDER BY abs(julianday(e.date) - julianday(?)) LIMIT 1`);
+  const division = (id: string | null, date: string) => id ? (divisionAt.get(id, id, date) as { weight_class: string } | undefined)?.weight_class : undefined;
   const articles = prepared(`SELECT cancelled_json FROM events WHERE cancelled_json IS NOT NULL
     AND date BETWEEN date(?, '-60 days') AND date(?, '+60 days')`);
   const seen = new Set<string>();
@@ -166,7 +187,7 @@ export function cancelledBoutsOf(fighterId: string, fought: Fought[]): Cancelled
       date: row.date,
       event_name: row.event_name,
       event_id: cards.length === 1 && !/-cancell?ed$/.test(row.board_slug ?? "") ? cards[0].id : null,
-      weight_class: row.weight_class,
+      weight_class: bookedDivision(row.weight_class, [division(fighterId, row.date), division(opponent.id, row.date)]),
       opponent: { id: opponent.id && hasUfcFight(opponent.id) ? opponent.id : null, name: opponent.name },
       reason: articleReason(articles.all(row.date, row.date) as { cancelled_json: string }[], fighterId, opponent),
       source_url: `https://fightodds.io/fights/${row.slug}/odds`,

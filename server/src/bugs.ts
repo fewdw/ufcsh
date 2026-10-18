@@ -945,8 +945,9 @@ function cancelledBoutsUnread(): BugCheck {
       actions: [{ id: "cancelled", label: "Read newest now", target: String(unread[0].pk) }],
     });
   }
-  // A card we list with no board on its date: FightOdds.io keeps boards for
-  // every UFC card since 2008, so a missing one is a gap, not the source's age.
+  // A card we list with no board on its date: FightOdds.io has a board for
+  // every UFC card since 2008 (all 695 when this was written), so a missing
+  // one is a gap, not the source's age.
   const orphans = listedAt ? db.prepare(`SELECT e.id, e.name, e.date FROM events e
     WHERE e.date >= '2008-01-01' AND e.date <= date('now', '+21 days')
       AND NOT EXISTS (SELECT 1 FROM cancelled_boards b WHERE b.date BETWEEN date(e.date, '-1 day') AND date(e.date, '+1 day'))
@@ -966,7 +967,7 @@ function cancelledBoutsUnread(): BugCheck {
     id: "cancelled-unread",
     group: "Fights & events",
     label: "Cancelled bouts not read",
-    description: "Profiles list a fighter's cancelled bouts (behind the Cancelled switch on Fights) from FightOdds.io, which keeps every bout ever posted to a UFC card and flags the ones that fell through, with both fighters linked to their UFCStats page. Its board list is read daily, each coming card every six hours and every past card once after it's over. Listed here: the board list or a board that failed (check the error; \"Unknown query\" means FightOdds.io rebuilt its app, see the FightOdds.io check under Odds), boards the archive pass hasn't reached yet, and cards we list that have no board on their date, whose cancellations are missing.",
+    description: "Profiles list a fighter's cancelled bouts (behind the Cancelled switch on Fights) from FightOdds.io, which keeps every bout ever posted to a UFC card and flags the ones that fell through, with both fighters linked to their UFCStats page. It began keeping them in October 2013: an earlier card's cancellations are only on its event page, from Wikipedia. Its board list is read daily, each coming card every six hours and every past card once after it's over. Listed here: the board list or a board that failed (check the error; \"Unknown query\" means FightOdds.io rebuilt its app, see the FightOdds.io check under Odds), boards the archive pass hasn't reached yet, and cards we list that have no board on their date, whose cancellations are missing.",
     grade: (item) => item.key === "list" ? "must"
       : item.key === "unread" ? "ok"
         : (daysFrom(item.date) ?? -999) >= -3 ? "must" : "minor",
