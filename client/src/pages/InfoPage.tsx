@@ -100,12 +100,10 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-18">October 18, 2026</time></p>
+            <p><time dateTime="2026-10-19">October 19, 2026</time></p>
             <ul>
-              <li>Live rounds open with Verdict MMA, and its fans’ scores join the Score tab.</li>
-              <li>Fighter profiles show how each finish came, with a switch for cancelled or moved bouts.</li>
-              <li>Cleaner scorecards and a simpler image when sharing the homepage.</li>
-              <li>Faster event and fight pages, with slow requests listed in Admin.</li>
+              <li>Fight cards show their main card, prelims and early prelims as soon as the UFC places a late addition.</li>
+              <li>Cards in fight week are checked every 10 minutes.</li>
             </ul>
           </Section>
         </div>
