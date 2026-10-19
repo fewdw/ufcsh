@@ -258,6 +258,10 @@ for (const [name, type] of [
   // so far (verdict-live.ts). Rewritten every few seconds on fight night, so
   // it never moves the analytics revision.
   ["verdict_live_json", "TEXT"],
+  // MMA Decisions' word on points taken by the referee, including "none"
+  // (point-deductions.ts), and when its page was last looked for.
+  ["deductions_json", "TEXT"],
+  ["deductions_checked_at", "INTEGER"],
 ] as const) {
   if (!fightColumns.some((column) => column.name === name)) {
     db.exec(`ALTER TABLE fights ADD COLUMN ${name} ${type}`);
@@ -724,7 +728,7 @@ const revisionTables: Record<string, string[]> = {
 for (const [table, revisions] of Object.entries(revisionTables)) {
   const checkTimestamps = new Set(["detail_fetched_at", "birth_fetched_at", "photo_checked_at", "bfo_checked_at", "bfo_final_at",
     "schedule_fetched_at", "segments_fetched_at", "wiki_checked_at", "fetched_at", "checked_at",
-    "venue_checked_at", "wiki_info_checked_at", "catch_weight_checked_at", "verdict_checked_at", "verdict_error", "verdict_live_json"]);
+    "venue_checked_at", "wiki_info_checked_at", "catch_weight_checked_at", "verdict_checked_at", "verdict_error", "verdict_live_json", "deductions_checked_at"]);
   const columns = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[])
     .map(row => row.name).filter(name => !checkTimestamps.has(name));
   for (const operation of ["INSERT", "UPDATE", "DELETE"]) {
