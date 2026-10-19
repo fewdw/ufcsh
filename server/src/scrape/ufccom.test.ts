@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { athleteSlug, parseAthleteDivision, parseAthleteImages, parseAthleteStatus, parseCardRounds, parseEventFeedId, parseFightIds, parseNewestAthletes, parseRankingsHtml, parseSearchAthlete, scrapeEventCard, scrapeFighterImages } from "./ufccom.ts";
+import { athleteSlug, parseAthleteDivision, parseAthleteImages, parseAthleteStatus, parseCardRounds, parseEventFeedId, parseFeedSegments, parseFightIds, parseNewestAthletes, parseRankingsHtml, parseSearchAthlete, scrapeEventCard, scrapeFighterImages } from "./ufccom.ts";
 
 const MEDIA_LABELS = [
   "Men's Pound-for-Pound",
@@ -304,6 +304,8 @@ test("sync reads the event feed without depending on the broken first fight feed
   const card = await scrapeEventCard("ufc-fight-night-october-31-2026");
   assert.equal(visited.length, 2);
   assert.deepEqual(card.segments, [{ segment: "main", f1: "Renato Moicano", f2: "Tom Nolan" }]);
+  // This feed names no segments, so only the page's list can place the bout.
+  assert.deepEqual(card.feedSegments, []);
   assert.equal(card.rounds?.[0].rounds, 5);
   assert.equal(card.info?.venue, "Meta Apex");
 });
@@ -355,6 +357,28 @@ test("a bout's rounds are kept only when the feed states them consistently", () 
   assert.deepEqual(parseCardRounds({}, [1]), []);
   // A page listing a bout the feed does not carry means the feed is another card.
   assert.deepEqual(parseCardRounds(feed, [1, 12345]), []);
+});
+
+test("the feed places every bout, late additions included, in card order", () => {
+  const bout = (id: number, order: number, segment: string, f1: string, f2: string) => ({
+    FightId: id, FightOrder: order, CardSegment: segment,
+    Fighters: [f1, f2].map((name) => ({ Name: { FirstName: name.split(" ")[0], LastName: name.split(" ")[1] } })),
+  });
+  // UFC 333 a week out: the page listed 11 bouts, the feed 14.
+  const feed = { LiveEventDetail: { FightCard: [
+    bout(14, 14, "Prelims2", "Iasmin Lucindo", "Nicolle Caliari"),
+    bout(1, 1, "Main", "Alexander Volkanovski", "Movsar Evloev"),
+    bout(6, 6, "Prelims1", "Azamat Murzakanov", "Dominick Reyes"),
+  ] } };
+  assert.deepEqual(parseFeedSegments(feed, [1, 6]), [
+    { segment: "main", f1: "Alexander Volkanovski", f2: "Movsar Evloev" },
+    { segment: "prelims", f1: "Azamat Murzakanov", f2: "Dominick Reyes" },
+    { segment: "early", f1: "Iasmin Lucindo", f2: "Nicolle Caliari" },
+  ]);
+  // Another card's feed, or one bout in a segment we can't name: the page's list stands.
+  assert.deepEqual(parseFeedSegments(feed, [1, 99]), []);
+  const unknown = { LiveEventDetail: { FightCard: [...feed.LiveEventDetail.FightCard, bout(15, 15, "Prelims3", "Kody Steele", "Noah Gugnon")] } };
+  assert.deepEqual(parseFeedSegments(unknown, [1, 6]), []);
 });
 
 test("reads an athlete's roster status in English or French", () => {
