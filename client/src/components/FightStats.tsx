@@ -1181,18 +1181,28 @@ function deductedIn(deductions: Deduction[], round: number): Partial<Record<Side
   return taken;
 }
 
-/** A pair of scores, the winner's in their colour and the other's muted. */
+/** Recorded scores, with a red badge when a referee's deduction is included. */
 function ScorePair({ f1, f2, text, size, deducted }: { f1: number; f2: number; text: (value: number) => string; size: string; deducted?: Partial<Record<Side, number>> }) {
   const lead: Side | null = f1 > f2 ? "f1" : f2 > f1 ? "f2" : null;
-  const tone = (side: Side) => lead === side ? "font-semibold" : "font-medium text-zinc-400";
-  // A point the referee took, in the docked fighter's colour beside their score.
-  const mark = (side: Side) => deducted?.[side]
-    ? <sup className="ml-px text-[0.75em] font-semibold" style={{ color: SIDE[side].ink }}>−{deducted[side]}</sup> : null;
+  const score = (side: Side, value: number) => {
+    const points = deducted?.[side] ?? 0;
+    const note = points ? `Includes a ${points}-point deduction` : undefined;
+    const tone = points
+      ? "bg-red-100 font-semibold text-red-700 dark:bg-red-950 dark:text-red-300"
+      : lead === side ? "font-semibold" : "font-medium text-zinc-400";
+    return (
+      <span className={`inline-block rounded px-1 py-0.5 ${tone}`}
+        style={!points && lead === side ? { color: SIDE[side].ink } : undefined}
+        title={note} aria-label={note ? `${text(value)}. ${note}.` : undefined}>
+        {text(value)}
+      </span>
+    );
+  };
   return (
     <span className={`inline-grid grid-cols-[1fr_auto_1fr] items-center gap-1 tabular-nums leading-tight ${size}`}>
-      <span className={`text-right ${tone("f1")}`} style={lead === "f1" ? { color: SIDE.f1.ink } : undefined}>{text(f1)}{mark("f1")}</span>
+      <span className="text-right">{score("f1", f1)}</span>
       <span className="h-3 w-px bg-zinc-200" aria-hidden="true" />
-      <span className={`text-left ${tone("f2")}`} style={lead === "f2" ? { color: SIDE.f2.ink } : undefined}>{text(f2)}{mark("f2")}</span>
+      <span className="text-left">{score("f2", f2)}</span>
     </span>
   );
 }
