@@ -18,6 +18,7 @@ import { syncCareerRecord } from "./career-records.ts";
 import { hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
 import { importVerdictEvent } from "./verdict-import.ts";
 import { deductionProblem, fightDeductionState, syncFightPointDeductions } from "./point-deductions.ts";
+import type { DeductionFight } from "./point-deduction-rules.ts";
 import { readCancelledBoardList, syncCancelledBouts } from "./cancelled-bouts.ts";
 import { repairJudgeNames } from "./repair-judge-names.ts";
 import { mergedByHand, officialsIndex } from "./officials.ts";
@@ -1043,6 +1044,9 @@ function pointDeductionsUnshown(): BugCheck {
   `).all() as (FightRow & { detail_json: string | null; judge_rounds_json: string | null; deductions_json: string | null; deductions_checked_at: number | null })[];
   const items = candidates.flatMap(fight => {
     const { cards, record } = fightDeductionState(fight);
+    // Without round cards nothing can be checked; re-reading MMA Decisions
+    // can't help, and "Official cards missing round scores" lists the gap.
+    if (!cards.some(card => card.rounds?.length)) return [];
     const problem = fight.deductions_json && !record ? "Unreadable point deduction record" : deductionProblem(cards, record?.items ?? []);
     if (!problem) return [];
     const listed = record?.items.map(item => `${item.side === "f1" ? fight.f1_name : fight.f2_name}, round ${item.round}, −${item.points}${item.reason ? ` (${item.reason})` : ""}`).join("; ");
@@ -1056,7 +1060,7 @@ function pointDeductionsUnshown(): BugCheck {
     id: "point-deductions-unshown",
     group: "Scorecards",
     label: "Point deductions that can't be shown",
-    description: "Decisions with an unreadable deduction record, a round no judge scored 10 without a stated deduction to explain it, or a stated deduction that doesn't fit every judge's round card. These records cannot automatically override fan cards. Re-read MMA Decisions to repair them.",
+    description: "Decisions with round cards and an unreadable deduction record, a round no judge scored 10 without a stated deduction to explain it, or a stated deduction that doesn't fit every judge's round card. These records cannot automatically override fan cards. Re-read MMA Decisions to repair them.",
     grade: "minor",
   }, items);
 }
@@ -2185,8 +2189,12 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
     }
     case "deductions": {
       const items = await syncFightPointDeductions(target);
-      return items ? { ok: true, message: items.length ? `Read: ${items.length} ${items.length === 1 ? "deduction" : "deductions"} listed.` : "Read: no deduction listed." }
-        : { ok: false, message: "MMA Decisions has no page matching this bout, or its deduction names fit neither fighter." };
+      if (!items) return { ok: false, message: "MMA Decisions has no page matching this bout, or its deduction names fit neither fighter." };
+      const read = items.length ? `${items.length} ${items.length === 1 ? "deduction" : "deductions"} listed` : "no deduction listed";
+      const fight = db.prepare("SELECT detail_json, judge_rounds_json, deductions_json FROM fights WHERE id = ?").get(target) as DeductionFight;
+      const { cards, record } = fightDeductionState(fight);
+      const problem = deductionProblem(cards, record?.items ?? []);
+      return problem ? { ok: false, message: `Read: ${read}, but it still can't be shown: ${problem}.` } : { ok: true, message: `Read: ${read}. It now fits every judge's card.` };
     }
     case "detail":
       await syncFightDetail(target);

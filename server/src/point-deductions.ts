@@ -62,12 +62,16 @@ export async function readPointDeductions(fights: CrawlFight[], concurrency = 2,
 }
 
 /** Recent decisions, including corrections and confirmed zeroes, at most every six
- *  hours each; it usually posts a card within a day or two. */
-export async function syncRecentPointDeductions(now = Date.now()): Promise<void> {
-  const fights = db.prepare(`${CANDIDATES} AND e.date >= ?
-    AND (f.deductions_checked_at IS NULL OR f.deductions_checked_at < ?)`)
-    .all(new Date(now - 45 * 86400_000).toISOString().slice(0, 10), now - 6 * 3600_000) as CrawlFight[];
-  if (fights.length) await readPointDeductions(fights);
+ *  hours each; it usually posts a card within a day or two. Older decisions
+ *  never looked for follow, newest first, a batch per call, so the archive
+ *  fills in over a few days without the one-off backfill. */
+export async function syncRecentPointDeductions(now = Date.now(), olderBatch = 40): Promise<void> {
+  const cutoff = new Date(now - 45 * 86400_000).toISOString().slice(0, 10);
+  const recent = db.prepare(`${CANDIDATES} AND e.date >= ?
+    AND (f.deductions_checked_at IS NULL OR f.deductions_checked_at < ?)`).all(cutoff, now - 6 * 3600_000) as CrawlFight[];
+  const older = db.prepare(`${CANDIDATES} AND e.date < ? AND f.deductions_checked_at IS NULL
+    ORDER BY e.date DESC LIMIT ?`).all(cutoff, olderBatch) as CrawlFight[];
+  if (recent.length || older.length) await readPointDeductions([...recent, ...older]);
 }
 
 /** Admin repair: read one decision's page again. */

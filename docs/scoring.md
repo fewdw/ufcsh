@@ -78,8 +78,9 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   "more fan rounds" or stats-model disagreement controversy signals.
   A genuine disagreement in the adjusted fan total can still be controversial.
   Recent decisions are rechecked at most every six hours for 45 days, including
-  previously confirmed zeroes; older corrections use the existing Admin → Bugs
-  re-read action or `backfill:point-deductions -- --recheck`.
+  previously confirmed zeroes. Older decisions never read are filled in 40 an
+  hour, newest first, so production needs no one-off run. Older corrections use
+  the Admin → Bugs re-read action or `backfill:point-deductions -- --recheck`.
 
   Source check (19 October 2026): Verdict's [guide](https://verdictmma.com/how_to_score)
   says it applies deductions, but its [Garbrandt–Long published grid](https://verdictmma.com/event/1324/fight/1)
