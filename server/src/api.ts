@@ -741,6 +741,10 @@ function fighterHistory(fighterId: string, includeOpponentForm = false): unknown
       closing_odds: fightIsComplete(f) && (fighterClose || opponentClose)
         ? { fighter: fighterClose ?? null, opponent: opponentClose ?? null }
         : null,
+      // A scheduled bout shows the latest line instead, labelled as current.
+      current_odds: !fightIsComplete(f) && (fighterClose || opponentClose)
+        ? { fighter: fighterClose ?? null, opponent: opponentClose ?? null }
+        : null,
       opponent_form: includeOpponentForm ? opponentFormBefore(opponentId, f.event_date, Number(f.ord) || 0) : undefined,
       // A performance award goes to the winner; Fight of the Night to both.
       bonuses: fightIsComplete(f) ? {

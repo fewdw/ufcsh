@@ -356,6 +356,8 @@ export type HistoryRow = {
   career_record_before?: CompleteRecordBefore | null;
   opponent_career_record_before?: CompleteRecordBefore | null;
   closing_odds?: { fighter: string | null; opponent: string | null } | null;
+  /** The latest line for a scheduled bout; it can still move. */
+  current_odds?: { fighter: string | null; opponent: string | null } | null;
   opponent_form?: { date: string; outcome: "win" | "loss" | "draw" | "nc" | null; method: string | null; ufc?: boolean; opponent: { id: string; name: string } }[];
   /** perf is set only when this fighter won the award: Performance, or the
    * pre-2014 Knockout / Submission of the Night. perf_against is set when the
