@@ -1844,6 +1844,22 @@ async function fighterImageVariant(id: string, variant: PhotoVariant, size: Imag
   return data;
 }
 
+/** Pictures sync re-checked since the last pass, fetched and encoded before a
+ *  reader asks: the first view of new art otherwise waits on UFC's CDN and an
+ *  encode (300–700 ms). A picture already cached is one disk read. */
+let photosWarmedAt = Date.now();
+async function warmCheckedPhotos(): Promise<void> {
+  const since = photosWarmedAt;
+  photosWarmedAt = Date.now();
+  const checked = prepared("SELECT id FROM fighters WHERE photo_checked_at >= ? AND (photo_url IS NOT NULL OR photo_full_url IS NOT NULL)")
+    .all(since) as { id: string }[];
+  for (const { id } of checked) {
+    for (const variant of ["head", "full"] as const) {
+      for (const size of ["tiny", "small", "large"] as const) await fighterImageVariant(id, variant, size).catch(() => null);
+    }
+  }
+}
+
 async function serveFighterImage(res: http.ServerResponse, id: string, variant: PhotoVariant, size: ImageSize | null, versioned: boolean): Promise<void> {
   try {
     const image = size ? null : await loadFighterImage(id, variant);
@@ -2413,6 +2429,12 @@ export function startApi(port: number): http.Server {
     const scan = () => void scanUpcoming(upcomingBouts(fighterNames)).catch(error => log("polymarket scan failed:", String(error)));
     setTimeout(scan, 60_000).unref();
     setInterval(scan, 30 * 60_000).unref();
+    let warmingPhotos = false;
+    setInterval(() => {
+      if (warmingPhotos) return;
+      warmingPhotos = true;
+      void warmCheckedPhotos().catch(error => log("photo warm-up failed:", String(error))).finally(() => { warmingPhotos = false; });
+    }, 60_000).unref();
   }
   const workerCount = Number(process.env.API_WORKERS ?? (process.env.NODE_ENV === "production" ? 2 : 0));
   if (!Number.isInteger(workerCount) || workerCount < 0 || workerCount > 8) throw new Error("API_WORKERS must be an integer from 0 to 8");

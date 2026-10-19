@@ -6,7 +6,7 @@ import { officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
 import { judging } from "./judging.ts";
 import { db } from "./db.ts";
-import { newsToJudge } from "./news.ts";
+import { newsToJudge, newsView } from "./news.ts";
 
 // A worker keeps the indexes it built at startup, so no request waits on a
 // rebuild; when the data changes the pool starts a fresh worker and retires
@@ -32,7 +32,7 @@ async function warm() {
       WHERE e.date <= date('now', '+30 days') ORDER BY e.date DESC, f.ord DESC LIMIT 40)
     UNION SELECT * FROM (SELECT f.id, f.f1_id, f.f2_id, f.event_id FROM fights f JOIN events e ON e.id = f.event_id
       WHERE f.f1_outcome IS NOT NULL ORDER BY e.date DESC, f.ord DESC LIMIT 15)`).all() as { id: string; f1_id: string; f2_id: string; event_id: string }[];
-  const urls = new Set(["/api/search?q=a", "/api/stats", "/api/events", "/api/live", "/api/rankings", "/api/officials", "/api/venues", "/api/locations", "/api/news"]);
+  const urls = new Set(["/api/search?q=a", "/api/stats", "/api/stats?oppositionSource=all", "/api/events", "/api/live", "/api/rankings", "/api/officials", "/api/venues", "/api/locations", "/api/news"]);
   for (const fight of recent) {
     for (const ranking of ["media", "meta"]) {
       urls.add(`/api/events/${fight.event_id}?ranking=${ranking}`);
@@ -66,3 +66,6 @@ parentPort!.on("message", async ({ id, url }: { id: number; url: string }) => {
   }
 });
 parentPort!.postMessage({ ready: true });
+// Each read of the feeds changes the stories (a few hundred ms to group in
+// production): rebuild them between requests, not in the next fighter page.
+setInterval(() => { try { newsView(); } catch { /* the next request reports it */ } }, 20_000).unref();

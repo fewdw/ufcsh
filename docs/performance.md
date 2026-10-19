@@ -587,9 +587,19 @@ Two causes:
   Warm-up now fits it and loads the latest completed cards too.
 
 On a dev archive copy (dev-pc, one worker): the first old card after start
-went from 307 ms to 9 ms. Warm-up grew from 5.6 s to 6.4 s, while the
-worker it replaces keeps answering. The VPS is about twice as slow, so 700–900 ms
-there.
+went from 307 ms to 9 ms. Warm-up grew from 5.6 s to 6.9 s (with the stats
+warm-up below), while the worker it replaces keeps answering. The VPS is about
+twice as slow, so 700–900 ms there.
 
-`/api/stats` filter boards (20 slow, ~500 ms) are a real build of 100–200 ms
-each on dev-pc, not a cold start; left as they are.
+The rest of the list, same day:
+
+| Route | Cause | Change | dev-pc |
+| --- | --- | --- | --- |
+| `/api/stats` boards (22 a day at 250–1000 ms) | Every board walked each opponent's whole career for the complete record entering every bout; detail strings and first/last chips built for every bout | Records memoized per index; strings and chips built only when used; one value pass per leaderboard | Client's real boards, median 180 → ~115 ms; 124 variants byte-identical |
+| `/api/news?fighter=` (330–730 ms) | Each feed read rebuilt the stories in the next request | Workers rebuild them on an idle timer | Rebuild ~95 ms on 6,739 items |
+| Fighter images, `size=tiny` (300–700 ms) | First view of new art downloaded and encoded it | Main server fetches and encodes re-checked pictures every minute | — |
+| `/api/profiles/mine` (430–500 ms) | Daily Clerk avatar lookup inside the request | Refreshed behind the answer; only a first visit waits | — |
+| Locations, fighter pages (1 each) | Same cold judging as cards | Covered by the warm-up | ~10 ms cold |
+
+`/api/profiles/mine` can also wait on Clerk's signing keys: production has no
+`CLERK_JWT_KEY`, so the SDK fetches them over the network when its copy expires.
