@@ -299,15 +299,27 @@ select:not([multiple]):not([size]) {
   .dark .ui-primary:hover { background-color: #d4d4d8 !important; }
   .dark .ui-danger:hover { background-color: #e11d48 !important; }
 }
-/* Slim, quiet scrollbars for the always-scrolling panes. Only where there is
-   a mouse: a styled scrollbar on a touch screen is painted in the page, under
-   sticky bars like the matchup tabs, where the native overlay floats above. */
-@media (pointer: fine) {
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: rgb(212 212 216) transparent;
+/* Keep pane scrollbars quiet in both themes, including on touch devices.
+   Matchup content reserves space beside the thumb so it cannot cover cards. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d4d4d8 transparent;
+}
+.dark * { scrollbar-color: #52525b transparent; }
+
+/* Older Safari uses the pseudo-elements instead of the standard properties. */
+@supports not (scrollbar-width: thin) {
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
   }
-  .dark * { scrollbar-color: #52525b transparent; }
+  ::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: #d4d4d8;
+  }
+  .dark ::-webkit-scrollbar-thumb { background: #52525b; }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner { background: transparent; }
 }
 
 /* Chart marks settle in rather than snapping; motion carries the comparison,
