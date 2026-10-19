@@ -17,7 +17,7 @@ const SECTIONS = [
 ] as const;
 
 // Put together on the page, so the address never sits whole in the source.
-const EMAIL = ["frederic.alefebvre", "gmail.com"].join("@");
+const EMAIL = ["fred", "ufc.sh"].join("@");
 const Email = () => <a href={`mailto:${EMAIL}`}>{EMAIL}</a>;
 
 function Section({ id, children }: { id: (typeof SECTIONS)[number]["id"]; children: ReactNode }) {
@@ -102,9 +102,10 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-19">October 19, 2026</time></p>
             <ul>
-              <li>Faster stats boards, event cards and matchups.</li>
-              <li>Fighter news, photos and profile pictures load more smoothly.</li>
-              <li>Simpler scorecards highlight the round that decided the fight.</li>
+              <li>Fighter profiles show current odds for both fighters on scheduled bouts.</li>
+              <li>Scorecards apply confirmed referee point deductions.</li>
+              <li>Click anywhere in the comment box to start writing.</li>
+              <li>Fixed scrollbars on the matchup page.</li>
             </ul>
           </Section>
         </div>

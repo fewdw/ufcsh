@@ -113,6 +113,9 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
             })}
           </div>
         </div>
+        {data.deductions?.confirmed && data.deductions.items.length ? (
+          <p className="border-t border-zinc-100 px-4 py-2 text-xs text-zinc-500 sm:px-5">Fan scores include referee deductions.</p>
+        ) : null}
         {eligibility.reason ? <p className="border-t border-zinc-100 px-5 py-3 text-xs text-zinc-500">{eligibility.reason}</p> : null}
         {fighting ? (
           <p className="flex items-start gap-1.5 border-t border-zinc-100 px-4 py-3 text-xs leading-5 text-zinc-500 @[32rem]:px-5">
@@ -121,7 +124,7 @@ export default function FightScoring({ fight, communityOnly = false }: { fight: 
         ) : null}
       </section>
       {!communityOnly && eligibility.available > 0 ? (
-        <ScoreEditor fight={fight} eligibility={eligibility} onSaved={() => { void apiCache.loadAfterWrite(`/api/fights/${fight.id}/scores`); }} />
+        <ScoreEditor fight={fight} eligibility={eligibility} deductions={data.deductions} onSaved={() => { void apiCache.loadAfterWrite(`/api/fights/${fight.id}/scores`); }} />
       ) : null}
       {!communityOnly && wasAdmin() ? <ScoreRoundControls fightId={fight.id} /> : null}
     </>

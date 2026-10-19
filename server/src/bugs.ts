@@ -17,6 +17,8 @@ import { pageNamesFighter } from "./scrape/odds.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
 import { importVerdictEvent } from "./verdict-import.ts";
+import { deductionProblem, fightDeductionState, syncFightPointDeductions } from "./point-deductions.ts";
+import type { DeductionFight } from "./point-deduction-rules.ts";
 import { readCancelledBoardList, syncCancelledBouts } from "./cancelled-bouts.ts";
 import { repairJudgeNames } from "./repair-judge-names.ts";
 import { mergedByHand, officialsIndex } from "./officials.ts";
@@ -1030,6 +1032,39 @@ function decisionsWithoutJudgeRounds(): BugCheck {
   })));
 }
 
+/** Decisions whose point deductions can't be shown: a round no judge scored
+ *  10 with no deduction to explain it, or a stated deduction that doesn't fit
+ *  every judge's card. Nothing is inferred; the matchup shows only a fit. */
+function pointDeductionsUnshown(): BugCheck {
+  const candidates = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, f.detail_json, f.judge_rounds_json, f.deductions_json, f.deductions_checked_at
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 1 AND f.method LIKE '%DEC' AND (f.judge_rounds_json IS NOT NULL OR f.deductions_json IS NOT NULL)
+    ORDER BY e.date DESC
+  `).all() as (FightRow & { detail_json: string | null; judge_rounds_json: string | null; deductions_json: string | null; deductions_checked_at: number | null })[];
+  const items = candidates.flatMap(fight => {
+    const { cards, record } = fightDeductionState(fight);
+    // Without round cards nothing can be checked; re-reading MMA Decisions
+    // can't help, and "Official cards missing round scores" lists the gap.
+    if (!cards.some(card => card.rounds?.length)) return [];
+    const problem = fight.deductions_json && !record ? "Unreadable point deduction record" : deductionProblem(cards, record?.items ?? []);
+    if (!problem) return [];
+    const listed = record?.items.map(item => `${item.side === "f1" ? fight.f1_name : fight.f2_name}, round ${item.round}, −${item.points}${item.reason ? ` (${item.reason})` : ""}`).join("; ");
+    return [fightItem(fight, {
+      facts: [["Problem", problem], ["MMA Decisions", record ? listed || "no deduction listed" : "page not read or not matched"], ["Checked", ago(fight.deductions_checked_at)]],
+      links: record ? [{ label: "MMA Decisions page", href: record.sourceUrl }] : [],
+      actions: [{ id: "deductions", label: "Re-read MMA Decisions", target: fight.id }],
+    })];
+  });
+  return check({
+    id: "point-deductions-unshown",
+    group: "Scorecards",
+    label: "Point deductions that can't be shown",
+    description: "Decisions with round cards and an unreadable deduction record, a round no judge scored 10 without a stated deduction to explain it, or a stated deduction that doesn't fit every judge's round card. These records cannot automatically override fan cards. Re-read MMA Decisions to repair them.",
+    grade: "minor",
+  }, items);
+}
+
 /** Decisions with round cards whose UFCStats round tables are missing or
  *  unreadable: they have no stats card, and their rounds are left out of every
  *  judge's "How they score" and the stats model behind it. */
@@ -1995,6 +2030,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
   // that will cause wrong data, then gaps on upcoming cards, then history.
   const checks = [
     decisionsWithoutJudgeRounds(),
+    pointDeductionsUnshown(),
     decisionsWithoutStatsCard(),
     fightsWithoutCommunityScores(),
     invalidCommunityScores(),
@@ -2085,7 +2121,7 @@ function newsUnjudged(): BugCheck {
   }, items);
 }
 
-export type BugActionId = "cancelled" | "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket";
+export type BugActionId = "cancelled" | "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket" | "deductions";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -2150,6 +2186,15 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
         ? (db.prepare("SELECT error FROM verdict_events WHERE verdict_id = ?").get(ids[0]) as { error: string | null } | undefined)?.error
         : (db.prepare("SELECT verdict_error AS error FROM fights WHERE id = ?").get(target) as { error: string | null } | undefined)?.error;
       return { ok: !error, message: error ? `Still failing: ${error}` : "Read again without errors." };
+    }
+    case "deductions": {
+      const items = await syncFightPointDeductions(target);
+      if (!items) return { ok: false, message: "MMA Decisions has no page matching this bout, or its deduction names fit neither fighter." };
+      const read = items.length ? `${items.length} ${items.length === 1 ? "deduction" : "deductions"} listed` : "no deduction listed";
+      const fight = db.prepare("SELECT detail_json, judge_rounds_json, deductions_json FROM fights WHERE id = ?").get(target) as DeductionFight;
+      const { cards, record } = fightDeductionState(fight);
+      const problem = deductionProblem(cards, record?.items ?? []);
+      return problem ? { ok: false, message: `Read: ${read}, but it still can't be shown: ${problem}.` } : { ok: true, message: `Read: ${read}. It now fits every judge's card.` };
     }
     case "detail":
       await syncFightDetail(target);

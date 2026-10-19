@@ -10,6 +10,7 @@ import { generateKeyPairSync, sign } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { normalizeUsername, scoringEligibility, ScoringStore, ScoringError, UsernameError, validateSubmission, type ScoringFight } from "./scoring.ts";
 import { authenticateScorer, createScoringHandler } from "./scoring-http.ts";
+import { deductionsIn, type PointDeduction } from "./point-deduction-rules.ts";
 
 const id = "aaaaaaaaaaaaaaaa";
 const fight: ScoringFight = { id, event_date: "2020-01-01", f1_outcome: "win", f2_outcome: "loss", scheduled_rounds: 3, round: "3", time: "5:00", method: "U-DEC", detail_json: JSON.stringify({ type: "past", methodInfo: { "Time format": "3 Rnd (5-5)" } }), f1_name: "Anna Ant", f2_name: "Bea Bee", event_id: "e1", event_name: "UFC 1", weight_class: "Flyweight", f1_id: "f1", f2_id: "f2", f1_photo: "/api/images/f1", f2_photo: null };
@@ -23,6 +24,120 @@ function fixture(t: any, initial = fight) {
   t.after(() => { store.db.close(); rmSync(dir, { recursive: true, force: true }); });
   return { store, setFight: (value: ScoringFight) => { current = value; revision++; } };
 }
+
+const disputedRounds = rounds.map(r => ({ ...r, f1: r.round === 2 ? 9 : 10, f2: r.round === 2 ? 10 : 9 }));
+function confirmedFight(items: PointDeduction[]): ScoringFight {
+  const officialRounds = disputedRounds.map(r => {
+    const points = deductionsIn(items, r.round);
+    return { round: r.round, f1Score: r.f1 - points.deduct1, f2Score: r.f2 - points.deduct2 };
+  });
+  return { ...fight, deductions_json: JSON.stringify({ source: "MMA Decisions", sourceUrl: "https://mmadecisions.com/decision/1", items }),
+    judge_rounds_json: JSON.stringify({ judges: [{ judge: "A Judge",
+      f1Score: officialRounds.reduce((sum, r) => sum + r.f1Score, 0), f2Score: officialRounds.reduce((sum, r) => sum + r.f2Score, 0), rounds: officialRounds }] }) };
+}
+
+test("confirmation reconciles every local card, profile, total and distribution without deducting twice", t => {
+  const { store, setFight } = fixture(t);
+  const reported = disputedRounds.map(r => ({ ...r, deduct1: r.round === 1 ? 1 : 0 }));
+  store.save(id, "alice", { revision: 0, rounds: reported });
+  store.save(id, "bob", { revision: 0, rounds: disputedRounds });
+  let result = store.summary(id);
+  assert.equal(result.deductions.confirmed, false);
+  assert.equal(result.totals.avg1, 28.5);
+  assert.equal(result.totals.draws, 1);
+  assert.equal(result.totals.f1, 1);
+  const identity = store.identity("alice");
+  assert.equal(store.profile(identity.handle).cards[0].total1, 28);
+  const stored = store.db.prepare("SELECT rounds_json, revision, updated_at FROM scorecards ORDER BY user_id").all();
+
+  const one: PointDeduction = { side: "f1", round: 1, points: 1, reason: "Low blow" };
+  setFight(confirmedFight([one]));
+  result = store.summary(id);
+  assert.equal(result.totals.avg1, 28);
+  assert.equal(result.totals.avg2, 28);
+  assert.equal(result.totals.draws, 2);
+  assert.equal(result.totals.f1, 0);
+  assert.equal(result.rounds[0].total1, 9);
+  assert.equal(result.rounds[0].deduct1, 1);
+  assert.equal(store.profile(identity.handle).cards[0].total1, 28);
+  assert.equal(store.profile(identity.handle).cards[0].fans!.total1, 28);
+  assert.equal(store.mine(id, "alice").rounds[0].deduct1, 1, "original report stays editable and is never doubled");
+
+  // Correcting the amount changes the winner, even on a profile cached before it arrived.
+  setFight(confirmedFight([{ ...one, points: 2 }]));
+  result = store.summary(id);
+  assert.equal(result.totals.avg1, 27);
+  assert.equal(result.totals.f2, 2);
+  assert.equal(result.totals.draws, 0);
+  assert.equal(store.profile(identity.handle).cards[0].total1, 27);
+
+  // A corrected fighter/round replaces the entire report, not just its amount.
+  setFight(confirmedFight([{ ...one, side: "f2", round: 2 }]));
+  result = store.summary(id);
+  assert.equal(result.totals.avg1, 29);
+  assert.equal(result.totals.avg2, 27);
+  assert.equal(result.rounds[0].deduct1, 0);
+  assert.equal(result.rounds[1].deduct2, 1);
+
+  // Several penalties can affect both corners and more than one round.
+  setFight(confirmedFight([one, { ...one, round: 3, points: 2 }, { ...one, side: "f2", round: 2 }]));
+  result = store.summary(id);
+  assert.equal(result.totals.avg1, 26);
+  assert.equal(result.totals.avg2, 27);
+  assert.equal(result.totals.f2, 2);
+  assert.equal(store.profile(identity.handle).cards[0].total1, 26);
+
+  // A confirmed absence clears the provisional penalty, without changing what was saved.
+  setFight(confirmedFight([]));
+  result = store.summary(id);
+  assert.equal(result.deductions.confirmed, true);
+  assert.equal(result.totals.avg1, 29);
+  assert.equal(result.totals.avg2, 28);
+  assert.equal(result.totals.f1, 2);
+  assert.equal(store.profile(identity.handle).cards[0].rounds[0].deduct1, 0);
+  assert.deepEqual(store.db.prepare("SELECT rounds_json, revision, updated_at FROM scorecards ORDER BY user_id").all(), stored);
+});
+
+test("mixed Verdict and local averages use one confirmed penalty, with complete-card totals only", t => {
+  const one: PointDeduction = { side: "f1", round: 1, points: 1, reason: "Low blow" };
+  const imported = { source: "Verdict MMA", cards: 100, avg1: 28.7, avg2: 28.3,
+    rounds: disputedRounds.map(r => ({ round: r.round, avg1: r.f1 === 10 ? 9.9 : 8.9, avg2: r.f2 === 10 ? 9.9 : 9.2 })) };
+  // Keep the independently rounded source total within the validator's tolerance.
+  const current = { ...confirmedFight([one]), community_score_json: JSON.stringify(imported) };
+  const { store } = fixture(t, current);
+  const reported = disputedRounds.map(r => ({ ...r, deduct1: r.round === 1 ? 1 : 0, deduct2: r.round === 3 ? 2 : 0 }));
+  store.save(id, "alice", { revision: 0, rounds: reported });
+  store.save(id, "bob", { revision: 0, rounds: disputedRounds });
+  const result = store.summary(id);
+  assert.equal(result.totals.completeCards, 102);
+  assert.ok(Math.abs(result.totals.avg1! - (28 * 2 + 27.7 * 100) / 102) < 1e-9);
+  assert.ok(Math.abs(result.totals.avg2! - (28 * 2 + 28.3 * 100) / 102) < 1e-9);
+  assert.equal(result.rounds[0].deduct1, 1);
+  assert.equal(result.rounds[2].deduct2, 0);
+  assert.ok(Math.abs(result.rounds[0].total1! - (9 * 2 + 8.9 * 100) / 102) < 1e-9);
+  const profile = store.profile(store.identity("alice").handle).cards[0];
+  assert.equal(profile.total1, 28);
+  assert.equal(profile.total2, 28);
+  assert.equal(profile.fans!.total1, result.totals.avg1);
+  assert.equal(profile.fans!.total2, result.totals.avg2);
+});
+
+test("one live scorer's provisional deduction never changes imported scores or another card", t => {
+  const live = { ...fight, event_date: new Date().toISOString().slice(0, 10), f1_outcome: null, f2_outcome: null,
+    round: null, method: null, detail_json: JSON.stringify({ totalsRounds: { rounds: [{}, {}] } }),
+    verdict_live_json: JSON.stringify({ sourceUrl: "https://verdictmma.com/event/1/fight/1", status: 1, started: 2, ended: 1,
+      community: { cards: 100, avg1: 9.8, avg2: 9.2, rounds: [{ round: 1, avg1: 9.8, avg2: 9.2 }] } }) };
+  const { store } = fixture(t, live);
+  store.save(id, "alice", { revision: 0, rounds: [{ ...rounds[0], deduct1: 2 }, rounds[1]] });
+  store.save(id, "bob", { revision: 0, rounds: rounds.slice(0, 2) });
+  const result = store.summary(id);
+  assert.equal(result.closed, 1);
+  assert.equal(result.deductions.confirmed, false);
+  assert.ok(Math.abs(result.rounds[0].total1! - (8 + 10 + 9.8 * 100) / 102) < 1e-9);
+  assert.ok(Math.abs(result.rounds[0].deduct1 - 2 / 102) < 1e-9);
+  assert.equal(store.mine(id, "bob").rounds[0].deduct1, 0);
+  assert.equal(store.profile(store.identity("bob").handle).cards[0].rounds.length, 1, "the current live round remains private");
+});
 
 test("eligibility uses actual rounds and distinguishes live, future, historical and stoppages", () => {
   assert.equal(scoringEligibility(fight).available, 3);

@@ -1,8 +1,7 @@
 import { db } from "./db.ts";
-import { alignment } from "./verdict-import.ts";
 import { combineJudgeRounds, hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
-import { fetchMmaDecisions, mmaDecisionUrl, parseMmaDecision, parseMmaEventDecisions, parseMmaEvents } from "./scrape/mmadecisions.ts";
-import { normName } from "./util.ts";
+import { mmaDecisionUrl } from "./scrape/mmadecisions.ts";
+import { crawlMmaDecisions } from "./mmadecisions-crawl.ts";
 
 /** Fill official round scores that Verdict MMA did not provide. Usage:
  * node src/backfill-mmadecisions-scorecards.ts [--from=1995] [--to=2026] [--concurrency=6] [--event-filter=TUF]
@@ -26,18 +25,6 @@ const fights = db.prepare(`SELECT f.id, e.date, f.f1_name, f.f2_name,
   LEFT JOIN career_profiles c2 ON c2.fighter_id = f.f2_id AND c2.status = 'verified'
   WHERE e.complete = 1 AND f.method LIKE '%DEC' AND e.date BETWEEN ? AND ?`).all(
     `${from}-01-01`, `${to}-12-31`) as Fight[];
-const byDate = new Map<string, Fight[]>();
-// MMA Decisions files some international cards under the following UTC day.
-// Keep the window narrow; both fighter names and the official totals still
-// have to match before any round card is stored.
-function nearbyFights(date: string): Fight[] {
-  const day = new Date(`${date}T12:00:00Z`);
-  return [-1, 0, 1].flatMap(offset => {
-    const shifted = new Date(day);
-    shifted.setUTCDate(day.getUTCDate() + offset);
-    return byDate.get(shifted.toISOString().slice(0, 10)) ?? [];
-  });
-}
 const official = (fight: Fight): JudgeCard[] => {
   try { const cards = JSON.parse(fight.detail_json ?? "null")?.judges; return Array.isArray(cards) ? cards : []; }
   catch { return []; }
@@ -46,96 +33,37 @@ const imported = (fight: Fight): JudgeCard[] => {
   try { const cards = JSON.parse(fight.judge_rounds_json ?? "null")?.judges; return Array.isArray(cards) ? cards : []; }
   catch { return []; }
 };
-for (const fight of fights) {
+const wanted = fights.filter(fight => {
   const totals = official(fight), prior = imported(fight);
-  if (hasCompleteJudgeRounds(totals, prior) && !mergeJudgeRounds(totals, prior).some(card => !card.judge?.trim())) continue;
-  byDate.set(fight.date, [...(byDate.get(fight.date) ?? []), fight]);
-}
+  return !hasCompleteJudgeRounds(totals, prior) || mergeJudgeRounds(totals, prior).some(card => !card.judge?.trim());
+});
+console.log(`MMA Decisions: ${new Set(wanted.map(fight => fight.date)).size} dates with missing rounds`);
 
 const update = db.prepare("UPDATE fights SET judge_rounds_json = ? WHERE id = ?");
-const stats = { years: 0, events: 0, decisions: 0, repaired: 0, failed: 0 };
-const seen = new Set<string>();
-
-async function pool<T>(items: T[], run: (item: T) => Promise<void>): Promise<void> {
-  let next = 0;
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => {
-    while (next < items.length) await run(items[next++]);
-  }));
-}
-
-// A card on December 31 may appear in the following year's archive.
-const years = Array.from({ length: to - from + 3 }, (_v, i) => from - 1 + i);
-const events: { date: string; path: string }[] = [];
-await pool(years.filter(year => [...byDate.keys()].some(date =>
-  Math.abs(Number(date.slice(0, 4)) - year) <= 1)), async year => {
-  try {
-    const found = parseMmaEvents(await fetchMmaDecisions(`decisions-by-event/${year}/`));
-    events.push(...found.filter(event => nearbyFights(event.date).length && event.path.includes(eventFilter)));
-    stats.years++;
-  } catch (error) { stats.failed++; console.error(`MMA Decisions year ${year}: ${String(error)}`); }
-});
-console.log(`MMA Decisions: ${byDate.size} dates with missing rounds, ${events.length} possible events`);
-
-const paths: { date: string; path: string }[] = [];
-function relevantPath(date: string, path: string): boolean {
-  const slug = normName(decodeURIComponent(path.split("/").at(-1) ?? ""));
-  const words = new Set(slug.split(" ").filter(word => word.length >= 4));
-  return nearbyFights(date).some(fight => [fight.f1_name, fight.f2_name, fight.f1_alias, fight.f2_alias]
-    .some(name => name && normName(name).split(" ").some(word => words.has(word))));
-}
-await pool(events, async event => {
-  try {
-    for (const path of parseMmaEventDecisions(await fetchMmaDecisions(event.path))) {
-      if (seen.has(path) || !relevantPath(event.date, path)) continue;
-      seen.add(path);
-      paths.push({ date: event.date, path });
-    }
-    stats.events++;
-  } catch (error) { stats.failed++; console.error(`MMA Decisions ${event.path}: ${String(error)}`); }
-});
-console.log(`MMA Decisions: ${stats.events} events read, ${paths.length} decision pages`);
-
-await pool(paths, async ({ date, path }) => {
-  try {
-    const page = parseMmaDecision(await fetchMmaDecisions(path));
-    stats.decisions++;
-    if (!page || !page.judges.length) return;
-    const matches = nearbyFights(date).flatMap(fight => {
-      const sides: [string[], string[]] = [
-        [fight.f1_name, ...(fight.f1_alias ? [fight.f1_alias] : [])],
-        [fight.f2_name, ...(fight.f2_alias ? [fight.f2_alias] : [])],
-      ];
-      const found = alignment(page.f1Name, page.f2Name, ...sides);
-      return found?.tier === 1 ? [{ fight, order: found.order }] : [];
-    });
-    if (matches.length !== 1) return;
-    const { fight, order } = matches[0];
-    const cards = page.judges.map(card => order === 1 ? card : {
-      ...card, f1Score: card.f2Score, f2Score: card.f1Score,
-      rounds: card.rounds?.map(round => ({ ...round, f1Score: round.f2Score, f2Score: round.f1Score })),
-    });
-    const current = db.prepare("SELECT detail_json, judge_rounds_json FROM fights WHERE id = ?").get(fight.id) as Pick<Fight, "detail_json" | "judge_rounds_json">;
-    Object.assign(fight, current);
-    const totals = official(fight);
-    const prior = imported(fight);
-    const previous = totals.length ? mergeJudgeRounds(totals, prior) : combineJudgeRounds([], prior, []);
-    const combined = totals.length ? mergeJudgeRounds(totals, [...prior, ...cards]) : combineJudgeRounds([], prior, cards);
-    const before = previous.filter(card => card.rounds?.length).length;
-    const after = combined.filter(card => card.rounds?.length).length;
-    const namesRecovered = previous.filter(card => !card.judge?.trim()).length > combined.filter(card => !card.judge?.trim()).length;
-    // Without independent UFCStats totals, require all three judge cards.
-    if ((after <= before && !namesRecovered) || (!totals.length && combined.length < 3)) return;
-    let priorSource = "";
-    try { priorSource = String(JSON.parse(fight.judge_rounds_json ?? "null")?.source ?? ""); } catch { /* malformed prior cards were ignored */ }
-    const source = before > 0 && priorSource.includes("Verdict")
-      ? "MMA Decisions + Verdict MMA" : "MMA Decisions";
-    fight.judge_rounds_json = JSON.stringify({ source, sourceUrl: mmaDecisionUrl(path), fetchedAt: Date.now(), judges: combined });
-    update.run(fight.judge_rounds_json, fight.id);
-    stats.repaired++;
-  } catch (error) { stats.failed++; if (stats.failed <= 20) console.error(`MMA Decisions ${path}: ${String(error)}`); }
-  finally {
-    if (stats.decisions > 0 && stats.decisions % 100 === 0)
-      console.log(`MMA Decisions: ${stats.decisions}/${paths.length} decisions, ${stats.repaired} repaired, ${stats.failed} failed`);
-  }
-});
-console.log(`MMA Decisions done: ${JSON.stringify(stats)}`);
+let repaired = 0;
+const stats = await crawlMmaDecisions(wanted, { concurrency, eventFilter }, (fight, order, page, path) => {
+  if (!page.judges.length) return;
+  const cards = page.judges.map(card => order === 1 ? card : {
+    ...card, f1Score: card.f2Score, f2Score: card.f1Score,
+    rounds: card.rounds?.map(round => ({ ...round, f1Score: round.f2Score, f2Score: round.f1Score })),
+  });
+  const current = db.prepare("SELECT detail_json, judge_rounds_json FROM fights WHERE id = ?").get(fight.id) as Pick<Fight, "detail_json" | "judge_rounds_json">;
+  Object.assign(fight, current);
+  const totals = official(fight);
+  const prior = imported(fight);
+  const previous = totals.length ? mergeJudgeRounds(totals, prior) : combineJudgeRounds([], prior, []);
+  const combined = totals.length ? mergeJudgeRounds(totals, [...prior, ...cards]) : combineJudgeRounds([], prior, cards);
+  const before = previous.filter(card => card.rounds?.length).length;
+  const after = combined.filter(card => card.rounds?.length).length;
+  const namesRecovered = previous.filter(card => !card.judge?.trim()).length > combined.filter(card => !card.judge?.trim()).length;
+  // Without independent UFCStats totals, require all three judge cards.
+  if ((after <= before && !namesRecovered) || (!totals.length && combined.length < 3)) return;
+  let priorSource = "";
+  try { priorSource = String(JSON.parse(fight.judge_rounds_json ?? "null")?.source ?? ""); } catch { /* malformed prior cards were ignored */ }
+  const source = before > 0 && priorSource.includes("Verdict")
+    ? "MMA Decisions + Verdict MMA" : "MMA Decisions";
+  fight.judge_rounds_json = JSON.stringify({ source, sourceUrl: mmaDecisionUrl(path), fetchedAt: Date.now(), judges: combined });
+  update.run(fight.judge_rounds_json, fight.id);
+  repaired++;
+}, (progress, pages) => console.log(`MMA Decisions: ${progress.events} events, ${progress.decisions}/${pages} decisions, ${repaired} repaired, ${progress.failed} failed`));
+console.log(`MMA Decisions done: ${JSON.stringify({ ...stats, repaired })}`);

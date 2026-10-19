@@ -31,7 +31,20 @@ export function parseMmaEventDecisions(html: string): string[] {
     .filter(path => /^decision\/\d+\//.test(path)))];
 }
 
-export type MmaDecision = { f1Name: string; f2Name: string; judges: JudgeCard[] };
+/** A deduction as MMA Decisions words it: "Evloev was deducted 1 point in
+ *  round 4: Low blow". `name` is the page's short name for the fighter. */
+export type MmaDeduction = { name: string; points: number; round: number; reason: string };
+export type MmaDecision = { f1Name: string; f2Name: string; judges: JudgeCard[]; deductions: MmaDeduction[] };
+
+const DEDUCTION = /^(.+?) was deducted (\d+) points? in round (\d+)(?::\s*(.*))?$/i;
+
+export function parseMmaDeductions($: cheerio.CheerioAPI): MmaDeduction[] {
+  return $("td").filter((_i, cell) => !$(cell).find("td").length && / was deducted /i.test($(cell).text()))
+    .map((_i, cell) => {
+      const match = cleanText($(cell).text()).match(DEDUCTION);
+      return match ? { name: match[1], points: Number(match[2]), round: Number(match[3]), reason: match[4]?.trim() ?? "" } : null;
+    }).get();
+}
 
 export function parseMmaDecision(html: string): MmaDecision | null {
   const $ = cheerio.load(html);
@@ -56,7 +69,7 @@ export function parseMmaDecision(html: string): MmaDecision | null {
         || rounds.reduce((sum, r) => sum + r.f2Score, 0) !== f2Score))) return;
     judges.push({ judge, f1Score, f2Score, ...(rounds.length ? { rounds } : {}) });
   });
-  return { f1Name: names[0], f2Name: names[1], judges };
+  return { f1Name: names[0], f2Name: names[1], judges, deductions: parseMmaDeductions($) };
 }
 
 export const mmaDecisionUrl = (path: string): string => new URL(path, `${ORIGIN}/`).href;

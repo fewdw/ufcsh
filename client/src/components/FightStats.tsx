@@ -1133,12 +1133,21 @@ export function Scorecards({ fight }: { fight: Matchup }) {
   const fans = data && data.totals.avg1 != null && data.totals.avg2 != null ? data.totals : null;
   if (!judges?.length) return null;
   const decided = decidingRound(judges, fight.f1.outcome === "win" ? "f1" : fight.f2.outcome === "win" ? "f2" : null);
+  const deductions = fight.detail?.type === "past" ? fight.detail.deductions ?? [] : [];
   const judging = fight.judging ?? null;
   return (
     <section className={`${shell} @container overflow-hidden`}>
       <PanelHeading title="Scorecards" />
       <ScoreGrid fight={fight} judges={judges} fans={fans} rounds={data?.rounds ?? []} decided={decided} />
       {decided ? <p className="border-t border-zinc-100 px-4 py-2 text-center text-[11px] font-semibold leading-4 text-zinc-900 sm:px-5">Round {decided} decided the fight.</p> : null}
+      {deductions.length ? (
+        <p className={`${decided ? "-mt-1" : "border-t border-zinc-100 pt-2"} px-4 pb-2 text-center text-[11px] font-semibold leading-4 sm:px-5`}>
+          {deductions.map((deduction, index) => (
+            <span key={index} className="block" style={{ color: SIDE[deduction.side].ink }}>{deductionSentence(fight, deduction)}</span>
+          ))}
+          {fans ? <span className="block font-normal text-zinc-500">Fan scores include referee deductions.</span> : null}
+        </p>
+      ) : null}
       {judging?.controversy ? <ControversyLine row={judging.controversy} /> : null}
     </section>
   );
@@ -1152,22 +1161,48 @@ function ControversyLine({ row }: { row: NonNullable<NonNullable<Matchup["judgin
     <div className="flex flex-wrap items-center justify-center gap-1.5 border-t border-zinc-100 px-4 py-2 sm:px-5">
       <span className="text-[11px] font-semibold text-zinc-900">Controversial</span>
       {pills.map((pill) => <span key={pill.key} className={`${RESULT_PILL} ${SIGNAL_TONE[pill.key]}`} title={pill.title}>{pill.label}</span>)}
-      <Link to="/controversial" className="text-[11px] font-medium text-zinc-500 underline-offset-2 hover:text-zinc-900 hover:underline">All controversial decisions</Link>
     </div>
   );
 }
 
 type Judge = NonNullable<FightDetailBlock["judges"]>[number];
+type Deduction = NonNullable<FightDetailBlock["deductions"]>[number];
 
-/** A pair of scores, the winner's in their colour and the other's muted. */
-function ScorePair({ f1, f2, text, size }: { f1: number; f2: number; text: (value: number) => string; size: string }) {
+/** "Evloev lost a point in round 4: low blow." */
+function deductionSentence(fight: Matchup, deduction: Deduction): string {
+  const points = deduction.points === 1 ? "a point" : `${deduction.points} points`;
+  return `${lastName(fight[deduction.side].name)} lost ${points} in round ${deduction.round}${deduction.reason ? `: ${deduction.reason.toLowerCase()}` : ""}.`;
+}
+
+/** Points the referee took from each side in one round. */
+function deductedIn(deductions: Deduction[], round: number): Partial<Record<Side, number>> {
+  const taken: Partial<Record<Side, number>> = {};
+  for (const deduction of deductions) if (deduction.round === round) taken[deduction.side] = (taken[deduction.side] ?? 0) + deduction.points;
+  return taken;
+}
+
+/** Recorded scores, with a red badge when a referee's deduction is included. */
+function ScorePair({ f1, f2, text, size, deducted }: { f1: number; f2: number; text: (value: number) => string; size: string; deducted?: Partial<Record<Side, number>> }) {
   const lead: Side | null = f1 > f2 ? "f1" : f2 > f1 ? "f2" : null;
-  const tone = (side: Side) => lead === side ? "font-semibold" : "font-medium text-zinc-400";
+  const score = (side: Side, value: number) => {
+    const points = deducted?.[side] ?? 0;
+    const note = points ? `Includes a ${points}-point deduction` : undefined;
+    const tone = points
+      ? "bg-red-100 font-semibold text-red-700 dark:bg-red-950 dark:text-red-300"
+      : lead === side ? "font-semibold" : "font-medium text-zinc-400";
+    return (
+      <span className={`inline-block rounded px-1 py-0.5 ${tone}`}
+        style={!points && lead === side ? { color: SIDE[side].ink } : undefined}
+        title={note} aria-label={note ? `${text(value)}. ${note}.` : undefined}>
+        {text(value)}
+      </span>
+    );
+  };
   return (
     <span className={`inline-grid grid-cols-[1fr_auto_1fr] items-center gap-1 tabular-nums leading-tight ${size}`}>
-      <span className={`text-right ${tone("f1")}`} style={lead === "f1" ? { color: SIDE.f1.ink } : undefined}>{text(f1)}</span>
+      <span className="text-right">{score("f1", f1)}</span>
       <span className="h-3 w-px bg-zinc-200" aria-hidden="true" />
-      <span className={`text-left ${tone("f2")}`} style={lead === "f2" ? { color: SIDE.f2.ink } : undefined}>{text(f2)}</span>
+      <span className="text-left">{score("f2", f2)}</span>
     </span>
   );
 }
@@ -1182,6 +1217,7 @@ function ScoreGrid({ fight, judges, fans, rounds, decided }: {
   decided: number | null;
 }) {
   const location = useLocation();
+  const deductions = fight.detail?.type === "past" ? fight.detail.deductions ?? [] : [];
   const roundCount = Math.max(0, ...judges.map((judge) => judge.rounds?.length ?? 0), fans ? rounds.length : 0);
   const places = fans && !(Number.isInteger(fans.avg1!) && Number.isInteger(fans.avg2!)) ? 2 : 0;
   const columns = judges.length + (fans ? 1 : 0);
@@ -1228,13 +1264,13 @@ function ScoreGrid({ fight, judges, fans, rounds, decided }: {
             const round = judge.rounds?.[index];
             return (
               <span key={judgeIndex} className={`${cell} border-t border-zinc-100 py-1`}>
-                {round ? <ScorePair f1={round.f1Score} f2={round.f2Score} text={String} size="text-[11px] @[32rem]:text-xs" /> : <span className="text-[11px] text-zinc-300">—</span>}
+                {round ? <ScorePair f1={round.f1Score} f2={round.f2Score} text={String} size="text-[11px] @[32rem]:text-xs" deducted={deductedIn(deductions, round.round)} /> : <span className="text-[11px] text-zinc-300">—</span>}
               </span>
             );
           })}
           {fans ? (
             <span className={`${cell} border-t border-zinc-100 py-1`}>
-              {rounds[index] ? <ScorePair f1={rounds[index].total1} f2={rounds[index].total2} text={decimalScore} size="text-[11px] @[32rem]:text-xs" /> : <span className="text-[11px] text-zinc-300">—</span>}
+              {rounds[index] ? <ScorePair f1={rounds[index].total1} f2={rounds[index].total2} text={decimalScore} size="text-[11px] @[32rem]:text-xs" deducted={deductedIn(deductions, rounds[index].round)} /> : <span className="text-[11px] text-zinc-300">—</span>}
             </span>
           ) : null}
         </Fragment>

@@ -141,3 +141,13 @@ export function combineJudgeRounds(official: JudgeCard[], prior: JudgeCard[], in
   }
   return combined;
 }
+
+/** The panel a matchup shows: UFCStats' official totals with any verified
+ *  round cards attached, or the imported cards alone when UFCStats has none. */
+export function panelCards(official: JudgeCard[], imported: unknown[]): JudgeCard[] {
+  if (official.length) return mergeJudgeRounds(official, imported as JudgeCard[]);
+  return (imported as any[]).map(card => ({
+    judge: String(card?.judge ?? ""), f1Score: Number(card?.f1Score), f2Score: Number(card?.f2Score),
+    rounds: Array.isArray(card?.rounds) ? card.rounds : [],
+  })).filter(card => Number.isFinite(card.f1Score) && Number.isFinite(card.f2Score));
+}

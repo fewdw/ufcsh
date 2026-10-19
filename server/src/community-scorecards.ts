@@ -1,7 +1,12 @@
+import { confirmedDeductions, deductionsIn, type DeductionFight, type DeductionState } from "./point-deduction-rules.ts";
+
 export type CommunityScorecard = {
   cards: number; avg1: number; avg2: number;
   rounds: { round: number; avg1: number; avg2: number }[];
   source?: string; sourceUrl?: string;
+  /** The published Verdict grid is imported unchanged. Explicit provenance
+   * keeps an already adjusted source from ever losing the same points twice. */
+  deductionsApplied?: boolean;
 };
 
 /** A finish's last round was not completed; decisions include their last round. */
@@ -33,6 +38,28 @@ export function parseCommunityScorecard(raw: string | null | undefined, rounds: 
     const value = JSON.parse(raw ?? "null");
     return validCommunityScorecard(value, rounds) ? value : null;
   } catch { return null; }
+}
+
+/** Verdict's published scorecard grid carries the fans' base round scores
+ * (e.g. Garbrandt–Long, R3 9.39–9.47 despite Long's two-point penalty).
+ * Apply verified penalties once, preserving the raw import and its rounding.
+ * Other sources are left alone unless their scoring convention is known. */
+export function adjustCommunityDeductions<T extends CommunityScorecard>(card: T, state: DeductionState): T {
+  if (card.source !== "Verdict MMA" || card.deductionsApplied || !state.confirmed || !state.items.length) return card;
+  let deduct1 = 0, deduct2 = 0;
+  const rounds = card.rounds.map(round => {
+    const points = deductionsIn(state.items, round.round);
+    deduct1 += points.deduct1; deduct2 += points.deduct2;
+    return { ...round, avg1: round.avg1 - points.deduct1, avg2: round.avg2 - points.deduct2 };
+  });
+  return { ...card, avg1: card.avg1 - deduct1, avg2: card.avg2 - deduct2, rounds, deductionsApplied: true };
+}
+
+/** All readers of imported averages share this reconciliation, including
+ * controversy, profile comparisons and career scorecard statistics. */
+export function communityScorecard(fight: DeductionFight & { community_score_json?: string | null }, rounds: number): CommunityScorecard | null {
+  const card = parseCommunityScorecard(fight.community_score_json, rounds);
+  return card ? adjustCommunityDeductions(card, confirmedDeductions(fight)) : null;
 }
 
 /** A reason for one-off archive audits, using the same validator as readers. */
