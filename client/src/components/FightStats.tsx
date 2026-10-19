@@ -1160,7 +1160,6 @@ function ControversyLine({ row }: { row: NonNullable<NonNullable<Matchup["judgin
     <div className="flex flex-wrap items-center justify-center gap-1.5 border-t border-zinc-100 px-4 py-2 sm:px-5">
       <span className="text-[11px] font-semibold text-zinc-900">Controversial</span>
       {pills.map((pill) => <span key={pill.key} className={`${RESULT_PILL} ${SIGNAL_TONE[pill.key]}`} title={pill.title}>{pill.label}</span>)}
-      <Link to="/controversial" className="text-[11px] font-medium text-zinc-500 underline-offset-2 hover:text-zinc-900 hover:underline">All controversial decisions</Link>
     </div>
   );
 }
