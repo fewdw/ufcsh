@@ -102,8 +102,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-19">October 19, 2026</time></p>
             <ul>
-              <li>Fight cards show their main card, prelims and early prelims as soon as the UFC places a late addition.</li>
-              <li>Cards in fight week are checked every 10 minutes.</li>
+              <li>Faster stats boards, event cards and matchups.</li>
+              <li>Fighter news, photos and profile pictures load more smoothly.</li>
+              <li>Simpler scorecards highlight the round that decided the fight.</li>
             </ul>
           </Section>
         </div>
