@@ -565,3 +565,41 @@ from ~250 ms to ~26 ms (the venue index's own rebuild) on the dev snapshot.
 fight index: 1.46 ms per call over 8,935 bouts (50 Lightweight windows, dev-pc,
 archive copy). Answers are cached per index version, division and window end
 (400 entries), so a profile or matchup pays it once until the data changes.
+
+## Slow cold cards and matchups (2026-10-19)
+
+Admin → Slow requests listed 247 slow requests in a day. Event cards (145,
+~720 ms) and matchups (67, ~760 ms) were nearly all time spent in a query
+worker, mostly one or two per address. Half of the single slow requests came
+within 30 seconds of a worker rebuild, and two thirds within a minute (by
+chance alone it would be under one in ten).
+
+Two causes:
+
+- Both workers were rebuilt about every 6 minutes (179 fight index builds in
+  24 h, 2.7 s each) with no new results. Moving lines on the coming cards
+  (`odds.f1_close`/`f2_close`) bumped the analytics revision, though the fight
+  index reads odds only for bouts with a result. The `odds` trigger now moves
+  analytics only for a decided bout; profiles still move every time.
+- A fresh worker warmed only the 40 newest bouts. In fight week those are all
+  on upcoming cards, so it never fit the judging model (`judging.ts`), and the
+  first completed card with a decision, or a decision's matchup, paid for it.
+  Warm-up now fits it and loads the latest completed cards too.
+
+On a dev archive copy (dev-pc, one worker): the first old card after start
+went from 307 ms to 9 ms. Warm-up grew from 5.6 s to 6.9 s (with the stats
+warm-up below), while the worker it replaces keeps answering. The VPS is about
+twice as slow, so 700–900 ms there.
+
+The rest of the list, same day:
+
+| Route | Cause | Change | dev-pc |
+| --- | --- | --- | --- |
+| `/api/stats` boards (22 a day at 250–1000 ms) | Every board walked each opponent's whole career for the complete record entering every bout; detail strings and first/last chips built for every bout | Records memoized per index; strings and chips built only when used; one value pass per leaderboard | Client's real boards, median 180 → ~115 ms; 124 variants byte-identical |
+| `/api/news?fighter=` (330–730 ms) | Each feed read rebuilt the stories in the next request | Workers rebuild them on an idle timer | Rebuild ~95 ms on 6,739 items |
+| Fighter images, `size=tiny` (300–700 ms) | First view of new art downloaded and encoded it | Main server fetches and encodes re-checked pictures every minute | — |
+| `/api/profiles/mine` (430–500 ms) | Daily Clerk avatar lookup inside the request | Refreshed behind the answer; only a first visit waits | — |
+| Locations, fighter pages (1 each) | Same cold judging as cards | Covered by the warm-up | ~10 ms cold |
+
+`/api/profiles/mine` can also wait on Clerk's signing keys: production has no
+`CLERK_JWT_KEY`, so the SDK fetches them over the network when its copy expires.

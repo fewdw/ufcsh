@@ -118,8 +118,7 @@ export function createScoringHandler(
   };
   /** The reader's own identity, with the account picture refreshed at most
    *  once a day. Clerk being unreachable leaves the stored one in place. */
-  const withAvatar = async (user: string) => {
-    if (Date.now() - store.imageSyncedAt(user) < AVATAR_TTL) return store.identity(user);
+  const refreshAvatar = async (user: string) => {
     let account: string | null | { imageUrl: string | null; joinedAt: number | null } = null;
     try { account = await avatar(user); }
     catch { return store.identity(user); }
@@ -128,6 +127,19 @@ export function createScoringHandler(
       : store.setImage(user, account.imageUrl, account.joinedAt);
     dropProfile(identity.handle, identity.publicId);
     return identity;
+  };
+  /** Only a first visit waits on Clerk (a few hundred ms): the daily refresh
+   *  is fetched behind the answer and shows on the next load. */
+  const refreshingAvatars = new Set<string>();
+  const withAvatar = async (user: string) => {
+    const syncedAt = store.imageSyncedAt(user);
+    if (Date.now() - syncedAt < AVATAR_TTL) return store.identity(user);
+    if (!syncedAt) return refreshAvatar(user);
+    if (!refreshingAvatars.has(user)) {
+      refreshingAvatars.add(user);
+      void refreshAvatar(user).catch(() => null).finally(() => refreshingAvatars.delete(user));
+    }
+    return store.identity(user);
   };
   return async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> => {
     const match = /^\/api\/fights\/([a-f0-9]{16})\/scores(\/mine)?$/.exec(url.pathname);
