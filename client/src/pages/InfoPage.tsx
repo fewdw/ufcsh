@@ -17,7 +17,7 @@ const SECTIONS = [
 ] as const;
 
 // Put together on the page, so the address never sits whole in the source.
-const EMAIL = ["frederic.alefebvre", "gmail.com"].join("@");
+const EMAIL = ["fred", "ufc.sh"].join("@");
 const Email = () => <a href={`mailto:${EMAIL}`}>{EMAIL}</a>;
 
 function Section({ id, children }: { id: (typeof SECTIONS)[number]["id"]; children: ReactNode }) {
