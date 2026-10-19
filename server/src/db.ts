@@ -727,8 +727,14 @@ for (const [table, revisions] of Object.entries(revisionTables)) {
     "venue_checked_at", "wiki_info_checked_at", "catch_weight_checked_at", "verdict_checked_at", "verdict_error", "verdict_live_json"]);
   const columns = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[])
     .map(row => row.name).filter(name => !checkTimestamps.has(name));
-  const update = `UPDATE data_revisions SET value = value + 1 WHERE key IN (${revisions.map(key => `'${key}'`).join(",")});`;
   for (const operation of ["INSERT", "UPDATE", "DELETE"]) {
+    // Lines on bouts not yet fought move every few minutes in fight week, and
+    // analytics (the fight index) reads odds only for bouts with a result: a
+    // moving line must not rebuild every query worker.
+    const fought = table === "odds" ? `EXISTS (SELECT 1 FROM fights WHERE id = ${operation === "DELETE" ? "OLD" : "NEW"}.fight_id
+      AND (f1_outcome IS NOT NULL OR f2_outcome IS NOT NULL))` : "";
+    const always = revisions.filter(key => !fought || key !== "analytics").map(key => `'${key}'`).join(",");
+    const update = `UPDATE data_revisions SET value = value + 1 WHERE key IN (${always})${fought ? ` OR (key = 'analytics' AND ${fought})` : ""};`;
     const changed = columns.map(name => `OLD.${name} IS NOT NEW.${name}`);
     if (table === "fights") changed.push("(OLD.detail_fetched_at IS NULL) != (NEW.detail_fetched_at IS NULL)");
     if (table === "events") changed.push("(OLD.wiki_checked_at >= unixepoch(OLD.date) * 1000) IS NOT (NEW.wiki_checked_at >= unixepoch(NEW.date) * 1000)");

@@ -4,6 +4,7 @@ import { fightIndex, holdIndexes } from "./fight-index.ts";
 import { fighterRecords } from "./records.ts";
 import { officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
+import { judging } from "./judging.ts";
 import { db } from "./db.ts";
 import { newsToJudge } from "./news.ts";
 
@@ -13,17 +14,24 @@ import { newsToJudge } from "./news.ts";
 holdIndexes();
 
 // Warm a worker before it takes requests: the fight index, the all-fighter
-// record tables, the search and statistics indexes built on first use, and
-// one page of each kind, so a new worker never meets cold code.
+// record tables, the judging model, the search and statistics indexes built on
+// first use, and one page of each kind, so a new worker never meets cold code.
 async function warm() {
   fightIndex();
   fighterRecords("");
   officialsIndex();
   venueIndex();
+  // Every completed card with a decision and every decision's matchup reads
+  // it (~700 ms to fit in production), and the newest cards are often all
+  // upcoming, so their pages alone would leave it for the first reader.
+  judging();
   // The newest cards, their bouts and fighters: the pages most readers open,
-  // and enough of them that the code for each kind of page is compiled.
-  const recent = db.prepare(`SELECT f.id, f.f1_id, f.f2_id, f.event_id FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE e.date <= date('now', '+30 days') ORDER BY e.date DESC, f.ord DESC LIMIT 40`).all() as { id: string; f1_id: string; f2_id: string; event_id: string }[];
+  // and enough of them that the code for each kind of page is compiled. The
+  // latest completed cards too, since the coming month's are not fought yet.
+  const recent = db.prepare(`SELECT * FROM (SELECT f.id, f.f1_id, f.f2_id, f.event_id FROM fights f JOIN events e ON e.id = f.event_id
+      WHERE e.date <= date('now', '+30 days') ORDER BY e.date DESC, f.ord DESC LIMIT 40)
+    UNION SELECT * FROM (SELECT f.id, f.f1_id, f.f2_id, f.event_id FROM fights f JOIN events e ON e.id = f.event_id
+      WHERE f.f1_outcome IS NOT NULL ORDER BY e.date DESC, f.ord DESC LIMIT 15)`).all() as { id: string; f1_id: string; f2_id: string; event_id: string }[];
   const urls = new Set(["/api/search?q=a", "/api/stats", "/api/events", "/api/live", "/api/rankings", "/api/officials", "/api/venues", "/api/locations", "/api/news"]);
   for (const fight of recent) {
     for (const ranking of ["media", "meta"]) {
