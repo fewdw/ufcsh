@@ -262,10 +262,17 @@ for (const [name, type] of [
   // (point-deductions.ts), and when its page was last looked for.
   ["deductions_json", "TEXT"],
   ["deductions_checked_at", "INTEGER"],
+  // The same page's media scores: journalists' cards (point-deductions.ts).
+  ["media_scores_json", "TEXT"],
 ] as const) {
   if (!fightColumns.some((column) => column.name === name)) {
     db.exec(`ALTER TABLE fights ADD COLUMN ${name} ${type}`);
   }
+}
+// Pages read before media scores were kept are offered to the hourly
+// MMA Decisions pass again, which reads never-checked decisions newest first.
+if (!fightColumns.some((column) => column.name === "media_scores_json")) {
+  db.exec("UPDATE fights SET deductions_checked_at = NULL");
 }
 db.exec(`
   UPDATE fights

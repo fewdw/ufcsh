@@ -416,6 +416,9 @@ export type MatchupSide = FightSide & {
 export type ComparisonBlock = { labels: string[]; f1: string[]; f2: string[] };
 export type RoundBlock = { labels: string[]; rounds: { f1: string[]; f2: string[] }[] };
 
+/** One journalist's card: `name` can be empty when only the outlet is credited. */
+export type MediaCard = { name: string; outlet: string; url: string; f1Score: number; f2Score: number };
+
 export type FightDetailBlock = {
   type: "past" | "future";
   bonuses: { perf: boolean; fotn: boolean };
@@ -428,6 +431,8 @@ export type FightDetailBlock = {
   scorecardSource?: { name: string; url: string };
   /** Points taken by the referee, as MMA Decisions states them; only sent when they fit every judge's round card. */
   deductions?: { side: "f1" | "f2"; round: number; points: number; reason: string }[];
+  /** Journalists' cards, as MMA Decisions lists them. */
+  media?: { name: string; url: string; cards: MediaCard[] };
   detailsText?: string;
   totals?: ComparisonBlock;
   sigStrikes?: ComparisonBlock;

@@ -63,7 +63,7 @@ import { boutsBefore, careerBefore, completeRecordBefore, fightIndex, indexesHel
 import { syncCareerRecord } from "./career-records.ts";
 import { summarizeCard } from "./card-stats.ts";
 import { panelCards } from "./judge-scorecards.ts";
-import { verifiedDeductions } from "./point-deductions.ts";
+import { storedMedia, verifiedDeductions } from "./point-deductions.ts";
 import { injectPageSeo, pageSeo, SITE_URL, sitemap, type PageSeo } from "./seo.ts";
 import { renderShareImage, type ShareCard, type SharePhoto } from "./og-images.ts";
 export { pageSeo, sitemap };
@@ -322,6 +322,12 @@ function scheduledRounds(f: any, detail: any): number | null {
  * behind them. Keep the independent totals authoritative and only attach a
  * round card when its judge and final score agree. */
 function fightDetail(f: any): any {
+  const detail = officialDetail(f);
+  const media = storedMedia(f.media_scores_json);
+  return media && detail?.type === "past" ? { ...detail, media: { name: "MMA Decisions", url: media.sourceUrl, cards: media.items } } : detail;
+}
+
+function officialDetail(f: any): any {
   const detail = f.detail_json ? JSON.parse(f.detail_json) : null;
   if (!f.judge_rounds_json) {
     const deductions = verifiedDeductions(Array.isArray(detail?.judges) ? detail.judges : [], f.deductions_json);

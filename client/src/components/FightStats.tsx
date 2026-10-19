@@ -10,6 +10,8 @@ import { decimalScore, type ScoreSummary } from "../scoring";
 import { lastName } from "../format";
 import { RESULT_PILL } from "../ui";
 import { SIGNAL_TONE, signalPills } from "./ControversyRow";
+import { MediaBar, MediaDetails, MediaSplit, type MediaScores } from "./MediaScores";
+import { mediaTally } from "../mediaScores";
 import { Tooltip as TipBubble } from "./Tooltip";
 import { useTooltip } from "../tooltip";
 import { GRAPPLING_METRICS, metricView, profileText, resultView, STRIKING_METRICS, type ProfileMetric } from "../careerMetrics";
@@ -1135,10 +1137,27 @@ export function Scorecards({ fight }: { fight: Matchup }) {
   const decided = decidingRound(judges, fight.f1.outcome === "win" ? "f1" : fight.f2.outcome === "win" ? "f2" : null);
   const deductions = fight.detail?.type === "past" ? fight.detail.deductions ?? [] : [];
   const judging = fight.judging ?? null;
+  const media = fight.detail?.type === "past" && fight.detail.media?.cards.length ? fight.detail.media : null;
+  const names = { f1: fight.f1.name, f2: fight.f2.name };
+  const grid = (openMedia?: () => void) => <ScoreGrid fight={fight} judges={judges} fans={fans} rounds={data?.rounds ?? []} decided={decided} media={media} openMedia={openMedia} />;
   return (
     <section className={`${shell} @container overflow-hidden`}>
       <PanelHeading title="Scorecards" />
-      <ScoreGrid fight={fight} judges={judges} fans={fans} rounds={data?.rounds ?? []} decided={decided} />
+      {media ? (
+        <MediaDetails fightId={fight.id} media={media} names={names}>
+          {(open) => <>
+            {grid(open)}
+            {/* Too narrow for another column: the media's split as a row of its own. */}
+            <button type="button" onClick={open} aria-label={`Media scores: ${media.cards.length} cards`}
+              className="mx-auto flex w-full max-w-3xl items-center gap-2.5 border-t border-zinc-100 px-4 py-2 text-left transition hover:bg-zinc-50 @[40rem]:hidden">
+              <span className="shrink-0 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] text-sky-600">{media.cards.length} media</span>
+              <MediaBar cards={media.cards} className="h-1.5 min-w-8 flex-1" />
+              <MediaSplit cards={media.cards} names={names} className="shrink-0 text-[11px]" />
+              <span aria-hidden="true" className="shrink-0 text-zinc-400">›</span>
+            </button>
+          </>}
+        </MediaDetails>
+      ) : grid()}
       {decided ? <p className="border-t border-zinc-100 px-4 py-2 text-center text-[11px] font-semibold leading-4 text-zinc-900 sm:px-5">Round {decided} decided the fight.</p> : null}
       {deductions.length ? (
         <p className={`${decided ? "-mt-1" : "border-t border-zinc-100 pt-2"} px-4 pb-2 text-center text-[11px] font-semibold leading-4 sm:px-5`}>
@@ -1209,12 +1228,15 @@ function ScorePair({ f1, f2, text, size, deducted }: { f1: number; f2: number; t
 
 /** Every card as one table: judges (and the fans) across, the total first
  *  and each round under it, so the round names are printed once. */
-function ScoreGrid({ fight, judges, fans, rounds, decided }: {
+function ScoreGrid({ fight, judges, fans, rounds, decided, media, openMedia }: {
   fight: Matchup;
   judges: Judge[];
   fans: ScoreSummary["totals"] | null;
   rounds: ScoreSummary["rounds"];
   decided: number | null;
+  /** Journalists' cards: a column after the fans' where the panel is wide enough. */
+  media: MediaScores | null;
+  openMedia?: () => void;
 }) {
   const location = useLocation();
   const deductions = fight.detail?.type === "past" ? fight.detail.deductions ?? [] : [];
@@ -1222,11 +1244,17 @@ function ScoreGrid({ fight, judges, fans, rounds, decided }: {
   const places = fans && !(Number.isInteger(fans.avg1!) && Number.isInteger(fans.avg2!)) ? 2 : 0;
   const columns = judges.length + (fans ? 1 : 0);
   const totalSize = "text-lg @[32rem]:text-2xl";
+  // Two decimals fit a large total only without the media column beside it.
+  const decimalSize = media ? "text-[13px] @[48rem]:text-base" : "text-[13px] @[44rem]:text-xl";
   const cell = "flex min-w-0 items-center justify-center px-0.5";
+  const tally = media ? mediaTally(media.cards) : null;
+  const mediaPlaces = tally && !(Number.isInteger(tally.avg1) && Number.isInteger(tally.avg2)) ? 2 : 0;
+  const mediaCell = "hidden @[40rem]:flex";
+  const track = (count: number) => `2rem repeat(${count}, minmax(0, 1fr))`;
   return (
     <div
-      className="mx-auto grid max-w-3xl px-2 pb-2.5 pt-1.5 text-center @[32rem]:px-5 @[32rem]:pb-4 @[32rem]:pt-3"
-      style={{ gridTemplateColumns: `2rem repeat(${columns}, minmax(0, 1fr))` }}
+      className="mx-auto grid max-w-3xl px-2 pb-2.5 pt-1.5 text-center [grid-template-columns:var(--score-columns)] @[32rem]:px-5 @[32rem]:pb-4 @[32rem]:pt-3 @[40rem]:[grid-template-columns:var(--score-columns-wide)]"
+      style={{ "--score-columns": track(columns), "--score-columns-wide": track(columns + (media ? 1 : 0)) } as React.CSSProperties}
     >
       <span />
       {judges.map((judge, index) => {
@@ -1244,6 +1272,11 @@ function ScoreGrid({ fight, judges, fans, rounds, decided }: {
           {fans.completeCards.toLocaleString()} {fans.completeCards === 1 ? "fan" : "fans"}
         </Link>
       ) : null}
+      {media ? (
+        <button type="button" onClick={openMedia} className={`${mediaCell} items-end justify-center self-end px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] text-sky-600 underline-offset-2 hover:underline`}>
+          {media.cards.length} media
+        </button>
+      ) : null}
 
       <span aria-hidden="true" />
       {judges.map((judge, index) => (
@@ -1253,8 +1286,16 @@ function ScoreGrid({ fight, judges, fans, rounds, decided }: {
       ))}
       {fans ? (
         <span className={`${cell} py-1.5`} aria-label={`Fans: ${lastName(fight.f1.name)} ${fans.avg1!.toFixed(places)}, ${lastName(fight.f2.name)} ${fans.avg2!.toFixed(places)}`}>
-          <ScorePair f1={fans.avg1!} f2={fans.avg2!} text={(value) => value.toFixed(places)} size={places ? "text-[13px] @[44rem]:text-xl" : totalSize} />
+          <ScorePair f1={fans.avg1!} f2={fans.avg2!} text={(value) => value.toFixed(places)} size={places ? decimalSize : totalSize} />
         </span>
+      ) : null}
+      {media && tally ? (
+        <button type="button" onClick={openMedia} title="Every journalist's card"
+          aria-label={`Media average of ${media.cards.length} cards: ${lastName(fight.f1.name)} ${tally.avg1.toFixed(mediaPlaces)}, ${lastName(fight.f2.name)} ${tally.avg2.toFixed(mediaPlaces)}`}
+          className={`${mediaCell} min-w-0 flex-col items-center justify-center gap-1 rounded-md px-0.5 py-1.5 transition hover:bg-zinc-50`}>
+          <ScorePair f1={tally.avg1} f2={tally.avg2} text={(value) => value.toFixed(mediaPlaces)} size={mediaPlaces ? decimalSize : totalSize} />
+          <MediaBar cards={media.cards} className="h-1 w-full max-w-16" />
+        </button>
       ) : null}
 
       {Array.from({ length: roundCount }, (_, index) => (
@@ -1273,6 +1314,8 @@ function ScoreGrid({ fight, judges, fans, rounds, decided }: {
               {rounds[index] ? <ScorePair f1={rounds[index].total1} f2={rounds[index].total2} text={decimalScore} size="text-[11px] @[32rem]:text-xs" deducted={deductedIn(deductions, rounds[index].round)} /> : <span className="text-[11px] text-zinc-300">—</span>}
             </span>
           ) : null}
+          {/* Journalists publish totals, not rounds. */}
+          {media ? <span className={`${mediaCell} border-t border-zinc-100`} /> : null}
         </Fragment>
       ))}
     </div>

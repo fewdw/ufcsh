@@ -32,6 +32,32 @@ export function pageDeductions(page: MmaDecision, order: 1 | -1): PointDeduction
   return items.sort((a, b) => a.round - b.round);
 }
 
+/** A journalist's card on a decision, in our fighter order. */
+export type MediaScore = { name: string; outlet: string; url: string; f1Score: number; f2Score: number };
+
+/** The page's media cards in our fighter order. A card whose stated winner
+ *  doesn't agree with its own score, or names neither fighter, is dropped. */
+export function pageMedia(page: MmaDecision, order: 1 | -1): MediaScore[] {
+  return page.media.flatMap(card => {
+    const { f1Score, f2Score } = card;
+    if (!Number.isInteger(f1Score) || !Number.isInteger(f2Score) || f1Score < 1 || f2Score < 1 || f1Score > 50 || f2Score > 50
+      || Math.abs(f1Score - f2Score) > 25) return [];
+    const winner = card.winner.toUpperCase() === "DRAW" ? 0 : deductionSide(card.winner, page.f1Name, page.f2Name);
+    if (winner === null || winner !== (f1Score > f2Score ? 1 : f2Score > f1Score ? 2 : 0)) return [];
+    return [{ name: card.name, outlet: card.outlet, url: card.url,
+      f1Score: order === 1 ? f1Score : f2Score, f2Score: order === 1 ? f2Score : f1Score }];
+  });
+}
+
+/** The stored media cards, or none if the record is missing or unreadable. */
+export function storedMedia(json: string | null | undefined): { sourceUrl: string; items: MediaScore[] } | null {
+  try {
+    const record = JSON.parse(json ?? "null");
+    return record && typeof record.sourceUrl === "string" && Array.isArray(record.items) && record.items.length
+      ? { sourceUrl: record.sourceUrl, items: record.items } : null;
+  } catch { return null; }
+}
+
 const CANDIDATES = `SELECT f.id, e.date, f.f1_name, f.f2_name, c1.source_name AS f1_alias, c2.source_name AS f2_alias
   FROM fights f JOIN events e ON e.id = f.event_id
   LEFT JOIN career_profiles c1 ON c1.fighter_id = f.f1_id AND c1.status = 'verified'
@@ -39,14 +65,18 @@ const CANDIDATES = `SELECT f.id, e.date, f.f1_name, f.f2_name, c1.source_name AS
   WHERE e.complete = 1 AND f.method LIKE '%DEC'`;
 
 /** Read these decisions' MMA Decisions pages and store what each says about
- *  deductions, including that there were none. A page whose deduction names
- *  fit neither fighter is left unstored and shows in Admin → Bugs. */
+ *  deductions, including that there were none, and its media scores. A page
+ *  whose deduction names fit neither fighter leaves its deductions unstored,
+ *  and they show in Admin → Bugs. */
 export async function readPointDeductions(fights: CrawlFight[], concurrency = 2,
   onProgress?: Parameters<typeof crawlMmaDecisions>[3]): Promise<{ matched: number; stored: number; unplaced: number; failed: number }> {
   const checked = db.prepare("UPDATE fights SET deductions_checked_at = ? WHERE id = ?");
   const store = db.prepare("UPDATE fights SET deductions_json = ?, deductions_checked_at = ? WHERE id = ?");
+  const storeMedia = db.prepare("UPDATE fights SET media_scores_json = ? WHERE id = ?");
   let saved = 0, unplaced = 0;
   const stats = await crawlMmaDecisions(fights, { concurrency }, (fight, order, page, path) => {
+    const media = pageMedia(page, order);
+    storeMedia.run(media.length ? JSON.stringify({ source: "MMA Decisions", sourceUrl: mmaDecisionUrl(path), items: media }) : null, fight.id);
     const items = pageDeductions(page, order);
     if (!items) {
       unplaced++;
@@ -61,7 +91,7 @@ export async function readPointDeductions(fights: CrawlFight[], concurrency = 2,
   return { matched: stats.matched, stored: saved, unplaced, failed: stats.failed };
 }
 
-/** Recent decisions, including corrections and confirmed zeroes, at most every six
+/** Recent decisions, including corrections, confirmed zeroes and late media cards, at most every six
  *  hours each; it usually posts a card within a day or two. Older decisions
  *  never looked for follow, newest first, a batch per call, so the archive
  *  fills in over a few days without the one-off backfill. */
