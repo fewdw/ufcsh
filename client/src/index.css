@@ -322,6 +322,11 @@ select:not([multiple]):not([size]) {
   ::-webkit-scrollbar-corner { background: transparent; }
 }
 
+/* Swipeable fight tiles keep native scrolling without a thumb over faces.
+   Unlayered so this overrides the pane scrollbar rule above. */
+.scrollbar-none { scrollbar-width: none; }
+.scrollbar-none::-webkit-scrollbar { display: none; }
+
 /* Chart marks settle in rather than snapping; motion carries the comparison,
    so it is the only thing animated here. */
 .plot-grow {
