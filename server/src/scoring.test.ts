@@ -667,3 +667,35 @@ test("a result deletes rounds the bout never reached; closing a round by hand on
   assert.equal(store.save(id, "alice", { revision: alice.revision, rounds: rounds.slice(0, 1) }).rounds.length, 1);
   assert.equal(store.settle(stopped), 0, "settling twice changes nothing");
 });
+
+test("an own profile waits on Clerk only for a first picture; a stale one is refreshed behind the answer", async t => {
+  const { store } = fixture(t);
+  let picture = "https://img.clerk.com/first";
+  let calls = 0;
+  let release = () => {};
+  const handler = createScoringHandler(store, async () => "alice", async () => {
+    calls++;
+    if (calls > 1) await new Promise<void>(resolve => { release = resolve; });
+    return picture;
+  });
+  const server = http.createServer(async (req, res) => { if (!await handler(req, res, new URL(req.url!, "http://localhost"))) { res.statusCode = 404; res.end(); } });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const mine = async () => {
+    const response = await fetch(`http://127.0.0.1:${(server.address() as any).port}/api/profiles/mine`, {
+      headers: { Authorization: "Bearer alice" }, signal: AbortSignal.timeout(2000),
+    });
+    return (await response.json()).imageUrl;
+  };
+
+  assert.equal(await mine(), "https://img.clerk.com/first");
+  store.db.prepare("UPDATE scorers SET image_synced_at = 1 WHERE user_id = 'alice'").run();
+  picture = "https://img.clerk.com/second";
+  assert.equal(await mine(), "https://img.clerk.com/first", "answered without waiting on Clerk");
+  assert.equal(await mine(), "https://img.clerk.com/first", "one refresh at a time");
+  release();
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(store.identity("alice").imageUrl, "https://img.clerk.com/second");
+  assert.equal(calls, 2);
+});

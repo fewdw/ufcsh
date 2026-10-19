@@ -1,7 +1,7 @@
 import { db } from "./db.ts";
 import { todayIso } from "./util.ts";
 import { ACTION_TYPES, actionPercentage, type ActionType } from "./action-stats.ts";
-import { completeRecordBefore, divisionSort, fightIndex, winProfit, type IndexedSide } from "./fight-index.ts";
+import { completeRecordBefore, divisionSort, fightIndex, winProfit, type FightIndex, type FightRecord, type IndexedFight, type IndexedSide } from "./fight-index.ts";
 import { titleNarratives, type TitleRow } from "./titles.ts";
 import { fightsBoard } from "./stats-fights.ts";
 
@@ -337,6 +337,17 @@ const clock = (value: number) => {
 };
 const recordText = (wins: number, losses: number, draws = 0) => `${wins}-${losses}${draws ? `-${draws}` : ""}`;
 
+/** Each side's complete pro record entering its bout. It depends on the index
+ *  alone, and walking a career for every bout was a third of every board. */
+const completeRecords = new WeakMap<FightIndex, Map<IndexedSide, FightRecord | null>>();
+function completeRecordEntering(index: FightIndex, fight: IndexedFight, side: IndexedSide): FightRecord | null {
+  let records = completeRecords.get(index);
+  if (!records) completeRecords.set(index, records = new Map());
+  let record = records.get(side);
+  if (record === undefined) records.set(side, record = completeRecordBefore(index, side.id, fight.date, fight.ord));
+  return record;
+}
+
 export function getStats(params: URLSearchParams): unknown {
   const index = fightIndex();
   const today = todayIso();
@@ -616,9 +627,11 @@ export function getStats(params: URLSearchParams): unknown {
         if (own.scored > action.maxGiven) { action.maxGiven = own.scored; action.maxGivenDetail = fightDetail; }
         if (theirs.scored > action.maxTaken) { action.maxTaken = theirs.scored; action.maxTakenDetail = fightDetail; }
         const differential = own.scored - theirs.scored;
-        const differentialDetail = `${actionCountText(actionType, own.scored)} given − ${actionCountText(actionType, theirs.scored)} taken · ${fightDetail}`;
-        if (differential > action.maxGivenDifferential) { action.maxGivenDifferential = differential; action.maxGivenDifferentialDetail = differentialDetail; }
-        if (differential < action.minGivenDifferential) { action.minGivenDifferential = differential; action.minGivenDifferentialDetail = differentialDetail; }
+        if (differential > action.maxGivenDifferential || differential < action.minGivenDifferential) {
+          const differentialDetail = `${actionCountText(actionType, own.scored)} given − ${actionCountText(actionType, theirs.scored)} taken · ${fightDetail}`;
+          if (differential > action.maxGivenDifferential) { action.maxGivenDifferential = differential; action.maxGivenDifferentialDetail = differentialDetail; }
+          if (differential < action.minGivenDifferential) { action.minGivenDifferential = differential; action.minGivenDifferentialDetail = differentialDetail; }
+        }
         if (own.attempted != null && theirs.attempted != null) {
           action.attemptBouts += 1;
           action.givenAttempts += own.attempted;
@@ -655,7 +668,7 @@ export function getStats(params: URLSearchParams): unknown {
           ? (opponentFighter?.careerVerified ? opponentFighter.career : null)
           : (opponentFighter?.ufc ?? { wins: 0, losses: 0, draws: 0 }))
         : oppositionSource === "all"
-          ? completeRecordBefore(index, opponent.id, fight.date, fight.ord)
+          ? completeRecordEntering(index, fight, opponent)
           : { wins: opponent.prior.wins, losses: opponent.prior.losses, draws: opponent.prior.draws };
       const opponentBouts = opponentRecord
         ? opponentRecord.wins + opponentRecord.losses + opponentRecord.draws
@@ -822,8 +835,10 @@ export function getStats(params: URLSearchParams): unknown {
       const regularDivision = fight.weightClass && fight.weightClass !== "Catch Weight" && fight.weightClass !== "Super Heavyweight";
       const round = fight.round && fight.round >= 1 && fight.round <= 5 ? fight.round : null;
       const opponentChip: Chip = { label: opponent.name, outcome, fight_id: fight.id };
-      if (!stats.firstChip) stats.firstChip = { ...opponentChip, note: fight.date.slice(0, 4) };
-      stats.lastChip = { ...opponentChip, note: fight.date.slice(0, 4) };
+      if (recordChipMode === "span") {
+        if (!stats.firstChip) stats.firstChip = { ...opponentChip, note: fight.date.slice(0, 4) };
+        stats.lastChip = { ...opponentChip, note: fight.date.slice(0, 4) };
+      }
       // A run is only worth naming while it is alive; the longest one seen is
       // kept aside so the board can show the run it is actually ranking.
       const extendRun = (extends_: boolean, breaks: boolean) => {
@@ -1124,7 +1139,12 @@ export function getStats(params: URLSearchParams): unknown {
       return primary || (tieBreaker ? tieBreaker(b) - tieBreaker(a) : 0) || b.wins - a.wins || b.fights - a.fights || b.lastDate.localeCompare(a.lastDate);
     };
     const available = pool.filter((fighter) => includeInactiveFighters || activeFighterIds.has(fighter.id));
-    const ranked = available.filter((fighter) => fighter.fights >= minimumFights && eligible(fighter) && Number.isFinite(value(fighter))).sort(compare);
+    const ranked = available.filter((fighter) => {
+      if (fighter.fights < minimumFights || !eligible(fighter)) return false;
+      const raw = value(fighter);
+      if (Number.isFinite(raw)) values.set(fighter.id, raw);
+      return Number.isFinite(raw);
+    }).sort(compare);
     const tieCounts = new Map<number, number>();
     for (const fighter of ranked) tieCounts.set(valueOf(fighter), (tieCounts.get(valueOf(fighter)) ?? 0) + 1);
     const ranks = new Map<string, { rank: number; tied: boolean }>();
