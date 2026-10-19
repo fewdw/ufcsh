@@ -5,8 +5,8 @@ import type { Matchup } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
 import { recallMine, rememberMine, useSessionUser } from "../profile";
 import { lastName } from "../format";
-import type { MyScorecard, RoundScore, ScoreSummary } from "../scoring";
-import { fightFinish, scoreTotal } from "../scoring";
+import type { DeductionState, MyScorecard, RoundScore, ScoreSummary } from "../scoring";
+import { applyDeductions, fightFinish, scoreTotal, UNCONFIRMED_DEDUCTIONS } from "../scoring";
 import { PANEL_SHELL, PanelHeading } from "./FightStats";
 import { BUTTON_PRIMARY_LARGE, BUTTON_QUIET } from "../ui";
 import FightFinishRow from "./FightFinishRow";
@@ -25,7 +25,15 @@ const CELL = "rounded-xl py-2.5 text-center tabular-nums transition disabled:opa
 // none of them is ever squeezed narrower than the score printed on it.
 const SCORE_CELL = `${CELL} min-w-fit flex-1 basis-0 whitespace-nowrap px-0.5 text-[11px] min-[380px]:text-xs sm:px-1 sm:text-sm`;
 const DEDUCT_CELL = `${CELL} w-8 shrink-0 px-0.5 min-[380px]:w-9 sm:w-14`;
-type Props = { fight: Matchup; eligibility: ScoreSummary["eligibility"]; onSaved: () => void };
+type Props = { fight: Matchup; eligibility: ScoreSummary["eligibility"]; deductions?: DeductionState; onSaved: () => void };
+
+function DeductionNotice({ state }: { state: DeductionState }) {
+  return <p className="mb-3 text-xs leading-5 text-zinc-500">
+    Score each round before referee deductions. {state.confirmed
+      ? state.items.length ? "Confirmed deductions are applied automatically." : "No referee deductions were recorded for this fight."
+      : "Use − if the referee took a point. Your entry counts until confirmed data is available, then your card updates automatically."}
+  </p>;
+}
 
 /** The account itself lives in the header; this is the same session, scoped to
  *  one matchup. */
@@ -46,6 +54,7 @@ function Gate(props: Props) {
       <section className={PANEL_SHELL}>
         <PanelHeading title="Your scorecard" />
         <div className="px-4 py-4 text-center">
+          <DeductionNotice state={props.deductions ?? UNCONFIRMED_DEDUCTIONS} />
           <button type="button" className={primary} onClick={signIn}>Sign in to score</button>
         </div>
       </section>
@@ -57,7 +66,7 @@ function Gate(props: Props) {
   );
 }
 
-function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: string }) {
+function Editor({ fight, eligibility, deductions, onSaved, userId }: Props & { userId: string }) {
   const { getToken } = useAuth();
   // The last card seen here is shown at once and fetched again behind it.
   const [seed] = useState(() => recallMine<MyScorecard>(userId, `scorecard:${fight.id}`));
@@ -151,7 +160,11 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
   const finish = fightFinish(fight, eligibility);
   // Nothing past a stoppage can be scored, so nothing past it is offered.
   const openRounds = eligibility.state === "completed" ? eligibility.available : eligibility.scheduled;
-  const scored = rounds.filter(r => r.round <= eligibility.available);
+  const policy = deductions ?? saved?.deductions ?? UNCONFIRMED_DEDUCTIONS;
+  const effective = applyDeductions(rounds, policy);
+  const scored = effective.filter(r => r.round <= eligibility.available);
+  const reconciled = policy.confirmed && rounds.some((r, index) => (r.deduct1 || r.deduct2)
+    && (r.deduct1 !== effective[index].deduct1 || r.deduct2 !== effective[index].deduct2));
   const total1 = scoreTotal(scored, 1), total2 = scoreTotal(scored, 2);
   const consecutive = scored.every((r, index) => r.round === index + 1);
   const complete = eligibility.state !== "completed" || scored.length === eligibility.available;
@@ -172,25 +185,34 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
         </p>
       ) : (
         <div className="p-4 sm:p-5">
+          <DeductionNotice state={policy} />
+          {reconciled ? <p className="mb-3 text-xs leading-5 text-zinc-500" role="status">Your provisional deductions have been replaced by the confirmed referee record.</p> : null}
           <fieldset disabled={busy || conflict} className="min-w-0">
             <legend className="sr-only">Round scores</legend>
             <div className="divide-y divide-zinc-100">
               {Array.from({ length: openRounds }, (_, index) => {
                 const n = index + 1;
-                const r = rounds.find(value => value.round === n);
+                const r = effective.find(value => value.round === n);
                 const open = n <= eligibility.available;
-                // A deduction ends each fighter's side of the round, in their
-                // colour, and applies only once that round has been scored.
+                // A confirmed deduction is fixed, separate from the editable
+                // base score. Provisional reports never change anyone else's card.
                 const deduct = (side: 1 | 2) => {
-                  const value = !r ? 0 : side === 1 ? r.deduct1 : r.deduct2;
+                  const value = r ? side === 1 ? r.deduct1 : r.deduct2
+                    : policy.confirmed ? policy.items.filter(item => item.round === n && item.side === (side === 1 ? "f1" : "f2")).reduce((sum, item) => sum + item.points, 0) : 0;
                   const name = lastName(side === 1 ? fight.f1.name : fight.f2.name);
-                  const tone = side === 1 ? "bg-f1-soft text-f1-ink" : "bg-f2-soft text-f2-ink";
+                  if (policy.confirmed) return (
+                    <span className={`${DEDUCT_CELL} flex items-center justify-center text-xs ${value ? "bg-red-100 font-semibold text-red-700 dark:bg-red-950 dark:text-red-300" : "text-zinc-300"}`}
+                      title={value ? `${name}: ${value} ${value === 1 ? "point" : "points"} deducted automatically` : "No referee deduction"}
+                      aria-label={`${name}, round ${n}: ${value} ${value === 1 ? "point" : "points"} deducted automatically`}>
+                      {value ? `−${value}` : "—"}
+                    </span>
+                  );
                   return (
                     <button type="button" disabled={!open || !r}
-                      aria-label={`Point deduction for ${name} in round ${n}: ${value}. Select to deduct a point.`}
-                      title={`Point deduction — ${name}`}
+                      aria-label={`Provisional point deduction for ${name} in round ${n}: ${value}. Select to change.`}
+                      title={`Referee deduction — ${name}. Provisional until confirmed.`}
                       onClick={() => updateRound(n, side === 1 ? { deduct1: (value + 1) % 3 } : { deduct2: (value + 1) % 3 })}
-                      className={`${DEDUCT_CELL} ${value ? `${tone} text-sm font-semibold` : "bg-zinc-100 text-[10px] font-semibold uppercase tracking-tight text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700"}`}>
+                      className={`${DEDUCT_CELL} ${value ? "bg-red-100 text-sm font-semibold text-red-700 dark:bg-red-950 dark:text-red-300" : "bg-zinc-100 text-[10px] font-semibold uppercase tracking-tight text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700"}`}>
                       {value ? `−${value}` : <>
                         <span className="hidden sm:inline">Deduct</span>
                         <span className="text-xs sm:hidden" aria-hidden="true">−</span>
@@ -200,6 +222,10 @@ function Editor({ fight, eligibility, onSaved, userId }: Props & { userId: strin
                 };
                 return (
                   <div key={n} className={`py-3 ${open ? "" : "opacity-40"}`} role="group" aria-label={`Round ${n}`}>
+                    <div className="mb-1.5 flex items-center justify-between gap-2 text-[10px] text-zinc-500">
+                      <span className="font-semibold uppercase tracking-wider">Round {n}</span>
+                      {r && (r.deduct1 || r.deduct2) ? <span className="tabular-nums">After deductions: {r.f1 - r.deduct1}–{r.f2 - r.deduct2}</span> : null}
+                    </div>
                     <div className="flex gap-1 sm:gap-1.5">
                       {deduct(1)}
                       {CHOICES.map(([a, b]) => {

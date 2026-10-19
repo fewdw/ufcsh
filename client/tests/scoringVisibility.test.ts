@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Matchup } from "../src/api.ts";
-import { fightFinish, scoreableRoundCount } from "../src/scoring.ts";
+import { applyDeductions, fightFinish, scoreableRoundCount, scoreTotal } from "../src/scoring.ts";
 
 const fight = (patch: Partial<Matchup>): Matchup => ({
   status: "past",
@@ -13,6 +13,18 @@ const fight = (patch: Partial<Matchup>): Matchup => ({
   detail: null,
   ...patch,
 } as Matchup);
+
+test("an editor keeps base rounds while confirmed penalties replace provisional reports", () => {
+  const rounds = [{ round: 1, f1: 10, f2: 9, deduct1: 1, deduct2: 0 }, { round: 2, f1: 9, f2: 10, deduct1: 0, deduct2: 2 }];
+  assert.equal(scoreTotal(applyDeductions(rounds, { confirmed: false, items: [] }), 1), 18);
+  assert.equal(scoreTotal(applyDeductions(rounds, { confirmed: true, items: [] }), 1), 19);
+  const state = { confirmed: true, items: [{ side: "f1" as const, round: 1, points: 2, reason: "Low blow" }] };
+  const confirmed = applyDeductions(rounds, state);
+  assert.equal(scoreTotal(confirmed, 1), 17);
+  assert.equal(scoreTotal(confirmed, 2), 19);
+  assert.deepEqual(applyDeductions(confirmed, state), confirmed);
+  assert.deepEqual(rounds[0], { round: 1, f1: 10, f2: 9, deduct1: 1, deduct2: 0 });
+});
 
 test("the Score tab is offered only when a round can be scored", () => {
   assert.equal(scoreableRoundCount(fight({ method: "KO/TKO", round: "1" })), 0);

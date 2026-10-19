@@ -2,14 +2,27 @@ import type { Matchup } from "./api";
 import { isDecision } from "./format.ts";
 
 export type RoundScore = { round: number; f1: number; f2: number; deduct1: number; deduct2: number };
+export type DeductionState = { confirmed: boolean; items: { side: "f1" | "f2"; round: number; points: number; reason: string }[] };
+export const UNCONFIRMED_DEDUCTIONS: DeductionState = { confirmed: false, items: [] };
+
+/** Keep the editable base score and provisional report intact. Confirmed
+ * penalties replace the report, including when the confirmed amount is zero. */
+export function applyDeductions(rounds: RoundScore[], state: DeductionState): RoundScore[] {
+  if (!state.confirmed) return rounds;
+  return rounds.map(round => ({ ...round,
+    deduct1: state.items.filter(item => item.round === round.round && item.side === "f1").reduce((sum, item) => sum + item.points, 0),
+    deduct2: state.items.filter(item => item.round === round.round && item.side === "f2").reduce((sum, item) => sum + item.points, 0),
+  }));
+}
 /** How a scorer appears anywhere public: a name, a picture and an address.
  *  `handle` is what `/profiles/:handle` takes — the username once one is
  *  chosen, and the random public id until then. */
 export type ScorerIdentity = { publicId: string; handle: string; username: string | null; displayName: string; imageUrl: string | null };
-export type MyScorecard = { revision: number; rounds: RoundScore[]; updatedAt: number | null; scorer: ScorerIdentity | null };
+export type MyScorecard = { revision: number; rounds: RoundScore[]; deductions?: DeductionState; updatedAt: number | null; scorer: ScorerIdentity | null };
 export type ScoreEligibility = { state: "completed" | "live" | "waiting"; scheduled: number; available: number; reason: string | null };
 export type ScoreSummary = {
   eligibility: ScoreEligibility;
+  deductions?: DeductionState;
   /** Rounds the community's scores are shown for. While a bout is live the
    *  newest open round may still be being fought, so it is left out. */
   closed?: number;

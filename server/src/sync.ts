@@ -31,6 +31,7 @@ import { correctOfficialJudges } from "./verified-scorecard-corrections.ts";
 import { cardChanges, catchweights, eventInfobox, eventSection, fetchArticleByTitle, fetchEventArticle, fetchFighterArticle, recordCatchweight, samePlace, weightMisses } from "./scrape/wikipedia.ts";
 import { staleCareerRecords, syncCareerRecords } from "./career-records.ts";
 import { syncVerdictScorecards } from "./verdict-import.ts";
+import { syncRecentPointDeductions } from "./point-deductions.ts";
 import { syncVerdictLive, VERDICT_LIVE_MS } from "./verdict-live.ts";
 import { syncRosterMoves, syncUfcSignings, syncUfcStatuses } from "./roster-moves.ts";
 import { syncNews } from "./news.ts";
@@ -1896,6 +1897,11 @@ export async function tick(): Promise<void> {
     if (metaAgeMs("rankings_synced_at") > 6 * HOUR) await guarded("rankings", syncRankings);
     // Past lists, once, in the background: Wayback is slow.
     void guarded("ranking_history", backfillRankingHistory);
+    // Points taken by the referee in recent decisions, from MMA Decisions.
+    if (metaAgeMs("point_deductions_checked_at") > HOUR) {
+      touchMeta("point_deductions_checked_at");
+      await guarded("point_deductions", () => syncRecentPointDeductions());
+    }
 
     // 7. Fight-detail pages: upcoming events within 14 days (tale of the tape)
     //    and recent past events. Recently completed stats are refreshed because

@@ -36,3 +36,16 @@ test("published judge totals can retain names when the source has no round score
   assert.deepEqual(parseMmaDecision(page)?.judges, [{ judge: "Jane Judge", f1Score: 29, f2Score: 28 }]);
   assert.equal(parseMmaDecision(page.replace("<td>29</td>", "<td>--</td>"))?.judges.length, 0);
 });
+
+test("MMA Decisions deductions keep the fighter, points, round and reason", () => {
+  const page = `<a href="fighter/1/A">Charles Oliveira</a><a href="fighter/2/B">Nate Marquardt</a>
+    <table><tr><td colspan="2"><table>
+      <tr><td align="left"><img src="tribullet2.png"> Marquardt was deducted 1 point in round 2: <b>Illegal Knee to a Downed Opponent</b></td></tr>
+      <tr><td align="left"><img src="tribullet2.png"> Marquardt was deducted 2 points in round 3: <b>Low blow</b></td></tr>
+    </table></td></tr></table>`;
+  assert.deepEqual(parseMmaDecision(page)?.deductions, [
+    { name: "Marquardt", points: 1, round: 2, reason: "Illegal Knee to a Downed Opponent" },
+    { name: "Marquardt", points: 2, round: 3, reason: "Low blow" },
+  ]);
+  assert.deepEqual(parseMmaDecision(page.replace(/<table>[\s\S]*<\/table>/, ""))?.deductions, []);
+});

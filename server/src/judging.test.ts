@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { db } from "./db.ts";
 import { fightIndex, type IndexedFight } from "./fight-index.ts";
-import { crowdPick, isTitle, officialsIndex, pick, resultPick, type FanCard } from "./officials.ts";
+import { crowdPick, isTitle, officialsIndex, pick, resultPick, type FanCard, type Officiated } from "./officials.ts";
+import { confirmedDeductions } from "./point-deduction-rules.ts";
 import {
-  CLOSE_MARGIN, MIN_CROWD, TIEBREAKS, comebackLead, comebacksList, controversialList, edgesOf, fitModel, homeRecord, judgeDna, judging, matchupJudging, numbersOf,
+  CLOSE_MARGIN, MIN_CROWD, TIEBREAKS, comebackLead, comebacksList, controversialList, controversyOf, edgesOf, fitModel, homeRecord, judgeDna, judging, matchupJudging, numbersOf,
   type Edge,
 } from "./judging.ts";
 
@@ -78,9 +79,28 @@ test("every controversial decision meets the rule the page states, from its own 
     const won = [fans.rounds.filter((round) => round.avg1 > round.avg2).length, fans.rounds.filter((round) => round.avg2 > round.avg1).length];
     assert.deepEqual(row.fan_rounds, won);
     const byRounds = Math.sign(won[0] - won[1]);
-    assert.equal(row.signals.rounds_total, byRounds !== 0 && Math.sign(fans.avg1 - fans.avg2) !== 0 && byRounds !== Math.sign(fans.avg1 - fans.avg2));
+    const penalized = confirmedDeductions(officiated.fight.row).items.length > 0;
+    assert.equal(row.signals.rounds_total, !penalized && byRounds !== 0 && Math.sign(fans.avg1 - fans.avg2) !== 0 && byRounds !== Math.sign(fans.avg1 - fans.avg2));
     assert.ok(row.signals.close || row.signals.fans_other || row.signals.rounds_total, `${row.fight_id} is not controversial`);
   }
+});
+
+test("a referee penalty can explain more fan rounds and a different stats pick without controversial judging", () => {
+  const fight = { method: "U-DEC", sides: [{ outcome: "win" }, { outcome: "loss" }], row: {
+    deductions_json: JSON.stringify({ source: "MMA Decisions", sourceUrl: "https://mmadecisions.com/decision/1", items: [{ side: "f2", round: 3, points: 2, reason: "Low blow" }] }),
+    judge_rounds_json: JSON.stringify({ judges: [{ judge: "A Judge", f1Score: 28, f2Score: 27,
+      rounds: [{ round: 1, f1Score: 10, f2Score: 9 }, { round: 2, f1Score: 9, f2Score: 10 }, { round: 3, f1Score: 9, f2Score: 8 }] }] }),
+  } } as unknown as IndexedFight;
+  const fans: FanCard = { cards: 12134, source: "Verdict MMA", url: null, avg1: 28.02, avg2: 26.86,
+    rounds: [{ round: 1, avg1: 9.45, avg2: 9.57 }, { round: 2, avg1: 9.19, avg2: 9.82 }, { round: 3, avg1: 9.39, avg2: 7.47 }] };
+  const stats = { rounds: [], f1: 1, f2: 2, pick: -1 };
+  const result = controversyOf({ fight, fans } as Officiated, stats)!;
+  assert.equal(result.fansOther, false);
+  assert.equal(result.roundsTotal, false);
+  assert.equal(result.statsOther, false);
+  assert.equal(result.controversial, false);
+  // A genuine fan disagreement still counts after the penalty is applied.
+  assert.equal(controversyOf({ fight, fans: { ...fans, avg1: 26, avg2: 28 } } as Officiated, stats)!.fansOther, true);
 });
 
 test("a judge's list adds their cards against a clear crowd, and marks which card is theirs", () => {

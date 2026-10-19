@@ -1,6 +1,7 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { randomInt, randomUUID } from "node:crypto";
-import { completedScorecardRounds, parseCommunityScorecard } from "./community-scorecards.ts";
+import { adjustCommunityDeductions, communityScorecard, completedScorecardRounds, type CommunityScorecard } from "./community-scorecards.ts";
+import { applyDeductions, confirmedDeductions, deductionOverrides, deductionsIn, type DeductionState } from "./point-deduction-rules.ts";
 import { fightIsComplete, fightIsUnderway, isFightDay, verdictLive } from "./live-state.ts";
 import { byBoutPlace } from "./card-schedule.ts";
 
@@ -13,6 +14,7 @@ export type ScoringFight = {
   scheduled_rounds: number | null; round: string | null; time: string | null;
   method: string | null; detail_json: string | null;
   community_score_json?: string | null;
+  deductions_json?: string | null;
   /** Verdict MMA's rounds and fans' average while the bout is fought. */
   verdict_live_json?: string | null;
   /** Place on its card from the top, main event 0; read for profile order. */
@@ -132,6 +134,16 @@ function weighted(localAverage: number | null, localCount: number, externalAvera
   return count ? ((localAverage ?? 0) * localCount + (externalAverage ?? 0) * externalCount) / count : null;
 }
 
+/** Apply the same authoritative override to round averages, whole-card
+ * totals and win/draw distributions. With no confirmed source, every card
+ * keeps its own provisional deductions; no crowd consensus is invented. */
+const EFFECTIVE_SCORES = `WITH adjusted AS (
+  SELECT card_id, round, f1, f2,
+    COALESCE(json_extract($deductions, '$[' || round || '][0]'), deduct1) AS deduct1,
+    COALESCE(json_extract($deductions, '$[' || round || '][1]'), deduct2) AS deduct2
+  FROM scores WHERE fight_id = $id AND round <= $max
+)`;
+
 /** Whether a full card on a decision named the same winner, or the same draw,
  *  as the fans' average card. */
 function fansVerdict(decision: boolean, complete: boolean, total1: number, total2: number,
@@ -144,6 +156,7 @@ function fansVerdict(decision: boolean, complete: boolean, total1: number, total
  *  bout, the fans' average card and the judges' totals. */
 type ProfileCard = {
   fightId: string; updatedAt: number; revision: number; rounds: RoundScore[]; eligibility: ScoreEligibility;
+  deductions: DeductionState;
   total1: number; total2: number; decision: boolean; agreement: "agreed" | "disagreed" | null;
   fans: { cards: number; total1: number; total2: number } | null; fansAgreement: "agreed" | "disagreed" | null;
   judges: { f1: number; f2: number }[];
@@ -438,7 +451,7 @@ export class ScoringStore {
     const eligibility = this.eligibility(id);
     const card = this.stmt("SELECT * FROM scorecards WHERE fight_id = ? AND user_id = ?").get(id, user) as StoredCard | undefined;
     const scorer = this.scorer("user_id", user);
-    return { revision: card?.revision ?? 0, rounds: card ? (JSON.parse(card.rounds_json) as RoundScore[]).filter(r => r.round <= eligibility.available) : [], updatedAt: card?.updated_at ?? null, scorer: scorer ? this.identify(scorer) : null };
+    return { revision: card?.revision ?? 0, rounds: card ? (JSON.parse(card.rounds_json) as RoundScore[]).filter(r => r.round <= eligibility.available) : [], deductions: confirmedDeductions(this.fight(id)!), updatedAt: card?.updated_at ?? null, scorer: scorer ? this.identify(scorer) : null };
   }
   save(id: string, user: string, body: unknown, remove = false) {
     const eligibility = this.eligibility(id);
@@ -468,35 +481,42 @@ export class ScoringStore {
     this.lists.delete(user);
     return this.mine(id, user);
   }
+  private localTotals(id: string, max: number, deductions: DeductionState) {
+    return this.stmt(`${EFFECTIVE_SCORES} SELECT COUNT(*) AS scorers,
+      COALESCE(SUM(n = $max), 0) AS completeCards,
+      AVG(CASE WHEN n = $max THEN a END) AS avg1, AVG(CASE WHEN n = $max THEN b END) AS avg2,
+      COALESCE(SUM(n = $max AND a > b), 0) AS f1, COALESCE(SUM(n = $max AND b > a), 0) AS f2,
+      COALESCE(SUM(n = $max AND a = b), 0) AS draws
+      FROM (SELECT COUNT(*) AS n, SUM(f1 - deduct1) AS a, SUM(f2 - deduct2) AS b
+        FROM adjusted GROUP BY card_id)`)
+      .get({ $id: id, $max: max, $deductions: deductionOverrides(deductions) }) as any;
+  }
   summary(id: string) {
     const eligibility = this.eligibility(id);
+    const deductions = confirmedDeductions(this.fight(id)!);
     // Only closed rounds are aggregated: a round being fought is nobody's yet.
     const max = closedRounds(eligibility);
-    const localRounds = this.stmt(`SELECT round, COUNT(*) AS scorers,
+    const localRounds = this.stmt(`${EFFECTIVE_SCORES} SELECT round, COUNT(*) AS scorers,
       AVG(f1) AS avg1, AVG(f2) AS avg2, AVG(deduct1) AS deduct1, AVG(deduct2) AS deduct2,
       AVG(f1 - deduct1) AS total1, AVG(f2 - deduct2) AS total2
-      FROM scores WHERE fight_id = ? AND round <= ? GROUP BY round ORDER BY round`).all(id, max) as any[];
-    const localTotals = this.stmt(`SELECT COUNT(*) AS scorers,
-      COALESCE(SUM(n = ?), 0) AS completeCards,
-      AVG(CASE WHEN n = ? THEN a END) AS avg1, AVG(CASE WHEN n = ? THEN b END) AS avg2,
-      COALESCE(SUM(n = ? AND a > b), 0) AS f1, COALESCE(SUM(n = ? AND b > a), 0) AS f2,
-      COALESCE(SUM(n = ? AND a = b), 0) AS draws
-      FROM (SELECT COUNT(*) AS n, SUM(f1 - deduct1) AS a, SUM(f2 - deduct2) AS b
-        FROM scores WHERE fight_id = ? AND round <= ? GROUP BY card_id)`)
-      .get(max, max, max, max, max, max, id, max) as any;
+      FROM adjusted GROUP BY round ORDER BY round`)
+      .all({ $id: id, $max: max, $deductions: deductionOverrides(deductions) }) as any[];
+    const localTotals = this.localTotals(id, max, deductions);
     const imported = this.community(id, max);
     const importedCards = imported?.cards ?? 0;
     const byRound = new Map(localRounds.map(row => [Number(row.round), row]));
     const rounds = Array.from({ length: max }, (_unused, index) => index + 1).flatMap(round => {
       const local = byRound.get(round);
       const external = imported?.rounds.find(item => item.round === round);
+      const points = deductionsIn(imported?.deductionsApplied ? deductions.items : [], round);
       const scorers = Number(local?.scorers ?? 0) + (external ? importedCards : 0);
       if (!scorers) return [];
       return [{
         round, scorers,
-        avg1: weighted(local?.avg1 ?? null, Number(local?.scorers ?? 0), external?.avg1 ?? null, importedCards),
-        avg2: weighted(local?.avg2 ?? null, Number(local?.scorers ?? 0), external?.avg2 ?? null, importedCards),
-        deduct1: local?.deduct1 ?? 0, deduct2: local?.deduct2 ?? 0,
+        avg1: weighted(local?.avg1 ?? null, Number(local?.scorers ?? 0), external ? external.avg1 + points.deduct1 : null, importedCards),
+        avg2: weighted(local?.avg2 ?? null, Number(local?.scorers ?? 0), external ? external.avg2 + points.deduct2 : null, importedCards),
+        deduct1: weighted(local?.deduct1 ?? null, Number(local?.scorers ?? 0), external ? points.deduct1 : null, importedCards) ?? 0,
+        deduct2: weighted(local?.deduct2 ?? null, Number(local?.scorers ?? 0), external ? points.deduct2 : null, importedCards) ?? 0,
         total1: weighted(local?.total1 ?? null, Number(local?.scorers ?? 0), external?.avg1 ?? null, importedCards),
         total2: weighted(local?.total2 ?? null, Number(local?.scorers ?? 0), external?.avg2 ?? null, importedCards),
       }];
@@ -516,37 +536,31 @@ export class ScoringStore {
       localCards: Number(localTotals.scorers), importedCards,
       source: imported ? { name: imported.source, url: imported.sourceUrl } : null,
     };
-    return { eligibility, closed: max, rounds, totals };
+    return { eligibility, closed: max, deductions, rounds, totals };
   }
   /** The fans' average final card, over complete cards only, exactly as the
    *  fight page's total: what a profile row sets the scorer's own card beside. */
   private fanAverage(fight: ScoringFight, max: number): { cards: number; total1: number; total2: number } | null {
     if (!max) return null;
-    const local = this.stmt(`SELECT COUNT(*) AS cards, AVG(a) AS avg1, AVG(b) AS avg2
-      FROM (SELECT COUNT(*) AS n, SUM(f1 - deduct1) AS a, SUM(f2 - deduct2) AS b
-        FROM scores WHERE fight_id = ? AND round <= ? GROUP BY card_id) WHERE n = ?`).get(fight.id, max, max) as any;
-    const imported = parseCommunityScorecard(fight.community_score_json, max);
-    const total1 = weighted(local.avg1, Number(local.cards), imported?.avg1 ?? null, imported?.cards ?? 0);
-    const total2 = weighted(local.avg2, Number(local.cards), imported?.avg2 ?? null, imported?.cards ?? 0);
-    return total1 == null || total2 == null ? null : { cards: Number(local.cards) + (imported?.cards ?? 0), total1, total2 };
+    const local = this.localTotals(fight.id, max, confirmedDeductions(fight));
+    const imported = communityScorecard(fight, max);
+    const total1 = weighted(local.avg1, Number(local.completeCards), imported?.avg1 ?? null, imported?.cards ?? 0);
+    const total2 = weighted(local.avg2, Number(local.completeCards), imported?.avg2 ?? null, imported?.cards ?? 0);
+    return total1 == null || total2 == null ? null : { cards: Number(local.completeCards) + (imported?.cards ?? 0), total1, total2 };
   }
   /** A source aggregate is deliberately not expanded into fake profiles. Its
    * count and averages are weighted with real ufc.sh cards at read time.
    * Until the finished tally is imported, Verdict MMA's live one stands in,
    * over the closed rounds it has. */
-  private community(id: string, max: number): {
-    source: string; sourceUrl: string; cards: number; avg1: number; avg2: number;
-    rounds: { round: number; avg1: number; avg2: number }[];
-  } | null {
+  private community(id: string, max: number): (CommunityScorecard & { source: string; sourceUrl: string }) | null {
     const fight = this.fight(id);
-    const value = parseCommunityScorecard(fight?.community_score_json, max);
-    if (value) return { source: String(value.source ?? "External"), sourceUrl: String(value.sourceUrl ?? ""),
-      cards: value.cards, avg1: value.avg1, avg2: value.avg2, rounds: value.rounds };
+    const value = fight && communityScorecard(fight, max);
+    if (value) return { ...value, source: String(value.source ?? "External"), sourceUrl: String(value.sourceUrl ?? "") };
     const live = verdictLive(fight);
     const rounds = live?.community?.rounds.filter(round => round.round <= max) ?? [];
     if (!live?.community || !rounds.length) return null;
     const sum = (key: "avg1" | "avg2") => rounds.reduce((total, round) => total + round[key], 0);
-    return { source: "Verdict MMA", sourceUrl: live.sourceUrl, cards: live.community.cards, avg1: sum("avg1"), avg2: sum("avg2"), rounds };
+    return adjustCommunityDeductions({ source: "Verdict MMA", sourceUrl: live.sourceUrl, cards: live.community.cards, avg1: sum("avg1"), avg2: sum("avg2"), rounds }, confirmedDeductions(fight ?? {}));
   }
   /** The scorer's own identity, minted on first use so that a reader who has
    *  not saved a card yet still has a profile to open and share. */
@@ -657,14 +671,15 @@ export class ScoringStore {
       const eligibility = scoringEligibility(fight, Date.now(), released.get(card.fightId) ?? 0);
       // A profile is public, so a live card shows its closed rounds only.
       const closed = closedRounds(eligibility);
-      const rounds = (JSON.parse(card.roundsJson) as RoundScore[]).filter(r => r.round <= closed);
+      const deductions = confirmedDeductions(fight);
+      const rounds = applyDeductions((JSON.parse(card.roundsJson) as RoundScore[]).filter(r => r.round <= closed), deductions);
       const total1 = rounds.reduce((sum, r) => sum + r.f1 - r.deduct1, 0);
       const total2 = rounds.reduce((sum, r) => sum + r.f2 - r.deduct2, 0);
       const verdict = cardVerdict(fight, eligibility, rounds, total1, total2);
       const fans = this.fanAverage(fight, closed);
       const complete = rounds.length > 0 && rounds.length === eligibility.available;
       return [{
-        fightId: card.fightId, updatedAt: card.updatedAt, revision: card.revision, rounds, eligibility,
+        fightId: card.fightId, updatedAt: card.updatedAt, revision: card.revision, rounds, eligibility, deductions,
         total1, total2, ...verdict, fans, fansAgreement: fansVerdict(verdict.decision, complete, total1, total2, fans),
         judges: judgeTotals(fight),
         fight: {

@@ -424,6 +424,8 @@ export type FightDetailBlock = {
     rounds?: { round: number; f1Score: number; f2Score: number }[];
   }[];
   scorecardSource?: { name: string; url: string };
+  /** Points taken by the referee, as MMA Decisions states them; only sent when they fit every judge's round card. */
+  deductions?: { side: "f1" | "f2"; round: number; points: number; reason: string }[];
   detailsText?: string;
   totals?: ComparisonBlock;
   sigStrikes?: ComparisonBlock;

@@ -62,7 +62,8 @@ export { hasUfcFight };
 import { boutsBefore, careerBefore, completeRecordBefore, fightIndex, indexesHeld, ageOn, opponentsRecordBefore, parseScheduledRounds, professionalBouts, professionalBoutsBefore, sideOf, ufcBoutsBefore, type FightRecord } from "./fight-index.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { summarizeCard } from "./card-stats.ts";
-import { mergeJudgeRounds } from "./judge-scorecards.ts";
+import { panelCards } from "./judge-scorecards.ts";
+import { verifiedDeductions } from "./point-deductions.ts";
 import { injectPageSeo, pageSeo, SITE_URL, sitemap, type PageSeo } from "./seo.ts";
 import { renderShareImage, type ShareCard, type SharePhoto } from "./og-images.ts";
 export { pageSeo, sitemap };
@@ -322,17 +323,18 @@ function scheduledRounds(f: any, detail: any): number | null {
  * round card when its judge and final score agree. */
 function fightDetail(f: any): any {
   const detail = f.detail_json ? JSON.parse(f.detail_json) : null;
-  if (!f.judge_rounds_json) return detail;
+  if (!f.judge_rounds_json) {
+    const deductions = verifiedDeductions(Array.isArray(detail?.judges) ? detail.judges : [], f.deductions_json);
+    return deductions.length ? { ...detail, deductions } : detail;
+  }
   try {
     const imported = JSON.parse(f.judge_rounds_json);
     const cards = Array.isArray(imported?.judges) ? imported.judges : [];
     const base = detail ?? { type: "past", bonuses: { perf: false, fotn: false } };
     const official = Array.isArray(base.judges) ? base.judges : [];
-    const judges = official.length ? mergeJudgeRounds(official, cards) : cards.map((card: any) => ({
-      judge: String(card.judge ?? ""), f1Score: Number(card.f1Score), f2Score: Number(card.f2Score),
-      rounds: Array.isArray(card.rounds) ? card.rounds : [],
-    })).filter((card: any) => Number.isFinite(card.f1Score) && Number.isFinite(card.f2Score));
-    return { ...base, judges, scorecardSource: { name: imported.source, url: imported.sourceUrl } };
+    const judges = panelCards(official, cards);
+    const deductions = verifiedDeductions(judges, f.deductions_json);
+    return { ...base, judges, scorecardSource: { name: imported.source, url: imported.sourceUrl }, ...(deductions.length ? { deductions } : {}) };
   } catch {
     return detail;
   }
