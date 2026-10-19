@@ -583,13 +583,8 @@ export function parseFightIds(html: string): number[] {
  * malformed or unusual rule set yields no number rather than a wrong one.
  */
 export function parseCardRounds(feed: unknown, fightIds: number[]): ScrapedBoutRounds[] {
-  const card = (feed as any)?.LiveEventDetail?.FightCard;
-  if (!Array.isArray(card)) return [];
-  // The feed must be this page's card: every bout the page lists has to be on
-  // it. The feed can hold bouts the page has not rendered yet, and those are
-  // kept — they belong to the same card.
-  const onFeed = new Set(card.map((fight: any) => Number(fight?.FightId)));
-  if (!fightIds.length || !fightIds.every((id) => onFeed.has(id))) return [];
+  const card = pageFeedCard(feed, fightIds);
+  if (!card) return [];
   const bouts: ScrapedBoutRounds[] = [];
   for (const fight of card) {
     const rounds = Number(fight?.RuleSet?.PossibleRounds);
@@ -602,6 +597,37 @@ export function parseCardRounds(feed: unknown, fightIds: number[]): ScrapedBoutR
     bouts.push({ fightId: Number(fight.FightId), order: Number(fight?.FightOrder) || 0, f1: names[0], f2: names[1], rounds });
   }
   return bouts;
+}
+
+/** The feed's bouts, when the feed is this page's card: every bout the page
+ * lists has to be on it. The feed can hold bouts the page has not rendered
+ * yet, and those are kept — they belong to the same card. */
+function pageFeedCard(feed: unknown, fightIds: number[]): any[] | null {
+  const card = (feed as any)?.LiveEventDetail?.FightCard;
+  if (!Array.isArray(card)) return null;
+  const onFeed = new Set(card.map((fight: any) => Number(fight?.FightId)));
+  return fightIds.length && fightIds.every((id) => onFeed.has(id)) ? card : null;
+}
+
+/**
+ * Every bout's segment, in card order, as the feed has it. The event page is
+ * cached and can go days without a bout the feed already places, so this is
+ * the fresher list. All or nothing: one bout without a known segment or two
+ * names and the page's own list stands.
+ */
+export function parseFeedSegments(feed: unknown, fightIds: number[]): ScrapedSegmentBout[] {
+  const card = pageFeedCard(feed, fightIds);
+  if (!card) return [];
+  const bouts: (ScrapedSegmentBout & { order: number })[] = [];
+  for (const fight of card) {
+    const segment = FEED_SEGMENT[String(fight?.CardSegment ?? "").trim().toLowerCase()];
+    const order = Number(fight?.FightOrder);
+    const names = (fight?.Fighters ?? []).map((fighter: any) =>
+      cleanText(`${fighter?.Name?.FirstName ?? ""} ${fighter?.Name?.LastName ?? ""}`));
+    if (!segment || !Number.isInteger(order) || names.length !== 2 || !names[0] || !names[1]) return [];
+    bouts.push({ segment, order, f1: names[0], f2: names[1] });
+  }
+  return bouts.sort((a, b) => a.order - b.order).map(({ segment, f1, f2 }) => ({ segment, f1, f2 }));
 }
 
 /** Where and how a card is staged, as the promotion's own feed states it. */
@@ -622,7 +648,11 @@ export type ScrapedEventInfo = {
   bouts: { f1: string; f2: string }[];
 };
 
-const FEED_SEGMENT: Record<string, CardSegment> = { main: "main", prelims: "prelims", "early prelims": "early", early: "early" };
+// The feed names a card's segments Main, Prelims1 and Prelims2 (every card
+// from 2020 on); the plain names are kept in case it ever spells them out.
+const FEED_SEGMENT: Record<string, CardSegment> = {
+  main: "main", prelims1: "prelims", prelims2: "early", prelims: "prelims", "early prelims": "early", early: "early",
+};
 const clean = (value: unknown): string | null => {
   const text = typeof value === "string" ? cleanText(value) : "";
   return text && text.toLowerCase() !== "null" ? text : null;
@@ -671,11 +701,13 @@ async function fetchJson(url: string): Promise<unknown> {
 
 /** An event page plus the rule set of every bout on it, and the venue,
  * broadcasters and referees the same feed names. */
-export async function scrapeEventCard(slug: string): Promise<{ segments: ScrapedSegmentBout[]; rounds: ScrapedBoutRounds[] | null; info: ScrapedEventInfo | null }> {
+export async function scrapeEventCard(slug: string): Promise<{
+  segments: ScrapedSegmentBout[]; feedSegments: ScrapedSegmentBout[]; rounds: ScrapedBoutRounds[] | null; info: ScrapedEventInfo | null;
+}> {
   const html = await fetchHtml(`https://www.ufc.com/event/${slug}`, { timeoutMs: 40000 });
   const segments = parseEventSegments(html);
   const fightIds = parseFightIds(html);
-  if (!fightIds.length) return { segments, rounds: null, info: null };
+  if (!fightIds.length) return { segments, feedSegments: [], rounds: null, info: null };
   // A listed fight can have a broken or empty feed even while its event feed
   // is complete. Use the page's event id; keep fight lookup for older pages.
   let eventId = parseEventFeedId(html);
@@ -687,5 +719,5 @@ export async function scrapeEventCard(slug: string): Promise<{ segments: Scraped
   const feed = await fetchJson(`${LIVE_CARD_API}/event/live/${eventId}.json`);
   const info = parseEventInfo(feed);
   if (info?.eventId !== eventId) throw new Error(`ufc.com event ${eventId} returned no matching event`);
-  return { segments, rounds: parseCardRounds(feed, fightIds), info };
+  return { segments, feedSegments: parseFeedSegments(feed, fightIds), rounds: parseCardRounds(feed, fightIds), info };
 }

@@ -292,18 +292,20 @@ export async function syncEventSegments(eventId: string): Promise<void> {
     log(`card segments: ${event.ufc_slug} is another event's page; forgotten`);
     return;
   }
-  const segments = assignSegments(fights, card.segments);
-  const update = db.prepare("UPDATE fights SET segment = ? WHERE id = ?");
-  for (const [id, segment] of segments) update.run(segment, id);
-  // A bout the page no longer names loses its place, as a moved bout must.
-  const positions = assignPositions(fights, card.segments);
-  const setPosition = db.prepare("UPDATE fights SET card_pos = ? WHERE id = ?");
-  for (const fight of fights) setPosition.run(positions.get(fight.id) ?? null, fight.id);
   // ufc.com has linked pages to another event's feed (UFC 239's under the
   // Minneapolis card). A feed that shares no bout with ours says nothing
   // about this card.
   const foreign = Boolean(card.info && (!samePlace(card.info.city, event.location.split(",")[0])
     || (card.info.bouts.length && fights.length && !sharesBout(fights, card.info.bouts))));
+  // The feed places a late addition days before the cached page lists it.
+  const bouts = !foreign && card.feedSegments.length ? card.feedSegments : card.segments;
+  const segments = assignSegments(fights, bouts);
+  const update = db.prepare("UPDATE fights SET segment = ? WHERE id = ?");
+  for (const [id, segment] of segments) update.run(segment, id);
+  // A bout ufc.com no longer names loses its place, as a moved bout must.
+  const positions = assignPositions(fights, bouts);
+  const setPosition = db.prepare("UPDATE fights SET card_pos = ? WHERE id = ?");
+  for (const fight of fights) setPosition.run(positions.get(fight.id) ?? null, fight.id);
   // A bout the feed no longer identifies loses its length: a booking that
   // changed or a bout that moved must not keep a stale number.
   let booked = 0;
@@ -1857,9 +1859,9 @@ export async function tick(): Promise<void> {
     }
 
     // 4b. Which bouts sit on which segment of a card. An announced card is
-    //     reshuffled up to the day itself, so a near one is re-read often and
-    //     a distant one rarely; a card already fought is read once and never
-    //     again, which is what fills the archive in behind us.
+    //     reshuffled up to the day itself, so fight week is re-read every 10
+    //     minutes and a later card every 30; a card already fought is read
+    //     once and never again, which is what fills the archive in behind us.
     if (getMeta("schedule_archive_done") !== "1" && metaAgeMs("schedule_archive_at") > 60_000) {
       await guarded("schedule_archive", syncScheduleArchive);
       touchMeta("schedule_archive_at");
@@ -1868,8 +1870,7 @@ export async function tick(): Promise<void> {
       WHERE ufc_slug IS NOT NULL AND (segments_fetched_at IS NULL OR complete = 0)
       ORDER BY complete ASC, date DESC`).all() as { id: string; name: string; date: string; complete: number; segments_fetched_at: number | null }[];
     for (const e of segmentTargets.slice(0, 25)) {
-      const interval = e.complete ? Infinity
-        : daysBetween(e.date, today) <= 1 ? 30 * 60_000 : daysBetween(e.date, today) <= 7 ? 6 * HOUR : DAY;
+      const interval = e.complete ? Infinity : daysBetween(today, e.date) <= 7 ? 10 * 60_000 : 30 * 60_000;
       if (!e.segments_fetched_at || now - e.segments_fetched_at > interval) {
         await guarded(`card_segments ${e.name}`, () => syncEventSegments(e.id));
       }
