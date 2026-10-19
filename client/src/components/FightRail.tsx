@@ -256,7 +256,7 @@ export function FightStrip({ eventId, currentId, returnDepth, onReselect, classN
   return (
     <nav aria-label="Fights on this card" className={className}>
       <div ref={row} onScroll={(e) => stripScroll.set(eventId, e.currentTarget.scrollLeft)}
-        className="relative flex gap-2 overflow-x-auto overscroll-x-contain [scrollbar-width:none]">
+        className="scrollbar-none relative flex gap-2 overflow-x-auto overscroll-x-contain">
         {fights.map((f) => {
           const isCurrent = f.id === currentId;
           const isLive = f.id === liveId;
