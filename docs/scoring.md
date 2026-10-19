@@ -50,10 +50,42 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   Updating it replaces its contribution rather than adding another vote. A
   decision's **Result** tab carries the fan average beside the judges' cards,
   which opens the Score tab.
-- Choose 10–10, 10–9 or 10–8 in either direction; choosing the score already on
-  the card takes that round back off it. A **Deduct** button ends each fighter's
-  side of the round for the referee's point deductions (zero to two). The API
-  still accepts 10–7, which the editor no longer offers.
+- Choose 10–10, 10–9 or 10–8 in either direction **before referee deductions**;
+  choosing the selected score takes that round back off the card. The API also
+  accepts 10–7. Base scores and a user's provisional deductions remain stored
+  separately, so a penalty is never guessed from a 10–8.
+- Confirmed MMA Decisions deductions replace each card's provisional entries
+  in every scored round. They are never added on top. A source-confirmed empty
+  list clears mistaken entries; corrected amounts, rounds or fighters update
+  the totals on existing cards without another save. The editor fixes these
+  controls and explains that deductions are automatic. Unknown, malformed or
+  card-incompatible source data leaves the user's provisional entries in force.
+  While unknown, the **Deduct** controls accept zero to two points per fighter
+  and round; a user's entry affects only that user's card, regardless of how
+  few scorers there are. It never becomes a penalty for other users or Verdict.
+- `point-deduction-rules.ts` owns source verification and reconciliation;
+  `ScoringStore` applies the same overrides to round averages, whole-card
+  averages, winner/draw counts, public profiles and agreement calculations.
+  Raw saved cards keep their revision, timestamp and base round choices.
+- Verdict's published scorecard grid is stored unchanged, tagged
+  `deductionsApplied: false`, and adjusted at read time before weighting it
+  with UFC.sh cards. Legacy Verdict imports use the same rule. An explicitly
+  already adjusted source is not adjusted again; unknown sources are untouched.
+  Only rounds present in an imported/live card lose points, and published
+  total rounding is preserved. Analytics, controversy and career scorecard
+  averages share this adjustment. Referee penalties can explain a difference
+  between rounds won and points won, so penalized bouts do not get the
+  "more fan rounds" or stats-model disagreement controversy signals.
+  A genuine disagreement in the adjusted fan total can still be controversial.
+  Recent decisions are rechecked at most every six hours for 45 days, including
+  previously confirmed zeroes; older corrections use the existing Admin → Bugs
+  re-read action or `backfill:point-deductions -- --recheck`.
+
+  Source check (19 October 2026): Verdict's [guide](https://verdictmma.com/how_to_score)
+  says it applies deductions, but its [Garbrandt–Long published grid](https://verdictmma.com/event/1324/fight/1)
+  gives Long 9.47 in R3 and 28.86 overall while its round metadata lists two
+  deducted points. The imported grid therefore needs adjustment to 7.47 and
+  26.86. Do not assume the site's explanatory copy describes the exported grid.
 - Completed cards must include every completed round, starting at round one.
   Stoppage rounds are excluded: both panels end with the finish itself — the
   winner, the method and the time — in place of rounds that were never fought. First-round stoppages have a Score tab explaining

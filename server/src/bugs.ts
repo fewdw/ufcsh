@@ -1038,12 +1038,12 @@ function pointDeductionsUnshown(): BugCheck {
   const candidates = db.prepare(`
     SELECT ${FIGHT_COLUMNS}, f.detail_json, f.judge_rounds_json, f.deductions_json, f.deductions_checked_at
     FROM fights f JOIN events e ON e.id = f.event_id
-    WHERE e.complete = 1 AND f.method LIKE '%DEC' AND f.judge_rounds_json IS NOT NULL
+    WHERE e.complete = 1 AND f.method LIKE '%DEC' AND (f.judge_rounds_json IS NOT NULL OR f.deductions_json IS NOT NULL)
     ORDER BY e.date DESC
   `).all() as (FightRow & { detail_json: string | null; judge_rounds_json: string | null; deductions_json: string | null; deductions_checked_at: number | null })[];
   const items = candidates.flatMap(fight => {
     const { cards, record } = fightDeductionState(fight);
-    const problem = deductionProblem(cards, record?.items ?? []);
+    const problem = fight.deductions_json && !record ? "Unreadable point deduction record" : deductionProblem(cards, record?.items ?? []);
     if (!problem) return [];
     const listed = record?.items.map(item => `${item.side === "f1" ? fight.f1_name : fight.f2_name}, round ${item.round}, −${item.points}${item.reason ? ` (${item.reason})` : ""}`).join("; ");
     return [fightItem(fight, {
@@ -1056,7 +1056,7 @@ function pointDeductionsUnshown(): BugCheck {
     id: "point-deductions-unshown",
     group: "Scorecards",
     label: "Point deductions that can't be shown",
-    description: "Decisions where a round no judge scored 10 has no stated deduction to explain it, or MMA Decisions' stated deduction doesn't fit every judge's round card. Deductions are never inferred from the scores; a matchup shows one only when it fits every card.",
+    description: "Decisions with an unreadable deduction record, a round no judge scored 10 without a stated deduction to explain it, or a stated deduction that doesn't fit every judge's round card. These records cannot automatically override fan cards. Re-read MMA Decisions to repair them.",
     grade: "minor",
   }, items);
 }

@@ -190,14 +190,14 @@ async function importFight(eventId: number, fightNumber: number, fight: LocalFig
       };
       // An unchanged tally is left alone, so a re-read doesn't rebuild the
       // analytics that watch this table.
-      const next = { source: "Verdict MMA", sourceUrl, ...aligned };
+      const next = { source: "Verdict MMA", sourceUrl, ...aligned, deductionsApplied: false };
       let same = false;
       try {
         const { fetchedAt: _, ...stored } = JSON.parse(fight.community_score_json ?? "null") ?? {};
         same = JSON.stringify(stored) === JSON.stringify(next);
       } catch { /* replace malformed */ }
       if (!same || mode === "refresh") {
-        communityJson = JSON.stringify({ source: next.source, sourceUrl, fetchedAt, ...aligned });
+        communityJson = JSON.stringify({ source: next.source, sourceUrl, fetchedAt, ...aligned, deductionsApplied: false });
         stats.community += 1;
       }
     }

@@ -1,4 +1,4 @@
-import { completedScorecardRounds, parseCommunityScorecard } from "./community-scorecards.ts";
+import { completedScorecardRounds, communityScorecard } from "./community-scorecards.ts";
 import { fightIndex, type IndexedFight } from "./fight-index.ts";
 import { mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
 import { searchList } from "./fuzzy.ts";
@@ -129,7 +129,7 @@ function officiatedOf(fight: IndexedFight): Officiated {
       f2: Number(card.f2Score),
       rounds: (card.rounds ?? []).map((round) => ({ round: round.round, f1: round.f1Score, f2: round.f2Score })),
     }));
-  const community = parseCommunityScorecard(fight.row.community_score_json, completedScorecardRounds({ ...fight, detail_json: fight.row.detail_json }));
+  const community = communityScorecard(fight.row, completedScorecardRounds({ ...fight, detail_json: fight.row.detail_json }));
   const fans: FanCard | null = community ? {
     cards: community.cards, avg1: community.avg1, avg2: community.avg2, rounds: community.rounds,
     source: String(community.source ?? "Community scorecards"), url: community.sourceUrl ?? null,

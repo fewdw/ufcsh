@@ -1145,6 +1145,7 @@ export function Scorecards({ fight }: { fight: Matchup }) {
           {deductions.map((deduction, index) => (
             <span key={index} className="block" style={{ color: SIDE[deduction.side].ink }}>{deductionSentence(fight, deduction)}</span>
           ))}
+          {fans ? <span className="block font-normal text-zinc-500">Fan scores include referee deductions.</span> : null}
         </p>
       ) : null}
       {judging?.controversy ? <ControversyLine row={judging.controversy} /> : null}
@@ -1269,7 +1270,7 @@ function ScoreGrid({ fight, judges, fans, rounds, decided }: {
           })}
           {fans ? (
             <span className={`${cell} border-t border-zinc-100 py-1`}>
-              {rounds[index] ? <ScorePair f1={rounds[index].total1} f2={rounds[index].total2} text={decimalScore} size="text-[11px] @[32rem]:text-xs" /> : <span className="text-[11px] text-zinc-300">—</span>}
+              {rounds[index] ? <ScorePair f1={rounds[index].total1} f2={rounds[index].total2} text={decimalScore} size="text-[11px] @[32rem]:text-xs" deducted={deductedIn(deductions, rounds[index].round)} /> : <span className="text-[11px] text-zinc-300">—</span>}
             </span>
           ) : null}
         </Fragment>

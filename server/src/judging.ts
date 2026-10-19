@@ -6,6 +6,7 @@ import {
   type Card, type FanCard, type Identity, type Officiated,
 } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
+import { confirmedDeductions } from "./point-deduction-rules.ts";
 
 /**
  * What the cards say beyond who won: how close the crowd thought a decision
@@ -232,7 +233,7 @@ export type Controversy = {
 
 const isDecision = (fight: IndexedFight) => Boolean(fight.method?.endsWith("-DEC"));
 
-function controversyOf(officiated: Officiated, stats: StatsCard | null): Controversy | null {
+export function controversyOf(officiated: Officiated, stats: StatsCard | null): Controversy | null {
   const { fight, fans } = officiated;
   if (!isDecision(fight) || !fans || fans.cards < MIN_CROWD) return null;
   const result = resultPick(fight);
@@ -243,8 +244,12 @@ function controversyOf(officiated: Officiated, stats: StatsCard | null): Controv
   const byTotal = Math.sign(fans.avg1 - fans.avg2);
   const close = margin < CLOSE_MARGIN;
   const fansOther = result != null && fanPick !== 0 && fanPick !== result;
-  const roundsTotal = byRounds !== 0 && byTotal !== 0 && byRounds !== byTotal;
-  const statsOther = Boolean(stats && result != null && result !== 0 && stats.pick !== 0 && stats.pick !== result);
+  // Winning more rounds can legitimately lose on points after a referee's
+  // penalty. The stats model also measures rounds, not a penalty-adjusted
+  // ten-point card; neither is evidence of controversial judging here.
+  const penalized = confirmedDeductions(fight.row).items.length > 0;
+  const roundsTotal = !penalized && byRounds !== 0 && byTotal !== 0 && byRounds !== byTotal;
+  const statsOther = !penalized && Boolean(stats && result != null && result !== 0 && stats.pick !== 0 && stats.pick !== result);
   return { fans, margin, fanPick, fanRounds, result, stats, close, fansOther, roundsTotal, statsOther, controversial: close || fansOther || roundsTotal };
 }
 

@@ -323,7 +323,10 @@ function scheduledRounds(f: any, detail: any): number | null {
  * round card when its judge and final score agree. */
 function fightDetail(f: any): any {
   const detail = f.detail_json ? JSON.parse(f.detail_json) : null;
-  if (!f.judge_rounds_json) return detail;
+  if (!f.judge_rounds_json) {
+    const deductions = verifiedDeductions(Array.isArray(detail?.judges) ? detail.judges : [], f.deductions_json);
+    return deductions.length ? { ...detail, deductions } : detail;
+  }
   try {
     const imported = JSON.parse(f.judge_rounds_json);
     const cards = Array.isArray(imported?.judges) ? imported.judges : [];
