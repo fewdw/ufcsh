@@ -302,12 +302,14 @@ function FactRun({ children, className = "" }: { children: ReactNode; className?
 /** Everything both shapes of a bout row read off the record, resolved once. */
 function boutFields(row: HistoryRow | ProfessionalHistoryRow) {
   const outside = row.promotion === "outside";
+  const odds = row.upcoming ? row.current_odds : row.closing_odds;
   return {
     result: row.upcoming ? "Upcoming" : historyResultLabel(row.outcome),
     method: (row.upcoming ? "Scheduled" : formatMethod(row.method, row.round, row.time)) || "Result pending",
     detail: row.upcoming ? "" : finishDetail(row.method_detail),
-    fighterOdds: formatLine(row.closing_odds?.fighter),
-    opponentOdds: formatLine(row.closing_odds?.opponent),
+    fighterOdds: formatLine(odds?.fighter),
+    opponentOdds: formatLine(odds?.opponent),
+    oddsLabel: row.upcoming ? "current odds" : "closing odds",
     outside,
     contender: fightProgram(row.event_name) === "Contender Series",
     fightTo: row.fight_id ? `/fights/${row.fight_id}` : null,
@@ -407,8 +409,8 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
               other's, so each also carries the name in a tooltip and spells the
               whole thing out for a screen reader. */}
           {bout.opponentOdds ? (
-            <span className="shrink-0 text-[11px] font-semibold tabular-nums text-zinc-400" title={`${row.opponent.name} closing odds`}>
-              <span className="sr-only">{row.opponent.name} closing odds </span>{bout.opponentOdds}
+            <span className="shrink-0 text-[11px] font-semibold tabular-nums text-zinc-400" title={`${row.opponent.name} ${bout.oddsLabel}`}>
+              <span className="sr-only">{row.opponent.name} {bout.oddsLabel} </span>{bout.opponentOdds}
             </span>
           ) : null}
           {row.opponent_form ? <OpponentForm form={row.opponent_form} /> : null}
@@ -442,8 +444,8 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
             The fighter's own records entering the bout sit under the price. */}
         <span className="flex shrink-0 flex-col items-end pl-2">
           {bout.fighterOdds ? (
-            <span className="font-semibold tabular-nums text-zinc-400" title={`${fighterName} closing odds`}>
-              <span className="sr-only">{fighterName} closing odds </span>{bout.fighterOdds}
+            <span className="font-semibold tabular-nums text-zinc-400" title={`${fighterName} ${bout.oddsLabel}`}>
+              <span className="sr-only">{fighterName} {bout.oddsLabel} </span>{bout.fighterOdds}
             </span>
           ) : null}
           <EnteringRecords career={row.career_record_before} ufc={row.record_before} name={fighterName} className="justify-end text-[10px] font-medium leading-4 text-zinc-400" />
@@ -490,7 +492,7 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-baseline gap-1.5">
               <span className="min-w-0 flex-1 text-[11px] font-medium leading-5 text-zinc-500 [overflow-wrap:anywhere]">{bout.method}</span>
-              {bout.fighterOdds ? <span className="shrink-0 text-[10px] font-semibold tabular-nums text-zinc-400" title={`${fighterName} closing odds`}>{bout.fighterOdds}</span> : null}
+              {bout.fighterOdds ? <span className="shrink-0 text-[10px] font-semibold tabular-nums text-zinc-400" title={`${fighterName} ${bout.oddsLabel}`}>{bout.fighterOdds}</span> : null}
             </span>
             {bout.detail ? <span className="block text-[11px] leading-4 text-zinc-500 [overflow-wrap:anywhere]">{bout.detail}</span> : null}
             <EnteringRecords career={row.career_record_before} ufc={row.record_before} name={fighterName} className="mt-0.5 w-full text-[10px] font-medium leading-4 text-zinc-400" />
@@ -508,7 +510,7 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
           <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
             <span className="min-w-0 break-words text-sm font-semibold leading-5 text-zinc-900">{row.opponent.name}</span>
             {"opponent_rank" in row ? <RankTag ranking={row.opponent_rank} who={row.opponent.name} division={row.weight_class} /> : null}
-            {bout.opponentOdds ? <span className="shrink-0 text-[10px] font-semibold tabular-nums text-zinc-400" title={`${row.opponent.name} closing odds`}>{bout.opponentOdds}</span> : null}
+            {bout.opponentOdds ? <span className="shrink-0 text-[10px] font-semibold tabular-nums text-zinc-400" title={`${row.opponent.name} ${bout.oddsLabel}`}>{bout.opponentOdds}</span> : null}
           </span>
           <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <EnteringRecords career={row.opponent_career_record_before} ufc={row.opponent_record_before} name={row.opponent.name} className="text-[10px] font-semibold leading-4 text-zinc-500" />
