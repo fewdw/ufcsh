@@ -13,7 +13,7 @@ export function citedRosterReports(wikitext: string, names: string[]): Report[] 
   const signing = new RegExp(`\\b(?:signs?|signed|joins?|joined|inks?|inked)(?: ${modifiers}){0,12} ufc\\b(?! (?:\\d|fight|on|lineup))`);
   const award = /\b(?:earns?|earned) (?:a )?ufc contracts?\b|\bawarded (?:a )?contracts? (?:with|by) (?:the )?ufc\b/;
   const ufcSigning = /\bufc(?: (?:has|had|officially|reportedly)){0,3} (?:signs|signed|inks|inked)\b/;
-  const leaving = /\b(?:released|cut) (?:from|by) (?:(?:the|his|her) )?ufc\b|\b(?:announces?|confirms?|reveals?) (?:his |her )?ufc releases?\b/;
+  const leaving = /\b(?:released|cut) (?:from|by) (?:(?:the|his|her) )?ufc\b|\b(?:announces?|confirms?|reveals?) (?:his |her )?ufc releases?\b|\b(?:granted (?:his |her |a )?release|(?:announces?|confirms?|reveals?) (?:his |her )?release) from (?:the )?ufc\b/;
   const ufcLeaving = /\bufc(?: (?:has|had|officially|reportedly)){0,3} (?:releases|released|cuts|cut)\b/;
   const departed = /\b(?:and (?:the )?ufc (?:have |had )?part(?:ed)? ways|part(?:s|ed|ing)? ways with (?:the )?ufc|(?:is |was |are |were )?no longer under contract with (?:the )?ufc)\b/;
   const positions = (title: string): { start: number; end: number }[] => {
@@ -49,14 +49,20 @@ export function citedRosterReports(wikitext: string, names: string[]): Report[] 
         ? person.start >= match.index + match[0].length && !otherAction.test(title.slice(match.index + match[0].length, person.start))
         : person.end <= match.index && !otherAction.test(title.slice(person.end, match.index)));
     };
+    const granted = /\bufc grants?\b/.exec(title);
+    const grantedRelease = granted && who.some(person => person.start >= granted.index + granted[0].length
+      && !otherAction.test(title.slice(granted.index + granted[0].length, person.start))
+      && /^ (?:s )?release\b/.test(title.slice(person.end)));
+    const mutualDeparture = who.some(person => /^ufc (?:and )?$/.test(title.slice(0, person.start))
+      && /^ (?:have |had )?part(?:ed)? ways\b/.test(title.slice(person.end)));
     const awarded = award.exec(title);
     const directAward = awarded && who.some(person => person.end <= awarded.index
       && /^(?: (?:has|been|was|is|officially|now))* *$/.test(title.slice(person.end, awarded.index)));
     if (subject(signing) || subject(ufcSigning, true) || directAward) {
       reports.push({ date, kind: "signed", reason: null, source_url: url });
-    } else if (subject(leaving) || subject(ufcLeaving, true)) {
+    } else if (subject(leaving) || subject(ufcLeaving, true) || grantedRelease) {
       reports.push({ date, kind: "released", reason: "Released", source_url: url });
-    } else if (subject(departed)) {
+    } else if (subject(departed) || mutualDeparture) {
       reports.push({ date, kind: "departed", reason: "Parted ways", source_url: url });
     } else if (/\bufc\b/.test(title) && !/\b(?:former|vet|veteran|bellator|pfl|rizin|will|plans|return|returns|retirement fight|final fight)\b/.test(title)
       && subject(/\b(?:announc(?:es?|ed) (?:his |her )?retirement|retires?|retired|notifies (?:the )?ufc of (?:his |her )?retirement)\b/)) {

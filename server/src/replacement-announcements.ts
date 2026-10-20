@@ -5,6 +5,8 @@ import { readFileSync } from "node:fs";
  * citation headlines do not. Dates match publisher metadata and date the
  * announcement, never the fighter's acceptance. */
 export const VERIFIED_REPLACEMENT_REPORTS = [
+  { eventDate: "2012-07-07", name: "Mike Easton", replaced: "Renan Barao", date: "2012-05-19",
+    source: "https://www.mmafighting.com/ufc/2012/5/19/3031421/mike-easton-renan-barao-ivan-menjivar-ufc-148-mma-news" },
   ...JSON.parse(readFileSync(new URL("./replacement-reports.json", import.meta.url), "utf8")) as
     { eventDate: string; name: string; replaced: string; date: string; source: string }[],
   { eventDate: "2017-12-02", name: "Jose Aldo", replaced: "Frankie Edgar", date: "2017-11-11",
@@ -30,6 +32,8 @@ export function verifiedReplacementIdentity(name: string, eventDate: string): st
 
 /** Exact source-backed identity conflicts; never a general absence heuristic. */
 export const VERIFIED_NON_REPLACEMENTS = [
+  { eventDate: "2012-07-07", name: "Ivan Menjivar", replaced: "Renan Barao",
+    source: "https://www.mmafighting.com/ufc/2012/5/19/3031421/mike-easton-renan-barao-ivan-menjivar-ufc-148-mma-news" },
   { eventDate: "2022-10-29", name: "Christian Rodriguez", replaced: "Drakkar Klose",
     source: "https://mmajunkie.usatoday.com/2022/10/ufc-news-drakkar-klose-out-mark-madsen-meets-grant-dawson-fight-night-on-nov-5" },
   { eventDate: "2016-11-19", name: "Rogerio Nogueira", replaced: "Alexander Gustafsson",

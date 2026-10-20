@@ -278,16 +278,18 @@ function citedReplacementAnnouncements(background: string, changes: BoutChange[]
   const nameAt = (title: string, name: string) => {
     const words = normName(name).split(" ").filter(word => !SUFFIX.test(word));
     const last = words.at(-1) ?? "";
-    return words.length > 1 && last.length >= 4 ? ` ${normName(title)} `.indexOf(` ${last} `) : -1;
+    const normalized = ` ${normName(title)} `;
+    const full = words.length > 1 ? normalized.indexOf(` ${words.join(" ")} `) : -1;
+    return full >= 0 ? full : words.length > 1 && last.length >= 4 ? normalized.indexOf(` ${last} `) : -1;
   };
   for (const ref of background.matchAll(/<ref\b[^>]*>([\s\S]*?)<\/ref>/gi)) {
     const field = (key: string) => ref[1].match(new RegExp(`\\|\\s*${key}\\s*=\\s*([^|}]*)`, "i"))?.[1].trim() ?? "";
     const title = plainText(field("title"));
     const normalized = normName(title);
-    const cue = /\breplaced by\b|\breplaces?\b|\breplacing\b|\b(?:steps? in|fills? in|in) for\b/.exec(normalized);
+    const cue = /\breplaced by\b|\breplac(?:e[sd]?|ing)\b|\b(?:steps? in|fills? in|in) for\b/.exec(normalized);
     // "Oliveira out; Volkanovski now faces Makhachev" also explicitly
     // announces the change. A booking headline without a withdrawal does not.
-    const out = /\bout\b|\bwithdraws?\b/.exec(normalized);
+    const out = /\b(?:out|off|withdraws?|injured|hurt)\b/.exec(normalized);
     if ((!cue && !out) || !/^https?:\/\//.test(field("url"))
       || /\b(?:could|might|rumou?r|not replacing|not replaced)\b/.test(normalized)) continue;
     const date = citationDate(field("date"));
@@ -296,9 +298,13 @@ function citedReplacementAnnouncements(background: string, changes: BoutChange[]
     const days = Math.round((Date.parse(`${event}T12:00:00Z`) - published) / 86_400_000);
     if (days < 0 || days > 60) continue;
     const matches = changes.filter(change => {
-      if (!change.replaced || surnameOf(change.name) === surnameOf(change.replaced)) return false;
+      if (!change.replaced) return false;
+      // Shared surnames need both full identities, never two matches to
+      // the same surname token (Anthony Smith replacing Trevor Smith).
+      if (surnameOf(change.name) === surnameOf(change.replaced)
+        && ![change.name, change.replaced].every(name => ` ${normalized} `.includes(` ${normName(name)} `))) return false;
       const replacement = nameAt(title, change.name), replaced = nameAt(title, change.replaced);
-      if (replacement < 0 || replaced < 0) return false;
+      if (replacement < 0 || replaced < 0 || replacement === replaced) return false;
       if (cue) return cue[0] === "replaced by" ? replaced < cue.index && replacement > cue.index
         : replacement < cue.index && replaced > cue.index;
       return replaced < out!.index && replacement > out!.index
@@ -884,6 +890,9 @@ export type RosterMove = {
 
 export const ROSTER_ARTICLE = "List of current UFC fighters";
 
+// Wikipedia retains the pre-2021 Afghan flag under its full historical name.
+const FLAG_NAMES: Record<string, string> = { "ISLAMIC REPUBLIC OF AFGHANISTAN": "AF", AFGHANISTAN: "AF" };
+
 // {{flagicon}} takes IOC and ISO alpha-3 codes interchangeably.
 const ALPHA2: Record<string, string> = {
   ABW: "AW", ARU: "AW", AFG: "AF", AGO: "AO", ANG: "AO", ALB: "AL", ARG: "AR", ARM: "AM", AUS: "AU", AUT: "AT",
@@ -958,13 +967,13 @@ export function rosterMoves(wikitext: string, heading: RegExp): RosterMove[] {
   const rows = sectionRows(wikitext, heading);
   const column = (row: Record<string, string>, pattern: RegExp) => Object.entries(row).find(([key]) => pattern.test(key))?.[1] ?? "";
   return rows.map(row => {
-    const flag = column(row, /country|iso|nation/).match(/\{\{\s*(?:flag(?:icon)?\s*\||#invoke\s*:\s*flag\s*\|\s*icon\s*\|)\s*([A-Za-z]{3})\s*[|}]/i)?.[1].toUpperCase();
+    const flag = column(row, /country|iso|nation/).match(/\{\{\s*(?:flag(?:icon)?\s*\||#invoke\s*:\s*flag\s*\|\s*icon\s*\|)\s*([^|}]+)\s*[|}]/i)?.[1].trim().toUpperCase();
     return {
       date: moveDate(column(row, /^date$/)),
       // Footnote marks ("Amanda Nunes *") are the key's, not the name's.
       name: (cellText(column(row, /^name$/)) ?? "").replace(/[\s*†‡#^]+$/, ""),
       nickname: cellText(column(row, /nickname/)),
-      country: flag ? ALPHA2[flag] ?? null : null,
+      country: flag ? ALPHA2[flag] ?? FLAG_NAMES[flag] ?? null : null,
       division: cellText(column(row, /division/)),
       // Older tables head it "Retired / Released / Chose not to re-sign".
       reason: cellText(column(row, /reason|retired|released/)),

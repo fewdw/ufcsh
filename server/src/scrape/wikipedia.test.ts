@@ -312,6 +312,9 @@ test("roster flags read Wikipedia's Lua icon syntax and template syntax", () => 
   const moves = rosterChanges(text);
   assert.equal(moves.signed[0].country, "CA");
   assert.equal(moves.cut[0].country, "US");
+  const historical = rosterChanges(text.replace("{{#invoke:flag|icon|CAN}}", "{{#invoke:flag|icon|Islamic Republic of Afghanistan}}"));
+  assert.equal(historical.signed[0].country, "AF");
+  assert.equal(rosterChanges(text.replace("{{#invoke:flag|icon|CAN}}", "{{flagicon|Unknown country}}" )).signed[0].country, null);
 });
 
 test("replacements name whom they replaced, completing surnames from earlier prose", () => {
@@ -487,4 +490,29 @@ Garrett Armfield and Christian Rodriguez were expected to meet in a bantamweight
   const { changes } = cardChanges(text, [["Christian Rodriguez", "Joshua Weems"]]);
   assert.equal(changes.some(change => change.name === "Christian Rodriguez"), false);
   assert.equal(changes.find(change => change.name === "Joshua Weems")?.replaced, "Garrett Armfield");
+});
+
+test("past-tense replacements, injury withdrawals and full short names retain dated announcements", () => {
+  const read = (name: string, replaced: string, title: string) => cardChanges(article(
+    `[[${replaced}]] withdrew and was replaced by [[${name}]].<ref>{{cite web|url=https://example.com/change|title=${title}|date=2024-01-11}}</ref>`
+  ), [[name, "Alex Opponent"]]).changes[0]?.notice;
+  assert.equal(read("Bryan Battle", "Michael Morales", "Bryan Battle replaced Morales against Rinat Fakhretdinov"), "announced 9 days before");
+  assert.equal(read("Sam Alvey", "Trevor Smith", "Trevor Smith injured, Sam Alvey fights Ramazan Emeev"), "announced 9 days before");
+  assert.equal(read("Dustin Jacoby", "Uran Satybaldiev", "Uran Satybaldiev off UFC Vegas, Dustin Jacoby steps in"), "announced 9 days before");
+  assert.equal(read("Joshua Van", "Kevin Borjas", "Joshua Van replaces Kevin Borjas"), "announced 9 days before");
+  assert.equal(read("Anthony Smith", "Trevor Smith", "Anthony Smith replaces Trevor Smith"), "announced 9 days before");
+  assert.equal(read("Anthony Smith", "Trevor Smith", "Smith replaces Smith"), null);
+  assert.equal(read("Anthony Smith", "Trevor Smith", "Trevor Smith replaces Anthony Smith"), null);
+  assert.equal(read("Sam Alvey", "Trevor Smith", "Sam Alvey injured, Trevor Smith fights Ramazan Emeev"), null);
+  assert.equal(read("Joshua Van", "Kevin Borjas", "Van replaces Kevin Borjas"), null);
+});
+
+
+test("UFC 148's confirmed replacement is Easton while Menjivar is the opponent who stayed", () => {
+  const text = `{{Infobox MMA event\n| date = July 7, 2012\n}}\n==Background==
+[[Renan Barao]] was expected to face [[Ivan Menjivar]]. He was replaced by [[Mike Easton]].`;
+  const changes = cardChanges(text, [["Ivan Menjivar", "Mike Easton"]]).changes;
+  assert.equal(changes.find(change => change.name === "Mike Easton")?.replaced, "Renan Barao");
+  assert.equal(changes.find(change => change.name === "Mike Easton")?.notice, "announced 49 days before");
+  assert.equal(changes.some(change => change.name === "Ivan Menjivar" && change.replaced === "Renan Barao"), false);
 });

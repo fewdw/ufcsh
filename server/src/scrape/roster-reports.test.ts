@@ -128,3 +128,13 @@ test("parting ways preserves a departure without asserting a release", () => {
   assert.equal(report?.reason, "Parted ways");
   assert.deepEqual(citedRosterReports(citation("After parting ways with UFC, Ben Saunders interested in fighting for RIZIN"), ["Ben Saunders"]), []);
 });
+
+test("granted and announced releases preserve confirmed changes, while requests and other subjects do not", () => {
+  for (const title of ["Artem Lobov granted release from UFC", "Artem Lobov announces release from the UFC", "UFC grants Artem Lobov's release"]) {
+    assert.equal(citedRosterReports(citation(title), ["Artem Lobov"])[0]?.kind, "released", title);
+  }
+  assert.equal(citedRosterReports(citation("UFC, Gina Mazany part ways after back-to-back losses"), ["Gina Mazany"])[0]?.kind, "departed");
+  for (const title of ["Artem Lobov requests release from UFC", "Artem Lobov wants UFC to grant release", "UFC grants John Smith release, Artem Lobov stays", "UFC, John Smith part ways; Artem Lobov fights on"]) {
+    assert.deepEqual(citedRosterReports(citation(title), ["Artem Lobov"]), [], title);
+  }
+});

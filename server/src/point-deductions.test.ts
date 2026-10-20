@@ -57,3 +57,51 @@ test("media cards follow our fighter order and must agree with their own winner"
   assert.deepEqual(pageMedia(page, -1).items.map(c => [c.f1Score, c.f2Score]), [[47, 47], [48, 46]]);
   assert.deepEqual(pageMedia(page, 1).dropped.map(c => c.winner), ["Murphy", "Volkanovski"]);
 });
+
+import { db } from "./db.ts";
+import { readPointDeductions } from "./point-deductions.ts";
+
+const importFight = { id: "mma-import-test", date: "2024-06-15", f1_name: "Alice Archer", f2_name: "Betty Baker", f1_alias: null, f2_alias: null };
+const panel = ["Alice Judge", "Betty Judge", "Claire Judge"];
+const importPage = `<a href="fighter/1/Betty-Baker">Betty Baker</a><a href="fighter/2/Alice-Archer">Alice Archer</a>`
+  + panel.map(judge => `<table><tr><td class="judge">${judge}</td></tr>
+    <tr class="decision"><td>1</td><td>9</td><td>10</td></tr>
+    <tr class="decision"><td>2</td><td>10</td><td>9</td></tr>
+    <tr class="decision"><td>3</td><td>9</td><td>10</td></tr>
+    <tr class="bottom-row"><td>TOTAL</td><td>28</td><td>29</td></tr></table>`).join("")
+  + `<table><tr><td class="top-cell">MEDIA SCORES</td></tr><tr class="decision"><td>Test Reporter</td><td>28-29</td><td>Archer</td></tr></table>`;
+
+function importFixture(t: { after: (callback: () => void) => void }, prior: string | null = null) {
+  db.exec("BEGIN"); t.after(() => db.exec("ROLLBACK"));
+  db.prepare("INSERT INTO events (id, name, date, complete) VALUES (?, 'UFC import test', ?, 1)").run(importFight.id, importFight.date);
+  db.prepare(`INSERT INTO fights (id, event_id, f1_name, f2_name, method, round, detail_json, judge_rounds_json)
+    VALUES (?, ?, ?, ?, 'U-DEC', '3', ?, ?)`).run(importFight.id, importFight.id, importFight.f1_name, importFight.f2_name,
+      JSON.stringify({ judges: panel.map(judge => ({ judge, f1Score: 29, f2Score: 28 })) }), prior);
+}
+
+test("one confirmed source read stores correctly oriented rounds, deductions and media together", async t => {
+  importFixture(t, "malformed old import");
+  t.mock.method(globalThis, "fetch", async (url: URL) => new Response(String(url).includes("decisions-by-event/")
+    ? `<table><tr><td>Jun 15, 2024</td><td><a href="event/1/UFC-test">UFC test</a></td></tr></table>`
+    : String(url).includes("/event/") ? `<a href="decision/1/Alice-Archer-vs-Betty-Baker">Decision</a>` : importPage));
+  const result = await readPointDeductions([importFight], 1);
+  assert.equal(result.failed, 0); assert.equal(result.stored, 1);
+  const row = db.prepare("SELECT * FROM fights WHERE id = ?").get(importFight.id)!;
+  const imported = JSON.parse(String(row.judge_rounds_json));
+  assert.equal(imported.judges.length, 3);
+  assert.deepEqual(imported.judges.map((card: JudgeCard) => [card.f1Score, card.f2Score]), [[29, 28], [29, 28], [29, 28]]);
+  assert.deepEqual(imported.judges[0].rounds[0], { round: 1, f1Score: 10, f2Score: 9 });
+  assert.deepEqual(JSON.parse(String(row.deductions_json)).items, []);
+  assert.equal(JSON.parse(String(row.media_scores_json)).items[0].f1Score, 29);
+  assert.ok(row.deductions_checked_at);
+});
+
+test("an unavailable source preserves data and leaves a decision unprocessed for retry", async t => {
+  importFixture(t);
+  t.mock.method(globalThis, "fetch", async () => new Response("Unavailable", { status: 503 }));
+  const before = db.prepare("SELECT * FROM fights WHERE id = ?").get(importFight.id);
+  const result = await readPointDeductions([importFight], 1);
+  assert.equal(result.failed, 1);
+  assert.equal(result.stored, 0);
+  assert.deepEqual(db.prepare("SELECT * FROM fights WHERE id = ?").get(importFight.id), before);
+});
