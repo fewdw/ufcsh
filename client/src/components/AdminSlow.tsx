@@ -13,6 +13,15 @@ type SlowRoute = { route: string; count: number; sumMs: number; maxMs: number; a
 export type Slow = { hours: number; since: number; thresholdMs: number; addresses: SlowAddress[]; routes: SlowRoute[] };
 
 const WINDOWS: [number, string][] = [[1, "1 hour"], [3, "3 hours"], [6, "6 hours"], [12, "12 hours"], [24, "24 hours"], [72, "3 days"], [168, "7 days"]];
+const WINDOW_KEY = "admin-slow-hours";
+
+/** The window picked last time, or 7 days. */
+function savedHours() {
+  try {
+    const saved = Number(localStorage.getItem(WINDOW_KEY));
+    return WINDOWS.some(([value]) => value === saved) ? saved : 168;
+  } catch { return 168; }
+}
 const hourStamp = (at: number) => new Date(at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 /** The part of a slow request spent getting its data, as a share. */
@@ -41,7 +50,11 @@ function SlowRow({ row, now }: { row: SlowAddress; now: number }) {
 /** Requests that kept a reader waiting, so a Speed warning on the Overview
  *  leads to the routes and exact addresses behind it. */
 export default function AdminSlow() {
-  const [hours, setHours] = useState(168);
+  const [hours, setHoursState] = useState(savedHours);
+  const setHours = (value: number) => {
+    setHoursState(value);
+    try { localStorage.setItem(WINDOW_KEY, String(value)); } catch { /* storage unavailable */ }
+  };
   const { data, error, loading } = useAdminResource<Slow>(`/api/admin/slow?hours=${hours}`, 30_000);
   // The last window stays on screen, dimmed, until the one picked arrives.
   const stale = data != null && data.hours !== hours;
