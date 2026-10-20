@@ -1,6 +1,7 @@
 import { syncCrew } from "./event-crew.ts";
 import { startPotentialMatchupSync } from "./potential-matchups.ts";
 import { isFightDay, LIVE_EVENT_INTERVAL, liveDetailDue, fightIsComplete, fightIsUnderway } from "./live-state.ts";
+import { verifiedReplacementAnnouncement } from "./replacement-announcements.ts";
 import { db, getMeta, metaAgeMs, setMeta, touchMeta } from "./db.ts";
 import { recordSyncError } from "./sync-status.ts";
 import { daysBetween, firstLastName, log, normName, todayIso } from "./util.ts";
@@ -252,6 +253,26 @@ function storeSchedules(events: { id: string; name: string; date: string }[], sc
     timed++;
   }
   return timed;
+}
+
+/** A checked report added after a card's article was read dates the
+ *  replacement without waiting for that article to be read again. */
+export function applyVerifiedReplacementNotices(): number {
+  const rows = db.prepare(`SELECT f.id, e.date, f.f1_name, f.f1_replaced, f.f1_notice, f.f2_name, f.f2_replaced, f.f2_notice
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE (f.f1_replaced IS NOT NULL AND f.f1_notice IS NULL) OR (f.f2_replaced IS NOT NULL AND f.f2_notice IS NULL)`).all() as
+    { id: string; date: string; f1_name: string; f1_replaced: string | null; f1_notice: string | null; f2_name: string; f2_replaced: string | null; f2_notice: string | null }[];
+  let applied = 0;
+  for (const row of rows) for (const side of ["f1", "f2"] as const) {
+    const replaced = row[`${side}_replaced`];
+    if (!replaced || row[`${side}_notice`]) continue;
+    const notice = verifiedReplacementAnnouncement(row[`${side}_name`], replaced, row.date);
+    if (!notice) continue;
+    db.prepare(`UPDATE fights SET ${side}_notice = ? WHERE id = ?`).run(notice, row.id);
+    applied++;
+  }
+  if (applied) log(`replacement notices: ${applied} dated from checked reports`);
+  return applied;
 }
 
 /**
@@ -1955,6 +1976,7 @@ export async function tick(): Promise<void> {
     if (!catchWeightsRunning) void guarded("catch_weights", async () => { await syncCatchWeights(); });
     if (!venueArchiveRunning) void guarded("venue_archive", () => syncVenueArchive());
     if (!wikiInfoRunning) void guarded("event_articles", () => syncEventWikiInfo());
+    await guarded("replacement_notices", async () => { applyVerifiedReplacementNotices(); });
     // Broadcast crews come from a short-lived feed, read alongside the tick.
     void guarded("event_crew", () => syncCrew());
 
