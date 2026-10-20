@@ -16,7 +16,14 @@ type Row = Identity & { detail_json: string | null; judge_rounds_json: string | 
 type Entry = Identity & { checkedAt: number; deductions: string | null; media: string | null; judges: string | null };
 export type MmaPatch = { version: 1; since: number; createdAt: number; entries: Entry[] };
 const select = `SELECT f.*, e.date FROM fights f JOIN events e ON e.id = f.event_id`;
-const sourceUrl = (value: unknown): boolean => typeof value === "string" && /^https:\/\/mmadecisions\.com\/decision\/\d+\/[\w-]+$/.test(value);
+const sourceUrl = (value: unknown): boolean => {
+  if (typeof value !== "string") return false;
+  try {
+    const url = new URL(value);
+    return url.origin === "https://mmadecisions.com" && !url.username && !url.password && !url.search && !url.hash
+      && /^\/decision\/\d+\/[^/]+$/.test(url.pathname);
+  } catch { return false; }
+};
 const parse = (json: string | null): any => { try { return JSON.parse(json ?? "null"); } catch { return null; } };
 
 function validate(entry: Entry, since: number, createdAt: number): void {

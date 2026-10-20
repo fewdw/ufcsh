@@ -93,3 +93,16 @@ test("a successfully completed search can close an unread item without inventing
   const row = target.prepare("SELECT * FROM fights").get()!;
   assert.equal(row.judge_rounds_json, null); assert.equal(row.deductions_json, null); assert.equal(row.media_scores_json, null);
 });
+
+
+test("source URLs preserve percent-encoded names and punctuation while rejecting deceptive origins", t => {
+  const source = fixture(t, true), target = fixture(t);
+  const patch = exportMmaDecisions(source, 1000, 3000);
+  patch.entries[0].deductions = deductions.replace("Alice-Archer-vs-Betty-Baker", "Tim-Means-vs-M%C3%A1rcio-Alexandre-Jr.");
+  assert.equal(replayMmaDecisions(target, patch).fields, 4);
+  for (const url of ["https://mmadecisions.com.evil.test/decision/123/A-B", "https://user@mmadecisions.com/decision/123/A-B",
+    "https://mmadecisions.com/decision/123/A-B?other=1", "https://mmadecisions.com/decision/123/A-B#other", "http://mmadecisions.com/decision/123/A-B"]) {
+    patch.entries[0].deductions = JSON.stringify({ source: "MMA Decisions", sourceUrl: url, items: [] });
+    assert.throws(() => replayMmaDecisions(target, patch));
+  }
+});
