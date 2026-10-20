@@ -1,8 +1,10 @@
+import { mergeMmaJudgeRounds } from "./mma-judge-rounds.ts";
 import { db } from "./db.ts";
 import { crawlMmaDecisions, type CrawlFight } from "./mmadecisions-crawl.ts";
 import { mmaDecisionUrl, type MmaDecision, type MmaMediaScore } from "./scrape/mmadecisions.ts";
 import { log, normName } from "./util.ts";
 import { storedDeductions, type PointDeduction } from "./point-deduction-rules.ts";
+import type { JudgeCard } from "./judge-scorecards.ts";
 export { deductionProblem, verifiedDeductions, fightDeductionState } from "./point-deduction-rules.ts";
 export type { PointDeduction } from "./point-deduction-rules.ts";
 
@@ -65,6 +67,10 @@ export function storedMedia(json: string | null | undefined): StoredMedia | null
   } catch { return null; }
 }
 
+function judgeRecord(json: string | null): { judges?: JudgeCard[]; source?: string } {
+  try { return JSON.parse(json ?? "null") ?? {}; } catch { return {}; }
+}
+
 const CANDIDATES = `SELECT f.id, e.date, f.f1_name, f.f2_name, c1.source_name AS f1_alias, c2.source_name AS f2_alias
   FROM fights f JOIN events e ON e.id = f.event_id
   LEFT JOIN career_profiles c1 ON c1.fighter_id = f.f1_id AND c1.status = 'verified'
@@ -82,7 +88,21 @@ export async function readPointDeductions(fights: CrawlFight[], concurrency = 2,
   // Unchanged cards are not written again: recent pages are re-read every few hours.
   const storeMedia = db.prepare("UPDATE fights SET media_scores_json = ?1 WHERE id = ?2 AND media_scores_json IS NOT ?1");
   let saved = 0, unplaced = 0;
-  const stats = await crawlMmaDecisions(fights, { concurrency }, (fight, order, page, path) => {
+  const stats = await crawlMmaDecisions(fights, { concurrency, onChecked: fight => checked.run(Date.now(), fight.id) }, (fight, order, page, path) => {
+    // The same matched page supplies official rounds and judge names. Re-read
+    // current cards here: another sync may have improved them during the crawl.
+    const current = db.prepare("SELECT detail_json, judge_rounds_json, round FROM fights WHERE id = ?").get(fight.id) as
+      { detail_json: string | null; judge_rounds_json: string | null; round: string | null };
+    const detail = judgeRecord(current.detail_json);
+    const prior = judgeRecord(current.judge_rounds_json);
+    const incoming = page.judges.map(card => order === 1 ? card : { ...card, f1Score: card.f2Score, f2Score: card.f1Score,
+      rounds: card.rounds?.map(round => ({ ...round, f1Score: round.f2Score, f2Score: round.f1Score })) });
+    const judges = mergeMmaJudgeRounds(Array.isArray(detail?.judges) ? detail.judges : [],
+      Array.isArray(prior?.judges) ? prior.judges : [], incoming, Number(current.round));
+    if (judges) db.prepare("UPDATE fights SET judge_rounds_json = ? WHERE id = ?").run(JSON.stringify({
+      source: typeof prior.source === "string" && prior.source.includes("Verdict") ? "MMA Decisions + Verdict MMA" : "MMA Decisions",
+      sourceUrl: mmaDecisionUrl(path), fetchedAt: Date.now(), judges,
+    }), fight.id);
     const { items: media, dropped } = pageMedia(page, order);
     storeMedia.run(media.length || dropped.length ? JSON.stringify({ source: "MMA Decisions", sourceUrl: mmaDecisionUrl(path), items: media,
       ...(dropped.length ? { dropped } : {}) }) : null, fight.id);
@@ -95,8 +115,6 @@ export async function readPointDeductions(fights: CrawlFight[], concurrency = 2,
     store.run(JSON.stringify({ source: "MMA Decisions", sourceUrl: mmaDecisionUrl(path), items }), Date.now(), fight.id);
     saved++;
   }, onProgress);
-  const now = Date.now();
-  for (const fight of fights) checked.run(now, fight.id);
   return { matched: stats.matched, stored: saved, unplaced, failed: stats.failed };
 }
 
@@ -111,7 +129,10 @@ export async function syncRecentPointDeductions(now = Date.now(), olderBatch = 2
     AND (f.deductions_checked_at IS NULL OR f.deductions_checked_at < ?)`).all(cutoff, now - 6 * 3600_000) as CrawlFight[];
   const older = db.prepare(`${CANDIDATES} AND e.date < ? AND f.deductions_checked_at IS NULL
     ORDER BY e.date DESC LIMIT ?`).all(cutoff, olderBatch) as CrawlFight[];
-  if (recent.length || older.length) await readPointDeductions([...recent, ...older]);
+  if (recent.length || older.length) {
+    const result = await readPointDeductions([...recent, ...older]);
+    if (result.failed) throw new Error(`MMA Decisions: ${result.failed} source reads failed; affected bouts remain pending`);
+  }
 }
 
 /** Admin repair: read one decision's page again. */
@@ -119,6 +140,7 @@ export async function syncFightPointDeductions(fightId: string): Promise<PointDe
   const fights = db.prepare(`${CANDIDATES} AND f.id = ?`).all(fightId) as CrawlFight[];
   if (!fights.length) return null;
   const result = await readPointDeductions(fights, 1);
+  if (!result.stored && result.failed) throw new Error("MMA Decisions source read failed; retry later");
   if (!result.stored) return null;
   const row = db.prepare("SELECT deductions_json FROM fights WHERE id = ?").get(fightId) as { deductions_json: string | null };
   return storedDeductions(row.deductions_json)?.items ?? null;
@@ -128,7 +150,8 @@ export async function syncFightPointDeductions(fightId: string): Promise<PointDe
 export async function syncFightMediaScores(fightId: string): Promise<{ matched: boolean; media: StoredMedia | null }> {
   const fights = db.prepare(`${CANDIDATES} AND f.id = ?`).all(fightId) as CrawlFight[];
   if (!fights.length) return { matched: false, media: null };
-  const { matched } = await readPointDeductions(fights, 1);
+  const { matched, failed } = await readPointDeductions(fights, 1);
+  if (!matched && failed) throw new Error("MMA Decisions source read failed; retry later");
   const row = db.prepare("SELECT media_scores_json FROM fights WHERE id = ?").get(fightId) as { media_scores_json: string | null };
   return { matched: matched > 0, media: storedMedia(row.media_scores_json) };
 }

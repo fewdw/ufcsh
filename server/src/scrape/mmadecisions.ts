@@ -10,7 +10,11 @@ export async function fetchMmaDecisions(path: string): Promise<string> {
     signal: AbortSignal.timeout(20_000),
   });
   if (!response.ok) throw new Error(`MMA Decisions HTTP ${response.status}`);
-  return response.text();
+  const html = await response.text();
+  // A 200 response can be a proxy/challenge page rather than the archive.
+  if (!/href=["'](?:decisions-by-event|event|decision|fighter)\//i.test(html))
+    throw new Error("Unreadable MMA Decisions response");
+  return html;
 }
 
 export type MmaEvent = { date: string; path: string };

@@ -65,3 +65,9 @@ test("MMA Decisions media scores keep the writer, outlet, link, score and winner
   ]);
   assert.deepEqual(parseMmaDecision(page.replace("MEDIA SCORES", "FAN SCORING"))?.media, []);
 });
+
+test("HTTP 200 challenge pages are failed reads rather than empty evidence", async t => {
+  const { fetchMmaDecisions } = await import("./mmadecisions.ts");
+  t.mock.method(globalThis, "fetch", async () => new Response("<title>Loading</title>", { status: 200 }));
+  await assert.rejects(fetchMmaDecisions("decisions-by-event/2024/"), /Unreadable MMA Decisions response/);
+});
