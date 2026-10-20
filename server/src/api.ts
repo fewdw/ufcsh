@@ -31,7 +31,7 @@ import { HttpObservability, UNCOUNTED_ROUTES, pageRouteGroup, routeGroup } from 
 import { isAutomated, sourceOf } from "./visitors.ts";
 import { TrafficHistory } from "./traffic-history.ts";
 import { createRepairRunner } from "./repair-guard.ts";
-import { publicApi, cachePolicy, canonicalApiKey, clientAddress, RateLimiter } from "./api-policy.ts";
+import { publicApi, cachePolicy, canonicalApiKey, clientAddress, RateLimiter, STATS_PAGE_OPENING } from "./api-policy.ts";
 import { canonicalMethod, log, normName, todayIso } from "./util.ts";
 import { currentRanking, currentRankings, rankingEntering, rankingSnapshot, rankingTimeline } from "./ranking-history.ts";
 import { rankingArchive } from "./ranking-archive.ts";
@@ -1694,6 +1694,15 @@ const MIME: Record<string, string> = {
 
 type CachedImage = { data: Buffer; contentType: string; imagePath: string };
 const imageRequests = new Map<string, Promise<CachedImage>>();
+/** A picture that could not be fetched is not asked for again for a while:
+ *  each reader would otherwise wait out the same failure (several seconds for
+ *  an oversized original) before the placeholder shows. */
+const PHOTO_RETRY_MS = 10 * 60_000;
+const photoFailures = new Map<string, number>();
+const RECENT_PHOTO_FAILURE = "photo failed recently";
+/** ufc.com serves some headshots as originals of 10 MB and more; they are
+ *  framed and shrunk once, then served from the cache. */
+const PHOTO_MAX_BYTES = 30_000_000;
 
 /** Headshot and full body are cached side by side under one fighter id. */
 export type PhotoVariant = "head" | "full";
@@ -1798,6 +1807,7 @@ async function loadFighterImage(id: string, variant: PhotoVariant): Promise<Cach
       let data: Buffer | null = !suffix ? await fs.readFile(`${previousPath}.img`).catch(() => null) : null;
       let contentType = data ? await fs.readFile(`${previousPath}.type`, "utf8").catch(() => "image/jpeg") : "";
       if (!data) {
+        if (Date.now() - (photoFailures.get(requestKey) ?? -Infinity) < PHOTO_RETRY_MS) throw new Error(RECENT_PHOTO_FAILURE);
         const response = await fetch(remote, {
           headers: { "User-Agent": "Mozilla/5.0 (compatible; ufc.sh image cache)" },
           signal: AbortSignal.timeout(15_000),
@@ -1806,7 +1816,7 @@ async function loadFighterImage(id: string, variant: PhotoVariant): Promise<Cach
         contentType = (response.headers.get("content-type") ?? "image/jpeg").split(";")[0];
         if (!contentType.startsWith("image/")) throw new Error(`unexpected photo type ${contentType}`);
         data = Buffer.from(await response.arrayBuffer());
-        if (!data.length || data.length > 10_000_000) throw new Error("invalid photo size");
+        if (!data.length || data.length > PHOTO_MAX_BYTES) throw new Error("invalid photo size");
       }
       if (!suffix) {
         const framed = await normalizeHeadshot(data);
@@ -1815,11 +1825,14 @@ async function loadFighterImage(id: string, variant: PhotoVariant): Promise<Cach
       await fs.mkdir(IMAGE_CACHE, { recursive: true });
       await Promise.all([fs.writeFile(imagePath, data), fs.writeFile(typePath, contentType)]);
       void discardOldPhotos(id, suffix, version);
+      photoFailures.delete(requestKey);
       return { data, contentType, imagePath };
     } catch (error) {
       try {
         return await readCached();
       } catch {
+        if (photoFailures.size >= 5000) photoFailures.clear();
+        if (!String(error).includes(RECENT_PHOTO_FAILURE)) photoFailures.set(requestKey, Date.now());
         throw error;
       }
     } finally {
@@ -1889,7 +1902,7 @@ async function serveFighterImage(res: http.ServerResponse, id: string, variant: 
     });
     res.end(data);
   } catch (error) {
-    log(`fighter image ${id} (${variant}) failed:`, String(error));
+    if (!String(error).includes(RECENT_PHOTO_FAILURE)) log(`fighter image ${id} (${variant}) failed:`, String(error));
     res.writeHead(502, { "Cache-Control": "no-store" });
     res.end();
   }
@@ -2369,6 +2382,10 @@ export function startApi(port: number): http.Server {
   const adminStore = new AdminStore(scoreStore.db);
   const productionRepair = createRepairRunner(repairSnapshot, runBugAction, entry =>
     console.log(JSON.stringify({ timestamp: new Date().toISOString(), ...entry })));
+  // The data-quality report holds a query worker, half of what serves readers,
+  // for up to five seconds: opening the board again within a minute reuses it.
+  const BUG_BOARD_REUSE_MS = 60_000;
+  let bugBoard: { at: number; report: Promise<any> } | null = null;
   const admin = createAdminHandler({
     admins: adminStore,
     scores: scoreStore,
@@ -2391,12 +2408,21 @@ export function startApi(port: number): http.Server {
     errors: () => ({ http: trafficHistory.errors.list(), sync: syncStatus() }),
     slow: hours => trafficHistory.slow.list(hours),
     report: async () => {
-      const report = queryPool ? JSON.parse((await queryPool.run("/api/bugs")).json) : bugReport();
+      if (!bugBoard || Date.now() - bugBoard.at >= BUG_BOARD_REUSE_MS) {
+        const built = (async () => queryPool ? JSON.parse((await queryPool.run("/api/bugs")).json) : bugReport())();
+        const entry = bugBoard = { at: Date.now(), report: built };
+        built.catch(() => { if (bugBoard === entry) bugBoard = null; });
+      }
+      const report = await bugBoard.report;
       return { ...report, checks: [accountSyncCheck(), ...report.checks] };
     },
-    runAction: (action, target, actor) => process.env.NODE_ENV === "production"
-      ? productionRepair(action, target, actor)
-      : runBugAction(action, target),
+    runAction: async (action, target, actor) => {
+      // The board reloads after a repair and must show what it changed.
+      bugBoard = null;
+      try {
+        return await (process.env.NODE_ENV === "production" ? productionRepair(action, target, actor) : runBugAction(action, target));
+      } finally { bugBoard = null; }
+    },
     // Administrators may pause online repairs without disabling the report.
     canAct: () => process.env.DISABLE_REPAIRS !== "1",
     newsAi: { status: newsAiStatus, set: setNewsAi },
@@ -2491,7 +2517,7 @@ export function startApi(port: number): http.Server {
     if (queryPool && !queryPool.ready) return;
     clearInterval(warmLists);
     if (!queryPool) return;
-    for (const path of ["/api/events", "/api/live", "/api/stats", "/api/rankings?ranking=media", "/api/rankings?ranking=meta",
+    for (const path of ["/api/events", "/api/live", "/api/stats", STATS_PAGE_OPENING, "/api/rankings?ranking=media", "/api/rankings?ranking=meta",
       "/api/officials", "/api/venues", "/api/locations", "/api/news", "/api/awards"]) {
       void publicAnswer(new URL(path, "http://localhost")).catch(() => {});
     }

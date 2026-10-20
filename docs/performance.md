@@ -614,3 +614,19 @@ older ones (~3 minutes) beside the sync tick instead of inside it, so the
 archive fills in within a day and nothing else waits. Media writes skip
 unchanged cards and don't move the data revisions (the matchup reads them
 live), so the backfill rebuilds no query workers. Event lists never parse them.
+
+## Production after the October 19 fixes (2026-10-20)
+
+Read from production's saved traffic, slow and error logs and Prometheus. In
+the 12 hours after #224 reached production: 4,306 requests, p95 within 100 ms,
+p99 within 250 ms, no slow card or matchup. The host (4 vCPU, 7.6 GB) idled at
+6–10% CPU with at least 1.75 GB available over four days; prod RSS 1.0–2.5 GB.
+Most API traffic is crawlers (hundreds of addresses an hour, about one page view).
+
+| What | Cause | Change |
+| --- | --- | --- |
+| `/api/stats` after each deploy (9 of 62 at 300–625 ms) | The warm-up built `/api/stats`, but the page asks with every option spelled out: another cache entry | The page's own opening request (`STATS_PAGE_OPENING`) is warmed too; a client test keeps the two equal |
+| `/api/profiles/mine` (12 of 12 at 330–510 ms) | The Clerk SDK keeps its signing keys five minutes, so the first signed-in request after a gap fetched them | The server keeps Clerk's keys an hour (`SigningKeys`), refreshed behind requests; `CLERK_JWT_KEY` now reaches the container if set |
+| One headshot, 502 after ~7 s on every request | ufc.com's original is 5474×3324, 10.7 MB, over the 10 MB cap; every request downloaded it again | Cap 30 MB, headshots wider than 1,040 px shrunk once; a failed picture is not fetched again for 10 minutes |
+| Admin → Bugs (up to 5 s on a query worker) | Each opening built the report on one of the two workers readers use | Reused for a minute; a repair drops it |
+| FightOdds.io board for UFC 193, every pass (~11 min) | Their API errors on that board; a failed board stayed due | Retried a day later |

@@ -510,6 +510,15 @@ if (getMeta("migration_weight_miss_namesakes") !== "2") {
   setMeta("migration_weight_miss_namesakes", "2");
 }
 
+// A pass whose MMA Decisions requests all failed (the site refused production
+// with a 403) still marked every decision it was given as checked. Decisions
+// with nothing stored are offered to the hourly pass again.
+if (getMeta("migration_unread_mma_decisions") !== "1") {
+  db.exec(`UPDATE fights SET deductions_checked_at = NULL
+    WHERE deductions_checked_at IS NOT NULL AND deductions_json IS NULL AND media_scores_json IS NULL`);
+  setMeta("migration_unread_mma_decisions", "1");
+}
+
 if (getMeta("migration_career_identity_and_unlinked_bouts") !== "1") {
   db.exec("UPDATE career_profiles SET checked_at = NULL WHERE status != 'verified'");
   setMeta("migration_career_identity_and_unlinked_bouts", "1");
