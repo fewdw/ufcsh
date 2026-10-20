@@ -1,5 +1,6 @@
 import { db } from "./db.ts";
-import { combineJudgeRounds, hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
+import { hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
+import { mergeMmaJudgeRounds } from "./mma-judge-rounds.ts";
 import { mmaDecisionUrl } from "./scrape/mmadecisions.ts";
 import { crawlMmaDecisions } from "./mmadecisions-crawl.ts";
 
@@ -16,10 +17,10 @@ const eventFilter = options.get("event-filter") ?? "";
 
 type Fight = {
   id: string; date: string; f1_name: string; f2_name: string; f1_alias: string | null; f2_alias: string | null;
-  detail_json: string | null; judge_rounds_json: string | null;
+  round: string | null; detail_json: string | null; judge_rounds_json: string | null;
 };
 const fights = db.prepare(`SELECT f.id, e.date, f.f1_name, f.f2_name,
-    c1.source_name AS f1_alias, c2.source_name AS f2_alias, f.detail_json, f.judge_rounds_json
+    c1.source_name AS f1_alias, c2.source_name AS f2_alias, f.round, f.detail_json, f.judge_rounds_json
   FROM fights f JOIN events e ON e.id = f.event_id
   LEFT JOIN career_profiles c1 ON c1.fighter_id = f.f1_id AND c1.status = 'verified'
   LEFT JOIN career_profiles c2 ON c2.fighter_id = f.f2_id AND c2.status = 'verified'
@@ -51,13 +52,9 @@ const stats = await crawlMmaDecisions(wanted, { concurrency, eventFilter }, (fig
   Object.assign(fight, current);
   const totals = official(fight);
   const prior = imported(fight);
-  const previous = totals.length ? mergeJudgeRounds(totals, prior) : combineJudgeRounds([], prior, []);
-  const combined = totals.length ? mergeJudgeRounds(totals, [...prior, ...cards]) : combineJudgeRounds([], prior, cards);
-  const before = previous.filter(card => card.rounds?.length).length;
-  const after = combined.filter(card => card.rounds?.length).length;
-  const namesRecovered = previous.filter(card => !card.judge?.trim()).length > combined.filter(card => !card.judge?.trim()).length;
-  // Without independent UFCStats totals, require all three judge cards.
-  if ((after <= before && !namesRecovered) || (!totals.length && combined.length < 3)) return;
+  const combined = mergeMmaJudgeRounds(totals, prior, cards, Number(fight.round));
+  if (!combined) return;
+  const before = prior.filter(card => card.rounds?.length).length;
   let priorSource = "";
   try { priorSource = String(JSON.parse(fight.judge_rounds_json ?? "null")?.source ?? ""); } catch { /* malformed prior cards were ignored */ }
   const source = before > 0 && priorSource.includes("Verdict")

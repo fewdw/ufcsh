@@ -71,7 +71,7 @@ export async function syncRosterMoves(): Promise<void> {
   touchMeta("roster_moves_checked_at");
   const articleVersion = await articleRevision(ROSTER_ARTICLE);
   // A parser change must also re-read an article whose revision is unchanged.
-  const revision = articleVersion ? `2:${articleVersion}` : "";
+  const revision = articleVersion ? `3:${articleVersion}` : "";
   if (revision && revision === getMeta("roster_moves_revision")) {
     // UFCStats may have booked a signee since: their real profile takes over.
     syncSignees(storedRosterMoves().signed);
