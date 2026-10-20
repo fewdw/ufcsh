@@ -24,6 +24,19 @@ ignored. All six core roles are required; otherwise no crew is stored, any
 earlier crew is kept, and the report's link appears in Admin → Bugs. Checked
 against the UFC 332, UFC 333, Fight Night 290 and 291 reports (2026-10-20).
 
+## Archive
+
+`server/src/event-crew-archive.json` holds crews for 67 cards from 2025-2026, keyed
+by event ID, read from Yahoo's copies of MMA Junkie reports with this parser
+(2026-10-20) and checked by role counts and spot reads. Yahoo carries none before
+2025, and a few 2025-2026 reports use another layout (UFC 324), so those cards
+show no crew. Precedence: `event-broadcast-data.ts`, then the archive, then crews
+read from the feed. Older report layouts are handled too: photo captions are
+skipped, a host is the person named beside "host"/"anchor", "joined by" lists
+count, a changed plan ("instead of", "will not") drops only that sentence, and
+series labels include "UFC on ESPN N"/"UFC on ABC N". A numbered card may be
+announced up to two weeks out; a Fight Night only within the week.
+
 ## Gaps and manual imports
 
 Admin → Bugs → **Event broadcast crew missing** lists cards from the last 30

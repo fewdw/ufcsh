@@ -1,6 +1,7 @@
 import { syncCrew } from "./event-crew.ts";
 import { startPotentialMatchupSync } from "./potential-matchups.ts";
 import { isFightDay, LIVE_EVENT_INTERVAL, liveDetailDue, fightIsComplete, fightIsUnderway } from "./live-state.ts";
+import { verifiedReplacementAnnouncement } from "./replacement-announcements.ts";
 import { db, getMeta, metaAgeMs, setMeta, touchMeta } from "./db.ts";
 import { recordSyncError } from "./sync-status.ts";
 import { daysBetween, firstLastName, log, normName, todayIso } from "./util.ts";
@@ -254,16 +255,39 @@ function storeSchedules(events: { id: string; name: string; date: string }[], sc
   return timed;
 }
 
+/** A checked report added after a card's article was read dates the
+ *  replacement without waiting for that article to be read again. */
+export function applyVerifiedReplacementNotices(): number {
+  const rows = db.prepare(`SELECT f.id, e.date, f.f1_name, f.f1_replaced, f.f1_notice, f.f2_name, f.f2_replaced, f.f2_notice
+    FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE (f.f1_replaced IS NOT NULL AND f.f1_notice IS NULL) OR (f.f2_replaced IS NOT NULL AND f.f2_notice IS NULL)`).all() as
+    { id: string; date: string; f1_name: string; f1_replaced: string | null; f1_notice: string | null; f2_name: string; f2_replaced: string | null; f2_notice: string | null }[];
+  let applied = 0;
+  for (const row of rows) for (const side of ["f1", "f2"] as const) {
+    const replaced = row[`${side}_replaced`];
+    if (!replaced || row[`${side}_notice`]) continue;
+    const notice = verifiedReplacementAnnouncement(row[`${side}_name`], replaced, row.date);
+    if (!notice) continue;
+    db.prepare(`UPDATE fights SET ${side}_notice = ? WHERE id = ?`).run(notice, row.id);
+    applied++;
+  }
+  if (applied) log(`replacement notices: ${applied} dated from checked reports`);
+  return applied;
+}
+
 /**
  * The same, for the archive. A past card's segments never change once it has
  * been fought, so this walks the index backwards a few pages per tick until
- * every event we hold has been offered a slug, and then stops asking.
+ * every event we hold has been offered a slug, and then stops asking. A few
+ * cards have no ufc.com page at all: a full lap that times nothing rests the
+ * walk for 30 days instead of circling the index forever.
  */
 const ARCHIVE_PAGES_PER_TICK = 8;
 export async function syncScheduleArchive(): Promise<void> {
   const remaining = db.prepare(`SELECT COUNT(*) AS c FROM events
     WHERE ufc_slug IS NULL AND date < date('now') AND date >= '2011-01-01'`).get() as { c: number };
   if (!remaining.c) { setMeta("schedule_archive_done", "1"); return; }
+  if (metaAgeMs("schedule_archive_rested_at") < 30 * 86_400_000) return;
   const start = Number(getMeta("schedule_archive_page") ?? "1");
   const events = db.prepare("SELECT id, name, date FROM events WHERE ufc_slug IS NULL AND date >= '2011-01-01'")
     .all() as { id: string; name: string; date: string }[];
@@ -276,6 +300,11 @@ export async function syncScheduleArchive(): Promise<void> {
     if (!schedules.length) { page = 0; break; }
     timed += storeSchedules(events, schedules);
   }
+  const lap = Number(getMeta("schedule_archive_lap_timed") ?? "0") + timed;
+  if (page === 0) {
+    if (!lap) { touchMeta("schedule_archive_rested_at"); log(`schedule archive: a full lap timed nothing; resting 30 days (${remaining.c} cards have no ufc.com page)`); }
+    setMeta("schedule_archive_lap_timed", "0");
+  } else setMeta("schedule_archive_lap_timed", String(lap));
   setMeta("schedule_archive_page", String(page));
   log(`schedule archive: ${timed} cards timed from pages ${start}-${page}, ${remaining.c - timed} still without one`);
 }
@@ -1947,6 +1976,7 @@ export async function tick(): Promise<void> {
     if (!catchWeightsRunning) void guarded("catch_weights", async () => { await syncCatchWeights(); });
     if (!venueArchiveRunning) void guarded("venue_archive", () => syncVenueArchive());
     if (!wikiInfoRunning) void guarded("event_articles", () => syncEventWikiInfo());
+    await guarded("replacement_notices", async () => { applyVerifiedReplacementNotices(); });
     // Broadcast crews come from a short-lived feed, read alongside the tick.
     void guarded("event_crew", () => syncCrew());
 

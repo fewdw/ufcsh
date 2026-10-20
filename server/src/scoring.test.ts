@@ -577,6 +577,16 @@ test("Clerk verifies signatures, expiry and authorized parties; cookie-only and 
   }
 });
 
+test("a process reads Clerk's signing keys as it starts, so its first token is checked locally", async () => {
+  let loads = 0;
+  const keys = new SigningKeys(async () => { loads++; return { keys: [] }; });
+  keys.warm();
+  await keys.loading;
+  assert.equal(loads, 1);
+  keys.pemFor("x.y");
+  assert.equal(loads, 1, "a fresh copy is not read again");
+});
+
 test("Clerk's signing keys are held an hour, picked by the token's key id, and accepted by the SDK", async () => {
   const previous = { ...process.env };
   const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });

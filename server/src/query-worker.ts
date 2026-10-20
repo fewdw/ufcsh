@@ -44,6 +44,8 @@ async function warm() {
     }
   }
   if (recent[0]) urls.add(`/api/previews/${recent[0].f1_id}`);
+  // Tale-of-the-tape history tallies every earlier bout once per index (~300 ms).
+  if (recent[0]) urls.add(`/api/fights/${recent[0].id}/tape-history`);
   for (const url of urls) {
     try { await resolvePublicApi(new URL(url, "http://localhost")); } catch { /* warming only */ }
   }

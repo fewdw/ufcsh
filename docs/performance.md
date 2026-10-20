@@ -630,3 +630,17 @@ Most API traffic is crawlers (hundreds of addresses an hour, about one page view
 | One headshot, 502 after ~7 s on every request | ufc.com's original is 5474×3324, 10.7 MB, over the 10 MB cap; every request downloaded it again | Cap 30 MB, headshots wider than 1,040 px shrunk once; a failed picture is not fetched again for 10 minutes |
 | Admin → Bugs (up to 5 s on a query worker) | Each opening built the report on one of the two workers readers use | Reused for a minute; a repair drops it |
 | FightOdds.io board for UFC 193, every pass (~11 min) | Their API errors on that board; a failed board stayed due | Retried a day later |
+
+### 2026-10-20: after the October 20 release
+
+Production's slow log after that release: `/api/profiles/mine` still 394–403 ms (2
+of 2), a first `small` headshot 6.3 s and a first `tiny` 582 ms; tape history 555 ms.
+About 2,000 of 4,928 pictures had never been downloaded.
+
+| What | Cause | Change |
+| --- | --- | --- |
+| `/api/profiles/mine` after each deploy | Each process (two API workers) held no signing keys until its first token | Every process reads Clerk's keys as it starts (`SigningKeys.warm`) |
+| First view of a picture (0.3–6 s) | Only pictures re-checked since start were warmed | The rest of the roster is warmed 20 a minute after each start (`warmUncachedPhotos`) |
+| `/api/fights/:id/tape-history` (277 ms locally, first call per index) | The tally of earlier bouts is built on first use | Query workers warm it with the rest of their pages |
+| Schedule archive: ~8 ufc.com index pages every 2 minutes, in the tick | 14 cards have no ufc.com page, so the walk never finished | A full lap that times nothing rests the walk 30 days |
+| `point_deductions` sync error every hour | MMA Decisions answers this server 403 (an Apache deny; home addresses get 200) | A refused pass is retried daily and listed once in Admin → Bugs, not as an hourly error |

@@ -21,3 +21,16 @@ test("retained reports supplement identified replacements without replacing stat
   assert.equal(cardChanges(article(""), [["Jose Aldo", "Max Holloway"]]).changes[0].notice, "announced 21 days before");
   assert.equal(cardChanges(article(" on two weeks' notice"), [["Jose Aldo", "Max Holloway"]]).changes[0].notice, "2 weeks");
 });
+
+test("a checked report added later dates a stored replacement without re-reading the article", async () => {
+  const { db } = await import("./db.ts");
+  const { applyVerifiedReplacementNotices } = await import("./sync.ts");
+  db.exec("SAVEPOINT notice_test");
+  try {
+    db.prepare("INSERT INTO events (id, name, date) VALUES ('notice-test', 'UFC notice test', '2026-07-18')").run();
+    db.prepare("INSERT INTO fights (id, event_id, f1_name, f2_name, f2_replaced) VALUES ('notice-test', 'notice-test', 'Someone Else', 'Anna Melisano', 'Veronica Hardy')").run();
+    applyVerifiedReplacementNotices();
+    assert.equal((db.prepare("SELECT f2_notice FROM fights WHERE id = 'notice-test'").get() as { f2_notice: string }).f2_notice, "announced 12 days before");
+    assert.equal(applyVerifiedReplacementNotices(), 0);
+  } finally { db.exec("ROLLBACK TO notice_test; RELEASE notice_test"); }
+});

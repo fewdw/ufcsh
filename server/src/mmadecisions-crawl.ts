@@ -4,7 +4,8 @@ import { normName } from "./util.ts";
 
 /** A decision to find on MMA Decisions: its date and both fighters' names. */
 export type CrawlFight = { id: string; date: string; f1_name: string; f2_name: string; f1_alias: string | null; f2_alias: string | null };
-export type CrawlStats = { years: number; events: number; decisions: number; matched: number; failed: number };
+/** `blocked` counts failures that were the site refusing this server (HTTP 403). */
+export type CrawlStats = { years: number; events: number; decisions: number; matched: number; failed: number; blocked: number };
 
 /** Read MMA Decisions' yearly archives, the events near each wanted date and
  *  the decision pages naming one of its fighters, and hand over each page that
@@ -13,7 +14,8 @@ export type CrawlStats = { years: number; events: number; decisions: number; mat
 export async function crawlMmaDecisions<F extends CrawlFight>(fights: F[], options: { concurrency: number; eventFilter?: string; fetchPage?: typeof fetchMmaDecisions; onChecked?: (fight: F) => void },
   onMatch: (fight: F, order: 1 | -1, page: MmaDecision, path: string) => void | Promise<void>,
   onProgress?: (stats: CrawlStats, pages: number) => void): Promise<CrawlStats> {
-  const stats: CrawlStats = { years: 0, events: 0, decisions: 0, matched: 0, failed: 0 };
+  const stats: CrawlStats = { years: 0, events: 0, decisions: 0, matched: 0, failed: 0, blocked: 0 };
+  const failed = (error: unknown) => { stats.failed++; if (/HTTP 403\b/.test(String(error))) stats.blocked++; };
   const read = options.fetchPage ?? fetchMmaDecisions;
   const failedYears = new Set<number>();
   const failedDates = new Set<string>();
@@ -48,7 +50,7 @@ export async function crawlMmaDecisions<F extends CrawlFight>(fights: F[], optio
       const found = parseMmaEvents(await read(`decisions-by-event/${year}/`));
       events.push(...found.filter(event => nearbyFights(event.date).length && event.path.includes(options.eventFilter ?? "")));
       stats.years++;
-    } catch (error) { failedYears.add(year); stats.failed++; console.error(`MMA Decisions year ${year}: ${String(error)}`); }
+    } catch (error) { failedYears.add(year); failed(error); console.error(`MMA Decisions year ${year}: ${String(error)}`); }
   });
 
   const seen = new Set<string>();
@@ -67,7 +69,7 @@ export async function crawlMmaDecisions<F extends CrawlFight>(fights: F[], optio
         paths.push({ date: event.date, path });
       }
       stats.events++;
-    } catch (error) { failedDates.add(event.date); stats.failed++; console.error(`MMA Decisions ${event.path}: ${String(error)}`); }
+    } catch (error) { failedDates.add(event.date); failed(error); console.error(`MMA Decisions ${event.path}: ${String(error)}`); }
   });
   onProgress?.(stats, paths.length);
 
@@ -85,7 +87,7 @@ export async function crawlMmaDecisions<F extends CrawlFight>(fights: F[], optio
       if (matches.length !== 1) return;
       stats.matched++;
       await onMatch(matches[0].fight, matches[0].order, page, path);
-    } catch (error) { failedDates.add(date); stats.failed++; if (stats.failed <= 20) console.error(`MMA Decisions ${path}: ${String(error)}`); }
+    } catch (error) { failedDates.add(date); failed(error); if (stats.failed <= 20) console.error(`MMA Decisions ${path}: ${String(error)}`); }
     finally { if (stats.decisions > 0 && stats.decisions % 100 === 0) onProgress?.(stats, paths.length); }
   });
   // A failed archive, event or decision read is not evidence of absence.
