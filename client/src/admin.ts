@@ -50,13 +50,13 @@ export function rememberAdmin(next: boolean) {
  *  never enough: the server accepts an explicit bearer token only. */
 export function useAdminRequest() {
   const { getToken } = useAuth();
-  return useCallback(async <T,>(path: string, init?: { method?: string; body?: unknown; timeoutMs?: number }): Promise<T> => {
+  return useCallback(async <T,>(path: string, init?: { method?: string; body?: unknown }): Promise<T> => {
     const token = await getToken();
     if (!token) throw new Error("Your session expired. Sign in again.");
     const response = await fetch(path, {
       method: init?.method ?? "GET",
       cache: "no-store",
-      signal: AbortSignal.timeout(init?.timeoutMs ?? 30_000),
+      signal: AbortSignal.timeout(30_000),
       headers: { Authorization: `Bearer ${token}`, ...(init?.body === undefined ? {} : { "Content-Type": "application/json" }) },
       ...(init?.body === undefined ? {} : { body: JSON.stringify(init.body) }),
     });

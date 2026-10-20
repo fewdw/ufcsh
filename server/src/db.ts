@@ -56,26 +56,12 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS idx_events_date ON events(date);
 
--- YouTube videos are retained per event; successful re-reads never erase older uploads.
-CREATE TABLE IF NOT EXISTS event_media (
-  event_id TEXT NOT NULL REFERENCES events(id),
-  video_id TEXT NOT NULL,
-  data_json TEXT NOT NULL,
-  checked_at INTEGER NOT NULL,
-  unavailable INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (event_id, video_id)
-);
-CREATE TABLE IF NOT EXISTS event_media_reads (
-  event_id TEXT NOT NULL REFERENCES events(id),
-  source TEXT NOT NULL,
-  tried_at INTEGER NOT NULL,
-  ok_at INTEGER,
-  error TEXT NOT NULL DEFAULT '',
-  PRIMARY KEY (event_id, source)
-);
-CREATE TABLE IF NOT EXISTS event_broadcast (
+-- One row per card: the crew read from its report, and the last unreadable report.
+CREATE TABLE IF NOT EXISTS event_crews (
   event_id TEXT PRIMARY KEY REFERENCES events(id),
-  data_json TEXT NOT NULL,
+  data_json TEXT,
+  url TEXT NOT NULL,
+  error TEXT NOT NULL DEFAULT '',
   checked_at INTEGER NOT NULL
 );
 
