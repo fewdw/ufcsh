@@ -44,7 +44,7 @@ const WIKIPEDIA: RosterHistoryEvent[] = ([
 }));
 
 const CONTRACTS: RosterHistoryEvent[] = (JSON.parse(readFileSync(new URL("./roster-history-contracts.json", import.meta.url), "utf8")) as
-  [string, string, string, number][]).map(([name, date, source_url]) => ({
+  [string, string, string, number?][]).map(([name, date, source_url]) => ({
   name, date, kind: "signed", reason: "Awarded UFC contract on Dana White's Contender Series", source_url, observed: false,
 }));
 
