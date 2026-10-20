@@ -56,6 +56,15 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS idx_events_date ON events(date);
 
+-- One row per card: the crew read from its report, and the last unreadable report.
+CREATE TABLE IF NOT EXISTS event_crews (
+  event_id TEXT PRIMARY KEY REFERENCES events(id),
+  data_json TEXT,
+  url TEXT NOT NULL,
+  error TEXT NOT NULL DEFAULT '',
+  checked_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS fighters (
   id               TEXT PRIMARY KEY,
   name             TEXT NOT NULL,

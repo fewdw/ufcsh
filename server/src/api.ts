@@ -1,3 +1,4 @@
+import { eventCrew } from "./event-crew.ts";
 import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, potentialMatchups, potentialFight } from "./potential-matchups.ts";
 import { careerStatistics } from "./career-statistics.ts";
 import { cachedDivisionMedians, currentDivision } from "./division-medians.ts";
@@ -2243,6 +2244,7 @@ export async function resolvePublicApi(url: URL): Promise<unknown> {
   const rankingType: RankingType = url.searchParams.get("ranking") === "media" || url.searchParams.get("type") === "media" ? "media" : "meta";
   if (p === "/api/events") return listEvents();
   if (p === "/api/live") return liveCard(rankingType);
+  if (/^\/api\/events\/[^/]+\/crew$/.test(p)) return eventCrew(id);
   if (p.startsWith("/api/events/")) return await getEvent(id, rankingType) ?? undefined;
   if (/^\/api\/fights\/[^/]+\/tape-history$/.test(p)) {
     const potential = id.startsWith("potential-") ? potentialMatchups().find(row => row.id === id) : null;
