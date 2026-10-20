@@ -20,3 +20,10 @@ test("standard UFC headshots and wider photos need no conversion", async () => {
     assert.equal(await normalizeHeadshot(source), null);
   }
 });
+
+test("print-size originals are shrunk to twice the canvas", async () => {
+  const source = await sharp({ create: { width: 5474, height: 3324, channels: 4, background: "red" } }).png().toBuffer();
+  const { width, height } = await sharp((await normalizeHeadshot(source))!).metadata();
+  assert.equal(width, 1040);
+  assert.equal(height, 632);
+});

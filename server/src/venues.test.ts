@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { prepared } from "./db.ts";
-import { locationDirectory, locationPage, venueDirectory, venueIndex, venuePage } from "./venues.ts";
+import { locationDirectory, locationPage, venueBySlug, venueDirectory, venueIndex, venuePage } from "./venues.ts";
 
 test("every event belongs to at most one venue, and each venue lists its own events", () => {
   const index = venueIndex();
@@ -19,6 +19,17 @@ test("a venue page's summary matches the cards it lists", () => {
   assert.equal(page.summary.events, first.events);
   assert.equal(page.summary.events, page.events.filter((event: any) => event.complete).length);
   assert.equal(venuePage("no-such-venue"), null);
+});
+
+test("a building's page under a former name opens its current page, never another venue", () => {
+  const index = venueIndex();
+  for (const [slug, venue] of index.formerSlugs) {
+    assert.ok(!index.bySlug.has(slug), slug);
+    assert.equal(venueBySlug(slug), venue);
+    assert.equal((venuePage(slug) as { slug: string }).slug, venue.slug);
+  }
+  const renamed = [...index.bySlug.values()].find(venue => venue.name === "Sleep Train Arena");
+  if (renamed) assert.equal(venueBySlug("arco-arena"), renamed);
 });
 
 test("every card belongs to one location, and a city billed with or without its state is one place", () => {

@@ -55,6 +55,9 @@ export async function readCancelledBoardList(): Promise<number> {
 }
 
 let running = false;
+/** A board FightOdds.io fails to answer (UFC 193's errors on their side) is
+ *  tried again a day later, not on every pass; its error stays in Admin → Bugs. */
+const failedAt = new Map<number, number>();
 
 /** One pass: the board list daily, then up to `limit` due boards, nearest
  *  card first and then the archive newest first. `pk` re-reads one board. */
@@ -65,7 +68,7 @@ export async function syncCancelledBouts({ limit = 40, pk }: { limit?: number; p
     if (pk == null && metaAgeMs("cancelled_boards_listed_at") > DAY) await readCancelledBoardList();
     const boards = db.prepare("SELECT * FROM cancelled_boards WHERE ? IS NULL OR pk = ?").all(pk ?? null, pk ?? null) as Board[];
     const today = new Date().toISOString().slice(0, 10);
-    const due = boards.filter((board) => pk != null || boardDue(board))
+    const due = boards.filter((board) => pk != null || (boardDue(board) && Date.now() - (failedAt.get(board.pk) ?? -Infinity) >= DAY))
       .sort((a, b) => Number(b.date >= today) - Number(a.date >= today)
         || (a.date >= today ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date)))
       .slice(0, pk != null ? 1 : limit);
@@ -75,8 +78,10 @@ export async function syncCancelledBouts({ limit = 40, pk }: { limit?: number; p
         const bouts = await fightOddsCancelled(board.pk);
         result.bouts += storeCancelledBoard(board, bouts);
         result.boards++;
+        failedAt.delete(board.pk);
       } catch (err) {
         result.failed++;
+        failedAt.set(board.pk, Date.now());
         db.prepare("UPDATE cancelled_boards SET error = ? WHERE pk = ?").run(String(err), board.pk);
         log(`cancelled bouts [${board.slug}]:`, String(err));
         if (pk != null) throw err;

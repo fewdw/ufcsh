@@ -1,3 +1,4 @@
+import { createPublicKey } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createClerkClient } from "@clerk/backend";
 import { RateLimiter, clientAddress } from "./api-policy.ts";
@@ -15,6 +16,39 @@ export function clerkClient() {
   return clerk ??= createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY, publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
     ...(process.env.CLERK_PROXY_URL ? { proxyUrl: process.env.CLERK_PROXY_URL } : {}) });
 }
+type JwksJSON = { keys?: { kty: string; kid: string; n: string; e: string }[] };
+/** Clerk's signing keys by id, as PEM, read again every hour behind the
+ *  request that finds them old. The SDK keeps its own copy for five minutes,
+ *  so the first signed-in request after a quiet spell waited 250–500 ms on
+ *  Clerk; with these the token is checked here. A token whose key is not held
+ *  goes to the SDK, which fetches the current set. */
+export class SigningKeys {
+  private at = -Infinity;
+  private pems = new Map<string, string>();
+  loading: Promise<void> | null = null;
+  private readonly load: () => Promise<JwksJSON>;
+  private readonly now: () => number;
+  constructor(load: () => Promise<JwksJSON>, now = Date.now) { this.load = load; this.now = now; }
+
+  pemFor(token: string): string | undefined {
+    if (this.now() - this.at >= 3_600_000) this.refresh();
+    try { return this.pems.get(JSON.parse(Buffer.from(token.split(".")[0], "base64url").toString()).kid); }
+    catch { return undefined; }
+  }
+
+  private refresh() {
+    this.loading ??= this.load().then(({ keys }) => {
+      const pems = new Map<string, string>();
+      for (const { kty, kid, n, e } of keys ?? []) {
+        if (kty === "RSA" && kid) pems.set(kid, createPublicKey({ key: { kty, n, e }, format: "jwk" }).export({ type: "spki", format: "pem" }).toString());
+      }
+      this.pems = pems;
+      this.at = this.now();
+    }, () => { this.at = this.now() - 3_600_000 + 60_000; }).finally(() => { this.loading = null; });
+  }
+}
+const signingKeys = new SigningKeys(() => clerkClient()!.jwks.getJwks());
+
 export async function authenticateScorer(req: IncomingMessage): Promise<string> {
   const clerk = clerkClient();
   if (!clerk || !scoringOrigins().length) throw new ScoringError(503, "Sign-in is not configured yet.");
@@ -22,7 +56,11 @@ export async function authenticateScorer(req: IncomingMessage): Promise<string> 
   if (!authorization?.startsWith("Bearer ") || authorization.length > 8192) throw new ScoringError(401, "Sign in to continue.");
   // Only explicit bearer tokens reach Clerk. Cookies and caller-supplied Host / forwarded headers cannot authenticate writes.
   const request = new Request(scoringOrigins()[0] + req.url, { headers: { authorization } });
-  const state = await clerk.authenticateRequest(request, { authorizedParties: scoringOrigins(), acceptsToken: "session_token", jwtKey: process.env.CLERK_JWT_KEY });
+  const options = { authorizedParties: scoringOrigins(), acceptsToken: "session_token" } as const;
+  const heldKey = process.env.CLERK_JWT_KEY ? undefined : signingKeys.pemFor(authorization.slice(7));
+  let state = await clerk.authenticateRequest(request, { ...options, jwtKey: process.env.CLERK_JWT_KEY || heldKey });
+  // A key rotated since the copy was read: the SDK checks against the current set.
+  if (heldKey && !state.isAuthenticated) state = await clerk.authenticateRequest(request, options);
   const auth = state.toAuth();
   if (!state.isAuthenticated || !auth?.userId) throw new ScoringError(401, "Your session expired. Sign in again to save.");
   return auth.userId;

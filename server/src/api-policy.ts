@@ -22,6 +22,30 @@ const slowRoutes = new Set(["/api/rankings", "/api/rankings/history", "/api/stat
 const DYNAMIC_STALE_MS = 10 * 60_000;
 const LIST_STALE_MS = 60 * 60_000;
 
+/** The request the Stats page opens with when the reader has changed nothing
+ *  (`statsRequest` in client/src/statsDefaults.ts, checked by its test), warmed
+ *  into the response cache with the other lists so no reader builds it cold. */
+export const STATS_PAGE_OPENING = `/api/stats?${[
+  "keepFullLists=1", "statsSince=all", "statsUntil=all", "minimumFights=3", "minimumSample=3", "limit=20",
+  "boutType=all", "cardPosition=all", "scheduledRounds=all", "recordGroup=bouts", "boutsMode=total", "bonusKind=all",
+  "bonusMetric=total", "winsMode=total", "winsByMethod=all", "winsByMetric=total", "winsPercentOf=allFights",
+  "streakKind=wins", "streakByMethod=all", "streakWhen=longest", "titleWinMethod=all", "titleWinsMetric=total",
+  "defenseScope=total", "titleDefenseMethod=all", "titleDefenseMetric=total", "championScope=ever",
+  "championWinMethod=all", "championWinsMetric=total", "divisionWinMethod=all", "ageEnd=youngest",
+  "lossesMode=total", "lossesByMethod=all", "lossesByMetric=total", "lossesPercentOf=allFights",
+  "lossStreakMethod=all", "titleLossMethod=all", "titleLossesMetric=total", "failedDefenseMethod=all",
+  "failedDefenseMetric=total", "divisionLossMethod=all", "finishMode=count", "finishDirection=given",
+  "speedScope=average", "roundFinishMethod=finish", "roundFinishRound=all", "roundFinishMetric=total",
+  "roundFinishPercentOf=allFights", "fightTimeOrder=shortest", "actionType=significantStrikes",
+  "actionDirection=given", "actionMode=perFight", "actionBasis=scored", "actionMinimumAttempts=1",
+  "contextMode=opposition", "oppositionScope=beaten", "oppositionSource=all", "oppositionWhen=atTime",
+  "rematchMetric=rate", "returnWindow=quick", "bettingMode=underdog", "underdogMetric=wins", "favoriteMetric=rate",
+  "fightsGroup=fights", "fightsMode=disputed", "controversyMeasure=closest", "fightsAction=total",
+  "fastestMethod=finish", "judgesMode=agreement", "judgeLeaning=control", "refereesMode=finishRate",
+  "officialsOrder=high", "recordOrder=high", "finishingOrder=high", "outputOrder=high", "contextOrder=high",
+  "marketOrder=high",
+].join("&")}`;
+
 export function cachePolicy(url: URL): { ttl: number; stale: number; control: string } {
   // Personalized filter URLs remain browser-revalidated; the bounded origin cache
   // still shares identical studies. Keep CDN freshness inside the origin lifetime.
