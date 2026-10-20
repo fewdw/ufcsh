@@ -6,6 +6,7 @@ import { ScoringError, scoringEligibility, type ScoringFight, type ScoringStore 
 import type { AdminStore } from "./admins.ts";
 import type { ReportStore } from "./reports.ts";
 import type { CommentStore } from "./comments.ts";
+import { SLOW_MAX_HOURS } from "./slow-log.ts";
 import { isTrafficRange, type TrafficRange } from "./traffic-history.ts";
 
 /** A bout the panel can release rounds for: everything on a card being fought
@@ -31,7 +32,7 @@ export type AdminHandlerOptions = {
   /** Failing addresses, recent sync failures and how current each source is. */
   errors?: () => unknown;
   /** Addresses that answered slowly, by address and by route (Admin → Slow). */
-  slow?: () => unknown;
+  slow?: (hours: number) => unknown;
   canAct: () => boolean;
   /** Gemini on /news: its state, and the switch that turns it off. */
   newsAi?: { status: () => unknown; set: (on: boolean) => unknown };
@@ -202,7 +203,9 @@ export function createAdminHandler(options: AdminHandlerOptions) {
       }
       else if (route === "slow") {
         if (!slow) throw new ScoringError(404, "Not found.");
-        send(slow());
+        const hours = Number(url.searchParams.get("hours") ?? SLOW_MAX_HOURS);
+        if (!Number.isInteger(hours) || hours < 1 || hours > SLOW_MAX_HOURS) throw new ScoringError(400, `Hours must be 1 to ${SLOW_MAX_HOURS}.`);
+        send(slow(hours));
       }
       else if (route === "live") send(card());
       else if (liveFight) {
