@@ -243,10 +243,11 @@ function DiscussionPanel({ fightId, viewerKey, getToken, signedIn, signIn }: {
           <p className="px-4 py-3 text-sm leading-6 text-zinc-500">Sign-in must be configured to join the discussion.</p>
         </div>
       ) : !signedIn ? (
-        <div className={box}>
-          <button type="button" onClick={() => signIn?.()} className="block w-full px-4 pb-1 pt-3 text-left text-sm leading-6 text-zinc-400">Talk about the fight</button>
+        // Anywhere in the box opens sign-in; the buttons keep it keyboard reachable.
+        <div className={`${box} cursor-pointer`} onClick={() => signIn?.()}>
+          <button type="button" className="block w-full px-4 pb-1 pt-3 text-left text-sm leading-6 text-zinc-400">Talk about the fight</button>
           <div className="flex justify-end px-2 pb-2">
-            <button type="button" className={primary} onClick={() => signIn?.()}>Sign in to comment</button>
+            <button type="button" className={primary}>Sign in to comment</button>
           </div>
         </div>
       ) : muted ? (
@@ -352,7 +353,18 @@ function Composer({ initial = "", placeholder, submitLabel, autoFocus = false, o
     finally { setBusy(false); }
   };
   return (
-    <form onSubmit={event => void submit(event)} className={box}>
+    <form
+      onSubmit={event => void submit(event)}
+      // A click anywhere in the box, not only on the text, starts writing.
+      onMouseDown={event => {
+        const node = field.current;
+        if (!node || (event.target as HTMLElement).closest("textarea, button, a")) return;
+        event.preventDefault();
+        node.focus();
+        node.setSelectionRange(node.value.length, node.value.length);
+      }}
+      className={`${box} cursor-text`}
+    >
       <textarea
         ref={field}
         value={text}
