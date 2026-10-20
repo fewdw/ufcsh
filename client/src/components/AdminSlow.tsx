@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useAdminResource } from "../admin";
 import { relativeAge } from "../format";
 import { Loading, ms, routeName, routePath, sameSite, SectionHead, stamp, ViewHead, whole } from "./adminKit";
+import { segmentedGroup, segmentedIdle, segmentedOption, segmentedSelected } from "./segmented";
 
 /** Server `slow-log.ts`. */
 type SlowAddress = {
@@ -9,7 +10,10 @@ type SlowAddress = {
   sumMs: number; maxMs: number; answerMs: number; firstAt: number; lastAt: number;
 };
 type SlowRoute = { route: string; count: number; sumMs: number; maxMs: number; answerMs: number; addresses: number; lastAt: number };
-export type Slow = { since: number; thresholdMs: number; addresses: SlowAddress[]; routes: SlowRoute[] };
+export type Slow = { hours: number; since: number; thresholdMs: number; addresses: SlowAddress[]; routes: SlowRoute[] };
+
+const WINDOWS: [number, string][] = [[1, "1 hour"], [3, "3 hours"], [6, "6 hours"], [12, "12 hours"], [24, "24 hours"], [72, "3 days"], [168, "7 days"]];
+const hourStamp = (at: number) => new Date(at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 /** The part of a slow request spent getting its data, as a share. */
 const dataShare = (row: { answerMs: number; sumMs: number }) => row.answerMs && row.sumMs ? `${Math.round(row.answerMs / row.sumMs * 100)}%` : "—";
@@ -37,20 +41,32 @@ function SlowRow({ row, now }: { row: SlowAddress; now: number }) {
 /** Requests that kept a reader waiting, so a Speed warning on the Overview
  *  leads to the routes and exact addresses behind it. */
 export default function AdminSlow() {
-  const { data, error, loading } = useAdminResource<Slow>("/api/admin/slow", 30_000);
+  const [hours, setHours] = useState(168);
+  const { data: latest, error, loading } = useAdminResource<Slow>(`/api/admin/slow?hours=${hours}`, 30_000);
+  const data = latest?.hours === hours ? latest : null;
   const [now, setNow] = useState(() => Date.now());
   const [all, setAll] = useState(false);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 5000);
     return () => clearInterval(timer);
   }, []);
-  if (!data) return <Loading>{loading || !error ? "Loading slow requests…" : `Couldn’t load slow requests. ${error}`}</Loading>;
+  const head = (
+    <ViewHead title="Slow requests"
+      note={<>Every request that took {ms(latest?.thresholdMs ?? 300)} or more, kept 7 days across restarts and counted by the hour{data ? <>, shown since <b className="font-semibold text-zinc-700">{hourStamp(data.since)}</b></> : null}. Admin pages and health checks are left out, as they are from Speed.</>}>
+      <div className={`${segmentedGroup} max-w-full overflow-x-auto`} role="group" aria-label="Window">
+        {WINDOWS.map(([value, name]) => (
+          <button key={value} type="button" onClick={() => setHours(value)} aria-pressed={hours === value}
+            className={`${segmentedOption} whitespace-nowrap ${hours === value ? segmentedSelected : segmentedIdle}`}>{name}</button>
+        ))}
+      </div>
+    </ViewHead>
+  );
+  if (!data) return <div className="flex flex-col gap-5">{head}<Loading>{loading || !error ? "Loading slow requests…" : `Couldn’t load slow requests. ${error}`}</Loading></div>;
   const total = data.routes.reduce((sum, route) => sum + route.count, 0);
   const addresses = all ? data.addresses : data.addresses.slice(0, 25);
   return (
     <div className="flex flex-col gap-5">
-      <ViewHead title="Slow requests"
-        note={`Every request that took ${ms(data.thresholdMs)} or more, the last 7 days, kept across restarts. Admin pages and health checks are left out, as they are from Speed.`} />
+      {head}
 
       <section className="flex flex-col gap-2">
         <SectionHead title={`By route · ${whole(total)} slow`}
@@ -86,7 +102,7 @@ export default function AdminSlow() {
             </table>
           </div>
         ) : (
-          <p className="rounded-xl border border-zinc-200 bg-white px-4 py-6 text-center text-xs text-zinc-400">No slow requests in the last 7 days.</p>
+          <p className="rounded-xl border border-zinc-200 bg-white px-4 py-6 text-center text-xs text-zinc-400">No slow requests since {hourStamp(data.since)}.</p>
         )}
       </section>
 

@@ -2389,7 +2389,7 @@ export function startApi(port: number): http.Server {
     },
     accounts: () => adminAccounts({ scores: scoreStore }),
     errors: () => ({ http: trafficHistory.errors.list(), sync: syncStatus() }),
-    slow: () => trafficHistory.slow.list(),
+    slow: hours => trafficHistory.slow.list(hours),
     report: async () => {
       const report = queryPool ? JSON.parse((await queryPool.run("/api/bugs")).json) : bugReport();
       return { ...report, checks: [accountSyncCheck(), ...report.checks] };
