@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getMeta, setMeta } from "./db.ts";
+import { DatabaseSync } from "node:sqlite";
+import path from "node:path";
+import { DATA_DIR, getMeta, setMeta } from "./db.ts";
 import { recentSyncError, recordSyncError, syncStatus } from "./sync-status.ts";
 
 test("sync errors are kept newest first, grouped by job, and sources say when they are late", () => {
@@ -26,5 +28,32 @@ test("sync errors are kept newest first, grouped by job, and sources say when th
     setMeta("sync_errors", saved.errors ?? "");
     setMeta("last_sync_error", saved.last ?? "");
     setMeta("last_tick_at", saved.tick ?? "");
+  }
+});
+
+
+test("a locked error archive logs the original failure without rejecting, then resumes saving", (t) => {
+  const saved = { errors: getMeta("sync_errors"), last: getMeta("last_sync_error") };
+  const writer = new DatabaseSync(path.join(DATA_DIR, "ufc.db"));
+  const messages: unknown[][] = [];
+  t.mock.method(console, "error", (...args: unknown[]) => { messages.push(args); });
+  let locked = false;
+  try {
+    writer.exec("BEGIN IMMEDIATE");
+    locked = true;
+    assert.doesNotThrow(() => recordSyncError("images", new Error("image refresh failed")));
+    assert.equal(messages.length, 1);
+    assert.match(messages[0].join(" "), /images.*image refresh failed.*database is locked/);
+    assert.equal(getMeta("last_sync_error"), saved.last);
+    writer.exec("ROLLBACK");
+    locked = false;
+    recordSyncError("images", new Error("image refresh failed"));
+    assert.match(getMeta("last_sync_error")!, /images: Error: image refresh failed/);
+    assert.equal(syncStatus().errors[0].job, "images");
+  } finally {
+    if (locked) writer.exec("ROLLBACK");
+    writer.close();
+    setMeta("sync_errors", saved.errors ?? "");
+    setMeta("last_sync_error", saved.last ?? "");
   }
 });

@@ -33,8 +33,14 @@ function savedErrors(): SyncError[] {
 /** A failed sync job: the latest stays in `last_sync_error` (the Bugs board
  *  and monitoring read it), and the last fifty are kept for Admin → Sync. */
 export function recordSyncError(job: string, error: unknown, now = Date.now()): void {
-  setMeta("last_sync_error", `${new Date(now).toISOString()} ${job}: ${String(error)}`);
-  setMeta("sync_errors", JSON.stringify([{ at: now, job, error: String(error).slice(0, 500) }, ...savedErrors()].slice(0, KEPT)));
+  try {
+    setMeta("last_sync_error", `${new Date(now).toISOString()} ${job}: ${String(error)}`);
+    setMeta("sync_errors", JSON.stringify([{ at: now, job, error: String(error).slice(0, 500) }, ...savedErrors()].slice(0, KEPT)));
+  } catch (storageError) {
+    // A failed job can itself be a database-lock error. Reporting it must not
+    // reject the scheduler's error handler and take down the serving process.
+    console.error(`SYNC ERROR could not be saved [${job}]:`, String(error), String(storageError));
+  }
 }
 
 /** Whether a sync job failed in the last ten minutes, for monitoring. Not
