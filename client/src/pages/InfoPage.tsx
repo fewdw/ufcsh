@@ -102,8 +102,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-19">October 19, 2026</time></p>
             <ul>
-              <li>Scorecards show media scores: the average of journalists' cards, after the fans.</li>
-              <li>Click it to see every outlet's card, linked to the source.</li>
+              <li>Admin slow requests can show the last hour up to the last 7 days.</li>
+              <li>Requests from before a deploy no longer mix into recent counts.</li>
             </ul>
           </Section>
         </div>
