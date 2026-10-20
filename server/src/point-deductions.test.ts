@@ -58,8 +58,8 @@ test("media cards follow our fighter order and must agree with their own winner"
   assert.deepEqual(pageMedia(page, 1).dropped.map(c => c.winner), ["Murphy", "Volkanovski"]);
 });
 
-import { db } from "./db.ts";
-import { readPointDeductions } from "./point-deductions.ts";
+import { db, getMeta } from "./db.ts";
+import { MMA_DECISIONS_BLOCKED, readPointDeductions, syncRecentPointDeductions } from "./point-deductions.ts";
 
 const importFight = { id: "mma-import-test", date: "2024-06-15", f1_name: "Alice Archer", f2_name: "Betty Baker", f1_alias: null, f2_alias: null };
 const panel = ["Alice Judge", "Betty Judge", "Claire Judge"];
@@ -104,4 +104,19 @@ test("an unavailable source preserves data and leaves a decision unprocessed for
   assert.equal(result.failed, 1);
   assert.equal(result.stored, 0);
   assert.deepEqual(db.prepare("SELECT * FROM fights WHERE id = ?").get(importFight.id), before);
+});
+
+test("a source that refuses this server is retried daily, not reported as a failure every hour", async t => {
+  importFixture(t);
+  const refused = t.mock.method(globalThis, "fetch", async () => new Response("", { status: 403 }));
+  const now = Date.now();
+  await syncRecentPointDeductions(now);
+  assert.equal(Number(getMeta(MMA_DECISIONS_BLOCKED)), now);
+  const calls = refused.mock.callCount();
+  await syncRecentPointDeductions(now + 3600_000);
+  assert.equal(refused.mock.callCount(), calls);
+  // Any other failure is still a sync error.
+  refused.mock.mockImplementation(async () => new Response("Unavailable", { status: 503 }));
+  await assert.rejects(syncRecentPointDeductions(now + 25 * 3600_000), /source reads failed/);
+  assert.equal(getMeta(MMA_DECISIONS_BLOCKED), "");
 });

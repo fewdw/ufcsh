@@ -36,6 +36,9 @@ export class SigningKeys {
     catch { return undefined; }
   }
 
+  /** Read the set now rather than on the first token. */
+  warm(): void { this.refresh(); }
+
   private refresh() {
     this.loading ??= this.load().then(({ keys }) => {
       const pems = new Map<string, string>();
@@ -48,6 +51,9 @@ export class SigningKeys {
   }
 }
 const signingKeys = new SigningKeys(() => clerkClient()!.jwks.getJwks());
+// Every process (each API worker too) starts with none: read them as it starts,
+// or its first signed-in request waits on Clerk (about 400 ms after each deploy).
+if (!process.env.CLERK_JWT_KEY && clerkClient()) signingKeys.warm();
 
 export async function authenticateScorer(req: IncomingMessage): Promise<string> {
   const clerk = clerkClient();

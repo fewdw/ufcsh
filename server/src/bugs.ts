@@ -18,7 +18,7 @@ import { pageNamesFighter } from "./scrape/odds.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
 import { importVerdictEvent } from "./verdict-import.ts";
-import { deductionProblem, fightDeductionState, storedMedia, syncFightMediaScores, syncFightPointDeductions } from "./point-deductions.ts";
+import { deductionProblem, fightDeductionState, MMA_DECISIONS_BLOCKED, storedMedia, syncFightMediaScores, syncFightPointDeductions } from "./point-deductions.ts";
 import type { DeductionFight } from "./point-deduction-rules.ts";
 import { readCancelledBoardList, syncCancelledBouts } from "./cancelled-bouts.ts";
 import { repairJudgeNames } from "./repair-judge-names.ts";
@@ -1074,13 +1074,17 @@ function mmaDecisionsUnread(): BugCheck {
     WHERE e.complete = 1 AND f.method LIKE '%DEC' AND f.deductions_checked_at IS NULL
     ORDER BY e.date DESC
   `).all() as FightRow[];
+  const blockedAt = Number(getMeta(MMA_DECISIONS_BLOCKED)) || null;
+  const blocked: BugItem[] = blockedAt ? [{ key: "blocked", title: "MMA Decisions refuses this server", subtitle: "HTTP 403 for every page; retried daily",
+    date: new Date(blockedAt).toISOString().slice(0, 10), facts: [["Last refused", ago(blockedAt)], ["Effect", "No new point deductions, media scores or judges' round scores"]],
+    links: [{ label: "MMA Decisions", href: "https://mmadecisions.com/" }], actions: [] }] : [];
   return check({
     id: "mma-decisions-unread",
     group: "Scorecards",
     label: "Decisions not yet read from MMA Decisions",
     description: "Decisions whose MMA Decisions page (point deductions and media scores) hasn't been read. The hourly pass reads every recent decision and 200 older ones, newest first, so after a reset the archive fills in within about a day.",
     grade: recent([[7, "minor"]]),
-  }, rows.map(fight => fightItem(fight, { actions: [{ id: "media", label: "Read MMA Decisions", target: fight.id }] })));
+  }, [...blocked, ...rows.map(fight => fightItem(fight, { actions: [{ id: "media", label: "Read MMA Decisions", target: fight.id }] }))]);
 }
 
 /** Media scores that are missing where they should exist, or that dropped

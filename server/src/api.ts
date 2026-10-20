@@ -1884,6 +1884,22 @@ async function warmCheckedPhotos(): Promise<void> {
   }
 }
 
+/** The rest of the roster, a few a minute after each start: about 2,000 pictures
+ *  had never been viewed, and each first view waited on the CDN and an encode. */
+let photoBacklog: string[] | null = null;
+async function warmUncachedPhotos(limit = 20): Promise<void> {
+  photoBacklog ??= (prepared("SELECT id FROM fighters WHERE photo_url IS NOT NULL OR photo_full_url IS NOT NULL ORDER BY id").all() as { id: string }[]).map(row => row.id);
+  for (let warmed = 0; photoBacklog.length && warmed < limit;) {
+    const id = photoBacklog.shift()!;
+    for (const variant of ["head", "full"] as const) {
+      const file = fighterImageFile(id, variant);
+      if (!file || await fs.access(file.imagePath).then(() => true, () => false)) continue;
+      warmed++;
+      for (const size of ["tiny", "small", "large"] as const) await fighterImageVariant(id, variant, size).catch(() => null);
+    }
+  }
+}
+
 async function serveFighterImage(res: http.ServerResponse, id: string, variant: PhotoVariant, size: ImageSize | null, versioned: boolean): Promise<void> {
   try {
     const image = size ? null : await loadFighterImage(id, variant);
@@ -2471,7 +2487,7 @@ export function startApi(port: number): http.Server {
     setInterval(() => {
       if (warmingPhotos) return;
       warmingPhotos = true;
-      void warmCheckedPhotos().catch(error => log("photo warm-up failed:", String(error))).finally(() => { warmingPhotos = false; });
+      void warmCheckedPhotos().then(() => warmUncachedPhotos()).catch(error => log("photo warm-up failed:", String(error))).finally(() => { warmingPhotos = false; });
     }, 60_000).unref();
   }
   const workerCount = Number(process.env.API_WORKERS ?? (process.env.NODE_ENV === "production" ? 2 : 0));

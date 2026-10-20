@@ -1,5 +1,5 @@
 import { mergeMmaJudgeRounds } from "./mma-judge-rounds.ts";
-import { db } from "./db.ts";
+import { db, getMeta, setMeta } from "./db.ts";
 import { crawlMmaDecisions, type CrawlFight } from "./mmadecisions-crawl.ts";
 import { mmaDecisionUrl, type MmaDecision, type MmaMediaScore } from "./scrape/mmadecisions.ts";
 import { log, normName } from "./util.ts";
@@ -82,7 +82,7 @@ const CANDIDATES = `SELECT f.id, e.date, f.f1_name, f.f2_name, c1.source_name AS
  *  whose deduction names fit neither fighter leaves its deductions unstored,
  *  and they show in Admin → Bugs. */
 export async function readPointDeductions(fights: CrawlFight[], concurrency = 2,
-  onProgress?: Parameters<typeof crawlMmaDecisions>[3]): Promise<{ matched: number; stored: number; unplaced: number; failed: number }> {
+  onProgress?: Parameters<typeof crawlMmaDecisions>[3]): Promise<{ matched: number; stored: number; unplaced: number; failed: number; blocked: number }> {
   const checked = db.prepare("UPDATE fights SET deductions_checked_at = ? WHERE id = ?");
   const store = db.prepare("UPDATE fights SET deductions_json = ?, deductions_checked_at = ? WHERE id = ?");
   // Unchanged cards are not written again: recent pages are re-read every few hours.
@@ -115,8 +115,10 @@ export async function readPointDeductions(fights: CrawlFight[], concurrency = 2,
     store.run(JSON.stringify({ source: "MMA Decisions", sourceUrl: mmaDecisionUrl(path), items }), Date.now(), fight.id);
     saved++;
   }, onProgress);
-  return { matched: stats.matched, stored: saved, unplaced, failed: stats.failed };
+  return { matched: stats.matched, stored: saved, unplaced, failed: stats.failed, blocked: stats.blocked };
 }
+
+export const MMA_DECISIONS_BLOCKED = "mma_decisions_blocked_at";
 
 /** Recent decisions, including corrections, confirmed zeroes and late media
  *  cards, at most every six hours each; it usually posts a card within a day
@@ -124,6 +126,10 @@ export async function readPointDeductions(fights: CrawlFight[], concurrency = 2,
  *  call: 200 pages take about three minutes, so the whole archive (~4,100
  *  decisions) fills in within a day of hourly calls, without the backfill. */
 export async function syncRecentPointDeductions(now = Date.now(), olderBatch = 200): Promise<void> {
+  // MMA Decisions refuses some servers outright (HTTP 403 for every page). That is
+  // not a fault to report each hour: try once a day, and Admin → Bugs says so.
+  const blockedAt = Number(getMeta(MMA_DECISIONS_BLOCKED)) || 0;
+  if (blockedAt && now - blockedAt < 24 * 3600_000) return;
   const cutoff = new Date(now - 45 * 86400_000).toISOString().slice(0, 10);
   const recent = db.prepare(`${CANDIDATES} AND e.date >= ?
     AND (f.deductions_checked_at IS NULL OR f.deductions_checked_at < ?)`).all(cutoff, now - 6 * 3600_000) as CrawlFight[];
@@ -131,6 +137,12 @@ export async function syncRecentPointDeductions(now = Date.now(), olderBatch = 2
     ORDER BY e.date DESC LIMIT ?`).all(cutoff, olderBatch) as CrawlFight[];
   if (recent.length || older.length) {
     const result = await readPointDeductions([...recent, ...older]);
+    if (result.failed && result.blocked === result.failed && !result.matched) {
+      if (!blockedAt) log("point deductions: MMA Decisions refuses this server (HTTP 403); retrying daily");
+      setMeta(MMA_DECISIONS_BLOCKED, String(now));
+      return;
+    }
+    if (blockedAt) setMeta(MMA_DECISIONS_BLOCKED, "");
     if (result.failed) throw new Error(`MMA Decisions: ${result.failed} source reads failed; affected bouts remain pending`);
   }
 }
