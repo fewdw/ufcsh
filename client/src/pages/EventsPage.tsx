@@ -1,4 +1,4 @@
-import EventMedia from "../components/EventMedia";
+import EventMedia, { EventMediaLink } from "../components/EventMedia";
 import { PANEL } from "../components/chartTokens";
 import { CareerStatModal } from "../components/CareerStatDetails";
 import { isFightDay, landingEvent, liveFightId, taggedEvent } from "../liveEvent";
@@ -1065,7 +1065,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
                 </span>
               ) : <span className="whitespace-nowrap font-medium text-zinc-600">No date</span>}
               <EventPlace venue={event.venue} location={event.location} locationSlug={event.location_slug} />
-              {!event.potential && !oddsCard ? <a href="#event-media" className="font-medium text-zinc-600 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-950">Media & broadcast</a> : null}
+              {!event.potential && !oddsCard ? <EventMediaLink eventId={event.id} /> : null}
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-end justify-center gap-1 text-right empty:hidden">

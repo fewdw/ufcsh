@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
-import { ExternalLink, Mic2, Play, Video, X } from "lucide-react";
+import { ExternalLink, Play, Video, X } from "lucide-react";
 import { useApi } from "../api";
 import { PANEL } from "./chartTokens";
 import EvidenceDialog from "./EvidenceDialog";
@@ -13,11 +13,17 @@ type EventVideo = {
 };
 type MediaData = {
   broadcast: { language: string; feed: string; source_url: string; reported_at: string; roles: Record<string, string[]> } | null;
-  role_labels: Record<string, string>;
   categories: Record<string, string>;
   videos: EventVideo[];
   sources: { id: string; name: string; url: string }[];
 };
+const mediaUrl = (eventId: string) => `/api/events/${eventId}/media`;
+const hasMedia = (data: MediaData | null) => Boolean(data && (data.broadcast || data.videos.length));
+// The crew reads as one line, so paired roles share a label, lead role first.
+const CREW: [string, string[]][] = [
+  ["Commentary", ["play_by_play", "color_commentary"]], ["Announcer", ["announcer"]], ["Reporter", ["reporter"]],
+  ["Desk", ["desk_host", "desk_analysts"]], ["Weigh-in", ["weigh_in_host", "weigh_in_analysts"]],
+];
 const youtube = (id: string) => `https://www.youtube.com/watch?v=${id}`;
 const dateLabel = (date: string | null) => date ? new Date(date.length === 10 ? `${date}T12:00:00` : date).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : null;
 const filterStyle = "min-h-8 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 focus-visible:outline-2 focus-visible:outline-offset-2";
@@ -81,6 +87,7 @@ function VideoGallery({ section, data, play }: { section: "official" | "showcase
   // Fight week reads from its first upload forward; commentary shows the latest first.
   const videos = section === "showcase" ? [...filtered].reverse() : filtered;
   const change = (set: (value: string) => void, value: string) => { set(value); setLimit(12); };
+  if (!all.length) return null;
   return <section aria-labelledby={`${id}-title`} className={`${PANEL} shrink-0 overflow-hidden`}>
     <div className="border-b border-zinc-100 px-3 py-3 @[34rem]:px-5">
       <div className="flex items-center gap-2">
@@ -89,7 +96,7 @@ function VideoGallery({ section, data, play }: { section: "official" | "showcase
         <span className="text-xs tabular-nums text-zinc-400">{all.length}</span>
       </div>
       <p className="mt-1 text-xs leading-5 text-zinc-500">{section === "official" ? "Official videos and on-site coverage, in chronological order." : "Previews, interviews, breakdowns and reactions from MMA channels."}</p>
-      {all.length > 0 ? <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-wrap gap-2">
         <select aria-label={`${section === "official" ? "Fight week" : "Showcase"} channel`} value={source} onChange={event => change(setSource, event.target.value)} className={`${filterStyle} max-w-full`}>
           <option value="">All channels</option>{publishers.map(source => <option key={source.id} value={source.id}>{source.name}</option>)}
         </select>
@@ -99,39 +106,44 @@ function VideoGallery({ section, data, play }: { section: "official" | "showcase
         <select aria-label={`${section === "official" ? "Fight week" : "Showcase"} timing`} value={phase} onChange={event => change(setPhase, event.target.value)} className={filterStyle}>
           <option value="">Before & after</option><option value="pre">Before the fights</option><option value="post">Post-fight</option>
         </select>
-      </div> : null}
+      </div>
     </div>
     <div className="px-3 py-4 @[34rem]:px-5">
       {videos.length ? <div className="grid grid-cols-1 gap-x-4 gap-y-6 @[22rem]:grid-cols-2 @[48rem]:grid-cols-3 @[72rem]:grid-cols-4">
         {videos.slice(0, limit).map(video => <VideoCard key={video.id} video={video} data={data} play={() => play(video)} />)}
-      </div> : <p className="py-3 text-xs text-zinc-500">{all.length ? "No videos match these filters." : "No videos available yet."}</p>}
+      </div> : <p className="py-3 text-xs text-zinc-500">No videos match these filters.</p>}
       {videos.length > limit ? <button type="button" onClick={() => setLimit(limit + 12)} className="mt-5 w-full rounded-lg border border-zinc-200 px-3 py-2 text-xs font-medium text-zinc-600 hover:bg-zinc-50">Show more videos ({videos.length - limit} remaining)</button> : null}
     </div>
   </section>;
 }
 
+/** Header jump link, shown only once the event has a crew or videos. */
+export function EventMediaLink({ eventId }: { eventId: string }) {
+  const { data } = useApi<MediaData>(mediaUrl(eventId));
+  return hasMedia(data) ? <a href="#event-media" className="font-medium text-zinc-600 underline decoration-zinc-300 underline-offset-2 hover:text-zinc-950">Media & broadcast</a> : null;
+}
+
 export default function EventMedia({ eventId }: { eventId: string }) {
-  const { data, loading, error } = useApi<MediaData>(`/api/events/${eventId}/media`, 5 * 60_000);
+  const { data, error } = useApi<MediaData>(mediaUrl(eventId), 5 * 60_000);
   const [playing, setPlaying] = useState<EventVideo | null>(null);
   const loaded = Boolean(data);
   useEffect(() => {
     if (loaded && window.location.hash === "#event-media") document.getElementById("event-media")?.scrollIntoView({ block: "start" });
   }, [loaded]);
-  if (!data) return <section id="event-media" className={`${PANEL} shrink-0 p-4 text-xs text-zinc-500`} role="status">{loading ? "Loading event media…" : error ? "Event media could not be loaded." : null}</section>;
+  if (!data) return error ? <section id="event-media" className={`${PANEL} shrink-0 p-4 text-xs text-zinc-500`} role="status">Event media could not be loaded.</section> : null;
+  if (!hasMedia(data)) return null;
   const broadcast = data.broadcast;
   return <div id="event-media" className="flex shrink-0 scroll-mt-3 flex-col gap-3">
-    {broadcast ? <section aria-label="Broadcast team" className={`${PANEL} overflow-hidden px-3 py-3 @[34rem]:px-5`}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-900"><Mic2 className="h-4 w-4 text-zinc-400" aria-hidden="true" />Broadcast team</h2>
-        <span className="text-[11px] text-zinc-500">{broadcast.feed}</span>
-      </div>
-      <dl className="mt-3 grid grid-cols-1 gap-x-5 gap-y-3 @[28rem]:grid-cols-2 @[60rem]:grid-cols-3">
-        {Object.entries(data.role_labels).map(([role, label]) => broadcast.roles[role]?.length ? <div key={role}>
-          <dt className="text-[11px] text-zinc-500">{label}</dt>
-          <dd className="mt-0.5 text-xs font-medium leading-5 text-zinc-800">{broadcast.roles[role].join(" · ")}</dd>
-        </div> : null)}
+    {broadcast ? <section aria-label="Broadcast team" className={`${PANEL} px-3 py-2.5 text-xs leading-5 @[34rem]:px-5`}>
+      <dl className="flex flex-wrap gap-x-5 gap-y-1">
+        {CREW.map(([label, roles]) => {
+          const names = roles.flatMap(role => broadcast.roles[role] ?? []);
+          return names.length ? <div key={label} className="flex gap-1.5">
+            <dt className="font-semibold text-zinc-900">{label}</dt>
+            <dd className="text-zinc-600">{names.join(" · ")}</dd>
+          </div> : null;
+        })}
       </dl>
-      <a href={broadcast.source_url} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex items-center gap-1 text-[10px] text-zinc-500 hover:text-zinc-900">Broadcast report · {dateLabel(broadcast.reported_at)}<ExternalLink className="h-2.5 w-2.5" aria-hidden="true" /></a>
     </section> : null}
     <VideoGallery section="official" data={data} play={setPlaying} />
     <VideoGallery section="showcase" data={data} play={setPlaying} />

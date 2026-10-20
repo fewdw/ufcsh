@@ -1,4 +1,4 @@
-import { eventBroadcast, eventVideos, mediaGaps, syncEventMedia } from "./event-media.ts";
+import { eventBroadcast, eventVideos, mediaGaps, syncCrewFeed, syncEventMedia } from "./event-media.ts";
 import type { MediaEvent } from "./scrape/event-media.ts";
 import { completedScorecardRounds, parseCommunityScorecard } from "./community-scorecards.ts";
 import { potentialMatchups, syncPotentialMatchups } from "./potential-matchups.ts";
@@ -2079,12 +2079,15 @@ function eventMediaChecks(): BugCheck[] {
   const events = db.prepare("SELECT id, name, date, complete FROM events WHERE date <= date('now', '+7 days') ORDER BY date DESC").all() as MediaEvent[];
   const reads = db.prepare("SELECT event_id, source, error, ok_at FROM event_media_reads WHERE error != ''").all() as { event_id: string; source: string; error: string; ok_at: number | null }[];
   const lost = db.prepare("SELECT event_id, COUNT(*) AS n FROM event_media WHERE unavailable = 1 GROUP BY event_id").all() as { event_id: string; n: number }[];
+  const covered = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
   for (const event of events) {
     const actions: BugItem["actions"] = [{ id: "event-media", label: "Find videos / re-read crew", target: event.id }];
     const links: BugLink[] = [eventLink(event.id), { label: "YouTube", href: `https://www.youtube.com/results?search_query=${encodeURIComponent(event.name)}` }];
     const broadcast = eventBroadcast(event);
     if (broadcast) links.push({ label: "Broadcast report", href: broadcast.source_url });
-    const missing = mediaGaps(event, eventVideos(event), broadcast);
+    // Coverage is expected only where discovery can still supply it: crew reports
+    // live in a short feed, so older cards are a research backlog, not a bug.
+    const missing = event.date >= covered ? mediaGaps(event, eventVideos(event), broadcast) : [];
     if (missing.length) gaps.push({ key: event.id, title: event.name, date: event.date, subtitle: missing.join(" · "), facts: [["Missing", missing.join(", ")]], links, actions });
     for (const read of reads.filter(row => row.event_id === event.id)) unread.push({
       key: `${event.id}:${read.source}`, title: event.name, date: event.date, subtitle: read.source,
@@ -2100,9 +2103,9 @@ function eventMediaChecks(): BugCheck[] {
   };
   return [
     check({ id: "event-media-gaps", group: "Fights & events", label: "Event media & broadcast coverage missing", grade,
-      description: "YouTube fight-week media, creator showcase and six broadcast roles. Expectations follow the event date: numbered-card Countdown/Embedded from four days out; crew from three days out; media day, official/ceremonial weigh-ins and press conferences after the event. Optional workouts are never required. Discovery reads selected channel IDs, retains earlier videos and never guesses a crew. For an unlisted crew, import an event-specific report with backfill:event-media --event-id=ID --broadcast-url=URL or add reviewed evidence to event-broadcast-data.ts. Historical gaps backfill newest first." }, gaps),
+      description: "Cards from the last 30 days and the next week: YouTube fight-week media, creator showcase and six broadcast roles. Expectations follow the event date: numbered-card Countdown/Embedded from four days out; crew from three days out; media day, official/ceremonial weigh-ins and press conferences after the event. Optional workouts are never required. Crews come from MMA Junkie's reports in Yahoo's MMA feed and are never guessed. For a missed crew, import the report with backfill:event-media --event-id=ID --broadcast-url=URL or add reviewed evidence to event-broadcast-data.ts." }, gaps),
     check({ id: "event-media-sources", group: "Fights & events", label: "Event YouTube sources unread", grade,
-      description: "A channel search, video metadata or YouTube response failed. Stored videos remain visible. Re-read the event to retry; zero matching uploads from a successfully read channel is allowed." }, unread),
+      description: "A channel search, video metadata or YouTube response failed, or a crew report (source \"crew\") was found but not every role could be read. Stored videos remain visible and failed old cards retry daily. Re-read the event to retry; zero matching uploads from a successfully read channel is allowed." }, unread),
     check({ id: "event-media-unavailable", group: "Fights & events", label: "Event YouTube videos unavailable", grade: "minor",
       description: "A retained video is unavailable or no longer matches its channel/event. It is hidden from the public gallery. Re-read to check it again and discover replacements." }, unavailable),
   ];
@@ -2219,6 +2222,7 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
 
   switch (action) {
     case "event-media": {
+      await syncCrewFeed().catch(() => {});
       const result = await syncEventMedia(target);
       return { ok: result.failed === 0, message: `${result.videos} YouTube videos retained. ${result.failed ? `${result.failed} publisher(s) could not be read; previous videos were kept.` : "Sources re-read; missing coverage remains listed until evidence is available."}` };
     }

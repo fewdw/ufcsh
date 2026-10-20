@@ -4,7 +4,7 @@ import * as cheerio from "cheerio";
 import { log } from "./util.ts";
 import { EVENT_BROADCASTS, type Broadcast, type BroadcastRole } from "./event-broadcast-data.ts";
 import { EVENT_MEDIA } from "./event-media-data.ts";
-import { categorizeVideo, discoverVideos, eventSearch, matchesMediaEvent, MEDIA_CATEGORIES, MEDIA_SOURCES, videoDetails, type MediaEvent, type Video } from "./scrape/event-media.ts";
+import { categorizeVideo, discoverVideos, eventSearch, MEDIA_CATEGORIES, MEDIA_SOURCES, videoDetails, type MediaEvent, type Video } from "./scrape/event-media.ts";
 
 const DAY = 86_400_000;
 export const BROADCAST_ROLES: Record<BroadcastRole, string> = {
@@ -34,43 +34,56 @@ export function eventVideos(event: MediaEvent): Video[] {
 export function eventMedia(id: string) {
   const event = prepared("SELECT id, name, date, complete FROM events WHERE id = ?").get(id) as MediaEvent | undefined;
   if (!event) return undefined;
-  return { broadcast: eventBroadcast(event), role_labels: BROADCAST_ROLES, videos: eventVideos(event), categories: MEDIA_CATEGORIES,
+  return { broadcast: eventBroadcast(event), videos: eventVideos(event), categories: MEDIA_CATEGORIES,
     sources: MEDIA_SOURCES.map(({ id, name, channel }) => ({ id, name, url: `https://www.youtube.com/channel/${channel}` })) };
 }
 
-/** Only explicit broadcast sections are imported. Unrecognized prose stays a research gap. */
-export function parseBroadcastArticle(html: string, event: MediaEvent, url: string): Broadcast | null {
+/** Broadcasters who never fought in the UFC. Former fighters are recognized from
+ * the roster, and anyone introduced by a role ("correspondent McKenzie Pavacich")
+ * is recognized from the sentence itself. */
+const BROADCASTERS = ["Jon Anik", "Brendan Fitzgerald", "John Gooden", "Joe Rogan", "Laura Sanko", "Bruce Buffer", "Joe Martinez", "Megan Olivi", "Heidi Androl", "Charly Arnolt", "Kate Scott", "Karyn Bryant", "Dan Hellie", "John Schriffen", "McKenzie Pavacich"];
+const ROLE = /host|anchor|analyst|commentat|play.by.play|announcer|reporter|correspondent|interview|cageside|booth|desk|mic\b/i;
+const NAME = String.raw`[A-Z][\p{L}'’-]+(?: [A-Z][\p{L}'’-]+){1,2}`;
+// Whole names only: the fighter Joe Martin is not the announcer Joe Martinez.
+const mentions = (text: string, name: string) => new RegExp(String.raw`(?<![\p{L}])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\p{L}])`, "u").test(text);
+const CUED = new RegExp(String.raw`(?:correspondent|analysts?|announcer|host|anchor|commentators?|reporter|veteran|contender|champions?|[Ff]amers?|\w+weight)\s+(${NAME})|(${NAME})\s+(?:serves|will|fills?|hosts?|joins?|returns?)\b`, "gu");
+
+/** Explicit role sections of an MMA Junkie "broadcast team set" report, whose
+ * headings name the card ("UFC Fight Night 291 desk analysts"). Every core role
+ * must be found; anything less stays a visible gap rather than a guessed crew. */
+export function parseBroadcastArticle(html: string, label: string, url: string, reportedAt: string, known = BROADCASTERS): Broadcast | null {
   const $ = cheerio.load(html);
   $("script, style, nav, aside, footer").remove();
-  const article = $("article").first().length ? $("article").first() : $("body");
-  const heading = article.find("h1").first().text() || $("h1").first().text();
-  if (!heading.toLowerCase().includes(eventSearch(event).toLowerCase()) || !/broadcast|commentary/i.test(heading)) return null;
-  const names = ["Jon Anik", "Brendan Fitzgerald", "John Gooden", "Joe Rogan", "Daniel Cormier", "Paul Felder", "Michael Bisping", "Dominick Cruz", "Laura Sanko", "Bruce Buffer", "Joe Martinez", "Megan Olivi", "Heidi Androl", "Charly Arnolt", "Kate Scott", "Karyn Bryant", "Dan Hellie", "John Schriffen", "Michael Chiesa", "Chris Weidman", "Rashad Evans", "Din Thomas", "Robert Whittaker", "Anthony Smith", "Chael Sonnen", "Alan Jouban", "Kenny Florian"];
-  const roles: Broadcast["roles"] = {};
   const sections = new Map<string, string[]>();
   let current = "";
-  article.find("h2, h3, h4, p").each((_, el) => {
+  $("h2, h3, h4, p").each((_, el) => {
     const text = $(el).text().trim();
-    if (/^h[234]$/.test(el.tagName) || /^UFC .+ (?:desk analysts|roving reporter|octagon announcer|cageside commentators|weigh-in show)$/i.test(text)) {
-      current = text;
-      sections.set(current, []);
+    // The syndication footer repeats the headline, which names people out of role.
+    if (/^This article originally appeared/i.test(text)) current = "";
+    else if (/^h[234]$/.test(el.tagName) || /^UFC .+ (?:desk analysts|roving reporter|octagon announcer|cageside commentators|weigh-in show)$/i.test(text)) {
+      current = text.toLowerCase().includes(label.toLowerCase()) ? text : "";
+      if (current) sections.set(current, []);
     } else if (current) sections.get(current)!.push(text);
   });
+  const article = [...sections.values()].flat().join(" ");
+  const roles: Broadcast["roles"] = {};
   for (const [heading, paragraphs] of sections) {
-    if (!heading.toLowerCase().includes(eventSearch(event).toLowerCase())) continue;
-    const section = paragraphs.join(" ");
-    const found = names.filter(name => section.includes(name)).sort((a, b) => section.indexOf(a) - section.indexOf(b));
-    // Reporters sometimes use a surname after introducing someone in an earlier section.
-    for (const name of names) if (article.text().includes(name) && !found.includes(name) && new RegExp(String.raw`\b${name.split(" ").at(-1)}\b`).test(section)) found.push(name);
+    // Quotes are the subject speaking, never a role assignment.
+    const sentences = paragraphs.join(" ").replace(/["“][^"”]*["”]/g, " ").split(/(?<=[.!?])\s+/).filter(sentence => ROLE.test(sentence));
+    const section = sentences.join(" ");
+    if (/\bnot\b|replac(?:e|es|ing|ed)|instead of/i.test(section)) continue;
+    const names = new Set(known.filter(name => mentions(section, name)));
+    for (const match of section.matchAll(CUED)) names.add((match[1] ?? match[2]).replace(/[’']s$/, ""));
+    // A surname alone refers back to someone introduced in full elsewhere in the report.
+    for (const name of known) if (!names.has(name) && mentions(article, name) && mentions(section, name.split(" ").at(-1)!)) names.add(name);
     const position = (name: string) => section.includes(name) ? section.indexOf(name) : section.indexOf(name.split(" ").at(-1)!);
-    found.sort((a, b) => position(a) - position(b));
-    if (!found.length || /\bnot\b|replac(?:e|es|ing|ed)|instead of/i.test(section)) continue;
+    const found = [...names].sort((a, b) => position(a) - position(b));
+    if (!found.length) continue;
     if (/cageside commentators/i.test(heading) && /play.by.play|leading man/i.test(section)) {
       roles.play_by_play = [found[0]]; roles.color_commentary = found.slice(1);
     } else if (/roving reporter/i.test(heading)) roles.reporter = found;
     else if (/octagon announcer/i.test(heading)) roles.announcer = found;
     else if (/desk analysts/i.test(heading)) {
-      const sentences = section.split(/[.!?]/);
       roles.desk_host = found.filter(name => sentences.some(s => s.includes(name) && /host|anchor/i.test(s)));
       roles.desk_analysts = found.filter(name => !roles.desk_host!.includes(name));
     } else if (/weigh.in show/i.test(heading) && /host/i.test(section)) {
@@ -78,15 +91,64 @@ export function parseBroadcastArticle(html: string, event: MediaEvent, url: stri
     }
   }
   if (!roles.play_by_play?.length || !roles.color_commentary?.length || !roles.desk_analysts?.length || !roles.announcer?.length || !roles.reporter?.length || !roles.desk_host?.length) return null;
-  return { language: "English", feed: "US / English-language broadcast", source_url: url,
-    reported_at: $("meta[property='article:published_time']").attr("content")?.slice(0, 10) ?? html.match(/"datePublished"\s*:\s*"(\d{4}-\d{2}-\d{2})/)?.[1] ?? event.date, roles };
+  return { language: "English", feed: "US / English-language broadcast", source_url: url, reported_at: reportedAt, roles };
 }
+const knownNames = () => [...BROADCASTERS, ...(prepared("SELECT name FROM fighters").all() as { name: string }[]).map(row => row.name)];
+const cardLabel = (title: string) => title.match(/^UFC(?: Fight Night)? \d+\b/i)?.[0] ?? null;
+
+/** The card a crew report announces: a numbered card by its number, a Fight Night
+ * by being the only one in the following week held in the city the report names. */
+export function crewEvent(label: string, published: number, text: string): MediaEvent | null {
+  const day = new Date(published).toISOString().slice(0, 10);
+  const events = prepared("SELECT id, name, date, complete, location FROM events WHERE date BETWEEN ? AND date(?, '+7 days')").all(day, day) as (MediaEvent & { location: string })[];
+  const numbered = /^UFC \d+$/i.test(label);
+  const matches = events.filter(event => numbered ? eventSearch(event).toLowerCase() === label.toLowerCase()
+    : !/^UFC\s+\d+\b/i.test(event.name) && Boolean(event.location) && text.includes(event.location.split(",")[0].trim()));
+  return matches.length === 1 ? matches[0] : null;
+}
+function storeBroadcast(eventId: string, broadcast: Broadcast | null, url: string): void {
+  const now = Date.now();
+  if (broadcast) db.prepare("INSERT INTO event_broadcast VALUES (?, ?, ?) ON CONFLICT(event_id) DO UPDATE SET data_json = excluded.data_json, checked_at = excluded.checked_at").run(eventId, JSON.stringify(broadcast), now);
+  // The "crew" read row puts an unparsed report in Admin → Bugs with its link.
+  db.prepare(`INSERT INTO event_media_reads VALUES (?, 'crew', ?, ?, ?) ON CONFLICT(event_id, source)
+    DO UPDATE SET tried_at = excluded.tried_at, ok_at = COALESCE(excluded.ok_at, ok_at), error = excluded.error`)
+    .run(eventId, now, broadcast ? now : null, broadcast ? "" : `Crew report found, but its roles could not all be read: ${url}`);
+}
+
+/** Yahoo syndicates MMA Junkie's crew reports in full, a few days before each card.
+ * The feed spans about a day and a half; every media pass reads it once. */
+export const CREW_FEED = "https://sports.yahoo.com/mma/rss/";
+export async function syncCrewFeed(read = fetchHtml): Promise<number> {
+  const $ = cheerio.load(await read(CREW_FEED, { retries: 1, timeoutMs: 20000 }), { xml: true });
+  if (!$("item").length) throw new Error(`no items read from ${CREW_FEED}`);
+  let stored = 0;
+  for (const node of $("item").toArray()) {
+    const item = $(node);
+    const title = item.children("title").first().text().trim();
+    const label = cardLabel(title);
+    const published = Date.parse(item.children("pubDate").first().text());
+    const html = item.children("content\\:encoded").first().text();
+    const url = item.children("link").first().text().trim();
+    if (!label || !/broadcast team|commentary team/i.test(title) || !Number.isFinite(published) || !html) continue;
+    const event = crewEvent(label, published, cheerio.load(html).text());
+    if (!event) { log(`event broadcast: no single card matches "${title}"`); continue; }
+    const broadcast = parseBroadcastArticle(html, label, url, new Date(published).toISOString().slice(0, 10), knownNames());
+    storeBroadcast(event.id, broadcast, url);
+    if (broadcast) stored++;
+  }
+  return stored;
+}
+/** Manual import of an older or relocated report for one chosen card. */
 export async function importBroadcast(event: MediaEvent, url: string): Promise<void> {
   const host = new URL(url).hostname;
   if (!/^(?:(?:uk\.)?sports\.yahoo\.com|www\.(?:aol\.com|mmafighting\.com|mmamania\.com|mmajunkie\.com)|mmajunkie\.usatoday\.com)$/.test(host)) throw new Error("Use an event-specific broadcast report from a supported outlet.");
-  const parsed = parseBroadcastArticle(await fetchHtml(url, { retries: 1, timeoutMs: 15000 }), event, url);
+  const html = await fetchHtml(url, { retries: 1, timeoutMs: 15000 });
+  const $ = cheerio.load(html);
+  const label = cardLabel($("h1").first().text().trim());
+  if (!label || (/^UFC \d+$/i.test(label) && label.toLowerCase() !== eventSearch(event).toLowerCase())) throw new Error("The report's headline does not name this card.");
+  const parsed = parseBroadcastArticle(html, label, url, $("meta[property='article:published_time']").attr("content")?.slice(0, 10) ?? html.match(/"datePublished"\s*:\s*"(\d{4}-\d{2}-\d{2})/)?.[1] ?? event.date, knownNames());
   if (!parsed) throw new Error("No explicit event-specific broadcast sections found; retain reviewed crew and review the source manually.");
-  db.prepare("INSERT INTO event_broadcast VALUES (?, ?, ?) ON CONFLICT(event_id) DO UPDATE SET data_json = excluded.data_json, checked_at = excluded.checked_at").run(event.id, JSON.stringify(parsed), Date.now());
+  storeBroadcast(event.id, parsed, url);
 }
 
 export function storeVideo(eventId: string, video: Video, now = Date.now()): void {
@@ -107,6 +169,8 @@ async function readEvent(eventId: string, read: typeof discoverVideos, details: 
   const event = db.prepare("SELECT id, name, date, complete FROM events WHERE id = ?").get(eventId) as MediaEvent | undefined;
   if (!event) throw new Error("Event not found");
   let failed = 0;
+  // Old cards rarely change: their retained videos are re-checked quarterly, not weekly.
+  const fresh = Date.parse(event.date) > Date.now() - 45 * DAY ? 7 * DAY : 90 * DAY;
   const existing = new Map(eventVideos(event).map(video => [video.id, video]));
   const stored = db.prepare("SELECT video_id, data_json, checked_at, unavailable FROM event_media WHERE event_id = ?").all(eventId) as { video_id: string; data_json: string; checked_at: number; unavailable: number }[];
   const checked = new Map(stored.map(row => [row.video_id, row]));
@@ -119,7 +183,7 @@ async function readEvent(eventId: string, read: typeof discoverVideos, details: 
       for (const term of terms) for (const video of await read(event, source, term)) candidates.set(video.id, video);
       // Older retained videos may no longer appear in search. Check a bounded batch
       // for removals, and retry unavailable IDs so a restored video can return.
-      for (const row of stored.filter(row => row.unavailable || row.checked_at < now - 7 * DAY).sort((a, b) => a.checked_at - b.checked_at).filter(row => JSON.parse(row.data_json).source === source.id).slice(0, 5)) {
+      for (const row of stored.filter(row => row.unavailable || row.checked_at < now - fresh).sort((a, b) => a.checked_at - b.checked_at).filter(row => JSON.parse(row.data_json).source === source.id).slice(0, 5)) {
         candidates.set(row.video_id, JSON.parse(row.data_json));
       }
       const videos = [...candidates.values()].slice(0, 55);
@@ -128,7 +192,7 @@ async function readEvent(eventId: string, read: typeof discoverVideos, details: 
         // Exact dates already read never need to be guessed from relative search labels.
         const retained = checked.get(candidate.id);
         if (previous?.published_at && retained && !retained.unavailable && JSON.parse(retained.data_json).status === "replay"
-          && previous.channel_id === candidate.channel_id && retained.checked_at > now - 7 * DAY) continue;
+          && previous.channel_id === candidate.channel_id && retained.checked_at > now - fresh) continue;
         const video = await details(candidate, event);
         if (video) { storeVideo(eventId, video); existing.set(video.id, video); }
         else if (!previous || previous.channel_id === candidate.channel_id) db.prepare("UPDATE event_media SET unavailable = 1, checked_at = ? WHERE event_id = ? AND video_id = ?").run(now, eventId, candidate.id);
@@ -142,38 +206,31 @@ async function readEvent(eventId: string, read: typeof discoverVideos, details: 
       log(`event media ${event.name} / ${source.name}:`, String(err));
     }
   }
-  // Re-read a retained report; unsupported formats remain reviewed data, never guessed prose.
-  const broadcast = eventBroadcast(event);
-  const reports = broadcast ? [broadcast.source_url] : (db.prepare("SELECT url, title FROM news WHERE title LIKE ? ORDER BY published_at DESC LIMIT 30").all(`%${eventSearch(event)}%`) as { url: string; title: string }[])
-    .filter(row => matchesMediaEvent(row.title, event) && /broadcast team|commentary team/i.test(row.title)).map(row => row.url).slice(0, 3);
-  for (const url of reports) {
-    try { await importBroadcast(event, url); break; }
-    catch (err) { log(`event broadcast ${event.name}:`, String(err)); }
-  }
   return { videos: eventVideos(event).length, failed };
 }
 let syncing = false;
-/** Near-term cards refresh every six hours. Historical cards backfill newest first,
- * two per pass, then retry weekly for late uploads. Source errors retry after six hours. */
+/** Each pass reads the crew feed, then two cards. Cards within 45 days refresh every
+ * six hours. History backfills newest first; a fully read old card returns quarterly,
+ * one with a failed source the next day. */
 export async function syncMediaBackfill(limit = 2): Promise<void> {
   if (syncing || metaAgeMs("event_media_pass_at") < 30 * 60_000) return;
   syncing = true;
   touchMeta("event_media_pass_at");
   try {
+    await syncCrewFeed().catch(err => log("event broadcast feed:", String(err)));
     const now = Date.now();
-    const events = db.prepare(`SELECT e.id, e.name, e.date, e.complete, MAX(r.tried_at) AS tried_at
-      FROM events e LEFT JOIN event_media_reads r ON r.event_id = e.id
+    const events = db.prepare(`SELECT e.id, e.name, e.date, e.complete, MAX(r.tried_at) AS tried_at, MAX(r.error != '') AS failing
+      FROM events e LEFT JOIN event_media_reads r ON r.event_id = e.id AND r.source != 'crew'
       WHERE e.date <= date('now', '+45 days')
       GROUP BY e.id ORDER BY (e.date >= date('now', '-7 days')) DESC,
-        CASE WHEN e.date >= date('now', '-7 days') THEN e.date END ASC, e.date DESC`).all() as (MediaEvent & { tried_at: number | null })[];
-    // Finish unread history before revisiting old cards; a weekly refresh of the
-    // newest archive must never starve its oldest events.
+        CASE WHEN e.date >= date('now', '-7 days') THEN e.date END ASC, e.date DESC`).all() as (MediaEvent & { tried_at: number | null; failing: number | null })[];
+    // Finish unread history before revisiting old cards, so the oldest are never starved.
     const priority = (event: typeof events[number]) => Date.parse(event.date) >= now - 45 * DAY ? 0 : event.tried_at == null ? 1 : 2;
     events.sort((a, b) => priority(a) - priority(b) || (priority(a) === 2 ? (a.tried_at ?? 0) - (b.tried_at ?? 0) : 0));
     let done = 0;
     for (const event of events) {
       const near = Math.abs(Date.parse(event.date) - now) < 45 * DAY;
-      if (event.tried_at && now - event.tried_at < (near ? 6 * 3_600_000 : 7 * DAY)) continue;
+      if (event.tried_at && now - event.tried_at < (near ? 6 * 3_600_000 : event.failing ? DAY : 90 * DAY)) continue;
       await syncEventMedia(event.id);
       if (++done >= limit) break;
     }

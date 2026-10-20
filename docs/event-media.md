@@ -1,9 +1,11 @@
 # Event media and broadcast crew
 
-`client/src/components/EventMedia.tsx` owns the gallery, filters, broadcast grid
-and click-to-play modal. It is rendered below the event card; **Media & broadcast**
-in the event heading jumps to it. Use `#event-media` for a direct preview link.
-The component uses container breakpoints and existing light/dark styles.
+`client/src/components/EventMedia.tsx` owns the gallery, filters, one-line crew
+strip and click-to-play modal. It is rendered below the event card; **Media &
+broadcast** in the event heading jumps to it. Use `#event-media` for a direct
+preview link. A card with no crew and no videos shows none of it: no panel, no
+empty sections, no heading link. The crew strip pairs roles for display
+(Commentary = play-by-play then color, Desk = host then analysts).
 
 ## Data and ordering
 
@@ -41,9 +43,14 @@ UFC and TheMacLife get additional fight-week category queries. This is a bounded
 collection, not a claim to have indexed every YouTube upload or every page of results.
 
 The background sync runs a media pass at most every 30 minutes, two events per
-pass. Cards within 45 days refresh after six hours. Unread history gets priority
-over weekly rereads, preventing the oldest events from being starved. Older
-retained videos are checked in small batches for removals. Search failures preserve
+pass. Cards within 45 days refresh after six hours. Unread history gets priority,
+newest first (about 800 cards, roughly eight days). A fully read card older than
+45 days returns quarterly; one with a failed source, the next day. Retained videos
+are re-checked weekly on recent cards and quarterly on old ones, so steady state
+is roughly 1,500–2,000 YouTube requests a day (about 20–30 per recent-card
+refresh, about 70 per old card each quarter). A first read of a recent Fight Night
+took 19 searches and 24 watch pages, 43 seconds (2026-10-20). YouTube has its own
+throttled host queue, so it never delays UFCStats or live results. Search failures preserve
 existing videos and remain visible in Admin → Bugs. No API key is needed; changes
 to YouTube markup/availability can require a scraper repair.
 
@@ -62,24 +69,31 @@ replaces that file with the selected events, so include every starter card to ke
 ## Broadcast reports and gaps
 
 Crew roles are event-specific and feed/language-labeled. Reviewed reports in
-`event-broadcast-data.ts` take precedence over automatic imports. The importer
-accepts only explicit role sections from supported MMA reporting outlets, and
-tries matching broadcast reports already captured by the news sync. For historical
-reports or a new source, use:
+`event-broadcast-data.ts` take precedence over imports. Every media pass reads
+Yahoo's MMA feed (`CREW_FEED`), which syndicates MMA Junkie's "broadcast team set"
+reports in full a few days before each card. The feed spans about a day and a
+half, so it must keep being read; Google News links in the news table can't be
+followed. A report is assigned to one card: a numbered card by its number, a Fight
+Night ("UFC Fight Night 291") by being the only non-numbered card in the next
+seven days held in the city the report names.
+
+Only the report's own role sections are read, under headings naming that card.
+People are recognized as whole names from the fighter roster and `BROADCASTERS`,
+or when introduced by their role ("correspondent McKenzie Pavacich"). Quotes and
+the syndication footer are ignored. All six core roles are required; otherwise
+nothing is stored and the report's link appears under Admin → Bugs (source
+`crew`). Checked against the UFC 332, UFC 333, Fight Night 290 and 291 reports.
+For an older or missed report:
 
 ```sh
 DATA_DIR=/path/to/private-copy npm run backfill:event-media --prefix server -- --event-id=EVENT_ID --broadcast-url=https://sports.yahoo.com/path-to-event-report
 ```
 
-Unsupported layouts are left for review; no crew is inferred from a usual lineup.
-For those reports add sourced roles to `event-broadcast-data.ts`. Known-role name
-recognition is conservative; a new broadcaster requires updating the parser.
-
-Admin → Bugs includes coverage gaps, source errors and unavailable videos, each
-with an event re-read action. It asks for crew roles from three days out; Countdown
-and Embedded on modern numbered cards from four days out; media day, weigh-ins
-and press conferences after the card; and a creator showcase from fight week.
-Optional workouts and a video from every individual creator are not requirements.
-Historical gaps remain a lower-priority research backlog. Preview repairs follow
-the launcher's existing disabled-repair setting; the background sync likewise
-follows `NO_SYNC`. The seeded styling preview needs neither enabled.
+Admin → Bugs includes coverage gaps for cards from the last 30 days and the next
+week, source errors and unavailable videos, each with a re-read action. It asks
+for crew roles from three days out; Countdown and Embedded on modern numbered
+cards from four days out; media day, weigh-ins and press conferences after the
+card; and a creator showcase from fight week. Optional workouts and a video from
+every individual creator are not requirements. Older gaps are not reported: their
+crew reports have left the feed. Preview repairs follow the launcher's existing
+disabled-repair setting; the background sync likewise follows `NO_SYNC`. The seeded styling preview needs neither enabled.
