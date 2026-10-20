@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { db } from "./db.ts";
-import { crewEvent, crewGaps, eventBroadcast, eventCrew, parseBroadcastArticle, syncCrewFeed } from "./event-crew.ts";
+import { readFileSync } from "node:fs";
+import { cardLabel, crewEvent, crewGaps, eventBroadcast, eventCrew, parseBroadcastArticle, syncCrewFeed } from "./event-crew.ts";
 import { EVENT_BROADCASTS } from "./event-broadcast-data.ts";
 
 const crewReport = (label: string, city: string) => `<p>The octagon returns Saturday with ${label} from Rogers Place in ${city}.</p>
@@ -70,4 +71,41 @@ test("crew gaps start three days before a card, and a reviewed crew fills every 
   assert.equal(crewGaps(card, null, at("2026-10-21")).length, 6);
   assert.deepEqual(crewGaps(card, EVENT_BROADCASTS["UFC 333"], at("2026-10-26")), []);
   assert.deepEqual(crewGaps(card, { ...EVENT_BROADCASTS["UFC 333"], roles: { ...EVENT_BROADCASTS["UFC 333"].roles, reporter: [] } }, at("2026-10-26")), ["Reporter"]);
+});
+
+test("older report layouts: captions, hosts named beside the word, joined-by lists and changes of plan", () => {
+  const html = `<h2>UFC 330 weigh-in show</h2><p>Jon Anik will host the official UFC 330 weigh-in show on Friday.</p>
+    <p>He'll be joined by former two-division Daniel Cormier, former middleweight champion Chris Weidman and retired lightweight contender Paul Felder.</p>
+    <h2>UFC 330 octagon announcer</h2><p>Feb 21, 2026; Houston, Texas, USA; Ring Announcer Bruce Buffer introduces a bout. Mandatory Credit: Someone-Imagn Images</p>
+    <p>LAS VEGAS, NEVADA - AUGUST 23: Dan Hellie anchors the broadcast at UFC APEX. (Photo by Chris Unger/Zuffa LLC)</p>
+    <p>Joe Martinez will introduce the fighters before battle and read official bout results.</p>
+    <h2>UFC 330 desk analysts</h2><p>Anthony Smith, Chael Sonnen and Coach Din Thomas will serve as desk analysts for the broadcast with Kate Scott hosting.</p>
+    <p>Daniel Cormier will join Friday coverage instead of Chael Sonnen.</p>
+    <h2>UFC 330 roving reporter</h2><p>UFC correspondent Megan Olivi will conduct interviews backstage.</p>
+    <h2>UFC 330 cageside commentators</h2><p>Jon Anik will serve as the leading man on the mic from cageside.</p><p>He will command play-by-play alongside Daniel Cormier and Joe Rogan.</p>`;
+  const crew = parseBroadcastArticle(html, "UFC 330", "https://sports.yahoo.com/example", "2031-08-11", ["Jon Anik", "Daniel Cormier", "Chris Weidman", "Paul Felder", "Bruce Buffer", "Dan Hellie", "Joe Martinez", "Anthony Smith", "Chael Sonnen", "Din Thomas", "Kate Scott", "Megan Olivi", "Joe Rogan"]);
+  assert.deepEqual(crew?.roles, {
+    weigh_in_host: ["Jon Anik"], weigh_in_analysts: ["Daniel Cormier", "Chris Weidman", "Paul Felder"], announcer: ["Joe Martinez"],
+    desk_host: ["Kate Scott"], desk_analysts: ["Anthony Smith", "Chael Sonnen", "Din Thomas"], reporter: ["Megan Olivi"],
+    play_by_play: ["Jon Anik"], color_commentary: ["Daniel Cormier", "Joe Rogan"],
+  });
+});
+
+test("series labels and report timing: ESPN-era numbers, and numbered cards announced up to two weeks out", () => {
+  db.exec("SAVEPOINT crew_window_test");
+  try {
+    db.prepare("INSERT INTO events (id, name, date, location) VALUES (?, ?, ?, ?)").run("crew-319", "UFC 999: Early vs. Report", "2031-08-16", "Chicago, Illinois, USA");
+    db.prepare("INSERT INTO events (id, name, date, location) VALUES (?, ?, ?, ?)").run("crew-espn", "UFC Fight Night: Espn vs. Era", "2031-08-23", "Nashville, Tennessee, USA");
+    assert.equal(crewEvent("UFC 999", Date.parse("2031-08-07T12:00:00Z"), "")?.id, "crew-319");
+    assert.equal(cardLabel("UFC on ESPN 68 commentators, broadcast team set"), "UFC on ESPN 68");
+    assert.equal(crewEvent("UFC on ESPN 68", Date.parse("2031-08-19T12:00:00Z"), "from Bridgestone Arena in Nashville")?.id, "crew-espn");
+    // A Fight Night more than a week out is not assumed.
+    assert.equal(crewEvent("UFC on ESPN 68", Date.parse("2031-08-12T12:00:00Z"), "from Bridgestone Arena in Nashville"), null);
+  } finally { db.exec("ROLLBACK TO crew_window_test; RELEASE crew_window_test"); }
+});
+
+test("archived crews resolve by event ID, with every core role", () => {
+  const archive = JSON.parse(readFileSync(new URL("./event-crew-archive.json", import.meta.url), "utf8")) as Record<string, { event: string; date: string }>;
+  assert.ok(Object.keys(archive).length >= 60);
+  for (const [id, entry] of Object.entries(archive)) assert.deepEqual(crewGaps({ id, name: entry.event, date: entry.date }, eventBroadcast({ id, name: entry.event, date: entry.date })), [], entry.event);
 });
