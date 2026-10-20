@@ -1,4 +1,4 @@
-import EventCrew, { EventCrewLink } from "../components/EventCrew";
+import EventCrew from "../components/EventCrew";
 import { PANEL } from "../components/chartTokens";
 import { CareerStatModal } from "../components/CareerStatDetails";
 import { isFightDay, landingEvent, liveFightId, taggedEvent } from "../liveEvent";
@@ -1065,7 +1065,6 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
                 </span>
               ) : <span className="whitespace-nowrap font-medium text-zinc-600">No date</span>}
               <EventPlace venue={event.venue} location={event.location} locationSlug={event.location_slug} />
-              {!event.potential && !oddsCard ? <EventCrewLink eventId={event.id} /> : null}
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-end justify-center gap-1 text-right empty:hidden">
