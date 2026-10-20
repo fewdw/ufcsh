@@ -20,6 +20,7 @@ client (`client/`) renders every page.
 | In-memory analytics index | `fight-index.ts` (every completed bout, state entering it) |
 | Leaderboards | `stats.ts` (fighter cards), `stats-fights.ts` (Fights card: bouts, judges, referees) |
 | Potential matchups (pinned unconfirmed odds board, separate from scheduled fights) | `potential-matchups.ts`; synced at startup and every five minutes from FightOdds.io and BestFightOdds future boards; `scrape/potential-odds.ts` reads BestFightOdds |
+| Event YouTube media and broadcast crew | `event-media.ts` (read, discovery/backfill, coverage rules and explicit broadcast-report import), `scrape/event-media.ts` (channel identity, event matching, chronology and categories), `event-media-data.ts` / `event-broadcast-data.ts` (reviewed starter data); `/api/events/:id/media`; client `components/EventMedia.tsx` below the card in `pages/EventsPage.tsx`. Missing coverage, unread sources and unavailable videos in Admin → Bugs, with a re-read action. See `docs/event-media.md` |
 | News (outlets, relevance, fighter/event tags, story grouping, newest first, `?fighter=` for one fighter) | `news.ts`; feeds read in `scrape/news.ts` (`NEWS_FEEDS`) |
 | News read by Gemini (off by default; enabled in Admin → Settings; `GEMINI_API_KEY`) | `news-ai.ts`, run from the API process every 10 minutes |
 | Profile records and full stat rankings | `records.ts` (`fighterRecords`, `fighterBoard`, `milestonesWithinReach`) |

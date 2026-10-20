@@ -1,3 +1,4 @@
+import { syncMediaBackfill } from "./event-media.ts";
 import { startPotentialMatchupSync } from "./potential-matchups.ts";
 import { isFightDay, LIVE_EVENT_INTERVAL, liveDetailDue, fightIsComplete, fightIsUnderway } from "./live-state.ts";
 import { db, getMeta, metaAgeMs, setMeta, touchMeta } from "./db.ts";
@@ -1946,6 +1947,8 @@ export async function tick(): Promise<void> {
     if (!catchWeightsRunning) void guarded("catch_weights", async () => { await syncCatchWeights(); });
     if (!venueArchiveRunning) void guarded("venue_archive", () => syncVenueArchive());
     if (!wikiInfoRunning) void guarded("event_articles", () => syncEventWikiInfo());
+    // Media discovery runs alongside the tick; live results never wait on YouTube.
+    void guarded("event_media", () => syncMediaBackfill());
 
     // 8. Odds: FightOdds.io's boards every five minutes (props every thirty),
     //    alongside the tick; then BestFightOdds for any bout without a line

@@ -147,7 +147,7 @@ function ItemRow({
     try {
       const body = await request<{ ok?: boolean; message?: string }>(
         `/api/admin/bugs/action?action=${encodeURIComponent(action.id)}&target=${encodeURIComponent(action.target)}`,
-        { method: "POST" },
+        { method: "POST", ...(action.id === "event-media" ? { timeoutMs: 10 * 60_000 } : {}) },
       );
       setResult({ ok: Boolean(body.ok), message: body.message ?? "Done." });
     } catch (err) {
