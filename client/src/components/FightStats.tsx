@@ -1151,11 +1151,9 @@ export function Scorecards({ fight }: { fight: Matchup }) {
             {grid(open)}
             {/* Too narrow for another column: the media's split as a row of its own. */}
             <button type="button" onClick={open} aria-label={`Media scores: ${media.cards.length} cards`}
-              className="mx-auto flex w-full max-w-3xl items-center gap-2.5 border-t border-zinc-100 px-4 py-2 text-left transition hover:bg-zinc-50 @[40rem]:hidden">
+              className="flex w-full items-center justify-center gap-4 border-t border-zinc-100 px-4 py-2 transition hover:bg-zinc-50 @[40rem]:hidden">
               <span className="shrink-0 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] text-sky-600">{media.cards.length} media</span>
-              <span className="flex min-w-0 flex-1 justify-center">
-                <ScorePair f1={mediaAverage!.avg1} f2={mediaAverage!.avg2} text={(value) => value.toFixed(mediaPlaces)} size="text-[13px]" />
-              </span>
+              <ScorePair f1={mediaAverage!.avg1} f2={mediaAverage!.avg2} text={(value) => value.toFixed(mediaPlaces)} size="text-[13px]" />
               <MediaSplit cards={media.cards} names={names} className="shrink-0 text-[11px]" />
               <span aria-hidden="true" className="shrink-0 text-zinc-400">›</span>
             </button>
@@ -1276,9 +1274,15 @@ function ScoreGrid({ fight, judges, fans, rounds, decided, media, openMedia }: {
           {fans.completeCards.toLocaleString()} {fans.completeCards === 1 ? "fan" : "fans"}
         </Link>
       ) : null}
-      {media ? (
-        <button type="button" onClick={openMedia} className={`${mediaCell} items-end justify-center self-end px-0.5 text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] text-sky-600 underline-offset-2 hover:underline`}>
-          {media.cards.length} media
+      {media && tally ? (
+        // One target over the name and total rows, so both light up together.
+        <button type="button" onClick={openMedia} title="Every journalist's card"
+          aria-label={`Media average of ${media.cards.length} cards: ${lastName(fight.f1.name)} ${tally.avg1.toFixed(mediaPlaces)}, ${lastName(fight.f2.name)} ${tally.avg2.toFixed(mediaPlaces)}`}
+          className="row-span-2 hidden min-w-0 grid-rows-subgrid rounded-lg px-0.5 transition hover:bg-zinc-50 @[40rem]:grid">
+          <span className="self-end text-[9px] font-semibold uppercase leading-3 tracking-[0.06em] text-sky-600">{media.cards.length} media</span>
+          <span className="flex items-center justify-center py-1.5">
+            <ScorePair f1={tally.avg1} f2={tally.avg2} text={(value) => value.toFixed(mediaPlaces)} size={mediaPlaces ? decimalSize : totalSize} />
+          </span>
         </button>
       ) : null}
 
@@ -1292,13 +1296,6 @@ function ScoreGrid({ fight, judges, fans, rounds, decided, media, openMedia }: {
         <span className={`${cell} py-1.5`} aria-label={`Fans: ${lastName(fight.f1.name)} ${fans.avg1!.toFixed(places)}, ${lastName(fight.f2.name)} ${fans.avg2!.toFixed(places)}`}>
           <ScorePair f1={fans.avg1!} f2={fans.avg2!} text={(value) => value.toFixed(places)} size={places ? decimalSize : totalSize} />
         </span>
-      ) : null}
-      {media && tally ? (
-        <button type="button" onClick={openMedia} title="Every journalist's card"
-          aria-label={`Media average of ${media.cards.length} cards: ${lastName(fight.f1.name)} ${tally.avg1.toFixed(mediaPlaces)}, ${lastName(fight.f2.name)} ${tally.avg2.toFixed(mediaPlaces)}`}
-          className={`${mediaCell} min-w-0 items-center justify-center rounded-md px-0.5 py-1.5 transition hover:bg-zinc-50`}>
-          <ScorePair f1={tally.avg1} f2={tally.avg2} text={(value) => value.toFixed(mediaPlaces)} size={mediaPlaces ? decimalSize : totalSize} />
-        </button>
       ) : null}
 
       {Array.from({ length: roundCount }, (_, index) => (

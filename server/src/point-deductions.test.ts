@@ -53,6 +53,7 @@ test("media cards follow our fighter order and must agree with their own winner"
   const card = (f1Score: number, f2Score: number, winner: string) => ({ name: "A Writer", outlet: "Sherdog.com", url: "", f1Score, f2Score, winner });
   const page = { f1Name: "Movsar Evloev", f2Name: "Lerone Murphy", judges: [], deductions: [],
     media: [card(47, 47, "DRAW"), card(46, 48, "Murphy"), card(48, 47, "Murphy"), card(48, 46, "Volkanovski")] };
-  assert.deepEqual(pageMedia(page, 1).map(c => [c.f1Score, c.f2Score]), [[47, 47], [46, 48]]);
-  assert.deepEqual(pageMedia(page, -1).map(c => [c.f1Score, c.f2Score]), [[47, 47], [48, 46]]);
+  assert.deepEqual(pageMedia(page, 1).items.map(c => [c.f1Score, c.f2Score]), [[47, 47], [46, 48]]);
+  assert.deepEqual(pageMedia(page, -1).items.map(c => [c.f1Score, c.f2Score]), [[47, 47], [48, 46]]);
+  assert.deepEqual(pageMedia(page, 1).dropped.map(c => c.winner), ["Murphy", "Volkanovski"]);
 });

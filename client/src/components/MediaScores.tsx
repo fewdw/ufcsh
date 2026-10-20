@@ -13,15 +13,17 @@ export type MediaScores = { name: string; url: string; cards: MediaCard[] };
 
 const fill = (verdict: Verdict) => verdict === "draw" ? undefined : `var(--color-${verdict})`;
 const ink = (verdict: Verdict) => verdict === "draw" ? undefined : `var(--color-${verdict}-ink)`;
+// Draws are orange: neither fighter's colour, and not the grey of a losing score.
+const DRAW_INK = "text-orange-600 dark:text-orange-400";
 const verdictName = (verdict: Verdict, names: Names) => verdict === "draw" ? "Draw" : lastName(names[verdict]);
 
-/** The cards' split as one bar: each fighter's colour, draws grey between. */
+/** The cards' split as one bar: each fighter's colour, draws orange between. */
 export function MediaBar({ cards, className = "" }: { cards: MediaCard[]; className?: string }) {
   const { counts } = mediaTally(cards);
   return (
     <span aria-hidden="true" className={`flex gap-px overflow-hidden rounded-full ${className}`}>
       {VERDICTS.map((verdict) => counts[verdict] ? (
-        <span key={verdict} className={verdict === "draw" ? "bg-zinc-300" : ""} style={{ flexGrow: counts[verdict], backgroundColor: fill(verdict) }} />
+        <span key={verdict} className={verdict === "draw" ? "bg-orange-400" : ""} style={{ flexGrow: counts[verdict], backgroundColor: fill(verdict) }} />
       ) : null)}
     </span>
   );
@@ -36,7 +38,7 @@ export function MediaSplit({ cards, names, className = "" }: { cards: MediaCard[
       {ways.map((verdict, index) => (
         <span key={verdict} className="whitespace-nowrap">
           {index ? <span className="text-zinc-300"> · </span> : null}
-          <span className={verdict === "draw" ? "text-zinc-500" : "font-semibold"} style={{ color: ink(verdict) }}>{verdictName(verdict, names)}</span>{" "}
+          <span className={`font-semibold ${verdict === "draw" ? DRAW_INK : ""}`} style={{ color: ink(verdict) }}>{verdictName(verdict, names)}</span>{" "}
           <span className="font-semibold text-zinc-900">{counts[verdict]}</span>
         </span>
       ))}
@@ -46,7 +48,7 @@ export function MediaSplit({ cards, names, className = "" }: { cards: MediaCard[
 
 function Score({ card }: { card: MediaCard }) {
   const verdict = verdictOf(card);
-  const tone = (side: "f1" | "f2") => verdict === side ? { className: "font-semibold", style: { color: ink(side) } } : { className: verdict === "draw" ? "font-semibold text-zinc-900" : "text-zinc-400" };
+  const tone = (side: "f1" | "f2") => verdict === side ? { className: "font-semibold", style: { color: ink(side) } } : { className: verdict === "draw" ? `font-semibold ${DRAW_INK}` : "text-zinc-400" };
   return (
     <span className="tabular-nums">
       <span {...tone("f1")}>{card.f1Score}</span>
@@ -77,7 +79,7 @@ function MediaDialog({ id, media, names, close }: { id: string; media: MediaScor
         <div className="mt-3 grid grid-cols-3 gap-2 text-center">
           {VERDICTS.map((verdict) => (
             <div key={verdict} className="min-w-0">
-              <div className={`text-xl font-semibold tabular-nums leading-6 ${counts[verdict] ? verdict === "draw" ? "text-zinc-900" : "" : "text-zinc-300"}`} style={counts[verdict] ? { color: ink(verdict) } : undefined}>{counts[verdict]}</div>
+              <div className={`text-xl font-semibold tabular-nums leading-6 ${counts[verdict] ? verdict === "draw" ? DRAW_INK : "" : "text-zinc-300"}`} style={counts[verdict] ? { color: ink(verdict) } : undefined}>{counts[verdict]}</div>
               <div className="truncate text-[11px] text-zinc-500" title={verdict === "draw" ? undefined : names[verdict]}>{verdictName(verdict, names)}</div>
             </div>
           ))}
@@ -92,7 +94,7 @@ function MediaDialog({ id, media, names, close }: { id: string; media: MediaScor
               <h3 className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="flex items-baseline gap-2">
                   <Score card={group[0]} />
-                  <span className={`text-xs ${verdict === "draw" ? "text-zinc-500" : "font-medium"}`} style={{ color: ink(verdict) }}>{verdict === "draw" ? "Draw" : lastName(names[verdict])}</span>
+                  <span className={`text-xs font-medium ${verdict === "draw" ? DRAW_INK : ""}`} style={{ color: ink(verdict) }}>{verdict === "draw" ? "Draw" : lastName(names[verdict])}</span>
                 </span>
                 <span className="text-xs tabular-nums text-zinc-400">{group.length}</span>
               </h3>

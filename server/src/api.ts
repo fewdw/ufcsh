@@ -322,12 +322,6 @@ function scheduledRounds(f: any, detail: any): number | null {
  * behind them. Keep the independent totals authoritative and only attach a
  * round card when its judge and final score agree. */
 function fightDetail(f: any): any {
-  const detail = officialDetail(f);
-  const media = storedMedia(f.media_scores_json);
-  return media && detail?.type === "past" ? { ...detail, media: { name: "MMA Decisions", url: media.sourceUrl, cards: media.items } } : detail;
-}
-
-function officialDetail(f: any): any {
   const detail = f.detail_json ? JSON.parse(f.detail_json) : null;
   if (!f.judge_rounds_json) {
     const deductions = verifiedDeductions(Array.isArray(detail?.judges) ? detail.judges : [], f.deductions_json);
@@ -1071,7 +1065,11 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     (h: any) => h.fight_id && h.opponent.id && h.opponent.id === f.f2_id && h.fight_id !== f.id,
   );
 
-  const detail = fightDetail(f);
+  const official = fightDetail(f);
+  // Journalists' cards, only on the matchup: event lists never send them.
+  const media = storedMedia(f.media_scores_json);
+  const detail = media?.items.length && official?.type === "past"
+    ? { ...official, media: { name: "MMA Decisions", url: media.sourceUrl, cards: media.items } } : official;
   const referee: string | null = detail?.methodInfo?.Referee || f.referee_assigned || null;
   return {
     id: f.id,

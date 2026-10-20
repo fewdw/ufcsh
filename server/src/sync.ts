@@ -1812,6 +1812,8 @@ export async function syncLiveEvents(): Promise<void> {
 
 let ticking = false;
 
+let mmaDecisionsReading: Promise<void> | null = null;
+
 export async function tick(): Promise<void> {
   if (ticking) return;
   ticking = true;
@@ -1897,10 +1899,13 @@ export async function tick(): Promise<void> {
     if (metaAgeMs("rankings_synced_at") > 6 * HOUR) await guarded("rankings", syncRankings);
     // Past lists, once, in the background: Wayback is slow.
     void guarded("ranking_history", backfillRankingHistory);
-    // Points taken by the referee in recent decisions, from MMA Decisions.
-    if (metaAgeMs("point_deductions_checked_at") > HOUR) {
+    // Points taken by the referee and media scores in recent decisions, from
+    // MMA Decisions. A few minutes of page reads while the archive fills in,
+    // so it runs beside the tick rather than holding it up.
+    if (!mmaDecisionsReading && metaAgeMs("point_deductions_checked_at") > HOUR) {
       touchMeta("point_deductions_checked_at");
-      await guarded("point_deductions", () => syncRecentPointDeductions());
+      mmaDecisionsReading = guarded("point_deductions", () => syncRecentPointDeductions())
+        .finally(() => { mmaDecisionsReading = null; });
     }
 
     // 7. Fight-detail pages: upcoming events within 14 days (tale of the tape)
