@@ -102,9 +102,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-19">October 19, 2026</time></p>
             <ul>
-              <li>More complete judge scorecards, media scores and point deductions.</li>
+              <li>Recovered judge scorecards, media scores, point deductions and contract dates.</li>
               <li>Corrected replacement identities and recovered announcement dates.</li>
-              <li>Failed source reads stay visible and retry automatically.</li>
+              <li>More reliable source retries and background imports.</li>
             </ul>
           </Section>
         </div>
