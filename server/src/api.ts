@@ -63,7 +63,7 @@ import { boutsBefore, careerBefore, completeRecordBefore, fightIndex, indexesHel
 import { syncCareerRecord } from "./career-records.ts";
 import { summarizeCard } from "./card-stats.ts";
 import { panelCards } from "./judge-scorecards.ts";
-import { verifiedDeductions } from "./point-deductions.ts";
+import { storedMedia, verifiedDeductions } from "./point-deductions.ts";
 import { injectPageSeo, pageSeo, SITE_URL, sitemap, type PageSeo } from "./seo.ts";
 import { renderShareImage, type ShareCard, type SharePhoto } from "./og-images.ts";
 export { pageSeo, sitemap };
@@ -1065,7 +1065,11 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     (h: any) => h.fight_id && h.opponent.id && h.opponent.id === f.f2_id && h.fight_id !== f.id,
   );
 
-  const detail = fightDetail(f);
+  const official = fightDetail(f);
+  // Journalists' cards, only on the matchup: event lists never send them.
+  const media = storedMedia(f.media_scores_json);
+  const detail = media?.items.length && official?.type === "past"
+    ? { ...official, media: { name: "MMA Decisions", url: media.sourceUrl, cards: media.items } } : official;
   const referee: string | null = detail?.methodInfo?.Referee || f.referee_assigned || null;
   return {
     id: f.id,

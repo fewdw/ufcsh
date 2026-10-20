@@ -34,7 +34,10 @@ export function parseMmaEventDecisions(html: string): string[] {
 /** A deduction as MMA Decisions words it: "Evloev was deducted 1 point in
  *  round 4: Low blow". `name` is the page's short name for the fighter. */
 export type MmaDeduction = { name: string; points: number; round: number; reason: string };
-export type MmaDecision = { f1Name: string; f2Name: string; judges: JudgeCard[]; deductions: MmaDeduction[] };
+/** A journalist's card from the page's "Media scores": the score in the page's
+ *  fighter order and the page's word for its winner ("Murphy" or "DRAW"). */
+export type MmaMediaScore = { name: string; outlet: string; url: string; f1Score: number; f2Score: number; winner: string };
+export type MmaDecision = { f1Name: string; f2Name: string; judges: JudgeCard[]; deductions: MmaDeduction[]; media: MmaMediaScore[] };
 
 const DEDUCTION = /^(.+?) was deducted (\d+) points? in round (\d+)(?::\s*(.*))?$/i;
 
@@ -44,6 +47,24 @@ export function parseMmaDeductions($: cheerio.CheerioAPI): MmaDeduction[] {
       const match = cleanText($(cell).text()).match(DEDUCTION);
       return match ? { name: match[1], points: Number(match[2]), round: Number(match[3]), reason: match[4]?.trim() ?? "" } : null;
     }).get();
+}
+
+export function parseMmaMedia($: cheerio.CheerioAPI): MmaMediaScore[] {
+  const table = $("td.top-cell").filter((_i, cell) => cleanText($(cell).text()).toUpperCase() === "MEDIA SCORES").first().closest("table");
+  return table.find("tr.decision").map((_i, row) => {
+    const cells = $(row).children("td");
+    if (cells.length !== 3) return null;
+    const source = cells.eq(0);
+    const outlet = cleanText(source.find("a").first().text());
+    // "Keith Shillan<br><i>Sherdog.com</i>", or just the outlet's own link.
+    const name = cleanText(source.clone().find("i, a").remove().end().text());
+    const score = cleanText(cells.eq(1).text()).match(/^(\d{1,2})-(\d{1,2})$/);
+    const url = cells.eq(1).find("a").attr("href")?.trim() ?? "";
+    return (name || outlet) && score ? {
+      name, outlet, url: /^https?:\/\//.test(url) ? url : "",
+      f1Score: Number(score[1]), f2Score: Number(score[2]), winner: cleanText(cells.eq(2).text()),
+    } : null;
+  }).get();
 }
 
 export function parseMmaDecision(html: string): MmaDecision | null {
@@ -69,7 +90,7 @@ export function parseMmaDecision(html: string): MmaDecision | null {
         || rounds.reduce((sum, r) => sum + r.f2Score, 0) !== f2Score))) return;
     judges.push({ judge, f1Score, f2Score, ...(rounds.length ? { rounds } : {}) });
   });
-  return { f1Name: names[0], f2Name: names[1], judges, deductions: parseMmaDeductions($) };
+  return { f1Name: names[0], f2Name: names[1], judges, deductions: parseMmaDeductions($), media: parseMmaMedia($) };
 }
 
 export const mmaDecisionUrl = (path: string): string => new URL(path, `${ORIGIN}/`).href;

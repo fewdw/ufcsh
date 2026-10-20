@@ -17,7 +17,7 @@ import { pageNamesFighter } from "./scrape/odds.ts";
 import { syncCareerRecord } from "./career-records.ts";
 import { hasCompleteJudgeRounds, mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
 import { importVerdictEvent } from "./verdict-import.ts";
-import { deductionProblem, fightDeductionState, syncFightPointDeductions } from "./point-deductions.ts";
+import { deductionProblem, fightDeductionState, storedMedia, syncFightMediaScores, syncFightPointDeductions } from "./point-deductions.ts";
 import type { DeductionFight } from "./point-deduction-rules.ts";
 import { readCancelledBoardList, syncCancelledBouts } from "./cancelled-bouts.ts";
 import { repairJudgeNames } from "./repair-judge-names.ts";
@@ -1065,6 +1065,54 @@ function pointDeductionsUnshown(): BugCheck {
   }, items);
 }
 
+/** Decisions whose MMA Decisions page hasn't been read yet: the hourly pass
+ *  works through them newest first, so this empties as the archive fills in. */
+function mmaDecisionsUnread(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${FIGHT_COLUMNS} FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 1 AND f.method LIKE '%DEC' AND f.deductions_checked_at IS NULL
+    ORDER BY e.date DESC
+  `).all() as FightRow[];
+  return check({
+    id: "mma-decisions-unread",
+    group: "Scorecards",
+    label: "Decisions not yet read from MMA Decisions",
+    description: "Decisions whose MMA Decisions page (point deductions and media scores) hasn't been read. The hourly pass reads every recent decision and 200 older ones, newest first, so after a reset the archive fills in within about a day.",
+    grade: recent([[7, "minor"]]),
+  }, rows.map(fight => fightItem(fight, { actions: [{ id: "media", label: "Read MMA Decisions", target: fight.id }] })));
+}
+
+/** Media scores that are missing where they should exist, or that dropped
+ *  cards whose stated winner disagrees with their own score. */
+function mediaScoresIncomplete(): BugCheck {
+  const rows = db.prepare(`
+    SELECT ${FIGHT_COLUMNS}, f.media_scores_json, f.deductions_checked_at FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 1 AND f.method LIKE '%DEC' AND f.deductions_checked_at IS NOT NULL
+      AND ((f.media_scores_json IS NULL AND e.date BETWEEN date('now', '-90 days') AND date('now', '-3 days'))
+        OR f.media_scores_json LIKE '%"dropped"%')
+    ORDER BY e.date DESC
+  `).all() as (FightRow & { media_scores_json: string | null; deductions_checked_at: number })[];
+  const items = rows.flatMap(fight => {
+    const media = storedMedia(fight.media_scores_json);
+    if (fight.media_scores_json && !media?.dropped.length) return [];
+    const dropped = media?.dropped.map(card => `${card.name || card.outlet}: ${card.f1Score}-${card.f2Score}, "${card.winner}"`).join("; ");
+    return [fightItem(fight, {
+      facts: media
+        ? [["Problem", `${media.dropped.length} of ${media.dropped.length + media.items.length} media cards don't agree with their stated winner`], ["Dropped", dropped ?? ""], ["Checked", ago(fight.deductions_checked_at)]]
+        : [["Problem", "No media cards: MMA Decisions has none yet, or no page matched this bout"], ["Checked", ago(fight.deductions_checked_at)]],
+      links: media ? [{ label: "MMA Decisions page", href: media.sourceUrl }] : [],
+      actions: [{ id: "media", label: "Re-read MMA Decisions", target: fight.id }],
+    })];
+  });
+  return check({
+    id: "media-scores-incomplete",
+    group: "Scorecards",
+    label: "Media scores missing or dropped",
+    description: "Recent decisions (3 to 90 days old) with no media cards after their MMA Decisions page was read, and any decision where a journalist's card was dropped because its stated winner (or draw) doesn't match its score or names neither fighter. Dropped cards are never shown.",
+    grade: "minor",
+  }, items);
+}
+
 /** Decisions with round cards whose UFCStats round tables are missing or
  *  unreadable: they have no stats card, and their rounds are left out of every
  *  judge's "How they score" and the stats model behind it. */
@@ -2031,6 +2079,8 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
   const checks = [
     decisionsWithoutJudgeRounds(),
     pointDeductionsUnshown(),
+    mediaScoresIncomplete(),
+    mmaDecisionsUnread(),
     decisionsWithoutStatsCard(),
     fightsWithoutCommunityScores(),
     invalidCommunityScores(),
@@ -2121,7 +2171,7 @@ function newsUnjudged(): BugCheck {
   }, items);
 }
 
-export type BugActionId = "cancelled" | "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket" | "deductions";
+export type BugActionId = "cancelled" | "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket" | "deductions" | "media";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -2195,6 +2245,15 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
       const { cards, record } = fightDeductionState(fight);
       const problem = deductionProblem(cards, record?.items ?? []);
       return problem ? { ok: false, message: `Read: ${read}, but it still can't be shown: ${problem}.` } : { ok: true, message: `Read: ${read}. It now fits every judge's card.` };
+    }
+    case "media": {
+      const { matched, media } = await syncFightMediaScores(target);
+      if (!matched) return { ok: false, message: "MMA Decisions has no page matching this bout." };
+      const cards = media?.items.length ?? 0;
+      const read = `${cards} media ${cards === 1 ? "card" : "cards"}`;
+      return media?.dropped.length
+        ? { ok: false, message: `Read: ${read}; ${media.dropped.length} still dropped because the winner doesn't match the score.` }
+        : { ok: cards > 0, message: cards ? `Read: ${read}.` : "Read the page: it has no media cards yet." };
     }
     case "detail":
       await syncFightDetail(target);

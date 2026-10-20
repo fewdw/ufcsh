@@ -1,6 +1,6 @@
 import { db } from "./db.ts";
 import { crawlMmaDecisions, type CrawlFight } from "./mmadecisions-crawl.ts";
-import { mmaDecisionUrl, type MmaDecision } from "./scrape/mmadecisions.ts";
+import { mmaDecisionUrl, type MmaDecision, type MmaMediaScore } from "./scrape/mmadecisions.ts";
 import { log, normName } from "./util.ts";
 import { storedDeductions, type PointDeduction } from "./point-deduction-rules.ts";
 export { deductionProblem, verifiedDeductions, fightDeductionState } from "./point-deduction-rules.ts";
@@ -32,6 +32,39 @@ export function pageDeductions(page: MmaDecision, order: 1 | -1): PointDeduction
   return items.sort((a, b) => a.round - b.round);
 }
 
+/** A journalist's card on a decision, in our fighter order. */
+export type MediaScore = { name: string; outlet: string; url: string; f1Score: number; f2Score: number };
+
+/** The page's media cards in our fighter order. A card whose stated winner
+ *  doesn't agree with its own score, or names neither fighter, is dropped and
+ *  kept aside for Admin → Bugs. */
+export function pageMedia(page: MmaDecision, order: 1 | -1): { items: MediaScore[]; dropped: MmaMediaScore[] } {
+  const items: MediaScore[] = [], dropped: MmaMediaScore[] = [];
+  for (const card of page.media) {
+    const { f1Score, f2Score } = card;
+    const winner = card.winner.toUpperCase() === "DRAW" ? 0 : deductionSide(card.winner, page.f1Name, page.f2Name);
+    if (!Number.isInteger(f1Score) || !Number.isInteger(f2Score) || f1Score < 1 || f2Score < 1 || f1Score > 50 || f2Score > 50
+      || Math.abs(f1Score - f2Score) > 25 || winner !== (f1Score > f2Score ? 1 : f2Score > f1Score ? 2 : 0)) {
+      dropped.push(card);
+      continue;
+    }
+    items.push({ name: card.name, outlet: card.outlet, url: card.url,
+      f1Score: order === 1 ? f1Score : f2Score, f2Score: order === 1 ? f2Score : f1Score });
+  }
+  return { items, dropped };
+}
+
+export type StoredMedia = { sourceUrl: string; items: MediaScore[]; dropped: MmaMediaScore[] };
+
+/** The stored media record, or null if it is missing or unreadable. */
+export function storedMedia(json: string | null | undefined): StoredMedia | null {
+  try {
+    const record = JSON.parse(json ?? "null");
+    return record && typeof record.sourceUrl === "string" && Array.isArray(record.items)
+      ? { sourceUrl: record.sourceUrl, items: record.items, dropped: Array.isArray(record.dropped) ? record.dropped : [] } : null;
+  } catch { return null; }
+}
+
 const CANDIDATES = `SELECT f.id, e.date, f.f1_name, f.f2_name, c1.source_name AS f1_alias, c2.source_name AS f2_alias
   FROM fights f JOIN events e ON e.id = f.event_id
   LEFT JOIN career_profiles c1 ON c1.fighter_id = f.f1_id AND c1.status = 'verified'
@@ -39,14 +72,20 @@ const CANDIDATES = `SELECT f.id, e.date, f.f1_name, f.f2_name, c1.source_name AS
   WHERE e.complete = 1 AND f.method LIKE '%DEC'`;
 
 /** Read these decisions' MMA Decisions pages and store what each says about
- *  deductions, including that there were none. A page whose deduction names
- *  fit neither fighter is left unstored and shows in Admin → Bugs. */
+ *  deductions, including that there were none, and its media scores. A page
+ *  whose deduction names fit neither fighter leaves its deductions unstored,
+ *  and they show in Admin → Bugs. */
 export async function readPointDeductions(fights: CrawlFight[], concurrency = 2,
   onProgress?: Parameters<typeof crawlMmaDecisions>[3]): Promise<{ matched: number; stored: number; unplaced: number; failed: number }> {
   const checked = db.prepare("UPDATE fights SET deductions_checked_at = ? WHERE id = ?");
   const store = db.prepare("UPDATE fights SET deductions_json = ?, deductions_checked_at = ? WHERE id = ?");
+  // Unchanged cards are not written again: recent pages are re-read every few hours.
+  const storeMedia = db.prepare("UPDATE fights SET media_scores_json = ?1 WHERE id = ?2 AND media_scores_json IS NOT ?1");
   let saved = 0, unplaced = 0;
   const stats = await crawlMmaDecisions(fights, { concurrency }, (fight, order, page, path) => {
+    const { items: media, dropped } = pageMedia(page, order);
+    storeMedia.run(media.length || dropped.length ? JSON.stringify({ source: "MMA Decisions", sourceUrl: mmaDecisionUrl(path), items: media,
+      ...(dropped.length ? { dropped } : {}) }) : null, fight.id);
     const items = pageDeductions(page, order);
     if (!items) {
       unplaced++;
@@ -61,11 +100,12 @@ export async function readPointDeductions(fights: CrawlFight[], concurrency = 2,
   return { matched: stats.matched, stored: saved, unplaced, failed: stats.failed };
 }
 
-/** Recent decisions, including corrections and confirmed zeroes, at most every six
- *  hours each; it usually posts a card within a day or two. Older decisions
- *  never looked for follow, newest first, a batch per call, so the archive
- *  fills in over a few days without the one-off backfill. */
-export async function syncRecentPointDeductions(now = Date.now(), olderBatch = 40): Promise<void> {
+/** Recent decisions, including corrections, confirmed zeroes and late media
+ *  cards, at most every six hours each; it usually posts a card within a day
+ *  or two. Older decisions never looked for follow, newest first, a batch per
+ *  call: 200 pages take about three minutes, so the whole archive (~4,100
+ *  decisions) fills in within a day of hourly calls, without the backfill. */
+export async function syncRecentPointDeductions(now = Date.now(), olderBatch = 200): Promise<void> {
   const cutoff = new Date(now - 45 * 86400_000).toISOString().slice(0, 10);
   const recent = db.prepare(`${CANDIDATES} AND e.date >= ?
     AND (f.deductions_checked_at IS NULL OR f.deductions_checked_at < ?)`).all(cutoff, now - 6 * 3600_000) as CrawlFight[];
@@ -82,6 +122,15 @@ export async function syncFightPointDeductions(fightId: string): Promise<PointDe
   if (!result.stored) return null;
   const row = db.prepare("SELECT deductions_json FROM fights WHERE id = ?").get(fightId) as { deductions_json: string | null };
   return storedDeductions(row.deductions_json)?.items ?? null;
+}
+
+/** Admin repair: read one decision's page again for its media cards. */
+export async function syncFightMediaScores(fightId: string): Promise<{ matched: boolean; media: StoredMedia | null }> {
+  const fights = db.prepare(`${CANDIDATES} AND f.id = ?`).all(fightId) as CrawlFight[];
+  if (!fights.length) return { matched: false, media: null };
+  const { matched } = await readPointDeductions(fights, 1);
+  const row = db.prepare("SELECT media_scores_json FROM fights WHERE id = ?").get(fightId) as { media_scores_json: string | null };
+  return { matched: matched > 0, media: storedMedia(row.media_scores_json) };
 }
 
 /** Every decision, for the one-off backfill. */
