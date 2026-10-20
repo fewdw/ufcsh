@@ -257,13 +257,16 @@ function storeSchedules(events: { id: string; name: string; date: string }[], sc
 /**
  * The same, for the archive. A past card's segments never change once it has
  * been fought, so this walks the index backwards a few pages per tick until
- * every event we hold has been offered a slug, and then stops asking.
+ * every event we hold has been offered a slug, and then stops asking. A few
+ * cards have no ufc.com page at all: a full lap that times nothing rests the
+ * walk for 30 days instead of circling the index forever.
  */
 const ARCHIVE_PAGES_PER_TICK = 8;
 export async function syncScheduleArchive(): Promise<void> {
   const remaining = db.prepare(`SELECT COUNT(*) AS c FROM events
     WHERE ufc_slug IS NULL AND date < date('now') AND date >= '2011-01-01'`).get() as { c: number };
   if (!remaining.c) { setMeta("schedule_archive_done", "1"); return; }
+  if (metaAgeMs("schedule_archive_rested_at") < 30 * 86_400_000) return;
   const start = Number(getMeta("schedule_archive_page") ?? "1");
   const events = db.prepare("SELECT id, name, date FROM events WHERE ufc_slug IS NULL AND date >= '2011-01-01'")
     .all() as { id: string; name: string; date: string }[];
@@ -276,6 +279,11 @@ export async function syncScheduleArchive(): Promise<void> {
     if (!schedules.length) { page = 0; break; }
     timed += storeSchedules(events, schedules);
   }
+  const lap = Number(getMeta("schedule_archive_lap_timed") ?? "0") + timed;
+  if (page === 0) {
+    if (!lap) { touchMeta("schedule_archive_rested_at"); log(`schedule archive: a full lap timed nothing; resting 30 days (${remaining.c} cards have no ufc.com page)`); }
+    setMeta("schedule_archive_lap_timed", "0");
+  } else setMeta("schedule_archive_lap_timed", String(lap));
   setMeta("schedule_archive_page", String(page));
   log(`schedule archive: ${timed} cards timed from pages ${start}-${page}, ${remaining.c - timed} still without one`);
 }
