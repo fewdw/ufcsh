@@ -102,9 +102,7 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-20">October 20, 2026</time></p>
             <ul>
-              <li>Event pages show the broadcast crew, now for every 2025–2026 card with a published lineup.</li>
-              <li>Faster sign-in and fighter photos, and quicker tale-of-the-tape history.</li>
-              <li>More replacements show how much notice they had.</li>
+              <li>The broadcast crew reads more cleanly on phones and sits centred on wider screens.</li>
             </ul>
           </Section>
         </div>
