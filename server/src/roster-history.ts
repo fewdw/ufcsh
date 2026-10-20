@@ -18,7 +18,10 @@ const VERIFIED: RosterHistoryEvent[] = [{
   name: "Yoel Romero", date: "2020-12-04", kind: "released", reason: "Released with three fights remaining on his contract",
   source_url: "https://www.mmafighting.com/2020/12/4/22155464/four-time-ufc-title-challenger-yoel-romero-released",
   observed: false,
-}];
+}, ...["Diego Sanchez", "Forrest Griffin", "Stephan Bonnar"].map(name => ({
+  name, date: "2005-04-09", kind: "signed" as const, reason: "Awarded UFC contract on The Ultimate Fighter",
+  source_url: "https://www.ufc.com/news/ufc-turns-30-years-old", observed: false,
+}))];
 
 export function validRosterDate(date: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(date))

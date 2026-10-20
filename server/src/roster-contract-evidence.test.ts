@@ -21,3 +21,14 @@ test("confirmed same-night contract awards resolve a signing gap after the recru
   assert.equal(storedRosterHistory().some(event => event.name === "Mike Santiago" && event.date === "2017-08-22" && event.kind === "signed"), false);
   assert.equal(storedRosterHistory().some(event => event.name === "Eduardo Chapolin" && event.date === "2025-09-02" && event.kind === "signed"), false);
 });
+
+
+test("the inaugural TUF contracts include the explicitly awarded runner-up, not every finalist", () => {
+  const history = storedRosterHistory();
+  for (const name of ["Diego Sanchez", "Forrest Griffin", "Stephan Bonnar"]) {
+    const contract = history.find(event => event.name === name && event.kind === "signed" && event.date === "2005-04-09");
+    assert.ok(contract);
+    assert.equal(contract.source_url, "https://www.ufc.com/news/ufc-turns-30-years-old");
+  }
+  assert.equal(history.some(event => event.name === "Kenny Florian" && event.kind === "signed" && event.date === "2005-04-09"), false);
+});
