@@ -65,6 +65,8 @@ export type Location = {
 
 type VenueIndex = {
   version: string; bySlug: Map<string, Venue>; byEvent: Map<string, Venue>;
+  /** The address a building had under a name it no longer goes by. */
+  formerSlugs: Map<string, Venue>;
   locations: Map<string, Location>; locationOfEvent: Map<string, Location>;
 };
 
@@ -214,6 +216,17 @@ function build(): VenueIndex {
     for (const row of group.rows) byEvent.set(row.id, venue);
   }
 
+  // Before a renamed building's cards were merged, each name had a page of its
+  // own (/venues/arco-arena), and links to them are still followed.
+  const formerSlugs = new Map<string, Venue>();
+  for (const venue of bySlug.values()) {
+    for (const former of venue.former_names) {
+      for (const slug of [slugify(former), slugify(`${former} ${venue.city ?? ""}`)]) {
+        if (!bySlug.has(slug) && !formerSlugs.has(slug)) formerSlugs.set(slug, venue);
+      }
+    }
+  }
+
   const cities = new Map<string, EventVenueRow[]>();
   for (const row of rows) {
     const place = placeOf(row.location);
@@ -244,7 +257,7 @@ function build(): VenueIndex {
     locations.set(slug, location);
     for (const row of cityRows) locationOfEvent.set(row.id, location);
   }
-  return { version: "", bySlug, byEvent, locations, locationOfEvent };
+  return { version: "", bySlug, byEvent, formerSlugs, locations, locationOfEvent };
 }
 
 /** Rebuilt when any card's venue data or its fights change. */
@@ -255,6 +268,12 @@ export function venueIndex(): VenueIndex {
   if (cached?.version === version) return cached;
   cached = { ...build(), version };
   return cached;
+}
+
+/** A venue by its address, or by one it had under a former name. */
+export function venueBySlug(slug: string): Venue | null {
+  const index = venueIndex();
+  return index.bySlug.get(slug) ?? index.formerSlugs.get(slug) ?? null;
 }
 
 export function locationOfEvent(eventId: string): string | null {
@@ -337,7 +356,7 @@ function placeStats(events: VenueEventRef[]) {
 
 export function venuePage(slug: string): unknown | null {
   const index = venueIndex();
-  const venue = index.bySlug.get(slug);
+  const venue = venueBySlug(slug);
   if (!venue) return null;
   // The city of its latest card, so a venue links to where it stands now.
   const location = venue.events[0] ? index.locationOfEvent.get(venue.events[0].id) : undefined;

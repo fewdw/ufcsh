@@ -8,6 +8,7 @@
     "start": "node src/index.ts",
     "start:production": "node src/production.ts",
     "audit:stats": "node src/audit-fight-stats.ts",
+    "import:event-crew": "node src/import-event-crew.ts",
     "backfill:odds": "node src/backfill-odds.ts",
     "backfill:method-odds": "node src/backfill-method-odds.ts",
     "backfill:images": "node src/backfill-images.ts",

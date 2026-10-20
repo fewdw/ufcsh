@@ -1,4 +1,5 @@
-import { Link, useParams } from "react-router-dom";
+import { useEffect } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useApi, type HomeRecord, type LocationPage as LocationData, type VenuePage as VenueData } from "../api";
 import { clockTimeWithZone, formatDate, formatDateShort, formatMethod, offsetLabel, venueClock } from "../format";
 import { PANEL } from "../components/chartTokens";
@@ -103,6 +104,12 @@ function PlacePage({ kind }: { kind: "venue" | "location" }) {
   const { slug = "" } = useParams();
   const path = `/${kind === "venue" ? "venues" : "locations"}/${slug}`;
   const { data, error, loading, retry } = useApi<VenueData | LocationData>(`/api${path}`);
+  const navigate = useNavigate();
+  const { search } = useLocation();
+  // An address under a building's former name (/venues/arco-arena) moves to its current one.
+  useEffect(() => {
+    if (data?.slug && data.slug !== slug) navigate(`/${kind === "venue" ? "venues" : "locations"}/${data.slug}${search}`, { replace: true });
+  }, [data?.slug, slug, kind, search, navigate]);
   const filters = useUrlFilters();
   const venue = data && "former_names" in data ? data : null;
   const location = data && "venues" in data ? data : null;

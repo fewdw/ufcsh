@@ -4,6 +4,9 @@ import type { IncomingMessage } from "node:http";
 import { cachePolicy, canonicalApiKey, clientAddress, publicApi, RateLimiter } from "./api-policy.ts";
 
 test("public caches exclude admin endpoints and preserve query distinctions", () => {
+  assert.equal(publicApi("/api/events/cc18abc046b382c9/crew"), true);
+  assert.equal(publicApi("/api/events/not-an-event/crew"), false);
+  assert.equal(publicApi("/api/events/cc18abc046b382c9/crew/extra"), false);
   assert.equal(publicApi("/api/bugs"), false);
   assert.equal(publicApi("/api/status"), false);
   assert.equal(publicApi("/api/fighters/abc/extra"), false);

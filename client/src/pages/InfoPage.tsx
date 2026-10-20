@@ -100,11 +100,11 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-19">October 19, 2026</time></p>
+            <p><time dateTime="2026-10-20">October 20, 2026</time></p>
             <ul>
-              <li>Recovered judge scorecards, media scores, point deductions and contract dates.</li>
-              <li>Corrected replacement identities and recovered announcement dates.</li>
-              <li>More reliable source retries and background imports.</li>
+              <li>Event pages show the broadcast crew: commentary, announcer, reporter and desk.</li>
+              <li>Faster sign-in and more reliable fighter photos.</li>
+              <li>Old venue links open the renamed venue, and Stats loads faster.</li>
             </ul>
           </Section>
         </div>

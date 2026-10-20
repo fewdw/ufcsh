@@ -2,7 +2,7 @@ import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, potentialMatchups } from "./p
 import { prepared } from "./db.ts";
 import { ufcFightExistsSql, currentRecord, hasUfcFight, recordText } from "./fighter-identity.ts";
 import { judgeProfile, officialsIndex, refereeProfile } from "./officials.ts";
-import { locationPage, venueIndex, venuePage } from "./venues.ts";
+import { locationPage, venueBySlug, venueIndex, venuePage } from "./venues.ts";
 import { cardOrder } from "./card-schedule.ts";
 
 /**
@@ -204,7 +204,7 @@ export function pageSeo(pathname: string): PageSeo {
     };
   }
   if (parts[1] === "venues") {
-    const venue = venueIndex().bySlug.get(id);
+    const venue = venueBySlug(id);
     if (!venue) return notFound();
     const place = [venue.city, venue.state, venue.country].filter(Boolean).join(", ");
     const page = venuePage(venue.slug) as any;

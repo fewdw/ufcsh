@@ -20,6 +20,7 @@ client (`client/`) renders every page.
 | In-memory analytics index | `fight-index.ts` (every completed bout, state entering it) |
 | Leaderboards | `stats.ts` (fighter cards), `stats-fights.ts` (Fights card: bouts, judges, referees) |
 | Potential matchups (pinned unconfirmed odds board, separate from scheduled fights) | `potential-matchups.ts`; synced at startup and every five minutes from FightOdds.io and BestFightOdds future boards; `scrape/potential-odds.ts` reads BestFightOdds |
+| Event broadcast crew | `event-crew.ts` (Yahoo/MMA Junkie crew feed, report parsing, gaps), `event-broadcast-data.ts` (reviewed crews), `import-event-crew.ts` (manual import); `/api/events/:id/crew`; client `components/EventCrew.tsx` below the card in `pages/EventsPage.tsx`. Missing crews in Admin → Bugs. See `docs/event-crew.md` |
 | News (outlets, relevance, fighter/event tags, story grouping, newest first, `?fighter=` for one fighter) | `news.ts`; feeds read in `scrape/news.ts` (`NEWS_FEEDS`) |
 | News read by Gemini (off by default; enabled in Admin → Settings; `GEMINI_API_KEY`) | `news-ai.ts`, run from the API process every 10 minutes |
 | Profile records and full stat rankings | `records.ts` (`fighterRecords`, `fighterBoard`, `milestonesWithinReach`) |

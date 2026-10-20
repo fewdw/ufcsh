@@ -1,3 +1,4 @@
+import { crewGaps, eventBroadcast, syncCrewFeed, type CrewEvent } from "./event-crew.ts";
 import { completedScorecardRounds, parseCommunityScorecard } from "./community-scorecards.ts";
 import { potentialMatchups, syncPotentialMatchups } from "./potential-matchups.ts";
 import { db, getMeta, setMeta } from "./db.ts";
@@ -2072,6 +2073,23 @@ function newsFeedsUnread(): BugCheck {
   }, items);
 }
 
+function eventCrewChecks(): BugCheck[] {
+  // Crew reports live in a short feed, so only cards from the last 30 days are
+  // expected to have one; older cards are a research backlog, not a bug.
+  const events = db.prepare("SELECT e.id, e.name, e.date, c.url, c.error FROM events e LEFT JOIN event_crews c ON c.event_id = e.id WHERE e.date BETWEEN date('now', '-30 days') AND date('now', '+3 days') ORDER BY e.date DESC").all() as (CrewEvent & { url: string | null; error: string | null })[];
+  const items: BugItem[] = events.flatMap(event => {
+    const missing = crewGaps(event, eventBroadcast(event));
+    if (!missing.length) return [];
+    const links: BugLink[] = [eventLink(event.id), ...(event.url ? [{ label: "Crew report", href: event.url }] : [])];
+    return [{ key: event.id, title: event.name, date: event.date, subtitle: event.error || `Missing ${missing.join(", ")}`,
+      facts: [["Missing", missing.join(", ")], ...(event.error ? [["Report", event.error] as [string, string]] : [])], links,
+      actions: [{ id: "event-crew", label: "Re-read crew feed", target: event.id }] }];
+  });
+  return [check({ id: "event-crew-missing", group: "Fights & events", label: "Event broadcast crew missing",
+    grade: item => (daysFrom(item.date) ?? 0) >= 0 ? "must" : "minor",
+    description: "From three days before a card, its six core broadcast roles. Crews come from MMA Junkie's reports in Yahoo's MMA feed, read every half hour, and are never guessed; a report whose roles can't all be read is linked here. The feed keeps about a day and a half, so for a missed or older report run import:event-crew --event-id=ID --url=URL, or add reviewed evidence to event-broadcast-data.ts." }, items)];
+}
+
 export function bugReport(): { generated_at: number; sync: { last_tick_at: string | null; last_sync_error: string | null }; checks: BugCheck[] } {
   const active = activeFighterIds();
   // Most important first within each group: wrong data on screen, then data
@@ -2112,6 +2130,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     finishesWithoutDetail(),
     cancelledBoutsUnread(),
     cancelledBoutsUnlinked(),
+    ...eventCrewChecks(),
     eventsWithoutWiki(),
     weightMissesUnderLimit(),
     catchweightsWithoutLimit(),
@@ -2171,7 +2190,7 @@ function newsUnjudged(): BugCheck {
   }, items);
 }
 
-export type BugActionId = "cancelled" | "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket" | "deductions" | "media";
+export type BugActionId = "event-crew" | "cancelled" | "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket" | "deductions" | "media";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -2181,6 +2200,10 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
   `).get(target) as { id: string; event_id: string; f1_id: string; f2_id: string; f1_name: string; f2_name: string; date: string } | undefined;
 
   switch (action) {
+    case "event-crew": {
+      const stored = await syncCrewFeed();
+      return { ok: true, message: `${stored} crew report(s) read from the feed. A card still missing its crew needs a manual import.` };
+    }
     case "judge-names": return repairJudgeNames(target);
     case "potential-odds": {
       const result = await syncPotentialMatchups({ props: true });

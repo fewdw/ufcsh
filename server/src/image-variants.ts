@@ -17,15 +17,22 @@ const QUALITY = { tiny: 40, small: 72, large: 85 } as const;
 
 const pending = new Map<string, Promise<Buffer>>();
 
+/** Twice the 520 px canvas: sharp on any screen. */
+const HEADSHOT_MAX_WIDTH = 1040;
+
 /** UFC headshots normally fill a 520×325 canvas. Some originals are square,
- * with empty space below the shoulders; keep the same top-aligned framing. */
+ * with empty space below the shoulders; keep the same top-aligned framing.
+ * A few are print originals (5474×3324, 10 MB), shrunk to twice the canvas. */
 export async function normalizeHeadshot(source: Buffer): Promise<Buffer | null> {
   const image = sharp(source, { limitInputPixels: 20_000_000 });
   const { width, height } = await image.metadata();
   if (!width || !height) return null;
   const framedHeight = Math.round(width * 325 / 520);
-  if (height <= framedHeight) return null;
-  return image.extract({ left: 0, top: 0, width, height: framedHeight }).png().toBuffer();
+  const padded = height > framedHeight;
+  if (!padded && width <= HEADSHOT_MAX_WIDTH) return null;
+  if (padded) image.extract({ left: 0, top: 0, width, height: framedHeight });
+  if (width > HEADSHOT_MAX_WIDTH) image.resize({ width: HEADSHOT_MAX_WIDTH });
+  return image.png().toBuffer();
 }
 
 export function variantPath(originalPath: string, size: ImageSize): string {

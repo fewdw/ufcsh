@@ -9,7 +9,7 @@ import { spawn } from "node:child_process";
 import { generateKeyPairSync, sign } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { normalizeUsername, scoringEligibility, ScoringStore, ScoringError, UsernameError, validateSubmission, type ScoringFight } from "./scoring.ts";
-import { authenticateScorer, createScoringHandler } from "./scoring-http.ts";
+import { authenticateScorer, createScoringHandler, SigningKeys } from "./scoring-http.ts";
 import { deductionsIn, type PointDeduction } from "./point-deduction-rules.ts";
 
 const id = "aaaaaaaaaaaaaaaa";
@@ -571,6 +571,50 @@ test("Clerk verifies signatures, expiry and authorized parties; cookie-only and 
     await assert.rejects(authenticateScorer(req(token({ azp: undefined }))));
     await assert.rejects(authenticateScorer(req(token().slice(0, -10) + "xxxxxxxxxx")));
     await assert.rejects(authenticateScorer({ url: "/", headers: { cookie: `__session=${token()}` } } as http.IncomingMessage));
+  } finally {
+    for (const key of Object.keys(process.env)) if (!(key in previous)) delete process.env[key];
+    Object.assign(process.env, previous);
+  }
+});
+
+test("Clerk's signing keys are held an hour, picked by the token's key id, and accepted by the SDK", async () => {
+  const previous = { ...process.env };
+  const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const jwk = publicKey.export({ format: "jwk" }) as { kty: string; n: string; e: string };
+  let now = 0, loads = 0, failing = false;
+  const keys = new SigningKeys(async () => {
+    loads++;
+    if (failing) throw new Error("Clerk unreachable");
+    return { keys: [{ use: "sig", kty: "RSA", kid: "ins_1", alg: "RS256", n: jwk.n, e: jwk.e }] };
+  }, () => now);
+  const unsigned = (kid: string, payload: object) => `${Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT", kid })).toString("base64url")}.${Buffer.from(JSON.stringify(payload)).toString("base64url")}`;
+  // The first request starts the read and goes to the SDK; later ones use the copy.
+  assert.equal(keys.pemFor(unsigned("ins_1", {})), undefined);
+  await keys.loading;
+  const pem = keys.pemFor(unsigned("ins_1", {}));
+  assert.match(pem!, /BEGIN PUBLIC KEY/);
+  assert.equal(keys.pemFor(unsigned("ins_2", {})), undefined, "a key not held yet");
+  assert.equal(keys.pemFor("not a token"), undefined);
+  now += 59 * 60_000;
+  keys.pemFor(unsigned("ins_1", {}));
+  assert.equal(loads, 1);
+  now += 2 * 60_000;
+  failing = true;
+  assert.equal(keys.pemFor(unsigned("ins_1", {})), pem, "an old copy serves while it is read again");
+  await keys.loading;
+  assert.equal(keys.pemFor(unsigned("ins_1", {})), pem, "a failed read keeps the copy");
+  assert.equal(loads, 2, "and tries again a minute later, not on every request");
+
+  // The SDK verifies a session token against the PEM made from Clerk's JWK.
+  process.env.CLERK_PUBLISHABLE_KEY = `pk_test_${Buffer.from("scoring-test.clerk.accounts.dev$").toString("base64")}`;
+  process.env.CLERK_SECRET_KEY = "sk_test_unit_test_only";
+  process.env.CLERK_JWT_KEY = pem;
+  process.env.CLERK_AUTHORIZED_PARTIES = "http://localhost:8000";
+  const at = Math.floor(Date.now() / 1000);
+  const body = unsigned("ins_1", { iss: "https://scoring-test.clerk.accounts.dev", sub: "user_keys", sid: "sess_keys", azp: "http://localhost:8000", iat: at, nbf: at - 1, exp: at + 60, v: 2, fva: [0, -1] });
+  const jwt = `${body}.${sign("RSA-SHA256", Buffer.from(body), privateKey).toString("base64url")}`;
+  try {
+    assert.equal(await authenticateScorer({ url: `/api/fights/${id}/scores/mine`, headers: { authorization: `Bearer ${jwt}` } } as http.IncomingMessage), "user_keys");
   } finally {
     for (const key of Object.keys(process.env)) if (!(key in previous)) delete process.env[key];
     Object.assign(process.env, previous);
