@@ -603,3 +603,14 @@ The rest of the list, same day:
 
 `/api/profiles/mine` can also wait on Clerk's signing keys: production has no
 `CLERK_JWT_KEY`, so the SDK fetches them over the network when its copy expires.
+
+## MMA Decisions media scores (2026-10-19)
+
+Reading decisions' MMA Decisions pages (point deductions and media scores) at
+concurrency 2 on dev-pc: 200 decisions from 2025–26 in 180 s, 190 matched, so
+~0.9 s a decision and about an hour for all 4,139. Adding media scores resets
+every decision to unread once; the hourly pass reads recent decisions plus 200
+older ones (~3 minutes) beside the sync tick instead of inside it, so the
+archive fills in within a day and nothing else waits. Media writes skip
+unchanged cards and don't move the data revisions (the matchup reads them
+live), so the backfill rebuilds no query workers. Event lists never parse them.

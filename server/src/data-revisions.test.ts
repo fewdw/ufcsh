@@ -29,4 +29,7 @@ test("a moving line on a bout not yet fought moves profiles but not analytics", 
     { analytics: true, profiles: true }, "a decided bout's closing line feeds the fight index");
   assert.deepEqual(moved(() => db.prepare("DELETE FROM odds WHERE fight_id = ?").run(fightId)),
     { analytics: true, profiles: true });
+  // Media cards are read live by the matchup alone: the archive filling in rebuilds nothing.
+  assert.deepEqual(moved(() => db.prepare("UPDATE fights SET media_scores_json = '{}' WHERE id = ?").run(fightId)),
+    { analytics: false, profiles: false });
 });

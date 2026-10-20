@@ -262,10 +262,17 @@ for (const [name, type] of [
   // (point-deductions.ts), and when its page was last looked for.
   ["deductions_json", "TEXT"],
   ["deductions_checked_at", "INTEGER"],
+  // The same page's media scores: journalists' cards (point-deductions.ts).
+  ["media_scores_json", "TEXT"],
 ] as const) {
   if (!fightColumns.some((column) => column.name === name)) {
     db.exec(`ALTER TABLE fights ADD COLUMN ${name} ${type}`);
   }
+}
+// Pages read before media scores were kept are offered to the hourly
+// MMA Decisions pass again, which reads never-checked decisions newest first.
+if (!fightColumns.some((column) => column.name === "media_scores_json")) {
+  db.exec("UPDATE fights SET deductions_checked_at = NULL");
 }
 db.exec(`
   UPDATE fights
@@ -728,7 +735,9 @@ const revisionTables: Record<string, string[]> = {
 for (const [table, revisions] of Object.entries(revisionTables)) {
   const checkTimestamps = new Set(["detail_fetched_at", "birth_fetched_at", "photo_checked_at", "bfo_checked_at", "bfo_final_at",
     "schedule_fetched_at", "segments_fetched_at", "wiki_checked_at", "fetched_at", "checked_at",
-    "venue_checked_at", "wiki_info_checked_at", "catch_weight_checked_at", "verdict_checked_at", "verdict_error", "verdict_live_json", "deductions_checked_at"]);
+    "venue_checked_at", "wiki_info_checked_at", "catch_weight_checked_at", "verdict_checked_at", "verdict_error", "verdict_live_json", "deductions_checked_at",
+    // Read live by the matchup alone; no index or list is built from it.
+    "media_scores_json"]);
   const columns = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[])
     .map(row => row.name).filter(name => !checkTimestamps.has(name));
   for (const operation of ["INSERT", "UPDATE", "DELETE"]) {

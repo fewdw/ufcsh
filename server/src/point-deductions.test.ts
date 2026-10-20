@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { deductionProblem, deductionSide, pageDeductions, verifiedDeductions } from "./point-deductions.ts";
+import { deductionProblem, deductionSide, pageDeductions, pageMedia, verifiedDeductions } from "./point-deductions.ts";
 import type { JudgeCard } from "./judge-scorecards.ts";
 
 // Evloev vs. Murphy (UFC London, March 2026): Evloev won round 4 on every card
@@ -43,8 +43,17 @@ test("a page's short names are placed on our fighters, in our order", () => {
   assert.equal(deductionSide("Cong", "Wang Cong", "Tracy Cortez"), 1);
   assert.equal(deductionSide("Silva", "Thiago Silva", "Antonio Silva"), null);
   assert.equal(deductionSide("Jones", "Movsar Evloev", "Lerone Murphy"), null);
-  const page = { f1Name: "Lerone Murphy", f2Name: "Movsar Evloev", judges: [], deductions: [{ name: "Evloev", points: 1, round: 4, reason: "low blow." }] };
+  const page = { f1Name: "Lerone Murphy", f2Name: "Movsar Evloev", judges: [], media: [], deductions: [{ name: "Evloev", points: 1, round: 4, reason: "low blow." }] };
   assert.deepEqual(pageDeductions(page, -1), [{ side: "f1", round: 4, points: 1, reason: "Low blow" }]);
   assert.deepEqual(pageDeductions(page, 1), [{ side: "f2", round: 4, points: 1, reason: "Low blow" }]);
   assert.equal(pageDeductions({ ...page, deductions: [{ ...page.deductions[0], name: "Silva" }] }, 1), null);
+});
+
+test("media cards follow our fighter order and must agree with their own winner", () => {
+  const card = (f1Score: number, f2Score: number, winner: string) => ({ name: "A Writer", outlet: "Sherdog.com", url: "", f1Score, f2Score, winner });
+  const page = { f1Name: "Movsar Evloev", f2Name: "Lerone Murphy", judges: [], deductions: [],
+    media: [card(47, 47, "DRAW"), card(46, 48, "Murphy"), card(48, 47, "Murphy"), card(48, 46, "Volkanovski")] };
+  assert.deepEqual(pageMedia(page, 1).items.map(c => [c.f1Score, c.f2Score]), [[47, 47], [46, 48]]);
+  assert.deepEqual(pageMedia(page, -1).items.map(c => [c.f1Score, c.f2Score]), [[47, 47], [48, 46]]);
+  assert.deepEqual(pageMedia(page, 1).dropped.map(c => c.winner), ["Murphy", "Volkanovski"]);
 });

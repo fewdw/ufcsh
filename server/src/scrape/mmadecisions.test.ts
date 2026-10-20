@@ -49,3 +49,19 @@ test("MMA Decisions deductions keep the fighter, points, round and reason", () =
   ]);
   assert.deepEqual(parseMmaDecision(page.replace(/<table>[\s\S]*<\/table>/, ""))?.deductions, []);
 });
+
+test("MMA Decisions media scores keep the writer, outlet, link, score and winner", () => {
+  const row = (who: string, score: string, winner: string) => `<tr class="decision"><td>${who}</td>
+    <td><a href='https://x.com/a/status/1' class='external'>${score}</a></td><td>${winner}</td></tr>`;
+  const page = `<a href="fighter/1/A">Movsar Evloev</a><a href="fighter/2/B">Lerone Murphy</a>
+    <table><tr class="top-row"><td class="top-cell" colspan="3"><b>MEDIA SCORES</b></td></tr>
+      ${row("Keith&nbsp;Shillan<br><i><a href='https://x.com/a/status/1'>Sherdog.com</a></i>", "47-47", "<i>DRAW</i>")}
+      <tr><td colspan="3"><hr></td></tr>
+      ${row(`<a href="https://x.com/mmamania/status/2">&nbsp;MMAMania.com</a>`, "46-48", "Murphy")}
+    </table>`;
+  assert.deepEqual(parseMmaDecision(page)?.media, [
+    { name: "Keith Shillan", outlet: "Sherdog.com", url: "https://x.com/a/status/1", f1Score: 47, f2Score: 47, winner: "DRAW" },
+    { name: "", outlet: "MMAMania.com", url: "https://x.com/a/status/1", f1Score: 46, f2Score: 48, winner: "Murphy" },
+  ]);
+  assert.deepEqual(parseMmaDecision(page.replace("MEDIA SCORES", "FAN SCORING"))?.media, []);
+});
