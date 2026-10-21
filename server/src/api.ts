@@ -15,6 +15,7 @@ import { BetStore } from "./bets.ts";
 import { createBetsHandler } from "./bets-http.ts";
 import { createLeaderboards } from "./leaderboards.ts";
 import { cardOrder, estimatedStart, type SegmentTimes } from "./card-schedule.ts";
+import { calendarAnswer, calendarFileName, calendarOptions, calendarQuery, calendarStart } from "./calendar.ts";
 import http from "node:http";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -2758,6 +2759,32 @@ export function startApi(port: number): http.Server {
         if (!row) return await sendJson(req, res, { error: "not found" }, 404);
         const odds = await boutOdds({ id: row.id, date: row.date, f1: fighterNames(row.f1_id, row.f1_name), f2: fighterNames(row.f2_id, row.f2_name) });
         return await sendJson(req, res, { fight_id: row.id, odds, finished: null });
+      }
+      if (p === "/cal/ufc.ics" || p.startsWith("/cal/events/")) {
+        // Calendars: the subscription feed, and one card as a file or as a
+        // Google Calendar link. Built in a query worker, kept a minute.
+        const card = /^\/cal\/events\/([a-f0-9]{16})(\.ics|\/google)$/i.exec(p);
+        if (p !== "/cal/ufc.ics" && !card) return await sendJson(req, res, { error: "not found" }, 404);
+        const query = card
+          ? new URLSearchParams({ event: card[1], from: calendarStart(url.searchParams.get("from")), ...(card[2] === "/google" ? { as: "google" } : {}) }).toString()
+          : calendarQuery(calendarOptions(url.searchParams));
+        const value = await cache.get(`calendar:${query}`, 60_000, async () => {
+          if (!queryPool) {
+            const answer = calendarAnswer(new URLSearchParams(query));
+            return answer === undefined ? { json: JSON.stringify({ error: "not found" }), status: 404 } : { json: answer, status: 200 };
+          }
+          const result = await queryPool.run(`/_calendar?${query}`);
+          return result.status === 200 ? { json: JSON.parse(result.json), status: 200 } : result;
+        }, 10 * 60_000);
+        if (value.status !== 200) return sendRepresentation(req, res, value, "no-store");
+        if (card?.[2] === "/google") {
+          res.writeHead(302, { Location: value.body.toString(), "Cache-Control": "no-store" });
+          res.end();
+          return;
+        }
+        const title = card ? (prepared("SELECT name FROM events WHERE id = ?").get(card[1]) as { name: string } | undefined)?.name ?? "" : "";
+        res.setHeader("Content-Disposition", card ? `attachment; filename="${calendarFileName(title)}"` : 'inline; filename="ufc.ics"');
+        return sendRepresentation(req, res, value, "public, max-age=60", "text/calendar; charset=utf-8");
       }
       if (publicApi(p)) {
         const asked = performance.now();

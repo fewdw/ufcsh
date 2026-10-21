@@ -24,6 +24,7 @@ import { oneOf } from "../preferences";
 import { useSettings, withRanking, type OddsFormat } from "../settings";
 import { eventKind, type EventKind } from "../eventKind";
 import SearchGlyph from "../components/SearchGlyph";
+import { AddToCalendarButton, SubscribeCalendarButton } from "../components/CalendarDialog";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, List, X } from "lucide-react";
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
@@ -317,6 +318,7 @@ function EventSidebar({
               className="h-10 w-full min-w-0 rounded-full border border-zinc-200 bg-white pl-9 pr-3 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 hover:border-zinc-300 focus:border-zinc-400 sm:h-9 sm:text-sm"
             />
           </label>
+          <SubscribeCalendarButton kind={kind} className={`shrink-0 ${CLOSE_BUTTON}`} />
           <button type="button" onClick={onBack} aria-label="Close events" title="Back to card" className={`shrink-0 ${CLOSE_BUTTON} ${dock.toggle}`}>
             <X className={CLOSE_ICON} aria-hidden="true" />
           </button>
@@ -1065,6 +1067,10 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
                 </span>
               ) : <span className="whitespace-nowrap font-medium text-zinc-600">No date</span>}
               <EventPlace venue={event.venue} location={event.location} locationSlug={event.location_slug} />
+              {!underway && !event.potential && announced.length ? <>
+                <span aria-hidden="true" className="text-zinc-300">·</span>
+                <AddToCalendarButton event={event} />
+              </> : null}
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-end justify-center gap-1 text-right empty:hidden">

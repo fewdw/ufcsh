@@ -1,5 +1,6 @@
 import { parentPort } from "node:worker_threads";
 import { resolvePublicApi, pageSeo, shareCardData, sitemap, warmingUp } from "./api.ts";
+import { calendarAnswer } from "./calendar.ts";
 import { fightIndex, holdIndexes } from "./fight-index.ts";
 import { fighterRecords } from "./records.ts";
 import { officialsIndex } from "./officials.ts";
@@ -58,9 +59,10 @@ parentPort!.on("message", async ({ id, url }: { id: number; url: string }) => {
     const parsed = new URL(url, "http://localhost");
     const data = parsed.pathname === "/_seo" ? pageSeo(parsed.searchParams.get("path") ?? "/")
       : parsed.pathname === "/_sitemap" ? sitemap()
-        : parsed.pathname === "/_share" ? shareCardData(parsed.searchParams.get("kind") ?? "", parsed.searchParams.get("id") ?? "")
-          : parsed.pathname === "/_news-judge" ? newsToJudge()
-            : await resolvePublicApi(parsed);
+        : parsed.pathname === "/_calendar" ? calendarAnswer(parsed.searchParams)
+          : parsed.pathname === "/_share" ? shareCardData(parsed.searchParams.get("kind") ?? "", parsed.searchParams.get("id") ?? "")
+            : parsed.pathname === "/_news-judge" ? newsToJudge()
+              : await resolvePublicApi(parsed);
     parentPort!.postMessage({ id, result: { json: JSON.stringify(data === undefined ? { error: "not found" } : data), status: data === undefined ? 404 : 200 } });
   } catch (error) {
     console.error("query failed:", String(error));

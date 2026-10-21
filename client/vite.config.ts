@@ -53,6 +53,6 @@ export default defineConfig({
   server: {
     // Private Tailscale preview hostnames; the dev server itself stays on loopback.
     allowedHosts: [".ts.net"],
-    proxy: { "/api": api, "/og": api, "/readyz": api },
+    proxy: { "/api": api, "/og": api, "/cal": api, "/readyz": api },
   },
 });
