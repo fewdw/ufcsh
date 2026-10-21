@@ -431,6 +431,8 @@ export function cardChanges(wikitext: string, bouts: [string, string][]): CardCh
     const find = (text: string) => {
       for (const match of [...text.matchAll(NAME)].reverse()) {
         const words = match[0].replace(/(?<!\bJr)\.$/, "").split(" ");
+        // "Featherweights Choi Doo-ho": the name starts after the words before it.
+        while (words.length > 2 && (TITLE.test(words[0]) || NOT_NAMES.test(words[0]))) words.shift();
         const at = words.findIndex((word, index) => index > 0 && normName(word) === surname);
         if (at > 0 && !NOT_NAMES.test(words[at - 1]) && !TITLE.test(words[at - 1])) {
           // Up to two given names ("Jesús Santos Aguilar"), never a title ("Champion Michelle …").
@@ -495,6 +497,14 @@ export function cardChanges(wikitext: string, bouts: [string, string][]): CardCh
     // "Kevin Holland, whom Vettori replaced …" is about someone else's change.
     if (step && /\bwhom\b[^,.;]*$/i.test(raw.slice(0, step.index))) step = null;
     const instead = by ? null : raw.match(/\binstead (?:faced|faces|face|fought|met|meets|took on)\b/i);
+    // "X was expected to face Y, but pulled out and was replaced by Z": the
+    // booking in this sentence names whom Z replaced, so it counts already.
+    const between = /\b(?:bout|rematch|fight|matchup|pairing)\b[^.]*?\bbetween (.+) and (.+?) (?:was|were|had been|has been|is)\b/i.exec(raw);
+    const meet = between ? null : /^(?:[^,]*,\s*)?(.+?) and (.+?) (?:were|are) (?:originally |initially )?(?:expected|scheduled|set|booked) to (?:meet|face|compete|fight)\b/i.exec(raw);
+    const intro = elsewhere ? null : between ?? meet;
+    const faces = elsewhere ? null : intro ?? /^(?:[^,]*,\s*)?(.+?) (?:was|had been|is) (?:originally |initially |previously )?(?:expected|scheduled|set|booked) to (?:face|meet|fight) (.+?)(?= at\b| in\b| on\b|,|\.|$)/.exec(raw);
+    const pair = faces && [personIn(faces[1]), personIn(faces[2])];
+    if (pair?.[0] && pair[1]) booked.push([fullName(pair[0]), fullName(pair[1])]);
     if (by) {
       const cueAt = normName(raw.slice(0, by.index)).length;
       replacement = named.find((entry) => entry.at >= cueAt)?.person.name ?? null;
@@ -518,6 +528,13 @@ export function cardChanges(wikitext: string, bouts: [string, string][]): CardCh
       const stayed = named.find((entry) => entry.at < cueAt)?.person.name;
       replacement = named.find((entry) => entry.at >= cueAt)?.person.name ?? null;
       replaced = [...pairings].reverse().find((pair) => pair.withdrew && stayed && [pair.f1, pair.f2].some((who) => surnameOf(who) === surnameOf(stayed)))?.withdrew?.who ?? null;
+      // "X was expected to face Y. However, X pulled out … Y instead faced Z":
+      // the booking's other fighter, only when they are the one who withdrew.
+      if (!replaced && stayed && withdrawn && withdrawnAt >= at - 2) {
+        const left = [...booked].reverse().find((entry) => entry.some((who) => surnameOf(who) === surnameOf(stayed)))
+          ?.find((who) => surnameOf(who) !== surnameOf(stayed));
+        if (left && surnameOf(fullName(withdrawn.name)) === surnameOf(left)) replaced = left;
+      }
     } else if (step) {
       const cueAt = normName(raw.slice(0, step.index)).length;
       replacement = named.find((entry) => entry.at < cueAt)?.person.name ?? null;
@@ -533,9 +550,6 @@ export function cardChanges(wikitext: string, bouts: [string, string][]): CardCh
     const due = /\bdue to (?:an? |his |her |the )?([^,.;()]+?)(?:,|\.|;| and\b| with\b| after\b| which\b| that\b|$)/i.exec(raw)?.[1]?.trim() ?? null;
     // "A light heavyweight bout between X and Y was expected …", or "X and Y
     // were scheduled to meet …", announces a pairing.
-    const between = /\b(?:bout|rematch|fight|matchup|pairing)\b[^.]*?\bbetween (.+) and (.+?) (?:was|were|had been|has been|is)\b/i.exec(raw);
-    const meet = between ? null : /^(?:[^,]*,\s*)?(.+?) and (.+?) (?:were|are) (?:originally |initially )?(?:expected|scheduled|set|booked) to (?:meet|face|compete|fight)\b/i.exec(raw);
-    const intro = elsewhere ? null : between ?? meet;
     if (intro) {
       const [f1, f2] = [personIn(intro[1]), personIn(intro[2])];
       const before = between ? raw.slice(0, intro.index + intro[0].indexOf("between")) : raw;
@@ -588,9 +602,6 @@ export function cardChanges(wikitext: string, bouts: [string, string][]): CardCh
         about.reason ??= member ? null : due;
       }
     }
-    const faces = elsewhere ? null : intro ?? /^(?:[^,]*,\s*)?(.+?) (?:was|had been|is) (?:originally |initially |previously )?(?:expected|scheduled|set|booked) to (?:face|meet|fight) (.+?)(?= at\b| in\b| on\b|,|\.|$)/.exec(raw);
-    const pair = faces && [personIn(faces[1]), personIn(faces[2])];
-    if (pair?.[0] && pair[1]) booked.push([fullName(pair[0]), fullName(pair[1])]);
     earlier += ` ${raw}`;
     subject = namesIn(raw).find((written) => fullName(written).includes(" ")) ?? null;
   }

@@ -5,6 +5,7 @@ import { mkdirSync } from "node:fs";
 import { samePlace } from "./scrape/wikipedia.ts";
 import { consistentMoneyline } from "./method-odds.ts";
 import { decisionFromCards } from "./judge-scorecards.ts";
+import { replaceDroppedMedia } from "./point-deduction-rules.ts";
 import { flaglessCountryCode } from "./util.ts";
 
 export const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data"));
@@ -496,16 +497,21 @@ if (getMeta("migration_placeholder_photos_v2") !== "1") {
 // Replacements and short notice are read with the rest of the event
 // article; past cards were read before that, so read them once more
 // (v3: months and acronyms were read as the replaced fighter's name;
-// v4: cited replacement reports also retain the announcement date).
-if (getMeta("migration_bout_changes") !== "4") {
-  if (getMeta("migration_bout_changes") !== "3") {
+// v4: cited replacement reports also retain the announcement date;
+// v5: "X was expected to face Y, but … was replaced by Z" and "Y instead faced
+// Z" after X withdrew name X, so cards with an unnamed replacement are read again).
+if (getMeta("migration_bout_changes") !== "5") {
+  if (!["3", "4"].includes(getMeta("migration_bout_changes") ?? "")) {
     db.exec("UPDATE events SET wiki_info_checked_at = NULL WHERE complete = 1");
   } else {
-    db.exec(`UPDATE events SET wiki_info_checked_at = NULL WHERE complete = 1 AND id IN (
+    if (getMeta("migration_bout_changes") === "3") db.exec(`UPDATE events SET wiki_info_checked_at = NULL WHERE complete = 1 AND id IN (
       SELECT event_id FROM fights WHERE (f1_replaced IS NOT NULL AND f1_notice IS NULL)
         OR (f2_replaced IS NOT NULL AND f2_notice IS NULL))`);
+    db.exec(`UPDATE events SET wiki_info_checked_at = NULL WHERE complete = 1 AND id IN (
+      SELECT event_id FROM fights WHERE f1_replaced = '' OR f1_replaced NOT LIKE '% %' OR (f1_short_notice = 1 AND f1_replaced IS NULL)
+        OR f2_replaced = '' OR f2_replaced NOT LIKE '% %' OR (f2_short_notice = 1 AND f2_replaced IS NULL))`);
   }
-  setMeta("migration_bout_changes", "4");
+  setMeta("migration_bout_changes", "5");
 }
 
 // A bare surname could be attributed to a card fighter when the article meant
@@ -526,6 +532,20 @@ if (getMeta("migration_unread_mma_decisions") !== "1") {
   db.exec(`UPDATE fights SET deductions_checked_at = NULL
     WHERE deductions_checked_at IS NOT NULL AND deductions_json IS NULL AND media_scores_json IS NULL`);
   setMeta("migration_unread_mma_decisions", "1");
+}
+
+// Media cards naming a surname both fighters share ("Silva" for Karine Silva
+// against Ariane da Silva) were dropped; the stored cards are placed again.
+// MMA Decisions refuses production, so they would never be re-read.
+if (getMeta("migration_media_shared_surnames") !== "1") {
+  const rows = db.prepare(`SELECT id, f1_name, f2_name, media_scores_json FROM fights
+    WHERE media_scores_json LIKE '%"dropped":[{%'`).all() as { id: string; f1_name: string; f2_name: string; media_scores_json: string }[];
+  const update = db.prepare("UPDATE fights SET media_scores_json = ? WHERE id = ?");
+  for (const row of rows) {
+    const placed = replaceDroppedMedia(row.media_scores_json, row.f1_name, row.f2_name);
+    if (placed) update.run(placed, row.id);
+  }
+  setMeta("migration_media_shared_surnames", "1");
 }
 
 if (getMeta("migration_career_identity_and_unlinked_bouts") !== "1") {
