@@ -516,3 +516,29 @@ test("UFC 148's confirmed replacement is Easton while Menjivar is the opponent w
   assert.equal(changes.find(change => change.name === "Mike Easton")?.notice, "announced 49 days before");
   assert.equal(changes.some(change => change.name === "Ivan Menjivar" && change.replaced === "Renan Barao"), false);
 });
+
+test("a booking and its replacement in one sentence name the fighter who left", () => {
+  const text = article("[[Court McGee]] was scheduled to fight [[Jesse Bongfeldt]], but was forced to pull out due to a torn MCL and was replaced by [[Chris Weidman]].");
+  assert.deepEqual(cardChanges(text, [["Jesse Bongfeldt", "Chris Weidman"]]).changes.map((change) => [change.name, change.replaced]), [["Chris Weidman", "Court McGee"]]);
+});
+
+test("\"instead faced\" after a stated booking names the fighter who withdrew", () => {
+  const text = article([
+    "[[Frank Camacho]] was scheduled to face [[Brok Weaver]] in a lightweight bout at this event.",
+    "However, Camacho was removed from the bout after testing positive for COVID-19.",
+    "Weaver instead faced [[Jalin Turner]] in a catchweight bout of 165 pounds.",
+  ].join(" "));
+  assert.deepEqual(cardChanges(text, [["Brok Weaver", "Jalin Turner"]]).changes.map((change) => [change.name, change.replaced]), [["Jalin Turner", "Frank Camacho"]]);
+  // A booking whose other fighter is not the one who withdrew names no one.
+  const other = article([
+    "[[Frank Camacho]] was scheduled to face [[Brok Weaver]] at this event.",
+    "However, [[Diego Sanchez]] withdrew from his bout.",
+    "Weaver instead faced [[Jalin Turner]].",
+  ].join(" "));
+  assert.notEqual(cardChanges(other, [["Brok Weaver", "Jalin Turner"]]).changes[0]?.replaced, "Frank Camacho");
+});
+
+test("a family name first after a division still completes a surname", () => {
+  const text = article("Featherweights [[Choi Doo-ho]] and [[Danny Chavez]] were expected to meet at the event. However, Choi was forced to pull out of the bout due to an injury and was replaced by [[Kai Kamaka III]].");
+  assert.equal(cardChanges(text, [["Danny Chavez", "Kai Kamaka III"]]).changes[0].replaced, "Choi Doo-ho");
+});

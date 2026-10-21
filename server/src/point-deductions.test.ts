@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { deductionProblem, deductionSide, pageDeductions, pageMedia, verifiedDeductions } from "./point-deductions.ts";
+import { replaceDroppedMedia } from "./point-deduction-rules.ts";
 import type { JudgeCard } from "./judge-scorecards.ts";
 
 // Evloev vs. Murphy (UFC London, March 2026): Evloev won round 4 on every card
@@ -42,6 +43,11 @@ test("a page's short names are placed on our fighters, in our order", () => {
   assert.equal(deductionSide("Evloev", "Movsar Evloev", "Lerone Murphy"), 1);
   assert.equal(deductionSide("Cong", "Wang Cong", "Tracy Cortez"), 1);
   assert.equal(deductionSide("Silva", "Thiago Silva", "Antonio Silva"), null);
+  // A name that fits both is the one whose whole surname it is.
+  assert.equal(deductionSide("Silva", "Karine Silva", "Ariane da Silva"), 1);
+  assert.equal(deductionSide("da Silva", "Karine Silva", "Ariane da Silva"), 2);
+  assert.equal(deductionSide("Scott", "Brad Scott", "Scott Askham"), 1);
+  assert.equal(deductionSide("Scott", "Scott Askham", "Brad Scott"), 2);
   assert.equal(deductionSide("Jones", "Movsar Evloev", "Lerone Murphy"), null);
   const page = { f1Name: "Lerone Murphy", f2Name: "Movsar Evloev", judges: [], media: [], deductions: [{ name: "Evloev", points: 1, round: 4, reason: "low blow." }] };
   assert.deepEqual(pageDeductions(page, -1), [{ side: "f1", round: 4, points: 1, reason: "Low blow" }]);
@@ -58,7 +64,7 @@ test("media cards follow our fighter order and must agree with their own winner"
   assert.deepEqual(pageMedia(page, 1).dropped.map(c => c.winner), ["Murphy", "Volkanovski"]);
 });
 
-import { db, getMeta } from "./db.ts";
+import { db, getMeta, setMeta } from "./db.ts";
 import { MMA_DECISIONS_BLOCKED, readPointDeductions, syncRecentPointDeductions } from "./point-deductions.ts";
 
 const importFight = { id: "mma-import-test", date: "2024-06-15", f1_name: "Alice Archer", f2_name: "Betty Baker", f1_alias: null, f2_alias: null };
@@ -108,6 +114,8 @@ test("an unavailable source preserves data and leaves a decision unprocessed for
 
 test("a source that refuses this server is retried daily, not reported as a failure every hour", async t => {
   importFixture(t);
+  // A copy of production's archive may already hold a refusal; the fixture rolls this back.
+  setMeta(MMA_DECISIONS_BLOCKED, "");
   const refused = t.mock.method(globalThis, "fetch", async () => new Response("", { status: 403 }));
   const now = Date.now();
   await syncRecentPointDeductions(now);
@@ -119,4 +127,20 @@ test("a source that refuses this server is retried daily, not reported as a fail
   refused.mock.mockImplementation(async () => new Response("Unavailable", { status: 503 }));
   await assert.rejects(syncRecentPointDeductions(now + 25 * 3600_000), /source reads failed/);
   assert.equal(getMeta(MMA_DECISIONS_BLOCKED), "");
+});
+
+test("stored cards dropped for a shared surname are placed again in our order", () => {
+  const card = (f1Score: number, f2Score: number, winner: string) => ({ name: "A Writer", outlet: "Sherdog.com", url: "", f1Score, f2Score, winner });
+  const kept = { name: "Kept", outlet: "MMAJunkie.com", url: "", f1Score: 28, f2Score: 29 };
+  const record = JSON.stringify({ source: "MMA Decisions", sourceUrl: "https://mmadecisions.com/decision/14705/Karine-Silva-vs-Ariane-da-Silva",
+    items: [kept], dropped: [card(30, 27, "Silva"), card(29, 28, "Volkanovski")] });
+  const same = JSON.parse(replaceDroppedMedia(record, "Karine Silva", "Ariane da Silva")!);
+  assert.deepEqual(same.items.map((c: { f1Score: number; f2Score: number }) => [c.f1Score, c.f2Score]), [[28, 29], [30, 27]]);
+  assert.deepEqual(same.dropped.map((c: { winner: string }) => c.winner), ["Volkanovski"]);
+  // Our order is the page's reversed: the placed card is flipped to match.
+  const swapped = JSON.parse(replaceDroppedMedia(record, "Ariane da Silva", "Karine Silva")!);
+  assert.deepEqual(swapped.items.at(-1), { name: "A Writer", outlet: "Sherdog.com", url: "", f1Score: 27, f2Score: 30 });
+  // An address that doesn't name both fighters, or nothing that now fits, changes nothing.
+  assert.equal(replaceDroppedMedia(record, "Karine Silva", "Someone Else"), null);
+  assert.equal(replaceDroppedMedia(JSON.stringify({ ...JSON.parse(record), dropped: [card(29, 28, "Volkanovski")] }), "Karine Silva", "Ariane da Silva"), null);
 });

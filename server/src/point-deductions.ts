@@ -1,60 +1,12 @@
 import { mergeMmaJudgeRounds } from "./mma-judge-rounds.ts";
 import { db, getMeta, setMeta } from "./db.ts";
 import { crawlMmaDecisions, type CrawlFight } from "./mmadecisions-crawl.ts";
-import { mmaDecisionUrl, type MmaDecision, type MmaMediaScore } from "./scrape/mmadecisions.ts";
-import { log, normName } from "./util.ts";
-import { storedDeductions, type PointDeduction } from "./point-deduction-rules.ts";
+import { mmaDecisionUrl, type MmaMediaScore } from "./scrape/mmadecisions.ts";
+import { log } from "./util.ts";
+import { pageDeductions, pageMedia, storedDeductions, type MediaScore, type PointDeduction } from "./point-deduction-rules.ts";
 import type { JudgeCard } from "./judge-scorecards.ts";
-export { deductionProblem, verifiedDeductions, fightDeductionState } from "./point-deduction-rules.ts";
-export type { PointDeduction } from "./point-deduction-rules.ts";
-
-/** The fighter a page's short name ("Evloev", "Cong") refers to, or null when
- *  it fits neither fighter or both. */
-export function deductionSide(name: string, f1Name: string, f2Name: string): 1 | 2 | null {
-  const words = normName(name).split(" ").filter(Boolean);
-  const fits = (full: string) => {
-    const own = new Set(normName(full).split(" "));
-    return words.length > 0 && words.every(word => own.has(word));
-  };
-  const first = fits(f1Name), second = fits(f2Name);
-  return first === second ? null : first ? 1 : 2;
-}
-
-/** A page's deductions in our fighter order, or null if any can't be placed. */
-export function pageDeductions(page: MmaDecision, order: 1 | -1): PointDeduction[] | null {
-  const items: PointDeduction[] = [];
-  for (const deduction of page.deductions) {
-    const side = deductionSide(deduction.name, page.f1Name, page.f2Name);
-    if (!side || !Number.isInteger(deduction.points) || deduction.points < 1 || deduction.points > 3
-      || !Number.isInteger(deduction.round) || deduction.round < 1 || deduction.round > 5) return null;
-    const reason = deduction.reason.replace(/\.$/, "");
-    items.push({ side: (side === 1) === (order === 1) ? "f1" : "f2", round: deduction.round, points: deduction.points,
-      reason: reason ? reason[0].toUpperCase() + reason.slice(1) : "" });
-  }
-  return items.sort((a, b) => a.round - b.round);
-}
-
-/** A journalist's card on a decision, in our fighter order. */
-export type MediaScore = { name: string; outlet: string; url: string; f1Score: number; f2Score: number };
-
-/** The page's media cards in our fighter order. A card whose stated winner
- *  doesn't agree with its own score, or names neither fighter, is dropped and
- *  kept aside for Admin → Bugs. */
-export function pageMedia(page: MmaDecision, order: 1 | -1): { items: MediaScore[]; dropped: MmaMediaScore[] } {
-  const items: MediaScore[] = [], dropped: MmaMediaScore[] = [];
-  for (const card of page.media) {
-    const { f1Score, f2Score } = card;
-    const winner = card.winner.toUpperCase() === "DRAW" ? 0 : deductionSide(card.winner, page.f1Name, page.f2Name);
-    if (!Number.isInteger(f1Score) || !Number.isInteger(f2Score) || f1Score < 1 || f2Score < 1 || f1Score > 50 || f2Score > 50
-      || Math.abs(f1Score - f2Score) > 25 || winner !== (f1Score > f2Score ? 1 : f2Score > f1Score ? 2 : 0)) {
-      dropped.push(card);
-      continue;
-    }
-    items.push({ name: card.name, outlet: card.outlet, url: card.url,
-      f1Score: order === 1 ? f1Score : f2Score, f2Score: order === 1 ? f2Score : f1Score });
-  }
-  return { items, dropped };
-}
+export { deductionProblem, deductionSide, pageDeductions, pageMedia, verifiedDeductions, fightDeductionState } from "./point-deduction-rules.ts";
+export type { MediaScore, PointDeduction } from "./point-deduction-rules.ts";
 
 export type StoredMedia = { sourceUrl: string; items: MediaScore[]; dropped: MmaMediaScore[] };
 

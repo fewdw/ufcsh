@@ -644,3 +644,14 @@ About 2,000 of 4,928 pictures had never been downloaded.
 | `/api/fights/:id/tape-history` (277 ms locally, first call per index) | The tally of earlier bouts is built on first use | Query workers warm it with the rest of their pages |
 | Schedule archive: ~8 ufc.com index pages every 2 minutes, in the tick | 14 cards have no ufc.com page, so the walk never finished | A full lap that times nothing rests the walk 30 days |
 | `point_deductions` sync error every hour | MMA Decisions answers this server 403 (an Apache deny; home addresses get 200) | A refused pass is retried daily and listed once in Admin → Bugs, not as an hourly error |
+
+## Production check (2026-10-21)
+
+From production's slow log in the 19 hours after the October 20 release: six
+slow requests, none on a card or matchup. Three default Stats boards (454–527
+ms) and three `/api/news?fighter=` (300–394 ms). On a copy of production's
+archive (dev-pc) the Stats opening is 995 ms cold and 140 ms warm, a card 481 ms
+cold and 8 ms warm, so what remains is a first build after a worker rebuild, a
+few a day. No change. No sync errors since the release; the 5xx in a week were
+seven headshot requests while ufc.com refused two pictures.
+
