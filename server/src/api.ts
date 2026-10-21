@@ -766,11 +766,14 @@ function fighterHistory(fighterId: string, includeOpponentForm = false): unknown
 const PERF_BONUS_KIND: Record<number, "perf" | "ko" | "sub"> = { 1: "perf", 2: "ko", 3: "sub" };
 
 /** How a bout that didn't go to the judges ended: the fight page's full line
- *  ("Knee to Head In Clinch"), else the card's short one ("Knee"). */
+ *  ("Knee to Head In Clinch"), else the kind of stoppage its method names
+ *  ("TKO - Doctor's Stoppage"; UFCStats leaves most of those without a line),
+ *  else the card's short one ("Knee"). */
 function finishDetailText(method: string | null, detail: any, short: string | null): string | null {
   if (!method || /DEC$/i.test(method)) return null;
   const full = typeof detail?.detailsText === "string" ? detail.detailsText.trim() : "";
-  return full || short?.trim() || null;
+  const stated = typeof detail?.methodInfo?.Method === "string" ? /^[^-]+ - (.+)$/.exec(detail.methodInfo.Method)?.[1]?.trim() ?? "" : "";
+  return full || stated || short?.trim() || null;
 }
 
 type SourceCareerRow = {

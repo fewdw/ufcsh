@@ -1,4 +1,6 @@
 import { panelCards, type JudgeCard } from "./judge-scorecards.ts";
+import type { MmaDecision, MmaMediaScore } from "./scrape/mmadecisions.ts";
+import { normName } from "./util.ts";
 
 /** Referee penalties are separate from the ten-point round a fan scores. */
 export type PointDeduction = { side: "f1" | "f2"; round: number; points: number; reason: string };
@@ -83,4 +85,92 @@ export function deductionOverrides(state: DeductionState): string | null {
     const { deduct1, deduct2 } = deductionsIn(state.items, round);
     return [deduct1, deduct2];
   })) : null;
+}
+
+const NAME_SUFFIX = /^(?:jr|sr|ii|iii|iv)$/;
+const SURNAME_PARTICLES = new Set(["da", "das", "de", "del", "della", "der", "di", "dos", "du", "la", "le", "st", "saint", "van", "von"]);
+
+/** "da silva" for Ariane da Silva, "scott" for Brad Scott: the words after the
+ *  given name, with the particles that belong to them (client `lastName`). */
+function surname(full: string): string {
+  const words = normName(full).split(" ").filter(Boolean);
+  while (words.length > 2 && NAME_SUFFIX.test(words.at(-1)!)) words.pop();
+  let start = words.length - 1;
+  while (start > 1 && SURNAME_PARTICLES.has(words[start - 1])) start -= 1;
+  return words.slice(Math.max(start, 0)).join(" ");
+}
+
+/** The fighter a page's short name ("Evloev", "Cong") refers to, or null when
+ *  it fits neither fighter or both. A name that fits both is the one whose
+ *  whole surname it is: "Silva" is Karine Silva, not Ariane da Silva, and
+ *  "Scott" is Brad Scott, not Scott Askham. */
+export function deductionSide(name: string, f1Name: string, f2Name: string): 1 | 2 | null {
+  const words = normName(name).split(" ").filter(Boolean);
+  const fits = (full: string) => {
+    const own = new Set(normName(full).split(" "));
+    return words.length > 0 && words.every(word => own.has(word));
+  };
+  const first = fits(f1Name), second = fits(f2Name);
+  if (first !== second) return first ? 1 : 2;
+  if (!first) return null;
+  const stated = words.join(" ");
+  const own1 = surname(f1Name) === stated, own2 = surname(f2Name) === stated;
+  return own1 === own2 ? null : own1 ? 1 : 2;
+}
+
+/** A page's deductions in our fighter order, or null if any can't be placed. */
+export function pageDeductions(page: MmaDecision, order: 1 | -1): PointDeduction[] | null {
+  const items: PointDeduction[] = [];
+  for (const deduction of page.deductions) {
+    const side = deductionSide(deduction.name, page.f1Name, page.f2Name);
+    if (!side || !Number.isInteger(deduction.points) || deduction.points < 1 || deduction.points > 3
+      || !Number.isInteger(deduction.round) || deduction.round < 1 || deduction.round > 5) return null;
+    const reason = deduction.reason.replace(/\.$/, "");
+    items.push({ side: (side === 1) === (order === 1) ? "f1" : "f2", round: deduction.round, points: deduction.points,
+      reason: reason ? reason[0].toUpperCase() + reason.slice(1) : "" });
+  }
+  return items.sort((a, b) => a.round - b.round);
+}
+
+/** A journalist's card on a decision, in our fighter order. */
+export type MediaScore = { name: string; outlet: string; url: string; f1Score: number; f2Score: number };
+
+/** The page's media cards in our fighter order. A card whose stated winner
+ *  doesn't agree with its own score, or names neither fighter, is dropped and
+ *  kept aside for Admin → Bugs. */
+export function pageMedia(page: MmaDecision, order: 1 | -1): { items: MediaScore[]; dropped: MmaMediaScore[] } {
+  const items: MediaScore[] = [], dropped: MmaMediaScore[] = [];
+  for (const card of page.media) {
+    const { f1Score, f2Score } = card;
+    const winner = card.winner.toUpperCase() === "DRAW" ? 0 : deductionSide(card.winner, page.f1Name, page.f2Name);
+    if (!Number.isInteger(f1Score) || !Number.isInteger(f2Score) || f1Score < 1 || f2Score < 1 || f1Score > 50 || f2Score > 50
+      || Math.abs(f1Score - f2Score) > 25 || winner !== (f1Score > f2Score ? 1 : f2Score > f1Score ? 2 : 0)) {
+      dropped.push(card);
+      continue;
+    }
+    items.push({ name: card.name, outlet: card.outlet, url: card.url,
+      f1Score: order === 1 ? f1Score : f2Score, f2Score: order === 1 ? f2Score : f1Score });
+  }
+  return { items, dropped };
+}
+
+/** A stored media record whose dropped cards fit the current placement rule,
+ *  re-placed among the kept ones; null when nothing moves. The page's own
+ *  fighter order is read from its address ("…/Karine-Silva-vs-Ariane-da-Silva")
+ *  and must name our two fighters exactly. */
+export function replaceDroppedMedia(json: string | null, f1Name: string, f2Name: string): string | null {
+  let record: any;
+  try { record = JSON.parse(json ?? "null"); } catch { return null; }
+  if (!Array.isArray(record?.items) || !Array.isArray(record?.dropped) || !record.dropped.length || typeof record.sourceUrl !== "string") return null;
+  const slug = decodeURIComponent(record.sourceUrl.split("/").at(-1) ?? "").split("-vs-");
+  if (slug.length !== 2) return null;
+  const [page1, page2] = slug.map(name => normName(name));
+  const order = page1 === normName(f1Name) && page2 === normName(f2Name) ? 1
+    : page1 === normName(f2Name) && page2 === normName(f1Name) ? -1 : 0;
+  if (!order) return null;
+  const page = { f1Name: order === 1 ? f1Name : f2Name, f2Name: order === 1 ? f2Name : f1Name, judges: [], deductions: [], media: record.dropped };
+  const { items, dropped } = pageMedia(page, order);
+  if (!items.length) return null;
+  const { dropped: _old, ...rest } = record;
+  return JSON.stringify({ ...rest, items: [...record.items, ...items], ...(dropped.length ? { dropped } : {}) });
 }

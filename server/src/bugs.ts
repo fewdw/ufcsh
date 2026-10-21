@@ -884,20 +884,22 @@ function decisionsWithoutJudges(): BugCheck {
 }
 
 /** Finishes with no line saying how they came. UFCStats prints none for most
- *  doctor and corner stoppages, so an old one is usually all the source has. */
+ *  doctor stoppages, but names them in the method, and that is shown instead. */
 function finishesWithoutDetail(): BugCheck {
   const rows = db.prepare(`
     SELECT ${FIGHT_COLUMNS}, f.method, f.method_details, f.detail_fetched_at
     FROM fights f JOIN events e ON e.id = f.event_id
     WHERE e.complete = 1 AND f.method IN ('KO/TKO', 'SUB', 'DQ')
       AND COALESCE(TRIM(json_extract(f.detail_json, '$.detailsText')), '') = ''
+      -- "TKO - Doctor's Stoppage" says how it ended; the profile shows that.
+      AND COALESCE(json_extract(f.detail_json, '$.methodInfo.Method'), '') NOT LIKE '% - %'
     ORDER BY e.date DESC
   `).all() as (FightRow & { method: string; method_details: string | null; detail_fetched_at: number | null })[];
   return check({
     id: "finish-no-detail",
     group: "Fights & events",
     label: "Finishes without how they ended",
-    description: "KO/TKOs, submissions and disqualifications whose UFCStats fight page gives no detail line (\"Knee to Head In Clinch\", \"Rear Naked Choke\"), so the profile's bout row shows only the method, or the card's one-word version when it has one. UFCStats leaves the line blank for most doctor and corner stoppages; for a bout just fought, re-fetching usually fills it.",
+    description: "KO/TKOs, submissions and disqualifications whose UFCStats fight page gives no detail line (\"Knee to Head In Clinch\", \"Rear Naked Choke\"), so the profile's bout row shows only the method, or the card's one-word version when it has one. A doctor's stoppage with no line shows \"Doctor's Stoppage\" from the fight's method and isn't listed; for a bout just fought, re-fetching usually fills it.",
     grade: recent([[3, "must"]], "minor"),
   }, rows.map((fight) => fightItem(fight, {
     facts: [["Method", fight.method], ["Card's short line", fight.method_details || "none"], ["Detail fetched", ago(fight.detail_fetched_at)]],
@@ -1243,8 +1245,14 @@ function untrustworthyFightStats(): BugCheck {
   }, items);
 }
 
+/** The card row prints "--" in every stat column: UFCStats never recorded
+ *  the bout's numbers (early 1990s cards), so re-fetching can't fill them. */
+const unrecordedStats = (row: Record<string, unknown>) =>
+  ["kd", "str", "td", "sub"].every(stat => row[`f1_${stat}`] === "--" && row[`f2_${stat}`] === "--");
+
 /** Missing samples remain visible here rather than silently becoming zero rates. */
 function careerStatGaps(): BugCheck {
+  const unrecorded = new Set<string>();
   const items = fightIndex().fights.flatMap(fight => {
     const gaps = new Set<string>();
     if (fight.elapsed == null) gaps.add("Fight time");
@@ -1255,15 +1263,16 @@ function careerStatGaps(): BugCheck {
       if (!side.actions.submissions) gaps.add("Submission attempts");
     }
     if (fight.sides.some(side => side.actions.control) && fight.sides.some(side => !side.actions.control)) gaps.add("Paired control time");
+    if (gaps.size && unrecordedStats(fight.row)) unrecorded.add(fight.id);
     return gaps.size ? [fightItem({ ...fight.row, event_name: fight.eventName, date: fight.date }, {
-      facts: [["Missing samples", [...gaps].join("; ")]],
+      facts: [["Missing samples", [...gaps].join("; ")], ...(unrecorded.has(fight.id) ? [["UFCStats", "no stats recorded (--)"] as [string, string]] : [])],
       actions: [{ id: "event", label: "Re-fetch event", target: fight.eventId }, { id: "detail", label: "Re-fetch fight detail", target: fight.id }],
     })] : [];
   }).reverse();
   return check({
     id: "career-stat-gaps", group: "Fighters", label: "Career statistics missing samples",
-    description: "Completed bouts missing attempt counts, recorded actions or fight time. Those samples are excluded from the corresponding career averages. Re-fetch the event and fight detail when the source has the data; some older bouts never recorded every statistic.",
-    grade: "minor",
+    description: "Completed bouts missing attempt counts, recorded actions or fight time. Those samples are excluded from the corresponding career averages. Re-fetch the event and fight detail when the source has the data. Bouts whose UFCStats card prints \"--\" for every statistic (early 1990s cards) were never recorded and are graded OK.",
+    grade: (item) => unrecorded.has(item.key) ? "ok" : "minor",
   }, items);
 }
 
@@ -1482,18 +1491,25 @@ function replacedWithoutProfile(): BugCheck {
     ORDER BY date DESC
   `).all() as { id: string; event_id: string; event_name: string; date: string; weight_class: string; name: string; replaced: string; replaced_id: string | null }[])
     .filter((row) => { const id = row.replaced_id || fighterNamed(row.replaced, row.weight_class, row.date); return !id || !hasUfcFight(id); });
+  // UFCStats lists this fighter (by id, or every profile of exactly this name)
+  // and they never had a UFC bout: the unlinked name is right.
+  const named = db.prepare("SELECT id FROM fighters WHERE norm_name = ?");
+  const neverFought = new Set(rows.filter((row) => {
+    const ids = row.replaced_id ? [row.replaced_id] : (named.all(normName(row.replaced)) as { id: string }[]).map((found) => found.id);
+    return ids.length > 0 && !ids.some(hasUfcFight);
+  }).map((row) => `${row.id}:${row.name}`));
   return check({
     id: "replaced-no-profile",
     group: "Fights & events",
     label: "Replaced fighters without a profile",
-    description: "The fighter a replacement took the place of has no UFC profile we can link, so their name shows without a link. Often right (they never fought in the UFC); otherwise the article spells them differently from UFCStats.",
-    grade: ahead([[14, "minor"]]),
+    description: "The fighter a replacement took the place of has no UFC profile we can link, so their name shows without a link. Graded OK when UFCStats lists them under that name with no UFC bout (they never fought in the UFC); otherwise the article may spell them differently from UFCStats.",
+    grade: (item) => neverFought.has(item.key) ? "ok" : ahead([[14, "minor"]])(item),
   }, rows.map((row): BugItem => ({
     key: `${row.id}:${row.name}`,
     title: row.replaced,
     subtitle: `Replaced by ${row.name} · ${row.event_name}`,
     date: row.date,
-    facts: [["Matched fighter", row.replaced_id ? "no UFC bouts" : "none"]],
+    facts: [["Matched fighter", neverFought.has(`${row.id}:${row.name}`) ? "no UFC bouts" : "none"]],
     links: fightLinks(row.id),
     actions: [{ id: "article", label: "Re-read event article", target: row.event_id }],
   })));
