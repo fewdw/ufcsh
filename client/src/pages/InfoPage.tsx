@@ -100,9 +100,11 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-20">October 20, 2026</time></p>
+            <p><time dateTime="2026-10-21">October 21, 2026</time></p>
             <ul>
-              <li>The broadcast crew reads more cleanly on phones and sits centred on wider screens.</li>
+              <li>Doctor's stoppages say so on fighter profiles.</li>
+              <li>More journalists' scorecards show on decisions between fighters who share a surname.</li>
+              <li>More late replacements name the fighter they replaced.</li>
             </ul>
           </Section>
         </div>
