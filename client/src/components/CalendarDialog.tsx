@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { CalendarDays, CalendarPlus, CalendarSync, Check, ChevronLeft, ChevronRight, Copy, X } from "lucide-react";
+import { CalendarDays, CalendarPlus, Check, ChevronLeft, ChevronRight, Copy, X } from "lucide-react";
 import type { CardSchedule, CardSegment } from "../api";
 import { clockTimeWithZone } from "../format";
 import { oneOf, readPreference, writePreference } from "../preferences";
@@ -15,7 +15,8 @@ import { segmentedIdle, segmentedSelected } from "./segmented";
  */
 
 type Cards = "all" | "ppv" | "fight_night";
-type Range = "upcoming" | "all";
+/** A subscription runs from the full card or the main card. */
+type FeedStart = Extract<CardSegment, "early" | "main">;
 type CalendarEvent = { id: string; name: string; schedule?: CardSchedule };
 
 const START_OPTIONS: { value: CardSegment; label: string }[] = [
@@ -25,6 +26,7 @@ const START_OPTIONS: { value: CardSegment; label: string }[] = [
 ];
 const ORDER: CardSegment[] = ["early", "prelims", "main"];
 const parseStart = oneOf<CardSegment>("early", "prelims", "main");
+const parseFeedStart = oneOf<FeedStart>("early", "main");
 
 const startOf = (schedule: CardSchedule | undefined, segment: CardSegment): number | null =>
   segment === "main" ? schedule?.main_card_at ?? null
@@ -35,11 +37,10 @@ const startOf = (schedule: CardSchedule | undefined, segment: CardSegment): numb
 const appleDevice = () => typeof navigator !== "undefined" && /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
 
 /** The feed's address, defaults left out (the server's `calendarQuery`). */
-function feedPath(cards: Cards, from: CardSegment, events: Range): string {
+function feedPath(cards: Cards, from: FeedStart): string {
   const params = new URLSearchParams();
   if (cards !== "all") params.set("cards", cards);
   if (from !== "early") params.set("from", from);
-  if (events !== "upcoming") params.set("events", events);
   const query = params.toString();
   return `/cal/ufc.ics${query ? `?${query}` : ""}`;
 }
@@ -62,27 +63,44 @@ function Segmented<T extends string>({ label, value, options, onChange }: {
   </div>;
 }
 
-/** One way into a calendar app: a row with the app's name and what it does. */
-function Action({ href, title, detail, color, download, newTab }: {
-  href: string; title: string; detail: string; color: string; download?: string; newTab?: boolean;
+/** The apps' own marks: Google's G, Apple's apple (in the text color, so it
+ *  turns white in dark mode) and Outlook's, all from their brand assets. */
+function GoogleLogo() {
+  return <svg viewBox="0 0 48 48" className="h-5 w-5" aria-hidden="true">
+    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+  </svg>;
+}
+
+function AppleLogo() {
+  return <svg viewBox="0 0 24 24" className="h-5 w-5 text-zinc-900" fill="currentColor" aria-hidden="true">
+    <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701" />
+  </svg>;
+}
+
+function OutlookLogo() {
+  return <svg viewBox="0 0 24 24" className="h-5 w-5" fill="#0078D4" aria-hidden="true">
+    <path d="M7.88 12.04q0 .45-.11.87-.1.41-.33.74-.22.33-.58.52-.37.2-.87.2t-.85-.2q-.35-.21-.57-.55-.22-.33-.33-.75-.1-.42-.1-.86t.1-.87q.1-.43.34-.76.22-.34.59-.54.36-.2.87-.2t.86.2q.35.21.57.55.22.34.31.77.1.43.1.88zM24 12v9.38q0 .46-.33.8-.33.32-.8.32H7.13q-.46 0-.8-.33-.32-.33-.32-.8V18H1q-.41 0-.7-.3-.3-.29-.3-.7V7q0-.41.3-.7Q.58 6 1 6h6.5V2.55q0-.44.3-.75.3-.3.75-.3h12.9q.44 0 .75.3.3.3.3.75V10.85l1.24.72h.01q.1.07.18.18.07.12.07.25zm-6-8.25v3h3v-3zm0 4.5v3h3v-3zm0 4.5v1.83l3.05-1.83zm-5.25-9v3h3.75v-3zm0 4.5v3h3.75v-3zm0 4.5v2.03l2.41 1.5 1.34-.8v-2.73zM9 3.75V6h2l.13.01.12.04v-2.3zM5.98 15.98q.9 0 1.6-.3.7-.32 1.19-.86.48-.55.73-1.28.25-.74.25-1.61 0-.83-.25-1.55-.24-.71-.71-1.24t-1.15-.83q-.68-.3-1.55-.3-.92 0-1.64.3-.71.3-1.2.85-.5.54-.75 1.3-.25.74-.25 1.63 0 .85.26 1.56.26.72.74 1.23.48.52 1.17.81.69.3 1.56.3zM7.5 21h12.39L12 16.08V17q0 .41-.3.7-.29.3-.7.3H7.5zm15-.13v-7.24l-5.9 3.54Z" />
+  </svg>;
+}
+
+/** One calendar app: its mark at the left, its name centred. */
+function Action({ href, logo, title, download, newTab }: {
+  href: string; logo: ReactNode; title: string; download?: string; newTab?: boolean;
 }) {
   return <a href={href} download={download} target={newTab ? "_blank" : undefined} rel={newTab ? "noopener noreferrer" : undefined}
-    className="group flex items-center gap-3 rounded-xl px-3 py-2.5 ring-1 ring-inset ring-zinc-200 transition hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">
-    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-zinc-100">
-      <CalendarDays className="h-5 w-5" style={{ color }} aria-hidden="true" />
-    </span>
-    <span className="min-w-0 flex-1">
-      <span className="block text-sm font-medium text-zinc-900">{title}</span>
-      <span className="block text-xs leading-4 text-zinc-500">{detail}</span>
-    </span>
-    <ChevronRight className="h-4 w-4 shrink-0 text-zinc-400 transition group-hover:translate-x-0.5 group-hover:text-zinc-600" aria-hidden="true" />
+    className="relative flex min-h-11 items-center justify-center rounded-xl px-12 py-2 text-center text-sm font-medium text-zinc-900 ring-1 ring-inset ring-zinc-200 transition hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">
+    <span className="absolute left-3.5 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center">{logo}</span>
+    {title}
   </a>;
 }
 
-const APPLE = "#ff3b30";
-const GOOGLE = "#1a73e8";
-const OUTLOOK = "#0078d4";
-const OTHER = "#71717a";
+/** Google, Apple and Outlook, Apple first on Apple's own devices. */
+function Actions({ google, apple, outlook }: { google: ReactNode; apple: ReactNode; outlook: ReactNode }) {
+  return <div className="space-y-2">{appleDevice() ? <>{apple}{google}</> : <>{google}{apple}</>}{outlook}</div>;
+}
 
 function CardPanel({ event, onSubscribe }: { event: CalendarEvent; onSubscribe: () => void }) {
   // Only the sections this card has times for; without early prelims the
@@ -104,20 +122,23 @@ function CardPanel({ event, onSubscribe }: { event: CalendarEvent; onSubscribe: 
   const day = start == null ? null : new Date(start).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
   const query = `?from=${from}`;
   const file = `/cal/events/${event.id}.ics${query}`;
-  const apple = <Action key="apple" href={file} title="Apple Calendar" detail="iPhone, iPad and Mac" color={APPLE} />;
-  const google = <Action key="google" href={`/cal/events/${event.id}/google${query}`} newTab title="Google Calendar" detail="Opens Google Calendar to save it" color={GOOGLE} />;
   return <div className="space-y-4 px-5 py-4">
     {options.length > 1 ? <Segmented label="Include" value={from} options={options} onChange={choose} /> : null}
     {start != null ? <p className="text-xs text-zinc-500">
       Starts <span className="font-medium text-zinc-800">{day}, {clockTimeWithZone(start)}</span>, with every bout listed in the event.
     </p> : null}
-    <div className="space-y-2">
-      {appleDevice() ? [apple, google] : [google, apple]}
-      <Action href={file} download="" title="Outlook and others" detail="An .ics file for any calendar app" color={OTHER} />
+    <div>
+      <Actions
+        google={<Action href={`/cal/events/${event.id}/google${query}`} newTab logo={<GoogleLogo />} title="Google Calendar" />}
+        apple={<Action href={file} logo={<AppleLogo />} title="Apple Calendar" />}
+        outlook={<Action href={file} download="" logo={<OutlookLogo />} title="Outlook" />} />
+      <p className="mt-2 text-center text-[11px] leading-4 text-zinc-500">
+        Another app? <a href={file} download="" className="font-medium text-zinc-700 underline underline-offset-2 hover:text-zinc-900">Download the .ics file</a>
+      </p>
     </div>
     <button type="button" onClick={onSubscribe}
       className="flex w-full items-center gap-3 rounded-xl bg-zinc-50 px-3 py-2.5 text-left transition hover:bg-zinc-100">
-      <CalendarSync className="h-5 w-5 shrink-0 text-zinc-500" aria-hidden="true" />
+      <CalendarDays className="h-5 w-5 shrink-0 text-zinc-500" aria-hidden="true" />
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium text-zinc-900">Get every card automatically</span>
         <span className="block text-xs leading-4 text-zinc-500">Subscribe to a UFC calendar that adds and updates cards for you</span>
@@ -127,17 +148,15 @@ function CardPanel({ event, onSubscribe }: { event: CalendarEvent; onSubscribe: 
   </div>;
 }
 
-function SubscribePanel({ kind }: { kind: Cards }) {
-  const [cards, setCards] = useState<Cards>(kind);
-  const [from, setFrom] = useState<CardSegment>(() => readPreference<CardSegment>("calendar:from", "early", parseStart));
-  const [events, setEvents] = useState<Range>(() => readPreference<Range>("calendar:events", "upcoming", oneOf<Range>("upcoming", "all")));
+function SubscribePanel() {
+  const [cards, setCards] = useState<Cards>("all");
+  const [from, setFrom] = useState<FeedStart>(() => readPreference<FeedStart>("calendar:from", "early", parseFeedStart));
   const [copied, setCopied] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { writePreference("calendar:from", from, "early"); }, [from]);
-  useEffect(() => { writePreference("calendar:events", events, "upcoming"); }, [events]);
-  useEffect(() => { setCopied(false); }, [cards, from, events]);
+  useEffect(() => { setCopied(false); }, [cards, from]);
 
-  const path = feedPath(cards, from, events);
+  const path = feedPath(cards, from);
   const https = `${window.location.origin}${path}`;
   const webcal = `webcal://${window.location.host}${path}`;
   const copy = async () => {
@@ -146,30 +165,17 @@ function SubscribePanel({ kind }: { kind: Cards }) {
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   };
-  const apple = <Action key="apple" href={webcal} title="Apple Calendar" detail="Subscribe on iPhone, iPad or Mac" color={APPLE} />;
-  const google = <Action key="google" href={`https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcal)}`} newTab
-    title="Google Calendar" detail="Adds it to your Google account, synced to every device" color={GOOGLE} />;
   return <div className="space-y-4 px-5 py-4">
     <Segmented label="Cards" value={cards} onChange={setCards} options={[
       { value: "all", label: "All" }, { value: "ppv", label: "PPV" }, { value: "fight_night", label: "Fight Nights" },
     ]} />
-    <div>
-      <Segmented label="Include" value={from} onChange={setFrom} options={START_OPTIONS} />
-      <p className="mt-1.5 text-[11px] leading-4 text-zinc-500">A card without early prelims starts with its prelims.</p>
-    </div>
-    <div>
-      <Segmented label="Events" value={events} onChange={setEvents} options={[
-        { value: "upcoming", label: "Upcoming" }, { value: "all", label: "Upcoming + past" },
-      ]} />
-      <p className="mt-1.5 text-[11px] leading-4 text-zinc-500">
-        {events === "upcoming" ? "Keeps the last two months too, so a card you just watched stays put." : "Every card since 2011 with announced start times."}
-      </p>
-    </div>
-    <div className="space-y-2">
-      {appleDevice() ? [apple, google] : [google, apple]}
-      <Action href={`https://outlook.live.com/calendar/0/addfromweb?url=${encodeURIComponent(https)}&name=UFC`} newTab
-        title="Outlook" detail="Outlook.com and Microsoft 365" color={OUTLOOK} />
-    </div>
+    <Segmented label="Include" value={from} onChange={setFrom} options={[
+      { value: "early", label: "Full card" }, { value: "main", label: "Main card" },
+    ]} />
+    <Actions
+      google={<Action href={`https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcal)}`} newTab logo={<GoogleLogo />} title="Google Calendar" />}
+      apple={<Action href={webcal} logo={<AppleLogo />} title="Apple Calendar" />}
+      outlook={<Action href={`https://outlook.live.com/calendar/0/addfromweb?url=${encodeURIComponent(https)}&name=UFC`} newTab logo={<OutlookLogo />} title="Outlook" />} />
     <div>
       <div className="mb-1.5 text-xs font-medium text-zinc-700">Or copy the link into any calendar app</div>
       <div className="flex items-center gap-2">
@@ -191,9 +197,7 @@ function SubscribePanel({ kind }: { kind: Cards }) {
 
 /** The dialog: one card when `event` is given (with a way on to the
  *  subscription), else the subscription. */
-function CalendarDialog({ open, onClose, event, kind = "all" }: {
-  open: boolean; onClose: () => void; event?: CalendarEvent; kind?: Cards;
-}) {
+function CalendarDialog({ open, onClose, event }: { open: boolean; onClose: () => void; event?: CalendarEvent }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [subscribe, setSubscribe] = useState(!event);
   useEffect(() => {
@@ -230,7 +234,7 @@ function CalendarDialog({ open, onClose, event, kind = "all" }: {
           <X className={CLOSE_ICON} aria-hidden="true" />
         </button>
       </div>
-      {showCard ? <CardPanel event={event!} onSubscribe={() => setSubscribe(true)} /> : <SubscribePanel kind={kind} />}
+      {showCard ? <CardPanel event={event!} onSubscribe={() => setSubscribe(true)} /> : <SubscribePanel />}
     </> : null}
   </dialog>;
 }
@@ -240,7 +244,7 @@ export function AddToCalendarButton({ event }: { event: CalendarEvent }) {
   const [open, setOpen] = useState(false);
   return <>
     <button type="button" onClick={() => setOpen(true)}
-      className="inline-flex items-center gap-1 whitespace-nowrap rounded font-medium text-zinc-500 transition-colors hover:text-zinc-900 dark:hover:text-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">
+      className="inline-flex items-baseline gap-1 whitespace-nowrap rounded font-medium text-zinc-500 transition-colors hover:text-zinc-900 dark:hover:text-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">
       <CalendarPlus className="h-3.5 w-3.5 self-center" aria-hidden="true" />
       Add to calendar
     </button>
@@ -248,13 +252,14 @@ export function AddToCalendarButton({ event }: { event: CalendarEvent }) {
   </>;
 }
 
-/** The subscription, from the events list; it starts on the tier being read. */
-export function SubscribeCalendarButton({ kind, className = "", children }: { kind: Cards; className?: string; children?: ReactNode }) {
+/** The subscription, from the events list and the profile. */
+export function SubscribeCalendarButton({ className = "", children }: { className?: string; children?: ReactNode }) {
   const [open, setOpen] = useState(false);
   return <>
-    <button type="button" onClick={() => setOpen(true)} aria-label="Subscribe to the UFC calendar" title="Subscribe to the UFC calendar" className={className}>
-      {children ?? <CalendarSync className={CLOSE_ICON} aria-hidden="true" />}
+    <button type="button" onClick={() => setOpen(true)} aria-label={children ? undefined : "Subscribe to the UFC calendar"}
+      title="Subscribe to the UFC calendar" className={className}>
+      {children ?? <CalendarDays className={CLOSE_ICON} aria-hidden="true" />}
     </button>
-    <CalendarDialog open={open} onClose={() => setOpen(false)} kind={kind} />
+    <CalendarDialog open={open} onClose={() => setOpen(false)} />
   </>;
 }

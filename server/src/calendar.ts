@@ -18,14 +18,14 @@ import type { CardSegment } from "./scrape/ufccom.ts";
 const SECTIONS: CardSegment[] = ["early", "prelims", "main"];
 const SECTION_LABEL: Record<CardSegment, string> = { early: "Early prelims", prelims: "Prelims", main: "Main card" };
 const DAY = 86_400_000;
-/** "Upcoming" keeps recent cards too: a subscribed calendar shows exactly what
- *  the feed holds, so last Saturday's card would otherwise vanish from it. */
-const RECENT_DAYS = 60;
+/** The feed is upcoming cards, plus a week back: a subscribed calendar shows
+ *  exactly what the feed holds, so a card would otherwise vanish while on. */
+const RECENT_DAYS = 7;
 /** How often a calendar app should read the feed again, where it listens. */
 const REFRESH = "PT30M";
 
-export type CalendarOptions = { cards: "all" | EventKind; from: CardSegment; events: "upcoming" | "all" };
-export const CALENDAR_DEFAULTS: CalendarOptions = { cards: "all", from: "early", events: "upcoming" };
+export type CalendarOptions = { cards: "all" | EventKind; from: CardSegment };
+export const CALENDAR_DEFAULTS: CalendarOptions = { cards: "all", from: "early" };
 
 const oneOf = <T extends string>(value: string | null, allowed: readonly T[], fallback: T): T =>
   allowed.includes(value as T) ? value as T : fallback;
@@ -37,7 +37,6 @@ export function calendarOptions(params: URLSearchParams): CalendarOptions {
   return {
     cards: oneOf(params.get("cards"), ["all", "ppv", "fight_night"] as const, "all"),
     from: calendarStart(params.get("from")),
-    events: oneOf(params.get("events"), ["upcoming", "all"] as const, "upcoming"),
   };
 }
 
@@ -45,7 +44,7 @@ export function calendarOptions(params: URLSearchParams): CalendarOptions {
  *  for one feed shares one address and one cached copy. */
 export function calendarQuery(options: CalendarOptions): string {
   const params = new URLSearchParams();
-  for (const key of ["cards", "from", "events"] as const) {
+  for (const key of ["cards", "from"] as const) {
     if (options[key] !== CALENDAR_DEFAULTS[key]) params.set(key, options[key]);
   }
   return params.toString();
@@ -130,7 +129,7 @@ const FIGHT_COLUMNS = "event_id, ord, segment, card_pos, f1_name, f2_name, sched
 
 /** The feed's cards as entries, in date order. */
 export function calendarEntries(options: CalendarOptions, now = Date.now()): CalendarEntry[] {
-  const since = options.events === "all" ? "0000-00-00" : new Date(now - RECENT_DAYS * DAY).toISOString().slice(0, 10);
+  const since = new Date(now - RECENT_DAYS * DAY).toISOString().slice(0, 10);
   const events = (prepared(`SELECT ${EVENT_COLUMNS} FROM events
       WHERE date >= ? AND COALESCE(main_card_at, prelims_at, early_prelims_at) IS NOT NULL ORDER BY date, id`)
     .all(since) as EventRow[])

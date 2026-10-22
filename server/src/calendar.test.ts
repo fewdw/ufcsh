@@ -57,9 +57,9 @@ test("long lines fold at 75 octets without splitting a character", () => {
 });
 
 test("feed options keep one address per feed, unknown values falling back", () => {
-  assert.equal(calendarQuery(calendarOptions(new URLSearchParams("cards=all&from=early&events=upcoming"))), "");
+  assert.equal(calendarQuery(calendarOptions(new URLSearchParams("cards=all&from=early"))), "");
   assert.equal(calendarQuery(calendarOptions(new URLSearchParams("from=main&cards=ppv&x=1"))), "cards=ppv&from=main");
-  assert.equal(calendarQuery(calendarOptions(new URLSearchParams("cards=nope&events=all"))), "events=all");
+  assert.equal(calendarQuery(calendarOptions(new URLSearchParams("cards=nope&from=late"))), "");
 });
 
 test("the feed is a UFC calendar with each timed card once, filtered by tier", t => {
