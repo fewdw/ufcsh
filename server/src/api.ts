@@ -1708,6 +1708,16 @@ const RECENT_PHOTO_FAILURE = "photo failed recently";
  *  framed and shrunk once, then served from the cache. */
 const PHOTO_MAX_BYTES = 30_000_000;
 
+/** A picture's type from its first bytes, or null when it is none we serve. */
+export function pictureType(data: Buffer): string | null {
+  const head = data.subarray(0, 12).toString("latin1");
+  if (head.startsWith("\x89PNG\r\n\x1a\n")) return "image/png";
+  if (head.startsWith("\xff\xd8\xff")) return "image/jpeg";
+  if (head.startsWith("GIF8")) return "image/gif";
+  if (head.startsWith("RIFF") && head.slice(8) === "WEBP") return "image/webp";
+  return null;
+}
+
 /** Headshot and full body are cached side by side under one fighter id. */
 export type PhotoVariant = "head" | "full";
 
@@ -1817,10 +1827,13 @@ async function loadFighterImage(id: string, variant: PhotoVariant): Promise<Cach
           signal: AbortSignal.timeout(15_000),
         });
         if (!response.ok) throw new Error(`photo HTTP ${response.status}`);
-        contentType = (response.headers.get("content-type") ?? "image/jpeg").split(";")[0];
-        if (!contentType.startsWith("image/")) throw new Error(`unexpected photo type ${contentType}`);
+        const declared = (response.headers.get("content-type") ?? "").split(";")[0].trim();
+        // ufc.com serves some PNGs as application/octet-stream: the bytes decide.
+        if (declared && !declared.startsWith("image/") && !declared.endsWith("/octet-stream")) throw new Error(`unexpected photo type ${declared}`);
         data = Buffer.from(await response.arrayBuffer());
         if (!data.length || data.length > PHOTO_MAX_BYTES) throw new Error("invalid photo size");
+        contentType = pictureType(data) ?? (!declared ? "image/jpeg" : declared.startsWith("image/") ? declared : "");
+        if (!contentType) throw new Error(`unexpected photo type ${declared || "none"}`);
       }
       if (!suffix) {
         const framed = await normalizeHeadshot(data);
@@ -2013,14 +2026,44 @@ async function readStatic(filePath: string): Promise<StaticFile | null> {
   return file;
 }
 
+/** Earlier builds' chunks, on the data volume that outlives each release, so a
+ *  tab opened before a deploy still finds the scripts it names instead of a
+ *  404 and a reload. A chunk is kept two weeks after the last build with it. */
+const ASSET_ARCHIVE = path.join(DATA_DIR, "assets");
+const ASSET_KEEP_MS = 14 * 86_400_000;
+async function archiveAssets(): Promise<void> {
+  const current = new Set(await fs.readdir(path.join(CLIENT_DIST, "assets")).catch(() => [] as string[]));
+  if (!current.size) return;
+  await fs.mkdir(ASSET_ARCHIVE, { recursive: true });
+  const now = new Date();
+  for (const name of current) {
+    const target = path.join(ASSET_ARCHIVE, name);
+    // Releases overlap: write aside, then rename, so no reader sees half a file.
+    const partial = `${target}.${process.pid}.partial`;
+    if (!await fs.utimes(target, now, now).then(() => true, () => false)) {
+      await fs.copyFile(path.join(CLIENT_DIST, "assets", name), partial);
+      await fs.rename(partial, target);
+    }
+  }
+  for (const name of await fs.readdir(ASSET_ARCHIVE)) {
+    if (current.has(name)) continue;
+    const file = path.join(ASSET_ARCHIVE, name);
+    const stat = await fs.stat(file).catch(() => null);
+    if (stat && now.getTime() - stat.mtimeMs > ASSET_KEEP_MS) await fs.rm(file, { force: true });
+  }
+}
+
 /** `pages` caches the SEO-filled document per route; without it each is built on request. */
 export async function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, pathname: string, pages?: ResponseCache): Promise<void> {
+  // iOS also asks for sized icons no page names ("-120x120-precomposed"): one icon serves all.
+  if (/^\/apple-touch-icon-\d+x\d+(-precomposed)?\.png$/.test(pathname)) pathname = "/apple-touch-icon.png";
   let filePath = path.join(CLIENT_DIST, path.normalize(pathname).replace(/^([/\\])+/, ""));
   if (filePath !== CLIENT_DIST && !filePath.startsWith(CLIENT_DIST + path.sep)) filePath = path.join(CLIENT_DIST, "index.html");
   // The document itself is never sent raw: "/" and "/index.html" fall through
   // to the SEO fill below, so the homepage carries its link-preview image too.
   const document = filePath === path.join(CLIENT_DIST, "index.html");
-  const file = document ? null : await readStatic(filePath);
+  const file = document ? null : await readStatic(filePath)
+    ?? (/^\/assets\/[\w.-]+$/.test(pathname) && !pathname.endsWith(".partial") ? await readStatic(path.join(ASSET_ARCHIVE, pathname.slice(8))) : null);
   if (file) {
     const immutable = pathname.startsWith("/assets/");
     const headers: Record<string, string | number> = {
@@ -2477,6 +2520,7 @@ export function startApi(port: number): http.Server {
     .catch(error => log("backup retention failed:", String(error)));
   setTimeout(thinBackups, 10 * 60_000).unref();
   setInterval(thinBackups, 86_400_000).unref();
+  if (process.env.NODE_ENV === "production") void archiveAssets().catch(error => log("asset archive failed:", String(error)));
   // Polymarket's live price is read here, on the main thread, so every reader
   // shares one price and one "just finished" moment (polymarket.ts).
   const liveOdds = new LiveOddsService({ current: polymarketBout, result: boutResult });

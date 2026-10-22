@@ -6,7 +6,7 @@ import { officialsIndex } from "./officials.ts";
 import { venueIndex } from "./venues.ts";
 import { judging } from "./judging.ts";
 import { db } from "./db.ts";
-import { newsToJudge, newsView } from "./news.ts";
+import { newsStories, newsToJudge } from "./news.ts";
 
 // A worker keeps the indexes it built at startup, so no request waits on a
 // rebuild; when the data changes the pool starts a fresh worker and retires
@@ -70,4 +70,6 @@ parentPort!.on("message", async ({ id, url }: { id: number; url: string }) => {
 parentPort!.postMessage({ ready: true });
 // Each read of the feeds changes the stories (a few hundred ms to group in
 // production): rebuild them between requests, not in the next fighter page.
-setInterval(() => { try { newsView(); } catch { /* the next request reports it */ } }, 20_000).unref();
+// Checking costs a few reads of `meta`, so a new read is noticed within
+// seconds; at 20 s, fighter pages opened in between paid for the rebuild.
+setInterval(() => { try { newsStories(); } catch { /* the next request reports it */ } }, 2_000).unref();

@@ -93,7 +93,7 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
   // the read that completes it, or one that changes a result, is news.
   let resultsChanged = false;
 
-  db.exec("BEGIN");
+  db.exec("BEGIN IMMEDIATE");
   try {
     const wasComplete = (db.prepare("SELECT complete FROM events WHERE id = ?").get(detail.id) as { complete: number } | undefined)?.complete === 1;
     db.prepare(
@@ -450,7 +450,7 @@ export async function syncEventWikiInfo(limit = 20): Promise<void> {
           f1_id: fighterNamed(bout.f1, division(bout.division), event.date) || null,
           f2_id: fighterNamed(bout.f2, division(bout.division), event.date) || null,
         }));
-        db.exec("BEGIN");
+        db.exec("BEGIN IMMEDIATE");
         try {
           store.run(title, infobox.venue, infobox.city, infobox.attendance, infobox.gate, Date.now(), event.id);
           for (const fight of fights) {
@@ -597,7 +597,7 @@ function resolveFighterId(name: string): string {
 
 export async function syncRankings(): Promise<void> {
   const rankings = await scrapeRankings();
-  db.exec("BEGIN");
+  db.exec("BEGIN IMMEDIATE");
   try {
     db.exec("DELETE FROM rankings");
     const insert = db.prepare(
@@ -894,7 +894,7 @@ export async function syncWeightMisses(limit = 30): Promise<{ events: number; mi
         const miss = misses.find((m) => m.name === name);
         return miss ? (miss.pounds != null ? String(miss.pounds) : "") : null;
       };
-      db.exec("BEGIN");
+      db.exec("BEGIN IMMEDIATE");
       try {
         for (const fight of fights) setMiss.run(value(fight.f1_name), value(fight.f2_name), fight.id);
         if (event.complete) markRead.run(article?.title ?? null, Date.now(), event.id);
@@ -1424,7 +1424,7 @@ export async function syncFightOdds({ props = false }: { props?: boolean } = {})
     return { fights, frozen };
   };
   const inTransaction = (write: () => void) => {
-    db.exec("BEGIN");
+    db.exec("BEGIN IMMEDIATE");
     try { write(); db.exec("COMMIT"); } catch (err) { db.exec("ROLLBACK"); throw err; }
   };
 

@@ -25,7 +25,9 @@ export function prepared(sql: string): ReturnType<typeof db.prepare> {
 }
 
 // Reads dominate: memory-map the file (shared page cache across the API,
-// workers and scraper) and keep sort/temp b-trees in memory.
+// workers and scraper) and keep sort/temp b-trees in memory. Transactions that
+// write begin IMMEDIATE: a plain BEGIN that reads first fails at once with
+// "database is locked", without waiting, if another process wrote meanwhile.
 db.exec(`PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 1000;
   PRAGMA mmap_size = 268435456; PRAGMA temp_store = MEMORY;`);
 
