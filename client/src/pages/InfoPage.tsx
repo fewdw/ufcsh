@@ -100,11 +100,12 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-21">October 21, 2026</time></p>
+            <p><time dateTime="2026-10-22">October 22, 2026</time></p>
             <ul>
-              <li>Doctor's stoppages say so on fighter profiles.</li>
-              <li>More journalists' scorecards show on decisions between fighters who share a surname.</li>
-              <li>More late replacements name the fighter they replaced.</li>
+              <li>Stats boards and a fighter's news load faster.</li>
+              <li>A tab left open across an update keeps working without reloading.</li>
+              <li>Ranking charts for the 1995–96 Superfight champions, and a few missing fighter photos, now load.</li>
+              <li>More new signings link to their profiles on the roster timeline.</li>
             </ul>
           </Section>
         </div>
