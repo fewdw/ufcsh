@@ -45,6 +45,8 @@ import { createReportsHandler } from "./reports-http.ts";
 import { CommentStore } from "./comments.ts";
 import { createCommentsHandler } from "./comments-http.ts";
 import { ACCOUNT_SYNC_MS, accountSyncCheck, adminAccounts, syncAccounts } from "./accounts.ts";
+import { GOOGLE_SYNC_MS, GoogleCalendars } from "./google-calendar.ts";
+import { createGoogleCalendarHandler } from "./google-calendar-http.ts";
 import { recentSyncError, syncStatus } from "./sync-status.ts";
 import { adminLive, releasedRounds } from "./live-rounds.ts";
 import { pruneBackups } from "./backup-retention.ts";
@@ -2398,6 +2400,8 @@ export function startApi(port: number): http.Server {
   const betStore = new BetStore(scoreStore, betContext, predictionFights);
   const bets = createBetsHandler(betStore, createLeaderboards(scoreStore, predictionStore, betStore));
   const reportStore = new ReportStore(scoreStore);
+  const googleCalendars = new GoogleCalendars(scoreStore.db);
+  const googleCalendar = createGoogleCalendarHandler(googleCalendars, user => { scoreStore.identity(user); });
   const reports = createReportsHandler(reportStore);
   const commentStore = new CommentStore(scoreStore, scoringFights);
   const comments = createCommentsHandler(commentStore);
@@ -2436,7 +2440,7 @@ export function startApi(port: number): http.Server {
         built.catch(() => { if (bugBoard === entry) bugBoard = null; });
       }
       const report = await bugBoard.report;
-      return { ...report, checks: [accountSyncCheck(), ...report.checks] };
+      return { ...report, checks: [accountSyncCheck(), googleCalendars.check(), ...report.checks] };
     },
     runAction: async (action, target, actor) => {
       // The board reloads after a repair and must show what it changed.
@@ -2462,13 +2466,20 @@ export function startApi(port: number): http.Server {
   }, 15_000);
   settler.unref();
   // Accounts deleted or changed at Clerk are caught up here.
-  const accountStores = { scores: scoreStore, comments: commentStore, predictions: predictionStore, bets: betStore };
+  const accountStores = { scores: scoreStore, comments: commentStore, predictions: predictionStore, bets: betStore, calendars: googleCalendars };
   const accountSync = setInterval(() => {
     void syncAccounts(accountStores)
       .then(({ forgotten }) => { if (forgotten) log(`forgot ${forgotten} deleted account(s)`); })
       .catch(error => log("account sync failed:", String(error)));
   }, ACCOUNT_SYNC_MS);
   accountSync.unref();
+  // Connected Google calendars follow bookings and start times within minutes.
+  const googleSync = setInterval(() => {
+    void googleCalendars.syncAll()
+      .then(({ failed }) => { if (failed) log(`google calendars: ${failed} did not update`); })
+      .catch(error => log("google calendar sync failed:", String(error)));
+  }, GOOGLE_SYNC_MS);
+  googleSync.unref();
   // Old database copies are thinned out every day (backup-retention.ts), so
   // backups never fill the disk however long the site runs unattended.
   const thinBackups = () => void pruneBackups(DATA_DIR)
@@ -2707,6 +2718,7 @@ export function startApi(port: number): http.Server {
       if (!stopping && await scoring(req, res, url)) return;
       if (!stopping && await predictions(req, res, url)) return;
       if (!stopping && await bets(req, res, url)) return;
+      if (!stopping && await googleCalendar(req, res, url)) return;
       if (!stopping && await reports(req, res, url)) return;
       if (!stopping && await comments(req, res, url)) return;
       if (!stopping && await admin(req, res, url)) return;
@@ -2878,6 +2890,7 @@ export function startApi(port: number): http.Server {
     clearInterval(warmLists);
     clearInterval(settler);
     clearInterval(accountSync);
+    clearInterval(googleSync);
     clearInterval(refresher);
     process.removeListener("SIGTERM", shutdown);
     process.removeListener("SIGINT", shutdown);
