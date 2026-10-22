@@ -56,7 +56,7 @@ import { fuzzyScore, fuzzyTarget, splitMatchup, type FuzzyTarget } from "./fuzzy
 import { WEIGHT_LIMITS, type RankingType } from "./scrape/ufccom.ts";
 import { getStats } from "./stats.ts";
 import { titleNarratives } from "./titles.ts";
-import { cancelledBoutsOf } from "./cancelled-bouts.ts";
+import { cancelledBoutsOf, cardCancellations, movedTo } from "./cancelled-bouts.ts";
 import { fighterBoard, fighterRecords } from "./records.ts";
 import { ufcFightExistsSql, fighterNamed, hasUfcFight, recordText, currentRecord, cachedPhotoUrl, cachedFullPhotoUrl, photoVersion } from "./fighter-identity.ts";
 export { hasUfcFight };
@@ -505,22 +505,25 @@ function liveCard(rankingType: RankingType): unknown | null {
   };
 }
 
-/** Bouts announced for the card that never happened on it, from the event
- *  article; a fighter links only when they have a profile. */
+/** Bouts booked for the card that never happened on it (`cardCancellations`);
+ *  a fighter links only when they have a profile. */
 function cancelledBouts(e: EventRow, rankingType: RankingType): unknown[] {
-  let bouts: { f1: string; f2: string; f1_id: string | null; f2_id: string | null; division: string | null; reason: string | null }[] = [];
-  try { bouts = JSON.parse((e as any).cancelled_json ?? "[]"); } catch { /* unread */ }
   // A cancelled bout has no position in the running order. Use the start of
   // the event date so replacement bouts on this card cannot enter its form.
   const beforeCard = Number.MAX_SAFE_INTEGER;
-  const side = (name: string, id: string | null, division: string | null) => ({
+  const side = ({ id, name }: { id: string | null; name: string }, division: string | null) => ({
     ...fighterSummary(id ?? "", name, rankingType, { date: e.date, ord: beforeCard, division: division ?? "" }),
     ...sideContext(id ?? "", e.date, beforeCard),
     id: id && hasUfcFight(id) ? id : null,
     outcome: null,
     stats: { kd: null, str: null, td: null, sub: null },
   });
-  return bouts.map((bout) => ({ f1: side(bout.f1, bout.f1_id, bout.division), f2: side(bout.f2, bout.f2_id, bout.division), division: bout.division, reason: bout.reason }));
+  return cardCancellations(e as any).map((bout) => {
+    // A pairing that met on a later card was moved there, not dropped.
+    const moved = bout.reason ? null : movedTo(bout);
+    return { f1: side(bout.f1, bout.division), f2: side(bout.f2, bout.division), division: bout.division,
+      reason: bout.reason ?? (moved ? `Moved to ${moved.event_name}` : null) };
+  });
 }
 
 async function getEvent(id: string, rankingType: RankingType): Promise<unknown | null> {

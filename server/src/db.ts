@@ -746,6 +746,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS cancelled_bouts (
 db.exec("CREATE INDEX IF NOT EXISTS idx_cancelled_bouts_f1 ON cancelled_bouts(f1_id)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_cancelled_bouts_f2 ON cancelled_bouts(f2_id)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_cancelled_bouts_board ON cancelled_bouts(board_pk)");
+// Whom a fighter replaced, for the bookings a profile lists as fallen through.
+db.exec("CREATE INDEX IF NOT EXISTS idx_fights_f1_replaced ON fights(f1_replaced_id) WHERE f1_replaced_id IS NOT NULL");
+db.exec("CREATE INDEX IF NOT EXISTS idx_fights_f2_replaced ON fights(f2_replaced_id) WHERE f2_replaced_id IS NOT NULL");
 // Each FightOdds.io UFC board and when its cancelled bouts were last read.
 db.exec(`CREATE TABLE IF NOT EXISTS cancelled_boards (
   pk       INTEGER PRIMARY KEY,
