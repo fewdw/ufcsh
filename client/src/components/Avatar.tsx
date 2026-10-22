@@ -24,12 +24,16 @@ export default function Avatar({
   size = "sm",
   winner = false,
   outcome,
+  bare = false,
 }: {
   src: string | null | undefined;
   name: string;
   size?: keyof typeof SIZES;
   winner?: boolean;
   outcome?: "win" | "loss" | "draw" | "nc" | null;
+  /** Unframed: no circle or ring, the photo faded out at its crop like a
+   *  full-body cut-out. */
+  bare?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -71,7 +75,7 @@ export default function Avatar({
       onError={() => {
         if (imageSrc !== UFC_EMPTY_AVATAR) setFailed(true);
       }}
-      className={`${SIZES[size]} ${outline} shrink-0 rounded-full bg-zinc-100 object-cover object-top`}
+      className={`${SIZES[size]} shrink-0 object-cover object-top ${bare ? "portrait-fade" : `${outline} rounded-full bg-zinc-100`}`}
     />
   );
 }

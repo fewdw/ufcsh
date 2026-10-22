@@ -152,7 +152,7 @@ function FighterHero({
   align: "left" | "right";
   bonuses: Matchup["bonuses"] | undefined;
   result?: string | null;
-  /** A full-body cut-out, or the headshot drawn to its size when only the
+  /** A full-body cut-out, or the bare headshot drawn to its size when only the
    *  other corner has one; both corners use small headshots when neither does. */
   portrait: "full" | "face" | "small";
   onPortraitError: () => void;
@@ -186,7 +186,7 @@ function FighterHero({
           />
         ) : portrait === "face" ? (
           <span data-fighter-portrait="face" className="flex items-center justify-center">
-            <span className="aspect-square w-full"><Avatar src={side.photo_url} name={side.name} size="fill" outcome={side.outcome} /></span>
+            <span className="aspect-square w-full"><Avatar src={side.photo_url} name={side.name} size="fill" bare /></span>
           </span>
         ) : (
           <Avatar src={side.photo_url} name={side.name} size="lg" outcome={side.outcome} />
