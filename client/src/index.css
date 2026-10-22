@@ -535,18 +535,18 @@ select:not([multiple]):not([size]) {
   .matchup-top-card .matchup-fighter--right .matchup-identity { grid-column: 1; }
 }
 
-.matchup-top-card .matchup-portrait > [data-fighter-portrait="full"] {
+.matchup-top-card .matchup-portrait > [data-fighter-portrait] {
   width: 145px;
   height: 220px;
 }
 @container (max-width: 57.99rem) {
-  .matchup-top-card .matchup-portrait > [data-fighter-portrait="full"] {
+  .matchup-top-card .matchup-portrait > [data-fighter-portrait] {
     width: 112px;
     height: 170px;
   }
 }
 @container (min-width: 40rem) and (max-width: 57.99rem) {
-  .matchup-top-card .matchup-portrait > [data-fighter-portrait="full"] {
+  .matchup-top-card .matchup-portrait > [data-fighter-portrait] {
     width: 145px;
     height: 220px;
   }

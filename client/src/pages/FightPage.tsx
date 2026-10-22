@@ -152,8 +152,9 @@ function FighterHero({
   align: "left" | "right";
   bonuses: Matchup["bonuses"] | undefined;
   result?: string | null;
-  /** Both corners fall back together when either portrait is unavailable. */
-  portrait: boolean;
+  /** A full-body cut-out, or the headshot drawn to its size when only the
+   *  other corner has one; both corners use small headshots when neither does. */
+  portrait: "full" | "face" | "small";
   onPortraitError: () => void;
   /** A past bout shows the rank held going in, not today's. */
   past: boolean;
@@ -172,7 +173,7 @@ function FighterHero({
   }`;
   const content = <>
       <div className="matchup-portrait flex shrink-0 flex-col items-center gap-1.5">
-        {portrait ? (
+        {portrait === "full" ? (
           <FighterPortrait
             src={side.photo_full_url}
             headshot={side.photo_url}
@@ -183,6 +184,10 @@ function FighterHero({
             outcome={side.outcome}
             glow={false}
           />
+        ) : portrait === "face" ? (
+          <span data-fighter-portrait="face" className="flex items-center justify-center">
+            <span className="aspect-square w-full"><Avatar src={side.photo_url} name={side.name} size="fill" outcome={side.outcome} /></span>
+          </span>
         ) : (
           <Avatar src={side.photo_url} name={side.name} size="lg" outcome={side.outcome} />
         )}
@@ -742,7 +747,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   const navigate = useNavigate();
   const location = useLocation();
   const previousFight = useRef<Matchup | null>(null);
-  const [failedPortraitPair, setFailedPortraitPair] = useState<string | null>(null);
+  const [failedPortraits, setFailedPortraits] = useState<string[]>([]);
   const { data: loadedFight, loading, error, retry } = useApi<Matchup>(withRanking(`/api/fights/${fightId}`, settings.rankingSource),
     data => data?.refreshing ? 5_000 : isFightDay(data?.event.date) ? 15_000 : data?.status === "past" ? 0 : 5 * 60_000);
   if (loadedFight) previousFight.current = loadedFight;
@@ -864,10 +869,15 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   // Numbers but no verdict: this bout is happening as the page is read.
   const statsLive = hasStats && fight.status !== "past";
   const result = fight.status === "past" ? resultSummary(fight) : null;
-  const portraitPair = JSON.stringify([fight.id, fight.f1.photo_full_url, fight.f2.photo_full_url]);
-  const portraits = [fight.f1, fight.f2].every(side => side.photo_full_url || !side.photo_url)
-    && failedPortraitPair !== portraitPair;
-  const portraitUnavailable = () => setFailedPortraitPair(portraitPair);
+  // Each corner keeps its own full-body cut-out; one without stands in with
+  // its headshot at the same size, so a single missing cut-out never shrinks
+  // both corners. A fighter with no pictures at all gets the silhouette.
+  const fullBody = (side: MatchupSide) => Boolean(side.photo_full_url || !side.photo_url)
+    && !failedPortraits.includes(side.photo_full_url ?? "");
+  const bigPortraits = fullBody(fight.f1) || fullBody(fight.f2);
+  const portraitOf = (side: MatchupSide) => fullBody(side) ? "full" : bigPortraits ? "face" : "small";
+  const portraitUnavailable = (side: MatchupSide) => () =>
+    setFailedPortraits(failed => [...failed, side.photo_full_url ?? ""]);
   const referee = fight.detail?.methodInfo?.["Referee"];
   const changingMatchup = !loadedFight && fight.id !== fightId;
   const orderedFights = cardEvent?.id === fight.event.id ? cardEvent.fights : [];
@@ -939,7 +949,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
             <FightStrip eventId={fight.event.id} currentId={fightId} returnDepth={eventReturnDepth} className="sm:hidden"
               onReselect={toTop} />
 
-            <section data-photo-view={portraits ? "full" : "face"} className={`matchup-top-card matchup-overview @container relative overflow-hidden ${shell}`}>
+            <section data-photo-view={bigPortraits ? "full" : "face"} className={`matchup-top-card matchup-overview @container relative overflow-hidden ${shell}`}>
               <button type="button" onClick={closeFight} aria-label="Close matchup and return to card" title="Close matchup (Esc)" aria-keyshortcuts="Escape"
                 className={`absolute right-2 top-2 z-10 max-sm:hidden ${CLOSE_BUTTON}`}>
                 <X className={CLOSE_ICON} aria-hidden="true" />
@@ -957,7 +967,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     space either side of the card goes unused. */}
                 <div className="matchup-hero grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-1.5 @[58rem]:gap-6">
                   <div className="matchup-corner col-start-1 min-w-0">
-                    <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} past={fight.status === "past"} />
+                    <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} portrait={portraitOf(fight.f1)} onPortraitError={portraitUnavailable(fight.f1)} past={fight.status === "past"} />
                   </div>
                   {/* The weight class, the referee and the price are one block
                       in the middle column, centred across it and pinned to
@@ -984,7 +994,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     </div>
                   </div>
                   <div className="matchup-corner col-start-3 min-w-0">
-                    <FighterHero side={fight.f2} align="right" bonuses={fight.bonuses} result={result} portrait={portraits} onPortraitError={portraitUnavailable} past={fight.status === "past"} />
+                    <FighterHero side={fight.f2} align="right" bonuses={fight.bonuses} result={result} portrait={portraitOf(fight.f2)} onPortraitError={portraitUnavailable(fight.f2)} past={fight.status === "past"} />
                   </div>
                 </div>
                 {/* Yearly awards honour the bout, so they sit under both corners,
