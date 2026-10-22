@@ -52,7 +52,10 @@ export function rosterEventsByFighter(): Map<string, RosterHistoryEvent[]> {
   for (const event of reports) {
     const name = normName(event.name);
     if (!byName.has(name)) byName.set(name, rosterMoveFighter(event.name));
-    const id = byName.get(name);
+    // A name that finds nobody may still be a signee spelled otherwise then.
+    const dated = `${name} ${event.date}`;
+    if (!byName.get(name) && !byName.has(dated)) byName.set(dated, rosterMoveFighter(event.name, event.date));
+    const id = byName.get(name) ?? byName.get(dated);
     if (id) add(id, event);
   }
   for (const move of ufcDepartures()) {
@@ -133,15 +136,27 @@ function realFighter(name: string): string | null {
 /** A signee's own id: stable across reads, shaped like a UFCStats id. */
 const signeeId = (name: string) => createHash("sha1").update(`signee:${normName(name)}`).digest("hex").slice(0, 16);
 
+const isSignee = (id: string) => Boolean(prepared("SELECT 1 FROM fighters WHERE id = ? AND signee = 1").get(id));
+
 /** The profile a roster move links to. A signee profile only exists while
  *  UFCStats has nobody by the name, so it is looked for before the slower
- *  spacing-blind search. */
-export function rosterMoveFighter(name: string): string | null {
+ *  spacing-blind search. With the report's `date`, a signee written otherwise
+ *  than on Wikipedia's list is found too. */
+export function rosterMoveFighter(name: string, date?: string | null): string | null {
   const exact = ufcIds(realByName.all(normName(name)));
   if (exact.length) return unique(exact);
   const id = signeeId(name);
-  if (prepared("SELECT 1 FROM fighters WHERE id = ? AND signee = 1").get(id)) return id;
-  return realFighter(name);
+  if (isSignee(id)) return id;
+  return realFighter(name) ?? (date ? signeeWrittenOtherwise(name, date) : null);
+}
+
+/** ufc.com's "Preston La Grange" or a report's "Greg Foster" for the list's
+ *  "Preston LaGrange" or "Gregory Foster": the same signing by `sameSigning`,
+ *  so only within two months of the list's date. */
+function signeeWrittenOtherwise(name: string, date: string): string | null {
+  const ids = storedRosterMoves().signed.filter(move => sameSigning(move, { name, date, division: null }))
+    .map(move => signeeId(move.name)).filter(isSignee);
+  return unique([...new Set(ids)]);
 }
 
 /** "16–11–1 (2 NC)" as wins, losses, draws. */
@@ -162,7 +177,7 @@ function syncSignees(signed: RosterMove[]): void {
       wins = excluded.wins, losses = excluded.losses, draws = excluded.draws, country_code = excluded.country_code, signee = 1
   `);
   const keep = new Set<string>();
-  db.exec("BEGIN");
+  db.exec("BEGIN IMMEDIATE");
   try {
     for (const move of signed) {
       if (realFighter(move.name)) continue;

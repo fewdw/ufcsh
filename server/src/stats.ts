@@ -249,46 +249,54 @@ type Aggregate = {
   lastChip: Chip | null;
 };
 
+/** A class, not an object literal: V8 keeps a literal of this many keys in
+ *  dictionary mode, which made every counter in `getStats` a hash lookup. */
+interface AggregateRecord extends Aggregate {}
+class AggregateRecord {
+  constructor(id: string, name: string, photoUrl: string | null) {
+    this.id = id; this.name = name; this.photoUrl = photoUrl; this.fights = 0; this.officialResults = 0;
+    this.events = new Set(); this.wins = 0; this.losses = 0; this.draws = 0; this.ncs = 0; this.kos = 0;
+    this.subs = 0; this.finishes = 0; this.koLosses = 0; this.subLosses = 0; this.finishLosses = 0;
+    this.decisionWins = 0; this.unanimousWins = 0; this.majorityWins = 0; this.splitWins = 0; this.dqWins = 0;
+    this.decisionLosses = 0; this.unanimousLosses = 0; this.majorityLosses = 0; this.splitLosses = 0;
+    this.dqLosses = 0; this.distanceFights = 0; this.winsByRound = Array(6).fill(0);
+    this.koWinsByRound = Array(6).fill(0); this.subWinsByRound = Array(6).fill(0);
+    this.lossesByRound = Array(6).fill(0); this.koLossesByRound = Array(6).fill(0);
+    this.subLossesByRound = Array(6).fill(0); this.action = emptyActionAggregate(); this.finishSeconds = 0;
+    this.finishWins = 0; this.fastestFinishSeconds = Number.POSITIVE_INFINITY; this.fastestFinishDetail = "";
+    this.finishedSeconds = 0; this.finishedLosses = 0; this.fastestFinishedSeconds = Number.POSITIVE_INFINITY;
+    this.fastestFinishedDetail = ""; this.totalSeconds = 0; this.timedFights = 0; this.opponentWins = 0;
+    this.opponentLosses = 0; this.opponentDraws = 0; this.opponentResults = 0; this.opponentSamples = 0;
+    this.beatenWins = 0; this.beatenLosses = 0; this.beatenDraws = 0; this.beatenResults = 0; this.beatenSamples = 0;
+    this.championBouts = 0; this.championWins = 0; this.championMethodWins = 0; this.championLosses = 0;
+    this.championTitleBouts = 0; this.reigningBouts = 0; this.reigningWins = 0; this.reigningMethodWins = 0;
+    this.reigningLosses = 0; this.reigningTitleBouts = 0; this.streakBreakers = 0; this.longestStreakBroken = 0;
+    this.longestStreakBrokenDetail = ""; this.bounceBackWins = 0; this.bounceBackOpportunities = 0;
+    this.rematchWins = 0; this.rematchOpportunities = 0; this.revengeWins = 0; this.quickReturnWins = 0;
+    this.quickReturnOpportunities = 0; this.layoffWins = 0; this.layoffOpportunities = 0; this.titleFights = 0;
+    this.mainEvents = 0; this.mainEventWins = 0; this.mainEventLosses = 0; this.performanceBonuses = 0;
+    this.fotnBonuses = 0; this.bonusBouts = 0; this.titleWins = 0; this.titleMethodWins = 0; this.titleLosses = 0;
+    this.titleMethodLosses = 0; this.filteredTitleDefenses = 0; this.filteredTitleMethodDefenses = 0;
+    this.longestFilteredTitleDefenseStreak = 0; this.failedTitleDefenses = 0; this.failedMethodTitleDefenses = 0;
+    this.divisionWins = new Map(); this.divisionLosses = new Map(); this.divisions = new Map(); this.division = "";
+    this.underdogWins = 0; this.underdogOpportunities = 0; this.favoriteWins = 0; this.favoriteLosses = 0;
+    this.favoriteOpportunities = 0; this.pricedBouts = 0; this.pricedWins = 0; this.expectedWins = 0;
+    this.lineSum = 0; this.oddsProfit = 0; this.oddsBets = 0; this.biggestUpsetLine = Number.NEGATIVE_INFINITY;
+    this.biggestUpsetDetail = ""; this.currentWinStreak = 0; this.longestWinStreak = 0;
+    this.currentMethodWinStreak = 0; this.longestMethodWinStreak = 0; this.currentUnbeatenStreak = 0;
+    this.longestUnbeatenStreak = 0; this.currentLossStreak = 0; this.longestLossStreak = 0;
+    this.currentMethodLossStreak = 0; this.longestMethodLossStreak = 0; this.currentDurabilityStreak = 0;
+    this.longestDurabilityStreak = 0; this.firstDate = ""; this.lastDate = ""; this.opponentsBeaten = new Set();
+    this.youngestWinAge = Number.POSITIVE_INFINITY; this.youngestWinDetail = "";
+    this.oldestWinAge = Number.NEGATIVE_INFINITY; this.oldestWinDetail = ""; this.recordChips = [];
+    this.finishChips = []; this.contextChips = []; this.marketChips = []; this.runChips = []; this.bestRunChips = [];
+    this.oppositionChips = []; this.outputChips = []; this.finishSortedChips = []; this.marketSortedChips = [];
+    this.firstChip = null; this.lastChip = null;
+  }
+}
+
 function emptyAggregate(id: string, name: string, photoUrl: string | null): Aggregate {
-  return {
-    id, name, photoUrl, fights: 0, officialResults: 0, events: new Set(),
-    wins: 0, losses: 0, draws: 0, ncs: 0,
-    kos: 0, subs: 0, finishes: 0, koLosses: 0, subLosses: 0, finishLosses: 0,
-    decisionWins: 0, unanimousWins: 0, majorityWins: 0, splitWins: 0, dqWins: 0,
-    decisionLosses: 0, unanimousLosses: 0, majorityLosses: 0, splitLosses: 0, dqLosses: 0,
-    distanceFights: 0,
-    winsByRound: Array(6).fill(0), koWinsByRound: Array(6).fill(0), subWinsByRound: Array(6).fill(0),
-    lossesByRound: Array(6).fill(0), koLossesByRound: Array(6).fill(0), subLossesByRound: Array(6).fill(0),
-    action: emptyActionAggregate(),
-    finishSeconds: 0, finishWins: 0, fastestFinishSeconds: Number.POSITIVE_INFINITY, fastestFinishDetail: "",
-    finishedSeconds: 0, finishedLosses: 0, fastestFinishedSeconds: Number.POSITIVE_INFINITY, fastestFinishedDetail: "",
-    totalSeconds: 0, timedFights: 0,
-    opponentWins: 0, opponentLosses: 0, opponentDraws: 0, opponentResults: 0, opponentSamples: 0,
-    beatenWins: 0, beatenLosses: 0, beatenDraws: 0, beatenResults: 0, beatenSamples: 0,
-    championBouts: 0, championWins: 0, championMethodWins: 0, championLosses: 0, championTitleBouts: 0,
-    reigningBouts: 0, reigningWins: 0, reigningMethodWins: 0, reigningLosses: 0, reigningTitleBouts: 0,
-    streakBreakers: 0, longestStreakBroken: 0, longestStreakBrokenDetail: "",
-    bounceBackWins: 0, bounceBackOpportunities: 0, rematchWins: 0, rematchOpportunities: 0, revengeWins: 0,
-    quickReturnWins: 0, quickReturnOpportunities: 0, layoffWins: 0, layoffOpportunities: 0,
-    titleFights: 0, mainEvents: 0, mainEventWins: 0, mainEventLosses: 0, performanceBonuses: 0, fotnBonuses: 0, bonusBouts: 0, titleWins: 0, titleMethodWins: 0, titleLosses: 0, titleMethodLosses: 0,
-    filteredTitleDefenses: 0, filteredTitleMethodDefenses: 0, longestFilteredTitleDefenseStreak: 0,
-    failedTitleDefenses: 0, failedMethodTitleDefenses: 0,
-    divisionWins: new Map(), divisionLosses: new Map(), divisions: new Map(), division: "",
-    underdogWins: 0, underdogOpportunities: 0, favoriteWins: 0, favoriteLosses: 0, favoriteOpportunities: 0,
-    pricedBouts: 0, pricedWins: 0, expectedWins: 0, lineSum: 0,
-    oddsProfit: 0, oddsBets: 0, biggestUpsetLine: Number.NEGATIVE_INFINITY, biggestUpsetDetail: "",
-    currentWinStreak: 0, longestWinStreak: 0, currentMethodWinStreak: 0, longestMethodWinStreak: 0,
-    currentUnbeatenStreak: 0, longestUnbeatenStreak: 0,
-    currentLossStreak: 0, longestLossStreak: 0, currentMethodLossStreak: 0, longestMethodLossStreak: 0,
-    currentDurabilityStreak: 0, longestDurabilityStreak: 0,
-    firstDate: "", lastDate: "", opponentsBeaten: new Set(),
-    youngestWinAge: Number.POSITIVE_INFINITY, youngestWinDetail: "",
-    oldestWinAge: Number.NEGATIVE_INFINITY, oldestWinDetail: "",
-    recordChips: [], finishChips: [], contextChips: [], marketChips: [],
-    runChips: [], bestRunChips: [],
-    oppositionChips: [], outputChips: [], finishSortedChips: [], marketSortedChips: [],
-    firstChip: null, lastChip: null,
-  };
+  return new AggregateRecord(id, name, photoUrl);
 }
 
 function addChip(list: Chip[], chip: Chip): void {
@@ -575,6 +583,9 @@ export function getStats(params: URLSearchParams): unknown {
   for (const fight of rows) {
     const elapsed = fight.elapsed;
     const decision = Boolean(fight.method?.endsWith("-DEC"));
+    // Read once a bout: `row` is SQLite's own object, slow to read a key from.
+    const perfBonus = fight.row.perf_bonus;
+    const fotnBonus = Boolean(fight.row.fotn_bonus);
     for (const [sideIndex, side] of fight.sides.entries()) {
       const stats = get(side);
       if (!stats) continue;
@@ -860,8 +871,7 @@ export function getStats(params: URLSearchParams): unknown {
         if (recordChipMode === "mainEvents") addChip(stats.recordChips, { ...opponentChip, note: fight.date.slice(0, 4) });
       }
       // A performance bonus goes to the winner; Fight of the Night to both.
-      const performanceBonus = outcome === "win" && fight.row.perf_bonus ? PERFORMANCE_BONUS[fight.row.perf_bonus] ?? "Performance" : null;
-      const fotnBonus = Boolean(fight.row.fotn_bonus);
+      const performanceBonus = outcome === "win" && perfBonus ? PERFORMANCE_BONUS[perfBonus] ?? "Performance" : null;
       if (performanceBonus) stats.performanceBonuses += 1;
       if (fotnBonus) stats.fotnBonuses += 1;
       if (performanceBonus || fotnBonus) stats.bonusBouts += 1;

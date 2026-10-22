@@ -75,7 +75,7 @@ export async function storePotentialBoard(bouts: PotentialBout[], props = false,
       }),
     });
   }
-  db.exec("BEGIN");
+  db.exec("BEGIN IMMEDIATE");
   try {
     db.prepare("DELETE FROM potential_matchups WHERE json_extract(odds_json, '$.source_url') LIKE ?").run(
       source === "fightodds" ? "https://fightodds.io/%" : "https://www.bestfightodds.com/%",

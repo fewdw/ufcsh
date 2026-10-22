@@ -6,6 +6,9 @@ import { drainRefreshJob } from "./refresh-queue.ts";
 import { syncLease } from "./sync-lease.ts";
 import { log } from "./util.ts";
 
+// Nothing here answers a reader, so a write waits up to 10 s for another
+// process's to finish (the API waits 1 s) rather than fail its job.
+db.exec("PRAGMA busy_timeout = 10000");
 let draining = false;
 let stopping = false;
 const lease = syncLease(db, `${hostname()}:${process.pid}`);
