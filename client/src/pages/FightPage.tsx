@@ -185,8 +185,8 @@ function FighterHero({
             glow={false}
           />
         ) : portrait === "face" ? (
-          <span data-fighter-portrait="face" className="flex items-center justify-center">
-            <span className="aspect-square w-full"><Avatar src={side.photo_url} name={side.name} size="fill" bare /></span>
+          <span data-fighter-portrait="face" className="flex">
+            <Avatar src={side.photo_url} name={side.name} size="fill" bare />
           </span>
         ) : (
           <Avatar src={side.photo_url} name={side.name} size="lg" outcome={side.outcome} />
