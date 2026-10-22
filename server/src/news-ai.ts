@@ -151,7 +151,7 @@ async function judgeBatch(key: string, batch: Pending[], kept: { key: string; ou
   const url = (id: string) => /^K\d+$/.test(id) ? near[Number(id.slice(1)) - 1]?.key : /^N\d+$/.test(id) ? batch[Number(id.slice(1)) - 1]?.key : undefined;
   if (received.some(answer => answer.same && !url(answer.same))) throw new Error("Gemini returned an unknown duplicate story ID");
   const save = db.prepare("UPDATE news SET ai_keep = ?, ai_same = ?, ai_summary = ? WHERE url = ?");
-  db.exec("BEGIN");
+  db.exec("BEGIN IMMEDIATE");
   try {
     batch.forEach((story, i) => {
       const answer = answers.get(`N${i + 1}`);

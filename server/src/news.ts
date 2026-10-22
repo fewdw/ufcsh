@@ -1,4 +1,4 @@
-import { db, getMeta, prepared, setMeta, touchMeta } from "./db.ts";
+import { dataRevision, db, getMeta, prepared, setMeta, touchMeta } from "./db.ts";
 import { fightIndex } from "./fight-index.ts";
 import { fetchFeed, NEWS_FEEDS, type FeedItem } from "./scrape/news.ts";
 import { searchList } from "./fuzzy.ts";
@@ -61,7 +61,7 @@ export async function syncNews(read: (url: string) => Promise<FeedItem[]> = fetc
       log(`news: ${source} unread (${String(result.reason)})`);
       return;
     }
-    db.exec("BEGIN");
+    db.exec("BEGIN IMMEDIATE");
     try {
       for (const item of result.value) {
         // A date ahead of now is a scheduled post; it's news when we see it.
@@ -266,8 +266,15 @@ type Judgment = { ai_keep: number | null; ai_same: string | null; ai_summary: st
 
 /** Which card a story is about: a numbered card it names ("UFC 331"), or the
  *  card its fighters were on or are booked for, from a week before the story
- *  to six weeks after. */
+ *  to six weeks after. Kept until a card or bout changes (a tenth of a rebuild). */
+let eventLookup: { revision: string; find: ReturnType<typeof buildEventFinder> } | null = null;
 function eventFinder() {
+  const revision = dataRevision("search");
+  if (eventLookup?.revision !== revision) eventLookup = { revision, find: buildEventFinder() };
+  return eventLookup.find;
+}
+
+function buildEventFinder() {
   const events = prepared("SELECT id, name, date FROM events").all() as { id: string; name: string; date: string }[];
   const numbered = new Map<string, { id: string; name: string; date: string }>();
   for (const event of events) {
@@ -325,7 +332,7 @@ function readItem(row: Stored, names: NameIndex, ufcFeed: boolean): Item | null 
 let reading: { version: string; names: NameIndex; items: Map<string, { row: Stored; headline: string; item: Item | null }> } | null = null;
 
 /** Every story kept, newest first, rebuilt once per read of the feeds. */
-function newsStories() {
+export function newsStories() {
   const index = fightIndex();
   const aiOff = newsAiOff();
   const key = `${getMeta("news_synced_at")}:${getMeta("news_ai_at")}:${aiOff}:${index.version}`;
