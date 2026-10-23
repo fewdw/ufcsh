@@ -48,7 +48,18 @@ export function useAccount() {
       } },
     });
   }, [clerk]);
+  /** Straight to Google, this site's one way to sign in, without Clerk's window;
+   *  back to `returnTo` (a full address on this site) through the callback on
+   *  the sign-in page. */
+  const signInWithGoogle = useCallback(async (returnTo: string) => {
+    if (!clerk.client) throw new Error("Sign-in isn't ready yet.");
+    await clerk.client.signIn.authenticateWithRedirect({
+      strategy: "oauth_google",
+      redirectUrl: `/sign-in/callback?to=${encodeURIComponent(returnTo)}`,
+      redirectUrlComplete: returnTo,
+    });
+  }, [clerk]);
   const signOut = useCallback(() => { void clerk.signOut({ redirectUrl: "/" }); }, [clerk]);
   const manage = useCallback(() => { void clerk.openUserProfile(); }, [clerk]);
-  return { isLoaded, user, signIn, signOut, manage };
+  return { isLoaded, user, signIn, signInWithGoogle, signOut, manage };
 }
