@@ -36,9 +36,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAccount() {
   const clerk = useClerk();
   const { isLoaded, user } = useUser();
-  const signIn = useCallback(() => {
+  /** Back to this page, or to `returnTo` (a flow that continues after it). */
+  const signIn = useCallback((returnTo?: unknown) => {
+    const to = typeof returnTo === "string" ? returnTo : here();
     void clerk.openSignIn({
-      fallbackRedirectUrl: here(), signUpFallbackRedirectUrl: here(),
+      fallbackRedirectUrl: to, signUpFallbackRedirectUrl: to,
       appearance: { elements: {
         // Center slightly above the viewport midpoint; tall forms can still scroll from the top.
         modalBackdrop: { height: "100dvh", boxSizing: "border-box", alignItems: "safe center", paddingBlock: "1rem calc(1rem + 8dvh)" },

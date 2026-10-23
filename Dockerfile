@@ -6,7 +6,7 @@ COPY client/index.html client/vite.config.ts client/tsconfig*.json ./
 COPY client/src ./src
 COPY client/public ./public
 # Shared client/server evidence and calculation rules.
-COPY server/src/no-contest.ts server/src/career-metrics.ts server/src/action-stats.ts server/src/roster-timeline.ts /app/server/src/
+COPY server/src/no-contest.ts server/src/career-metrics.ts server/src/action-stats.ts server/src/roster-timeline.ts server/src/event-kind.ts /app/server/src/
 ARG VITE_CLERK_PUBLISHABLE_KEY
 ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
 ARG VITE_CLERK_PROXY_URL

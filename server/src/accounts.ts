@@ -11,7 +11,7 @@ import { clerkClient, publicAccount } from "./scoring-http.ts";
  *  their picture — is picked up here by asking Clerk, so nothing needs to be
  *  configured there and a missed notification cannot leave data behind. */
 
-export type AccountStores = { scores: ScoringStore; comments: CommentStore; predictions: PredictionStore; bets: BetStore };
+export type AccountStores = { scores: ScoringStore; comments: CommentStore; predictions: PredictionStore; bets: BetStore; calendars?: { forget(user: string): void } };
 type Clerk = {
   users: {
     getUserList(params: { userId: string[]; limit: number }): Promise<{ data: { id: string; hasImage: boolean; imageUrl: string; createdAt: number }[] }>;
@@ -29,6 +29,7 @@ export function forgetAccount(stores: AccountStores, user: string): void {
     stores.comments.forgetAuthor(user);
     stores.predictions.forget(user);
     stores.bets.forget(user);
+    stores.calendars?.forget(user);
     stores.scores.forget(user);
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
