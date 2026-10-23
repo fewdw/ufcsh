@@ -123,7 +123,7 @@ function CardPanel({ event, onSubscribe }: { event: CalendarEvent; onSubscribe: 
 
 type Resume = { cards: Cards; from: FeedStart; stage: Returning };
 
-function SubscribePanel({ resume, onClose }: { resume?: Resume; onClose: () => void }) {
+function SubscribePanel({ resume }: { resume?: Resume }) {
   const [cards, setCards] = useState<Cards>(() => resume?.cards ?? readPreference<Cards>("calendar:cards", "all", parseCards));
   const [from, setFrom] = useState<FeedStart>(() => resume?.from ?? readPreference<FeedStart>("calendar:from", "early", parseFeedStart));
   // A late Google response must not replace choices made while it was loading,
@@ -162,7 +162,7 @@ function SubscribePanel({ resume, onClose }: { resume?: Resume; onClose: () => v
       ]} />
     </div>
     {accountsEnabled
-      ? <GoogleCalendarConnect cards={cards} from={from} returning={resume?.stage ?? null} onOptionsLoaded={restoreGoogleOptions} onLeave={onClose}>
+      ? <GoogleCalendarConnect cards={cards} from={from} returning={resume?.stage ?? null} onOptionsLoaded={restoreGoogleOptions}>
         {(google, below) => <div>{apps(google)}{below}</div>}
       </GoogleCalendarConnect>
       : apps(<Action href={`https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcal)}`} newTab logo={<GoogleLogo />} title="Google" />)}
@@ -223,7 +223,7 @@ function CalendarDialog({ open, onClose, event, resume }: { open: boolean; onClo
           <X className={CLOSE_ICON} aria-hidden="true" />
         </button>
       </div>
-      {showCard ? <CardPanel event={event!} onSubscribe={() => setSubscribe(true)} /> : <SubscribePanel resume={resume} onClose={close} />}
+      {showCard ? <CardPanel event={event!} onSubscribe={() => setSubscribe(true)} /> : <SubscribePanel resume={resume} />}
     </> : null}
   </dialog>;
 }
