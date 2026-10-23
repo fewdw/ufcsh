@@ -18,7 +18,9 @@ type Status = { connected: boolean; cards: FeedCards | null; from: FeedStart | n
 
 const SMALL_BUTTON = "inline-flex h-8 shrink-0 items-center rounded-lg px-2.5 text-xs font-medium transition";
 
-function useGoogleCalendar() {
+type OptionsLoaded = (cards: FeedCards, from: FeedStart) => void;
+
+function useGoogleCalendar(onOptionsLoaded: OptionsLoaded) {
   const { getToken } = useAuth();
   const { isLoaded, user } = useUser();
   const [status, setStatus] = useState<Status | null>(null);
@@ -42,8 +44,12 @@ function useGoogleCalendar() {
   const userId = user?.id;
   useEffect(() => {
     if (!isLoaded || !userId) { setStatus(null); return; }
-    void call("GET").catch(() => {});
-  }, [isLoaded, userId, call]);
+    let active = true;
+    void call("GET").then((saved) => {
+      if (active && saved.connected && saved.cards && saved.from) onOptionsLoaded(saved.cards, saved.from);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [isLoaded, userId, call, onOptionsLoaded]);
 
   /** Ask Google for access (a trip there and back), or, once granted, have the
    *  server make or move the calendar. A return from Google never sends the
@@ -97,12 +103,12 @@ function updatedAgo(at: number | null): string {
 /** Google's button in the subscription's row of apps, and what goes under the
  *  row: the connected calendar, with a way to move it to the options above or
  *  take it out. */
-export function GoogleCalendarConnect({ cards, from, returning, children }: {
-  cards: FeedCards; from: FeedStart; returning: Returning | null;
+export function GoogleCalendarConnect({ cards, from, returning, onOptionsLoaded, children }: {
+  cards: FeedCards; from: FeedStart; returning: Returning | null; onOptionsLoaded: OptionsLoaded;
   children: (google: ReactNode, below: ReactNode) => ReactNode;
 }) {
   const { signIn } = useAccount();
-  const { signedIn, status, busy, error, connect, disconnect } = useGoogleCalendar();
+  const { signedIn, status, busy, error, connect, disconnect } = useGoogleCalendar(onOptionsLoaded);
   const resumed = useRef(false);
   useEffect(() => {
     if (!returning || resumed.current || !signedIn) return;

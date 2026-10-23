@@ -309,7 +309,7 @@ function FormTarget({ row, className, children }: { row: UfcHistoryRow; classNam
 
 /** Marks a bout fought outside the UFC, in the violet the fighter page uses. */
 function OutsideTag() {
-  return <span className="text-[9px] font-semibold uppercase leading-3 tracking-[0.04em] text-violet-500">Outside UFC</span>;
+  return <span className="text-[9px] font-semibold uppercase leading-3 tracking-[0.04em] text-violet-600">Outside UFC</span>;
 }
 
 /** First name over everything after it, so "Rafael dos Anjos" keeps its
@@ -364,8 +364,8 @@ function FormListBout({ row }: { row: UfcHistoryRow }) {
         <span className={`block truncate ${CHART_TEXT} font-semibold leading-4 text-zinc-800`}>{row.opponent.name}</span>
         <span className="block truncate text-[10px] leading-3 text-zinc-400">
           <span className="font-semibold uppercase text-zinc-500">{method || "—"}</span> · {formatDateShortWithYear(row.date)}
-          {row.promotion === "outside" ? <> · <OutsideTag /></> : null}
         </span>
+        {row.promotion === "outside" ? <span className="mt-0.5 block leading-3"><OutsideTag /></span> : null}
       </span>
     </FormTarget>
   );

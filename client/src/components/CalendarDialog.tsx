@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { CalendarDays, CalendarPlus, Check, ChevronLeft, ChevronRight, Copy, X } from "lucide-react";
 import type { CardSchedule, CardSegment } from "../api";
 import { clockTimeWithZone } from "../format";
@@ -28,6 +28,7 @@ const START_OPTIONS: { value: CardSegment; label: string }[] = [
 const ORDER: CardSegment[] = ["early", "prelims", "main"];
 const parseStart = oneOf<CardSegment>("early", "prelims", "main");
 const parseFeedStart = oneOf<FeedStart>("early", "main");
+const parseCards = oneOf<Cards>("all", "ppv", "fight_night");
 
 const startOf = (schedule: CardSchedule | undefined, segment: CardSegment): number | null =>
   segment === "main" ? schedule?.main_card_at ?? null
@@ -123,10 +124,19 @@ function CardPanel({ event, onSubscribe }: { event: CalendarEvent; onSubscribe: 
 type Resume = { cards: Cards; from: FeedStart; stage: Returning };
 
 function SubscribePanel({ resume }: { resume?: Resume }) {
-  const [cards, setCards] = useState<Cards>(resume?.cards ?? "all");
+  const [cards, setCards] = useState<Cards>(() => resume?.cards ?? readPreference<Cards>("calendar:cards", "all", parseCards));
   const [from, setFrom] = useState<FeedStart>(() => resume?.from ?? readPreference<FeedStart>("calendar:from", "early", parseFeedStart));
+  // A late Google response must not replace choices made while it was loading,
+  // or the explicit choices carried back from signing in or granting access.
+  const edited = useRef(false);
+  const restoreGoogleOptions = useCallback((savedCards: Cards, savedFrom: FeedStart) => {
+    if (resume || edited.current) return;
+    setCards(savedCards);
+    setFrom(savedFrom);
+  }, [resume]);
   const [copied, setCopied] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  useEffect(() => { writePreference("calendar:cards", cards, "all"); }, [cards]);
   useEffect(() => { writePreference("calendar:from", from, "early"); }, [from]);
   useEffect(() => { setCopied(false); }, [cards, from]);
 
@@ -144,15 +154,15 @@ function SubscribePanel({ resume }: { resume?: Resume }) {
     outlook={<Action href={`https://outlook.live.com/calendar/0/addfromweb?url=${encodeURIComponent(https)}&name=UFC`} newTab logo={<OutlookLogo />} title="Outlook" />} />;
   return <div className="space-y-4 px-5 py-4">
     <div className="grid gap-4 sm:grid-cols-[3fr_2fr] sm:gap-3">
-      <Segmented label="Cards" value={cards} onChange={setCards} options={[
+      <Segmented label="Cards" value={cards} onChange={(value) => { edited.current = true; setCards(value); }} options={[
         { value: "all", label: "All" }, { value: "ppv", label: "PPV" }, { value: "fight_night", label: "Fight Nights" },
       ]} />
-      <Segmented label="Include" value={from} onChange={setFrom} options={[
+      <Segmented label="Include" value={from} onChange={(value) => { edited.current = true; setFrom(value); }} options={[
         { value: "early", label: "Full card" }, { value: "main", label: "Main card" },
       ]} />
     </div>
     {accountsEnabled
-      ? <GoogleCalendarConnect cards={cards} from={from} returning={resume?.stage ?? null}>
+      ? <GoogleCalendarConnect cards={cards} from={from} returning={resume?.stage ?? null} onOptionsLoaded={restoreGoogleOptions}>
         {(google, below) => <div>{apps(google)}{below}</div>}
       </GoogleCalendarConnect>
       : apps(<Action href={`https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcal)}`} newTab logo={<GoogleLogo />} title="Google" />)}
