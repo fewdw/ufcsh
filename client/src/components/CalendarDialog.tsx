@@ -50,7 +50,6 @@ function Segmented<T extends string>({ label, value, options, onChange }: {
   label: string; value: T; options: { value: T; label: string; detail?: string | null }[]; onChange: (value: T) => void;
 }) {
   return <div>
-    <div className="mb-1.5 text-xs font-medium text-zinc-700">{label}</div>
     <div className="flex items-stretch gap-1 rounded-2xl bg-zinc-100 p-1" role="group" aria-label={label}>
       {options.map((option) => (
         <button key={option.value} type="button" aria-pressed={value === option.value} onClick={() => onChange(option.value)}
@@ -208,7 +207,7 @@ function CalendarDialog({ open, onClose, event, resume }: { open: boolean; onClo
           </button>
         ) : null}
         <div className="min-w-0 flex-1">
-          <h2 id="calendar-dialog-title" className={DIALOG_TITLE}>{showCard ? "Add to calendar" : "Subscribe to UFC"}</h2>
+          <h2 id="calendar-dialog-title" className={DIALOG_TITLE}>{showCard ? "Add to calendar" : "Add UFC to Calendar"}</h2>
           <p className="mt-0.5 truncate text-xs text-zinc-500">
             {showCard ? event!.name : "Every card in a calendar of its own, kept up to date"}
           </p>
