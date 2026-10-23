@@ -91,7 +91,17 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
+  const locations: Item[] = (data?.locations ?? []).map((location) => ({
+    key: `location-${location.slug}`, to: `/locations/${location.slug}`,
+    group: location.approximate ? "Locations · did you mean" : "Locations", approximate: location.approximate, label: location.city,
+    render: () => <>
+      <MapPin className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />
+      <span className="min-w-0 flex-1"><span className="block truncate font-medium text-zinc-900">Events in {location.city}</span><span className="block truncate text-xs text-zinc-500">{location.name}</span></span>
+      <span className="shrink-0 text-xs tabular-nums text-zinc-500">{location.events.toLocaleString()} event{location.events === 1 ? "" : "s"}</span>
+    </>,
+  }));
   const found: Item[] = trimmed ? [
+    ...locations.filter((location) => !location.approximate),
     ...(data?.fighters ?? []).map((fighter) => ({
       key: `fighter-${fighter.id}`, to: `/fighters/${fighter.id}`, group: fighter.approximate ? "Fighters · did you mean" : "Fighters", approximate: fighter.approximate, label: fighter.name,
       render: () => <>
@@ -131,6 +141,7 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
         <span className="shrink-0 text-xs text-zinc-500">{venue.city ?? ""}</span>
       </>,
     })),
+    ...locations.filter((location) => location.approximate),
   ] : destinations.map(({ to, label, description, icon: Icon }) => ({
     key: to, to, group: "Go to",
     render: () => <>
@@ -175,7 +186,7 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
             ref={inputRef}
             type="text"
             role="combobox"
-            aria-label="Search fighters, events and fights"
+            aria-label="Search fighters, events, fights and locations"
             aria-expanded="true"
             aria-autocomplete="list"
             aria-controls={selection.listId}
@@ -196,7 +207,7 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
                 if (label && label !== query) { event.preventDefault(); event.stopPropagation(); setQuery(label); }
               }
             }}
-            placeholder="Search fighters, events, matchups…"
+            placeholder="Search fighters, events, locations…"
             className="min-w-0 flex-1 bg-transparent py-4 text-sm text-zinc-900 outline-none placeholder:text-zinc-400"
           />
           <button type="button" aria-label="Close search" onClick={onClose} className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-zinc-500 hover:bg-zinc-100"><X className="h-4 w-4" aria-hidden="true" /></button>

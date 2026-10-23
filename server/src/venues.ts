@@ -1,6 +1,6 @@
 import { prepared } from "./db.ts";
 import { fightIndex, type IndexedFight } from "./fight-index.ts";
-import { searchList } from "./fuzzy.ts";
+import { containsTyped, searchList } from "./fuzzy.ts";
 import { normName } from "./util.ts";
 
 /**
@@ -408,4 +408,18 @@ export function searchVenues(query: string, limit = 3): { slug: string; name: st
   return searchList(venues, needle, (venue) => `${venue.name} ${venue.former_names.join(" ")} ${venue.city ?? ""}`)
     .map((venue) => ({ slug: venue.slug, name: venue.name, city: venue.city, events: venue.events.length }))
     .sort((a, b) => b.events - a.events).slice(0, limit);
+}
+
+export function searchLocations(query: string, limit = 3) {
+  const needle = normName(query);
+  if (needle.length < 3) return [];
+  const locations = [...venueIndex().locations.values()];
+  return searchList(locations, needle, (location) => location.name)
+    .map((location) => ({
+      slug: location.slug, name: location.name, city: location.city, events: location.events.length,
+      ...(!containsTyped(normName(location.name), needle) ? { approximate: true } : {}),
+    }))
+    .sort((a, b) => Number(normName(b.city) === needle) - Number(normName(a.city) === needle)
+      || b.events - a.events || a.name.localeCompare(b.name))
+    .slice(0, limit);
 }
