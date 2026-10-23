@@ -75,7 +75,7 @@ import { judgeProfile, officialSlug, officialsDirectory, refereeProfile, searchO
 import { comebacksList, controversialList, controversyLabel, homeRecord, judgeExtras, matchupJudging, withNumbers } from "./judging.ts";
 import { searchAliases } from "./search-aliases.ts";
 import { awardsDirectory, fightAwards, fighterAwards } from "./awards.ts";
-import { locationDirectory, locationOfEvent, locationPage, searchVenues, venueDirectory, venueOfEvent, venuePage } from "./venues.ts";
+import { locationDirectory, locationOfEvent, locationPage, searchLocations, searchVenues, venueDirectory, venueOfEvent, venuePage } from "./venues.ts";
 import { newsView } from "./news.ts";
 import { newsAiStatus, setNewsAi, startNewsReader } from "./news-ai.ts";
 import { fighterRosterEvents, rosterMoveFighter, sameSigning, storedRosterMoves, ufcDepartures, ufcSignings, type UfcSigning } from "./roster-moves.ts";
@@ -1587,7 +1587,7 @@ function fuzzyMatches<T extends { id: string; target: FuzzyTarget }>(
 
 export function search(q: string): unknown {
   const norm = normName(q);
-  if (!norm) return { fighters: [], events: [], fights: [], officials: [], venues: [] };
+  if (!norm) return { fighters: [], events: [], fights: [], officials: [], venues: [], locations: [] };
   const like = `%${norm.replace(/\s+/g, "%")}%`;
   const index = searchIndex();
   // The query's words in order within one line of a row's `names`, as SQL LIKE
@@ -1662,6 +1662,7 @@ export function search(q: string): unknown {
     fights,
     officials: searchOfficials(q),
     venues: searchVenues(q),
+    locations: searchLocations(q),
   };
 }
 
