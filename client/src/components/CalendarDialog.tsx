@@ -123,7 +123,7 @@ function CardPanel({ event, onSubscribe }: { event: CalendarEvent; onSubscribe: 
 
 type Resume = { cards: Cards; from: FeedStart; stage: Returning };
 
-function SubscribePanel({ resume }: { resume?: Resume }) {
+function SubscribePanel({ resume, onClose }: { resume?: Resume; onClose: () => void }) {
   const [cards, setCards] = useState<Cards>(() => resume?.cards ?? readPreference<Cards>("calendar:cards", "all", parseCards));
   const [from, setFrom] = useState<FeedStart>(() => resume?.from ?? readPreference<FeedStart>("calendar:from", "early", parseFeedStart));
   // A late Google response must not replace choices made while it was loading,
@@ -149,6 +149,7 @@ function SubscribePanel({ resume }: { resume?: Resume }) {
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   };
+  const googleSubscribe = <Action href={`https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcal)}`} newTab logo={<GoogleLogo />} title="Google" />;
   const apps = (google: ReactNode) => <Actions google={google}
     apple={<Action href={webcal} logo={<AppleLogo />} title="Apple" />}
     outlook={<Action href={`https://outlook.live.com/calendar/0/addfromweb?url=${encodeURIComponent(https)}&name=UFC`} newTab logo={<OutlookLogo />} title="Outlook" />} />;
@@ -162,10 +163,11 @@ function SubscribePanel({ resume }: { resume?: Resume }) {
       ]} />
     </div>
     {accountsEnabled
-      ? <GoogleCalendarConnect cards={cards} from={from} returning={resume?.stage ?? null} onOptionsLoaded={restoreGoogleOptions}>
+      ? <GoogleCalendarConnect cards={cards} from={from} returning={resume?.stage ?? null} onOptionsLoaded={restoreGoogleOptions}
+        subscribe={googleSubscribe} onLeave={onClose}>
         {(google, below) => <div>{apps(google)}{below}</div>}
       </GoogleCalendarConnect>
-      : apps(<Action href={`https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcal)}`} newTab logo={<GoogleLogo />} title="Google" />)}
+      : apps(googleSubscribe)}
     <div>
       <div className="mb-1.5 text-xs font-medium text-zinc-700">Or copy the link into any calendar app</div>
       <div className="flex items-center gap-2">
@@ -223,7 +225,7 @@ function CalendarDialog({ open, onClose, event, resume }: { open: boolean; onClo
           <X className={CLOSE_ICON} aria-hidden="true" />
         </button>
       </div>
-      {showCard ? <CardPanel event={event!} onSubscribe={() => setSubscribe(true)} /> : <SubscribePanel resume={resume} />}
+      {showCard ? <CardPanel event={event!} onSubscribe={() => setSubscribe(true)} /> : <SubscribePanel resume={resume} onClose={close} />}
     </> : null}
   </dialog>;
 }
