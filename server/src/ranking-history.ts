@@ -178,7 +178,7 @@ export function recordRankingSnapshot(type: RankingType, date: string, entries: 
   }
   const insert = db.prepare(`INSERT OR REPLACE INTO ranking_history (ranking_type, date, division, rank, fighter_name, fighter_id)
     VALUES (?, ?, ?, ?, ?, ?)`);
-  db.exec("BEGIN");
+  db.exec("BEGIN IMMEDIATE");
   try {
     db.prepare("DELETE FROM ranking_history WHERE ranking_type = ? AND date = ?").run(type, date);
     for (const entry of entries) {

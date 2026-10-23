@@ -111,11 +111,14 @@ test("board props become the matchup's markets, in our corners and wording", () 
   ]);
 });
 
-test("a board's cancelled bouts keep both corners' UFCStats ids and the division", () => {
-  const fight = (slug: string, isCancelled: boolean, f2 = wang) => ({ node: { straightOffers: { edges: [] }, fight: {
+test("a board's cancelled bouts keep both corners' UFCStats ids and the division, but not a pairing it still lists", () => {
+  const fight = (slug: string, isCancelled: boolean, f2: typeof silva | typeof wang = wang) => ({ node: { straightOffers: { edges: [] }, fight: {
     slug, isCancelled, fighter1: silva, fighter2: f2, weightClass: { weightClass: " Women's Flyweight " },
   } } });
-  const cancelled = cancelledOnBoard({ eventOffers: { fightOffers: { edges: [fight("fought-1", false), fight("dropped-2", true)] } } });
+  const other = { firstName: "Other", lastName: "Opponent", fightmetricUrl: "http://www.ufcstats.com/fighter-details/0123456789abcdef" };
+  const cancelled = cancelledOnBoard({ eventOffers: { fightOffers: { edges: [
+    fight("fought-1", false, other), fight("reposted-3", true, other), fight("dropped-2", true),
+  ] } } });
   assert.deepEqual(cancelled, [{
     slug: "dropped-2",
     url: "https://fightodds.io/fights/dropped-2/odds",

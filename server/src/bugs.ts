@@ -1905,7 +1905,7 @@ function mergedOfficialSpellings(): BugCheck {
 function rosterHistoryGaps(): BugCheck {
   const items: BugItem[] = [];
   for (const event of storedRosterHistory()) {
-    const fighterId = rosterMoveFighter(event.name);
+    const fighterId = rosterMoveFighter(event.name, event.date);
     const missing = [!validRosterDate(event.date) && "valid date", !/^https:\/\//.test(event.source_url) && "source",
       !fighterId && "unambiguous profile"].filter(Boolean);
     if (!missing.length) continue;

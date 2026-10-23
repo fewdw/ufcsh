@@ -59,7 +59,7 @@ import { fuzzyScore, fuzzyTarget, splitMatchup, type FuzzyTarget } from "./fuzzy
 import { WEIGHT_LIMITS, type RankingType } from "./scrape/ufccom.ts";
 import { getStats } from "./stats.ts";
 import { titleNarratives } from "./titles.ts";
-import { cancelledBoutsOf } from "./cancelled-bouts.ts";
+import { cancelledBoutsOf, cardCancellations, movedTo } from "./cancelled-bouts.ts";
 import { fighterBoard, fighterRecords } from "./records.ts";
 import { ufcFightExistsSql, fighterNamed, hasUfcFight, recordText, currentRecord, cachedPhotoUrl, cachedFullPhotoUrl, photoVersion } from "./fighter-identity.ts";
 export { hasUfcFight };
@@ -508,22 +508,25 @@ function liveCard(rankingType: RankingType): unknown | null {
   };
 }
 
-/** Bouts announced for the card that never happened on it, from the event
- *  article; a fighter links only when they have a profile. */
+/** Bouts booked for the card that never happened on it (`cardCancellations`);
+ *  a fighter links only when they have a profile. */
 function cancelledBouts(e: EventRow, rankingType: RankingType): unknown[] {
-  let bouts: { f1: string; f2: string; f1_id: string | null; f2_id: string | null; division: string | null; reason: string | null }[] = [];
-  try { bouts = JSON.parse((e as any).cancelled_json ?? "[]"); } catch { /* unread */ }
   // A cancelled bout has no position in the running order. Use the start of
   // the event date so replacement bouts on this card cannot enter its form.
   const beforeCard = Number.MAX_SAFE_INTEGER;
-  const side = (name: string, id: string | null, division: string | null) => ({
+  const side = ({ id, name }: { id: string | null; name: string }, division: string | null) => ({
     ...fighterSummary(id ?? "", name, rankingType, { date: e.date, ord: beforeCard, division: division ?? "" }),
     ...sideContext(id ?? "", e.date, beforeCard),
     id: id && hasUfcFight(id) ? id : null,
     outcome: null,
     stats: { kd: null, str: null, td: null, sub: null },
   });
-  return bouts.map((bout) => ({ f1: side(bout.f1, bout.f1_id, bout.division), f2: side(bout.f2, bout.f2_id, bout.division), division: bout.division, reason: bout.reason }));
+  return cardCancellations(e as any).map((bout) => {
+    // A pairing that met on a later card was moved there, not dropped.
+    const moved = bout.reason ? null : movedTo(bout);
+    return { f1: side(bout.f1, bout.division), f2: side(bout.f2, bout.division), division: bout.division,
+      reason: bout.reason ?? (moved ? `Moved to ${moved.event_name}` : null) };
+  });
 }
 
 async function getEvent(id: string, rankingType: RankingType): Promise<unknown | null> {
@@ -1711,6 +1714,16 @@ const RECENT_PHOTO_FAILURE = "photo failed recently";
  *  framed and shrunk once, then served from the cache. */
 const PHOTO_MAX_BYTES = 30_000_000;
 
+/** A picture's type from its first bytes, or null when it is none we serve. */
+export function pictureType(data: Buffer): string | null {
+  const head = data.subarray(0, 12).toString("latin1");
+  if (head.startsWith("\x89PNG\r\n\x1a\n")) return "image/png";
+  if (head.startsWith("\xff\xd8\xff")) return "image/jpeg";
+  if (head.startsWith("GIF8")) return "image/gif";
+  if (head.startsWith("RIFF") && head.slice(8) === "WEBP") return "image/webp";
+  return null;
+}
+
 /** Headshot and full body are cached side by side under one fighter id. */
 export type PhotoVariant = "head" | "full";
 
@@ -1820,10 +1833,13 @@ async function loadFighterImage(id: string, variant: PhotoVariant): Promise<Cach
           signal: AbortSignal.timeout(15_000),
         });
         if (!response.ok) throw new Error(`photo HTTP ${response.status}`);
-        contentType = (response.headers.get("content-type") ?? "image/jpeg").split(";")[0];
-        if (!contentType.startsWith("image/")) throw new Error(`unexpected photo type ${contentType}`);
+        const declared = (response.headers.get("content-type") ?? "").split(";")[0].trim();
+        // ufc.com serves some PNGs as application/octet-stream: the bytes decide.
+        if (declared && !declared.startsWith("image/") && !declared.endsWith("/octet-stream")) throw new Error(`unexpected photo type ${declared}`);
         data = Buffer.from(await response.arrayBuffer());
         if (!data.length || data.length > PHOTO_MAX_BYTES) throw new Error("invalid photo size");
+        contentType = pictureType(data) ?? (!declared ? "image/jpeg" : declared.startsWith("image/") ? declared : "");
+        if (!contentType) throw new Error(`unexpected photo type ${declared || "none"}`);
       }
       if (!suffix) {
         const framed = await normalizeHeadshot(data);
@@ -2016,14 +2032,44 @@ async function readStatic(filePath: string): Promise<StaticFile | null> {
   return file;
 }
 
+/** Earlier builds' chunks, on the data volume that outlives each release, so a
+ *  tab opened before a deploy still finds the scripts it names instead of a
+ *  404 and a reload. A chunk is kept two weeks after the last build with it. */
+const ASSET_ARCHIVE = path.join(DATA_DIR, "assets");
+const ASSET_KEEP_MS = 14 * 86_400_000;
+async function archiveAssets(): Promise<void> {
+  const current = new Set(await fs.readdir(path.join(CLIENT_DIST, "assets")).catch(() => [] as string[]));
+  if (!current.size) return;
+  await fs.mkdir(ASSET_ARCHIVE, { recursive: true });
+  const now = new Date();
+  for (const name of current) {
+    const target = path.join(ASSET_ARCHIVE, name);
+    // Releases overlap: write aside, then rename, so no reader sees half a file.
+    const partial = `${target}.${process.pid}.partial`;
+    if (!await fs.utimes(target, now, now).then(() => true, () => false)) {
+      await fs.copyFile(path.join(CLIENT_DIST, "assets", name), partial);
+      await fs.rename(partial, target);
+    }
+  }
+  for (const name of await fs.readdir(ASSET_ARCHIVE)) {
+    if (current.has(name)) continue;
+    const file = path.join(ASSET_ARCHIVE, name);
+    const stat = await fs.stat(file).catch(() => null);
+    if (stat && now.getTime() - stat.mtimeMs > ASSET_KEEP_MS) await fs.rm(file, { force: true });
+  }
+}
+
 /** `pages` caches the SEO-filled document per route; without it each is built on request. */
 export async function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, pathname: string, pages?: ResponseCache): Promise<void> {
+  // iOS also asks for sized icons no page names ("-120x120-precomposed"): one icon serves all.
+  if (/^\/apple-touch-icon-\d+x\d+(-precomposed)?\.png$/.test(pathname)) pathname = "/apple-touch-icon.png";
   let filePath = path.join(CLIENT_DIST, path.normalize(pathname).replace(/^([/\\])+/, ""));
   if (filePath !== CLIENT_DIST && !filePath.startsWith(CLIENT_DIST + path.sep)) filePath = path.join(CLIENT_DIST, "index.html");
   // The document itself is never sent raw: "/" and "/index.html" fall through
   // to the SEO fill below, so the homepage carries its link-preview image too.
   const document = filePath === path.join(CLIENT_DIST, "index.html");
-  const file = document ? null : await readStatic(filePath);
+  const file = document ? null : await readStatic(filePath)
+    ?? (/^\/assets\/[\w.-]+$/.test(pathname) && !pathname.endsWith(".partial") ? await readStatic(path.join(ASSET_ARCHIVE, pathname.slice(8))) : null);
   if (file) {
     const immutable = pathname.startsWith("/assets/");
     const headers: Record<string, string | number> = {
@@ -2489,6 +2535,7 @@ export function startApi(port: number): http.Server {
     .catch(error => log("backup retention failed:", String(error)));
   setTimeout(thinBackups, 10 * 60_000).unref();
   setInterval(thinBackups, 86_400_000).unref();
+  if (process.env.NODE_ENV === "production") void archiveAssets().catch(error => log("asset archive failed:", String(error)));
   // Polymarket's live price is read here, on the main thread, so every reader
   // shares one price and one "just finished" moment (polymarket.ts).
   const liveOdds = new LiveOddsService({ current: polymarketBout, result: boutResult });

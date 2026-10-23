@@ -1,5 +1,5 @@
 import { db } from "./db.ts";
-import { listDates } from "./ranking-history.ts";
+import { confirmedTitleResults, listDates } from "./ranking-history.ts";
 import type { RankingType } from "./scrape/ufccom.ts";
 
 const DIVISIONS = new Set([
@@ -22,7 +22,9 @@ export type RankingArchive = {
  * profiles by the compressed response cache. No photos, records or activity
  * calculations; no additional index is retained in each query worker. */
 export function rankingArchive(type: RankingType, division: string): RankingArchive | undefined {
-  if (!DIVISIONS.has(division)) return undefined;
+  // A belt never ranked (the 1995–96 Superfight title, "Open Weight") is still a
+  // line on its champions' charts, which ask for its archive: an empty one.
+  if (!DIVISIONS.has(division) && !confirmedTitleResults().some(result => result.division === division)) return undefined;
   const media = listDates("media");
   // P4P is always the media list, including in a Meta profile's chart.
   const meta = type === "meta" && !division.includes("Pound-for-Pound") ? listDates("meta") : [];

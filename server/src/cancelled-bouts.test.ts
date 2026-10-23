@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { db } from "./db.ts";
 import { resolvePublicApi } from "./api.ts";
-import { boardDue, bookedDivision, storeCancelledBoard } from "./cancelled-bouts.ts";
+import { boardCard, boardDue, bookedDivision, cardCancellations, storeCancelledBoard } from "./cancelled-bouts.ts";
 
 // The API needs the same historical context as a normal row, even when the
 // fighter actually fought a replacement on the cancellation's event date.
@@ -150,4 +150,56 @@ test("a cancelled bout's division is the board's only where the fighters bear it
   assert.equal(bookedDivision("", ["Flyweight", "Flyweight"]), "Flyweight");
   assert.equal(bookedDivision("", ["Flyweight", undefined]), "");
   assert.equal(bookedDivision("Catchweight", ["Flyweight", "Bantamweight"]), "Catch Weight");
+});
+
+test("a card lists every booking that fell through, once, from the board, the article and its replacements", async () => {
+  db.exec("SAVEPOINT cancelled_card_merge");
+  try {
+    const [allen, pico, keita, brown, leal, smith, durden, osbourne] =
+      ["cmf0000000000001", "cmf0000000000002", "cmf0000000000003", "cmf0000000000004", "cmf0000000000005", "cmf0000000000006", "cmf0000000000007", "cmf0000000000008"];
+    for (const [id, name] of [[allen, "Arnold Allenfixture"], [pico, "Aaron Picofixture"], [keita, "Losene Keitafixture"], [brown, "Randy Brownfixture"],
+      [leal, "Carlos Lealfixture"], [smith, "Jacobe Smithfixture"], [durden, "Cody Durdenfixture"], [osbourne, "Ode Osbournefixture"]]) {
+      db.prepare("INSERT INTO fighters (id, name, norm_name) VALUES (?, ?, lower(?))").run(id, name, name);
+    }
+    // A coming card: Pico now faces Keita, and UFCStats still lists Brown against Leal.
+    db.prepare("INSERT INTO events (id, name, date, complete, wiki_title) VALUES ('cme0000000000001', 'UFC 1333: Fixture vs. Card', '2031-10-24', 0, 'UFC 1333')").run();
+    db.prepare("INSERT INTO events (id, name, date, complete) VALUES ('cme0000000000002', 'UFC Fight Night: Other vs. Headline', '2031-10-25', 0)").run();
+    const fight = (id: string, a: [string, string], b: [string, string], replaced: [string, string] | null = null) =>
+      db.prepare(`INSERT INTO fights (id, event_id, ord, weight_class, f1_id, f1_name, f2_id, f2_name, f1_replaced, f1_replaced_id)
+        VALUES (?, 'cme0000000000001', 1, 'Featherweight', ?, ?, ?, ?, ?, ?)`).run(id, a[0], a[1], b[0], b[1], replaced?.[1] ?? null, replaced?.[0] ?? null);
+    fight("cmb0000000000001", [keita, "Losene Keitafixture"], [pico, "Aaron Picofixture"], [allen, "Arnold Allenfixture"]);
+    fight("cmb0000000000002", [brown, "Randy Brownfixture"], [leal, "Carlos Lealfixture"]);
+    fight("cmb0000000000003", [durden, "Cody Durdenfixture"], [osbourne, "Ode Osbournefixture"]);
+    db.prepare("UPDATE events SET cancelled_json = ? WHERE id = 'cme0000000000001'").run(JSON.stringify([
+      { f1: "Lealfixture", f2: "Brownfixture", f1_id: null, f2_id: null, division: "Welterweight", reason: "Lealfixture withdrew (injury)" },
+      { f1: "Cody Durdenfixture", f2: "Ode Osbournefixture", f1_id: durden, f2_id: osbourne, division: "Flyweight", reason: "Osbourne withdrew" },
+    ]));
+    // FightOdds.io dates this card a day late, next to another card.
+    const board = { pk: 990101, date: "2031-10-25", slug: "ufc-1333-fixture-vs-card", name: "UFC 1333: Fixture vs. Card" };
+    db.prepare("INSERT INTO cancelled_boards (pk, date, slug, name) VALUES (?, ?, ?, ?)").run(board.pk, board.date, board.slug, board.name);
+    assert.equal(boardCard(board)?.id, "cme0000000000001", "of two cards a day apart, the one the board names");
+    const corner = (id: string, name: string) => ({ id, name, last: name.split(" ").at(-1)! });
+    storeCancelledBoard(board, [
+      { slug: "allen-vs-pico-1", url: "", weightClass: "Featherweight", f1: corner(allen, "Arnold Allenfixture"), f2: corner(pico, "Aaron Picofixture") },
+      { slug: "brown-vs-leal-2", url: "", weightClass: "Welterweight", f1: corner(brown, "Randy Brownfixture"), f2: corner(leal, "Carlos Lealfixture") },
+    ]);
+    const card = db.prepare("SELECT id, name, date, wiki_title, cancelled_json FROM events WHERE id = 'cme0000000000001'").get() as any;
+    const list = cardCancellations(card);
+    assert.deepEqual(list.map((bout) => [bout.f1.name, bout.f2.name, bout.reason]), [
+      ["Arnold Allenfixture", "Aaron Picofixture", "Arnold Allenfixture out, replaced by Losene Keitafixture"],
+      ["Randy Brownfixture", "Carlos Lealfixture", "Lealfixture withdrew (injury)"],
+    ], "the board's word stands over a coming card UFCStats hasn't caught up on; the article's alone doesn't");
+    assert.equal(list[0].source_url, "https://fightodds.io/fights/allen-vs-pico-1/odds");
+
+    const event = await resolvePublicApi(new URL("http://localhost/api/events/cme0000000000001")) as any;
+    assert.deepEqual(event.cancelled.map((bout: any) => bout.f2.name), ["Aaron Picofixture", "Carlos Lealfixture"]);
+    const profile = await resolvePublicApi(new URL(`http://localhost/api/fighters/${pico}`)) as any;
+    assert.deepEqual(profile.cancelled.map((bout: any) => [bout.event_id, bout.opponent.name]), [["cme0000000000001", "Arnold Allenfixture"]]);
+
+    // Once the card is fought, a result overrules the board.
+    db.prepare("UPDATE fights SET f1_outcome = 'win', f2_outcome = 'loss' WHERE id = 'cmb0000000000002'").run();
+    assert.deepEqual(cardCancellations(card).map((bout) => bout.f2.name), ["Aaron Picofixture"]);
+  } finally {
+    db.exec("ROLLBACK TO cancelled_card_merge; RELEASE cancelled_card_merge");
+  }
 });

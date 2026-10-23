@@ -101,11 +101,11 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-21">October 21, 2026</time></p>
+            <p><time dateTime="2026-10-23">October 23, 2026</time></p>
             <ul>
-              <li>Doctor's stoppages say so on fighter profiles.</li>
-              <li>More journalists' scorecards show on decisions between fighters who share a surname.</li>
-              <li>More late replacements name the fighter they replaced.</li>
+              <li>Every card lists all its cancelled bouts, including ones broken up by a late replacement.</li>
+              <li>Past cards' replacements and cancellations are read again from Wikipedia, fixing a few misread names.</li>
+              <li>Matchup cards keep a fighter's full-body portrait even when the opponent has none.</li>
             </ul>
           </Section>
         </div>

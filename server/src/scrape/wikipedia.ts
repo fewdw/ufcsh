@@ -124,6 +124,11 @@ function namesake(paragraph: string, sentence: string, person: CardPerson): bool
 }
 
 const PARTICLE = /^(?:da|das|de|do|dos|du|van|von|der|del|la|le)$/;
+/** A surname with a particle ("Ariane da Silva"), which a bare "Silva" may not mean. */
+const particled = (person: CardPerson) => {
+  const words = person.norm.split(" ");
+  return words.length > 2 && PARTICLE.test(words.at(-2)!);
+};
 
 // A sentence says someone missed weight only with one of these phrases. The
 // fighter must be named before it: people named after it are recipients of
@@ -131,6 +136,8 @@ const PARTICLE = /^(?:da|das|de|do|dos|du|van|von|der|del|la|le)$/;
 const MISS_CUE = /missed (?:the )?weight|over the [a-z' -]*limit|overweight|fail(?:ing|ed) to make (?:the )?(?:required )?(?:[a-z']+ )?(?:weight|limit)|for missing weight|fined \d+ ?(?:%|percent)/i;
 // A sentence about some other card (a fighter's history) is never used.
 const OTHER_EVENT = /\b(?:at|from) (?:UFC|WEC|Strikeforce|Bellator|The Ultimate Fighter)\b/i;
+// "They were previously scheduled for UFC 329, but Osbourne withdrew" is that card's history.
+const EARLIER_CARD = /\b(?:previously|originally|initially)\b[^.]*\bfor (?:UFC|WEC|Strikeforce|Bellator|The Ultimate Fighter)\b[^.]*\bbut\b/i;
 // "128, 129, 160 and 120 pounds, respectively" states four weights.
 const POUNDS = /((?:\d{3}(?:\.\d+)?,? (?:and )?)*\d{3}(?:\.\d+)?)\s*(?:-\s*)?(?:pounds|pound|lbs?\b)/gi;
 // The two fighters of a bout, named to say which bout it was.
@@ -484,8 +491,9 @@ export function cardChanges(wikitext: string, bouts: [string, string][]): CardCh
     // 2012, … Overeem has been removed" in UFC 140's article).
     const opening = new RegExp(`^(?:However, )?On (?:[A-Z][a-z]+day,? )?((?:${MONTHS.join("|")}) \\d{1,2}, \\d{4})\\b`).exec(raw);
     const later = held != null && opening != null && Date.parse(`${opening[1]} 12:00 UTC`) > Date.parse(`${held}T23:59:59Z`);
-    const elsewhere = later || (OTHER_EVENT.test(bare) && !/\bthis (?:event|card)\b/i.test(bare));
-    const named = namedIn(sentence, people);
+    const elsewhere = later || ((OTHER_EVENT.test(bare) || EARLIER_CARD.test(bare)) && !/\bthis (?:event|card)\b/i.test(bare));
+    // "Perez … was replaced by Bruno Silva" names no one on Ariane da Silva's card.
+    const named = namedIn(sentence, people).filter((entry) => !(particled(entry.person) && namesake(`${earlier} ${raw}`, sentence, entry.person)));
     // "The fight between X and Y was removed" is the bout, not a fighter, leaving.
     const cue = raw.match(WITHDREW);
     const out = cue && /^was (?:removed|pulled)/i.test(cue[0]) && /\b(?:bout|fight|pairing|matchup|rematch)\b/i.test(raw.slice(0, cue.index)) ? null : cue;
