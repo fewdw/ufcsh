@@ -725,6 +725,7 @@ export type SearchResults = {
   fights: { id: string; f1_name: string; f2_name: string; event_name: string; date: string; meeting: number; meetings: number; approximate?: boolean }[];
   officials?: { kind: "judge" | "referee"; slug: string; name: string; n: number }[];
   venues?: { slug: string; name: string; city: string | null; events: number }[];
+  locations?: { slug: string; name: string; city: string; events: number; approximate?: boolean }[];
 };
 
 // ---------------------------------------------------------------------------

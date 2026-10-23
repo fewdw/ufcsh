@@ -7,6 +7,7 @@ type Results = {
   fighters: { name: string; approximate?: boolean }[];
   events: { name: string; approximate?: boolean }[];
   fights: { id: string; f1_name: string; f2_name: string; meeting: number; approximate?: boolean }[];
+  locations: { slug: string; name: string; city: string; events: number; approximate?: boolean }[];
 };
 
 test("prefix distance tolerates typos against the start of a word", () => {
@@ -57,6 +58,20 @@ test("a search that already matches is not padded with look-alikes", () => {
   assert.ok(exact.fighters.some((f) => f.name === "Alexander Volkanovski"));
   assert.ok(exact.fighters.every((f) => !f.approximate));
   assert.ok(!exact.fighters.some((f) => /^Vi/.test(f.name.split(" ").at(-1)!)));
+});
+
+test("location searches return a city's event history, with normalized spelling", () => {
+  for (const query of ["montreal", "Montréal", "canada montreal"]) {
+    const result = search(query) as Results;
+    const location = result.locations.find((location) => location.city === "Montreal");
+    assert.ok(location, query);
+    assert.equal(location.slug, "montreal-canada");
+    assert.ok(location.events > 0);
+    assert.ok(!location.approximate);
+  }
+  assert.ok((search("montrel") as Results).locations.some((location) => location.city === "Montreal" && location.approximate));
+  assert.deepEqual((search("") as Results).locations, []);
+  assert.deepEqual((search("zzzzzzzzzzzz") as Results).locations, []);
 });
 
 test("misspelled matchups and reordered names still find the bout", () => {

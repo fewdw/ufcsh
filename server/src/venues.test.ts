@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { prepared } from "./db.ts";
-import { locationDirectory, locationPage, venueBySlug, venueDirectory, venueIndex, venuePage } from "./venues.ts";
+import { locationDirectory, locationPage, searchLocations, venueBySlug, venueDirectory, venueIndex, venuePage } from "./venues.ts";
 
 test("every event belongs to at most one venue, and each venue lists its own events", () => {
   const index = venueIndex();
@@ -56,4 +56,17 @@ test("a location page's summary matches its cards and names the venues there", (
   const byVenue = page.events.filter((event: any) => event.venue && event.complete).length;
   assert.equal(page.venues.reduce((total: number, venue: any) => total + venue.events, 0), byVenue);
   assert.equal(locationPage("no-such-city"), null);
+});
+
+test("location search links to the matching city and counts completed and upcoming cards", () => {
+  const index = venueIndex();
+  for (const result of searchLocations("canada", 100)) {
+    const location = index.locations.get(result.slug);
+    assert.ok(location);
+    assert.equal(result.events, location.events.length);
+    assert.equal(result.name, location.name);
+    assert.ok(!result.approximate);
+  }
+  assert.equal(searchLocations("canada", 1).length, 1);
+  assert.deepEqual(searchLocations("mo"), []);
 });
