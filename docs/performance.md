@@ -671,3 +671,17 @@ Production's logs for the day after the October 21 release: one sync error, one
 | 404s on `/apple-touch-icon-120x120(-precomposed).png` | iOS asks for sized icons no page names | Served the one icon |
 | Stats boards, cold (VPS 414–545 ms) | Each fighter's 140-counter aggregate was an object literal, which V8 keeps in dictionary mode: every `+= 1` a hash lookup | A class; 110 board variants byte-identical, average build 273 → 197–212 ms on a copy of production's archive (this host, under production's load) |
 | `/api/news?fighter=` (300–410 ms) | Every feed read (90 of 100 bring new items) rebuilds the stories; a worker noticed only every 20 s, so a fighter page opened in between paid ~350 ms | Workers check every 2 s (a few `meta` reads); the card lookup is kept until a card or bout changes. Rebuild 215 → 180 ms |
+
+## Cancelled bouts from every source (2026-10-22)
+
+A card's cancelled list now merges FightOdds.io's board, the article's scrapped
+bouts and the pairings its replacements broke up (`cardCancellations`); a
+profile builds it for each card that lists one of theirs. On a copy of
+production's archive (this host, 400 profiles, 801 cards):
+
+| What | Before | After |
+| --- | --- | --- |
+| A profile's cancelled bouts | 0.4 ms (board only) | 7.0 ms with one scan of every bout for whom the fighter replaced; 3.5 ms with partial indexes on `f1_replaced_id`/`f2_replaced_id` and one indexed query per corner |
+| An event page's cancelled list | Parsed the stored article list | 0.9 ms per card on average |
+
+Profiles are cached by data revision, so the cost is paid once per change.
