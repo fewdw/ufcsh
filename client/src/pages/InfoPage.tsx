@@ -103,8 +103,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-23">October 23, 2026</time></p>
             <ul>
-              <li>Search a city to find every UFC event held there.</li>
-              <li>Location results show event counts and support accents, partial names and close spellings.</li>
+              <li>The calendar dialog opens with your saved card and start-time choices.</li>
+              <li>Outside-UFC fights are clearly labelled in the mobile Last five list.</li>
             </ul>
           </Section>
         </div>
