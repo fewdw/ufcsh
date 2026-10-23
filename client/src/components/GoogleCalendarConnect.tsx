@@ -1,7 +1,8 @@
 import { useAuth, useUser } from "@clerk/react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Check, LoaderCircle } from "lucide-react";
 import { useAccount } from "../auth";
+import { storeLocal } from "../preferences";
 import { GoogleLogo } from "./calendarLogos";
 import { CALENDAR_TILE, GOOGLE_CALENDAR_SCOPE, returnUrl, type FeedCards, type FeedStart, type Returning } from "../googleCalendar";
 
@@ -19,6 +20,17 @@ type Status = { connected: boolean; cards: FeedCards | null; from: FeedStart | n
 const SMALL_BUTTON = "inline-flex h-8 shrink-0 items-center rounded-lg px-2.5 text-xs font-medium transition";
 
 type OptionsLoaded = (cards: FeedCards, from: FeedStart) => void;
+
+/** The server's last answer for this account, kept in this browser so the
+ *  dialog opens showing the calendar as it was rather than filling it in a
+ *  moment later; the fresh answer replaces it. */
+const rememberedKey = (userId: string) => `ufcsh:google-calendar:${userId}`;
+function remembered(userId: string): Status | null {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(rememberedKey(userId)) ?? "null");
+    return saved && typeof saved === "object" && typeof (saved as Status).connected === "boolean" ? saved as Status : null;
+  } catch { return null; }
+}
 
 function useGoogleCalendar(onOptionsLoaded: OptionsLoaded) {
   const { getToken } = useAuth();
@@ -44,8 +56,12 @@ function useGoogleCalendar(onOptionsLoaded: OptionsLoaded) {
   }, [getToken]);
 
   const userId = user?.id;
-  useEffect(() => {
+  // Before the first paint, so the remembered calendar and its options show at once.
+  useLayoutEffect(() => {
     if (!isLoaded || !userId) { setStatus(null); return; }
+    const saved = remembered(userId);
+    setStatus(saved);
+    if (saved?.connected && saved.cards && saved.from) onOptionsLoaded(saved.cards, saved.from);
     let active = true;
     void call("GET").then((saved) => {
       if (active && saved.connected && saved.cards && saved.from) onOptionsLoaded(saved.cards, saved.from);
@@ -57,6 +73,10 @@ function useGoogleCalendar(onOptionsLoaded: OptionsLoaded) {
    *  access yet, ask Google (a trip there and back). The server is asked first,
    *  so a reader who already allowed it isn't sent to Google again. A return
    *  from Google never sends the reader back: if access was refused, it says so. */
+  useEffect(() => {
+    if (userId && status) storeLocal(rememberedKey(userId), JSON.stringify(status));
+  }, [userId, status]);
+
   const connect = useCallback(async (cards: FeedCards, from: FeedStart, returning = false) => {
     if (!user) return;
     setBusy(true);
