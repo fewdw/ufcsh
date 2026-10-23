@@ -27,6 +27,10 @@ const KEPT_DAYS = 7;
 const DAY = 86_400_000;
 /** Requests to Google at once for one calendar. */
 const PARALLEL = 4;
+/** How long a check that the UFC calendar is still in the reader's Google
+ *  account holds: when the dialog opens, and on the sync's own passes. */
+const VERIFY_OPEN_MS = 60_000;
+const VERIFY_SYNC_MS = 6 * 3_600_000;
 
 export class GoogleError extends Error {
   status: number;
@@ -98,6 +102,7 @@ export class GoogleCalendars {
   private readonly now: () => number;
   /** One change at a time per reader, so two quick clicks never make two calendars. */
   private readonly locks = new Map<string, Promise<unknown>>();
+  private readonly verified = new Map<string, number>();
   private running = false;
   lastPassError = "";
 
@@ -149,6 +154,8 @@ export class GoogleCalendars {
     return this.locked(user, async () => {
       const token = await this.token(user);
       if (!token) return false;
+      // One taken out of Google since is made again.
+      await this.verifyNow(user, token);
       const row = this.row(user);
       if (row) {
         this.db.prepare("UPDATE google_calendars SET cards = ?, start = ?, reconnect = 0 WHERE user_id = ?").run(options.cards, options.from, user);
@@ -159,6 +166,7 @@ export class GoogleCalendars {
         });
         this.db.prepare("INSERT INTO google_calendars (user_id, calendar_id, cards, start, created_at) VALUES (?, ?, ?, ?, ?)")
           .run(user, calendar.id, options.cards, options.from, this.now());
+        this.verified.set(user, this.now());
       }
       // A first fill Google turns away for now is finished by the next pass.
       await this.syncOne(user, token).catch(() => {});
@@ -181,8 +189,39 @@ export class GoogleCalendars {
     });
   }
 
+  /** Forgets a UFC calendar the reader took out of Google themselves. Deleted,
+   *  or unsubscribed from (which leaves it hidden in their account, so it is
+   *  deleted too). A sync only finds out when it next has a card to send. */
+  verify(user: string, within = VERIFY_OPEN_MS): Promise<void> {
+    const at = this.verified.get(user);
+    if (at != null && this.now() - at < within) return Promise.resolve();
+    return this.locked(user, () => this.verifyNow(user));
+  }
+
+  private async verifyNow(user: string, token?: string | null): Promise<void> {
+    const row = this.row(user);
+    if (!row || row.reconnect) return;
+    token ??= await this.token(user).catch(() => null);
+    if (!token) return;
+    this.verified.set(user, this.now());
+    const id = encodeURIComponent(row.calendar_id);
+    const gone = (error: unknown) => error instanceof GoogleError && (error.status === 404 || error.status === 410);
+    try { await this.request(token, "GET", `/users/me/calendarList/${id}`); return; }
+    catch (error) {
+      if (!gone(error)) {
+        // Anything but a refusal of the list itself leaves the calendar be.
+        if (!(error instanceof GoogleError && error.status === 403)) return;
+        try { await this.request(token, "GET", `/calendars/${id}`); return; }
+        catch (direct) { if (!gone(direct)) return; }
+      }
+    }
+    await this.request(token, "DELETE", `/calendars/${id}`).catch(() => {});
+    this.forget(user);
+  }
+
   /** An account deleted at Clerk; run inside the caller's transaction. */
   forget(user: string): void {
+    this.verified.delete(user);
     this.db.prepare("DELETE FROM google_calendar_events WHERE user_id = ?").run(user);
     this.db.prepare("DELETE FROM google_calendars WHERE user_id = ?").run(user);
   }
@@ -198,6 +237,7 @@ export class GoogleCalendars {
       const users = this.db.prepare("SELECT user_id FROM google_calendars WHERE reconnect = 0 ORDER BY user_id").all() as { user_id: string }[];
       for (const { user_id: user } of users) {
         try {
+          await this.verify(user, VERIFY_SYNC_MS);
           await this.locked(user, () => this.syncOne(user, undefined, read));
           synced++;
         } catch { failed++; }

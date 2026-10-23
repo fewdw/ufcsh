@@ -44,7 +44,11 @@ function useGoogleCalendar() {
   const userId = user?.id;
   useEffect(() => {
     if (!isLoaded || !userId) { setStatus(null); return; }
-    void call("GET").catch(() => {});
+    const refresh = () => { if (document.visibilityState === "visible") void call("GET").catch(() => {}); };
+    refresh();
+    // Back from Google Calendar, where the reader may have removed it.
+    document.addEventListener("visibilitychange", refresh);
+    return () => document.removeEventListener("visibilitychange", refresh);
   }, [isLoaded, userId, call]);
 
   /** Ask Google for access (a trip there and back), or, once granted, have the
@@ -111,26 +115,26 @@ export function GoogleCalendarConnect({ cards, from, returning }: { cards: FeedC
   let body: ReactNode;
   if (status?.connected && !status.reconnect) {
     const moved = status.cards !== cards || status.from !== from;
-    body = <div className="rounded-xl px-3.5 py-2.5 ring-1 ring-inset ring-zinc-200">
-      <div className="flex items-center gap-3">
-        <GoogleLogo />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1 text-sm font-medium text-zinc-900">
-            Google Calendar <Check className="h-4 w-4 text-emerald-600" aria-label="connected" />
-          </div>
-          <div className="text-xs leading-4 text-zinc-500">
-            "UFC" in My calendars · {status.cardCount} {status.cardCount === 1 ? "card" : "cards"} · {updatedAgo(status.syncedAt)}
-          </div>
-        </div>
+    body = <>
+      <div className="relative flex min-h-11 flex-col items-center justify-center rounded-xl px-[4.5rem] py-1.5 text-center ring-1 ring-inset ring-zinc-200">
+        <span className={LOGO}><GoogleLogo /></span>
+        <span className="inline-flex items-center gap-1 text-sm font-medium text-zinc-900">
+          Google Calendar <Check className="h-4 w-4 text-emerald-600" aria-label="connected" />
+        </span>
+        <span className="whitespace-nowrap text-[11px] leading-4 text-zinc-500" title={updatedAgo(status.syncedAt)}>
+          "UFC" · {status.cardCount} {status.cardCount === 1 ? "card" : "cards"}
+        </span>
         <button type="button" disabled={busy} onClick={() => void disconnect()}
-          className={`${SMALL_BUTTON} text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900`}>Remove</button>
+          className={`${SMALL_BUTTON} absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900`}>
+          {busy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-label="Removing" /> : "Remove"}
+        </button>
       </div>
       {moved ? <button type="button" disabled={busy} onClick={() => void connect(cards, from)}
         className="mt-2 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-zinc-900 text-xs font-medium text-white transition hover:bg-zinc-700 disabled:opacity-60">
         {busy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : null}
         Use these options in Google
       </button> : null}
-    </div>;
+    </>;
   } else {
     body = <button type="button" disabled={busy} className={ROW}
       onClick={() => signedIn ? void connect(cards, from) : signIn(returnUrl(cards, from, "signin"))}>

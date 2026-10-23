@@ -32,7 +32,10 @@ export function createGoogleCalendarHandler(store: GoogleCalendars, ensureAccoun
       if (!limiter.allow(`ip:${clientAddress(req)}`, 60, 1)) throw new ScoringError(429, "Too many requests. Try again shortly.");
       if ((req.headers.origin && !scoringOrigins().includes(req.headers.origin)) || req.headers["sec-fetch-site"] === "cross-site") throw new ScoringError(403, "Request origin is not allowed.");
       const user = await authenticate(req);
-      if (req.method === "GET" || req.method === "HEAD") return send(store.status(user)), true;
+      if (req.method === "GET" || req.method === "HEAD") {
+        await store.verify(user).catch(() => {});
+        return send(store.status(user)), true;
+      }
       if (!limiter.allow(`write:${user}`, 6, 0.1)) throw new ScoringError(429, "Please wait a moment before changing your calendar again.");
       if (req.method === "DELETE") {
         await store.disconnect(user);
