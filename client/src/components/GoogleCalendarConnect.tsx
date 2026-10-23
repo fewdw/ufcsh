@@ -91,7 +91,7 @@ function useGoogleCalendar(onOptionsLoaded: OptionsLoaded) {
     finally { setBusy(false); }
   }, [call]);
 
-  return { loaded: isLoaded, signedIn: Boolean(user), status, busy, error, connect, disconnect };
+  return { signedIn: Boolean(user), status, busy, error, connect, disconnect };
 }
 
 function updatedAgo(at: number | null): string {
@@ -102,29 +102,20 @@ function updatedAgo(at: number | null): string {
 
 /** Google's button in the subscription's row of apps, and what goes under the
  *  row: the connected calendar, with a way to move it to the options above or
- *  take it out. Signed out, Google subscribes to the feed like any app
- *  (`subscribe`), with signing in offered for quicker updates; the dialog
- *  closes first (`onLeave`), since Clerk's window can't open above it. */
-export function GoogleCalendarConnect({ cards, from, returning, onOptionsLoaded, subscribe, onLeave, children }: {
-  cards: FeedCards; from: FeedStart; returning: Returning | null; onOptionsLoaded: OptionsLoaded;
-  subscribe: ReactNode; onLeave: () => void;
+ *  take it out. Signed out, Google asks the reader to sign in first; the dialog
+ *  closes (`onLeave`) so Clerk's window isn't hidden beneath it. */
+export function GoogleCalendarConnect({ cards, from, returning, onOptionsLoaded, onLeave, children }: {
+  cards: FeedCards; from: FeedStart; returning: Returning | null; onOptionsLoaded: OptionsLoaded; onLeave: () => void;
   children: (google: ReactNode, below: ReactNode) => ReactNode;
 }) {
   const { signIn } = useAccount();
-  const { loaded, signedIn, status, busy, error, connect, disconnect } = useGoogleCalendar(onOptionsLoaded);
+  const { signedIn, status, busy, error, connect, disconnect } = useGoogleCalendar(onOptionsLoaded);
   const resumed = useRef(false);
   useEffect(() => {
     if (!returning || resumed.current || !signedIn) return;
     resumed.current = true;
     void connect(cards, from, returning === "google");
   }, [returning, signedIn, connect, cards, from]);
-
-  if (loaded && !signedIn) return children(subscribe, <p className="mt-2 text-[11px] leading-4 text-zinc-500">
-    Google refreshes subscribed calendars every few hours.{" "}
-    <button type="button" onClick={() => { onLeave(); signIn(returnUrl(cards, from, "signin")); }}
-      className="font-medium text-zinc-700 underline underline-offset-2 hover:text-zinc-900">Sign in</button>
-    {" "}and UFC.sh updates yours within minutes.
-  </p>);
 
   const connected = Boolean(status?.connected && !status.reconnect);
   const google = connected
@@ -138,7 +129,11 @@ export function GoogleCalendarConnect({ cards, from, returning, onOptionsLoaded,
       <span className="truncate">Google</span>
     </a>
     : <button type="button" disabled={busy} className={CALENDAR_TILE}
-      onClick={() => void connect(cards, from)}>
+      onClick={() => {
+        if (signedIn) return void connect(cards, from);
+        onLeave();
+        signIn(returnUrl(cards, from, "signin"));
+      }}>
       {busy ? <LoaderCircle className="h-5 w-5 shrink-0 animate-spin text-zinc-400" aria-hidden="true" /> : <GoogleLogo />}
       <span className="truncate">{busy ? "Adding…" : status?.reconnect ? "Reconnect" : "Google"}</span>
     </button>;
