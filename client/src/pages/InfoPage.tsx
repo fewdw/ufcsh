@@ -103,6 +103,7 @@ export default function InfoPage() {
             <p><time dateTime="2026-10-23">October 23, 2026</time></p>
             <ul>
               <li>Every card lists all its cancelled bouts, including ones broken up by a late replacement.</li>
+              <li>Past cards' replacements and cancellations are read again from Wikipedia, fixing a few misread names.</li>
               <li>Matchup cards keep a fighter's full-body portrait even when the opponent has none.</li>
             </ul>
           </Section>
