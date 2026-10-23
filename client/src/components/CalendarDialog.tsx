@@ -34,9 +34,6 @@ const startOf = (schedule: CardSchedule | undefined, segment: CardSegment): numb
     : segment === "prelims" ? schedule?.prelims_at ?? null
       : schedule?.early_prelims_at ?? null;
 
-/** iPhone, iPad and Mac readers see Apple Calendar first; everyone else Google. */
-const appleDevice = () => typeof navigator !== "undefined" && /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
-
 /** The feed's address, defaults left out (the server's `calendarQuery`). */
 function feedPath(cards: Cards, from: FeedStart): string {
   const params = new URLSearchParams();
@@ -72,9 +69,9 @@ function Action({ href, logo, title, download, newTab }: {
   </a>;
 }
 
-/** Google, Apple and Outlook in a row, Apple first on Apple's own devices. */
+/** Google, Apple and Outlook in a row. */
 function Actions({ google, apple, outlook }: { google: ReactNode; apple: ReactNode; outlook: ReactNode }) {
-  return <div className="grid grid-cols-3 gap-2">{appleDevice() ? <>{apple}{google}</> : <>{google}{apple}</>}{outlook}</div>;
+  return <div className="grid grid-cols-3 gap-2">{google}{apple}{outlook}</div>;
 }
 
 function CardPanel({ event, onSubscribe }: { event: CalendarEvent; onSubscribe: () => void }) {
