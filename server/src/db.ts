@@ -501,19 +501,13 @@ if (getMeta("migration_placeholder_photos_v2") !== "1") {
 // (v3: months and acronyms were read as the replaced fighter's name;
 // v4: cited replacement reports also retain the announcement date;
 // v5: "X was expected to face Y, but … was replaced by Z" and "Y instead faced
-// Z" after X withdrew name X, so cards with an unnamed replacement are read again).
-if (getMeta("migration_bout_changes") !== "5") {
-  if (!["3", "4"].includes(getMeta("migration_bout_changes") ?? "")) {
-    db.exec("UPDATE events SET wiki_info_checked_at = NULL WHERE complete = 1");
-  } else {
-    if (getMeta("migration_bout_changes") === "3") db.exec(`UPDATE events SET wiki_info_checked_at = NULL WHERE complete = 1 AND id IN (
-      SELECT event_id FROM fights WHERE (f1_replaced IS NOT NULL AND f1_notice IS NULL)
-        OR (f2_replaced IS NOT NULL AND f2_notice IS NULL))`);
-    db.exec(`UPDATE events SET wiki_info_checked_at = NULL WHERE complete = 1 AND id IN (
-      SELECT event_id FROM fights WHERE f1_replaced = '' OR f1_replaced NOT LIKE '% %' OR (f1_short_notice = 1 AND f1_replaced IS NULL)
-        OR f2_replaced = '' OR f2_replaced NOT LIKE '% %' OR (f2_short_notice = 1 AND f2_replaced IS NULL))`);
-  }
-  setMeta("migration_bout_changes", "5");
+// Z" after X withdrew name X, so cards with an unnamed replacement are read again;
+// v6: "replaced by Bruno Silva" was read as Ariane da Silva on her card, and a
+// cancellation told as another card's history was read as this card's, so
+// every past card is read again).
+if (getMeta("migration_bout_changes") !== "6") {
+  db.exec("UPDATE events SET wiki_info_checked_at = NULL WHERE complete = 1");
+  setMeta("migration_bout_changes", "6");
 }
 
 // A bare surname could be attributed to a card fighter when the article meant

@@ -50,6 +50,17 @@ test("a replacement surname belongs to the preceding booking rather than a linke
   assert.equal(change.replaced, "Gabriel Santos");
 });
 
+test("a replacement who shares the surname without its particle is not the card's fighter", () => {
+  // UFC Fight Night: Moicano vs. The Korean Zombie: Bruno Silva, then Eric Spicely, replaced Perez.
+  const text = article("A middleweight bout between [[Markus Perez]] and [[Deron Winn]] was scheduled for the event. However, Perez pulled out of the fight due to injury and was replaced by promotional newcomer [[Bruno Silva (fighter)|Bruno Silva]]. On June 16, Silva was forced out of the bout and was replaced by [[Eric Spicely]].");
+  const { changes } = cardChanges(text, [["Molly McCann", "Ariane da Silva"], ["Deron Winn", "Eric Spicely"]]);
+  assert.equal(changes.find((change) => change.name === "Ariane da Silva"), undefined);
+  assert.equal(changes.find((change) => change.name === "Eric Spicely")?.replaced, "Bruno Silva");
+  // A card's own "da Silva" still is.
+  const own = cardChanges(article("[[Molly McCann]] was expected to face [[Ariane Lipski]]. However, Lipski withdrew and was replaced by [[Ariane da Silva]]."), [["Molly McCann", "Ariane da Silva"]]).changes[0];
+  assert.equal(own.replaced, "Ariane Lipski");
+});
+
 test("infobox dates read both the template and written forms", () => {
   assert.equal(infoboxDate(article("")), "2024-01-20");
   assert.equal(infoboxDate("| date = August 11, 2012\n"), "2012-08-11");
