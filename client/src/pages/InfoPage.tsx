@@ -103,8 +103,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-23">October 23, 2026</time></p>
             <ul>
-              <li>The calendar dialog opens with your saved card and start-time choices.</li>
-              <li>Outside-UFC fights are clearly labelled in the mobile Last five list.</li>
+              <li>Adding UFC to Google Calendar while signed out now goes straight to Google sign-in, then adds the calendar.</li>
+              <li>The calendar dialog shows your connected Google calendar right away when it opens.</li>
             </ul>
           </Section>
         </div>
