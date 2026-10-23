@@ -68,13 +68,14 @@ export type Capping = { eventOffers: { fightOffers: { edges: { node: { fight: Ca
 export type FightOddsCancelled = { slug: string; url: string; weightClass: string; f1: FightOddsCorner; f2: FightOddsCorner };
 
 export function cancelledOnBoard(capping: Capping): FightOddsCancelled[] {
-  return capping.eventOffers!.fightOffers.edges
-    .map(({ node }) => node.fight)
-    .filter((fight) => fight.isCancelled)
-    .map((fight) => {
-      const { slug, url, f1, f2 } = parseBout({ ...fight, straightOffers: { edges: [] } });
-      return { slug, url, weightClass: fight.weightClass?.weightClass?.trim() ?? "", f1, f2 };
-    });
+  const bouts = capping.eventOffers!.fightOffers.edges
+    .map(({ node }) => ({ ...parseBout({ ...node.fight, straightOffers: { edges: [] } }), fight: node.fight }));
+  // A pairing the board lists again, still on, was posted twice, not cancelled.
+  const pair = (bout: FightOddsBout) => [bout.f1, bout.f2].map((corner) => corner.id ?? normName(corner.name)).sort().join("|");
+  const on = new Set(bouts.filter((bout) => !bout.fight.isCancelled).map(pair));
+  return bouts
+    .filter((bout) => bout.fight.isCancelled && !on.has(pair(bout)))
+    .map(({ slug, url, f1, f2, fight }) => ({ slug, url, weightClass: fight.weightClass?.weightClass?.trim() ?? "", f1, f2 }));
 }
 
 /** The cancelled bouts on one event's board. */

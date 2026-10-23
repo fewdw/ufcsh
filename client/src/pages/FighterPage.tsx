@@ -553,7 +553,7 @@ function CancelledRowView({ bout }: { bout: ProfileCancelledBout }) {
   const eventTo = bout.event_id ? `/events/${bout.event_id}` : null;
   // A moved bout leads to the one they had; a cancelled one to the source.
   const statusTo = bout.moved_to ? `/fights/${bout.moved_to.fight_id}` : null;
-  const statusLabel = bout.moved_to ? `Open ${bout.opponent.name} matchup on ${bout.moved_to.event_name}` : `Cancelled bout with ${bout.opponent.name} on FightOdds.io`;
+  const statusLabel = bout.moved_to ? `Open ${bout.opponent.name} matchup on ${bout.moved_to.event_name}` : `Cancelled bout with ${bout.opponent.name} on ${bout.source_url.includes("wikipedia.org") ? "Wikipedia" : "FightOdds.io"}`;
   const movedTo = bout.moved_to ? <span title={bout.moved_to.event_name}>to {formatDateShortWithYear(bout.moved_to.date)}</span> : null;
   const what = <FactRun>
     <span className="font-medium">{status}</span>
