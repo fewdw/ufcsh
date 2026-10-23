@@ -103,9 +103,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-23">October 23, 2026</time></p>
             <ul>
-              <li>Add a UFC event to your calendar, with the sections you choose and every bout listed.</li>
-              <li>Subscribe to all cards, PPVs or Fight Nights, with full cards or main cards only.</li>
-              <li>Connect Google Calendar for automatic updates, or subscribe with Apple, Outlook or another calendar app.</li>
+              <li>Search a city to find every UFC event held there.</li>
+              <li>Location results show event counts and support accents, partial names and close spellings.</li>
             </ul>
           </Section>
         </div>
