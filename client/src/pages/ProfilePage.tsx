@@ -1,5 +1,5 @@
 import { useAuth } from "@clerk/react";
-import { Check, ChevronDown, Flag, ImageIcon, Info, LogOut, Pencil, Radio, Search, Settings, SquareTerminal, X } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, Flag, ImageIcon, Info, LogOut, Pencil, Radio, Search, Settings, SquareTerminal, X } from "lucide-react";
 import { isDevSite, useDevStats } from "../devStats";
 import { updatePreview, usePreviewSettings } from "../livePreview";
 import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
@@ -15,6 +15,7 @@ import ProfilePredictions, { predictionsList } from "../components/ProfilePredic
 import ProfileBets, { betsList } from "../components/ProfileBets";
 import ProfileComments, { commentsList } from "../components/ProfileComments";
 import ReportIssueDialog from "../components/ReportIssueDialog";
+import { SubscribeCalendarButton } from "../components/CalendarDialog";
 import Leaderboards from "../components/Leaderboards";
 import { formatDateShortWithYear, formatMethod, outcomeClasses } from "../format";
 import { useRouteScrollRestoration, useTabBarAnchor } from "../navigationState";
@@ -413,6 +414,9 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
           <Link to="/info" className={action} title="About UFC.sh, sources, rules and shortcuts">
             <Info className="h-3.5 w-3.5" aria-hidden="true" />Information
           </Link>
+          <SubscribeCalendarButton className={action}>
+            <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />Calendar
+          </SubscribeCalendarButton>
           <Link to="/graphic" className={action} title="Build a shareable graphic">
             <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />Graphic (Beta)
           </Link>

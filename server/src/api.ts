@@ -15,6 +15,7 @@ import { BetStore } from "./bets.ts";
 import { createBetsHandler } from "./bets-http.ts";
 import { createLeaderboards } from "./leaderboards.ts";
 import { cardOrder, estimatedStart, type SegmentTimes } from "./card-schedule.ts";
+import { calendarAnswer, calendarFileName, calendarOptions, calendarQuery, calendarStart } from "./calendar.ts";
 import http from "node:http";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -44,6 +45,8 @@ import { createReportsHandler } from "./reports-http.ts";
 import { CommentStore } from "./comments.ts";
 import { createCommentsHandler } from "./comments-http.ts";
 import { ACCOUNT_SYNC_MS, accountSyncCheck, adminAccounts, syncAccounts } from "./accounts.ts";
+import { GOOGLE_SYNC_MS, GoogleCalendars } from "./google-calendar.ts";
+import { createGoogleCalendarHandler } from "./google-calendar-http.ts";
 import { recentSyncError, syncStatus } from "./sync-status.ts";
 import { adminLive, releasedRounds } from "./live-rounds.ts";
 import { pruneBackups } from "./backup-retention.ts";
@@ -2443,6 +2446,8 @@ export function startApi(port: number): http.Server {
   const betStore = new BetStore(scoreStore, betContext, predictionFights);
   const bets = createBetsHandler(betStore, createLeaderboards(scoreStore, predictionStore, betStore));
   const reportStore = new ReportStore(scoreStore);
+  const googleCalendars = new GoogleCalendars(scoreStore.db);
+  const googleCalendar = createGoogleCalendarHandler(googleCalendars, user => { scoreStore.identity(user); });
   const reports = createReportsHandler(reportStore);
   const commentStore = new CommentStore(scoreStore, scoringFights);
   const comments = createCommentsHandler(commentStore);
@@ -2481,7 +2486,7 @@ export function startApi(port: number): http.Server {
         built.catch(() => { if (bugBoard === entry) bugBoard = null; });
       }
       const report = await bugBoard.report;
-      return { ...report, checks: [accountSyncCheck(), ...report.checks] };
+      return { ...report, checks: [accountSyncCheck(), googleCalendars.check(), ...report.checks] };
     },
     runAction: async (action, target, actor) => {
       // The board reloads after a repair and must show what it changed.
@@ -2507,13 +2512,20 @@ export function startApi(port: number): http.Server {
   }, 15_000);
   settler.unref();
   // Accounts deleted or changed at Clerk are caught up here.
-  const accountStores = { scores: scoreStore, comments: commentStore, predictions: predictionStore, bets: betStore };
+  const accountStores = { scores: scoreStore, comments: commentStore, predictions: predictionStore, bets: betStore, calendars: googleCalendars };
   const accountSync = setInterval(() => {
     void syncAccounts(accountStores)
       .then(({ forgotten }) => { if (forgotten) log(`forgot ${forgotten} deleted account(s)`); })
       .catch(error => log("account sync failed:", String(error)));
   }, ACCOUNT_SYNC_MS);
   accountSync.unref();
+  // Connected Google calendars follow bookings and start times within minutes.
+  const googleSync = setInterval(() => {
+    void googleCalendars.syncAll()
+      .then(({ failed }) => { if (failed) log(`google calendars: ${failed} did not update`); })
+      .catch(error => log("google calendar sync failed:", String(error)));
+  }, GOOGLE_SYNC_MS);
+  googleSync.unref();
   // Old database copies are thinned out every day (backup-retention.ts), so
   // backups never fill the disk however long the site runs unattended.
   const thinBackups = () => void pruneBackups(DATA_DIR)
@@ -2753,6 +2765,7 @@ export function startApi(port: number): http.Server {
       if (!stopping && await scoring(req, res, url)) return;
       if (!stopping && await predictions(req, res, url)) return;
       if (!stopping && await bets(req, res, url)) return;
+      if (!stopping && await googleCalendar(req, res, url)) return;
       if (!stopping && await reports(req, res, url)) return;
       if (!stopping && await comments(req, res, url)) return;
       if (!stopping && await admin(req, res, url)) return;
@@ -2805,6 +2818,32 @@ export function startApi(port: number): http.Server {
         if (!row) return await sendJson(req, res, { error: "not found" }, 404);
         const odds = await boutOdds({ id: row.id, date: row.date, f1: fighterNames(row.f1_id, row.f1_name), f2: fighterNames(row.f2_id, row.f2_name) });
         return await sendJson(req, res, { fight_id: row.id, odds, finished: null });
+      }
+      if (p === "/cal/ufc.ics" || p.startsWith("/cal/events/")) {
+        // Calendars: the subscription feed, and one card as a file or as a
+        // Google Calendar link. Built in a query worker, kept a minute.
+        const card = /^\/cal\/events\/([a-f0-9]{16})(\.ics|\/google)$/i.exec(p);
+        if (p !== "/cal/ufc.ics" && !card) return await sendJson(req, res, { error: "not found" }, 404);
+        const query = card
+          ? new URLSearchParams({ event: card[1], from: calendarStart(url.searchParams.get("from")), ...(card[2] === "/google" ? { as: "google" } : {}) }).toString()
+          : calendarQuery(calendarOptions(url.searchParams));
+        const value = await cache.get(`calendar:${query}`, 60_000, async () => {
+          if (!queryPool) {
+            const answer = calendarAnswer(new URLSearchParams(query));
+            return answer === undefined ? { json: JSON.stringify({ error: "not found" }), status: 404 } : { json: answer, status: 200 };
+          }
+          const result = await queryPool.run(`/_calendar?${query}`);
+          return result.status === 200 ? { json: JSON.parse(result.json), status: 200 } : result;
+        }, 10 * 60_000);
+        if (value.status !== 200) return sendRepresentation(req, res, value, "no-store");
+        if (card?.[2] === "/google") {
+          res.writeHead(302, { Location: value.body.toString(), "Cache-Control": "no-store" });
+          res.end();
+          return;
+        }
+        const title = card ? (prepared("SELECT name FROM events WHERE id = ?").get(card[1]) as { name: string } | undefined)?.name ?? "" : "";
+        res.setHeader("Content-Disposition", card ? `attachment; filename="${calendarFileName(title)}"` : 'inline; filename="ufc.ics"');
+        return sendRepresentation(req, res, value, "public, max-age=60", "text/calendar; charset=utf-8");
       }
       if (publicApi(p)) {
         const asked = performance.now();
@@ -2898,6 +2937,7 @@ export function startApi(port: number): http.Server {
     clearInterval(warmLists);
     clearInterval(settler);
     clearInterval(accountSync);
+    clearInterval(googleSync);
     clearInterval(refresher);
     process.removeListener("SIGTERM", shutdown);
     process.removeListener("SIGINT", shutdown);

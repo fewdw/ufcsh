@@ -82,6 +82,7 @@ export default function InfoPage() {
           <Section id="privacy">
             <p>Signed out: visits are counted anonymously with a random ID kept in your browser, plus the linking site, device type and country. The ID is scrambled before it’s saved and deleted after 35 days; only daily totals stay. IP addresses aren’t stored.</p>
             <p>Signed in: you sign in with Google through <a href="https://clerk.com/legal/privacy" target="_blank" rel="noreferrer">Clerk</a>, which keeps your name, email and picture. I keep your username, picture and what you do here: scorecards, predictions, bets, comments and reports. Your profile, scorecards and comments are public.</p>
+            <p>Google Calendar: if you connect it, I create one calendar named UFC in your Google account and only add, change and remove UFC cards in it. I can’t see or change your other calendars or events. Remove it from the calendar dialog, or take back access in your Google account, and it stops.</p>
             <p>Cookies and storage: Clerk’s cookies keep you signed in, and Cloudflare, which carries the site’s traffic, may set one to stop bots. Settings and recently loaded pages are kept in your browser. No ads, no tracking cookies, no outside analytics.</p>
             <p>Deleting your data: on your <Link to="/profiles/me">profile</Link>, Manage account → Delete account. Your scorecards, predictions, bets and comments are erased within minutes. Or email me and I’ll do it.</p>
             <p>I never sell or share your data.</p>
@@ -102,9 +103,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-23">October 23, 2026</time></p>
             <ul>
-              <li>Every card lists all its cancelled bouts, including ones broken up by a late replacement.</li>
-              <li>Past cards' replacements and cancellations are read again from Wikipedia, fixing a few misread names.</li>
-              <li>Matchup cards keep a fighter's full-body portrait even when the opponent has none.</li>
+              <li>Add a UFC event to your calendar, with the sections you choose and every bout listed.</li>
+              <li>Subscribe to all cards, PPVs or Fight Nights, with full cards or main cards only.</li>
+              <li>Connect Google Calendar for automatic updates, or subscribe with Apple, Outlook or another calendar app.</li>
             </ul>
           </Section>
         </div>

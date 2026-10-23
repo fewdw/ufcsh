@@ -21,6 +21,11 @@ import { ShortcutProvider } from "./shortcuts";
 import { DevStatsOverlay, isDevSite } from "./devStats";
 import { LivePreviewPanel } from "./livePreview";
 
+/** Only a reader coming back from Google (or from signing in on the way)
+ *  loads the calendar dialog here, to finish connecting their calendar. */
+const GoogleCalendarReturn = lazy(() => import("./components/CalendarDialog").then(module => ({ default: module.GoogleCalendarReturn })));
+const returningToCalendar = accountsEnabled && /[?&]calendar=(google|signin)\./.test(window.location.search);
+
 /** A route's page: rendered directly once its code is in hand (the usual case,
  *  since every page's code is fetched in the background), through Suspense
  *  only before then. Chosen once per mount, so a page never remounts. */
@@ -301,6 +306,7 @@ export default function App() {
       <Header onSearch={openSearch} />
       {isDevSite ? <DevStatsOverlay /> : null}
       {isDevSite ? <LivePreviewPanel /> : null}
+      {returningToCalendar ? <Suspense fallback={null}><GoogleCalendarReturn /></Suspense> : null}
       <div className="min-h-0 flex-1 overflow-hidden">
         {/* One boundary for the whole app, outside the per-section error
             boundary: navigations run as transitions, so a page whose code is
