@@ -8,7 +8,7 @@ import { accountsEnabled } from "../auth";
 import { segmentedIdle, segmentedSelected } from "./segmented";
 import { AppleLogo, GoogleLogo, OutlookLogo } from "./calendarLogos";
 import { GoogleCalendarConnect } from "./GoogleCalendarConnect";
-import { resumeGoogleCalendar, type FeedCards as Cards, type FeedStart, type Returning } from "../googleCalendar";
+import { CALENDAR_TILE, resumeGoogleCalendar, type FeedCards as Cards, type FeedStart, type Returning } from "../googleCalendar";
 
 /**
  * Cards in the reader's calendar app. One card, from the section they choose,
@@ -54,7 +54,7 @@ function Segmented<T extends string>({ label, value, options, onChange }: {
     <div className="flex items-stretch gap-1 rounded-2xl bg-zinc-100 p-1" role="group" aria-label={label}>
       {options.map((option) => (
         <button key={option.value} type="button" aria-pressed={value === option.value} onClick={() => onChange(option.value)}
-          className={`flex min-h-9 min-w-0 flex-1 flex-col items-center justify-center rounded-xl px-1.5 py-1.5 text-center text-[13px] font-medium leading-tight transition sm:text-xs ${
+          className={`flex min-h-9 min-w-0 flex-1 flex-col sm:flex-auto items-center justify-center whitespace-nowrap rounded-xl px-1.5 py-1.5 text-center text-[13px] font-medium leading-tight transition sm:text-xs ${
             value === option.value ? segmentedSelected : segmentedIdle}`}>
           <span>{option.label}</span>
           {option.detail ? <span className="mt-0.5 text-[11px] font-normal tabular-nums text-zinc-500">{option.detail}</span> : null}
@@ -64,20 +64,18 @@ function Segmented<T extends string>({ label, value, options, onChange }: {
   </div>;
 }
 
-/** One calendar app: its mark at the left, its name centred. */
+/** One calendar app: its mark and its name. */
 function Action({ href, logo, title, download, newTab }: {
   href: string; logo: ReactNode; title: string; download?: string; newTab?: boolean;
 }) {
-  return <a href={href} download={download} target={newTab ? "_blank" : undefined} rel={newTab ? "noopener noreferrer" : undefined}
-    className="relative flex min-h-11 items-center justify-center rounded-xl px-12 py-2 text-center text-sm font-medium text-zinc-900 ring-1 ring-inset ring-zinc-200 transition hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">
-    <span className="absolute left-3.5 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center">{logo}</span>
-    {title}
+  return <a href={href} download={download} target={newTab ? "_blank" : undefined} rel={newTab ? "noopener noreferrer" : undefined} className={CALENDAR_TILE}>
+    {logo}<span className="truncate">{title}</span>
   </a>;
 }
 
-/** Google, Apple and Outlook, Apple first on Apple's own devices. */
+/** Google, Apple and Outlook in a row, Apple first on Apple's own devices. */
 function Actions({ google, apple, outlook }: { google: ReactNode; apple: ReactNode; outlook: ReactNode }) {
-  return <div className="space-y-2">{appleDevice() ? <>{apple}{google}</> : <>{google}{apple}</>}{outlook}</div>;
+  return <div className="grid grid-cols-3 gap-2">{appleDevice() ? <>{apple}{google}</> : <>{google}{apple}</>}{outlook}</div>;
 }
 
 function CardPanel({ event, onSubscribe }: { event: CalendarEvent; onSubscribe: () => void }) {
@@ -107,8 +105,8 @@ function CardPanel({ event, onSubscribe }: { event: CalendarEvent; onSubscribe: 
     </p> : null}
     <div>
       <Actions
-        google={<Action href={`/cal/events/${event.id}/google${query}`} newTab logo={<GoogleLogo />} title="Google Calendar" />}
-        apple={<Action href={file} logo={<AppleLogo />} title="Apple Calendar" />}
+        google={<Action href={`/cal/events/${event.id}/google${query}`} newTab logo={<GoogleLogo />} title="Google" />}
+        apple={<Action href={file} logo={<AppleLogo />} title="Apple" />}
         outlook={<Action href={file} download="" logo={<OutlookLogo />} title="Outlook" />} />
       <p className="mt-2 text-center text-[11px] leading-4 text-zinc-500">
         Another app? <a href={file} download="" className="font-medium text-zinc-700 underline underline-offset-2 hover:text-zinc-900">Download the .ics file</a>
@@ -145,19 +143,23 @@ function SubscribePanel({ resume }: { resume?: Resume }) {
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2000);
   };
+  const apps = (google: ReactNode) => <Actions google={google}
+    apple={<Action href={webcal} logo={<AppleLogo />} title="Apple" />}
+    outlook={<Action href={`https://outlook.live.com/calendar/0/addfromweb?url=${encodeURIComponent(https)}&name=UFC`} newTab logo={<OutlookLogo />} title="Outlook" />} />;
   return <div className="space-y-4 px-5 py-4">
-    <Segmented label="Cards" value={cards} onChange={setCards} options={[
-      { value: "all", label: "All" }, { value: "ppv", label: "PPV" }, { value: "fight_night", label: "Fight Nights" },
-    ]} />
-    <Segmented label="Include" value={from} onChange={setFrom} options={[
-      { value: "early", label: "Full card" }, { value: "main", label: "Main card" },
-    ]} />
-    <Actions
-      google={accountsEnabled
-        ? <GoogleCalendarConnect cards={cards} from={from} returning={resume?.stage ?? null} />
-        : <Action href={`https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcal)}`} newTab logo={<GoogleLogo />} title="Google Calendar" />}
-      apple={<Action href={webcal} logo={<AppleLogo />} title="Apple Calendar" />}
-      outlook={<Action href={`https://outlook.live.com/calendar/0/addfromweb?url=${encodeURIComponent(https)}&name=UFC`} newTab logo={<OutlookLogo />} title="Outlook" />} />
+    <div className="grid gap-4 sm:grid-cols-[3fr_2fr] sm:gap-3">
+      <Segmented label="Cards" value={cards} onChange={setCards} options={[
+        { value: "all", label: "All" }, { value: "ppv", label: "PPV" }, { value: "fight_night", label: "Fight Nights" },
+      ]} />
+      <Segmented label="Include" value={from} onChange={setFrom} options={[
+        { value: "early", label: "Full card" }, { value: "main", label: "Main card" },
+      ]} />
+    </div>
+    {accountsEnabled
+      ? <GoogleCalendarConnect cards={cards} from={from} returning={resume?.stage ?? null}>
+        {(google, below) => <div>{apps(google)}{below}</div>}
+      </GoogleCalendarConnect>
+      : apps(<Action href={`https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcal)}`} newTab logo={<GoogleLogo />} title="Google" />)}
     <div>
       <div className="mb-1.5 text-xs font-medium text-zinc-700">Or copy the link into any calendar app</div>
       <div className="flex items-center gap-2">
@@ -170,11 +172,9 @@ function SubscribePanel({ resume }: { resume?: Resume }) {
         </button>
       </div>
     </div>
-    <p className="text-[11px] leading-4 text-zinc-500">
-      {accountsEnabled
-        ? "Google Calendar gets new cards, bouts and start times within minutes, and works in the Google Calendar app on Android too. Apple and Outlook check for them about hourly."
-        : "New cards, bouts and start times arrive on your calendar app's own schedule: about hourly on Apple and Outlook, every few hours on Google. On Android, subscribe with Google Calendar in a browser and it syncs to the app."}
-    </p>
+    {accountsEnabled ? null : <p className="text-[11px] leading-4 text-zinc-500">
+      New cards, bouts and start times arrive on your calendar app's own schedule: about hourly on Apple and Outlook, every few hours on Google. On Android, subscribe with Google Calendar in a browser and it syncs to the app.
+    </p>}
   </div>;
 }
 

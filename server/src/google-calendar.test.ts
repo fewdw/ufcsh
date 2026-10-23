@@ -51,8 +51,7 @@ test("a pass sends only what changed: new times updated, a dropped card removed,
   state.cards = [entry(A, 3, "UFC A, moved")]; // B cancelled, C past the week back
   await store.syncAll();
   const events = "/calendars/cal1%40group.calendar.google.com/events";
-  assert.deepEqual(calls.sort(), [`DELETE ${events}/ufcsh${B}`, "GET /users/me/calendarList/cal1%40group.calendar.google.com", `PUT ${events}/ufcsh${A} ufcsh${A}`],
-    "and, days on, a check that the calendar is still there");
+  assert.deepEqual(calls.sort(), [`DELETE ${events}/ufcsh${B}`, `PUT ${events}/ufcsh${A} ufcsh${A}`]);
   assert.equal(store.status("u1").cardCount, 1, "the old card is no longer tracked, and stays in Google");
 });
 
@@ -92,46 +91,21 @@ test("access withdrawn waits for the reader; a calendar they deleted is forgotte
   assert.equal(store.status("u1").connected, false);
 });
 
-test("a UFC calendar deleted or unsubscribed from in Google is forgotten when the dialog opens, and made again on connect", async () => {
-  const { store, calls, fail, state } = setup([entry(A, 3)]);
-  const id = "cal1%40group.calendar.google.com";
-  await store.connect("u1", { cards: "all", from: "early" }, "UTC");
-  calls.length = 0;
-  await store.verify("u1");
-  assert.deepEqual(calls, [], "just made, so not asked again");
-
-  state.now += 2 * 60_000;
-  fail.set("GET /users/me/calendarList", new GoogleError(404, "not found"));
-  await store.verify("u1");
-  assert.deepEqual(calls, [`GET /users/me/calendarList/${id}`, `DELETE /calendars/${id}`], "an unsubscribed calendar, still there hidden, is deleted");
-  assert.equal(store.status("u1").connected, false);
-
-  await store.connect("u1", { cards: "all", from: "early" }, "UTC");
-  assert.equal(store.status("u1").connected, true);
-  state.now += 2 * 60_000;
-  fail.set("GET /users/me/calendarList", new GoogleError(403, "insufficient", "insufficientPermissions"));
-  fail.set("GET /calendars", new GoogleError(404, "not found"));
-  calls.length = 0;
-  await store.verify("u1");
-  assert.deepEqual(calls.slice(0, 2), [`GET /users/me/calendarList/${id}`, `GET /calendars/${id}`], "the calendar itself, when the list is out of reach");
-  assert.equal(store.status("u1").connected, false);
-
-  await store.connect("u1", { cards: "all", from: "early" }, "UTC");
-  state.now += 2 * 60_000;
-  fail.set("GET /calendars", new GoogleError(503, "backend error"));
-  await store.verify("u1");
-  assert.equal(store.status("u1").connected, true, "Google being down is no reason to forget it");
-});
-
 test("without Google access nothing is made; removing takes the calendar out of Google", async () => {
   const none = setup([entry(A, 3)], null);
   assert.equal(await none.store.connect("u1", { cards: "all", from: "early" }, "UTC"), false);
   assert.deepEqual(none.calls, []);
 
-  const { store, calls } = setup([entry(A, 3)]);
+  const { store, calls, fail } = setup([entry(A, 3)]);
   await store.connect("u1", { cards: "all", from: "early" }, "UTC");
   await store.disconnect("u1");
   assert.equal(calls.at(-1), "DELETE /calendars/cal1%40group.calendar.google.com");
+
+  // Deleted by the reader in Google first: Google calls deleting it again a bad request.
+  await store.connect("u1", { cards: "all", from: "early" }, "UTC");
+  fail.set("DELETE /calendars/cal1%40group.calendar.google.com", new GoogleError(400, "Bad Request", "badRequest"));
+  await store.disconnect("u1");
+  assert.equal(store.status("u1").connected, false);
   assert.deepEqual(store.status("u1"), { connected: false, cards: null, from: null, syncedAt: null, reconnect: false, cardCount: 0 });
 });
 

@@ -1,6 +1,9 @@
 /** Connecting Google Calendar goes to Google and back, a page load each way;
  *  the options ride in the return address (components/GoogleCalendarConnect.tsx). */
 
+/** A calendar app's button in the calendar dialog, three to a row. */
+export const CALENDAR_TILE = "flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-xl px-2 py-2 text-sm font-medium text-zinc-900 ring-1 ring-inset ring-zinc-200 transition hover:bg-zinc-50 disabled:cursor-wait disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900";
+
 export const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.app.created";
 export type FeedCards = "all" | "ppv" | "fight_night";
 export type FeedStart = "early" | "main";
