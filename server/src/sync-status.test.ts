@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { DATA_DIR, getMeta, setMeta } from "./db.ts";
-import { recentSyncError, recordSyncError, syncStatus } from "./sync-status.ts";
+import { OUTAGE_MS, outageReport, recentSyncError, recordSyncError, syncStatus } from "./sync-status.ts";
 
 test("sync errors are kept newest first, grouped by job, and sources say when they are late", () => {
   const saved = { errors: getMeta("sync_errors"), last: getMeta("last_sync_error"), tick: getMeta("last_tick_at") };
@@ -56,4 +56,31 @@ test("a locked error archive logs the original failure without rejecting, then r
     setMeta("sync_errors", saved.errors ?? "");
     setMeta("last_sync_error", saved.last ?? "");
   }
+});
+
+test("a source's passing failure waits to see whether it lasts; an answer in between starts the clock again", () => {
+  const MIN = 60_000, t0 = 1_000_000_000;
+  const busy = new Error("HTTP 502 for http://ufcstats.com/fight-details/x");
+  assert.equal(outageReport("live a", busy, t0), false);
+  assert.equal(outageReport("live a", busy, t0 + 10 * MIN), false);
+  // A page still filling in is an answer: the source is up.
+  outageReport("live a", null, t0 + 11 * MIN, true);
+  assert.equal(outageReport("live a", busy, t0 + 12 * MIN), false);
+  assert.equal(outageReport("live a", busy, t0 + 12 * MIN + OUTAGE_MS - 1), false);
+  // Down for the whole window: reported once, then again only hours later.
+  assert.equal(outageReport("live a", busy, t0 + 12 * MIN + OUTAGE_MS), true);
+  assert.equal(outageReport("live a", busy, t0 + 40 * MIN), false);
+  assert.equal(outageReport("live a", busy, t0 + 12 * MIN + OUTAGE_MS + 6 * 60 * MIN), true);
+  // An hourly job is reported on its second failure in a row.
+  assert.equal(outageReport("hourly", new Error("database is locked"), t0), false);
+  assert.equal(outageReport("hourly", new Error("database is locked"), t0 + 60 * MIN), true);
+});
+
+test("a fault of our own is reported at once, then not again on every pass", () => {
+  const t0 = 2_000_000_000;
+  const broken = new Error("ufc.com events index carried no schedules");
+  assert.equal(outageReport("schedules", broken, t0), true);
+  assert.equal(outageReport("schedules", broken, t0 + 600_000), false);
+  outageReport("schedules", null, t0 + 700_000, true);
+  assert.equal(outageReport("schedules", broken, t0 + 800_000), true);
 });
