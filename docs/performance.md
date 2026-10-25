@@ -685,3 +685,23 @@ production's archive (this host, 400 profiles, 801 cards):
 | An event page's cancelled list | Parsed the stored article list | 0.9 ms per card on average |
 
 Profiles are cached by data revision, so the cost is paid once per change.
+
+## Week p95 review (2026-10-25)
+
+Admin showed p95 109 ms, p99 229 ms over Oct 18–25 (142,000 requests). Read
+from production's saved traffic and slow logs, probes inside the live container
+and a copy of production's archive on dev-pc. Nothing was changed.
+
+| What | Finding | Decision |
+| --- | --- | --- |
+| `/api/live/odds` | 4,100 of the week's 7,500 requests over 100 ms (fight night: 4,082 of 4,868). Each poll (3 s) finds the 2 s answer expired and waits on Polymarket. Without it the week's p95 is 51 ms, p99 201 ms | Kept: the pill is glanced at, not waited on |
+| Cards and matchups at 0.6–1.2 s (`?ranking=media`) | Every one Oct 18–19, none since #224 | Already fixed |
+| `/api/profiles/mine` (~400 ms), a headshot 502 after 6.9 s, first `tiny` pictures | None since Oct 20–22 | Already fixed |
+| Stats views other than the opening | A cold board is ~420 ms in production (the warmed opening 6 ms); 1–3 a day since Oct 22, some only to answer 304 | Left: per-view caching would split a 1,400-line builder for two slow clicks a day |
+| `/api/calendar/google` | 2.4–4 s, five in the week; the reader pressed Connect | Left |
+| Detail reads in quiet hours | Often 100–250 ms (e.g. 10 of 14 fight reads in an hour), yet cold builds inside the container are 20–80 ms one at a time (p50 28, p95 80 over 150), 50–100 ms in bursts of six, and 10–50 ms through Cloudflare. Host idle all day (CPU 4–20%, no steal or iowait, 3.7 GB free). A browser-like parallel load put 2 of 12 in 100–250 ms | Not attributable from these logs, so no policy change; per-request queue and build times are needed first |
+
+Query workers were replaced about every 15 minutes on the quiet Sunday: the
+card's fan scorecards (`community_score_json`, read by the fan-average
+analytics) still change after fight night, which is real data, so the cadence
+stays.
