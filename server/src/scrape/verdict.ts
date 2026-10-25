@@ -289,6 +289,46 @@ export function parseVerdictLiveCard(html: string, eventId: number): VerdictLive
   return [...fights.values()];
 }
 
+export type VerdictDeductions = { f1Name: string; f2Name: string; rounds: { round: number; deduct1: number; deduct2: number }[] };
+
+/** The points Verdict's own round models say the referee took from each
+ * fighter, in the page's fighter order: Dawson–Aliev's round 1 has
+ * `fighter2PointDeduction: 1`. Null unless every copy of the bout agrees and
+ * every round carries a readable count, so a gap is never read as zero. */
+export function parseVerdictDeductions(html: string, eventId: number, fightNumber: number): VerdictDeductions | null {
+  const nuxt = nuxtPayload(html);
+  if (!nuxt) return null;
+  const { value, flat } = nuxt;
+  const fighterName = (index: unknown): string => {
+    const fighter = value(index);
+    return fighter && typeof fighter === "object" ? cleanText(`${value(fighter.fighterFirstName) ?? ""} ${value(fighter.fighterLastName) ?? ""}`) : "";
+  };
+  const points = (index: unknown): number | null => {
+    const count = value(index);
+    return Number.isInteger(count) && count >= 0 && count <= 3 ? count : null;
+  };
+  let found: VerdictDeductions | null = null;
+  for (const candidate of flat) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate) || !("rounds" in candidate) || !("fighter1" in candidate)) continue;
+    if (Number(value(candidate.eventID)) !== eventId || Number(value(candidate.fightNumber)) !== fightNumber) continue;
+    const list = value(candidate.rounds);
+    if (!Array.isArray(list) || !list.length) continue;
+    const rounds: VerdictDeductions["rounds"] = [];
+    for (const item of list) {
+      const round = value(item);
+      const number = Number(value(round?.roundNumber));
+      const deduct1 = points(round?.fighter1PointDeduction), deduct2 = points(round?.fighter2PointDeduction);
+      if (!Number.isInteger(number) || number < 1 || number > 5 || deduct1 == null || deduct2 == null) return null;
+      rounds.push({ round: number, deduct1, deduct2 });
+    }
+    rounds.sort((a, b) => a.round - b.round);
+    const next = { f1Name: fighterName(candidate.fighter1), f2Name: fighterName(candidate.fighter2), rounds };
+    if (!next.f1Name || !next.f2Name || (found && JSON.stringify(found) !== JSON.stringify(next))) return null;
+    found = next;
+  }
+  return found;
+}
+
 /** The rendered page ends where the hydration payload starts; reading only
  * that part keeps a live poll's HTML parse small. */
 export const verdictRendered = (html: string): string => {

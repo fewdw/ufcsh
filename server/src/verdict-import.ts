@@ -1,8 +1,9 @@
 import { completedScorecardRounds, parseCommunityScorecard, validCommunityScorecard } from "./community-scorecards.ts";
 import { db } from "./db.ts";
-import { fetchVerdictDocument, fetchVerdictHtml, parseVerdictEventFightNumbers, parseVerdictEventPage, parseVerdictFightPage, VERDICT } from "./scrape/verdict.ts";
+import { fetchVerdictDocument, fetchVerdictHtml, parseVerdictEventFightNumbers, parseVerdictDeductions, parseVerdictEventPage, parseVerdictFightPage, VERDICT, verdictRendered } from "./scrape/verdict.ts";
 import { firstLastName, log, normName } from "./util.ts";
 import { combineJudgeRounds, hasCompleteJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
+import { storedDeductions, type PointDeduction } from "./point-deduction-rules.ts";
 
 /**
  * Verdict MMA's official round cards and community aggregates, matched onto
@@ -14,7 +15,7 @@ type LocalFight = {
   id: string; event_id: string; date: string;
   f1_name: string; f2_name: string; f1_alias: string | null; f2_alias: string | null; method: string | null; round: string | null;
   detail_json: string | null;
-  judge_rounds_json: string | null; community_score_json: string | null;
+  judge_rounds_json: string | null; community_score_json: string | null; deductions_json: string | null;
   verdict_checked_at: number | null;
 };
 
@@ -108,7 +109,7 @@ function shiftDate(dateIso: string, days: number): string {
 // Sherdog's name for a fighter is often the one Verdict uses ("Tiequan Zhang").
 const nearbyFights = db.prepare(`SELECT f.id, f.event_id, e.date,
   f.f1_name, f.f2_name, c1.source_name AS f1_alias, c2.source_name AS f2_alias,
-  f.method, f.round, f.detail_json, f.judge_rounds_json, f.community_score_json, f.verdict_checked_at
+  f.method, f.round, f.detail_json, f.judge_rounds_json, f.community_score_json, f.deductions_json, f.verdict_checked_at
   FROM fights f JOIN events e ON e.id = f.event_id
   LEFT JOIN career_profiles c1 ON c1.fighter_id = f.f1_id AND c1.status = 'verified'
   LEFT JOIN career_profiles c2 ON c2.fighter_id = f.f2_id AND c2.status = 'verified'
@@ -131,6 +132,12 @@ function localFightsNear(date: string): LocalFight[] {
 const mergeUpdate = db.prepare(`UPDATE fights SET judge_rounds_json = COALESCE(?, judge_rounds_json),
   community_score_json = COALESCE(?, community_score_json), verdict_checked_at = ?, verdict_error = NULL WHERE id = ?`);
 const fightError = db.prepare("UPDATE fights SET verdict_error = ? WHERE id = ?");
+// Verdict's penalties never replace an MMA Decisions record (or an unreadable
+// one, left for Admin → Bugs), and only a listed penalty is stored: a zero
+// there may just be one nobody entered, so it confirms nothing. An unchanged
+// record is not written again.
+const storeDeductions = db.prepare(`UPDATE fights SET deductions_json = ?1 WHERE id = ?2 AND deductions_json IS NOT ?1
+  AND (deductions_json IS NULL OR CASE WHEN json_valid(deductions_json) THEN json_extract(deductions_json, '$.source') END = 'Verdict MMA')`);
 const eventError = db.prepare(`INSERT INTO verdict_events (verdict_id, checked_at, error) VALUES (?, ?, ?)
   ON CONFLICT(verdict_id) DO UPDATE SET error = excluded.error`);
 const recordEvent = db.prepare(`INSERT INTO verdict_events (verdict_id, event_id, date, checked_at) VALUES (?, ?, ?, ?)
@@ -145,7 +152,13 @@ const recordEvent = db.prepare(`INSERT INTO verdict_events (verdict_id, event_id
 async function importFight(eventId: number, fightNumber: number, fight: LocalFight, mode: ImportMode, stats: VerdictImportStats): Promise<void> {
   const sourceUrl = `${VERDICT}/event/${eventId}/fight/${fightNumber}`;
   try {
-    const page = parseVerdictFightPage(await fetchVerdictHtml(`/event/${eventId}/fight/${fightNumber}`));
+    // Penalties are only in the hydration payload, which costs ~1.4 MB, so
+    // only a recent decision MMA Decisions hasn't covered pays for it.
+    const penalties = isDecision(fight) && storedDeductions(fight.deductions_json)?.source !== "MMA Decisions"
+      && (mode === "refresh" || ageInDays(fight.date, Date.now()) <= 45);
+    const path = `/event/${eventId}/fight/${fightNumber}`;
+    const html = penalties ? await fetchVerdictDocument(path) : await fetchVerdictHtml(path);
+    const page = parseVerdictFightPage(penalties ? verdictRendered(html) : html);
     if (!page) throw new Error("fight page has no title to read");
     const order = alignment(page.f1Name, page.f2Name, ...sides(fight))?.order;
     if (!order) throw new Error(`fight page names ${page.f1Name} vs ${page.f2Name}`);
@@ -202,6 +215,12 @@ async function importFight(eventId: number, fightNumber: number, fight: LocalFig
       }
     }
     mergeUpdate.run(judgeJson, communityJson, fetchedAt, fight.id);
+    const deductions = penalties ? parseVerdictDeductions(html, eventId, fightNumber) : null;
+    if (deductions && alignment(deductions.f1Name, deductions.f2Name, ...sides(fight))?.order === order) {
+      const items = deductions.rounds.flatMap(({ round, deduct1, deduct2 }) => ([[deduct1, 1], [deduct2, 2]] as const)
+        .flatMap(([points, side]): PointDeduction[] => points ? [{ side: (side === 1) === (order === 1) ? "f1" : "f2", round, points, reason: "" }] : []));
+      storeDeductions.run(items.length ? JSON.stringify({ source: "Verdict MMA", sourceUrl, items }) : null, fight.id);
+    }
   } catch (error) {
     stats.failed += 1;
     fightError.run(`${sourceUrl}: ${String(error)}`.slice(0, 500), fight.id);

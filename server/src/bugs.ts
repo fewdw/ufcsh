@@ -1052,6 +1052,7 @@ function pointDeductionsUnshown(): BugCheck {
     WHERE e.complete = 1 AND f.method LIKE '%DEC' AND (f.judge_rounds_json IS NOT NULL OR f.deductions_json IS NOT NULL)
     ORDER BY e.date DESC
   `).all() as (FightRow & { detail_json: string | null; judge_rounds_json: string | null; deductions_json: string | null; deductions_checked_at: number | null })[];
+  const linkedEvents = new Set((db.prepare("SELECT DISTINCT event_id FROM verdict_events WHERE event_id IS NOT NULL").all() as { event_id: string }[]).map(row => row.event_id));
   const items = candidates.flatMap(fight => {
     const { cards, record } = fightDeductionState(fight);
     // Without round cards nothing can be checked; re-reading MMA Decisions
@@ -1061,16 +1062,17 @@ function pointDeductionsUnshown(): BugCheck {
     if (!problem) return [];
     const listed = record?.items.map(item => `${item.side === "f1" ? fight.f1_name : fight.f2_name}, round ${item.round}, −${item.points}${item.reason ? ` (${item.reason})` : ""}`).join("; ");
     return [fightItem(fight, {
-      facts: [["Problem", problem], ["MMA Decisions", record ? listed || "no deduction listed" : "page not read or not matched"], ["Checked", ago(fight.deductions_checked_at)]],
-      links: record ? [{ label: "MMA Decisions page", href: record.sourceUrl }] : [],
-      actions: [{ id: "deductions", label: "Re-read MMA Decisions", target: fight.id }],
+      facts: [["Problem", problem], [record?.source ?? "MMA Decisions", record ? listed || "no deduction listed" : "page not read or not matched"], ["Checked", ago(fight.deductions_checked_at)]],
+      links: record ? [{ label: `${record.source} page`, href: record.sourceUrl }] : [],
+      actions: [{ id: "deductions" as const, label: "Re-read MMA Decisions", target: fight.id },
+        ...(linkedEvents.has(fight.event_id) ? [{ id: "verdict" as const, label: "Re-read Verdict MMA", target: fight.id }] : [])],
     })];
   });
   return check({
     id: "point-deductions-unshown",
     group: "Scorecards",
     label: "Point deductions that can't be shown",
-    description: "Decisions with round cards and an unreadable deduction record, a round no judge scored 10 without a stated deduction to explain it, or a stated deduction that doesn't fit every judge's round card. These records cannot automatically override fan cards. Re-read MMA Decisions to repair them.",
+    description: "Decisions with round cards and an unreadable deduction record, a round no judge scored 10 without a stated deduction to explain it, or a stated deduction that doesn't fit every judge's round card. These records cannot automatically override fan cards. Re-read MMA Decisions to repair them, or Verdict MMA (whose round data stands in until MMA Decisions is read) while that site is unreachable.",
     grade: "minor",
   }, items);
 }
