@@ -879,6 +879,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   const portraitUnavailable = (side: MatchupSide) => () =>
     setFailedPortraits(failed => [...failed, side.photo_full_url ?? ""]);
   const referee = fight.detail?.methodInfo?.["Referee"];
+  const labelled = Boolean(fight.weight_class || fight.scheduled_rounds || beltOf(fight));
   const changingMatchup = !loadedFight && fight.id !== fightId;
   const orderedFights = cardEvent?.id === fight.event.id ? cardEvent.fights : [];
   const fightIndex = orderedFights.findIndex((entry) => entry.id === fightId);
@@ -970,12 +971,11 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} portrait={portraitOf(fight.f1)} onPortraitError={portraitUnavailable(fight.f1)} past={fight.status === "past"} />
                   </div>
                   {/* The weight class, the referee and the price are one block
-                      in the middle column, centred across it and pinned to
-                      the top of the card at every width. A potential matchup
-                      has neither weight class nor rounds, so its price sits
-                      level with the fighters instead. */}
-                  <div className={`matchup-market col-start-2 row-start-1 flex w-auto max-w-[8.5rem] flex-col items-center text-center @[30rem]:max-w-[16rem] @[58rem]:max-w-[19rem] ${fight.potential ? "self-center" : "-mt-2 self-start"}`}>
-                    {fight.weight_class || fight.scheduled_rounds || beltOf(fight) ? <div><WeightClassLabel fight={fight} /></div> : null}
+                      in the middle column, centred across it and level with
+                      the fighters at every width. A potential matchup has
+                      neither weight class nor rounds, so it shows no label. */}
+                  <div className="matchup-market col-start-2 row-start-1 flex w-auto max-w-[8.5rem] flex-col items-center self-center text-center @[30rem]:max-w-[16rem] @[58rem]:max-w-[19rem]">
+                    {labelled ? <div><WeightClassLabel fight={fight} /></div> : null}
                     {referee ? (
                       <div className="mt-2 text-[10px] text-zinc-500" title="Referee">
                         {fight.officials?.referee?.slug
@@ -985,7 +985,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     ) : null}
                     {/* .matchup-prices zeroes its own margin, so the gap
                         under the weight class (and referee) is padding here. */}
-                    <div className={fight.potential ? undefined : "pt-2"}>
+                    <div className={labelled || referee ? "pt-2" : undefined}>
                     <div className="matchup-prices">
                       <MatchupOdds key={fight.id} f1={fight.odds?.f1.close} f2={fight.odds?.f2.close}
                         f1Open={fight.odds?.f1.open} f2Open={fight.odds?.f2.open}
