@@ -103,9 +103,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-25">October 25, 2026</time></p>
             <ul>
-              <li>A fighter photo ufc.com can't send right now shows their previous picture instead of failing.</li>
-              <li>Addresses written by name, like /fighters/ilia-topuria or /fights/alex-oliveira-vs-tim-means, open the right page.</li>
-              <li>Brief outages at UFCStats, ufc.com and MMA Decisions no longer show up as sync errors.</li>
+              <li>An opening line from a sportsbook that listed the fighters the wrong way round no longer shows as the bout's opener.</li>
+              <li>A new result is added to a fighter's career record within hours of their professional history listing it.</li>
             </ul>
           </Section>
         </div>
