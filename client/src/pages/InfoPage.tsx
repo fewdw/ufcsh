@@ -101,10 +101,12 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-23">October 23, 2026</time></p>
+            <p><time dateTime="2026-10-25">October 25, 2026</time></p>
             <ul>
-              <li>Adding UFC to Google Calendar while signed out now goes straight to Google sign-in, then adds the calendar.</li>
-              <li>The calendar dialog shows your connected Google calendar right away when it opens.</li>
+              <li>On fight night, the card being fought stays in the events list under any tier filter.</li>
+              <li>The community scorecard shows full fighter names.</li>
+              <li>The Controversial badge stays yellow.</li>
+              <li>Brief UFCStats outages during a live card no longer show up as sync errors.</li>
             </ul>
           </Section>
         </div>
