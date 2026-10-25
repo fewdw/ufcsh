@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { alignment, importVerdictEvent } from "./verdict-import.ts";
 import { db } from "./db.ts";
 import { bugReport } from "./bugs.ts";
+import { confirmedDeductions, type DeductionFight } from "./point-deduction-rules.ts";
 
 test("a refresh with absent or impossible source cards retains existing scorecards", async () => {
   const fight = db.prepare(`SELECT f.id, f.f1_name, f.f2_name, e.date FROM fights f JOIN events e ON e.id = f.event_id
@@ -102,5 +103,52 @@ test("missing imports repair incompatible aggregates and reject incompatible sou
   for (const mode of ["recent", "refresh"] as const) {
     assert.equal((await importVerdictEvent(verdictId, mode))?.community, 0);
     assert.equal(read(), recovered, "a contradictory source must not replace the valid aggregate");
+  }
+});
+
+test("Verdict's listed penalties stand in for MMA Decisions, never over it, and a zero confirms nothing", async t => {
+  const eventId = "verdict-deduction-fixture", fightId = "dddddddddddddddd", verdictId = 987655;
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    db.prepare("DELETE FROM fights WHERE id = ?").run(fightId);
+    db.prepare("DELETE FROM events WHERE id = ?").run(eventId);
+    db.prepare("DELETE FROM verdict_events WHERE verdict_id = ?").run(verdictId);
+  });
+  db.prepare("INSERT INTO events (id, name, date, complete) VALUES (?, 'Deduction fixture', '2024-03-09', 1)").run(eventId);
+  // Every judge's 9-9 opening round is One's 10-9 less the point Verdict lists.
+  const judges = ["A", "B", "C"].map(judge => ({ judge, f1Score: 29, f2Score: 27,
+    rounds: [{ round: 1, f1Score: 9, f2Score: 9 }, { round: 2, f1Score: 10, f2Score: 9 }, { round: 3, f1Score: 10, f2Score: 9 }] }));
+  db.prepare(`INSERT INTO fights (id, event_id, f1_name, f2_name, f1_outcome, f2_outcome, method, round, judge_rounds_json)
+    VALUES (?, ?, 'Alpha One', 'Beta Two', 'win', 'loss', 'U-DEC', '3', ?)`).run(fightId, eventId, JSON.stringify({ source: "Verdict MMA", judges }));
+  // Verdict lists the bout the other way round: its fighter2 is our f1.
+  let points = [0, 1, 0, 0, 0, 0];
+  globalThis.fetch = async input => {
+    const path = new URL(String(input)).pathname;
+    if (path === `/event/${verdictId}`) return new Response(`<head><meta property="og:title" content="Deduction fixture">
+      <meta name="description" content="Fixture — March 9, 2024 · Arena"></head>
+      <a href="/rate/fights/event/${verdictId}/fight/1"><div></div><div><div>Beta Two</div><div>vs.</div><div>Alpha One</div></div></a>`);
+    const flat: unknown[] = [];
+    const at = (value: unknown) => flat.push(value) - 1;
+    const fighter = (first: string, last: string) => at({ fighterFirstName: at(first), fighterLastName: at(last) });
+    const rounds = [1, 2, 3].map(round => at({ roundNumber: at(round), fighter1PointDeduction: at(points[(round - 1) * 2]), fighter2PointDeduction: at(points[(round - 1) * 2 + 1]) }));
+    at({ eventID: at(verdictId), fightNumber: at(1), fighter1: fighter("Beta", "Two"), fighter2: fighter("Alpha", "One"), rounds: at(["Reactive", at(rounds)]) });
+    return new Response(`<head><meta property="og:title" content="Beta Two vs Alpha One"></head><main></main>
+      <script type="application/json" id="__NUXT_DATA__">${JSON.stringify(flat)}</script>`);
+  };
+  const read = () => db.prepare("SELECT detail_json, judge_rounds_json, deductions_json FROM fights WHERE id = ?").get(fightId) as DeductionFight;
+  await importVerdictEvent(verdictId, "refresh");
+  assert.deepEqual(confirmedDeductions(read()), { confirmed: true, items: [{ side: "f1", round: 1, points: 1, reason: "" }] });
+
+  points = [0, 0, 0, 0, 0, 0];
+  await importVerdictEvent(verdictId, "refresh");
+  assert.equal(read().deductions_json, null, "Verdict withdrawing its own penalty leaves the bout unknown");
+
+  const mma = JSON.stringify({ source: "MMA Decisions", sourceUrl: "https://mmadecisions.com/decision/1", items: [] });
+  for (const stored of [mma, "{not json"]) {
+    db.prepare("UPDATE fights SET deductions_json = ? WHERE id = ?").run(stored, fightId);
+    points = [0, 1, 0, 0, 0, 0];
+    await importVerdictEvent(verdictId, "refresh");
+    assert.equal(read().deductions_json, stored);
   }
 });
