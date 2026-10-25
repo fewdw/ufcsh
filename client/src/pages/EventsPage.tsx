@@ -512,17 +512,17 @@ function resultTag(fight: EventFight, outcome: FightSide["outcome"]): { label: s
   return { label: fight.method === "CNC" ? "NC" : fight.method.toUpperCase(), when: when || null };
 }
 
-const CONTROVERSY: Record<NonNullable<EventFight["controversy"]>, { tone: string; title: string }> = {
-  fans_other: { tone: "bg-rose-100 text-rose-700", title: "Controversial: the fans' average scorecard had the other winner" },
-  rounds_total: { tone: "bg-violet-100 text-violet-700", title: "Controversial: one fighter won more rounds on the fans' average scorecard, the other its total" },
-  close: { tone: "bg-amber-100 text-amber-800", title: "Controversial: the fans' average totals were under half a point apart" },
+/** Why the fans' cards question the decision, shown on hover. */
+const CONTROVERSY: Record<NonNullable<EventFight["controversy"]>, string> = {
+  fans_other: "Controversial: the fans' average scorecard had the other winner",
+  rounds_total: "Controversial: one fighter won more rounds on the fans' average scorecard, the other its total",
+  close: "Controversial: the fans' average totals were under half a point apart",
 };
 
-/** A decision the fans' cards call into question, coloured by why. */
+/** A decision the fans' cards call into question. */
 function ControversyTag({ fight }: { fight: EventFight }) {
   if (!fight.controversy) return null;
-  const { tone, title } = CONTROVERSY[fight.controversy];
-  return <span className={`rounded px-1 py-px text-[9px] font-bold uppercase leading-3 ${tone}`} title={title}>Controversial</span>;
+  return <span className="rounded bg-amber-100 px-1 py-px text-[9px] font-bold uppercase leading-3 text-amber-800" title={CONTROVERSY[fight.controversy]}>Controversial</span>;
 }
 
 function CenterBlock({ fight, past, cancellation }: { fight: EventFight; past: boolean; cancellation?: CancelledBout }) {
