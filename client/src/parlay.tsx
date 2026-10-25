@@ -23,12 +23,11 @@ export type Outcome = {
   totalRounds?: { side: "over" | "under"; line: number };
 };
 
-/** The id a bout's prices bet under, or undefined when they can't be bet:
- *  every priced bout still to be fought takes bets, on any card, and a
- *  potential matchup does once both fighters are on record, so the bet can
- *  follow them onto whatever card books it. */
-export function betFightId(fight: { id: string; potential?: boolean; f1: { id: string }; f2: { id: string } }, done = false): string | undefined {
-  return done || (fight.potential && !(fight.f1.id && fight.f2.id)) ? undefined : fight.id;
+/** The id a bout's prices bet under, or undefined when they can't be bet.
+ *  The server says which bouts it takes bets on (any card, and a potential
+ *  matchup once both fighters are on record); a result read since closes it. */
+export function betFightId(fight: { id: string; bets_open?: boolean }, done = false): string | undefined {
+  return fight.bets_open && !done ? fight.id : undefined;
 }
 
 /** A stable key for an outcome. Clicking "Fight goes to decision" in the

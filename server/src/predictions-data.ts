@@ -2,7 +2,7 @@ import { prepared } from "./db.ts";
 import { cardOrder } from "./card-schedule.ts";
 import { cachedPhotoUrl } from "./fighter-identity.ts";
 import { parseScheduledRounds } from "./fight-index.ts";
-import type { PredictionContext, PredictionFight } from "./predictions.ts";
+import { predictionWindow, type PredictionContext, type PredictionFight } from "./predictions.ts";
 import type { BetContext, BetMarkets, StoredLeg } from "./bets.ts";
 import { fightIsComplete } from "./live-state.ts";
 import { potentialFight, potentialMatchups } from "./potential-matchups.ts";
@@ -106,4 +106,17 @@ export function potentialBooking(leg: StoredLeg): PredictionFight | undefined {
   const booked = pairBouts.all(leg.f1Id, leg.f2Id, leg.f2Id, leg.f1Id, leg.eventDate).map(read)
     .find(fight => !fight.event_complete || fightIsComplete(fight));
   return booked ?? potentialBetContext(leg.fightId)?.fight;
+}
+
+/** Which bouts take bets now, for the pages to offer their prices: the same
+ *  clock placing a bet is checked against (its lock aside, which only keeps a
+ *  bout closed). A potential matchup takes them while it can be priced. */
+export function betsOpen(eventId: string, now = Date.now()): Set<string> {
+  const bouts = event.all(eventId).map(read);
+  return new Set(bouts.filter(fight => predictionWindow({ fight, bouts }, now).open).map(fight => fight.id));
+}
+export function betOpen(id: string, now = Date.now()): boolean {
+  if (id.startsWith("potential-")) return !!potentialBetContext(id);
+  const context = predictionContext(id);
+  return !!context && predictionWindow({ ...context, eventOpen: undefined }, now).open;
 }

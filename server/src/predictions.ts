@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { fightIsComplete, fightIsUnderway } from "./live-state.ts";
-import { byBoutPlace, cardOrder } from "./card-schedule.ts";
+import { byBoutPlace, cardOrder, estimatedStart, scheduledBout } from "./card-schedule.ts";
 import { ScoringError, type ScoringStore } from "./scoring.ts";
 
 export type PredictionMethod = "ko" | "submission" | "decision";
@@ -14,6 +14,10 @@ export type PredictionFight = {
   /** Place on its card from the top, main event 0; read for profile order. */
   card_place?: number | null;
   f1_photo?: string | null; f2_photo?: string | null;
+  /** The card's announced segment starts and the bout's belt, for its
+   *  estimated start. */
+  early_prelims_at?: number | null; prelims_at?: number | null; main_card_at?: number | null;
+  title_type?: string | null;
 };
 /** `eventOpen` is false for cards further out than the predicting window. */
 export type PredictionContext = { fight: PredictionFight; bouts: PredictionFight[]; eventOpen?: boolean };
@@ -61,18 +65,29 @@ export function predictionWindow(context: PredictionContext, now = Date.now()) {
   // takes precedence over timestamps for sections with no remaining bouts.
   // The rest of the card keeps its existing event-start/live-progress rule.
   if (eventStarted && at > 0) progress = Math.max(progress, 0);
+  // The schedule backs up the live feed, which can lag or never report: once
+  // the card has started, a bout closes at its estimated start, the time the
+  // card page shows. A card not yet split into its sections (or announced with
+  // clashing times) is timed as one block from its opener's start; with the
+  // breaks between sections left out, that errs early.
+  const ord = Number(fight.ord) || 0;
+  const sections = bouts.every(bout => bout.segment) ? estimatedStart(bouts.map(scheduledBout), ord,
+    { main: fight.main_card_at ?? null, prelims: fight.prelims_at ?? null, early: fight.early_prelims_at ?? null }) : null;
+  const scheduled = sections ?? estimatedStart(bouts.map(bout => ({ ...scheduledBout(bout), segment: null })), ord,
+    { main: null, prelims: null, early: bouts[0]?.section_start ?? cutoff });
+  const due = eventStarted && (scheduled == null || now >= scheduled);
   const stale = Number.isFinite(cutoff) && now >= cutoff + 36 * 3_600_000;
   // Only the card being fought (or next up) and the two after it take picks.
   // Anything further out has unsettled matchups and no reason to be open yet.
   const beyondHorizon = context.eventOpen === false;
   const closed = beyondHorizon || at < 0 || !Number.isFinite(cutoff) || !fight.f1_id || !fight.f2_id || fight.f1_id === fight.f2_id || !!fight.event_complete || stale || fightIsComplete(fight)
-    || fightIsUnderway(fight) || (closesAt != null && now >= closesAt) || (progress >= 0 && at <= progress + 2);
+    || fightIsUnderway(fight) || due || (closesAt != null && now >= closesAt) || (progress >= 0 && at <= progress + 2);
   const reason = fightIsComplete(fight) ? "This fight has finished."
     : beyondHorizon ? "Predictions open once this card is one of the next three."
     : closed ? "Predictions are closed for this fight."
       : at === 0 ? openerStart != null ? "Closes 15 minutes before this card section starts." : "Closes at 00:00 UTC on the event date; the start time is not confirmed."
         : at === 1 ? "Closes when the event starts."
-        : `Closes when ${trigger?.f1_name} vs ${trigger?.f2_name} starts (two fights before).`;
+        : `Closes when ${trigger?.f1_name} vs ${trigger?.f2_name} starts (two fights before), or at its estimated start if that is sooner.`;
   return { open: !closed, reason, triggerFightId: at >= 2 ? trigger?.id ?? null : null,
     eventStartsAt: Number.isFinite(cutoff) ? cutoff : null,
     closesAt: closesAt != null && Number.isFinite(closesAt) ? closesAt : null };
