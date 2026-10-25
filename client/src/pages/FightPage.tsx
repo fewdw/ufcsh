@@ -880,6 +880,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   const portraitUnavailable = (side: MatchupSide) => () =>
     setFailedPortraits(failed => [...failed, side.photo_full_url ?? ""]);
   const referee = fight.detail?.methodInfo?.["Referee"];
+  const labelled = Boolean(fight.weight_class || fight.scheduled_rounds || beltOf(fight));
   const changingMatchup = !loadedFight && fight.id !== fightId;
   const orderedFights = cardEvent?.id === fight.event.id ? cardEvent.fights : [];
   const fightIndex = orderedFights.findIndex((entry) => entry.id === fightId);
@@ -970,28 +971,31 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                   <div className="matchup-corner col-start-1 min-w-0">
                     <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} portrait={portraitOf(fight.f1)} onPortraitError={portraitUnavailable(fight.f1)} past={fight.status === "past"} />
                   </div>
-                  {/* The weight class, the referee and the price are one block
-                      in the middle column, centred across it and pinned to
-                      the top of the card at every width. */}
-                  <div className="matchup-market col-start-2 row-start-1 flex w-auto max-w-[8.5rem] -mt-2 flex-col items-center self-start text-center @[30rem]:max-w-[16rem] @[58rem]:max-w-[19rem]">
-                    <div><WeightClassLabel fight={fight} /></div>
-                    {referee ? (
-                      <div className="mt-2 text-[10px] text-zinc-500" title="Referee">
-                        {fight.officials?.referee?.slug
-                          ? <Link to={`/referees/${fight.officials.referee.slug}`} title="Referee: every bout they have worked" className="transition hover:text-zinc-900 dark:hover:text-zinc-100">{referee} <span aria-hidden="true">↗</span></Link>
-                          : referee}
-                      </div>
-                    ) : null}
+                  {/* The price sits level with the fighters' middle at every
+                      width, the weight class (and referee) just above it. The
+                      equal outer rows keep the price itself centred however
+                      tall the label is; a potential matchup has no label. */}
+                  <div className="matchup-market col-start-2 row-start-1 grid w-auto max-w-[8.5rem] grid-rows-[1fr_auto_1fr] justify-items-center self-center text-center @[30rem]:max-w-[16rem] @[58rem]:max-w-[19rem]">
                     {/* .matchup-prices zeroes its own margin, so the gap
                         under the weight class (and referee) is padding here. */}
-                    <div className="pt-2">
-                    <div className="matchup-prices">
+                    {labelled || referee ? (
+                      <div className="flex flex-col items-center self-end pb-2">
+                        {labelled ? <div><WeightClassLabel fight={fight} /></div> : null}
+                        {referee ? (
+                          <div className={`${labelled ? "mt-2 " : ""}text-[10px] text-zinc-500`} title="Referee">
+                            {fight.officials?.referee?.slug
+                              ? <Link to={`/referees/${fight.officials.referee.slug}`} title="Referee: every bout they have worked" className="transition hover:text-zinc-900 dark:hover:text-zinc-100">{referee} <span aria-hidden="true">↗</span></Link>
+                              : referee}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <div className="matchup-prices row-start-2">
                       <MatchupOdds key={fight.id} f1={fight.odds?.f1.close} f2={fight.odds?.f2.close}
                         f1Open={fight.odds?.f1.open} f2Open={fight.odds?.f2.open}
                         f1Name={fight.f1.name} f2Name={fight.f2.name}
                         props={fight.odds?.props}
                         fightId={betFightId(fight, fight.status !== "upcoming")} />
-                    </div>
                     </div>
                   </div>
                   <div className="matchup-corner col-start-3 min-w-0">
