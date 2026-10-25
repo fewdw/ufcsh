@@ -9,7 +9,7 @@ client (`client/`) renders every page.
 | Area | Files |
 | --- | --- |
 | HTTP entry, routing, caching, images | `api.ts` (routes, `resolvePublicApi`), `api-policy.ts` (what is public, cache lifetimes), `response-cache.ts`, `query-pool.ts` + `query-worker.ts` (heavy reads off the main thread) |
-| Page metadata, sitemap, 404s | `seo.ts` |
+| Page metadata, sitemap, 404s, redirects for addresses that plainly mean a page (a fighter or bout by name, an id with junk after it, `/events`, `/contact`) | `seo.ts` (`pageRedirect`) |
 | Link-preview images (`/og/*.jpg`) | `og-images.ts` (drawing); data lookup in `api.ts` (`shareCardData`) |
 | Fighter identity, records, photo URLs | `fighter-identity.ts` |
 | Search aliases (GSP, Aljo, real and maiden names; search only, never shown) | `search-aliases.ts` |
@@ -36,7 +36,7 @@ client (`client/`) renders every page.
 | Admin data-quality board | `bugs.ts` (checks and repair actions), `admin-http.ts`, `repair-guard.ts` |
 | Admin panel (sidebar, most important first: Overview, Errors, Slow requests, People → Accounts/Comments/Flags, Data → Bugs/Live rounds, Traffic → Visitors/Server, Settings) | client `pages/AdminPage.tsx`, views in `components/Admin*.tsx`, shared cards/charts in `components/adminKit.tsx` |
 | Admin traffic and visitors (live last hour; saved history 24 hours to all time; unique visitors by browser, sources, devices, countries) | `observability.ts` (in memory), `traffic-history.ts` (hourly rows in `scoring.db`, folded to days after 8 days), `visitors.ts` (hashed browser ids for 35 days, then daily totals); client `pageViews.ts` sends the signal |
-| Admin errors, slow requests, sync status and accounts | `error-log.ts` (each 5xx/404 address, kept 7 days), `slow-log.ts` (each address that took 300 ms or more, with the time spent getting its data, counted per UTC hour so Admin can pick a window, kept 7 days; client `AdminSlow.tsx`), `sync-status.ts` (source freshness, last 50 sync errors), `accounts.ts` (`adminAccounts`) |
+| Admin errors, slow requests, sync status and accounts | `error-log.ts` (each 5xx/404 address, kept 7 days), `slow-log.ts` (each address that took 300 ms or more, with the time spent getting its data, counted per UTC hour so Admin can pick a window, kept 7 days; client `AdminSlow.tsx`), `sync-status.ts` (source freshness, last 50 sync errors; a source down or slow, or a locked database, is recorded only after 15 minutes of failing with no answer between, and a lasting failure once every 6 hours, `outageReport`), `accounts.ts` (`adminAccounts`) |
 | Accounts, scoring, predictions, bets, comments | `accounts.ts` (Clerk deletions and picture sync), `scoring*.ts`, `predictions*.ts`, `bets*.ts`, `comments*.ts`, `moderation.ts` |
 | Background sync | `sync.ts` (scheduler `tick`), `sync-worker.ts` (one at a time via `sync-lease.ts`), `career-records.ts`, `verdict-import.ts`, `verdict-live.ts` (the bout Verdict MMA has on: rounds and fans' average every 15 s) |
 | Scrapers | `scrape/ufcstats.ts`, `scrape/ufccom.ts` (schedules, segments, venue/broadcast/referee feed), `scrape/wikipedia.ts` (weigh-ins, infobox, background, replacements and short notice via `boutChanges`, stored by `syncEventWikiInfo`), `scrape/fightodds.ts` (upcoming moneylines and props, matched by UFCStats id; every 5 and 30 min), `scrape/odds.ts` (BestFightOdds: fallback, archive), `scrape/sherdog.ts`, `scrape/verdict.ts`, `scrape/mmadecisions.ts` |

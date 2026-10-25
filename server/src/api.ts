@@ -1703,7 +1703,8 @@ const MIME: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8", ".xml": "application/xml; charset=utf-8",
 };
 
-type CachedImage = { data: Buffer; contentType: string; imagePath: string };
+/** `stale`: the fighter's previous picture, served while the current one cannot be fetched. */
+type CachedImage = { data: Buffer; contentType: string; imagePath: string; stale?: boolean };
 const imageRequests = new Map<string, Promise<CachedImage>>();
 /** A picture that could not be fetched is not asked for again for a while:
  *  each reader would otherwise wait out the same failure (several seconds for
@@ -1829,10 +1830,7 @@ async function loadFighterImage(id: string, variant: PhotoVariant): Promise<Cach
       let contentType = data ? await fs.readFile(`${previousPath}.type`, "utf8").catch(() => "image/jpeg") : "";
       if (!data) {
         if (Date.now() - (photoFailures.get(requestKey) ?? -Infinity) < PHOTO_RETRY_MS) throw new Error(RECENT_PHOTO_FAILURE);
-        const response = await fetch(remote, {
-          headers: { "User-Agent": "Mozilla/5.0 (compatible; ufc.sh image cache)" },
-          signal: AbortSignal.timeout(15_000),
-        });
+        const response = await fetchPhoto(remote);
         if (!response.ok) throw new Error(`photo HTTP ${response.status}`);
         const declared = (response.headers.get("content-type") ?? "").split(";")[0].trim();
         // ufc.com serves some PNGs as application/octet-stream: the bytes decide.
@@ -1857,6 +1855,8 @@ async function loadFighterImage(id: string, variant: PhotoVariant): Promise<Cach
       } catch {
         if (photoFailures.size >= 5000) photoFailures.clear();
         if (!String(error).includes(RECENT_PHOTO_FAILURE)) photoFailures.set(requestKey, Date.now());
+        const previous = await previousPhoto(id, suffix);
+        if (previous) return previous;
         throw error;
       }
     } finally {
@@ -1867,16 +1867,49 @@ async function loadFighterImage(id: string, variant: PhotoVariant): Promise<Cach
   return request;
 }
 
+/** ufc.com's CDN refuses or times out now and then; one more try a moment
+ *  later usually gets the picture. */
+async function fetchPhoto(remote: string): Promise<Response> {
+  const attempt = () => fetch(remote, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; ufc.sh image cache)" },
+    signal: AbortSignal.timeout(15_000),
+  });
+  try {
+    const response = await attempt();
+    if (response.status < 500 && response.status !== 429) return response;
+    await response.body?.cancel();
+  } catch {
+    // Unreachable or slow: tried once more below.
+  }
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  return attempt();
+}
+
+/** The newest earlier picture still cached for this fighter: when ufc.com
+ *  replaces a photo and then cannot serve the new one, the old one stands in. */
+async function previousPhoto(id: string, suffix: string): Promise<CachedImage | null> {
+  const pattern = new RegExp(`^${id}${suffix.replace(".", "\\.")}\\.[0-9a-f]+\\.img$`);
+  const names = (await fs.readdir(IMAGE_CACHE).catch(() => [] as string[])).filter(name => pattern.test(name));
+  const dated = await Promise.all(names.map(async name => ({ name, at: (await fs.stat(path.join(IMAGE_CACHE, name)).catch(() => null))?.mtimeMs ?? 0 })));
+  const newest = dated.sort((a, b) => b.at - a.at)[0];
+  if (!newest) return null;
+  const imagePath = path.join(IMAGE_CACHE, newest.name);
+  const data = await fs.readFile(imagePath).catch(() => null);
+  if (!data) return null;
+  const contentType = (await fs.readFile(imagePath.replace(/\.img$/, ".type"), "utf8").catch(() => "")).trim() || "image/jpeg";
+  return { data, contentType, imagePath, stale: true };
+}
+
 /** Placeholders are a few hundred bytes and small copies a few KB, so every
  *  fighter's pair fits in memory and never touches the disk twice. Large
  *  copies are read from disk each time, like the originals. */
 const variantMemory = new Map<string, Buffer>();
-async function fighterImageVariant(id: string, variant: PhotoVariant, size: ImageSize): Promise<Buffer | null> {
+async function fighterImageVariant(id: string, variant: PhotoVariant, size: ImageSize): Promise<{ data: Buffer; stale?: boolean } | null> {
   const file = fighterImageFile(id, variant);
   if (!file) return null;
   const target = variantPath(file.imagePath, size);
   const remembered = variantMemory.get(target);
-  if (remembered) return remembered;
+  if (remembered) return { data: remembered };
   let data: Buffer;
   try {
     data = await fs.readFile(target);
@@ -1884,11 +1917,13 @@ async function fighterImageVariant(id: string, variant: PhotoVariant, size: Imag
     const image = await loadFighterImage(id, variant);
     if (!image) return null;
     data = await ensureImageVariant(image.imagePath, size, image.data);
+    // Never remembered under the current picture's name.
+    if (image.stale) return { data, stale: true };
   }
-  if (size === "large") return data;
+  if (size === "large") return { data };
   variantMemory.set(target, data);
   if (variantMemory.size > 10_000) variantMemory.delete(variantMemory.keys().next().value!);
-  return data;
+  return { data };
 }
 
 /** Pictures sync re-checked since the last pass, fetched and encoded before a
@@ -1925,20 +1960,23 @@ async function warmUncachedPhotos(limit = 20): Promise<void> {
 
 async function serveFighterImage(res: http.ServerResponse, id: string, variant: PhotoVariant, size: ImageSize | null, versioned: boolean): Promise<void> {
   try {
-    const image = size ? null : await loadFighterImage(id, variant);
-    const data = size ? await fighterImageVariant(id, variant, size) : image?.data;
+    const image = size ? await fighterImageVariant(id, variant, size) : await loadFighterImage(id, variant);
+    const data = image?.data;
     if (!data) {
       res.writeHead(404, { "Cache-Control": "public, max-age=300" });
       res.end();
       return;
     }
     res.writeHead(200, {
-      "Content-Type": size ? "image/webp" : image!.contentType,
+      "Content-Type": size ? "image/webp" : (image as CachedImage).contentType,
       "Content-Length": data.length,
-      // A ?v= address names one exact picture, so it never needs revalidating.
-      "Cache-Control": versioned
-        ? "public, max-age=31536000, immutable"
-        : "public, max-age=86400, stale-while-revalidate=2592000",
+      // A ?v= address names one exact picture, so it never needs revalidating;
+      // an earlier picture standing in for it is kept only briefly.
+      "Cache-Control": image!.stale
+        ? "public, max-age=300"
+        : versioned
+          ? "public, max-age=31536000, immutable"
+          : "public, max-age=86400, stale-while-revalidate=2592000",
     });
     res.end(data);
   } catch (error) {
@@ -2060,6 +2098,13 @@ async function archiveAssets(): Promise<void> {
   }
 }
 
+/** An archived chunk's file name, decoded, or null when it could name anything else. */
+function decodedAssetName(name: string): string | null {
+  let decoded: string;
+  try { decoded = decodeURIComponent(name); } catch { return null; }
+  return /^[\w.-]+$/.test(decoded) && !decoded.startsWith(".") && !decoded.endsWith(".partial") ? decoded : null;
+}
+
 /** `pages` caches the SEO-filled document per route; without it each is built on request. */
 export async function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, pathname: string, pages?: ResponseCache): Promise<void> {
   // iOS also asks for sized icons no page names ("-120x120-precomposed"): one icon serves all.
@@ -2069,8 +2114,10 @@ export async function serveStatic(req: http.IncomingMessage, res: http.ServerRes
   // The document itself is never sent raw: "/" and "/index.html" fall through
   // to the SEO fill below, so the homepage carries its link-preview image too.
   const document = filePath === path.join(CLIENT_DIST, "index.html");
+  // Some crawlers escape what needs no escaping ("statsDefaults-C%5fzQMFvE.js").
+  const asset = pathname.startsWith("/assets/") ? decodedAssetName(pathname.slice(8)) : null;
   const file = document ? null : await readStatic(filePath)
-    ?? (/^\/assets\/[\w.-]+$/.test(pathname) && !pathname.endsWith(".partial") ? await readStatic(path.join(ASSET_ARCHIVE, pathname.slice(8))) : null);
+    ?? (asset ? await readStatic(path.join(CLIENT_DIST, "assets", asset)) ?? await readStatic(path.join(ASSET_ARCHIVE, asset)) : null);
   if (file) {
     const immutable = pathname.startsWith("/assets/");
     const headers: Record<string, string | number> = {
@@ -2108,9 +2155,17 @@ export async function serveStatic(req: http.IncomingMessage, res: http.ServerRes
   }
   const build = async () => {
     const seo = queryPool ? JSON.parse((await queryPool.run(`/_seo?path=${encodeURIComponent(pathname)}`)).json) as PageSeo : pageSeo(pathname);
+    // A redirect's body is only its target, read back below.
+    if (seo.redirect) return { json: seo.redirect, status: 301 };
     return { json: injectPageSeo(index.data.toString(), pathname, seo), status: seo.status ?? 200 };
   };
   const page = pages ? await pages.get(`page:${index.etag}:${pathname}`, 60_000, build, 60 * 60_000) : await representation(await build());
+  if (page.status === 301) {
+    const query = req.url?.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+    res.writeHead(301, { Location: `${page.body.toString()}${query}`, "Cache-Control": "public, max-age=3600" });
+    res.end();
+    return;
+  }
   sendRepresentation(req, res, page, "no-cache", "text/html");
 }
 
@@ -2866,6 +2921,10 @@ export function startApi(port: number): http.Server {
 
       if (p === "/robots.txt") {
         return await sendText(req, res, `User-agent: *\nAllow: /\nDisallow: /admin\nSitemap: ${SITE_URL}/sitemap.xml\n`, "text/plain; charset=utf-8");
+      }
+      // Chrome asks before prefetching a link through its private proxy.
+      if (p === "/.well-known/traffic-advice") {
+        return await sendText(req, res, `[{"user_agent":"prefetch-proxy","fraction":1.0}]`, "application/trafficadvice+json", "public, max-age=86400");
       }
       if (p === "/sitemap.xml") {
         const value = await cache.get("sitemap", 300_000, async () => ({ json: queryPool ? JSON.parse((await queryPool.run("/_sitemap")).json) : sitemap(), status: 200 }));

@@ -27,6 +27,8 @@ export type PageSeo = {
   noindex?: boolean;
   /** Plain HTML placed in <noscript>: what the page is, with links onward. */
   summary?: string;
+  /** With status 301: the page this address plainly means. */
+  redirect?: string;
 };
 
 const HTML_ENTITIES: Record<string, string> = { "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&#39;", '"': "&quot;" };
@@ -65,7 +67,64 @@ const notFound = (): PageSeo => ({
   canonical: `${SITE_URL}/`, status: 404, noindex: true,
 });
 
+/** Addresses people guess or paste that name no page as written. */
+const SECTION_ALIASES: Record<string, string> = { "/events": "/", "/fights": "/", "/contact": "/info", "/about": "/info" };
+const nameSlug = (name: string) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+  .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+/** Every fighter with a UFC bout whose name reads as this slug. */
+function fightersNamed(slug: string): string[] {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)+$/.test(slug)) return [];
+  const rows = prepared(`SELECT fr.id, fr.name FROM fighters fr WHERE ${ufcFightExistsSql("fr.id", "f")}`).all() as { id: string; name: string }[];
+  return rows.filter(row => nameSlug(row.name) === slug).map(row => row.id);
+}
+
+/**
+ * Where an address that names no page should go when it plainly means one: a
+ * fighter or bout written by name ("/fighters/ilia-topuria",
+ * "/fights/alex-oliveira-vs-tim-means", their latest meeting), an id with junk
+ * pasted after it, or a guessable section. Null when the meaning is not certain:
+ * two fighters by one name are never guessed between.
+ */
+export function pageRedirect(pathname: string): string | null {
+  const section = SECTION_ALIASES[pathname.replace(/\/+$/, "")];
+  if (section) return section;
+  const match = /^\/(fighters|fights|events)\/([^/]+)\/?$/.exec(pathname);
+  if (!match) return null;
+  const [, kind, raw] = match;
+  let id: string;
+  try { id = decodeURIComponent(raw); } catch { return null; }
+  const table = kind === "fighters" ? "fighters" : kind === "fights" ? "fights" : "events";
+  // "/fights/9861b6d04e6ed43c&gsessionid=…": the id, then what a mail client appended.
+  const leading = /^([a-f0-9]{16})(?![a-f0-9])/.exec(id)?.[1];
+  if (leading && leading !== id) {
+    if (prepared(`SELECT 1 FROM ${table} WHERE id = ?`).get(leading)) return `/${kind}/${leading}`;
+    return null;
+  }
+  const slug = nameSlug(id);
+  if (kind === "fighters") {
+    const ids = fightersNamed(slug);
+    return ids.length === 1 && ids[0] !== id ? `/fighters/${ids[0]}` : null;
+  }
+  if (kind !== "fights") return null;
+  const sides = slug.split("-vs-");
+  if (sides.length !== 2) return null;
+  const [a, b] = sides.map(fightersNamed);
+  if (!a.length || !b.length) return null;
+  const marks = (ids: string[]) => ids.map(() => "?").join(", ");
+  const fight = prepared(`SELECT f.id FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE (f.f1_id IN (${marks(a)}) AND f.f2_id IN (${marks(b)})) OR (f.f1_id IN (${marks(b)}) AND f.f2_id IN (${marks(a)}))
+    ORDER BY e.date DESC, f.ord LIMIT 1`).get(...a, ...b, ...b, ...a) as { id: string } | undefined;
+  return fight ? `/fights/${fight.id}` : null;
+}
+
 export function pageSeo(pathname: string): PageSeo {
+  const seo = pageSeoFor(pathname);
+  if (seo.status !== 404) return seo;
+  const redirect = pageRedirect(pathname);
+  return redirect ? { ...seo, status: 301, redirect } : seo;
+}
+
+function pageSeoFor(pathname: string): PageSeo {
   const home: PageSeo = { ...DEFAULT, canonical: `${SITE_URL}/`, summary: `<p>${link("/rankings", "Rankings")} · ${link("/stats", "Statistics")} · ${link("/officials", "Judges & referees")} · ${link("/venues", "Venues")} · ${link("/info", "About")}</p>` };
   if (pathname === "/" || pathname === "/index.html") return home;
   const fixed = STATIC_PAGES[pathname];

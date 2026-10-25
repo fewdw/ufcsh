@@ -34,7 +34,7 @@ const CANDIDATES = `SELECT f.id, e.date, f.f1_name, f.f2_name, c1.source_name AS
  *  whose deduction names fit neither fighter leaves its deductions unstored,
  *  and they show in Admin → Bugs. */
 export async function readPointDeductions(fights: CrawlFight[], concurrency = 2,
-  onProgress?: Parameters<typeof crawlMmaDecisions>[3]): Promise<{ matched: number; stored: number; unplaced: number; failed: number; blocked: number }> {
+  onProgress?: Parameters<typeof crawlMmaDecisions>[3]): Promise<{ matched: number; stored: number; unplaced: number; failed: number; blocked: number; unavailable: number; lastError?: string }> {
   const checked = db.prepare("UPDATE fights SET deductions_checked_at = ? WHERE id = ?");
   const store = db.prepare("UPDATE fights SET deductions_json = ?, deductions_checked_at = ? WHERE id = ?");
   // Unchanged cards are not written again: recent pages are re-read every few hours.
@@ -67,7 +67,7 @@ export async function readPointDeductions(fights: CrawlFight[], concurrency = 2,
     store.run(JSON.stringify({ source: "MMA Decisions", sourceUrl: mmaDecisionUrl(path), items }), Date.now(), fight.id);
     saved++;
   }, onProgress);
-  return { matched: stats.matched, stored: saved, unplaced, failed: stats.failed, blocked: stats.blocked };
+  return { matched: stats.matched, stored: saved, unplaced, failed: stats.failed, blocked: stats.blocked, unavailable: stats.unavailable, lastError: stats.lastError };
 }
 
 export const MMA_DECISIONS_BLOCKED = "mma_decisions_blocked_at";
@@ -95,7 +95,9 @@ export async function syncRecentPointDeductions(now = Date.now(), olderBatch = 2
       return;
     }
     if (blockedAt) setMeta(MMA_DECISIONS_BLOCKED, "");
-    if (result.failed) throw new Error(`MMA Decisions: ${result.failed} source reads failed; affected bouts remain pending`);
+    // When every failure was the site being down or slow, the message keeps
+    // that error's words, so the scheduler waits to see whether it lasts.
+    if (result.failed) throw new Error(`MMA Decisions: ${result.failed} source reads failed${result.unavailable === result.failed ? ` (${result.lastError})` : ""}; affected bouts remain pending`);
   }
 }
 
