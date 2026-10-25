@@ -234,10 +234,12 @@ function EventSidebar({
     if (!mobileOpen) setFilter("");
   }
 
-  // Derived from every event, not from the filtered view: the tag says where
-  // the promotion is, so a tier filter that hides the tagged card hides the
-  // tag with it rather than promoting the next row into its place.
+  // Derived from every event, not from the filtered view, so a filter never
+  // promotes another row into the tag's place.
   const tagged = useMemo(() => taggedEvent(events), [events]);
+  // Tonight's card, live or just finished, stays in the list whatever the
+  // tier; a Next card of the other tier is left to the filter.
+  const tonightId = tagged && tagged.tag !== "next" ? tagged.id : null;
 
   const scheduledEvents = useMemo(() => events.filter(event => !event.potential), [events]);
   const potential = events.find(event => event.potential);
@@ -251,8 +253,8 @@ function EventSidebar({
   // Tier first, then text: the count in the placeholder and the empty state
   // both describe the tier the reader is actually looking at.
   const scoped = useMemo(
-    () => (kind === "all" ? scheduledEvents : scheduledEvents.filter((e) => eventKind(e.name) === kind)),
-    [scheduledEvents, kind],
+    () => (kind === "all" ? scheduledEvents : scheduledEvents.filter((e) => eventKind(e.name) === kind || e.id === tonightId)),
+    [scheduledEvents, kind, tonightId],
   );
 
   const filtered = useMemo(() => {
@@ -310,7 +312,7 @@ function EventSidebar({
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               aria-label={`Filter ${KIND_NOUN[kind]}`}
-              placeholder={`Search ${scoped.length.toLocaleString()} ${KIND_NOUN[kind]}…`}
+              placeholder={`Search ${countByKind[kind].toLocaleString()} ${KIND_NOUN[kind]}…`}
               autoComplete="off"
               autoCorrect="off"
               autoCapitalize="none"
@@ -512,17 +514,17 @@ function resultTag(fight: EventFight, outcome: FightSide["outcome"]): { label: s
   return { label: fight.method === "CNC" ? "NC" : fight.method.toUpperCase(), when: when || null };
 }
 
-const CONTROVERSY: Record<NonNullable<EventFight["controversy"]>, { tone: string; title: string }> = {
-  fans_other: { tone: "bg-rose-100 text-rose-700", title: "Controversial: the fans' average scorecard had the other winner" },
-  rounds_total: { tone: "bg-violet-100 text-violet-700", title: "Controversial: one fighter won more rounds on the fans' average scorecard, the other its total" },
-  close: { tone: "bg-amber-100 text-amber-800", title: "Controversial: the fans' average totals were under half a point apart" },
+/** Why the fans' cards question the decision, shown on hover. */
+const CONTROVERSY: Record<NonNullable<EventFight["controversy"]>, string> = {
+  fans_other: "Controversial: the fans' average scorecard had the other winner",
+  rounds_total: "Controversial: one fighter won more rounds on the fans' average scorecard, the other its total",
+  close: "Controversial: the fans' average totals were under half a point apart",
 };
 
-/** A decision the fans' cards call into question, coloured by why. */
+/** A decision the fans' cards call into question. */
 function ControversyTag({ fight }: { fight: EventFight }) {
   if (!fight.controversy) return null;
-  const { tone, title } = CONTROVERSY[fight.controversy];
-  return <span className={`rounded px-1 py-px text-[9px] font-bold uppercase leading-3 ${tone}`} title={title}>Controversial</span>;
+  return <span className="rounded bg-amber-100 px-1 py-px text-[9px] font-bold uppercase leading-3 text-amber-800" title={CONTROVERSY[fight.controversy]}>Controversial</span>;
 }
 
 function CenterBlock({ fight, past, cancellation }: { fight: EventFight; past: boolean; cancellation?: CancelledBout }) {
