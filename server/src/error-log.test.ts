@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { ErrorLog } from "./error-log.ts";
-import { isTransientUpstream, lastingOutage } from "./sync.ts";
+import { isTransientUpstream } from "./sync-status.ts";
 
 const DAY = 86_400_000;
 
@@ -45,14 +45,4 @@ test("an upstream that is overloaded, rate-limiting or unreachable is transient;
   ]) assert.ok(isTransientUpstream(new Error(message)), message);
   assert.ok(!isTransientUpstream(new Error("HTTP 404 for https://api.fightodds.io/gql")));
   assert.ok(!isTransientUpstream(new Error('fightodds: Cannot query field "x"')));
-});
-
-test("a live job's transient failures are recorded only after fifteen minutes without a success, once per stretch", () => {
-  const outages = new Map<string, number>();
-  const MINUTE = 60_000, start = Date.UTC(2026, 9, 24, 20, 30);
-  for (let at = start; at < start + 15 * MINUTE; at += 10_000) assert.ok(!lastingOutage(outages, "live_stats a", at));
-  assert.ok(lastingOutage(outages, "live_stats a", start + 15 * MINUTE));
-  assert.ok(!lastingOutage(outages, "live_stats a", start + 16 * MINUTE));
-  assert.ok(lastingOutage(outages, "live_stats a", start + 30 * MINUTE));
-  assert.ok(!lastingOutage(outages, "live_event b", start + 30 * MINUTE));
 });

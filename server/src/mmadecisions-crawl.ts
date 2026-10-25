@@ -1,22 +1,35 @@
 import { alignment } from "./verdict-import.ts";
 import { fetchMmaDecisions, parseMmaDecision, parseMmaEventDecisions, parseMmaEvents, type MmaDecision } from "./scrape/mmadecisions.ts";
 import { normName } from "./util.ts";
+import { isTransientUpstream } from "./sync-status.ts";
 
 /** A decision to find on MMA Decisions: its date and both fighters' names. */
 export type CrawlFight = { id: string; date: string; f1_name: string; f2_name: string; f1_alias: string | null; f2_alias: string | null };
-/** `blocked` counts failures that were the site refusing this server (HTTP 403). */
-export type CrawlStats = { years: number; events: number; decisions: number; matched: number; failed: number; blocked: number };
+/** `blocked` counts failures that were the site refusing this server (HTTP 403);
+ *  `unavailable` those that were it being down or slow, after a second try. */
+export type CrawlStats = { years: number; events: number; decisions: number; matched: number; failed: number; blocked: number; unavailable: number; lastError?: string };
 
 /** Read MMA Decisions' yearly archives, the events near each wanted date and
  *  the decision pages naming one of its fighters, and hand over each page that
  *  matches exactly one wanted bout by date and both fighters' names. `order`
  *  is -1 when the page lists the fighters the other way round. */
-export async function crawlMmaDecisions<F extends CrawlFight>(fights: F[], options: { concurrency: number; eventFilter?: string; fetchPage?: typeof fetchMmaDecisions; onChecked?: (fight: F) => void },
+export async function crawlMmaDecisions<F extends CrawlFight>(fights: F[], options: { concurrency: number; eventFilter?: string; fetchPage?: typeof fetchMmaDecisions; onChecked?: (fight: F) => void; retryDelayMs?: number },
   onMatch: (fight: F, order: 1 | -1, page: MmaDecision, path: string) => void | Promise<void>,
   onProgress?: (stats: CrawlStats, pages: number) => void): Promise<CrawlStats> {
-  const stats: CrawlStats = { years: 0, events: 0, decisions: 0, matched: 0, failed: 0, blocked: 0 };
-  const failed = (error: unknown) => { stats.failed++; if (/HTTP 403\b/.test(String(error))) stats.blocked++; };
-  const read = options.fetchPage ?? fetchMmaDecisions;
+  const stats: CrawlStats = { years: 0, events: 0, decisions: 0, matched: 0, failed: 0, blocked: 0, unavailable: 0 };
+  const failed = (error: unknown) => {
+    stats.failed++;
+    stats.lastError = String(error);
+    if (/HTTP 403\b/.test(String(error))) stats.blocked++;
+    if (isTransientUpstream(error)) stats.unavailable++;
+  };
+  const fetchPage = options.fetchPage ?? fetchMmaDecisions;
+  // The site drops the odd request; a page is given up on only after a second try.
+  const read = (path: string) => fetchPage(path).catch(async (error: unknown) => {
+    if (!isTransientUpstream(error)) throw error;
+    await new Promise(resolve => setTimeout(resolve, options.retryDelayMs ?? 2000));
+    return fetchPage(path);
+  });
   const failedYears = new Set<number>();
   const failedDates = new Set<string>();
   const byDate = new Map<string, F[]>();

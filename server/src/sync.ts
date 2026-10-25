@@ -3,7 +3,8 @@ import { startPotentialMatchupSync } from "./potential-matchups.ts";
 import { isFightDay, LIVE_EVENT_INTERVAL, liveDetailDue, fightIsComplete, fightIsUnderway } from "./live-state.ts";
 import { verifiedReplacementAnnouncement } from "./replacement-announcements.ts";
 import { db, getMeta, metaAgeMs, setMeta, touchMeta } from "./db.ts";
-import { recordSyncError } from "./sync-status.ts";
+import { isTransientUpstream, outageReport, recordSyncError } from "./sync-status.ts";
+export { isTransientUpstream };
 import { daysBetween, firstLastName, log, normName, todayIso } from "./util.ts";
 import {
   scrapeEventDetail,
@@ -675,12 +676,6 @@ async function refreshEventSummary(fightId: string, row: Record<string, string>)
 /** A source that is mid-update or briefly unreachable rather than wrong.
  *  Logged, retried by the next pass, and kept out of the sync errors. */
 export class SourceCatchingUp extends Error {}
-
-/** A failure that is the other site's moment, not a fault here: overloaded,
- *  rate-limited, unreachable or slow. */
-export function isTransientUpstream(err: unknown): boolean {
-  return /HTTP (408|425|429|5\d\d)\b|fetch failed|TimeoutError|aborted due to timeout|ECONNRESET|ETIMEDOUT|socket hang up|connection already closed|server closed the connection/i.test(String(err));
-}
 
 const fightOnFightDay = (fightId: string) =>
   isFightDay((db.prepare("SELECT e.date FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?").get(fightId) as { date: string } | undefined)?.date ?? "");
@@ -1770,27 +1765,12 @@ async function syncAthleteDirectory(): Promise<void> {
 
 type EventRow = { id: string; name: string; date: string; complete: number; detail_fetched_at: number | null };
 
-/** The live loop reads each page again every 10 to 20 seconds, and UFCStats
- *  buckles under fight-night traffic: 502s and timeouts come and go for
- *  minutes while the next read succeeds. A live job's slow or refused answer
- *  is recorded only when the job has had no success for this long, once for
- *  each such stretch. A bad answer is still recorded at once. */
-const LIVE_OUTAGE_MS = 15 * 60_000;
-const outageSince = new Map<string, number>();
-
-/** Whether a transient failure is a lasting outage worth recording. Starts or
- *  continues the job's outage; a recorded one starts counting again. */
-export function lastingOutage(outages: Map<string, number>, name: string, now = Date.now()): boolean {
-  const since = outages.get(name) ?? now;
-  if (now - since < LIVE_OUTAGE_MS) { outages.set(name, since); return false; }
-  outages.set(name, now);
-  return true;
-}
-
-function guarded(name: string, fn: () => Promise<void>, live = false): Promise<void> {
-  return fn().then(() => { outageSince.delete(name); }, (err) => {
-    if (err instanceof SourceCatchingUp) { log(`sync retry later [${name}]:`, err.message); return; }
-    if (live && isTransientUpstream(err) && !lastingOutage(outageSince, name)) { log(`sync retry later [${name}]:`, String(err)); return; }
+/** A job that resolves to this read nothing (it was not due), which says nothing of its source. */
+const NOT_DUE = Symbol("not due");
+function guarded(name: string, fn: () => Promise<unknown>): Promise<void> {
+  return fn().then((read) => { if (read !== NOT_DUE) outageReport(name, null, Date.now(), true); }, (err) => {
+    if (err instanceof SourceCatchingUp) { outageReport(name, err, Date.now(), true); log(`sync retry later [${name}]:`, err.message); return; }
+    if (!outageReport(name, err)) { log(`sync retry later [${name}]:`, String(err)); return; }
     log(`SYNC ERROR [${name}]:`, String(err));
     recordSyncError(name, err);
   });
@@ -1798,18 +1778,20 @@ function guarded(name: string, fn: () => Promise<void>, live = false): Promise<v
 
 const liveRefreshes = new Map<string, Promise<void>>();
 const liveAttempts = new Map<string, number>();
-export async function refreshLiveEvent(eventId: string): Promise<void> {
+/** False when the card was not due a read. */
+export async function refreshLiveEvent(eventId: string): Promise<boolean> {
   const running = liveRefreshes.get(eventId);
-  if (running) return running;
+  if (running) return running.then(() => true);
   const event = db.prepare("SELECT date, complete, detail_fetched_at FROM events WHERE id = ?").get(eventId) as EventRow | undefined;
-  if (!event || !isFightDay(event.date)) return;
+  if (!event || !isFightDay(event.date)) return false;
   const now = Date.now();
   const interval = event.complete ? 120_000 : LIVE_EVENT_INTERVAL;
-  if (now - Math.max(event.detail_fetched_at ?? 0, liveAttempts.get(eventId) ?? 0) < interval) return;
+  if (now - Math.max(event.detail_fetched_at ?? 0, liveAttempts.get(eventId) ?? 0) < interval) return false;
   liveAttempts.set(eventId, now);
   const work = syncEventDetail(eventId).finally(() => liveRefreshes.delete(eventId));
   liveRefreshes.set(eventId, work);
-  return work;
+  await work;
+  return true;
 }
 
 let liveTicking = false;
@@ -1821,13 +1803,13 @@ export async function syncLiveEvents(): Promise<void> {
       WHERE date >= date('now', '-1 day') AND date <= date('now') ORDER BY date DESC`)
       .all() as { id: string; date: string; main_card_at: number | null; prelims_at: number | null; early_prelims_at: number | null }[];
     for (const event of events) {
-      await guarded(`live_event ${event.id}`, () => refreshLiveEvent(event.id), true);
+      await guarded(`live_event ${event.id}`, async () => await refreshLiveEvent(event.id) || NOT_DUE);
       // Pick up results during the card, without waiting for the main event.
       // Missing stats go first; completed stats keep receiving corrections.
       const fights = db.prepare(`SELECT id, f1_outcome, f2_outcome, detail_json, detail_fetched_at FROM fights
         WHERE event_id = ? AND (f1_outcome IS NOT NULL OR f2_outcome IS NOT NULL)
         ORDER BY detail_fetched_at ASC`).all(event.id) as { id: string; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; detail_fetched_at: number | null }[];
-      for (const fight of fights) if (liveDetailDue(fight)) await guarded(`live_stats ${fight.id}`, () => syncFightDetail(fight.id), true);
+      for (const fight of fights) if (liveDetailDue(fight)) await guarded(`live_stats ${fight.id}`, () => syncFightDetail(fight.id));
       // The bout being fought now has no result yet, so the query above never
       // reaches it — and it is the one whose numbers are moving. UFCStats
       // publishes its round totals as they happen, so keep it warm rather than
@@ -1841,7 +1823,7 @@ export async function syncLiveEvents(): Promise<void> {
           WHERE event_id = ? ORDER BY ord`)
           .all(event.id) as { id: string; ord: number; segment: string | null; card_pos: number | null; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; detail_fetched_at: number | null }[])
           .findLast((fight) => fight.f1_outcome == null && fight.f2_outcome == null);
-        if (underway && liveDetailDue(underway)) await guarded(`live_stats ${underway.id}`, () => syncFightDetail(underway.id), true);
+        if (underway && liveDetailDue(underway)) await guarded(`live_stats ${underway.id}`, () => syncFightDetail(underway.id));
       }
     }
   } finally { liveTicking = false; }

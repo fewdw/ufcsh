@@ -50,6 +50,37 @@ export function recentSyncError(now = Date.now()): boolean {
   return savedErrors().some(error => now - error.at < 10 * MINUTE);
 }
 
+/** A failure that is the other site's moment, not a fault here: overloaded,
+ *  rate-limited, unreachable or slow. */
+export function isTransientUpstream(err: unknown): boolean {
+  return /HTTP (408|425|429|5\d\d)\b|fetch failed|TimeoutError|aborted due to timeout|ECONNRESET|ETIMEDOUT|socket hang up|connection already closed|server closed the connection/i.test(String(err));
+}
+
+/** Sources fail for a moment all the time (UFCStats answers 502 or times out
+ *  through a busy card; another process can hold the database briefly), and
+ *  every job runs again soon. Such a failure is recorded only once its job has
+ *  been failing, with no answer between, for this long. Any failure that goes
+ *  on is then recorded once every few hours rather than on every pass. */
+export const OUTAGE_MS = 15 * 60_000;
+/** A failure that goes on is recorded again this often, so Admin still shows it. */
+const REMIND_MS = 6 * HOUR;
+const outages = new Map<string, { since: number; reportedAt: number | null }>();
+
+/** Whether this failure is worth a sync error now, or is a moment to wait out.
+ *  `answered`: the job's source responded (success, or a page still filling in). */
+export function outageReport(name: string, err: unknown, now = Date.now(), answered = false): boolean {
+  if (answered) { outages.delete(name); return false; }
+  const transient = isTransientUpstream(err) || /database is locked|SQLITE_BUSY/i.test(String(err));
+  const outage = outages.get(name) ?? { since: now, reportedAt: null };
+  if (outages.size > 2000) outages.clear();
+  outages.set(name, outage);
+  // A fault of our own is news at once; a source's moment only once it lasts.
+  if (now - outage.since < (transient ? OUTAGE_MS : 0)) return false;
+  if (outage.reportedAt != null && now - outage.reportedAt < REMIND_MS) return false;
+  outage.reportedAt = now;
+  return true;
+}
+
 /** "live_stats 4f0f…" and "upcoming_event UFC 320" are one kind of job each. */
 const jobKind = (job: string) => job.split(" ")[0];
 

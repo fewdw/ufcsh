@@ -24,9 +24,10 @@ test("a completed source search marks matched and genuinely absent bouts checked
 test("failed archive reads never mark its decisions checked", async () => {
   const checked: string[] = [];
   const result = await crawlMmaDecisions([fight("retry")], {
-    concurrency: 1, onChecked: row => checked.push(row.id), fetchPage: async () => { throw new Error("HTTP 503"); },
+    concurrency: 1, retryDelayMs: 0, onChecked: row => checked.push(row.id), fetchPage: async () => { throw new Error("HTTP 503"); },
   }, () => assert.fail("No decision was read"));
   assert.equal(result.failed, 1);
+  assert.equal(result.unavailable, 1);
   assert.deepEqual(checked, []);
 });
 
@@ -52,14 +53,14 @@ test("failed event and malformed decision pages leave nearby bouts retryable wit
 test("a December 31 bout requires the neighboring year's archive too", async () => {
   const checked: string[] = [], years: string[] = [];
   const result = await crawlMmaDecisions([fight("boundary", "2024-12-31")], {
-    concurrency: 1, onChecked: row => checked.push(row.id), fetchPage: async path => {
+    concurrency: 1, retryDelayMs: 0, onChecked: row => checked.push(row.id), fetchPage: async path => {
       years.push(path);
       if (path.includes("2025")) throw new Error("HTTP 503");
       return "<table></table>";
     },
   }, () => assert.fail("No decision was read"));
   assert.equal(result.failed, 1);
-  assert.deepEqual(years.sort(), ["decisions-by-event/2024/", "decisions-by-event/2025/"]);
+  assert.deepEqual([...new Set(years)].sort(), ["decisions-by-event/2024/", "decisions-by-event/2025/"]);
   assert.deepEqual(checked, []);
 });
 
@@ -70,4 +71,17 @@ test("fighter order is reversed only after both names match exactly one dated bo
   await crawlMmaDecisions([fight("one")], { concurrency: 1, fetchPage: read }, (_row, order) => { orders.push(order); });
   assert.deepEqual(orders, [-1]);
   await crawlMmaDecisions([fight("one"), fight("two")], { concurrency: 1, fetchPage: read }, () => assert.fail("Ambiguous bout must not match"));
+});
+
+test("a page the site drops once is read again before the search gives up on it", async () => {
+  let refusals = 0;
+  const matched: string[] = [];
+  const result = await crawlMmaDecisions([fight("matched")], {
+    concurrency: 1, retryDelayMs: 0, fetchPage: async path => {
+      if (path.startsWith("event/") && !refusals++) throw new Error("MMA Decisions HTTP 502");
+      return path.startsWith("decisions-by-event/") ? archive : path.startsWith("event/") ? event : decision;
+    },
+  }, row => { matched.push(row.id); });
+  assert.equal(result.failed, 0);
+  assert.deepEqual(matched, ["matched"]);
 });
