@@ -1770,20 +1770,27 @@ async function syncAthleteDirectory(): Promise<void> {
 
 type EventRow = { id: string; name: string; date: string; complete: number; detail_fetched_at: number | null };
 
-/** The live loop reads each page again within a minute, so one slow or
- *  refused answer from the source is its moment, not a fault: a live job is
- *  recorded as failing only when it fails this many times in a row. */
-const LIVE_TRANSIENT_GRACE = 3;
-const transientFailures = new Map<string, number>();
+/** The live loop reads each page again every 10 to 20 seconds, and UFCStats
+ *  buckles under fight-night traffic: 502s and timeouts come and go for
+ *  minutes while the next read succeeds. A live job's slow or refused answer
+ *  is recorded only when the job has had no success for this long, once for
+ *  each such stretch. A bad answer is still recorded at once. */
+const LIVE_OUTAGE_MS = 15 * 60_000;
+const outageSince = new Map<string, number>();
 
-function guarded(name: string, fn: () => Promise<void>, transientGrace = 0): Promise<void> {
-  return fn().then(() => { transientFailures.delete(name); }, (err) => {
+/** Whether a transient failure is a lasting outage worth recording. Starts or
+ *  continues the job's outage; a recorded one starts counting again. */
+export function lastingOutage(outages: Map<string, number>, name: string, now = Date.now()): boolean {
+  const since = outages.get(name) ?? now;
+  if (now - since < LIVE_OUTAGE_MS) { outages.set(name, since); return false; }
+  outages.set(name, now);
+  return true;
+}
+
+function guarded(name: string, fn: () => Promise<void>, live = false): Promise<void> {
+  return fn().then(() => { outageSince.delete(name); }, (err) => {
     if (err instanceof SourceCatchingUp) { log(`sync retry later [${name}]:`, err.message); return; }
-    if (transientGrace && isTransientUpstream(err)) {
-      const failures = (transientFailures.get(name) ?? 0) + 1;
-      transientFailures.set(name, failures);
-      if (failures < transientGrace) { log(`sync retry later [${name}] (${failures}/${transientGrace}):`, String(err)); return; }
-    }
+    if (live && isTransientUpstream(err) && !lastingOutage(outageSince, name)) { log(`sync retry later [${name}]:`, String(err)); return; }
     log(`SYNC ERROR [${name}]:`, String(err));
     recordSyncError(name, err);
   });
@@ -1814,13 +1821,13 @@ export async function syncLiveEvents(): Promise<void> {
       WHERE date >= date('now', '-1 day') AND date <= date('now') ORDER BY date DESC`)
       .all() as { id: string; date: string; main_card_at: number | null; prelims_at: number | null; early_prelims_at: number | null }[];
     for (const event of events) {
-      await guarded(`live_event ${event.id}`, () => refreshLiveEvent(event.id));
+      await guarded(`live_event ${event.id}`, () => refreshLiveEvent(event.id), true);
       // Pick up results during the card, without waiting for the main event.
       // Missing stats go first; completed stats keep receiving corrections.
       const fights = db.prepare(`SELECT id, f1_outcome, f2_outcome, detail_json, detail_fetched_at FROM fights
         WHERE event_id = ? AND (f1_outcome IS NOT NULL OR f2_outcome IS NOT NULL)
         ORDER BY detail_fetched_at ASC`).all(event.id) as { id: string; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; detail_fetched_at: number | null }[];
-      for (const fight of fights) if (liveDetailDue(fight)) await guarded(`live_stats ${fight.id}`, () => syncFightDetail(fight.id), LIVE_TRANSIENT_GRACE);
+      for (const fight of fights) if (liveDetailDue(fight)) await guarded(`live_stats ${fight.id}`, () => syncFightDetail(fight.id), true);
       // The bout being fought now has no result yet, so the query above never
       // reaches it — and it is the one whose numbers are moving. UFCStats
       // publishes its round totals as they happen, so keep it warm rather than
@@ -1834,7 +1841,7 @@ export async function syncLiveEvents(): Promise<void> {
           WHERE event_id = ? ORDER BY ord`)
           .all(event.id) as { id: string; ord: number; segment: string | null; card_pos: number | null; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null; detail_fetched_at: number | null }[])
           .findLast((fight) => fight.f1_outcome == null && fight.f2_outcome == null);
-        if (underway && liveDetailDue(underway)) await guarded(`live_stats ${underway.id}`, () => syncFightDetail(underway.id), LIVE_TRANSIENT_GRACE);
+        if (underway && liveDetailDue(underway)) await guarded(`live_stats ${underway.id}`, () => syncFightDetail(underway.id), true);
       }
     }
   } finally { liveTicking = false; }
