@@ -103,8 +103,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-25">October 25, 2026</time></p>
             <ul>
-              <li>An opening line from a sportsbook that listed the fighters the wrong way round no longer shows as the bout's opener.</li>
-              <li>A new result is added to a fighter's career record within hours of their professional history listing it.</li>
+              <li>You can bet on potential matchups; the bet settles on the bout once it is booked.</li>
+              <li>Picks and bets close at each bout's estimated start, so a finished bout can no longer be bet on.</li>
+              <li>Potential matchups no longer show an empty weight-class pill, and their odds sit centred.</li>
             </ul>
           </Section>
         </div>

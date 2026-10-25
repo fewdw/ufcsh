@@ -270,3 +270,19 @@ test("a card's predictions come back together: the community split for every bou
   assert.equal(mine.fights[4].mine, null, "bob's pick is not alice's");
   assert.equal((await fetch(`${root}/api/events/ffffffffffffffff/predictions`)).status, 404);
 });
+
+test("with no live results, a bout closes at its estimated start, so a past card never takes picks or bets", () => {
+  const prelims = eventStart, main = eventStart + 2 * 3_600_000;
+  // bouts[4] (lowest ord) is the main event; bouts[3] opens the main card.
+  const bouts = Array.from({ length: 5 }, (_, index) => ({ ...fight(index), segment: index >= 3 ? "main" : "prelims",
+    prelims_at: prelims, main_card_at: main }));
+  const status = (index: number, time: number) => predictionWindow({ fight: bouts[index], bouts }, time);
+  assert.equal(status(4, main + 29 * 60_000).open, true);
+  assert.equal(status(4, main + 30 * 60_000).open, false, "the main event, ~30 minutes into the main card");
+  assert.equal(status(3, main).open, false);
+  assert.equal(status(4, main + 24 * 3_600_000).open, false, "the next day, with no results read");
+  // Not yet split into sections: timed as one block from the first start.
+  const unsplit = Array.from({ length: 5 }, (_, index) => fight(index));
+  assert.equal(predictionWindow({ fight: unsplit[4], bouts: unsplit }, eventStart + 2 * 3_600_000 - 1).open, true);
+  assert.equal(predictionWindow({ fight: unsplit[4], bouts: unsplit }, eventStart + 2 * 3_600_000).open, false);
+});

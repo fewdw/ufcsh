@@ -10,11 +10,11 @@ import { ScoringStore, type ScoringFight } from "./scoring.ts";
 import { createScoringHandler, scoringOrigins } from "./scoring-http.ts";
 import { PredictionStore } from "./predictions.ts";
 import { createPredictionsHandler } from "./predictions-http.ts";
-import { betContext, cardPlaces, eventFightIds, predictionContext, predictionFights } from "./predictions-data.ts";
+import { betContext, betOpen, betsOpen, potentialBooking, cardPlaces, eventFightIds, predictionContext, predictionFights } from "./predictions-data.ts";
 import { BetStore } from "./bets.ts";
 import { createBetsHandler } from "./bets-http.ts";
 import { createLeaderboards } from "./leaderboards.ts";
-import { cardOrder, estimatedStart, type SegmentTimes } from "./card-schedule.ts";
+import { cardOrder, estimatedStart, scheduledBout, type SegmentTimes } from "./card-schedule.ts";
 import { calendarAnswer, calendarFileName, calendarOptions, calendarQuery, calendarStart } from "./calendar.ts";
 import http from "node:http";
 import { promises as fs } from "node:fs";
@@ -105,19 +105,6 @@ function cardSchedule(e: EventRow): { main_card_at: number | null; prelims_at: n
     early_prelims_at: e.early_prelims_at ?? null,
   };
 }
-
-type SegmentOf = "main" | "prelims" | "early" | null;
-
-/** A bout as the running order reads it. A five-round bout takes longer, so
- *  the estimate for the bouts after it has to know. The booked length is used
- *  when ufc.com has published it; until then this timing estimate (and only
- *  it) assumes the usual booking of five for a main event or a belt. */
-const scheduledBout = (f: any) => ({
-  ord: Number(f.ord) || 0,
-  segment: (f.segment || null) as SegmentOf,
-  card_pos: f.card_pos ?? null,
-  fiveRound: Number(f.scheduled_rounds) > 0 ? Number(f.scheduled_rounds) === 5 : ["title", "interim"].includes(f.title_type) || Number(f.ord) === 0,
-});
 
 const segmentTimes = (e: EventRow): SegmentTimes => ({
   main: e.main_card_at ?? null,
@@ -537,7 +524,8 @@ async function getEvent(id: string, rankingType: RankingType): Promise<unknown |
       live: false, card_stats: summarizeCard(fights),
       odds_freshness: { updated_at: rows.length ? Math.min(...rows.map(row => row.fetched_at)) : null,
         final: false, priced: rows.length, sources: [...new Set(rows.map(row => JSON.parse(row.odds_json).source_url.startsWith("https://fightodds.io/") ? "FightOdds.io" : "BestFightOdds"))] },
-      fights: fights.map(f => ({ ...fightRowToJson(f, false, f.event_date, rankingType), potential: true, scheduled_rounds: null })),
+      fights: fights.map(f => ({ ...fightRowToJson(f, false, f.event_date, rankingType), potential: true, scheduled_rounds: null,
+        bets_open: !!(f.f1_id && f.f2_id && f.f1_id !== f.f2_id) })),
     };
   }
   const e = prepared("SELECT * FROM events WHERE id = ?").get(id) as EventRow | undefined;
@@ -560,6 +548,7 @@ async function getEvent(id: string, rankingType: RankingType): Promise<unknown |
   // A segment start is announced before the lineup is split. Until every
   // bout is placed, unknown bouts could change either broadcast window.
   const sectionsConfirmed = card.every((fight) => fight.segment != null);
+  const open = betsOpen(e.id);
   const startsAt = (f: any): number | null =>
     !sectionsConfirmed || fightIsComplete(f) || fightIsUnderway(f) ? null : estimatedStart(card, Number(f.ord) || 0, times);
 
@@ -578,7 +567,7 @@ async function getEvent(id: string, rankingType: RankingType): Promise<unknown |
     schedule: cardSchedule(e),
     card_stats: summarizeCard(fights),
     odds_freshness: oddsFreshness(e.id),
-    fights: fights.map((f) => ({ ...fightRowToJson(f, false, e.date, rankingType), starts_at: startsAt(f) })),
+    fights: fights.map((f) => ({ ...fightRowToJson(f, false, e.date, rankingType), starts_at: startsAt(f), bets_open: open.has(f.id) })),
     cancelled: cancelledBouts(e, rankingType),
     // The bout confirmed to be on now, as the header's pill has it.
     live_fight_id: (() => { const current = currentBout(); return current?.live && current.event.id === e.id ? current.bout.id : null; })(),
@@ -1095,6 +1084,8 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
     // advertise Predict while their card is inside the server's event horizon.
     potential: !!potential,
     prediction_available: !potential && (fightIsComplete(f) || predictionContext(f.id)?.eventOpen !== false),
+    // Its prices are offered for betting only while the server would take the bet.
+    bets_open: betOpen(f.id),
     live: !potential && isFightDay(f.event_date),
     in_progress: !potential && fightInProgress(f),
     up_next: !potential && fightUpNext(f),
@@ -2499,7 +2490,7 @@ export function startApi(port: number): http.Server {
   const scoring = createScoringHandler(scoreStore);
   const predictionStore = new PredictionStore(scoreStore, predictionContext, predictionFights);
   const predictions = createPredictionsHandler(predictionStore, undefined, eventFightIds);
-  const betStore = new BetStore(scoreStore, betContext, predictionFights);
+  const betStore = new BetStore(scoreStore, betContext, predictionFights, Date.now, potentialBooking);
   const bets = createBetsHandler(betStore, createLeaderboards(scoreStore, predictionStore, betStore));
   const reportStore = new ReportStore(scoreStore);
   const googleCalendars = new GoogleCalendars(scoreStore.db);

@@ -262,6 +262,8 @@ export type CardSchedule = {
 
 export type EventFight = {
   potential?: boolean;
+  /** The server takes bets on this bout now: still to be fought on its schedule. */
+  bets_open?: boolean;
   id: string;
   ord: number;
   /** Which part of the card, once ufc.com has grouped it. */
@@ -446,6 +448,8 @@ export type OfficialRef = { name: string; slug: string | null };
 
 export type Matchup = {
   potential?: boolean;
+  /** The server takes bets on this bout now: still to be fought on its schedule. */
+  bets_open?: boolean;
   refreshing?: boolean;
   id: string;
   event: { id: string; name: string; date: string; location: string; location_slug?: string | null; venue?: VenueRef | null };

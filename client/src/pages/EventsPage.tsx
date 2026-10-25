@@ -29,6 +29,7 @@ import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, List, X } from "lucide-r
 import { segmentedGroup, segmentedIdle, segmentedSelected } from "../components/segmented";
 import { CLOSE_BUTTON, CLOSE_ICON } from "../ui";
 import { searchList } from "../search";
+import { betFightId } from "../parlay";
 
 const shell = PANEL;
 /** The source flags a tournament or TUF final the same way it flags a
@@ -539,7 +540,7 @@ function CenterBlock({ fight, past, cancellation }: { fight: EventFight; past: b
     <div className="flex w-full flex-col items-center">
       <OddsPair f1={f1Odds} f2={f2Odds}
         f1Name={fight.f1.name} f2Name={fight.f2.name}
-        fightId={past || fight.potential ? undefined : fight.id} />
+        fightId={betFightId(fight, past)} />
       {/* The result wraps rather than truncating: the round and the clock are
           the point of the line, and the centre column is narrow enough that
           "KO/TKO · R1 · 2:54" would lose its tail to an ellipsis. */}
@@ -664,7 +665,7 @@ function CompactSide({ side, fight, done, other, profileLink = false }: { side: 
       {/* A bout with no line yet keeps the same box, holding a dash, so
           every row on the card lines up. */}
       <Moneyline
-        leg={moneylineLeg(done || fight.potential ? undefined : fight.id, fightLabel, corner, side.name, price)}
+        leg={moneylineLeg(betFightId(fight, done), fightLabel, corner, side.name, price)}
         value={price || "-"}
         name={side.name}
         className={`odds-pair w-14 shrink-0 rounded-md border py-0.5 text-center text-[12px] font-semibold tabular-nums ${price ? "" : "text-zinc-300"} ${other.outcome === "win" ? "opacity-60" : ""}`}
@@ -797,7 +798,7 @@ function CardOddsRow({ fight, eventId, live, past, format }: { fight: EventFight
               ) : null}
             </div>
           ) : null}
-          <CardMoneyline fightId={done || fight.potential ? undefined : fight.id} f1={f1Odds} f2={f2Odds} f1Name={fight.f1.name} f2Name={fight.f2.name} />
+          <CardMoneyline fightId={betFightId(fight, done)} f1={f1Odds} f2={f2Odds} f1Name={fight.f1.name} f2Name={fight.f2.name} />
           {fight.weight_class || expected ? (
             <span
               className="w-full whitespace-nowrap text-center text-[10px] font-medium tabular-nums text-zinc-400"
@@ -815,7 +816,7 @@ function CardOddsRow({ fight, eventId, live, past, format }: { fight: EventFight
         </span>
       </div>
       {hasProps ? (
-        <OddsMarkets odds={props!} fightId={fight.potential ? undefined : fight.id} f1Name={fight.f1.name} f2Name={fight.f2.name} format={format} result={result} compact />
+        <OddsMarkets odds={props!} fightId={betFightId(fight)} f1Name={fight.f1.name} f2Name={fight.f2.name} format={format} result={result} compact />
       ) : null}
     </div>
   );
