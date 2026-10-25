@@ -234,10 +234,12 @@ function EventSidebar({
     if (!mobileOpen) setFilter("");
   }
 
-  // Derived from every event, not from the filtered view: the tag says where
-  // the promotion is, so a tier filter that hides the tagged card hides the
-  // tag with it rather than promoting the next row into its place.
+  // Derived from every event, not from the filtered view, so a filter never
+  // promotes another row into the tag's place.
   const tagged = useMemo(() => taggedEvent(events), [events]);
+  // Tonight's card, live or just finished, stays in the list whatever the
+  // tier; a Next card of the other tier is left to the filter.
+  const tonightId = tagged && tagged.tag !== "next" ? tagged.id : null;
 
   const scheduledEvents = useMemo(() => events.filter(event => !event.potential), [events]);
   const potential = events.find(event => event.potential);
@@ -251,8 +253,8 @@ function EventSidebar({
   // Tier first, then text: the count in the placeholder and the empty state
   // both describe the tier the reader is actually looking at.
   const scoped = useMemo(
-    () => (kind === "all" ? scheduledEvents : scheduledEvents.filter((e) => eventKind(e.name) === kind)),
-    [scheduledEvents, kind],
+    () => (kind === "all" ? scheduledEvents : scheduledEvents.filter((e) => eventKind(e.name) === kind || e.id === tonightId)),
+    [scheduledEvents, kind, tonightId],
   );
 
   const filtered = useMemo(() => {
@@ -310,7 +312,7 @@ function EventSidebar({
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               aria-label={`Filter ${KIND_NOUN[kind]}`}
-              placeholder={`Search ${scoped.length.toLocaleString()} ${KIND_NOUN[kind]}…`}
+              placeholder={`Search ${countByKind[kind].toLocaleString()} ${KIND_NOUN[kind]}…`}
               autoComplete="off"
               autoCorrect="off"
               autoCapitalize="none"
