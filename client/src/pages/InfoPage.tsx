@@ -103,9 +103,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-25">October 25, 2026</time></p>
             <ul>
-              <li>You can bet on potential matchups; the bet settles on the bout once it is booked.</li>
-              <li>Picks and bets close at each bout's estimated start, so a finished bout can no longer be bet on.</li>
-              <li>Potential matchups no longer show an empty weight-class pill, and their odds sit centred.</li>
+              <li>Point deductions now show within minutes of a decision, read from Verdict MMA while MMA Decisions is unavailable, and come off fan scorecards too.</li>
+              <li>Aliev's first-round point against Dawson at UFC 333 is now shown.</li>
             </ul>
           </Section>
         </div>
