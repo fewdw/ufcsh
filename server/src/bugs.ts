@@ -122,6 +122,13 @@ const recent = (steps: [number, BugLevel][], otherwise: BugLevel = "ok") => (ite
   return (days != null && steps.find(([within]) => -days <= within)?.[1]) || otherwise;
 };
 
+/** A research gap from the last year or on a coming card stays open; older
+ *  history no source records is expected, still listed and searchable. */
+const lastYear = (soon = 14) => (item: BugItem): BugLevel => {
+  const days = daysFrom(item.date);
+  return days != null && days >= -365 && days <= soon ? "minor" : "ok";
+};
+
 function check(meta: Omit<BugCheck, "total" | "items" | "level"> & { grade: Grade }, items: BugItem[], itemLimit = ITEM_LIMIT): BugCheck {
   const { grade, ...rest } = meta;
   const rank = (item: BugItem) => BUG_LEVELS.indexOf(item.level!);
@@ -1465,8 +1472,8 @@ function replacementsUnnamed(): BugCheck {
     id: "replacement-unnamed",
     group: "Fights & events",
     label: "Replacements without the fighter they replaced",
-    description: "The event article says this fighter came in as a replacement or on short notice, but not in a way we could read whom they replaced in full, so the matchup says \"Late replacement\", \"Took this fight on short notice\" or a surname alone. Read from the article's Background prose (boutChanges in scrape/wikipedia.ts); re-reading picks up a later edit.",
-    grade: ahead([[7, "minor"]]),
+    description: "The event article says this fighter came in as a replacement or on short notice, but not in a way we could read whom they replaced in full, so the matchup says \"Late replacement\", \"Took this fight on short notice\" or a surname alone. Read from the article's Background prose (boutChanges in scrape/wikipedia.ts); re-reading picks up a later edit. Older than a year is graded OK.",
+    grade: lastYear(7),
   }, rows.map((row): BugItem => ({
     key: `${row.id}:${row.name}`,
     title: row.name,
@@ -1503,7 +1510,7 @@ function replacedWithoutProfile(): BugCheck {
     group: "Fights & events",
     label: "Replaced fighters without a profile",
     description: "The fighter a replacement took the place of has no UFC profile we can link, so their name shows without a link. Graded OK when UFCStats lists them under that name with no UFC bout (they never fought in the UFC); otherwise the article may spell them differently from UFCStats.",
-    grade: (item) => neverFought.has(item.key) ? "ok" : ahead([[14, "minor"]])(item),
+    grade: (item) => neverFought.has(item.key) ? "ok" : lastYear()(item),
   }, rows.map((row): BugItem => ({
     key: `${row.id}:${row.name}`,
     title: row.replaced,
@@ -1528,8 +1535,8 @@ function replacementsWithoutNotice(): BugCheck {
     id: "replacement-no-notice",
     group: "Fights & events",
     label: "Replacements without their days' notice",
-    description: "A replacement whose notice the event article doesn't state, so the matchup says \"Replaced X\" (or \"on short notice\") without how many days. Stated notice (\"on 10 days' notice\", \"less than two weeks before\", \"during fight week\") is read with the article. A dated cited report naming both fighters and their replacement or withdrawal/new booking gives \"announced N days before\", rather than claiming when the fighter accepted. Individually verified primary reports are retained in replacement-announcements.ts. The rest wait for another source.",
-    grade: ahead([[14, "minor"]]),
+    description: "A replacement whose notice the event article doesn't state, so the matchup says \"Replaced X\" (or \"on short notice\") without how many days. Stated notice (\"on 10 days' notice\", \"less than two weeks before\", \"during fight week\") is read with the article. A dated cited report naming both fighters and their replacement or withdrawal/new booking gives \"announced N days before\", rather than claiming when the fighter accepted. Individually verified primary reports are retained in replacement-announcements.ts. The rest wait for another source; older than a year is graded OK.",
+    grade: lastYear(),
   }, rows.map((row): BugItem => ({
     key: `${row.id}:${row.name}`,
     title: row.name,
@@ -1910,7 +1917,7 @@ function rosterHistoryGaps(): BugCheck {
       !fighterId && "unambiguous profile"].filter(Boolean);
     if (!missing.length) continue;
     items.push({ key: `${event.name}:${event.date}:${event.kind}`, title: event.name,
-      subtitle: `Roster timeline · missing ${missing.join(", ")}`,
+      subtitle: `Roster timeline · missing ${missing.join(", ")}`, date: event.date,
       facts: [["Date", event.date], ["Change", event.kind], ["Reason", event.reason ?? "Not reported"]],
       links: [...(fighterId ? [fighterLink(fighterId, event.name)] : []),
         ...(/^https:\/\//.test(event.source_url) ? [{ label: "Report", href: event.source_url }] : [])],
@@ -1942,7 +1949,8 @@ function rosterHistoryGaps(): BugCheck {
         if (proof?.ufcFightId) links.push(...fightLinks(proof.ufcFightId));
         const source = db.prepare("SELECT source_url FROM career_profiles WHERE fighter_id = ? AND status = 'verified'").get(fighter.id) as { source_url: string | null } | undefined;
         if (source?.source_url) links.push({ label: "Professional history", href: source.source_url });
-        items.push({ key: `gap:${fighter.id}:${band.signing ? "signed" : "left"}:${band.date ?? newer?.date ?? older?.date ?? "undated"}`,
+        const date = band.date ?? newer?.date ?? older?.date;
+        items.push({ key: `gap:${fighter.id}:${band.signing ? "signed" : "left"}:${date ?? "undated"}`, date,
           title: fighter.name, subtitle: `${band.label} · unknown ${band.unknown.map(field => missingLabel[field]).join(", ")}`,
           facts, links, actions: [],
         });
@@ -1950,8 +1958,8 @@ function rosterHistoryGaps(): BugCheck {
     }
   }
   return check({ id: "roster-history", group: "Fighters", label: "UFC roster timeline evidence",
-    description: "Manual research backlog for unknown signing/return dates, unconfirmed departure dates/reasons, observed-only roster changes, and incomplete source reports. Every item links to the profile and available bout/source evidence. Recruitment appearances alone never establish a signing. Add a verified dated report and source in server/src/roster-history.ts or retained roster_history metadata; the corresponding gap disappears on refresh. Re-read current roster reports to repair source fields. All timeline gaps remain searchable; the list loads in pages.",
-    grade: "minor" }, items, Infinity);
+    description: "Manual research backlog for unknown signing/return dates, unconfirmed departure dates/reasons, observed-only roster changes, and incomplete source reports. Every item links to the profile and available bout/source evidence. Recruitment appearances alone never establish a signing. Add a verified dated report and source in server/src/roster-history.ts or retained roster_history metadata; the corresponding gap disappears on refresh. Re-read current roster reports to repair source fields. Gaps older than a year are graded OK: no source dates most past signings. All timeline gaps remain searchable; the list loads in pages.",
+    grade: lastYear() }, items, Infinity);
 }
 
 function rosterMovesUnread(): BugCheck {

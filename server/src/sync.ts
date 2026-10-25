@@ -1400,7 +1400,8 @@ export async function syncFightOdds({ props = false }: { props?: boolean } = {})
     ON CONFLICT(fight_id) DO UPDATE SET
       markets_json = excluded.markets_json, source_url = excluded.source_url, final = 0, fetched_at = excluded.fetched_at
   `);
-  const hasOpener = db.prepare("SELECT 1 FROM odds WHERE fight_id = ? AND f1_open IS NOT NULL AND f2_open IS NOT NULL");
+  const storedOpen = db.prepare("SELECT f1_open, f2_open FROM odds WHERE fight_id = ? AND f1_open IS NOT NULL AND f2_open IS NOT NULL");
+  const replaceOpen = db.prepare("UPDATE odds SET f1_open = ?, f2_open = ? WHERE fight_id = ?");
   // Read the card after each request, then write without awaiting, so a price
   // always lands on the corners the fight has right now.
   const card = (date: string) => {
@@ -1430,12 +1431,20 @@ export async function syncFightOdds({ props = false }: { props?: boolean } = {})
     if (!(selectFights.all(event.date, event.date) as unknown[]).length) continue;
     const bouts = await fightOddsBoard(event.pk);
     total.events++;
-    // A priced bout we hold no opener for reads its books' openers first.
+    // A priced bout we hold no opener for reads its books' openers first. So
+    // does one whose opener sits on the far side of today's line: it was read
+    // when the only book posting had the corners swapped, and is replaced.
     const first = card(event.date);
+    const reread = new Set<string>();
     for (const [i, bout] of bouts.entries()) {
       const match = matchBout(bout, first.fights);
-      if (!match || first.frozen.has(match.fight.id) || !boutLines(bout) || hasOpener.get(match.fight.id)) continue;
+      const lines = match && !first.frozen.has(match.fight.id) ? boutLines(bout) : null;
+      if (!match || !lines) continue;
+      const stored = storedOpen.get(match.fight.id) as { f1_open: string; f2_open: string } | undefined;
+      const flipped = stored && flippedOpen(stored.f1_open, lines.close[match.reversed ? 1 : 0]);
+      if (stored && !flipped) continue;
       bouts[i] = await fightOddsOpeners(bout);
+      if (flipped) reread.add(match.fight.id);
     }
     const now = Date.now();
     let { fights, frozen } = card(event.date);
@@ -1447,6 +1456,7 @@ export async function syncFightOdds({ props = false }: { props?: boolean } = {})
         const [open1, open2] = match.reversed ? [lines.open[1], lines.open[0]] : lines.open;
         const [close1, close2] = match.reversed ? [lines.close[1], lines.close[0]] : lines.close;
         upsertLine.run(match.fight.id, open1, close1, open2, close2, bout.url, now, now);
+        if (reread.has(match.fight.id)) replaceOpen.run(open1, open2, match.fight.id);
         total.lines++;
       }
     });

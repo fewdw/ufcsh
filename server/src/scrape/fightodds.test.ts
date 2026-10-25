@@ -53,6 +53,18 @@ test("a bout opens at the books' openers, or at today's line when none kept one"
   assert.deepEqual(boutLines(bout([null, null])), { open: ["-141", "+121"], close: ["-141", "+121"] });
 });
 
+test("a book quoting the corners swapped lends no opener", () => {
+  const bout: FightOddsBout = {
+    slug: "", url: "", propCount: 0, f1: { id: null, name: "", last: "" }, f2: { id: null, name: "", last: "" },
+    quotes: [
+      { now: [-265, 205], open: [null, null] },
+      { now: [-265, 220], open: [-325, 265] },
+      { now: [575, -900], open: [575, -900] },
+    ],
+  };
+  assert.deepEqual(boutLines(bout), { open: ["-325", "+265"], close: ["-265", "+205"] });
+});
+
 test("board bouts match our fights by UFCStats id, in either corner", () => {
   const fights = [
     { id: "a", f1_id: "2997e7fe3c9d3d4a", f2_id: "262d32ebda89efc4", names1: ["Wang Cong"], names2: ["Natalia Silva"] },
