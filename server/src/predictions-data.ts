@@ -3,7 +3,9 @@ import { cardOrder } from "./card-schedule.ts";
 import { cachedPhotoUrl } from "./fighter-identity.ts";
 import { parseScheduledRounds } from "./fight-index.ts";
 import type { PredictionContext, PredictionFight } from "./predictions.ts";
-import type { BetContext, BetMarkets } from "./bets.ts";
+import type { BetContext, BetMarkets, StoredLeg } from "./bets.ts";
+import { fightIsComplete } from "./live-state.ts";
+import { potentialFight, potentialMatchups } from "./potential-matchups.ts";
 
 const columns = `SELECT f.*, e.name AS event_name, e.date AS event_date, e.complete AS event_complete,
   e.early_prelims_at, e.prelims_at, e.main_card_at, o.f1_close AS f1_line, o.f2_close AS f2_line,
@@ -68,6 +70,7 @@ const props = prepared("SELECT markets_json, final FROM method_odds WHERE fight_
 /** A bout with the prices a bet is placed at: the moneyline and, when they
  *  were verified against this exact pair, the prop markets. */
 export function betContext(id: string): BetContext | undefined {
+  if (id.startsWith("potential-")) return potentialBetContext(id);
   const context = predictionContext(id);
   if (!context) return undefined;
   const line = moneyline.get(id) as { f1_close: string | null; f2_close: string | null; final: number } | undefined;
@@ -80,4 +83,27 @@ export function betContext(id: string): BetContext | undefined {
     }
   } catch { /* A malformed payload offers no props. */ }
   return { ...context, moneyline: line ? { f1: line.f1_close, f2: line.f2_close, final: !!line.final } : null, markets };
+}
+
+/** A potential matchup on the board takes bets at its board prices once both
+ *  fighters are known, so the bet can follow them onto whatever card books it. */
+function potentialBetContext(id: string): BetContext | undefined {
+  const row = potentialMatchups().find(entry => entry.id === id);
+  if (!row?.f1_id || !row.f2_id || row.f1_id === row.f2_id) return undefined;
+  const fight: PredictionFight = { ...potentialFight(row), event_start: null, section_start: null, scheduled_rounds: null, f1_line: null, f2_line: null };
+  let lines: any = null;
+  try { lines = JSON.parse(row.odds_json); } catch { return undefined; }
+  const props = lines?.props;
+  return { fight, bouts: [fight], moneyline: { f1: lines?.f1?.close ?? null, f2: lines?.f2?.close ?? null, final: false },
+    markets: props ? { f1: props.f1 ?? {}, f2: props.f2 ?? {}, additional: Array.isArray(props.additional) ? props.additional : [], final: !!props.final } : null };
+}
+
+/** The pair's first bout on a card dated after the leg was placed that was
+ *  fought or is still to come (a bout left off a finished card is skipped); else
+ *  the board's entry while it still prices the pairing unbooked. */
+const pairBouts = prepared(`${columns} WHERE ((f.f1_id = ? AND f.f2_id = ?) OR (f.f1_id = ? AND f.f2_id = ?)) AND e.date > ? ORDER BY e.date, e.id`);
+export function potentialBooking(leg: StoredLeg): PredictionFight | undefined {
+  const booked = pairBouts.all(leg.f1Id, leg.f2Id, leg.f2Id, leg.f1Id, leg.eventDate).map(read)
+    .find(fight => !fight.event_complete || fightIsComplete(fight));
+  return booked ?? potentialBetContext(leg.fightId)?.fight;
 }

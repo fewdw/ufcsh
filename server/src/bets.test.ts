@@ -222,3 +222,36 @@ test("leaderboards rank fans by points, accuracy and betting profit", t => {
   assert.equal(board.method.length, 1);
   assert.deepEqual(board.bets.map(entry => [entry.value, entry.detail]), [[-20, "0–1"]]);
 });
+
+test("a potential matchup takes bets at board prices and settles on the bout the pair is booked as", t => {
+  const scores = new ScoringStore(":memory:", () => []);
+  t.after(() => scores.db.close());
+  const id = "potential-alpha-vs-beta";
+  const board: PredictionFight = { ...bout(0), id, event_id: "potential-matchups", event_name: "Potential matchups", event_date: "2026-10-03", event_start: null };
+  let listed = true;
+  let booked: PredictionFight | undefined;
+  const context = (fightId: string): BetContext | undefined => fightId === id && listed
+    ? { fight: board, bouts: [board], moneyline: { f1: "-150", f2: "+130", final: false }, markets } : undefined;
+  const store = new BetStore(scores, context, () => [], () => now + 30 * 86_400_000,
+    entry => booked ?? (listed && entry.fightId === id ? board : undefined));
+  const user = "user_1";
+  assert.deepEqual(parseOutcome({ fightId: id, winner: 2 }), { fightId: id, winner: 2 });
+  // No card and no clock: the board's own price is open long after its date.
+  const bet = store.place(user, { stake: 10, legs: [leg(id, { winner: 2 }, "+130"), leg(id, { winner: 2, decision: true }, "+250")] });
+  const profile = () => store.profile(scores.identity(user).handle).bets[0];
+  assert.equal(bet.state, "pending");
+  assert.equal(profile().removable, true);
+
+  // Booked on a card with the corners swapped: the leg follows the fighters there.
+  listed = false;
+  booked = { ...bout(0), f1_id: board.f2_id, f2_id: board.f1_id, event_id: "later", event_name: "UFC Later", event_date: "2026-12-12" };
+  assert.equal(profile().state, "pending");
+  assert.deepEqual([profile().legs[0].fightId, profile().legs[0].eventName], [booked.id, "UFC Later"]);
+  Object.assign(booked, { f1_outcome: "win", f2_outcome: "loss", method: "U-DEC", round: "3" });
+  assert.deepEqual([profile().state, profile().net], ["won", 70.5]);
+
+  // Off the board and never booked: nothing to settle against.
+  booked = undefined;
+  assert.equal(profile().state, "void");
+  assert.equal(profile().removable, false);
+});

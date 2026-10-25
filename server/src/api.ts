@@ -10,7 +10,7 @@ import { ScoringStore, type ScoringFight } from "./scoring.ts";
 import { createScoringHandler, scoringOrigins } from "./scoring-http.ts";
 import { PredictionStore } from "./predictions.ts";
 import { createPredictionsHandler } from "./predictions-http.ts";
-import { betContext, cardPlaces, eventFightIds, predictionContext, predictionFights } from "./predictions-data.ts";
+import { betContext, potentialBooking, cardPlaces, eventFightIds, predictionContext, predictionFights } from "./predictions-data.ts";
 import { BetStore } from "./bets.ts";
 import { createBetsHandler } from "./bets-http.ts";
 import { createLeaderboards } from "./leaderboards.ts";
@@ -2499,7 +2499,7 @@ export function startApi(port: number): http.Server {
   const scoring = createScoringHandler(scoreStore);
   const predictionStore = new PredictionStore(scoreStore, predictionContext, predictionFights);
   const predictions = createPredictionsHandler(predictionStore, undefined, eventFightIds);
-  const betStore = new BetStore(scoreStore, betContext, predictionFights);
+  const betStore = new BetStore(scoreStore, betContext, predictionFights, Date.now, potentialBooking);
   const bets = createBetsHandler(betStore, createLeaderboards(scoreStore, predictionStore, betStore));
   const reportStore = new ReportStore(scoreStore);
   const googleCalendars = new GoogleCalendars(scoreStore.db);

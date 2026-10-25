@@ -13,6 +13,7 @@ export type PotentialMatchup = {
 };
 
 /** Separate from booked fights: these never enter records, schedules or predictions.
+ * They take bets, which settle on the bout the pair is booked as (`potentialBooking`).
  * A pairing moves out of this list as soon as it appears on an announced card. */
 export function potentialMatchups(): PotentialMatchup[] {
   const rows = prepared(`SELECT p.* FROM potential_matchups p WHERE NOT EXISTS (

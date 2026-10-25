@@ -34,6 +34,12 @@ export const MIN_STAKE_CENTS = 100;
 export const MAX_LEGS = 10;
 const PAGE_SIZE = 25;
 const AMERICAN = /^[+-]\d+$/;
+const POTENTIAL = "potential-";
+
+/** A potential matchup's leg rides on the pair's first bout after the day it
+ *  was placed, so the same board id placed on different days is read apart. */
+const potentialLeg = (leg: StoredLeg) => leg.fightId.startsWith(POTENTIAL);
+export const legKey = (leg: StoredLeg) => potentialLeg(leg) ? `${leg.fightId}@${leg.eventDate}` : leg.fightId;
 
 export function decimalOdds(line: string): number {
   const n = Number(line);
@@ -83,7 +89,7 @@ export const outcomeKey = (o: Outcome) => [o.fightId, o.winner ?? "-", o.decisio
 export function parseOutcome(raw: unknown): Outcome | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const input = raw as Record<string, unknown>;
-  if (typeof input.fightId !== "string" || !/^[a-f0-9]{16}$/.test(input.fightId)) return null;
+  if (typeof input.fightId !== "string" || !/^(?:[a-f0-9]{16}|potential-[a-z0-9-]{1,180})$/.test(input.fightId)) return null;
   const outcome: Outcome = { fightId: input.fightId };
   if (input.winner !== undefined) { if (input.winner !== 1 && input.winner !== 2) return null; outcome.winner = input.winner; }
   if (input.decision !== undefined) { if (typeof input.decision !== "boolean") return null; outcome.decision = input.decision; }
@@ -162,9 +168,11 @@ function settledFight(fight: PredictionFight): Settled | null {
 }
 
 /** Settled against the current official result every time it is read, so a
- *  corrected result simply changes the answer and nothing is paid twice. */
+ *  corrected result simply changes the answer and nothing is paid twice. A
+ *  potential matchup's leg is read against the bout it was booked as, on any
+ *  card, or the board while it is still unbooked there. */
 export function legState(leg: StoredLeg, fight: PredictionFight | undefined): LegState {
-  if (!fight || fight.event_id !== leg.eventId
+  if (!fight || (!potentialLeg(leg) && fight.event_id !== leg.eventId)
     || [fight.f1_id, fight.f2_id].sort().join(":") !== [leg.f1Id, leg.f2Id].sort().join(":")) return "void";
   if (!fightIsComplete(fight)) return fight.event_complete ? "void" : "pending";
   const result = settledFight(fight);
@@ -200,7 +208,7 @@ export function legState(leg: StoredLeg, fight: PredictionFight | undefined): Le
 
 /** A parlay loses on any lost leg; void legs drop out at even money. */
 export function betResult(legs: StoredLeg[], stakeCents: number, fights: Map<string, PredictionFight>) {
-  const states = legs.map(leg => legState(leg, fights.get(leg.fightId)));
+  const states = legs.map(leg => legState(leg, fights.get(legKey(leg))));
   const live = legs.filter((_leg, index) => states[index] !== "void");
   const decimal = live.reduce((product, leg) => product * decimalOdds(leg.price), 1);
   const state: LegState = states.includes("lost") ? "lost" : states.includes("pending") ? "pending"
@@ -218,13 +226,18 @@ export class BetStore {
   /** `places` also reads each bout's place on its card, for a profile's order. */
   private readFights: (ids: string[], places?: boolean) => PredictionFight[];
   private now: () => number;
+  /** The bout a potential matchup's leg became, or the board's entry while it
+   *  is still unbooked; undefined once it has left the board unbooked. */
+  private booking: (leg: StoredLeg) => PredictionFight | undefined;
   constructor(scores: ScoringStore, context: (id: string) => BetContext | undefined,
-    readFights: (ids: string[], places?: boolean) => PredictionFight[], now = Date.now) {
+    readFights: (ids: string[], places?: boolean) => PredictionFight[], now = Date.now,
+    booking: (leg: StoredLeg) => PredictionFight | undefined = () => undefined) {
     this.db = scores.db;
     this.scores = scores;
     this.context = context;
     this.readFights = readFights;
     this.now = now;
+    this.booking = booking;
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS bets (
         id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES scorers(user_id),
@@ -235,15 +248,18 @@ export class BetStore {
       CREATE TABLE IF NOT EXISTS prediction_locks (fight_id TEXT PRIMARY KEY, locked_at INTEGER NOT NULL);
     `);
   }
-  /** Bets close on the same clock as predictions, so no one bets on a bout already walking out. */
+  /** Bets close on the same clock as predictions, so no one bets on a bout
+   *  already walking out. A potential matchup has no card or clock: it takes
+   *  bets for as long as the board prices it. */
   private open(context: BetContext): string | null {
+    if (context.fight.id.startsWith(POTENTIAL)) return null;
     return fightLock(this.db, context, this.now()).open ? null : fightIsComplete(context.fight) ? "has finished" : "is closed for betting";
   }
   /** A bet can be taken back only while every matchup on it still accepts bets. */
   private removable(legs: StoredLeg[]): boolean {
     return legs.every(leg => {
-      const context = this.context(leg.fightId);
-      return !!context && fightLock(this.db, context, this.now()).open;
+      const context = this.context(potentialLeg(leg) ? this.booking(leg)?.id ?? leg.fightId : leg.fightId);
+      return !!context && !this.open(context);
     });
   }
   remove(user: string, id: string): void {
@@ -290,9 +306,9 @@ export class BetStore {
     }
     this.scores.identity(user);
     const id = randomUUID();
-    this.db.prepare("INSERT INTO bets VALUES (?, ?, ?, ?, ?)").run(id, user, this.now(), stake, JSON.stringify(legs));
-    return this.present({ id, user_id: user, placed_at: this.now(), stake_cents: stake, legs_json: JSON.stringify(legs) },
-      new Map(this.readFights([...new Set(legs.map(leg => leg.fightId))]).map(fight => [fight.id, fight])));
+    const row = { id, user_id: user, placed_at: this.now(), stake_cents: stake, legs_json: JSON.stringify(legs) };
+    this.db.prepare("INSERT INTO bets VALUES (?, ?, ?, ?, ?)").run(row.id, row.user_id, row.placed_at, row.stake_cents, row.legs_json);
+    return this.present(row, this.fightsFor([row]));
   }
   private present(row: StoredBet, fights: Map<string, PredictionFight>) {
     const legs = JSON.parse(row.legs_json) as StoredLeg[];
@@ -300,13 +316,30 @@ export class BetStore {
     const decimal = legs.reduce((product, leg) => product * decimalOdds(leg.price), 1);
     return { id: row.id, placedAt: row.placed_at, stake: row.stake_cents / 100, price: americanFromDecimal(decimal),
       state: result.state, net: result.net / 100, payout: result.payout / 100,
-      legs: legs.map((leg, index) => ({ ...leg, state: result.legStates[index] })) };
+      legs: legs.map((leg, index) => {
+        // Once booked, a potential matchup's leg reads as the bout on its card.
+        const booked = potentialLeg(leg) ? fights.get(legKey(leg)) : undefined;
+        const card = booked && !booked.id.startsWith(POTENTIAL)
+          ? { fightId: booked.id, eventId: booked.event_id, eventName: booked.event_name, eventDate: booked.event_date } : {};
+        return { ...leg, ...card, state: result.legStates[index] };
+      }) };
   }
+  /** Each leg's bout keyed by `legKey`; a booked potential matchup's bout is
+   *  under its own id as well, for the profile's order. */
   private fightsFor(rows: StoredBet[], places = false) {
-    const ids = [...new Set(rows.flatMap(row => (JSON.parse(row.legs_json) as StoredLeg[]).map(leg => leg.fightId)))];
+    const legs = rows.flatMap(row => JSON.parse(row.legs_json) as StoredLeg[]);
+    const ids = [...new Set(legs.filter(leg => !potentialLeg(leg)).map(leg => leg.fightId))];
     const fights = new Map<string, PredictionFight>();
     for (let index = 0; index < ids.length; index += 500) {
       for (const fight of this.readFights(ids.slice(index, index + 500), places)) fights.set(fight.id, fight);
+    }
+    for (const leg of legs) {
+      const key = legKey(leg);
+      if (!potentialLeg(leg) || fights.has(key)) continue;
+      const fight = this.booking(leg);
+      if (!fight) continue;
+      fights.set(key, fight);
+      fights.set(fight.id, fight);
     }
     return fights;
   }
