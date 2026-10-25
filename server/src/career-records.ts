@@ -452,7 +452,8 @@ let running = false;
 
 /**
  * Resume-safe priority backfill. Booked/ranked fighters are filled first;
- * verified active records refresh weekly and the long-retired tail quarterly.
+ * verified active records refresh weekly (a recent result missing from the
+ * page, every 6 hours) and the long-retired tail quarterly.
  */
 export async function syncCareerRecords(limit = 40): Promise<void> {
   if (running) return;
@@ -488,11 +489,18 @@ export async function syncCareerRecords(limit = 40): Promise<void> {
          -- it is the same page, so the next refresh simply comes early.
          OR (status = 'verified' AND country_code IS NULL AND checked_at < ?)
          OR (status = 'verified' AND checked_at < CASE WHEN last_fight >= date('now', '-18 months') THEN ? ELSE ? END)
+         -- A result from the last month the page doesn't carry yet: the source
+         -- usually adds it within a day or two, so look again every 6 hours.
+         OR (status = 'verified' AND checked_at < ? AND EXISTS (
+           SELECT 1 FROM fights f JOIN events e ON e.id = f.event_id
+           WHERE (f.f1_id = candidates.id OR f.f2_id = candidates.id) AND e.complete = 1 AND e.date >= date('now', '-30 days')
+             AND (f.f1_outcome IS NOT NULL OR f.f2_outcome IS NOT NULL)
+             AND NOT EXISTS (SELECT 1 FROM career_bouts b WHERE b.ufc_fight_id = f.id AND b.fighter_id = candidates.id)))
          OR (status = 'error' AND checked_at < ?)
          OR (status IN ('not_found', 'ambiguous') AND checked_at < CASE WHEN pri = 0 THEN ? ELSE ? END)
       ORDER BY pri ASC, (status = 'verified') ASC, checked_at ASC NULLS FIRST
       LIMIT ?
-    `).all(now - DAY, now - 7 * DAY, now - 90 * DAY, now - DAY, now - 3 * DAY, now - 30 * DAY, limit) as { id: string; name: string }[];
+    `).all(now - DAY, now - 7 * DAY, now - 90 * DAY, now - DAY / 4, now - DAY, now - 3 * DAY, now - 30 * DAY, limit) as { id: string; name: string }[];
     let verified = 0;
     for (const fighter of targets) {
       try {

@@ -164,11 +164,15 @@ export function consensusLine(pairs: [number | null, number | null][]): [string,
 }
 
 /** The current line and the opening line. Books that don't keep an opener
- *  leave it to the others; with none, the bout opens at today's line. */
+ *  leave it to the others; with none, the bout opens at today's line. A book
+ *  whose price today has the favourite 40+ points the other way from the
+ *  market has the corners swapped, so its opener is left out too. */
 export function boutLines(bout: FightOddsBout): { open: [string, string]; close: [string, string] } | null {
   const close = consensusLine(bout.quotes.map((quote) => quote.now));
   if (!close) return null;
-  return { open: consensusLine(bout.quotes.map((quote) => quote.open)) ?? close, close };
+  const market = probability(Number(close[0]));
+  const agree = bout.quotes.filter((quote) => Math.abs(probability(quote.now[0]) - market) < 0.4);
+  return { open: consensusLine(agree.map((quote) => quote.open)) ?? close, close };
 }
 
 type OurFight = { id: string; f1_id: string | null; f2_id: string | null; names1: string[]; names2: string[] };
