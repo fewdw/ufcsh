@@ -161,6 +161,17 @@ export const FIVE_ROUND_BOUT_MINUTES = 40;
 /** One bout as the schedule reads it: where it sits, and how long it can run. */
 export type ScheduledBout = { ord: number; segment: CardSegment | null; card_pos?: number | null; fiveRound?: boolean };
 
+/** A bout as the running order reads it. A five-round bout takes longer, so
+ *  the estimate for the bouts after it has to know. The booked length is used
+ *  when ufc.com has published it; until then this timing estimate (and only
+ *  it) assumes the usual booking of five for a main event or a belt. */
+export const scheduledBout = (f: { ord: number | string | null; segment?: string | null; card_pos?: number | null; scheduled_rounds?: number | string | null; title_type?: string | null }): ScheduledBout => ({
+  ord: Number(f.ord) || 0,
+  segment: (f.segment || null) as CardSegment | null,
+  card_pos: f.card_pos ?? null,
+  fiveRound: Number(f.scheduled_rounds) > 0 ? Number(f.scheduled_rounds) === 5 : ["title", "interim"].includes(f.title_type ?? "") || Number(f.ord) === 0,
+});
+
 export const boutMinutes = (bout: ScheduledBout): number =>
   bout.fiveRound ? FIVE_ROUND_BOUT_MINUTES : BOUT_MINUTES;
 

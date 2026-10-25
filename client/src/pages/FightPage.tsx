@@ -54,6 +54,7 @@ import { BONUS_TAG, FIGHT_BONUS, PERF_AWARD } from "../bonus";
 import OppositionDetails from "../components/OppositionDetails";
 import TapeHistory from "../components/TapeHistory";
 import { DecisionsPanel, RoundsPanel, SideName, StrikesPanel } from "../components/FightInsights";
+import { betFightId } from "../parlay";
 
 const shell = PANEL_SHELL;
 /** Only a confirmed title type earns a belt label. The event flag alone can
@@ -505,7 +506,7 @@ function OddsPanel({ fight }: { fight: Matchup }) {
       <OddsMarkets
         odds={props}
         moneyline={fight.odds ? { f1: fight.odds.f1, f2: fight.odds.f2 } : null}
-        fightId={fight.potential ? undefined : fight.id}
+        fightId={betFightId(fight)}
         f1Name={fight.f1.name}
         f2Name={fight.f2.name}
         format={settings.oddsFormat}
@@ -994,7 +995,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                         f1Open={fight.odds?.f1.open} f2Open={fight.odds?.f2.open}
                         f1Name={fight.f1.name} f2Name={fight.f2.name}
                         props={fight.odds?.props}
-                        fightId={fight.status === "upcoming" && !fight.potential ? fight.id : undefined} />
+                        fightId={betFightId(fight, fight.status !== "upcoming")} />
                     </div>
                   </div>
                   <div className="matchup-corner col-start-3 min-w-0">

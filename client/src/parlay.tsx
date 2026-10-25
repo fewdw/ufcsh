@@ -23,6 +23,13 @@ export type Outcome = {
   totalRounds?: { side: "over" | "under"; line: number };
 };
 
+/** The id a bout's prices bet under, or undefined when they can't be bet.
+ *  The server says which bouts it takes bets on (any card, and a potential
+ *  matchup once both fighters are on record); a result read since closes it. */
+export function betFightId(fight: { id: string; bets_open?: boolean }, done = false): string | undefined {
+  return fight.bets_open && !done ? fight.id : undefined;
+}
+
 /** A stable key for an outcome. Clicking "Fight goes to decision" in the
  *  Method table and "Yes" in Goes the distance describe the same real bet, so
  *  both must collapse to the same id — one toggles the other, instead of
