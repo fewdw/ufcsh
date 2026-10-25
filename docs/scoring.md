@@ -81,6 +81,18 @@ are managed in Clerk; the app uses its standard sign-in/sign-up modal.
   previously confirmed zeroes. Older decisions never read are filled in 40 an
   hour, newest first, so production needs no one-off run. Older corrections use
   the Admin → Bugs re-read action or `backfill:point-deductions -- --recheck`.
+  Until MMA Decisions has a bout, Verdict MMA's own round data stands in: each
+  round model's `fighter1PointDeduction`/`fighter2PointDeduction` (only in the
+  page's hydration payload, so only recent decisions without an MMA Decisions
+  record download the full page). It is stored only when it lists a penalty,
+  since a zero there may just be one nobody entered, and it must still fit
+  every judge's card. MMA Decisions' record always replaces it, and Verdict
+  never overwrites one. Source check (25 October 2026): MMA Decisions returned
+  an empty HTTP 403 to every network tried for days, while Verdict listed
+  Aliev's round-one point against Dawson (UFC 333), matching all three 9-9
+  official rounds. Over the 719 decisions since 2024 with both sources it
+  agreed on all 17 penalties and 701 zeroes, listed none MMA Decisions
+  didn't, and missed one (Prado's round 3 against Radtke, April 2026).
 
   Source check (19 October 2026): Verdict's [guide](https://verdictmma.com/how_to_score)
   says it applies deductions, but its [Garbrandt–Long published grid](https://verdictmma.com/event/1324/fight/1)

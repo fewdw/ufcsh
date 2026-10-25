@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseVerdictEventPage, parseVerdictFightPage, parseVerdictLiveCard } from "./verdict.ts";
+import { parseVerdictDeductions, parseVerdictEventPage, parseVerdictFightPage, parseVerdictLiveCard } from "./verdict.ts";
 
 test("Verdict event pages expose dated numbered and client-side fight cards", () => {
   const page = parseVerdictEventPage(`
@@ -76,4 +76,26 @@ test("a live Verdict card names the bout on and each round's status, from its ow
       rounds: [{ round: 1, status: 3 }, { round: 2, status: 3 }, { round: 3, status: 3 }] },
   ]);
   assert.deepEqual(parseVerdictLiveCard("<html></html>", 1936), []);
+});
+
+test("a Verdict bout's penalties come from its round models, and only when every copy reads the same", () => {
+  const page = (copies: number[][]) => {
+    const flat: unknown[] = [];
+    const at = (value: unknown) => flat.push(value) - 1;
+    const fighter = (first: string, last: string) => at({ fighterFirstName: at(first), fighterLastName: at(last) });
+    for (const points of copies) {
+      const rounds = [1, 2, 3].map(round => at({ roundNumber: at(round), roundStatus: at(3),
+        fighter1PointDeduction: at(points[(round - 1) * 2]), fighter2PointDeduction: at(points[(round - 1) * 2 + 1]) }));
+      at({ eventID: at(1956), fightNumber: at(4), fighter1: fighter("Grant", "Dawson"), fighter2: fighter("Nurullo", "Aliev"), rounds: at(["Reactive", at(rounds)]) });
+    }
+    at({ eventID: at(1956), fightNumber: at(5), fighter1: fighter("Colby", "Thicknesse"), fighter2: fighter("Asaf", "Chopurov"), rounds: at([]) });
+    return `<html></html><script type="application/json" id="__NUXT_DATA__">${JSON.stringify(flat)}</script>`;
+  };
+  const aliev = [0, 1, 0, 0, 0, 0];
+  assert.deepEqual(parseVerdictDeductions(page([aliev, aliev]), 1956, 4), { f1Name: "Grant Dawson", f2Name: "Nurullo Aliev",
+    rounds: [{ round: 1, deduct1: 0, deduct2: 1 }, { round: 2, deduct1: 0, deduct2: 0 }, { round: 3, deduct1: 0, deduct2: 0 }] });
+  assert.equal(parseVerdictDeductions(page([aliev, [0, 0, 0, 0, 0, 0]]), 1956, 4), null, "copies that disagree");
+  assert.equal(parseVerdictDeductions(page([[0, null as any, 0, 0, 0, 0]]), 1956, 4), null, "a round without a count");
+  assert.equal(parseVerdictDeductions(page([aliev]), 1956, 5), null, "a bout with no rounds yet");
+  assert.equal(parseVerdictDeductions(page([aliev]), 1955, 4), null, "another card's bout");
 });

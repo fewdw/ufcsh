@@ -124,4 +124,4 @@ export async function syncFightMediaScores(fightId: string): Promise<{ matched: 
 
 /** Every decision, for the one-off backfill. */
 export const pointDeductionCandidates = (recheck: boolean): CrawlFight[] =>
-  db.prepare(`${CANDIDATES}${recheck ? "" : " AND f.deductions_json IS NULL"} ORDER BY e.date`).all() as CrawlFight[];
+  db.prepare(`${CANDIDATES}${recheck ? "" : " AND (f.deductions_json IS NULL OR f.deductions_json LIKE '%\"source\":\"Verdict MMA\"%')"} ORDER BY e.date`).all() as CrawlFight[];

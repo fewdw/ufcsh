@@ -6,12 +6,15 @@ import { normName } from "./util.ts";
 export type PointDeduction = { side: "f1" | "f2"; round: number; points: number; reason: string };
 export type DeductionState = { confirmed: boolean; items: PointDeduction[] };
 export type DeductionFight = { detail_json?: string | null; judge_rounds_json?: string | null; deductions_json?: string | null };
-type Stored = { source: string; sourceUrl: string; items: PointDeduction[] };
+/** MMA Decisions' page is the record; Verdict MMA's round data stands in
+ *  until it is read, and only when it lists a penalty (see verdict-import). */
+export type DeductionSource = "MMA Decisions" | "Verdict MMA";
+type Stored = { source: DeductionSource; sourceUrl: string; items: PointDeduction[] };
 
 export function storedDeductions(json: string | null | undefined): Stored | null {
   try {
     const value = JSON.parse(json ?? "null");
-    return value?.source === "MMA Decisions" && typeof value.sourceUrl === "string" && Array.isArray(value.items)
+    return ["MMA Decisions", "Verdict MMA"].includes(value?.source) && typeof value.sourceUrl === "string" && Array.isArray(value.items)
       && value.items.every((item: PointDeduction) => item && ["f1", "f2"].includes(item.side)
         && Number.isInteger(item.round) && item.round >= 1 && item.round <= 5
         && Number.isInteger(item.points) && item.points >= 1 && item.points <= 3 && typeof item.reason === "string") ? value : null;
