@@ -101,10 +101,10 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-25">October 25, 2026</time></p>
+            <p><time dateTime="2026-10-26">October 26, 2026</time></p>
             <ul>
-              <li>Point deductions now show within minutes of a decision, read from Verdict MMA while MMA Decisions is unavailable, and come off fan scorecards too.</li>
-              <li>Aliev's first-round point against Dawson at UFC 333 is now shown.</li>
+              <li>Removed the Graphic (Beta) builder from profiles.</li>
+              <li>Old graphic links now show the page-not-found screen.</li>
             </ul>
           </Section>
         </div>
