@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { careerBands, fightProgram } from "../src/fighterTimeline.ts";
+import { careerBands, fightProgram, fightsPerYear } from "../src/fighterTimeline.ts";
+import { onUfcRoster } from "../../server/src/roster-timeline.ts";
 import type { CareerRosterEvent, ProfessionalHistoryRow } from "../src/api.ts";
 
 function bout(date: string, event_name = "UFC 300", promotion: "ufc" | "outside" = "ufc", upcoming = false): ProfessionalHistoryRow {
@@ -105,4 +106,29 @@ test("the shared timeline identifies unknown fields and clears them with sourced
   assert.deepEqual(careerBands([], [report("2024-01-01", "departed")])[0][0].unknown, ["departure_reason"]);
   assert.deepEqual(careerBands([], [{ ...report("2024-01-01", "departed"), reason: "Contract not renewed" }])[0][0].unknown, []);
   assert.deepEqual(careerBands([bout("1993-01-01")])[1][0].unknown, []);
+});
+
+test("fights per year runs from the UFC debut to today while on the roster, to the last bout once gone", () => {
+  const rows = [bout("2026-01-01"), bout("2024-01-01"), bout("2022-01-01", "Fury FC 1", "outside"), bout("2021-01-01", "Dana White's Contender Series")];
+  // Two UFC bouts over the 2.8 years since the 2024 debut; the outside and DWCS bouts don't count.
+  assert.equal(fightsPerYear(rows, true, "2026-10-26")?.toFixed(2), (2 / ((Date.parse("2026-10-26") - Date.parse("2024-01-01")) / (365.2425 * 86_400_000))).toFixed(2));
+  assert.equal(fightsPerYear(rows, false, "2026-10-26")?.toFixed(2), "1.00");
+  // TUF finales count; house bouts do not.
+  const finale = bout("2023-01-01", "The Ultimate Fighter 30 Finale"); finale.fight_id = "x";
+  assert.equal(fightsPerYear([bout("2025-01-01"), finale, bout("2022-06-01", "The Ultimate Fighter 30")], false, "2026-10-26")?.toFixed(2), (2 / ((Date.parse("2025-01-01") - Date.parse("2023-01-01")) / (365.2425 * 86_400_000))).toFixed(2));
+  // Under a year is too short to average; upcoming bouts never count.
+  assert.equal(fightsPerYear([bout("2026-06-01")], true, "2026-10-26"), null);
+  assert.equal(fightsPerYear([bout("2026-12-01", "UFC 330", "ufc", true)], true, "2026-10-26"), null);
+});
+
+test("on the roster: booked, or no departure since the last bout and ufc.com (or a recent bout) says so", () => {
+  const today = "2026-10-26";
+  assert.equal(onUfcRoster([bout("2026-12-01", "UFC 330", "ufc", true), bout("2020-01-01")], [report("2021-01-01", "retired")], "not_fighting", today), true);
+  assert.equal(onUfcRoster([bout("2025-01-01")], [report("2025-02-01", "retired")], "active", today), false);
+  assert.equal(onUfcRoster([bout("2025-01-01")], [report("2025-02-01", "retired"), report("2026-03-01")], null, today), true);
+  assert.equal(onUfcRoster([bout("2025-01-01")], [report("2020-01-01", "released")], "active", today), true);
+  assert.equal(onUfcRoster([bout("2025-01-01")], [], "not_fighting", today), false);
+  assert.equal(onUfcRoster([bout("2024-01-01")], [], null, today), true);
+  assert.equal(onUfcRoster([bout("2016-10-08")], [], null, today), false);
+  assert.equal(onUfcRoster([bout("2025-01-01", "PFL 1", "outside")], [], null, today), false);
 });

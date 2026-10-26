@@ -23,7 +23,7 @@ import { SITE_URL, useSeo } from "../seo";
 import { useRememberedState, useRouteScrollRestoration, useTabBarAnchor } from "../navigationState";
 import { segmentedGroup, segmentedIdle, segmentedSelected, segmentedTab } from "../components/segmented";
 import { outsideFighterUrl, useSettings, withRanking } from "../settings";
-import { careerBands, fightProgram, type CareerBand } from "../fighterTimeline";
+import { careerBands, fightProgram, fightsPerYear, type CareerBand } from "../fighterTimeline";
 
 const shell = PANEL;
 
@@ -687,15 +687,20 @@ function Records({ records }: { records: FighterRecord[] }) {
   );
 }
 
+const BIO_NOTES: Record<string, string> = {
+  Age: "Current age today",
+  "Fights per year": "Average UFC fights a year, from the UFC debut to today, or to the last UFC fight once they have left. Contender Series, Road to UFC and TUF house bouts are not counted.",
+};
+
 /** Height, reach and the rest as small labelled tiles; birthplace, the one
- *  long value, takes a row of its own. */
+ *  long value, takes a wide tile of its own. */
 function BioGrid({ bio, className = "" }: { bio: [string, ReactNode][]; className?: string }) {
   if (!bio.length) return null;
-  const wide: Record<string, string> = { Bonuses: "col-span-full @[56rem]:col-span-2", Born: "col-span-full @[56rem]:col-span-4" };
+  const wide: Record<string, string> = { Bonuses: "col-span-full @[56rem]:col-span-2", Born: "col-span-full @[56rem]:col-span-3" };
   return (
     <dl className={`grid grid-cols-3 gap-x-4 gap-y-2.5 @[56rem]:grid-cols-6 ${className}`}>
       {bio.map(([label, value]) => (
-        <div key={label} className={`min-w-0 ${wide[label] ?? ""}`} title={label === "Age" ? "Current age today" : undefined}>
+        <div key={label} className={`min-w-0 ${wide[label] ?? ""}`} title={BIO_NOTES[label]}>
           <dt className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">{label}</dt>
           <dd className="text-sm font-medium tabular-nums text-zinc-800">{value}</dd>
         </div>
@@ -854,6 +859,7 @@ export default function FighterPage() {
   const fightBonuses = done.filter((h) => h.bonuses?.fotn).length;
   const perfBonuses = done.filter((h) => h.bonuses?.perf).length;
   const perfAgainst = done.filter((h) => h.bonuses?.perf_against).length;
+  const perYear = fightsPerYear(fighter.history, fighter.on_roster ?? false, new Date().toISOString().slice(0, 10));
   const bio: [string, ReactNode][] = (
     [
       ["Height", fighter.height],
@@ -862,6 +868,7 @@ export default function FighterPage() {
       ["Stance", fighter.stance],
       ["Age", fighter.age == null ? "" : String(fighter.age)],
       ["5-round fights", done.length ? String(done.filter((h) => h.scheduled_rounds === 5).length) : ""],
+      ["Fights per year", perYear == null ? "" : perYear.toFixed(1)],
       ["Bonuses", fightBonuses || perfBonuses || perfAgainst ? <BonusTally fight={fightBonuses} perf={perfBonuses} against={perfAgainst} /> : ""],
       ["Born", [fighter.birthplace, fighter.country].filter(Boolean).join(", ")],
     ] as [string, ReactNode][]

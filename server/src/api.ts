@@ -79,6 +79,7 @@ import { locationDirectory, locationOfEvent, locationPage, searchLocations, sear
 import { newsView } from "./news.ts";
 import { newsAiStatus, setNewsAi, startNewsReader } from "./news-ai.ts";
 import { fighterRosterEvents, rosterMoveFighter, sameSigning, storedRosterMoves, ufcDepartures, ufcSignings, type UfcSigning } from "./roster-moves.ts";
+import { onUfcRoster } from "./roster-timeline.ts";
 import type { RosterMove } from "./scrape/wikipedia.ts";
 
 const CLIENT_DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "client", "dist");
@@ -1176,6 +1177,7 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
   });
   const ranking = currentRanking(id, rankingType);
   const records = fighterRecords(id);
+  const rosterEvents = fighterRosterEvents(fr.id);
   const profile = {
     id: fr.id,
     name: fr.name,
@@ -1212,7 +1214,10 @@ export async function getFighter(id: string, rankingType: RankingType): Promise<
     history: mergedUfcHistory,
     // Bookings that fell through; the profile shows them only when asked.
     cancelled: cancelledBoutsOf(fr.id, [...history, ...proHistory]),
-    roster_events: fighterRosterEvents(fr.id),
+    roster_events: rosterEvents,
+    // Whether their UFC career is still running, for the fights-a-year average.
+    on_roster: onUfcRoster(mergedUfcHistory, rosterEvents,
+      (prepared("SELECT status FROM ufc_status WHERE fighter_id = ?").get(fr.id) as { status: string | null } | undefined)?.status ?? null, todayIso()),
     awards: fighterAwards(fr.id),
     // The professional list shows the same ranks on its UFC bouts.
     pro_history: proHistory.map((row) => {

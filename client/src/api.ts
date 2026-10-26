@@ -576,6 +576,8 @@ export type FighterProfile = {
   /** UFC bookings that fell through, newest first. */
   cancelled?: ProfileCancelledBout[];
   roster_events?: CareerRosterEvent[];
+  /** Their UFC career is still running: booked, or on the roster with no departure since their last bout. */
+  on_roster?: boolean;
   /** Yearly awards, newest first. */
   awards?: FighterAward[];
   /** UFC-only history, including verified source-only UFC rows. */

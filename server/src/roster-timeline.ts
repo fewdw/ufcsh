@@ -107,3 +107,34 @@ export function careerBands(rows: Bout[], reports: TimelineReport[] = []): Caree
   }
   return bands;
 }
+
+/** A tryout, not a UFC fight: Contender Series, Road to UFC and the TUF house
+ * bouts. TUF finales, and the early UFC tournaments, are UFC cards. */
+function tryoutBout(row: Bout): boolean {
+  const program = fightProgram(row.event_name);
+  return program === "Contender Series" || program === "Road to UFC" || row.title_type === "tuf"
+    || (program === "TUF" && !/\bfinale\b|\bfinal\b/i.test(row.event_name) && !row.fight_id);
+}
+
+/** Still on the UFC roster: booked for a bout, or, with no departure reported
+ * since their last bout, ufc.com reads Active (or, not read there, they fought
+ * within three years — the span ufc.com is watched for). */
+export function onUfcRoster(rows: Bout[], reports: TimelineReport[], ufcStatus: string | null, today: string): boolean {
+  if (rows.some(row => row.upcoming && row.promotion !== "outside")) return true;
+  const last = rows.filter(row => !row.upcoming && row.promotion !== "outside").map(row => row.date).sort().at(-1);
+  if (!last) return false;
+  const latest = reports.filter(event => event.date >= last).sort((a, b) => a.date.localeCompare(b.date)).at(-1);
+  if (latest && latest.kind !== "signed") return false;
+  if (ufcStatus) return ufcStatus === "active";
+  return Date.parse(today) - Date.parse(last) <= 3 * 365.2425 * 86_400_000;
+}
+
+/** UFC fights a year, from the debut to today while they're on the roster, to
+ * the last bout once they've left. Null under a year: too short to average. */
+export function fightsPerYear(rows: Bout[], onRoster: boolean, today: string): number | null {
+  const dates = rows.filter(row => row.promotion !== "outside" && !row.upcoming && row.outcome !== null && !tryoutBout(row))
+    .map(row => row.date).sort();
+  if (!dates.length) return null;
+  const years = (Date.parse(onRoster ? today : dates.at(-1)!) - Date.parse(dates[0])) / (365.2425 * 86_400_000);
+  return years >= 1 ? dates.length / years : null;
+}
