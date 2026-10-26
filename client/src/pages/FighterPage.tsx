@@ -324,7 +324,7 @@ function boutFields(row: HistoryRow | ProfessionalHistoryRow) {
   };
 }
 
-function PromotionLabel({ row, move, short, rank }: { row: HistoryRow | ProfessionalHistoryRow; move?: DivisionMove; short?: boolean; rank?: ReactNode }) {
+function PromotionLabel({ row, move, short, rank }: { row: HistoryRow | ProfessionalHistoryRow; move?: DivisionMove; short?: boolean; rank?: HistoryRow["rank"] }) {
   const program = row.title_type === "tuf" ? "TUF" : fightProgram(row.event_name);
   if (program) return <>{program === "TUF" && row.promotion !== "outside" ? <><DivisionLabel division={divisionName(row.weight_class, row.catch_weight)} move={move} short={short} rank={rank} /> · </> : null}<span className={`font-semibold ${program === "TUF" ? "text-amber-700 dark:text-amber-300" : "text-cyan-700 dark:text-cyan-300"}`}
     title={program === "TUF" ? "The Ultimate Fighter event; this label does not imply the fighter competed on the show."
@@ -364,29 +364,37 @@ function RankTag({ ranking, who, division }: { ranking: HistoryRow["rank"]; who:
 }
 
 /** The bout's division, "↑ Up to Lightweight" for a move. In the table
- *  (`short`) it leads with the rank held there ("C Flyweight"), drops the
- *  "Women's" every bout on a woman's profile shares (still in the tooltip and
- *  for screen readers), and wraps only before the name, never inside it. */
-function DivisionLabel({ division, move, short, rank }: { division: string; move?: DivisionMove; short?: boolean; rank?: ReactNode }) {
+ *  (`short`) it carries the rank held there ("Featherweight Champ",
+ *  "Featherweight (Ranked #10)") and wraps only between those pieces. */
+function DivisionLabel({ division, move, short, rank }: { division: string; move?: DivisionMove; short?: boolean; rank?: HistoryRow["rank"] }) {
   const words = move ? `${move.direction === "up" ? "↑ Up to" : "↓ Down to"} ` : "";
   if (!short) return move ? <span className="font-semibold text-zinc-700">{words}{move.to}</span> : <span>{division}</span>;
-  const women = division.startsWith("Women's ");
-  return (
-    <span className={move ? "font-semibold text-zinc-700" : undefined} title={women ? division : undefined}>
-      {words}{rank ? <>{rank} </> : null}
-      <span className="whitespace-nowrap">{women ? <><span className="sr-only">Women's </span>{division.slice(8)}</> : division}</span>
-    </span>
-  );
+  return <span className={move ? "font-semibold text-zinc-700" : undefined}>{words}<DivisionRank division={division} ranking={rank} /></span>;
 }
 
-/** A rank held in another division than the bout's, spelled out under it:
- *  "Featherweight champion" while fighting at lightweight. */
+/** A division with the rank held in it: "Featherweight Champ" in gold,
+ *  "Featherweight (Ranked #10)". "Women's" is left off, since every bout on a
+ *  woman's profile shares it (still in the tooltip and for screen readers). */
+function DivisionRank({ division, ranking }: { division: string; ranking?: HistoryRow["rank"] }) {
+  const women = division.startsWith("Women's ");
+  const name = women ? <><span className="sr-only">Women's </span>{division.slice(8)}</> : division;
+  const champ = ranking?.rank === "C" ? "Champ" : ranking?.rank === "IC" ? "Interim Champ" : null;
+  const title = [women ? division : null, ranking ? "going into this fight" : null].filter(Boolean).join(", ") || undefined;
+  if (champ) {
+    return <span className={`font-semibold ${ranking!.rank === "C" ? "text-belt" : "text-belt-interim"}`} title={title}>
+      <span className="whitespace-nowrap">{name}</span> <span className="whitespace-nowrap">{champ}</span>
+    </span>;
+  }
+  return <span title={title}>
+    <span className="whitespace-nowrap">{name}</span>
+    {ranking ? <> <span className="whitespace-nowrap font-semibold text-zinc-500 tabular-nums">(Ranked #{ranking.rank})</span></> : null}
+  </span>;
+}
+
+/** A rank held in another division than the bout's, on a line under it:
+ *  "Featherweight Champ" while fighting at lightweight. */
 function RankElsewhere({ ranking }: { ranking: NonNullable<HistoryRow["rank"]> }) {
-  const division = ranking.division.replace(/^Women's /, "");
-  const [text, tone] = ranking.rank === "C" ? [`${division} champion`, "text-belt"]
-    : ranking.rank === "IC" ? [`${division} interim champion`, "text-belt-interim"]
-    : [`${division} #${ranking.rank}`, "text-zinc-500"];
-  return <span className={`mt-0.5 block font-semibold leading-4 ${tone}`} title={`${ranking.division}, going into this fight`}>{text}</span>;
+  return <span className="mt-0.5 block leading-4"><DivisionRank division={ranking.division} ranking={ranking} /></span>;
 }
 
 function DivisionCell({ to, className, children }: { to: string | null; className: string; children: ReactNode }) {
@@ -494,7 +502,7 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
   const bout = boutFields(row);
   const cell = "hidden min-w-0 px-3 py-2.5 @3xl:flex";
   const rank = "rank" in row ? row.rank : null;
-  const ownRank = rank && rank.division === row.weight_class ? <RankTag ranking={rank} who={fighterName} division={row.weight_class} /> : null;
+  const ownRank = rank && rank.division === row.weight_class ? rank : null;
   const otherRank = rank && rank.division !== row.weight_class ? rank : null;
   return (
     <>
