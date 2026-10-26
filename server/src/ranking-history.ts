@@ -1,4 +1,4 @@
-import { db, dataRevision, getMeta, metaAgeMs, setMeta, touchMeta } from "./db.ts";
+import { db, dataRevision, getMeta, metaAgeMs, prepared, setMeta, touchMeta } from "./db.ts";
 import { fetchHtml } from "./http.ts";
 import { parseRankingsHtml, type RankingType, type ScrapedRankings } from "./scrape/ufccom.ts";
 import type { TitleHolders } from "./fight-index.ts";
@@ -217,8 +217,16 @@ export function missingCurrentRankingHistory(): {
 
 /** The list in force the day before `date`, falling back to media before meta existed. */
 function listBefore(type: RankingType, date: string): { source: RankingType; date: string } | null {
-  const latest = (source: RankingType) => (db.prepare("SELECT MAX(date) AS date FROM ranking_history WHERE ranking_type = ? AND date < ?")
-    .get(source, date) as { date: string | null }).date;
+  const latest = (source: RankingType) => {
+    const dates = listDates(source);
+    let low = 0, high = dates.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (dates[middle] < date) low = middle + 1;
+      else high = middle;
+    }
+    return dates[low - 1] ?? null;
+  };
   const own = latest(type);
   if (own) return { source: type, date: own };
   const media = type === "meta" ? latest("media") : null;
@@ -246,7 +254,7 @@ export function rankingEntering(fighterId: string, type: RankingType, date: stri
 }
 
 function rankingOn(fighterId: string, source: RankingType, date: string): HistoricalRanking | null {
-  const row = db.prepare(`
+  const row = prepared(`
     SELECT division, rank FROM ranking_history
     WHERE fighter_id = ? AND ranking_type = ? AND date = ? AND division NOT LIKE '%Pound-for-Pound%'
     ORDER BY ${RANK_ORDER} LIMIT 1
@@ -265,9 +273,20 @@ export type RankingTimeline = {
   p4p: { date: string; rank: string | null }[];
 };
 
+let listDatesCache: { version: string; byType: Map<RankingType, readonly string[]> } | undefined;
+
 /** Every date a list of this type was stored, oldest first. Hops the index
- *  date to date rather than reading every row. */
-export function listDates(type: RankingType): string[] {
+ *  date to date rather than reading every row, once per data revision: a
+ *  profile asks for it once per bout. */
+export function listDates(type: RankingType): readonly string[] {
+  const version = dataRevision("profiles");
+  if (listDatesCache?.version !== version) listDatesCache = { version, byType: new Map() };
+  let dates = listDatesCache.byType.get(type);
+  if (!dates) listDatesCache.byType.set(type, dates = readListDates(type));
+  return dates;
+}
+
+function readListDates(type: RankingType): string[] {
   return (db.prepare(`
     WITH RECURSIVE d(date) AS (
       SELECT MIN(date) FROM ranking_history WHERE ranking_type = ?1

@@ -703,3 +703,30 @@ Query workers were replaced about every 15 minutes on the quiet Sunday: the
 card's fan scorecards (`community_score_json`, read by the fan-average
 analytics) still change after fight night, which is real data, so the cadence
 stays.
+
+## Steadier p95 (2026-10-26)
+
+Admin showed p95 107 ms over Oct 19–26 (141,600 requests) and an hourly p95
+line jumping between ~50 and 235 ms. From production's saved hourly
+histograms, CPU profiles and timed probes inside the live container, and a copy
+of the archive on dev-pc:
+
+- **Fight night.** `/api/live/odds` was 4,174 of the week's 7,437 requests over
+  100 ms, all on Oct 24: each 3 s poll found the 2 s answer expired and waited
+  on Polymarket. Without them the week's p95 is 50 ms, p99 189 ms (was 226).
+- **Quiet hours.** About 20 detail reads an hour (fights, fighters, events)
+  take 100–250 ms whatever the traffic, so the hourly p95 rises as traffic
+  falls: an hour of 200 requests puts them past 5%. Fighters were the worst,
+  18% over 100 ms. Inside the container the same cold builds take 15–50 ms
+  back to back and twice that when spaced seconds apart (an idle CPU); the
+  remaining gap is still not attributed from these logs.
+
+| What | Cause | Change | Before → after (dev-pc, archive copy, cold builds) |
+| --- | --- | --- | --- |
+| `/api/live/odds` | Expired answer rebuilt while the poll waited | An answer up to 10 s old is served while the next is read (`ODDS_STALE_MS`) | ~100–250 ms → cache hit; prices one poll (~3 s) later |
+| Fighter profiles | 24% matching every roster report to a profile, 20% listing ranking dates (a recursive query, twice per bout), statements compiled per call | Reports matched once until a report or profile changes; list dates kept per data revision, the list before a date found by binary search; cached statements | mean 10.9 → 3.7 ms, p99 20.4 → 10.5 (360 profiles) |
+| Event pages | Same ranking lookups per corner | Same | mean 7.4 → 5.8 ms (260 cards) |
+| Fights | Division medians scanned all ~9,000 bouts per answer | Bouts grouped by division once per index | mean 7.1 → 5.9 ms (360 bouts) |
+
+All 980 answers byte-identical to before. Next if quiet hours stay spiky: log
+queue wait and build time separately for detail reads over 100 ms.
