@@ -5,13 +5,12 @@ import { formatValue } from "../components/chartTokens";
 import { clockTimeWithZone, formatDate, formatDateShortWithYear, formatMethod, inches, lastName } from "../format";
 import { bestPrice, impliedProbability } from "../methodOdds";
 import { METHOD_LABEL, sharePct, type PredictionDistribution, type PredictionPick, type PredictionResult } from "../predictions";
-import { SITE_URL } from "../seo";
 import type { CardGraphic, CardRow, CardSide, CompareRow, Corner, FighterGraphic, Footer, ParlayGraphic, Photo, PickMark, Split, VersusGraphic } from "./render";
 
 /**
  * From the data a page already holds to a graphic, according to what the
- * reader ticked. Every graphic states where its numbers come from and as of
- * when, so a screenshot cannot pass an old line off as today's.
+ * reader ticked. Every graphic states the date its numbers are as of, so a
+ * screenshot cannot pass an old record off as today's.
  */
 
 export type Kind = "matchup" | "result" | "fighter" | "event" | "parlay";
@@ -33,7 +32,6 @@ const TOTAL_LABELS: Record<string, string> = {
 };
 /** "Sal D'amato" as the source prints it reads "Sal D'Amato". */
 const tidy = (name: string) => name.replace(/\b([DO])'([a-z])/g, (_, prefix: string, letter: string) => `${prefix}'${letter.toUpperCase()}`);
-const host = SITE_URL.replace(/^https?:\/\//, "");
 
 /** The choices each template offers, with sensible defaults switched on. */
 export function togglesFor(kind: Kind, board?: FighterBoard | null, fight?: Matchup | null): Toggle[] {
@@ -118,24 +116,9 @@ function surname(name: string): string {
   return suffix && !last.endsWith(suffix) ? `${last} ${suffix}` : last;
 }
 
-/** Where a card's lines came from, for the credit line. */
-const oddsSources = (event: EventDetail | null | undefined) => event?.odds_freshness?.sources?.join(", ") || "BestFightOdds";
-const lineSource = (url: string | null | undefined) => url?.startsWith("https://fightodds.io/") ? "FightOdds.io" : "BestFightOdds";
-
-function oddsTime(event: EventDetail | null | undefined, past: boolean): string {
-  if (past || event?.odds_freshness?.final) return `Odds: final stored prices · ${oddsSources(event)}`;
-  const at = event?.odds_freshness?.updated_at;
-  return `Odds as of ${at ? stamp(at) : "unknown time"} · ${oddsSources(event)}`;
-}
-
-/** "Sep 24, 1:31 PM EDT" — the moment a price was read, in the reader's zone. */
-function stamp(at: number): string {
-  return new Date(at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
-}
-
-function footerFor(path: string, notes: string[]): Footer {
-  return { url: `${host}${path}`, notes };
-}
+/** The reader's calendar day for a moment, not UTC's: "2026-10-25". */
+const localDay = (at: number) => new Date(at).toLocaleDateString("en-CA");
+const asOf = (what: string, date: string): Footer => ({ note: `${what} as of ${formatDateShortWithYear(date)}` });
 
 /** "Bantamweight bout", "Lightweight title", "TUF final". */
 function boutLabel(fight: { weight_class: string; title_type: Matchup["title_type"] }): string {
@@ -212,7 +195,7 @@ function picksFor(fight: Matchup, toggles: Toggle[], picks: BoutPicks, owner: Pi
   return { pick: pick ? { ...pick, heading: `${possessive(owner)} pick` } : null, splits };
 }
 
-export function buildMatchup(fight: Matchup, event: EventDetail | null, toggles: Toggle[], photos: [Photo, Photo], picks: BoutPicks = {}, owner: PickOwner = null): VersusGraphic {
+export function buildMatchup(fight: Matchup, toggles: Toggle[], photos: [Photo, Photo], picks: BoutPicks = {}, owner: PickOwner = null): VersusGraphic {
   const rows: CompareRow[] = [];
   const [a, b] = [fight.f1, fight.f2];
   if (on(toggles, "age") && (a.age != null || b.age != null)) rows.push({ label: "Age", f1: a.age != null ? String(a.age) : "—", f2: b.age != null ? String(b.age) : "—", edge: null });
@@ -256,7 +239,6 @@ export function buildMatchup(fight: Matchup, event: EventDetail | null, toggles:
   const past = fight.status === "past";
   const hasMoneyline = on(toggles, "odds") && Boolean(fight.odds?.f1.close || fight.odds?.f2.close);
   const { pick, splits } = picksFor(fight, toggles, picks, owner, true);
-  const anyOdds = hasMoneyline || odds.length || splits.some((split) => split.label.startsWith("Oddsmakers"));
   return {
     kind: "versus",
     eyebrow: fight.event.name,
@@ -273,10 +255,7 @@ export function buildMatchup(fight: Matchup, event: EventDetail | null, toggles:
       ...(style.length ? [{ title: "How they fight · UFC bouts before this one", rows: style }] : []),
       ...(odds.length ? [{ title: "Odds", rows: odds }] : []),
     ],
-    footer: footerFor(`/fights/${fight.id}`, [
-      [`Records and rates as of ${formatDateShortWithYear(fight.event.date)} · UFCStats`, splits.some((split) => split.label.startsWith("Community")) || pick ? "picks · UFC.sh" : null].filter(Boolean).join(" · "),
-      ...(anyOdds ? [oddsTime(event, past)] : []),
-    ]),
+    footer: asOf("Records and rates", fight.event.date),
   };
 }
 
@@ -331,10 +310,7 @@ export function buildResult(fight: Matchup, toggles: Toggle[], photos: [Photo, P
       ...(targets.length ? [{ title: "Significant strikes by target", rows: targets }] : []),
     ],
     judges,
-    footer: footerFor(`/fights/${fight.id}`, [
-      ["Official totals and scorecards · UFCStats", splits.length || pick ? "picks · UFC.sh" : null].filter(Boolean).join(" · "),
-      ...(closing ? [`Odds: closing line, ${lineSource(fight.odds?.source_url)}`] : []),
-    ]),
+    footer: { note: `Official result · ${formatDateShortWithYear(fight.event.date)}` },
   };
 }
 
@@ -370,10 +346,7 @@ export function buildFighter(fighter: FighterProfile, board: FighterBoard | null
     facts,
     stats,
     form: on(toggles, "form") && history.length ? [...history].reverse().map((row) => ({ outcome: row.outcome, label: lastName(row.opponent.name) })) : null,
-    footer: footerFor(`/fighters/${fighter.id}`, [
-      `As of ${formatDate(new Date().toISOString().slice(0, 10))} · UFCStats, verified pro records`,
-      ...(stats.length ? ["Rankings: competition rank among qualifying fighters; minimum samples apply"] : []),
-    ]),
+    footer: asOf("Records and rates", localDay(Date.now())),
   };
 }
 
@@ -399,7 +372,6 @@ export function buildEvent(event: EventDetail, toggles: Toggle[], layout: "list"
   const mine = on(toggles, "pick:mine");
   const community = on(toggles, "pick:community");
   const market = on(toggles, "pick:odds");
-  const anyOdds = (on(toggles, "odds") || market) && fights.some((fight) => fight.odds?.f1.close || fight.odds?.f2.close);
   const side = (fight: EventFight, key: "f1" | "f2"): CardSide => ({
     name: fight[key].name,
     surname: surname(fight[key].name),
@@ -445,16 +417,13 @@ export function buildEvent(event: EventDetail, toggles: Toggle[], layout: "list"
     subtitle: legend,
     date: { big: posterDate(event.date), small: where },
     rows,
-    footer: footerFor(`/events/${event.id}`, [
-      [on(toggles, "records") ? "Records · UFCStats, verified pro histories" : "Card · UFCStats and ufc.com", mine || community ? "picks · UFC.sh" : null].filter(Boolean).join(" · "),
-      ...(anyOdds ? [past || event.odds_freshness?.final ? `Odds: closing line, ${oddsSources(event)}` : `Odds as of ${event.odds_freshness?.updated_at ? stamp(event.odds_freshness.updated_at) : "unknown time"} · ${oddsSources(event)}`] : []),
-    ]),
+    footer: on(toggles, "records") ? asOf("Records", event.date) : { note: null },
   };
 }
 
 const money = (value: number) => `$${value.toFixed(2)}`;
 
-export function buildParlay(bet: Bet, owner: PickOwner, handle: string | null): ParlayGraphic {
+export function buildParlay(bet: Bet, owner: PickOwner): ParlayGraphic {
   const parlay = bet.legs.length > 1;
   const net = bet.state === "pending" ? null : bet.state === "void" ? "Void" : `${bet.net >= 0 ? "+" : "−"}${money(Math.abs(bet.net))}`;
   return {
@@ -466,7 +435,7 @@ export function buildParlay(bet: Bet, owner: PickOwner, handle: string | null): 
     stake: money(bet.stake),
     payout: money(bet.payout),
     net,
-    placed: `Placed ${formatDate(new Date(bet.placedAt).toISOString().slice(0, 10))} · play money, no stakes`,
+    placed: `Placed ${formatDate(localDay(bet.placedAt))} · play money, no stakes`,
     legs: bet.legs.map((leg) => ({
       selection: leg.selection,
       bout: `${surname(leg.f1Name)} vs ${surname(leg.f2Name)}`,
@@ -474,10 +443,7 @@ export function buildParlay(bet: Bet, owner: PickOwner, handle: string | null): 
       price: leg.price,
       state: leg.state,
     })),
-    footer: footerFor(handle ? `/profiles/${handle}?tab=bets` : "/", [
-      "Prices as placed · FightOdds.io and BestFightOdds lines",
-      "Results · UFCStats",
-    ]),
+    footer: { note: null },
   };
 }
 

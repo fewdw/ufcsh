@@ -1,26 +1,26 @@
 import {
-  backdrop, cond, coverTop, cutout, fit, flag, flagWidth, footer, formSquares, label, mark, octagon, PALETTES, pill, rankBox, rankWidth,
-  roundel, roundRect, sans, sizeFor, splitBar, spacing,
+  backdrop, cage, capHeight, centered, coverTop, cutout, display, fit, flag, flagWidth, footer, footerTop, formSquares, formWidth, heading, label,
+  mark, middle, PALETTES, pill, rankBox, rankWidth, roundel, roundRect, sizeFor, splitBar, spacing, text,
   type Ctx, type Footer, type Outcome, type Palette, type Split, type Theme,
 } from "./draw";
 
 /**
  * Share graphics, drawn on a canvas from data already on the page, in the
- * style of a fight poster: heavy condensed capitals, rank boxes, flags and a
- * textured backdrop. Five templates — two fighters, one fighter, a card as a
- * bout list or a wall of faces, and a bet slip — each in the three shapes
- * social feeds use. Type is sized against the image's short side so it
- * survives a feed shrinking it, and every image carries its sources, its
- * date and the site's mark.
+ * style of a fight poster: heavy condensed capitals, rank boxes and flags on a
+ * flat backdrop. Five templates — two fighters, one fighter, a card as a bout
+ * list or a wall of faces, and a bet slip — each in the three shapes social
+ * feeds use. Type is sized against the image's short side so it survives a
+ * feed shrinking it, and every image carries the date its numbers are as of
+ * and the site's mark.
  */
 
 export type { Footer, Outcome, Split, Theme };
 export type Format = "square" | "portrait" | "landscape";
 
 export const SIZES: Record<Format, { width: number; height: number; label: string }> = {
-  square: { width: 1080, height: 1080, label: "Square · 1080 × 1080" },
-  portrait: { width: 1080, height: 1350, label: "Portrait · 1080 × 1350" },
-  landscape: { width: 1600, height: 900, label: "Landscape · 1600 × 900" },
+  square: { width: 1080, height: 1080, label: "Square · 2160 × 2160" },
+  portrait: { width: 1080, height: 1350, label: "Portrait · 2160 × 2700" },
+  landscape: { width: 1600, height: 900, label: "Landscape · 3200 × 1800" },
 };
 
 export const THEMES: { value: Theme; label: string }[] = [
@@ -139,17 +139,26 @@ const stateMark = (state: BetLegState | PickMark["state"]): "check" | "cross" | 
 function masthead(ctx: Ctx, u: number, top: number, p: Palette, x0: number, x1: number, eyebrow: string, title: string, subtitle: string, titleSize: number) {
   const cx = (x0 + x1) / 2;
   const width = x1 - x0;
+  let y = top;
+  if (eyebrow) {
+    const face = text(700, 18 * u);
+    y += capHeight(ctx, face);
+    ctx.textAlign = "center";
+    ctx.fillStyle = p.accent;
+    label(ctx, upper(eyebrow), cx, y, face, 3.6 * u, width);
+    y += 18 * u;
+  }
+  const size = sizeFor(ctx, upper(title), width, display, titleSize, titleSize * 0.5);
+  y += capHeight(ctx, display(size));
   ctx.textAlign = "center";
-  ctx.fillStyle = p.accent;
-  label(ctx, upper(eyebrow), cx, top + 22 * u, cond(800, 24 * u), 3 * u, width);
   ctx.fillStyle = p.ink;
-  const size = sizeFor(ctx, upper(title), width, (s) => cond(800, s), titleSize, titleSize * 0.45);
-  const titleBase = top + 30 * u + size * 0.78;
-  fit(ctx, upper(title), cx, titleBase, width, (s) => cond(800, s), size, size);
-  if (!subtitle) return titleBase;
+  fit(ctx, upper(title), cx, y, width, display, size, size);
+  if (!subtitle) return y;
+  const face = text(500, 19 * u);
+  y += 16 * u + capHeight(ctx, face);
   ctx.fillStyle = p.muted;
-  fit(ctx, subtitle, cx, titleBase + 34 * u, width, (s) => sans(500, s), 20 * u, 13 * u);
-  return titleBase + 34 * u;
+  fit(ctx, subtitle, cx, y, width, (s) => text(500, s), 19 * u, 13 * u);
+  return y;
 }
 
 // ---------------------------------------------------------------------------
@@ -157,299 +166,347 @@ function masthead(ctx: Ctx, u: number, top: number, p: Palette, x0: number, x1: 
 
 function renderVersus(ctx: Ctx, w: number, h: number, format: Format, p: Palette, g: VersusGraphic) {
   const u = Math.min(w, h) / 1000;
-  const pad = 46 * u;
-  const wide = format === "landscape";
-  backdrop(ctx, w, h, p, true);
-  const footTop = h - pad - 54 * u;
-  const colX0 = wide ? w * 0.285 : pad;
-  const colX1 = wide ? w * 0.715 : w - pad;
+  const pad = 48 * u;
+  backdrop(ctx, w, h, p);
+  const footTop = footerTop(h, u, pad);
+  const corners = [g.f1, g.f2];
+  const sides = ["f1", "f2"] as const;
+  const hasPhotos = corners.some((c) => c.photo);
+  // Landscape stands the pictures at the sides and sets everything between them.
+  const flank = format === "landscape" && hasPhotos;
+  const colX0 = flank ? w * 0.27 : pad;
+  const colX1 = flank ? w * 0.73 : w - pad;
   const colW = colX1 - colX0;
   const cx = (colX0 + colX1) / 2;
+  const top = masthead(ctx, u, pad, p, colX0, colX1, g.eyebrow, g.label, g.subtitle, 46 * u) + 26 * u;
+  const bottom = footTop - 16 * u;
+  const space = bottom - top;
 
-  ctx.textAlign = "center";
-  ctx.fillStyle = p.accent;
-  label(ctx, upper(g.eyebrow), cx, pad + 22 * u, cond(800, 24 * u), 3 * u, colW);
-  ctx.fillStyle = p.ink;
-  label(ctx, upper(g.label), cx, pad + 60 * u, cond(800, 32 * u, true), 4 * u, colW);
-  ctx.fillStyle = p.muted;
-  fit(ctx, g.subtitle, cx, pad + 90 * u, colW, (s) => sans(500, s), 19 * u, 12 * u);
-  const top = pad + 104 * u;
+  // Each corner's picture, name, record, price and figures share one axis.
+  const middleW = Math.max(150 * u, colW * 0.16);
+  const halfW = (colW - middleW) / 2;
+  const axes = [colX0 + halfW / 2, colX1 - halfW / 2] as const;
 
-  // What sits under the fighters decides how much room they get.
+  // The names: one size for both, so neither corner looks favoured.
+  const names = corners.map((c) => upper(c.surname));
+  const capRatio = capHeight(ctx, display(100)) / 100 || 0.72;
+  const gapFor = (size: number) => size * 0.16;
+  const pieces = (index: number, size: number) => {
+    const c = corners[index];
+    const cap = size * capRatio;
+    const rank = c.rank ? rankWidth(ctx, c.rank, cap) + gapFor(size) : 0;
+    const flagged = flagWidth(ctx, c.flag, cap * 1.1);
+    const picked = g.pick?.side === sides[index] ? cap * 0.64 + gapFor(size) : 0;
+    ctx.font = display(size);
+    return { rank, name: ctx.measureText(names[index]).width, flag: flagged ? flagged + gapFor(size) : 0, picked };
+  };
+  const lineWidth = (index: number, size: number) => { const part = pieces(index, size); return part.rank + part.name + part.flag + part.picked; };
+  let size = flank ? 66 * u : hasPhotos ? 78 * u : 100 * u;
+  while (size > 34 * u && Math.max(lineWidth(0, size), lineWidth(1, size)) > halfW) size -= u;
+  const cap = size * capRatio;
+  const hasNick = corners.some((c) => c.nickname);
+  const hasLines = corners.some((c) => c.lines.length);
+  const hasChips = corners.some((c) => c.odds || c.result || c.form?.length);
+  const hero = hasPhotos && !flank;
+  const bandNeed = (hero ? 32 * u : 0) + cap + (hasNick ? 36 * u : 0) + (hasLines ? 36 * u : 0) + (hasChips ? 52 * u : 0) + 30 * u;
+
+  // What sits under the names decides how much room the pictures get.
+  const HEAD = 42 * u;
+  const ROW = 46 * u;
   const rows = g.sections.flatMap((section) => [{ heading: section.title } as const, ...section.rows.map((row) => ({ row }))]);
   const judges = g.judges ?? [];
-  const judgeNeed = judges.length ? 128 * u : 0;
-  const tableNeed = rows.reduce((sum, entry) => sum + ("heading" in entry ? 40 : 46) * u, 0) + judgeNeed + (rows.length || judges.length ? 8 * u : 0);
-  const bandNeed = (g.pick ? 80 * u : 0) + g.splits.length * 88 * u;
-  const corners = [g.f1, g.f2];
-  const infoLines = Math.max(...corners.map((c) => (c.nickname ? 1 : 0) + (c.lines.length ? 1 : 0) + (c.odds || c.result || c.form?.length ? 1 : 0)));
-  const infoH = infoLines ? 12 * u + infoLines * 40 * u : 0;
-  const hasPhotos = corners.some((c) => c.photo);
-  const space = footTop - 12 * u - top;
-  const minHero = space * (hasPhotos && !wide ? 0.46 : 0.3);
-  let heroH = space - tableNeed - bandNeed;
-  let tableScale = 1;
-  if (heroH < minHero) {
-    heroH = minHero;
-    tableScale = tableNeed ? Math.max(0.5, (space - heroH - bandNeed) / tableNeed) : 1;
-  }
-  const heroBottom = top + heroH;
-
-  // The names, stacked in the middle as the posters set them.
-  const nameWidth = wide ? colW : w - pad * 2;
-  const names = corners.map((c) => upper(c.surname));
-  const extras = (index: number, size: number) => {
-    const c = corners[index];
-    const rank = c.rank ? rankWidth(ctx, c.rank, size * 0.56) + size * 0.14 : 0;
-    const flagged = flagWidth(ctx, c.flag, size * 0.46);
-    const picked = g.pick?.side === (index === 0 ? "f1" : "f2") ? size * 0.5 : 0;
-    return rank + (flagged ? flagged + size * 0.14 : 0) + picked;
-  };
-  const infoRoom = infoH + 6 * u;
-  const heads = corners.some((c) => c.photo?.kind === "head");
-  const blockRoom = hasPhotos && !wide ? heads ? (heroH - infoRoom) * 0.44 : heroH * 0.5 : heroH - infoRoom - 6 * u;
-  let size = Math.min(wide ? 104 * u : hasPhotos ? 124 * u : 150 * u, blockRoom / (0.86 * 2 + 0.44));
-  const lineWidth = (index: number, s: number) => { ctx.font = cond(800, s); return ctx.measureText(names[index]).width + extras(index, s); };
-  while (size > 34 * u && Math.max(lineWidth(0, size), lineWidth(1, size)) > nameWidth) size -= 2 * u;
-  const vsSize = size * 0.34;
-  const blockH = size * 0.86 * 2 + vsSize * 1.3;
-  const blockBottom = hasPhotos && !wide ? heroBottom - infoRoom : top + (heroH - infoRoom - blockH) / 2 + blockH;
-  const baselines = [blockBottom - blockH + size * 0.86, blockBottom];
-  // Pictures, over a faint octagon.
-  if (hasPhotos) {
-    ctx.save();
-    ctx.strokeStyle = p.accent;
-    const oy = wide ? (pad + footTop) / 2 : top + heroH * 0.46;
-    const or = wide ? h * 0.4 : Math.min(w * 0.4, heroH * 0.56);
-    ctx.globalAlpha = 0.2;
-    ctx.lineWidth = 6 * u;
-    octagon(ctx, w / 2, oy, or);
-    ctx.stroke();
-    ctx.globalAlpha = 0.09;
-    ctx.lineWidth = 3 * u;
-    octagon(ctx, w / 2, oy, or * 0.84);
-    ctx.stroke();
-    ctx.restore();
-  }
-  for (const [side, corner] of [["f1", g.f1], ["f2", g.f2]] as const) {
-    const photo = corner.photo;
-    if (!photo) continue;
-    ctx.save();
-    if (corner.outcome === "loss" || (g.pick && g.pick.side !== side)) ctx.globalAlpha = corner.outcome === "loss" ? 0.5 : 0.8;
-    if (photo.kind === "full") {
-      if (wide) cutout(ctx, photo.image, side === "f1" ? 0 : w * 0.715, pad * 0.6, w * 0.285, footTop - pad * 0.6 - 4 * u, "center", 0.8);
-      else cutout(ctx, photo.image, side === "f1" ? w * 0.01 : w * 0.49, top - 14 * u, w * 0.5, heroH - infoH * 0.5 + 14 * u, "center", 0.66);
-    } else {
-      // A headshot sits above the names rather than behind them.
-      const size = wide ? Math.min(w * 0.23, h * 0.42) : Math.max(90 * u, Math.min(w * 0.34, blockBottom - blockH - top - 20 * u));
-      const hx = wide ? (side === "f1" ? w * 0.143 : w * 0.857) : side === "f1" ? w * 0.26 : w * 0.74;
-      const hy = wide ? h * 0.42 : top + size / 2 + 4 * u;
-      roundel(ctx, photo.image, hx, hy, size, corner.outcome === "win" ? p.win : p.accent);
+  const judgeNeed = judges.length ? 132 * u : 0;
+  const tableNeed = rows.reduce((sum, entry) => sum + ("heading" in entry ? HEAD : ROW), 0) + judgeNeed;
+  const fixed = bandNeed + (g.pick ? 82 * u : 0) + g.splits.length * 86 * u;
+  let heroH = 0;
+  let scale = 1;
+  if (hero) {
+    const minHero = space * (format === "square" ? 0.32 : 0.4);
+    heroH = space - fixed - tableNeed;
+    if (heroH < minHero) {
+      scale = tableNeed ? Math.max(0.62, (space - fixed - minHero) / tableNeed) : 1;
+      heroH = space - fixed - tableNeed * scale;
+      // A long table gives up more of the picture before it shrinks further.
+      if (heroH < space * 0.16) {
+        heroH = space * 0.16;
+        scale = tableNeed ? Math.max(0.5, (space - fixed - heroH) / tableNeed) : 1;
+      }
     }
+  } else if (tableNeed) {
+    scale = Math.min(1.2, Math.max(0.55, (space - fixed) / tableNeed));
+  }
+  // Without a hero the block sits in the middle of what is left.
+  const spare = Math.max(0, space - heroH - fixed - tableNeed * scale);
+  let y = top + (heroH ? 0 : spare / 2);
+
+  // Pictures, cut clean where the panel starts, over the cage.
+  if (flank) {
+    const photoTop = pad * 0.5;
+    corners.forEach((corner, index) => {
+      const photo = corner.photo;
+      if (!photo) return;
+      ctx.save();
+      if (dimmed(g, index)) setBack(ctx);
+      if (photo.kind === "full") cutout(ctx, photo.image, index === 0 ? 0 : w * 0.73, photoTop, w * 0.27, footTop - photoTop, "center", 0.9);
+      else roundel(ctx, photo.image, index === 0 ? w * 0.135 : w * 0.865, h * 0.42, Math.min(w * 0.22, h * 0.42), corner.outcome === "win" ? p.win : p.accent);
+      ctx.restore();
+    });
+  } else if (heroH) {
+    const heroTop = top - 18 * u;
+    const heroBottom = top + heroH;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, heroTop, w, heroBottom - heroTop);
+    ctx.clip();
+    cage(ctx, cx, heroTop + (heroBottom - heroTop) * 0.55, Math.min(colW * 0.3, (heroBottom - heroTop) * 0.52), u, p);
     ctx.restore();
+    corners.forEach((corner, index) => {
+      const photo = corner.photo;
+      if (!photo) return;
+      ctx.save();
+      if (dimmed(g, index)) setBack(ctx);
+      if (photo.kind === "full") cutout(ctx, photo.image, axes[index] - colW / 4, heroTop, colW / 2, heroBottom - heroTop, "center", 0.8);
+      else {
+        const ring = Math.min(halfW * 0.86, (heroBottom - heroTop) * 0.86);
+        roundel(ctx, photo.image, axes[index], (heroTop + heroBottom) / 2, ring, corner.outcome === "win" ? p.win : p.accent);
+      }
+      ctx.restore();
+    });
+    ctx.fillStyle = p.raised;
+    ctx.fillRect(0, heroBottom, w, h - heroBottom);
+    ctx.fillStyle = p.accent;
+    ctx.fillRect(0, heroBottom, w, Math.max(2, 4 * u));
+    y = heroBottom + 32 * u;
   }
 
-  ctx.save();
-  ctx.shadowColor = p.shadow;
-  ctx.shadowBlur = 28 * u;
+  // The names, each on its corner's axis, VS between them.
+  const nameMid = y + cap / 2;
   corners.forEach((corner, index) => {
-    const side = index === 0 ? "f1" : "f2";
-    const base = baselines[index];
-    const mid = base - size * 0.36;
-    const total = Math.min(nameWidth, lineWidth(index, size));
-    let x = cx - total / 2;
-    if (corner.rank) x += rankBox(ctx, corner.rank, x, mid, size * 0.56, p) + size * 0.14;
-    const dim = corner.outcome === "loss" || (g.pick && g.pick.side !== side);
-    ctx.fillStyle = dim ? p.faint : p.ink;
+    const side = sides[index];
+    const part = pieces(index, size);
+    const room = halfW - part.rank - part.flag - part.picked;
+    let x = axes[index] - Math.min(halfW, lineWidth(index, size)) / 2;
+    if (corner.rank) x += rankBox(ctx, corner.rank, x, nameMid, cap, p) + gapFor(size);
+    ctx.fillStyle = dimmed(g, index) ? p.faint : p.ink;
     ctx.textAlign = "left";
-    const room = Math.max(40 * u, nameWidth - extras(index, size));
-    ctx.font = cond(800, size);
-    const textW = Math.min(room, ctx.measureText(names[index]).width);
-    fit(ctx, names[index], x, base, room, (s) => cond(800, s), size, size * 0.6);
-    x += textW + size * 0.14;
-    const drawn = flag(ctx, corner.flag, x, mid, size * 0.46, "left");
-    if (drawn) x += drawn + size * 0.14;
-    if (g.pick?.side === side) mark(ctx, x + size * 0.2, mid, size * 0.2, stateColor(p, g.pick.state), g.pick.state === "lost" ? "cross" : "check", stateInk(p, g.pick.state));
+    fit(ctx, names[index], x, y + cap, room, display, size, size * 0.7);
+    x += Math.min(room, part.name) + gapFor(size);
+    const drawn = flag(ctx, corner.flag, x, nameMid, cap * 1.1, "left");
+    if (drawn) x += drawn + gapFor(size);
+    if (g.pick?.side === side) mark(ctx, x + cap * 0.32, nameMid, cap * 0.32, stateColor(p, g.pick.state), g.pick.state === "lost" ? "cross" : "check", stateInk(p, g.pick.state));
   });
-  // VS between them, with a rule either side.
-  const vsY = baselines[0] + (baselines[1] - size * 0.86 - baselines[0]) / 2 + vsSize * 0.36;
-  ctx.shadowBlur = 0;
+  ctx.font = display(Math.max(26 * u, size * 0.44));
   ctx.fillStyle = p.accent;
-  ctx.textAlign = "center";
-  ctx.font = cond(800, vsSize, true);
-  ctx.fillText("VS", cx, vsY);
-  const vsW = ctx.measureText("VS").width;
-  ctx.fillRect(cx - vsW / 2 - 14 * u - 70 * u, vsY - vsSize * 0.36, 70 * u, Math.max(2, 2.5 * u));
-  ctx.fillRect(cx + vsW / 2 + 14 * u, vsY - vsSize * 0.36, 70 * u, Math.max(2, 2.5 * u));
-  ctx.restore();
+  centered(ctx, "VS", cx, nameMid);
+  y += cap;
 
-  // Records, prices and form under each corner.
-  if (infoH) {
-    const infoTop = heroBottom - infoH + 10 * u;
-    for (const [index, corner] of corners.entries()) {
-      const side = index === 0 ? "f1" : "f2";
-      const x = wide ? colX0 + colW * (index === 0 ? 0.25 : 0.75) : w * (index === 0 ? 0.26 : 0.74);
-      const half = wide ? colW * 0.48 : w * 0.44;
-      let y = infoTop;
+  // Nickname, record, then the price or result beside the last five.
+  if (hasNick) {
+    y += 36 * u;
+    corners.forEach((corner, index) => {
+      if (!corner.nickname) return;
+      ctx.fillStyle = p.muted;
       ctx.textAlign = "center";
-      if (corner.nickname) {
-        ctx.fillStyle = p.muted;
-        fit(ctx, `“${corner.nickname}”`, x, y + 26 * u, half, (s) => cond(600, s, true), 28 * u, 18 * u);
-        y += 40 * u;
-      }
-      if (corner.lines.length) {
-        ctx.fillStyle = p.muted;
-        fit(ctx, upper(corner.lines.join(" · ")), x, y + 26 * u, half, (s) => cond(600, s), 29 * u, 18 * u);
-        y += 40 * u;
-      }
+      fit(ctx, `“${corner.nickname}”`, axes[index], y, halfW, (s) => text(500, s), 21 * u, 14 * u);
+    });
+  }
+  if (hasLines) {
+    y += 36 * u;
+    corners.forEach((corner, index) => {
+      if (!corner.lines.length) return;
+      ctx.fillStyle = p.muted;
+      ctx.textAlign = "center";
+      const line = upper(corner.lines.join(" · "));
+      const used = sizeFor(ctx, line, halfW, (s) => text(600, s), 19 * u, 13 * u);
+      label(ctx, line, axes[index], y, text(600, used), 1.2 * u, halfW);
+    });
+  }
+  if (hasChips) {
+    const mid = y + 34 * u;
+    corners.forEach((corner, index) => {
       const items: { width: number; draw: (left: number) => void }[] = [];
       if (corner.result) {
-        ctx.font = cond(800, 24 * u);
-        const text = upper(corner.result);
-        const width = Math.min(half, ctx.measureText(text).width + 30 * u);
-        items.push({ width, draw: (left) => pill(ctx, text, left + width / 2, y + 2 * u, 34 * u, corner.outcome === "win" ? p.win : corner.outcome === "draw" ? p.draw : p.panelStrong, corner.outcome === "win" || corner.outcome === "draw" ? "#ffffff" : p.muted, cond(800, 24 * u), half) });
+        const face = text(800, 15 * u);
+        ctx.font = face;
+        spacing(ctx, 1.2 * u);
+        const label = upper(corner.result);
+        const width = Math.min(halfW, ctx.measureText(label).width + 30 * u);
+        spacing(ctx, 0);
+        const win = corner.outcome === "win" || corner.outcome === "draw";
+        items.push({ width, draw: (left) => {
+          spacing(ctx, 1.2 * u);
+          pill(ctx, label, left + width / 2, mid - 17 * u, 34 * u, corner.outcome === "win" ? p.win : corner.outcome === "draw" ? p.draw : p.panelStrong, win ? "#ffffff" : p.muted, face, halfW);
+          spacing(ctx, 0);
+        } });
       } else if (corner.odds) {
-        ctx.font = cond(800, 30 * u);
+        const face = display(25 * u);
+        ctx.font = face;
         const width = ctx.measureText(corner.odds).width + 30 * u;
-        items.push({ width, draw: (left) => pill(ctx, corner.odds!, left + width / 2, y + 1 * u, 36 * u, p.panelStrong, side === "f1" ? p.f1 : p.f2, cond(800, 30 * u)) });
+        items.push({ width, draw: (left) => pill(ctx, corner.odds!, left + width / 2, mid - 18 * u, 36 * u, p.panelStrong, index === 0 ? p.f1 : p.f2, face) });
       }
       if (corner.form?.length) {
-        const width = corner.form.length * 26 * u + (corner.form.length - 1) * 26 * u * 0.28;
-        items.push({ width, draw: (left) => formSquares(ctx, corner.form!, left, y + 6 * u, 26 * u, p, "left") });
+        const width = formWidth(corner.form, 28 * u);
+        items.push({ width, draw: (left) => formSquares(ctx, corner.form!, left, mid, 28 * u, p, "left") });
       }
       const gap = 14 * u;
-      let left = x - (items.reduce((sum, item) => sum + item.width, 0) + gap * Math.max(0, items.length - 1)) / 2;
+      let left = axes[index] - (items.reduce((sum, item) => sum + item.width, 0) + gap * Math.max(0, items.length - 1)) / 2;
       for (const item of items) { item.draw(left); left += item.width + gap; }
-      if (index === 1 && g.marketHeading && corners.some((c) => c.odds)) {
-        ctx.fillStyle = p.faint;
-        ctx.textAlign = "center";
-        label(ctx, upper(g.marketHeading), cx, y + 26 * u, cond(700, 17 * u), 2 * u, w * 0.12);
-      }
+    });
+    if (g.marketHeading && corners.some((c) => c.odds)) {
+      ctx.fillStyle = p.faint;
+      ctx.font = text(700, 13 * u);
+      spacing(ctx, 2.4 * u);
+      centered(ctx, upper(g.marketHeading), cx, mid, middleW - 10 * u);
+      spacing(ctx, 0);
     }
+    y = mid + 18 * u;
   }
+  y += 30 * u;
 
   // The pick and the share bars.
-  let y = heroBottom + 4 * u;
   if (g.pick) {
-    const boxH = 66 * u;
+    const boxH = 64 * u;
     const color = stateColor(p, g.pick.state);
+    const mid = y + boxH / 2;
     roundRect(ctx, colX0, y, colW, boxH, 10 * u);
     ctx.fillStyle = p.panelStrong;
     ctx.fill();
-    ctx.fillStyle = color;
-    ctx.fillRect(colX0, y, 8 * u, boxH);
-    ctx.font = cond(800, 22 * u);
-    spacing(ctx, 2 * u);
+    const chipFace = text(800, 15 * u);
     const heading = upper(g.pick.heading);
-    const chipW = ctx.measureText(heading).width + 28 * u;
-    spacing(ctx, 0);
-    roundRect(ctx, colX0 + 22 * u, y + boxH / 2 - 17 * u, chipW, 34 * u, 6 * u);
+    ctx.font = chipFace;
+    spacing(ctx, 1.8 * u);
+    const chipW = ctx.measureText(heading).width + 30 * u;
+    roundRect(ctx, colX0 + 16 * u, mid - 17 * u, chipW, 34 * u, 6 * u);
     ctx.fillStyle = color;
     ctx.fill();
     ctx.fillStyle = stateInk(p, g.pick.state);
-    ctx.textAlign = "center";
-    label(ctx, heading, colX0 + 22 * u + chipW / 2, y + boxH / 2 + 8 * u, cond(800, 22 * u), 2 * u);
+    centered(ctx, heading, colX0 + 16 * u + chipW / 2, mid);
+    spacing(ctx, 0);
     const verdict = g.pick.state === "won" ? "RIGHT" : g.pick.state === "lost" ? "WRONG" : g.pick.state === "void" ? "VOID" : "";
-    ctx.font = cond(800, 28 * u);
-    const verdictW = verdict ? ctx.measureText(verdict).width + 50 * u : 0;
+    const verdictFace = text(800, 18 * u);
+    ctx.font = verdictFace;
+    const verdictW = verdict ? ctx.measureText(verdict).width + 44 * u : 0;
     if (verdict) {
-      mark(ctx, colX1 - verdictW + 14 * u, y + boxH / 2, 14 * u, color, stateMark(g.pick.state));
+      mark(ctx, colX1 - verdictW + 2 * u, mid, 13 * u, color, stateMark(g.pick.state));
       ctx.fillStyle = color;
       ctx.textAlign = "right";
-      ctx.fillText(verdict, colX1 - 18 * u, y + boxH / 2 + 10 * u);
+      ctx.fillText(verdict, colX1 - 18 * u, middle(ctx, verdict, mid));
     }
+    const pickedName = upper(corners[g.pick.side === "f1" ? 0 : 1].name);
+    const line = g.pick.detail ? `${pickedName} · ${upper(g.pick.detail)}` : pickedName;
+    const textX = colX0 + 16 * u + chipW + 18 * u;
+    const used = sizeFor(ctx, line, colX1 - textX - verdictW - 18 * u, display, 30 * u, 18 * u);
+    ctx.font = display(used);
     ctx.fillStyle = p.ink;
     ctx.textAlign = "left";
-    const pickedName = upper(corners[g.pick.side === "f1" ? 0 : 1].name);
-    const text = g.pick.detail ? `${pickedName} · ${upper(g.pick.detail)}` : pickedName;
-    fit(ctx, text, colX0 + 22 * u + chipW + 18 * u, y + boxH / 2 + 12 * u, colW - chipW - 60 * u - verdictW, (s) => cond(800, s), 36 * u, 20 * u);
-    y += boxH + 14 * u;
+    fit(ctx, line, textX, middle(ctx, line, mid), colX1 - textX - verdictW - 18 * u, display, used, used);
+    y += boxH + 18 * u;
   }
   for (const split of g.splits) {
-    splitBar(ctx, split, colX0, y, colW, 78 * u, p, u);
-    y += 88 * u;
+    splitBar(ctx, split, colX0, y, colW, 64 * u, p, u, [axes[0], axes[1]]);
+    y += 86 * u;
   }
 
-  // The comparison table.
-  const tableBottom = footTop - 10 * u - judgeNeed * tableScale;
-  const rowNeed = rows.reduce((sum, entry) => sum + ("heading" in entry ? 40 : 46) * u, 0);
-  const scale = rows.length ? Math.min(1, tableScale, (tableBottom - y) / Math.max(1, rowNeed)) : 1;
-  for (const entry of rows) {
+  // The comparison table: figures on the corners' axes, the label between.
+  ctx.font = display(30 * u * Math.max(scale, 0.7));
+  const widest = Math.max(0, ...rows.flatMap((entry) => "row" in entry && !entry.row.shared ? [ctx.measureText(entry.row.f1).width, ctx.measureText(entry.row.f2).width] : []));
+  const labelW = Math.max(middleW, axes[1] - axes[0] - widest - 60 * u);
+  rows.forEach((entry, index) => {
     if ("heading" in entry) {
-      const rowH = 40 * u * scale;
-      ctx.textAlign = "center";
-      ctx.fillStyle = p.accent;
-      label(ctx, upper(entry.heading), cx, y + rowH * 0.72, cond(800, 21 * u * Math.max(scale, 0.75), true), 3 * u, colW);
+      const rowH = HEAD * scale;
+      heading(ctx, entry.heading, colX0, colX1, y + rowH * 0.5, u, p, 15 * u * Math.max(scale, 0.8));
       y += rowH;
-      continue;
+      return;
     }
-    const rowH = 46 * u * scale;
+    const rowH = ROW * scale;
+    const mid = y + rowH / 2;
     const row = entry.row;
-    ctx.fillStyle = p.line;
-    ctx.fillRect(colX0, y, colW, Math.max(1, 1.5 * u));
-    const baseline = y + rowH * 0.7;
-    const valueSize = 33 * u * Math.max(scale, 0.66);
+    if (index < rows.length - 1 && !("heading" in rows[index + 1])) {
+      ctx.fillStyle = p.line;
+      ctx.fillRect(colX0, y + rowH, colW, Math.max(1, 1.2 * u));
+    }
+    const valueFace = display(30 * u * Math.max(scale, 0.7));
+    const labelFace = text(600, 15 * u * Math.max(scale, 0.8));
     if (row.shared) {
-      ctx.textAlign = "left";
       ctx.fillStyle = p.muted;
-      fit(ctx, upper(row.label), colX0 + 8 * u, baseline, colW * 0.76, (s) => cond(600, s), 24 * u * Math.max(scale, 0.7), 14 * u);
-      ctx.textAlign = "right";
+      ctx.font = labelFace;
+      ctx.textAlign = "left";
+      const label = upper(row.label);
+      fit(ctx, label, colX0 + 6 * u, middle(ctx, label, mid), colW * 0.74, (s) => text(600, s), 15 * u * Math.max(scale, 0.8), 11 * u);
       ctx.fillStyle = p.ink;
-      fit(ctx, row.shared, colX1 - 8 * u, baseline, colW * 0.2, (s) => cond(800, s), valueSize, 16 * u);
+      ctx.font = valueFace;
+      ctx.textAlign = "right";
+      fit(ctx, row.shared, colX1 - 6 * u, middle(ctx, row.shared, mid), colW * 0.22, display, 30 * u * Math.max(scale, 0.7), 14 * u);
       y += rowH;
-      continue;
+      return;
     }
-    ctx.textAlign = "center";
     ctx.fillStyle = p.muted;
-    label(ctx, upper(row.label), cx, baseline - 2 * u, cond(700, 20 * u * Math.max(scale, 0.75)), 1.5 * u, colW * 0.4);
-    for (const side of ["f1", "f2"] as const) {
-      const edge = row.edge === side;
-      const color = side === "f1" ? p.f1 : p.f2;
-      ctx.fillStyle = edge ? color : p.ink;
-      ctx.textAlign = side === "f1" ? "left" : "right";
-      const x = side === "f1" ? colX0 + 8 * u : colX1 - 8 * u;
-      const used = fit(ctx, row[side], x, baseline, colW * 0.28, (s) => cond(edge ? 800 : 600, s), valueSize, 16 * u);
-      if (edge) {
-        ctx.font = cond(800, used);
-        const width = Math.min(colW * 0.28, ctx.measureText(row[side]).width);
-        const tip = side === "f1" ? x + width + 12 * u : x - width - 12 * u;
-        const dir = side === "f1" ? -1 : 1;
-        ctx.beginPath();
-        ctx.moveTo(tip, baseline - used * 0.34);
-        ctx.lineTo(tip - dir * 9 * u, baseline - used * 0.34 - 7 * u);
-        ctx.lineTo(tip - dir * 9 * u, baseline - used * 0.34 + 7 * u);
-        ctx.closePath();
+    ctx.font = labelFace;
+    spacing(ctx, 1.6 * u);
+    centered(ctx, upper(row.label), cx, mid, labelW);
+    spacing(ctx, 0);
+    sides.forEach((side, i) => {
+      const value = row[side];
+      ctx.font = valueFace;
+      const valueW = Math.min(halfW * 0.8, ctx.measureText(value).width);
+      if (row.edge === side) {
+        // The better figure sits on a chip in its corner's colour.
+        const valueCap = capHeight(ctx, valueFace);
+        ctx.save();
+        ctx.globalAlpha = p.dark ? 0.2 : 0.12;
+        ctx.fillStyle = i === 0 ? p.f1 : p.f2;
+        const padY = Math.min(7 * u, (rowH - valueCap) / 2 - 2 * u);
+        roundRect(ctx, axes[i] - valueW / 2 - 14 * u, mid - valueCap / 2 - padY, valueW + 28 * u, valueCap + padY * 2, 7 * u);
         ctx.fill();
+        ctx.restore();
+        ctx.font = valueFace;
       }
-    }
+      ctx.fillStyle = row.edge === side ? (i === 0 ? p.f1 : p.f2) : p.ink;
+      centered(ctx, value, axes[i], mid, halfW * 0.8);
+    });
     y += rowH;
-  }
+  });
 
   if (judges.length) {
-    const jy = footTop - 10 * u - judgeNeed * tableScale + 26 * u;
-    ctx.textAlign = "center";
-    ctx.fillStyle = p.accent;
-    label(ctx, "JUDGES’ SCORECARDS", cx, jy, cond(800, 21 * u, true), 3 * u);
+    heading(ctx, "Judges’ scorecards", colX0, colX1, y + 22 * u * scale, u, p, 15 * u * Math.max(scale, 0.8));
     const colWidth = colW / judges.length;
+    const scoreFace = display(44 * u * Math.max(scale, 0.6));
+    const scoreMid = y + 98 * u * scale;
     judges.forEach((judge, index) => {
       const jx = colX0 + colWidth * index + colWidth / 2;
       ctx.fillStyle = p.muted;
-      ctx.textAlign = "center";
-      fit(ctx, upper(judge.name), jx, jy + 36 * u, colWidth - 12 * u, (s) => cond(600, s), 22 * u, 14 * u);
-      ctx.font = cond(800, 50 * u);
+      ctx.font = text(600, 15 * u);
+      spacing(ctx, 1.2 * u);
+      centered(ctx, upper(judge.name), jx, y + 56 * u * scale, colWidth - 16 * u);
+      spacing(ctx, 0);
+      ctx.font = scoreFace;
+      ctx.fillStyle = p.faint;
+      centered(ctx, "–", jx, scoreMid);
+      const base = middle(ctx, "0", scoreMid);
       ctx.textAlign = "right";
       ctx.fillStyle = judge.f1 > judge.f2 ? p.f1 : p.faint;
-      ctx.fillText(String(judge.f1), jx - 12 * u, jy + 90 * u);
-      ctx.textAlign = "center";
-      ctx.fillStyle = p.faint;
-      ctx.fillText("–", jx, jy + 90 * u);
+      ctx.fillText(String(judge.f1), jx - 16 * u, base);
       ctx.textAlign = "left";
       ctx.fillStyle = judge.f2 > judge.f1 ? p.f2 : p.faint;
-      ctx.fillText(String(judge.f2), jx + 12 * u, jy + 90 * u);
+      ctx.fillText(String(judge.f2), jx + 16 * u, base);
     });
   }
   footer(ctx, w, h, u, pad, p, g.footer);
 }
+
+/** A picture set back: grey and darker, still solid. */
+function setBack(ctx: Ctx) {
+  // Older Safari has no canvas filters; there the picture fades instead.
+  const filtered = ctx as Ctx & { filter?: string };
+  if (typeof filtered.filter === "string") filtered.filter = "grayscale(1) brightness(0.62)";
+  else ctx.globalAlpha = 0.5;
+}
+
+/** A corner set back: it lost, or the pick went the other way. */
+const dimmed = (g: VersusGraphic, index: number) => {
+  const corner = index === 0 ? g.f1 : g.f2;
+  return corner.outcome === "loss" || Boolean(g.pick && g.pick.side !== (index === 0 ? "f1" : "f2"));
+};
 
 // ---------------------------------------------------------------------------
 // One fighter
@@ -457,132 +514,136 @@ function renderVersus(ctx: Ctx, w: number, h: number, format: Format, p: Palette
 function renderFighter(ctx: Ctx, w: number, h: number, format: Format, p: Palette, g: FighterGraphic) {
   const u = Math.min(w, h) / 1000;
   const pad = 48 * u;
-  backdrop(ctx, w, h, p, false);
-  const footTop = h - pad - 54 * u;
-  const bottom = footTop - 14 * u;
+  backdrop(ctx, w, h, p);
+  const footTop = footerTop(h, u, pad);
+  const bottom = footTop - 16 * u;
   const hasPhoto = Boolean(g.photo);
   const photoW = hasPhoto ? (format === "landscape" ? w * 0.36 : w * 0.42) : 0;
   if (g.photo) {
-    ctx.save();
-    ctx.strokeStyle = p.accent;
-    ctx.globalAlpha = 0.18;
-    ctx.lineWidth = 6 * u;
-    octagon(ctx, pad + photoW / 2, (pad + bottom) / 2, Math.min(photoW * 0.62, (bottom - pad) * 0.46));
-    ctx.stroke();
-    ctx.restore();
-    if (g.photo.kind === "full") {
-      // As tall as the column allows, cropped at its edge rather than shrunk to its width.
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(0, 0, pad + photoW + 14 * u, h);
-      ctx.clip();
-      cutout(ctx, g.photo.image, pad - photoW * 0.25, pad + 10 * u, photoW * 1.5, bottom - pad - 10 * u, "center", 0.74);
-      ctx.restore();
-    }
+    cage(ctx, pad + photoW / 2, (pad + footTop) / 2, Math.min(photoW * 0.6, (footTop - pad) * 0.44), u, p);
+    // Standing on the footer's rule, cut clean at the column's edge.
+    if (g.photo.kind === "full") cutout(ctx, g.photo.image, 0, pad, pad + photoW + 10 * u, footTop - pad, "center", 0.92);
     else roundel(ctx, g.photo.image, pad + (photoW - 20 * u) / 2, pad + 40 * u + (photoW - 20 * u) / 2, photoW - 20 * u, p.accent);
   }
-  const textX = hasPhoto ? pad + photoW + 24 * u : pad;
+  const textX = hasPhoto ? pad + photoW + 28 * u : pad;
   const textW = w - textX - pad;
-  let y = pad + 24 * u;
+  const eyebrowFace = text(700, 18 * u);
+  let y = pad + capHeight(ctx, eyebrowFace);
   ctx.textAlign = "left";
   ctx.fillStyle = p.accent;
-  label(ctx, upper(g.eyebrow), textX, y, cond(800, 24 * u), 3 * u, textW);
-  y += 12 * u;
+  label(ctx, upper(g.eyebrow), textX, y, eyebrowFace, 3.6 * u, textW);
+  y += 20 * u;
   // The name, as big as its length allows, over two lines when long.
+  const capRatio = capHeight(ctx, display(100)) / 100 || 0.72;
   const words = upper(g.name).split(" ");
-  const oneLine = sizeFor(ctx, words.join(" "), textW - (g.rank ? 80 * u : 0), (s) => cond(800, s), 132 * u, 60 * u);
+  const rankRoom = (size: number) => g.rank ? rankWidth(ctx, g.rank, size * capRatio) + size * 0.16 : 0;
+  const oneLine = sizeFor(ctx, words.join(" "), textW - rankRoom(110 * u), display, 120 * u, 56 * u);
   // Two lines when long, and a Jr. or III stays with the surname.
   const tail = words.length > 2 && /^(?:JR|SR)\.?$|^(?:II|III|IV)$/.test(words.at(-1)!) ? 2 : 1;
-  const lines = oneLine < 96 * u && words.length > tail ? [words.slice(0, -tail).join(" "), words.slice(-tail).join(" ")] : [words.join(" ")];
-  const size = lines.length > 1 ? Math.min(...lines.map((line) => sizeFor(ctx, line, textW - (g.rank ? 80 * u : 0), (s) => cond(800, s), 132 * u, 50 * u))) : oneLine;
+  const lines = oneLine < 90 * u && words.length > tail ? [words.slice(0, -tail).join(" "), words.slice(-tail).join(" ")] : [words.join(" ")];
+  const size = lines.length > 1 ? Math.min(...lines.map((line) => sizeFor(ctx, line, textW - rankRoom(110 * u), display, 120 * u, 48 * u))) : oneLine;
+  const cap = size * capRatio;
   for (const [index, line] of lines.entries()) {
-    y += size * 0.86;
+    if (index) y += size * 0.16;
+    y += cap;
     let x = textX;
-    if (g.rank && index === lines.length - 1) x += rankBox(ctx, g.rank, x, y - size * 0.36, size * 0.52, p) + size * 0.14;
+    if (g.rank && index === lines.length - 1) x += rankBox(ctx, g.rank, x, y - cap / 2, cap, p) + size * 0.16;
     ctx.fillStyle = p.ink;
     ctx.textAlign = "left";
-    fit(ctx, line, x, y, textX + textW - x, (s) => cond(800, s), size, size * 0.6);
+    fit(ctx, line, x, y, textX + textW - x, display, size, size * 0.6);
   }
   if (g.nickname || g.flag) {
-    y += 42 * u;
+    const face = text(500, 26 * u);
+    const mid = y + 26 * u + capHeight(ctx, face) / 2;
     let x = textX;
-    const drawn = flag(ctx, g.flag, x, y - 11 * u, 34 * u, "left");
+    const drawn = flag(ctx, g.flag, x, mid, 34 * u, "left");
     if (drawn) x += drawn + 12 * u;
     if (g.nickname) {
       ctx.fillStyle = p.muted;
+      ctx.font = face;
       ctx.textAlign = "left";
-      fit(ctx, `“${g.nickname}”`, x, y, textX + textW - x, (s) => cond(600, s, true), 34 * u, 20 * u);
+      const nick = `“${g.nickname}”`;
+      fit(ctx, nick, x, middle(ctx, nick, mid), textX + textW - x, (s) => text(500, s), 26 * u, 16 * u);
     }
+    y = mid + 20 * u;
   }
-  y += 24 * u;
+  y += 26 * u;
   let bx = textX;
+  const badgeFace = text(700, 16 * u);
   for (const badge of g.badges) {
     const belt = badge.startsWith("Champion") || badge.startsWith("Interim");
-    ctx.font = cond(800, 25 * u);
-    const bw = Math.min(textW, ctx.measureText(upper(badge)).width + 30 * u);
+    ctx.font = badgeFace;
+    spacing(ctx, 1.2 * u);
+    const bw = Math.min(textW, ctx.measureText(upper(badge)).width + 28 * u);
     if (bx + bw > textX + textW) { bx = textX; y += 46 * u; }
-    roundRect(ctx, bx, y, bw, 38 * u, 6 * u);
+    roundRect(ctx, bx, y, bw, 36 * u, 6 * u);
     ctx.fillStyle = belt ? p.gold : p.panelStrong;
     ctx.fill();
     ctx.fillStyle = belt ? "#111111" : p.ink;
-    ctx.textAlign = "center";
-    ctx.fillText(upper(badge), bx + bw / 2, y + 28 * u, bw - 16 * u);
+    centered(ctx, upper(badge), bx + bw / 2, y + 18 * u, bw - 16 * u);
+    spacing(ctx, 0);
     bx += bw + 10 * u;
   }
-  if (g.badges.length) y += 62 * u;
+  if (g.badges.length) y += 64 * u;
   if (g.facts.length) {
     const cols = Math.min(g.facts.length, format === "landscape" ? 4 : 2);
     const colW = textW / cols;
     g.facts.forEach((fact, index) => {
       const fx = textX + (index % cols) * colW;
-      const fy = y + Math.floor(index / cols) * 74 * u;
+      const fy = y + Math.floor(index / cols) * 78 * u;
       ctx.fillStyle = p.faint;
       ctx.textAlign = "left";
-      label(ctx, upper(fact.label), fx, fy + 18 * u, cond(700, 19 * u), 2 * u);
+      label(ctx, upper(fact.label), fx, fy + 12 * u, text(600, 15 * u), 1.6 * u);
       ctx.fillStyle = p.ink;
-      fit(ctx, upper(fact.value), fx, fy + 58 * u, colW - 12 * u, (s) => cond(800, s), 42 * u, 22 * u);
+      fit(ctx, upper(fact.value), fx, fy + 56 * u, colW - 12 * u, display, 40 * u, 22 * u);
     });
-    y += Math.ceil(g.facts.length / cols) * 74 * u + 8 * u;
+    y += Math.ceil(g.facts.length / cols) * 78 * u + 6 * u;
   }
   if (g.form?.length) {
     ctx.fillStyle = p.faint;
     ctx.textAlign = "left";
-    label(ctx, "LAST FIVE", textX, y + 18 * u, cond(700, 19 * u), 2 * u);
-    formSquares(ctx, g.form.map((entry) => entry.outcome), textX, y + 30 * u, 36 * u, p, "left");
+    label(ctx, "LAST FIVE", textX, y + 12 * u, text(600, 15 * u), 1.6 * u);
+    formSquares(ctx, g.form.map((entry) => entry.outcome), textX, y + 44 * u, 36 * u, p, "left");
     ctx.fillStyle = p.muted;
     ctx.textAlign = "left";
-    fit(ctx, upper(g.form.map((entry) => entry.label).join(" · ")), textX, y + 96 * u, textW, (s) => cond(600, s), 22 * u, 14 * u);
-    y += 120 * u;
+    fit(ctx, upper(g.form.map((entry) => entry.label).join(" · ")), textX, y + 94 * u, textW, (s) => text(600, s), 17 * u, 12 * u);
+    y += 122 * u;
   }
   if (g.stats.length) {
     const rowH = Math.min(66 * u, (bottom - y) / g.stats.length);
     const scale = Math.min(1, rowH / (66 * u));
+    // One size for every label, the longest deciding it.
+    const labelSize = Math.min(...g.stats.map((stat) => sizeFor(ctx, stat.label, textW * 0.66 - (stat.rank ? 78 * u : 0), (s) => text(600, s), 19 * u * Math.max(scale, 0.75), 15 * u)));
     for (const stat of g.stats) {
+      const mid = y + rowH / 2;
       ctx.fillStyle = p.line;
-      ctx.fillRect(textX, y, textW, Math.max(1, 1.5 * u));
+      ctx.fillRect(textX, y, textW, Math.max(1, 1.2 * u));
       let lx = textX;
       if (stat.rank) {
         const top1 = stat.rank === "#1" || stat.rank === "#T1";
-        ctx.font = cond(800, 26 * u * Math.max(scale, 0.7));
-        const bw = Math.max(64 * u * scale, ctx.measureText(stat.rank).width + 20 * u);
-        roundRect(ctx, textX, y + rowH * 0.18, bw, rowH * 0.64, 6 * u);
+        const face = display(24 * u * Math.max(scale, 0.7));
+        ctx.font = face;
+        const bw = Math.max(62 * u * scale, ctx.measureText(stat.rank).width + 22 * u);
+        const bh = rowH * 0.6;
+        roundRect(ctx, textX, mid - bh / 2, bw, bh, 6 * u);
         ctx.fillStyle = top1 ? p.gold : p.panelStrong;
         ctx.fill();
         ctx.fillStyle = top1 ? "#111111" : p.ink;
-        ctx.textAlign = "center";
-        ctx.fillText(stat.rank, textX + bw / 2, y + rowH * 0.62);
-        lx += bw + 14 * u;
+        centered(ctx, stat.rank, textX + bw / 2, mid);
+        lx += bw + 16 * u;
       }
       ctx.textAlign = "left";
       ctx.fillStyle = p.ink;
-      fit(ctx, upper(stat.label), lx, y + rowH * (stat.detail ? 0.5 : 0.64), textW * 0.66 - (lx - textX), (s) => cond(700, s), 28 * u * Math.max(scale, 0.7), 12 * u);
+      fit(ctx, stat.label, lx, stat.detail ? mid - 2 * u : middle(ctx, stat.label, mid), textW * 0.66 - (lx - textX), (s) => text(600, s), labelSize, labelSize);
       if (stat.detail) {
         ctx.fillStyle = p.faint;
-        fit(ctx, stat.detail, lx, y + rowH * 0.84, textW * 0.64 - (lx - textX), (s) => sans(500, s), 15 * u * Math.max(scale, 0.75), 10 * u);
+        fit(ctx, stat.detail, lx, mid + 20 * u * Math.max(scale, 0.75), textW * 0.64 - (lx - textX), (s) => text(500, s), 14 * u * Math.max(scale, 0.75), 10 * u);
       }
       ctx.textAlign = "right";
       ctx.fillStyle = p.ink;
-      fit(ctx, stat.value, textX + textW, y + rowH * 0.68, textW * 0.33, (s) => cond(800, s), 38 * u * Math.max(scale, 0.7), 18 * u);
+      const valueFace = display(34 * u * Math.max(scale, 0.7));
+      ctx.font = valueFace;
+      fit(ctx, stat.value, textX + textW, middle(ctx, stat.value, mid), textW * 0.33, display, 34 * u * Math.max(scale, 0.7), 18 * u);
       y += rowH;
     }
   }
@@ -598,141 +659,135 @@ function dateBlock(ctx: Ctx, w: number, u: number, bottom: number, p: Palette, d
   ctx.textAlign = "center";
   if (date.small) {
     ctx.fillStyle = p.muted;
-    fit(ctx, upper(date.small), cx, bottom - 4 * u, w * 0.8, (s) => cond(600, s), 24 * u, 15 * u);
+    const line = upper(date.small);
+    const size = sizeFor(ctx, line, w * 0.8, (s) => text(600, s), 19 * u, 13 * u);
+    label(ctx, line, cx, bottom, text(600, size), 1.4 * u, w * 0.8);
   }
-  const base = bottom - (date.small ? 34 * u : 4 * u);
+  const base = bottom - (date.small ? 34 * u : 0);
+  const face = display(62 * u);
   ctx.fillStyle = p.ink;
-  ctx.font = cond(800, 66 * u);
+  ctx.font = face;
   ctx.fillText(upper(date.big), cx, base);
-  return base - 60 * u;
+  return base - capHeight(ctx, face) - 24 * u;
 }
 
-/** A rule with a label in its middle: "PRELIMS". */
-function groupRule(ctx: Ctx, text: string, x0: number, x1: number, y: number, u: number, p: Palette) {
-  const cx = (x0 + x1) / 2;
-  ctx.font = cond(800, 22 * u);
-  spacing(ctx, 4 * u);
-  const width = ctx.measureText(upper(text)).width;
-  ctx.fillStyle = p.accent;
-  ctx.textAlign = "center";
-  ctx.fillText(upper(text), cx, y + 8 * u);
-  spacing(ctx, 0);
-  ctx.fillStyle = p.line;
-  ctx.fillRect(x0, y, Math.max(0, cx - width / 2 - 18 * u - x0), Math.max(1, 1.5 * u));
-  ctx.fillRect(cx + width / 2 + 18 * u, y, Math.max(0, x1 - cx - width / 2 - 18 * u), Math.max(1, 1.5 * u));
-}
-
-/** Two pieces of text on one line, the second in ink; anchored at `x`. */
-function pair(ctx: Ctx, first: string, second: string, x: number, y: number, align: "left" | "right", size: number, p: Palette, firstColor = p.faint) {
-  const joiner = first && second ? "  " : "";
-  ctx.font = cond(600, size);
+/** A record in muted type and a price in ink on one line, anchored at `x`. */
+function pair(ctx: Ctx, first: string, second: string, x: number, y: number, align: "left" | "right", size: number, p: Palette) {
+  const joiner = first && second ? "   " : "";
+  const firstFace = text(600, size * 0.8);
+  ctx.font = firstFace;
   const firstW = ctx.measureText(first + joiner).width;
-  ctx.font = cond(800, size);
+  ctx.font = display(size);
   const secondW = ctx.measureText(second).width;
   const left = align === "left" ? x : x - firstW - secondW;
   ctx.textAlign = "left";
-  ctx.font = cond(600, size);
-  ctx.fillStyle = firstColor;
+  ctx.font = firstFace;
+  ctx.fillStyle = p.muted;
   ctx.fillText(first + joiner, left, y);
-  ctx.font = cond(800, size);
+  ctx.font = display(size);
   ctx.fillStyle = p.ink;
   ctx.fillText(second, left + firstW, y);
 }
 
 function renderCardList(ctx: Ctx, w: number, h: number, format: Format, p: Palette, g: CardGraphic) {
   const u = Math.min(w, h) / 1000;
-  const pad = 46 * u;
-  backdrop(ctx, w, h, p, false);
-  const footTop = h - pad - 54 * u;
-  const headBottom = masthead(ctx, u, pad, p, pad, w - pad, g.eyebrow, g.title, g.subtitle, format === "landscape" ? 92 * u : 116 * u);
-  const dateTop = dateBlock(ctx, w, u, footTop - 16 * u, p, g.date);
-  const top = headBottom + 22 * u;
-  const bottom = dateTop - 8 * u;
+  const pad = 48 * u;
+  backdrop(ctx, w, h, p);
+  const footTop = footerTop(h, u, pad);
+  const headBottom = masthead(ctx, u, pad, p, pad, w - pad, g.eyebrow, g.title, g.subtitle, format === "landscape" ? 84 * u : 104 * u);
+  const dateTop = dateBlock(ctx, w, u, footTop - 26 * u, p, g.date);
+  const top = headBottom + 30 * u;
+  const bottom = dateTop;
   const splitCount = Math.max(0, ...g.rows.map((row) => row.splits.length));
   const hasSub = g.rows.some((row) => row.f1.sub || row.f2.sub || row.f1.odds || row.f2.odds || row.pick || row.result);
-  const weightOf = (index: number) => (index === 0 && g.rows.length > 2 ? 1.35 : 1);
-  const groups = g.rows.filter((row, index) => row.group && row.group !== g.rows[index - 1]?.group).length;
+  const weightOf = (index: number) => (index === 0 && g.rows.length > 2 ? 1.3 : 1);
+  const startsGroup = (index: number) => Boolean(g.rows[index].group && g.rows[index].group !== g.rows[index - 1]?.group);
+  const groups = g.rows.filter((_row, index) => startsGroup(index)).length;
   const total = g.rows.reduce((sum, _row, index) => sum + weightOf(index), 0) + groups * 0.45;
   // A row's height in units of its name size.
-  const perSize = 0.42 * 1.45 + 1 + (hasSub ? 0.62 : 0) + splitCount * 0.95 + 0.34;
-  const unit = Math.min((bottom - top) / Math.max(1, total), 76 * u * perSize);
+  const perSize = 0.3 + 0.36 + 0.78 + (hasSub ? 0.6 : 0) + splitCount * 1.05 + 0.5;
+  const unit = Math.min((bottom - top) / Math.max(1, total), 70 * u * perSize);
   let y = top + Math.max(0, (bottom - top - unit * total) / 2);
+  const capRatio = capHeight(ctx, display(100)) / 100 || 0.72;
   const flags = g.rows.some((row) => flagWidth(ctx, row.f1.flag, 30 * u) || flagWidth(ctx, row.f2.flag, 30 * u));
   const mid = w / 2;
+  // Every bout's names at one size, the main event's a step up: a long name
+  // on one bout shrinks the rest with it rather than standing out.
+  const sizes = g.rows.map((row, index) => {
+    const s = (unit * weightOf(index)) / perSize;
+    const cap = s * capRatio;
+    const flagRoom = flags ? cap * 1.5 + 18 * u : 0;
+    const room = (side: "f1" | "f2") => mid - s * 0.5 - pad - flagRoom - (row[side].rank ? rankWidth(ctx, row[side].rank!, cap) + s * 0.2 : 0);
+    return Math.min(sizeFor(ctx, upper(row.f1.name), room("f1"), display, s, s * 0.5), sizeFor(ctx, upper(row.f2.name), room("f2"), display, s, s * 0.5));
+  });
+  const undercard = Math.min(...sizes.filter((_size, index) => weightOf(index) === 1));
   g.rows.forEach((row, index) => {
-    if (row.group && row.group !== g.rows[index - 1]?.group) {
-      groupRule(ctx, row.group, pad, w - pad, y + unit * 0.24, u, p);
+    if (startsGroup(index)) {
+      heading(ctx, row.group!, pad, w - pad, y + unit * 0.22, u, p, 15 * u);
       y += unit * 0.45;
+    } else if (index > 0) {
+      ctx.fillStyle = p.line;
+      ctx.fillRect(pad + w * 0.1, y, w - pad * 2 - w * 0.2, Math.max(1, 1.2 * u));
     }
     const rowH = unit * weightOf(index);
     const s = rowH / perSize;
-    const metaSize = Math.max(13 * u, s * 0.42);
-    if (index > 0 && !(row.group && row.group !== g.rows[index - 1]?.group)) {
-      ctx.fillStyle = p.line;
-      ctx.fillRect(pad + w * 0.12, y, w - pad * 2 - w * 0.24, Math.max(1, 1.2 * u));
-    }
-    let lineY = y + s * 0.17 + metaSize;
+    const nameSize = weightOf(index) === 1 && Number.isFinite(undercard) ? undercard : sizes[index];
+    const cap = nameSize * capRatio;
+    const gap = Math.max(s * 0.5, nameSize * 0.55);
+    const metaFace = text(700, Math.max(11 * u, s * 0.3));
+    const metaY = y + s * 0.3 + capHeight(ctx, metaFace);
     ctx.textAlign = "center";
     ctx.fillStyle = row.title ? p.gold : p.accent;
-    label(ctx, upper(row.meta), mid, lineY, cond(800, metaSize, true), metaSize * 0.3, w * 0.7);
-    lineY += s * 0.12 + s * 0.84;
-    const flagSize = Math.min(s * 0.62, 46 * u);
-    const flagRoom = flags ? flagSize * 1.5 + 12 * u : 0;
-    const gap = s * 0.62;
-    const rankSize = s * 0.64;
-    const nameMid = lineY - s * 0.34;
-    // One size for both names, so neither corner looks favoured.
-    const room = (side: "f1" | "f2") => mid - gap - pad - flagRoom - (row[side].rank ? rankWidth(ctx, row[side].rank!, rankSize) + s * 0.18 : 0);
-    const nameSize = Math.min(
-      sizeFor(ctx, upper(row.f1.name), room("f1"), (v) => cond(800, v), s, s * 0.55),
-      sizeFor(ctx, upper(row.f2.name), room("f2"), (v) => cond(800, v), s, s * 0.55),
-    );
+    label(ctx, upper(row.meta), mid, metaY, metaFace, s * 0.05, w * 0.7);
+    const nameY = metaY + s * 0.36 + cap;
+    const nameMid = nameY - cap / 2;
+    const flagRoom = flags ? cap * 1.5 + 18 * u : 0;
     for (const side of ["f1", "f2"] as const) {
       const c = row[side];
       const left = side === "f1";
       const picked = row.pick?.side === side;
       const dim = (row.winner && row.winner !== side) || (row.pick && !picked);
-      const space = room(side);
-      ctx.font = cond(800, nameSize);
+      const space = mid - gap - pad - flagRoom - (c.rank ? rankWidth(ctx, c.rank, cap) + s * 0.2 : 0);
+      ctx.font = display(nameSize);
       const textW = Math.min(space, ctx.measureText(upper(c.name)).width);
       const anchor = left ? mid - gap : mid + gap;
       ctx.fillStyle = picked ? stateColor(p, row.pick!.state) : dim ? p.faint : p.ink;
       ctx.textAlign = left ? "right" : "left";
-      fit(ctx, upper(c.name), anchor, lineY, space, (v) => cond(800, v), nameSize, nameSize * 0.8);
-      if (c.rank) rankBox(ctx, c.rank, left ? anchor - textW - s * 0.18 - rankWidth(ctx, c.rank, rankSize) : anchor + textW + s * 0.18, nameMid, rankSize, p);
-      if (flags) flag(ctx, c.flag, left ? pad : w - pad, nameMid, flagSize, left ? "left" : "right");
+      fit(ctx, upper(c.name), anchor, nameY, space, display, nameSize, nameSize * 0.8);
+      if (c.rank) rankBox(ctx, c.rank, left ? anchor - textW - s * 0.2 - rankWidth(ctx, c.rank, cap) : anchor + textW + s * 0.2, nameMid, cap, p);
+      if (flags) flag(ctx, c.flag, left ? pad : w - pad, nameMid, cap * 1.25, left ? "left" : "right");
       // Under the name: the pick, or the record and price.
       if (hasSub) {
-        const subY = lineY + s * 0.52;
-        const subSize = Math.max(12 * u, s * 0.4);
+        const subSize = Math.max(14 * u, s * 0.4);
+        const subY = nameY + s * 0.18 + subSize * 0.8;
         if (picked) {
           const color = stateColor(p, row.pick!.state);
-          const text = ["MY PICK", row.pick!.detail ? upper(row.pick!.detail) : null].filter(Boolean).join(" · ");
-          ctx.font = cond(800, subSize);
-          const tw = ctx.measureText(text).width;
-          const r = subSize * 0.42;
+          const line = ["MY PICK", row.pick!.detail ? upper(row.pick!.detail) : null].filter(Boolean).join(" · ");
+          ctx.font = text(700, subSize * 0.8);
+          const tw = ctx.measureText(line).width;
+          const r = subSize * 0.36;
           const markX = left ? anchor - tw - r - 8 * u : anchor + r;
-          mark(ctx, markX, subY - subSize * 0.34, r, color, row.pick!.state === "lost" ? "cross" : "check", stateInk(p, row.pick!.state));
+          mark(ctx, markX, middle(ctx, line, subY - subSize * 0.3), r, color, row.pick!.state === "lost" ? "cross" : "check", stateInk(p, row.pick!.state));
           ctx.fillStyle = color;
           ctx.textAlign = left ? "right" : "left";
-          ctx.fillText(text, left ? anchor : anchor + r * 2 + 8 * u, subY);
+          ctx.fillText(line, left ? anchor : anchor + r * 2 + 8 * u, subY);
         } else {
           pair(ctx, c.sub ?? "", c.odds ?? "", anchor, subY, left ? "right" : "left", subSize, p);
         }
       }
     }
-    ctx.textAlign = "center";
     ctx.fillStyle = p.accent;
-    ctx.font = cond(800, s * 0.46, true);
-    ctx.fillText("vs", mid, lineY - s * 0.06);
+    ctx.font = display(Math.max(16 * u, nameSize * 0.42));
+    centered(ctx, "VS", mid, nameMid);
     if (row.result) {
       ctx.fillStyle = p.win;
-      fit(ctx, upper(row.result), mid, lineY + s * 0.52, gap * 2.4, (v) => cond(800, v), Math.max(12 * u, s * 0.36), 10 * u);
+      ctx.textAlign = "center";
+      fit(ctx, upper(row.result), mid, nameY + s * 0.62, gap * 2.6, (v) => text(700, v), Math.max(11 * u, s * 0.28), 9 * u);
     }
-    let barY = lineY + (hasSub ? s * 0.72 : s * 0.2);
+    let barY = nameY + (hasSub ? s * 0.92 : s * 0.4);
     for (const split of row.splits) {
-      splitBar(ctx, split, pad + flagRoom, barY, w - (pad + flagRoom) * 2, s * 0.9, p, u);
-      barY += s * 0.95;
+      splitBar(ctx, split, pad + flagRoom, barY, w - (pad + flagRoom) * 2, s * 0.86, p, u);
+      barY += s * 1.05;
     }
     y += rowH;
   });
@@ -742,7 +797,7 @@ function renderCardList(ctx: Ctx, w: number, h: number, format: Format, p: Palet
 function renderCardFaces(ctx: Ctx, w: number, h: number, format: Format, p: Palette, g: CardGraphic) {
   const u = Math.min(w, h) / 1000;
   const pad = 46 * u;
-  backdrop(ctx, w, h, p, false);
+  backdrop(ctx, w, h, p);
   const footTop = h - pad - 54 * u;
   const headBottom = masthead(ctx, u, pad, p, pad, w - pad, g.eyebrow, g.title, g.subtitle, format === "landscape" ? 80 * u : 100 * u);
   const dateTop = dateBlock(ctx, w, u, footTop - 16 * u, p, g.date);
@@ -783,41 +838,29 @@ function renderCardFaces(ctx: Ctx, w: number, h: number, format: Format, p: Pale
       ctx.save();
       roundRect(ctx, px, ty, each, photoH, 10 * u);
       ctx.clip();
-      ctx.fillStyle = p.bg2;
+      ctx.fillStyle = p.raised;
       ctx.fillRect(px, ty, each, photoH);
-      const wash = ctx.createLinearGradient(0, ty, 0, ty + photoH);
-      wash.addColorStop(0, p.panel);
-      wash.addColorStop(1, p.panelStrong);
-      ctx.fillStyle = wash;
-      ctx.fillRect(px, ty, each, photoH);
-      const tint = ctx.createRadialGradient(px + each / 2, ty + photoH, 0, px + each / 2, ty + photoH, photoH);
-      tint.addColorStop(0, p.glowA);
-      tint.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = tint;
+      ctx.fillStyle = p.panel;
       ctx.fillRect(px, ty, each, photoH);
       if (c.photo) coverTop(ctx, c.photo.image, px, ty, each, photoH);
       else {
         ctx.fillStyle = p.faint;
-        ctx.textAlign = "center";
-        ctx.font = cond(800, Math.min(each, photoH) * 0.42);
-        ctx.fillText(upper(c.surname.slice(0, 1)), px + each / 2, ty + photoH * 0.64);
+        ctx.font = display(Math.min(each, photoH) * 0.42);
+        centered(ctx, upper(c.surname.slice(0, 1)), px + each / 2, ty + photoH / 2);
       }
       if (dim) {
         ctx.fillStyle = p.dark ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.6)";
         ctx.fillRect(px, ty, each, photoH);
       }
-      // A share or a price across the foot of the picture.
+      // A share or a price on a solid strip across the foot of the picture.
       const figure = row.splits[0] ? `${row.splits[0][side]}%` : c.odds ?? null;
       if (figure) {
-        const shade = ctx.createLinearGradient(0, ty + photoH * 0.6, 0, ty + photoH);
-        shade.addColorStop(0, "rgba(0,0,0,0)");
-        shade.addColorStop(1, "rgba(0,0,0,0.78)");
-        ctx.fillStyle = shade;
-        ctx.fillRect(px, ty + photoH * 0.6, each, photoH * 0.4);
+        const stripH = Math.min(each * 0.3, photoH * 0.24);
+        ctx.fillStyle = "rgba(0,0,0,0.72)";
+        ctx.fillRect(px, ty + photoH - stripH, each, stripH);
         ctx.fillStyle = row.splits[0] ? (side === "f1" ? p.f1 : p.f2) : "#ffffff";
-        ctx.textAlign = "center";
-        ctx.font = cond(800, Math.min(each * 0.3, photoH * 0.2));
-        ctx.fillText(figure, px + each / 2, ty + photoH - photoH * 0.06);
+        ctx.font = display(stripH * 0.62);
+        centered(ctx, figure, px + each / 2, ty + photoH - stripH / 2);
       }
       ctx.restore();
       if (picked || (row.winner === side && !row.pick)) {
@@ -835,34 +878,35 @@ function renderCardFaces(ctx: Ctx, w: number, h: number, format: Format, p: Pale
     const cx = x + tw / 2;
     ctx.textAlign = "center";
     ctx.fillStyle = p.ink;
-    const vsText = "  vs  ";
+    const vsText = "  VS  ";
     const n1 = upper(row.f1.surname);
     const n2 = upper(row.f2.surname);
-    const size = sizeFor(ctx, `${n1}${vsText}${n2}`, tw, (v) => cond(800, v), nameSize, nameSize * 0.5);
-    ctx.font = cond(800, size);
+    const size = sizeFor(ctx, `${n1}${vsText}${n2}`, tw, display, nameSize, nameSize * 0.5);
+    ctx.font = display(size);
     const w1 = ctx.measureText(n1).width;
     const w2 = ctx.measureText(n2).width;
-    ctx.font = cond(800, size * 0.7, true);
+    ctx.font = display(size * 0.7);
     const wv = ctx.measureText(vsText).width;
     let left = cx - (w1 + wv + w2) / 2;
     const base = ty + photoH + captionH * 0.5;
     ctx.textAlign = "left";
     const nameColor = (side: "f1" | "f2") => row.pick ? (row.pick.side === side ? stateColor(p, row.pick.state) : p.faint) : row.winner && row.winner !== side ? p.faint : p.ink;
-    ctx.font = cond(800, size);
+    ctx.font = display(size);
     ctx.fillStyle = nameColor("f1");
     ctx.fillText(n1, left, base);
     left += w1;
-    ctx.font = cond(800, size * 0.7, true);
+    ctx.font = display(size * 0.7);
     ctx.fillStyle = p.accent;
     ctx.fillText(vsText, left, base);
     left += wv;
-    ctx.font = cond(800, size);
+    ctx.font = display(size);
     ctx.fillStyle = nameColor("f2");
     ctx.fillText(n2, left, base);
     ctx.textAlign = "center";
     ctx.fillStyle = row.title ? p.gold : p.accent;
     const meta = row.result ? `${row.meta} · ${row.result}` : row.pick?.detail ? `${row.meta} · pick: ${row.pick.detail}` : row.meta;
-    label(ctx, upper(meta), cx, base + captionH * 0.36, cond(800, Math.max(12 * u, size * 0.5), true), 1.5 * u, tw);
+    const metaSize = sizeFor(ctx, upper(meta), tw, (v) => text(700, v), main ? 15 * u : 12.5 * u, 9 * u);
+    label(ctx, upper(meta), cx, base + captionH * 0.34, text(700, metaSize), metaSize * 0.12, tw);
   };
   let index = 0;
   if (big) {
@@ -884,28 +928,26 @@ function renderCardFaces(ctx: Ctx, w: number, h: number, format: Format, p: Pale
 
 function renderParlay(ctx: Ctx, w: number, h: number, format: Format, p: Palette, g: ParlayGraphic) {
   const u = Math.min(w, h) / 1000;
-  const pad = 46 * u;
-  backdrop(ctx, w, h, p, false);
-  const footTop = h - pad - 54 * u;
+  const pad = 48 * u;
+  backdrop(ctx, w, h, p);
+  const footTop = footerTop(h, u, pad);
   const wide = format === "landscape";
   const x0 = wide ? w * 0.16 : pad;
   const x1 = wide ? w * 0.84 : w - pad;
   const cx = (x0 + x1) / 2;
-  const headBottom = masthead(ctx, u, pad, p, x0, x1, g.eyebrow, g.title, "", wide ? 84 * u : 100 * u);
+  const headBottom = masthead(ctx, u, pad, p, x0, x1, g.eyebrow, g.title, "", wide ? 64 * u : 72 * u);
   // The combined price, as large as the space allows.
-  let y = headBottom + 16 * u;
-  const priceSize = Math.min(wide ? 150 * u : 190 * u, (footTop - y) * 0.26);
+  let y = headBottom + 30 * u;
+  const priceSize = Math.min(wide ? 130 * u : 160 * u, (footTop - y) * 0.22);
   ctx.textAlign = "center";
   ctx.fillStyle = p.accent;
-  ctx.save();
-  ctx.shadowColor = p.shadow;
-  ctx.shadowBlur = 30 * u;
-  fit(ctx, g.price, cx, y + priceSize * 0.8, x1 - x0, (s) => cond(800, s, true), priceSize, priceSize * 0.6);
-  ctx.restore();
-  y += priceSize * 0.8 + 30 * u;
+  y += capHeight(ctx, display(priceSize));
+  fit(ctx, g.price, cx, y, x1 - x0, display, priceSize, priceSize * 0.6);
+  const oddsFace = text(700, 17 * u);
+  y += 22 * u + capHeight(ctx, oddsFace);
   ctx.fillStyle = p.muted;
-  label(ctx, g.legs.length > 1 ? "COMBINED ODDS" : "ODDS", cx, y, cond(700, 20 * u), 3 * u);
-  y += 24 * u;
+  label(ctx, g.legs.length > 1 ? "COMBINED ODDS" : "ODDS", cx, y, oddsFace, 3 * u);
+  y += 34 * u;
 
   // The ticket: legs, a perforation, then the stake and what it pays.
   const ticketTop = y;
@@ -917,17 +959,16 @@ function renderParlay(ctx: Ctx, w: number, h: number, format: Format, p: Palette
   const tTop = ticketTop + Math.max(0, (ticketBottom - ticketTop - ticketH) / 2);
   const notchY = tTop + legH * g.legs.length + 15 * u;
   const notchR = 16 * u;
-  ctx.save();
-  ctx.beginPath();
   roundRect(ctx, x0, tTop, x1 - x0, ticketH, 18 * u);
   ctx.fillStyle = p.panelStrong;
   ctx.fill();
-  ctx.globalCompositeOperation = "destination-out";
+  // The notches are the backdrop's colour, not cut out: a cut-out would
+  // leave transparent holes in the exported picture.
+  ctx.fillStyle = p.bg;
   ctx.beginPath();
   ctx.arc(x0, notchY, notchR, 0, Math.PI * 2);
   ctx.arc(x1, notchY, notchR, 0, Math.PI * 2);
   ctx.fill();
-  ctx.restore();
   ctx.strokeStyle = p.line;
   ctx.lineWidth = Math.max(1.5, 2 * u);
   ctx.setLineDash([10 * u, 8 * u]);
@@ -940,18 +981,22 @@ function renderParlay(ctx: Ctx, w: number, h: number, format: Format, p: Palette
   g.legs.forEach((leg, index) => {
     const ly = tTop + index * legH + 15 * u;
     const r = 15 * u * Math.max(scale, 0.7);
-    mark(ctx, x0 + 30 * u + r, ly + legH * 0.4, r, leg.state === "pending" ? p.panelStrong : stateColor(p, leg.state), stateMark(leg.state), leg.state === "pending" ? p.muted : "#ffffff");
+    // The selection, its tick and its price share one line.
+    const selectionFace = display(34 * u * Math.max(scale, 0.6));
+    const base = ly + legH * 0.46;
+    const mid = base - capHeight(ctx, selectionFace) / 2;
+    mark(ctx, x0 + 30 * u + r, mid, r, leg.state === "pending" ? p.panelStrong : stateColor(p, leg.state), stateMark(leg.state), leg.state === "pending" ? p.muted : "#ffffff");
     const tx = x0 + 30 * u + r * 2 + 18 * u;
     ctx.textAlign = "right";
     ctx.fillStyle = p.ink;
-    ctx.font = cond(800, 40 * u * Math.max(scale, 0.6));
-    ctx.fillText(leg.price, x1 - 28 * u, ly + legH * 0.5);
+    ctx.font = selectionFace;
+    ctx.fillText(leg.price, x1 - 28 * u, base);
     const priceW = ctx.measureText(leg.price).width + 44 * u;
     ctx.textAlign = "left";
     ctx.fillStyle = leg.state === "lost" || leg.state === "void" ? p.faint : p.ink;
-    fit(ctx, upper(leg.selection), tx, ly + legH * 0.44, x1 - tx - priceW, (s) => cond(800, s), 36 * u * Math.max(scale, 0.6), 16 * u);
+    fit(ctx, upper(leg.selection), tx, base, x1 - tx - priceW, display, 34 * u * Math.max(scale, 0.6), 16 * u);
     ctx.fillStyle = p.faint;
-    fit(ctx, `${leg.bout} · ${leg.event}`, tx, ly + legH * 0.76, x1 - tx - priceW, (s) => sans(500, s), 17 * u * Math.max(scale, 0.75), 11 * u);
+    fit(ctx, `${leg.bout} · ${leg.event}`, tx, base + 36 * u * Math.max(scale, 0.75), x1 - tx - priceW, (s) => text(500, s), 16 * u * Math.max(scale, 0.75), 11 * u);
     if (index < g.legs.length - 1) {
       ctx.fillStyle = p.line;
       ctx.fillRect(tx, tTop + (index + 1) * legH + 15 * u - 1, x1 - 28 * u - tx, Math.max(1, 1.2 * u));
@@ -964,42 +1009,46 @@ function renderParlay(ctx: Ctx, w: number, h: number, format: Format, p: Palette
     const x = x0 + 28 * u + third * index + third / 2;
     ctx.textAlign = "center";
     ctx.fillStyle = p.faint;
-    label(ctx, name, x, sy + 30 * u, cond(700, 19 * u), 2.5 * u);
+    label(ctx, name, x, sy + 30 * u, text(700, 16 * u), 2.5 * u);
     ctx.fillStyle = color;
-    fit(ctx, value, x, sy + 80 * u, third - 12 * u, (s) => cond(800, s), 48 * u, 22 * u);
+    fit(ctx, value, x, sy + 80 * u, third - 12 * u, display, 48 * u, 22 * u);
   });
   // A stamp across a settled slip.
   if (g.state !== "pending") {
-    const text = upper(g.state === "won" ? "Winner" : g.state === "lost" ? "Lost" : "Void");
+    const stamp = upper(g.state === "won" ? "Winner" : g.state === "lost" ? "Lost" : "Void");
     ctx.save();
     // On the ticket's top edge, clear of the first leg's price.
     ctx.translate(x1 - (x1 - x0) * 0.2, tTop - 8 * u);
     ctx.rotate(-0.12);
-    ctx.font = cond(800, 52 * u);
+    ctx.font = display(52 * u);
     spacing(ctx, 6 * u);
-    const sw = ctx.measureText(text).width + 40 * u;
+    const sw = ctx.measureText(stamp).width + 40 * u;
     ctx.strokeStyle = stateColor(p, g.state);
     ctx.lineWidth = 5 * u;
     ctx.globalAlpha = 0.9;
     roundRect(ctx, -sw / 2, -38 * u, sw, 72 * u, 10 * u);
     ctx.stroke();
     ctx.fillStyle = stateColor(p, g.state);
-    ctx.textAlign = "center";
-    ctx.fillText(text, 0, 18 * u);
+    centered(ctx, stamp, 0, -2 * u);
     spacing(ctx, 0);
     ctx.restore();
   }
   ctx.textAlign = "center";
   ctx.fillStyle = p.faint;
-  fit(ctx, g.placed, cx, tTop + ticketH + 30 * u, x1 - x0, (s) => sans(500, s), 16 * u, 11 * u);
+  fit(ctx, g.placed, cx, tTop + ticketH + 30 * u, x1 - x0, (s) => text(500, s), 16 * u, 11 * u);
   footer(ctx, w, h, u, pad, p, g.footer);
 }
 
+/** Drawn at twice the layout size, so type and edges stay sharp on a phone's
+ *  screen and after a feed recompresses the image. */
+export const SCALE = 2;
+
 export function renderGraphic(canvas: HTMLCanvasElement, graphic: Graphic, format: Format, theme: Theme) {
   const { width, height } = SIZES[format];
-  canvas.width = width;
-  canvas.height = height;
+  canvas.width = width * SCALE;
+  canvas.height = height * SCALE;
   const ctx = canvas.getContext("2d")!;
+  ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
   ctx.clearRect(0, 0, width, height);
   const palette = PALETTES[theme] ?? PALETTES.red;
   if (graphic.kind === "versus") renderVersus(ctx, width, height, format, palette, graphic);

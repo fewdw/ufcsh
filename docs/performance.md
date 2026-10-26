@@ -97,8 +97,8 @@ What changed, by the measurement that pointed at it:
 - **Placeholders.** The two PNG fighter placeholders are lossless WebP
   (35 → 16 KB, 96 → 39 KB, pixel-identical) with hashed, immutable URLs.
 
-Checked and left alone: fonts are system fonts (Barlow loads only in the
-graphics builder); photo placeholders and small copies are already WebP, sized, versioned and lazy below
+Checked and left alone: fonts are system fonts (Anton and Inter load only in
+the graphics builder); photo placeholders and small copies are already WebP, sized, versioned and lazy below
 the fold; static assets already carry `immutable`. Building `Intl` formatters
 lazily would save nothing: Chromium spends ~100 ms (4× CPU) on whichever is
 built first. The largest remaining cost is Clerk: ~650 ms of main-thread time

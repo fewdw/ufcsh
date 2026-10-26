@@ -159,7 +159,6 @@ export default function GraphicsBuilder() {
   const eventId = subject?.kind === "event" ? subject.id : null;
   const fightRequest = useApi<Matchup>(fightId && (kind === "matchup" || kind === "result") ? withRanking(`/api/fights/${fightId}`, settings.rankingSource) : null);
   const fight = fightRequest.data?.id === fightId ? fightRequest.data : null;
-  const { data: fightEvent } = useApi<EventDetail>(fight && kind === "matchup" ? withRanking(`/api/events/${fight.event.id}`, settings.rankingSource) : null);
   const fighterRequest = useApi<FighterProfile>(fighterId && kind === "fighter" ? withRanking(`/api/fighters/${fighterId}`, settings.rankingSource) : null);
   const fighter = fighterRequest.data?.id === fighterId ? fighterRequest.data : null;
   const { data: board } = useApi<FighterBoard>(fighterId && kind === "fighter" ? `/api/fighters/${fighterId}/stats?scope=${encodeURIComponent(scope)}` : null);
@@ -249,7 +248,7 @@ export default function GraphicsBuilder() {
         // Both corners or neither: one picture beside an empty corner reads as an error.
         const kinds = sides.map((side, index) => images[index] ? side.kind : null);
         const photos = (images.every(Boolean) ? images.map((image, index) => ({ image: image!, kind: kinds[index]! })) : [null, null]) as [Photo, Photo];
-        next = kind === "matchup" ? buildMatchup(fight, fightEvent ?? null, drawToggles, photos, boutPicks, owner) : buildResult(fight, drawToggles, photos, boutPicks, owner);
+        next = kind === "matchup" ? buildMatchup(fight, drawToggles, photos, boutPicks, owner) : buildResult(fight, drawToggles, photos, boutPicks, owner);
       } else if (kind === "fighter" && fighter) {
         const side = photoUrl(fighter, photoMode);
         const image = await loadImage(side.url);
@@ -264,7 +263,7 @@ export default function GraphicsBuilder() {
         }
         next = buildEvent(event, drawToggles, faces ? "faces" : "list", photos, cardPicks, owner);
       } else if (kind === "parlay" && bet) {
-        next = buildParlay(bet, owner, handle);
+        next = buildParlay(bet, owner);
       }
       if (cancelled) return;
       if (next && canvas.current) renderGraphic(canvas.current, next, format, theme);
@@ -274,7 +273,7 @@ export default function GraphicsBuilder() {
       if (!cancelled) setStatus({ tone: "error", text: "Couldn’t draw this graphic. Try fewer selections or another picture style." });
     }).finally(() => { if (!cancelled) setDrawing(false); });
     return () => { cancelled = true; };
-  }, [kind, fight, fightEvent, fighter, board, event, toggles, drawToggles, photoMode, format, theme, resultUnavailable, boutPicks, cardPicks, owner, bet, handle]);
+  }, [kind, fight, fighter, board, event, toggles, drawToggles, photoMode, format, theme, resultUnavailable, boutPicks, cardPicks, owner, bet]);
 
   const fileName = `ufcsh-${(label || kind).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60)}-${format}.png`;
   const blob = () => graphicBlob(canvas.current);
