@@ -22,6 +22,9 @@ const UFC_SERIES = "38";
 
 /** One shared answer for every reader: at most one read of Polymarket per this. */
 export const ODDS_TTL_MS = 2_000;
+/** An older answer is not served while the next is read: the reader waits.
+ *  Longer than the pill's 3 s poll, so a card being watched never waits. */
+export const ODDS_STALE_MS = 10_000;
 /** A price older than this is not shown at all. */
 export const ODDS_MAX_AGE_MS = 15_000;
 /** How long the result of the bout that just ended stays up. */
@@ -286,9 +289,21 @@ export class LiveOddsService {
     };
   }
 
-  /** The shared answer, rebuilt at most every ODDS_TTL_MS. Never throws. */
+  /** The shared answer, rebuilt at most every ODDS_TTL_MS. Until it is
+   *  ODDS_STALE_MS old it is served while the next one is read, so a poll
+   *  never waits on Polymarket. Never throws. */
   answer(): Promise<LiveOddsAnswer> {
-    if (this.cached && this.deps.now() - this.cached.at < ODDS_TTL_MS) return Promise.resolve(this.cached.answer);
+    const cached = this.cached;
+    const age = cached ? this.deps.now() - cached.at : Infinity;
+    if (age >= ODDS_TTL_MS) this.refresh();
+    if (!cached || age >= ODDS_STALE_MS) return this.building!;
+    const { answer } = cached;
+    return Promise.resolve(answer.finished
+      ? { ...answer, finished: { ...answer.finished, remaining_ms: Math.max(0, answer.finished.remaining_ms - age) } }
+      : answer);
+  }
+
+  private refresh() {
     this.building ??= this.build()
       .catch((err) => {
         log("polymarket live odds failed:", String(err));
@@ -296,7 +311,6 @@ export class LiveOddsService {
       })
       .then((answer) => { this.cached = { at: this.deps.now(), answer }; return answer; })
       .finally(() => { this.building = null; });
-    return this.building;
   }
 
   private loadState(): State {

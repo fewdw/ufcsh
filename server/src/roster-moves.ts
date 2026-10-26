@@ -3,7 +3,7 @@ import { dataRevision, db, getMeta, prepared, setMeta, touchMeta } from "./db.ts
 import { hasUfcFight } from "./fighter-identity.ts";
 import { athleteSlug, scrapeAthleteStatus, scrapeNewAthlete, scrapeNewestAthletes } from "./scrape/ufccom.ts";
 import { articleRevision, fetchArticleByTitle, ROSTER_ARTICLE, rosterChanges, type RosterMove } from "./scrape/wikipedia.ts";
-import { givenName, log, normName } from "./util.ts";
+import { givenName, log, normName, todayIso } from "./util.ts";
 import { archiveRosterEvents, departureKind, storedRosterHistory, validRosterDate, type RosterHistoryEvent } from "./roster-history.ts";
 
 /** Who the UFC has just signed and just let go. Two sources: Wikipedia's
@@ -27,24 +27,35 @@ function reportedRosterEvents(changes: RosterChanges): RosterHistoryEvent[] {
 /** Only link evidence to an unambiguously matched profile. Current reports
  * also work before the first sync after deployment has archived them. */
 export function fighterRosterEvents(fighterId: string): RosterHistoryEvent[] {
-  return rosterEventsByFighter().get(fighterId) ?? [];
+  return [...reportedByFighter().get(fighterId) ?? [], ...ufcDepartures().filter(move => move.fighter_id === fighterId).map(departureEvent)];
 }
 
 /** Resolve source names once for bulk audits, using the same profile identity
  * matching as an individual profile. Never attach a report to a namesake. */
 let resolved = { version: "", ids: new Map<string, string | null>() };
+/** The reports matched to profiles, kept until a report or a profile changes:
+ *  rebuilding them took a quarter of every fighter page. */
+let reported = { key: "", byFighter: new Map<string, RosterHistoryEvent[]>() };
 
 export function rosterEventsByFighter(): Map<string, RosterHistoryEvent[]> {
-  const byFighter = new Map<string, RosterHistoryEvent[]>();
+  const byFighter = new Map([...reportedByFighter()].map(([id, events]) => [id, [...events]]));
+  for (const move of ufcDepartures()) byFighter.set(move.fighter_id, [...byFighter.get(move.fighter_id) ?? [], departureEvent(move)]);
+  return byFighter;
+}
+
+const departureEvent = (move: { left_at: number }): RosterHistoryEvent => ({
+  name: "", date: new Date(move.left_at).toISOString().slice(0, 10), kind: "departed",
+  reason: "Athlete status changed from Active to Not Fighting", source_url: "https://www.ufc.com/athletes/all", observed: true,
+});
+
+function reportedByFighter(): Map<string, RosterHistoryEvent[]> {
   // Thousands of archived reports: each name is matched once per profile revision.
   const version = dataRevision("profiles");
+  const key = [version, todayIso(), getMeta("roster_history"), getMeta("roster_moves"), getMeta("ufc_signings")].join("\n");
+  if (reported.key === key) return reported.byFighter;
   if (resolved.version !== version) resolved = { version, ids: new Map() };
   const byName = resolved.ids;
-  const add = (id: string, event: RosterHistoryEvent) => {
-    const events = byFighter.get(id) ?? [];
-    events.push(event);
-    byFighter.set(id, events);
-  };
+  const byFighter = new Map<string, RosterHistoryEvent[]>();
   const reports = [...storedRosterHistory(), ...reportedRosterEvents(storedRosterMoves()),
     ...ufcSignings().map(signing => ({ ...signing, kind: "signed" as const, reason: null,
       source_url: "https://www.ufc.com/athletes/all", observed: true })),
@@ -56,14 +67,9 @@ export function rosterEventsByFighter(): Map<string, RosterHistoryEvent[]> {
     const dated = `${name} ${event.date}`;
     if (!byName.get(name) && !byName.has(dated)) byName.set(dated, rosterMoveFighter(event.name, event.date));
     const id = byName.get(name) ?? byName.get(dated);
-    if (id) add(id, event);
+    if (id) byFighter.set(id, [...byFighter.get(id) ?? [], event]);
   }
-  for (const move of ufcDepartures()) {
-    add(move.fighter_id, {
-      name: "", date: new Date(move.left_at).toISOString().slice(0, 10), kind: "departed",
-      reason: "Athlete status changed from Active to Not Fighting", source_url: "https://www.ufc.com/athletes/all", observed: true,
-    });
-  }
+  reported = { key, byFighter };
   return byFighter;
 }
 

@@ -41,12 +41,28 @@ export function median(values: number[]): number | null {
  * fighters, so one busy fighter counts once. Bouts on `to` itself are left
  * out, so a matchup reads the division as it stood walking into it.
  */
+const byDivision = new WeakMap<FightIndex, Map<string, FightIndex["fights"]>>();
+
+/** The index's bouts in one division, in the index's order. */
+function fightsIn(index: FightIndex, division: string): FightIndex["fights"] {
+  let divisions = byDivision.get(index);
+  if (!divisions) {
+    byDivision.set(index, divisions = new Map());
+    for (const fight of index.fights) {
+      const fights = divisions.get(fight.weightClass);
+      if (fights) fights.push(fight);
+      else divisions.set(fight.weightClass, [fight]);
+    }
+  }
+  return divisions.get(division) ?? [];
+}
+
 export function divisionMedians(index: FightIndex, division: string, to: string): DivisionMedians | null {
   if (!divisional(division) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return null;
   const from = yearsBefore(to, MEDIAN_YEARS);
   const fighters = new Map<string, CareerTotals>();
-  for (const fight of index.fights) {
-    if (fight.weightClass !== division || fight.date < from || fight.date >= to) continue;
+  for (const fight of fightsIn(index, division)) {
+    if (fight.date < from || fight.date >= to) continue;
     for (const [own, other] of [[fight.sides[0], fight.sides[1]], [fight.sides[1], fight.sides[0]]] as const) {
       if (!own.id) continue;
       const sample = fightCareerTotals(fight.elapsed, own.actions, other.actions);
