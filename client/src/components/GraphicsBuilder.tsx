@@ -314,7 +314,7 @@ export default function GraphicsBuilder() {
   // Past this many lines the type shrinks below what a feed keeps legible.
   const lines = graphic?.kind === "versus" ? graphic.sections.reduce((total, section) => total + section.rows.length + 1, 0) + (graphic.judges?.length ? 2 : 0)
     : graphic?.kind === "fighter" ? graphic.stats.length : graphic?.kind === "card" ? graphic.rows.length * (1 + Math.max(0, ...graphic.rows.map((row) => row.splits.length)) * 0.6) : graphic?.kind === "parlay" ? graphic.legs.length : 0;
-  const crowded = lines > (format === "portrait" ? 14 : format === "landscape" ? 10 : 11);
+  const crowded = lines > (format === "story" ? 18 : format === "portrait" ? 14 : format === "landscape" ? 10 : 11);
   const { width, height } = SIZES[format];
   const actions = (
     <>
@@ -360,7 +360,7 @@ export default function GraphicsBuilder() {
             <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1">
               <span className="mr-auto text-[11px] text-zinc-500">
                 {SIZES[format].label} · PNG
-                {crowded ? <span className="block text-amber-700 md:ml-2 md:inline">A lot is selected — text will be small in a feed{format !== "portrait" ? "; Portrait fits more" : ""}.</span> : null}
+                {crowded ? <span className="block text-amber-700 md:ml-2 md:inline">A lot is selected — text will be small in a feed{format !== "portrait" && format !== "story" ? "; Portrait fits more" : ""}.</span> : null}
               </span>
               <span className="hidden md:contents">{statusLine}{actions}</span>
             </div>
@@ -405,7 +405,7 @@ export default function GraphicsBuilder() {
             <section className="space-y-2">
               <h3 className={EYEBROW}>3 · Shape & look</h3>
               <Segmented label="Shape" value={format} onChange={setFormat}
-                options={[{ value: "square", label: "Square" }, { value: "portrait", label: "Portrait" }, { value: "landscape", label: "Landscape" }]} />
+                options={[{ value: "square", label: "Square" }, { value: "portrait", label: "Portrait" }, { value: "story", label: "Story" }, { value: "landscape", label: "Landscape" }]} />
               <Segmented label="Theme" value={theme} onChange={setTheme} options={THEMES} />
               {kind === "event" ? (
                 <Segmented label="Pictures" value={photoMode === "none" ? "none" : "head"} onChange={setPhotoMode}

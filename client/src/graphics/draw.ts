@@ -17,7 +17,7 @@ export type Palette = {
   ink: string; muted: string; faint: string; line: string;
   /** Chips and bars over either surface. */
   panel: string; panelStrong: string;
-  /** The theme's own colour: section labels, the pick, the octagon. */
+  /** The theme's own colour: section labels, the badge, the date. */
   accent: string; onAccent: string;
   f1: string; f2: string; win: string; loss: string; draw: string; gold: string;
   /** Rank boxes: a white square with dark figures on the dark themes. */
@@ -141,37 +141,10 @@ export function roundRect(ctx: Ctx, x: number, y: number, w: number, h: number, 
   ctx.closePath();
 }
 
-export function octagon(ctx: Ctx, cx: number, cy: number, r: number) {
-  ctx.beginPath();
-  for (let index = 0; index < 8; index++) {
-    const angle = Math.PI / 8 + (index * Math.PI) / 4;
-    const x = cx + r * Math.cos(angle);
-    const y = cy + r * Math.sin(angle);
-    if (index === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.closePath();
-}
-
 /** The backdrop: one flat colour. */
 export function backdrop(ctx: Ctx, w: number, h: number, p: Palette) {
   ctx.fillStyle = p.bg;
   ctx.fillRect(0, 0, w, h);
-}
-
-/** An octagon outline, the cage, behind the pictures. */
-export function cage(ctx: Ctx, cx: number, cy: number, r: number, u: number, p: Palette) {
-  ctx.save();
-  ctx.strokeStyle = p.accent;
-  ctx.globalAlpha = 0.22;
-  ctx.lineWidth = 5 * u;
-  octagon(ctx, cx, cy, r);
-  ctx.stroke();
-  ctx.globalAlpha = 0.1;
-  ctx.lineWidth = 2.5 * u;
-  octagon(ctx, cx, cy, r * 0.84);
-  ctx.stroke();
-  ctx.restore();
 }
 
 /** The figures inside a rank box fill this share of its height. */
@@ -325,39 +298,157 @@ export function splitBar(ctx: Ctx, split: Split, x: number, y: number, width: nu
   }
 }
 
-/** One short line beside the mark: what the numbers are as of. */
-export type Footer = { note: string | null };
+/** The bar along the foot: the date and venue when there is one, the mark,
+ *  and what the numbers are as of. */
+export type Footer = { note: string | null; date?: { big: string; small: string } | null };
 
-/** Where the footer's rule sits; everything else stays above it. */
-export const footerTop = (h: number, u: number, pad: number) => h - pad - 46 * u;
+/** Where the bar starts; everything else stays above it. */
+export const barTop = (h: number, u: number) => h - 108 * u;
 
-/** The mark and the note, identical on every template. Returns the top of the
- *  footer, the line everything else must stay above. */
-export function footer(ctx: Ctx, w: number, h: number, u: number, pad: number, p: Palette, data: Footer): number {
-  const top = footerTop(h, u, pad);
-  ctx.fillStyle = p.line;
-  ctx.fillRect(pad, top, w - pad * 2, Math.max(1, 1.5 * u));
-  const markFace = display(36 * u);
-  const base = h - pad;
-  const mid = base - capHeight(ctx, markFace) / 2;
+/** A solid bar across the foot, as fight posters close: the date in the
+ *  theme's colour and the venue on the left, the mark and the note on the right. */
+export function bar(ctx: Ctx, w: number, h: number, u: number, pad: number, p: Palette, data: Footer) {
+  const top = barTop(h, u);
+  const mid = (top + h) / 2;
+  ctx.fillStyle = p.dark ? "#000000" : "#0a0a0c";
+  ctx.fillRect(0, top, w, h - top);
+  const markFace = display(38 * u);
+  const markCap = capHeight(ctx, markFace);
+  const noteFace = (size: number) => text(500, size);
+  // The mark, with the note under it when the date holds the left; beside it when not.
+  const stacked = Boolean(data.date);
   ctx.font = markFace;
-  ctx.textAlign = "left";
-  ctx.fillStyle = p.ink;
-  ctx.fillText("UFC", pad, base);
-  const ufc = ctx.measureText("UFC").width;
-  ctx.fillStyle = p.accent;
-  ctx.fillText(".sh", pad + ufc, base);
-  const markW = ufc + ctx.measureText(".sh").width;
-  if (data.note) {
-    ctx.fillStyle = p.faint;
+  const markW = ctx.measureText("UFC").width + ctx.measureText(".sh").width;
+  let right = w - pad;
+  let noteRoom = 0;
+  if (data.note && stacked) {
+    const size = sizeFor(ctx, data.note, w * 0.42, noteFace, 14 * u, 11 * u);
+    ctx.font = noteFace(size);
+    const noteCap = capHeight(ctx, noteFace(size));
+    const block = markCap + 12 * u + noteCap;
+    const markBase = mid - block / 2 + markCap;
+    drawMark(ctx, w - pad, markBase, markFace, p, "right");
+    ctx.font = noteFace(size);
     ctx.textAlign = "right";
-    const room = w - pad * 2 - markW - 30 * u;
-    const size = sizeFor(ctx, data.note, room, (s) => text(500, s), 16 * u, 11 * u);
-    ctx.font = text(500, size);
-    ctx.fillText(data.note, w - pad, middle(ctx, data.note, mid), room);
+    ctx.fillStyle = "#a1a1aa";
+    ctx.fillText(data.note, w - pad, markBase + 12 * u + noteCap, w * 0.42);
+    ctx.font = noteFace(size);
+    right = w - pad - Math.max(markW, Math.min(w * 0.42, ctx.measureText(data.note).width)) - 36 * u;
+  } else {
+    drawMark(ctx, stacked ? w - pad : pad, mid + markCap / 2, markFace, p, stacked ? "right" : "left");
+    if (stacked) right = w - pad - markW - 36 * u;
+    else noteRoom = w - pad * 2 - markW - 36 * u;
+  }
+  if (data.note && !stacked) {
+    ctx.fillStyle = "#a1a1aa";
+    ctx.textAlign = "right";
+    const size = sizeFor(ctx, data.note, noteRoom, noteFace, 16 * u, 11 * u);
+    ctx.font = noteFace(size);
+    ctx.fillText(data.note, w - pad, middle(ctx, data.note, mid), noteRoom);
+  }
+  if (data.date) {
+    // "OCT 31 SAT", then the venue over two short lines beside it.
+    const dateSize = sizeFor(ctx, data.date.big.toLocaleUpperCase("en-US"), (right - pad) * 0.62, display, 54 * u, 30 * u);
+    ctx.font = display(dateSize);
+    ctx.fillStyle = p.accent;
+    ctx.textAlign = "left";
+    const big = data.date.big.toLocaleUpperCase("en-US");
+    ctx.fillText(big, pad, mid + capHeight(ctx, display(dateSize)) / 2);
+    const lines = data.date.small ? data.date.small.split(" · ").slice(0, 2).map((line) => line.toLocaleUpperCase("en-US")) : [];
+    const x = pad + ctx.measureText(big).width + 30 * u;
+    const room = right - x;
+    if (lines.length && room > 80 * u) {
+      const size = Math.min(...lines.map((line) => sizeFor(ctx, line, room, (s) => text(700, s), 17 * u, 11 * u)));
+      const face = text(700, size);
+      const cap = capHeight(ctx, face);
+      const gap = cap * 0.9;
+      const block = cap * lines.length + gap * (lines.length - 1);
+      ctx.fillStyle = "#ffffff";
+      lines.forEach((line, index) => {
+        label(ctx, line, x, mid - block / 2 + cap + index * (cap + gap), face, 1.2 * u, room);
+      });
+    }
   }
   ctx.textAlign = "left";
   return top;
+}
+
+function drawMark(ctx: Ctx, x: number, base: number, face: string, p: Palette, align: "left" | "right") {
+  ctx.font = face;
+  ctx.textAlign = "left";
+  const ufc = ctx.measureText("UFC").width;
+  const left = align === "left" ? x : x - ufc - ctx.measureText(".sh").width;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText("UFC", left, base);
+  ctx.fillStyle = p.accent;
+  ctx.fillText(".sh", left + ufc, base);
+}
+
+/** Flat diagonal bands in the theme's colour, as on the posters, filling a box. */
+export function stripes(ctx: Ctx, x: number, y: number, w: number, h: number, p: Palette) {
+  // Each band: where it crosses the box's top edge (a share of its width), its width and strength.
+  const bands: [number, number, number][] = [[0.34, 0.07, 0.07], [0.5, 0.018, 0.16], [0.66, 0.12, 0.06], [0.86, 0.03, 0.13], [1.02, 0.1, 0.07], [1.22, 0.02, 0.15]];
+  const slope = 0.85; // across per unit down
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.fillStyle = p.accent;
+  for (const [at, width, alpha] of bands) {
+    const x0 = x + at * w;
+    const bw = width * w;
+    ctx.globalAlpha = p.dark ? alpha : alpha * 0.55;
+    ctx.beginPath();
+    ctx.moveTo(x0, y);
+    ctx.lineTo(x0 + bw, y);
+    ctx.lineTo(x0 + bw - h * slope, y + h);
+    ctx.lineTo(x0 - h * slope, y + h);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** The event's square badge: "UFC" over its number or series. */
+export function badge(ctx: Ctx, lines: string[], x: number, y: number, size: number, p: Palette) {
+  ctx.fillStyle = p.accent;
+  ctx.fillRect(x, y, size, size);
+  const inner = size * 0.76;
+  const cx = x + size / 2;
+  ctx.fillStyle = p.onAccent;
+  const [first, second] = lines.map((line) => line.toLocaleUpperCase("en-US"));
+  if (!second) {
+    const s = sizeFor(ctx, first, inner, display, size * 0.4, size * 0.14);
+    ctx.font = display(s);
+    centered(ctx, first, cx, y + size / 2, inner);
+    return;
+  }
+  const topSize = sizeFor(ctx, first, inner, display, size * 0.4, size * 0.2);
+  const bottomSize = sizeFor(ctx, second, inner, display, size * 0.3, size * 0.12);
+  const topCap = capHeight(ctx, display(topSize));
+  const bottomCap = capHeight(ctx, display(bottomSize));
+  const rule = Math.max(2, size * 0.025);
+  const gap = size * 0.07;
+  const block = topCap + gap * 2 + rule + bottomCap;
+  let base = y + (size - block) / 2 + topCap;
+  ctx.font = display(topSize);
+  slanted(ctx, first, cx, base, "center");
+  ctx.fillRect(x + (size - inner) / 2, base + gap, inner, rule);
+  base += gap * 2 + rule + bottomCap;
+  ctx.font = display(bottomSize);
+  slanted(ctx, second, cx, base, "center");
+}
+
+/** Text leaning forward, as the posters set "VS" and the bout's billing. */
+export function slanted(ctx: Ctx, value: string, x: number, y: number, align: CanvasTextAlign = "left", maxWidth?: number) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.transform(1, 0, -0.2, 1, 0, 0);
+  ctx.textAlign = align;
+  const at = trackShift(ctx);
+  if (maxWidth) ctx.fillText(value, at, 0, maxWidth);
+  else ctx.fillText(value, at, 0);
+  ctx.restore();
 }
 
 /** A photo filling a box, cropped from the top so the face stays in frame. */
@@ -385,22 +476,6 @@ export function cutout(ctx: Ctx, image: HTMLImageElement, x: number, y: number, 
   ctx.restore();
 }
 
-/** A headshot in a ringed circle. */
-export function roundel(ctx: Ctx, image: HTMLImageElement, cx: number, cy: number, size: number, ring: string) {
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(cx, cy, size / 2, 0, Math.PI * 2);
-  ctx.clip();
-  ctx.imageSmoothingQuality = "high";
-  coverTop(ctx, image, cx - size / 2, cy - size / 2, size, size);
-  ctx.restore();
-  ctx.beginPath();
-  ctx.arc(cx, cy, size / 2, 0, Math.PI * 2);
-  ctx.lineWidth = Math.max(3, size * 0.03);
-  ctx.strokeStyle = ring;
-  ctx.stroke();
-}
-
 export type Outcome = "win" | "loss" | "draw" | "nc" | null;
 
 const FORM_LETTER: Record<string, string> = { win: "W", loss: "L", draw: "D", nc: "NC" };
@@ -424,15 +499,3 @@ export function formSquares(ctx: Ctx, form: Outcome[], x: number, midY: number, 
   return total;
 }
 export const formWidth = (form: Outcome[], size: number) => form.length * size + Math.max(0, form.length - 1) * size * 0.24;
-
-/** A rounded pill with its text's ink centred; `y` is its top. Returns its width. */
-export function pill(ctx: Ctx, label: string, cx: number, y: number, height: number, fill: string, ink: string, face: string, maxWidth = Infinity): number {
-  ctx.font = face;
-  const width = Math.min(maxWidth, ctx.measureText(label).width + height * 0.8);
-  roundRect(ctx, cx - width / 2, y, width, height, height / 2);
-  ctx.fillStyle = fill;
-  ctx.fill();
-  ctx.fillStyle = ink;
-  centered(ctx, label, cx, y + height / 2, width - height * 0.5);
-  return width;
-}

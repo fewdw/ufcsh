@@ -129,6 +129,27 @@ function boutLabel(fight: { weight_class: string; title_type: Matchup["title_typ
   return `${division} bout`;
 }
 
+/** "SEP 26 SAT" — the date the way a fight poster prints it. */
+function posterDate(date: string): string {
+  const parsed = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return date;
+  const month = parsed.toLocaleString("en-US", { month: "short" });
+  const weekday = parsed.toLocaleString("en-US", { weekday: "short" });
+  return `${month} ${parsed.getDate()} ${weekday}`;
+}
+
+/** The event's badge: "UFC 334" as ["UFC", "334"], "UFC Fight Night: …" as ["UFC", "Fight Night"]. */
+function eventBadge(name: string): string[] {
+  const head = name.split(":")[0].trim();
+  const match = /^UFC\s+(.+)$/i.exec(head);
+  return match ? ["UFC", match[1]] : [head];
+}
+
+/** Where a bout is: the venue over its city. */
+function venueLine(event: Matchup["event"]): string {
+  return [event.venue?.name, event.venue?.city ?? event.location?.split(",")[0]].filter(Boolean).join(" · ");
+}
+
 // ---------------------------------------------------------------------------
 // Picks
 
@@ -168,7 +189,7 @@ const possessive = (owner: PickOwner) => owner ? `${owner}’${/s$/i.test(owner)
 // ---------------------------------------------------------------------------
 // Two fighters
 
-function corner(side: MatchupSide, toggles: Toggle[], photo: Photo, result: string | null, odds: string | null): Corner {
+function corner(side: MatchupSide, toggles: Toggle[], photo: Photo): Corner {
   return {
     name: side.name,
     surname: surname(side.name),
@@ -179,11 +200,19 @@ function corner(side: MatchupSide, toggles: Toggle[], photo: Photo, result: stri
     lines: on(toggles, "records") ? [
       [side.complete_record_before?.text ? `${side.complete_record_before.text} pro` : null, side.ufc_record_before ? `${side.ufc_record_before} UFC` : null].filter(Boolean).join(" · "),
     ].filter(Boolean) : [],
-    odds,
     outcome: side.outcome,
-    result,
-    form: on(toggles, "form") ? [...(side.recent_history ?? [])].reverse().map((row) => row.outcome) : null,
   };
+}
+
+/** Rows straight under the names: a price and each corner's last five. */
+function cornerRows(fight: Matchup, toggles: Toggle[], price: string | null): CompareRow[] {
+  const rows: CompareRow[] = [];
+  if (price) rows.push({ label: price, f1: fight.odds?.f1.close ?? "—", f2: fight.odds?.f2.close ?? "—", edge: null });
+  if (on(toggles, "form")) {
+    const form = (side: MatchupSide) => [...(side.recent_history ?? [])].reverse().map((row) => row.outcome);
+    rows.push({ label: "Last five", f1: "", f2: "", edge: null, form: { f1: form(fight.f1), f2: form(fight.f2) } });
+  }
+  return rows;
 }
 
 function picksFor(fight: Matchup, toggles: Toggle[], picks: BoutPicks, owner: PickOwner, withOdds: boolean) {
@@ -239,23 +268,22 @@ export function buildMatchup(fight: Matchup, toggles: Toggle[], photos: [Photo, 
   const past = fight.status === "past";
   const hasMoneyline = on(toggles, "odds") && Boolean(fight.odds?.f1.close || fight.odds?.f2.close);
   const { pick, splits } = picksFor(fight, toggles, picks, owner, true);
+  const top = cornerRows(fight, toggles, hasMoneyline ? past ? "Closing odds" : "Moneyline" : null);
   return {
     kind: "versus",
-    eyebrow: fight.event.name,
-    label: boutLabel(fight),
-    title: `${fight.f1.name} vs ${fight.f2.name}`,
-    subtitle: [formatDate(fight.event.date), fight.scheduled_rounds ? `${fight.scheduled_rounds} rounds` : null, fight.event.venue?.name ?? fight.event.location].filter(Boolean).join(" · "),
-    f1: corner(a, toggles, photos[0], null, hasMoneyline ? fight.odds?.f1.close ?? "—" : null),
-    f2: corner(b, toggles, photos[1], null, hasMoneyline ? fight.odds?.f2.close ?? "—" : null),
-    marketHeading: hasMoneyline ? past ? "Closing" : "Moneyline" : null,
+    badge: eventBadge(fight.event.name),
+    bout: [boutLabel(fight), fight.scheduled_rounds ? `${fight.scheduled_rounds} rounds` : null].filter(Boolean).join(" · "),
+    f1: corner(a, toggles, photos[0]),
+    f2: corner(b, toggles, photos[1]),
     pick,
     splits,
     sections: [
+      ...(top.length ? [{ title: "", rows: top }] : []),
       ...(rows.length ? [{ title: "Tale of the tape", rows }] : []),
       ...(style.length ? [{ title: "How they fight · UFC bouts before this one", rows: style }] : []),
       ...(odds.length ? [{ title: "Odds", rows: odds }] : []),
     ],
-    footer: asOf("Records and rates", fight.event.date),
+    footer: { ...asOf("Records and rates", fight.event.date), date: { big: posterDate(fight.event.date), small: venueLine(fight.event) } },
   };
 }
 
@@ -272,8 +300,10 @@ export function buildResult(fight: Matchup, toggles: Toggle[], photos: [Photo, P
   const detail = fight.detail;
   const method = formatMethod(fight.method, fight.round, fight.time);
   const winner = fight.f1.outcome === "win" ? "f1" : fight.f2.outcome === "win" ? "f2" : null;
-  const resultText = (side: "f1" | "f2") => !on(toggles, "result") ? null
-    : fight[side].outcome === "win" ? `Won · ${method}` : fight[side].outcome === "draw" ? "Draw" : fight[side].outcome === "nc" ? "No contest" : null;
+  const ending: "draw" | "nc" | null = fight.f1.outcome === "draw" ? "draw" : fight.f1.outcome === "nc" ? "nc" : null;
+  const outcome = !on(toggles, "result") ? null
+    : winner ? { chip: `${surname(fight[winner].name)} wins`, detail: method, tone: "win" as const }
+    : ending ? { chip: ending === "draw" ? "Draw" : "No contest", detail: method, tone: ending } : null;
   const totals: CompareRow[] = [];
   for (const label of TOTALS) {
     if (!on(toggles, `t:${label}`)) continue;
@@ -294,23 +324,23 @@ export function buildResult(fight: Matchup, toggles: Toggle[], photos: [Photo, P
     : null;
   const closing = on(toggles, "closing") && Boolean(fight.odds?.f1.close || fight.odds?.f2.close);
   const { pick, splits } = picksFor(fight, toggles, picks, owner, false);
+  const top = cornerRows(fight, toggles, closing ? "Closing odds" : null);
   return {
     kind: "versus",
-    eyebrow: `${fight.event.name} · Result`,
-    label: boutLabel(fight),
-    title: winner ? `${fight[winner].name} def. ${fight[winner === "f1" ? "f2" : "f1"].name}` : `${fight.f1.name} vs ${fight.f2.name}`,
-    subtitle: [formatDate(fight.event.date), winner ? `${surname(fight[winner].name)} def. ${surname(fight[winner === "f1" ? "f2" : "f1"].name)}` : null, method].filter(Boolean).join(" · "),
-    f1: corner(fight.f1, toggles, photos[0], resultText("f1"), closing ? fight.odds?.f1.close ?? "—" : null),
-    f2: corner(fight.f2, toggles, photos[1], resultText("f2"), closing ? fight.odds?.f2.close ?? "—" : null),
-    marketHeading: closing ? "Closing" : null,
+    badge: eventBadge(fight.event.name),
+    bout: boutLabel(fight),
+    f1: corner(fight.f1, toggles, photos[0]),
+    f2: corner(fight.f2, toggles, photos[1]),
+    outcome,
     pick,
     splits,
     sections: [
+      ...(top.length ? [{ title: "", rows: top }] : []),
       ...(totals.length ? [{ title: "Fight totals", rows: totals }] : []),
       ...(targets.length ? [{ title: "Significant strikes by target", rows: targets }] : []),
     ],
     judges,
-    footer: { note: `Official result · ${formatDateShortWithYear(fight.event.date)}` },
+    footer: { note: "Official result", date: { big: posterDate(fight.event.date), small: venueLine(fight.event) } },
   };
 }
 
@@ -353,15 +383,6 @@ export function buildFighter(fighter: FighterProfile, board: FighterBoard | null
 /** The bouts a card graphic covers, in running order from the main event down. */
 export function cardFights(event: EventDetail, toggles: Toggle[]): EventFight[] {
   return event.fights.filter((fight) => on(toggles, "prelims") || fight.segment === "main" || (fight.segment == null && fight.ord < 5));
-}
-
-/** "SEP 26 SAT" — the date the way a fight poster prints it. */
-function posterDate(date: string): string {
-  const parsed = new Date(`${date}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return date;
-  const month = parsed.toLocaleString("en-US", { month: "short" });
-  const weekday = parsed.toLocaleString("en-US", { weekday: "short" });
-  return `${month} ${parsed.getDate()} ${weekday}`;
 }
 
 export function buildEvent(event: EventDetail, toggles: Toggle[], layout: "list" | "faces", photos: Map<string, Photo> = new Map(), picks: Map<string, BoutPicks> = new Map(), owner: PickOwner = null): CardGraphic {
@@ -412,7 +433,8 @@ export function buildEvent(event: EventDetail, toggles: Toggle[], layout: "list"
   return {
     kind: "card",
     layout,
-    eyebrow: event.name,
+    badge: eventBadge(event.name),
+    eyebrow: event.name.split(":")[1]?.trim() ?? "",
     title,
     subtitle: legend,
     date: { big: posterDate(event.date), small: where },
