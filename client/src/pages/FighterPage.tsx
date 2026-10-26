@@ -324,15 +324,15 @@ function boutFields(row: HistoryRow | ProfessionalHistoryRow) {
   };
 }
 
-function PromotionLabel({ row, move }: { row: HistoryRow | ProfessionalHistoryRow; move?: DivisionMove }) {
+function PromotionLabel({ row, move, short, rank }: { row: HistoryRow | ProfessionalHistoryRow; move?: DivisionMove; short?: boolean; rank?: HistoryRow["rank"] }) {
   const program = row.title_type === "tuf" ? "TUF" : fightProgram(row.event_name);
-  if (program) return <>{program === "TUF" && row.promotion !== "outside" ? <><DivisionLabel division={divisionName(row.weight_class, row.catch_weight)} move={move} /> · </> : null}<span className={`font-semibold ${program === "TUF" ? "text-amber-700 dark:text-amber-300" : "text-cyan-700 dark:text-cyan-300"}`}
+  if (program) return <>{program === "TUF" && row.promotion !== "outside" ? <><DivisionLabel division={divisionName(row.weight_class, row.catch_weight)} move={move} short={short} rank={rank} /> · </> : null}<span className={`font-semibold ${program === "TUF" ? "text-amber-700 dark:text-amber-300" : "text-cyan-700 dark:text-cyan-300"}`}
     title={program === "TUF" ? "The Ultimate Fighter event; this label does not imply the fighter competed on the show."
       : `${program} appearance; participation or a win alone does not confirm a UFC contract.`}>
     {program === "TUF" && row.title_type === "tuf" ? "TUF final" : program === "TUF" && /\bfinale\b/i.test(row.event_name) ? "TUF finale" : program}
   </span></>;
   return row.promotion === "outside" ? <span className="font-semibold text-violet-500">Outside UFC</span>
-    : <DivisionLabel division={divisionName(row.weight_class, row.catch_weight)} move={move} />;
+    : <DivisionLabel division={divisionName(row.weight_class, row.catch_weight)} move={move} short={short} rank={rank} />;
 }
 
 function RosterBand({ band }: { band: CareerBand }) {
@@ -363,9 +363,43 @@ function RankTag({ ranking, who, division }: { ranking: HistoryRow["rank"]; who:
   );
 }
 
-function DivisionLabel({ division, move }: { division: string; move?: DivisionMove }) {
-  if (!move) return <span>{division}</span>;
-  return <span className="font-semibold text-zinc-700">{move.direction === "up" ? "↑ Up to" : "↓ Down to"} {move.to}</span>;
+/** The bout's division, "↑ Up to Lightweight" for a move. In the table
+ *  (`short`) it carries the rank held there ("Featherweight Champ",
+ *  "Featherweight (Ranked #10)"), and a move takes a line of its own above
+ *  it ("↓ Moved down"), so neither is left hanging when the column wraps. */
+function DivisionLabel({ division, move, short, rank }: { division: string; move?: DivisionMove; short?: boolean; rank?: HistoryRow["rank"] }) {
+  const words = move ? `${move.direction === "up" ? "↑ Up to" : "↓ Down to"} ` : "";
+  if (!short) return move ? <span className="font-semibold text-zinc-700">{words}{move.to}</span> : <span>{division}</span>;
+  if (!move) return <DivisionRank division={division} ranking={rank} />;
+  return <>
+    <span className="block font-semibold text-zinc-700">{move.direction === "up" ? "↑ Moved up" : "↓ Moved down"}</span>
+    <span className="block"><DivisionRank division={division} ranking={rank} /></span>
+  </>;
+}
+
+/** A division with the rank held in it: "Featherweight Champ" in gold,
+ *  "Featherweight (Ranked #10)". "Women's" is left off, since every bout on a
+ *  woman's profile shares it (still in the tooltip and for screen readers). */
+function DivisionRank({ division, ranking }: { division: string; ranking?: HistoryRow["rank"] }) {
+  const women = division.startsWith("Women's ");
+  const name = women ? <><span className="sr-only">Women's </span>{division.slice(8)}</> : division;
+  const champ = ranking?.rank === "C" ? "Champ" : ranking?.rank === "IC" ? "Interim Champ" : null;
+  const title = [women ? division : null, ranking ? "going into this fight" : null].filter(Boolean).join(", ") || undefined;
+  if (champ) {
+    return <span className={`font-semibold ${ranking!.rank === "C" ? "text-belt" : "text-belt-interim"}`} title={title}>
+      <span className="whitespace-nowrap">{name}</span> <span className="whitespace-nowrap">{champ}</span>
+    </span>;
+  }
+  return <span title={title}>
+    <span className="whitespace-nowrap">{name}</span>
+    {ranking ? <> <span className="whitespace-nowrap font-semibold text-zinc-500 tabular-nums">(Ranked #{ranking.rank})</span></> : null}
+  </span>;
+}
+
+/** A rank held in another division than the bout's, on a line under it:
+ *  "Featherweight Champ" while fighting at lightweight. */
+function RankElsewhere({ ranking }: { ranking: NonNullable<HistoryRow["rank"]> }) {
+  return <span className="mt-0.5 block leading-4"><DivisionRank division={ranking.division} ranking={ranking} /></span>;
 }
 
 function DivisionCell({ to, className, children }: { to: string | null; className: string; children: ReactNode }) {
@@ -472,6 +506,9 @@ function BoutCard({ row, fighterName, move }: { row: HistoryRow | ProfessionalHi
 function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | ProfessionalHistoryRow; fighterName: string; move?: DivisionMove }) {
   const bout = boutFields(row);
   const cell = "hidden min-w-0 px-3 py-2.5 @3xl:flex";
+  const rank = "rank" in row ? row.rank : null;
+  const ownRank = rank && rank.division === row.weight_class ? rank : null;
+  const otherRank = rank && rank.division !== row.weight_class ? rank : null;
   return (
     <>
       <BoutLink
@@ -522,10 +559,12 @@ function BoutTableRow({ row, fighterName, move }: { row: HistoryRow | Profession
 
       {/* A ranked division opens the rankings at its list. */}
       <DivisionCell to={bout.outside ? null : rankingsLink(row.weight_class)} className={`${cell} flex-col justify-start border-l border-zinc-100 text-left`}>
+        {/* One line each: the division with the rank held there, the title
+            story, then any rank held in another division. */}
         <span className="block break-words text-[11px] leading-5 text-zinc-500">
-          {bout.contender ? null : <PromotionLabel row={row} move={move} />}
-          {"rank" in row && row.rank ? <> <RankTag ranking={row.rank} who={fighterName} division={row.weight_class} /></> : null}
+          {bout.contender ? null : <span className="block"><PromotionLabel row={row} move={move} short rank={ownRank} /></span>}
           {row.title_narrative ? <span className={`block font-semibold leading-4 ${bout.narrativeClass}`}>{row.title_narrative}</span> : null}
+          {otherRank ? <RankElsewhere ranking={otherRank} /> : null}
           {weightMisses(row).map((miss) => <span key={miss.key} className="mt-1 block leading-4">{miss}</span>)}
         </span>
       </DivisionCell>
@@ -563,7 +602,7 @@ function CancelledRowView({ bout }: { bout: ProfileCancelledBout }) {
   </FactRun>;
   const cell = "hidden min-w-0 px-3 py-2.5 @3xl:flex";
   return (
-    <div className="grid grid-cols-1 items-stretch text-zinc-400 @3xl:grid-cols-[13rem_minmax(11rem,1.1fr)_7rem_minmax(12rem,1.3fr)]">
+    <div className="grid grid-cols-1 items-stretch text-zinc-400 @3xl:grid-cols-[13rem_minmax(11rem,1.1fr)_11rem_minmax(12rem,1.3fr)]">
       <div className="flex flex-col py-1.5 @3xl:hidden">
         <BoutLink to={opponentTo} label={`Open ${bout.opponent.name} profile`} className={`${BAND} items-center gap-2.5 py-1.5`}>
           {badge}
@@ -641,7 +680,7 @@ function HistoryRowView({ row, fighterName, move }: { row: HistoryRow | Professi
     // why it appeared at 40rem and ran straight out of the card. The result
     // track is sized to hold "KO/TKO · R5 · 1:32" and a four-figure price on
     // one line at that narrowest width, since it is the first thing read.
-    <div className="grid grid-cols-1 items-stretch @3xl:grid-cols-[13rem_minmax(11rem,1.1fr)_7rem_minmax(12rem,1.3fr)]">
+    <div className="grid grid-cols-1 items-stretch @3xl:grid-cols-[13rem_minmax(11rem,1.1fr)_11rem_minmax(12rem,1.3fr)]">
       <BoutCard row={row} fighterName={fighterName} move={move} />
       <BoutTableRow row={row} fighterName={fighterName} move={move} />
     </div>
