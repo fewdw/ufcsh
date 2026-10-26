@@ -97,8 +97,7 @@ What changed, by the measurement that pointed at it:
 - **Placeholders.** The two PNG fighter placeholders are lossless WebP
   (35 → 16 KB, 96 → 39 KB, pixel-identical) with hashed, immutable URLs.
 
-Checked and left alone: fonts are system fonts (Barlow loads only in the
-graphics builder); photo placeholders and small copies are already WebP, sized, versioned and lazy below
+Checked and left alone: fonts are system fonts; photo placeholders and small copies are already WebP, sized, versioned and lazy below
 the fold; static assets already carry `immutable`. Building `Intl` formatters
 lazily would save nothing: Chromium spends ~100 ms (4× CPU) on whichever is
 built first. The largest remaining cost is Clerk: ~650 ms of main-thread time
@@ -340,8 +339,7 @@ stats, officials, venues, judges and profiles.
 - The sharp level is a full-resolution WebP (`?size=large`, quality 85),
   not UFC's non-interlaced PNG. Measured on 12 photos from one card
   (2026-10-14): full bodies 329–394 KB → 32–53 KB, headshots 130–167 KB →
-  16–22 KB, visually identical. The PNG stays available for the graphics
-  builder and share images.
+  16–22 KB, visually identical. The PNG stays available for share images.
 - Every remaining loading line stays invisible for its first 350 ms
   (`.appear-late`), and a list refreshing in place dims only after 200 ms.
 

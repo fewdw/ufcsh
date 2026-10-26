@@ -50,7 +50,7 @@ copy of the local archive (`DATA_DIR`).
 | Area | Files |
 | --- | --- |
 | Shell, routes, header | `App.tsx`, `main.tsx` |
-| More menu, one column (Stats, News, Browse; then Report an issue, which opens `components/ReportIssueDialog.tsx` about the page being read, asking a signed-out reader to sign in); Browse tabs Roster, Officials (Judges and Referees as tabs of their own from lg), Venues, Locations, Awards, Controversial (below md a page's choice and Filters sit in its list head; `ListHead` in `PageToolbar.tsx`); Graphic (Beta) opens from the profile | `components/MoreNav.tsx`, `components/BrowseTabs.tsx`; page `GraphicPage.tsx` |
+| More menu, one column (Stats, News, Browse; then Report an issue, which opens `components/ReportIssueDialog.tsx` about the page being read, asking a signed-out reader to sign in); Browse tabs Roster, Officials (Judges and Referees as tabs of their own from lg), Venues, Locations, Awards, Controversial (below md a page's choice and Filters sit in its list head; `ListHead` in `PageToolbar.tsx`) | `components/MoreNav.tsx`, `components/BrowseTabs.tsx` |
 | Admin link in the header (admins only) | `App.tsx` (`AdminLink`) |
 | News page (newest first, Settings: summaries and outlet toggles); a fighter's News tab | `pages/NewsPage.tsx`, `components/NewsRow.tsx`; `FighterNews` in `pages/FighterPage.tsx` |
 | Data fetching and polling | `api.ts` (types + `useApi`), `requestCache.ts`, `polling.ts`; early data in `index.html`, link prefetch in `useLinkPrefetch.ts` + `pageRequests.ts`, page chunks in `pages.ts`, answers kept across reloads in `snapshots.ts` |
@@ -62,7 +62,6 @@ copy of the local archive (`DATA_DIR`).
 | Typed list filters (spacing, word order and typos forgiven), Roster "new since last visit" | `search.ts` (server twin: `searchList` in `server/src/fuzzy.ts`), `rosterSeen.ts` |
 | Admin round switches on the Score tab (same as Admin → Live rounds) | `components/LiveRoundSwitches.tsx`, `components/ScoreRoundControls.tsx`; see `docs/scoring.md` |
 | Stream overlay (`/overlay`, `/overlay/:fightId`: the fans' live scorecard for OBS; Score tab button) | `pages/OverlayPage.tsx`, `components/OverlayButton.tsx`; see `docs/scoring.md` |
-| Graphics builder (the `/graphic` page) | `pages/GraphicPage.tsx`, `components/GraphicsBuilder.tsx`, `graphics/presets.ts` (the starting points), `graphics/build.ts` (data and picks → graphic), `graphics/render.ts` (templates), `graphics/draw.ts` (themes, texture, type and shared marks), `graphics/fonts.ts` (Barlow Condensed, self-hosted in `public/fonts`), `graphics/export.ts` |
 | Keyboard shortcuts | `shortcuts.tsx` |
 | Roster changes | `pages/RosterPage.tsx` |
 | About / support / changelog | `pages/InfoPage.tsx` |
