@@ -10,7 +10,7 @@ import { ScoringStore, type ScoringFight } from "./scoring.ts";
 import { createScoringHandler, scoringOrigins } from "./scoring-http.ts";
 import { PredictionStore } from "./predictions.ts";
 import { createPredictionsHandler } from "./predictions-http.ts";
-import { betContext, betOpen, betsOpen, potentialBooking, cardPlaces, eventFightIds, predictionContext, predictionFights } from "./predictions-data.ts";
+import { betContext, betOpen, betsOpen, potentialBooking, cardPlaces, predictionContext, predictionFights } from "./predictions-data.ts";
 import { BetStore } from "./bets.ts";
 import { createBetsHandler } from "./bets-http.ts";
 import { createLeaderboards } from "./leaderboards.ts";
@@ -1295,7 +1295,7 @@ export function oddsFreshness(eventId: string): { updated_at: number | null; fin
     updated_at: row.updated_at ?? null,
     final: Boolean(row.priced) && row.frozen === row.priced,
     priced: row.priced ?? 0,
-    // Who a graphic credits for the card's lines.
+    // Sources of the card's stored odds.
     sources: [...(row.fightodds ? ["FightOdds.io"] : []), ...(row.bestfightodds ? ["BestFightOdds"] : [])],
   };
 }
@@ -2489,7 +2489,7 @@ export function startApi(port: number): http.Server {
   const scoreStore = new ScoringStore(path.join(DATA_DIR, "scoring.db"), scoringFights, () => dataRevision("analytics"));
   const scoring = createScoringHandler(scoreStore);
   const predictionStore = new PredictionStore(scoreStore, predictionContext, predictionFights);
-  const predictions = createPredictionsHandler(predictionStore, undefined, eventFightIds);
+  const predictions = createPredictionsHandler(predictionStore);
   const betStore = new BetStore(scoreStore, betContext, predictionFights, Date.now, potentialBooking);
   const bets = createBetsHandler(betStore, createLeaderboards(scoreStore, predictionStore, betStore));
   const reportStore = new ReportStore(scoreStore);

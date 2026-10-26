@@ -1,5 +1,5 @@
 import { useAuth } from "@clerk/react";
-import { CalendarDays, Check, ChevronDown, Flag, ImageIcon, Info, LogOut, Pencil, Radio, Search, Settings, SquareTerminal, X } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, Flag, Info, LogOut, Pencil, Radio, Search, Settings, SquareTerminal, X } from "lucide-react";
 import { isDevSite, useDevStats } from "../devStats";
 import { updatePreview, usePreviewSettings } from "../livePreview";
 import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
@@ -417,9 +417,6 @@ function ProfileHeader({ scorer, mine, onRenamed }: { scorer: ScorerProfile["sco
           <SubscribeCalendarButton className={action}>
             <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />Calendar
           </SubscribeCalendarButton>
-          <Link to="/graphic" className={action} title="Build a shareable graphic">
-            <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />Graphic (Beta)
-          </Link>
           {isDevSite ? (
             <button type="button" onClick={toggleDevStats} aria-pressed={devStats} className={`${action} ${devStats ? "!text-sky-600" : ""}`} title="Show screen size, URL and more; tap the overlay to copy it">
               <SquareTerminal className="h-3.5 w-3.5" aria-hidden="true" />Dev stats

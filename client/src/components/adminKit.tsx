@@ -135,7 +135,6 @@ const ROUTE_INFO: Record<string, { name: string; path: string }> = {
   page_location: { name: "Location pages", path: "/locations/:slug" },
   page_roster: { name: "Roster page", path: "/roster" },
   page_news: { name: "News page", path: "/news" },
-  page_graphic: { name: "Graphic builder", path: "/graphic" },
   page_info: { name: "Info page", path: "/info" },
   page_admin: { name: "Admin page", path: "/admin" },
   page_sign_in: { name: "Sign in", path: "/sign-in/*" },
