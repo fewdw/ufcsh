@@ -8,3 +8,4 @@ server/data
 **/.env
 **/.env.*
 **/*.db*
+mobile

@@ -68,11 +68,19 @@ copy of the local archive (`DATA_DIR`).
 | Shared definitions | `careerMetrics.ts` (how-they-fight rates), `format.ts`, `ui.ts`, `useMediaQuery.ts`, `components/segmented.ts`, `components/chartTokens.ts` |
 | Styles, dark theme and Comfortable type (small print a size up, muted greys darker) | `index.css`, `settings.tsx`, early theme class in `index.html` |
 
+## Mobile app (`mobile/src`, Expo + React Native)
+
+| Area | Files |
+| --- | --- |
+| Screens (Expo Router; every file is a route) | `app/_layout.tsx` (native stack), `app/index.tsx` (events), `app/event/[id].tsx` (fight card) |
+| API base, types and fetching | `api.ts`; dates and labels in `format.ts`; colors in `constants/theme.ts` |
+| Dev server over Tailscale | `mobile/start`; see `docs/mobile.md` |
+
 ## Docs
 
 `production.md` (hosting, backups, health), `launch.md` (new host),
 `local-development.md`, `dev-environment.md`, `performance.md`, `scoring.md`, `discussions.md`,
-`predictions.md`, `agent-workflow.md`, `data-repairs/` (dated repair records).
+`predictions.md`, `agent-workflow.md`, `mobile.md` (the app), `data-repairs/` (dated repair records).
 
 ## Development and deployment
 

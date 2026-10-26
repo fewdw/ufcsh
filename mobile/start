@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# The app's dev server (Metro) for this worktree, reachable from your phone over
+# the tailnet. Edits hot reload in Expo Go or a development build.
+#   mobile/start        start (or reuse) it and print the URL to open on the phone
+#   mobile/start stop   stop it
+#   mobile/start logs   show recent output
+# The app reads this worktree's ./start preview when it is running, else ufc.sh.
+set -euo pipefail
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+app=$PWD
+root=$(dirname "$app")
+state=$root/.local-preview
+unit="ufcsh-mobile-$(basename "$root" | tr -c 'a-zA-Z0-9\n' -)"
+mkdir -p "$state"
+
+exec 9>/tmp/ufcsh-start.lock
+flock -w 600 9
+
+if [[ ! -f $state/mobile-port ]]; then
+  taken="$(git worktree list --porcelain | sed -n 's|^worktree \(.*\)|\1/.local-preview/mobile-port|p' | xargs -d '\n' cat 2>/dev/null || true)"
+  port=8101
+  while grep -qx "$port" <<<"$taken" || ss -Hltn | grep -q ":$port "; do port=$((port + 1)); done
+  echo "$port" > "$state/mobile-port"
+fi
+port=$(<"$state/mobile-port")
+
+host="$(tailscale status --json 2>/dev/null | jq -r 'select(.BackendState == "Running") | .Self.DNSName | rtrimstr(".")' || true)"
+[[ -n $host ]] || { echo 'Tailscale is not running; the phone could not reach Metro.' >&2; exit 1; }
+
+case "${1:-ts}" in
+  stop)
+    systemctl --user stop "$unit" 2>/dev/null || true
+    tailscale serve --https="$port" off >/dev/null 2>&1 || true
+    echo "Stopped $unit."; exit ;;
+  logs) exec journalctl --user -u "$unit" -n "${2:-50}" --no-pager ;;
+  ts) ;;
+  *) echo 'Usage: mobile/start [stop|logs]' >&2; exit 2 ;;
+esac
+
+api=https://ufc.sh
+web_unit="ufcsh-$(basename "$root" | tr -c 'a-zA-Z0-9\n' -)"
+if [[ -f $state/port ]] && systemctl --user is-active --quiet "$web_unit"; then
+  api="https://$host:$(<"$state/port")"
+fi
+
+if ! systemctl --user is-active --quiet "$unit"; then
+  installed=node_modules/.package-lock.json
+  if [[ ! -f $installed || package-lock.json -nt $installed ]]; then
+    "$root/tools/heavy.sh" npm ci --no-audit --no-fund
+  fi
+  systemctl --user reset-failed "$unit" 2>/dev/null || true
+  # Metro listens on loopback, a port of its own (Expo refuses one Serve already
+  # holds on the tailnet address); Tailscale Serve (tailnet only, never Funnel)
+  # carries it to the phone over HTTPS.
+  systemd-run --user --quiet --collect --unit "$unit" --working-directory "$app" -p MemoryMax=3G \
+    --setenv=PATH="$PATH" --setenv=EXPO_NO_TELEMETRY=1 \
+    --setenv=EXPO_PACKAGER_PROXY_URL="https://$host:$port" --setenv=EXPO_PUBLIC_API_URL="$api" \
+    node_modules/.bin/expo start --host localhost --port $((port + 1000))
+fi
+tailscale serve --bg --https="$port" "http://127.0.0.1:$((port + 1000))" >/dev/null
+
+for _ in $(seq 240); do
+  if curl -fsS -o /dev/null -m 2 "http://127.0.0.1:$((port + 1000))/status" 2>/dev/null; then
+    echo "exps://$host:$port"
+    echo "API: $api" >&2
+    exit
+  fi
+  systemctl --user is-active --quiet "$unit" || break
+  sleep 0.25
+done
+echo 'Metro did not become ready. Recent output:' >&2
+journalctl --user -u "$unit" -n 30 --no-pager >&2
+exit 1
