@@ -365,11 +365,16 @@ function RankTag({ ranking, who, division }: { ranking: HistoryRow["rank"]; who:
 
 /** The bout's division, "↑ Up to Lightweight" for a move. In the table
  *  (`short`) it carries the rank held there ("Featherweight Champ",
- *  "Featherweight (Ranked #10)") and wraps only between those pieces. */
+ *  "Featherweight (Ranked #10)"), and a move takes a line of its own above
+ *  it ("↓ Moved down"), so neither is left hanging when the column wraps. */
 function DivisionLabel({ division, move, short, rank }: { division: string; move?: DivisionMove; short?: boolean; rank?: HistoryRow["rank"] }) {
   const words = move ? `${move.direction === "up" ? "↑ Up to" : "↓ Down to"} ` : "";
   if (!short) return move ? <span className="font-semibold text-zinc-700">{words}{move.to}</span> : <span>{division}</span>;
-  return <span className={move ? "font-semibold text-zinc-700" : undefined}>{words}<DivisionRank division={division} ranking={rank} /></span>;
+  if (!move) return <DivisionRank division={division} ranking={rank} />;
+  return <>
+    <span className="block font-semibold text-zinc-700">{move.direction === "up" ? "↑ Moved up" : "↓ Moved down"}</span>
+    <span className="block"><DivisionRank division={division} ranking={rank} /></span>
+  </>;
 }
 
 /** A division with the rank held in it: "Featherweight Champ" in gold,
