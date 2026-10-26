@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  displayPrices, HOLD_MS, LiveOddsService, matchMarket, nameMatch, ODDS_MAX_AGE_MS, ODDS_TTL_MS, parseMarkets,
+  displayPrices, HOLD_MS, LiveOddsService, matchMarket, nameMatch, ODDS_MAX_AGE_MS, ODDS_STALE_MS, ODDS_TTL_MS, parseMarkets,
   type FinishedBout, type LiveBout, type Market, type Pair,
 } from "./polymarket.ts";
 
@@ -208,10 +208,31 @@ test("live odds: a failed read keeps the last price briefly, then shows none", a
   assert.ok((await live.answer()).odds);
   c.failing = true;
   c.advance(ODDS_TTL_MS);
+  await live.answer();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(c.reads, 2);
   assert.deepEqual((await live.answer()).odds?.f1, 0.4);
   c.advance(ODDS_MAX_AGE_MS);
   assert.equal((await live.answer()).odds, null);
   c.failing = false;
-  c.advance(ODDS_TTL_MS);
+  c.advance(ODDS_STALE_MS);
   assert.ok((await live.answer()).odds);
+});
+
+test("live odds: a poll gets the last answer at once while the next is read", async () => {
+  const c = card();
+  const live = c.service();
+  c.current = c.bout("a");
+  await live.answer();
+  c.price = [0.9, 0.1];
+  c.advance(ODDS_TTL_MS);
+  // Past its two seconds: the answer in hand, with one read started behind it.
+  assert.equal((await live.answer()).odds?.f1, 0.4);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(c.reads, 2);
+  assert.equal((await live.answer()).odds?.f1, 0.1);
+  // Too old to show: the reader waits for the next one.
+  c.price = [0.2, 0.8];
+  c.advance(ODDS_STALE_MS);
+  assert.equal((await live.answer()).odds?.f1, 0.8);
 });

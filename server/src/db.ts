@@ -803,6 +803,6 @@ for (const [table, revisions] of Object.entries(revisionTables)) {
 }
 
 export function dataRevision(key: "analytics" | "profiles" | "search"): string {
-  const row = db.prepare("SELECT value FROM data_revisions WHERE key = ?").get(key) as { value: number };
+  const row = prepared("SELECT value FROM data_revisions WHERE key = ?").get(key) as { value: number };
   return String(row.value);
 }
