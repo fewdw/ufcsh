@@ -103,8 +103,9 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-26">October 26, 2026</time></p>
             <ul>
-              <li>Removed the Graphic (Beta) builder from profiles.</li>
-              <li>Old graphic links now show the page-not-found screen.</li>
+              <li>Live odds on fight night no longer wait on Polymarket.</li>
+              <li>Fighter, event and fight pages load faster.</li>
+              <li>Profile fight lists fit women's divisions and moves without breaking words.</li>
             </ul>
           </Section>
         </div>
