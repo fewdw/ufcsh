@@ -30,10 +30,6 @@ fresh in the background.
   (not only top-50 places), across the whole UFC or within one weight class
   counting only bouts fought there, grouped by category or best place first,
   with the field size, share of the field ahead and an optional bout floor.
-- **Graphics builder** (`/graphic`, under More): matchup,
-  result, fighter and card templates in square, portrait and landscape, dark
-  or light, with each line chosen by checkbox; copy, download or share. Every
-  image carries the UFC.sh mark, its page address and its sources and dates.
 - **Judge and referee profiles** (`/judges/:slug`, `/referees/:slug`, from any
   scorecard or referee name): filtered histories, dissents, agreement by
   winner and by round, 10–8 and 10–10 rates, fan-card differences, and for

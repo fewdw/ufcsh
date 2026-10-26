@@ -4,7 +4,7 @@ import { injectPageSeo, pageRedirect, pageSeo } from "./seo.ts";
 import { db } from "./db.ts";
 
 test("unknown routes and unknown records answer 404 and ask not to be indexed", () => {
-  for (const path of ["/nope", "/fighters/0000000000000000", "/fights/zzz", "/judges/no-one", "/venues/nowhere", "/events/a/b"]) {
+  for (const path of ["/nope", "/graphic", "/fighters/0000000000000000", "/fights/zzz", "/judges/no-one", "/venues/nowhere", "/events/a/b"]) {
     const seo = pageSeo(path);
     assert.equal(seo.status, 404, path);
     assert.equal(seo.noindex, true, path);

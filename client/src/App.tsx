@@ -57,7 +57,6 @@ const LocationPage = page(pages.venue, module => module.LocationPage);
 const InfoPage = page(pages.info, module => module.default);
 const RosterPage = page(pages.roster, module => module.default);
 const NewsPage = page(pages.news, module => module.default);
-const GraphicPage = page(pages.graphic, module => module.default);
 
 const NAV_ITEM = "rounded-full px-1.5 py-1.5 text-[11px] font-medium transition min-[380px]:px-2 min-[380px]:text-xs min-[420px]:px-2.5 sm:px-4 sm:text-sm";
 
@@ -158,9 +157,8 @@ function Header({ onSearch }: { onSearch: () => void }) {
   const isRankings = pathname.startsWith("/rankings");
   const isMore = inMore(pathname);
   const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
-  // A profile, and the graphic builder opened from one, belong to no section
-  // of the nav, so none of them is lit.
-  const isProfile = pathname.startsWith("/profiles") || pathname === "/graphic";
+  // Profiles belong to no section of the nav, so none of them is lit.
+  const isProfile = pathname.startsWith("/profiles");
   const links = [
     // Pointing at a section starts its code and its first data, so a tap
     // lands on it loaded.
@@ -332,7 +330,6 @@ export default function App() {
           <Route path="/venues/:slug" element={<VenuePage />} />
           <Route path="/locations/:slug" element={<LocationPage />} />
           <Route path="/news" element={<NewsPage />} />
-          <Route path="/graphic" element={<GraphicPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/admin/bugs" element={<AdminPage />} />
           <Route path="/profiles/:handle" element={<ProfilePage />} />
