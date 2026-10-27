@@ -235,9 +235,17 @@ test("prediction HTTP isolates ownership and enforces authentication, origin and
   const headers = { authorization: "Bearer test-alice", "content-type": "application/json" };
   assert.equal((await fetch(url)).status, 401);
   assert.equal((await fetch(url, { method: "PUT", headers: { ...headers, origin: "https://attacker.example" }, body: JSON.stringify(pick(bout)) })).status, 403);
+  // Fills the short summary cache, which the save below must drop.
+  assert.equal((await (await fetch(`${root}/api/fights/${bout.id}/predictions`)).json()).total, 0);
   const saved = await fetch(url, { method: "PUT", headers, body: JSON.stringify(pick(bout)) });
   assert.equal(saved.status, 200);
   assert.equal(saved.headers.get("cache-control"), "private, no-store");
+  assert.equal(saved.headers.get("cloudflare-cdn-cache-control"), null);
+  // Everyone's summary is shared at the edge, and a save is in the next read.
+  const summary = await fetch(`${root}/api/fights/${bout.id}/predictions`);
+  assert.equal(summary.headers.get("cache-control"), "public, max-age=0, must-revalidate");
+  assert.match(summary.headers.get("cloudflare-cdn-cache-control")!, /^public, max-age=2,/);
+  assert.equal((await summary.json()).total, 1);
   assert.equal((await (await fetch(url, { headers: { authorization: "Bearer test-bob" } })).json()).pick, null);
   assert.equal((await (await fetch(`${root}/api/profiles/${scores.identity("alice").handle}/predictions`)).json()).total, 1);
   bouts[0].detail_json = '{"type":"past"}';
