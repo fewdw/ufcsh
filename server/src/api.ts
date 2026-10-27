@@ -2343,9 +2343,10 @@ function rosterView() {
   const lastDivision = prepared(`SELECT f.weight_class FROM fights f JOIN events e ON e.id = f.event_id
     WHERE (f.f1_id = ?1 OR f.f2_id = ?1) AND f.weight_class NOT LIKE '%Catch%' ORDER BY e.date DESC LIMIT 1`);
   const divisionOf = (id: string) => (lastDivision.get(id) as { weight_class: string } | undefined)?.weight_class ?? null;
-  for (const { fighter_id, left_at } of ufcDepartures()) {
+  for (const { fighter_id, left_at, status } of ufcDepartures()) {
     if (reported.has(fighter_id)) continue;
-    cuts.push(view({ date: new Date(left_at).toISOString().slice(0, 10), name: "", nickname: null, country: null, division: divisionOf(fighter_id), reason: "Off UFC roster", record: null }, fighter_id));
+    cuts.push(view({ date: new Date(left_at).toISOString().slice(0, 10), name: "", nickname: null, country: null, division: divisionOf(fighter_id),
+      reason: status === "retired" ? "Retired" : "Off UFC roster", record: null }, fighter_id));
   }
   // ufc.com's signings fill in who Wikipedia hasn't listed; once it does, its
   // entry (with record and date) is the one shown. The same person is matched
