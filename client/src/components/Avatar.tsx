@@ -12,6 +12,8 @@ const SIZES = {
   // A list row that tightens to one line on a wide screen.
   row: "h-9 w-9 text-[11px] xl:h-6 xl:w-6 xl:text-[8px]",
   matchup: "h-13 w-13 text-xs lg:h-15 lg:w-15 lg:text-sm",
+  // A bout on an event card: one compact row per fight.
+  bout: "h-10 w-10 text-[11px]",
   // As large as its container, which sets the size.
   fill: "h-full w-full text-lg",
 } as const;
@@ -63,7 +65,7 @@ export default function Avatar({
           : outcome === "nc"
             ? "ring-2 ring-zinc-700"
             : "ring-1 ring-zinc-200";
-  const prominent = size === "xl" || size === "lg" || size === "matchup";
+  const prominent = size === "xl" || size === "lg" || size === "matchup" || size === "bout";
   return (
     <ProgressiveImage
       key={`${src}:${attempt}`}

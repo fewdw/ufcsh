@@ -6,7 +6,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { prefetch, useApi } from "../api";
 import type { CancelledBout, CardSchedule, CardSegment, EventDetail, EventFight, EventListItem, FightSide } from "../api";
-import { boutChange, clockTime, clockTimeWithZone, divisionName, formatDate, formatDateShort, formatMethod, isDecision, outcomeClasses, rankingTitle, rankLabel, roundsLabel } from "../format";
+import { boutChange, clockTime, clockTimeWithZone, divisionName, formatDate, formatDateShort, formatMethod, isDecision, rankingTitle, rankLabel, roundsLabel } from "../format";
 import { useNow } from "../useNow";
 import Avatar from "../components/Avatar";
 import ResultDots from "../components/ResultDots";
@@ -35,8 +35,8 @@ const shell = PANEL;
 /** The source flags a tournament or TUF final the same way it flags a
  * championship bout. Only a belt gets the gold tag; a final says what it is. */
 const TITLE_TAG: Record<string, { label: string; className: string }> = {
-  title: { label: "title", className: "bg-amber-100 text-amber-700" },
-  interim: { label: "interim title", className: "bg-amber-50 text-amber-600" },
+  title: { label: "title", className: "text-amber-700" },
+  interim: { label: "interim title", className: "text-amber-700" },
 };
 
 /** Only a belt earns a tag; a tournament or TUF final reads as noise on a
@@ -46,7 +46,10 @@ function beltTag(fight: EventFight) {
   return fight.title_type === "interim" ? TITLE_TAG.interim
     : fight.title_type === "title" ? TITLE_TAG.title : null;
 }
-const METHOD_TAG = "shrink-0 rounded-full px-1.5 py-px text-[9px] font-bold uppercase leading-4 tracking-[0.06em]";
+/** Tags on a row are coloured small caps, never filled pills. */
+const METHOD_TAG = "shrink-0 text-[9px] font-bold uppercase leading-4 tracking-[0.06em]";
+const OUTCOME_TEXT: Record<string, string> = { win: "text-emerald-700", loss: "text-rose-700", draw: "text-amber-700" };
+const outcomeText = (outcome: FightSide["outcome"]) => OUTCOME_TEXT[outcome ?? ""] ?? "text-zinc-500";
 const MONTHS = [
   "January",
   "February",
@@ -134,11 +137,9 @@ const EventListRow = memo(function EventListRow({ event, selected, tag, anchor, 
       data-anchor={anchor ? "" : undefined}
       aria-current={selected ? "page" : undefined}
       className={[
-        "scroll-mt-10 rounded-xl border border-transparent px-3 py-2 transition-colors",
-        // Selection borrows the header nav's token outright: a
-        // clean surface inside a hairline ring with a soft
-        // shadow, rather than inverting to a solid block.
-        selected ? segmentedSelected : "hover:bg-zinc-50",
+        "scroll-mt-10 rounded-lg px-3 py-1.5 transition-colors",
+        // Selection is a quiet grey fill, no ring or shadow.
+        selected ? "bg-zinc-100" : "hover:bg-zinc-50",
       ].join(" ")}
     >
       <div className="flex items-start justify-between gap-2">
@@ -430,13 +431,13 @@ function FormDots({ side, align }: { side: FightSide; align: "left" | "right" })
 function WeightMissBadge({ side }: { side: FightSide }) {
   if (!side.weight_miss) return null;
   const label = `${side.name} missed weight at ${side.weight_miss} lb`;
-  return <span className={`${METHOD_TAG} bg-rose-100 text-rose-700 tabular-nums`} title={label} aria-label={label}>{side.weight_miss}<span className="lowercase">lbs</span></span>;
+  return <span className={`${METHOD_TAG} text-rose-700 tabular-nums`} title={label} aria-label={label}>{side.weight_miss}<span className="lowercase">lbs</span></span>;
 }
 
 function BoutChangeBadge({ side }: { side: FightSide }) {
   const change = boutChange(side);
   if (!change) return null;
-  return <span className={`${METHOD_TAG} bg-sky-100 text-sky-700`} title={change.full} aria-label={`${side.name}: ${change.full}`}>{change.short}</span>;
+  return <span className={`${METHOD_TAG} text-sky-700`} title={change.full} aria-label={`${side.name}: ${change.full}`}>{change.short}</span>;
 }
 
 function FighterBlock({
@@ -456,48 +457,46 @@ function FighterBlock({
 }) {
   const dimmed = past && side.outcome === "loss";
   const rank = side.ranking?.rank === "IC" || side.ranking?.rank === "I" ? "I" : rankLabel(side.ranking) || "NR";
-  const rankingBadge = rank === "NR" ? null : <span className={`inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 text-[10px] font-medium leading-none tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-500"}`} title={rankingTitle(side.ranking, past)}>{rank}</span>;
-  const nameBlock = (
-    <div className={`min-w-0 max-w-full ${align === "right" ? "text-right" : ""}`}>
-      {/* Mirrored for the right corner: ranking outermost, then the name,
-          then the result, weight and bonus tags as one group. When the name
-          and tags cannot share a line, the tags wrap below it rather than
-          overlapping it. */}
-      <div className={`flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
-        {rankingBadge}
-        <span className={`min-w-0 break-words text-sm leading-5 font-semibold ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>
-          {profileLink && side.profile_eligible && side.id ? <Link to={`/fighters/${side.id}`} className="hover:underline">{side.name}</Link> : side.name}
-        </span>
-        <span className={`flex shrink-0 items-center gap-2 empty:hidden ${align === "right" ? "flex-row-reverse" : ""}`}>
-          {resultTag ? (
-            <span className={`${METHOD_TAG} ${outcomeClasses(side.outcome)}`}>
-              {resultTag.label}
-              {resultTag.when ? <span className="ml-1 font-semibold tabular-nums opacity-70">{resultTag.when}</span> : null}
-            </span>
-          ) : null}
-          <WeightMissBadge side={side} />
-          <BoutChangeBadge side={side} />
-          <BonusIcons bonuses={bonuses} outcome={side.outcome} />
-        </span>
-      </div>
-      <div className={`mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] tabular-nums text-zinc-500 ${align === "right" ? "flex-row-reverse" : ""}`}>
-        <span className="whitespace-nowrap" title="Professional record entering this fight"><span className="font-medium text-zinc-700">{side.record || "—"}</span> pro</span>
-        <span aria-hidden="true" className="text-zinc-300">·</span>
-        <span className="whitespace-nowrap" title="UFC record entering this fight">{side.ufc_record ? <><span className="font-medium text-zinc-700">{side.ufc_record}</span> UFC</> : side.ufc_bouts === 0 ? "UFC debut" : "— UFC"}</span>
-      </div>
-      {/* Mirrored like the records above: the age sits nearest the photo on both sides. */}
-      <div className={`mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 ${align === "right" ? "justify-end" : ""}`}>
-        {align === "right" ? <FormDots side={side} align={align} /> : null}
-        {side.age != null ? <span className="whitespace-nowrap text-[10px] tabular-nums text-zinc-400" title="Age on the date of this event">Age {side.age}</span> : null}
-        {align === "right" ? null : <FormDots side={side} align={align} />}
-      </div>
-    </div>
-  );
-
+  const rankingBadge = rank === "NR" ? null : <span className={`shrink-0 text-[11px] font-semibold tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-400"}`} title={rankingTitle(side.ranking, past)}>{rank}</span>;
+  const reverse = align === "right" ? "flex-row-reverse" : "";
   return (
-    <div className={`flex min-w-0 flex-col gap-3 @3xl:items-center ${align === "right" ? "order-2 items-end @3xl:order-3 @3xl:flex-row-reverse" : "order-1 items-start @3xl:flex-row"}`}>
-      <Avatar src={side.photo_url} name={side.name} size="matchup" outcome={side.outcome} />
-      {nameBlock}
+    <div className={`flex min-w-0 items-center gap-3 ${reverse}`}>
+      <Avatar src={side.photo_url} name={side.name} size="bout" outcome={side.outcome} />
+      <div className={`min-w-0 ${align === "right" ? "text-right" : ""}`}>
+        {/* Mirrored for the right corner: ranking outermost, then the name,
+            then the result, weight and bonus tags as one group, which wrap
+            below the name rather than overlap it. */}
+        <div className={`flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 ${reverse}`}>
+          {rankingBadge}
+          <span className={`min-w-0 break-words text-sm leading-5 font-semibold ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>
+            {profileLink && side.profile_eligible && side.id ? <Link to={`/fighters/${side.id}`} className="hover:underline">{side.name}</Link> : side.name}
+          </span>
+          <span className={`flex shrink-0 items-center gap-1.5 empty:hidden ${reverse}`}>
+            {resultTag ? (
+              <span className={`${METHOD_TAG} ${outcomeText(side.outcome)}`}>
+                {resultTag.label}
+                {resultTag.when ? <span className="ml-1 font-semibold tabular-nums opacity-70">{resultTag.when}</span> : null}
+              </span>
+            ) : null}
+            <WeightMissBadge side={side} />
+            <BoutChangeBadge side={side} />
+            <BonusIcons bonuses={bonuses} outcome={side.outcome} />
+          </span>
+        </div>
+        {/* Records and age on one line, read left to right on both sides;
+            the form dots sit on the outer edge. */}
+        <div className={`mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] leading-4 tabular-nums text-zinc-500 ${align === "right" ? "justify-end" : ""}`}>
+          {align === "right" ? <span className="mr-1"><FormDots side={side} align={align} /></span> : null}
+          <span className="whitespace-nowrap" title="Professional record entering this fight"><span className="font-medium text-zinc-700">{side.record || "—"}</span></span>
+          <span aria-hidden="true" className="text-zinc-300">·</span>
+          <span className="whitespace-nowrap" title="UFC record entering this fight">{side.ufc_record ? <><span className="font-medium text-zinc-700">{side.ufc_record}</span> UFC</> : side.ufc_bouts === 0 ? "UFC debut" : "— UFC"}</span>
+          {side.age != null ? <>
+            <span aria-hidden="true" className="text-zinc-300">·</span>
+            <span className="whitespace-nowrap text-zinc-400" title="Age on the date of this event">Age {side.age}</span>
+          </> : null}
+          {align === "right" ? null : <span className="ml-1"><FormDots side={side} align={align} /></span>}
+        </div>
+      </div>
     </div>
   );
 }
@@ -525,16 +524,13 @@ const CONTROVERSY: Record<NonNullable<EventFight["controversy"]>, string> = {
 /** A decision the fans' cards call into question. */
 function ControversyTag({ fight }: { fight: EventFight }) {
   if (!fight.controversy) return null;
-  return <span className="rounded bg-amber-100 px-1 py-px text-[9px] font-bold uppercase leading-3 text-amber-800" title={CONTROVERSY[fight.controversy]}>Controversial</span>;
+  return <span className="text-[9px] font-bold uppercase leading-3 tracking-[0.06em] text-amber-800" title={CONTROVERSY[fight.controversy]}>Controversial</span>;
 }
 
 function CenterBlock({ fight, past, cancellation }: { fight: EventFight; past: boolean; cancellation?: CancelledBout }) {
   const f1Odds = fight.odds?.f1.close ?? null;
   const f2Odds = fight.odds?.f2.close ?? null;
   const result = formatMethod(fight.method, fight.round, fight.time);
-  // A bout that has not happened yet says when it is expected instead. The
-  // Estimate follows segment timing and available broadcast space.
-  const expected = !past ? clockTime(fight.starts_at) : null;
 
   return (
     <div className="flex w-full flex-col items-center">
@@ -544,15 +540,11 @@ function CenterBlock({ fight, past, cancellation }: { fight: EventFight; past: b
       {/* The result wraps rather than truncating: the round and the clock are
           the point of the line, and the centre column is narrow enough that
           "KO/TKO · R1 · 2:54" would lose its tail to an ellipsis. */}
-      {cancellation ? null : past ? (
-        <div className="mt-1.5 max-w-full text-balance text-center text-[10px] font-medium leading-4 text-zinc-500" title={fight.method_details ?? result}>
+      {cancellation || !past ? null : (
+        <div className="max-w-full text-balance text-center text-[10px] font-medium leading-4 text-zinc-500" title={fight.method_details ?? result}>
           {result || "Result"}
         </div>
-      ) : expected ? (
-        <div className="mt-1.5 max-w-full truncate text-center text-[10px] font-medium tabular-nums text-zinc-400" title="Approximate start in your time zone. Usually 30 minutes per bout (40 for five-round bouts), adjusted to fit before the next segment with a 10-minute transition. Rounded to 5 minutes; finishes and broadcast delays can change actual starts.">
-          ~{expected}
-        </div>
-      ) : null}
+      )}
     </div>
   );
 }
@@ -566,7 +558,10 @@ function FightRow({ fight, past, eventId, live = false, cancellation }: { fight:
   // pressing the row is enough notice to have it loaded by the time it opens.
   const warm = () => prefetch(withRanking(`/api/fights/${fight.id}`, settings.rankingSource));
   const open = () => navigate(`/fights/${fight.id}`, { state: { eventId, eventReturnDepth: 1 } });
-  // Beside the price in the face-off layout; the compact layout writes its own.
+  // A bout that has not happened yet says when it is expected. The estimate
+  // follows segment timing and available broadcast space.
+  const expected = !done && !cancellation ? clockTime(fight.starts_at) : null;
+  // Above the price in the face-off layout; the compact layout writes its own.
   const weightClassRow = (
     <div className="flex flex-wrap items-center justify-center gap-1.5">
       {/* The dot and the word both say live, so neither colour nor
@@ -578,8 +573,13 @@ function FightRow({ fight, past, eventId, live = false, cancellation }: { fight:
       </> : null}
       <span className="text-[10px] font-medium text-zinc-500">{divisionName(fight.weight_class, fight.catch_weight)}</span>
       {fight.scheduled_rounds ? <span className="text-[10px] font-medium text-zinc-400">{roundsLabel(fight.scheduled_rounds)}</span> : null}
+      {expected ? (
+        <span className="text-[10px] font-medium tabular-nums text-zinc-400" title="Approximate start in your time zone. Usually 30 minutes per bout (40 for five-round bouts), adjusted to fit before the next segment with a 10-minute transition. Rounded to 5 minutes; finishes and broadcast delays can change actual starts.">
+          ~{expected}
+        </span>
+      ) : null}
       {beltTag(fight) ? (
-        <span className={`rounded px-1 py-px text-[9px] font-bold uppercase ${beltTag(fight)!.className}`}>
+        <span className={`text-[9px] font-bold uppercase tracking-[0.06em] ${beltTag(fight)!.className}`}>
           {beltTag(fight)!.label}
         </span>
       ) : null}
@@ -602,16 +602,16 @@ function FightRow({ fight, past, eventId, live = false, cancellation }: { fight:
         event.preventDefault();
         open();
       }}
-      className={`group block w-full px-3 text-left transition-colors @3xl:px-4 ${cancellation ? "bg-red-50 py-2 @3xl:py-1.5 dark:bg-red-950/40" : live ? "cursor-pointer py-2.5 hover:bg-emerald-50/60 @3xl:py-3" : "cursor-pointer py-2 hover:bg-zinc-50 @3xl:py-1.5"}`}
+      className={`group block w-full px-3 py-2 text-left transition-colors @3xl:px-5 ${cancellation ? "bg-red-50 dark:bg-red-950/40" : live ? "cursor-pointer hover:bg-emerald-50/60" : "cursor-pointer hover:bg-zinc-50"}`}
     >
       <div className="@3xl:hidden"><CompactFightRow fight={fight} done={done} live={live} cancellation={cancellation} /></div>
-      <div className="hidden grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-4 gap-y-1 @3xl:grid">
+      <div className="hidden grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-4 gap-y-0.5 @3xl:grid">
       {/* Keep the corners and odds in one row; cancellation text gets the
           whole width below them so it is not squeezed into the odds column. */}
       <div className="col-start-1 row-start-1 min-w-0">
         <FighterBlock side={fight.f1} align="left" past={done} bonuses={fight.bonuses} resultTag={resultTag(fight, fight.f1.outcome)} profileLink={Boolean(cancellation)} />
       </div>
-      <div className="col-start-2 row-start-1 flex w-40 shrink-0 flex-col items-center justify-center gap-2 self-center @5xl:w-52">
+      <div className="col-start-2 row-start-1 flex w-44 shrink-0 flex-col items-center justify-center gap-0.5 self-center @5xl:w-52">
         {weightClassRow}
         <CenterBlock fight={fight} past={done} cancellation={cancellation} />
       </div>
@@ -646,7 +646,7 @@ function CompactSide({ side, fight, done, other, profileLink = false }: { side: 
           {rank ? <span className={`text-[10px] font-semibold tabular-nums ${rank === "C" ? "text-belt" : rank === "I" ? "text-belt-interim" : "text-zinc-400"}`} title={rankingTitle(side.ranking, done)}>{rank}</span> : null}
           <span className={`text-[14px] font-semibold leading-5 ${dimmed ? "text-zinc-400" : "text-zinc-900"}`}>{profileLink && side.profile_eligible && side.id ? <Link to={`/fighters/${side.id}`} className="hover:underline">{side.name}</Link> : side.name}</span>
           {tag ? (
-            <span className={`${METHOD_TAG} ${outcomeClasses(side.outcome)}`}>
+            <span className={`${METHOD_TAG} ${outcomeText(side.outcome)}`}>
               {tag.label}
               {tag.when ? <span className="ml-1 font-semibold tabular-nums opacity-70">{tag.when}</span> : null}
             </span>
@@ -693,7 +693,7 @@ function CompactFightRow({ fight, done, live, cancellation }: { fight: EventFigh
         </> : null}
         <span className="font-medium text-zinc-500">{divisionName(fight.weight_class, fight.catch_weight)}</span>
         {fight.scheduled_rounds ? <span>{roundsLabel(fight.scheduled_rounds)}</span> : null}
-        {title ? <span className={`rounded px-1 py-px text-[9px] font-bold uppercase leading-3 ${title.className}`}>{title.label}</span> : null}
+        {title ? <span className={`text-[9px] font-bold uppercase leading-3 tracking-[0.06em] ${title.className}`}>{title.label}</span> : null}
         <ControversyTag fight={fight} />
         {cancellation ? <span className="ml-auto font-semibold text-red-700 dark:text-red-300">Cancelled</span> : null}
         {result ? <span className="ml-auto text-right" title={fight.method_details ?? result}>{result}</span> : null}
@@ -792,7 +792,7 @@ function CardOddsRow({ fight, eventId, live, past, format }: { fight: EventFight
               </> : null}
               {fight.scheduled_rounds ? <span className="whitespace-nowrap text-[10px] font-medium text-zinc-400">{roundsLabel(fight.scheduled_rounds)}</span> : null}
               {beltTag(fight) ? (
-                <span className={`shrink-0 rounded px-1 py-px text-[9px] font-bold uppercase ${beltTag(fight)!.className}`}>
+                <span className={`shrink-0 text-[9px] font-bold uppercase tracking-[0.06em] ${beltTag(fight)!.className}`}>
                   {beltTag(fight)!.label}
                 </span>
               ) : null}
@@ -828,12 +828,12 @@ function CardOddsRow({ fight, eventId, live, past, format }: { fight: EventFight
 /** Row tags (taggedEvent picks at most one). Done is deliberately muted:
  * only Live and Next point at something to watch. */
 const STATUS_TAG = {
-  live: { label: "Live", className: "bg-emerald-100 text-emerald-700" },
-  done: { label: "Done", className: "bg-zinc-100 text-zinc-500" },
-  next: { label: "Next", className: "bg-amber-100 text-amber-700" },
+  live: { label: "Live", className: "text-emerald-700" },
+  done: { label: "Done", className: "text-zinc-500" },
+  next: { label: "Next", className: "text-amber-700" },
 } as const;
 
-const TAG_SHAPE = "shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em]";
+const TAG_SHAPE = "shrink-0 text-[9px] font-bold uppercase leading-5 tracking-[0.12em]";
 
 const SEGMENT_LABEL: Record<CardSegment, string> = {
   main: "Main card",
@@ -852,6 +852,9 @@ const segmentStart = (schedule: CardSchedule | undefined, segment: CardSegment):
     : segment === "prelims" ? schedule?.prelims_at ?? null
       : schedule?.early_prelims_at ?? null;
 
+const SECTION_HEAD = "flex items-center justify-between gap-3 border-b border-zinc-100 bg-zinc-50/70 px-3 py-1.5 @3xl:px-5";
+const SECTION_TITLE = "min-w-0 text-[11px] font-semibold uppercase leading-4 tracking-[0.08em] text-zinc-500";
+
 /** A quiet section heading paired with its announced local start time, marking
  *  where the card view crosses from one segment (main card, prelims, early
  *  prelims) into the next. The odds view lists every priced fight in one flat
@@ -860,10 +863,10 @@ function SegmentBreak({ segment, at }: { segment: CardSegment | null; at: number
   const clock = clockTime(at);
   return (
     // The containing row supplies a matching top rule at segment boundaries.
-    <div className="flex items-center justify-between gap-3 border-b border-zinc-200 bg-white px-3 py-1.5 @[34rem]:px-6 @[34rem]:py-2.5">
-      <h2 className="min-w-0 text-sm font-semibold leading-5 tracking-tight text-zinc-900">{segment ? SEGMENT_LABEL[segment] : "Fight card"}</h2>
+    <div className={SECTION_HEAD}>
+      <h2 className={SECTION_TITLE}>{segment ? SEGMENT_LABEL[segment] : "Fight card"}</h2>
       {clock ? (
-        <span className="shrink-0 rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-medium leading-4 tabular-nums text-zinc-600 @[34rem]:py-1" title="Announced start, in your time zone">
+        <span className="shrink-0 text-[11px] font-medium leading-4 tabular-nums text-zinc-500" title="Announced start, in your time zone">
           {clock}
         </span>
       ) : segment == null ? <span className="text-right text-[11px] leading-4 text-zinc-500">Sections to be confirmed</span> : null}
@@ -876,8 +879,8 @@ function SegmentBreak({ segment, at }: { segment: CardSegment | null; at: number
 function CancelledBouts({ bouts, eventId }: { bouts: CancelledBout[]; eventId: string }) {
   return (
     <div className="border-t border-zinc-200">
-      <div className="border-b border-zinc-200 bg-white px-3 py-1.5 @[34rem]:px-6 @[34rem]:py-2.5">
-        <h2 className="text-sm font-semibold leading-5 tracking-tight text-zinc-900">Cancelled</h2>
+      <div className={SECTION_HEAD}>
+        <h2 className={SECTION_TITLE}>Cancelled</h2>
       </div>
       <ul className="divide-y divide-zinc-100">
         {bouts.map((bout) => {
@@ -1134,10 +1137,9 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
               return (
                 <div key={fight.id} className={index === 0 ? "" : newSegment ? "border-t border-zinc-200" : "border-t border-zinc-100"}>
                   {newSegment ? <SegmentBreak segment={sectionsPending ? null : fight.segment!} at={sectionsPending ? null : segmentStart(event.schedule, fight.segment!)} /> : null}
-                  {/* The bout on now is boxed off from the rows around it. Its live
-                      marker sits with the weight class in the centre column, so the
-                      box holds one row that centres like every other. */}
-                  <div className={fight.id === liveId ? "m-1.5 overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/30" : ""}>
+                  {/* The bout on now is tinted with a green edge; its live marker
+                      sits with the weight class in the centre column. */}
+                  <div className={fight.id === liveId ? "bg-emerald-50/30 shadow-[inset_3px_0_0_#10b981]" : ""}>
                     <FightRow fight={fight} live={fight.id === liveId} past={past || fight.f1.outcome != null || fight.f2.outcome != null} eventId={event.id} />
                   </div>
                 </div>
