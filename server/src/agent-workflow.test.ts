@@ -232,6 +232,7 @@ case "$1" in
   inspect) cat "$TEST_RUNNING" ;;
   image) awk '{print $2}' "$TEST_RUNNING" ;;
   buildx) exit 0 ;;
+  exec) [[ -n "\${TEST_LIVE:-}" ]] && printf '%s' "$TEST_LIVE" || printf null ;;
   compose)
     if [[ " $* " == *" up "* ]]; then
       printf '%s %s %s\\n' "$DEV_BRANCH" "$DEV_SHA" "\${TEST_HEALTH:-healthy}" > "$TEST_RUNNING"
@@ -246,6 +247,11 @@ esac
     };
     const select = (sha: string, health = "healthy") => f.run(path.join(repo, "deploy", "select-dev-branch.sh"), ["feat/ready", sha], { ...extra, TEST_HEALTH: health });
     assert.equal((await select(shaB)).code, 2, "an unpushed SHA must be rejected");
+    // Production's cores belong to readers while a card is fought.
+    const during = await f.run(path.join(repo, "deploy", "select-dev-branch.sh"), ["feat/ready", pinned], { ...extra, TEST_LIVE: '{"id":"card"}' });
+    assert.equal(during.code, 75, during.output);
+    assert.match(during.output, /card is live/);
+    assert.doesNotMatch(await readFile(extra.TEST_DOCKER_CALLS, "utf8"), /build --builder/);
     const first = await select(pinned);
     assert.equal(first.code, 0, first.output);
     assert.equal(execFileSync("git", ["-C", dev, "rev-parse", "HEAD"], { encoding: "utf8" }).trim(), pinned);

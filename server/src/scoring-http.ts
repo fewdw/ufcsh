@@ -1,7 +1,7 @@
 import { createPublicKey } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createClerkClient } from "@clerk/backend";
-import { RateLimiter, clientAddress } from "./api-policy.ts";
+import { EDGE, EDGE_CACHE_HEADER, RateLimiter, clientAddress } from "./api-policy.ts";
 import { PROFILE_FILTERS, ScoringError, ScoringStore, type ProfileFilter } from "./scoring.ts";
 
 export function scoringOrigins(): string[] {
@@ -197,6 +197,9 @@ export function createScoringHandler(
     const privateRoute = Boolean(mineRoute) || ownProfile;
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.setHeader("Cache-Control", privateRoute ? "private, no-store" : "public, max-age=0, s-maxage=3, must-revalidate");
+    // A fight's summary is the same for everyone and polled on fight night;
+    // a scorer's profile is left to this server's own short cache.
+    if (match && !mineRoute) res.setHeader(EDGE_CACHE_HEADER, EDGE.live);
     res.setHeader("X-Content-Type-Options", "nosniff");
     const send = (data: unknown, status = 200) => { res.statusCode = status; res.end(req.method === "HEAD" ? undefined : JSON.stringify(data)); };
     try {
@@ -257,6 +260,7 @@ export function createScoringHandler(
       }
     } catch (error) {
       res.setHeader("Cache-Control", "private, no-store");
+      res.removeHeader(EDGE_CACHE_HEADER);
       const busy = error instanceof Error && /database is locked|SQLITE_BUSY/.test(error.message);
       const status = error instanceof ScoringError ? error.status : busy ? 503 : 500;
       if (status === 429 || status === 503) res.setHeader("Retry-After", "5");

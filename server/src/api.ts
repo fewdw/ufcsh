@@ -33,7 +33,7 @@ import { HttpObservability, UNCOUNTED_ROUTES, pageRouteGroup, routeGroup } from 
 import { isAutomated, sourceOf } from "./visitors.ts";
 import { TrafficHistory } from "./traffic-history.ts";
 import { createRepairRunner } from "./repair-guard.ts";
-import { publicApi, cachePolicy, canonicalApiKey, clientAddress, RateLimiter, STATS_PAGE_OPENING } from "./api-policy.ts";
+import { publicApi, cachePolicy, canonicalApiKey, clientAddress, EDGE, EDGE_CACHE_HEADER, RateLimiter, STATS_PAGE_OPENING } from "./api-policy.ts";
 import { canonicalMethod, log, normName, todayIso } from "./util.ts";
 import { currentRanking, currentRankings, rankingEntering, rankingSnapshot, rankingTimeline } from "./ranking-history.ts";
 import { rankingArchive } from "./ranking-archive.ts";
@@ -68,9 +68,19 @@ import { syncCareerRecord } from "./career-records.ts";
 import { summarizeCard } from "./card-stats.ts";
 import { panelCards } from "./judge-scorecards.ts";
 import { storedMedia, verifiedDeductions } from "./point-deductions.ts";
-import { injectPageSeo, pageSeo, SITE_URL, sitemap, type PageSeo } from "./seo.ts";
+import { timingRows } from "./page-timing.ts";
+import { injectPageSeo, pageSeo as routeSeo, SITE_URL, sitemap, type PageSeo } from "./seo.ts";
 import { renderShareImage, type ShareCard, type SharePhoto } from "./og-images.ts";
-export { pageSeo, sitemap };
+import { landingEvent } from "./landing-event.ts";
+export { sitemap };
+
+/** A page's SEO lines; "/" also names the card it will open, so the page's
+ *  first script asks for that card alongside the list instead of after it. */
+export function pageSeo(pathname: string): PageSeo {
+  const seo = routeSeo(pathname);
+  if (seo.status !== 200 || (pathname !== "/" && pathname !== "/index.html")) return seo;
+  return { ...seo, landing: landingEvent(eventsList())?.id };
+}
 import { judgeProfile, officialSlug, officialsDirectory, refereeProfile, searchOfficials } from "./officials.ts";
 import { comebacksList, controversialList, controversyLabel, homeRecord, judgeExtras, matchupJudging, withNumbers } from "./judging.ts";
 import { searchAliases } from "./search-aliases.ts";
@@ -399,6 +409,10 @@ function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingTy
 
 function listEvents(): unknown {
   if (process.env.SYNC_MODE !== "external" && process.env.NO_SYNC !== "1") void syncLiveEvents().catch(err => log("live events refresh failed:", String(err)));
+  return eventsList();
+}
+
+function eventsList() {
   const next = nextEventDate();
   const rows = prepared(`
       SELECT e.id, e.name, e.date, e.location, e.complete, e.main_card_at, e.prelims_at, e.early_prelims_at, COUNT(f.id) AS fight_count
@@ -2003,8 +2017,10 @@ function isAdmin(req: http.IncomingMessage): boolean {
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
+/** `edge` is Cloudflare's lifetime for an answer every reader shares (`EDGE`);
+ *  only a 200 carries it. */
 export function sendRepresentation(req: http.IncomingMessage, res: http.ServerResponse, value: Representation,
-  cacheControl: string, contentType = "application/json; charset=utf-8"): void {
+  cacheControl: string, contentType = "application/json; charset=utf-8", edge?: string): void {
   if (res.destroyed || res.writableEnded) return;
   const headers: Record<string, string | number> = {
     "Content-Type": contentType,
@@ -2013,6 +2029,7 @@ export function sendRepresentation(req: http.IncomingMessage, res: http.ServerRe
     "ETag": value.etag,
     "X-Content-Type-Options": "nosniff",
   };
+  if (edge && value.status === 200) headers[EDGE_CACHE_HEADER] = edge;
   if (value.status === 200 && cacheControl !== "no-store" && matchesEtag(req.headers["if-none-match"], value.etag)) {
     res.writeHead(304, headers);
     res.end();
@@ -2157,7 +2174,7 @@ export async function serveStatic(req: http.IncomingMessage, res: http.ServerRes
     res.end();
     return;
   }
-  sendRepresentation(req, res, page, "no-cache", "text/html");
+  sendRepresentation(req, res, page, "no-cache", "text/html", EDGE.page);
 }
 
 // ---------------------------------------------------------------------------
@@ -2735,6 +2752,9 @@ export function startApi(port: number): http.Server {
     // scripts or styles, so it cannot break the app or sign-in.
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
+    // Nothing is kept by a browser or Cloudflare unless its handler says so:
+    // a personal answer that forgot its header must never be shared.
+    res.setHeader("Cache-Control", "no-store");
     res.on("finish", () => {
       if (res.statusCode >= 500) failures++;
       const pathname = (req.url ?? "/").split("?")[0];
@@ -2764,7 +2784,8 @@ export function startApi(port: number): http.Server {
       if ((req.url?.length ?? 0) > 16_384) return await sendJson(req, res, { error: "URL too long" }, 414);
       const url = new URL(req.url ?? "/", "http://localhost");
       const p = url.pathname;
-      if (p === "/api/pageview") {
+      // Page views, and how the first page of each visit loaded (page-timing.ts).
+      if (p === "/api/pageview" || p === "/api/timing") {
         res.setHeader("Cache-Control", "no-store");
         if (req.method !== "POST") {
           res.setHeader("Allow", "POST");
@@ -2787,6 +2808,15 @@ export function startApi(port: number): http.Server {
           size += chunk.length;
           if (size > 400) return await sendJson(req, res, { error: "path too long" }, 413);
           chunks.push(chunk);
+        }
+        if (p === "/api/timing") {
+          const userAgent = String(req.headers["user-agent"] ?? "");
+          const rows = timingRows(Buffer.concat(chunks).toString("utf8"), userAgent);
+          if (!rows) return await sendJson(req, res, { error: "unknown timing" }, 400);
+          if (!isAutomated(userAgent)) for (const row of rows) trafficHistory.record(row.route, 200, row.ms);
+          res.writeHead(204);
+          res.end();
+          return;
         }
         // The path, then this browser's random visitor id, then — on the first
         // page of a visit only — the referring site's host (maybe empty).
@@ -2858,7 +2888,9 @@ export function startApi(port: number): http.Server {
       if (p === "/api/live/odds") {
         // ?fight= prices any bout, for previewing the pill on a dev site.
         const fightId = url.searchParams.get("fight");
-        if (fightId === null) return await sendJson(req, res, await liveOdds.answer());
+        // Every reader polls the same answer: Cloudflare holds it two seconds.
+        if (fightId === null) return sendRepresentation(req, res, await representation({ json: JSON.stringify(await liveOdds.answer()), status: 200 }),
+          "no-cache", undefined, EDGE.odds);
         if (!previewOdds || !/^[a-f0-9]{16}$/i.test(fightId)) return await sendJson(req, res, { error: "not found" }, 404);
         const row = prepared("SELECT f.id, f.f1_id, f.f1_name, f.f2_id, f.f2_name, e.date FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?")
           .get(fightId) as { id: string; f1_id: string; f1_name: string; f2_id: string; f2_name: string; date: string } | undefined;
@@ -2896,7 +2928,8 @@ export function startApi(port: number): http.Server {
         const asked = performance.now();
         const answer = await publicAnswer(url);
         answerTimes.set(res, performance.now() - asked);
-        return sendRepresentation(req, res, answer, cachePolicy(url).control);
+        const policy = cachePolicy(url);
+        return sendRepresentation(req, res, answer, policy.control, undefined, policy.edge);
       }
       if (p === "/api/status" || p === "/api/metrics") {
         if (!isAdmin(req)) return await sendJson(req, res, { error: "authentication required" }, 401);

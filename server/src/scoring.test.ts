@@ -678,6 +678,8 @@ test("HTTP isolation, validation, origin protection, throttling and 300 concurre
   assert.equal(summary.totals.avg1, 30);
   const mine = await fetch(base + "/mine", { headers: { Authorization: "Bearer load_0" } });
   assert.match(mine.headers.get("cache-control")!, /private, no-store/);
+  assert.equal(mine.headers.get("cloudflare-cdn-cache-control"), null);
+  assert.match((await fetch(base)).headers.get("cloudflare-cdn-cache-control")!, /^public, max-age=2,/);
   assert.equal((await mine.json() as any).rounds.length, 3);
   const races = await Promise.all([put("load_0", { revision: 1, rounds }), put("load_0", { revision: 1, rounds })]);
   assert.deepEqual(races.map(r => r.status).sort(), [200, 409]);
@@ -700,6 +702,7 @@ test("HTTP isolation, validation, origin protection, throttling and 300 concurre
   assert.equal((await fetch(`${profiles}/mine`, { method: "DELETE", headers: { Authorization: "Bearer x" } })).status, 405);
   const anyone = await fetch(`${profiles}/${me.publicId}`);
   assert.match(anyone.headers.get("cache-control")!, /^public/);
+  assert.equal(anyone.headers.get("cloudflare-cdn-cache-control"), null, "profiles stay in this server's cache alone");
   assert.equal((await anyone.json() as any).scorer.displayName, me.displayName);
   assert.equal((await fetch(`${profiles}/00000000-0000-4000-8000-000000000000`)).status, 404);
   assert.equal((await fetch(`${profiles}/${me.publicId}?offset=-1`)).status, 400);

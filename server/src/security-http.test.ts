@@ -33,6 +33,19 @@ test("HTTP security holds across alternate page paths and arbitrary resource URL
     ...init, signal: AbortSignal.timeout(10_000),
   });
 
+  await t.test("only shared answers are held at the edge; anything else is kept nowhere", async () => {
+    const page = await request("/");
+    assert.equal(page.status, 200);
+    assert.equal(page.headers.get("cache-control"), "no-cache");
+    assert.match(page.headers.get("cloudflare-cdn-cache-control") ?? "", /^public, max-age=60,/);
+    for (const pathname of ["/missing-page", "/api/fighters/ffffffffffffffff", "/api/status", "/api/admin/bugs", "/api/profiles/mine",
+      "/api/fights/ffffffffffffffff/scores/mine", "/api/fights/ffffffffffffffff/predictions/mine", "/healthz"]) {
+      const response = await request(pathname);
+      assert.equal(response.headers.get("cloudflare-cdn-cache-control"), null, pathname);
+      assert.match(response.headers.get("cache-control") ?? "", /no-store|no-cache/, pathname);
+    }
+  });
+
   await t.test("framing protection covers the SPA, alternate admin spellings and errors", async () => {
     // A SPA can navigate to admin without another document response. Its router
     // also accepts case-insensitive and percent-encoded versions of /admin.

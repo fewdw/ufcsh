@@ -171,6 +171,17 @@ const ROUTE_INFO: Record<string, { name: string; path: string }> = {
   health: { name: "Health checks", path: "/healthz · /readyz" },
   monitoring: { name: "Monitoring API", path: "/api/metrics · /api/status" },
   pageview_beacon: { name: "Page view signals", path: "/api/pageview" },
+  timing_beacon: { name: "Load time signals", path: "/api/timing" },
+  rum_ttfb_phone: { name: "First byte, phones", path: "page requested → first byte" },
+  rum_ttfb_desktop: { name: "First byte, desktops", path: "page requested → first byte" },
+  rum_fcp_phone: { name: "First paint, phones", path: "page requested → anything drawn" },
+  rum_fcp_desktop: { name: "First paint, desktops", path: "page requested → anything drawn" },
+  rum_lcp_phone: { name: "Page drawn, phones", path: "largest contentful paint" },
+  rum_lcp_desktop: { name: "Page drawn, desktops", path: "largest contentful paint" },
+  "rum_lcp_net_4g": { name: "Page drawn on 4G or wifi", path: "largest contentful paint, Chromium" },
+  "rum_lcp_net_3g": { name: "Page drawn on 3G", path: "largest contentful paint, Chromium" },
+  "rum_lcp_net_2g": { name: "Page drawn on 2G", path: "largest contentful paint, Chromium" },
+  "rum_lcp_net_slow-2g": { name: "Page drawn on slow 2G", path: "largest contentful paint, Chromium" },
   api_other: { name: "Other API", path: "/api/*" },
 };
 
@@ -193,6 +204,8 @@ export type Traffic = {
   dailyVisitors: { days: number; average: number; peak: number; peakDay: number | null };
   series: { at: number; requests: number; errors: number; throttled: number; pageViews: number; p95Ms: number | null; visitors: number; people: number; returning: number }[];
   routes: (Summary & { route: string; pageViews: number })[];
+  /** Real readers' page loads, timed in their browsers (server `page-timing.ts`). */
+  loadTimes: { route: string; loads: number; p50Ms: number; p75Ms: number; p95Ms: number }[];
   community: { accounts: number; comments: number; bets: number };
   /** Browsers that ran the app and sent a page view (server `visitors.ts`). */
   people: {
