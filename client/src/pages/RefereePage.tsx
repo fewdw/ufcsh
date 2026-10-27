@@ -109,7 +109,8 @@ export default function RefereePage() {
       },
       { key: "dq", chip: "DQ", title: "Disqualifications", detail: `UFC ${b.counts.dq} of ${b.fights.toLocaleString()}`, value: s.counts.dq,
         selected: f.result === "dq", onSelect: () => filters.set("result", f.result === "dq" ? null : "dq") },
-      { key: "pts", chip: "PTS", title: "Point deductions", value: s.deductions, hint: "Counted where the official result names one, so this is a floor.",
+      { key: "pts", chip: "PTS", title: "Point deductions", detail: `UFC ${b.deductions} of ${b.fights.toLocaleString()}`, value: s.deductions,
+        hint: "From MMA Decisions and Verdict MMA on decisions, and UFCStats' result notes. Few finishes record one, so this is a floor.",
         selected: f.view === "incidents", onSelect: () => filters.set("view", f.view === "incidents" ? null : "incidents") },
     ]} />
     <RankRows title="Finishes by round" rows={s.stoppage_rounds.map((entry) => {
@@ -121,6 +122,12 @@ export default function RefereePage() {
       };
     })} />
     <YearBars title="Bouts by year" data={data.by_year} unit="bouts" marked="finishes"
+      from={filters.params.get("from")} to={filters.params.get("to")} onPick={filters.pickYear} />
+    <YearBars title="Point deductions by year" data={data.deductions_by_year} unit="deductions"
+      label={(entry) => {
+        const bouts = data.deductions_by_year.find((row) => row.year === entry.year)?.bouts ?? 0;
+        return `${entry.year} · ${entry.n || "No"} ${entry.n === 1 ? "deduction" : "deductions"} in ${bouts.toLocaleString()} ${bouts === 1 ? "bout" : "bouts"}`;
+      }}
       from={filters.params.get("from")} to={filters.params.get("to")} onPick={filters.pickYear} />
     <RankRows title="Refereed most" rows={data.regulars.map((fighter, index) => ({
       key: fighter.id, chip: index + 1, chipClass: TOP(index),
@@ -153,7 +160,8 @@ export default function RefereePage() {
               how={formatMethod(row.method, row.round != null ? String(row.round) : null, row.time) || row.result.toUpperCase()}
               f1={row.f1} f2={row.f2} division={row.division} note={row.title ? <TitleNote /> : null}
               eventName={row.event_name} date={row.date} fightId={row.fight_id}
-              extra={row.details && row.result !== "dec" ? <p className="text-[11px] leading-4 text-zinc-400">{row.details}</p> : null} />
+              extra={row.deductions || (row.details && row.result !== "dec")
+                ? <p className="text-[11px] leading-4 text-zinc-400">{row.deductions ? `Point deducted · ${row.deductions}` : row.details}</p> : null} />
           ))}
         </div>
       ) : <p className="px-5 py-8 text-center text-sm text-zinc-500">No bouts match these filters.</p>}
