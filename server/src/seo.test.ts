@@ -33,6 +33,14 @@ test("page metadata is escaped and the preview becomes a large image", () => {
   assert.match(out, /<noscript><p>hi<\/p>/);
 });
 
+test("the home page names the card it opens, and only a card id", () => {
+  const html = `<!doctype html>\n<html lang="en"><head><title>x</title><link rel="canonical" href="x" /></head></html>`;
+  const page = { title: "t", description: "d", canonical: "https://ufc.sh/", type: "website" as const, status: 200 };
+  assert.match(injectPageSeo(html, "/", { ...page, landing: "0123456789abcdef" }), /<html lang="en" data-landing="0123456789abcdef">/);
+  assert.doesNotMatch(injectPageSeo(html, "/", { ...page, landing: `"><script>` }), /data-landing/);
+  assert.doesNotMatch(injectPageSeo(html, "/", page), /data-landing/);
+});
+
 test("stream overlays load for a streaming tool but are never indexed", () => {
   for (const path of ["/overlay", "/overlay/7a2c841693b54dd7"]) {
     const seo = pageSeo(path);

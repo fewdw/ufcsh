@@ -730,3 +730,21 @@ of the archive on dev-pc:
 
 All 980 answers byte-identical to before. Next if quiet hours stay spiky: log
 queue wait and build time separately for detail reads over 100 ms.
+
+## Opening card on "/" (2026-10-26)
+
+On a first visit, "/" asked for the card it opens only after `/api/events`
+(802 cards, 128 KB, 25 KB gzip) had arrived and been read: HTML, then the
+list, then the card, three round trips one after another. On slow wifi each
+is the full network delay. The server now names that card on `<html
+data-landing>` (`landingEvent`, shared with the client from
+`server/src/landing-event.ts`), and the page's first script asks for it
+beside the list: one round trip fewer. Picking it costs ~20 ms on a cold
+call, then the page is served from cache. A name gone stale (the page is kept
+up to a minute) costs one unused request; the old check after the list still
+asks for the right card.
+
+Checked and left alone: the list's fields are all used. Brotli would save
+4–20% over gzip on the largest answers (list 25.2 → 23.7 KB, card 23.0 →
+19.7 KB, rankings 21.9 → 17.4 KB at quality 9) for 15–20 ms of CPU each and a
+second compressed copy in the response cache.
