@@ -1,6 +1,7 @@
 import { completedScorecardRounds, communityScorecard } from "./community-scorecards.ts";
 import { fightIndex, type IndexedFight } from "./fight-index.ts";
 import { mergeJudgeRounds, type JudgeCard } from "./judge-scorecards.ts";
+import { verifiedDeductions, type PointDeduction } from "./point-deduction-rules.ts";
 import { searchList } from "./fuzzy.ts";
 import { givenName, normName } from "./util.ts";
 
@@ -33,6 +34,9 @@ export type Officiated = {
   zones: [Zones[], Zones[]] | null;
   /** UFCStats' own "Details" line: the finishing technique, a foul, a deduction. */
   details: string | null;
+  /** Points the referee took, where a stored record fits every judge's card
+   *  (the same ones the matchup shows). */
+  deductions: PointDeduction[];
 };
 
 export type Identity = { key: string; slug: string; name: string; fights: Officiated[] };
@@ -140,6 +144,7 @@ function officiatedOf(fight: IndexedFight): Officiated {
     // Decisions for the stats card, finishes after two rounds for the comebacks.
     zones: fight.method?.endsWith("-DEC") || ((fight.method === "KO/TKO" || fight.method === "SUB") && (fight.round ?? 0) >= 3) ? zonesOf(detail) : null,
     details: typeof detail?.detailsText === "string" && detail.detailsText.trim() ? detail.detailsText.trim() : null,
+    deductions: fight.row.deductions_json ? verifiedDeductions(merged, fight.row.deductions_json) : [],
   };
 }
 
@@ -517,8 +522,17 @@ export function resultClass(fight: IndexedFight): ResultClass {
 
 const DEDUCTION = /\b(?:point|points)\s+deducted\b|\bdeduct(?:ed|ion)\b/i;
 
+/** Deductions in a bout: each one its record lists, else one where UFCStats'
+ *  result line names it (finishes have no other record). */
+const deductionCount = (officiated: Officiated) =>
+  officiated.deductions.length || (officiated.details && DEDUCTION.test(officiated.details) ? 1 : 0);
+
 /** A disqualification or a point taken away. */
-const hadIncident = (officiated: Officiated) => resultClass(officiated.fight) === "dq" || Boolean(officiated.details && DEDUCTION.test(officiated.details));
+const hadIncident = (officiated: Officiated) => resultClass(officiated.fight) === "dq" || deductionCount(officiated) > 0;
+
+/** "R2 −1 Tracy Cortez: Low blow" for each recorded deduction. */
+const deductionNote = ({ fight, deductions }: Officiated) => deductions.map((item) =>
+  `R${item.round} −${item.points} ${fight.sides[item.side === "f1" ? 0 : 1].name}${item.reason ? `: ${item.reason}` : ""}`).join("; ") || null;
 
 function tally(fights: Officiated[]) {
   const counts: Record<ResultClass, number> = { ko: 0, sub: 0, dec: 0, dq: 0, nc: 0, draw: 0, other: 0 };
@@ -538,7 +552,7 @@ function tally(fights: Officiated[]) {
       stoppageRounds.set(fight.round, (stoppageRounds.get(fight.round) ?? 0) + 1);
       if (fight.elapsed != null) { stoppageSeconds += fight.elapsed; stoppagesTimed += 1; }
     }
-    if (officiated.details && DEDUCTION.test(officiated.details)) deductions += 1;
+    deductions += deductionCount(officiated);
   }
   const decided = fights.length - counts.nc - counts.other;
   return {
@@ -584,6 +598,12 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
   // rate reads against the era and divisions it came from, not a bare number.
   const baseline = index.fights.filter((officiated) => officiated.referee && matchesBase(officiated, filters));
   const page = fights.slice(filters.offset, filters.offset + filters.limit);
+  // Deductions a year across every year they worked, so a quiet year reads as
+  // none rather than vanishing from the axis.
+  const career = referee.fights.filter((officiated) => matchesBase(officiated, { ...filters, from: null, to: null }, found));
+  const deductionYears = byYear(career, (officiated) => officiated.fight, () => false)
+    .map((entry) => ({ ...entry, n: 0, bouts: entry.n }));
+  for (const officiated of career) deductionYears.find((entry) => entry.year === officiated.fight.year)!.n += deductionCount(officiated);
   return {
     kind: "referee",
     slug: referee.slug,
@@ -592,8 +612,8 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
     filters: { ...filters, q: params.get("q") ?? "" },
     result_counts: Object.fromEntries(results),
     summary: tally(base),
-    by_year: byYear(referee.fights.filter((officiated) => matchesBase(officiated, { ...filters, from: null, to: null }, found)),
-      (officiated) => officiated.fight, (officiated) => resultClass(officiated.fight) === "ko" || resultClass(officiated.fight) === "sub"),
+    by_year: byYear(career, (officiated) => officiated.fight, (officiated) => resultClass(officiated.fight) === "ko" || resultClass(officiated.fight) === "sub"),
+    deductions_by_year: deductionYears.some((entry) => entry.n) ? deductionYears : [],
     regulars: [...regulars.values()].filter((entry) => entry.n >= 2).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)).slice(0, 10),
     baseline: { ...tally(baseline), label: "Every UFC bout with a named referee under the same date and division filters" },
     incidents: base.filter(hadIncident)
@@ -601,7 +621,7 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
         fight_id: officiated.fight.id, date: officiated.fight.date, event_name: officiated.fight.eventName,
         f1: fighterRef(officiated.fight, 0), f2: fighterRef(officiated.fight, 1),
         kind: resultClass(officiated.fight) === "dq" ? "Disqualification" : "Point deduction",
-        details: officiated.details,
+        details: deductionNote(officiated) ?? officiated.details,
       })),
     total: fights.length,
     offset: filters.offset,
@@ -613,7 +633,7 @@ export function refereeProfile(slug: string, params: URLSearchParams): unknown |
         division: fight.weightClass, title: isTitle(fight),
         f1: fighterRef(fight, 0), f2: fighterRef(fight, 1),
         result: resultClass(fight), method: fight.method, method_details: fight.methodDetails,
-        round: fight.round, time: fight.time, details: officiated.details,
+        round: fight.round, time: fight.time, details: officiated.details, deductions: deductionNote(officiated),
       };
     }),
   };
