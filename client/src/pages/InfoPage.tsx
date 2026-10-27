@@ -101,11 +101,9 @@ export default function InfoPage() {
           </Section>
 
           <Section id="changelog">
-            <p><time dateTime="2026-10-26">October 26, 2026</time></p>
+            <p><time dateTime="2026-10-27">October 27, 2026</time></p>
             <ul>
-              <li>Pages and live fight-night data are served from Cloudflare's network near you, so the site stays fast when many fans are on at once.</li>
-              <li>The home page loads its card sooner on slow connections.</li>
-              <li>Tapped tooltips open above your finger and follow it as you drag.</li>
+              <li>When a data source asks us to slow down, every sync waits it out together, so odds and cancelled bouts recover cleanly instead of failing.</li>
             </ul>
           </Section>
         </div>
