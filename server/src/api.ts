@@ -68,9 +68,18 @@ import { syncCareerRecord } from "./career-records.ts";
 import { summarizeCard } from "./card-stats.ts";
 import { panelCards } from "./judge-scorecards.ts";
 import { storedMedia, verifiedDeductions } from "./point-deductions.ts";
-import { injectPageSeo, pageSeo, SITE_URL, sitemap, type PageSeo } from "./seo.ts";
+import { injectPageSeo, pageSeo as routeSeo, SITE_URL, sitemap, type PageSeo } from "./seo.ts";
 import { renderShareImage, type ShareCard, type SharePhoto } from "./og-images.ts";
-export { pageSeo, sitemap };
+import { landingEvent } from "./landing-event.ts";
+export { sitemap };
+
+/** A page's SEO lines; "/" also names the card it will open, so the page's
+ *  first script asks for that card alongside the list instead of after it. */
+export function pageSeo(pathname: string): PageSeo {
+  const seo = routeSeo(pathname);
+  if (seo.status !== 200 || (pathname !== "/" && pathname !== "/index.html")) return seo;
+  return { ...seo, landing: landingEvent(eventsList())?.id };
+}
 import { judgeProfile, officialSlug, officialsDirectory, refereeProfile, searchOfficials } from "./officials.ts";
 import { comebacksList, controversialList, controversyLabel, homeRecord, judgeExtras, matchupJudging, withNumbers } from "./judging.ts";
 import { searchAliases } from "./search-aliases.ts";
@@ -399,6 +408,10 @@ function fightRowToJson(f: any, includeDetail = false, eventDate = "", rankingTy
 
 function listEvents(): unknown {
   if (process.env.SYNC_MODE !== "external" && process.env.NO_SYNC !== "1") void syncLiveEvents().catch(err => log("live events refresh failed:", String(err)));
+  return eventsList();
+}
+
+function eventsList() {
   const next = nextEventDate();
   const rows = prepared(`
       SELECT e.id, e.name, e.date, e.location, e.complete, e.main_card_at, e.prelims_at, e.early_prelims_at, COUNT(f.id) AS fight_count

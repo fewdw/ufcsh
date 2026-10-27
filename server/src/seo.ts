@@ -25,6 +25,8 @@ export type PageSeo = {
   image?: string | null;
   status: number;
   noindex?: boolean;
+  /** On "/": the card it opens (`landingEvent`), named on `<html data-landing>`. */
+  landing?: string;
   /** Plain HTML placed in <noscript>: what the page is, with links onward. */
   summary?: string;
   /** With status 301: the page this address plainly means. */
@@ -351,6 +353,7 @@ export function injectPageSeo(html: string, pathname: string, seo = pageSeo(path
     const json = JSON.stringify(seo.structuredData).replace(/</g, "\\u003c");
     result = result.replace("</head>", `    <script id="route-structured-data" type="application/ld+json">${json}</script>\n  </head>`);
   }
+  if (seo.landing && /^[a-f0-9]{16}$/.test(seo.landing)) result = result.replace(/<html([^>]*)>/, (_, attributes) => `<html${attributes} data-landing="${seo.landing}">`);
   if (seo.summary) result = result.replace(/<noscript>[\s\S]*?<\/noscript>/, () => `<noscript>${seo.summary}<p>ufc.sh needs JavaScript for its interactive cards, charts and odds.</p></noscript>`);
   return result;
 }
