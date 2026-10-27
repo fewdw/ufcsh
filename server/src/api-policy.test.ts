@@ -47,4 +47,14 @@ test("rate limits refill even while rejected requests continue", () => {
 test("untrusted clients cannot change their identity with proxy headers", () => {
   const req = { socket: { remoteAddress: "203.0.113.5" }, headers: { "x-real-ip": "192.0.2.1" } } as unknown as IncomingMessage;
   assert.equal(clientAddress(req), "203.0.113.5");
+  const previous = process.env.TRUSTED_PROXY_IPS;
+  try {
+    process.env.TRUSTED_PROXY_IPS = "10.0.0.2, 203.0.113.5";
+    const proxied = { socket: { remoteAddress: "203.0.113.5" }, headers: { "x-real-ip": "192.0.2.1" } } as unknown as IncomingMessage;
+    assert.equal(clientAddress(proxied), "192.0.2.1", "a changed proxy list is read again");
+    const forged = { socket: { remoteAddress: "203.0.113.5" }, headers: { "x-real-ip": "not-an-ip" } } as unknown as IncomingMessage;
+    assert.equal(clientAddress(forged), "203.0.113.5");
+  } finally {
+    if (previous === undefined) delete process.env.TRUSTED_PROXY_IPS; else process.env.TRUSTED_PROXY_IPS = previous;
+  }
 });
