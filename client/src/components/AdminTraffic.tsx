@@ -6,6 +6,14 @@ import {
   type Traffic, type TrafficRange,
 } from "./adminKit";
 
+const LOAD_ORDER = ["ttfb_phone", "ttfb_desktop", "fcp_phone", "fcp_desktop", "lcp_phone", "lcp_desktop",
+  "lcp_net_4g", "lcp_net_3g", "lcp_net_2g", "lcp_net_slow-2g"].map(name => `rum_${name}`);
+/** Google's "needs improvement" and "poor" lines for each measure, at p75. */
+const LOAD_LIMITS: Record<string, [number, number]> = { ttfb: [800, 1800], fcp: [1800, 3000], lcp: [2500, 4000] };
+function loadLevel(route: string, p75Ms: number): string {
+  const [warn, poor] = LOAD_LIMITS[route.split("_")[1]] ?? [Infinity, Infinity];
+  return p75Ms > poor ? "bg-rose-50" : p75Ms > warn ? "bg-amber-50" : "";
+}
 const DEVICE: Record<string, string> = { phone: "Phone", tablet: "Tablet", desktop: "Desktop" };
 const SOURCE: Record<string, string> = { direct: "Direct, bookmarks and apps", other: "Other sites" };
 
@@ -101,6 +109,34 @@ export default function AdminTraffic() {
                       </tr>
                     ))}
                     {!shown.routes.length ? <tr><td colSpan={9} className="px-4 py-6 text-center text-zinc-400">Nothing recorded in this range yet.</td></tr> : null}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section className="flex flex-col gap-2">
+            <SectionHead title="Load times" note="How fast the first page of each visit reached real readers, timed in their browsers: the network, Cloudflare and this server together. p75 is the usual reading: three loads in four were this fast or faster." />
+            <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-xs">
+                  <thead className="bg-zinc-50 text-left text-[11px] uppercase tracking-wide text-zinc-500">
+                    <tr>
+                      <th className="px-4 py-2 font-semibold">Measure, last {label}</th>
+                      {["Loads", "Median", "p75", "p95"].map(name => <th key={name} className="px-3 py-2 text-right font-semibold">{name}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100 tabular-nums">
+                    {[...shown.loadTimes].sort((a, b) => LOAD_ORDER.indexOf(a.route) - LOAD_ORDER.indexOf(b.route)).map(row => (
+                      <tr key={row.route} className={loadLevel(row.route, row.p75Ms)}>
+                        <td className="px-4 py-2"><b className="block font-medium text-zinc-900">{routeName(row.route)}</b><code className="text-[11px] text-zinc-500">{routePath(row.route)}</code></td>
+                        <td className="px-3 py-2 text-right font-semibold text-zinc-900">{whole(row.loads)}</td>
+                        <td className="px-3 py-2 text-right text-zinc-600">{ms(row.p50Ms)}</td>
+                        <td className="px-3 py-2 text-right text-zinc-800">{ms(row.p75Ms)}</td>
+                        <td className="px-3 py-2 text-right text-zinc-600">{ms(row.p95Ms)}</td>
+                      </tr>
+                    ))}
+                    {!shown.loadTimes.length ? <tr><td colSpan={5} className="px-4 py-6 text-center text-zinc-400">No load times recorded in this range yet.</td></tr> : null}
                   </tbody>
                 </table>
               </div>

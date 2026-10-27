@@ -64,6 +64,12 @@ test("production HTTP uses workers, shared responses, validators and admin autho
   const pageView = await request("/api/pageview", { method: "POST", headers: { "Content-Type": "text/plain" }, body: "/profiles/fewdw" });
   assert.equal(pageView.status, 204);
   assert.equal(pageView.headers.get("cache-control"), "no-store");
+  const timing = (body: string, headers: Record<string, string> = {}) =>
+    request("/api/timing", { method: "POST", headers: { "Content-Type": "text/plain", ...headers }, body });
+  assert.equal((await timing("120 900 2400 4g")).status, 204);
+  assert.equal((await timing("120 900 2400 9g")).status, 400);
+  assert.equal((await timing("120 900 2400 4g", { Origin: "https://attacker.example" })).status, 403);
+  assert.equal((await request("/api/timing")).status, 405);
   // The first page of a visit also names the browser and where it came from.
   assert.equal((await request("/api/pageview", { method: "POST", headers: { "Content-Type": "text/plain" }, body: "/stats\nabcdefghijklmnopqrstuv\nwww.reddit.com" })).status, 204);
   // Machine endpoints keep the shared token; the panel a person opens does not.

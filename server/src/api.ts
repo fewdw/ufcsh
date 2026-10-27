@@ -68,6 +68,7 @@ import { syncCareerRecord } from "./career-records.ts";
 import { summarizeCard } from "./card-stats.ts";
 import { panelCards } from "./judge-scorecards.ts";
 import { storedMedia, verifiedDeductions } from "./point-deductions.ts";
+import { timingRows } from "./page-timing.ts";
 import { injectPageSeo, pageSeo as routeSeo, SITE_URL, sitemap, type PageSeo } from "./seo.ts";
 import { renderShareImage, type ShareCard, type SharePhoto } from "./og-images.ts";
 import { landingEvent } from "./landing-event.ts";
@@ -2783,7 +2784,8 @@ export function startApi(port: number): http.Server {
       if ((req.url?.length ?? 0) > 16_384) return await sendJson(req, res, { error: "URL too long" }, 414);
       const url = new URL(req.url ?? "/", "http://localhost");
       const p = url.pathname;
-      if (p === "/api/pageview") {
+      // Page views, and how the first page of each visit loaded (page-timing.ts).
+      if (p === "/api/pageview" || p === "/api/timing") {
         res.setHeader("Cache-Control", "no-store");
         if (req.method !== "POST") {
           res.setHeader("Allow", "POST");
@@ -2806,6 +2808,15 @@ export function startApi(port: number): http.Server {
           size += chunk.length;
           if (size > 400) return await sendJson(req, res, { error: "path too long" }, 413);
           chunks.push(chunk);
+        }
+        if (p === "/api/timing") {
+          const userAgent = String(req.headers["user-agent"] ?? "");
+          const rows = timingRows(Buffer.concat(chunks).toString("utf8"), userAgent);
+          if (!rows) return await sendJson(req, res, { error: "unknown timing" }, 400);
+          if (!isAutomated(userAgent)) for (const row of rows) trafficHistory.record(row.route, 200, row.ms);
+          res.writeHead(204);
+          res.end();
+          return;
         }
         // The path, then this browser's random visitor id, then — on the first
         // page of a visit only — the referring site's host (maybe empty).

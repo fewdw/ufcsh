@@ -29,6 +29,7 @@ jobs:
       - run: server/node_modules/.bin/tsc --noEmit -p server/tsconfig.json
       - run: npm run lint --prefix client
       - run: npm run build --prefix client
+      - run: node client/scripts/bundle-budget.ts
       # Exercise document security headers against the built SPA with an isolated empty database.
       - run: node --test server/src/security-http.test.ts
       - run: DOMAIN=example.test DEFAULT_ADMIN=admin@example.test ADMIN_TOKEN=test GRAFANA_ADMIN_PASSWORD=test docker compose --profile observability config --quiet
