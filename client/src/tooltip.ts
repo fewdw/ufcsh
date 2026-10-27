@@ -3,19 +3,20 @@ import { useCallback, useEffect, useId, useState } from "react";
 /** Tooltip positioning and open/close events, measured from the trigger in
  * viewport coordinates so the body-level bubble can't be clipped. */
 
-export type TipAnchor = { x: number; y: number; above: boolean };
+/** `below` is where an above bubble moves if it would leave the top of the screen. */
+export type TipAnchor = { x: number; y: number; above: boolean; below?: number };
 
 /** Half the widest bubble, so one near an edge is nudged back on screen. */
 const HALF_WIDTH = 132;
 const BELOW_SPACE = 96;
 
-function anchorFrom(box: DOMRect): TipAnchor {
+/** Below the trigger for a mouse or keyboard; above it for a tap, because a
+ * finger covers what is below, falling back below only if there's no room. */
+function anchorFrom(box: DOMRect, tap = false): TipAnchor {
+  const x = Math.min(Math.max(box.left + box.width / 2, HALF_WIDTH + 8), Math.max(HALF_WIDTH + 8, window.innerWidth - HALF_WIDTH - 8));
+  if (tap) return { x, y: box.top - 6, above: true, below: box.bottom + 6 };
   const above = box.bottom + BELOW_SPACE > window.innerHeight;
-  return {
-    x: Math.min(Math.max(box.left + box.width / 2, HALF_WIDTH + 8), Math.max(HALF_WIDTH + 8, window.innerWidth - HALF_WIDTH - 8)),
-    y: above ? box.top - 6 : box.bottom + 6,
-    above,
-  };
+  return { x, y: above ? box.top - 6 : box.bottom + 6, above };
 }
 
 /** Over the point given, whatever room is under it: a finger covers what is below. */
@@ -50,7 +51,7 @@ export function useTooltip() {
     closeOpen = hide;
     setAt(anchor);
   };
-  const show = (event: React.SyntheticEvent<HTMLElement>) => showAt(anchorFrom(event.currentTarget.getBoundingClientRect()));
+  const show = (event: React.SyntheticEvent<HTMLElement>, tap = false) => showAt(anchorFrom(event.currentTarget.getBoundingClientRect(), tap));
 
   const handlers = {
     onPointerEnter: (event: React.PointerEvent<HTMLElement>) => { if (event.pointerType === "mouse") show(event); },
@@ -58,9 +59,11 @@ export function useTooltip() {
     onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
       if (event.pointerType === "mouse") return;
       if (at) hide();
-      else show(event);
+      else show(event, true);
     },
-    onFocus: show,
+    // Keyboard focus only: a tap also focuses the button on some phones, which
+    // would move the tapped bubble back below.
+    onFocus: (event: React.FocusEvent<HTMLElement>) => { if (event.currentTarget.matches(":focus-visible")) show(event); },
     onBlur: hide,
     onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => event.key === "Escape" && hide(),
   };
