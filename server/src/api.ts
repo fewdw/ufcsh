@@ -33,7 +33,7 @@ import { HttpObservability, UNCOUNTED_ROUTES, pageRouteGroup, routeGroup } from 
 import { isAutomated, sourceOf } from "./visitors.ts";
 import { TrafficHistory } from "./traffic-history.ts";
 import { createRepairRunner } from "./repair-guard.ts";
-import { publicApi, cachePolicy, canonicalApiKey, clientAddress, RateLimiter, STATS_PAGE_OPENING } from "./api-policy.ts";
+import { publicApi, cachePolicy, canonicalApiKey, clientAddress, EDGE, EDGE_CACHE_HEADER, RateLimiter, STATS_PAGE_OPENING } from "./api-policy.ts";
 import { canonicalMethod, log, normName, todayIso } from "./util.ts";
 import { currentRanking, currentRankings, rankingEntering, rankingSnapshot, rankingTimeline } from "./ranking-history.ts";
 import { rankingArchive } from "./ranking-archive.ts";
@@ -2003,8 +2003,10 @@ function isAdmin(req: http.IncomingMessage): boolean {
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
+/** `edge` is Cloudflare's lifetime for an answer every reader shares (`EDGE`);
+ *  only a 200 carries it. */
 export function sendRepresentation(req: http.IncomingMessage, res: http.ServerResponse, value: Representation,
-  cacheControl: string, contentType = "application/json; charset=utf-8"): void {
+  cacheControl: string, contentType = "application/json; charset=utf-8", edge?: string): void {
   if (res.destroyed || res.writableEnded) return;
   const headers: Record<string, string | number> = {
     "Content-Type": contentType,
@@ -2013,6 +2015,7 @@ export function sendRepresentation(req: http.IncomingMessage, res: http.ServerRe
     "ETag": value.etag,
     "X-Content-Type-Options": "nosniff",
   };
+  if (edge && value.status === 200) headers[EDGE_CACHE_HEADER] = edge;
   if (value.status === 200 && cacheControl !== "no-store" && matchesEtag(req.headers["if-none-match"], value.etag)) {
     res.writeHead(304, headers);
     res.end();
@@ -2157,7 +2160,7 @@ export async function serveStatic(req: http.IncomingMessage, res: http.ServerRes
     res.end();
     return;
   }
-  sendRepresentation(req, res, page, "no-cache", "text/html");
+  sendRepresentation(req, res, page, "no-cache", "text/html", EDGE.page);
 }
 
 // ---------------------------------------------------------------------------
@@ -2735,6 +2738,9 @@ export function startApi(port: number): http.Server {
     // scripts or styles, so it cannot break the app or sign-in.
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
+    // Nothing is kept by a browser or Cloudflare unless its handler says so:
+    // a personal answer that forgot its header must never be shared.
+    res.setHeader("Cache-Control", "no-store");
     res.on("finish", () => {
       if (res.statusCode >= 500) failures++;
       const pathname = (req.url ?? "/").split("?")[0];
@@ -2858,7 +2864,9 @@ export function startApi(port: number): http.Server {
       if (p === "/api/live/odds") {
         // ?fight= prices any bout, for previewing the pill on a dev site.
         const fightId = url.searchParams.get("fight");
-        if (fightId === null) return await sendJson(req, res, await liveOdds.answer());
+        // Every reader polls the same answer: Cloudflare holds it two seconds.
+        if (fightId === null) return sendRepresentation(req, res, await representation({ json: JSON.stringify(await liveOdds.answer()), status: 200 }),
+          "no-cache", undefined, EDGE.odds);
         if (!previewOdds || !/^[a-f0-9]{16}$/i.test(fightId)) return await sendJson(req, res, { error: "not found" }, 404);
         const row = prepared("SELECT f.id, f.f1_id, f.f1_name, f.f2_id, f.f2_name, e.date FROM fights f JOIN events e ON e.id = f.event_id WHERE f.id = ?")
           .get(fightId) as { id: string; f1_id: string; f1_name: string; f2_id: string; f2_name: string; date: string } | undefined;
@@ -2896,7 +2904,8 @@ export function startApi(port: number): http.Server {
         const asked = performance.now();
         const answer = await publicAnswer(url);
         answerTimes.set(res, performance.now() - asked);
-        return sendRepresentation(req, res, answer, cachePolicy(url).control);
+        const policy = cachePolicy(url);
+        return sendRepresentation(req, res, answer, policy.control, undefined, policy.edge);
       }
       if (p === "/api/status" || p === "/api/metrics") {
         if (!isAdmin(req)) return await sendJson(req, res, { error: "authentication required" }, 401);
