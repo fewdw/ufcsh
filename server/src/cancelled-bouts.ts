@@ -1,5 +1,6 @@
 import { db, metaAgeMs, prepared, setMeta, touchMeta } from "./db.ts";
 import { fighterNamed, hasUfcFight } from "./fighter-identity.ts";
+import { HttpRateLimitError } from "./http.ts";
 import { fightOddsAllEvents, fightOddsCancelled, type FightOddsCancelled } from "./scrape/fightodds.ts";
 import { log, normName } from "./util.ts";
 
@@ -80,6 +81,9 @@ export async function syncCancelledBouts({ limit = 40, pk }: { limit?: number; p
         result.boards++;
         failedAt.delete(board.pk);
       } catch (err) {
+        // A host-wide cooldown says nothing about this board. Leave its
+        // saved snapshot and retry eligibility alone, and stop this pass.
+        if (err instanceof HttpRateLimitError) throw err;
         result.failed++;
         failedAt.set(board.pk, Date.now());
         db.prepare("UPDATE cancelled_boards SET error = ? WHERE pk = ?").run(String(err), board.pk);
