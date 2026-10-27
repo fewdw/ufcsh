@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { ErrorLog } from "./error-log.ts";
 import { SlowLog } from "./slow-log.ts";
 import { Visitors } from "./visitors.ts";
+import { isTimingRoute } from "./page-timing.ts";
 import { UNCOUNTED_ROUTES, MS_STEPS, addLatency, emptyLatency, estimatePercentile, mergeLatency, summarise, type Latency } from "./observability.ts";
 
 const HOUR = 3_600_000;
@@ -109,7 +110,8 @@ export class TrafficHistory {
     const rows = [...this.pending.values()];
     const site = new Map<number, { hour: number; route: string; latency: Latency; views: number }>();
     for (const row of rows) {
-      if (UNCOUNTED_ROUTES.has(row.route)) continue;
+      // Readers' load times are not requests this server answered.
+      if (UNCOUNTED_ROUTES.has(row.route) || isTimingRoute(row.route)) continue;
       let total = site.get(row.hour);
       if (!total) site.set(row.hour, total = { hour: row.hour, route: SITE, latency: emptyLatency(), views: 0 });
       mergeLatency(total.latency, row.latency);
@@ -191,9 +193,16 @@ export class TrafficHistory {
     const bucket = hourly ? HOUR : now - since > 400 * DAY ? 7 * DAY : DAY;
 
     const totals = this.db.prepare(`SELECT ${SUMS} FROM traffic_hours WHERE hour >= ? AND route = ?`).get(since, SITE) as Row;
-    const routes = (this.db.prepare(`SELECT route, ${SUMS} FROM traffic_hours WHERE hour >= ? AND route != ? GROUP BY route`).all(since, SITE) as Row[])
+    const rows = this.db.prepare(`SELECT route, ${SUMS} FROM traffic_hours WHERE hour >= ? AND route != ? GROUP BY route`).all(since, SITE) as Row[];
+    const routes = rows.filter(row => !isTimingRoute(String(row.route)))
       .map(row => ({ route: String(row.route), ...summarise(latencyOf(row)), pageViews: Number(row.views ?? 0) }))
       .sort((a, b) => b.requests - a.requests);
+    // p75 is how page-load measures are usually read: three loads in four as fast or faster.
+    const loadTimes = rows.filter(row => isTimingRoute(String(row.route))).map(row => {
+      const latency = latencyOf(row);
+      return { route: String(row.route), loads: latency.count, p50Ms: estimatePercentile(latency, 0.5),
+        p75Ms: estimatePercentile(latency, 0.75), p95Ms: estimatePercentile(latency, 0.95) };
+    });
 
     const buckets = new Map((this.db.prepare(`SELECT hour - (hour - ?) % ? AS at, ${SUMS} FROM traffic_hours WHERE hour >= ? AND route = ? GROUP BY at`)
       .all(since, bucket, since, SITE) as Row[]).map(row => [Number(row.at), row]));
@@ -234,6 +243,7 @@ export class TrafficHistory {
       },
       series,
       routes,
+      loadTimes,
       people: { firstRecordedAt: people.firstRecordedAt, unique: people.unique, daily: people.daily, windows: people.windows, breakdown: people.breakdown },
     };
   }

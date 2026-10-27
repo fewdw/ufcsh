@@ -9,7 +9,7 @@ import { ChevronDown, Flag, Moon, Shield, Sun } from "lucide-react";
 import { accountsEnabled, useAccount } from "./auth";
 import { rememberAdmin, useAdminResource, wasAdmin, type AdminSession } from "./admin";
 import { inMore, MORE_HOME, MoreGroups } from "./components/MoreNav";
-import { sendPageView } from "./pageViews";
+import { sendPageView, watchPageTiming } from "./pageViews";
 import { useSettings, withRanking } from "./settings";
 import { prefetch } from "./api";
 import { useLinkPrefetch, warmSections } from "./useLinkPrefetch";
@@ -253,6 +253,8 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const { settings } = useSettings();
   useLinkPrefetch(settings.rankingSource);
+
+  useEffect(() => watchPageTiming(wasAdmin), []);
 
   useEffect(() => {
     // React changes pages without a new document request. Count those views by

@@ -218,6 +218,8 @@ rerun affected checks. No browser was launched for infrastructure verification.
 | API p95 under a realistic mix at 2,000 req/s | under 500 ms |
 | Errors under that load | none (no 5xx, no dropped connections) |
 | Main client bundle (gzip) | under 130 KB; every page beyond Events loads on demand |
+| First load, every script and stylesheet `index.html` names (gzip) | under 185 KB, checked in CI (`client/scripts/bundle-budget.ts`); 166 KB on 2026-10-26 |
+| Real readers' LCP at p75 (Admin → Traffic → Load times) | under 2.5 s on phones |
 | Share image (`/og/*.jpg`) | under 100 KB, first render under 1.5 s alone |
 | Added memory per query worker for a new feature | stated in the change |
 
@@ -730,3 +732,17 @@ of the archive on dev-pc:
 
 All 980 answers byte-identical to before. Next if quiet hours stay spiky: log
 queue wait and build time separately for detail reads over 100 ms.
+
+## Real readers' load times (2026-10-26)
+
+Lighthouse and the load tests are lab numbers. Each visit's first page now
+reports how it actually loaded, timed in the reader's browser: first byte,
+first paint and largest paint (LCP), sent once as the tab is hidden, with the
+network the browser reports (Chromium only). The server adds phone or desktop
+from the browser's name and keeps them as `rum_*` rows in the hourly traffic
+history, outside the request totals. Admin → Traffic → Load times shows the
+median, p75 and p95 for any range, shaded at Google's "needs improvement" and
+"poor" lines. Background tabs, admins and automated browsers are left out.
+
+CI also fails when the first load's scripts and styles pass 185 KB gzip
+(166 KB today, 29 files).

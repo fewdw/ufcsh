@@ -39,6 +39,7 @@ export function routeGroup(pathname: string): string {
   if (pathname.startsWith("/api/images/")) return "images";
   if (pathname.startsWith("/api/profiles/")) return "profiles";
   if (pathname === "/api/pageview") return "pageview_beacon";
+  if (pathname === "/api/timing") return "timing_beacon";
   if (pathname.startsWith("/api/previews/")) return "previews";
   if (pathname === "/api/stats") return "stats";
   if (/^\/api\/fighters\/[a-f0-9]{16}\/stats$/i.test(pathname)) return "fighter_stats";
