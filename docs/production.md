@@ -60,9 +60,17 @@ it between hosts.
   while one refresh runs behind it, so no reader waits on a cold rebuild.
   Other public responses use 60 + 60 seconds. Sitemap responses use 300 + 300 seconds. Time-based expiry is
   deliberate: scraper writes cannot cause every visitor to miss simultaneously.
-- Shared-cache headers allow another 2 seconds for live/detail data and 30 seconds
-  for rankings; browsers keep rankings for 60 seconds and may show them for a
-  day while revalidating. Filtered analytics require HTTP revalidation. Errors and admin
+- Cloudflare keeps answers that are the same for every reader, from their own
+  `Cloudflare-CDN-Cache-Control` header (browsers never see it): 2 seconds for
+  live and detail data, live odds and fans' pick and score summaries, 15 for
+  other lists, 30 for rankings and stats, 60 for page HTML, each served stale
+  briefly while it refreshes and for longer if this server errors (`EDGE` in
+  `api-policy.ts`). A response without its own header is `no-store`. A
+  reader's save reloads past the edge copy (`loadAfterWrite`). Edge hits never
+  reach this server, so Admin's request counts and slow log cover misses only;
+  page views and visitors come from the page-view beacon and are unaffected.
+- `Cache-Control` is unchanged for browsers: rankings are kept 60 seconds and
+  may show for a day while revalidating. Filtered analytics require HTTP revalidation. Errors and admin
   responses use `no-store`; public JSON supports ETags and `Vary: Accept-Encoding`.
 - Cache bounds also limit arbitrary query combinations. The worker queue is
   capped at 512 waiting jobs (a few hundred milliseconds of work); jobs have a 15-second deadline. Overload returns 503

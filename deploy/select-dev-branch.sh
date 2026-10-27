@@ -49,6 +49,23 @@ if [[ "$running" == "$branch $sha healthy $sha" ]]; then
   exit 0
 fi
 
+# A dev build holds two of this host's four cores for a minute or more, then the
+# dev app warms its own indexes. While a card is being fought production needs
+# them, so dev waits for the card to end (UFC_DEV_DURING_CARD=1 builds anyway).
+card_is_live() {
+  local container live
+  for container in ufcsh-app-blue-1 ufcsh-app-green-1; do
+    live="$(docker exec "$container" node -e 'fetch("http://127.0.0.1:8000/api/live", { signal: AbortSignal.timeout(5000) }).then(r => r.text()).then(t => process.stdout.write(t))' 2>/dev/null)" || continue
+    [[ -n "$live" && "$live" != null ]] && return 0
+    return 1
+  done
+  return 1
+}
+if [[ "${UFC_DEV_DURING_CARD:-0}" != 1 ]] && card_is_live; then
+  echo 'A card is live on ufc.sh, so dev builds wait until it ends. Retry then, or set UFC_DEV_DURING_CARD=1 to build now.' >&2
+  exit 75
+fi
+
 if [[ ! -e "$dev_dir/.git" ]]; then
   if [[ -e "$dev_dir" ]]; then
     echo "$dev_dir exists but is not a Git worktree." >&2

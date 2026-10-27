@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { IncomingMessage } from "node:http";
-import { cachePolicy, canonicalApiKey, clientAddress, publicApi, RateLimiter } from "./api-policy.ts";
+import { cachePolicy, canonicalApiKey, clientAddress, EDGE, publicApi, RateLimiter } from "./api-policy.ts";
 
 test("public caches exclude admin endpoints and preserve query distinctions", () => {
   assert.equal(publicApi("/api/events/cc18abc046b382c9/crew"), true);
@@ -17,6 +17,18 @@ test("public caches exclude admin endpoints and preserve query distinctions", ()
     cachePolicy(new URL("https://test/api/rankings")), "archives use the shared compressed cache and browser/CDN caching");
   assert.equal(canonicalApiKey(new URL("https://test/api/stats?b=2&a=1")), canonicalApiKey(new URL("https://test/api/stats?a=1&b=2")));
   assert.notEqual(canonicalApiKey(new URL("https://test/api/rankings?ranking=meta")), canonicalApiKey(new URL("https://test/api/rankings?ranking=media")));
+});
+
+test("Cloudflare never holds a shared answer longer than this server would", () => {
+  for (const path of ["/api/live", "/api/events", "/api/events/cc18abc046b382c9", "/api/fights/cc18abc046b382c9",
+    "/api/fighters/cc18abc046b382c9/stats", "/api/stats", "/api/rankings", "/api/search", "/api/judges/sal-d-amato"]) {
+    const policy = cachePolicy(new URL(`https://test${path}`));
+    const edgeSeconds = Number(/max-age=(\d+)/.exec(policy.edge)![1]);
+    assert.ok(edgeSeconds * 1000 <= policy.ttl, `${path}: edge ${edgeSeconds}s inside the ${policy.ttl} ms origin lifetime`);
+    assert.match(policy.edge, /^public, .*stale-if-error=\d+/, path);
+  }
+  assert.equal(cachePolicy(new URL("https://test/api/fights/cc18abc046b382c9")).edge, EDGE.live);
+  assert.equal(cachePolicy(new URL("https://test/api/stats")).edge, EDGE.slow);
 });
 
 test("rate limits refill even while rejected requests continue", () => {
@@ -35,4 +47,14 @@ test("rate limits refill even while rejected requests continue", () => {
 test("untrusted clients cannot change their identity with proxy headers", () => {
   const req = { socket: { remoteAddress: "203.0.113.5" }, headers: { "x-real-ip": "192.0.2.1" } } as unknown as IncomingMessage;
   assert.equal(clientAddress(req), "203.0.113.5");
+  const previous = process.env.TRUSTED_PROXY_IPS;
+  try {
+    process.env.TRUSTED_PROXY_IPS = "10.0.0.2, 203.0.113.5";
+    const proxied = { socket: { remoteAddress: "203.0.113.5" }, headers: { "x-real-ip": "192.0.2.1" } } as unknown as IncomingMessage;
+    assert.equal(clientAddress(proxied), "192.0.2.1", "a changed proxy list is read again");
+    const forged = { socket: { remoteAddress: "203.0.113.5" }, headers: { "x-real-ip": "not-an-ip" } } as unknown as IncomingMessage;
+    assert.equal(clientAddress(forged), "203.0.113.5");
+  } finally {
+    if (previous === undefined) delete process.env.TRUSTED_PROXY_IPS; else process.env.TRUSTED_PROXY_IPS = previous;
+  }
 });

@@ -1,7 +1,7 @@
 import { useAuth } from "@clerk/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { useApi, type Matchup } from "../api";
+import { apiCache, useApi, type Matchup } from "../api";
 import { accountsEnabled, useAccount } from "../auth";
 import { recallMine, rememberMine, useSessionUser } from "../profile";
 import { lastName } from "../format";
@@ -20,12 +20,14 @@ const primary = BUTTON_PRIMARY_LARGE;
 
 export default function FightPredictions({ fight }: { fight: Matchup }) {
   const { data, error, retry } = useApi<PredictionSummary>(`/api/fights/${fight.id}/predictions`, 3_000);
+  // Past Cloudflare's shared copy, so the reader's own pick is in what they see.
+  const saved = useCallback(() => { void apiCache.loadAfterWrite(`/api/fights/${fight.id}/predictions`); }, [fight.id]);
   if (!data) return <section className={`appear-late ${PANEL_SHELL} p-5 text-sm text-zinc-500`} role="status">
     {error ? <>{error} <button className="underline" onClick={retry}>Retry</button></> : "Loading predictions…"}
   </section>;
   return <>
     {data.total ? <CommunityPicks distribution={data.distribution} scheduledRounds={data.scheduledRounds} /> : null}
-    {accountsEnabled ? <PredictionGate key={fight.id} fight={fight} status={data} onSaved={retry} />
+    {accountsEnabled ? <PredictionGate key={fight.id} fight={fight} status={data} onSaved={saved} />
       : <section className={`${PANEL_SHELL} p-5 text-sm text-zinc-500`}>Sign-in must be configured to save predictions.</section>}
   </>;
 }

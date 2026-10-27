@@ -241,6 +241,13 @@ The mix includes page HTML, cards, matchups, fighter profiles and their stat
 boards, officials, venues, search, images, share images and
 page-view beacons, weighted roughly like real traffic.
 
+Fight night (`src/fight-night-load.ts`, setup in its header): readers arrive
+over `--ramp`, open a live matchup and poll it as the client does, and a share
+of them save their scorecards after every round bell, with sessions signed by
+a key made for the run. Every read reaches the server, as if Cloudflare cached
+nothing. Pin the server to four cores (`taskset -c 0-3`) and the load to the
+rest to approximate the VPS.
+
 ## Last results (2026-09-24, V2 branch)
 
 Measured on the production host (4 vCPU, 8 GB) while production and dev were
@@ -732,6 +739,92 @@ of the archive on dev-pc:
 
 All 980 answers byte-identical to before. Next if quiet hours stay spiky: log
 queue wait and build time separately for detail reads over 100 ms.
+
+## Edge caching for fight-night bursts (2026-10-26)
+
+Goal: ~1,000 readers at once on fight night, and quick loads on slow wifi.
+Measured on production from the home server (Toronto edge):
+
+- Inside the container, `/`, `/api/events`, `/api/rankings` and `/api/live`
+  take 1–16 ms; through Cloudflare the same requests took 130–670 ms to the
+  first byte. Every HTML page and `/api/*` answer was `CF-Cache-Status:
+  DYNAMIC`, so each request crossed to the VPS.
+- A reader on a live matchup polls odds and picks every 3 s, scores every 5 s,
+  the card and `/api/live` every 15 s: about one request a second. 1,000
+  readers is ~1,000 req/s on one 4-vCPU host shared with dev; the last open-loop
+  run at 2,000 req/s (2026-09-24) had a 1.8 s p99. Live odds were `no-store`,
+  and the public pick summary was `private, no-store` and rebuilt from SQLite on
+  the main thread for every poll.
+- Clerk's script (84 KB + 46 KB) was `BYPASS` at Cloudflare, every visit, because
+  Clerk's CDN sets a cookie for its own domain on it; the major-version
+  redirect in front of each script was `no-store` (one more round trip per
+  page load).
+
+Change: shared answers carry `Cloudflare-CDN-Cache-Control` (`EDGE` in
+`api-policy.ts`), every other response defaults to `no-store`, the pick
+summary is kept 2 s and dropped on a save, and Caddy strips the stray cookie
+and lets the redirect be kept an hour. With the Cloudflare rule in
+`docs/launch.md`, each location asks this server about once per lifetime per
+address: for a live bout, a handful of requests a second instead of one per
+reader. To be measured after release: `CF-Cache-Status` per route and origin
+requests per second on the next card.
+
+## Opening card on "/" (2026-10-26)
+
+On a first visit, "/" asked for the card it opens only after `/api/events`
+(802 cards, 128 KB, 25 KB gzip) had arrived and been read: HTML, then the
+list, then the card, three round trips one after another. On slow wifi each
+is the full network delay. The server now names that card on `<html
+data-landing>` (`landingEvent`, shared with the client from
+`server/src/landing-event.ts`), and the page's first script asks for it
+beside the list: one round trip fewer. Picking it costs ~20 ms on a cold
+call, then the page is served from cache. A name gone stale (the page is kept
+up to a minute) costs one unused request; the old check after the list still
+asks for the right card.
+
+Checked and left alone: the list's fields are all used. Brotli would save
+4–20% over gzip on the largest answers (list 25.2 → 23.7 KB, card 23.0 →
+19.7 KB, rankings 21.9 → 17.4 KB at quality 9) for 15–20 ms of CPU each and a
+second compressed copy in the response cache.
+
+## Fight night without Cloudflare (2026-10-26)
+
+`src/fight-night-load.ts` on dev-pc against a production-shaped server
+(2 query workers, `NO_SYNC`, fresh copy of the dev archive each run), pinned to
+4 cores, the load on the other 8. Every read reaches the server: the worst
+case, as if Cloudflare cached nothing. Each reader polls about once a second;
+30% of the readers on the live bout save their card after every bell.
+
+| Readers (arriving over) | Code | Requests/s | p50 | p95 | p99 | Failed |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1,000 (60 s) | develop | 865 | 1.3 ms | 4.7 ms | 9.4 ms | 0 of 155,785 |
+| 3,000 (15 s) | develop | 2,123 | 53 ms | 236 ms | 30.4 s | 3,045 (timeouts) |
+| 3,000 (15 s) | + pick summary cached 2 s (#295) | 2,939 | 0.6 ms | 5.3 ms | 13 ms | 3 resets* |
+| 5,000 (15 s) | + #295 | 4,071 | 1.1 ms | 1.1 s | 9.3 s | 849 (timeouts) |
+
+\* Within 68 ms: Node's client reusing a keep-alive socket the server had just
+closed, not a slow answer.
+
+At 3,000 readers on develop, the public pick summary (polled every 3 s,
+rebuilt from SQLite on the main thread every time) saturated the API's main
+thread and everything queued behind it. Cached for 2 s and dropped on a save
+(#295), the same burst is answered in 13 ms p99 and every score save
+succeeds. The ceiling without Cloudflare is then 3,000–5,000 readers on four
+dev-pc cores; the VPS's cores are about half as fast, so roughly 1,500–2,500
+there. With the Cloudflare rule (#295), reads at the edge don't reach the
+server at all, so the reader count stops mattering to it.
+
+A profile of the API process at 3,000 readers had it ~50% idle over the run.
+`clientAddress` (1.2%) split `TRUSTED_PROXY_IPS` on every call, several times
+per request; it now parses the list once and remembers each request's
+address. Score saves at 1,500 per 90 s: p99 36 ms.
+
+Not covered: TLS and Caddy in front, the sync process, comments, images
+(Cloudflare serves them) and the VPS's own CPU.
+
+Dev builds now wait while a card is live (`deploy/select-dev-branch.sh`,
+exit 75; `UFC_DEV_DURING_CARD=1` overrides): a build holds two of the VPS's
+four cores for a minute or more.
 
 ## Real readers' load times (2026-10-26)
 

@@ -20,6 +20,8 @@ Run on the VPS in `/home/ubuntu/ufcsh-dev` (from the home server, through
 - The first `ready` task deploys; later ones wait in a FIFO queue without polling.
   The owner keeps dev until it is merged, released, or explicitly replaced.
 - `priority` keeps the previous task at the front of the queue.
+- While a card is live on ufc.sh, a dev deploy stops before building (exit 75):
+  production needs the VPS's cores. Retry after the card.
 - `release` advances the queue only when the named branch owned dev. With nothing
   waiting, the container keeps running and the slot is free. Don't release a live
   review merely because the chat ended.

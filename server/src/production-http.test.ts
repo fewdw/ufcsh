@@ -35,6 +35,9 @@ test("production HTTP uses workers, shared responses, validators and admin autho
   assert.equal(first.headers.get("vary"), "Accept-Encoding");
   const events = await first.json() as { id: string }[];
   assert.ok(events.length);
+  // Shared answers carry Cloudflare's lifetime; browsers keep their own header.
+  assert.match(first.headers.get("cloudflare-cdn-cache-control") ?? "", /^public, max-age=2,/);
+  assert.equal(first.headers.get("cache-control"), "public, max-age=0, s-maxage=2, must-revalidate");
   const etag = first.headers.get("etag")!;
   assert.ok(etag);
   const unchanged = await request("/api/events", { headers: { "If-None-Match": etag } });
@@ -47,7 +50,11 @@ test("production HTTP uses workers, shared responses, validators and admin autho
   assert.equal(head.status, 200);
   assert.equal(await head.text(), "");
   assert.equal((await request(`/api/events/${events[0].id}`)).status, 200);
-  assert.equal((await request("/api/fighters/ffffffffffffffff")).status, 404);
+  const missing = await request("/api/fighters/ffffffffffffffff");
+  assert.equal(missing.status, 404);
+  assert.equal(missing.headers.get("cloudflare-cdn-cache-control"), null, "an error is never held at the edge");
+  // Anything without its own header is kept nowhere.
+  assert.equal((await request("/healthz")).headers.get("cache-control"), "no-store");
   assert.equal((await request("/api/events", { method: "POST" })).status, 405);
   assert.equal((await request("/api/search?q=" + "x".repeat(121))).status, 400);
   assert.equal((await request("/api/pageview")).status, 405);
@@ -70,6 +77,7 @@ test("production HTTP uses workers, shared responses, validators and admin autho
     const response = await request(path);
     assert.equal(response.status, 401, path);
     assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.equal(response.headers.get("cloudflare-cdn-cache-control"), null);
   }
   // The report moved behind an account, so its old addresses are simply gone
   // — no token, local address or forgotten link reaches it any more.
@@ -80,6 +88,7 @@ test("production HTTP uses workers, shared responses, validators and admin autho
   const rejected = await request("/api/admin/bugs", { headers: { Authorization: "Bearer integration-test-only" } });
   assert.ok(rejected.status === 401 || rejected.status === 503, `admin bugs rejected the token (${rejected.status})`);
   assert.equal(rejected.headers.get("cache-control"), "private, no-store");
+  assert.equal(rejected.headers.get("cloudflare-cdn-cache-control"), null);
   const auth = { Authorization: "Bearer integration-test-only" };
   const metrics = await request("/api/metrics", { headers: auth });
   const body = await metrics.json() as { cache: { hits: number } };
