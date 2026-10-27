@@ -1,17 +1,33 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { RateLimiter, clientAddress } from "./api-policy.ts";
+import { EDGE, EDGE_CACHE_HEADER, RateLimiter, clientAddress } from "./api-policy.ts";
 import { authenticateScorer, scoringOrigins } from "./scoring-http.ts";
 import { ScoringError } from "./scoring.ts";
 import type { PredictionStore } from "./predictions.ts";
 
 export function createPredictionsHandler(store: PredictionStore, authenticate = authenticateScorer) {
   const limiter = new RateLimiter();
+  /** Each fight's summary, kept two seconds: every reader of a live bout polls
+   *  it every three. A save drops its fight's copy. */
+  const summaries = new Map<string, { until: number; data: unknown }>();
+  const summary = (id: string) => {
+    let entry = summaries.get(id);
+    if (!entry || entry.until <= Date.now()) {
+      entry = { until: Date.now() + 2_000, data: store.summary(id) };
+      if (summaries.size >= 500) summaries.delete(summaries.keys().next().value!);
+      summaries.set(id, entry);
+    }
+    return entry.data;
+  };
   return async (req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> => {
     const fight = /^\/api\/fights\/([a-f0-9]{16})\/predictions(\/mine)?$/.exec(url.pathname);
     const profile = /^\/api\/profiles\/([0-9a-f-]{36}|[a-z0-9]{3,20})\/predictions$/.exec(url.pathname);
     if (!fight && !profile) return false;
     res.setHeader("Content-Type", "application/json; charset=utf-8");
-    res.setHeader("Cache-Control", "private, no-store");
+    // A fight's summary is the same for every reader; the reader's own pick
+    // and a fan's profile list are not shared.
+    const shared = Boolean(fight && !fight[2]);
+    res.setHeader("Cache-Control", shared ? "public, max-age=0, must-revalidate" : "private, no-store");
+    if (shared) res.setHeader(EDGE_CACHE_HEADER, EDGE.live);
     const send = (data: unknown, status = 200) => { res.statusCode = status; res.end(req.method === "HEAD" ? undefined : JSON.stringify(data)); };
     try {
       const privateRoute = Boolean(fight?.[2]);
@@ -42,10 +58,14 @@ export function createPredictionsHandler(store: PredictionStore, authenticate = 
           let body: unknown;
           try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); }
           catch { throw new ScoringError(400, "Invalid JSON prediction."); }
-          send(store.save(fight![1], user, body, req.method === "DELETE"));
+          const saved = store.save(fight![1], user, body, req.method === "DELETE");
+          summaries.delete(fight![1]);
+          send(saved);
         } else send(store.mine(fight![1], user));
-      } else send(store.summary(fight![1]));
+      } else send(summary(fight![1]));
     } catch (error) {
+      res.setHeader("Cache-Control", "private, no-store");
+      res.removeHeader(EDGE_CACHE_HEADER);
       const busy = error instanceof Error && /database is locked|SQLITE_BUSY/.test(error.message);
       const status = error instanceof ScoringError ? error.status : busy ? 503 : 500;
       if (status === 429 || status === 503) res.setHeader("Retry-After", "5");

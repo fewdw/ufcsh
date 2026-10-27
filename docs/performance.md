@@ -730,3 +730,32 @@ of the archive on dev-pc:
 
 All 980 answers byte-identical to before. Next if quiet hours stay spiky: log
 queue wait and build time separately for detail reads over 100 ms.
+
+## Edge caching for fight-night bursts (2026-10-26)
+
+Goal: ~1,000 readers at once on fight night, and quick loads on slow wifi.
+Measured on production from the home server (Toronto edge):
+
+- Inside the container, `/`, `/api/events`, `/api/rankings` and `/api/live`
+  take 1–16 ms; through Cloudflare the same requests took 130–670 ms to the
+  first byte. Every HTML page and `/api/*` answer was `CF-Cache-Status:
+  DYNAMIC`, so each request crossed to the VPS.
+- A reader on a live matchup polls odds and picks every 3 s, scores every 5 s,
+  the card and `/api/live` every 15 s: about one request a second. 1,000
+  readers is ~1,000 req/s on one 4-vCPU host shared with dev; the last open-loop
+  run at 2,000 req/s (2026-09-24) had a 1.8 s p99. Live odds were `no-store`,
+  and the public pick summary was `private, no-store` and rebuilt from SQLite on
+  the main thread for every poll.
+- Clerk's script (84 KB + 46 KB) was `BYPASS` at Cloudflare, every visit, because
+  Clerk's CDN sets a cookie for its own domain on it; the major-version
+  redirect in front of each script was `no-store` (one more round trip per
+  page load).
+
+Change: shared answers carry `Cloudflare-CDN-Cache-Control` (`EDGE` in
+`api-policy.ts`), every other response defaults to `no-store`, the pick
+summary is kept 2 s and dropped on a save, and Caddy strips the stray cookie
+and lets the redirect be kept an hour. With the Cloudflare rule in
+`docs/launch.md`, each location asks this server about once per lifetime per
+address: for a live bout, a handful of requests a second instead of one per
+reader. To be measured after release: `CF-Cache-Status` per route and origin
+requests per second on the next card.

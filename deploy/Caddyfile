@@ -17,14 +17,37 @@
   # Clerk's Frontend API through this host, so production sign-in works on a
   # hostname where its CNAME records cannot be created.
   handle_path /__clerk/* {
-    reverse_proxy https://frontend-api.clerk.dev {
-      header_up Host frontend-api.clerk.dev
-      header_up Clerk-Proxy-Url https://{$DOMAIN}/__clerk
-      header_up Clerk-Secret-Key {$CLERK_SECRET_KEY}
-      header_up X-Forwarded-For {client_ip}
-      # Clerk answers some requests with a redirect to its own root-relative
-      # path, which only exists under this prefix.
-      header_down Location "^/v1/" "/__clerk/v1/"
+    # Clerk's scripts are the same for everyone. Its CDN stamps them with a
+    # cookie for its own domain, which browsers drop but which keeps
+    # Cloudflare from caching them; without it each reader's copy comes
+    # through this server. The redirect from a major version (clerk-js@6) to
+    # the exact one is kept an hour rather than asked on every page load.
+    @latest path_regexp ^/npm/@clerk/[a-z-]+@[0-9]+/
+    handle @latest {
+      reverse_proxy https://frontend-api.clerk.dev {
+        header_up Host frontend-api.clerk.dev
+        header_up Clerk-Proxy-Url https://{$DOMAIN}/__clerk
+        header_down -Set-Cookie
+        header_down Cache-Control "public, max-age=3600"
+      }
+    }
+    handle /npm/* {
+      reverse_proxy https://frontend-api.clerk.dev {
+        header_up Host frontend-api.clerk.dev
+        header_up Clerk-Proxy-Url https://{$DOMAIN}/__clerk
+        header_down -Set-Cookie
+      }
+    }
+    handle {
+      reverse_proxy https://frontend-api.clerk.dev {
+        header_up Host frontend-api.clerk.dev
+        header_up Clerk-Proxy-Url https://{$DOMAIN}/__clerk
+        header_up Clerk-Secret-Key {$CLERK_SECRET_KEY}
+        header_up X-Forwarded-For {client_ip}
+        # Clerk answers some requests with a redirect to its own root-relative
+        # path, which only exists under this prefix.
+        header_down Location "^/v1/" "/__clerk/v1/"
+      }
     }
   }
   handle {
