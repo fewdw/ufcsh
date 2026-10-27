@@ -2075,7 +2075,7 @@ function fightOddsUnread(): BugCheck {
     id: "odds-fightodds-unread",
     group: "Odds",
     label: "FightOdds.io not read",
-    description: "Upcoming moneylines come from FightOdds.io's event boards every five minutes, matched by UFCStats id; BestFightOdds fills anything they miss every few hours. While FightOdds.io is unread, lines only move at BestFightOdds' pace. Check the error. \"Unknown query\" (HTTP 403) means FightOdds.io rebuilt its app: it only answers its app's own query texts, so copy the new ones into server/src/scrape/fightodds-queries.ts. Otherwise: a changed field, or the API now requiring its Cloudflare Turnstile token.",
+    description: "Upcoming moneylines come from FightOdds.io's event boards every five minutes, matched by UFCStats id; BestFightOdds fills anything they miss every few hours. While FightOdds.io is unread, lines only move at BestFightOdds' pace. HTTP 429 means the host is rate limiting us: all requests in the worker pause until Retry-After (five minutes when omitted), then the next scheduled pass retries. \"Unknown query\" (HTTP 403) means FightOdds.io rebuilt its app: it only answers its app's own query texts, so copy the new ones into server/src/scrape/fightodds-queries.ts. Otherwise: a changed field, or the API now requiring its Cloudflare Turnstile token.",
     grade: "must",
   }, items);
 }

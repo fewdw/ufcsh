@@ -1,8 +1,39 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { db } from "./db.ts";
+import { db, touchMeta } from "./db.ts";
+import { HttpRateLimitError } from "./http.ts";
 import { resolvePublicApi } from "./api.ts";
-import { boardCard, boardDue, bookedDivision, cardCancellations, storeCancelledBoard } from "./cancelled-bouts.ts";
+import { boardCard, boardDue, bookedDivision, cardCancellations, storeCancelledBoard, syncCancelledBouts } from "./cancelled-bouts.ts";
+
+test("a rate-limited archive pass stops without failing boards or delaying their next read", async (t) => {
+  let now = Date.parse("2030-01-01T00:00:00Z");
+  t.mock.method(Date, "now", () => now);
+  const request = t.mock.method(globalThis, "fetch", async () => Response.json({ data: { eventOffers: { fightOffers: { edges: [] } } } }));
+  request.mock.mockImplementationOnce(async () => new Response("Rate limited", { status: 429 }), 1);
+  db.exec("SAVEPOINT cancelled_rate_limit");
+  try {
+    touchMeta("cancelled_boards_listed_at");
+    db.prepare("UPDATE cancelled_boards SET read_at = ?").run(Date.parse("2200-01-01T00:00:00Z"));
+    for (let i = 1; i <= 3; i++) {
+      db.prepare("INSERT INTO cancelled_boards (pk, date, slug, name, error) VALUES (?, ?, ?, 'Fixture', 'Previous error')")
+        .run(999100 + i, `2099-01-0${i}`, `rate-limit-fixture-${i}`);
+    }
+    await assert.rejects(syncCancelledBouts(), HttpRateLimitError);
+    assert.equal(request.mock.callCount(), 2, "stop at the limited board instead of trying the rest");
+    const boards = () => db.prepare("SELECT read_at, error FROM cancelled_boards WHERE pk BETWEEN 999101 AND 999103 ORDER BY pk").all();
+    assert.deepEqual(boards().map(row => ({ ...row })), [
+      { read_at: now, error: "" },
+      { read_at: null, error: "Previous error" },
+      { read_at: null, error: "Previous error" },
+    ]);
+    now += 5 * 60_000;
+    assert.deepEqual(await syncCancelledBouts(), { boards: 2, bouts: 0, failed: 0 }, "limited boards remain eligible after cooldown");
+    assert.equal(request.mock.callCount(), 4);
+    assert.ok(boards().every(row => row.read_at != null && row.error === ""));
+  } finally {
+    db.exec("ROLLBACK TO cancelled_rate_limit; RELEASE cancelled_rate_limit");
+  }
+});
 
 // The API needs the same historical context as a normal row, even when the
 // fighter actually fought a replacement on the cancellation's event date.
