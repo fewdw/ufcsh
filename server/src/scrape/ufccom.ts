@@ -378,7 +378,8 @@ export async function scrapeFighterImages(name: string, loadHtml = fetchHtml): P
   return found;
 }
 
-export type AthleteStatus = "active" | "not_fighting";
+/** "Not Fighting" and "Retired" both mean off the roster. */
+export type AthleteStatus = "active" | "not_fighting" | "retired";
 
 export type AthletePage = { name: string; status: AthleteStatus | null; height: number | null; reach: number | null };
 
@@ -393,7 +394,8 @@ export function parseAthleteStatus(html: string): AthletePage {
   const inches = (value: string) => (Number(value) > 0 ? Number(value) : null);
   return {
     name: $(".hero-profile__name").first().text().trim(),
-    status: /^(active|actif)$/.test(text) ? "active" : /^(not fighting|ne se bat pas)$/.test(text) ? "not_fighting" : null,
+    status: /^(active|actif)$/.test(text) ? "active" : /^(not fighting|ne se bat pas)$/.test(text) ? "not_fighting"
+      : /^(retired|retraité)$/.test(text) ? "retired" : null,
     height: inches(bio(/^(height|taille)$/i)),
     reach: inches(bio(/^(reach|portée)$/i)),
   };

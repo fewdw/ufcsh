@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { dataRevision, db, getMeta, prepared, setMeta, touchMeta } from "./db.ts";
 import { hasUfcFight } from "./fighter-identity.ts";
-import { athleteSlug, scrapeAthleteStatus, scrapeNewAthlete, scrapeNewestAthletes } from "./scrape/ufccom.ts";
+import { athleteSlug, scrapeAthleteStatus, scrapeNewAthlete, scrapeNewestAthletes, type AthleteStatus } from "./scrape/ufccom.ts";
 import { articleRevision, fetchArticleByTitle, ROSTER_ARTICLE, rosterChanges, type RosterMove } from "./scrape/wikipedia.ts";
 import { givenName, log, normName, todayIso } from "./util.ts";
 import { archiveRosterEvents, departureKind, storedRosterHistory, validRosterDate, type RosterHistoryEvent } from "./roster-history.ts";
@@ -9,8 +9,8 @@ import { archiveRosterEvents, departureKind, storedRosterHistory, validRosterDat
 /** Who the UFC has just signed and just let go. Two sources: Wikipedia's
  *  current-roster article (signings, and releases with their reason), and
  *  ufc.com itself, which makes a profile for every new signing and whose
- *  athlete pages flip from "Active" to "Not Fighting" the moment a fighter
- *  leaves the roster, reported or not. */
+ *  athlete pages flip from "Active" to "Not Fighting" or "Retired" the moment
+ *  a fighter leaves the roster, reported or not. */
 
 export type RosterChanges = { signed: RosterMove[]; cut: RosterMove[] };
 
@@ -43,10 +43,14 @@ export function rosterEventsByFighter(): Map<string, RosterHistoryEvent[]> {
   return byFighter;
 }
 
-const departureEvent = (move: { left_at: number }): RosterHistoryEvent => ({
-  name: "", date: new Date(move.left_at).toISOString().slice(0, 10), kind: "departed",
-  reason: "Athlete status changed from Active to Not Fighting", source_url: "https://www.ufc.com/athletes/all", observed: true,
+const departureEvent = (move: { left_at: number; status: AthleteStatus }): RosterHistoryEvent => ({
+  name: "", date: new Date(move.left_at).toISOString().slice(0, 10), kind: leftKind(move.status),
+  reason: leftReason(move.status), source_url: "https://www.ufc.com/athletes/all", observed: true,
 });
+
+const leftKind = (status: AthleteStatus) => status === "retired" ? "retired" as const : "departed" as const;
+const leftReason = (status: AthleteStatus) => `Athlete status changed from Active to ${status === "retired" ? "Retired" : "Not Fighting"}`;
+const offRoster = (status: AthleteStatus | null | undefined): status is "not_fighting" | "retired" => status === "not_fighting" || status === "retired";
 
 function reportedByFighter(): Map<string, RosterHistoryEvent[]> {
   // Thousands of archived reports: each name is matched once per profile revision.
@@ -220,7 +224,7 @@ export const DEPARTURE_DAYS = 30;
 /** A few fighters a tick, stalest first, so every recent UFC fighter's page
  *  is read about twice a day. "Recent" is a bout in the last three years,
  *  or last seen active however long they have been out. */
-export async function syncUfcStatuses(batch = 2): Promise<void> {
+export async function syncUfcStatuses(batch = 2, readStatus = scrapeAthleteStatus): Promise<void> {
   const due = db.prepare(`
     SELECT fr.id, fr.name, s.url, s.status, s.left_at FROM fighters fr
     LEFT JOIN ufc_status s ON s.fighter_id = fr.id
@@ -230,23 +234,23 @@ export async function syncUfcStatuses(batch = 2): Promise<void> {
         UNION SELECT f.f2_id FROM fights f JOIN events e ON e.id = f.event_id WHERE e.date >= date('now', '-3 years')))
     ORDER BY s.checked_at IS NOT NULL, s.checked_at
     LIMIT ?
-  `).all(Date.now() - STATUS_EVERY_MS, batch) as { id: string; name: string; url: string | null; status: string | null; left_at: number | null }[];
+  `).all(Date.now() - STATUS_EVERY_MS, batch) as { id: string; name: string; url: string | null; status: AthleteStatus | null; left_at: number | null }[];
   for (const fighter of due) {
-    if (fighter.left_at) archiveRosterEvents([{ name: fighter.name, date: new Date(fighter.left_at).toISOString().slice(0, 10), kind: "departed",
-      reason: "Athlete status changed from Active to Not Fighting", source_url: fighter.url ?? "https://www.ufc.com/athletes/all", observed: true }]);
-    const found = await scrapeAthleteStatus(fighter.name, fighter.url);
+    if (fighter.left_at && offRoster(fighter.status)) archiveRosterEvents([{ name: fighter.name, date: new Date(fighter.left_at).toISOString().slice(0, 10), kind: leftKind(fighter.status),
+      reason: leftReason(fighter.status), source_url: fighter.url ?? "https://www.ufc.com/athletes/all", observed: true }]);
+    const found = await readStatus(fighter.name, fighter.url);
     const status = found?.status ?? fighter.status;
     // Only a change we watched happen dates a departure; a page already
     // reading "Not Fighting" the first time we look says nothing about when.
-    const left = fighter.status === "active" && status === "not_fighting";
+    const left = fighter.status === "active" && offRoster(status);
     db.prepare(`
       INSERT INTO ufc_status (fighter_id, url, status, checked_at, left_at) VALUES (?1, ?2, ?3, ?4, ?5)
       ON CONFLICT(fighter_id) DO UPDATE SET url = coalesce(?2, url), status = ?3, checked_at = ?4,
         left_at = CASE WHEN ?3 = 'active' THEN NULL WHEN ?5 IS NOT NULL THEN ?5 ELSE left_at END
     `).run(fighter.id, found?.url ?? null, status, Date.now(), left ? Date.now() : null);
     if (left) {
-      archiveRosterEvents([{ name: fighter.name, date: new Date().toISOString().slice(0, 10), kind: "departed",
-        reason: "Athlete status changed from Active to Not Fighting", source_url: found?.url ?? "https://www.ufc.com/athletes/all", observed: true }]);
+      archiveRosterEvents([{ name: fighter.name, date: new Date().toISOString().slice(0, 10), kind: leftKind(status),
+        reason: leftReason(status), source_url: found?.url ?? "https://www.ufc.com/athletes/all", observed: true }]);
       log(`roster: ${fighter.name} left the UFC roster (ufc.com)`);
     }
     // UFCStats has no height or reach for many debutants; ufc.com often does.
@@ -261,7 +265,7 @@ export async function syncUfcStatuses(batch = 2): Promise<void> {
       );
     }
     // A fighter we saw leave whose page reads Active again has come back.
-    if (fighter.status === "not_fighting" && status === "active") {
+    if (offRoster(fighter.status) && status === "active") {
       const state = storedUfcSignings();
       state.signed.push({ name: fighter.name, division: null, date: new Date().toISOString().slice(0, 10) });
       setMeta("ufc_signings", JSON.stringify(state));
@@ -273,9 +277,9 @@ export async function syncUfcStatuses(batch = 2): Promise<void> {
 }
 
 /** Fighters ufc.com moved off the roster in the last month, newest first. */
-export function ufcDepartures(): { fighter_id: string; left_at: number }[] {
-  return db.prepare(`SELECT fighter_id, left_at FROM ufc_status WHERE left_at >= ? AND status = 'not_fighting' ORDER BY left_at DESC`)
-    .all(Date.now() - DEPARTURE_DAYS * 86_400_000) as { fighter_id: string; left_at: number }[];
+export function ufcDepartures(): { fighter_id: string; left_at: number; status: "not_fighting" | "retired" }[] {
+  return db.prepare(`SELECT fighter_id, left_at, status FROM ufc_status WHERE left_at >= ? AND status IN ('not_fighting', 'retired') ORDER BY left_at DESC`)
+    .all(Date.now() - DEPARTURE_DAYS * 86_400_000) as { fighter_id: string; left_at: number; status: "not_fighting" | "retired" }[];
 }
 
 /** A signing ufc.com showed us, dated the day we first saw it, with its page's
@@ -284,11 +288,17 @@ export function ufcDepartures(): { fighter_id: string; left_at: number }[] {
 export type UfcSigning = { name: string; division: string | null; date: string;
   slug?: string; photo?: string | null; photo_full?: string | null; read_at?: number };
 /** Every profile slug seen at the top of the newest-first list (newest last),
- *  new ones not yet reading Active with when they were last read, and the
- *  signings found. */
-type UfcSignings = { seen: string[]; pending: Record<string, number>; signed: UfcSigning[] };
+ *  new ones not yet reading Active with when they were first and last read
+ *  (a bare number before both were kept), and the signings found. */
+type Waiting = { since: number; read: number };
+type UfcSignings = { seen: string[]; pending: Record<string, Waiting | number>; signed: UfcSigning[] };
 
 const PENDING_RECHECK_MS = 30 * 60_000;
+/** A Contender Series winner's page is often up weeks before it reads Active,
+ *  long after newer profiles have pushed it off the list: it is read every
+ *  two hours from then on, for up to a year. */
+const UNLISTED_RECHECK_MS = 2 * 3_600_000;
+const PENDING_KEPT_MS = 365 * 86_400_000;
 const PHOTO_RECHECK_MS = 2 * 3_600_000;
 const SEEN_KEPT = 1000;
 
@@ -297,41 +307,51 @@ function storedUfcSignings(): UfcSignings {
   return stored ? JSON.parse(stored) as UfcSignings : { seen: [], pending: {}, signed: [] };
 }
 
+const waitingSince = (wait: Waiting | number | undefined): Waiting | undefined =>
+  typeof wait === "number" ? { since: wait, read: wait } : wait;
+
 /** One read of ufc.com's newest athlete profiles. A profile we haven't seen
  *  is a signing once its own page reads Active; one that doesn't yet is read
- *  again every half hour while it stays on the list. The first read, and any
- *  read sharing nobody with the last (the list is no longer newest-first),
- *  only learns who is there, so nobody already on the roster is reported. */
+ *  again every half hour while it stays on the list, and every two hours
+ *  after. The first read, and any read sharing nobody with the last (the list
+ *  is no longer newest-first), reports nobody whose page already reads Active,
+ *  so nobody on the roster is reported; the rest wait like any new profile. */
 export async function syncUfcSignings(readNewest = scrapeNewestAthletes, readAthlete = scrapeNewAthlete): Promise<void> {
   touchMeta("ufc_signings_checked_at");
   const newest = await readNewest();
   const state = storedUfcSignings();
   const seen = new Set(state.seen);
-  const slugs = newest.map(athlete => athlete.slug);
-  if (!slugs.some(slug => seen.has(slug))) {
-    if (seen.size) log(`roster: ufc.com's newest athletes share nobody with the last read; re-learning them`);
-    setMeta("ufc_signings", JSON.stringify({ ...state, seen: [...state.seen, ...slugs.reverse()].slice(-SEEN_KEPT), pending: {} }));
-    touchMeta("ufc_signings_synced_at");
-    return;
-  }
-  const pending: Record<string, number> = {};
+  const listed = new Set(newest.map(athlete => athlete.slug));
+  const learning = !newest.some(athlete => seen.has(athlete.slug));
+  if (learning && seen.size) log(`roster: ufc.com's newest athletes share nobody with the last read; re-learning them`);
+  const pending: Record<string, Waiting> = {};
   const today = new Date().toISOString().slice(0, 10);
-  // Oldest first, so a batch keeps the order ufc.com made it in.
-  for (const { slug } of [...newest].reverse()) {
+  // Oldest first, so a batch keeps the order ufc.com made it in; then those
+  // still waiting that have left the list.
+  const slugs = new Set([...[...newest].reverse().map(athlete => athlete.slug), ...Object.keys(state.pending)]);
+  for (const slug of slugs) {
     if (seen.has(slug)) continue;
-    if (Date.now() - (state.pending[slug] ?? 0) < PENDING_RECHECK_MS) {
-      pending[slug] = state.pending[slug];
+    const wait = waitingSince(state.pending[slug]);
+    if (wait && Date.now() - wait.since > PENDING_KEPT_MS) continue;
+    if (wait && Date.now() - wait.read < (listed.has(slug) ? PENDING_RECHECK_MS : UNLISTED_RECHECK_MS)) {
+      pending[slug] = wait;
       continue;
     }
-    // An unreadable page is tried again on the next read.
+    // An unreadable page is tried again on the next read; one first met while
+    // learning is taken as already there.
     const athlete = await readAthlete(slug).catch(() => null);
-    if (!athlete) continue;
+    if (!athlete) {
+      if (wait) pending[slug] = wait;
+      else if (learning) { seen.add(slug); state.seen.push(slug); }
+      continue;
+    }
     if (athlete.status !== "active" || !athlete.name) {
-      pending[slug] = Date.now();
+      pending[slug] = { since: wait?.since ?? Date.now(), read: Date.now() };
       continue;
     }
     seen.add(slug);
     state.seen.push(slug);
+    if (learning && !wait) continue;
     state.signed.push({ name: athlete.name, division: athlete.division, date: today,
       slug, photo: athlete.headshot, photo_full: athlete.fullBody, read_at: Date.now() });
     archiveRosterEvents([{ name: athlete.name, date: today, kind: "signed", reason: null,
