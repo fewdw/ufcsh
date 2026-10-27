@@ -27,6 +27,18 @@ export function anchorAbove(x: number, top: number): TipAnchor {
 /** Closes whichever tooltip is open, so only one shows at a time. */
 let closeOpen: (() => void) | null = null;
 
+/** Opens each trigger's tooltip as a tap would, so a finger dragged off one
+ * trigger can open whichever is under it. */
+const openers = new WeakMap<Element, () => void>();
+/** The trigger a finger last opened; cleared when a tap closes it, so the
+ * finger's jitter can't open a neighbour. */
+let tapped: Element | null = null;
+
+function triggerAt(x: number, y: number): Element | null {
+  for (let node = document.elementFromPoint(x, y); node; node = node.parentElement) if (openers.has(node)) return node;
+  return null;
+}
+
 export function useTooltip() {
   const [at, setAt] = useState<TipAnchor | null>(null);
   const id = useId();
@@ -45,21 +57,32 @@ export function useTooltip() {
     };
   }, [at]);
 
-  // Measured now: React clears currentTarget once the handler returns.
-  const showAt = (anchor: TipAnchor) => {
+  const showAt = useCallback((anchor: TipAnchor) => {
     if (closeOpen !== hide) closeOpen?.();
     closeOpen = hide;
     setAt(anchor);
-  };
-  const show = (event: React.SyntheticEvent<HTMLElement>, tap = false) => showAt(anchorFrom(event.currentTarget.getBoundingClientRect(), tap));
+  }, [hide]);
+  const ref = useCallback((node: HTMLElement | null) => {
+    if (node) openers.set(node, () => { tapped = node; showAt(anchorFrom(node.getBoundingClientRect(), true)); });
+  }, [showAt]);
+  // Measured now: React clears currentTarget once the handler returns.
+  const show = (event: React.SyntheticEvent<HTMLElement>) => showAt(anchorFrom(event.currentTarget.getBoundingClientRect()));
 
   const handlers = {
+    ref,
     onPointerEnter: (event: React.PointerEvent<HTMLElement>) => { if (event.pointerType === "mouse") show(event); },
     onPointerLeave: (event: React.PointerEvent<HTMLElement>) => { if (event.pointerType === "mouse") hide(); },
     onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
       if (event.pointerType === "mouse") return;
-      if (at) hide();
-      else show(event, true);
+      if (at) { tapped = null; hide(); }
+      else openers.get(event.currentTarget)?.();
+    },
+    // Touch pointers stay captured by the trigger they went down on, so the
+    // one under the finger is found by position.
+    onPointerMove: (event: React.PointerEvent<HTMLElement>) => {
+      if (event.pointerType === "mouse" || !tapped) return;
+      const trigger = triggerAt(event.clientX, event.clientY);
+      if (trigger && trigger !== tapped) openers.get(trigger)?.();
     },
     // Keyboard focus only: a tap also focuses the button on some phones, which
     // would move the tapped bubble back below.
