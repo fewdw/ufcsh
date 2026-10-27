@@ -11,12 +11,12 @@ const preload = /<script>([\s\S]*?)<\/script>/.exec(html)![1];
 
 type Listed = { id: string; date: string; status: string; starts_at?: number | null };
 
-async function requested(events: Listed[], now: number, ranking?: "meta") {
+async function requested(events: Listed[], now: number, ranking?: "meta", landing?: string) {
   const urls: string[] = [];
   const respond = (body: unknown) => ({ ok: true, clone: () => ({ json: async () => body }) });
   const context = vm.createContext({
     location: { pathname: "/" },
-    document: { documentElement: { classList: { add() {} }, style: {} } },
+    document: { documentElement: { classList: { add() {} }, style: {}, getAttribute: (name: string) => name === "data-landing" ? landing ?? null : null } },
     localStorage: { getItem: () => (ranking ? JSON.stringify({ rankingSource: ranking }) : null) },
     fetch: (url: string) => { urls.push(url); return Promise.resolve(respond(url === "/api/events" ? events : {})); },
     Date: class extends Date { static now() { return now; } },
@@ -60,4 +60,14 @@ test("the early card request follows the reader's ranking source and skips an em
   const events = [{ id: "next", date: "2026-09-19", status: "next" }];
   assert.equal((await requested(events, Date.parse("2026-09-12T12:00:00Z"), "meta"))[2], "/api/events/next?ranking=meta");
   assert.deepEqual(await requested([], Date.parse("2026-09-12T12:00:00Z")), ["/api/live", "/api/events"]);
+});
+
+test("a card named by the server is asked for with the list, and a stale name costs one request", async () => {
+  const events = [{ id: "0123456789abcdef", date: "2026-09-19", status: "next" }];
+  const now = Date.parse("2026-09-12T12:00:00Z");
+  assert.deepEqual(await requested(events, now, undefined, "0123456789abcdef"),
+    ["/api/live", "/api/events", "/api/events/0123456789abcdef?ranking=media"]);
+  assert.deepEqual(await requested(events, now, undefined, "fedcba9876543210"),
+    ["/api/live", "/api/events", "/api/events/fedcba9876543210?ranking=media", "/api/events/0123456789abcdef?ranking=media"]);
+  assert.deepEqual(await requested(events, now, undefined, "<script>"), ["/api/live", "/api/events", "/api/events/0123456789abcdef?ranking=media"]);
 });

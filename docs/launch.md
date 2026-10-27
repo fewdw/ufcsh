@@ -184,13 +184,21 @@ docker compose exec -T app node src/backfill-image-variants.ts
    `starts_with(http.request.uri.path, "/api/images/")`, **Eligible for
    cache**, Edge and Browser TTL respecting the origin, default cache key
    (full query string). `/assets/*` and `/og/*.jpg` are cached by Cloudflare's
-   default file-extension rule. API JSON is not cached at the edge.
+   default file-extension rule.
 
-   Production has run this way since 2026-10-14. If traffic ever needs the API
-   cached too, the app already sends a 2-second `s-maxage` on public live data;
-   extend the rule only after checking that every matched route sends
-   `private` or `no-store` for personal answers, and confirm `CF-Cache-Status`
-   is never `HIT` for `/scores/mine`, `/predictions/mine` or `/api/admin`.
+   A second rule lets Cloudflare answer page HTML and the public API, so a
+   fight-night burst is served at the edge: expression
+   `not starts_with(http.request.uri.path, "/__clerk/")`, **Eligible for
+   cache**, Edge TTL *Use cache-control header if present, bypass cache if
+   not*, Browser TTL respecting the origin, default cache key. The app decides
+   what is shared: only answers that are the same for every reader carry
+   `Cloudflare-CDN-Cache-Control` (2 s for live data, 60 s for HTML; see `EDGE`
+   in `server/src/api-policy.ts`), and every other response is `no-store` or
+   `private`. In **Caching → Tiered Cache**, turn on Smart Tiered Caching so
+   one Cloudflare location asks this server and the others ask it. After
+   changing either, check `CF-Cache-Status` is `HIT` on a second read of
+   `/api/live` and never present as `HIT` for `/scores/mine`,
+   `/predictions/mine`, `/api/profiles/mine` or `/api/admin/*`.
 5. Before inviting 5,000 active users, test the real VPS with score polling,
    score writes, scraping enabled and cache misses. Watch p95/p99 latency,
    request queue, 429/503 rates, host CPU/RAM, and CDN hit ratio. Raise host

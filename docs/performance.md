@@ -738,6 +738,53 @@ of the archive on dev-pc:
 All 980 answers byte-identical to before. Next if quiet hours stay spiky: log
 queue wait and build time separately for detail reads over 100 ms.
 
+## Edge caching for fight-night bursts (2026-10-26)
+
+Goal: ~1,000 readers at once on fight night, and quick loads on slow wifi.
+Measured on production from the home server (Toronto edge):
+
+- Inside the container, `/`, `/api/events`, `/api/rankings` and `/api/live`
+  take 1–16 ms; through Cloudflare the same requests took 130–670 ms to the
+  first byte. Every HTML page and `/api/*` answer was `CF-Cache-Status:
+  DYNAMIC`, so each request crossed to the VPS.
+- A reader on a live matchup polls odds and picks every 3 s, scores every 5 s,
+  the card and `/api/live` every 15 s: about one request a second. 1,000
+  readers is ~1,000 req/s on one 4-vCPU host shared with dev; the last open-loop
+  run at 2,000 req/s (2026-09-24) had a 1.8 s p99. Live odds were `no-store`,
+  and the public pick summary was `private, no-store` and rebuilt from SQLite on
+  the main thread for every poll.
+- Clerk's script (84 KB + 46 KB) was `BYPASS` at Cloudflare, every visit, because
+  Clerk's CDN sets a cookie for its own domain on it; the major-version
+  redirect in front of each script was `no-store` (one more round trip per
+  page load).
+
+Change: shared answers carry `Cloudflare-CDN-Cache-Control` (`EDGE` in
+`api-policy.ts`), every other response defaults to `no-store`, the pick
+summary is kept 2 s and dropped on a save, and Caddy strips the stray cookie
+and lets the redirect be kept an hour. With the Cloudflare rule in
+`docs/launch.md`, each location asks this server about once per lifetime per
+address: for a live bout, a handful of requests a second instead of one per
+reader. To be measured after release: `CF-Cache-Status` per route and origin
+requests per second on the next card.
+
+## Opening card on "/" (2026-10-26)
+
+On a first visit, "/" asked for the card it opens only after `/api/events`
+(802 cards, 128 KB, 25 KB gzip) had arrived and been read: HTML, then the
+list, then the card, three round trips one after another. On slow wifi each
+is the full network delay. The server now names that card on `<html
+data-landing>` (`landingEvent`, shared with the client from
+`server/src/landing-event.ts`), and the page's first script asks for it
+beside the list: one round trip fewer. Picking it costs ~20 ms on a cold
+call, then the page is served from cache. A name gone stale (the page is kept
+up to a minute) costs one unused request; the old check after the list still
+asks for the right card.
+
+Checked and left alone: the list's fields are all used. Brotli would save
+4–20% over gzip on the largest answers (list 25.2 → 23.7 KB, card 23.0 →
+19.7 KB, rankings 21.9 → 17.4 KB at quality 9) for 15–20 ms of CPU each and a
+second compressed copy in the response cache.
+
 ## Fight night without Cloudflare (2026-10-26)
 
 `src/fight-night-load.ts` on dev-pc against a production-shaped server

@@ -19,7 +19,12 @@
           if (settings.theme === "dark") { root.classList.add("dark"); root.style.colorScheme = "dark"; }
         } catch (e) {}
         var ranked = function (url) { return url + "?ranking=" + ranking; };
-        if (path === "/") urls.push("/api/events");
+        if (path === "/") {
+          urls.push("/api/events");
+          // The server names the card "/" opens (seo.ts, `landing`), so it is
+          // asked for alongside the list; the check below covers a stale name.
+          if ((m = /^[a-f0-9]{16}$/.exec(root.getAttribute("data-landing") || ""))) urls.push(ranked("/api/events/" + m[0]));
+        }
         else if ((m = /^\/events\/([a-f0-9]{16})$/.exec(path))) urls.push("/api/events", ranked("/api/events/" + m[1]));
         else if ((m = /^\/fights\/([a-f0-9]{16})$/.exec(path))) urls.push("/api/events", ranked("/api/fights/" + m[1]));
         else if ((m = /^\/fighters\/([a-f0-9]{16})$/.exec(path))) urls.push(ranked("/api/fighters/" + m[1]), "/api/fighters/" + m[1] + "/stats?scope=ufc&minBouts=0");

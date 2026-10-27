@@ -47,7 +47,29 @@ export const STATS_PAGE_OPENING = `/api/stats?${[
   "marketOrder=high",
 ].join("&")}`;
 
-export function cachePolicy(url: URL): { ttl: number; stale: number; control: string } {
+/** Cloudflare's own copy of a shared answer, sent as `Cloudflare-CDN-Cache-Control`:
+ *  Cloudflare reads it and drops it, so browsers keep `Cache-Control` alone.
+ *  Only answers that are the same for every reader carry it (the public API,
+ *  built from the URL alone; page HTML; live odds; fans' summaries). A burst
+ *  of readers is then answered at the edge, and one request in each lifetime
+ *  reaches this server. `stale-if-error` keeps the last answer on screen
+ *  through an origin hiccup. If Cloudflare ever ignored the header, its cache
+ *  would fall back to `Cache-Control`, which never shares more than today. */
+export const EDGE_CACHE_HEADER = "Cloudflare-CDN-Cache-Control";
+export const EDGE = {
+  /** Live and detail data, polled every few seconds on fight night. */
+  live: "public, max-age=2, stale-while-revalidate=8, stale-if-error=600",
+  /** Lists that change with a sync (events, search, officials, news). */
+  list: "public, max-age=15, stale-while-revalidate=45, stale-if-error=86400",
+  /** Lists that change a few times a day (rankings, stats). */
+  slow: "public, max-age=30, stale-while-revalidate=300, stale-if-error=86400",
+  /** Live odds: re-read every 2 s, polled every 3 s. */
+  odds: "public, max-age=2, stale-while-revalidate=2, stale-if-error=30",
+  /** Page HTML: its SEO lines and asset names. Old assets outlive a release. */
+  page: "public, max-age=60, stale-while-revalidate=600, stale-if-error=86400",
+};
+
+export function cachePolicy(url: URL): { ttl: number; stale: number; control: string; edge: string } {
   // Personalized filter URLs remain browser-revalidated; the bounded origin cache
   // still shares identical studies. Keep CDN freshness inside the origin lifetime.
   const dynamic = url.pathname === "/api/live" || /^\/api\/(events|fights|fighters)(\/|$)/.test(url.pathname);
@@ -57,10 +79,10 @@ export function cachePolicy(url: URL): { ttl: number; stale: number; control: st
   if (url.pathname === "/api/rankings" || url.pathname === "/api/rankings/history") {
     // The browser keeps its copy for a minute and may show it for a day while
     // it revalidates, so a return visit paints the lists immediately.
-    return { ttl, stale, control: "public, max-age=60, s-maxage=30, stale-while-revalidate=86400" };
+    return { ttl, stale, edge: EDGE.slow, control: "public, max-age=60, s-maxage=30, stale-while-revalidate=86400" };
   }
   const shared = dynamic ? 2 : 0;
-  return { ttl, stale, control: shared
+  return { ttl, stale, edge: dynamic ? EDGE.live : slow ? EDGE.slow : EDGE.list, control: shared
     ? `public, max-age=0, s-maxage=${shared}, must-revalidate`
     : "public, no-cache" };
 }
