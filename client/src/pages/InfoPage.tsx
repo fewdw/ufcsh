@@ -103,7 +103,8 @@ export default function InfoPage() {
           <Section id="changelog">
             <p><time dateTime="2026-10-27">October 27, 2026</time></p>
             <ul>
-              <li>When a data source asks us to slow down, every sync waits it out together, so odds and cancelled bouts recover cleanly instead of failing.</li>
+              <li>Roster: fighters who retire now show up as departures the moment their ufc.com page says Retired.</li>
+              <li>Roster: a signee whose ufc.com profile goes up before they're added to the roster is watched until they are.</li>
             </ul>
           </Section>
         </div>
