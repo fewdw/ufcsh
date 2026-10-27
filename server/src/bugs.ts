@@ -2014,21 +2014,23 @@ function rosterMovesUnread(): BugCheck {
     links: [{ label: "ufc.com athletes", href: "https://www.ufc.com/athletes/all" }],
     actions: [],
   });
-  const unfound = db.prepare(`SELECT s.fighter_id, fr.name, s.checked_at FROM ufc_status s JOIN fighters fr ON fr.id = s.fighter_id
-    WHERE s.status IS NULL ORDER BY fr.name`).all() as { fighter_id: string; name: string; checked_at: number }[];
+  const unfound = db.prepare(`SELECT s.fighter_id, fr.name, s.url, s.checked_at FROM ufc_status s JOIN fighters fr ON fr.id = s.fighter_id
+    WHERE s.status IS NULL ORDER BY fr.name`).all() as { fighter_id: string; name: string; url: string | null; checked_at: number }[];
   for (const fighter of unfound) items.push({
     key: `ufc:${fighter.fighter_id}`,
     title: fighter.name,
-    subtitle: "No ufc.com page found, so a departure can't be seen",
+    // A page whose status reads something new (once "Retired") is a reader gap in parseAthleteStatus.
+    subtitle: fighter.url ? "ufc.com page's status not understood, so a departure can't be seen" : "No ufc.com page found, so a departure can't be seen",
     facts: [["Last tried", ago(fighter.checked_at)]],
-    links: [fighterLink(fighter.fighter_id, fighter.name), { label: "ufc.com search", href: `https://www.ufc.com/search?query=${encodeURIComponent(fighter.name)}` }],
+    links: [fighterLink(fighter.fighter_id, fighter.name), fighter.url ? { label: "ufc.com page", href: fighter.url }
+      : { label: "ufc.com search", href: `https://www.ufc.com/search?query=${encodeURIComponent(fighter.name)}` }],
     actions: [{ id: "ufc-status", label: "Look again", target: fighter.fighter_id }],
   });
   return check({
     id: "roster-moves",
     group: "Fighters",
     label: "Signings and releases not read",
-    description: "The /roster page lists Wikipedia's recent signings and releases (checked every 10 minutes), ufc.com's newest athlete profiles (every 5 minutes: a signing shows before anyone writes it up), plus fighters whose ufc.com page turned from Active to Not Fighting (each recent fighter read twice a day). A stale read means the article couldn't be reached or its tables changed shape (the last good read stays up). A row missing a field was written in a form the reader doesn't understand; a release with no profile is usually a name spelled differently from UFCStats.",
+    description: "The /roster page lists Wikipedia's recent signings and releases (checked every 10 minutes), ufc.com's newest athlete profiles (every 5 minutes: a signing shows before anyone writes it up; a profile not yet Active is watched until it is), plus fighters whose ufc.com page turned from Active to Not Fighting or Retired (each recent fighter read twice a day). A stale read means the article couldn't be reached or its tables changed shape (the last good read stays up). A row missing a field was written in a form the reader doesn't understand; a release with no profile is usually a name spelled differently from UFCStats.",
     grade: (item) => item.key === "sync" || item.key === "ufc-status" || item.key === "ufc-signings" ? "must" : item.key.startsWith("ufc:") ? "ok" : "minor",
   }, items);
 }

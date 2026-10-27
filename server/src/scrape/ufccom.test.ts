@@ -388,7 +388,9 @@ test("reads an athlete's roster status in English or French", () => {
   assert.deepEqual(parseAthleteStatus(page("Lyman Good", "Status", "Ne se bat pas")), { name: "Lyman Good", status: "not_fighting", height: null, reach: null });
   assert.deepEqual(parseAthleteStatus(page("Lyman Good", "Status", "Not Fighting")), { name: "Lyman Good", status: "not_fighting", height: null, reach: null });
   assert.deepEqual(parseAthleteStatus(page("Islam Makhachev", "Statut", "Actif")), { name: "Islam Makhachev", status: "active", height: null, reach: null });
-  assert.deepEqual(parseAthleteStatus(page("Mariya Agapova", "Status", "Retired")), { name: "Mariya Agapova", status: null, height: null, reach: null });
+  assert.deepEqual(parseAthleteStatus(page("Mariya Agapova", "Status", "Retired")), { name: "Mariya Agapova", status: "retired", height: null, reach: null });
+  assert.deepEqual(parseAthleteStatus(page("Colby Covington", "Status", "Retraité")), { name: "Colby Covington", status: "retired", height: null, reach: null });
+  assert.equal(parseAthleteStatus(page("X", "Status", "Suspended")).status, null);
 });
 
 test("reads an athlete's height and reach, not leg reach", () => {
