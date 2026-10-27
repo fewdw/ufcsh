@@ -194,7 +194,7 @@ function Empty({ children }: { children: React.ReactNode }) {
 
 // ---------------------------------------------------------------------------
 // Tooltip. Opens on hover, on keyboard focus, and on tap — never hover-only —
-// and closes on Escape. The trigger keeps a 44px minimum touch target.
+// and closes on Escape. A finger dragged sideways moves it between bars. The trigger keeps a 44px minimum touch target.
 
 function Tooltip({
   label,
@@ -214,7 +214,7 @@ function Tooltip({
         type="button"
         aria-describedby={open ? id : undefined}
         {...handlers}
-        className={`block w-full min-h-11 cursor-default rounded-xl px-1 py-1 text-left transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${className}`}
+        className={`block w-full min-h-11 cursor-default touch-pan-y select-none rounded-xl [-webkit-touch-callout:none] px-1 py-1 text-left transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${className}`}
       >
         {children}
       </button>
@@ -248,7 +248,7 @@ function BarTooltip({
         aria-label={ariaLabel}
         aria-describedby={open ? id : undefined}
         {...handlers}
-        className="flex h-full w-full cursor-pointer items-end justify-center rounded-t focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+        className="flex h-full w-full cursor-pointer touch-pan-y select-none items-end justify-center rounded-t [-webkit-touch-callout:none] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
       >
         {children}
       </button>

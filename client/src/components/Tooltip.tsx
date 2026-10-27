@@ -16,13 +16,14 @@ export function Tooltip({ id, at, children, style, onPointerEnter, onPointerLeav
 }) {
   const ref = useRef<HTMLSpanElement>(null);
   useLayoutEffect(() => {
-    if (!at || !fitViewport || !ref.current) return;
+    if (!at || !(fitViewport || at.below !== undefined) || !ref.current) return;
+    const below = fallbackBelow ?? at.below;
     ref.current.style.top = `${Number(style?.top ?? at.y)}px`;
     ref.current.style.transform = style?.transform ?? `translate(-50%, ${at.above ? "-100%" : "0"})`;
     const box = ref.current.getBoundingClientRect();
     // Keep the chart clear if the full list fits below it but not above it.
-    if (box.top < 8 && fallbackBelow !== undefined && fallbackBelow + box.height <= window.innerHeight - 8) {
-      ref.current.style.top = `${fallbackBelow}px`;
+    if (box.top < 8 && below !== undefined && below + box.height <= window.innerHeight - 8) {
+      ref.current.style.top = `${below}px`;
       ref.current.style.transform = "translateX(-50%)";
       return;
     }
