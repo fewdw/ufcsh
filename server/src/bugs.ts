@@ -8,6 +8,7 @@ import { americanLine, fightIndex, impliedProbability, professionalBouts } from 
 import { fighterNamed, hasUfcFight, ufcFightExistsSql } from "./fighter-identity.ts";
 import { SEARCH_ALIASES } from "./search-aliases.ts";
 import { awardMisses, awardYearDue } from "./awards.ts";
+import { ANTIDOPING_SOURCE, antidopingGaps, syncAntidopingTests } from "./antidoping.ts";
 import { AWARDS_SOURCE } from "./awards-data.ts";
 import { normName } from "./util.ts";
 import { SCAN_KEY, scanUpcoming, upcomingBouts, type ScanResult } from "./polymarket.ts";
@@ -864,6 +865,33 @@ function awardYearMissing(): BugCheck {
     links: [{ label: AWARDS_SOURCE.name, href: AWARDS_SOURCE.url }],
     actions: [],
   }] : []);
+}
+
+function antidopingMisses(): BugCheck {
+  const synced = Number(getMeta("antidoping_synced_at") ?? 0);
+  const thisYear = new Date().getUTCFullYear();
+  const stale: BugItem[] = Date.now() - synced > 3 * 86_400_000 ? [{
+    key: "sync",
+    title: synced ? "Test history not read for 3 days" : "Test history never read",
+    subtitle: getMeta("antidoping_error") || "The daily read hasn't succeeded",
+    facts: [],
+    links: [{ label: "UFC Anti-Doping test history", href: ANTIDOPING_SOURCE }],
+    actions: [{ id: "antidoping", label: "Read again", target: "all" }],
+  }] : [];
+  return check({
+    id: "antidoping-misses",
+    group: "Fighters",
+    label: "Fighters with no anti-doping tests in a year they fought",
+    description: "The UFC Anti-Doping Program lists athletes by registered name, so a ring name, a maiden or married name or a different spelling can leave a fighter's year without its tests on the profile. When one of the leads (that year's untied rows sharing a word) is the same person, add it to SOURCE_NAMES in server/src/antidoping.ts. Years before last are graded OK.",
+    grade: (item) => item.key === "sync" ? "must" : Number(item.key.split(":")[1]) >= thisYear - 1 ? "minor" : "ok",
+  }, [...stale, ...antidopingGaps().map((gap): BugItem => ({
+    key: `${gap.id}:${gap.year}`,
+    title: gap.name,
+    subtitle: `Fought in ${gap.year}, no tests tied that year`,
+    facts: gap.unmatched.length ? [["Leads", gap.unmatched.join(", ")]] : [],
+    links: [fighterLink(gap.id, gap.name), { label: `${gap.year} tests`, href: `${ANTIDOPING_SOURCE}?year=${gap.year}` }],
+    actions: [],
+  }))]);
 }
 
 // ---------------------------------------------------------------------------
@@ -2186,6 +2214,7 @@ export function bugReport(): { generated_at: number; sync: { last_tick_at: strin
     searchAliasMisses(),
     awardLinkMisses(),
     awardYearMissing(),
+    antidopingMisses(),
     rosterMovesUnread(),
     rosterHistoryGaps(),
     newsFeedsUnread(),
@@ -2222,7 +2251,7 @@ function newsUnjudged(): BugCheck {
   }, items);
 }
 
-export type BugActionId = "event-crew" | "cancelled" | "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket" | "deductions" | "media";
+export type BugActionId = "event-crew" | "cancelled" | "potential-odds" | "odds" | "props" | "career" | "detail" | "segments" | "event" | "clear-bfo" | "birth" | "wiki" | "article" | "catchweight" | "forget-ufc" | "verdict" | "roster-moves" | "ufc-status" | "news" | "news-ai" | "ranking-history" | "rankings" | "judge-names" | "polymarket" | "deductions" | "media" | "antidoping";
 
 /** Runs one repair and says in a sentence what it found. */
 export async function runBugAction(action: string, target: string): Promise<{ ok: boolean; message: string }> {
@@ -2337,6 +2366,15 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
       const missing = Object.values(fights).filter((slug) => slug === null).length;
       return { ok: true, message: `Scanned ${Object.keys(fights).length} bouts; ${missing} without a market.` };
     }
+    case "antidoping":
+      try {
+        await syncAntidopingTests();
+        setMeta("antidoping_synced_at", String(Date.now()));
+        setMeta("antidoping_error", "");
+      } catch (err) {
+        return { ok: false, message: `Couldn't read it (${String(err)}). The stored years stay up.` };
+      }
+      return { ok: true, message: "Read the test history and tied its names again." };
     case "news":
       await syncNews();
       return { ok: true, message: "Read every outlet again." };

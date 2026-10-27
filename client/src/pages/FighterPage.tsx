@@ -4,7 +4,7 @@ import { CareerStatModal } from "../components/CareerStatDetails";
 import { Children, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useApi } from "../api";
-import type { CompleteRecordBefore, FighterAward, FighterProfile, FighterRecord, HistoryRow, NewsPage, ProfessionalHistoryRow, ProfileCancelledBout } from "../api";
+import type { AntidopingYear, CompleteRecordBefore, FighterAward, FighterProfile, FighterRecord, HistoryRow, NewsPage, ProfessionalHistoryRow, ProfileCancelledBout } from "../api";
 import { divisionName, finishDetail, formatDateShortWithYear, formatLine, formatMethod, isDecision, lastName } from "../format";
 import { formatValue, PANEL } from "../components/chartTokens";
 import FighterPortrait from "../components/FighterPortrait";
@@ -228,6 +228,31 @@ function FighterAwards({ awards }: { awards: FighterAward[] }) {
             </li>
           );
         })}
+      </ul>
+    </div>
+  );
+}
+
+/** Test sessions a year under the UFC Anti-Doping Program, oldest first; the
+ *  current year is counted so far. */
+function FighterTests({ years }: { years: AntidopingYear[] }) {
+  const thisYear = new Date().getFullYear();
+  const total = years.reduce((sum, row) => sum + row.tests, 0);
+  return (
+    <div className="border-t border-zinc-100 pt-3 sm:pt-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+          Drug tests <span className="ml-1 font-normal normal-case tracking-normal tabular-nums">{total.toLocaleString()}</span>
+        </h2>
+        <a href="https://ufcantidoping.com/tests" target="_blank" rel="noreferrer" className="text-[11px] text-zinc-400 transition hover:text-zinc-700">UFC Anti-Doping</a>
+      </div>
+      <ul className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1.5">
+        {years.map((row) => (
+          <li key={row.year} className="flex flex-col items-center" title={`${row.tests} test ${row.tests === 1 ? "session" : "sessions"} in ${row.year}${row.year === thisYear ? " so far" : ""}`}>
+            <span className="text-[13px] font-medium tabular-nums text-zinc-800">{row.tests}</span>
+            <span className="text-[10px] tabular-nums text-zinc-400">{row.year}</span>
+          </li>
+        ))}
       </ul>
     </div>
   );
@@ -953,6 +978,7 @@ export default function FighterPage() {
             </div>
             <BioGrid bio={bio} className="@[40rem]:hidden" />
             {fighter.awards?.length ? <FighterAwards awards={fighter.awards} /> : null}
+            {fighter.antidoping?.length ? <FighterTests years={fighter.antidoping} /> : null}
             {/* Both records at once, side by side while the card is wide
                 enough and stacked when it is not. The professional wheel
                 waits until that history is verified. */}
