@@ -71,12 +71,24 @@ export function canonicalApiKey(url: URL): string {
   return `${url.pathname}?${params}`;
 }
 
+let trustedList: string | undefined;
+let trusted = new Set<string>();
+/** Asked several times per request (limits, metrics, traffic): worked out once. */
+const addresses = new WeakMap<IncomingMessage, string>();
 /** Only trust an explicitly configured proxy, which must overwrite X-Real-IP. */
 export function clientAddress(req: IncomingMessage): string {
+  const known = addresses.get(req);
+  if (known) return known;
+  const list = process.env.TRUSTED_PROXY_IPS ?? "";
+  if (list !== trustedList) {
+    trustedList = list;
+    trusted = new Set(list.split(",").map(value => value.trim()).filter(Boolean));
+  }
   const peer = req.socket.remoteAddress ?? "unknown";
-  const trusted = (process.env.TRUSTED_PROXY_IPS ?? "").split(",").map(value => value.trim()).filter(Boolean);
   const forwarded = req.headers["x-real-ip"];
-  return trusted.includes(peer) && typeof forwarded === "string" && isIP(forwarded) ? forwarded : peer;
+  const address = trusted.has(peer) && typeof forwarded === "string" && isIP(forwarded) ? forwarded : peer;
+  addresses.set(req, address);
+  return address;
 }
 
 export class RateLimiter {

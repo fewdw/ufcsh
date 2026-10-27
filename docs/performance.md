@@ -239,6 +239,13 @@ The mix includes page HTML, cards, matchups, fighter profiles and their stat
 boards, officials, venues, search, images, share images and
 page-view beacons, weighted roughly like real traffic.
 
+Fight night (`src/fight-night-load.ts`, setup in its header): readers arrive
+over `--ramp`, open a live matchup and poll it as the client does, and a share
+of them save their scorecards after every round bell, with sessions signed by
+a key made for the run. Every read reaches the server, as if Cloudflare cached
+nothing. Pin the server to four cores (`taskset -c 0-3`) and the load to the
+rest to approximate the VPS.
+
 ## Last results (2026-09-24, V2 branch)
 
 Measured on the production host (4 vCPU, 8 GB) while production and dev were
@@ -730,3 +737,42 @@ of the archive on dev-pc:
 
 All 980 answers byte-identical to before. Next if quiet hours stay spiky: log
 queue wait and build time separately for detail reads over 100 ms.
+
+## Fight night without Cloudflare (2026-10-26)
+
+`src/fight-night-load.ts` on dev-pc against a production-shaped server
+(2 query workers, `NO_SYNC`, fresh copy of the dev archive each run), pinned to
+4 cores, the load on the other 8. Every read reaches the server: the worst
+case, as if Cloudflare cached nothing. Each reader polls about once a second;
+30% of the readers on the live bout save their card after every bell.
+
+| Readers (arriving over) | Code | Requests/s | p50 | p95 | p99 | Failed |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1,000 (60 s) | develop | 865 | 1.3 ms | 4.7 ms | 9.4 ms | 0 of 155,785 |
+| 3,000 (15 s) | develop | 2,123 | 53 ms | 236 ms | 30.4 s | 3,045 (timeouts) |
+| 3,000 (15 s) | + pick summary cached 2 s (#295) | 2,939 | 0.6 ms | 5.3 ms | 13 ms | 3 resets* |
+| 5,000 (15 s) | + #295 | 4,071 | 1.1 ms | 1.1 s | 9.3 s | 849 (timeouts) |
+
+\* Within 68 ms: Node's client reusing a keep-alive socket the server had just
+closed, not a slow answer.
+
+At 3,000 readers on develop, the public pick summary (polled every 3 s,
+rebuilt from SQLite on the main thread every time) saturated the API's main
+thread and everything queued behind it. Cached for 2 s and dropped on a save
+(#295), the same burst is answered in 13 ms p99 and every score save
+succeeds. The ceiling without Cloudflare is then 3,000–5,000 readers on four
+dev-pc cores; the VPS's cores are about half as fast, so roughly 1,500–2,500
+there. With the Cloudflare rule (#295), reads at the edge don't reach the
+server at all, so the reader count stops mattering to it.
+
+A profile of the API process at 3,000 readers had it ~50% idle over the run.
+`clientAddress` (1.2%) split `TRUSTED_PROXY_IPS` on every call, several times
+per request; it now parses the list once and remembers each request's
+address. Score saves at 1,500 per 90 s: p99 36 ms.
+
+Not covered: TLS and Caddy in front, the sync process, comments, images
+(Cloudflare serves them) and the VPS's own CPU.
+
+Dev builds now wait while a card is live (`deploy/select-dev-branch.sh`,
+exit 75; `UFC_DEV_DURING_CARD=1` overrides): a build holds two of the VPS's
+four cores for a minute or more.
