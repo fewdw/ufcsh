@@ -40,3 +40,39 @@ test("a finished card read again marks its fighters' records stale only when a r
   storeEventDetail(card("nc", "nc"));
   assert.equal(stale(), true, "a result overturned afterwards");
 });
+
+test("new, removed and changed bookings refresh sections immediately; unchanged cards keep their check time", t => {
+  const eventId = "face000000000031", fightId = "face000000000032", addedId = "face000000000033";
+  const f1 = "face000000000034", f2 = "face000000000035", replacement = "face000000000036";
+  t.after(() => {
+    db.prepare("DELETE FROM fights WHERE event_id = ?").run(eventId);
+    db.prepare("DELETE FROM events WHERE id = ?").run(eventId);
+    db.prepare("DELETE FROM fighters WHERE id IN (?, ?, ?)").run(f1, f2, replacement);
+  });
+  db.prepare("INSERT INTO events (id, name, date) VALUES (?, 'UFC Section fixture', '2099-01-01')").run(eventId);
+  const corner = (id: string) => ({ id, name: `Fighter ${id.slice(-2)}`, outcome: null, kd: "", str: "", td: "", sub: "" });
+  const bout = (id: string, ord: number, first = f1, second = f2): ScrapedEventDetail["fights"][number] => ({
+    id, ord, weightClass: "Lightweight", titleFight: false, f1: corner(first), f2: corner(second),
+    method: null, methodDetails: null, round: null, time: null, bonuses: { perf: false, fotn: false },
+  });
+  const store = (fights: ScrapedEventDetail["fights"]) => storeEventDetail({ id: eventId, name: "UFC Section fixture", date: "2099-01-01", location: "Las Vegas", fights });
+  const checked = () => db.prepare("UPDATE events SET segments_fetched_at = 123 WHERE id = ?").run(eventId);
+  const checkTime = () => (db.prepare("SELECT segments_fetched_at AS at FROM events WHERE id = ?").get(eventId) as { at: number | null }).at;
+  store([bout(fightId, 0)]);
+  checked();
+  store([bout(fightId, 0)]);
+  assert.equal(checkTime(), 123);
+  store([bout(fightId, 0), bout(addedId, 1)]);
+  assert.equal(checkTime(), null, "a new booking requests a same-pass section read");
+  checked();
+  store([bout(fightId, 0)]);
+  assert.equal(checkTime(), null, "a removed booking can change the running order");
+  db.prepare("UPDATE fights SET segment = 'main', card_pos = 0, scheduled_rounds = 5, referee_assigned = 'Old Referee' WHERE id = ?").run(fightId);
+  checked();
+  store([bout(fightId, 0, f2, f1)]);
+  assert.equal(checkTime(), 123, "swapping corners is the same pairing");
+  store([bout(fightId, 0, f1, replacement)]);
+  assert.equal(checkTime(), null);
+  const fight = db.prepare("SELECT segment, card_pos, scheduled_rounds, referee_assigned FROM fights WHERE id = ?").get(fightId)!;
+  assert.deepEqual(Object.values(fight), [null, null, null, null], "a replacement cannot inherit the old booking's placement");
+});

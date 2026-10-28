@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { db } from "./db.ts";
 import { resolvePublicApi } from "./api.ts";
+import { syncEventSegments } from "./sync.ts";
 
 // Announced broadcast times do not establish which bouts occupy each window.
 test("a card with unknown sections keeps broadcast times but has no bout estimates", async () => {
@@ -41,4 +42,30 @@ test("a card with unknown sections keeps broadcast times but has no bout estimat
   } finally {
     db.exec("ROLLBACK TO card_sections; RELEASE card_sections");
   }
+});
+
+test("early page sections are stored without a live feed; stale and unmatched placements are cleared", async t => {
+  db.exec("SAVEPOINT early_sections");
+  t.after(() => db.exec("ROLLBACK TO early_sections; RELEASE early_sections"));
+  const eventId = "cafc000000000002";
+  db.prepare(`INSERT INTO events (id, name, date, ufc_slug) VALUES (?, 'Early fixture', '2099-02-01', 'early-fixture')`).run(eventId);
+  const pairings: [string, string][] = [["Main One", "Main Two"], ["Prelim One", "Prelim Two"], ["Unknown One", "Unknown Two"]];
+  for (const [ord, [f1, f2]] of pairings.entries()) {
+    db.prepare(`INSERT INTO fights (id, event_id, ord, f1_name, f2_name, segment, card_pos) VALUES (?, ?, ?, ?, ?, 'main', ?)`)
+      .run(`cafc00000000001${ord}`, eventId, ord, f1, f2, ord);
+  }
+  // Equal-size card, but the third pairing was replaced. Its old positional
+  // assignment must not survive or be guessed again from the three rows.
+  const row = (f1: string, f2: string) => `<div class="c-listing-fight__names-row"><span class="c-listing-fight__corner-name">${f1}</span><span class="c-listing-fight__corner-name">${f2}</span></div>`;
+  let html = `<div class="fight-card">${row(...pairings[0])}<div class="fight-card-prelims">${row(...pairings[1])}${row("Different One", "Different Two")}</div></div>`;
+  t.mock.method(globalThis, "fetch", async (url: string) => {
+    assert.equal(url, "https://www.ufc.com/event/early-fixture");
+    return new Response(html);
+  });
+  await syncEventSegments(eventId);
+  const placed = db.prepare("SELECT segment, card_pos FROM fights WHERE event_id = ? ORDER BY ord").all(eventId);
+  assert.deepEqual(placed.map(row => [row.segment, row.card_pos]), [["main", 0], ["prelims", 1], [null, null]]);
+  html = "<html>Temporarily unavailable</html>";
+  await assert.rejects(syncEventSegments(eventId), /keeping the last good placements/);
+  assert.deepEqual(db.prepare("SELECT segment, card_pos FROM fights WHERE event_id = ? ORDER BY ord").all(eventId), placed);
 });

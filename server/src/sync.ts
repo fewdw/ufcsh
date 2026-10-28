@@ -108,6 +108,9 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
       .prepare("SELECT id, f1_id, f2_id, f1_outcome, f2_outcome, detail_json FROM fights WHERE event_id = ?")
       .all(detail.id) as { id: string; f1_id: string; f2_id: string; f1_outcome: string | null; f2_outcome: string | null; detail_json: string | null }[];
     const previous = new Map(existing.map(f => [f.id, f]));
+    if (existing.length !== currentIds.size || detail.fights.some(f => !previous.has(f.id))) {
+      db.prepare("UPDATE events SET segments_fetched_at = NULL WHERE id = ?").run(detail.id);
+    }
     resultsChanged = !wasComplete || detail.fights.some(f => {
       const old = previous.get(f.id);
       return !old || old.f1_outcome !== f.f1.outcome || old.f2_outcome !== f.f2.outcome;
@@ -158,11 +161,11 @@ export function storeEventDetail(detail: ScrapedEventDetail): void {
           }
         }
         db.prepare("UPDATE events SET bfo_checked_at = NULL WHERE id = ?").run(detail.id);
-        // A new opponent is a new booking, whose length is not yet known: drop
-        // the old one and have ufc.com's card read again. Corners merely
+        // A new opponent is a new booking: clear its previous placement,
+        // length and referee and read ufc.com's card again. Corners merely
         // swapped are the same booking.
         if (!(old.f1_id === f.f2.id && old.f2_id === f.f1.id)) {
-          db.prepare("UPDATE fights SET scheduled_rounds = NULL WHERE id = ?").run(f.id);
+          db.prepare("UPDATE fights SET segment = NULL, card_pos = NULL, scheduled_rounds = NULL, referee_assigned = NULL WHERE id = ?").run(f.id);
           db.prepare("UPDATE events SET segments_fetched_at = NULL WHERE id = ?").run(detail.id);
         }
       }
@@ -332,9 +335,12 @@ export async function syncEventSegments(eventId: string): Promise<void> {
     || (card.info.bouts.length && fights.length && !sharesBout(fights, card.info.bouts))));
   // The feed places a late addition days before the cached page lists it.
   const bouts = !foreign && card.feedSegments.length ? card.feedSegments : card.segments;
+  if (fights.length && !bouts.length) throw new Error(`ufc.com ${event.ufc_slug} carried no card sections; keeping the last good placements`);
   const segments = assignSegments(fights, bouts);
   const update = db.prepare("UPDATE fights SET segment = ? WHERE id = ?");
-  for (const [id, segment] of segments) update.run(segment, id);
+  // A bout no longer identified by the source has no confirmed section.
+  // Clear old positional guesses and assignments from a changed booking.
+  for (const fight of fights) update.run(segments.get(fight.id) ?? null, fight.id);
   // A bout ufc.com no longer names loses its place, as a moved bout must.
   const positions = assignPositions(fights, bouts);
   const setPosition = db.prepare("UPDATE fights SET card_pos = ? WHERE id = ?");
@@ -1892,8 +1898,8 @@ export async function tick(): Promise<void> {
     }
 
     // 4b. Which bouts sit on which segment of a card. An announced card is
-    //     reshuffled up to the day itself, so fight week is re-read every 10
-    //     minutes and a later card every 30; a card already fought is read
+    //     reshuffled weeks ahead: re-read all upcoming cards every 10
+    //     minutes; a card already fought is read
     //     once and never again, which is what fills the archive in behind us.
     if (getMeta("schedule_archive_done") !== "1" && metaAgeMs("schedule_archive_at") > 60_000) {
       await guarded("schedule_archive", syncScheduleArchive);
@@ -1902,11 +1908,12 @@ export async function tick(): Promise<void> {
     const segmentTargets = db.prepare(`SELECT id, name, date, complete, segments_fetched_at FROM events
       WHERE ufc_slug IS NOT NULL AND (segments_fetched_at IS NULL OR complete = 0)
       ORDER BY complete ASC, date DESC`).all() as { id: string; name: string; date: string; complete: number; segments_fetched_at: number | null }[];
-    for (const e of segmentTargets.slice(0, 25)) {
-      const interval = e.complete ? Infinity : daysBetween(today, e.date) <= 7 ? 10 * 60_000 : 30 * 60_000;
-      if (!e.segments_fetched_at || now - e.segments_fetched_at > interval) {
-        await guarded(`card_segments ${e.name}`, () => syncEventSegments(e.id));
-      }
+    const dueSegments = segmentTargets.filter(e => !e.segments_fetched_at || (!e.complete && now - e.segments_fetched_at > CARD_INTERVAL));
+    // Due cards only consume the budget. Later announcements cannot starve
+    // tonight's card, and already-fetched cards cannot block archive backfill.
+    dueSegments.sort((a, b) => a.complete - b.complete || (a.complete ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date)));
+    for (const e of dueSegments.slice(0, 25)) {
+      await guarded(`card_segments ${e.name}`, () => syncEventSegments(e.id));
     }
 
     // 5. Backfill: past events never fetched, newest first, a batch per tick.

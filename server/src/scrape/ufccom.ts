@@ -614,8 +614,8 @@ function pageFeedCard(feed: unknown, fightIds: number[]): any[] | null {
 /**
  * Every bout's segment, in card order, as the feed has it. The event page is
  * cached and can go days without a bout the feed already places, so this is
- * the fresher list. All or nothing: one bout without a known segment or two
- * names and the page's own list stands.
+ * the fresher list. An incomplete bout does not withhold other bouts' explicit
+ * assignments. The feed must still contain every fight id from this page.
  */
 export function parseFeedSegments(feed: unknown, fightIds: number[]): ScrapedSegmentBout[] {
   const card = pageFeedCard(feed, fightIds);
@@ -626,9 +626,10 @@ export function parseFeedSegments(feed: unknown, fightIds: number[]): ScrapedSeg
     const order = Number(fight?.FightOrder);
     const names = (fight?.Fighters ?? []).map((fighter: any) =>
       cleanText(`${fighter?.Name?.FirstName ?? ""} ${fighter?.Name?.LastName ?? ""}`));
-    if (!segment || !Number.isInteger(order) || names.length !== 2 || !names[0] || !names[1]) return [];
+    if (!segment || !Number.isInteger(order) || order < 1 || names.length !== 2 || !names[0] || !names[1]) continue;
     bouts.push({ segment, order, f1: names[0], f2: names[1] });
   }
+  if (new Set(bouts.map(bout => bout.order)).size !== bouts.length) return [];
   return bouts.sort((a, b) => a.order - b.order).map(({ segment, f1, f2 }) => ({ segment, f1, f2 }));
 }
 

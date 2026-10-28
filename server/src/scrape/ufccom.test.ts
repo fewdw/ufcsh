@@ -375,10 +375,19 @@ test("the feed places every bout, late additions included, in card order", () =>
     { segment: "prelims", f1: "Azamat Murzakanov", f2: "Dominick Reyes" },
     { segment: "early", f1: "Iasmin Lucindo", f2: "Nicolle Caliari" },
   ]);
-  // Another card's feed, or one bout in a segment we can't name: the page's list stands.
+  // Another card's feed is rejected. A single unknown segment does not hide
+  // the three assignments this same event's feed already publishes.
   assert.deepEqual(parseFeedSegments(feed, [1, 99]), []);
   const unknown = { LiveEventDetail: { FightCard: [...feed.LiveEventDetail.FightCard, bout(15, 15, "Prelims3", "Kody Steele", "Noah Gugnon")] } };
-  assert.deepEqual(parseFeedSegments(unknown, [1, 6]), []);
+  assert.deepEqual(parseFeedSegments(unknown, [1, 6]), parseFeedSegments(feed, [1, 6]));
+  const incomplete = { LiveEventDetail: { FightCard: [
+    ...feed.LiveEventDetail.FightCard,
+    { ...bout(16, 16, "Main", "Kody Steele", "Noah Gugnon"), Fighters: [] },
+    bout(17, 0, "Main", "Kody Steele", "Noah Gugnon"),
+  ] } };
+  assert.deepEqual(parseFeedSegments(incomplete, [1, 6]), parseFeedSegments(feed, [1, 6]));
+  const duplicateOrder = { LiveEventDetail: { FightCard: [...feed.LiveEventDetail.FightCard, bout(18, 1, "Main", "Kody Steele", "Noah Gugnon")] } };
+  assert.deepEqual(parseFeedSegments(duplicateOrder, [1, 6]), []);
 });
 
 test("reads an athlete's roster status in English or French", () => {

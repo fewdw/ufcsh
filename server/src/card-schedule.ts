@@ -67,32 +67,26 @@ export function sharesBout(
 
 /**
  * Which segment of the card each bout belongs to. Names carry the assignment,
- * because either source can reorder a card after a change; the segment sizes
- * fill whatever the names could not match, since both list a card main event
- * first.
+ * because either source can reorder a card after a change. Equal card sizes
+ * and UFCStats' list order cannot establish where an unidentified bout belongs.
  */
 export function assignSegments(
   fights: { id: string; ord: number; f1_name: string; f2_name: string }[],
   bouts: ScrapedSegmentBout[],
 ): Map<string, CardSegment> {
   const byPair = new Map<string, CardSegment>();
-  for (const bout of bouts) byPair.set(pairKey(bout.f1, bout.f2), bout.segment);
+  const ambiguous = new Set<string>();
+  for (const bout of bouts) {
+    const key = pairKey(bout.f1, bout.f2);
+    if (byPair.has(key) && byPair.get(key) !== bout.segment) ambiguous.add(key);
+    byPair.set(key, bout.segment);
+  }
 
   const assigned = new Map<string, CardSegment>();
   for (const fight of fights) {
-    const segment = byPair.get(pairKey(fight.f1_name, fight.f2_name));
-    if (segment) assigned.set(fight.id, segment);
-  }
-  if (assigned.size === fights.length || bouts.length !== fights.length) return assigned;
-
-  const ordered = [...fights].sort((a, b) => a.ord - b.ord);
-  const sizes: [CardSegment, number][] = (["main", "prelims", "early"] as CardSegment[])
-    .map((segment) => [segment, bouts.filter((bout) => bout.segment === segment).length]);
-  let index = 0;
-  for (const [segment, size] of sizes) {
-    for (let n = 0; n < size && index < ordered.length; n++, index++) {
-      if (!assigned.has(ordered[index].id)) assigned.set(ordered[index].id, segment);
-    }
+    const key = pairKey(fight.f1_name, fight.f2_name);
+    const segment = byPair.get(key);
+    if (segment && !ambiguous.has(key)) assigned.set(fight.id, segment);
   }
   return assigned;
 }

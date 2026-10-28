@@ -1336,11 +1336,7 @@ function upcomingWithoutSegment(): BugCheck {
     SELECT ${FIGHT_COLUMNS}, e.ufc_slug, e.segments_fetched_at
     FROM fights f JOIN events e ON e.id = f.event_id
     WHERE e.complete = 0 AND (
-      (f.segment IS NULL
-        -- ufc.com only splits a card close to the event, so earlier than a week out
-        -- a missing segment is a problem only when the rest of the card is placed.
-        AND (e.date <= date('now', '+7 day')
-          OR EXISTS (SELECT 1 FROM fights o WHERE o.event_id = f.event_id AND o.segment IS NOT NULL)))
+      f.segment IS NULL
       -- Without ufc.com's place, the bout sits where UFCStats lists it, which
       -- for a late addition is the bottom of the card, whatever it is booked on.
       OR (f.card_pos IS NULL
@@ -1351,7 +1347,7 @@ function upcomingWithoutSegment(): BugCheck {
     id: "upcoming-no-segment",
     group: "Fights & events",
     label: "Upcoming bouts not placed on ufc.com's card",
-    description: "A bout is missing its section (early prelims, prelims or main card) or its place on ufc.com's card. Cards with missing sections show a confirmation notice and no bout start estimates. Missing positions fall back to UFCStats' list, which puts a late addition at the bottom. Usually ufc.com hasn't published the full split yet, hasn't listed a new booking, or its names differ from UFCStats.",
+    description: "A bout is missing its section (early prelims, prelims or main card) or its place on ufc.com's card. Confirmed sections remain visible; unplaced bouts have their own confirmation notice. Bout start estimates wait for the full split. Missing positions fall back to UFCStats' list, which puts a late addition at the bottom. Tracked from announcement, even weeks out: ufc.com may not have listed the booking or published its section yet, or its names differ from UFCStats.",
     grade: ahead([[3, "must"], [14, "minor"]]),
   }, rows.map((fight) => fightItem(fight, {
     facts: [["ufc.com slug", fight.ufc_slug ?? "none"], ["Segments read", ago(fight.segments_fetched_at)]],

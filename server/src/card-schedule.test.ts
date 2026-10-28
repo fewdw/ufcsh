@@ -51,11 +51,19 @@ test("bouts are placed on the card by name, nickname and corner order aside", ()
   assert.equal(segments.get("b"), "main", "a nickname on one source only must not lose the bout");
 });
 
-test("a bout the other source spells differently is placed by where it sits on the card", () => {
+test("an unmatched replacement is not placed by position, even with equal card sizes", () => {
   const renamed = [{ ...fights[3], f1_name: "Late Replacement", f2_name: "Sofia Montenegro" }];
   const segments = assignSegments([...fights.slice(0, 3), ...renamed], bouts);
-  assert.equal(segments.get("d"), "prelims");
+  assert.equal(segments.has("d"), false);
   assert.equal(segments.get("a"), "main", "the bouts that did match keep their own answer");
+});
+
+test("conflicting assignments and reordered unknown bouts are never guessed", () => {
+  assert.equal(assignSegments(fights, [...bouts, { ...bouts[0], segment: "early" }]).has("a"), false);
+  const changed = [...fights.slice(1), { ...fights[0], ord: 4, f2_name: "New Opponent" }];
+  const assigned = assignSegments(changed, bouts);
+  assert.equal(assigned.has("a"), false);
+  assert.equal(assigned.get("b"), "main");
 });
 
 test("segments are left unassigned rather than guessed from a card of a different size", () => {
