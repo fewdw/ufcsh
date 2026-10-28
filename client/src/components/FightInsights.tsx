@@ -223,43 +223,48 @@ export function DecisionsPanel({ fighters, before }: { fighters: Insightful[]; b
   if (two && !scored) return null;
   // Both fighters show the same lengths in the same order, so rows line up.
   const lengths = [...new Set(fighters.flatMap(fighter => fighter.insights?.decisions ?? []).map(group => group.rounds))].sort((a, b) => a - b);
+  const sides = fighters.map(fighter => ({ name: fighter.name, decisions: fighter.insights?.decisions ?? [] }));
   return <section className={`${PANEL_SHELL} @container flex min-w-0 flex-col`}>
     <PanelHeading title="Average scorecards" />
-    <div className={`grid flex-1 px-3 pb-3 pt-1.5 @[40rem]:px-5 @[40rem]:pt-2 ${two ? "grid-cols-2 gap-x-4 @[40rem]:gap-x-10" : "content-center"}`}>
-      {scored ? fighters.map(fighter => <div key={fighter.name} className={`min-w-0 ${two ? "" : "pt-2"}`}>
-        {two ? columnHead(fighter) : null}
-        <dl className="mx-auto grid max-w-xs gap-y-4">
-          {lengths.map(rounds => {
-            const group = fighter.insights?.decisions?.find(entry => entry.rounds === rounds);
-            if (!group) return <div key={rounds}>
-              <dt className={sectionLabel}>{rounds} rounds</dt>
-              <dd className={`mt-1 ${CHART_TEXT} text-zinc-500`}>No scored decisions</dd>
-            </div>;
-            const margin = group.own - group.opponent;
-            const reach = Math.min(1, Math.abs(margin) / rounds) * 50;
-            const signed = `${margin < 0 ? "−" : "+"}${Math.abs(margin).toFixed(1)}`;
-            return <div key={rounds}>
-              <dt className="flex items-baseline justify-between gap-2">
-                <span className={sectionLabel}>{rounds} rounds</span>
-                <span aria-hidden="true" className={`whitespace-nowrap ${metaText}`}>{group.fights} {group.fights === 1 ? "fight" : "fights"}</span>
-              </dt>
-              <dd className="mt-1 flex items-baseline justify-between gap-2 whitespace-nowrap tabular-nums"
-                aria-label={`${lastName(fighter.name)} ${group.own.toFixed(1)}, opponents ${group.opponent.toFixed(1)}, a margin of ${signed} on average over ${group.fights} ${group.fights === 1 ? "fight" : "fights"}`}>
-                <span className="text-base text-zinc-500"><span className="font-semibold text-zinc-900">{group.own.toFixed(1)}</span>–{group.opponent.toFixed(1)}</span>
-                <span className={`${CHART_TEXT} font-semibold text-zinc-700`}>{signed}</span>
-              </dd>
-              <dd aria-hidden="true" className="mt-1.5">
-                <span className="relative block h-2 rounded-full bg-zinc-100">
-                  {margin ? <span className={`absolute inset-y-0 ${margin > 0 ? `right-1/2 rounded-l-full ${WON}` : `left-1/2 rounded-r-full ${LOST}`}`} style={{ width: `${Math.max(1.5, reach)}%` }} /> : null}
-                  <span className="absolute inset-y-[-2px] left-1/2 w-px -translate-x-1/2 bg-zinc-400" />
-                </span>
-                <span className={`mt-1 flex justify-between ${metaText}`}><span>+{rounds}</span><span>Even</span><span>−{rounds}</span></span>
-              </dd>
-            </div>;
-          })}
-        </dl>
+    <DecisionDetails sides={sides} before={before}>{open => <div className={`grid flex-1 px-3 pb-3 pt-1.5 @[40rem]:px-5 @[40rem]:pt-2 ${two ? "grid-cols-2 gap-x-4 @[40rem]:gap-x-10" : "content-center"}`}>
+      {scored ? fighters.map((fighter, index) => <div key={fighter.name} className={`relative min-w-0 ${two ? "" : "pt-2"}`}>
+        {/* The whole side opens its decisions; the figures sit over the button. */}
+        {sides[index].decisions.length ? <button type="button" aria-haspopup="dialog" onClick={() => open(index)} aria-label={`${fighter.name}: every decision`}
+          className="absolute -inset-x-2 -inset-y-1 cursor-pointer rounded-xl transition-colors hover:bg-zinc-50 focus-visible:outline-2 focus-visible:outline-zinc-900 @[40rem]:-inset-x-3" /> : null}
+        <div className="pointer-events-none relative">
+          {two ? columnHead(fighter) : null}
+          <dl className="mx-auto grid max-w-xs gap-y-4">
+            {lengths.map(rounds => {
+              const group = fighter.insights?.decisions?.find(entry => entry.rounds === rounds);
+              if (!group) return <div key={rounds}>
+                <dt className={sectionLabel}>{rounds} rounds</dt>
+                <dd className={`mt-1 ${CHART_TEXT} text-zinc-500`}>No scored decisions</dd>
+              </div>;
+              const margin = group.own - group.opponent;
+              const reach = Math.min(1, Math.abs(margin) / rounds) * 50;
+              const signed = `${margin < 0 ? "−" : "+"}${Math.abs(margin).toFixed(1)}`;
+              return <div key={rounds}>
+                <dt className="flex items-baseline justify-between gap-2">
+                  <span className={sectionLabel}>{rounds} rounds</span>
+                  <span aria-hidden="true" className={`whitespace-nowrap ${metaText}`}>{group.fights} {group.fights === 1 ? "fight" : "fights"}</span>
+                </dt>
+                <dd className="mt-1 flex items-baseline justify-between gap-2 whitespace-nowrap tabular-nums"
+                  aria-label={`${lastName(fighter.name)} ${group.own.toFixed(1)}, opponents ${group.opponent.toFixed(1)}, a margin of ${signed} on average over ${group.fights} ${group.fights === 1 ? "fight" : "fights"}`}>
+                  <span className="text-base text-zinc-500"><span className="font-semibold text-zinc-900">{group.own.toFixed(1)}</span>–{group.opponent.toFixed(1)}</span>
+                  <span className={`${CHART_TEXT} font-semibold text-zinc-700`}>{signed}</span>
+                </dd>
+                <dd aria-hidden="true" className="mt-1.5">
+                  <span className="relative block h-2 rounded-full bg-zinc-100">
+                    {margin ? <span className={`absolute inset-y-0 ${margin > 0 ? `right-1/2 rounded-l-full ${WON}` : `left-1/2 rounded-r-full ${LOST}`}`} style={{ width: `${Math.max(1.5, reach)}%` }} /> : null}
+                    <span className="absolute inset-y-[-2px] left-1/2 w-px -translate-x-1/2 bg-zinc-400" />
+                  </span>
+                  <span className={`mt-1 flex justify-between ${metaText}`}><span>+{rounds}</span><span>Even</span><span>−{rounds}</span></span>
+                </dd>
+              </div>;
+            })}
+          </dl>
+        </div>
       </div>) : <p className={`text-center ${CHART_TEXT} text-zinc-500`}>No scored UFC decisions yet.</p>}
-    </div>
-    {scored ? <DecisionDetails before={before} sides={fighters.map(fighter => ({ name: fighter.name, decisions: fighter.insights?.decisions ?? [] }))} /> : null}
+    </div>}</DecisionDetails>
   </section>;
 }
