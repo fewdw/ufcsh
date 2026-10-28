@@ -1,8 +1,11 @@
+import { CircleHelp } from "lucide-react";
+import { useState } from "react";
 import type { FightPay as Pay, FightPaySide, Matchup } from "../api";
 import { lastName } from "../format";
-import { CHART_TEXT, CompareRow, PANEL_SHELL, PanelHeading, compareLabel, metaText } from "./FightStats";
+import { CHART_TEXT, PANEL_SHELL, PanelHeading, compareLabel } from "./FightStats";
 
 const usd = (value: number) => `$${value.toLocaleString("en-US")}`;
+const short = (value: number) => value >= 1_000 && value % 1_000 === 0 ? `$${(value / 1_000).toLocaleString("en-US")}K` : usd(value);
 const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
 const LINK = "underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900 dark:hover:text-zinc-100";
 
@@ -10,59 +13,70 @@ function Source({ label, url }: { label: string; url: string }) {
   return <a href={url} target="_blank" rel="noopener noreferrer" className={LINK}>{label}&nbsp;↗</a>;
 }
 
-/** A value with a quieter line under it, aligned to its corner. */
-function Value({ main, meta, muted, align }: { main: string; meta?: string | null; muted?: boolean; align: "left" | "right" }) {
+type Cell = { value: string; detail?: string | null; muted?: boolean };
+
+/** One line: f1's value | the label (and its ?) | f2's value. The ? opens the
+ *  row's sources and notes under it; a row with nothing to add has none. */
+function Row({ label, f1, f2, info }: { label: string; f1: Cell; f2: Cell; info?: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const cell = (c: Cell, side: "f1" | "f2") => (
+    <div className={`flex min-w-0 flex-wrap items-baseline gap-x-1.5 ${side === "f1" ? "flex-row-reverse justify-start" : ""}`}>
+      <span className={`${CHART_TEXT} font-semibold tabular-nums ${c.muted ? "font-medium text-zinc-400" : "text-zinc-900"}`}>{c.value}</span>
+      {c.detail ? <span className="text-[10px] tabular-nums text-zinc-400">{c.detail}</span> : null}
+    </div>
+  );
   return (
-    <div className={`min-w-0 ${align === "right" ? "text-right" : "text-left"}`}>
-      <div className={`truncate ${CHART_TEXT} font-semibold tabular-nums ${muted ? "font-medium text-zinc-400" : "text-zinc-900"}`}>{main}</div>
-      {meta ? <div className={`${metaText} leading-3`}>{meta}</div> : null}
+    <div>
+      <div className="grid grid-cols-[minmax(0,1fr)_6rem_minmax(0,1fr)] items-center gap-3 py-1 sm:grid-cols-[minmax(0,1fr)_8rem_minmax(0,1fr)]">
+        {cell(f1, "f1")}
+        <div className="flex items-center justify-center gap-1">
+          <span className={`${compareLabel} whitespace-normal`}>{label}</span>
+          {info ? (
+            <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-label={`About ${label.toLowerCase()}`}
+              className="-m-1 rounded p-1 text-zinc-400 transition-colors hover:text-zinc-900 dark:hover:text-zinc-100">
+              <CircleHelp className="h-3 w-3" aria-hidden="true" />
+            </button>
+          ) : null}
+        </div>
+        {cell(f2, "f2")}
+      </div>
+      {open && info ? <div className={`mb-1.5 space-y-1 rounded-md bg-zinc-50 px-3 py-2 ${CHART_TEXT} leading-4 text-zinc-600`}>{info}</div> : null}
     </div>
   );
 }
 
-function purseValue(side: FightPaySide, read: boolean): { main: string; meta?: string | null; muted?: boolean } {
+function purseCell(side: FightPaySide, read: boolean): Cell {
   const purse = side.purse;
-  if (!purse) return { main: read ? "Not disclosed" : "Not read yet", muted: true };
-  const parts = purse.show != null && purse.win ? `${usd(purse.show)} show + ${usd(purse.win)} win`
-    : purse.win ? `incl. ${usd(purse.win)} win bonus`
-    : purse.win === 0 ? "no win bonus" : null;
-  return { main: usd(purse.total), meta: [parts, purse.also].filter(Boolean).join(" · ") || null };
+  if (!purse) return { value: read ? "Undisclosed" : "Unknown", muted: true };
+  const detail = purse.show != null && purse.win ? `${short(purse.show)} + ${short(purse.win)} win`
+    : purse.win ? `incl. ${short(purse.win)} win` : purse.win === 0 ? "no win bonus" : null;
+  return { value: usd(purse.total), detail };
 }
 
-function bonusValue(side: FightPaySide): { main: string; meta?: string | null; muted?: boolean } {
-  if (!side.bonuses.length) return { main: "—", muted: true };
+function bonusCell(side: FightPaySide): Cell {
+  if (!side.bonuses.length) return { value: "None", muted: true };
   const known = side.bonuses.filter((bonus) => bonus.amount != null);
-  const total = known.reduce((sum, bonus) => sum + bonus.amount!, 0);
-  const unknown = side.bonuses.length - known.length;
-  return {
-    main: !known.length ? "Amount unknown" : unknown ? `${usd(total)} + unknown` : usd(total),
-    meta: side.bonuses.map((bonus) => bonus.label).join(", "),
-    muted: !known.length,
-  };
+  if (!known.length) return { value: "Unknown", muted: true };
+  const total = usd(known.reduce((sum, bonus) => sum + bonus.amount!, 0));
+  return { value: known.length < side.bonuses.length ? `${total} + unknown` : total };
 }
 
-function complianceValue(side: FightPaySide): { main: string; meta?: string | null; muted?: boolean } {
-  if (side.compliance) return { main: `≈ ${usd(side.compliance.amount)}`, meta: "Estimate" };
-  return side.compliance_gap ? { main: "Not estimated", meta: side.compliance_gap, muted: true } : { main: "—", muted: true };
+/** The disclosed purse and bonuses: what is known, never all of it. */
+function totalCell(side: FightPaySide): Cell {
+  if (!side.purse) return { value: "Unknown", muted: true };
+  return { value: `${usd(side.purse.total + side.bonuses.reduce((sum, bonus) => sum + (bonus.amount ?? 0), 0))}+` };
 }
 
-/** Purse and bonuses as reported; the estimate never counts toward it. */
-function reportedTotal(side: FightPaySide): number | null {
-  if (!side.purse) return null;
-  return side.purse.total + side.bonuses.reduce((sum, bonus) => sum + (bonus.amount ?? 0), 0);
-}
-
-function inputs(name: string, side: FightPaySide): string {
+function estimateLine(name: string, side: FightPaySide): string {
   const c = side.compliance;
-  if (!c) return `${name}: not estimated (${side.compliance_gap?.toLowerCase() ?? "no bout count"}).`;
+  if (!c) return `${name}: unknown${side.compliance_gap ? ` (${side.compliance_gap.toLowerCase()})` : ""}.`;
   const counted = [`${c.ufc} UFC`, c.wec ? `${c.wec} WEC` : "", c.strikeforce ? `${c.strikeforce} Strikeforce` : ""].filter(Boolean).join(", ");
-  const tier = c.role ? `${c.tier.toLowerCase()} pay` : `the ${c.tier} tier`;
-  return `${name}: ${ordinal(c.bouts)} bout (${counted}), ${tier}, ${usd(c.amount)}.`;
+  return `${name}: ${c.role ? c.tier.toLowerCase() : `${ordinal(c.bouts)} bout (${counted})`}, ~${usd(c.amount)}.`;
 }
 
 /** What each fighter was paid for the bout, as far as anyone published it:
  *  the purse a commission disclosed, post-fight bonuses, and an estimate of
- *  fight-week pay, kept apart so a reader can tell reported from estimated. */
+ *  fight-week pay. Undisclosed is said plainly; an estimate wears a ~. */
 export default function FightPay({ fight }: { fight: Matchup }) {
   const pay: Pay | null | undefined = fight.pay;
   if (!pay) return null;
@@ -71,66 +85,53 @@ export default function FightPay({ fight }: { fight: Matchup }) {
   const anyPurse = sides.some((side) => side.purse);
   const anyBonus = sides.some((side) => side.bonuses.length);
   const anyCompliance = sides.some((side) => side.compliance || side.compliance_gap);
-  const row = (label: string, value: (side: FightPaySide) => { main: string; meta?: string | null; muted?: boolean }) => (
-    <CompareRow
-      center={<span className={`${compareLabel} whitespace-normal`}>{label}</span>}
-      f1={<Value align="right" {...value(pay.f1)} />}
-      f2={<Value align="left" {...value(pay.f2)} />}
-    />
-  );
   const commissions = [...new Set(pay.purse_sources.map((source) => source.commission).filter(Boolean))];
-  const notes = sides.flatMap((side, i) => [
-    ...(side.purse?.note ? [`${names[i]}: ${side.purse.note}`] : []),
-    ...side.bonuses.filter((bonus) => bonus.note).map((bonus) => `${names[i]} (${bonus.label}): ${bonus.note}`),
-  ]);
+  const cited = (source: { label: string; url: string; cited: { label: string; url: string } | null }) => (
+    <><Source label={source.label} url={source.url} />{source.cited ? <> (citing <Source label={source.cited.label} url={source.cited.url} />)</> : null}</>
+  );
+
+  const purseNotes = sides.flatMap((side, i) => [side.purse?.note, side.purse?.also].filter(Boolean).map((note) => `${names[i]}: ${note}`));
+  const purseInfo = anyPurse ? <>
+    <p>
+      Show money and win bonus as filed with the {commissions.length ? commissions.join(" and ") : "athletic commission"}.
+      Source: {pay.purse_sources.map((source, i) => <span key={source.url}>{i ? ", " : ""}{cited(source)}</span>)}.
+    </p>
+    {purseNotes.map((note) => <p key={note}>{note}</p>)}
+  </> : null;
+
+  const bonusInfo = anyBonus ? <>
+    {sides.flatMap((side, i) => side.bonuses.map((bonus) => (
+      <p key={`${i}${bonus.label}`}>{names[i]}: {bonus.label}, {bonus.amount != null ? usd(bonus.amount) : "amount unknown"}{bonus.note ? `. ${bonus.note}` : ""}</p>
+    )))}
+    {pay.bonus_source ? <p>Source: {cited(pay.bonus_source)}.</p> : null}
+  </> : null;
+
+  const complianceInfo = anyCompliance ? <>
+    <p>
+      Estimate. UFC pays every fighter for fight week by tier: $4,000 for 1–3 bouts, $4,500 for 4–5, $6,000 for 6–10, $11,000 for 11–15,
+      $16,000 for 16–20, $21,000 for 21+; $32,000 for a title challenger, $42,000 for the champion. Bouts are UFC fights, this one included,
+      plus WEC and Strikeforce fights under Zuffa. Venum-era schedule, since April 2021; the real figure can be a tier off.
+      {pay.compliance_source ? <> <Source label="ESPN" url={pay.compliance_source.url} /></> : null}
+    </p>
+    {sides.map((side, i) => <p key={i}>{estimateLine(names[i], side)}</p>)}
+  </> : null;
+
   return (
     <section className={`${PANEL_SHELL} overflow-hidden`}>
-      <PanelHeading title="Pay" subtitle={commissions.length ? `Disclosed by the ${commissions.join(" and ")}` : undefined} />
-      <div className="px-5 pb-1 pt-1">
-        {row("Purse", (side) => purseValue(side, pay.read))}
-        {anyBonus ? row("Bonus", bonusValue) : null}
-        {anyCompliance ? row("Fight week", complianceValue) : null}
-        {anyPurse && anyBonus ? row("Reported", (side) => {
-          const total = reportedTotal(side);
-          return total == null ? { main: "—", muted: true } : { main: usd(total), meta: "purse + bonuses" };
-        }) : null}
-      </div>
-      <div className={`space-y-1.5 border-t border-zinc-100 px-5 py-3 ${CHART_TEXT} leading-4 text-zinc-500`}>
-        {anyPurse ? (
-          <p>
-            A disclosed purse is the show money and win bonus filed with the {commissions.length ? commissions.join(" and ") : "athletic commission"}. It leaves out pay-per-view
-            shares, sponsorships and discretionary bonuses, so total earnings are higher. Source:{" "}
-            {pay.purse_sources.map((source, i) => (
-              <span key={source.url}>
-                {i ? ", " : ""}<Source label={source.label} url={source.url} />
-                {source.cited ? <> (citing <Source label={source.cited.label} url={source.cited.url} />)</> : null}
-              </span>
-            ))}.
-          </p>
-        ) : (
-          <p>{pay.read ? "No commission disclosed the purses for this bout, so they are unknown." : "This card's pay sources haven't been read yet."}</p>
-        )}
-        {anyBonus && pay.bonus_source ? (
-          <p>
-            Bonuses: <Source label={pay.bonus_source.label} url={pay.bonus_source.url} />
-            {pay.bonus_source.cited ? <> (citing <Source label={pay.bonus_source.cited.label} url={pay.bonus_source.cited.url} />)</> : null}.
-          </p>
-        ) : null}
-        {notes.map((note) => <p key={note}>{note}</p>)}
+      <PanelHeading title="Pay" subtitle={commissions.length ? `Disclosed by the ${commissions.join(" and ")}` : pay.read ? "Purses undisclosed" : undefined} />
+      <div className="px-4 py-1.5 sm:px-5">
+        <Row label="Purse" f1={purseCell(pay.f1, pay.read)} f2={purseCell(pay.f2, pay.read)} info={purseInfo} />
+        {anyBonus ? <Row label="Bonus" f1={bonusCell(pay.f1)} f2={bonusCell(pay.f2)} info={bonusInfo} /> : null}
         {anyCompliance ? (
-          <details>
-            <summary className="cursor-pointer select-none hover:text-zinc-900 dark:hover:text-zinc-100">How fight-week pay is estimated</summary>
-            <div className="mt-1.5 space-y-1">
-              <p>
-                UFC pays every fighter for fight-week obligations by tier: $4,000 for 1–3 bouts, $4,500 for 4–5, $6,000 for 6–10,
-                $11,000 for 11–15, $16,000 for 16–20 and $21,000 for 21 or more; $32,000 for a title challenger and $42,000 for the
-                champion. Bouts count UFC fights, this one included, and WEC and Strikeforce fights under Zuffa. This is the Venum-era
-                schedule, in force since April 2021; a fighter's actual figure can be a tier off.
-                {pay.compliance_source ? <> <Source label={pay.compliance_source.label} url={pay.compliance_source.url} /></> : null}
-              </p>
-              {sides.map((side, i) => <p key={i}>{inputs(i ? fight.f2.name : fight.f1.name, side)}</p>)}
-            </div>
-          </details>
+          <Row label="Fight week"
+            f1={pay.f1.compliance ? { value: `~${usd(pay.f1.compliance.amount)}` } : { value: "Unknown", muted: true }}
+            f2={pay.f2.compliance ? { value: `~${usd(pay.f2.compliance.amount)}` } : { value: "Unknown", muted: true }}
+            info={complianceInfo} />
+        ) : null}
+        {anyPurse && anyBonus ? (
+          <Row label="Total" f1={totalCell(pay.f1)} f2={totalCell(pay.f2)} info={
+            <p>Disclosed purse plus bonuses. Fight-week pay, pay-per-view shares, sponsorships and discretionary bonuses aren't counted, so real earnings are higher.</p>
+          } />
         ) : null}
       </div>
     </section>

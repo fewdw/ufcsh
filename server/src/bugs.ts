@@ -72,7 +72,7 @@ export const BUG_LEVELS: BugLevel[] = ["critical", "must", "minor", "ok"];
 type Grade = BugLevel | ((item: BugItem) => BugLevel);
 export type BugCheck = {
   id: string;
-  group: "Accounts" | "Scorecards" | "Odds" | "Records" | "Fights & events" | "Venues & officials" | "Fighters";
+  group: "Accounts" | "Scorecards" | "Odds" | "Records" | "Fights & events" | "Venues & officials" | "Fighters" | "Missing data";
   label: string;
   description: string;
   /** The worst level among its items; "ok" when there are none. */
@@ -1455,7 +1455,7 @@ function fightPayUnknown(): BugCheck {
   }
   return check({
     id: "fight-pay-unknown",
-    group: "Fights & events",
+    group: "Missing data",
     label: "Fighter pay unknown",
     description: "Finished cards with a fighter whose pay is unknown on the matchup. Purses are shown only where an athletic commission disclosed them (Wikipedia's \"Reported payout\" section, MMA Payout's salary posts); most commissions never do, so older cards are expected here. Bonus amounts come from the article's \"Bonus awards\" section; a forfeited or reassigned bonus is left without an amount until checked. Fight-week pay is estimated from April 2021 when the fighter's record (WEC and Strikeforce bouts count) is verified. Open: the last 60 days, and any card whose disclosure skipped a bout. Re-reading fetches the article and MMA Payout now.",
     grade: (item) => skipped.has(item.key) ? "minor" : recent([[60, "minor"]])(item),
@@ -1490,7 +1490,7 @@ function fightPayUnread(): BugCheck {
   });
   return check({
     id: "fight-pay-unread",
-    group: "Fights & events",
+    group: "Missing data",
     label: "Pay rows not read",
     description: "A payout list named someone or an amount that could not be placed: a bout cancelled on the night (the commission still lists both purses), a name neither UFCStats nor the search aliases know (add the alias to server/src/search-aliases.ts), or a malformed amount (\"$10,00\"), which is never guessed. Also purses Wikipedia and MMA Payout disagree on; the matchup shows Wikipedia's with MMA Payout's beside it.",
     grade: (item) => disagree.has(item.key) ? "minor" : recent([[365, "minor"]])(item),
