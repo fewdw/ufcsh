@@ -96,7 +96,10 @@ American sportsbook prices are converted to implied probabilities, then both
 sides are normalized together to remove the margin. Community share counts
 only picks for the same event and corner identities; it is a pick share, not a
 calibrated forecast. The comparison omits community picks when the count is zero
-or no community sample exists.
+or no community sample exists. The comparison uses a compact, left-aligned grid
+with the title and fighter names in one header row. Fresh quote methods and
+sportsbook normalization timestamps are omitted; frozen or unavailable prices
+retain their status labels.
 
 Accuracy uses each completed fight's latest **observed** snapshot in the 24
 hours before the earliest announced card start (midnight UTC when unknown).

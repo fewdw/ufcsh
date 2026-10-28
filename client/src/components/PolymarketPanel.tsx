@@ -17,13 +17,6 @@ export const MARKET_SHELL =
   "rounded-xl border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900";
 export const marketPct = (p: number | null | undefined) =>
   p == null ? "—" : `${(p * 100).toFixed(1).replace(/\.0$/, "")}%`;
-const time = (at: number) =>
-  new Date(at).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 export function freshMarketQuote(row: MarketSummary, now: number) {
   const age = row.fight.state === "live" ? 15_000 : 90_000;
   return row.status === "open" && row.quote && now - row.quote.at < age
@@ -99,17 +92,15 @@ function Comparison({ data, now }: { data: MarketDetail; now: number }) {
       label: "Polymarket",
       p: q?.p ?? data.snapshot?.p ?? null,
       detail: q
-        ? `${q.method} · ${time(q.at)}`
+        ? null
         : data.snapshot
-          ? `Frozen pre-fight · ${time(data.snapshot.at)}`
+          ? "Frozen pre-fight"
           : "Current price unavailable",
     },
     {
       label: "Sportsbooks",
       p: data.sports?.p ?? null,
-      detail: data.sports
-        ? `Margin removed · ${time(data.sports.at)}`
-        : "No two-sided odds available",
+      detail: data.sports ? null : "No two-sided odds available",
     },
     ...(data.community && data.community.n > 0
       ? [
@@ -123,22 +114,25 @@ function Comparison({ data, now }: { data: MarketDetail; now: number }) {
   ];
   return (
     <div>
-      <h3 className="mb-3 text-sm font-semibold">How they compare</h3>
-      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-3 text-xs">
-        <span aria-hidden="true" />
-        <span className="max-w-28 truncate text-right text-[10px] text-zinc-500">
+      <div className="grid w-full max-w-sm grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] items-baseline gap-x-3 gap-y-2 text-xs">
+        <h3 className="whitespace-nowrap text-sm font-semibold">
+          How they compare
+        </h3>
+        <span className="max-w-28 justify-self-end truncate text-right text-[10px] text-zinc-500">
           {data.fight.f1.name}
         </span>
-        <span className="max-w-28 truncate text-right text-[10px] text-zinc-500">
+        <span className="max-w-28 justify-self-end truncate text-right text-[10px] text-zinc-500">
           {data.fight.f2.name}
         </span>
         {rows.map((row) => (
           <div key={row.label} className="contents">
             <div className="min-w-0">
               <div className="font-medium">{row.label}</div>
-              <div className="mt-0.5 text-[10px] text-zinc-500">
-                {row.detail}
-              </div>
+              {row.detail ? (
+                <div className="mt-0.5 max-w-32 text-[10px] text-zinc-500">
+                  {row.detail}
+                </div>
+              ) : null}
             </div>
             <span className="text-right font-semibold tabular-nums">
               {marketPct(row.p)}
