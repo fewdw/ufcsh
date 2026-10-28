@@ -5,7 +5,7 @@ import CmdK from "./components/CmdK";
 import SearchGlyph from "./components/SearchGlyph";
 import LiveMatchup from "./components/LiveMatchup";
 import { segmentedIdle, segmentedSelected } from "./components/segmented";
-import { ChevronDown, Flag, Moon, Shield, Sun } from "lucide-react";
+import { ChevronDown, Moon, Shield, Sun } from "lucide-react";
 import { accountsEnabled, useAccount } from "./auth";
 import { rememberAdmin, useAdminResource, wasAdmin, type AdminSession } from "./admin";
 import { inMore, MORE_HOME, MoreGroups } from "./components/MoreNav";
@@ -124,8 +124,8 @@ function MoreMenu({ pathname, active, open, setOpen, onReport }: { pathname: str
         )} />
         {onReport ? <div className="mt-1 border-t border-zinc-100 pt-1">
           <button type="button" onClick={() => { setOpen(false); onReport(); }}
-            className="flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-2 py-2 text-left text-[13px] text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-900 min-[375px]:px-3 min-[375px]:text-sm">
-            <Flag className="h-3.5 w-3.5" aria-hidden="true" />Report an issue
+            className="block w-full whitespace-nowrap rounded-lg px-2 py-2 text-left text-[13px] text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-900 min-[375px]:px-3 min-[375px]:text-sm">
+            Report an issue
           </button>
         </div> : null}
       </div>
