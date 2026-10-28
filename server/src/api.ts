@@ -1,3 +1,4 @@
+import { fightPay } from "./fight-pay.ts";
 import { eventCrew } from "./event-crew.ts";
 import { POTENTIAL_EVENT_ID, POTENTIAL_EVENT_NAME, potentialMatchups, potentialFight } from "./potential-matchups.ts";
 import { careerStatistics } from "./career-statistics.ts";
@@ -1132,6 +1133,8 @@ async function getFight(id: string, rankingType: RankingType): Promise<unknown |
       fotn: !!f.fotn_bonus || !!(f.detail_json && JSON.parse(f.detail_json)?.bonuses?.fotn),
     },
     awards: potential ? [] : fightAwards(f.id),
+    // Disclosed purses, bonus amounts and estimated fight-week pay.
+    pay: !potential && fightIsComplete(f) ? fightPay(f) : null,
     // The stats card, the fans' controversy and each judge's leanings.
     judging: !potential && f.method?.endsWith("-DEC") ? matchupJudging(f.id) : null,
     detail,

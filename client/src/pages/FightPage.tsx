@@ -25,6 +25,7 @@ import { FightRail, FightRailSkeleton, FightStepLink, FightStrip, MatchupSkeleto
 // Part of this page's own code, so the Discussion tab opens with it rather
 // than behind a fallback while a separate chunk loads.
 import FightDiscussion from "../components/FightDiscussion";
+import FightPay from "../components/FightPay";
 import FighterPortrait from "../components/FighterPortrait";
 import { resultDot } from "../resultDots";
 import MatchupOdds, { OddsFormatTabs, OddsMarkets } from "../components/MatchupOdds";
@@ -1038,6 +1039,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                     Result confirmed. Detailed statistics are still being published{isFightDay(fight.event.date) ? " — checking automatically." : "."}
                   </div>
                 )}
+                <FightPay fight={fight} />
               </> : null}
               {tab === "matchup" ? <>
                 <section className={`matchup-overview @container overflow-hidden ${shell}`}>
