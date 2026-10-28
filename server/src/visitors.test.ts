@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { TrafficHistory } from "./traffic-history.ts";
-import { deviceOf, isAutomated, sourceOf, Visitors, type Visit } from "./visitors.ts";
+import { agentOf, deviceOf, isAutomated, sourceOf, Visitors, type Visit } from "./visitors.ts";
 
 const DAY = 86_400_000;
 const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1";
@@ -84,4 +84,22 @@ test("devices, sources and automated agents", () => {
   }
   assert.ok(!isAutomated(IPHONE));
   assert.ok(!isAutomated(MAC));
+});
+
+test("automated agents are grouped by who runs them", () => {
+  const cases: [string | undefined, string | null][] = [
+    [IPHONE, null], [MAC, null], [undefined, "none"], ["", "none"],
+    ["Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)", "google"],
+    ["Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)", "bing"],
+    ["Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.2; +https://openai.com/gptbot)", "openai"],
+    ["Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; ClaudeBot/1.0; +claudebot@anthropic.com)", "anthropic"],
+    ["meta-externalagent/1.1 (+https://developers.facebook.com/docs/sharing/webmasters/crawler)", "meta"],
+    ["facebookexternalhit/1.1", "meta"],
+    ["Mozilla/5.0 (compatible; AhrefsBot/7.0; +http://ahrefs.com/robot/)", "seo"],
+    ["Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)", "previews"],
+    ["Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0 Safari/537.36", "headless"],
+    ["curl/8.5.0", "scripts"], ["python-requests/2.32", "scripts"],
+    ["Mozilla/5.0 (compatible; SomeNewBot/0.1)", "other"],
+  ];
+  for (const [agent, family] of cases) assert.equal(agentOf(agent), family, String(agent));
 });

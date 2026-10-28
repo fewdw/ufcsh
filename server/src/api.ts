@@ -31,7 +31,7 @@ import { enqueueRefresh } from "./refresh-queue.ts";
 import { QueryPool } from "./query-pool.ts";
 import { ResponseCache, representation, acceptsEncoding, acceptsGzip, matchesEtag, OverloadedError, type Representation } from "./response-cache.ts";
 import { HttpObservability, UNCOUNTED_ROUTES, pageRouteGroup, routeGroup } from "./observability.ts";
-import { isAutomated, sourceOf } from "./visitors.ts";
+import { agentOf, isAutomated, sourceOf } from "./visitors.ts";
 import { TrafficHistory } from "./traffic-history.ts";
 import { createRepairRunner } from "./repair-guard.ts";
 import { publicApi, cachePolicy, canonicalApiKey, clientAddress, EDGE, EDGE_CACHE_HEADER, RateLimiter, STATS_PAGE_OPENING } from "./api-policy.ts";
@@ -2628,7 +2628,7 @@ export function startApi(port: number): http.Server {
       const key = routeGroup(pathname);
       const entry = latencies.get(key) ?? { count: 0, total_ms: 0, max_ms: 0 };
       const duration = performance.now() - started;
-      observability.record(req.method ?? "OTHER", pathname, res.statusCode, duration / 1000, clientAddress(req));
+      observability.record(req.method ?? "OTHER", pathname, res.statusCode, duration / 1000, clientAddress(req), agentOf(req.headers["user-agent"]));
       // A 503 from /readyz is Docker's health probe while a release warms up,
       // not a reader's request that failed.
       if ((res.statusCode >= 500 || res.statusCode === 404) && pathname !== "/readyz") {

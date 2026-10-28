@@ -201,8 +201,10 @@ export type Traffic = {
   totals: Summary & { pageViews: number };
   /** Distinct client addresses a day, from every request: crawlers included. */
   dailyVisitors: { days: number; average: number; peak: number; peakDay: number | null };
-  series: { at: number; requests: number; errors: number; throttled: number; pageViews: number; p95Ms: number | null; visitors: number; people: number; returning: number }[];
+  series: { at: number; requests: number; crawlerRequests: number; errors: number; throttled: number; pageViews: number; p95Ms: number | null; visitors: number; people: number; returning: number }[];
   routes: (Summary & { route: string; pageViews: number })[];
+  /** Requests from crawlers, scripts and monitors by family (server `agentOf`); the rest came from browsers. */
+  crawlers: Breakdown;
   /** Real readers' page loads, timed in their browsers (server `page-timing.ts`). */
   loadTimes: { route: string; loads: number; p50Ms: number; p75Ms: number; p95Ms: number }[];
   community: { accounts: number; comments: number; bets: number };
