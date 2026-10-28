@@ -36,9 +36,53 @@ export function groupMarkets(markets: ExtraMarket[]) {
 export function marketLabel(question: string) {
   return question
     .replace(/^Will the fight end in a decision or draw\?$/, "Decision or draw")
-    .replace(/^Will the fight be won by (.+)\?$/, "$1")
+    .replace(
+      /^Will the fight be won by (.+)\?$/,
+      (_, method: string) => method[0].toUpperCase() + method.slice(1),
+    )
     .replace(/^Will (.+) win by (.+)\?$/, "$1 · $2")
     .replace(/^Will (.+) win in Round (\d+)\?$/, "$1 · round $2")
     .replace(/^Will the fight end before Round (\d+)\?$/, "Before round $1")
     .replace(/^O\/U (\d+(?:\.\d+)?) Rounds$/, "$1 rounds");
+}
+
+/** Align compatible outcomes without changing source probabilities or hiding rows. */
+export function marketTables(markets: ExtraMarket[]) {
+  return groupMarkets(markets).flatMap((group) => {
+    const tables = new Map<
+      string,
+      {
+        key: string;
+        label: string;
+        columns: string[];
+        rows: { market: ExtraMarket; outcomes: ExtraMarket["outcomes"] }[];
+      }
+    >();
+    for (const market of group.markets) {
+      let outcomes = market.outcomes;
+      for (const pair of [
+        ["Yes", "No"],
+        ["Over", "Under"],
+      ]) {
+        if (
+          outcomes.length === 2 &&
+          pair.every((name) => outcomes.some((o) => o.name === name))
+        ) {
+          outcomes = pair.map((name) => outcomes.find((o) => o.name === name)!);
+          break;
+        }
+      }
+      const columns = outcomes.map((o) => o.name);
+      const key = JSON.stringify([group.label, columns]);
+      const table = tables.get(key) ?? {
+        key,
+        label: group.label,
+        columns,
+        rows: [],
+      };
+      table.rows.push({ market, outcomes });
+      tables.set(key, table);
+    }
+    return [...tables.values()];
+  });
 }

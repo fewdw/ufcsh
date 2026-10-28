@@ -1,9 +1,9 @@
 /* oxlint-disable react/only-export-components -- small shared market views */
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ExternalLink } from "lucide-react";
+import { ChevronDown, ExternalLink } from "lucide-react";
 import PolymarketChart from "./PolymarketChart";
-import { groupMarkets, marketLabel } from "../market-groups";
+import { marketTables, marketLabel } from "../market-groups";
 import PolymarketLogo from "./PolymarketLogo";
 import type {
   ExtraMarket,
@@ -32,52 +32,129 @@ export function ExtraMarkets({ markets }: { markets: ExtraMarket[] }) {
       </p>
     );
   return (
-    <div className="grid items-start gap-3 sm:grid-cols-2">
-      {groupMarkets(markets).map((group) => (
+    <div className="columns-1 gap-3 @[48rem]:columns-2">
+      {marketTables(markets).map((group) => (
         <details
-          key={group.label}
+          key={group.key}
           open
-          className="min-w-0 rounded-lg border border-zinc-200 dark:border-zinc-700"
+          className="group mb-3 break-inside-avoid overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700"
         >
-          <summary className="cursor-pointer px-3 py-2 text-xs font-semibold">
-            {group.label}{" "}
-            <span className="ml-1 font-normal text-zinc-500">
-              {group.markets.length}
+          <summary
+            className="grid cursor-pointer list-none items-center bg-zinc-50 py-2 text-xs dark:bg-zinc-800/60 [&::-webkit-details-marker]:hidden"
+            style={{
+              gridTemplateColumns:
+                group.columns.length > 0 && group.columns.length <= 2
+                  ? `minmax(0, 1fr) repeat(${group.columns.length}, 4rem)`
+                  : "minmax(0, 1fr)",
+            }}
+          >
+            <span className="flex min-w-0 items-center gap-1.5 px-3 font-semibold">
+              <ChevronDown
+                className="h-3 w-3 shrink-0 -rotate-90 group-open:rotate-0"
+                aria-hidden="true"
+              />
+              {group.label}
             </span>
+            {group.columns.length <= 2
+              ? group.columns.map((column, i) => (
+                  <span
+                    key={i}
+                    className="px-2 text-center text-[10px] font-medium text-zinc-500"
+                  >
+                    {column}
+                  </span>
+                ))
+              : null}
           </summary>
-          <div className="border-t border-zinc-200 dark:border-zinc-700">
-            {group.markets.map((m) => (
-              <a
-                key={m.id}
-                href={m.url}
-                target="_blank"
-                rel="noopener noreferrer nofollow"
-                title={m.question}
-                aria-label={m.question}
-                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-zinc-100 px-3 py-2 text-xs last:border-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800"
+          <div className="overflow-x-auto">
+            <table
+              aria-label={group.label}
+              className="w-full table-fixed text-xs"
+              style={
+                group.columns.length > 2
+                  ? { minWidth: Math.max(448, group.columns.length * 80 + 160) }
+                  : undefined
+              }
+            >
+              <colgroup>
+                <col />
+                {group.columns.map((_, i) => (
+                  <col key={i} className="w-16" />
+                ))}
+              </colgroup>
+              <thead
+                className={
+                  group.columns.length <= 2
+                    ? "sr-only"
+                    : "bg-zinc-50 dark:bg-zinc-800/60"
+                }
               >
-                <span className="flex min-w-0 items-center gap-1.5">
-                  {marketLabel(m.question)}
-                  {m.closed ? (
-                    <span className="text-[10px] text-zinc-500">Closed</span>
-                  ) : null}
-                  <ExternalLink
-                    className="h-3 w-3 shrink-0 text-zinc-400"
-                    aria-hidden="true"
-                  />
-                </span>
-                <span className="flex shrink-0 gap-3 text-[11px] text-zinc-500">
-                  {m.outcomes.map((o) => (
-                    <span key={o.name}>
-                      {o.name}{" "}
-                      <strong className="tabular-nums text-zinc-900 dark:text-zinc-100">
-                        {marketPct(o.p)}
-                      </strong>
-                    </span>
+                <tr>
+                  <th scope="col" className="px-3 py-2 text-left font-medium">
+                    Market
+                  </th>
+                  {group.columns.map((column, i) => (
+                    <th
+                      key={i}
+                      scope="col"
+                      className="px-2 py-2 text-center font-medium"
+                    >
+                      {column}
+                    </th>
                   ))}
-                </span>
-              </a>
-            ))}
+                </tr>
+              </thead>
+              <tbody>
+                {group.rows.map(({ market: m, outcomes }) => {
+                  const prices = outcomes
+                    .map((o) => o.p)
+                    .filter((p): p is number => p != null);
+                  const best =
+                    prices.length >= 2 && prices.length === outcomes.length
+                      ? Math.max(...prices)
+                      : null;
+                  return (
+                    <tr
+                      key={m.id}
+                      className="border-t border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/40"
+                    >
+                      <th
+                        scope="row"
+                        className="px-3 py-2 text-left align-middle font-normal"
+                      >
+                        <a
+                          href={m.url}
+                          target="_blank"
+                          rel="noopener noreferrer nofollow"
+                          title={m.question}
+                          aria-label={m.question}
+                          className="group/link block min-h-5 break-words rounded focus-visible:outline-2 focus-visible:outline-offset-2"
+                        >
+                          <span>{marketLabel(m.question)}</span>
+                          {m.closed ? (
+                            <span className="ml-1 inline-block text-[10px] text-zinc-500">
+                              Closed
+                            </span>
+                          ) : null}
+                          <ExternalLink
+                            className="ml-1 inline h-3 w-3 text-zinc-400 opacity-0 group-hover/link:opacity-100 group-focus-within/link:opacity-100"
+                            aria-hidden="true"
+                          />
+                        </a>
+                      </th>
+                      {outcomes.map((o, i) => (
+                        <td
+                          key={i}
+                          className={`px-2 py-2 text-center align-middle tabular-nums ${o.p != null && o.p === best && prices.filter((p) => p === best).length === 1 ? "bg-zinc-50 font-semibold text-zinc-950 dark:bg-zinc-800/50 dark:text-white" : "text-zinc-500 dark:text-zinc-400"}`}
+                        >
+                          {marketPct(o.p)}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </details>
       ))}
@@ -107,41 +184,68 @@ function Comparison({ data, now }: { data: MarketDetail; now: number }) {
           {
             label: "Community picks",
             p: data.community.p,
-            detail: `${data.community.n.toLocaleString()} picks · ${data.snapshot ? "frozen pre-fight" : "current tally"}`,
+            detail: `${data.community.n.toLocaleString()} picks${data.snapshot ? " · pre-fight" : ""}`,
           },
         ]
       : []),
   ];
   return (
-    <div>
-      <div className="grid w-full max-w-sm grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] items-baseline gap-x-3 gap-y-2 text-xs">
-        <h3 className="whitespace-nowrap text-sm font-semibold">
-          How they compare
-        </h3>
-        <span className="max-w-28 justify-self-end truncate text-right text-[10px] text-zinc-500">
-          {data.fight.f1.name}
-        </span>
-        <span className="max-w-28 justify-self-end truncate text-right text-[10px] text-zinc-500">
-          {data.fight.f2.name}
-        </span>
-        {rows.map((row) => (
-          <div key={row.label} className="contents">
-            <div className="min-w-0">
-              <div className="font-medium">{row.label}</div>
-              {row.detail ? (
-                <div className="mt-0.5 max-w-32 text-[10px] text-zinc-500">
-                  {row.detail}
-                </div>
-              ) : null}
-            </div>
-            <span className="text-right font-semibold tabular-nums">
-              {marketPct(row.p)}
-            </span>
-            <span className="text-right font-semibold tabular-nums">
-              {marketPct(row.p == null ? null : 1 - row.p)}
-            </span>
-          </div>
-        ))}
+    <div className="max-w-xl">
+      <h3 className="mb-2 text-sm font-semibold">How they compare</h3>
+      <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700">
+        <table
+          className="w-full table-fixed text-xs"
+          aria-label="Probability comparison"
+        >
+          <colgroup>
+            <col className="w-[44%]" />
+            <col className="w-[28%]" />
+            <col className="w-[28%]" />
+          </colgroup>
+          <thead className="bg-zinc-50 dark:bg-zinc-800/60">
+            <tr>
+              <th scope="col" aria-label="Source" />
+              <th
+                scope="col"
+                className="break-words px-2 py-2 text-center font-medium text-blue-700 dark:text-blue-400"
+              >
+                {data.fight.f1.name}
+              </th>
+              <th
+                scope="col"
+                className="break-words px-2 py-2 text-center font-medium text-red-700 dark:text-red-400"
+              >
+                {data.fight.f2.name}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr
+                key={row.label}
+                className="border-t border-zinc-100 dark:border-zinc-800"
+              >
+                <th
+                  scope="row"
+                  className="px-3 py-2.5 text-left align-middle font-medium"
+                >
+                  {row.label}
+                  {row.detail ? (
+                    <span className="mt-0.5 block text-[10px] font-normal text-zinc-500">
+                      {row.detail}
+                    </span>
+                  ) : null}
+                </th>
+                <td className="px-2 py-2.5 text-center align-middle text-sm font-semibold tabular-nums text-blue-700 dark:text-blue-400">
+                  {marketPct(row.p)}
+                </td>
+                <td className="px-2 py-2.5 text-center align-middle text-sm font-semibold tabular-nums text-red-700 dark:text-red-400">
+                  {marketPct(row.p == null ? null : 1 - row.p)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

@@ -86,9 +86,18 @@ The displayed probability is a midpoint or last trade. The Odds panel keeps
 current percentages in the source-comparison table and chart, without repeating
 a large probability summary, movement callout, trading metrics or explanatory
 comparison banners. Additional markets are grouped by fight outcome, total rounds,
-finish timing and round winners; unfamiliar types stay in Other. Compact rows keep
-source outcome labels/prices and open the source market. No discovery footer or
+finish timing and round winners; unfamiliar types stay in Other. Each group is a
+collapsible table with shared Yes/No or Over/Under headers and fixed-width numeric
+columns. At 48rem of panel width, groups flow into two balanced columns without
+empty grid rows. Smaller panels keep one column. Source links stay on each market
+name. The unique higher listed price is emphasized when at least two prices are
+available; ties and incomplete prices receive no emphasis. No discovery footer or
 volume/liquidity summary is shown.
+
+`client/src/market-groups.ts` aligns known binary outcomes by their source labels,
+without deriving complements or changing probabilities. Incompatible outcome sets
+get separate headers. Unknown or multi-outcome markets retain their original names,
+order and prices; wide tables scroll locally on small screens.
 
 ## Comparisons and accuracy
 
@@ -96,10 +105,12 @@ American sportsbook prices are converted to implied probabilities, then both
 sides are normalized together to remove the margin. Community share counts
 only picks for the same event and corner identities; it is a pick share, not a
 calibrated forecast. The comparison omits community picks when the count is zero
-or no community sample exists. The comparison uses a compact, left-aligned grid
-with the title and fighter names in one header row. Fresh quote methods and
-sportsbook normalization timestamps are omitted; frozen or unavailable prices
-retain their status labels.
+or no community sample exists. The comparison has a separate title and a bounded,
+left-aligned table. Blue/red fighter headers align with the matching percentage
+columns; row dividers and uniform padding keep sources easy to compare. Fresh
+quote methods and sportsbook normalization timestamps are omitted; frozen or
+unavailable prices retain their status labels. Community rows retain their pick
+count without repeating a current-tally label.
 
 Accuracy uses each completed fight's latest **observed** snapshot in the 24
 hours before the earliest announced card start (midnight UTC when unknown).
