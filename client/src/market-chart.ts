@@ -2,6 +2,9 @@ import type { MarketDetail, MarketPoint } from "./polymarket-types.ts";
 
 export type TimeRange = { from: number; to: number };
 
+export const marketPct = (p: number | null | undefined) =>
+  p == null ? "—" : `${(p * 100).toFixed(1).replace(/\.0$/, "")}%`;
+
 /** Work in epoch milliseconds; never infer a fight start from the card schedule. */
 export function chartModel(data: MarketDetail) {
   const valid = data.history.filter(

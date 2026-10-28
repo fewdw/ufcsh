@@ -4,11 +4,15 @@ UFC.sh reads public market data only. It does not connect a wallet or place orde
 
 ## Reader surfaces
 
-- A card's Polymarket probabilities switch (`?markets=1` opens it directly).
+- A coming card's Polymarket probabilities switch (`?markets=1` opens it directly).
 - A matchup's Odds tab (`?tab=odds`): sportsbook moneylines/props and a Polymarket
   panel with the probability chart first, followed by source comparisons and
   source-listed props. The chart and comparison stay stacked at every screen size.
 - During a live fight, the Result and Score tabs also include the compact chart.
+- A finished bout keeps its Odds tab only when it has sportsbook prices, and shows
+  the Polymarket panel only when a market was matched or prices were captured, so
+  the archive before Polymarket's UFC markets shows no empty panels. A finished
+  bout without a market is looked up again at most once a day.
 - The hero badge is one line: the official Polymarket symbol and both percentages.
   It appears only while a fresh quote is available and the fight has no result.
   A result from the matchup feed hides it even if the price feed has not caught up.
@@ -45,17 +49,20 @@ sized order-book deltas, heartbeats and reconnects. Shared REST reads provide
 initial books and repair gaps. Additional data/history reads have a concurrency
 limit of four; clients poll the shared server answer. Quotes expire after 15
 seconds live and 90 seconds pre-fight and bypass persisted client page snapshots.
-The visible Odds panel polls every five seconds after a request completes; hidden
-panels pause polling. Chart captures are limited to one per ten seconds live and
-one per minute pre-fight when fresh source data arrives.
+The visible Odds panel polls every five seconds during a live fight and every 15
+seconds otherwise, after a request completes; hidden panels pause polling. Chart
+captures are limited to one per ten seconds live, one per ten minutes before the
+card's first start (matching source history buckets) and one per minute between
+that start and the bout. A Gamma discovery outage keeps the last good mapping, so
+current quotes and the live stream continue.
 
 The archive contains three new tables:
 
 - `polymarket_bouts`: matched market metadata and source/history diagnostics,
   guarded by the event/date/two-fighter identity.
-- `polymarket_samples`: observed probabilities (at most once per minute pre-fight,
-  ten seconds live) and source history, with provenance and bucket end times.
-  Observed pre-fight rows also freeze sportsbook and community inputs.
+- `polymarket_samples` (`WITHOUT ROWID`, read by its primary key): observed
+  probabilities (cadence above) and source history, with provenance and bucket
+  end times. Observed pre-fight rows also freeze sportsbook and community inputs.
 - `polymarket_rounds`: first observed timestamp for each live round. These are
   observation times and may lag the broadcast. No historical round boundaries
   are guessed.
@@ -66,6 +73,11 @@ history with unconfirmed live timing remains in the historical view; a bucket is
 pre-fight only if its whole interval precedes the current card cutoff. Samples retain
 their identity after a replacement and are excluded from the changed matchup.
 History is retained for analysis; it is not reconstructed from results.
+
+The matchup response carries every live capture and at most 1,500 other points,
+the last of each equal time slice across the whole history, so a long-running
+market keeps its full span (the newest point is always kept). It is recomputed
+when a capture or history read lands, or after five seconds.
 
 The chart uses `client/src/market-chart.ts` to validate, sort and deduplicate
 observations. A confirmed live bout automatically switches to captured live
@@ -100,7 +112,7 @@ without deriving complements or changing probabilities. Incompatible outcome set
 get separate headers. Unknown or multi-outcome markets retain their original names,
 order and prices; wide tables scroll locally on small screens.
 
-## Comparisons and accuracy
+## Comparisons
 
 American sportsbook prices are converted to implied probabilities, then both
 sides are normalized together to remove the margin. Community share counts
@@ -114,16 +126,13 @@ quote methods and sportsbook normalization timestamps are omitted; frozen or
 unavailable prices retain their status labels. Community rows retain their pick
 count without repeating a current-tally label.
 
-Accuracy uses each completed fight's latest **observed** snapshot in the 24
-hours before the earliest announced card start (midnight UTC when unknown).
-Sportsbook inputs must be no more than six hours old and community samples need
-at least ten picks. All three sources are scored on the same eligible fights.
-Imported history, settlement prices, post-cutoff samples, draws, no contests,
-and old matchup identities cannot enter the scores. The cutoff is checked again
-when reading, so a revised start does not admit a later snapshot. Finished
-matchups show frozen comparisons where available. The first-listed fighter is
-the reference outcome; exact 50/50 calls remain in Brier but abstain from winner
-accuracy. Coverage accumulates prospectively; there is no invented backfill.
+A finished matchup shows the comparison frozen at its latest **observed**
+pre-fight capture before the earliest announced card start (midnight UTC when
+unknown). Sportsbook inputs are frozen only when no more than six hours old.
+Imported history, settlement prices, post-cutoff samples and old matchup
+identities never enter a frozen comparison; the cutoff is checked again when
+reading, so a revised start does not admit a later capture. These captures are
+kept so source accuracy can be scored later; there is no accuracy view yet.
 
 Admin → Bugs → Odds includes unmatched markets and feed/history/identity gaps,
 with a re-read action. Repairs invalidate the discovery/history timestamps;

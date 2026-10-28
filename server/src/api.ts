@@ -2907,13 +2907,10 @@ export function startApi(port: number): http.Server {
         if (p === "/api/polymarket/board") {
           const event = url.searchParams.get("event") ?? undefined;
           const ids = url.searchParams.get("ids")?.split(",");
-          const fighters = url.searchParams.get("fighters")?.split(",");
-          if ((event && !/^[a-f0-9]{16}$/i.test(event)) || [ids, fighters].some(list => list && (list.length > 40 || list.some(id => !/^[a-f0-9]{16}$/i.test(id)))))
+          if ((event && !/^[a-f0-9]{16}$/i.test(event)) || (ids && (ids.length > 40 || ids.some(id => !/^[a-f0-9]{16}$/i.test(id)))))
             return await sendJson(req, res, { error: "Invalid market filter." }, 400);
-          return await sendJson(req, res, { fights: markets.board({ event, ids, fighters }) });
+          return await sendJson(req, res, { fights: markets.board({ event, ids }) });
         }
-        if (p === "/api/polymarket/analytics") return await sendJson(req, res, markets.analytics());
-        if (p === "/api/polymarket/explore") return await sendJson(req, res, markets.explore());
         return await sendJson(req, res, { error: "Not found." }, 404);
       }
       if (p === "/api/live/odds") {

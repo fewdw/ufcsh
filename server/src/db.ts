@@ -73,8 +73,9 @@ CREATE TABLE IF NOT EXISTS polymarket_samples (
   community_n INTEGER,
   end_at INTEGER,
   PRIMARY KEY(fight_id, identity, market_key, at, source)
-);
-CREATE INDEX IF NOT EXISTS idx_polymarket_samples_fight ON polymarket_samples(fight_id, identity, at);
+) WITHOUT ROWID;
+-- Every read filters by the primary key's leading columns.
+DROP INDEX IF EXISTS idx_polymarket_samples_fight;
 CREATE TABLE IF NOT EXISTS polymarket_rounds (
   fight_id TEXT NOT NULL, identity TEXT NOT NULL, round INTEGER NOT NULL, at INTEGER NOT NULL,
   PRIMARY KEY(fight_id, identity, round)

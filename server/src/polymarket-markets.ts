@@ -3,7 +3,6 @@ import { db } from "./db.ts";
 import {
   findMarket,
   displayPrices,
-  parseExtra,
   marketDiscoveryFailed,
   type Market,
   type Book,
@@ -16,15 +15,8 @@ import {
 } from "./live-state.ts";
 import { log } from "./util.ts";
 import { updateMarketBooks } from "./polymarket-stream.ts";
-import {
-  noVig,
-  parseHistory,
-  marketAnalytics,
-  probability,
-  type AnalysisRow,
-} from "./polymarket-math.ts";
+import { noVig, parseHistory, probability } from "./polymarket-math.ts";
 import type {
-  ExtraMarket,
   MarketDetail,
   MarketFight,
   MarketPoint,
@@ -33,6 +25,7 @@ import type {
 } from "../../client/src/polymarket-types.ts";
 
 const CLOB = "https://clob.polymarket.com";
+const CHART_POINTS = 1500;
 type Context = MarketFight & {
   identity: string;
   names: [string[], string[]];
@@ -102,17 +95,11 @@ export class PolymarketMarkets {
   private reconnectAt = 0;
   private stopped = false;
   private ticking = false;
-  private exploreCache: {
-    at: number;
-    markets: ExtraMarket[];
-    error: string | null;
-  } | null = null;
-  private exploreRead?: Promise<void>;
-  private analysisCache?: {
-    at: number;
-    value: ReturnType<typeof marketAnalytics>;
-  };
   private attempted = new Map<string, number>();
+  private charts = new Map<
+    string,
+    { key: string; at: number; points: MarketPoint[] }
+  >();
 
   constructor(
     scores: DatabaseSync,
@@ -237,9 +224,14 @@ export class PolymarketMarkets {
       if (
         force ||
         !saved ||
-        Date.now() - saved.checked_at > (mapping ? 10 * 60_000 : 60_000)
+        Date.now() - saved.checked_at >
+          (c.state === "finished"
+            ? 86_400_000
+            : mapping
+              ? 10 * 60_000
+              : 60_000)
       ) {
-        mapping = await findMarket({
+        const found = await findMarket({
           id: c.id,
           date: c.date,
           f1: c.names[0],
@@ -247,19 +239,23 @@ export class PolymarketMarkets {
         });
         if (this.stopped) return;
         if (this.context(c.id)?.identity !== c.identity) return;
-        if (marketDiscoveryFailed(c.date))
-          throw new Error("Market discovery unavailable");
-        db.prepare(
-          `INSERT INTO polymarket_bouts(fight_id, identity, market_json, checked_at) VALUES (?, ?, ?, ?)
-          ON CONFLICT(fight_id) DO UPDATE SET identity=excluded.identity, market_json=excluded.market_json,
-          checked_at=excluded.checked_at, error=NULL,
-          history_at=CASE WHEN polymarket_bouts.identity=excluded.identity AND json_extract(polymarket_bouts.market_json, '$.market.slug')=json_extract(excluded.market_json, '$.market.slug') THEN history_at ELSE NULL END`,
-        ).run(
-          c.id,
-          c.identity,
-          mapping ? JSON.stringify(mapping) : null,
-          Date.now(),
-        );
+        // A discovery outage keeps the last good mapping and its live quotes.
+        if (marketDiscoveryFailed(c.date)) {
+          if (!mapping) throw new Error("Market discovery unavailable");
+        } else {
+          mapping = found;
+          db.prepare(
+            `INSERT INTO polymarket_bouts(fight_id, identity, market_json, checked_at) VALUES (?, ?, ?, ?)
+            ON CONFLICT(fight_id) DO UPDATE SET identity=excluded.identity, market_json=excluded.market_json,
+            checked_at=excluded.checked_at, error=NULL,
+            history_at=CASE WHEN polymarket_bouts.identity=excluded.identity AND json_extract(polymarket_bouts.market_json, '$.market.slug')=json_extract(excluded.market_json, '$.market.slug') THEN history_at ELSE NULL END`,
+          ).run(
+            c.id,
+            c.identity,
+            mapping ? JSON.stringify(mapping) : null,
+            Date.now(),
+          );
+        }
       }
       if (!mapping) {
         this.quotes.delete(c.id);
@@ -397,9 +393,12 @@ export class PolymarketMarkets {
         `SELECT MAX(at) AS at FROM polymarket_samples WHERE fight_id=? AND identity=? AND market_key=? AND source='observed'`,
       )
       .get(c.id, c.identity, mapping.market.slug) as { at: number | null };
+    // Before the card, source history already has ten-minute buckets; a capture
+    // at that cadence still freezes the comparison inputs without bloating the archive.
     if (
       last.at != null &&
-      q.at - last.at < (c.state === "live" ? 10_000 : 60_000)
+      q.at - last.at <
+        (c.state === "live" ? 10_000 : q.at < c.cutoff ? 10 * 60_000 : 60_000)
     )
       return;
     const phase =
@@ -425,6 +424,7 @@ export class PolymarketMarkets {
       phase === "prefight" ? (c.community?.p ?? null) : null,
       phase === "prefight" ? (c.community?.n ?? null) : null,
     );
+    this.charts.delete(c.id);
   }
 
   private async history(c: Context, mapping: Mapping): Promise<void> {
@@ -477,6 +477,7 @@ export class PolymarketMarkets {
             p.endAt ?? null,
           );
         db.exec("COMMIT");
+        this.charts.delete(c.id);
       } catch (e) {
         db.exec("ROLLBACK");
         throw e;
@@ -587,28 +588,9 @@ export class PolymarketMarkets {
     await this.refresh(c);
     const mapping = this.mapping(c),
       saved = this.stored(c);
-    const history = mapping
-      ? (db
-          .prepare(
-            `SELECT at, end_at AS endAt, p, phase, source FROM polymarket_samples WHERE fight_id=? AND identity=? AND market_key=? ORDER BY at DESC LIMIT 4000`,
-          )
-          .all(id, c.identity, mapping.market.slug)
-          .reverse() as MarketPoint[])
-      : [];
-    const classified = history.map((p) => ({
-      ...p,
-      phase:
-        p.source === "history"
-          ? p.endAt != null && p.endAt < c.cutoff
-            ? ("prefight" as const)
-            : ("unknown" as const)
-          : p.phase === "prefight" && p.at >= c.cutoff
-            ? ("unknown" as const)
-            : p.phase,
-    }));
     return {
       ...this.summary(c),
-      history: classified,
+      history: mapping ? this.chart(c, mapping) : [],
       extras: mapping?.market.extras ?? [],
       stream: this.socketId === id && Date.now() - this.streamAt < 15_000,
       historyCheckedAt: saved?.history_at ?? null,
@@ -622,9 +604,59 @@ export class PolymarketMarkets {
     };
   }
 
-  board(
-    options: { event?: string; ids?: string[]; fighters?: string[] } = {},
-  ): MarketSummary[] {
+  /** Every live capture, plus at most CHART_POINTS of the rest spread evenly
+   * over time, so a long-running market keeps its whole span in the chart. */
+  private chart(c: Context, mapping: Mapping): MarketPoint[] {
+    const key = `${c.identity}:${mapping.market.slug}:${c.cutoff}`;
+    const cached = this.charts.get(c.id);
+    if (cached?.key === key && Date.now() - cached.at < 5_000)
+      return cached.points;
+    const rows = db
+      .prepare(
+        `SELECT at, end_at AS endAt, p, phase, source FROM polymarket_samples WHERE fight_id=? AND identity=? AND market_key=? ORDER BY at`,
+      )
+      .all(c.id, c.identity, mapping.market.slug) as MarketPoint[];
+    const points = rows.map(
+      (p): MarketPoint => ({
+        at: p.at,
+        p: p.p,
+        source: p.source,
+        phase:
+          p.source === "history"
+            ? p.endAt != null && p.endAt < c.cutoff
+              ? "prefight"
+              : "unknown"
+            : p.phase === "prefight" && p.at >= c.cutoff
+              ? "unknown"
+              : p.phase,
+      }),
+    );
+    const live = (p: MarketPoint) =>
+      p.source === "observed" && p.phase === "live";
+    const rest = points.filter((p) => !live(p));
+    let kept = rest;
+    if (rest.length > CHART_POINTS) {
+      // The last point of each equal time slice, and always the newest.
+      const from = rest[0].at,
+        width = (rest.at(-1)!.at - from) / CHART_POINTS || 1;
+      kept = rest.filter(
+        (p, i) =>
+          i === rest.length - 1 ||
+          Math.floor((rest[i + 1].at - from) / width) >
+            Math.floor((p.at - from) / width),
+      );
+    }
+    const result =
+      kept === rest
+        ? points
+        : [...kept, ...points.filter(live)].sort((a, b) => a.at - b.at);
+    this.charts.set(c.id, { key, at: Date.now(), points: result });
+    if (this.charts.size > 100)
+      this.charts.delete(this.charts.keys().next().value!);
+    return result;
+  }
+
+  board(options: { event?: string; ids?: string[] } = {}): MarketSummary[] {
     const where = options.event
       ? "f.event_id = ?"
       : options.ids?.length
@@ -636,17 +668,10 @@ export class PolymarketMarkets {
         `SELECT f.id FROM fights f JOIN events e ON e.id=f.event_id WHERE ${where} ORDER BY e.date ASC, f.ord ASC LIMIT 100`,
       )
       .all(...params) as { id: string }[];
-    const contexts = rows
-      .flatMap((r) => {
-        const c = this.context(r.id);
-        return c ? [c] : [];
-      })
-      .filter(
-        (c) =>
-          !options.fighters?.length ||
-          options.fighters.includes(c.f1.id) ||
-          options.fighters.includes(c.f2.id),
-      );
+    const contexts = rows.flatMap((r) => {
+      const c = this.context(r.id);
+      return c ? [c] : [];
+    });
     // Readers never make a card wait for a sequence of external requests.
     void this.refreshMany(contexts).catch((error) =>
       log("polymarket board refresh failed:", String(error)),
@@ -660,107 +685,6 @@ export class PolymarketMarkets {
       if (this.stopped) return;
       await Promise.all(contexts.slice(i, i + 4).map((c) => this.refresh(c)));
     }
-  }
-
-  analytics() {
-    if (this.analysisCache && Date.now() - this.analysisCache.at < 60_000)
-      return this.analysisCache.value;
-    const fights = db
-      .prepare(
-        `SELECT DISTINCT f.id FROM fights f JOIN polymarket_samples p ON p.fight_id=f.id
-      JOIN events e ON e.id=f.event_id WHERE f.f1_outcome='win' OR f.f2_outcome='win' ORDER BY e.date DESC LIMIT 5000`,
-      )
-      .all() as { id: string }[];
-    const rows: AnalysisRow[] = [];
-    for (const f of fights) {
-      const c = this.context(f.id);
-      if (!c || !c.winner) continue;
-      const mapping = this.mapping(c);
-      if (!mapping) continue;
-      // Observed inputs only, latest within 24 hours before the card starts.
-      // Imported price buckets cannot carry contemporaneous fan/book inputs.
-      const sample = db
-        .prepare(
-          `SELECT at, p, sports, community, community_n FROM polymarket_samples
-        WHERE fight_id=? AND identity=? AND market_key=? AND phase='prefight' AND source='observed'
-        AND at < ? AND at >= ? ORDER BY at DESC LIMIT 1`,
-        )
-        .get(
-          c.id,
-          c.identity,
-          mapping.market.slug,
-          c.cutoff,
-          c.cutoff - 86_400_000,
-        ) as
-        | {
-            at: number;
-            p: number;
-            sports: number | null;
-            community: number | null;
-            community_n: number | null;
-          }
-        | undefined;
-      if (sample)
-        rows.push({
-          id: c.id,
-          label: `${c.f1.name} vs ${c.f2.name}`,
-          date: c.date,
-          at: sample.at,
-          p: sample.p,
-          won: c.winner === "f1",
-          sports: sample.sports,
-          community: (sample.community_n ?? 0) >= 10 ? sample.community : null,
-        });
-    }
-    const value = marketAnalytics(rows);
-    this.analysisCache = { at: Date.now(), value };
-    return value;
-  }
-
-  explore(): {
-    markets: ExtraMarket[];
-    error: string | null;
-    at: number | null;
-  } {
-    if (
-      (!this.exploreCache || Date.now() - this.exploreCache.at > 10 * 60_000) &&
-      !this.exploreRead
-    ) {
-      this.exploreRead = (async () => {
-        try {
-          const value = await json(
-            "https://gamma-api.polymarket.com/public-search?q=UFC&limit_per_type=30&events_status=active",
-          );
-          const events = Array.isArray(value.events) ? value.events : [];
-          const markets = events
-            .filter(
-              (e: any) =>
-                /\bUFC\b/i.test(e.title ?? "") && typeof e.slug === "string",
-            )
-            .flatMap((e: any) =>
-              (Array.isArray(e.markets) ? e.markets : []).flatMap((m: any) =>
-                parseExtra(m, e.slug),
-              ),
-            )
-            .filter((m: ExtraMarket) => !m.closed)
-            .slice(0, 80);
-          this.exploreCache = { at: Date.now(), markets, error: null };
-        } catch {
-          this.exploreCache = {
-            at: Date.now(),
-            markets: this.exploreCache?.markets ?? [],
-            error: "Market discovery is temporarily unavailable.",
-          };
-        }
-      })().finally(() => {
-        this.exploreRead = undefined;
-      });
-    }
-    return {
-      markets: this.exploreCache?.markets ?? [],
-      error: this.exploreCache?.error ?? null,
-      at: this.exploreCache?.at ?? null,
-    };
   }
 
   start(): void {
@@ -829,23 +753,30 @@ export class PolymarketMarkets {
         }),
       );
     });
+    // Book updates can arrive many times a second; the bout's identity and
+    // live state are re-read at most once a second.
+    let current: Context | null = c,
+      checkedAt = 0;
     ws.addEventListener("message", (event) => {
       if (this.stopped || this.socket !== ws || typeof event.data !== "string")
         return;
       this.frameAt = Date.now();
       if (event.data === "PONG") return;
       try {
+        if (Date.now() - checkedAt >= 1_000) {
+          current = this.context(c.id);
+          checkedAt = Date.now();
+        }
+        if (
+          !current ||
+          current.identity !== c.identity ||
+          current.state !== "live"
+        ) {
+          this.disconnect();
+          return;
+        }
         const messages = JSON.parse(event.data);
         for (const m of Array.isArray(messages) ? messages : [messages]) {
-          const current = this.context(c.id);
-          if (
-            !current ||
-            current.identity !== c.identity ||
-            current.state !== "live"
-          ) {
-            this.disconnect();
-            return;
-          }
           const cached = this.quotes.get(c.id);
           if (
             !cached ||

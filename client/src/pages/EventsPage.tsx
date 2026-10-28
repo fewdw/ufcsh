@@ -1107,7 +1107,7 @@ function EventPane({ eventId, oddsMode, nav }: { eventId: string; oddsMode: bool
         </div>
       </section>
 
-      {!event.potential ? <EventMarkets key={event.id} eventId={event.id} initialOpen={new URLSearchParams(window.location.search).get("markets") === "1"} /> : null}
+      {!event.potential && event.status !== "past" ? <EventMarkets key={event.id} eventId={event.id} initialOpen={new URLSearchParams(window.location.search).get("markets") === "1"} /> : null}
       {oddsCard ? (
         // Its own height, not the pane's: squeezed to fit, the list would run
         // out past the pane.

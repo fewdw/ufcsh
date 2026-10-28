@@ -64,31 +64,3 @@ export type MarketDetail = MarketSummary & {
   marketCheckedAt?: number | null;
   rounds: { round: number; at: number }[];
 };
-export type CalibrationBin = {
-  from: number;
-  to: number;
-  n: number;
-  predicted: number;
-  actual: number;
-};
-export type MarketAnalytics = {
-  fights: number;
-  common: number;
-  since: number | null;
-  sources: {
-    name: string;
-    n: number;
-    brier: number | null;
-    accuracy: number | null;
-    bins: CalibrationBin[];
-  }[];
-  recent: {
-    id: string;
-    label: string;
-    date: string;
-    p: number;
-    won: boolean;
-    sports: number | null;
-    community: number | null;
-  }[];
-};

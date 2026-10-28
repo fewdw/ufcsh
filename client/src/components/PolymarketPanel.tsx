@@ -1,8 +1,8 @@
-/* oxlint-disable react/only-export-components -- small shared market views */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ExternalLink } from "lucide-react";
 import PolymarketChart from "./PolymarketChart";
+import { marketPct } from "../market-chart";
 import { marketTables, marketLabel } from "../market-groups";
 import PolymarketLogo from "./PolymarketLogo";
 import type {
@@ -13,18 +13,16 @@ import type {
 import { useMarketData } from "../useMarketData";
 import { useNow } from "../useNow";
 
-export const MARKET_SHELL =
+const MARKET_SHELL =
   "rounded-xl border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900";
-export const marketPct = (p: number | null | undefined) =>
-  p == null ? "—" : `${(p * 100).toFixed(1).replace(/\.0$/, "")}%`;
-export function freshMarketQuote(row: MarketSummary, now: number) {
+function freshMarketQuote(row: MarketSummary, now: number) {
   const age = row.fight.state === "live" ? 15_000 : 90_000;
   return row.status === "open" && row.quote && now - row.quote.at < age
     ? row.quote
     : null;
 }
 
-export function ExtraMarkets({ markets }: { markets: ExtraMarket[] }) {
+function ExtraMarkets({ markets }: { markets: ExtraMarket[] }) {
   if (!markets.length)
     return (
       <p className="text-xs text-zinc-500">
@@ -243,7 +241,7 @@ function Comparison({ data, now }: { data: MarketDetail; now: number }) {
   );
 }
 
-export function PolymarketView({
+function PolymarketView({
   data,
   compact = false,
 }: {
@@ -322,16 +320,32 @@ export default function PolymarketPanel({
   fightId,
   compact = false,
   active = true,
+  past = false,
 }: {
   fightId: string;
   compact?: boolean;
   active?: boolean;
+  /** A finished bout without a matched market shows nothing at all. */
+  past?: boolean;
 }) {
+  // Live prices move by the second; before and after a fight, quotes last 90s.
+  const [poll, setPoll] = useState(5000);
   const { data, error, retry } = useMarketData<MarketDetail>(
     `/api/polymarket/fights/${fightId}`,
-    5000,
+    poll,
     active,
   );
+  const state = data?.fight.state;
+  useEffect(() => {
+    if (state) setPoll(state === "live" ? 5000 : 15_000);
+  }, [state]);
+  if (
+    past &&
+    (data
+      ? data.fight.state === "finished" && !data.url && !data.history.length
+      : true)
+  )
+    return null;
   return data ? (
     <PolymarketView data={data} compact={compact} />
   ) : (
@@ -404,7 +418,6 @@ function MarketBoard({ eventId }: { eventId: string }) {
                     {row.fight.f2.name}
                   </span>
                   <span className="mt-1 block text-[10px] text-zinc-500">
-                    {eventId ? "" : `${row.fight.event} · `}
                     {q
                       ? `${row.fight.state === "live" ? "Live · " : ""}${q.spread != null && q.spread > 0.06 + 1e-9 ? "Wide spread · " : ""}updated ${Math.max(0, Math.floor((now - q.at) / 1000))}s ago`
                       : row.status === "missing"
@@ -432,8 +445,8 @@ function MarketBoard({ eventId }: { eventId: string }) {
         </div>
       )}
       <p className="px-4 py-3 text-[10px] text-zinc-500">
-        Blue is the first fighter; red is the second. Open a fight for history,
-        and comparisons.
+        Blue is the first fighter; red is the second. Open a fight for its
+        history and comparisons.
       </p>
     </section>
   );

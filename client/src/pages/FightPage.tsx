@@ -533,7 +533,7 @@ function FightOdds({ fight, active }: { fight: Matchup; active: boolean }) {
   return <div hidden={!active}>
     <div className="flex flex-col gap-2 sm:gap-3">
       <OddsPanel fight={fight} />
-      {!fight.potential ? <PolymarketPanel fightId={fight.id} active={active} /> : null}
+      {!fight.potential ? <PolymarketPanel fightId={fight.id} active={active} past={fight.status === "past"} /> : null}
     </div>
   </div>;
 }
@@ -912,7 +912,9 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   const tabs: MatchupTab[] = [
     ...(fight.status === "past" || fight.in_progress || hasStats ? ["fight" as const] : []),
     "matchup",
-    ...(!fight.potential || fight.odds?.f1.close || fight.odds?.f2.close || hasOddsMarkets(fight.odds?.props, fight.f1.name, fight.f2.name) ? ["odds" as const] : []),
+    // A finished bout keeps the tab for its sportsbook prices; the archive
+    // long predates Polymarket's UFC markets.
+    ...((!fight.potential && fight.status !== "past") || fight.odds?.f1.close || fight.odds?.f2.close || hasOddsMarkets(fight.odds?.props, fight.f1.name, fight.f2.name) ? ["odds" as const] : []),
     // The card's next bout and the one on now have their Score tab before a
     // round opens: the rounds wait for the feed or the admin panel, and a
     // streamer can copy the overlay in time.

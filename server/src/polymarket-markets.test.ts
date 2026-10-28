@@ -187,7 +187,7 @@ test("a replacement hides old quotes, history, frozen comparisons and community 
   assert.equal(changed?.snapshot, null);
 });
 
-test("completed-fight analytics ignores settlement, imported history and post-start snapshots", async (t) => {
+test("a completed fight freezes its last observed pre-fight snapshot, ignoring settlement and imported history", async (t) => {
   const f = fixture(t);
   await f.service.detail(f.id);
   await new Promise((resolve) => setImmediate(resolve));
@@ -211,14 +211,11 @@ test("completed-fight analytics ignores settlement, imported history and post-st
   db.prepare(
     "UPDATE fights SET f1_outcome='win', f2_outcome='loss' WHERE id=?",
   ).run(f.id);
-  const result = f.service.analytics();
-  const row = result.recent.find((r) => r.id === f.id)!;
-  assert.equal(row.p, 0.4);
-  assert.equal(row.sports, 0.625);
-  assert.equal(row.community, 0.7);
   const finished = await f.service.detail(f.id);
   assert.equal(finished?.quote, null);
   assert.equal(finished?.snapshot?.p, 0.4);
+  assert.equal(finished?.sports?.p, 0.625);
+  assert.equal(finished?.community?.p, 0.7);
   assert.equal(finished?.community?.at, finished?.snapshot?.at);
 });
 
@@ -245,4 +242,31 @@ test("current quotes expire even when a reader retains the summary", async (t) =
   assert.ok(f.service.summary(context).quote);
   t.mock.method(Date, "now", () => f.at + 120_000);
   assert.equal(f.service.summary(context).quote, null);
+});
+
+test("long histories are thinned over their whole span and keep every live capture", async (t) => {
+  const f = fixture(t);
+  await f.service.detail(f.id);
+  await new Promise((resolve) => setImmediate(resolve));
+  const c = f.service.context(f.id)!;
+  const key = `market-${f.id.slice(-4)}`;
+  const insert = db.prepare(
+    "INSERT OR IGNORE INTO polymarket_samples(fight_id, identity, market_key, at, p, phase, source, end_at) VALUES (?, ?, ?, ?, 0.5, ?, ?, ?)",
+  );
+  const first = f.at - 4000 * 600_000;
+  for (let i = 0; i < 4000; i++)
+    insert.run(f.id, c.identity, key, first + i * 600_000, "prefight", "history", first + (i + 1) * 600_000);
+  for (let i = 1; i <= 3; i++)
+    insert.run(f.id, c.identity, key, f.cutoff + i * 10_000, "live", "observed", null);
+  const now = Date.now();
+  t.mock.method(Date, "now", () => now + 6_000);
+  const history = (await f.service.detail(f.id))!.history;
+  // 1,500 slices plus the newest point, then the three live captures.
+  assert.ok(history.length <= 1501 + 3, `${history.length} points`);
+  assert.ok(history.length > 1000);
+  assert.ok(history[0].at < first + 600_000 * 4, "the oldest slice stays");
+  assert.equal(history.filter((p) => p.phase === "live").length, 3);
+  assert.equal(history.at(-1)!.at, f.cutoff + 30_000);
+  assert.ok(history.every((p, i) => !i || p.at > history[i - 1].at));
+  assert.ok(history.every((p) => !("endAt" in p)));
 });

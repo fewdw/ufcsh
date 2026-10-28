@@ -7,12 +7,12 @@ import {
   chartModel,
   chartTime,
   clampRange,
+  marketPct as pct,
   panRange,
   resizeRange,
 } from "../market-chart";
 import type { TimeRange } from "../market-chart";
 
-const pct = (p: number) => `${(p * 100).toFixed(1).replace(/\.0$/, "")}%`;
 type Model = ReturnType<typeof chartModel>;
 
 export default function PolymarketChart({ data }: { data: MarketDetail }) {
