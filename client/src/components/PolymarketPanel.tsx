@@ -184,7 +184,6 @@ function Comparison({ data, now }: { data: MarketDetail; now: number }) {
   ];
   return (
     <div className="mx-auto max-w-xl">
-      <h3 className="mb-2 text-sm font-semibold">How they compare</h3>
       <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700">
         <table
           className="w-full table-fixed text-xs"

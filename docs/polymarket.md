@@ -106,9 +106,10 @@ American sportsbook prices are converted to implied probabilities, then both
 sides are normalized together to remove the margin. Community share counts
 only picks for the same event and corner identities; it is a pick share, not a
 calibrated forecast. The comparison omits community picks when the count is zero
-or no community sample exists. The comparison has a separate title and a bounded,
-horizontally centered table. Blue/red fighter headers align with the matching
-percentage columns; row dividers and uniform padding keep sources easy to compare. Fresh
+or no community sample exists. The comparison has a bounded, horizontally centered
+table without a visible section title. Blue/red fighter headers align with the
+matching percentage columns; row dividers and uniform padding keep sources easy to
+compare. Fresh
 quote methods and sportsbook normalization timestamps are omitted; frozen or
 unavailable prices retain their status labels. Community rows retain their pick
 count without repeating a current-tally label.
