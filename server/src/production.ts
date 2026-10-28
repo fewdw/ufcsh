@@ -7,6 +7,8 @@ process.env.SYNC_MODE = "external";
 process.env.DB_INIT = "1";
 // Migrations finish before any other database connection is opened.
 const { db } = await import("./db.ts");
+const { seedAntidopingTests } = await import("./antidoping.ts");
+seedAntidopingTests();
 db.close();
 const env = { ...process.env, DB_INIT: "0" };
 const entries = process.env.NO_SYNC === "1" ? ["index.ts"] : ["index.ts", "sync-worker.ts"];

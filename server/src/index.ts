@@ -2,9 +2,11 @@ import "./env.ts";
 import { startApi } from "./api.ts";
 import { startScheduler } from "./sync.ts";
 import { log } from "./util.ts";
+import { seedAntidopingTests } from "./antidoping.ts";
 
 const PORT = Number(process.env.PORT ?? 8000);
 
+if (process.env.DB_INIT !== "0") seedAntidopingTests();
 const server = startApi(PORT);
 // Once HTTP has drained, exit even if a local scraper still has a timer or
 // network request pending. Its stored progress is resumed at the next launch.
