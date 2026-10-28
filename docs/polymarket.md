@@ -7,7 +7,9 @@ UFC.sh reads public market data only. It does not connect a wallet or place orde
 - A card's Polymarket probabilities switch (`?markets=1` opens it directly).
 - A matchup's Odds tab (`?tab=odds`): sportsbook moneylines/props and a Polymarket
   panel with the probability chart first, followed by source comparisons and
-  source-listed props.
+  source-listed props. With at least 56rem of panel width, the chart and comparison
+  sit in two columns (chart left, comparison right). Narrower panels stay stacked;
+  compact live charts keep the full width.
 - During a live fight, the Result and Score tabs also include the compact chart.
 - The hero badge is one line: the official Polymarket symbol and both percentages.
   It appears only while a fresh quote is available and the fight has no result.
