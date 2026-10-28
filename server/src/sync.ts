@@ -1,3 +1,4 @@
+import { syncFightPay } from "./fight-pay.ts";
 import { syncCrew } from "./event-crew.ts";
 import { startPotentialMatchupSync } from "./potential-matchups.ts";
 import { isFightDay, LIVE_EVENT_INTERVAL, liveDetailDue, fightIsComplete, fightIsUnderway } from "./live-state.ts";
@@ -1992,6 +1993,7 @@ export async function tick(): Promise<void> {
     if (!catchWeightsRunning) void guarded("catch_weights", async () => { await syncCatchWeights(); });
     if (!venueArchiveRunning) void guarded("venue_archive", () => syncVenueArchive());
     if (!wikiInfoRunning) void guarded("event_articles", () => syncEventWikiInfo());
+    void guarded("fight_pay", async () => { await syncFightPay(); });
     await guarded("replacement_notices", async () => { applyVerifiedReplacementNotices(); });
     // Broadcast crews come from a short-lived feed, read alongside the tick.
     void guarded("event_crew", () => syncCrew());
