@@ -104,6 +104,7 @@ export default function InfoPage() {
             <p><time dateTime="2026-10-28">October 28, 2026</time></p>
             <ul>
               <li>Simplified the Report an issue item in the More menu.</li>
+              <li>Removed the Polymarket probabilities bar from event pages.</li>
             </ul>
           </Section>
         </div>
