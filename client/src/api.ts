@@ -578,9 +578,13 @@ export type FighterProfile = {
   roster_events?: CareerRosterEvent[];
   /** Yearly awards, newest first. */
   awards?: FighterAward[];
+  /** Anti-doping test sessions by year, oldest first. */
+  antidoping?: AntidopingYear[];
   /** UFC-only history, including verified source-only UFC rows. */
   history: (HistoryRow | ProfessionalHistoryRow)[];
 };
+
+export type AntidopingYear = { year: number; tests: number };
 
 export type RankingEntry = {
   rank: string;
@@ -910,6 +914,8 @@ export type RefereeProfile = {
   summary: RefereeTally;
   baseline: RefereeTally & { label: string };
   by_year: YearCount[];
+  /** Point deductions a year (n), every year they worked; empty without any. */
+  deductions_by_year: (YearCount & { bouts: number })[];
   regulars: { id: string; name: string; n: number; wins: number }[];
   incidents: { fight_id: string; date: string; event_name: string; f1: FighterRef; f2: FighterRef; kind: string; details: string | null }[];
   total: number;
@@ -919,6 +925,8 @@ export type RefereeProfile = {
     fight_id: string; event_id: string; event_name: string; date: string; division: string; title: boolean;
     f1: FighterRef; f2: FighterRef; result: string; method: string | null; method_details: string | null;
     round: number | null; time: string | null; details: string | null;
+    /** Recorded point deductions, "R2 −1 Name: reason; …". */
+    deductions: string | null;
   }[];
 };
 

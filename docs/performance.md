@@ -3,6 +3,28 @@
 Measure first, then change what the measurement points at. This page records
 the targets, how to measure against them, and the last measured results.
 
+## Anti-doping profile counts (2026-10-27)
+
+Measured on the home server, Node 26, against an isolated archive copy with
+7,985 public test-history rows and 2,778 booked UFC fighters. These are local
+module timings, not whole-page latency or a VPS throughput claim.
+
+- The profile's prepared indexed lookup, over 10,000 mixed fighter reads:
+  median **0.007 ms**, p95 **0.019 ms**. It fetches no external pages and adds
+  the counts to the existing profile response, with no extra browser request.
+- Full background identity matching: **1,087 ms** before the accuracy audit;
+  **113–150 ms** across six passes afterwards. Previously, each carry-forward
+  lookup rescanned every source row. A map now resolves those names once, and
+  reviewed aliases replace the first-name-prefix and edit-distance inference.
+- The bundled public snapshot is **230,592 bytes** (about 231 KB), loaded only
+  at bootstrap, never per profile request. Identical refreshes and repeated
+  imports leave profile revisions unchanged. Count/link changes invalidate
+  profiles, without rebuilding analytics or search.
+
+A production-mode startup with background sync disabled and no test-history
+rows in its private database copy imported the bundle before serving HTTP;
+GSP and Alexia Thainara's profile APIs then returned their linked histories.
+
 ## Production baseline and worker memory (2026-10-14)
 
 Five days of saved prod traffic (Oct 9–14, one event weekend): about 195,000

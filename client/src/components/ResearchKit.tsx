@@ -361,9 +361,11 @@ export function ListHeading({ title, count, active, onReset, search, children }:
 
 /** Activity a year as columns; a column picks that year, picking it again
  *  clears it. The marked part (finishes, dissents) sits at the base. */
-export function YearBars({ title, data, unit, marked, from, to, onPick }: {
+export function YearBars({ title, data, unit, marked, from, to, onPick, label }: {
   title: string; data: YearCount[]; unit: string; marked?: string;
   from: string | null; to: string | null; onPick: (year: number | null) => void;
+  /** Overrides the hover line for a year. */
+  label?: (entry: YearCount) => string;
 }) {
   const [hover, setHover] = useState<YearCount | null>(null);
   if (!data.length) return null;
@@ -375,7 +377,7 @@ export function YearBars({ title, data, unit, marked, from, to, onPick }: {
   const inRange = (year: number) => (!from || year >= Number(from)) && (!to || year <= Number(to));
   // Every column carries its year under it and its count on top.
   const short = years.length > 8;
-  const describe = (entry: YearCount) => `${entry.year} · ${entry.n.toLocaleString()} ${unit}${marked ? ` · ${entry.marked.toLocaleString()} ${marked}` : ""}`;
+  const describe = (entry: YearCount) => label?.(entry) ?? `${entry.year} · ${entry.n.toLocaleString()} ${unit}${marked ? ` · ${entry.marked.toLocaleString()} ${marked}` : ""}`;
   return (
     <Panel title={title} subtitle={hover ? describe(hover) : undefined}>
       <div className="px-4 pb-3 pt-3 sm:px-5">

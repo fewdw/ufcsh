@@ -44,6 +44,7 @@ import { americanLine, impliedProbability } from "./fight-index.ts";
 import { consistentMoneyline } from "./method-odds.ts";
 import { decisionFromCards } from "./judge-scorecards.ts";
 import { syncCancelledBouts } from "./cancelled-bouts.ts";
+import { syncAntidopingTests } from "./antidoping.ts";
 import { boutLines, boutProps, fightOddsBoard, fightOddsEvents, fightOddsOpeners, fightOddsProps, matchBout } from "./scrape/fightodds.ts";
 
 const HOUR = 3600_000;
@@ -2046,6 +2047,22 @@ export async function tick(): Promise<void> {
     // 13. Complete professional records. This has its own politely throttled
     //     host queue, so it cannot delay UFCStats results or rankings.
     void guarded("career_records", () => syncCareerRecords(40));
+
+    // 14. Anti-doping test counts: the source posts weekly, so read it daily
+    //     (a failed read retried every three hours) and tie names again.
+    if (metaAgeMs("antidoping_synced_at") > DAY && metaAgeMs("antidoping_tried_at") > 3 * HOUR) {
+      touchMeta("antidoping_tried_at");
+      void guarded("antidoping", async () => {
+        try {
+          await syncAntidopingTests();
+          touchMeta("antidoping_synced_at");
+          setMeta("antidoping_error", "");
+        } catch (err) {
+          setMeta("antidoping_error", String(err));
+          throw err;
+        }
+      });
+    }
 
     setMeta("last_tick_at", String(Date.now()));
   } finally {

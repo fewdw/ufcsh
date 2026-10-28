@@ -752,6 +752,16 @@ db.exec(`CREATE TABLE IF NOT EXISTS cancelled_boards (
   read_at  INTEGER,
   error    TEXT NOT NULL DEFAULT ''
 )`);
+// Each athlete's anti-doping tests a year as the program lists them, and the
+// fighter the name was tied to (antidoping.ts), re-linked after every read.
+db.exec(`CREATE TABLE IF NOT EXISTS antidoping_tests (
+  year       INTEGER NOT NULL,
+  name       TEXT NOT NULL,
+  tests      INTEGER NOT NULL,
+  fighter_id TEXT,
+  PRIMARY KEY (year, name)
+)`);
+db.exec("CREATE INDEX IF NOT EXISTS idx_antidoping_fighter ON antidoping_tests(fighter_id)");
 db.exec("CREATE TABLE IF NOT EXISTS data_revisions (key TEXT PRIMARY KEY, value INTEGER NOT NULL)");
 for (const key of ["analytics", "profiles", "search"]) {
   db.prepare("INSERT OR IGNORE INTO data_revisions VALUES (?, 0)").run(key);
@@ -768,6 +778,7 @@ const revisionTables: Record<string, string[]> = {
   rankings: ["profiles"],
   ranking_history: ["profiles"],
   cancelled_bouts: ["profiles"],
+  antidoping_tests: ["profiles"],
 };
 for (const [table, revisions] of Object.entries(revisionTables)) {
   const checkTimestamps = new Set(["detail_fetched_at", "birth_fetched_at", "photo_checked_at", "bfo_checked_at", "bfo_final_at",

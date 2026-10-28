@@ -92,6 +92,42 @@ test("source-only scorecards appear in the judges' directory and profiles", asyn
   assert.equal(issue.actions[0].target, "card:1");
 });
 
+test("a referee's recorded point deductions count by year, only where they fit the cards", async t => {
+  const row = db.prepare(`SELECT f.id, f.detail_json, f.judge_rounds_json, f.deductions_json FROM fights f JOIN events e ON e.id = f.event_id
+    WHERE e.complete = 1 AND f.method LIKE '%DEC' AND f.round = '3' LIMIT 1`).get() as { id: string; detail_json: string | null; judge_rounds_json: string | null; deductions_json: string | null };
+  assert.ok(row);
+  const update = db.prepare("UPDATE fights SET detail_json = ?, judge_rounds_json = ?, deductions_json = ? WHERE id = ?");
+  t.after(async () => {
+    update.run(row.detail_json, row.judge_rounds_json, row.deductions_json, row.id);
+    await new Promise(resolve => setTimeout(resolve, 5100));
+    fightIndex();
+  });
+  const detail = JSON.parse(row.detail_json ?? "{}");
+  // The red corner won round 2 and lost a point for it: 9-9 on every card.
+  const cards = (round2: [number, number]) => ["Judge A", "Judge B", "Judge C"].map(judge => ({ judge, f1Score: 20 + round2[0], f2Score: 18 + round2[1],
+    rounds: [{ round: 1, f1Score: 10, f2Score: 9 }, { round: 2, f1Score: round2[0], f2Score: round2[1] }, { round: 3, f1Score: 10, f2Score: 9 }] }));
+  const record = JSON.stringify({ source: "MMA Decisions", sourceUrl: "https://mmadecisions.com/decision/1/x", items: [{ side: "f1", round: 2, points: 1, reason: "Eye poke" }] });
+  const set = async (round2: [number, number]) => {
+    update.run(JSON.stringify({ ...detail, methodInfo: { ...detail.methodInfo, Referee: "Archive Deduction Referee" }, judges: cards(round2) }), null, record, row.id);
+    await new Promise(resolve => setTimeout(resolve, 5100));
+    return refereeProfile("archive-deduction-referee", new URLSearchParams()) as any;
+  };
+
+  const fits = await set([9, 9]);
+  assert.equal(fits.summary.deductions, 1);
+  assert.deepEqual(fits.deductions_by_year.map((entry: any) => [entry.n, entry.bouts]), [[1, 1]]);
+  assert.equal(fits.deductions_by_year[0].year, Number(fits.rows[0].date.slice(0, 4)));
+  assert.match(fits.rows[0].deductions, /^R2 −1 .+: Eye poke$/);
+  assert.equal(fits.incidents[0].kind, "Point deduction");
+  assert.ok(fits.baseline.deductions >= 1);
+
+  // A 10-9 round leaves no room for the point, so the record isn't counted.
+  const misfit = await set([10, 9]);
+  assert.equal(misfit.summary.deductions, 0);
+  assert.deepEqual(misfit.deductions_by_year, []);
+  assert.equal(misfit.rows[0].deductions, null);
+});
+
 test("the bug board's officials checks only list real pairs and real merges", async () => {
   const { bugReport } = await import("./bugs.ts");
   const checks = bugReport().checks.filter((check) => check.group === "Venues & officials");
