@@ -1,7 +1,7 @@
 # Project map
 
 Where things live, so a change starts in the right file. One Node server
-(`server/`) serves the API, the built client and share images; one Vite/React
+(`server/`) serves the API and the built client; one Vite/React
 client (`client/`) renders every page.
 
 ## Server (`server/src`, Node 26, TypeScript run natively)
@@ -10,7 +10,6 @@ client (`client/`) renders every page.
 | --- | --- |
 | HTTP entry, routing, caching, images | `api.ts` (routes, `resolvePublicApi`), `api-policy.ts` (what is public, cache lifetimes), `response-cache.ts`, `query-pool.ts` + `query-worker.ts` (heavy reads off the main thread) |
 | Page metadata, sitemap, 404s, redirects for addresses that plainly mean a page (a fighter or bout by name, an id with junk after it, `/events`, `/contact`) | `seo.ts` (`pageRedirect`) |
-| Link-preview images (`/og/*.jpg`) | `og-images.ts` (drawing); data lookup in `api.ts` (`shareCardData`) |
 | Fighter identity, records, photo URLs | `fighter-identity.ts` |
 | Search aliases (GSP, Aljo, real and maiden names; search only, never shown) | `search-aliases.ts` |
 | Career averages and opponent evidence | `career-metrics.ts` (shared formulas and recorded samples), `career-statistics.ts` (current career or cutoff before a matchup), `division-medians.ts` (each rate's division median over fighters with 3+ UFC bouts there in the 3 years before a date; ticks on the matchup bars and profile, `components/DivisionMedian.tsx`), `opposition.ts` (each UFC opponent's records then or now, standing tag and earlier or all fights), `fight-insights.ts` (bouts by round, average significant strikes landed and absorbed by round, average decision score by bout length over judges' cards and fan averages, wins against no-vig closing odds); missing samples in Admin → Bugs |

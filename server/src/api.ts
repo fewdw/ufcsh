@@ -71,7 +71,6 @@ import { panelCards } from "./judge-scorecards.ts";
 import { storedMedia, verifiedDeductions } from "./point-deductions.ts";
 import { timingRows } from "./page-timing.ts";
 import { injectPageSeo, pageSeo as routeSeo, SITE_URL, sitemap, type PageSeo } from "./seo.ts";
-import { renderShareImage, type ShareCard, type SharePhoto } from "./og-images.ts";
 import { landingEvent } from "./landing-event.ts";
 export { sitemap };
 
@@ -1708,7 +1707,7 @@ function status(): unknown {
 
 const MIME: Record<string, string> = {
   ".html": "text/html", ".js": "text/javascript", ".css": "text/css",
-  ".svg": "image/svg+xml", ".png": "image/png", ".webp": "image/webp", ".ico": "image/x-icon",
+  ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".ico": "image/x-icon",
   ".woff2": "font/woff2", ".json": "application/json", ".webmanifest": "application/manifest+json",
   ".txt": "text/plain; charset=utf-8", ".xml": "application/xml; charset=utf-8",
 };
@@ -2180,145 +2179,6 @@ export async function serveStatic(req: http.IncomingMessage, res: http.ServerRes
     return;
   }
   sendRepresentation(req, res, page, "no-cache", "text/html", EDGE.page);
-}
-
-// ---------------------------------------------------------------------------
-// share images
-
-async function sharePhoto(id: string | null | undefined): Promise<SharePhoto> {
-  if (!id) return null;
-  const hasFull = Boolean((prepared("SELECT photo_full_url FROM fighters WHERE id = ?").get(id) as { photo_full_url: string | null } | undefined)?.photo_full_url);
-  const image = await loadFighterImage(id, hasFull ? "full" : "head").catch(() => null);
-  return image ? { data: image.data, full: hasFull } : null;
-}
-
-const rankText = (ranking: { rank: string; division: string } | null) => !ranking ? null
-  : ranking.rank === "C" ? `Champion · ${ranking.division}` : ranking.rank === "IC" ? `Interim champion · ${ranking.division}` : `#${ranking.rank} ${ranking.division}`;
-
-type ShareCardData = (Exclude<ShareCard, { kind: "versus" } | { kind: "single" }>)
-  | (Omit<Extract<ShareCard, { kind: "versus" }>, "photos"> & { photoIds: [string, string] })
-  | (Omit<Extract<ShareCard, { kind: "single" }>, "photo"> & { photoId: string });
-
-/** The card a shared link previews with: a bout, a fighter, a card, or the
- *  site. Read where the fight index lives (a query worker in production). */
-export function shareCardData(kind: string, id: string): ShareCardData | null {
-  if (kind === "site") {
-    return { kind: "site", tagline: "Events, odds, stats and rankings" };
-  }
-  if (kind === "events" && id === POTENTIAL_EVENT_ID) {
-    const fights = potentialMatchups();
-    return { kind: "list", eyebrow: "Unconfirmed fights", title: POTENTIAL_EVENT_NAME,
-      subtitle: `${fights.length} matchups with odds`, items: fights.slice(0, 5).map(row => `${row.f1_name} vs ${row.f2_name}`),
-      footer: "Potential UFC matchups · No date announced" };
-  }
-  if (kind === "fights") {
-    const potential = id.startsWith("potential-") ? potentialMatchups().find(row => row.id === id) : null;
-    const lines = potential ? JSON.parse(potential.odds_json) : null;
-    const f = potential ? { ...potentialFight(potential), f1_close: lines.f1.close, f2_close: lines.f2.close } : prepared(`SELECT f.*, e.name AS event_name, e.date AS event_date, o.f1_close, o.f2_close
-      FROM fights f JOIN events e ON e.id = f.event_id LEFT JOIN odds o ON o.fight_id = f.id WHERE f.id = ?`).get(id) as any;
-    if (!f) return null;
-    const at = { date: f.event_date, ord: Number(f.ord) || 0, division: f.weight_class ?? "" };
-    const a = fighterSummary(f.f1_id, f.f1_name, "meta", at);
-    const b = fighterSummary(f.f2_id, f.f2_name, "meta", at);
-    const winner = f.f1_outcome === "win" ? f.f1_name : f.f2_outcome === "win" ? f.f2_name : null;
-    const center = winner && f.method ? `${winner} won · ${f.method}${f.round ? ` R${f.round}` : ""}`
-      : f.f1_close && f.f2_close ? `Moneyline ${f.f1_close} / ${f.f2_close}` : f.weight_class;
-    return {
-      kind: "versus", eyebrow: f.event_name, f1: f.f1_name, f2: f.f2_name,
-      f1Line: [a.record, rankText(a.ranking)].filter(Boolean).join(" · "),
-      f2Line: [b.record, rankText(b.ranking)].filter(Boolean).join(" · "),
-      center, footer: potential ? "Unconfirmed fight · No date announced" : `${f.weight_class} · ${f.event_date}`, photoIds: [f.f1_id, f.f2_id],
-    };
-  }
-  if (kind === "fighters") {
-    const row = prepared("SELECT id, name, nickname FROM fighters WHERE id = ?").get(id) as { id: string; name: string; nickname: string } | undefined;
-    if (!row || !hasUfcFight(id)) return null;
-    const summary = fighterSummary(id, row.name);
-    const indexed = fightIndex().fighters.get(id);
-    const top = fighterRecords(id, 1)[0];
-    return {
-      kind: "single", eyebrow: "Fighter profile", title: row.name,
-      lines: [
-        `${summary.record} pro${indexed ? ` · ${recordText(indexed.ufc)} UFC` : ""}`,
-        ...(summary.ranking ? [rankText(summary.ranking)!] : []),
-        ...(row.nickname ? [`“${row.nickname}”`] : []),
-        ...(top ? [`#${top.rank} ${top.label.toLowerCase()}`] : []),
-      ],
-      footer: "Record, fight history and every ranked statistic", photoId: id,
-    };
-  }
-  if (kind === "events") {
-    const event = prepared("SELECT id, name, date, location FROM events WHERE id = ?").get(id) as { id: string; name: string; date: string; location: string } | undefined;
-    if (!event) return null;
-    const fights = cardOrder(prepared("SELECT f1_name, f2_name, ord, segment, card_pos FROM fights WHERE event_id = ? ORDER BY ord").all(id) as { f1_name: string; f2_name: string; ord: number; segment: string | null; card_pos: number | null }[]).slice(0, 5);
-    const venue = venueOfEvent(id);
-    return {
-      kind: "list", eyebrow: "Fight card", title: event.name,
-      subtitle: [event.date, venue ? `${venue.name}, ${venue.city ?? ""}`.replace(/, $/, "") : event.location].filter(Boolean).join(" · "),
-      items: fights.map((fight) => `${fight.f1_name} vs ${fight.f2_name}`), footer: "Odds, results and every matchup",
-    };
-  }
-  return null;
-}
-
-const shareImages = new Map<string, { body: Buffer; etag: string }>();
-const shareRenders = new Map<string, Promise<{ body: Buffer; etag: string } | null>>();
-// Rasterising uses every core it is given; a burst of crawlers must not take
-// them from page requests. Two at a time and a short line behind them; past
-// that the crawler is asked to come back, which every link previewer does.
-let shareSlots = 2;
-const shareQueue: (() => void)[] = [];
-class ShareBusy extends Error {}
-async function withShareSlot<T>(work: () => Promise<T>): Promise<T> {
-  if (shareSlots > 0) shareSlots--;
-  else if (shareQueue.length >= 6) throw new ShareBusy();
-  else await new Promise<void>((resolve) => shareQueue.push(resolve));
-  try { return await work(); }
-  finally { const next = shareQueue.shift(); if (next) next(); else shareSlots++; }
-}
-
-async function serveShareImage(req: http.IncomingMessage, res: http.ServerResponse, pathname: string): Promise<void> {
-  const match = /^\/og\/(?:(site)|(fights|fighters|events)\/([a-f0-9]{16}|potential-[a-z0-9-]{1,180}))\.jpg$/i.exec(pathname);
-  if (!match) { res.writeHead(404, { "Cache-Control": "no-store" }); res.end(); return; }
-  const kind = match[1] ? "site" : match[2];
-  const id = match[3] ?? "";
-  // Keyed to the data revision: a result or a new photo makes a new picture.
-  const key = `${kind}:${id}:${dataRevision("profiles")}`;
-  let image = shareImages.get(key) ?? null;
-  if (!image) {
-    // Concurrent requests for one picture share a single render.
-    let pending = shareRenders.get(key);
-    if (!pending) {
-      pending = withShareSlot(() => renderShare(kind, id)).finally(() => shareRenders.delete(key));
-      shareRenders.set(key, pending);
-    }
-    try { image = await pending; }
-    catch (error) {
-      if (!(error instanceof ShareBusy)) throw error;
-      res.writeHead(503, { "Retry-After": "30", "Cache-Control": "no-store" });
-      res.end();
-      return;
-    }
-    if (!image) { res.writeHead(404, { "Cache-Control": "no-store" }); res.end(); return; }
-    if (shareImages.size >= 400) shareImages.delete(shareImages.keys().next().value!);
-    shareImages.set(key, image);
-  }
-  const headers = { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400", ETag: image.etag };
-  if (matchesEtag(req.headers["if-none-match"], image.etag)) { res.writeHead(304, headers); res.end(); return; }
-  res.writeHead(200, { ...headers, "Content-Length": image.body.length });
-  res.end(req.method === "HEAD" ? undefined : image.body);
-}
-
-async function renderShare(kind: string, id: string): Promise<{ body: Buffer; etag: string } | null> {
-  const data = (queryPool
-    ? JSON.parse((await queryPool.run(`/_share?kind=${kind}&id=${id}`)).json)
-    : shareCardData(kind, id)) as ShareCardData | null;
-  if (!data) return null;
-  const card: ShareCard = "photoIds" in data
-    ? { ...data, photos: await Promise.all(data.photoIds.map(sharePhoto)) as [SharePhoto, SharePhoto] }
-    : "photoId" in data ? { ...data, photo: await sharePhoto(data.photoId) } : data;
-  const body = await renderShareImage(card);
-  return { body, etag: `"${createHash("sha1").update(body).digest("base64url")}"` };
 }
 
 /** /roster: Wikipedia's signings and releases, plus departures ufc.com shows
@@ -2869,19 +2729,12 @@ export function startApi(port: number): http.Server {
       // memory and a page load asks for a couple of dozen of them, so they have
       // a bucket of their own: reloading quickly, or many readers behind one
       // address, must never be answered with a 429 in place of a script.
-      const staticFile = !p.startsWith("/api/") && !p.startsWith("/og/") && path.extname(p) !== "" && p !== "/sitemap.xml";
+      const staticFile = !p.startsWith("/api/") && path.extname(p) !== "" && p !== "/sitemap.xml";
       const bucket = imageRequest ? "image" : staticFile ? "static" : "request";
       const allowed = limiter.allow(`${address}:${bucket}`, imageRequest || staticFile ? 600 : 120, imageRequest || staticFile ? 100 : 12);
       if (!allowed || (expensive && !limiter.allow(`${address}:expensive`, 30, 3))) {
         res.setHeader("Retry-After", "5");
         return await sendJson(req, res, { error: "too many requests" }, 429);
-      }
-      if (p.startsWith("/og/")) {
-        if (!limiter.allow(`${address}:share-image`, 20, 2)) {
-          res.setHeader("Retry-After", "5");
-          return await sendJson(req, res, { error: "too many requests" }, 429);
-        }
-        return await serveShareImage(req, res, p);
       }
       if (imageRequest) {
         if (!/^\/api\/images\/[a-f0-9]{16}(\/full)?$/i.test(p)) return await sendJson(req, res, { error: "not found" }, 404);

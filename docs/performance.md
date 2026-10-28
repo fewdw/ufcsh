@@ -242,7 +242,6 @@ rerun affected checks. No browser was launched for infrastructure verification.
 | Main client bundle (gzip) | under 130 KB; every page beyond Events loads on demand |
 | First load, every script and stylesheet `index.html` names (gzip) | under 185 KB, checked in CI (`client/scripts/bundle-budget.ts`); 166 KB on 2026-10-26 |
 | Real readers' LCP at p75 (Admin → Traffic → Load times) | under 2.5 s on phones |
-| Share image (`/og/*.jpg`) | under 100 KB, first render under 1.5 s alone |
 | Added memory per query worker for a new feature | stated in the change |
 
 ## How to measure
@@ -370,7 +369,7 @@ stats, officials, venues, judges and profiles.
 - The sharp level is a full-resolution WebP (`?size=large`, quality 85),
   not UFC's non-interlaced PNG. Measured on 12 photos from one card
   (2026-10-14): full bodies 329–394 KB → 32–53 KB, headshots 130–167 KB →
-  16–22 KB, visually identical. The PNG stays available for share images.
+  16–22 KB, visually identical.
 - Every remaining loading line stays invisible for its first 350 ms
   (`.appear-late`), and a list refreshing in place dims only after 200 ms.
 
@@ -422,12 +421,10 @@ four filter combinations, before the response cache.
 
 ## What changed because of the numbers
 
-- Share images first rendered at up to 665 KB PNG and 1.6 s under load: they
-  are now JPEG (60–75 KB), rendered at most two at a time with identical
-  requests sharing one render, and shed with `503 Retry-After` past a short
-  queue so a crawler burst cannot starve page requests.
-- Share-card data is read inside query workers, so the main process never
-  builds the fight index.
+- Per-page share images (`/og/*.jpg`) were drawn on request, about 1 s each;
+  crawlers asked for thousands of old bouts once apiece, so nearly every
+  request was a cold render. Removed on 2026-10-28: every page now previews
+  with one static `/og.jpg`.
 
 ## Already in place
 

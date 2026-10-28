@@ -40,7 +40,7 @@ export function htmlEscape(value: string): string {
 const XML_ENTITIES: Record<string, string> = { "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" };
 const xmlEscape = (value: string) => value.replace(/[<>&'"]/g, (char) => XML_ENTITIES[char]);
 
-const SITE_IMAGE = `${SITE_URL}/og/site.jpg`;
+const SITE_IMAGE = `${SITE_URL}/og.jpg`;
 const DEFAULT: Omit<PageSeo, "canonical"> = {
   title: "UFC Data: Events, Odds, Stats & Rankings | ufc.sh",
   description: "UFC data for hardcore fans: fight cards, matchup odds, results, fighter statistics and current rankings in one fast interface.",
@@ -143,7 +143,7 @@ function pageSeoFor(pathname: string): PageSeo {
     const fight = parts[1] === "fights" ? rows.find(row => row.id === id) : null;
     if (parts[1] === "fights" && !fight) return notFound();
     const name = fight ? `${fight.f1_name} vs ${fight.f2_name}` : POTENTIAL_EVENT_NAME;
-    return { ...DEFAULT, title: `${name} | ufc.sh`, canonical: `${SITE_URL}${pathname}`, image: `${SITE_URL}/og/${parts[1]}/${id}.jpg`,
+    return { ...DEFAULT, title: `${name} | ufc.sh`, canonical: `${SITE_URL}${pathname}`,
       description: `${name}: odds for unconfirmed UFC matchups. These fights are not scheduled.`,
       summary: `<h1>${htmlEscape(name)}</h1><p>Unconfirmed fights with odds.</p><ul>${(fight ? [fight] : rows).map(row => `<li>${link(`/fights/${row.id}`, `${row.f1_name} vs ${row.f2_name}`)}</li>`).join("")}</ul>`,
     };
@@ -158,7 +158,6 @@ function pageSeoFor(pathname: string): PageSeo {
       title: `${event.name} | ufc.sh`,
       description: `${event.name}${event.date ? ` on ${event.date}` : ""}: ${fights.length} matchups${headliner ? ` headlined by ${headliner}` : ""}, with odds${event.complete ? " and results" : ""}.${event.location ? ` ${event.location}.` : ""}`,
       canonical: `${SITE_URL}/events/${event.id}`,
-      image: `${SITE_URL}/og/events/${event.id}.jpg`,
       structuredData: {
         "@context": "https://schema.org", "@type": "SportsEvent", name: event.name, startDate: event.date,
         eventStatus: event.complete ? "https://schema.org/EventCompleted" : "https://schema.org/EventScheduled",
@@ -183,7 +182,6 @@ function pageSeoFor(pathname: string): PageSeo {
       title: `${name} | ufc.sh`,
       description: `${name} at ${fight.event_name}: ${fight.weight_class} odds, tale of the tape, fighter statistics${fight.complete ? " and result" : ""}.${result}`,
       canonical: `${SITE_URL}/fights/${fight.id}`,
-      image: `${SITE_URL}/og/fights/${fight.id}.jpg`,
       structuredData: {
         "@context": "https://schema.org", "@type": "SportsEvent", name, sport: "Mixed Martial Arts", startDate: fight.date,
         eventStatus: fight.complete ? "https://schema.org/EventCompleted" : "https://schema.org/EventScheduled",
@@ -208,7 +206,6 @@ function pageSeoFor(pathname: string): PageSeo {
       description: `${fighter.name}${fighter.nickname ? ` “${fighter.nickname}”` : ""} UFC profile: ${record} record, physical statistics, ranking, every ranked statistic and complete fight history.`,
       canonical: `${SITE_URL}/fighters/${fighter.id}`,
       type: "profile",
-      image: `${SITE_URL}/og/fighters/${fighter.id}.jpg`,
       structuredData: {
         "@context": "https://schema.org", "@type": "Person", name: fighter.name,
         ...(fighter.nickname ? { alternateName: fighter.nickname } : {}),

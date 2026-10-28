@@ -154,7 +154,6 @@ const ROUTE_INFO: Record<string, { name: string; path: string }> = {
   officials: { name: "Officials data", path: "/api/judges|referees/*" },
   venues: { name: "Venues data", path: "/api/venues/*" },
   locations: { name: "Locations data", path: "/api/locations/*" },
-  share_images: { name: "Share images", path: "/og/*" },
   previews: { name: "Fighter previews", path: "/api/previews/:id" },
   comments_list: { name: "Fight discussions", path: "/api/fights/:id/comments" },
   comments_thread: { name: "Comment threads", path: "/api/comments/:id/thread" },
