@@ -25,6 +25,7 @@ export function pageRouteGroup(pathname: string): string | null {
 
 /** Bounded, anonymous labels keep metrics useful even when URLs contain IDs or usernames. */
 export function routeGroup(pathname: string): string {
+  if (pathname.startsWith("/api/polymarket/")) return "polymarket";
   if (/^\/api\/fights\/[a-f0-9]{16}\/scores\/mine$/i.test(pathname)) return "scores_mine";
   if (/^\/api\/fights\/[a-f0-9]{16}\/scores$/i.test(pathname)) return "scores_public";
   if (/^\/api\/fights\/[a-f0-9]{16}\/predictions(\/mine)?$/i.test(pathname)) return "predictions";

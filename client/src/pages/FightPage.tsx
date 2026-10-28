@@ -20,6 +20,7 @@ import Avatar from "../components/Avatar";
 import { CardEventTitle, NAV_STEP, CardNavigation } from "../components/CardHeader";
 import FightScoring from "../components/FightScoring";
 import FightPredictions from "../components/FightPredictions";
+import PolymarketPanel, { MarketTeaser } from "../components/PolymarketPanel";
 import { predictionTabVisible, type PredictionSummary } from "../predictions";
 import { FightRail, FightRailSkeleton, FightStepLink, FightStrip, MatchupSkeleton } from "../components/FightRail";
 // Part of this page's own code, so the Discussion tab opens with it rather
@@ -489,12 +490,12 @@ function MatchupContext({ fight }: { fight: Matchup }) {
 function OddsPanel({ fight }: { fight: Matchup }) {
   const props = fight.odds?.props;
   const { settings, update } = useSettings();
-  if (!hasOddsMarkets(props, fight.f1.name, fight.f2.name)) return null;
+  if (!hasOddsMarkets(props, fight.f1.name, fight.f2.name) && !fight.odds?.f1.close && !fight.odds?.f2.close) return null;
   return (
     <section className={`${shell} @container flex flex-col overflow-hidden`}>
       <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-zinc-200 px-4 py-2 sm:py-3 dark:border-zinc-800">
         <div className="flex items-center gap-3">
-          <h2 className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">Odds</h2>
+          <h2 className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">Sportsbook odds</h2>
           <Link
             to={`/events/${fight.event.id}?odds=1`}
             className="text-[10px] text-zinc-500 transition hover:text-zinc-900 dark:hover:text-zinc-100"
@@ -505,7 +506,7 @@ function OddsPanel({ fight }: { fight: Matchup }) {
         <OddsFormatTabs format={settings.oddsFormat} onChange={(oddsFormat) => update("oddsFormat", oddsFormat)} />
       </header>
       <OddsMarkets
-        odds={props}
+        odds={props ?? { f1: {}, f2: {}, additional: [], source_url: "", fetched_at: 0, final: fight.status === "past" }}
         moneyline={fight.odds ? { f1: fight.odds.f1, f2: fight.odds.f2 } : null}
         fightId={betFightId(fight)}
         f1Name={fight.f1.name}
@@ -521,6 +522,20 @@ function OddsPanel({ fight }: { fight: Matchup }) {
       />
     </section>
   );
+}
+
+/** Keep the visited panel and chart controls mounted for this bout. Hidden
+ * panels stop fetching; returning never replaces observations with a loader. */
+function FightOdds({ fight, active }: { fight: Matchup; active: boolean }) {
+  const [visited, setVisited] = useState(active);
+  useEffect(() => { if (active) setVisited(true); }, [active]);
+  if (!active && !visited) return null;
+  return <div hidden={!active}>
+    <div className="flex flex-col gap-2 sm:gap-3">
+      <OddsPanel fight={fight} />
+      {!fight.potential ? <PolymarketPanel fightId={fight.id} active={active} past={fight.status === "past"} /> : null}
+    </div>
+  </div>;
 }
 
 function RecentForm({ fight }: { fight: Matchup }) {
@@ -897,7 +912,9 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
   const tabs: MatchupTab[] = [
     ...(fight.status === "past" || fight.in_progress || hasStats ? ["fight" as const] : []),
     "matchup",
-    ...(hasOddsMarkets(fight.odds?.props, fight.f1.name, fight.f2.name) ? ["odds" as const] : []),
+    // A finished bout keeps the tab for its sportsbook prices; the archive
+    // long predates Polymarket's UFC markets.
+    ...((!fight.potential && fight.status !== "past") || fight.odds?.f1.close || fight.odds?.f2.close || hasOddsMarkets(fight.odds?.props, fight.f1.name, fight.f2.name) ? ["odds" as const] : []),
     // The card's next bout and the one on now have their Score tab before a
     // round opens: the rounds wait for the feed or the admin panel, and a
     // streamer can copy the overlay in time.
@@ -905,7 +922,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
     ...(predictionTabVisible(fight, predictions, Boolean(predictionError)) ? ["predict" as const] : []),
     ...(!fight.potential ? ["discussion" as const] : []),
   ];
-  const tab = tabs.find((candidate) => candidate === requestedTab) ?? tabs[0];
+  const tab = tabs.find((candidate) => candidate === (requestedTab === "market" ? "odds" : requestedTab)) ?? tabs[0];
   // Only the tab panel below should change; the tab bar holds its place.
   const selectTab = (next: MatchupTab) => {
     if (tabBar.current) tabAnchor.keep(tabBar.current);
@@ -972,15 +989,13 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                   <div className="matchup-corner col-start-1 min-w-0">
                     <FighterHero side={fight.f1} align="left" bonuses={fight.bonuses} result={result} portrait={portraitOf(fight.f1)} onPortraitError={portraitUnavailable(fight.f1)} past={fight.status === "past"} />
                   </div>
-                  {/* The price sits level with the fighters' middle at every
-                      width, the weight class (and referee) just above it. The
-                      equal outer rows keep the price itself centred however
-                      tall the label is; a potential matchup has no label. */}
-                  <div className="matchup-market col-start-2 row-start-1 grid w-auto max-w-[8.5rem] grid-rows-[1fr_auto_1fr] justify-items-center self-center text-center @[30rem]:max-w-[16rem] @[58rem]:max-w-[19rem]">
-                    {/* .matchup-prices zeroes its own margin, so the gap
-                        under the weight class (and referee) is padding here. */}
+                  {/* The centre column shares the portraits' padded height:
+                      label above, odds in the middle, Polymarket below. Both
+                      gaps around the odds and both card-edge insets match. */}
+                  <div className="matchup-market col-start-2 row-start-1 grid w-auto max-w-[8.5rem] grid-rows-[auto_minmax(0,1fr)_auto] justify-items-center self-stretch text-center @[30rem]:max-w-[16rem] @[58rem]:max-w-[19rem]">
+                    {/* The grid supplies equal gaps above and below the odds. */}
                     {labelled || referee ? (
-                      <div className="flex flex-col items-center self-end pb-2">
+                      <div className="flex flex-col items-center">
                         {labelled ? <div><WeightClassLabel fight={fight} /></div> : null}
                         {referee ? (
                           <div className={`${labelled ? "mt-2 " : ""}text-[10px] text-zinc-500`} title="Referee">
@@ -991,13 +1006,15 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                         ) : null}
                       </div>
                     ) : null}
-                    <div className="matchup-prices row-start-2">
+                    <div className="matchup-prices row-start-2 self-center">
                       <MatchupOdds key={fight.id} f1={fight.odds?.f1.close} f2={fight.odds?.f2.close}
                         f1Open={fight.odds?.f1.open} f2Open={fight.odds?.f2.open}
                         f1Name={fight.f1.name} f2Name={fight.f2.name}
                         props={fight.odds?.props}
                         fightId={betFightId(fight, fight.status !== "upcoming")} />
                     </div>
+                    {!fight.potential && fight.status !== "past" && fight.f1.outcome == null && fight.f2.outcome == null
+                      ? <MarketTeaser key={fight.id} fightId={fight.id} /> : null}
                   </div>
                   <div className="matchup-corner col-start-3 min-w-0">
                     <FighterHero side={fight.f2} align="right" bonuses={fight.bonuses} result={result} portrait={portraitOf(fight.f2)} onPortraitError={portraitUnavailable(fight.f2)} past={fight.status === "past"} />
@@ -1027,6 +1044,7 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
 
             <div id="matchup-tabpanel" role={tabs.length > 1 ? "tabpanel" : undefined} aria-labelledby={tabs.length > 1 ? `matchup-tab-${tab}` : undefined} className="flex flex-col gap-2 sm:gap-3">
               {tab === "fight" ? <>
+                {fight.in_progress ? <PolymarketPanel key={fight.id} fightId={fight.id} compact /> : null}
                 <Scorecards fight={fight} />
                 {fight.status === "past" && !detail?.judges?.length ? <FightScoring key={fight.id} fight={fight} communityOnly /> : null}
                 {hasStats ? <FightStatistics fight={fight} live={statsLive} /> : fight.in_progress ? (
@@ -1081,8 +1099,8 @@ export default function FightView({ fightId, eventIdHint }: { fightId: string; e
                 <Meetings fight={fight} />
                 <CommonOpponents fight={fight} />
               </> : null}
-              {tab === "odds" ? <OddsPanel fight={fight} /> : null}
-              {tab === "score" ? <FightScoring key={fight.id} fight={fight} /> : null}
+              <FightOdds key={fight.id} fight={fight} active={tab === "odds"} />
+              {tab === "score" ? <>{fight.in_progress ? <PolymarketPanel key={fight.id} fightId={fight.id} compact /> : null}<FightScoring key={fight.id} fight={fight} /></> : null}
               {tab === "predict" ? <FightPredictions key={fight.id} fight={fight} /> : null}
               {tab === "discussion" ? (
                 <FightDiscussion key={fight.id} fightId={fight.id} />

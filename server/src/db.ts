@@ -49,6 +49,38 @@ CREATE TABLE IF NOT EXISTS meta (
   value TEXT NOT NULL
 );
 
+-- A mapping is invalidated when either fighter or the event date changes.
+-- Observed samples freeze comparison inputs before the card's first start.
+CREATE TABLE IF NOT EXISTS polymarket_bouts (
+  fight_id TEXT PRIMARY KEY,
+  identity TEXT NOT NULL,
+  market_json TEXT,
+  checked_at INTEGER NOT NULL,
+  history_at INTEGER,
+  error TEXT,
+  history_error TEXT
+);
+CREATE TABLE IF NOT EXISTS polymarket_samples (
+  fight_id TEXT NOT NULL,
+  identity TEXT NOT NULL,
+  market_key TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  p REAL NOT NULL CHECK(p >= 0 AND p <= 1),
+  phase TEXT NOT NULL CHECK(phase IN ('prefight', 'live', 'unknown')),
+  source TEXT NOT NULL CHECK(source IN ('observed', 'history')),
+  sports REAL,
+  community REAL,
+  community_n INTEGER,
+  end_at INTEGER,
+  PRIMARY KEY(fight_id, identity, market_key, at, source)
+) WITHOUT ROWID;
+-- Every read filters by the primary key's leading columns.
+DROP INDEX IF EXISTS idx_polymarket_samples_fight;
+CREATE TABLE IF NOT EXISTS polymarket_rounds (
+  fight_id TEXT NOT NULL, identity TEXT NOT NULL, round INTEGER NOT NULL, at INTEGER NOT NULL,
+  PRIMARY KEY(fight_id, identity, round)
+);
+
 CREATE TABLE IF NOT EXISTS events (
   id                TEXT PRIMARY KEY,
   name              TEXT NOT NULL,
@@ -239,6 +271,9 @@ CREATE INDEX IF NOT EXISTS idx_career_bouts_ufc
 `);
 
 const careerBoutColumns = db.prepare("PRAGMA table_info(career_bouts)").all() as { name: string }[];
+if (!(db.prepare("PRAGMA table_info(polymarket_samples)").all() as { name: string }[]).some(column => column.name === "end_at")) {
+  db.exec("ALTER TABLE polymarket_samples ADD COLUMN end_at INTEGER");
+}
 if (!careerBoutColumns.some((column) => column.name === "is_ufc")) {
   db.exec("ALTER TABLE career_bouts ADD COLUMN is_ufc INTEGER NOT NULL DEFAULT 0");
 }
