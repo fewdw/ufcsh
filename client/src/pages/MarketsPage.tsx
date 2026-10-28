@@ -196,7 +196,7 @@ function Accuracy({ demo = false }: { demo?: boolean }) {
               {data.recent.map((r) => (
                 <Link
                   key={r.id}
-                  to={`/fights/${r.id}?tab=market`}
+                  to={`/fights/${r.id}?tab=odds`}
                   className="flex items-center justify-between gap-3 py-2 text-xs"
                 >
                   <span className="min-w-0 truncate">
@@ -248,7 +248,7 @@ function Watchlist() {
         <h2 className="text-sm font-semibold">Your watchlist</h2>
         <p className="mt-2 text-xs leading-relaxed text-zinc-500">
           Saved in this browser. In-app alerts run while UFC.sh is open and
-          visible. Follow a fight or either fighter from a matchup’s Market tab.
+          visible. Follow a fight or either fighter from a matchup’s Odds tab.
         </p>
         {!watches.length ? (
           <p className="mt-5 text-xs text-zinc-500">
@@ -271,7 +271,7 @@ function Watchlist() {
                   <Link
                     to={
                       w.kind === "fight"
-                        ? `/fights/${w.id}?tab=market`
+                        ? `/fights/${w.id}?tab=odds`
                         : `/fighters/${w.id}`
                     }
                     className="text-xs font-medium"
@@ -386,7 +386,7 @@ function Watchlist() {
             {alerts.map((a) => (
               <Link
                 key={a.id}
-                to={`/fights/${a.fightId}?tab=market`}
+                to={`/fights/${a.fightId}?tab=odds`}
                 onClick={() =>
                   updateMarketWatches((s) => ({
                     ...s,

@@ -1,8 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /** Prices bypass persisted page snapshots and HTTP caches. Historical data
  * can remain during a retry; callers expire quotes using their own timestamp. */
-export function useMarketData<T>(url: string | null, interval = 15_000) {
+export function useMarketData<T>(
+  url: string | null,
+  interval = 15_000,
+  enabled = true,
+) {
   const [state, setState] = useState<{
     url: string | null;
     data: T | null;
@@ -10,8 +14,9 @@ export function useMarketData<T>(url: string | null, interval = 15_000) {
     at: number;
   }>({ url, data: null, error: false, at: 0 });
   const [revision, setRevision] = useState(0);
+  const lastSuccess = useRef<{ url: string; at: number } | null>(null);
   useEffect(() => {
-    if (!url) return;
+    if (!url || !enabled) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
     let request: AbortController | undefined;
@@ -32,7 +37,10 @@ export function useMarketData<T>(url: string | null, interval = 15_000) {
         });
         if (!res.ok) throw new Error("Market request failed");
         const data = (await res.json()) as T;
-        if (!cancelled) setState({ url, data, error: false, at: Date.now() });
+        if (!cancelled) {
+          lastSuccess.current = { url, at: Date.now() };
+          setState({ url, data, error: false, at: lastSuccess.current.at });
+        }
       } catch {
         if (!cancelled)
           setState((s) => ({
@@ -53,7 +61,14 @@ export function useMarketData<T>(url: string | null, interval = 15_000) {
         void load();
       }
     };
-    void load();
+    // Returning to a mounted panel keeps its observations and polling cadence.
+    // Prices still expire by their own timestamps while a refresh is pending.
+    const remaining =
+      interval > 0 && lastSuccess.current?.url === url
+        ? interval - (Date.now() - lastSuccess.current.at)
+        : 0;
+    if (remaining > 0) timer = setTimeout(load, remaining);
+    else void load();
     document.addEventListener("visibilitychange", visible);
     return () => {
       cancelled = true;
@@ -61,10 +76,13 @@ export function useMarketData<T>(url: string | null, interval = 15_000) {
       request?.abort();
       document.removeEventListener("visibilitychange", visible);
     };
-  }, [url, interval, revision]);
+  }, [url, interval, revision, enabled]);
   return {
     data: state.url === url ? state.data : null,
     error: state.url === url && state.error,
-    retry: () => setRevision((v) => v + 1),
+    retry: () => {
+      lastSuccess.current = null;
+      setRevision((v) => v + 1);
+    },
   };
 }

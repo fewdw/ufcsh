@@ -477,7 +477,7 @@ select:not([multiple]):not([size]) {
   .matchup-top-card .matchup-name { font-size: 15px; }
   .matchup-top-card .matchup-portrait > img { width: 44px; height: 44px; }
   .matchup-top-card .matchup-portrait > span { width: 53px; height: 80px; }
-  .matchup-top-card .matchup-market { gap: 0; padding-top: 0; border-top: 0; }
+  .matchup-top-card .matchup-market { gap: 8px; padding-top: 0; border-top: 0; }
   /* Shrink to fit the content instead of the 216px desktop price card, so it
      reads as a small badge sitting in the gap between the two portraits
      rather than a third block stacked below them. */

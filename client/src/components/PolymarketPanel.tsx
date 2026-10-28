@@ -710,13 +710,16 @@ export function PolymarketView({
 export default function PolymarketPanel({
   fightId,
   compact = false,
+  active = true,
 }: {
   fightId: string;
   compact?: boolean;
+  active?: boolean;
 }) {
   const { data, error, retry } = useMarketData<MarketDetail>(
     `/api/polymarket/fights/${fightId}`,
     5000,
+    active,
   );
   return data ? (
     <PolymarketView data={data} compact={compact} />
@@ -800,7 +803,7 @@ export function MarketBoard({
                   to={
                     demo
                       ? "/markets?demo=prefight"
-                      : `/fights/${row.fight.id}?tab=market`
+                      : `/fights/${row.fight.id}?tab=odds`
                   }
                   className="min-w-0 flex-1"
                 >
@@ -824,7 +827,7 @@ export function MarketBoard({
                   to={
                     demo
                       ? "/markets?demo=prefight"
-                      : `/fights/${row.fight.id}?tab=market`
+                      : `/fights/${row.fight.id}?tab=odds`
                   }
                   className="shrink-0 text-right text-xs font-semibold tabular-nums"
                 >
@@ -859,12 +862,13 @@ export function MarketTeaser({ fightId }: { fightId: string }) {
   const q = row ? freshMarketQuote(row, now) : null;
   return (
     <Link
-      to={`/fights/${fightId}?tab=market`}
-      className="mx-auto mt-3 flex w-fit max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full border border-zinc-200 px-3 py-1.5 text-[11px] text-zinc-500 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+      to={`/fights/${fightId}?tab=odds`}
+      aria-label="Polymarket odds, history and comparison"
+      className="matchup-polymarket flex w-fit max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full border border-zinc-200 px-3 py-1.5 text-[11px] text-zinc-500 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
     >
       <span>Polymarket</span>
       {q ? (
-        <span className="font-semibold tabular-nums">
+        <span className="whitespace-nowrap font-semibold tabular-nums">
           <span className="text-blue-700 dark:text-blue-400">
             {marketPct(q.p)}
           </span>
@@ -874,7 +878,7 @@ export function MarketTeaser({ fightId }: { fightId: string }) {
           </span>
         </span>
       ) : null}
-      <span>History & comparison →</span>
+      <span className="hidden @[58rem]:inline">History & comparison →</span>
     </Link>
   );
 }

@@ -260,7 +260,7 @@ function polymarketData(): BugCheck {
   }, rows.map(fight => fightItem(fight, {
     facts: [["Market read", ago(fight.market_checked)], ["History read", ago(fight.history_at)],
       ["Issue", fight.market_error ?? fight.history_error ?? "The matchup or event date changed."]],
-    links: [{ label: "Market analysis", href: `/fights/${fight.id}?tab=market`, internal: true }],
+    links: [{ label: "Market analysis", href: `/fights/${fight.id}?tab=odds`, internal: true }],
     actions: [{ id: "polymarket-data", label: "Re-read market and history", target: fight.id }],
   })));
 }
@@ -2421,7 +2421,7 @@ export async function runBugAction(action: string, target: string): Promise<{ ok
       return { ok: true, message: "Queued; ufc.com is searched again on the next pass." };
     case "polymarket-data": {
       db.prepare("UPDATE polymarket_bouts SET checked_at=0, history_at=NULL WHERE fight_id=?").run(target);
-      return { ok: true, message: "Queued a new mapping and history read. Open the matchup’s Market tab to refresh; upcoming bouts also retry in the background." };
+      return { ok: true, message: "Queued a new mapping and history read. Open the matchup’s Odds tab to refresh; upcoming bouts also retry in the background." };
     }
     case "polymarket": {
       const { fights } = await scanUpcoming(upcomingBouts(fighterNames));

@@ -3,6 +3,25 @@
 Measure first, then change what the measurement points at. This page records
 the targets, how to measure against them, and the last measured results.
 
+## Matchup Odds tab revisits (2026-10-28)
+
+Measured in the local Vite preview with Chromium, using a 400 ms delay on the
+Polymarket detail request. Before the fix, three returns from Matchup to Market
+remounted the panel and started **six detail requests** (the development React
+Strict Mode mount cycle starts two each time). Its chart controls were reset.
+
+The combined Odds panel now stays mounted after its first visit, with fetching
+paused while hidden. Three quick returns made **zero new detail requests**,
+inserted **zero loading placeholders**, and retained the same panel DOM node,
+Pre-fight selection and replay slider position. A hidden panel made no detail
+requests over 5.5 seconds; returning after that resumed refresh in place without
+a loading placeholder. Prices still expire by their own 15/90-second timestamps.
+
+The same check covered 375, 768 and 1280 px widths without horizontal overflow,
+light/dark mode, and old Market links opening Odds. On the wide hero, the label
+and Polymarket pill each sit 21 px inside the card edge (including its border),
+with matching 8 px gaps above and below the sportsbook odds box.
+
 ## Anti-doping profile counts (2026-10-27)
 
 Measured on the home server, Node 26, against an isolated archive copy with

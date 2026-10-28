@@ -7,10 +7,16 @@ UFC.sh reads public market data only. It does not connect a wallet or place orde
 - More → Markets (`/markets`): upcoming fight board, this browser's follows and
   alerts, historical accuracy, and other currently listed UFC markets.
 - A card's Polymarket probabilities switch (`?markets=1` opens it directly).
-- A matchup's Market tab (`?tab=market`): current probabilities, first observed
+- A matchup's Odds tab (`?tab=odds`): sportsbook moneylines/props, current
+  Polymarket probabilities, first observed
   pre-fight movement, sportsbook/community comparisons, price history, replay,
   observed round markers, source-listed props, and fight/fighter follows.
 - During a live fight, the Result and Score tabs also include the compact chart.
+
+The visited Odds panel stays mounted for the current bout, preserving chart
+range and replay position across tab changes. Hidden panels pause their requests;
+returning refreshes in place when due. Quote expiry still uses the source
+timestamps. Legacy `?tab=market` links open the combined Odds tab.
 
 ## Data and timing
 
@@ -87,13 +93,13 @@ not background push or account-synced storage.
 ## Review on a development preview
 
 Run `./start` and append the paths below to the printed Tailscale URL. Real
-fights/cards can be opened from the board; their Market tab and card switch
+fights/cards can be opened from the board; their Odds tab and card switch
 also have direct URL parameters.
 
 | Review | URL | What to check |
 | --- | --- | --- |
-| Real matchup | `/fights/FIGHT_ID?tab=market` | Freshness, source comparison, chart filters/slider, props, follow buttons |
-| Card | `/events/EVENT_ID?markets=1` | Expanded probabilities, hide/show, links into the matching Market tab |
+| Real matchup | `/fights/FIGHT_ID?tab=odds` | Freshness, source comparison, chart filters/slider, props, follow buttons |
+| Card | `/events/EVENT_ID?markets=1` | Expanded probabilities, hide/show, links into the matching Odds tab |
 | Live demo | `/markets?demo=live` | Round markers, live-range default, keyboard/touch slider, confirmed alert test |
 | Comeback demo | `/markets?demo=replay` | Winner's 12% low, timeline replay, closed-state copy |
 | Thin demo | `/markets?demo=thin` | Warning, last-trade label, alert test suppressed |
