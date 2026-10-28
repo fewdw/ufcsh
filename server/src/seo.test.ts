@@ -25,11 +25,11 @@ test("page metadata is escaped and the preview becomes a large image", () => {
   const html = `<html><head><title>x</title><meta name="description" content="x" /><meta name="twitter:card" content="summary" /><link rel="canonical" href="x" /></head><body><noscript>old</noscript></body></html>`;
   const out = injectPageSeo(html, "/x", {
     title: `A "quoted" <title>`, description: "d", canonical: "https://ufc.sh/x", type: "website", status: 200,
-    image: "https://ufc.sh/og/site.jpg", summary: "<p>hi</p>",
+    image: "https://ufc.sh/og.jpg", summary: "<p>hi</p>",
   });
   assert.match(out, /<title>A &quot;quoted&quot; &lt;title&gt;<\/title>/);
   assert.match(out, /twitter:card" content="summary_large_image"/);
-  assert.match(out, /og:image" content="https:\/\/ufc.sh\/og\/site.jpg"/);
+  assert.match(out, /og:image" content="https:\/\/ufc.sh\/og.jpg"/);
   assert.match(out, /<noscript><p>hi<\/p>/);
 });
 

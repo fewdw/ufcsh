@@ -183,7 +183,7 @@ docker compose exec -T app node src/backfill-image-variants.ts
    versioned and served `immutable`: expression
    `starts_with(http.request.uri.path, "/api/images/")`, **Eligible for
    cache**, Edge and Browser TTL respecting the origin, default cache key
-   (full query string). `/assets/*` and `/og/*.jpg` are cached by Cloudflare's
+   (full query string). `/assets/*` and `/og.jpg` are cached by Cloudflare's
    default file-extension rule.
 
    A second rule lets Cloudflare answer page HTML and the public API, so a

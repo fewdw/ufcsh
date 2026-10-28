@@ -163,7 +163,6 @@ GET /api/officials           every judge and referee
 GET /api/judges/:slug        a judge's cards and agreement; ?from&to&division&result&view&q&offset
 GET /api/referees/:slug      a referee's bouts against a UFC baseline; same filters
 GET /api/venues[/:slug]      venues and the cards held there
-GET /og/:kind/:id.jpg        link-preview image (fights, fighters, events, site)
 GET /api/status              sync/backfill progress
 ```
 
