@@ -76,11 +76,17 @@ function ChartWindow({ data, model }: { data: MarketDetail; model: Model }) {
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs">
             <span>
               <span className="font-semibold text-blue-700 dark:text-blue-400">
-                {data.fight.f1.name} {pct(point.p)}
+                {data.fight.f1.name}{" "}
+                <span className="inline-block w-[6ch] whitespace-nowrap text-right tabular-nums">
+                  {pct(point.p)}
+                </span>
               </span>
               <span className="text-zinc-400"> / </span>
               <span className="font-semibold text-red-700 dark:text-red-400">
-                {data.fight.f2.name} {pct(1 - point.p)}
+                {data.fight.f2.name}{" "}
+                <span className="inline-block w-[6ch] whitespace-nowrap text-right tabular-nums">
+                  {pct(1 - point.p)}
+                </span>
               </span>
             </span>
             <span className="text-[11px] text-zinc-500">
@@ -185,7 +191,6 @@ function ChartWindow({ data, model }: { data: MarketDetail; model: Model }) {
                 stroke="currentColor"
                 className="text-zinc-400"
               />
-              <circle cx={x(point.at)} cy={y(point.p)} r="4" fill="#3b82f6" />
             </svg>
             {rounds.map((r) => (
               <span

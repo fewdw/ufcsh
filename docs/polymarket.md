@@ -14,8 +14,10 @@ UFC.sh reads public market data only. It does not connect a wallet or place orde
   A result from the matchup feed hides it even if the price feed has not caught up.
 
 There is no standalone Markets page, watchlist, follow UI, or replay slider.
-Hover over the chart or focus it and use arrow/Home/End keys to inspect points;
-drag the two arrow handles to select a time window, or drag the selection to pan.
+Hover over the chart or focus it and use arrow/Home/End keys to inspect points.
+The selected time uses a gray line; fixed-width percentage readouts keep fighter
+labels still while inspecting prices.
+Drag the two arrow handles to select a time window, or drag the selection to pan.
 Handles also support arrow/Home/End keys (Shift speeds up adjustment). No
 All/Pre-fight/Live buttons are shown. Times use the viewer's browser time zone,
 with the UTC offset on each timestamp to disambiguate daylight-saving changes.
@@ -41,6 +43,9 @@ sized order-book deltas, heartbeats and reconnects. Shared REST reads provide
 initial books and repair gaps. Additional data/history reads have a concurrency
 limit of four; clients poll the shared server answer. Quotes expire after 15
 seconds live and 90 seconds pre-fight and bypass persisted client page snapshots.
+The visible Odds panel polls every five seconds after a request completes; hidden
+panels pause polling. Chart captures are limited to one per ten seconds live and
+one per minute pre-fight when fresh source data arrives.
 
 The archive contains three new tables:
 
