@@ -11,7 +11,7 @@ const SOURCES: { key: string; name: string; every: number }[] = [
   { key: "fightodds_read_at", name: "Odds (FightOdds.io)", every: 5 * MINUTE },
   { key: "potential_matchups_read_at", name: "Potential matchups", every: 5 * MINUTE },
   { key: "news_checked_at", name: "News feeds", every: 10 * MINUTE },
-  { key: "roster_moves_checked_at", name: "Roster moves", every: 10 * MINUTE },
+  { key: "roster_moves_synced_at", name: "Roster moves", every: 10 * MINUTE },
   { key: "rankings_synced_at", name: "Rankings", every: 6 * HOUR },
   { key: "stats_repair_at", name: "Stats repair pass", every: 6 * HOUR },
   { key: "roster_synced_at", name: "Roster", every: DAY },
