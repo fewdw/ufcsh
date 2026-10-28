@@ -93,6 +93,7 @@ export const SEARCH_ALIASES: Record<string, string[]> = {
   "Marcio Alexandre Junior": ["Marcio Alexandre Jr."],
   "Nina Nunes": ["Nina Ansaroff"],
   "Yana Santos": ["Yana Kunitskaya"],
+  "Cristiane Justino": ["Cris Cyborg"],
   "Ariane da Silva": ["Ariane Lipski"],
 };
 

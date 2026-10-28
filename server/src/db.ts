@@ -458,6 +458,12 @@ for (const alter of [
   // Bouts announced for the card that never happened on it, as JSON:
   // [{ f1, f2, f1_id, f2_id, division, reason }].
   "ALTER TABLE events ADD COLUMN cancelled_json TEXT",
+  // What each fighter was paid, as published (fight-pay.ts): disclosed
+  // purses and bonus amounts, as JSON. The card
+  // records when its sources were last read and what in them could not be.
+  "ALTER TABLE fights ADD COLUMN pay_json TEXT",
+  "ALTER TABLE events ADD COLUMN pay_checked_at INTEGER",
+  "ALTER TABLE events ADD COLUMN pay_issues_json TEXT",
 ]) {
   try {
     db.exec(alter);
@@ -774,7 +780,7 @@ for (const [table, revisions] of Object.entries(revisionTables)) {
     "schedule_fetched_at", "segments_fetched_at", "wiki_checked_at", "fetched_at", "checked_at",
     "venue_checked_at", "wiki_info_checked_at", "catch_weight_checked_at", "verdict_checked_at", "verdict_error", "verdict_live_json", "deductions_checked_at",
     // Read live by the matchup alone; no index or list is built from it.
-    "media_scores_json"]);
+    "media_scores_json", "pay_json", "pay_checked_at", "pay_issues_json"]);
   const columns = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[])
     .map(row => row.name).filter(name => !checkTimestamps.has(name));
   for (const operation of ["INSERT", "UPDATE", "DELETE"]) {
