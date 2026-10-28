@@ -60,16 +60,6 @@ function ChartWindow({ data, model }: { data: MarketDetail; model: Model }) {
     <div>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold">Probability history</h3>
-        <span className="text-[10px] text-zinc-500">
-          {model.fightScope
-            ? data.fight.state === "live"
-              ? manual
-                ? "During fight"
-                : "During fight · following latest 10 min"
-              : "Captured during fight"
-            : "Price history"}
-          {manual ? " · custom range" : ""}
-        </span>
       </div>
       {point ? (
         <>
@@ -88,10 +78,6 @@ function ChartWindow({ data, model }: { data: MarketDetail; model: Model }) {
                   {pct(1 - point.p)}
                 </span>
               </span>
-            </span>
-            <span className="text-[11px] text-zinc-500">
-              {chartTime(point.at, seconds)} ·{" "}
-              {point.source === "observed" ? "Captured" : "Source history"}
             </span>
           </div>
           <div className="relative mt-1 pl-9">
@@ -247,7 +233,7 @@ function ChartWindow({ data, model }: { data: MarketDetail; model: Model }) {
               observations.
             </p>
           ) : null}
-          {manual ? (
+          {manual && data.fight.state === "live" ? (
             <div className="mt-1 flex justify-end text-[10px]">
               <button
                 type="button"
@@ -257,7 +243,7 @@ function ChartWindow({ data, model }: { data: MarketDetail; model: Model }) {
                 }}
                 className="min-h-8 rounded px-2 font-medium text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950"
               >
-                {data.fight.state === "live" ? "Follow live" : "Reset range"}
+                Follow live
               </button>
             </div>
           ) : null}

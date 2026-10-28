@@ -7,9 +7,7 @@ UFC.sh reads public market data only. It does not connect a wallet or place orde
 - A card's Polymarket probabilities switch (`?markets=1` opens it directly).
 - A matchup's Odds tab (`?tab=odds`): sportsbook moneylines/props and a Polymarket
   panel with the probability chart first, followed by source comparisons and
-  source-listed props. With at least 56rem of panel width, the chart and comparison
-  sit in two columns (chart left, comparison right). Narrower panels stay stacked;
-  compact live charts keep the full width.
+  source-listed props. The chart and comparison stay stacked at every screen size.
 - During a live fight, the Result and Score tabs also include the compact chart.
 - The hero badge is one line: the official Polymarket symbol and both percentages.
   It appears only while a fresh quote is available and the fight has no result.
@@ -18,7 +16,8 @@ UFC.sh reads public market data only. It does not connect a wallet or place orde
 There is no standalone Markets page, watchlist, follow UI, or replay slider.
 Hover over the chart or focus it and use arrow/Home/End keys to inspect points.
 The selected time uses a gray line; fixed-width percentage readouts keep fighter
-labels still while inspecting prices.
+labels still while inspecting prices. Range-mode labels and the selected point’s
+source/timestamp line are omitted.
 Drag the two arrow handles to select a time window, or drag the selection to pan.
 Handles also support arrow/Home/End keys (Shift speeds up adjustment). No
 All/Pre-fight/Live buttons are shown. Times use the viewer's browser time zone,
@@ -78,7 +77,8 @@ disconnected. Round markers use the first observed round timestamps.
 Manual ranges use absolute epoch milliseconds, so appending or backfilling history
 does not shift the selected period. Handles cannot cross, extend outside the data,
 or narrow below ten seconds (or the entire domain when shorter). A window without
-samples stays empty. Follow live / Reset range restores automatic behavior. Identity,
+samples stays empty. During a live fight, Follow live restores automatic behavior;
+there is no Reset range button. Identity,
 date, opponents, source URL or a transition into live scope resets the selection.
 Pointer gestures freeze their coordinate mapping while polling continues.
 

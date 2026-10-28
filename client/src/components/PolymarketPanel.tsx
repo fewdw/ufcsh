@@ -190,12 +190,8 @@ export function PolymarketView({
         </div>
       </div>
       <div className="space-y-5 p-4 sm:p-5">
-        <div
-          className={`grid items-start gap-5 ${compact ? "" : "@[56rem]:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] @[56rem]:gap-8"}`}
-        >
-          <PolymarketChart data={data} />
-          {!compact ? <Comparison data={data} now={now} /> : null}
-        </div>
+        <PolymarketChart data={data} />
+        {!compact ? <Comparison data={data} now={now} /> : null}
         {!q ? (
           <div
             role="status"
